@@ -1,54 +1,40 @@
 ---
-title: app and web
-description: Portable app lifecycle, plus the web fixture the playwright engine contributes.
+title: Playwright
+description: The browser engine, its options, and the web fixture it contributes.
 ---
 
-`app` is the portable surface: every method exists on every platform. `web` is
-the fixture `@e2edev/playwright` contributes for browser-only work; import
-`test` from that package to have it typed. Declare `requires: ['web']` in
-portable suites; acquiring it on a target whose engine does not contribute it
-fails with `UNSUPPORTED_CAPABILITY`.
+`@e2edev/playwright` drives Chromium, Firefox, and WebKit through Playwright.
+A web target names it as its engine, and it contributes the `web` fixture for
+browser-only work. Import `test` from the package to have `web` typed.
 
-## App
+```ts title="e2e.config.ts"
+import { playwright } from '@e2edev/playwright';
 
-```ts
-export interface App {
-  open(path?: string): Promise<void>;
-  restart(): Promise<void>;
-  clearState(): Promise<void>;
-  back(): Promise<void>;
-  screenshot(label?: string): Promise<string>;
-}
+targets: [{ engine: playwright({ url: 'http://localhost:3000' }) }],
 ```
 
-No `App` method takes a `timeout` option. Each budget is additionally capped by
-the remaining test timeout.
+## Options
 
-| Method | Timeout | Behavior | Throws |
+`playwright(options)` takes the app declaration every engine makes plus the
+browser choices:
+
+| Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `open(path?)` | `config.timeout`, 120000 ms | Opens the base URL, or an absolute URL or path relative to it. | `APP_URL_REQUIRED` when the target's engine declares no `url`, `POLICY_DENIED` outside its `allowedOrigins`, `APP_UNREACHABLE`, `ACTION_FAILED` |
-| `restart()` | `config.timeout`, 120000 ms | Recreates the context and keeps persisted state, including a restored session. | `ACTION_FAILED`, `ENGINE_FAILURE`, `UNSUPPORTED_CAPABILITY` |
-| `clearState()` | `config.timeout`, 120000 ms | Clears cookies, storage, and other persisted state, then relaunches. Discards a restored session. | `ACTION_FAILED`, `ENGINE_FAILURE`, `UNSUPPORTED_CAPABILITY` |
-| `back()` | `config.actionTimeout`, 30000 ms | Navigates back once. | `APP_NOT_OPEN`, `ACTION_FAILED` |
-| `screenshot(label?)` | `config.actionTimeout`, 30000 ms | Captures evidence, registers it as an attempt artifact, and returns its path relative to the artifact root. `label` defaults to `''`. | `UNSUPPORTED_CAPABILITY`, `ENGINE_FAILURE` |
+| `url` | `string` | unset | The app's base URL; required once a test navigates. See [the app under test](/reference/config#the-app-under-test). |
+| `command`, `readyUrl`, `services` | | unset | The app process and its dependencies. See [command](/reference/config#command) and [services](/reference/config#services). |
+| `allowedOrigins`, `environment`, `identity` | | derived from `url` | Origin policy and cache/session identity. See [the app under test](/reference/config#the-app-under-test). |
+| `browser` | `'chromium' \| 'firefox' \| 'webkit'` | `'chromium'` | The browser to launch. |
+| `viewport` | `{ width, height }` | `1280` by `720` | Initial viewport of every attempt's page. |
+| `connect` | `PlaywrightConnectOptions` | unset | Attach to a remote browser over CDP instead of launching locally. Chromium only. `cdpEndpoint(signal)` resolves the DevTools URL; it is called once per worker and again when a session drops. |
+| `headers` | `Record<string, string>` | unset | HTTP headers added to every request bound for an allowed origin and to none other. Names are case-insensitive. Routes every request through the runner, which turns the browser's HTTP cache off and blocks service workers for the target. A trace records request headers. |
+| `basicAuth` | `{ username, password }` | unset | Answers a `401` challenge from an allowed origin; a challenge from any other origin gets nothing. `:` is not allowed in the user name. |
 
-```ts
-await app.open('/settings/billing');
-const shot = await app.screenshot('after-checkout');
-```
-
-<Warning>
-`clearState` inside a serial group destroys the shared state the group depends
-on. Use it in `beforeEach` of an ordinary group instead.
-</Warning>
-
-Pixel evidence is suppressed for the rest of an attempt once any `Secret` has
-been filled.
+`headers` and `basicAuth` are how a test reaches a [protected preview](/starting-your-app#protected-previews).
 
 ## Web
 
 ```ts
-export interface Web {
+export interface Web extends Expectable<WebExpectation> {
   goto(
     url: string,
     options?: {
@@ -109,19 +95,21 @@ export interface Web {
 | `url`, `title`, `evaluate`, `route`, `unroute`, `cookies`, `setCookies`, `setViewport`, `onDialog`, `keyboard.*`, `mouse.*` | `config.actionTimeout`, 30000 ms, not overridable |
 
 Every `web` call is a recorded `web.<method>` step. A relative URL or a URL
-match needs the engine's declared `url` (`playwright({ url })`); without it
-the call fails with `APP_URL_REQUIRED`.
+match needs the engine's declared `url`; without it the call fails with
+`APP_URL_REQUIRED`. Declare `requires: ['web']` in a suite that also runs on
+other platforms; acquiring `web` on a target whose engine does not contribute
+it fails with `UNSUPPORTED_CAPABILITY`.
 
 ### Navigation
 
 | Method | Behavior | Throws |
 | --- | --- | --- |
-| `goto(url, options?)` | Absolute URL or route relative to the base URL. `waitUntil` selects the readiness condition and defaults to `'load'`. | `POLICY_DENIED` for a disallowed origin or scheme, `ACTION_FAILED` |
+| `goto(url, options?)` | Absolute URL or route relative to the base URL. `waitUntil` defaults to `'load'`. | `POLICY_DENIED` for a disallowed origin or scheme, `ACTION_FAILED` |
 | `reload(options?)` | One history reload | `ACTION_FAILED` |
 | `back(options?)` | One history entry back | `ACTION_FAILED` |
 | `forward(options?)` | One history entry forward | `ACTION_FAILED` |
-| `url()` | Current serialized URL, immediate read | - |
-| `title()` | Current document title, immediate read | - |
+| `url()` | Current serialized URL, immediate read | |
+| `title()` | Current document title, immediate read | |
 | `waitForURL(url, options?)` | Polls every 100 ms. A relative string resolves against the base URL and matches exactly after normalization; a `RegExp` tests the full URL. | `ASSERTION_FAILED` on timeout |
 
 ```ts
@@ -143,18 +131,15 @@ await payment.getByLabel('Card number').fill('4242424242424242');
 
 ### evaluate
 
-Both overloads serialize the function and run it in the page, so it cannot close
-over test-scope variables. Pass data through `arg`. Both `arg` and the return
-value must be `JsonValue`; anything else, including a non-finite number, throws
-`INVALID_ARGUMENT`.
+Both overloads serialize the function and run it in the page, so it cannot
+close over test-scope variables. Pass data through `arg`. Both `arg` and the
+return value must be `JsonValue`; anything else, including a non-finite
+number, throws `INVALID_ARGUMENT`.
 
-Exceptions thrown by the evaluated code, including rejected promises, fail the
-test with `EVALUATE_FAILED` and preserve the exception's message. Invalid source
-syntax is also a test failure. A Playwright timeout is the engine's
-`OPERATION_TIMEOUT`, reported to the test as `ACTION_FAILED`;
-page or browser closure, crashes, protocol failures, and lost execution contexts
-remain infrastructure failures (`ENGINE_FAILURE`). The classification does not
-depend on the text of a page exception.
+Exceptions thrown by the evaluated code fail the test with `EVALUATE_FAILED`
+and preserve the message. A Playwright timeout is reported as
+`ACTION_FAILED`; page or browser closure, crashes, and lost execution
+contexts are `ENGINE_FAILURE`.
 
 ```ts
 const count = await web.evaluate(() => document.querySelectorAll('li').length);
@@ -169,7 +154,7 @@ const flag = await web.evaluate(
 | Method | Behavior | Throws |
 | --- | --- | --- |
 | `route(pattern, handler)` | Registers an attempt-scoped route. It may be registered before the first page opens and stays in force across `app.restart()`, `app.clearState()`, and session restore. The handler must decide exactly once with `fulfill`, `continue`, or `abort`. | `ACTION_FAILED` when the handler decides twice, or returns without deciding |
-| `unroute(pattern)` | Removes every attempt-scoped route registered with a matching pattern | - |
+| `unroute(pattern)` | Removes every attempt-scoped route registered with a matching pattern | |
 | `waitForResponse(pattern, options?)` | Resolves with a `WebResponse` whose `json()` and `text()` decode the buffered body | `ACTION_FAILED` when nothing matches inside the deadline |
 
 ```ts
@@ -212,16 +197,16 @@ export interface WebResponse {
 }
 ```
 
-`json` and `body` are mutually exclusive. Omitting both fulfills with an empty
-body.
+`json` and `body` are mutually exclusive. Omitting both fulfills with an
+empty body.
 
 ### Cookies and viewport
 
 | Method | Behavior | Throws |
 | --- | --- | --- |
-| `cookies()` | Returns a mutable array copy of the cookies visible to the current context | - |
+| `cookies()` | Returns a mutable array copy of the cookies visible to the current context | |
 | `setCookies(cookies)` | Validates every cookie's target origin before setting any. For the `domain` form the scheme follows the base URL and a leading `.` is stripped. | `POLICY_DENIED` for an unparseable target or a disallowed origin; nothing is set when any entry is rejected |
-| `setViewport(size)` | Resizes the viewport and records the new size on the report | - |
+| `setViewport(size)` | Resizes the viewport and records the new size on the report | |
 
 ```ts
 export interface CookieFields {
@@ -251,8 +236,8 @@ await web.setCookies([{ url: 'http://localhost:3000', name: 'tz', value: 'UTC' }
 
 | Method | Behavior | Throws |
 | --- | --- | --- |
-| `onDialog(handler)` | Registers an attempt-scoped handler and returns an idempotent unsubscribe function. Removed automatically at attempt end. A function handler must call `accept` or `dismiss`; one that returns without deciding has the dialog dismissed and fails the next step with `INVALID_STATE`, like an unhandled dialog. | - |
-| `waitForDownload(trigger, options?)` | Starts a download watch, runs `trigger`, waits for completion inside the same deadline, and registers the file as a `download` artifact. A failure in `trigger` keeps its own error. | `ACTION_FAILED` (operation timed out) when the download does not complete in time |
+| `onDialog(handler)` | Registers an attempt-scoped handler and returns an idempotent unsubscribe function. Removed automatically at attempt end. A function handler must call `accept` or `dismiss`; one that returns without deciding has the dialog dismissed and fails the next step with `APP_NOT_OPEN`, as an unhandled dialog does. | |
+| `waitForDownload(trigger, options?)` | Starts a download watch, runs `trigger`, waits for completion inside the same deadline, and registers the file as a `download` artifact. A failure in `trigger` keeps its own error. | `ACTION_FAILED` when the download does not complete in time |
 
 ```ts
 export interface Dialog {
@@ -297,9 +282,38 @@ export type JsonValue =
   | readonly JsonValue[];
 ```
 
+## Exported types
+
+`PlaywrightOptions`, `PlaywrightConnectOptions`, `PlaywrightBasicAuth`,
+`BrowserName`, `PlaywrightLiveSurface`, `Web`, `WebExpectation`, `WebRoute`,
+`WebResponse`, `Cookie`, `Dialog`, and `DialogHandler` are exported from the
+package for typing config helpers and fixtures.
+
+## expect(web)
+
+`expect(web)` returns the `WebExpectation` the engine attaches: `toHaveURL`,
+`toHaveTitle`, and `toHaveClass`. See [web matchers](/reference/expect#web-matchers).
+
+## surfaceOf
+
+```ts
+import { playwright, surfaceOf } from '@e2edev/playwright';
+
+const engine = playwright({ url: 'http://localhost:3000' });
+const live = surfaceOf(engine);   // PlaywrightLiveSurface | undefined
+live!.page();                     // the Page of the current attempt
+live!.context();                  // its BrowserContext
+```
+
+`surfaceOf(handle)` returns the `PlaywrightLiveSurface` behind a handle this
+package created, or `undefined` for any other handle. Both accessors throw
+`INVALID_STATE` before an attempt is running or a page is open. It exists for a [custom executor](/executors#driving-the-page-yourself)
+that brings its own browser tooling; what it does there is not recorded as
+steps.
+
 <CardGroup cols={2}>
-  <Card title="Writing tests" href="/writing-tests" />
+  <Card title="app" href="/reference/app" />
   <Card title="screen and Locator" href="/reference/screen" />
-  <Card title="Config" href="/reference/config" />
-  <Card title="Errors" href="/reference/errors" />
+  <Card title="expect" href="/reference/expect" />
+  <Card title="Starting your app" href="/starting-your-app" />
 </CardGroup>

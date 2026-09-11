@@ -1,26 +1,12 @@
 ---
 title: Introduction
-description: End-to-end tests in plain TypeScript, driven by an agent you define.
+description: End-to-end tests in plain TypeScript, with agent steps you can bound and inspect.
 ---
 
-You write tests in simple TypeScript, and you define the agent that executes
-them. e2e ships no intelligence of its own: the runner owns safety, budgets,
-secrets, and the report. The thinking is yours to control.
-
-```ts title="e2e.config.ts"
-import type { E2EConfig } from '@e2edev/e2e';
-import { createAgent } from '@e2edev/e2e/agent';
-import { playwright } from '@e2edev/playwright';
-
-export default {
-  targets: [{ name: 'web', engine: playwright({ url: 'http://localhost:3000' }) }],
-  agents: {
-    default: createAgent({
-      system: 'You are a thorough QA agent. Verify every outcome on screen.',
-    }),
-  },
-} satisfies E2EConfig;
-```
+e2e runs end-to-end tests written in TypeScript. A test mixes two kinds of
+calls. Deterministic calls (`screen`, `app`, `expect`) do exactly what they
+say and cost no model tokens. Agent calls (`agent.act`, `agent.assert`) hand
+one goal or one question to a model under a deadline and a call budget.
 
 ```ts title="tests/checkout.e2e.ts"
 import { test, expect } from '@e2edev/e2e';
@@ -31,55 +17,58 @@ test('a member upgrades to Pro', async ({ app, agent, screen }) => {
   await agent.act('upgrade the workspace to the Pro plan');
   await agent.assert('the invoice preview shows a prorated amount');
 
-  // A deterministic check for the part that must not drift:
   await expect(screen.getByRole('status')).toContainText('Pro');
 });
 ```
 
-`agent.act` executes a goal. `agent.assert` answers a question about the
-screen. When a step or a check is too important to leave to a model, `screen`
-and `expect` do exactly what they say, for free.
+The runner owns everything around the model: what it sees, what it may do,
+how many calls it gets, and what ends up in the report. You choose the model
+and can replace the agent outright.
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from '@e2edev/e2e';
+import { createAgent } from '@e2edev/e2e/agent';
+import { playwright } from '@e2edev/playwright';
+import { gateway } from 'ai';
+
+export default {
+  targets: [{ engine: playwright({ url: 'http://localhost:3000' }) }],
+  agents: { default: createAgent({ model: gateway('openai/gpt-5.4-mini') }) },
+} satisfies E2EConfig;
+```
+
+## What you get
+
+- **Bounded agent steps.** Every `agent.*` call has a deadline and a model-call
+  budget, and ends in a verdict: passed, failed, or blocked.
+- **Secrets the model never sees.** A password is an opaque handle. The model
+  gets its name; the runner fills the field.
+- **Replay instead of re-thinking.** A passing `agent.act` records its actions
+  and the next run replays them with no model call, until the app diverges.
+- **One contract, any surface.** `@e2edev/playwright` drives browsers and
+  `@e2edev/agent-device` drives iOS simulators and Android emulators. The
+  same test runs on both.
+- **A report for every run.** `.e2e/report.json` carries results, steps,
+  screenshots, traces, and model usage.
+
+## Where to go
 
 <CardGroup cols={2}>
   <Card title="Quickstart" href="/quickstart">
-    Install, define your agent, run a test.
+    Scaffold a project, run a browser test, add an agent step.
   </Card>
   <Card title="Writing tests" href="/writing-tests">
     Goals, checks, extraction, and the deterministic APIs.
   </Card>
-  <Card title="Your own agent" href="/agents">
-    Models, project tools, and custom executors.
+  <Card title="Web" href="/starting-your-app">
+    Start your dev server from the config, mock APIs, reach protected previews.
   </Card>
-  <Card title="Reference" href="/reference/test">
-    Every function, option, and error code.
+  <Card title="Mobile" href="/mobile">
+    iOS simulators and Android emulators, the `device` fixture, what differs.
   </Card>
 </CardGroup>
 
-## What you get
-
-**You control the agent.** `createAgent()` is the built-in one. Give it your
-own tools, keep its loop with a different tool vocabulary (a device toolkit, an
-internal API), or replace it with anything that takes a step and returns a
-verdict. None of that changes the runner's side of the contract: observations
-stay redacted, harness actions stay policed, and model budgets and the step
-deadline stay enforced.
-
-**Every call is bounded.** An `agent.*` call has a deadline and a model-call
-budget. A planned step ends in one of three verdicts: **passed**, **failed**,
-or **blocked**, meaning something prevented a verdict about your app. A credential,
-environment, or seed-data block exits as configuration or infrastructure
-rather than as a failing test, so red keeps meaning "the product misbehaved".
-
-**Secrets never reach a model.** A password is an opaque handle. Pass it to
-`agent.act` and the model sees its name only; the runner fills the field
-itself.
-
-<Note>
-**Two engines**
-
-This release ships `@e2edev/playwright` for browsers and
-[`@e2edev/agent-device`](/reference/device) for iOS simulators and Android
-emulators. The API and the runner are platform-neutral: the same test runs on
-both, and a surface neither covers plugs in as a
-[engine](/writing-an-engine) of its own.
-</Note>
+The **Guides** cover what every project needs after that: a model, signing
+in, agents and personas, caching, debugging, CI. **Extend** is for changing
+what the agent is or adding a new platform. The **Reference** tab has every
+function, option, flag, and error code.

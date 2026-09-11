@@ -1,19 +1,19 @@
 ---
-title: device
-description: The device fixture and engine options @e2edev/agent-device contributes for iOS and Android targets.
+title: agent-device
+description: The mobile engine for iOS simulators and Android emulators, its options, and the device fixture it contributes.
 ---
 
-Choose **agent-device** in `e2e init` to add this package and generate a
-Settings example. Init defaults to iOS on macOS and Android elsewhere; the
-platform is editable in `e2e.config.ts`. AI testing defaults to enabled and can
-be declined. The generated config uses one worker and requires no `APP_URL`.
+`@e2edev/agent-device` drives iOS simulators and Android emulators through
+[agent-device](https://github.com/callstack/agent-device), against the same
+engine contract the browser engine implements. `agent`, `app`, `screen`, and
+`expect` work as they do everywhere; this page covers what is specific to a
+device target. Import `test` from the package to have `device` typed, and
+declare `requires: ['device']` in a suite that also runs on the web.
 
-`@e2edev/agent-device` is the mobile engine: iOS simulators and Android
-emulators through [agent-device](https://github.com/callstack/agent-device),
-against the same `@e2edev/e2e/engine` contract the browser engine implements. `agent`,
-`app`, `screen`, and `expect` work as they do everywhere; this page covers what
-is specific to a device target. Import `test` from the package to have `device`
-typed; declare `requires: ['device']` in portable suites.
+Choose **Mobile (iOS/Android)** in `e2e init` to add the package with a Settings
+example. It defaults to iOS on macOS and Android elsewhere, uses one worker,
+and needs no `APP_URL`. iOS needs Xcode and a simulator; Android needs the
+Android SDK and an emulator.
 
 ## Engine
 
@@ -46,9 +46,11 @@ a deterministic check that names a platform label is scoped with
 | `platform` | `'ios' \| 'android'` | required | Which device family the target boots. |
 | `app` | `string` | none | App opened fresh at the start of every attempt: a bundle id, a package name, or a display name. Declares `app.restart()` and `app.clearState()`. |
 | `appPath` | `string` | none | An iOS `.app` bundle or Android `.apk`, resolved against the project root, installed once per worker after boot and before the first attempt. Without `app`, the installed bundle id or package is the app opened per attempt. |
-| `device` | `string \| string[]` | every booted device | Simulator or emulator name or UDID. A list is a pool: the engine declares one worker per entry and worker slot `n` drives the `n`th. Omitted, `prepare` discovers the booted devices of the platform and drives as many as the run has slots; with none booted, agent-device boots one. |
+| `device` | `string \| readonly string[]` | every booted device | Simulator or emulator name or UDID. A list is a pool: the engine declares one worker per entry and worker slot `n` drives the `n`th; an empty list is `INVALID_CONFIG`. Omitted, `prepare` discovers the booted devices of the platform and drives as many as the run has slots; with none booted, agent-device boots one. |
 | `session` | `string` | `e2e-<target name>` | agent-device session name, before the worker slot: slot `n` drives its device under `<session>-<n>`. One run per session at a time. |
 | `snapshot` | `'full' \| 'interactive'` | `'full'` | Whether observations include static text. |
+| `identity` | `string` | `app`, else `appPath` | Logical app identity for cache and session keying; see [the app under test](/reference/config#the-app-under-test). |
+| `environment` | `'test' \| 'staging' \| 'production'` | `'test'` | A label for the report and the identity digest. |
 
 Every optional value also accepts `undefined`, so a config passes
 `device: process.env.E2E_DEVICE` or `appPath: process.env.E2E_APP_PATH`
@@ -67,8 +69,9 @@ the launch timeout. Each attempt relaunches `app` when one is pinned; without
 it the surface observes whatever is in the foreground and the model opens
 apps with the `open_app` tool.
 
-The engine declares one worker per device: a single `device` (or none) is
-one worker, a pool is one per entry. The scheduler never runs more workers
+The engine declares one worker per configured device: a single `device` is
+one worker, a pool is one per entry, and with no `device` the count is set
+in `prepare` to the booted devices found, capped by the run's slots. The scheduler never runs more workers
 for the target than that, whatever `workers` allows, so a device target
 shares a run with browser targets without two workers ever driving one
 simulator. To split a target's test files across several devices, pass a
@@ -101,14 +104,9 @@ export default {
 | `locate` | Every `screen` query. Role queries skip nodes the platform reports as not visible; `visible: true` applies the same rule to the other query kinds. Text queries answer with the innermost match, so a host view echoing its child's label (iOS `Text` over `StaticText`) counts once. |
 | `swipe` | Viewport scroll in four directions. |
 | `app` | `back`; `restart` and `clearState` when `app` or `appPath` is pinned. No `navigate`: a device has no app URL. |
-| `artifacts` | Redacted screenshots under `screenshots/NNN-<label>.png`: every secure field's bounds are painted black first, and a screenshot that cannot be redacted fails instead of being written. No traces. |
+| `artifacts` | Redacted screenshots under `screenshots/NNN-<label>.png`: every secure field's bounds are painted black first, and a screenshot that cannot be redacted fails instead of being written. Video with `--video`, as `video/video.mp4` with taps shown. No traces. |
 | `url` | `app://device/<bundle id>/<screen title>`, the trace cache's anchor; the cache compares pathnames, so the app identity is in the path. The title is the navigation bar's on iOS and the collapsing toolbar's on Android. |
 | `state` | Not declared. `test.setup` and `session:` are unavailable. |
-
-Rectangle masking uses pngjs for image decoding and encoding and paints
-secure regions opaque black. Each raw screenshot uses its own temporary
-directory, removed after capture finishes even if the caller has already
-timed out or cancelled. The next attempt waits for this cleanup too.
 
 ## Trace cache on a device
 
@@ -147,17 +145,24 @@ export interface Device {
   clipboard(): Promise<string>;
   setClipboard(text: string): Promise<void>;
 }
+
+export type DevicePermission =
+  | 'camera' | 'microphone' | 'photos' | 'contacts' | 'notifications' | 'calendar'
+  | 'location' | 'reminders' | 'motion' | 'siri' | 'media-library';
+export type DeviceOrientation = 'portrait' | 'portrait-upside-down' | 'landscape-left' | 'landscape-right';
 ```
 
 Every async method is a recorded step named `device.<method>`, bounded by
 `config.actionTimeout` and the attempt signal, and never involves a model. A
-failure is `ENGINE_FAILURE` with agent-device's message; a command the
-platform cannot run is `UNSUPPORTED_CAPABILITY`.
+lost session is `APP_NOT_OPEN`, a command that timed out is `ACTION_FAILED`,
+a command the platform cannot run is `UNSUPPORTED_CAPABILITY`, and anything
+else is `ENGINE_FAILURE` carrying agent-device's message prefixed with the
+operation.
 
 `installApp` puts a build on the device from inside a test, for upgrade and
 fresh-install paths the `appPath` option cannot express. A plain install
 replaces the binary and keeps its data; `reinstall: true` removes the app named
-by `app` (default: the pinned app) first, and is `INVALID_STATE` when neither
+by `app` (default: the pinned app) first, and is `APP_NOT_OPEN` when neither
 names one. It resolves to the bundle id or package to `openApp` the build by.
 
 ```ts
@@ -206,8 +211,9 @@ After a secret fill it returns `PIXEL_TAINTED` without capturing pixels,
 including in later members of the same serial group. Unproven masking returns
 `MASKING_UNPROVEN`.
 
-Located references are retained in a bounded set of action bindings; repeated
-locator polling does not retain complete historical snapshots or invalidate
-the newest observation's references. Observations include a location from the
-same snapshot; explicit location probes remain fresh. Already-cancelled
-commands fail before dispatch to the device.
+<CardGroup cols={2}>
+  <Card title="Project tools" href="/tools" />
+  <Card title="Writing an engine" href="/writing-an-engine" />
+  <Card title="app" href="/reference/app" />
+  <Card title="Config" href="/reference/config#targets" />
+</CardGroup>

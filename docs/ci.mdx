@@ -1,7 +1,9 @@
 ---
 title: Continuous integration
-description: One workflow, plus the defaults the runner changes on its own.
+description: One workflow, the defaults the runner changes in CI, and how to keep model-backed tests opt-in.
 ---
+
+With `command` in your config, the job is install, browser, run.
 
 ```yaml title=".github/workflows/e2e.yml"
 name: e2e
@@ -30,13 +32,11 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
-      # Provision the browser as its own step, so the first run does not
-      # download it and the cost is visible in the job log.
+      # Provision the browser as its own step, so its cost is visible in the log.
       - name: Install browsers
         run: npx playwright install chromium --with-deps
 
-      # list keeps the log readable; junit writes .e2e/junit.xml for CI test
-      # summaries (GitHub, Buildkite, GitLab, Jenkins all ingest JUnit XML).
+      # list keeps the log readable; junit writes .e2e/junit.xml for the CI test summary.
       - name: Run e2e
         run: npx --no-install e2e run --reporter list,junit
         env:
@@ -66,45 +66,30 @@ jobs:
           retention-days: 7
 ```
 
-<Note>
-Actions are pinned to commit SHAs, not tags. A tag is mutable, and a workflow
-with repository secrets is the wrong place to run code that can change under you.
-</Note>
-
-`--no-install` makes `npx` fail rather than silently fetch a mutable version from
-the registry. With `--frozen-lockfile`, the runner, the engine, and the browser
+Actions are pinned to commit SHAs. A tag is mutable, and a workflow with
+repository secrets is the wrong place to run code that can change under you.
+`--no-install` makes `npx` fail rather than fetch a mutable version from the
+registry; with `--frozen-lockfile`, the runner, the engine, and the browser
 all come from your lockfile.
 
-`.e2e/junit.xml` is the same run rendered as JUnit XML: point your CI's test
-summary step at it (a JUnit report action on GitHub, `junit_paths` on GitLab,
-the JUnit plugin on Jenkins) and failures show up as test results instead of a
-red step. A startup failure such as `APP_UNREACHABLE` appears there too, as a
-`run` suite, so nobody has to open `report.json` to see why nothing ran.
+Point your CI's test summary at `.e2e/junit.xml` and failures show up as test
+results instead of a red step. A startup failure such as `APP_UNREACHABLE`
+appears there too, as a `run` suite. For the failure itself on the pull
+request, add the [GitHub reporter](/github).
 
-## Comment on the pull request
+## What CI changes
 
-`.e2e/junit.xml` gets failures into the checks tab. For the failure itself on
-the pull request, with the error, the evidence, and a link to the source line,
-add the [GitHub reporter](/github): `reporters: ['list', github()]` in the
-config, `pull-requests: write` in the job's permissions, and
-`GITHUB_TOKEN: ${{ github.token }}` in the step's `env`. One comment per run,
-edited in place on a rerun. The comment links to the workflow run for its
-evidence, so upload `.e2e/artifacts` with `if: ${{ !cancelled() }}` rather than
-on failure alone: a flaky test that passed on its retry still left the
-recording of the attempt that did not.
-
-## What CI changes automatically
-
-CI mode is active when the `CI` environment variable is set and is not empty,
-`0`, or `false`. That is the only signal, so `CI=1 npx --no-install e2e run` reproduces CI
+CI mode is on when the `CI` variable is set and is not empty, `0`, or `false`.
+That is the only signal, so `CI=1 npx --no-install e2e run` reproduces CI
 behavior locally.
 
 | Setting | Local | CI | Why |
 | --- | --- | --- | --- |
 | `retries` | `0` | `1` | Locally a retry hides the bug you were about to inspect |
 | `workers` | half your cores | `1` | A shared runner is the noisiest place to add timing variance |
+| `cache` | `read-write` | `read-only` | A committed cache is untrusted input; see [Caching agent steps](/cache#commit-your-traces) |
 | `.only` | allowed | rejected with `ONLY_IN_CI` | A focused test that reaches CI silently disables the rest of the suite |
-| `command.reuseExisting` | honored | ignored, with a notice | A server already listening on a runner is a leftover, not your dev server; it fails the launch with `APP_ALREADY_RUNNING` |
+| `command.reuseExisting` | honored | ignored, with a notice | A server already listening on a runner is a leftover, not your dev server |
 
 Override any of them when you mean it:
 
@@ -112,16 +97,14 @@ Override any of them when you mean it:
 npx --no-install e2e run --workers 4 --retries 0
 ```
 
-Anonymous usage [telemetry](/telemetry) behaves differently in CI too: runs are
-attributed to the CI vendor rather than to a machine, no preferences file is
-written on the runner, and no notice is printed. Add
-`E2E_TELEMETRY_DISABLED: '1'` to the job's `env` to send nothing from CI.
+[Telemetry](/telemetry) attributes CI runs to the vendor rather than to a
+machine and prints no notice. Add `E2E_TELEMETRY_DISABLED: '1'` to the job's
+`env` to send nothing from CI.
 
 ## Model credentials
 
-Deterministic tests need no model. For a suite that uses `agent`, the config
-constructs the model with its provider package, and the job passes the key
-that package reads:
+Deterministic tests need no model. For a suite that uses `agent`, the job
+passes the key the provider package reads:
 
 ```yaml
       - name: Run agentic suite
@@ -130,20 +113,15 @@ that package reads:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
 ```
 
-`AI_GATEWAY_API_KEY` is what `gateway()` from `ai` reads; `openrouter()` reads
-`OPENROUTER_API_KEY`, and a provider called directly reads its own. The runner
-reads none of them, so the value never enters logs, reports, or child-process
-arguments, and your app process cannot read it. To switch models per run,
-have the config read a variable of your own, e.g.
-`gateway(process.env.MODEL ?? 'openai/gpt-5.4-mini')`, and keep it in a
-non-secret variable so you can see which model a run used. Which variable each
-provider package reads is on [Models and credentials](/models).
+The runner reads none of these variables, so the value never enters logs,
+reports, or the app process. Which variable each provider reads is on
+[Choosing a model](/models).
 
 ## Keep model-backed tests opt-in
 
-Deterministic tests are reproducible. Agentic tests are comparable in structure
-but not identical - the same instruction can take a different, equally valid path.
-Gating merges on that makes the model a shared dependency of every pull request.
+Deterministic tests are reproducible. Agentic tests can take a different,
+equally valid path on each run. Gating merges on them makes the model a shared
+dependency of every pull request.
 
 <Steps>
   <Step title="Split the config">
@@ -165,24 +143,23 @@ on:
   workflow_dispatch:
 ```
 
-## Reacting to the exit code
+## Exit codes
 
-A non-zero exit fails the step, which is usually all you want. When you care
-about the class of failure, remember what each code means: 1 is a real test
-failure, 2 is configuration or policy, 3 is infrastructure, 130 is a
-cancellation.
+A non-zero exit fails the step, which is usually all you want. When you react
+to the class of failure: 1 is a test failure, 2 is configuration or policy, 3
+is infrastructure, 130 is a cancellation.
 
 <Warning>
-Do not retry the whole job on exit code 2. Configuration and collection errors
-are deterministic, so a re-run burns minutes and produces the same red. Exit 3 is
-the only code where a job-level retry is a reasonable reflex.
+Do not retry the whole job on exit code 2. Configuration and collection
+errors are deterministic, so a re-run burns minutes and produces the same
+red. Exit 3 is the only code where a job-level retry is a reasonable reflex.
 </Warning>
 
 <CardGroup cols={2}>
-  <Card title="CLI reference" href="/reference/cli">
-    Flags, artifacts, the report, and every exit code.
+  <Card title="Pull request comments" href="/github">
+    One comment per run, edited in place on a rerun.
   </Card>
-  <Card title="Errors reference" href="/reference/errors">
-    Every error code and what owns it.
+  <Card title="CLI reference" href="/reference/cli">
+    Flags, reporters, and every exit code.
   </Card>
 </CardGroup>

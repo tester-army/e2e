@@ -1,19 +1,17 @@
 ---
-title: Models and credentials
+title: Choosing a model
 description: Which model an agent uses, which package constructs it, and where its key comes from.
 ---
 
 An agent runs on one model, and that model is an AI SDK model instance your
-config constructs. The runner takes the instance as it is: it constructs no
-model of its own, has no default gateway, and reads no model or key variable.
-Everything about who serves the model and how it authenticates is decided by
-the line in `e2e.config.ts` that builds it.
+config constructs. The runner has no default model, no gateway of its own,
+and reads no model or key variable. The line in `e2e.config.ts` that builds
+the instance decides who serves it and how it authenticates.
 
 ## Pick a gateway or a provider
 
-A gateway reaches every vendor's models with one key. A provider package calls
-one vendor directly. Either way the constructor comes from that package, and
-`e2e init` writes the one you chose.
+A gateway reaches every vendor's models with one key. A provider package
+calls one vendor directly. `e2e init` writes the one you chose.
 
 <Tabs>
   <Tab title="Vercel AI Gateway">
@@ -62,8 +60,7 @@ export default {
 ```
 
 `npm i -D @ai-sdk/openai-compatible`. Ollama, vLLM, LiteLLM, and most vendors'
-own APIs speak this protocol. There is no default URL and no default variable;
-you pass both.
+own APIs speak this protocol. You pass the URL and the key; there is no default.
 
   </Tab>
   <Tab title="A provider directly">
@@ -77,9 +74,9 @@ export default {
 } satisfies E2EConfig;
 ```
 
-Any AI SDK provider package works the same way: `@ai-sdk/anthropic`,
-`@ai-sdk/google`, `@ai-sdk/amazon-bedrock`, a community provider, a local one.
-Each reads its own variable (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, ...).
+Any AI SDK provider package works: `@ai-sdk/anthropic`, `@ai-sdk/google`,
+`@ai-sdk/amazon-bedrock`, a community provider. Each reads its own variable
+(`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, ...).
 
   </Tab>
 </Tabs>
@@ -88,20 +85,18 @@ Each reads its own variable (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, ...).
 | --- | --- | --- | --- |
 | One key for every vendor, billed by Vercel | `gateway('vendor/model')` | `ai` | `AI_GATEWAY_API_KEY` |
 | One key for every vendor, billed by OpenRouter | `openrouter('vendor/model')` | `@openrouter/ai-sdk-provider` | `OPENROUTER_API_KEY` |
-| A local or self-hosted server, or a vendor's OpenAI-shaped API | `createOpenAICompatible({ name, baseURL }).chatModel('model')` | `@ai-sdk/openai-compatible` | whatever you pass as `apiKey` |
+| A local or self-hosted server | `createOpenAICompatible({ name, baseURL }).chatModel('model')` | `@ai-sdk/openai-compatible` | whatever you pass as `apiKey` |
 | One vendor, your own account | `openai('model')`, `anthropic('model')`, ... | `@ai-sdk/<vendor>` | the vendor's own |
 
-The model id is whatever the package you chose accepts. Gateways take
-`vendor/model` (`openai/gpt-5.4-mini`); a direct provider takes the vendor's
-bare id (`gpt-5.4-mini`); a local server takes the name it serves the model
-under (`llama3.2`).
+The model id is whatever the package accepts. Gateways take `vendor/model`;
+a direct provider takes the vendor's bare id; a local server takes the name
+it serves the model under.
 
 ## Where the key comes from
 
-The provider package reads its key, not the runner. Every AI SDK provider does
-the same two things: it accepts `apiKey` at construction, and when none is
-passed it reads its own environment variable on the first request. So these
-are equivalent for OpenRouter:
+The provider package reads its key, not the runner. Every AI SDK provider
+accepts `apiKey` at construction and otherwise reads its own environment
+variable on the first request.
 
 ```ts
 import { createOpenRouter, openrouter } from '@openrouter/ai-sdk-provider';
@@ -113,24 +108,21 @@ openrouter('openai/gpt-5.4-mini');
 createOpenRouter({ apiKey: process.env.MY_TEAM_MODEL_KEY }).chat('openai/gpt-5.4-mini');
 ```
 
-Three consequences worth knowing:
+Three consequences:
 
-- **The key is read late.** Constructing `gateway('...')` in a config does not
-  need the variable to be set. Deterministic suites, `e2e run --list`, and
-  config loading all work without a key; only the first `agent.*` step asks the
-  provider for one.
-- **There is no `E2E_*` key variable.** The runner never sees the key, so it has
-  nothing to name it. One variable for "all providers" would also need the
-  runner to know which provider it is forwarding to, and could not serve a
-  config that uses two providers. Set the variable the package you imported
-  documents, the same one its dashboard and the AI SDK docs name.
+- **The key is read late.** Constructing `gateway('...')` needs no variable.
+  Deterministic suites, `e2e list`, and config loading all work without a
+  key. Only the first `agent.*` step asks the provider for one.
+- **There is no `E2E_*` key variable.** The runner never sees the key, so it
+  has nothing to name. Set the variable the package you imported documents.
 - **The runner never logs it.** The key lives in your config module and the
-  provider's request headers. It does not enter the report, the trace, the
-  AI trace, or the environment of the app process the runner starts.
+  provider's request headers. It does not enter the report, the trace, or
+  the environment of the app process the runner starts.
 
 ## Several models in one config
 
-Each model slot is its own instance, so they can come from different packages:
+Each model slot is its own instance, so they can come from different
+packages:
 
 ```ts title="e2e.config.ts"
 import { createAgent } from '@e2edev/e2e/agent';
@@ -150,48 +142,33 @@ export default {
 } satisfies E2EConfig;
 ```
 
-Both keys must be set for that config: `AI_GATEWAY_API_KEY` for the two
-gateway models and `OPENAI_API_KEY` for the vision one. Two agents that hold
-the same instance share one adapter; two instances of the same id are two
-models as far as the runner can tell.
-
-## Models that refuse forced tool calls
-
-`agent.act` asks the model for a tool call on every turn and names
-`complete_step` on the final ones. Some models reject that request shape:
-Anthropic's Claude Fable 5.1 answers HTTP 400 to any forced tool choice. The
-runner recognizes the refusal, sends the same request again with the choice
-left to the model and a tool-calls-only rule added to its instructions, and
-keeps that mode for the rest of the process on that model instance. The
-refused request is not counted as a model call. A turn such a model answers in
-prose, without a tool call, is kept in the history and followed by a notice to
-act; it spends a turn like any other, so a model that keeps talking still ends
-in `STEP_NO_CONCLUSION` when the turn budget runs out.
-
-## In CI
-
-The secret is named after the variable the provider reads, and the job passes
-it through `env`. Nothing else is needed:
-
-```yaml
-      - run: npx --no-install e2e run --config e2e.agent.config.ts
-        env:
-          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
-```
+Both keys must be set for that config. The one model an agent holds drives
+`agent.act` and judges `agent.assert`, `agent.waitFor`, and `agent.extract`.
+An `agents.<name>.model` that names a different model than the one passed to
+`createAgent({ model })` is `INVALID_CONFIG`.
 
 To switch models per run without editing the config, read a variable of your
-own in the config and keep it in a non-secret CI variable:
+own:
 
 ```ts
 model: gateway(process.env.MODEL ?? 'openai/gpt-5.4-mini'),
 ```
 
+## Models that refuse forced tool calls
+
+`agent.act` asks the model for a tool call on every turn. Some models reject
+that request shape. Anthropic's Claude Fable 5.1 answers HTTP 400 to any
+forced tool choice. The runner recognizes the refusal, retries with the
+choice left to the model and a tools-only rule in its instructions, and keeps
+that mode for the rest of the process. The refused request does not count as
+a model call.
+
 ## What fails, and where
 
 | Symptom | Code | Cause |
 | --- | --- | --- |
-| The run stops before any test with exit 2 and names `agents.default.model` | `INVALID_CONFIG` | A string in a model slot (`model: 'openai/gpt-5.4-mini'`). Write the constructor: `gateway('openai/gpt-5.4-mini')`. |
-| The run stops when the first test asks for `agent`, exit 2 | `MODEL_UNAVAILABLE` | No model anywhere: neither `createAgent({ model })` nor `agent.model` holds an instance. |
+| The run stops before any test, exit 2, naming `agents.default.model` | `INVALID_CONFIG` | A string in a model slot. Write the constructor: `gateway('openai/gpt-5.4-mini')`. |
+| The run stops when the first test asks for `agent`, exit 2 | `MODEL_UNAVAILABLE` | No model anywhere: neither `createAgent({ model })` nor `agents.<name>.model` holds an instance. |
 | The first agent step fails with an authentication message | `MODEL_PROVIDER_FAILED` | The provider rejected or could not find its key. The message names the variable the package reads. |
 | The first agent step fails with `ai` not found | `MODEL_UNAVAILABLE` | `ai` is an optional peer dependency; `npm i -D ai`. |
 
@@ -200,8 +177,11 @@ run-level error rather than one blocked step per test. A missing key is not
 checked ahead of time: the runner does not know which variable to look for,
 so the provider reports it on the first call.
 
-<CardGroup cols={3}>
-  <Card title="Your own agent" href="/agents" />
-  <Card title="Continuous integration" href="/ci" />
-  <Card title="Config reference" href="/reference/config#model" />
+<CardGroup cols={2}>
+  <Card title="Agents and personas" href="/agents">
+    Several agents in one suite.
+  </Card>
+  <Card title="Config reference" href="/reference/config#model">
+    The `model` slot and every other key.
+  </Card>
 </CardGroup>

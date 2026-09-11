@@ -11,8 +11,6 @@ export default {
     }),
   },
   targets: [{
-    name: 'web',
-    platform: 'web',
     engine: playwright({
       url: process.env.APP_URL ?? 'http://localhost:3000',
       command: {

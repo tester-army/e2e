@@ -7,12 +7,13 @@ description: Tests, setup tests, groups, hooks, options, and fixtures.
 while the test file is imported.
 
 ```ts
-export interface TestAPI {
-  (title: string, fn: TestFn): TestCase;
-  (title: string, options: TestOptions, fn: TestFn): TestCase;
-  skip(title: string, fn: TestFn): TestCase;
-  only(title: string, fn: TestFn): TestCase;
-  setup(title: string, options: SetupOptions, fn: SetupFn): TestCase;
+export interface TestAPI<Fixtures = TestFixtures> {
+  (title: string, fn: TestFn<Fixtures>): TestCase;
+  (title: string, options: TestOptions, fn: TestFn<Fixtures>): TestCase;
+  skip(title: string, fn: TestFn<Fixtures>): TestCase;
+  only(title: string, fn: TestFn<Fixtures>): TestCase;
+  setup(title: string, options: SetupOptions, fn: SetupFn<Fixtures>): TestCase;
+  extend<Extra>(): TestAPI<Fixtures & Extra>;
   describe<Result>(title: string, body: SynchronousBody<Result>): void;
   describe<Result>(
     title: string,
@@ -41,6 +42,7 @@ throws `COLLECTION_ERROR`.
 | `test.only` | `only(title: string, fn: TestFn): TestCase` | Other ordinary tests are reported as `filtered`. In CI the run fails with `ONLY_IN_CI`, exit code 2. |
 | `test.setup` | `setup(title: string, options: SetupOptions, fn: SetupFn): TestCase` | `options.sessions` is required. Must be top-level, not inside `test.describe`. |
 | `test.describe` | `describe(title, body)` / `describe(title, options, body)` | Group body must be synchronous. An `async` body is a type error and a `COLLECTION_ERROR`. |
+| `test.extend` | `extend<Extra>(): TestAPI<Fixtures & Extra>` | The same `test`, typed with fixtures an engine contributes. `@e2edev/playwright` and `@e2edev/agent-device` export one already extended. |
 
 ```ts
 import { test } from '@e2edev/playwright';
@@ -196,13 +198,13 @@ export interface SuiteFixtures {
 | Fixture | Type | Notes |
 | --- | --- | --- |
 | `agent` | [`Agent`](/reference/agent) | Acquiring it without a configured model fails with `MODEL_UNAVAILABLE`. |
-| `app` | [`App`](/reference/app-web) | Always available. |
+| `app` | [`App`](/reference/playwright) | Always available. |
 | `screen` | [`Screen`](/reference/screen) | Always available. |
 | `platform` | `Platform` | `'web' \| 'ios' \| 'android' \| (string & {})`. |
 
 Everything else is a **contributed fixture**: the target's engine declares it,
 and `test.extend<{ ... }>()` types it. `@e2edev/playwright` contributes
-[`web`](/reference/app-web) and exports a `test` already typed with it; a
+[`web`](/reference/playwright) and exports a `test` already typed with it; a
 device engine contributes `device` the same way. Reaching for a fixture the
 engine does not declare fails at first touch with `UNSUPPORTED_CAPABILITY`;
 declare `requires: ['web']` to skip such tests at selection instead.
@@ -213,9 +215,9 @@ before the first statement of the body.
 ## Function types
 
 ```ts
-export type TestFn = (fixtures: TestFixtures) => void | Promise<void>;
-export type SetupFn = (fixtures: SetupFixtures) => void | Promise<void>;
-export type TestHookFn = (fixtures: TestFixtures) => void | Promise<void>;
+export type TestFn<Fixtures = TestFixtures> = (fixtures: Fixtures) => void | Promise<void>;
+export type SetupFn<Fixtures = TestFixtures> = (fixtures: Fixtures & SetupFixtures) => void | Promise<void>;
+export type TestHookFn<Fixtures = TestFixtures> = (fixtures: Fixtures) => void | Promise<void>;
 export type SuiteHookFn = (fixtures: SuiteFixtures) => void | Promise<void>;
 export type SynchronousBody<Result> = Extract<
   Result,
@@ -232,6 +234,6 @@ export interface TestCase {
 <CardGroup cols={2}>
   <Card title="Writing tests" href="/writing-tests" />
   <Card title="expect" href="/reference/expect" />
-  <Card title="Authentication" href="/authentication" />
+  <Card title="Signing in" href="/authentication" />
   <Card title="Errors" href="/reference/errors" />
 </CardGroup>

@@ -1,0 +1,154 @@
+---
+title: Custom executors
+description: Keep the built-in loop with your own prompt and vocabulary, or replace the executor with any decision process.
+---
+
+The agent surface has two layers under `createAgent`:
+
+1. **`createToolLoopExecutor`**: the same loop as the built-in agent, with
+   your prompt and your tool vocabulary. You keep the verdict tool, budget
+   hard stops, loop guards, wind-down near the clock, model accounting, and
+   `--debug` transcripts.
+2. **`StepExecutor`**: any object with `runStep(ctx)`. No AI SDK, no model,
+   any decision process you like.
+
+Whichever you pick, the runner still bounds the step, redacts what you
+observe, polices what you do, and records the verdict.
+
+## Keep the loop, change the vocabulary
+
+This is how you drive something that is not a browser, such as a
+computer-use SDK:
+
+```ts title="e2e.config.ts"
+import { createToolLoopExecutor } from '@e2edev/e2e/agent';
+import { tool } from 'ai';
+import { z } from 'zod';
+import { device } from './my-device';
+
+export default {
+  agents: {
+    default: createToolLoopExecutor({
+      name: 'device-agent',
+      system: 'You control a device. Address elements by their visible label.',
+      buildPrompt: (ctx) => ctx.step.instruction,
+      tools: (ctx, { guard }) => ({
+        screenshot: tool({
+          description: 'Look at the device screen',
+          inputSchema: z.object({}),
+          execute: () =>
+            guard(() => ctx.budgets.runTool({ name: 'screenshot', mutates: false }, async () => {
+              const observation = await ctx.observe();
+              return observation.text;
+            })),
+        }),
+        tap: tool({
+          description: 'Tap an element by label',
+          inputSchema: z.object({ label: z.string() }),
+          execute: ({ label }) =>
+            guard(() => ctx.budgets.runTool({ name: 'tap', mutates: true }, () => device.tap(label))),
+        }),
+      }),
+    }),
+  },
+} satisfies E2EConfig;
+```
+
+`buildPrompt` returns a string, or a message history to carry a conversation
+across steps. `prepareMessages` runs between turns for compaction and may
+return `{ messages, stop }` when your own history shows the step is not
+progressing.
+
+`guard()` stops a tool from running once the step is concluding and turns
+budget and timeout stops into a clean end of the loop. `runTool` reserves the
+action budget before the body runs, serializes mutations, and records their
+outcomes. A mutating body must call its engine directly; queuing another
+grammar operation from inside it would wait on itself. Keep tool bodies short
+and interruptible: the step deadline settles the verdict either way, but a
+device operation that ignores cancellation finishes on its own time.
+
+## Replace the executor
+
+```ts
+import type { StepExecutor } from '@e2edev/e2e';
+
+const scripted: StepExecutor = {
+  name: 'scripted',
+  version: '1',
+  cache: 'off',                              // every step reaches runStep; no cached replay
+  async runStep(ctx) {
+    const screen = await ctx.observe();      // redacted semantic tree as text
+    await ctx.actions.tap({ id: 'n42' });    // policed, budgeted, recorded
+    return { status: 'passed', summary: 'did the thing and saw the result' };
+  },
+};
+
+export default { agents: { default: scripted } } satisfies E2EConfig;
+```
+
+The context tells the executor where it is and what it may do:
+
+| Member | What it is |
+| --- | --- |
+| `ctx.step` | The instruction, params, and `index` in the attempt's timeline |
+| `ctx.observe({ tree, pixels })` | The only view of the app: redacted text, optionally the node tree and masked pixels |
+| `ctx.actions` | `tap`, `type`, `typeSecret`, `press`, `select`, `scroll`, `navigate`, each policed and recorded |
+| `ctx.target.verbs` | The subset of those verbs the target's engine declared. Offer a model exactly that vocabulary. |
+| `ctx.ledger` | The runner's serialization of every completed step in the test |
+| `ctx.attempt` | Test id, attempt id, retry index, a signal that fires when the attempt ends, and `memory`, a per-attempt map the harness never reports |
+| `ctx.budgets` | `runTool` for actions of your own, and model-call accounting |
+
+Secrets in params arrive as name-only placeholders. `actions.typeSecret(target, name)`
+performs the authorized fill without the plaintext passing through your code.
+A custom executor with no model is exempt from the model check; its `act`
+steps need none, and a judgment call without a model still fails with
+`MODEL_UNAVAILABLE`. `agent.assert` on a custom executor is dispatched to
+`runStep` like an `act`, under the act budgets and `config.timeout`; `vision`
+and `screenshot` are `UNSUPPORTED_CAPABILITY` there.
+
+### Driving the page yourself
+
+An executor that brings its own browser tooling needs the page e2e opened,
+not a second one. `@e2edev/playwright` exports `surfaceOf(handle)`: the live
+`Page` and `BrowserContext` of the current attempt behind the handle you
+passed to the target. Both accessors throw `INVALID_STATE` before an attempt
+is running.
+
+```ts
+import { playwright, surfaceOf } from '@e2edev/playwright';
+
+const engine = playwright();
+const own: StepExecutor = {
+  name: 'own-tools',
+  version: '1',
+  cache: 'off',
+  async runStep(ctx) {
+    const page = surfaceOf(engine)!.page();   // the page app.open() navigated
+    await ctx.budgets.runTool({ name: 'click', mutates: true }, () =>
+      page.getByRole('button', { name: 'Save' }).click(),
+    );
+    return { status: 'passed', summary: 'saved' };
+  },
+};
+```
+
+What you do there is out of band: the harness still bounds the step and
+records the verdict, but it witnesses no actions, records no trace for
+replay, and attaches no artifacts. Report tool calls and model calls through
+`ctx.budgets` so the step keeps its metrics.
+
+## The verdict
+
+Whatever the executor, `runStep` resolves with `passed`, `failed`, or
+`blocked` and a summary. A blocked verdict carries the error code that names
+the cause; [How agent steps work](/agent-steps#how-a-step-ends) lists them
+and the exit each one produces.
+
+<CardGroup cols={2}>
+  <Card title="agent reference" href="/reference/agent">
+    Every method, option, and budget.
+  </Card>
+  <Card title="Writing an engine" href="/writing-an-engine">
+    Plug in a whole new surface below the executor.
+  </Card>
+</CardGroup>

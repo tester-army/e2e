@@ -1,12 +1,12 @@
 ---
-title: Comment on the pull request
+title: Pull request comments
 description: The @e2edev/github reporter posts one comment per run from GitHub Actions and keeps it current.
 ---
 
-A run that fails in CI is a red check and a log to open. `@e2edev/github` is a
-[reporter](/reference/reporters) that turns it into one pull request comment:
-the counts, every test that did not pass with its error and the evidence it
-left, and links to the source lines and to the workflow run holding the
+A run that fails in CI is a red check and a log to open. `@e2edev/github` is
+a [reporter](/reference/reporters) that turns it into one pull request
+comment: the counts, every test that did not pass with its error and
+evidence, and links to the source lines and to the workflow run holding the
 screenshots, traces, and recordings. A rerun edits the same comment. The same
 text goes to the job summary, so it is there on a push too.
 
@@ -51,14 +51,11 @@ jobs:
           path: .e2e/artifacts
 ```
 
-Upload the artifacts on every outcome but a cancellation, not only on
-failure: the comment links to the workflow run as the place to fetch them, and
-a flaky test that passed on its second attempt still left a recording worth
-watching.
+Upload the artifacts on every outcome, not only on failure. The comment links
+to the workflow run as the place to fetch them, and a flaky test that passed
+on its second attempt still left a recording worth watching.
 
 ## The comment
-
-The body the reporter posts, as markdown:
 
 ```markdown
 ### 🔴 e2e: 1 failed, 1 flaky, 3 passed, 1 skipped
@@ -78,21 +75,19 @@ The body the reporter posts, as markdown:
 </details>
 
 Screenshots, traces, and recordings: [run artifacts](https://github.com/acme/shop/actions/runs/123).
-<sub>e2e 0.9.0 · 2m 15s · 1 target (web)</sub>
+<sub>e2e 0.11.0 · 2m 15s · 1 target (web)</sub>
 ```
 
 Failed tests first, then flaky, then skipped; passed tests are folded away.
 The test column links to the source line at the pull request's head commit.
-A run-level error such as `APP_UNREACHABLE` appears above the table, since no
-test result is meaningful under it. Titles and error messages are text a test
-wrote, so they are escaped and clipped before they enter the comment, and the
-whole body stays under GitHub's size limit: past fifty rows the table says how
-many more there are, and the passed list is dropped before anything else.
+A run-level error such as `APP_UNREACHABLE` appears above the table. Titles
+and error messages are escaped and clipped, and the body stays under GitHub's
+size limit: past fifty rows the table says how many more there are.
 
 The comment carries a hidden marker naming the config's `projectId`, the
 workflow, and the job, so two configs or two jobs on one pull request each
-keep their own comment, and a rerun edits the previous one. Matrix replicas of
-one job share all three, so give each its own `key`:
+keep their own comment. Matrix replicas of one job share all three, so give
+each its own `key`:
 
 ```ts
 reporters: ['list', github({ key: process.env.MATRIX_BROWSER })],
@@ -100,16 +95,6 @@ reporters: ['list', github({ key: process.env.MATRIX_BROWSER })],
 
 with `MATRIX_BROWSER: ${{ matrix.browser }}` in the step's `env`. Never use
 the run id as the key: a rerun has a new one and would post a second comment.
-
-The evidence column is the union over every attempt, so a flaky test shows
-the screenshot its failed attempt left even though the passing retry recorded
-none.
-
-## Options
-
-| Option | Default | What it does |
-| --- | --- | --- |
-| `key` | unset | Joins the comment marker, so concurrent jobs with the same workflow, job, and project (a matrix) each keep their own comment |
 
 ## When nothing is posted
 
@@ -124,24 +109,21 @@ post, it says why in one row under the summary:
 
 | Situation | What happens |
 | --- | --- |
-| Not on GitHub Actions | Nothing is written. Another CI has no ambient token to post with; the row says so and the run's exit code is unchanged. |
+| Not on GitHub Actions | Nothing is written; the row says so. |
 | A `push`, `schedule`, or `workflow_dispatch` run | The job summary is written; there is no pull request to comment on. |
 | No `GITHUB_TOKEN` in the step's `env` | The job summary is written; the row shows the line to add. `GH_TOKEN` is read too. |
-| A `pull_request` event from a fork | Its token is read-only, so the comment fails and the run prints the reason. The job summary is still written. A `pull_request_target` workflow has a writable token, with the care that event demands around secrets. |
-| An `issue_comment` event | On a pull request's comment thread, the comment is posted without source links: on this event the checked-out commit is the default branch, not the pull request's head. On a regular issue there is no pull request, so only the job summary is written. |
+| A `pull_request` event from a fork | Its token is read-only, so the comment fails and the run prints the reason. A `pull_request_target` workflow has a writable token, with the care that event demands around secrets. |
+| An `issue_comment` event | On a pull request's thread, the comment is posted without source links, since the checked-out commit is the default branch. |
 | Missing `pull-requests: write` | The same failure, with the permission named. |
 
-The reporter reads the token, the event payload, and the repository when the
-run finishes, never when the config loads, and the token never enters the
-report or the trace cache. GitHub Enterprise Server works through
-`GITHUB_SERVER_URL` and `GITHUB_API_URL`, which the runner sets.
+The reporter reads the token and the event payload when the run finishes,
+never when the config loads, and the token never enters the report. GitHub
+Enterprise Server works through `GITHUB_SERVER_URL` and `GITHUB_API_URL`.
 
 ## Rendering the comment elsewhere
 
-`renderComment(report, { marker, artifactsUrl, sourceUrl })` is exported: it
-takes a report-1 document and returns the comment body, so a service that
-receives the report can post the same comment under its own identity. The
-marker is what a rerun finds the comment by, so it is never cut: one longer
-than `MAX_MARKER_CHARS` (1024) is rejected rather than posted incomplete, and
-so is an `artifactsUrl` longer than `MAX_URL_CHARS` (2048); with both bounded
-the body is the only part that ever gives way to the size limit.
+`renderComment(report, { marker, artifactsUrl, sourceUrl })` is exported. It
+takes a report document and returns the comment body, so a service that
+receives the report can post the same comment under its own identity. A
+marker longer than 1024 characters or an `artifactsUrl` longer than 2048 is
+rejected rather than posted incomplete.

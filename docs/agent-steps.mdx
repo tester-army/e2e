@@ -1,0 +1,129 @@
+---
+title: How agent steps work
+description: What the model sees, what it may do, how a step ends, and what it costs.
+---
+
+An `agent.*` call is one bounded invocation. The runner takes a fresh
+observation, hands the model a goal or a question, polices every action the
+model asks for, and records a verdict. Nothing about the model's behavior
+changes what the runner enforces.
+
+## Two sides of the contract
+
+The runner owns the mechanics: redacted observations, every action, budgets,
+origin policy, secrets, the report. The **step executor** owns the thinking:
+given a step, return a verdict. `createAgent()` is the built-in executor.
+Everything under `agents` in your config is one.
+
+Customizing the executor changes how the agent decides, not what it is
+allowed to do. A hand-rolled executor gets the same policed action surface
+and the same redacted view as the built-in one.
+
+## What the model sees
+
+The opening prompt carries the instruction, the params, a ledger of the
+steps completed so far in the test, and the whole screen once: a redacted
+text snapshot of roles, names, text, and states. Never raw HTML, cookies,
+headers, or environment values. Password fields arrive masked, and any
+configured credential value found on screen is replaced with a placeholder.
+
+After that, every action result reports what changed since the screen the
+model last received: lines that appeared, lines that changed with their
+previous text, lines that went away. Node ids are stable for as long as an
+element exists, so a change update is a complete picture rather than a hint.
+A screen that changed mostly goes out whole again.
+
+An action result is read after the action's effect. The runner waits, bounded
+to two seconds, for the screen to leave the shape the action was resolved
+against, so a tap on a link reports the page it opened rather than the page
+it left. Ticking clocks are ignored when comparing. A failed action returns
+the failure together with the current screen, so a stale id costs no extra
+turn.
+
+Judgments (`assert`, `waitFor`, `extract`) can add a masked screenshot with
+`vision: true`, or judge the screenshot alone with `vision: 'only'`. Pixels
+are withheld once a secret has been filled in the attempt. The
+[agent reference](/reference/agent#vision) lists every mode.
+
+## What the model may do
+
+The model gets exactly the verbs the target's engine declares: `tap`, `type`,
+`press`, `select`, `scroll`, `navigate`, and `type_secret` for a credential it
+was handed by name. An engine that cannot navigate has no `navigate` verb.
+[Project tools](/tools) add to that vocabulary; nothing removes the policing
+around it.
+
+Every action goes through the runner: origin policy, the action budget, and
+a 15 second bound on any single targeted action, so a tap blocked by a
+consent banner reports the element in the way instead of spending the whole
+`actionTimeout`. A secret fill is authorized against the credential's
+allowed origins and the field's purpose before the runner types it.
+
+The loop guards itself. Three failed actions in a row earn a notice to change
+approach; five force a conclusion. A model that repeats the same call or
+cycles is stopped, and a wind-down forces a verdict near the turn budget and
+the step clock.
+
+## How a step ends
+
+Every planned step ends in one of three verdicts:
+
+- **passed**: the app behaved as the step required, verified on screen.
+- **failed**: it did not. An ordinary test failure.
+- **blocked**: something prevented a product verdict. The error code decides
+  the exit.
+
+| Blocked by | Codes | Exit |
+| --- | --- | ---: |
+| A credential the app rejected, or one that is not configured | `AUTH_CREDENTIAL_INVALID`, `AUTH_CREDENTIAL_UNAVAILABLE` | 2 |
+| An environment that is down | `ENVIRONMENT_UNAVAILABLE` | 3 |
+| Seed data or a prerequisite outside the product that is not there | `SEED_DATA_MISSING`, `TEST_SETUP_FAILED` | 2 |
+| A budget or the clock | `STEP_BUDGET_EXHAUSTED`, `STEP_TIMEOUT` | 1 |
+| An interaction the toolset cannot perform | `AUTOMATION_UNSUPPORTED` | 1 |
+
+A configuration or infrastructure block does not paint the test red, so red
+keeps meaning "the product misbehaved". A step that ran out of its own budget
+is still a test failure: the test asked for more than the step could deliver.
+
+## Cost
+
+| Call | Model calls | Default timeout |
+| --- | --- | --- |
+| `act` | up to `maxModelCalls`, default 25 | test `timeout`, 120 s |
+| `assert` | 2 | 30 s, or `actionTimeout` when larger |
+| `extract` | 2 | 30 s, or `actionTimeout` when larger |
+| `waitFor` | up to `maxModelCalls`, default 25 | 30 s, or `actionTimeout` when larger |
+
+`assert` and `extract` spend one judgment and one repair round at most.
+`waitFor` polls, but a judgment is spent only when the screen changes.
+Exceeding a budget raises `STEP_BUDGET_EXHAUSTED`; running out of time,
+`STEP_TIMEOUT`.
+
+Keep suites cheap: assert with `expect` when the check is mechanical, scope
+`act` to the step that varies, and give slow providers `timeout` room. The
+[trace cache](/cache) replays a passing `act` with no model call at all.
+
+Requests reuse the provider's prompt cache. The conversation prefix stays
+stable across turns because superseded screens are elided from the transcript,
+and `--debug` shows the cached share per step.
+
+## Where secrets go
+
+A `Secret` in `params` is projected before the model sees anything: the model
+receives the secret's name and purpose, and the runner fills the value itself
+through the same authorization as `locator.fill`. The value never enters a
+prompt, a transcript, the report, or the AI trace. Once a secret has been
+filled, the runner withholds screenshots from the model and from assertion
+evidence for the rest of the attempt, because a page is free to echo a typed
+value anywhere.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Project tools" href="/tools">
+    Extend the vocabulary with your own tools.
+  </Card>
+  <Card title="Custom executors" href="/executors">
+    Keep the loop with your prompt, or replace it entirely.
+  </Card>
+</CardGroup>

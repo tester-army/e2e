@@ -3,11 +3,10 @@ title: Telemetry
 description: What the CLI sends, what it never sends, and how to turn it off.
 ---
 
-The `e2e` CLI sends anonymous usage data so we can see which commands, engines,
-and features are used and where runs fail, and improve the framework from that
-instead of from the issues a few people take the time to file. It is on by
-default and off with one command. Nothing about your tests, your app, or your
-credentials leaves the machine.
+The `e2e` CLI sends anonymous usage data so we can see which commands,
+engines, and features are used and where runs fail. It is on by default and
+off with one command. Nothing about your tests, your app, or your credentials
+leaves the machine.
 
 ## Opt out
 
@@ -36,8 +35,8 @@ see there is the exact payload.
 ## What is sent
 
 Two events, sent together in one request when the command ends. Everything
-telemetry does after the command, the project lookup included, shares one
-two-second deadline, so it never holds a command up for longer.
+telemetry does after the command shares one two-second deadline, so it never
+holds a command up for longer.
 
 Every event carries these properties:
 
@@ -50,6 +49,7 @@ Every event carries these properties:
 | `ci`, `ci_name` | Whether `CI` is set, and the vendor when one announces itself (`github-actions`, `gitlab`, `circleci`, ...) |
 | `coding_agent` | The coding agent whose shell ran the command, when one announces itself (`claude-code`, `cursor`, `codex`, ...) |
 | `e2e_version`, `node_version`, `package_manager` | Versions and the package manager that invoked the CLI |
+| `$lib`, `$lib_version`, `$process_person_profile` | `e2e`, its version, and `false`: PostHog keeps no person profile |
 
 `e2e_cli_session`, once per command:
 
@@ -58,18 +58,19 @@ Every event carries these properties:
 | `command` | `init`, `run`, `list`, `cache ls`, `guide`, `telemetry`, ... |
 | `flags` | The names of the flags given, such as `--headed` or `--tag`. Never their values |
 
-`e2e_run_completed`, once per `e2e run`, built from the numbers in `report.json`:
+`e2e_run_completed`, once per `e2e run` or `e2e explore`, built from the numbers in `report.json`:
 
 | Property | Value |
 | --- | --- |
 | `status`, `exit_code`, `duration_ms` | The run's outcome |
+| `flags` | The names of the flags given to the run command, never their values |
 | `tests_discovered`, `tests_selected`, `tests_executed`, `tests_passed`, `tests_failed`, `tests_flaky`, `tests_skipped` | The summary counts |
 | `targets`, `platforms`, `engines` | How many targets, on which platforms, and with which engines and versions, as your config declares them: `web`, `ios`, `playwright@0.6.1`, or your own engine's name and version. A name that is not a plain token of letters, digits, dots, dashes, and underscores is reported as `other` |
 | `steps_total`, `steps_agent`, `steps_locator`, `steps_assertion`, `steps_screen`, `steps_app`, `steps_session`, `steps_resource` | Step counts by kind |
 | `agent_steps_replayed`, `agent_steps_partial`, `agent_steps_missed`, `agent_steps_vision` | How the trace cache served the agent steps, and how many used pixel evidence |
-| `model_gateway`, `model_provider`, `model_id`, `model_calls`, `model_tokens`, `estimated_cost_usd` | For the first model-backed step: the AI SDK provider that served it (`gateway` for the Vercel AI Gateway, `openrouter.chat`, `openai.chat`, ...), the vendor (the first segment of a `vendor/model` id, else the provider), and the public model id (a fine-tuned or routed id is reported as `other`); then the run's totals |
+| `model_gateway`, `model_provider`, `model_id`, `model_calls`, `model_tokens`, `model_cached_tokens`, `estimated_cost_usd` | For the first model-backed step: the AI SDK provider that served it (`gateway` for the Vercel AI Gateway, `openrouter.chat`, `openai.chat`, ...), the vendor (the first segment of a `vendor/model` id, else the provider), and the public model id (a fine-tuned or routed id is reported as `other`); then the run's totals |
 | `artifact_bytes` | Size of the artifacts the run wrote |
-| `errors`, `error_codes` | How many run-level errors, and the distinct error codes seen anywhere in the run (`LOCATOR_NOT_FOUND`, `APP_UNREACHABLE`, ...). A code that is not an upper-case token, the shape of every runner code, is reported as `OTHER` |
+| `errors`, `error_codes` | How many run-level errors, and the distinct error codes seen anywhere in the run (`LOCATOR_NOT_FOUND`, `APP_UNREACHABLE`, ...), at most 20. A code that is not an upper-case token, the shape of every runner code, is reported as `OTHER` |
 
 ## What is never sent
 

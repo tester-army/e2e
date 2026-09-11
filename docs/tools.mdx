@@ -1,0 +1,108 @@
+---
+title: Project tools
+description: Give the built-in agent your own tools, scoped to the platforms where they make sense.
+---
+
+`createAgent` builds the built-in agent extended with your tools: AI SDK
+tools with declared semantics. A test API that seeds data, an internal
+endpoint, a device toolkit. The model can call them mid-flow, and the runner
+still budgets, serializes, and records every call.
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from '@e2edev/e2e';
+import { createAgent, defineTool } from '@e2edev/e2e/agent';
+import { playwright } from '@e2edev/playwright';
+import { gateway, tool } from 'ai';
+import { z } from 'zod';
+
+const seedCart = defineTool(
+  tool({
+    description: 'Seed the cart with a SKU via the store test API',
+    inputSchema: z.object({ sku: z.string() }),
+    execute: async ({ sku }) =>
+      fetch(`${process.env.APP_URL}/api/test/cart?sku=${sku}`).then((r) => r.text()),
+  }),
+  { mutates: true },
+);
+
+export default {
+  targets: [{ engine: playwright({ url: process.env.APP_URL! }) }],
+  agents: { default: createAgent({ model: gateway('openai/gpt-5.4-mini'), tools: { seedCart } }) },
+} satisfies E2EConfig;
+```
+
+Now `agent.act('seed three items and check out')` can call your test API.
+`createAgent()` with no tools is exactly what runs by default; `system`
+appends guidance and `model` sets the model.
+
+## Declare what a tool does
+
+`defineTool` takes the AI SDK tool and its semantics:
+
+| Annotation | Meaning |
+| --- | --- |
+| `mutates: true` | The tool changes state. The runner reserves an action slot before running it and queues it with the grammar actions. A mutating call marks a replay gap in the [trace cache](/cache). |
+| `mutates: false` | Read-only. Runs without an action slot and may observe the screen. |
+| `platforms: ['ios', 'android']` | Offered only on targets of those platforms. A swipe tool never reaches a web target, and the model never sees a verb the surface cannot honor. |
+
+A failed call still consumes its reserved slot and is recorded as a failure.
+Parallel tool calls cannot exceed the budget by checking it at the same time.
+
+## Observe from a tool
+
+A read-only tool can look at the screen through the same redacted view the
+executor uses:
+
+```ts
+import { defineTool, getToolContext } from '@e2edev/e2e/agent';
+
+const checkContrast = defineTool(
+  tool({
+    description: 'Measure the contrast of the visible text',
+    inputSchema: z.object({}),
+    execute: async (_input, executionOptions) => {
+      const context = getToolContext(executionOptions);
+      const observation = await context.observe({ pixels: true });
+      const result = measure(observation.pixels);
+      const id = await context.attachScreenshot(observation.pixels, 'contrast');
+      return { ...result, evidence: id };
+    },
+  }),
+  { mutates: false },
+);
+```
+
+`observe()` returns the redacted tree and, with `pixels: true`, the masked
+screenshot, under the same pixel-withholding policy as the executor. A
+mutating tool must request observations in a separate read-only call; its
+body already occupies the action queue.
+
+`attachScreenshot(pixels, label)` files the image as a `screenshot` artifact
+of the step. It lands in the attempt's artifact directory, in the report's
+artifact records, and in a configured artifact store, and the call resolves
+with the artifact's id.
+
+## Device toolkits
+
+`@e2edev/agent-device` ships a ready tool pack for its engine:
+
+```ts
+import { agentDevice } from '@e2edev/agent-device';
+import { agentDeviceTools } from '@e2edev/agent-device/tools';
+
+const iphone = agentDevice({ platform: 'ios', app: 'Settings' });
+
+agents: { default: createAgent({ model, tools: agentDeviceTools(iphone) }) },
+```
+
+It adds `open_app`, `swipe`, `type_text`, `alert`, and `screenshot`, scoped
+to the device platforms. See the [agent-device reference](/reference/agent-device#agent-tools).
+
+<CardGroup cols={2}>
+  <Card title="Custom executors" href="/executors">
+    When tools are not enough: your own prompt or your own loop.
+  </Card>
+  <Card title="How agent steps work" href="/agent-steps">
+    What the model sees and what it may do.
+  </Card>
+</CardGroup>

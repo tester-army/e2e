@@ -1,11 +1,11 @@
 ---
-title: Authentication
-description: Sign in once, then reuse that state everywhere else.
+title: Signing in
+description: Sign in once in a setup test, reuse the session everywhere, and keep the password out of the model.
 ---
 
-Signing in through the UI in every test is slow, and it is usually the flakiest
-code in a suite. e2e splits it in two: a setup test produces named state, and
-ordinary tests declare which state they want.
+Signing in through the UI in every test is slow and usually the flakiest code
+in a suite. e2e splits it in two: a setup test produces a named session, and
+ordinary tests declare which session they want.
 
 <Tabs>
   <Tab title="tests/auth.setup.e2e.ts">
@@ -49,11 +49,11 @@ test('the dashboard opens directly', { session: 'admin' }, async ({ app, screen,
   </Tab>
 </Tabs>
 
-The consumer never mentions a file, an import, or an order. It names a session
-and the runner wires it up. Selecting `tests/dashboard.e2e.ts` on its own still
-runs the setup that produces `admin`.
+The consumer names a session and the runner wires it up. Selecting
+`tests/dashboard.e2e.ts` on its own still runs the setup that produces
+`admin`.
 
-## The rules that matter
+## Sessions
 
 | Rule | If you break it |
 | --- | --- |
@@ -62,33 +62,130 @@ runs the setup that produces `admin`.
 | Every name in `sessions` is saved by the body | `SESSION_CONTRACT` failure |
 | Only declared names are saved | `SESSION_CONTRACT` failure |
 
-Setup tests run before any ordinary test for the same target. If a setup fails,
-its dependents are skipped with cause `setup-failed` and unrelated tests keep
-going.
+Setup tests run before any ordinary test for the same target. If a setup
+fails, its dependents are skipped with cause `setup-failed` and unrelated
+tests keep going.
 
 <Note>
 **Assert that you are actually signed in**
 
-`session.save()` captures whatever state exists. If the sign-in silently failed,
-you would persist an anonymous session and every dependent test would fail
-somewhere confusing. Assert the post-login URL and a greeting first, as above.
+`session.save()` captures whatever state exists. If the sign-in silently
+failed, every dependent test would fail somewhere confusing. Assert the
+post-login URL and a greeting first, as above.
 </Note>
 
-A session holds cookies, local storage, and IndexedDB. It does not hold server
-or database state. Restoring replaces client state rather than merging it, and
-you start with no page open, so a consuming test calls `app.open()` first.
+A session holds cookies, local storage, and IndexedDB. It does not hold
+server or database state. Restoring replaces client state, and you start
+with no page open, so a consuming test calls `app.open()` first.
 
-Sessions last for one run. They are encrypted on disk with a key that lives only
-in runner memory, and the whole directory is deleted during cleanup. They are
-deliberately not reused across runs: a session file is a bearer credential, and a
-long-lived one is a credential with no expiry story.
+Sessions last for one run. They are encrypted on disk with a key that lives
+only in runner memory, and deleted during cleanup. A session file is a bearer
+credential, so it is never reused across runs.
 
-## Personas
+## Credentials
 
-The same flow as several signed-in users is one setup test that saves a
-session per persona, and a loop over describe blocks that consumes them. Each
-block pins the persona's [agent](/agents#one-flow-several-personas) and its
-session; the titles differ, so every persona has results of its own.
+Never write a password in a test. Declare it in config and source the value
+from the environment:
+
+```ts title="e2e.config.ts"
+export default {
+  targets: [{ engine: playwright({ url: 'http://127.0.0.1:3000' }) }],
+  credentials: {
+    admin: {
+      username: 'admin@example.test',
+      password: process.env.ADMIN_PASSWORD ?? '',
+    },
+  },
+} satisfies E2EConfig;
+```
+
+Either field can also be overridden per run. The variable is the credential
+name uppercased, with every non-alphanumeric character replaced by `_`:
+
+```bash
+E2E_USER_ADMIN_USERNAME=admin E2E_USER_ADMIN_PASSWORD=... npx --no-install e2e run
+```
+
+`password` also accepts a function, called on every authorized fill, for a
+vault lookup or a freshly computed one-time code.
+
+## The password is a handle
+
+```ts
+import { credentials } from '@e2edev/e2e';
+
+const admin = credentials.user('admin');
+
+admin.name;     // 'admin'
+admin.username; // a plain string
+admin.password; // Secret: opaque, with no plaintext accessor
+```
+
+A `Secret` has no `.value`. Exactly two sinks accept one:
+
+<Tabs>
+  <Tab title="Deterministic">
+
+```ts
+await screen.getByLabel('Password').fill(admin.password);
+```
+
+  </Tab>
+  <Tab title="Agentic">
+
+```ts
+await agent.act('Sign in', {
+  params: { username: admin.username, password: admin.password },
+});
+```
+
+  </Tab>
+</Tabs>
+
+Anywhere else is a type error or a `POLICY_DENIED` failure. In the agentic
+form the model sees the secret's name and purpose, plans the flow, and the
+runner fills the field itself.
+
+The value never reaches a model, a log, or the report. Password fields arrive
+at the model masked, and any configured credential value found on screen is
+replaced with a placeholder before the observation leaves the runner. Reading
+a secure field back out is denied, so assert the outcome (the dashboard
+rendered) rather than the secret. A Playwright trace that recorded a filled
+secret is rewritten before it is kept; see [Debugging a run](/debugging#artifacts).
+
+Two consequences worth planning for:
+
+- **Prefer the deterministic path in setup tests.** A login form is the most
+  addressable screen in your app, so filling it with `screen.getByLabel()`
+  costs no model calls. Reach for `agent.act` when the sign-in flow itself
+  varies: an IdP redirect, a consent screen.
+- **Screenshots stop after a secret fill.** Once a secret is filled,
+  `agent.assert` attaches no screenshot evidence for the rest of the attempt,
+  because a page is free to mirror a typed value anywhere. Fill secrets in a
+  setup test and consume the session elsewhere to keep full evidence.
+
+### Narrow where a credential may be used
+
+```ts title="e2e.config.ts"
+credentials: {
+  admin: {
+    username: 'admin@example.test',
+    password: process.env.ADMIN_PASSWORD ?? '',
+    allowedOrigins: ['https://auth.staging.example.com'],
+  },
+},
+```
+
+A per-credential `allowedOrigins` narrows the target's origin policy for that
+credential and can never widen it. Use it when a credential belongs to one of
+several allowed origins, so a page that steers the flow elsewhere cannot
+collect the password.
+
+## Several signed-in users
+
+The same flow as several users is one setup test that saves a session per
+persona, and a loop over describe blocks that consumes them. Each block pins
+the persona's [agent](/agents) and its session.
 
 <Tabs>
   <Tab title="tests/personas.setup.e2e.ts">
@@ -133,213 +230,17 @@ for (const persona of ['buyer', 'admin'] as const) {
   </Tab>
 </Tabs>
 
-The flow is written once. The `agents` entry gives a persona its voice
-(`buyer: { context: 'You are a first-time buyer who has never seen this site.' }`),
-the `credentials` entry its account, and the session its signed-in state.
-Module evaluation is plain code, so the loop registers two groups; the tag
-lets `--tag admin` run one persona's block alone.
-
-A persona that needs no sign-in skips the session and the loop: a list pin,
-`{ agent: ['buyer', 'admin'] }`, runs the block once per agent, and
-`--agent admin` narrows it. [Your own agent](/agents#one-flow-several-personas)
-covers that form.
-
-## Credentials
-
-Never hardcode a password in a test. Declare it in config and source the value
-from the environment.
-
-```ts title="e2e.config.ts"
-import type { E2EConfig } from '@e2edev/e2e';
-import { playwright } from '@e2edev/playwright';
-
-export default {
-  targets: [{ name: 'web', engine: playwright({ url: 'http://127.0.0.1:3000' }) }],
-  credentials: {
-    admin: {
-      username: 'admin@example.test',
-      password: process.env.ADMIN_PASSWORD ?? '',
-    },
-  },
-} satisfies E2EConfig;
-```
-
-Config is trusted project code, so reading `process.env` there is expected. You
-can also override either field per run without touching the file:
-
-```bash
-E2E_USER_ADMIN_USERNAME=admin E2E_USER_ADMIN_PASSWORD=... npx --no-install e2e run
-```
-
-The variable name is the credential name uppercased, with every
-non-alphanumeric character replaced by `_`.
-
-## The password is a handle, not a string
-
-```ts
-import { credentials } from '@e2edev/e2e';
-
-const admin = credentials.user('admin');
-
-admin.name;     // 'admin'
-admin.username; // a plain string
-admin.password; // Secret - opaque, with no plaintext accessor
-```
-
-A `Secret` has no `.value` and no way to widen it back to a string. Exactly two
-sinks accept one:
-
-<Tabs>
-  <Tab title="Deterministic">
-
-```ts
-await screen.getByLabel('Password').fill(admin.password);
-```
-
-  </Tab>
-  <Tab title="Agentic">
-
-```ts
-await agent.act('Sign in', {
-  params: { username: admin.username, password: admin.password },
-});
-```
-
-  </Tab>
-</Tabs>
-
-Anywhere else is a type error or a `POLICY_DENIED` failure. That is what makes
-the blast radius knowable: there is no generic "give me the string" path to
-audit.
-
-The value never reaches a model, a log, a report, or a registered trace. Password fields
-arrive at the model masked, and any configured credential value found on screen
-is replaced with a placeholder before the observation leaves the runner. Reading
-a secure field back out is denied too, so assert the outcome - that the form
-submitted, that the dashboard rendered - rather than the secret.
-
-The trace the engine writes is the exception the runner closes itself. A
-Playwright trace records what happened, the filled value included: in the
-action's parameters, in every DOM snapshot of the field, and in the request
-that carried it. Once a secret was filled in an attempt, the runner rewrites
-every text entry of that attempt's trace archives before any of them is
-registered, hashed, or handed to an artifact store: JSON records value by
-value, other text as text, replacing each credential value (as typed,
-JSON-quoted, HTML-escaped, and URL-encoded) with `<secret:name>`. A binary
-entry that holds a credential's bytes is dropped from the archive. The report
-marks such a trace `redaction: "complete"`; a trace from an attempt that filled
-no secret is `not-required`. A trace that cannot be rewritten is deleted rather
-than kept, and the attempt's `secondaryErrors` say so. The screencast frames
-inside a trace are pixels, not text: a password field renders its own dots
-there, but anything else the page showed is in them, the same as in a
-screenshot or a video.
-
-### Narrow where a credential may be used
-
-```ts title="e2e.config.ts"
-credentials: {
-  admin: {
-    username: 'admin@example.test',
-    password: process.env.ADMIN_PASSWORD ?? '',
-    allowedOrigins: ['https://auth.staging.example.com'],
-  },
-},
-```
-
-A per-credential `allowedOrigins` narrows the target's app policy (the
-engine's `allowedOrigins` declaration) for that credential and can never
-widen it.
- Use it when a credential belongs to exactly one of several
-allowed origins, so a page that steers the flow elsewhere cannot collect the
-password when it arrives.
-
-Passing a `Secret` in `agent.act` params hands the whole sign-in to the model
-while the password stays resolved host-side: the model sees only the secret's
-name and purpose, plans the flow, and the runner fills the field itself, through
-the same authorization policy as `locator.fill`.
-
-<Note>
-**Prefer the deterministic path for setup tests**
-
-A login form is the most addressable screen in your app, so filling it with
-`screen.getByLabel(...)` costs no model calls and cannot vary. Reach for
-`agent.act` when the sign-in flow itself is what varies: an IdP redirect, a
-consent screen, a first-run wizard.
-</Note>
-
-One more consequence worth knowing: once a secret is filled, `agent.assert`
-stops attaching screenshot evidence for the rest of that attempt, because a page
-is free to mirror a typed value anywhere on screen. Fill secrets in a setup test
-and consume the session elsewhere to keep full evidence in the tests that matter.
-
-## Protected previews
-
-The app under test is often not public: a Vercel preview behind deployment
-protection, a tunnel with an interstitial page, a staging host behind HTTP
-basic authentication. The gate stands in front of the app, so no test step
-can pass it. The engine declares how to get through, and every path onto the
-page, a deterministic step or `agent.act`, goes through with it.
-
-```ts title="e2e.config.ts"
-import type { E2EConfig } from '@e2edev/e2e';
-import { playwright } from '@e2edev/playwright';
-
-export default {
-  targets: [
-    {
-      name: 'preview',
-      engine: playwright({
-        url: process.env.PREVIEW_URL ?? 'http://localhost:3000',
-        identity: 'storefront',
-        headers: {
-          'x-vercel-protection-bypass': process.env.VERCEL_AUTOMATION_BYPASS_SECRET ?? '',
-        },
-      }),
-    },
-  ],
-} satisfies E2EConfig;
-```
-
-`headers` go on every request the browser sends to an allowed origin and on no
-request to any other, so a bypass secret never reaches a CDN, an analytics
-endpoint, or an identity provider the page also talks to. Header names are
-case-insensitive. A preview origin changes with every deploy; `identity` keeps
-cache and session entries keyed by what the app is (see
-[identity](/reference/config#the-app-under-test)).
-
-The same option skips ngrok's interstitial:
-
-```ts
-headers: { 'ngrok-skip-browser-warning': '1' },
-```
-
-A host behind HTTP basic authentication takes `basicAuth`. The browser answers
-a `401` challenge from an allowed origin with the credentials and a challenge
-from any other origin with nothing.
-
-```ts
-engine: playwright({
-  url: 'https://staging.example.com',
-  basicAuth: { username: 'preview', password: process.env.PREVIEW_PASSWORD ?? '' },
-}),
-```
-
-<Note>
-**Three costs of `headers`**
-
-Injecting headers routes every request of the attempt through the runner,
-which turns the browser's HTTP cache off for that target. Service workers are
-blocked for the same reason: routing never sees a worker's requests, so a page
-one controlled would reach the gate without the headers. And a Playwright
-trace records the requests it saw, headers included, so the trace of a
-protected preview carries the bypass secret; share it as you would the secret.
-</Note>
+The flow is written once. The `agents` entry gives a persona its voice, the
+`credentials` entry its account, and the session its signed-in state. A
+persona that needs no sign-in skips the session and the loop: a list pin,
+`{ agent: ['buyer', 'admin'] }`, runs the block once per agent. See
+[Agents and personas](/agents#one-flow-several-personas).
 
 <CardGroup cols={2}>
-  <Card title="app and web reference" href="/reference/app-web">
-    Cookies, routes, dialogs, frames, and downloads.
+  <Card title="test reference" href="/reference/test">
+    `test.setup`, `sessions`, and the `session` option.
   </Card>
-  <Card title="Config reference" href="/reference/config">
-    The <code>credentials</code> block and every other key.
+  <Card title="Config reference" href="/reference/config#credentials">
+    The `credentials` block.
   </Card>
 </CardGroup>

@@ -1,0 +1,134 @@
+---
+title: Debugging a run
+description: Read the report, open the evidence, watch the browser, and see what the model was sent.
+---
+
+Every run writes `.e2e/report.json` and, for each attempt, an artifact
+directory with screenshots and a trace. The terminal tells you what failed;
+the report and the artifacts tell you why.
+
+## Read the failure
+
+The `list` reporter ends with a `Failed Tests` section: the error code, the
+message, the failing line, and a code frame. The exit code says which side
+failed:
+
+| Exit | Meaning | Retry the job? |
+| ---: | --- | --- |
+| 1 | A test failed | Only if the test is flaky |
+| 2 | Configuration, collection, or policy | No. It is deterministic. |
+| 3 | Infrastructure: the engine, the app process, the model provider, or an artifact | Yes |
+| 4 | An internal runner error | Report it |
+| 130 | The run was interrupted | |
+
+The report has everything the terminal showed and more:
+
+```bash
+jq '.run | {status, exitCode, errors}' .e2e/report.json
+jq '.run.results[] | select(.status != "passed") | {titlePath, file, status}' .e2e/report.json
+jq '.run.results[] | select(.status != "passed") | .attempts[-1]
+    | {status, error, steps: [.steps[] | select(.status != "passed") | {api, label, status, error}], artifacts}' .e2e/report.json
+```
+
+Read `run.errors` first: a run-level error such as `APP_UNREACHABLE` means no
+test result is meaningful. Then the `error` of the last attempt of each
+failed result, and the `artifacts` beside it. `steps` shows how far the test
+got. `--reporter json` prints the same document on stdout.
+
+## Artifacts
+
+Artifacts land under `.e2e/artifacts/`, one directory per attempt:
+
+- **Screenshots.** Every failed `expect` and every `agent.assert` leaves one.
+  `app.screenshot('label')` adds your own.
+- **A Playwright trace** (`trace.zip`) on a browser target. Open it with
+  `npx playwright show-trace <file>`.
+- **Downloads** a test saved through `web.waitForDownload`.
+- **Videos** and **agent transcripts** when you ask for them; see below.
+
+Once a secret was filled in an attempt, the runner rewrites the attempt's
+trace before it is kept, replacing every credential value with
+`<secret:name>`. The report marks such a trace `redaction: "complete"`. A
+trace that cannot be rewritten is deleted, and screenshots stop for the rest
+of the attempt. Videos are recorded with `redaction: "incomplete"` because a
+screencast masks nothing.
+
+## Watch it happen
+
+```bash
+npx --no-install e2e run --headed          # a visible browser
+npx --no-install e2e run --video           # a recording of every attempt
+```
+
+`--video` writes a WebM per attempt on a browser target and an MP4 on a
+device, under the attempt's directory. The failure recap names the file
+under each failed test. Set `artifacts: { kinds: ['video'], video: { retain: 'on-failure' } }`
+in the config to record everything in CI and keep only what needs watching.
+
+## Agent steps
+
+Three flags look inside an agent step:
+
+```bash
+npx --no-install e2e run --debug     # timings and a step table on stderr
+npx --no-install e2e run --ai-trace  # every model call, for a trace viewer
+npx --no-install e2e run --no-cache  # run the agent live instead of replaying
+```
+
+`--debug` appends two tables after the reporter's output: phase timings for
+the run, and one row per agent step with its duration, model calls, tokens,
+prompt-cache share, and cost when the provider reports one. Every planned
+step also saves its full model transcript as an artifact.
+
+```console
+[e2e debug] agent steps (execution order, model anthropic/claude-sonnet-4.5, total $0.0312)
+  step                                   total   model  observe  action  calls  tokens in/out  cached       cost
+  act "add a todo named groceries"       3.9s    2.8s    410ms   620ms      3  9412/388       61% (5740)   $0.0198
+  assert "the list shows groceries"      1.2s    1.1s     88ms     0ms      1  3120/41        0% (0)       $0.0114
+```
+
+`--ai-trace` writes `.e2e/ai-trace.json` next to the report, in the AI SDK
+devtools shape. Open it with [unbox-ai](https://github.com/tester-army/unbox-ai)
+to see which tokens went to the system prompt, the tool definitions, or a
+screen snapshot:
+
+```bash
+npx unbox-ai .e2e/ai-trace.json
+```
+
+Every agent step is one run in the trace and every model round trip one
+step, with the prompt as sent, the tool definitions, the response, and
+usage. Observations are redacted before the model sees them, so the trace
+holds no secret the model did not. Image bytes appear as byte counts. A step
+the cache replayed makes no model call and leaves no run, so pair `--ai-trace`
+with `--no-cache` for a complete picture.
+
+`--no-cache` is the first thing to try when a step that passed yesterday
+fails today. A recording made against one page state can replay against a
+changed one; see [Caching agent steps](/cache).
+
+## Common errors
+
+| Code | Usual cause | Fix |
+| --- | --- | --- |
+| `APP_UNREACHABLE` | Nothing answers at `url`, or `command` never became ready | Set `command.log` and read it; check the port; raise `startupTimeout` |
+| `APP_ALREADY_RUNNING` | Something already serves `url` when the runner wanted to start `command` | Stop it, or set `reuseExisting: true` for local runs |
+| `LOCATOR_NOT_FOUND` | Wrong role or name, text not exact, element inside an iframe, page not open | Read the markup for the accessible name; try `exact: false`; `web.frameLocator` for iframes; `--headed` to look |
+| `LOCATOR_AMBIGUOUS` | Two matches: a hidden duplicate, a repeated label | Add `{ name }`, scope under a container, `filter`, `first()`, or `{ visible: true }` |
+| `ASSERTION_FAILED` | The expectation is wrong, or the state settles after 5 s; for `agent.assert`, the judgment was false | Compare with the screenshot; `{ timeout }` on the matcher; rewrite the question |
+| `ACTION_FAILED` | Element covered, disabled, or detached, or an operation timed out | Wait on the right condition with `expect` first; close overlays |
+| `STEP_BUDGET_EXHAUSTED`, `STEP_TIMEOUT` | The agent ran out of model calls or time | Scope the goal to one step; raise `timeout` for slow providers |
+| `MODEL_UNAVAILABLE` | No model constructed in the config | See [Choosing a model](/models) |
+| `MODEL_PROVIDER_FAILED` | Bad key, rate limit, no credits | Check the key the provider reads and the quota |
+
+Every code, its class, and its exit code are in the
+[errors reference](/reference/errors).
+
+<CardGroup cols={2}>
+  <Card title="CLI reference" href="/reference/cli#e2e-run">
+    Every flag of `e2e run`.
+  </Card>
+  <Card title="Errors" href="/reference/errors">
+    Every error code.
+  </Card>
+</CardGroup>

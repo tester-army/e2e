@@ -1,0 +1,141 @@
+---
+title: Working with the browser
+description: Mock an API, handle a dialog, download a file, reach into an iframe, and pick a browser and viewport.
+---
+
+`screen`, `app`, and `expect` cover most of a browser test and stay portable.
+The `web` fixture holds what only a browser has: routes, cookies, dialogs,
+frames, downloads, page evaluation. Import `test` from `@e2edev/playwright`
+to have it typed.
+
+```ts
+import { test } from '@e2edev/playwright';
+import { expect } from '@e2edev/e2e';
+
+test('the dashboard loads', async ({ app, screen, web }) => {
+  await app.open('/dashboard');
+  await expect(web).toHaveURL('/dashboard');
+  await expect(web).toHaveTitle(/Dashboard/);
+  await expect(screen.getByRole('heading', { name: 'Overview' })).toBeVisible();
+});
+```
+
+A suite that also runs on a device declares `requires: ['web']` so those
+tests are skipped there instead of failing.
+
+## Mock an API
+
+`web.route` intercepts requests for the attempt. Register it before the page
+opens; it stays in force across `app.restart()` and a session restore.
+
+```ts
+await web.route('**/api/quote', async (route) => {
+  await route.fulfill({ json: { cents: 4200 } });
+});
+
+await app.open('/checkout');
+await expect(screen.getByText('$42.00')).toBeVisible();
+```
+
+The handler decides exactly once: `fulfill`, `continue`, or `abort`. To
+observe a real response instead, wait for it:
+
+```ts
+const response = await web.waitForResponse('**/api/orders');
+expect(response.status).toBe(201);
+```
+
+## Handle a dialog
+
+An unhandled `alert`, `confirm`, or `prompt` fails the next step. Register a
+handler first:
+
+```ts
+const off = await web.onDialog('accept');
+await screen.getByRole('button', { name: 'Delete' }).tap();
+await off();
+```
+
+A function handler gets the dialog and must call `accept(text?)` or
+`dismiss()`.
+
+## Download a file
+
+```ts
+const file = await web.waitForDownload(() =>
+  screen.getByRole('link', { name: 'Export CSV' }).tap(),
+);
+```
+
+The file is registered as a `download` artifact and `file.path` is where it
+landed.
+
+## Reach into an iframe
+
+`web.frameLocator` scopes queries into one frame. You query inside it and act
+on what you find:
+
+```ts
+const payment = web.frameLocator('#payment-frame');
+await payment.getByLabel('Card number').fill('4242424242424242');
+```
+
+## Read from the page
+
+`web.evaluate` runs a function in the page. It is serialized, so it cannot
+close over test variables; pass data as the second argument.
+
+```ts
+const count = await web.evaluate(() => document.querySelectorAll('li').length);
+const flag = await web.evaluate((name: string) => window.localStorage.getItem(name), 'featureFlags');
+```
+
+Reach for `screen` and `expect` first. `evaluate` reads DOM state the
+accessibility tree does not expose, and a test that leans on it is tied to
+the page's implementation.
+
+## Cookies and viewport
+
+```ts
+await web.setCookies([{ url: 'http://localhost:3000', name: 'tz', value: 'UTC' }]);
+await web.setViewport({ width: 390, height: 844 });
+```
+
+A cookie's target origin must be one the target allows; nothing is set when
+any entry is rejected.
+
+## Pick a browser and viewport
+
+The browser and the initial viewport are options of the engine. Two browsers
+on one app are two targets:
+
+```ts title="e2e.config.ts"
+const app = { url: 'http://localhost:3000' };
+
+export default {
+  targets: [
+    { name: 'chromium', engine: playwright(app) },
+    { name: 'webkit-mobile', engine: playwright({ ...app, browser: 'webkit', viewport: { width: 390, height: 844 } }) },
+  ],
+} satisfies E2EConfig;
+```
+
+`npx playwright install webkit --with-deps` provisions the extra browser in
+CI. `connect` attaches to a remote Chromium over CDP instead of launching
+one.
+
+## Raw selectors
+
+`web.locator('css or xpath')` exists for the node `screen` cannot name. It is
+not portable and it ties the test to markup, so prefer a role, a label, or a
+test id, and use `{ visible: true }` to drop a hidden twin before reaching
+for a selector.
+
+<CardGroup cols={2}>
+  <Card title="Playwright reference" href="/reference/playwright">
+    Every `web` method, its timeout, and what it throws.
+  </Card>
+  <Card title="Starting your app" href="/starting-your-app">
+    Let the runner start the dev server and reach protected previews.
+  </Card>
+</CardGroup>

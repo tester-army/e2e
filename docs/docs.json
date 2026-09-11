@@ -39,49 +39,98 @@
     }
   },
   "navigation": {
-    "groups": [
+    "tabs": [
       {
-        "group": "Get started",
-        "pages": [
-          "index",
-          "quickstart",
-          "writing-tests",
-          "agents",
-          "explore"
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get started",
+            "pages": [
+              "index",
+              "quickstart",
+              "writing-tests"
+            ]
+          },
+          {
+            "group": "Web",
+            "pages": [
+              "starting-your-app",
+              "browser"
+            ]
+          },
+          {
+            "group": "Mobile",
+            "pages": [
+              "mobile"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "models",
+              "authentication",
+              "agents",
+              "cache",
+              "debugging",
+              "explore",
+              "ci",
+              "github",
+              "coding-agents"
+            ]
+          },
+          {
+            "group": "Extend",
+            "pages": [
+              "agent-steps",
+              "tools",
+              "executors",
+              "writing-an-engine"
+            ]
+          }
         ]
       },
       {
-        "group": "Guides",
-        "pages": [
-          "models",
-          "authentication",
-          "ci",
-          "github",
-          "coding-agents",
-          "telemetry"
-        ]
-      },
-      {
-        "group": "Extend",
-        "pages": [
-          "writing-an-engine"
-        ]
-      },
-      {
-        "group": "Reference",
-        "pages": [
-          "reference/test",
-          "reference/expect",
-          "reference/screen",
-          "reference/app-web",
-          "reference/device",
-          "reference/agent",
-          "reference/config",
-          "reference/cli",
-          "reference/reporters",
-          "reference/environment",
-          "reference/errors",
-          "reference/engine"
+        "tab": "Reference",
+        "groups": [
+          {
+            "group": "Test API",
+            "pages": [
+              "reference/test",
+              "reference/expect",
+              "reference/screen",
+              "reference/app",
+              "reference/agent"
+            ]
+          },
+          {
+            "group": "Project",
+            "pages": [
+              "reference/config",
+              "reference/cli",
+              "reference/reporters",
+              "reference/environment",
+              "reference/errors",
+              "telemetry"
+            ]
+          },
+          {
+            "group": "Web",
+            "pages": [
+              "reference/playwright"
+            ]
+          },
+          {
+            "group": "Mobile",
+            "pages": [
+              "reference/agent-device"
+            ]
+          },
+          {
+            "group": "Engine contract",
+            "pages": [
+              "reference/engine"
+            ]
+          }
         ]
       }
     ]
@@ -98,7 +147,15 @@
     },
     {
       "source": "/web",
-      "destination": "/reference/app-web"
+      "destination": "/browser"
+    },
+    {
+      "source": "/reference/app-web",
+      "destination": "/reference/playwright"
+    },
+    {
+      "source": "/reference/device",
+      "destination": "/reference/agent-device"
     },
     {
       "source": "/running-tests",
@@ -114,7 +171,7 @@
     },
     {
       "source": "/troubleshooting",
-      "destination": "/reference/errors"
+      "destination": "/debugging"
     },
     {
       "source": "/writing-a-driver",

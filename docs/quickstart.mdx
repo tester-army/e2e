@@ -1,21 +1,20 @@
 ---
 title: Quickstart
-description: Three commands to a green run, then an agent step, then CI.
+description: Scaffold a project, run a browser test, then add an agent step.
 ---
 
-The first run needs no model key. Start your app's dev server, run three
-commands in the app's directory, and a browser test goes green against it.
-Adding an agent step comes after.
+The first run needs no model key. With your app's dev server up, three
+commands get a browser test green against it. The agent step comes after.
 
 <Note>
 Node.js 22.12 or newer. On Windows, run everything inside WSL.
 </Note>
 
-## Three commands
+## Run your first test
 
 <Steps>
   <Step title="Scaffold">
-  With your dev server up on `http://localhost:3000`:
+  In your app's directory, with the dev server on `http://localhost:3000`:
 
   <CodeGroup>
   ```bash npm
@@ -31,10 +30,10 @@ Node.js 22.12 or newer. On Windows, run everything inside WSL.
   ```
   </CodeGroup>
 
-  Accept the defaults: Playwright, the Vercel AI Gateway for agent steps, and
-  the coding-agent skill. `init` adds `@e2edev/e2e`, `@e2edev/playwright`, and `ai` to
-  `devDependencies`, a `test:e2e` script, `.e2e/` entries in `.gitignore`,
-  and writes two files. It never overwrites a file that exists.
+  Accept the defaults: Web (Playwright), the Vercel AI Gateway, and the
+  coding-agent skill. `init` adds the packages to `devDependencies`, a
+  `test:e2e` script, and `.gitignore` entries, and writes the config, an
+  example test, and the skill files. It never overwrites a file that exists.
 
   ```ts title="e2e.config.ts"
   import type { E2EConfig } from '@e2edev/e2e';
@@ -54,8 +53,7 @@ Node.js 22.12 or newer. On Windows, run everything inside WSL.
     },
     // The engine declares the app it drives; APP_URL overrides the default at run time.
     targets: [{
-      name: 'web',
-      platform: 'web',
+      // Named after the platform the engine declares: "web".
       engine: playwright({
         url: process.env.APP_URL ?? 'http://localhost:3000',
         // Let the runner start the dev server and wait for url to answer:
@@ -73,13 +71,17 @@ Node.js 22.12 or newer. On Windows, run everything inside WSL.
     await app.open('/');
     await expect(web.locator('body')).toBeVisible();
   });
+  
+  // Runs once the key the model in e2e.config.ts reads is in the environment:
+  // test('the agent drives a flow', async ({ app, agent }) => {
+  //   await app.open('/');
+  //   await agent.act('one goal in plain language');
+  //   await agent.assert('one question about the screen');
+  // });
   ```
 
-  Every target names the engine that drives it, and the engine declares the
-  app: here a URL, on a device a bundle id. `APP_URL` overrides the default
-  when you run. A scheme is optional; `localhost:3000` becomes
-  `http://localhost:3000` and `app.example.com` becomes
-  `https://app.example.com`.
+  A target names the engine that drives it, and the engine declares the app:
+  a URL for a browser, a bundle id on a device.
   </Step>
   <Step title="Install">
   <CodeGroup>
@@ -95,19 +97,16 @@ Node.js 22.12 or newer. On Windows, run everything inside WSL.
   bun install
   ```
   </CodeGroup>
-
-  Or whatever `init` printed as its `next:` line; it names the package
-  manager your lockfile or `packageManager` field points at.
   </Step>
   <Step title="Run">
   ```bash
-  APP_URL=http://localhost:3000 npx --no-install e2e run
+  npx --no-install e2e run
   ```
 
   The first run downloads a browser, once. Then:
 
   ```text
-   RUN  e2e v0.7.0 /home/ada/my-app
+   RUN  e2e v0.11.0 /home/ada/my-app
         run 01a08550-4cfd-780e-a5f6-98980fc63fed · targets: web
 
    ✓ playwright engine for target "web" prepared 8.85s
@@ -121,32 +120,25 @@ Node.js 22.12 or newer. On Windows, run everything inside WSL.
        Report  .e2e/report.json
   ```
 
-  No model was called. `agent` is configured but nothing asked for it, and
-  the runner only checks the model when a test acquires the `agent` fixture.
+  No model was called. The runner only checks the model when a test asks for
+  the `agent` fixture.
   </Step>
 </Steps>
 
-`npx --no-install e2e list` is the dry run: it collects and selects tests the
-way `run` does and prints one line per test and target without opening a
-browser.
+Every run writes `.e2e/report.json`. The exit code says what went wrong: 1 is
+a test failure, 2 is configuration, 3 is infrastructure.
 
-```text
-tests/example.e2e.ts › app opens [web]
-```
-
-Every run writes `.e2e/report.json` with the results, attempts, steps,
-artifacts, and model usage. Exit codes separate test failures (1) from
-configuration (2) and infrastructure (3). A step that runs out of its own
-budget or time is a test failure; a missing model is configuration and an
-unreachable app is infrastructure. The [CLI reference](/reference/cli) has every flag and the
-report shape.
+<Tip>
+Always call the CLI as `npx --no-install e2e`. Bare `npx e2e` fetches whatever
+package is called `e2e` on npm when the runner is not installed locally.
+</Tip>
 
 ## Add an agent step
 
-The scaffold's `tests/example.e2e.ts` ends with a commented-out agent test.
-Give it a goal your app can actually satisfy, or write a new file next to it:
+The scaffold's example file ends with a commented-out agent test. Give it a
+goal your app can satisfy, or write a new file next to it:
 
-```ts title="tests/signup.e2e.ts"
+```ts title="tests/agent.e2e.ts"
 import { test } from '@e2edev/playwright';
 import { expect } from '@e2edev/e2e';
 
@@ -162,134 +154,37 @@ test('a visitor signs up for a trial', async ({ app, agent, screen }) => {
 });
 ```
 
-Import `test` from `@e2edev/playwright` when a test touches the `web` fixture:
-it is the same runtime `test` as `e2e`'s, typed with the fixture the browser
-engine contributes. One goal per `act`. Real values go through `params`, not
-through the instruction. The final `expect` is deterministic: it costs no
-model calls and cannot vary. There are no waits or sleeps anywhere: queries
-poll, actions wait, assertions retry.
+One goal per `act`. Real values travel through `params`, not through the
+instruction. The final `expect` costs no model calls and cannot vary. There
+are no sleeps anywhere: queries poll, actions wait, assertions retry.
 
-Now the run needs a key. The model is an AI SDK instance the config
-constructs, `gateway('openai/gpt-5.4-mini')` from `ai`, and the Vercel AI
-Gateway behind it reads `AI_GATEWAY_API_KEY`:
+This run needs a key. The scaffold's model is `gateway('openai/gpt-5.4-mini')`
+from the Vercel AI Gateway, which reads `AI_GATEWAY_API_KEY`:
 
 ```bash
-AI_GATEWAY_API_KEY=... \
-APP_URL=http://localhost:3000 npx --no-install e2e run
+AI_GATEWAY_API_KEY=... npx --no-install e2e run tests/agent.e2e.ts
 ```
 
-`init` asked which gateway to use and wrote its provider package into the
-config. The Vercel AI Gateway (`gateway()` from `ai`) and OpenRouter
-(`openrouter()` from `@openrouter/ai-sdk-provider`) reach every vendor's
-models with one key each; an OpenAI-compatible endpoint (Ollama, vLLM,
-LiteLLM, a vendor's own API) is `createOpenAICompatible({ baseURL })` from
-`@ai-sdk/openai-compatible`. Any AI SDK provider works the same way,
-`openai('gpt-5.4-mini')` from `@ai-sdk/openai` included; the runner
-constructs no model of its own and reads no model variable, so nothing is
-implied. There is exactly one model: it drives `agent.act` and judges
-`agent.assert`, `agent.waitFor`, and `agent.extract`. The runner checks that
-one is configured when the first test acquires the `agent` fixture and stops
-the run with `MODEL_UNAVAILABLE` (exit 2) if none is; a missing key is the
-provider's own error on the first agent step. [Models and
-credentials](/models) covers every option.
+Any AI SDK model instance works in that slot. [Choosing a model](/models)
+covers OpenRouter, local servers, and calling a provider directly.
 
-`system` shapes how the agent works. Later you can hand it your own tools, or
-replace it with a custom executor; [Your own agent](/agents) covers both.
+Useful flags while you iterate:
 
 ```bash
-npx --no-install e2e run tests/signup.e2e.ts   # one file
-npx --no-install e2e run --tag smoke           # by tag
-npx --no-install e2e run --headed              # watch it happen
-npx --no-install e2e run --debug               # save full agent transcripts
-npx --no-install e2e run --ai-trace            # record every model call for a trace viewer
+npx --no-install e2e run tests/agent.e2e.ts   # one file
+npx --no-install e2e run --headed             # watch the browser
+npx --no-install e2e run --no-cache           # skip replay, run the agent live
+npx --no-install e2e list                     # what would run, without running it
 ```
 
-## Let the runner start your app
+## Notes
 
-Uncomment the `command` line the scaffold left in `playwright(...)` and the
-runner spawns your dev server, waits until `url` answers, and stops it when
-the run ends, fails, or is interrupted:
+Config and test files are ES modules. e2e loads `.ts` files as ESM whatever
+the nearest `package.json` says, so a CommonJS project keeps its module type.
+A `tsconfig.json` is optional; add one for editor completions.
 
-```ts title="e2e.config.ts"
-import type { E2EConfig } from '@e2edev/e2e';
-import { createAgent } from '@e2edev/e2e/agent';
-import { playwright } from '@e2edev/playwright';
-import { gateway } from 'ai';
-
-export default {
-  agents: {
-    default: createAgent({
-      model: gateway('openai/gpt-5.4-mini'),
-      system: 'You are a thorough QA agent. Verify every outcome.',
-    }),
-  },
-  targets: [{
-    name: 'web',
-    platform: 'web',
-    engine: playwright({
-      url: process.env.APP_URL ?? 'http://localhost:3000',
-      command: {
-        executable: 'npm',
-        args: ['run', 'dev'],
-        reuseExisting: true,
-        log: '.e2e/logs/app.log',
-      },
-    }),
-  }],
-} satisfies E2EConfig;
-```
-
-```text
- ✓ target "web" command ready 1.20s
-```
-
-`reuseExisting: true` attaches to the dev server you already have running
-instead of failing with `APP_ALREADY_RUNNING`; CI ignores it, so a leftover
-server there is still an error. `log` keeps what the server printed, since
-the runner otherwise discards it. The child sees only `PATH`, `HOME`, and the
-temp-directory variables plus `command.env`; model credentials and CI tokens
-are never inherited, so anything the app needs must be passed explicitly.
-Databases and migrations go in `services`, started in order before the
-command. Every option is in the [config reference](/reference/config#command).
-
-## Run it in CI
-
-With `command` in place the job is install, browser, run:
-
-```yaml title=".github/workflows/e2e.yml"
-name: e2e
-on: [pull_request]
-jobs:
-  e2e:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npx playwright install chromium --with-deps
-      - run: npx --no-install e2e run --reporter list,junit
-        env:
-          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
-```
-
-`CI` switches the defaults to one worker and one retry and rejects
-`test.only`. The full workflow, with artifact uploads and pinned actions, is
-on the [CI page](/ci).
-
-## Project notes
-
-Config and test files are ES modules, and e2e loads `.ts` files as such
-whatever the nearest `package.json` says, so a CommonJS app such as a Next.js
-project keeps its module type. In an empty directory, `init` creates a private
-`package.json` with `"type": "module"`. There is no `tsconfig.json`
-requirement; add one for editor completions on `e2e.config.ts` and `tests/`.
-
-For mobile tests, choose **agent-device** in `init` instead. It defaults to
-iOS on macOS and Android elsewhere, and writes a Settings example; see
-[Device](/reference/device) for simulator and emulator setup.
+For a mobile app, choose **Mobile (iOS/Android)** in `init` and follow
+[Testing iOS and Android](/mobile).
 
 ## Next
 
@@ -297,13 +192,13 @@ iOS on macOS and Android elsewhere, and writes a Settings example; see
   <Card title="Writing tests" href="/writing-tests">
     Goals, checks, extraction, and the deterministic APIs.
   </Card>
-  <Card title="Your own agent" href="/agents">
-    Add tools, tune the loop, or bring your own executor.
+  <Card title="Starting your app" href="/starting-your-app">
+    Let the runner start the dev server and its dependencies.
   </Card>
-  <Card title="Authentication" href="/authentication">
+  <Card title="Signing in" href="/authentication">
     Sign in once with a secret the model never sees.
   </Card>
-  <Card title="CI" href="/ci">
+  <Card title="Continuous integration" href="/ci">
     The one workflow you need.
   </Card>
 </CardGroup>

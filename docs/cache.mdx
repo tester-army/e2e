@@ -1,0 +1,121 @@
+---
+title: Caching agent steps
+description: A passing agent.act records its actions, and the next run replays them with no model call.
+---
+
+Each passing `agent.act()` records the actions it performed under
+`.e2e/cache/`. The next run replays them with no model call and hands back to
+the live agent the moment the app stops matching the recording. Judgments
+(`assert`, `waitFor`, `extract`) are never cached.
+
+The cache is on by default. Turn it off per run to check whether a failure
+comes from the recording rather than the app:
+
+```bash
+npx --no-install e2e run --no-cache
+```
+
+## When a step is recorded
+
+An entry is written only once a **verification step** after the `act`
+passes: an `expect(...)` assertion, a locator `waitFor`, or an `agent.assert`
+or `agent.waitFor` judgment. A trailing `act` nothing ever checks is never
+replayed blind. Pair every `agent.act()` with an assertion of its outcome to
+make it cacheable.
+
+A failed run writes nothing the failure could have implicated and evicts the
+entries it did. The flow re-records on the next passing run.
+
+## When a replay hands off
+
+A replay never passes on mechanics alone. Each entry records the state the
+step passed in, the page path and the elements that appeared during the
+step, and a replay finishes on its own only when that state is on screen
+again. If every recorded action ran but the effect is missing, the step
+hands off to the live agent with a notice to check whether the step took
+effect. If the agent then has to act, the entry is evicted so a broken
+recording never accumulates repairs.
+
+Volatile text is skipped when matching: a minted id, a countdown, a date, a
+clock time. A step whose only visible effect is volatile hands off every
+time. A step that ends on another page matches that page's path up to the
+ids the app mints per record, so a flow that creates a project and lands on
+it replays even though the next project has a new id.
+
+Each agent step in the report records how the cache took part under
+`step.cache`: `self-finalized` when a recording replayed the whole step,
+`agent-concluded` when a replay handed off mid-step, `missed` otherwise with
+a reason. A retry attempt records but never replays.
+
+## Cache-friendly tests
+
+- Assert the outcome of every `act`.
+- Create your own data under names unique to the run, so a replay never finds
+  two rows with the recorded name.
+- Clean up in `afterEach`, not in the last steps, so a run that fails before
+  its cleanup leaves no duplicates for the next one.
+- Give repeated controls distinct accessible names. A target that matches
+  several controls is recorded with its position among them, and a replay
+  honors that position only when the live screen shows exactly as many.
+
+## Modes
+
+| Mode | Behavior |
+| --- | --- |
+| `'read-write'` | Default locally. Replays entries and records new ones. |
+| `'read-only'` | Default in CI when unset. Replays but never writes, because a committed cache is untrusted input. |
+| `'off'` | Every step runs live. `--no-cache` is the per-run equivalent and wins over the config. |
+
+```ts title="e2e.config.ts"
+cache: 'off',
+// or
+cache: { mode: 'read-write', dir: '.e2e/cache' },
+```
+
+`cache.store` replaces the file store with your own, for a shared remote
+cache. See the [config reference](/reference/config#cache).
+
+## Commit your traces
+
+Committing cache entries is opt-in. `e2e init` adds `.e2e/cache/` to
+`.gitignore`, so every machine records its own entries and CI starts with
+none.
+
+To share replays, remove that line and commit the directory. Entries a
+passing local run wrote then replay in CI and on every teammate's machine.
+CI stays `read-only` unless you set `cache: 'read-write'`, which is the right
+call only when CI restores the directory from its own cache service rather
+than from git.
+
+Treat committed entries as test data: review them in the same pull request
+as the test change that re-recorded them, and delete the directory when a
+flow changes enough that the next passing run should record it from scratch.
+
+## Inspect the cache
+
+Entries are files named by digest, so the directory listing says nothing.
+The CLI reads it:
+
+```bash
+npx --no-install e2e cache ls
+npx --no-install e2e cache stats
+npx --no-install e2e cache clear
+```
+
+```text
+TEST                                 TARGET  INSTRUCTION   AGE  ACTIONS
+tests/billing.e2e.ts::upgrades       web     4f1c0a9d3b62  2h   4
+tests/signup.e2e.ts::signs up        web     9ab7715ce004  3d   7 (truncated)
+```
+
+Entries are disposable: deleting `.e2e/cache/` slows the next run and
+changes nothing else.
+
+<CardGroup cols={2}>
+  <Card title="Config reference" href="/reference/config#cache">
+    `mode`, `store`, `dir`.
+  </Card>
+  <Card title="CLI reference" href="/reference/cli#e2e-cache">
+    `e2e cache ls`, `stats`, `clear`.
+  </Card>
+</CardGroup>

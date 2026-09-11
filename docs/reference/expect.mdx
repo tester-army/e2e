@@ -21,7 +21,7 @@ first.
 | --- | --- |
 | Default timeout | `config.assertionTimeout`, 5000 ms |
 | Override | `{ timeout }` in milliseconds, on every locator and `web` matcher |
-| Negation grace window | 1000 ms of continuous truth before a negated matcher passes, so `{ timeout: 500 }` with `.not` can never pass |
+| Negation grace window | A negated matcher passes after 1000 ms of continuous truth, or after the whole budget when `{ timeout }` is shorter than that |
 | Failure code | `ASSERTION_FAILED`, exit code 1 |
 
 `.not` is a getter that returns a new expectation with inverted polarity, on all
@@ -76,7 +76,7 @@ export interface AsyncExpectation {
 | `toContainText(expected)` | Normalized text contains `expected` | Substring or regexp |
 | `toHaveValue(expected)` | Exposed input value | - |
 | `toHaveAttribute(name)` | Attribute is present | Single-node matcher |
-| `toHaveAttribute(name, value)` | Attribute matches `value` | String comparison is not whitespace-normalized |
+| `toHaveAttribute(name, value)` | Attribute matches `value` | Normalized text comparison, like `toHaveText` |
 | `toHaveCount(expected)` | Exact match count | The only matcher that tolerates zero or many matches |
 | `toHaveAccessibleName(expected)` | Accessible name | - |
 
@@ -157,6 +157,6 @@ expect(payload).toEqual({ ok: true });
 <CardGroup cols={2}>
   <Card title="Writing tests" href="/writing-tests" />
   <Card title="screen and Locator" href="/reference/screen" />
-  <Card title="app and web" href="/reference/app-web" />
+  <Card title="app and web" href="/reference/playwright" />
   <Card title="Errors" href="/reference/errors" />
 </CardGroup>

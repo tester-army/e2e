@@ -71,7 +71,7 @@ See [Coding agents](https://e2e.mintlify.app/coding-agents).
   to a target as `engine: playwright()`.
 - [`@e2edev/agent-device`](./packages/agent-device) — the mobile engine for iOS
   simulators and Android emulators; see the
-  [device reference](https://e2e.mintlify.app/reference/device).
+  [device reference](https://e2e.mintlify.app/reference/agent-device).
 
 ## Contributing
 

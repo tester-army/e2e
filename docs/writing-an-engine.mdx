@@ -3,24 +3,20 @@ title: Writing an engine
 description: How the runner talks to a surface, and what it takes to add a new one.
 ---
 
-Everything in `e2e` above the engine is portable. `test`, `expect`, `screen`,
-`app`, and the agent tiers never touch a browser, a simulator, or a device: they
-speak one narrow contract from `@e2edev/e2e/engine`, and an engine is the package that
-maps it onto a real surface.
+Everything above the engine is portable. `test`, `expect`, `screen`, `app`,
+and the agent never touch a browser or a device: they speak one narrow
+contract from `@e2edev/e2e/engine`, and an engine is the package that maps it
+onto a real surface.
 
 `@e2edev/playwright` and `@e2edev/agent-device` are two such packages, built
-with the same public `defineEngine` as anything the community writes. A
-engine for a desktop shell, a TV, or a surface nobody has thought of yet
-integrates against the same contract: the runner cannot tell them apart, and
-neither can a test. The agent-device package is the smaller of the two and a
-good model for a device-shaped engine: one client, one id generation per
-observation, a contributed `device` fixture, and a minted `app://` location
-so the trace cache has an anchor.
+with the same public `defineEngine` as anything you write. An engine for a
+desktop shell or a TV integrates against the same contract, and neither the
+runner nor a test can tell them apart. The agent-device package is the
+smaller of the two and a good model for a device-shaped engine.
 
 ## The ownership boundary
 
-Read this table before writing any code. Most engine bugs are an engine doing
-the runner's job.
+Most engine bugs are an engine doing the runner's job.
 
 | Concern | Owner |
 | --- | --- |
@@ -35,17 +31,17 @@ the runner's job.
 | Source masking of secure observations | engine |
 | Defense-in-depth redaction | runner |
 
-Two rules follow from it and get broken most often: an engine **must not** add
-hidden query retries - `locate` answers with what is on screen right now and
-returns an empty array without complaint - and an engine **must not** enforce
-single-match strictness, because `screen.getByRole(...)` deciding that two
-matches is an error is a runner decision.
+Two rules follow from it and get broken most often. An engine **must not**
+add hidden query retries: `locate` answers with what is on screen right now
+and returns an empty array without complaint. An engine **must not** enforce
+single-match strictness: deciding that two matches is an error is the
+runner's call.
 
 ## The shape of an engine
 
-An engine is a factory returning a validated handle. `defineEngine` checks the
-manifest synchronously at config load, freezes it, computes its capability set,
-and stamps the brand that makes the handle acceptable in a target.
+An engine is a factory returning a validated handle. `defineEngine` checks
+the manifest at config load, freezes it, computes its capability set, and
+stamps the brand that makes the handle acceptable in a target.
 
 ```ts title="src/index.ts"
 import { EngineError, defineEngine, type EngineHandle } from '@e2edev/e2e/engine';
@@ -73,25 +69,21 @@ export function hyperdrive(options: { device: string }): EngineHandle {
 }
 ```
 
-`version` is required: it is recorded as provenance and keys the trace cache,
-so an engine that resolves nodes differently never replays another version's
-traces.
-
 ```ts title="e2e.config.ts"
 targets: [{ name: 'phone', engine: hyperdrive({ device: 'iPhone 16' }) }],
 ```
 
+`version` is required. It is recorded as provenance and keys the trace
+cache, so an engine that resolves nodes differently never replays another
+version's traces.
+
 <Note>
-Depend on `@e2edev/e2e/engine` only, and take `e2e` as a **peer** dependency, never a
-regular one: the engine and the runner must agree on one copy of the error
-classes. Everything the spec requires an engine to reproduce exactly is exported
-there: the runner error taxonomy (`TestError`, `ConfigurationError`,
-`InfrastructureError`), text-pattern matching (`matchesText`, `toTextPattern`,
-`describePattern`), URL matching (`urlMatches`), assertion polling
-(`pollCondition`, `Deadline`), the JSON-value rules (`validateJsonValue`), and
-the utilities `obj`, `raceAbort`, `withTimeout`, and `withinCleanupBudget`.
-Anything else an engine needs is its own to write; there is no shared internal
-subpath.
+Depend on `@e2edev/e2e/engine` only, and take `@e2edev/e2e` as a **peer**
+dependency: the engine and the runner must agree on one copy of the error
+classes. Everything an engine has to reproduce exactly is exported there:
+the error taxonomy, text-pattern matching, URL matching, assertion polling,
+the JSON-value rules, and the utilities `obj`, `raceAbort`, `withTimeout`,
+and `withinCleanupBudget`. There is no shared internal subpath.
 </Note>
 
 ## Capabilities
@@ -103,84 +95,72 @@ never silently.
 | Member | Capability | Unlocks |
 | --- | --- | --- |
 | `observe(context, options?)` | `observation` | `agent.act`, `waitFor`, `extract`, `assert`; prompt snapshots; trace replay |
-| `perform(ref, action, context)` | `actions` (needs `observe`) | the agent's grammar verbs (`tap`, `type`, `press`, `select`, `type_secret`, node `scroll`) and the full `Locator` action set |
+| `perform(ref, action, context)` | `actions` (needs `observe`) | the agent's grammar verbs and the full `Locator` action set |
 | `locate(expression, context)` | `location` (needs `observe`) | `screen`, `Locator`, `expect(locator)` |
-| `swipe(direction, momentum, context)` | - (needs `observe`) | the agent's viewport `scroll` verb, `screen.swipe`, `scrollUntilVisible` |
-| `state.{capture,restore}` | `state` | `test.setup` + `session:` reuse |
-| `artifacts.{screenshot,startTrace?,stopTrace?,startVideo?,stopVideo?}` | `artifacts` | `app.screenshot()`, `agent.assert({ screenshot })`, `artifacts: ['trace']`, `artifacts: ['video']` / `--video` |
-| `app.{url?,allowedOrigins?,environment?,identity?,command?,readyUrl?,services?}` | - | declares the app under test: navigation policy, cache and session identity, the report's target record, and the app process the runner starts ([reference](/reference/config#the-app-under-test)) |
-| `app.{navigate?,back?,restart?,clearState?}` | - | `app.open()` and the agent's `navigate` verb, `app.back()`, `app.restart()`, `app.clearState()` |
-| `url(context)` | - | trace start anchors, the secret-fill origin check |
+| `swipe(direction, momentum, context)` | (needs `observe`) | the agent's viewport `scroll` verb, `screen.swipe`, `scrollUntilVisible` |
+| `state.{capture,restore}` | `state` | `test.setup` and the `session` option |
+| `artifacts.{screenshot,startTrace?,stopTrace?,startVideo?,stopVideo?}` | `artifacts` | `app.screenshot()`, assertion evidence, traces, `--video` |
+| `app.{url?,allowedOrigins?,environment?,identity?,command?,readyUrl?,services?}` | | declares the app under test: navigation policy, cache and session identity, the app process ([reference](/reference/config#the-app-under-test)) |
+| `app.{navigate?,back?,restart?,clearState?}` | | `app.open()` and the agent's `navigate` verb, `app.back()`, `app.restart()`, `app.clearState()` |
+| `url(context)` | | trace start anchors, the secret-fill origin check |
 | `fixtures.<name>` | `<name>` | a contributed fixture, typed through `test.extend` |
 
 The agent derives its toolset from this manifest: a verb whose member is
-absent is never offered to the model, so a surface that cannot navigate simply
-has no `navigate` verb. Every node action, whether the agent or a `Locator`
-asked for it, arrives as one `LocatorAction` on `perform`, so you implement
-each action once; throw `UNSUPPORTED_CAPABILITY` for a kind the surface cannot
-express. `state`, `artifacts`, and `app` are closed manifests too: an unknown
-key in any of them fails at config load.
+absent is never offered to the model. Every node action, whether the agent
+or a `Locator` asked for it, arrives as one `LocatorAction` on `perform`, so
+you implement each action once and throw `UNSUPPORTED_CAPABILITY` for a kind
+the surface cannot express.
 
-`prepare` runs once per run and target in the runner process, after the tests
-are collected and before the app starts or the run's clock does: download
-runtimes there and narrate through `info.log`, which the reporter prints.
-`init` runs once per worker before the first attempt, outside every step
-budget: boot devices there. A config-held handle can outlive an in-process
-worker, so `init` may run again after `dispose` on the same handle and must
-work on a disposed engine as on a fresh one.
-`startAttempt`/`endAttempt` bracket one test attempt and carry the attempt's
-artifact directory; give each test a fresh surface here (a new browser
-context, a reset app). When `startAttempt` fails or exceeds `launchTimeout`,
-its `context.signal` aborts and `endAttempt` runs right behind it, so stop
-promptly and keep `endAttempt` idempotent. `endAttempt` and `dispose` receive a
-`EngineCleanupContext` (`{ signal, timeoutMs }`) whose `signal` aborts when
-the `cleanupTimeout` budget is spent. `dispose` runs at worker shutdown whether
-or not `init` ran.
+### Lifecycle
+
+`prepare` runs once per run and target in the runner process, after
+collection and before the run's clock starts: download runtimes there and
+narrate through `info.log`. `init` runs once per worker before the first
+attempt: boot devices there. A handle can outlive a worker, so `init` may run
+again after `dispose` on the same handle. `startAttempt` and `endAttempt`
+bracket one test attempt: give each test a fresh surface here. When
+`startAttempt` fails or exceeds `launchTimeout`, its signal aborts and
+`endAttempt` runs right behind it, so keep `endAttempt` idempotent. `dispose`
+runs at worker shutdown whether or not `init` ran.
 
 ### Nodes and refs
 
 `observe` and `locate` return `SemanticNode` trees. Ids are yours and must be
-unique for the surface's lifetime; the harness stamps revisions onto them and
-enforces the staleness rule (act on the newest observation only), so you never
-implement it. `perform` receives `{ id, revision }`; look the id up and throw
-`NODE_STALE` when it no longer binds.
+unique for the surface's lifetime. The harness stamps revisions onto them and
+enforces the staleness rule, so you never implement it. `perform` receives
+`{ id, revision }`; look the id up and throw `NODE_STALE` when it no longer
+binds.
 
 ### Vision-only surfaces
 
-A surface that offers screenshots and coordinates but no semantic tree (a
-desktop shell, a canvas app, a computer-use agent) declares `observe` returning
-a pixels-only snapshot (`nodes: []` plus `pixels`) and acts through agent-side
-coordinate tools, since `perform` takes observation refs it cannot hand out.
-That is the tools-only tier for actions: deterministic tool replay is what it
-gets, and nothing else in the harness changes.
+A surface that offers screenshots and coordinates but no semantic tree
+declares `observe` returning a pixels-only snapshot (`nodes: []` plus
+`pixels`) and acts through agent-side coordinate tools, since `perform` takes
+observation refs it cannot hand out.
 
 ### State is a credential
 
 A `state` snapshot carries whatever authenticates the app: cookies, tokens,
-storage. The contract splits the duties. The harness encrypts it at rest with a
-per-run key that never touches disk, keeps it in the run's private session
-directory, binds it to the run, target, engine, and app identity, deletes it
-when the run ends, and never logs, reports, digests, or sends it to a model.
-Your side: never persist, cache, or log a snapshot; never echo its contents in
-an error; make `restore` replace the surface's whole persisted state rather than
-merge into it.
+storage. The harness encrypts it at rest with a per-run key, binds it to the
+run, target, engine, and app identity, deletes it when the run ends, and
+never logs or reports it. Your side: never persist, cache, or log a
+snapshot; never echo its contents in an error; make `restore` replace the
+surface's whole persisted state rather than merge into it.
 
 ### Errors
 
 Throw `EngineError` across the seam. Retryability is closed to `NODE_STALE`
 and `FRAME_NOT_FOUND`; asking for a retryable `ENGINE_FAILURE` is coerced to
-non-retryable so an engine can never talk the runner into repeating an action
-that may have committed. `ACTION_MAY_HAVE_COMMITTED` says exactly that;
-`INVALID_STATE` maps to `APP_NOT_OPEN`; `UNSUPPORTED_CAPABILITY` is a
+non-retryable, so an engine can never talk the runner into repeating an
+action that may have committed. `ACTION_MAY_HAVE_COMMITTED` says exactly
+that; `INVALID_STATE` maps to `APP_NOT_OPEN`; `UNSUPPORTED_CAPABILITY` is a
 configuration error; anything else is infrastructure.
 
 ## Contributed fixtures
 
-A platform-shaped surface - `web` for a browser, `device` for a simulator - is
-a fixture the engine contributes, not something core declares. The harness
-records the methods declared through `context.fixture` as steps named
-`<fixture>.<method>`. Declare labels and timeouts explicitly; synchronous
-accessors pass through. The step opens before the method runs, so artifacts
+A platform-shaped surface, `web` for a browser or `device` for a simulator,
+is a fixture the engine contributes. The harness records the methods declared
+through `context.fixture` as steps named `<fixture>.<method>`, so artifacts
 and failures are attributed to the call that produced them.
 
 ```ts
@@ -203,21 +183,19 @@ export const test = base.extend<{ device: Device }>();
 ```
 
 The factory's `context` carries what a fixture legitimately needs from the
-harness and nothing else: the app's base URL (absent when the engine declares none)
-and origin policy (`app.resolveUrl` enforces it), the configured timeouts, `operation()` budgets, `attachArtifact`
-and `attachViewport` for the current step, `locator(expression)` and
-`screen(scope)` to mint core locators from a platform selector or a nested
-document, and `expectable(target, factory)` to attach an expectation surface so
-`expect(fixture)` works. This is how `@e2edev/playwright` builds `web` and
-`expect(web).toHaveURL()`, and it touches no core file.
+harness: the app's base URL and origin policy, the configured timeouts,
+`operation()` budgets, `attachArtifact` and `attachViewport` for the current
+step, `locator(expression)` and `screen(scope)` to mint core locators from a
+platform selector or a nested document, and `expectable(target, factory)` to
+attach an expectation surface so `expect(fixture)` works. This is how
+`@e2edev/playwright` builds `web` and `expect(web).toHaveURL()` without
+touching a core file.
 
 ## Scoping agent tools to a platform
 
-Agent tools are declared with `defineTool` on the agent, not on the engine. A
-project that mixes web and device targets scopes a tool pack with the
-`platforms` annotation; the agent offers a tool only on targets whose
-`platform` is listed, so a swipe tool never reaches a web target and a route
-tool never reaches a device.
+Agent tools are declared with `defineTool` on the agent, not on the engine.
+The `platforms` annotation scopes a tool pack, so a swipe tool never reaches
+a web target:
 
 ```ts
 const swipe = defineTool(swipeTool(client), {
@@ -228,7 +206,17 @@ const swipe = defineTool(swipeTool(client), {
 
 ## Verify it
 
-Run the runner against your engine with a real test file: the contract test
-`packages/e2e/tests/integration/engine-contract.test.ts` shows the guarantees
-the runner holds - lifecycle order, operation contexts, error mapping, capability
-gating - and is the reference for what your engine can rely on.
+Run the runner against your engine with a real test file. The contract test
+`packages/e2e/tests/integration/engine-contract.test.ts` shows the
+guarantees the runner holds, lifecycle order, operation contexts, error
+mapping, capability gating, and is the reference for what your engine can
+rely on.
+
+<CardGroup cols={2}>
+  <Card title="Engine contract" href="/reference/engine">
+    Every type and hook of `@e2edev/e2e/engine`.
+  </Card>
+  <Card title="agent-device reference" href="/reference/agent-device">
+    A complete device engine to read alongside.
+  </Card>
+</CardGroup>

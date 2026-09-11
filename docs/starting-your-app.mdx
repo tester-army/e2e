@@ -1,0 +1,189 @@
+---
+title: Starting your app
+description: Point the runner at a running app, or let it start the app and its dependencies.
+---
+
+The engine declares the app it drives. For a browser that is a URL and,
+optionally, the command that serves it. The runner starts the process, waits
+until the URL answers, and stops it when the run ends.
+
+## Point at a running app
+
+```ts title="e2e.config.ts"
+targets: [{
+  engine: playwright({ url: process.env.APP_URL ?? 'http://localhost:3000' }),
+}],
+```
+
+`app.open('/path')` and every relative navigation resolve against `url`. The
+runner reads no `APP_URL` of its own; the scaffolded config reads it so you
+can override the address per run. A missing scheme becomes `https://`, or
+`http://` for a loopback host.
+
+## Let the runner start it
+
+Add `command` and the runner spawns the dev server, waits until `url`
+answers, and stops it when the run ends, fails, or is interrupted:
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from '@e2edev/e2e';
+import { createAgent } from '@e2edev/e2e/agent';
+import { playwright } from '@e2edev/playwright';
+import { gateway } from 'ai';
+
+export default {
+  agents: {
+    default: createAgent({
+      model: gateway('openai/gpt-5.4-mini'),
+      system: 'You are a thorough QA agent. Verify every outcome.',
+    }),
+  },
+  targets: [{
+    engine: playwright({
+      url: process.env.APP_URL ?? 'http://localhost:3000',
+      command: {
+        executable: 'npm',
+        args: ['run', 'dev'],
+        reuseExisting: true,
+        log: '.e2e/logs/app.log',
+      },
+    }),
+  }],
+} satisfies E2EConfig;
+```
+
+```text
+ ✓ target "web" command ready 1.20s
+```
+
+Three options matter most:
+
+- **`reuseExisting: true`** attaches to a dev server you already have running
+  instead of failing with `APP_ALREADY_RUNNING`. CI ignores it, so a leftover
+  server on a shared runner is still an error there.
+- **`log`** keeps what the server printed. Without it the runner discards the
+  output, and a dev server that crashes on boot leaves nothing behind but
+  `APP_UNREACHABLE`. The file is unredacted; keep it in an ignored directory.
+- **`env`** passes what the app needs. The child inherits only `PATH`, `HOME`,
+  the temp-directory variables, and on Windows `SystemRoot` and `COMSPEC`.
+  Model keys and CI tokens never reach it.
+
+The command is never shell-interpreted: `executable` is resolved on `PATH`
+and `args` are passed verbatim. `startupTimeout` (default 60 s) bounds the
+wait for `url`; set `readyUrl` when the health endpoint is not the base URL.
+Every option is in the [config reference](/reference/config#command).
+
+## Start dependencies first
+
+A database, a migration, an auth emulator: declare them as `services`. They
+start in order before the app command, each ready before the next begins,
+and stop in reverse when the run ends.
+
+```ts title="e2e.config.ts"
+engine: playwright({
+  url: 'http://localhost:3000',
+  services: [
+    {
+      name: 'postgres',
+      executable: 'docker',
+      args: ['compose', 'up', '--wait', 'postgres'],
+      waitForExit: true,
+      teardown: { executable: 'docker', args: ['compose', 'down'] },
+    },
+    {
+      name: 'migrate',
+      executable: 'pnpm',
+      args: ['db:migrate'],
+      waitForExit: true,
+      log: '.e2e/logs/services.log',
+    },
+    {
+      name: 'auth-emulator',
+      executable: 'pnpm',
+      args: ['auth:emulator'],
+      readyUrl: 'http://127.0.0.1:7000/health',
+      log: '.e2e/logs/services.log',
+    },
+  ],
+  command: { executable: 'pnpm', args: ['dev'], log: '.e2e/logs/app.log' },
+}),
+```
+
+A service is ready when its `readyUrl` answers, or, with `waitForExit`, when
+the process exits 0. Each one takes the same `log`, `env`, and `cwd` options
+as `command`. The list reporter shows each service starting with a ticking
+clock and splits the startup time out of the run's duration.
+
+## Several targets
+
+Two browsers on one app are two targets that each name it:
+
+```ts title="e2e.config.ts"
+const app = { url: 'http://localhost:3000' };
+
+export default {
+  targets: [
+    { name: 'chromium', engine: playwright(app) },
+    { name: 'webkit-mobile', engine: playwright({ ...app, browser: 'webkit', viewport: { width: 390, height: 844 } }) },
+  ],
+} satisfies E2EConfig;
+```
+
+Targets that declare the same `command` share one process. Every test runs
+on every target unless it is scoped with `platforms` or `requires`;
+`--target <name>` selects at run time. A device target sits beside a browser
+target in the same list; see the [agent-device reference](/reference/agent-device).
+
+## Protected previews
+
+The app under test is often not public: a Vercel preview behind deployment
+protection, a tunnel with an interstitial page, a staging host behind HTTP
+basic authentication. The engine declares how to get through, and every path
+onto the page goes through with it.
+
+```ts title="e2e.config.ts"
+engine: playwright({
+  url: process.env.PREVIEW_URL ?? 'http://localhost:3000',
+  identity: 'storefront',
+  headers: {
+    'x-vercel-protection-bypass': process.env.VERCEL_AUTOMATION_BYPASS_SECRET ?? '',
+  },
+}),
+```
+
+`headers` go on every request the browser sends to an allowed origin and on
+no request to any other, so a bypass secret never reaches a CDN or an
+identity provider the page also talks to. The same option skips ngrok's
+interstitial with `'ngrok-skip-browser-warning': '1'`.
+
+A preview origin changes with every deploy. `identity` keeps cache and
+session entries keyed by what the app is, so they survive a redeploy.
+
+A host behind HTTP basic authentication takes `basicAuth`. The browser
+answers a `401` from an allowed origin with the credentials and a challenge
+from any other origin with nothing.
+
+```ts
+engine: playwright({
+  url: 'https://staging.example.com',
+  basicAuth: { username: 'preview', password: process.env.PREVIEW_PASSWORD ?? '' },
+}),
+```
+
+<Note>
+**What `headers` costs**
+
+Injecting headers routes every request through the runner, which turns the
+browser's HTTP cache off and blocks service workers for that target. A
+Playwright trace records request headers, so the trace of a protected preview
+carries the bypass secret. Share it as you would the secret.
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="Config reference" href="/reference/config#the-app-under-test">
+    `command`, `services`, and every app option.
+  </Card>
+  <Card title="Playwright reference" href="/reference/playwright">
+    Browser, viewport, `connect`, `headers`, `basicAuth`.
+  </Card>
+</CardGroup>

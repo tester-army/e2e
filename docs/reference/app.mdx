@@ -1,0 +1,55 @@
+---
+title: app
+description: The portable app lifecycle fixture, available on every platform.
+---
+
+`app` is the portable surface: every method exists on every platform. What
+each one does is the engine's to implement; the runner owns the timeouts and
+the origin policy.
+
+```ts
+export interface App {
+  open(path?: string): Promise<void>;
+  restart(): Promise<void>;
+  clearState(): Promise<void>;
+  back(): Promise<void>;
+  screenshot(label?: string): Promise<string>;
+}
+```
+
+No `App` method takes a `timeout` option. Each budget is additionally capped
+by the remaining test timeout.
+
+| Method | Timeout | Behavior | Throws |
+| --- | --- | --- | --- |
+| `open(path?)` | `config.timeout`, 120000 ms | Opens the base URL, or an absolute URL or path relative to it. | `APP_URL_REQUIRED` when the target's engine declares no `url`, `POLICY_DENIED` outside its `allowedOrigins`, `APP_UNREACHABLE`, `ACTION_FAILED` |
+| `restart()` | `config.timeout`, 120000 ms | Recreates the context and keeps persisted state, including a restored session. | `ACTION_FAILED`, `ENGINE_FAILURE`, `UNSUPPORTED_CAPABILITY` |
+| `clearState()` | `config.timeout`, 120000 ms | Clears cookies, storage, and other persisted state, then relaunches. Discards a restored session. | `ACTION_FAILED`, `ENGINE_FAILURE`, `UNSUPPORTED_CAPABILITY` |
+| `back()` | `config.actionTimeout`, 30000 ms | Navigates back once. | `APP_NOT_OPEN`, `ACTION_FAILED` |
+| `screenshot(label?)` | `config.actionTimeout`, 30000 ms | Captures evidence, registers it as an attempt artifact, and returns its path relative to the artifact root. `label` names the step and joins the file name. | `UNSUPPORTED_CAPABILITY`, `ENGINE_FAILURE` |
+
+```ts
+await app.open('/settings/billing');
+const shot = await app.screenshot('after-checkout');
+```
+
+<Warning>
+`clearState` inside a serial group destroys the shared state the group
+depends on. Use it in `beforeEach` of an ordinary group instead.
+</Warning>
+
+Once any `Secret` has been filled in an attempt, pixels are withheld from
+the model and from `agent.assert` evidence for the rest of it.
+`app.screenshot()` still writes its redacted file.
+
+Browser-only operations (routes, cookies, dialogs, frames, downloads) live on
+the `web` fixture the Playwright engine contributes; device operations live
+on `device`. See the [Playwright](/reference/playwright) and
+[agent-device](/reference/agent-device) references.
+
+<CardGroup cols={2}>
+  <Card title="screen and Locator" href="/reference/screen" />
+  <Card title="Playwright" href="/reference/playwright" />
+  <Card title="Config" href="/reference/config#the-app-under-test" />
+  <Card title="Errors" href="/reference/errors" />
+</CardGroup>

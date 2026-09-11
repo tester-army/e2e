@@ -1,10 +1,10 @@
 /**
- * Asserts that every code block the quickstart shows from `docs/examples/`
+ * Asserts that every code block a docs page shows from `docs/examples/`
  * matches the file it came from.
  *
  * The examples are typechecked against the built packages (`pnpm --filter
  * @e2edev/docs typecheck`); Mintlify cannot import a file into a page, so the
- * quickstart carries a copy of each and this script keeps the copies honest.
+ * page carries a copy of each and this script keeps the copies honest.
  *
  * Usage: `node scripts/check-docs-examples.ts`. Exits 1 listing every block
  * that drifted from its example.
@@ -15,13 +15,13 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const PAGE = 'docs/quickstart.mdx';
-const EXAMPLES = [
-  'docs/examples/quickstart/e2e.config.ts',
-  'docs/examples/quickstart/e2e.command.config.ts',
-  'docs/examples/quickstart/tests/example.e2e.ts',
-  'docs/examples/quickstart/tests/agent.e2e.ts',
-];
+/** Example file to the page that shows it verbatim. */
+const EXAMPLES: Record<string, string> = {
+  'docs/examples/quickstart/e2e.config.ts': 'docs/quickstart.mdx',
+  'docs/examples/quickstart/tests/example.e2e.ts': 'docs/quickstart.mdx',
+  'docs/examples/quickstart/tests/agent.e2e.ts': 'docs/quickstart.mdx',
+  'docs/examples/quickstart/e2e.command.config.ts': 'docs/starting-your-app.mdx',
+};
 
 function read(path: string): string {
   return readFileSync(join(ROOT, path), 'utf8');
@@ -39,15 +39,22 @@ function codeBlocks(text: string): string[] {
 }
 
 function main(): number {
-  const blocks = codeBlocks(read(PAGE));
-  const missing = EXAMPLES.filter((example) => !blocks.includes(read(example).trimEnd()));
+  const blocks = new Map<string, string[]>();
+  const missing = Object.entries(EXAMPLES).filter(([example, page]) => {
+    const pageBlocks = blocks.get(page) ?? codeBlocks(read(page));
+    blocks.set(page, pageBlocks);
+    return !pageBlocks.includes(read(example).trimEnd());
+  });
   if (missing.length > 0) {
     process.stderr.write(
-      `${missing.map((example) => `${PAGE}: no code block matches ${example}`).join('\n')}\n`,
+      `${missing.map(([example, page]) => `${page}: no code block matches ${example}`).join('\n')}\n`,
     );
     return 1;
   }
-  process.stdout.write(`docs examples: ${EXAMPLES.length} files shown verbatim in ${PAGE}\n`);
+  const pages = new Set(Object.values(EXAMPLES));
+  process.stdout.write(
+    `docs examples: ${Object.keys(EXAMPLES).length} files shown verbatim in ${[...pages].join(', ')}\n`,
+  );
   return 0;
 }
 

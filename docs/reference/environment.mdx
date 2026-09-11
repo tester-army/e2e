@@ -5,8 +5,8 @@ description: Every variable the runner and the first-party engines read, and wha
 
 The runner reads a closed set of variables. This page lists all of them, from
 an inventory of every `process.env` and `env[...]` read in `@e2edev/e2e`,
-`@e2edev/playwright`, and the reporter packages. A variable not listed here
-has no effect on a run.
+`@e2edev/playwright`, `@e2edev/agent-device`, and `@e2edev/github`. A
+variable not listed here has no effect on a run.
 
 Almost every read goes through an `env` object the runner is handed once, at
 config load. The exceptions are called out below.
@@ -27,7 +27,7 @@ from `@ai-sdk/openai` reads `OPENAI_API_KEY`, and so on. Those reads happen
 in your config module and the provider, on the first model call, not in the
 runner; a missing model is `MODEL_UNAVAILABLE` when `agent` is first acquired,
 and a missing key is the provider's own error on the first agent step. See
-[Models and credentials](/models).
+[Choosing a model](/models).
 
 The order is spelled out under [Resolution order](/reference/config#resolution-order).
 
@@ -52,8 +52,9 @@ ignored. These two are read as set-or-unset, so an empty string is a value.
 
 | Variable | Reading | Effect |
 | --- | --- | --- |
-| `NO_COLOR` | set | Plain CLI output. Colors are also off when stdout is not a TTY |
+| `NO_COLOR` | set | Plain CLI output. Colors are otherwise on for a TTY or in CI and off when piped |
 | `FORCE_COLOR` | set | Colored CLI output even when piped |
+| `NODE_OPTIONS` | value | Inspected for a TypeScript `--import` loader, which decides how the runner registers its own module hooks for `.ts` config and test files |
 
 `--debug` and `--ai-trace` are flags, not variables; see
 [CLI](/reference/cli#e2e-run).
@@ -100,6 +101,7 @@ What is sent and how to read it is on the [Telemetry](/telemetry) page.
 | Variable | Reading | Effect |
 | --- | --- | --- |
 | `PLAYWRIGHT_BROWSERS_PATH` | value | Playwright's browser cache. The engine's `prepare` hook checks for the browser in-process only when the run's environment agrees with the process's own; otherwise it defers to the `playwright install` CLI, which is a no-op when nothing is missing |
+| `E2E_AGENT_DEVICE_POOL_<TARGET>_<digest>` | value | Written by `@e2edev/agent-device` in `prepare` and read back by each worker: the booted devices discovered for the target, so each worker slot resumes the device booted for it. Not meant to be set by hand |
 
 ## What app processes inherit
 

@@ -15,7 +15,9 @@ export function isEngineHandle(value: unknown): value is EngineHandle;
 ```
 
 Validation fails with `INVALID_CONFIG`, never a silent demotion: a missing or
-empty `version`, a `spiVersion` other than `1`, an unknown top-level key,
+empty `version`, a `spiVersion` other than `1`, an unknown top-level key on
+an object literal (a class instance's own fields are its state and are not
+checked),
 `perform`, `locate`, or `swipe` without `observe`, a `state`, `artifacts`, or
 `app` manifest that is not an object, carries an unknown key, or has a
 non-function member (`state` needs both `capture` and `restore`; `artifacts`
@@ -213,7 +215,7 @@ The declaration is the engine's to make and the runner's to enforce: a
 browser engine passes its `url` and `command` options through, a device
 engine declares the bundle id it pins as `identity`. The runner resolves it
 once per target at config load (invalid values fail naming the target) and
-owns everything built on it - navigation and origin policy (`allowedOrigins`
+owns everything built on it: navigation and origin policy (`allowedOrigins`
 defaults to the URL's origin), cache and session identity (`identity`
 defaults to the URL's origin and path; a surface without a URL declares one
 or keys entries on the target alone), the report's target record, and the

@@ -3,10 +3,11 @@ title: E2EConfig
 description: Every configuration key, its default, its valid range, and the environment variables.
 ---
 
-`E2EConfig` is the type of the object `e2e.config.ts` default-exports. Write the
-object literal and end it with `satisfies E2EConfig`: the editor completes every
-key, unknown keys are flagged, and the export keeps its literal type. Every rule
-below is enforced when the runner resolves the config, not by the type.
+`E2EConfig` is the type of the object `e2e.config.ts` default-exports. Write
+the object literal and end it with `satisfies E2EConfig`: the editor
+completes every key, unknown keys are flagged, and the export keeps its
+literal type. Every rule below is enforced when the runner resolves the
+config, not by the type.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from '@e2edev/e2e';
@@ -22,133 +23,76 @@ export default {
 } satisfies E2EConfig;
 ```
 
-Unknown keys are rejected with `INVALID_CONFIG` at every level: top level,
-`agents`, `agents.<name>.model`, and `limits`. There is no top-level `app` key: the
-engine declares the app it drives (see [the app under test](#the-app-under-test)).
+Unknown keys are rejected with `INVALID_CONFIG` at every level. There is no
+top-level `app` key: the engine declares the app it drives (see
+[the app under test](#the-app-under-test)).
 
 ## Loading
 
 `--config <path>` selects an explicit file. Otherwise the runner searches the
 working directory and each parent for `e2e.config.ts` or `e2e.config.mts`,
 stopping at the repository root. Both names in one directory is
-`CONFIG_AMBIGUOUS`. The selected file's directory is the project root; with no
-config file, the working directory is.
-
-A config file is required. Targets that drive an app name an engine;
-HTTP tests and agents using their own tools can use a target without one.
-`npx --no-install e2e init` offers optional engine and AI setup.
+`CONFIG_AMBIGUOUS`. The selected file's directory is the project root.
 
 Config and test modules run as ESM. e2e loads the `.ts`, `.mts`, and `.tsx`
-files a project reaches by path (the config, the tests, their relative imports,
-and tsconfig `paths` aliases) as ES modules whatever the nearest `package.json`
-`type` says, so a CommonJS package keeps its module type. Packages imported by
-name keep the format their own manifest declares, and `.cts` files stay
-CommonJS. A config, test, or helper written with `require` or `module.exports`
-fails to load: use `import`. In a directory without a package manifest, `init`
-creates one with `"type": "module"`.
+files a project reaches by path as ES modules whatever the nearest
+`package.json` `type` says, so a CommonJS package keeps its module type.
+Packages imported by name keep the format their own manifest declares. A
+config or test written with `require` or `module.exports` fails to load.
 
 ## Top level
 
 | Key | Type | Default | Valid range |
 | --- | --- | --- | --- |
-| `specVersion` | `'0.1'` | `'0.1'` | the one value this runner implements; anything else is `INVALID_CONFIG` |
-| `projectId` | `string` | nearest `package.json` name, else a generated ID | 1-256 characters |
-| `targets` | `readonly Target[]` | required | non-empty; each engine declares [the app under test](#the-app-under-test) |
+| `specVersion` | `'0.1'` | `'0.1'` | the one value this runner implements |
+| `projectId` | `string` | the `name` of the project root's `package.json`, else `unportable-<sha256 of the project root, 32 hex>` | 1-256 characters |
+| `targets` | `readonly Target[]` | required | non-empty; see [targets](#targets) |
 | `tests` | `string \| readonly string[]` | `'tests/**/*.e2e.ts'` | non-empty, `/` separators, duplicates removed |
 | `timeout` | `number` | `120000` | positive safe integer |
 | `launchTimeout` | `number` | `60000` | positive safe integer |
-| `actionTimeout` | `number` | `30000` | positive safe integer; bounds every engine operation, including each observation and navigation inside an agent step. A targeted agent action (tap, type, press, select, scroll, secret fill) is bounded by the smaller of this and 15 s, so a control an overlay blocks reports what is in the way within seconds |
+| `actionTimeout` | `number` | `30000` | positive safe integer; bounds every engine operation, including each observation and navigation inside an agent step. A targeted agent action is bounded by the smaller of this and 15 s |
 | `assertionTimeout` | `number` | `5000` | positive safe integer |
 | `cleanupTimeout` | `number` | `30000` | positive safe integer |
 | `retries` | `number` | `1` in CI, else `0` | integer 0-10 |
 | `workers` | `number` | `1` in CI, else `max(1, floor(availableParallelism() / 2))` | integer 1-1024; a target never runs more than the `workers` its engine declares |
-| `artifacts` | kinds array or `{ kinds?, store?, video? }` | `['screenshot', 'trace']` | `screenshot`, `trace`, and the opt-in `video`; `store` is an [`ArtifactStore`](#artifacts); `video` holds the [recording options](#video) |
-| `reporters` | `readonly ('list' \| 'json' \| 'junit' \| Reporter)[]` | `['list']` | the three IDs and [reporter objects](/reference/reporters); `json` cannot be combined with `list`; `junit` also writes `.e2e/junit.xml`; `--reporter` replaces the IDs and keeps the objects |
-| `screen` | object | see [screen](#screen) | - |
-| `agents` | object of agents by name | see [agents](#agents) | `default` is the agent tests run with; `e2e run --agent <name>` runs them with another |
+| `artifacts` | kinds array or `{ kinds?, store?, video? }` | `['screenshot', 'trace']` | see [artifacts](#artifacts) |
+| `reporters` | `readonly ('list' \| 'json' \| 'junit' \| Reporter)[]` | `['list']` | the three IDs and [reporter objects](/reference/reporters); `json` cannot be combined with `list`; `--reporter` replaces the IDs and keeps the objects |
+| `screen` | object | see [screen](#screen) | |
+| `agents` | object of agents by name | see [agents](#agents) | `default` is the agent tests run with |
 | `cache` | string or object | `'read-write'` (`'read-only'` in CI when unset) | see [cache](#cache) |
-| `limits` | object | see [limits](#limits) | - |
+| `limits` | object | see [limits](#limits) | |
 | `credentials` | record | `{}` | see [credentials](#credentials) |
 
 Every numeric value must be a safe integer.
 
-`artifacts` accepts `screenshot`, `trace`, and `video`. The default set is
-screenshot and trace, captured best-effort: an engine without evidence capture
-records none. A configured kind the target's engine cannot produce fails
-before collection with `UNSUPPORTED_ARTIFACT`. `video` is never in the default
-set, so asking for it (in the config or with `--video`) is always that kind of
-contract.
-
-### artifacts
-
-The object form adds a **store**, the cloud seam for evidence the way
-`cache.store` is for traces:
+## targets
 
 ```ts
-artifacts: {
-  kinds: ['screenshot', 'trace', 'video'],
-  store: {
-    async put(artifact) {
-      // artifact.bytes, .sha256, .mediaType, .path, .runId, .testId, .attemptId, .stepId?, .startedAt?
-      const key = await bucket.upload(artifact.path, artifact.bytes);
-      return { ref: key };
-    },
-  },
-  video: { retain: 'on-failure' },
-},
+export interface Target {
+  name?: string;         // defaults to platform
+  platform?: Platform;   // defaults to the engine's
+  engine?: EngineHandle; // defineEngine(...) from '@e2edev/e2e/engine'
+}
 ```
-
-A host store receives every artifact the moment it is complete on disk — as
-produced, not after the run — and returns its own reference, which the report
-records as the artifact's `ref` beside the local path. A failed `put` never
-fails the run; the record simply carries no `ref`. Like every live value, a
-store never crosses a process boundary: each worker constructs its own when
-it loads the config module.
-Every run writes `.e2e/report.json` regardless of the selected reporters; the
-`junit` reporter adds `.e2e/junit.xml` beside it (see [CLI](/reference/cli#output)).
-A [reporter object](/reference/reporters) in `reporters` with an
-`onRunFinished` handler receives that report, with the artifact locations,
-once the run is over.
-
-### video
-
-With `video` among the kinds, or `e2e run --video`, every attempt records the
-surface it drives: a browser engine writes a WebM screencast of its page at the
-attempt's viewport size; a device engine records the device screen (MP4, with
-taps shown). The file lands
-under the attempt's artifact directory as `video/video.webm` (or `.mp4`) and is
-recorded in `report.json` as an artifact of kind `video` whose `startedAt` is
-when the recording started, so `step.startedAt - artifact.startedAt` is a
-step's offset into the video. The failure recap of the list reporter names the
-file under each failed test. A screencast belongs to one page, so an attempt
-that opened a new one mid-way (an `app.restart()`, a state reset) writes one
-segment per page: `video/video.webm`, then `video/video-part2.webm`, and so on.
 
 | Key | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `retain` | `'all' \| 'on-failure'` | `'all'` | `on-failure` deletes the recording of every attempt that passed once its verdict is known, so a CI run records everything and keeps only what needs watching |
+| `name` | `string` | `platform` | Stable ID used by `--target`, reports, sessions, and artifact paths; unique across targets. ASCII letters, digits, `_`, `-`, `.` |
+| `platform` | `Platform` | the engine's | The label `platforms: [...]` on a test filters against. Set it for a target without an engine; a value that disagrees with the engine's is `INVALID_CONFIG` |
+| `engine` | `EngineHandle` | none | [`playwright(...)`](/reference/playwright) for a browser, [`agentDevice(...)`](/reference/agent-device) for a device, any [`defineEngine`](/writing-an-engine) handle otherwise |
 
-Recording is opt-in because it costs an encoder per page and about a megabit
-per second of disk. With video on, the Playwright trace's screenshots are
-captured at the video's size instead of Playwright's 800-pixel default, so the
-trace grows too. Nothing about it enters the trace cache identity: turning
-video on or off never invalidates cached replays.
-
-A recording masks nothing. Secure fields render their own dots, but anything
-else the screen showed is in the frames, which is why a video artifact is
-recorded with `redaction: 'incomplete'` where screenshots and traces say
-`complete`. Treat recordings of authenticated flows as you would a screen
-share.
+`{ engine: playwright({ url }) }` is a complete target. Two targets on one
+platform name themselves. A target without an engine is agent-tools-only:
+the engine's declared capabilities grade what a target serves, and anything
+undeclared fails with `UNSUPPORTED_CAPABILITY`.
 
 ## The app under test
 
-The app is declared by the engine that drives it, never by a config key. The
-browser engine takes the declaration as options of `playwright(...)`; the
-device engine derives it from the app it pins
-(`agentDevice({ platform, app })`). The runner resolves each target's
-declaration at config load and owns what is built on it: navigation and
-origin policy, cache and session identity, the report's target record, and
-the app process.
+The app is declared by the engine that drives it. The browser engine takes
+the declaration as options of `playwright(...)`; the device engine derives it
+from the app it pins. The runner resolves it at config load and owns what is
+built on it: navigation and origin policy, cache and session identity, the
+report's target record, and the app process.
 
 ```ts
 export interface EngineAppDeclaration {
@@ -164,32 +108,13 @@ export interface EngineAppDeclaration {
 
 | Key | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `url` | `string` | unset | Required once a test calls `app.open()` or navigates relatively, else `APP_URL_REQUIRED` at that call. A missing scheme becomes `https://`, or `http://` for a loopback host. No userinfo, query, or fragment; HTTP only for loopback. |
-| `command` | `CommandConfig` | unset | Structured app process, never shell-interpreted. Targets declaring the same command share one process, probed at the first declaring target's `readyUrl`. |
-| `readyUrl` | `string` | the resolved `url` | Absolute http(s) readiness probe; a status of 200-499 counts as ready. A `command` with neither is `APP_URL_REQUIRED` at config load. |
-| `services` | `readonly ServiceConfig[]` | `[]` | Dependency processes started in order before any app command and torn down in reverse; see [services](#services) |
+| `url` | `string` | unset | Required once a test calls `app.open()` or navigates relatively, else `APP_URL_REQUIRED` at that call. A missing scheme becomes `https://`, or `http://` for a loopback host. No userinfo, query, or fragment; plain HTTP only for loopback |
+| `command` | `CommandConfig` | unset | The app process. Targets declaring the same command share one process |
+| `readyUrl` | `string` | the resolved `url` | Absolute http(s) readiness probe; a status of 200-499 counts as ready. A `command` with neither is `APP_URL_REQUIRED` at config load |
+| `services` | `readonly ServiceConfig[]` | `[]` | Dependency processes started in order before the app command and torn down in reverse |
 | `allowedOrigins` | `readonly string[]` | the origin of `url`, else none | Each entry must be a serialized origin |
-| `environment` | `'test' \| 'staging' \| 'production'` | `'test'` for loopback, `.localhost`, and `.test` hosts and without a URL, otherwise `'production'` | A label for the report and the cache/session identity digest; it never gates a run |
-| `identity` | `string` | the URL's origin and base path, else none | Stable logical app identity for cache/session keying. Set it when the origin is ephemeral (a per-PR preview URL) so entries survive redeploys, or on a surface without a URL; never share one identity across genuinely different apps. The environment always joins the derived identity. |
-
-A target without an engine, or whose engine declares nothing, resolves to the
-empty app: no URL, no allowed origins, environment `test`, no identity. Unknown
-declaration keys fail at `defineEngine`; invalid values fail at config load
-naming the target.
-
-```ts title="e2e.config.ts"
-export default {
-  targets: [
-    {
-      name: 'web',
-      engine: playwright({
-        url: 'http://127.0.0.1:3000',
-        command: { executable: 'pnpm', args: ['dev'], startupTimeout: 120_000 },
-      }),
-    },
-  ],
-} satisfies E2EConfig;
-```
+| `environment` | `'test' \| 'staging' \| 'production'` | `'test'` for loopback, `.localhost`, and `.test` hosts and without a URL, otherwise `'production'` | A label for the report and the cache/session identity; it never gates a run |
+| `identity` | `string` | the URL's origin and base path, else none | Stable logical app identity for cache and session keying. Set it when the origin is ephemeral (a per-PR preview URL) so entries survive redeploys; never share one across different apps |
 
 ### command
 
@@ -208,42 +133,19 @@ export interface CommandConfig {
 
 | Key | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `executable` | `string` | - | Required, non-empty, resolved with the process `PATH` |
+| `executable` | `string` | | Required, non-empty, resolved with the process `PATH`. Never shell-interpreted |
 | `args` | `readonly string[]` | `[]` | Passed verbatim |
 | `cwd` | `string` | project root | Resolved from the project root |
 | `env` | `Record<string, string>` | `{}` | Adds to the inherited set |
 | `startupTimeout` | `number` | `60000` | Ready-probe budget; expiry is `APP_UNREACHABLE` |
 | `shutdownTimeout` | `number` | `10000` | Grace period before force-kill |
-| `log` | `string` | unset (output discarded) | File that receives the process's stdout and stderr, appended; resolved from the project root and must stay inside it. Missing directories are created |
-| `reuseExisting` | `boolean` | `false` | If `readyUrl` already answers before the spawn, attach to that process: nothing is started or stopped. Without it, an already-answering URL is `APP_ALREADY_RUNNING`. Ignored in CI |
+| `log` | `string` | unset (output discarded) | File that receives stdout and stderr, appended; resolved from the project root and must stay inside it. The raw, unredacted output; keep it in an ignored directory |
+| `reuseExisting` | `boolean` | `false` | If `readyUrl` already answers before the spawn, attach to that process and leave it alone on teardown. Without it, an already-answering URL is `APP_ALREADY_RUNNING`. Ignored in CI, with a notice |
 
-Without `log` the runner discards everything the process prints, so a dev
-server that crashes on boot or a migration that fails leaves no trace beyond
-`APP_UNREACHABLE`. Point `log` at a file such as `.e2e/logs/app.log` to keep
-the output; it appends, so one file can collect several commands and several
-runs. Every `ServiceConfig` and every service `teardown` is a `CommandConfig`
-and accepts `log` too. The file is the raw, unredacted output of the process:
-whatever the app prints, including secrets from its own `env`, ends up there,
-so keep it in an ignored directory. `e2e init` adds `.e2e/logs/` to
-`.gitignore` for this purpose.
-
-The child inherits only `PATH`, `HOME`, `TMPDIR`, `TMP`, `TEMP`, `SystemRoot`,
-and `COMSPEC` when present, plus `command.env`. Model credentials,
+The child inherits only `PATH`, `HOME`, `TMPDIR`, `TMP`, `TEMP`,
+`SystemRoot`, and `COMSPEC`, plus `command.env`. Model credentials,
 `E2E_USER_*` values, and CI tokens are never inherited. The runner never
 terminates a process it did not start.
-
-The runner probes `readyUrl` once before spawning, within the `startupTimeout`
-budget. If something already answers, a process this run did not start is
-serving the URL, and HTTP readiness could never tell it apart from the new
-command later, so the runner decides up front. Without `reuseExisting` the
-launch fails with `APP_ALREADY_RUNNING` before anything is spawned, so tests
-never run against stale code by accident. `reuseExisting: true` is for local
-development, where the dev server is usually already up on that port: the
-runner reports `<label>: reusing the process already serving <url>` and leaves
-the process alone on teardown. When nothing answers, the command starts and is
-owned as usual either way. CI ignores the flag with a notice, so a leftover
-server on a shared runner is `APP_ALREADY_RUNNING` there and never silently
-tested.
 
 ### services
 
@@ -256,129 +158,70 @@ export interface ServiceConfig extends CommandConfig {
 }
 ```
 
-Real apps need dependencies before they can boot: a database container, a
-cache, an auth emulator, a migration step. `services` declares them as ordered
-processes so no wrapper launcher is needed. Each service is a `CommandConfig`
-with the same spawning, `cwd`, `log`, and environment rules as `command`,
-plus:
-
 | Key | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `name` | `string` | executable base name | Label used in errors, reporter output, and the report (`service "postgres" exited with code 1`). Set it when the executable is a wrapper such as `sh`. Non-empty, at most 64 characters, unique across named services |
-| `readyUrl` | `string` | unset | HTTP readiness probe, polled like the app's; a status of 200-499 counts as ready |
+| `name` | `string` | executable base name | Label in errors, reporter output, and the report. Non-empty, at most 64 characters, unique across named services |
+| `readyUrl` | `string` | unset | HTTP readiness probe, polled like the app's |
 | `waitForExit` | `boolean` | `false` | The process is the step: ready when it exits 0. A non-zero exit is `APP_UNREACHABLE` |
-| `teardown` | `CommandConfig` | unset | Run during teardown after the service is stopped, waited on until exit within its own `startupTimeout` |
+| `teardown` | `CommandConfig` | unset | Run during teardown after the service is stopped, waited on within its own `startupTimeout` |
 
-Exactly one of `readyUrl` or `waitForExit` is required per service, otherwise
-`INVALID_CONFIG`. `reuseExisting` works on a `readyUrl` service like on
-`command` (a reused service also skips its `teardown`); on a `waitForExit`
-service or a `teardown` command there is nothing to reuse and it is
-`INVALID_CONFIG`. Services start sequentially in declaration order before any
-app command, each ready before the next starts, and `startupTimeout` bounds
-every readiness wait. Each service is one setup step of the run: the list
-reporter shows the one starting with a ticking clock, prints its wait once it
-is ready, and splits the whole startup out of the summary's `Duration`; the
-programmatic runner streams the same as `setup` events. `services` works
-without `command` when the app is already running or is itself one of the
-services. Services declared
-identically by several targets start once; two targets that order shared
-services differently, or put one explicit `name` on two different services,
-are `INVALID_CONFIG`.
+Exactly one of `readyUrl` or `waitForExit` is required per service.
+`reuseExisting` works on a `readyUrl` service and skips its `teardown`; on a
+`waitForExit` service it is `INVALID_CONFIG`. Services start in declaration
+order before any app command, each ready before the next starts. Services
+declared identically by several targets start once; two targets that order
+shared services differently are `INVALID_CONFIG`.
 
-On every exit path (success, failure, interrupt) the runner stops every app
-command, then stops the started services in reverse order, then runs their
-`teardown` commands in reverse order. A `waitForExit` service that has
-already exited still gets its teardown. A failing teardown is recorded as a
-`cleanup`-phase run error and never skips the teardowns after it. Service and
-teardown `env` values enter the config digest as names only, like
-`command.env`.
+On every exit path the runner stops every app command, then the services in
+reverse order, then runs their `teardown` commands in reverse order. A
+failing teardown is recorded as a `cleanup` run error and never skips the
+teardowns after it. [Starting your app](/starting-your-app) shows a full
+example.
 
-```ts title="e2e.config.ts"
-export default {
-  targets: [
-    {
-      name: 'web',
-      engine: playwright({
-        url: 'http://localhost:3000',
-        services: [
-          {
-            name: 'postgres',
-            executable: 'docker',
-            args: ['compose', 'up', '--wait', 'postgres'],
-            waitForExit: true,
-            teardown: { executable: 'docker', args: ['compose', 'down'] },
-          },
-          {
-            name: 'migrate',
-            executable: 'pnpm',
-            args: ['db:migrate'],
-            waitForExit: true,
-            log: '.e2e/logs/services.log',
-          },
-          {
-            name: 'auth-emulator',
-            executable: 'pnpm',
-            args: ['auth:emulator'],
-            readyUrl: 'http://127.0.0.1:7000/health',
-            log: '.e2e/logs/services.log',
-          },
-        ],
-        command: { executable: 'pnpm', args: ['dev'], log: '.e2e/logs/app.log' },
-      }),
-    },
-  ],
-} satisfies E2EConfig;
-```
-
-## targets
-
-A target's `platform` comes from its engine (`web` for playwright, the device
-platform for agent-device), and its `name` defaults to the platform, so
-`{ engine: playwright({ url }) }` is a complete target. Set `platform` on a
-target without an engine, or whose engine declares none; two targets on one
-platform name themselves. Names are unique and limited to ASCII letters,
-digits, `_`, `-`, and `.`. An empty `targets` array is an error.
+## artifacts
 
 ```ts
-export interface Target {
-  name?: string;         // defaults to platform
-  platform?: Platform;   // defaults to the engine's
-  engine?: EngineHandle; // defineEngine(...) from '@e2edev/e2e/engine'
-}
+artifacts: {
+  kinds: ['screenshot', 'trace', 'video'],
+  store: {
+    async put(artifact) {
+      // artifact.bytes, .sha256, .mediaType, .path, .runId, .testId, .attemptId, .stepId?, .startedAt?
+      const key = await bucket.upload(artifact.path, artifact.bytes);
+      return { ref: key };
+    },
+  },
+  video: { retain: 'on-failure' },
+},
 ```
 
-Every target is served by an engine, and the runner knows only the engine
-contract: the engine's declared capabilities (observation, actions, location,
-state, artifacts, contributed fixtures) grade what the target serves, and
-anything undeclared fails loud with `UNSUPPORTED_CAPABILITY`. A target without
-an `engine` is agent-tools-only and runs everything opaque. The engine
-declares [the app under test](#the-app-under-test); a URL is needed only once
-a test calls `app.open()`. With an `executor` in the `agent`
-block, a custom brain composes with the model, budget, and context options
-instead of replacing them.
+`kinds` accepts `screenshot`, `trace`, and `video`. The default set is
+screenshot and trace, captured best-effort. A configured kind the target's
+engine cannot produce fails before collection with `UNSUPPORTED_ARTIFACT`.
+`video` is never in the default set; `--video` adds it for one run.
+
+`store` receives every artifact the moment it is complete on disk and returns
+its own reference, which the report records as the artifact's `ref` beside
+the local path. A failed `put` never fails the run. A store never crosses a
+process boundary: each worker constructs its own from the config module.
+
+### video
+
+With `video` among the kinds, or `--video`, every attempt records the surface
+it drives: a WebM screencast of the page on a browser engine, an MP4 of the
+device screen on a device engine. The file lands under the attempt's
+artifact directory as `video/video.webm` (or `.mp4`) with `startedAt` set to
+when recording began, so `step.startedAt - artifact.startedAt` is a step's
+offset into the video. An attempt that opened a new page mid-way writes one
+segment per page.
 
 | Key | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `name` | `string` | `platform` | Stable ID used by `--target`, reports, sessions, and artifact paths; unique across targets |
-| `platform` | `Platform` | the engine's | The label `platforms: [...]` on a test filters against. Set it for a target without an engine; a value that disagrees with the engine's is `INVALID_CONFIG` |
-| `engine` | `EngineHandle` | none | `playwright({ url?, command?, browser?, viewport?, connect?, headers?, basicAuth? })` from `@e2edev/playwright` for a browser (`connect` attaches to a remote browser over CDP; `headers` and `basicAuth` reach a [protected preview](/authentication#protected-previews)); `agentDevice({ platform, app?, appPath? })` from `@e2edev/agent-device` for an [iOS or Android device](/reference/device); any [`defineEngine`](/writing-an-engine) handle otherwise |
+| `retain` | `'all' \| 'on-failure'` | `'all'` | `on-failure` deletes the recording of every attempt that passed once its verdict is known |
 
-The app URL, browser choice, and viewport are options of the playwright
-engine, not of the runner. Two browsers on one app each name it:
-
-```ts
-const app = { url: 'http://localhost:3000' };
-targets: [
-  { name: 'chromium', engine: playwright(app) },
-  { name: 'webkit-mobile', engine: playwright({ ...app, browser: 'webkit', viewport: { width: 390, height: 844 } }) },
-],
-```
-
-An app behind a gate is declared the same way. `headers` adds request headers
-to every request bound for an allowed origin (a Vercel preview's protection
-bypass, ngrok's interstitial skip) and `basicAuth` answers a browser challenge
-from one; neither reaches any other origin. See
-[Protected previews](/authentication#protected-previews).
+Recording costs an encoder per page and about a megabit per second of disk.
+A recording masks nothing, so a video artifact is recorded with
+`redaction: 'incomplete'`. Turning video on or off never invalidates cached
+replays.
 
 ## screen
 
@@ -409,50 +252,42 @@ agents?: Record<string, StepExecutor | {
 ```
 
 Agents by name. `default` is the one tests run with, and it exists even when
-the config names none: the built-in agent, which then needs a model from `createAgent({ model })`.
-Other names are other brains for the same suite: a run re-points its default
-with `e2e run --agent <name>` (several names run every unpinned test once per
-agent), a test or describe block pins one with `{ agent: 'name' }` or several
-with `{ agent: ['buyer', 'admin'] }` to run once per agent, and any `agent.*`
-call can name one for that call. An
-unknown name fails by where it was written, always naming the configured ones:
-`--agent` is `INVALID_CONFIG` and a test or describe pin is `COLLECTION_ERROR`,
-both before anything starts; a call's `agent` is `INVALID_ARGUMENT`, before its
-step opens. Names are ASCII letters, numbers, `_`,
-`-`, or `.`.
+the config names none. Other names are other brains for the same suite:
+`e2e run --agent <name>` re-points the default, a test or describe block pins
+one with `{ agent: 'name' }` or several with `{ agent: ['buyer', 'admin'] }`,
+and any `agent.*` call can name one. An unknown name fails by where it was
+written: `--agent` is `INVALID_CONFIG`, a pin is `COLLECTION_ERROR`, a call's
+`agent` is `INVALID_ARGUMENT`. Names are ASCII letters, numbers, `_`, `-`,
+or `.`. See [Agents and personas](/agents).
 
 ```ts title="e2e.config.ts"
 export default {
   agents: {
-    default: { model: 'openai/gpt-5.6-luna-fast' },
-    ux: createAgent({ system: UX_REVIEW_PLAYBOOK, tools: { contrastCheck } }),
-    thorough: { model: 'anthropic/claude-opus-5', context: 'Verify every claim on screen.' },
+    default: { model: gateway('openai/gpt-5.4-mini') },
+    ux: createAgent({ model: gateway('openai/gpt-5.4-mini'), system: UX_REVIEW_PLAYBOOK, tools: { contrastCheck } }),
+    thorough: { model: gateway('anthropic/claude-opus-5'), context: 'Verify every claim on screen.' },
   },
 } satisfies E2EConfig;
 ```
 
 Each agent takes three shapes: an options object, an options object with an
-`executor`, or the executor itself (`default: createAgent({ model })`). The
-bare form is shorthand for `{ executor }`; every other key then takes its
-default. An unknown key is `INVALID_CONFIG` with the nearest valid name, and
-every diagnostic names the agent: `agents.ux.model`. The `agent` key of
-earlier releases is rejected with the replacement, `agents: { default: ... }`.
+`executor`, or the executor itself. The bare form is shorthand for
+`{ executor }`. Every diagnostic names the agent: `agents.ux.model`.
 
 | Key | Type | Default | Valid range | Notes |
 | --- | --- | --- | --- | --- |
-| `executor` | `StepExecutor` | the built-in AI SDK executor | `createAgent(...)` or any `{ name, runStep(context) }` | The brain `agent.act()` dispatches to. Anything else is `INVALID_CONFIG`. Like a model instance it never crosses a process boundary; workers rebuild it from the config module. See [Your own agent](/agents). |
-| `model` | `ModelInstance` | unset | an AI SDK model instance | No implicit default and no runner-side gateway: the config constructs the model with a provider package. Unset means acquiring `agent` fails with `MODEL_UNAVAILABLE`; a string is `INVALID_CONFIG` naming the constructor to write. Naming a model that differs from the one passed to `createAgent({ model })` is `INVALID_CONFIG`. |
-| `visionModel` | `ModelInstance` | the agent's `model` | an AI SDK model instance | Model used by calls with `vision`. |
+| `executor` | `StepExecutor` | the built-in agent | `createAgent(...)` or any `{ name, runStep(context) }` | The brain `agent.act()` dispatches to. Never crosses a process boundary; workers rebuild it from the config module. See [Custom executors](/executors) |
+| `model` | `ModelInstance` | unset | an AI SDK model instance | Unset means acquiring `agent` fails with `MODEL_UNAVAILABLE`; a string is `INVALID_CONFIG` naming the constructor to write. Naming a model that differs from `createAgent({ model })` is `INVALID_CONFIG` |
+| `visionModel` | `ModelInstance` | the agent's `model` | an AI SDK model instance | Model used by calls with `vision` |
 | `maxSteps` | `number` | `25` | integer 1-100 | Committed actions per agent call |
 | `maxModelCalls` | `number` | `25` | integer 1-100 | Model requests per agent call |
-| `maxObservationBytes` | `number` | `262144` | integer 1024-16777216 | Observation payload ceiling for `act` turns and judgment calls alike; the per-call token limit clamps it lower on a dense screen. Not a `limits` key. |
-| `context` | `string` | unset | at most `limits.maxAgentContextBytes` UTF-8 bytes | Trusted project context prepended to agent prompts. Exceeding the budget is `INVALID_CONFIG`. |
-| `vision` | `boolean \| 'fallback' \| 'only'` | `false` | - | Project-wide default for the per-call `vision` option. `'fallback'` behaves like `false` for `assert`, `waitFor`, and `extract`; `'only'` sends pixels instead of the tree. A per-call value wins. |
-| `providerOptions` | `Record<string, Record<string, unknown>>` | unset | object keyed by provider name | AI SDK provider options sent with every model call of both `act` and the judgments, e.g. `{ openai: { reasoningEffort: 'low' } }`. Values pass through unchecked; a non-object provider entry is `INVALID_CONFIG`. `createAgent({ providerOptions })` overrides it for `act`. |
+| `maxObservationBytes` | `number` | `262144` | integer 1024-16777216 | Observation payload ceiling for `act` turns and judgment calls alike |
+| `context` | `string` | unset | at most `limits.maxAgentContextBytes` UTF-8 bytes | Trusted project context prepended to agent prompts |
+| `vision` | `boolean \| 'fallback' \| 'only'` | `false` | | Project-wide default for the per-call `vision` option; see [Vision](/reference/agent#vision) |
+| `providerOptions` | `Record<string, Record<string, unknown>>` | unset | object keyed by provider name | AI SDK provider options sent with every model call, e.g. `{ openai: { reasoningEffort: 'low' } }`. `createAgent({ providerOptions })` overrides it for `act` |
 
 Judgments (`assert`, `waitFor`, `extract`) allow 8192 output tokens per call
-and set no temperature, so a reasoning model keeps its default sampling and
-has room to think before the answer.
+and set no temperature.
 
 ### model
 
@@ -466,28 +301,20 @@ export interface ModelInstance {
 
 The model is always an AI SDK model instance the config constructs. Detection
 is structural, so any provider package works without the runner depending on
-it, and the instance owns its transport and credentials: the runner has no
-gateway, endpoint, or key variable of its own.
+it, and the instance owns its transport and credentials.
 
 | Gateway | Constructor | Package | Reads |
 | --- | --- | --- | --- |
 | [Vercel AI Gateway](https://vercel.com/docs/ai-gateway) | `gateway('openai/gpt-5.4-mini')` | `ai` | `AI_GATEWAY_API_KEY` |
 | [OpenRouter](https://openrouter.ai/models) | `openrouter('openai/gpt-5.4-mini')` | `@openrouter/ai-sdk-provider` | `OPENROUTER_API_KEY` |
-| Any OpenAI-compatible endpoint (Ollama, vLLM, LiteLLM, a vendor's own API) | `createOpenAICompatible({ name, baseURL, apiKey? }).chatModel('llama3.2')` | `@ai-sdk/openai-compatible` | `apiKey`, when the endpoint needs one |
+| Any OpenAI-compatible endpoint | `createOpenAICompatible({ name, baseURL, apiKey? }).chatModel('llama3.2')` | `@ai-sdk/openai-compatible` | `apiKey`, when the endpoint needs one |
 | A provider directly | `openai('gpt-5.4-mini')`, `anthropic(...)`, ... | `@ai-sdk/openai`, `@ai-sdk/anthropic`, ... | the provider's own variable |
 
-`e2e init` asks which gateway agent steps use and writes the import and the
-constructor into the config. A string in a model slot is `INVALID_CONFIG`
-naming the constructor to write instead, so no gateway is ever implied.
-
 Reports record the instance's `provider` and `modelId` as the step's
-`provider` and `model` (`gateway` and `openai/gpt-5.4-mini` for the Vercel
-AI Gateway) and `provider-default` as the endpoint. A run's `run-started`
-event carries `provider/model-id`.
-
-Each worker re-resolves the config module and constructs its own model instance,
-so an instance never crosses a process boundary. A config whose digest differs
-between the runner and a worker fails with `CONFIG_NOT_DETERMINISTIC`.
+`provider` and `model`. Each worker re-resolves the config module and
+constructs its own instance. A config whose digest differs between the runner
+and a worker fails with `CONFIG_NOT_DETERMINISTIC`. See
+[Choosing a model](/models).
 
 ## credentials
 
@@ -509,12 +336,13 @@ type SecretProvider = () => string | Promise<string>;
 | Key | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `username` | `string` | yes | Default username |
-| `password` | `string \| SecretProvider` | yes | A static value, or a provider called on every authorized fill — a vault lookup, a freshly computed TOTP. Recorded in the config digest by name only; a resolved value joins redaction the moment it exists and never reaches a model. An `E2E_USER_*` env override wins over a provider. |
-| `allowedOrigins` | `readonly string[]` | no | Narrows this credential relative to the target's allowed origins (the engine's `allowedOrigins` declaration). It can only narrow. |
+| `password` | `string \| SecretProvider` | yes | A static value, or a provider called on every authorized fill (a vault lookup, a freshly computed TOTP). Recorded in the config digest by name only. An `E2E_USER_*` override wins over a provider |
+| `allowedOrigins` | `readonly string[]` | no | Narrows this credential relative to the target's allowed origins. It can only narrow |
 
-`credentials.user(name)` resolves a configured entry into a `Credential`. The
-username is a plain string; the password is an opaque `Secret` that test code
-cannot read, accepted only by `locator.fill` and `agent.act` params.
+`credentials.user(name)` resolves a configured entry into a `Credential`.
+The username is a plain string; the password is an opaque `Secret` that test
+code cannot read, accepted only by `locator.fill` and `agent.act` params. An
+unconfigured name throws `AUTH_CREDENTIAL_UNAVAILABLE`.
 
 ```ts
 export interface Secret {
@@ -531,111 +359,32 @@ export interface Credential {
 }
 ```
 
-An unconfigured name, or a call outside an active runner, throws
-`AUTH_CREDENTIAL_UNAVAILABLE` with exit code 2.
-
-```ts title="e2e.config.ts"
-export default {
-  targets: [{ name: 'web', engine: playwright({ url: 'http://localhost:3000' }) }],
-  credentials: {
-    member: { username: 'member@example.test', password: 'local-dev-only' },
-    admin: {
-      username: 'admin@example.test',
-      password: 'local-dev-only',
-      allowedOrigins: ['http://localhost:3000'],
-    },
-  },
-} satisfies E2EConfig;
-```
+See [Signing in](/authentication).
 
 ## cache
 
-The adaptive trace cache: each passing `agent.act()` step records the grammar
-actions it performed, and the next run replays them zero-turn — diverging to
-the live agent mid-step whenever the app no longer matches the recording.
-Judgments (`assert`, `waitFor`, `extract`) are never cached.
-A step that records no actions creates no entry and skips the cache's
-end-state observation.
-
-The cache is **on by default** (`read-write`; an unset mode becomes `read-only` in CI).
-Opt out per project with `cache: 'off'`, or per run with `e2e run --no-cache`
-— the quickest way to check whether a failure is cache-related.
+The trace cache records each passing `agent.act()` step and replays it on the
+next run. [Caching agent steps](/cache) explains when a step is recorded and
+when a replay hands off.
 
 | Key | Type | Default | Description |
 | --- | --- | ---: | --- |
-| `mode` | `'off' \| 'read-only' \| 'read-write'` | `'read-write'` | A bare string is shorthand for `{ mode }`. In CI an unset mode is demoted to `read-only` because a committed cache is untrusted input; set `'read-write'` explicitly when CI restores the cache from its own cache service instead of git. `--no-cache` wins over both. |
-| `store` | `TraceCacheStore` | file store | Custom entry store (for example a shared remote cache). Exempt from the CI demotion — it is not a committed file cache, and states its own trust through `writable`. Never crosses a process boundary; workers re-resolve the config module. |
-| `dir` | `string` | `.e2e/cache` | File store directory, resolved against the project root. |
-
-A replay never passes on mechanics alone. Each entry records the state the
-step passed in — the page path and the **end anchors**, the elements that
-appeared between the step's first look at the screen and its last — and a
-replay self-finalizes only when that state is on screen again. If every
-recorded action ran but the effect is missing (a save that never committed,
-a record created under the wrong name), the step hands off to the live agent
-with an `end-mismatch` notice, which tells it to check whether the step took
-effect before doing anything. If the agent then has to act to finish the step,
-the entry is evicted and the next passing run records a clean flow, so a
-broken recording never accumulates its own repairs.
-
-Anchors skip text that cannot read the same on the next run, such as a minted
-key prefix, a countdown, a date, or a clock time, as long as something stable
-appeared; a step whose only visible effect is volatile keeps those anchors and
-hands off every time rather than passing on mechanics alone. A target whose
-recorded fields match several controls on the recording screen (one unlabeled
-"Set up" button per card) is recorded with its `position` among them, and a
-replay honors that position only when the live screen shows exactly as many.
-A distinct accessible name (`aria-label="Set up Coolify"`) makes the position
-unnecessary and is the better fix. A step that ends on another page records
-that page's first stable anchors too, and its end path is matched up to the
-ids the app mints per record (a uuid, a hex or digit run, a long short id), so
-a flow that creates a project and lands on it replays even though the next
-project has a new id.
-
-An entry is written only once a **verification step** after it passes: an
-`expect(...)` assertion, a locator `waitFor`, or an `agent.assert` /
-`agent.waitFor` judgment. A later `agent.act` passing does not count, and
-neither does the test passing on its own — a trailing act nothing ever checks
-is never replayed blind, so pair every `agent.act()` with an assertion of its
-outcome to make it cacheable. A failed run writes nothing the failure could
-have implicated and evicts the entries it did; the flow re-records on the
-next passing run.
-
-Cache-friendly tests also create their own data under names unique to the
-run and clean up in `afterEach`, not in their last steps: a replay that finds
-two rows with the recorded name hands off rather than guessing, and a run
-that fails before its cleanup should not leave duplicates for the next one
-to trip over.
-
-Entries are disposable: deleting `.e2e/cache/` slows the next run and changes
-nothing else. Every agent step's report records how the cache participated
-(`step.cache`: `self-finalized`, `agent-concluded`, or `missed`, with a
-reason; a retry attempt records but never replays, so its steps read `missed`
-with the reason `retry`).
+| `mode` | `'off' \| 'read-only' \| 'read-write'` | `'read-write'` | A bare string is shorthand for `{ mode }`. In CI an unset mode becomes `read-only`; set `'read-write'` explicitly when CI restores the cache from its own cache service. `--no-cache` wins over both |
+| `store` | `TraceCacheStore` | file store | Custom entry store, for example a shared remote cache. Exempt from the CI demotion; states its own trust through `writable`. Never crosses a process boundary |
+| `dir` | `string` | `.e2e/cache` | File store directory, resolved against the project root |
 
 ### Commit your traces
 
-Committing cache entries is opt-in. `e2e init` adds `.e2e/cache/` to
-`.gitignore`, so out of the box every machine records its own entries and CI
-starts with none: an unset mode is `read-only` there, and with nothing to read
-every `agent.act()` runs live.
-
-To share replays, remove the `.e2e/cache/` line from `.gitignore` and commit
-the directory. Entries a passing local run wrote then replay in CI and on every
-teammate's machine. CI stays `read-only` unless you set `cache: 'read-write'`
-explicitly, which is the right call only when CI restores the directory from
-its own cache service rather than from git.
-
-Treat committed entries as test data: review them in the same pull request as
-the test change that re-recorded them, and delete the directory when a flow
-changes so much that the next passing run should record it from scratch.
+`e2e init` adds `.e2e/cache/` to `.gitignore`, so committing entries is
+opt-in. Remove that line to share replays with CI and teammates; CI stays
+`read-only` unless `cache: 'read-write'` is set. See
+[Caching agent steps](/cache#commit-your-traces).
 
 ## limits
 
-Resolved limits are immutable for a run. Per-call options may only lower them.
-
-Every limit is enforced: a key exists here exactly when the runner has an
-enforcement site for it, so a configured limit is never a silent no-op.
+Resolved limits are immutable for a run. Per-call options may only lower
+them. A key exists here exactly when the runner has an enforcement site for
+it.
 
 | Key | Type | Default | Range | Description |
 | --- | --- | ---: | --- | --- |
@@ -646,10 +395,9 @@ enforcement site for it, so a configured limit is never a silent no-op.
 
 ## Environment variables
 
-The runner reads a closed set, listed with every other variable it consults on
-the [Environment variables](/reference/environment) page. Diagnostics are
-`e2e run --debug` and `e2e run --ai-trace`. The ones that change what a config
-resolves to:
+The runner reads a closed set, listed on the
+[Environment variables](/reference/environment) page. The ones that change
+what a config resolves to:
 
 | Variable | Effect |
 | --- | --- |
@@ -657,42 +405,39 @@ resolves to:
 | `E2E_USER_<NAME>_PASSWORD` | Overrides `credentials.<name>.password` |
 | `CI` | Switches CI defaults and rejects focused tests |
 
+`<NAME>` is the credential name uppercased with every character outside
+`A-Z0-9` replaced by `_`, so `power-user` becomes `E2E_USER_POWER_USER_USERNAME`.
+A pair for a name absent from `credentials` is ignored.
+
 ### Resolution order
 
 | Setting | Order |
 | --- | --- |
-| Base URL | the engine's declared `url`, else `APP_URL_REQUIRED` at the first navigation. The runner reads no `APP_URL`; the scaffolded config reads it itself (`url: process.env.APP_URL ?? ...`) |
-| Model | the model passed to `createAgent({ model })`, then `agent.model`, then `MODEL_UNAVAILABLE` at `agent` acquisition. One model serves `act` and the judgment calls. The runner reads no model variable |
+| Base URL | the engine's declared `url`, else `APP_URL_REQUIRED` at the first navigation. The runner reads no `APP_URL`; the scaffolded config reads it itself |
+| Model | the model passed to `createAgent({ model })`, then `agents.<name>.model`, then `MODEL_UNAVAILABLE` at `agent` acquisition |
 | Vision model | the agent's `visionModel`, then its `model` |
-| Model credential | the provider package's own (`AI_GATEWAY_API_KEY` for `gateway()` from `ai`, `OPENROUTER_API_KEY` for `openrouter()`) or the key passed at construction; read by the provider on the first model call, never by the runner |
+| Model credential | the provider package's own variable or the key passed at construction, read by the provider on the first model call |
 | Credential username and password | the `E2E_USER_*` variable, then the config value |
 
-"First non-empty" ignores values that are undefined or whitespace only. A
-missing model is not a config error; it surfaces as `MODEL_UNAVAILABLE` when
-the `agent` fixture is first acquired. That check runs
-once per run and stops it (exit 2), so a suite without a model reports one
-run-level error rather than one blocked step per test. A custom executor with no
-model skips the check.
-
-An `E2E_USER_*` pair for a name that is not in the `credentials` block is
-ignored. The variable name is the credential name uppercased with every character
-outside `A-Z0-9` replaced by `_`, so `power-user` becomes
-`E2E_USER_POWER_USER_USERNAME` and `E2E_USER_POWER_USER_PASSWORD`.
+A missing model is checked once per run, when the `agent` fixture is first
+acquired, and stops the run with exit 2. A custom executor with no model
+skips the check.
 
 ### CI
 
-CI mode is on unless `CI` is unset, empty, whitespace only, `0`, or `false`. The
-value is trimmed and lowercased first, so `FALSE` is also falsy. Every other
-value, including `no` and `off`, turns CI mode on.
+CI mode is on unless `CI` is unset, empty, whitespace only, `0`, or `false`
+(trimmed and lowercased first). Every other value turns it on.
 
 | Setting | Local | CI |
 | --- | --- | --- |
 | `retries` | `0` | `1` |
 | `workers` | `max(1, floor(availableParallelism() / 2))` | `1` |
+| `cache` | `read-write` | `read-only` when unset |
 | `test.only` | allowed | `ONLY_IN_CI`, exit code 2 |
+| `command.reuseExisting` | honored | ignored, with a notice |
 
 <CardGroup cols={2}>
-  <Card title="Quickstart" href="/quickstart" />
+  <Card title="Starting your app" href="/starting-your-app" />
   <Card title="Continuous integration" href="/ci" />
   <Card title="CLI" href="/reference/cli" />
   <Card title="Errors" href="/reference/errors" />

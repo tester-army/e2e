@@ -3,9 +3,10 @@ title: agent
 description: Planned flows, judgments, extraction, and their budgets.
 ---
 
-Every `agent` call is one bounded invocation: a fresh observation, an explicit
-deadline, a model-call budget, and no shared transcript between calls. Acquiring
-the fixture without a configured model fails with `MODEL_UNAVAILABLE`.
+Every `agent` call is one bounded invocation: a fresh observation, an
+explicit deadline, a model-call budget, and no shared transcript between
+calls. Acquiring the fixture without a configured model fails with
+`MODEL_UNAVAILABLE`.
 
 ```ts
 export interface Agent {
@@ -21,16 +22,26 @@ export interface Agent {
 
 ## Budgets
 
-Model calls count every model request including repair rounds. Action steps count
-committed engine actions. Every timeout is additionally capped by the remaining
-test timeout.
+Model calls count every model request including repair rounds. Action steps
+count committed engine actions. Every timeout is additionally capped by the
+remaining test timeout.
 
 | Method | Model calls | Action steps | Default timeout |
 | --- | ---: | ---: | --- |
-| `act` | `config.agent.maxModelCalls`, 25 | `config.agent.maxSteps`, 25 | `config.timeout`, 120000 ms |
-| `waitFor` | `config.agent.maxModelCalls`, 25 | 0 | 30000 ms |
-| `extract` | 2 | 0 | 30000 ms |
-| `assert` | 2 | 0 | 30000 ms |
+| `act` | `agents.<name>.maxModelCalls`, 25 | `agents.<name>.maxSteps`, 25 | `config.timeout`, 120000 ms |
+| `waitFor` | `agents.<name>.maxModelCalls`, 25 | 0 | the judgment budget |
+| `extract` | 2 | 0 | the judgment budget |
+| `assert` | 2 | 0 | the judgment budget |
+
+The judgment budget is `max(30000, config.actionTimeout)` milliseconds.
+Per-call budgets must be positive integers and can only lower the configured
+limits. Every duration option is milliseconds.
+
+The `assert` row holds for the built-in agent. When the selected agent has a
+custom `executor`, `assert` is dispatched to it as a step: its budget is the
+agent's `maxSteps` and `maxModelCalls`, its default timeout is
+`config.timeout`, and `vision` or `screenshot` on the call is
+`UNSUPPORTED_CAPABILITY`.
 
 ## agent.act
 
@@ -38,29 +49,25 @@ test timeout.
 act(instruction: string, options?: ActOptions): Promise<ActResult>;
 ```
 
-Plans and executes one bounded multi-action flow. The harness owns the step
-(observations, actions, budgets, origin policy, recording) and hands only the
-thinking to the configured step executor. The call ends in an explicit verdict:
-a passing one resolves with an `ActResult`, what the step did; a failing or
-blocked one throws an `AgentError` whose `code` and `blocked` flag say why.
+Plans and executes one bounded multi-action flow. A passing verdict resolves
+with an `ActResult`; a failing or blocked one throws an `AgentError` whose
+`code` and `blocked` flag say why.
 
 | Name | Type | Default | Valid |
 | --- | --- | --- | --- |
-| `instruction` | `string` | - | 1 through 8192 UTF-8 bytes after NFC |
+| `instruction` | `string` | | 1 through 8192 UTF-8 bytes after NFC |
 | `options.params` | `AgentParams` | `undefined` | JSON-safe values plus `Secret`, at most 64 KiB and 32 levels deep |
 | `options.timeout` | `number` | `config.timeout` | positive safe integer |
-| `options.maxSteps` | `number` | `config.agent.maxSteps` | positive integer, at most the resolved limit |
-| `options.maxModelCalls` | `number` | `config.agent.maxModelCalls` | positive integer, at most the resolved limit |
+| `options.maxSteps` | `number` | the agent's `maxSteps` | positive integer, at most the resolved limit |
+| `options.maxModelCalls` | `number` | the agent's `maxModelCalls` | positive integer, at most the resolved limit |
 | `options.agent` | `string` | the test's agent | a name in `agents`; unknown is `INVALID_ARGUMENT` before the step opens |
 
 Values come from your code through `options.params`, never from the model. A
-`Secret` in `params` is projected before the model sees anything: the model receives the
-secret's name and purpose, and the harness fills the value host-side, subject
-to the same authorization as `locator.fill`: the credential must be
-registered, the current origin must be allowed by both the target's allowed
-origins (the engine's `allowedOrigins` declaration) and the credential's own
-`allowedOrigins`, the field must be an enabled secure
-input whose purpose equals the secret's purpose.
+`Secret` in `params` is projected before the model sees anything: the model
+receives the secret's name and purpose, and the harness fills the value
+host-side under the same authorization as `locator.fill`: the credential must
+be registered, the current origin allowed by both the target and the
+credential, and the field an enabled secure input whose purpose matches.
 
 ```ts
 await agent.act('invite {email} as an editor', { params: { email: 'ada@example.test' } });
@@ -71,135 +78,20 @@ const { summary, cache } = await agent.act('Sign in', {
 });
 ```
 
-The result carries the step's `summary` (the executor's verdict, or the
-replay's account when the cache finished the step), the `modelCalls` and
-`actions` the step spent, and `cache`: how the trace cache took part
-(`self-finalized` when a recorded flow replayed the whole step with no model
-call, `agent-concluded` when a replay handed off mid-step, `missed` otherwise,
-with a `reason` such as `no-entry` or `retry`; absent when caching is off).
-A retry attempt records but never replays, so its steps report `missed` with
-the reason `retry`.
+The result carries the step's `summary`, the `modelCalls` and `actions` it
+spent, and `cache`: how the [trace cache](/cache) took part
+(`self-finalized`, `agent-concluded`, or `missed` with a `reason`; absent when
+caching is off).
 
 Throws `ACTION_FAILED` for a failed verdict with no more specific code; a
-blocked code such as `AUTH_CREDENTIAL_UNAVAILABLE`, `ENVIRONMENT_UNAVAILABLE`,
-`SEED_DATA_MISSING`, `TEST_SETUP_FAILED`, or `AUTOMATION_UNSUPPORTED` when the
+blocked code (`AUTH_CREDENTIAL_UNAVAILABLE`, `ENVIRONMENT_UNAVAILABLE`,
+`SEED_DATA_MISSING`, `TEST_SETUP_FAILED`, `AUTOMATION_UNSUPPORTED`) when the
 step could not reach a product verdict; `STEP_BUDGET_EXHAUSTED` and
-`STEP_TIMEOUT` when a budget or the deadline ran out; and `INVALID_ARGUMENT`
-for a malformed instruction, oversized `params`, or an option `act` does not
-take, which is what a call in the pre-0.8 shape, `act(instruction, params)`,
-now fails with.
+`STEP_TIMEOUT` when a budget or the deadline ran out; `INVALID_ARGUMENT` for
+a malformed instruction, oversized `params`, or an unknown option; and
+`UNSUPPORTED_CAPABILITY` for `schema` or `vision`, which `act` does not take.
 
-## Vision
-
-`assert`, `waitFor`, and `extract` accept `vision`. It controls what evidence
-the model is shown: the semantic tree, a masked screenshot of the current
-observation, or both. Sending pixels needs a model that accepts images.
-
-```ts
-await agent.assert('the chart trends upward', { vision: true });
-await agent.assert('the search form is visible and not covered', { vision: 'only' });
-```
-
-| Name | Type | Default |
-| --- | --- | --- |
-| `options.vision` | `boolean \| 'fallback' \| 'only'` | `config.agent.vision`, `false` |
-
-| Mode | What the model sees | Cost |
-| --- | --- | --- |
-| `false` | the tree | no image tokens |
-| `true` | the tree and a screenshot, every call | image tokens on every call |
-| `'fallback'` | the tree; behaves like `false` for `assert`, `waitFor`, and `extract` | no image tokens |
-| `'only'` | the screenshot, and not the tree | image tokens, minus the observation bytes |
-
-Set `agent.vision` in config to make a mode the project default; a per-call value
-always wins. Images are billed as input tokens, so `true` costs more than the
-same call without it on every call.
-
-<Warning>
-**'fallback' behaves like false**
-
-`'fallback'` exists for calls that can discover mid-flight that the tree was
-not enough. A judgment never does: `assert`, `waitFor`, and `extract` always
-produce an answer from the tree, so there is no miss to escalate on;
-escalating on a `false` judgment would just bias it toward `true`. Under
-`'fallback'` they run tree-only, exactly like `false`. Use `vision: true` or
-`'only'` when you need pixels judged.
-</Warning>
-
-### Judging pixels and nothing else
-
-`vision: true` sends the tree *and* the screenshot, and that is a problem for a
-visual assertion: the tree is a cheaper path to an answer, and the model will take
-it.
-
-```ts
-// Passes on the tree alone (the form is present, enabled, and named) while a
-// consent sheet covers it on screen.
-await agent.assert('the search form is visible and not covered', { vision: true });
-
-// Judged on the screenshot. There is no tree in the request to answer from.
-await agent.assert('the search form is visible and not covered', { vision: 'only' });
-```
-
-Same for a price rendered at `opacity: 0`, a button under a cookie banner, or a
-broken layout, all of which the tree happily reports as fine. Use `'only'` when
-the question is about what the page *presents*; use `true` when the tree is part
-of the answer (`'the submit button is disabled'` is in the tree and often not
-visible at all).
-
-`'only'` is cheaper than `true`, not more expensive: you drop the observation
-bytes. The runner still captures the observation and reports against it; it
-just isn't sent. The step records `visionOnly: true` and zero
-`observationBytes`.
-
-<Warning>
-**Pixels are viewport-scoped, the tree is document-scoped**
-
-The screenshot is the viewport, never the full page. So a condition the tree
-satisfies can be false on screen, and that is usually the point. But it also
-means `'only'` cannot see below the fold.
-
-```ts
-// Tree: passes. The DOM holds prices for all 6701 matched offers.
-// 'only':  fails. The first card is cut off just above its price.
-await agent.waitFor('a list of offers with hotel names and prices is visible', { vision: 'only' });
-```
-
-Write `'only'` conditions about what is on screen, and let the flow scroll first
-when you want to ask about something further down.
-</Warning>
-
-One consequence worth knowing: **no pixels means no answer.** If the viewport is
-pixel-tainted by a secret fill, or masking cannot be proven complete, `'only'`
-fails with `POLICY_DENIED`. Every other mode degrades to the tree; `'only'` will
-not answer a question about pixels from the tree instead.
-
-Calls that send pixels use the agent's `visionModel` when it is set, and its `model`
-otherwise, and keep it for the rest of the invocation, including polling rounds
-whose pixels were withheld, so a polling method never switches models between
-rounds.
-
-<Note>
-**Additive, never pixels-only**
-
-In every mode but `'only'`, the tree is always sent. It is byte-budgeted and
-cheap, and its node references are what keep a step auditable.
-</Note>
-
-Pixel evidence degrades instead of failing the call. It is withheld, and the tree
-sent alone, when the viewport is pixel-tainted by a secret fill
-(`visionDegraded: "PIXEL_TAINTED"` on the step), when the engine masked fewer
-regions than the secure fields it observed (`MASKING_UNPROVEN`), or when the
-engine cannot capture pixels (`UNSUPPORTED_CAPABILITY`). A step that did send
-pixels to the model records `visionInput: true` and `metrics.pixelBytes`.
-
-`options.vision` and `assert`'s `options.screenshot` are unrelated: `screenshot`
-controls failure evidence attached to the report after the judgment, `vision`
-controls what the model is shown before it.
-
-## Judgments and extraction
-
-### agent.assert
+## agent.assert
 
 ```ts
 assert(assertion: string, options?: AssertOptions): Promise<void>;
@@ -209,47 +101,49 @@ One fresh observation, exactly one judgment. It does not poll.
 
 | Name | Type | Default |
 | --- | --- | --- |
-| `assertion` | `string` | - |
-| `options.timeout` | `number` | `30000` |
+| `assertion` | `string` | |
+| `options.timeout` | `number` | `max(30000, config.actionTimeout)` |
 | `options.screenshot` | `boolean` | `true` |
-| `options.vision` | `VisionMode` | `config.agent.vision`, `false` |
+| `options.vision` | `VisionMode` | the agent's `vision`, `false` |
 | `options.agent` | `string` | the test's agent |
 
-Throws `ASSERTION_FAILED` on a false judgment, carrying the explanation and, when
-permitted, a screenshot path. Evidence is skipped with `screenshot: false` and
-once any secret has been filled in the attempt.
+Throws `ASSERTION_FAILED` on a false judgment, carrying the explanation and,
+when permitted, a screenshot path. Evidence is skipped with
+`screenshot: false` and once any secret has been filled in the attempt.
+`screenshot` controls failure evidence attached after the judgment; `vision`
+controls what the model is shown before it.
 
 ```ts
 await agent.assert('the dashboard shows a trial badge');
 ```
 
-### agent.waitFor
+## agent.waitFor
 
 ```ts
 waitFor(condition: string, options?: WaitForOptions): Promise<void>;
 ```
 
-One observation and one judgment per interval. Succeeds on the first true
-judgment.
+One observation per interval, and a judgment when the screen changed.
+Succeeds on the first true judgment.
 
 | Name | Type | Default | Valid |
 | --- | --- | --- | --- |
-| `condition` | `string` | - | - |
-| `options.timeout` | `number` | `30000` | positive safe integer |
-| `options.agent` | `string` | the test's agent | a name in `agents` |
+| `condition` | `string` | | |
+| `options.timeout` | `number` | `max(30000, config.actionTimeout)` | positive safe integer |
 | `options.interval` | `number` | `3000` | integer 100-60000, milliseconds |
-| `options.maxModelCalls` | `number` | `config.agent.maxModelCalls` | positive integer, at most the resolved limit |
+| `options.maxModelCalls` | `number` | the agent's `maxModelCalls` | positive integer, at most the resolved limit |
+| `options.vision` | `VisionMode` | the agent's `vision`, `false` | |
+| `options.agent` | `string` | the test's agent | a name in `agents` |
 
-Throws `STEP_TIMEOUT` on deadline expiry and `STEP_BUDGET_EXHAUSTED` on budget
-exhaustion, each carrying the last judgment, and `INVALID_ARGUMENT` for an
-out-of-range option or one `waitFor` does not take (`intervalMs` fails
-naming `interval`).
+Throws `STEP_TIMEOUT` on deadline expiry and `STEP_BUDGET_EXHAUSTED` on
+budget exhaustion, each carrying the last judgment, and `INVALID_ARGUMENT`
+for an out-of-range option or one `waitFor` does not take.
 
 ```ts
 await agent.waitFor('the upload progress reports completion', { interval: 500 });
 ```
 
-### agent.extract
+## agent.extract
 
 ```ts
 extract<Schema extends StandardSchemaV1>(
@@ -263,14 +157,15 @@ returns the validated value. It performs no app actions.
 
 | Name | Type | Default | Valid |
 | --- | --- | --- | --- |
-| `instruction` | `string` | - | - |
-| `options.schema` | `Schema` | - | any Standard Schema v1 validator |
-| `options.timeout` | `number` | `30000` | positive safe integer |
+| `instruction` | `string` | | |
+| `options.schema` | `Schema` | | any Standard Schema v1 validator |
+| `options.timeout` | `number` | `max(30000, config.actionTimeout)` | positive safe integer |
+| `options.vision` | `VisionMode` | the agent's `vision`, `false` | |
 | `options.agent` | `string` | the test's agent | a name in `agents` |
 
-The budget is fixed at two model calls: one extraction and one repair round
-for output that failed validation. Throws `INVALID_ARGUMENT` for a schema that
-is not Standard Schema v1, and `MODEL_OUTPUT_INVALID` when validation still
+The budget is two model calls: one extraction and one repair round for
+output that failed validation. Throws `INVALID_ARGUMENT` for a schema that is
+not Standard Schema v1, and `MODEL_OUTPUT_INVALID` when validation still
 fails after the repair.
 
 ```ts
@@ -279,19 +174,71 @@ const summary = await agent.extract('the workspace name and plan', {
 });
 ```
 
+## Vision
+
+`assert`, `waitFor`, and `extract` accept `vision`. It controls what evidence
+the model is shown. Sending pixels needs a model that accepts images; images
+are billed as input tokens.
+
+| Mode | What the model sees | Cost |
+| --- | --- | --- |
+| `false` | the tree | no image tokens |
+| `true` | the tree and a masked screenshot, every call | image tokens on every call |
+| `'only'` | the screenshot, and not the tree | image tokens, minus the observation bytes |
+| `'fallback'` | the tree; behaves like `false` for the judgments | no image tokens |
+
+Set `vision` on the agent in config to make a mode the project default; a
+per-call value wins. Calls that send pixels use the agent's `visionModel`
+when set, and its `model` otherwise, and keep it for the whole invocation.
+
+<Warning>
+**Use `'only'` for questions about what the page presents**
+
+`vision: true` sends the tree *and* the screenshot, and the tree is a cheaper
+path to an answer. A consent sheet covering a form, a price at `opacity: 0`,
+a button under a cookie banner: the tree reports all of them as fine.
+
+```ts
+// Passes on the tree alone while a consent sheet covers the form.
+await agent.assert('the search form is visible and not covered', { vision: true });
+
+// Judged on the screenshot. There is no tree in the request to answer from.
+await agent.assert('the search form is visible and not covered', { vision: 'only' });
+```
+
+Use `true` when the tree is part of the answer, such as a disabled state that
+is not visible at all.
+</Warning>
+
+The screenshot is the viewport, never the full page, so `'only'` cannot see
+below the fold. Write `'only'` conditions about what is on screen and let the
+flow scroll first.
+
+Pixel evidence degrades instead of failing the call in every mode but
+`'only'`. It is withheld, and the tree sent alone, when a secret fill has
+tainted the viewport (`visionDegraded: "PIXEL_TAINTED"` on the step), when
+the engine masked fewer regions than the secure fields it observed
+(`MASKING_UNPROVEN`), or when the engine cannot capture pixels
+(`UNSUPPORTED_CAPABILITY`). `'only'` fails with `POLICY_DENIED` in those
+cases rather than answer a question about pixels from the tree. A step that
+sent pixels records `visionInput: true` and `metrics.pixelBytes`.
+
+`'fallback'` exists for calls that could discover mid-flight that the tree
+was not enough. A judgment never does, so the three judgments run tree-only
+under it.
+
 ## Types
 
 ```ts
+export type VisionMode = boolean | 'fallback' | 'only';
+
 export interface VisionOption {
   vision?: VisionMode;
 }
 
-export type VisionMode = boolean | 'fallback' | 'only';
-
 export interface AssertOptions extends VisionOption {
   timeout?: number;
   screenshot?: boolean;
-  /** The configured agent this call runs with; defaults to the test's. */
   agent?: string;
 }
 
@@ -299,14 +246,12 @@ export interface WaitForOptions extends VisionOption {
   timeout?: number;
   interval?: number;
   maxModelCalls?: number;
-  /** The configured agent this call runs with; defaults to the test's. */
   agent?: string;
 }
 
 export interface ExtractOptions<Schema extends StandardSchemaV1> extends VisionOption {
   schema: Schema;
   timeout?: number;
-  /** The configured agent this call runs with; defaults to the test's. */
   agent?: string;
 }
 
@@ -315,7 +260,6 @@ export interface ActOptions {
   timeout?: number;
   maxSteps?: number;
   maxModelCalls?: number;
-  /** The configured agent this call runs with; defaults to the test's. */
   agent?: string;
 }
 
@@ -333,16 +277,6 @@ export type AgentParam =
   | { readonly [key: string]: AgentParam };
 export type AgentParams = Readonly<Record<string, AgentParam>>;
 ```
-
-Per-call budgets must be positive integers and can only lower the resolved
-configuration limits.
-
-`ActOptions`, `AgentParams`, and `ActResult` belong to `act`; `act` takes no
-`schema` and no `vision`. Judgments return `void`;
-`extract` returns the validated value directly. `assert` and `extract` have a
-fixed budget of two model calls, the judgment or extraction plus one repair
-round; `waitFor` takes `maxModelCalls` because it polls. Every duration option
-(`timeout`, `interval`) is milliseconds.
 
 ## AgentError
 
@@ -363,23 +297,20 @@ export class AgentError extends Error {
 | `blocked` | `boolean` | True when the failure reports a blocked step (credentials, environment, or budget), not a product failure |
 
 Check `code` with `isAgentError(error)`, exported from `@e2edev/e2e`, rather
-than `instanceof`, which does not hold across the runner's module realms. Every
-code, its class, and its exit code are in [Errors](/reference/errors).
+than `instanceof`, which does not hold across the runner's module realms.
+Every code, its class, and its exit code are in [Errors](/reference/errors).
+
+## Usage accounting
+
+Model usage is accounted per step and per run. A step reports
+`tokenAccounting: 'provider'` only when every call supplied complete provider
+token counts; otherwise the aggregate stays at `adapter-upper-bound`.
+Reported costs accumulate where the provider gives one. Token sums saturate
+at `Number.MAX_SAFE_INTEGER` and an overflowing cost total is omitted.
 
 <CardGroup cols={2}>
-  <Card title="Agents" href="/agents" />
-  <Card title="screen and Locator" href="/reference/screen" />
-  <Card title="Config" href="/reference/config" />
+  <Card title="How agent steps work" href="/agent-steps" />
+  <Card title="Agents and personas" href="/agents" />
+  <Card title="Config" href="/reference/config#agents" />
   <Card title="Errors" href="/reference/errors" />
 </CardGroup>
-
-Model usage accounting is shared by executor steps and judgment calls. A step
-reports `tokenAccounting: 'provider'` only when every call supplies complete
-provider token counts. Missing, partial, or estimated usage keeps the aggregate
-at `adapter-upper-bound`, even if later calls report complete counts. Available
-token counts, per-call peaks, and valid reported costs still accumulate.
-Malformed counters are excluded from model events as well as step totals.
-Token sums that exceed the safe integer range saturate at
-`Number.MAX_SAFE_INTEGER` and make accounting non-authoritative. An overflowing
-cost total is omitted for the rest of that step. Run summaries also cap token
-sums and omit overflowing cost totals.
