@@ -78,6 +78,14 @@ export class ObservationFeed {
     return this.newest;
   }
 
+  /** The newest observation, which an action addresses; before the first look there is nothing to address. */
+  requireLatest(): AgentObservation {
+    if (this.newest === undefined) {
+      throw new AgentError('LOCATOR_NOT_FOUND', 'no observation has been captured yet; observe before acting');
+    }
+    return this.newest;
+  }
+
   /** One raw capture in queue order, for replay's looks between retries. */
   observeLatest(): Promise<AgentObservation> {
     return this.queue.run(() => this.observeNow(false, false));
@@ -151,10 +159,7 @@ export class ObservationFeed {
       throw new TestError('INVALID_ARGUMENT', 'action target must be { id: string }');
     }
     const id = target.id.replace(/^#/, '');
-    const latest = this.newest;
-    if (latest === undefined) {
-      throw new AgentError('LOCATOR_NOT_FOUND', 'no observation has been captured yet; observe before acting');
-    }
+    const latest = this.requireLatest();
     const node = latest.nodes.get(id) ?? this.refound(id, latest);
     if (node === undefined) {
       throw new AgentError(

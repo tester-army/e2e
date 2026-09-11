@@ -24,16 +24,17 @@ import type { ObservationPixels } from '../engine/surface.ts';
 const MAX_SCREENSHOT_LONG_SIDE = 768;
 
 /** Sizes a captured screenshot for the model; the input is returned as is when it already fits. */
-export function sizeForModel(pixels: ObservationPixels): ObservationPixels {
+export function sizeForModel<P extends ObservationPixels>(pixels: P): P {
   return downscalePixels(pixels, MAX_SCREENSHOT_LONG_SIDE);
 }
 
 /**
  * Resamples the image so its longer side is at most `maxLongSide`, with a
  * box filter over the source pixels each target pixel covers. Returns the
- * input untouched when it already fits or cannot be decoded.
+ * input untouched when it already fits or cannot be decoded; whatever else
+ * the caller's pixels carry (a masked-region count) rides along unchanged.
  */
-export function downscalePixels(pixels: ObservationPixels, maxLongSide: number): ObservationPixels {
+export function downscalePixels<P extends ObservationPixels>(pixels: P, maxLongSide: number): P {
   const longSide = Math.max(pixels.width, pixels.height);
   if (longSide <= maxLongSide || maxLongSide <= 0) return pixels;
   const factor = maxLongSide / longSide;
@@ -48,13 +49,7 @@ export function downscalePixels(pixels: ObservationPixels, maxLongSide: number):
   const target = new PNG({ width, height });
   boxResample(source.data, source.width, source.height, target.data, width, height);
   const data = new Uint8Array(PNG.sync.write(target));
-  return {
-    data,
-    mediaType: 'image/png',
-    width,
-    height,
-    scale: pixels.scale * (width / pixels.width),
-  };
+  return { ...pixels, data, width, height, scale: pixels.scale * (width / pixels.width) };
 }
 
 /** Averages, per channel, every source pixel a target pixel covers. RGBA, 8 bits per channel. */

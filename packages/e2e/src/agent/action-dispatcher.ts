@@ -99,38 +99,30 @@ export class ActionDispatcher {
   }
 
   /**
-   * Taps one viewport point, routed onto the tree. The hit test runs in
-   * queue order against the newest observation, like a targeted action's
-   * resolution: a listed, enabled control containing the point is tapped by
-   * its id, so policy, stale relocation, and the trace descriptor see an
-   * ordinary tap; a point on nothing listed goes to the engine as a bare
-   * point when it takes one. Clamped to the viewport first, so a point placed
-   * off the edge lands on the edge rather than failing the engine.
+   * Taps one viewport point, routed onto the tree in queue order against the
+   * newest observation, like a targeted action's resolution. A listed,
+   * enabled control containing the point is tapped by its id, so policy,
+   * stale relocation, and the trace descriptor see an ordinary tap; a point
+   * on nothing listed goes to the engine as a bare point when it takes one.
+   * The point is clamped to the viewport first, so one placed off the edge
+   * lands on the edge rather than failing the engine.
    */
   tapAt(point: ViewportPoint): Promise<PointTapResult> {
-    if (
-      typeof point?.x !== 'number' ||
-      typeof point.y !== 'number' ||
-      !Number.isFinite(point.x) ||
-      !Number.isFinite(point.y)
-    ) {
+    if (!Number.isFinite(point?.x) || !Number.isFinite(point.y)) {
       throw new TestError('INVALID_ARGUMENT', 'tapAt requires a point { x, y } of finite numbers');
     }
     return this.queue.run(async () => {
-      const latest = this.feed.latest;
-      const clamped = clampToViewport(point, latest?.viewport);
-      const hit = latest === undefined ? undefined : hitTest(latest, clamped);
-      const observation = latest ?? { text: '' };
-      if (hit?.control !== undefined && this.verbs.has('tap')) {
-        const id = hit.control.ref.id;
-        await this.runActionNow('tap', this.targeted({ id }, (node) => this.performTap(node)));
-        return {
-          point: clamped,
-          target: { id },
-          summary: describePointTap({ point: clamped, control: hit.control, under: hit.under, observation }),
-        };
+      const observation = this.feed.requireLatest();
+      const clamped = clampToViewport(point, observation.viewport);
+      const hit = hitTest(observation, clamped);
+      // An engine without node taps gets the bare point even under a listed control.
+      const control = this.verbs.has('tap') ? hit.control : undefined;
+      const summary = describePointTap({ point: clamped, control, under: hit.under, observation });
+      if (control !== undefined) {
+        const target = { id: control.ref.id };
+        await this.runActionNow('tap', this.targeted(target, (node) => this.performTap(node)));
+        return { point: clamped, target, summary };
       }
-      const summary = describePointTap({ point: clamped, control: undefined, under: hit?.under, observation });
       if (!this.verbs.has('tapAt')) {
         throw new TestError(
           'UNSUPPORTED_CAPABILITY',
@@ -152,8 +144,7 @@ export class ActionDispatcher {
       if (this.accounting.closed) throw new AgentError('CANCELLED', 'the step has ended');
       if (call.mutates) {
         this.accounting.reserveAction();
-        const trace: StepTraceSession | undefined = this.options.trace();
-        trace?.recordGap(call.name);
+        this.options.trace()?.recordGap(call.name);
       }
       const value = await instrumentPhase(
         this.runtime,
@@ -314,7 +305,7 @@ export class ActionDispatcher {
     // fill leaves no visible trace and arms nothing; a scroll waits briefly for
     // rows a windowed or lazy list renders.
     if (name !== 'typeSecret') this.feed.armChange(name === 'scroll' ? BRIEF_CHANGE_WAIT_MS : undefined);
-    const trace: StepTraceSession | undefined = this.options.trace();
+    const trace = this.options.trace();
     if (trace === undefined) return;
     // A typed value the step derived at run time is this run's data, not the
     // flow's: it is recorded as a gap so replay hands over before it rather
