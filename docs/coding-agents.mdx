@@ -98,7 +98,9 @@ without a model raises `MODEL_UNAVAILABLE` after the engine attempt starts.
 A custom executor can implement `agent.act` and `agent.assert` without a
 model. `agent.waitFor` and `agent.extract` still need a configured model when
 they request a judgment. Provider credentials are needed only when a model
-request is made. Check the configured model when a run exits with code 2.
+request is made. Check model configuration when the error reports a missing
+model. For other exit-code-2 failures, follow the reported CLI, config, or
+collection error.
 
 The exit code says which side failed. 1 is a test. 2 is the CLI, config, or
 collection, and retrying it changes nothing. 3 is the engine, the app

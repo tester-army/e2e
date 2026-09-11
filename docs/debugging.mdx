@@ -49,14 +49,20 @@ Artifacts land under `.e2e/artifacts/`, one directory per attempt:
 - **Downloads** a test saved through `web.waitForDownload`.
 - **Videos** and **agent transcripts** when you ask for them; see below.
 
-Once a secret was filled in an attempt, the runner rewrites the attempt's
-trace before it is kept, replacing every credential value with
-`<secret:name>`. The report marks such a trace `redaction: "complete"`. A
-trace inside the attempt's artifact directory that cannot be rewritten is
+After a secret fill, the runner rewrites credential text in the attempt's
+trace before keeping it, replacing that text with `<secret:name>`. The
+report marks a successfully rewritten trace `redaction: "complete"`, but
+that does not mean its pixels were redacted. Trace image resources are kept
+unless they contain literal secret bytes; a secret rendered into a
+screenshot frame can remain visible.
+
+A trace inside the attempt's artifact directory that cannot be rewritten is
 deleted. If an engine returns a path outside that directory, the runner
 withholds the trace with `TRACE_WITHHELD` and leaves the file untouched.
-All screenshot evidence, including `app.screenshot()`, is denied for the
-rest of the attempt after a secret fill.
+
+Screenshots requested by agent calls and `app.screenshot()` are denied for
+the rest of the attempt after a secret fill. That restriction does not stop
+the screenshot frames captured inside a Playwright trace.
 Videos are recorded with `redaction: "incomplete"` because a screencast masks
 nothing.
 
