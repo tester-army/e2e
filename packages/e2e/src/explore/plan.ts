@@ -33,7 +33,7 @@ const MAX_FIELD_CHARS = 8_000;
 export const PLAN_SCHEMA = z
   .object({
     decision: z.enum(['step', 'finish']),
-    title: z.string().max(MAX_FIELD_CHARS).describe('For a step: the area or flow in a few words. Empty for finish.'),
+    title: z.string().max(MAX_FIELD_CHARS).describe('For a step: the area or flow as a heading of two to five words, e.g. "Cart quantities". Empty for finish.'),
     instruction: z.string().max(MAX_FIELD_CHARS).describe('For a step: the concrete charter. Empty for finish.'),
     summary: z.string().max(MAX_FIELD_CHARS).describe('For finish: the overall assessment. Empty for a step.'),
   })
@@ -112,6 +112,18 @@ function deriveTitle(charter: string): string {
   return short.length <= DERIVED_TITLE_CHARS ? short : `${short.slice(0, DERIVED_TITLE_CHARS - 1)}…`;
 }
 
+/**
+ * What the closing assessment is for. The findings and the steps print above
+ * it, so it carries what neither list can: the verdict, the gaps, and what
+ * to script next.
+ */
+const ASSESSMENT_RULES = [
+  'The assessment is two to four plain sentences for the person reading the terminal, where the steps and the findings',
+  'are already listed above it. Do not list or count the findings again. Say: your verdict on the goal in one sentence;',
+  'what the goal names that was not reached or not fully exercised, and why; and which one or two flows are most worth',
+  'turning into scripted tests. Name screens and controls as the app names them; no headings, bullets, or markdown.',
+];
+
 const STATUS_MARKS: Record<ReportExploreStep['status'], string> = {
   passed: 'passed',
   failed: 'FAILED',
@@ -159,8 +171,8 @@ export function planInstruction(state: ExploreState, request: PlanRequest): stri
     return [
       ...header,
       `The run must end now: ${request.reason ?? 'its budget is spent'}.`,
-      'Respond with {"decision": "finish", "title": "", "instruction": "", "summary": "..."}: the overall assessment in two to five sentences,',
-      'what was explored, the key findings, and your verdict on the goal. Ground it in the steps and findings above.',
+      'Respond with {"decision": "finish", "title": "", "instruction": "", "summary": "..."}: the closing assessment.',
+      ...ASSESSMENT_RULES,
     ].join('\n');
   }
   return [
@@ -175,8 +187,8 @@ export function planInstruction(state: ExploreState, request: PlanRequest): stri
     '  never plan a step to re-confirm a finding already recorded above. When a step ended at its limit, continue where',
     '  it stopped or move on. When a step summary mentions something odd that is not among the findings, spend the next',
     '  step confirming it.',
-    '- "finish": the goal is covered, or nothing new is reachable. "summary" is the overall assessment in two to',
-    '  five sentences: what was explored, the key findings, and your verdict on the goal.',
+    '- "finish": the goal is covered, or nothing new is reachable. "summary" is the closing assessment.',
+    ...ASSESSMENT_RULES.map((line) => `  ${line}`),
     'Respond with every field present: {"decision": "step", "title": "...", "instruction": "...", "summary": ""} or {"decision": "finish", "title": "", "instruction": "", "summary": "..."}.',
   ].join('\n');
 }
