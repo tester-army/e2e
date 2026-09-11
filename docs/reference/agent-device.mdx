@@ -22,6 +22,7 @@ import type { E2EConfig } from '@e2edev/e2e';
 import { createAgent } from '@e2edev/e2e/agent';
 import { agentDevice } from '@e2edev/agent-device';
 import { agentDeviceTools } from '@e2edev/agent-device/tools';
+import { gateway } from 'ai';
 
 const iphone = agentDevice({ platform: 'ios', app: 'Settings' });
 const pixel = agentDevice({ platform: 'android', app: 'com.android.settings' });
@@ -32,14 +33,20 @@ export default {
     { name: 'pixel', engine: pixel },
   ],
   workers: 1,
-  agents: { default: { executor: createAgent({ tools: agentDeviceTools(iphone, pixel) }) } },
+  agents: {
+    default: createAgent({
+      model: gateway('openai/gpt-5.6-luna'),
+      tools: agentDeviceTools(iphone, pixel),
+    }),
+  },
 } satisfies E2EConfig;
 ```
 
-One engine per device; a config declares as many as it has devices. A test
-written against `agent`, `app`, `screen`, and `device` runs on every target;
-a deterministic check that names a platform label is scoped with
-`platforms: ['ios']` or `platforms: ['android']`.
+One engine per device family; a config declares as many as it needs. A test
+using the shared device APIs can run on iOS and Android. Platform-specific
+labels or operations need `platforms: ['ios']` or `platforms: ['android']`.
+Device attempts open their configured app; `app.open()` requires a URL and
+is unavailable on these targets.
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -70,19 +77,22 @@ it the surface observes whatever is in the foreground and the model opens
 apps with the `open_app` tool.
 
 The engine declares one worker per configured device: a single `device` is
-one worker, a pool is one per entry, and with no `device` the count is set
-in `prepare` to the booted devices found, capped by the run's slots. The scheduler never runs more workers
-for the target than that, whatever `workers` allows, so a device target
-shares a run with browser targets without two workers ever driving one
-simulator. To split a target's test files across several devices, pass a
-pool and let `workers` be at least its size, or pass no `device` at all: then
-`prepare` lists the booted devices of the platform and drives as many as the
-run has slots, so four booted simulators run four files at a time with no
-config. The discovered pool reaches the workers through the run's
-environment (`E2E_AGENT_DEVICE_POOL_<TARGET>_<digest>`), so each slot resumes
-the device `prepare` booted for it.
+one worker and a pool is one per entry. With no `device`, `prepare` uses the
+booted devices it finds, capped by the run's slots. When none are booted, it
+boots one and reports a one-worker cap. The scheduler respects this cap, so
+two workers never drive the same simulator.
+
+To split a target's test files across several devices, pass a pool and let
+`workers` be at least its size, or omit `device` to discover booted devices.
+Four booted simulators can run four files at a time when `workers` is at least
+four. The discovered pool reaches workers through the run's environment,
+`E2E_AGENT_DEVICE_POOL_<TARGET>_<digest>`, so each slot resumes the device
+`prepare` booted for it.
 
 ```ts
+import type { E2EConfig } from '@e2edev/e2e';
+import { agentDevice } from '@e2edev/agent-device';
+
 const iphones = agentDevice({
   platform: 'ios',
   app: 'com.example.app',
@@ -114,9 +124,10 @@ The cache anchors a recorded `agent.act` step on the path the surface reports
 when the step begins and ends. This engine reports `app://device/<bundle
 id>/<title>`, with the title read off the navigation bar (its label, its inner
 text, or its identifier). A step recorded on `/com.apple.preferences/General`
-replays only when Settings is on General again, and every grammar action inside it (tap, type,
-scroll) replays through the same `perform` seam. Two things end a replay: a
-project-tool call such as `open_app`, and a target that no longer relocates.
+replays only when Settings is on General again. Recorded node actions replay
+through `perform`; viewport scrolling uses `swipe`. A mutating project-tool
+call such as `open_app` ends a replay, as does a target that no longer
+relocates. The read-only `screenshot` tool creates no replay gap.
 Pin `app` so attempts start on the same screen, and keep in-step app switching
 to the `device` fixture between steps.
 
@@ -209,7 +220,8 @@ runner can check, and `app://` has none.
 The `screenshot` tool delegates to the harness's guarded observation capture.
 After a secret fill it returns `PIXEL_TAINTED` without capturing pixels,
 including in later members of the same serial group. Unproven masking returns
-`MASKING_UNPROVEN`.
+`MASKING_UNPROVEN`. The runner also denies `app.screenshot()` and omits
+`agent.assert` screenshot evidence after a secret fill.
 
 <CardGroup cols={2}>
   <Card title="Project tools" href="/tools" />

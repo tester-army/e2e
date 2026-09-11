@@ -3,11 +3,11 @@ title: Testing iOS and Android
 description: Set up a simulator or emulator target, write a device test, and know what differs from the web.
 ---
 
-`@e2edev/agent-device` drives iOS simulators and Android emulators. A test
-written against `agent`, `app`, `screen`, and `expect` runs on a device
-target unchanged. This page covers what a mobile project needs on top of
-that: the setup, the `device` fixture, and the things a device has that a
-browser does not, or lacks.
+`@e2edev/agent-device` drives iOS simulators and Android emulators. Devices
+share the `agent`, `screen`, and `expect` APIs with browser targets, but app
+setup follows the platform: a device attempt starts in its configured app
+instead of opening a URL. This page covers setup, the `device` fixture, and
+the operations that differ from a browser.
 
 ## Set up
 
@@ -82,6 +82,9 @@ gives every attempt the same starting screen, which the
 One engine per device family; a config declares as many as it has devices:
 
 ```ts title="e2e.config.ts"
+import type { E2EConfig } from '@e2edev/e2e';
+import { agentDevice } from '@e2edev/agent-device';
+
 const iphone = agentDevice({ platform: 'ios', app: 'com.example.app' });
 const pixel = agentDevice({ platform: 'android', app: 'com.example.app' });
 
@@ -101,7 +104,9 @@ both.
 To split a target's files across several simulators, pass a pool and let
 `workers` be at least its size. Each entry is one worker, and worker `n`
 drives the `n`th device. With no `device` at all, every booted device of the
-platform is the pool, so four booted simulators run four files at a time.
+platform is eligible for the pool, up to the run's worker slots. Four booted
+simulators can run four files at a time when `workers` is at least four.
+With none booted, agent-device boots one and the target uses one worker.
 
 ```ts
 agentDevice({ platform: 'ios', app: 'com.example.app', device: ['iPhone 17', 'iPhone 17 Pro'] })
@@ -167,21 +172,34 @@ tool. For app switching, free-form swipes, typing into editors that hide the
 focused field, and system alerts, hand the agent the device tool pack:
 
 ```ts title="e2e.config.ts"
+import type { E2EConfig } from '@e2edev/e2e';
 import { createAgent } from '@e2edev/e2e/agent';
+import { agentDevice } from '@e2edev/agent-device';
 import { agentDeviceTools } from '@e2edev/agent-device/tools';
 import { gateway } from 'ai';
 
-agents: {
-  default: createAgent({
-    model: gateway('openai/gpt-5.6-luna'),
-    tools: agentDeviceTools(iphone, pixel),
-  }),
-},
+const iphone = agentDevice({ platform: 'ios', app: 'com.example.app' });
+const pixel = agentDevice({ platform: 'android', app: 'com.example.app' });
+
+export default {
+  targets: [
+    { name: 'iphone', engine: iphone },
+    { name: 'pixel', engine: pixel },
+  ],
+  workers: 1,
+  agents: {
+    default: createAgent({
+      model: gateway('openai/gpt-5.6-luna'),
+      tools: agentDeviceTools(iphone, pixel),
+    }),
+  },
+} satisfies E2EConfig;
 ```
 
 Pass every device engine the config declares. The pack is scoped to their
 platforms and dispatches each call to the engine whose attempt is running.
-A tool call is a replay gap, so prefer the grammar inside a step.
+A mutating tool call is a replay gap, so prefer the grammar inside a step.
+The read-only `screenshot` tool creates no gap.
 
 ## What differs from the web
 

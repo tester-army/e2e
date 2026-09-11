@@ -29,8 +29,9 @@ safety rules, so what it finds is what a test would find.
 3. **Runs the step** as an ordinary `agent.act()` step. The agent has the
    whole action grammar, your project tools, and one more: `report_finding`.
 4. **Records findings** the moment the agent calls the tool: title, kind,
-   severity 1 to 5, what it expected, what it saw, how to get there, plus the
-   current path and a redacted screenshot.
+   severity 1 to 5, what it expected, what it saw, and how to get there. The
+   current path is included when the engine exposes one. A redacted screenshot
+   is attached when pixels are allowed and the artifact can be saved.
 5. **Repeats** until the planner decides the goal is covered or a budget ends
    the run, then asks the model for a closing assessment.
 
@@ -77,9 +78,12 @@ checked.
 ```
 
 `.e2e/report.json` carries the exploration under `run.explore`: the goal, the
-budgets, why the run ended, the assessment, every step, and every finding with
-the id of its evidence screenshot. `--reporter`, `--video`, `--ai-trace`, and
-`--debug` work as they do for `e2e run`.
+budgets, why the run ended, the assessment, every step, and every finding.
+A finding with a saved screenshot includes its artifact id. After a secret
+fill, screenshot evidence is withheld for the rest of the attempt.
+`--reporter`, `--video`, `--ai-trace`, and `--debug` work as they do for
+`e2e run`. In both commands, `--video` requires a selected engine that records
+video; otherwise the run fails with `UNSUPPORTED_ARTIFACT`.
 
 ## Your config applies
 
@@ -92,9 +96,11 @@ explorer; a hand-rolled executor has no vocabulary to reuse and is replaced
 by the built-in agent for the run, with a notice.
 
 Configured `credentials` reach the explorer as step secrets. The planner is
-told which accounts exist (name and username, never the password), and the
-agent signs in by filling the password through `type_secret`. The password
-never enters a prompt, a transcript, or a finding.
+told each account's name and username, never its password. On an engine that
+supports authorized secret filling, the agent can sign in through
+`type_secret`. Otherwise that tool is unavailable and the explorer skips
+password sign-in. The password never enters a prompt, a transcript, or a
+finding.
 
 With several targets, pass `--target`; otherwise the first configured target
 is explored and the CLI says so. The trace cache is off and retries are zero

@@ -95,11 +95,11 @@ never silently.
 | Member | Capability | Unlocks |
 | --- | --- | --- |
 | `observe(context, options?)` | `observation` | `agent.act`, `waitFor`, `extract`, `assert`; prompt snapshots; trace replay |
-| `perform(ref, action, context)` | `actions` (needs `observe`) | the agent's grammar verbs and the full `Locator` action set |
+| `perform(ref, action, context)` | `actions` (needs `observe`) | Node-targeted actions: `tap`, `type`, `press`, `select`, `type_secret`, node `scroll`, and the `Locator` action set |
 | `locate(expression, context)` | `location` (needs `observe`) | `screen`, `Locator`, `expect(locator)` |
 | `swipe(direction, momentum, context)` | (needs `observe`) | the agent's viewport `scroll` verb, `screen.swipe`, `scrollUntilVisible` |
 | `state.{capture,restore}` | `state` | `test.setup` and the `session` option |
-| `artifacts.{screenshot,startTrace?,stopTrace?,startVideo?,stopVideo?}` | `artifacts` | `app.screenshot()`, assertion evidence, traces, `--video` |
+| `artifacts.{screenshot,startTrace?,stopTrace?,startVideo?,stopVideo?}` | `artifacts` | Screenshots; traces when the trace hooks exist; video and `--video` when both `startVideo` and `stopVideo` exist |
 | `app.{url?,allowedOrigins?,environment?,identity?,command?,readyUrl?,services?}` | | declares the app under test: navigation policy, cache and session identity, the app process ([reference](/reference/config#the-app-under-test)) |
 | `app.{navigate?,back?,restart?,clearState?}` | | `app.open()` and the agent's `navigate` verb, `app.back()`, `app.restart()`, `app.clearState()` |
 | `url(context)` | | trace start anchors, the secret-fill origin check |

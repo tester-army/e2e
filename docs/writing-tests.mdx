@@ -48,10 +48,11 @@ Name what is visible and prefer the exact wording on screen. One goal per
 call. The flow inside a goal is the model's job; the order of goals is yours.
 </Tip>
 
-A step ends passed, failed, or blocked. Blocked means something outside your
-app prevented a verdict, such as a missing credential or an unreachable
-environment, and exits as configuration or infrastructure rather than as a
-red test. [How agent steps work](/agent-steps) has the details.
+A step ends passed, failed, or blocked. A block means the step could not
+reach a product verdict. Configuration blocks such as missing credentials
+exit 2, and infrastructure blocks such as an unreachable environment exit 3.
+Budget exhaustion, timeouts, and unsupported automation still count as test
+failures and exit 1. [How agent steps work](/agent-steps) lists the codes.
 
 ## Checks: `assert`, `waitFor`, `extract`
 
@@ -64,8 +65,9 @@ await agent.assert('the dashboard shows a trial badge');
 ```
 
 `assert` looks once. To wait for something to become true, poll with
-`waitFor`. Observations are free; a judgment is spent only when the screen
-changes.
+`waitFor`. In tree-only mode, unchanged observations skip the next judgment.
+Vision polling judges every interval because pixels can change while the
+tree stays the same.
 
 ```ts
 await agent.waitFor('the export finishes and a download link appears', {

@@ -94,9 +94,9 @@ npx --no-install e2e run tests/checkout.e2e.ts
 ```
 
 One file, not the suite, while iterating. Agent steps need a model in the
-config and its provider's key in the environment. A run without a model fails
-with `MODEL_UNAVAILABLE` before the browser starts, which is a good first
-check for an agent that sees exit code 2.
+config and its provider's key in the environment. Without a model, the first
+test to acquire `agent` fails with `MODEL_UNAVAILABLE`, after the engine
+attempt has started. Check the configured model when a run exits with code 2.
 
 The exit code says which side failed. 1 is a test. 2 is the CLI, config, or
 collection, and retrying it changes nothing. 3 is the engine, the app

@@ -3,8 +3,8 @@ title: Caching agent steps
 description: A passing agent.act records its actions, and the next run replays them with no model call.
 ---
 
-Each passing `agent.act()` records the actions it performed under
-`.e2e/cache/`. The next run replays them with no model call and hands back to
+The trace cache stores verified `agent.act()` steps under `.e2e/cache/` in
+`read-write` mode. The next run replays their actions with no model call and hands back to
 the live agent the moment the app stops matching the recording. Judgments
 (`assert`, `waitFor`, `extract`) are never cached.
 
@@ -17,30 +17,49 @@ npx --no-install e2e run --no-cache
 
 ## When a step is recorded
 
-An entry is written only once a **verification step** after the `act`
-passes: an `expect(...)` assertion, a locator `waitFor`, or an `agent.assert`
-or `agent.waitFor` judgment. A trailing `act` nothing ever checks is never
-replayed blind. Pair every `agent.act()` with an assertion of its outcome to
-make it cacheable.
+In `read-write` mode, an entry is written only once a recorded verification
+step after the `act` passes: a locator or engine assertion, a locator
+`waitFor`, or an `agent.assert` or `agent.waitFor` judgment. Plain-value
+assertions such as `expect(data.total).toBe(3)` are not recorded and do not
+verify a trace. Pair every `agent.act()` with a recorded check of its outcome:
 
-A failed run writes nothing the failure could have implicated and evicts the
-entries it did. The flow re-records on the next passing run.
+```ts title="tests/cart.e2e.ts"
+import { expect, test } from '@e2edev/e2e';
+
+test('adds an item', async ({ app, agent, screen }) => {
+  await app.open('/cart');
+  await agent.act('add one item to the cart');
+  await expect(screen.getByRole('status')).toHaveText('1 item');
+});
+```
+
+A trailing `act` with no later recorded verification is never cached. In
+`read-write` mode, a failed attempt keeps only traces verified before the
+failure and evicts unverified entries. Later passing runs can record them
+again. `read-only` mode neither evicts nor records; refresh stale entries in
+a `read-write` run, or remove them with `e2e cache clear`.
 
 ## When a replay hands off
 
-A replay never passes on mechanics alone. Each entry records the state the
-step passed in, the page path and the elements that appeared during the
-step, and a replay finishes on its own only when that state is on screen
-again. If every recorded action ran but the effect is missing, the step
-hands off to the live agent with a notice to check whether the step took
-effect. If the agent then has to act, the entry is evicted so a broken
-recording never accumulates repairs.
+A replay checks the recorded end path when the engine reports one, plus any
+captured end anchors, the element descriptions that appeared or changed
+during the step. If a recorded path or anchor does not match after the
+actions run, the step hands off to the live agent to check its outcome. In
+`read-write` mode, an entry the agent must repair with further actions is
+evicted so a broken recording does not accumulate repairs.
 
-Volatile text is skipped when matching: a minted id, a countdown, a date, a
-clock time. A step whose only visible effect is volatile hands off every
-time. A step that ends on another page matches that page's path up to the
-ids the app mints per record, so a flow that creates a project and lands on
-it replays even though the next project has a new id.
+Some steps produce no end anchors, for example when only an input value or
+checkbox state changes. An empty anchor set passes the anchor check. Such a
+replay can finish after running the actions and checking only its recorded
+path, without verifying the effect itself. Later assertions in the test
+still execute on every run; keep those outcome checks in place.
+
+Volatile anchors, such as minted ids, countdowns, dates, and clock times, are
+omitted when stable anchors are available. If every captured anchor is
+volatile, they are retained and compared exactly. The replay hands off when
+their values differ, but can finish when they still match. A recorded end
+path matches up to ids the app mints per record, so a flow that creates a
+project can replay even when the next project has a new id.
 
 Each agent step in the report records how the cache took part under
 `step.cache`: `self-finalized` when a recording replayed the whole step,
@@ -49,7 +68,7 @@ a reason. A retry attempt records but never replays.
 
 ## Cache-friendly tests
 
-- Assert the outcome of every `act`.
+- Verify the outcome of every `act` with a recorded assertion or wait.
 - Create your own data under names unique to the run, so a replay never finds
   two rows with the recorded name.
 - Clean up in `afterEach`, not in the last steps, so a run that fails before
@@ -66,7 +85,9 @@ a reason. A retry attempt records but never replays.
 | `'read-only'` | Default in CI when unset. Replays but never writes, because a committed cache is untrusted input. |
 | `'off'` | Every step runs live. `--no-cache` is the per-run equivalent and wins over the config. |
 
-```ts title="e2e.config.ts"
+Set one of these alternatives inside the exported config object:
+
+```ts title="Config fragment"
 cache: 'off',
 // or
 cache: { mode: 'read-write', dir: '.e2e/cache' },

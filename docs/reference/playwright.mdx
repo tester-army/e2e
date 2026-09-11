@@ -8,9 +8,12 @@ A web target names it as its engine, and it contributes the `web` fixture for
 browser-only work. Import `test` from the package to have `web` typed.
 
 ```ts title="e2e.config.ts"
+import type { E2EConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
 
-targets: [{ engine: playwright({ url: 'http://localhost:3000' }) }],
+export default {
+  targets: [{ engine: playwright({ url: 'http://localhost:3000' }) }],
+} satisfies E2EConfig;
 ```
 
 ## Options

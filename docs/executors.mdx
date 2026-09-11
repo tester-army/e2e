@@ -17,36 +17,46 @@ observe, polices what you do, and records the verdict.
 
 ## Keep the loop, change the vocabulary
 
-This is how you drive something that is not a browser, such as a
-computer-use SDK:
+This example gives a browser agent two tools: read the screen and tap a
+button by its accessible name. The same loop can wrap a device SDK.
 
 ```ts title="e2e.config.ts"
+import type { E2EConfig } from '@e2edev/e2e';
 import { createToolLoopExecutor } from '@e2edev/e2e/agent';
-import { tool } from 'ai';
+import { playwright, surfaceOf } from '@e2edev/playwright';
+import { gateway, tool } from 'ai';
 import { z } from 'zod';
-import { device } from './my-device';
+
+const engine = playwright({ url: 'http://localhost:3000' });
 
 export default {
+  targets: [{ engine }],
   agents: {
     default: createToolLoopExecutor({
-      name: 'device-agent',
-      system: 'You control a device. Address elements by their visible label.',
+      name: 'button-agent',
+      model: gateway('openai/gpt-5.6-luna'),
+      system: 'Read the screen before acting. Address buttons by their visible label.',
       buildPrompt: (ctx) => ctx.step.instruction,
       tools: (ctx, { guard }) => ({
-        screenshot: tool({
-          description: 'Look at the device screen',
+        observe: tool({
+          description: 'Read the screen as text',
           inputSchema: z.object({}),
           execute: () =>
-            guard(() => ctx.budgets.runTool({ name: 'screenshot', mutates: false }, async () => {
+            guard(() => ctx.budgets.runTool({ name: 'observe', mutates: false }, async () => {
               const observation = await ctx.observe();
               return observation.text;
             })),
         }),
         tap: tool({
-          description: 'Tap an element by label',
+          description: 'Tap a button by its visible label',
           inputSchema: z.object({ label: z.string() }),
           execute: ({ label }) =>
-            guard(() => ctx.budgets.runTool({ name: 'tap', mutates: true }, () => device.tap(label))),
+            guard(() => ctx.budgets.runTool({ name: 'tap', mutates: true }, async () => {
+              await surfaceOf(engine)!.page().getByRole('button', { name: label, exact: true }).click({
+                timeout: Math.max(1, ctx.budgets.remainingMs()),
+              });
+              return `Tapped ${label}.`;
+            })),
         }),
       }),
     }),
@@ -69,21 +79,40 @@ device operation that ignores cancellation finishes on its own time.
 
 ## Replace the executor
 
-```ts
-import type { StepExecutor } from '@e2edev/e2e';
+This model-free executor supports one assertion,
+`agent.assert('the screen says Ready')`. Other instructions return a blocked
+verdict so the executor cannot claim to have checked something it does not
+understand.
+
+```ts title="e2e.config.ts"
+import type { E2EConfig, StepExecutor } from '@e2edev/e2e';
+import { playwright } from '@e2edev/playwright';
 
 const scripted: StepExecutor = {
   name: 'scripted',
   version: '1',
-  cache: 'off',                              // every step reaches runStep; no cached replay
+  cache: 'off',
   async runStep(ctx) {
-    const screen = await ctx.observe();      // redacted semantic tree as text
-    await ctx.actions.tap({ id: 'n42' });    // policed, budgeted, recorded
-    return { status: 'passed', summary: 'did the thing and saw the result' };
+    if (ctx.step.kind !== 'assert' || ctx.step.instruction !== 'the screen says Ready') {
+      return {
+        status: 'blocked',
+        errorCode: 'AUTOMATION_UNSUPPORTED',
+        summary: 'This executor only checks whether the screen says Ready.',
+      };
+    }
+    const screen = await ctx.observe();
+    const ready = screen.text.includes('Ready');
+    return {
+      status: ready ? 'passed' : 'failed',
+      summary: ready ? 'The screen says Ready.' : 'Ready is absent from the screen.',
+    };
   },
 };
 
-export default { agents: { default: scripted } } satisfies E2EConfig;
+export default {
+  targets: [{ engine: playwright({ url: 'http://localhost:3000' }) }],
+  agents: { default: scripted },
+} satisfies E2EConfig;
 ```
 
 The context tells the executor where it is and what it may do:
@@ -100,11 +129,11 @@ The context tells the executor where it is and what it may do:
 
 Secrets in params arrive as name-only placeholders. `actions.typeSecret(target, name)`
 performs the authorized fill without the plaintext passing through your code.
-A custom executor with no model is exempt from the model check; its `act`
-steps need none, and a judgment call without a model still fails with
-`MODEL_UNAVAILABLE`. `agent.assert` on a custom executor is dispatched to
-`runStep` like an `act`, under the act budgets and `config.timeout`; `vision`
-and `screenshot` are `UNSUPPORTED_CAPABILITY` there.
+A custom executor can run both `agent.act` and `agent.assert` without a
+model. Its `agent.assert` dispatches to `runStep` under the act budgets and
+`config.timeout`; `vision` and `screenshot` are `UNSUPPORTED_CAPABILITY`
+there. The built-in judgment tier still requires a model for `agent.assert`,
+`agent.waitFor`, and `agent.extract`, otherwise it raises `MODEL_UNAVAILABLE`.
 
 ### Driving the page yourself
 
@@ -115,9 +144,10 @@ passed to the target. Both accessors throw `INVALID_STATE` before an attempt
 is running.
 
 ```ts
+import type { E2EConfig, StepExecutor } from '@e2edev/e2e';
 import { playwright, surfaceOf } from '@e2edev/playwright';
 
-const engine = playwright();
+const engine = playwright({ url: 'http://localhost:3000' });
 const own: StepExecutor = {
   name: 'own-tools',
   version: '1',
@@ -130,6 +160,11 @@ const own: StepExecutor = {
     return { status: 'passed', summary: 'saved' };
   },
 };
+
+export default {
+  targets: [{ engine }],
+  agents: { default: own },
+} satisfies E2EConfig;
 ```
 
 What you do there is out of band: the harness still bounds the step and

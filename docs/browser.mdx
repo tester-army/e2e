@@ -67,8 +67,9 @@ const file = await web.waitForDownload(() =>
 );
 ```
 
-The file is registered as a `download` artifact and `file.path` is where it
-landed.
+The file is registered as a `download` artifact. `file.path` is relative to
+the attempt's artifact directory, not an absolute or project-relative file
+path.
 
 ## Reach into an iframe
 
@@ -110,6 +111,9 @@ The browser and the initial viewport are options of the engine. Two browsers
 on one app are two targets:
 
 ```ts title="e2e.config.ts"
+import type { E2EConfig } from '@e2edev/e2e';
+import { playwright } from '@e2edev/playwright';
+
 const app = { url: 'http://localhost:3000' };
 
 export default {

@@ -19,14 +19,19 @@ const seedCart = defineTool(
   tool({
     description: 'Seed the cart with a SKU via the store test API',
     inputSchema: z.object({ sku: z.string() }),
-    execute: async ({ sku }) =>
-      fetch(`${process.env.APP_URL}/api/test/cart?sku=${sku}`).then((r) => r.text()),
+    execute: async ({ sku }) => {
+      const url = new URL('/api/test/cart', process.env.APP_URL ?? 'http://localhost:3000');
+      url.searchParams.set('sku', sku);
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`Cart seeding failed: HTTP ${response.status}`);
+      return response.text();
+    },
   }),
   { mutates: true },
 );
 
 export default {
-  targets: [{ engine: playwright({ url: process.env.APP_URL! }) }],
+  targets: [{ engine: playwright({ url: process.env.APP_URL ?? 'http://localhost:3000' }) }],
   agents: { default: createAgent({ model: gateway('openai/gpt-5.6-luna'), tools: { seedCart } }) },
 } satisfies E2EConfig;
 ```
@@ -51,21 +56,26 @@ Parallel tool calls cannot exceed the budget by checking it at the same time.
 ## Observe from a tool
 
 A read-only tool can look at the screen through the same redacted view the
-executor uses:
+executor uses. This tool saves the available pixels as report evidence:
 
 ```ts
 import { defineTool, getToolContext } from '@e2edev/e2e/agent';
+import { tool } from 'ai';
+import { z } from 'zod';
 
-const checkContrast = defineTool(
+const captureEvidence = defineTool(
   tool({
-    description: 'Measure the contrast of the visible text',
+    description: 'Save a screenshot as evidence in the report',
     inputSchema: z.object({}),
     execute: async (_input, executionOptions) => {
       const context = getToolContext(executionOptions);
       const observation = await context.observe({ pixels: true });
-      const result = measure(observation.pixels);
-      const id = await context.attachScreenshot(observation.pixels, 'contrast');
-      return { ...result, evidence: id };
+      const pixels = observation.pixels;
+      if (pixels === undefined) {
+        return { withheld: observation.pixelsWithheld ?? 'UNSUPPORTED_CAPABILITY' };
+      }
+      const id = await context.attachScreenshot(pixels, 'evidence');
+      return { evidence: id };
     },
   }),
   { mutates: false },
@@ -87,12 +97,23 @@ with the artifact's id.
 `@e2edev/agent-device` ships a ready tool pack for its engine:
 
 ```ts
+import type { E2EConfig } from '@e2edev/e2e';
+import { createAgent } from '@e2edev/e2e/agent';
 import { agentDevice } from '@e2edev/agent-device';
 import { agentDeviceTools } from '@e2edev/agent-device/tools';
+import { gateway } from 'ai';
 
 const iphone = agentDevice({ platform: 'ios', app: 'Settings' });
 
-agents: { default: createAgent({ model, tools: agentDeviceTools(iphone) }) },
+export default {
+  targets: [{ engine: iphone }],
+  agents: {
+    default: createAgent({
+      model: gateway('openai/gpt-5.6-luna'),
+      tools: agentDeviceTools(iphone),
+    }),
+  },
+} satisfies E2EConfig;
 ```
 
 It adds `open_app`, `swipe`, `type_text`, `alert`, and `screenshot`, scoped

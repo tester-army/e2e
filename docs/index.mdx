@@ -43,13 +43,16 @@ export default {
   budget, and ends in a verdict: passed, failed, or blocked.
 - **Secrets the model never sees.** A password is an opaque handle. The model
   gets its name; the runner fills the field.
-- **Replay instead of re-thinking.** A passing `agent.act` records its actions
-  and the next run replays them with no model call, until the app diverges.
+- **Replay instead of re-thinking.** In read-write cache mode, an `agent.act`
+  followed by a recorded verification can save its actions. Later runs replay
+  them with no model call until the app diverges.
 - **One contract, any surface.** `@e2edev/playwright` drives browsers and
-  `@e2edev/agent-device` drives iOS simulators and Android emulators. The
-  same test runs on both.
-- **A report for every run.** `.e2e/report.json` carries results, steps,
-  screenshots, traces, and model usage.
+  `@e2edev/agent-device` drives iOS simulators and Android emulators. Tests
+  share the agent and locator APIs; setup follows the platform. A browser
+  test opens a URL, while a device attempt starts in its configured app.
+- **A report for every run.** `.e2e/report.json` carries results, steps, model
+  usage, and the artifacts the selected engine captured. Playwright can add
+  traces; device targets provide screenshots and optional video.
 
 ## Where to go
 

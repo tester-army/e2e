@@ -9,7 +9,10 @@ until the URL answers, and stops it when the run ends.
 
 ## Point at a running app
 
-```ts title="e2e.config.ts"
+Import `playwright` from `@e2edev/playwright` and put this in the exported
+config object:
+
+```ts title="Config fragment"
 targets: [{
   engine: playwright({ url: process.env.APP_URL ?? 'http://localhost:3000' }),
 }],
@@ -66,7 +69,8 @@ Three options matter most:
   `APP_UNREACHABLE`. The file is unredacted; keep it in an ignored directory.
 - **`env`** passes what the app needs. The child inherits only `PATH`, `HOME`,
   the temp-directory variables, and on Windows `SystemRoot` and `COMSPEC`.
-  Model keys and CI tokens never reach it.
+  Model keys and CI tokens are not inherited automatically. Values you put
+  in `command.env` are forwarded to the child, including any keys or tokens.
 
 The command is never shell-interpreted: `executable` is resolved on `PATH`
 and `args` are passed verbatim. `startupTimeout` (default 60 s) bounds the
@@ -79,7 +83,7 @@ A database, a migration, an auth emulator: declare them as `services`. They
 start in order before the app command, each ready before the next begins,
 and stop in reverse when the run ends.
 
-```ts title="e2e.config.ts"
+```ts title="Target fragment"
 engine: playwright({
   url: 'http://localhost:3000',
   services: [
@@ -119,6 +123,9 @@ clock and splits the startup time out of the run's duration.
 Two browsers on one app are two targets that each name it:
 
 ```ts title="e2e.config.ts"
+import type { E2EConfig } from '@e2edev/e2e';
+import { playwright } from '@e2edev/playwright';
+
 const app = { url: 'http://localhost:3000' };
 
 export default {
@@ -141,7 +148,7 @@ protection, a tunnel with an interstitial page, a staging host behind HTTP
 basic authentication. The engine declares how to get through, and every path
 onto the page goes through with it.
 
-```ts title="e2e.config.ts"
+```ts title="Target fragment"
 engine: playwright({
   url: process.env.PREVIEW_URL ?? 'http://localhost:3000',
   identity: 'storefront',
@@ -163,7 +170,7 @@ A host behind HTTP basic authentication takes `basicAuth`. The browser
 answers a `401` from an allowed origin with the credentials and a challenge
 from any other origin with nothing.
 
-```ts
+```ts title="Target fragment"
 engine: playwright({
   url: 'https://staging.example.com',
   basicAuth: { username: 'preview', password: process.env.PREVIEW_PASSWORD ?? '' },

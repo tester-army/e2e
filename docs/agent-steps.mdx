@@ -81,11 +81,13 @@ Every planned step ends in one of three verdicts:
 | A budget or the clock | `STEP_BUDGET_EXHAUSTED`, `STEP_TIMEOUT` | 1 |
 | An interaction the toolset cannot perform | `AUTOMATION_UNSUPPORTED` | 1 |
 
-A configuration or infrastructure block does not paint the test red, so red
-keeps meaning "the product misbehaved". A step that ran out of its own budget
-is still a test failure: the test asked for more than the step could deliver.
+Configuration and infrastructure blocks exit 2 and 3 respectively. Budget
+exhaustion, timeouts, and unsupported automation still count as test failures
+and exit 1, even though the agent could not reach a product verdict.
 
 ## Cost
+
+These defaults describe the built-in agent and judgment tier:
 
 | Call | Model calls | Default timeout |
 | --- | --- | --- |
@@ -95,9 +97,14 @@ is still a test failure: the test asked for more than the step could deliver.
 | `waitFor` | up to `maxModelCalls`, default 25 | 30 s, or `actionTimeout` when larger |
 
 `assert` and `extract` spend one judgment and one repair round at most.
-`waitFor` polls, but a judgment is spent only when the screen changes.
+Tree-only `waitFor` skips judgments while the observed tree is unchanged.
+With vision enabled, it judges every interval even when the tree is unchanged.
 Exceeding a budget raises `STEP_BUDGET_EXHAUSTED`; running out of time,
 `STEP_TIMEOUT`.
+
+With a custom executor, `agent.assert` runs through `runStep` under the same
+action and model-call budgets as `act`, with `config.timeout` as its default
+timeout. It does not use the built-in two-call judgment limit.
 
 Keep suites cheap: assert with `expect` when the check is mechanical, scope
 `act` to the step that varies, and give slow providers `timeout` room. The

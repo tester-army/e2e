@@ -51,9 +51,9 @@ jobs:
           path: .e2e/artifacts
 ```
 
-Upload the artifacts on every outcome, not only on failure. The comment links
-to the workflow run as the place to fetch them, and a flaky test that passed
-on its second attempt still left a recording worth watching.
+Upload the artifacts on every non-cancelled outcome. The comment links to
+the workflow run as the place to fetch them, and a flaky test that passed
+on its second attempt can still leave evidence worth inspecting.
 
 ## The comment
 

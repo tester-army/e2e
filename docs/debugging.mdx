@@ -3,9 +3,10 @@ title: Debugging a run
 description: Read the report, open the evidence, watch the browser, and see what the model was sent.
 ---
 
-Every run writes `.e2e/report.json` and, for each attempt, an artifact
-directory with screenshots and a trace. The terminal tells you what failed;
-the report and the artifacts tell you why.
+Every run writes `.e2e/report.json`. Attempt artifacts depend on the selected
+engine and what it captured: screenshots, Playwright traces, downloads, or
+recordings. The terminal tells you what failed; the report and the available
+artifacts tell you why.
 
 ## Read the failure
 
@@ -39,9 +40,11 @@ got. `--reporter json` prints the same document on stdout.
 
 Artifacts land under `.e2e/artifacts/`, one directory per attempt:
 
-- **Screenshots.** Every failed `expect` and every `agent.assert` leaves one.
-  `app.screenshot('label')` adds your own.
-- **A Playwright trace** (`trace.zip`) on a browser target. Open it with
+- **Screenshots.** The built-in `agent.assert` tries to capture one after
+  either verdict unless `screenshot: false` disables it. Capture can fail or
+  be withheld. A failed `expect` does not capture one automatically;
+  `app.screenshot('label')` captures one explicitly when pixels are allowed.
+- **A Playwright trace** (`trace.zip`) on a Playwright target. Open it with
   `npx playwright show-trace <file>`.
 - **Downloads** a test saved through `web.waitForDownload`.
 - **Videos** and **agent transcripts** when you ask for them; see below.
@@ -49,21 +52,26 @@ Artifacts land under `.e2e/artifacts/`, one directory per attempt:
 Once a secret was filled in an attempt, the runner rewrites the attempt's
 trace before it is kept, replacing every credential value with
 `<secret:name>`. The report marks such a trace `redaction: "complete"`. A
-trace that cannot be rewritten is deleted, and screenshots stop for the rest
-of the attempt. Videos are recorded with `redaction: "incomplete"` because a
-screencast masks nothing.
+trace that cannot be rewritten is deleted. All screenshot evidence, including
+`app.screenshot()`, is denied for the rest of the attempt after a secret fill.
+Videos are recorded with `redaction: "incomplete"` because a screencast masks
+nothing.
 
 ## Watch it happen
 
 ```bash
 npx --no-install e2e run --headed          # a visible browser
-npx --no-install e2e run --video           # a recording of every attempt
+npx --no-install e2e run --video           # requires an engine that records video
 ```
 
-`--video` writes a WebM per attempt on a browser target and an MP4 on a
-device, under the attempt's directory. The failure recap names the file
-under each failed test. Set `artifacts: { kinds: ['video'], video: { retain: 'on-failure' } }`
-in the config to record everything in CI and keep only what needs watching.
+`--video` requires recording support from every selected engine; an engine
+without it fails configuration with `UNSUPPORTED_ARTIFACT`. Playwright writes
+WebM segments under the attempt's directory, one per page it records. A
+restart or state reset can produce several segments. The agent-device engine
+writes an MP4 of the device screen. The failure recap names the files under
+each failed test. Set
+`artifacts: { kinds: ['video'], video: { retain: 'on-failure' } }`
+in the config to record attempts in CI and keep only recordings from failures.
 
 ## Agent steps
 

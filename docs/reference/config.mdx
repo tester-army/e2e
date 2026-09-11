@@ -82,9 +82,11 @@ export interface Target {
 | `engine` | `EngineHandle` | none | [`playwright(...)`](/reference/playwright) for a browser, [`agentDevice(...)`](/reference/agent-device) for a device, any [`defineEngine`](/writing-an-engine) handle otherwise |
 
 `{ engine: playwright({ url }) }` is a complete target. Two targets on one
-platform name themselves. A target without an engine is agent-tools-only:
-the engine's declared capabilities grade what a target serves, and anything
-undeclared fails with `UNSUPPORTED_CAPABILITY`.
+platform name themselves. A target without an engine runs opaquely through
+agent tools; the runner cannot observe or drive it through an engine. Tests
+whose `requires` list names a capability the target lacks are skipped for
+that target. Calling an unsupported engine operation or acquiring a fixture
+it does not contribute fails with `UNSUPPORTED_CAPABILITY`.
 
 ## The app under test
 
@@ -143,9 +145,10 @@ export interface CommandConfig {
 | `reuseExisting` | `boolean` | `false` | If `readyUrl` already answers before the spawn, attach to that process and leave it alone on teardown. Without it, an already-answering URL is `APP_ALREADY_RUNNING`. Ignored in CI, with a notice |
 
 The child inherits only `PATH`, `HOME`, `TMPDIR`, `TMP`, `TEMP`,
-`SystemRoot`, and `COMSPEC`, plus `command.env`. Model credentials,
-`E2E_USER_*` values, and CI tokens are never inherited. The runner never
-terminates a process it did not start.
+`SystemRoot`, and `COMSPEC`. Model credentials, `E2E_USER_*` values, and CI
+tokens are not inherited automatically. Every value explicitly supplied in
+`command.env` is forwarded, including a credential or token. The runner
+never terminates a process it did not start.
 
 ### services
 
@@ -206,13 +209,18 @@ process boundary: each worker constructs its own from the config module.
 
 ### video
 
-With `video` among the kinds, or `--video`, every attempt records the surface
-it drives: a WebM screencast of the page on a browser engine, an MP4 of the
-device screen on a device engine. The file lands under the attempt's
-artifact directory as `video/video.webm` (or `.mp4`) with `startedAt` set to
-when recording began, so `step.startedAt - artifact.startedAt` is a step's
-offset into the video. An attempt that opened a new page mid-way writes one
-segment per page.
+With `video` among the kinds, or `--video`, every selected engine must support
+recording; otherwise configuration fails with `UNSUPPORTED_ARTIFACT`.
+Playwright opens a page when recording starts and writes WebM segments, one
+per page it records. The agent-device engine writes an MP4 of the device
+screen. Other engines define their recording format and when segments exist.
+A failed launch or a recording that cannot be finalized may leave no video.
+
+The first file lands under the attempt's artifact directory as
+`video/video.webm` for Playwright or `video/video.mp4` for agent-device.
+Playwright names later segments `video/video-part<n>.webm`. Each segment has
+`startedAt` set to when recording began, so
+`step.startedAt - artifact.startedAt` is a step's offset into that segment.
 
 | Key | Type | Default | Notes |
 | --- | --- | --- | --- |
@@ -261,10 +269,16 @@ written: `--agent` is `INVALID_CONFIG`, a pin is `COLLECTION_ERROR`, a call's
 or `.`. See [Agents and personas](/agents).
 
 ```ts title="e2e.config.ts"
+import type { E2EConfig } from '@e2edev/e2e';
+import { createAgent } from '@e2edev/e2e/agent';
+import { playwright } from '@e2edev/playwright';
+import { gateway } from 'ai';
+
 export default {
+  targets: [{ engine: playwright({ url: 'http://localhost:3000' }) }],
   agents: {
     default: { model: gateway('openai/gpt-5.6-luna') },
-    ux: createAgent({ model: gateway('openai/gpt-5.6-luna'), system: UX_REVIEW_PLAYBOOK, tools: { contrastCheck } }),
+    ux: createAgent({ model: gateway('openai/gpt-5.6-luna'), system: 'Check labels, contrast, and keyboard access.' }),
     thorough: { model: gateway('anthropic/claude-opus-5'), context: 'Verify every claim on screen.' },
   },
 } satisfies E2EConfig;
@@ -363,9 +377,12 @@ See [Signing in](/authentication).
 
 ## cache
 
-The trace cache records each passing `agent.act()` step and replays it on the
-next run. [Caching agent steps](/cache) explains when a step is recorded and
-when a replay hands off.
+In `read-write` mode, the trace cache records an `agent.act()` only after a
+later recorded verification passes, such as a locator assertion or an
+`agent.assert()` step. A trailing `act` with no verification is not recorded.
+`read-only` mode can replay existing entries but writes none; `off` disables
+both. [Caching agent steps](/cache) explains verification and when a replay
+hands off.
 
 | Key | Type | Default | Description |
 | --- | --- | ---: | --- |

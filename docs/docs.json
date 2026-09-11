@@ -151,10 +151,6 @@
       "destination": "/browser"
     },
     {
-      "source": "/reference/app-web",
-      "destination": "/reference/playwright"
-    },
-    {
       "source": "/reference/device",
       "destination": "/reference/agent-device"
     },
