@@ -28,7 +28,6 @@ describe('SessionHost', { timeout: 60_000 }, () => {
       { projectRoot: dir, env: {} },
     );
     return new SessionHost({
-      config,
       loadConfig: async () => config,
       env: {},
       headed: options.headed ?? false,
@@ -50,12 +49,12 @@ describe('SessionHost', { timeout: 60_000 }, () => {
   it('boots the engine headed when asked and headless otherwise', async () => {
     const fake = createFakeEngine();
     const headed = host(fake, { headed: true });
-    const text = await headed.open(undefined);
-    expect(text).toContain('headed.');
+    const text = await headed.open({});
+    expect(text).toContain('), headed;');
     expect(fake.inits[0]?.headed).toBe(true);
     await headed.close('done');
     const headless = host(fake, { headed: false });
-    await headless.open(undefined);
+    await headless.open({});
     expect(fake.inits[1]?.headed).toBe(false);
     await headless.close('done');
     expect(fake.stats()).toMatchObject({ attemptsStarted: 2, attemptsEnded: 2, disposes: 2 });
@@ -64,7 +63,7 @@ describe('SessionHost', { timeout: 60_000 }, () => {
   it('closes an idle session and disposes the engine', async () => {
     const fake = createFakeEngine();
     const idle = host(fake, { idleMs: 300 });
-    await idle.open(undefined);
+    await idle.open({});
     expect(idle.isOpen).toBe(true);
     await sleep(1_000);
     expect(idle.isOpen).toBe(false);
@@ -75,7 +74,7 @@ describe('SessionHost', { timeout: 60_000 }, () => {
   it('ends a session at its TTL through the step deadline', async () => {
     const fake = createFakeEngine();
     const short = host(fake, { ttlMs: 1_000 });
-    await short.open(undefined);
+    await short.open({});
     await sleep(3_000);
     expect(short.isOpen).toBe(false);
     expect(logs.some((line) => line.includes('exceeded its 1000 ms timeout'))).toBe(true);
@@ -90,11 +89,11 @@ describe('SessionHost', { timeout: 60_000 }, () => {
       },
     });
     const flaky = host(fake);
-    await expect(flaky.open(undefined)).rejects.toThrow(/screen unavailable/);
+    await expect(flaky.open({})).rejects.toThrow(/screen unavailable/);
     expect(flaky.isOpen).toBe(false);
     expect(fake.stats()).toMatchObject({ attemptsStarted: 1, attemptsEnded: 1, disposes: 1 });
     broken = false;
-    const text = await flaky.open(undefined);
+    const text = await flaky.open({});
     expect(text).toContain('button "Submit"');
     await flaky.close('done');
     expect(fake.stats()).toMatchObject({ attemptsStarted: 2, attemptsEnded: 2, disposes: 2 });

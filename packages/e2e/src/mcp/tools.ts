@@ -1,14 +1,16 @@
 /**
- * The bridge from the agent's AI SDK tools to MCP tools. The testing agent's
- * vocabulary (`createGrammarTools`, the engine packs, the project's
+ * The bridge from the agent's AI SDK tools to the MCP `call` tool. The
+ * testing agent's vocabulary (the grammar, the engine packs, the project's
  * `defineTool` values) is a set of AI SDK tools: a description, a zod input
- * schema, and an execute function. An MCP tool is the same three things with
- * a different result envelope, so one adapter serves every tool the same way
- * and the coding agent reads exactly the descriptions the testing agent does.
+ * schema, and an execute function. The server keeps its own tool list fixed
+ * and small, and serves that vocabulary as a catalog: `tools` renders it from
+ * the same descriptions and schemas the testing agent reads, and `call`
+ * validates the arguments against the schema, runs the tool, and renders its
+ * output in the MCP result envelope.
  */
 
-import type { ToolExecutionOptions, ToolSet } from 'ai';
-import { errorMessage, E2EError, isForeignE2EError, TestError } from '../internal/errors.ts';
+import { asSchema, type JSONSchema7, type ToolExecutionOptions, type ToolSet } from 'ai';
+import { ConfigurationError, errorMessage, E2EError, isForeignE2EError } from '../internal/errors.ts';
 
 /** One MCP content part this server emits. */
 export type McpContent =
@@ -27,11 +29,11 @@ export interface McpToolCallExtra {
   readonly signal: AbortSignal;
 }
 
-/** What the server needs to register one tool: its contract and its body. */
+/** What the server registers: the contract and the body of one of its fixed tools. */
 export interface McpToolSpec {
   readonly name: string;
   readonly description: string;
-  /** A zod object schema for the arguments, or undefined for a tool without arguments. */
+  /** A zod object schema for the arguments. */
   readonly inputSchema: unknown;
   /** Hint for clients: a tool that changes nothing on the app or disk. */
   readonly readOnly: boolean;
@@ -51,51 +53,114 @@ export function errorResult(cause: unknown): McpToolResult {
   return { content: [{ type: 'text', text: `${code}${errorMessage(cause)}` }], isError: true };
 }
 
-/** Which grammar and pack tools change application state; everything else is read-only. */
-const READ_ONLY_TOOLS: ReadonlySet<string> = new Set(['observe', 'screenshot']);
+/** How much of a description the catalog shows per tool: its first sentence, bounded. */
+const CATALOG_SENTENCE_MAX = 160;
 
 /**
- * Adapts every tool of an AI SDK toolset. `run` executes the named tool's
- * body wherever the host needs it to run (the live session's queue), so the
- * adapter never captures a session: the toolset it reads schemas from at
- * registration time may be a stub, and the one it executes against later is
- * the live one.
+ * The JSON Schema of a tool's arguments, without the draft marker clients
+ * never need. A zod schema converts synchronously; a schema that only
+ * resolves lazily is shown as an open object rather than awaited, since the
+ * catalog is rendered inline.
  */
-export function adaptToolSet(
-  tools: ToolSet,
-  run: (name: string, execute: () => Promise<unknown>) => Promise<unknown>,
-  live: () => ToolSet,
-  isReadOnly: (name: string) => boolean = (name) => READ_ONLY_TOOLS.has(name),
-): McpToolSpec[] {
-  return Object.entries(tools).map(([name, tool]) => ({
-    name,
-    description: typeof tool.description === 'string' ? tool.description : name,
-    inputSchema: tool.inputSchema,
-    readOnly: isReadOnly(name),
-    call: async (args, extra) => {
-      try {
-        // The live tool is looked up inside the host's run, so a call with no
-        // session gets the host's own answer (NO_SESSION), not a missing tool.
-        let current: ToolSet[string] | undefined;
-        const output = await run(name, async () => {
-          current = live()[name];
-          if (current?.execute === undefined) {
-            throw new TestError('UNSUPPORTED_CAPABILITY', `tool "${name}" is not available in this session`);
-          }
-          const options: ToolExecutionOptions<unknown> = {
-            toolCallId: `mcp-${Date.now().toString(36)}`,
-            messages: [],
-            abortSignal: extra.signal,
-            context: undefined,
-          };
-          return resolveOutput(await current.execute(args, options));
-        });
-        return resultFromOutput(current ?? tool, output, args);
-      } catch (cause) {
-        return errorResult(cause);
-      }
-    },
-  }));
+export function toolJsonSchema(tool: ToolSet[string]): JSONSchema7 {
+  const raw = asSchema(tool.inputSchema).jsonSchema;
+  if (typeof (raw as PromiseLike<JSONSchema7>).then === 'function') return { type: 'object' };
+  const { $schema: _draft, ...schema } = raw as JSONSchema7;
+  return schema;
+}
+
+/**
+ * One catalog line: the name, the argument names (`?` marks an optional
+ * one), the first sentence of the description, and the read-only mark.
+ * `- tap {target}: Tap or click one node.`
+ */
+export function catalogLine(name: string, tool: ToolSet[string], readOnly: boolean): string {
+  const schema = toolJsonSchema(tool);
+  const required = new Set(schema.required ?? []);
+  const args = Object.keys(schema.properties ?? {}).map((key) => (required.has(key) ? key : `${key}?`));
+  const signature = args.length === 0 ? name : `${name} {${args.join(', ')}}`;
+  return `- ${signature}: ${firstSentence(toolDescription(name, tool))}${readOnly ? ' [read-only]' : ''}`;
+}
+
+/** The full contract of one tool: its description and the JSON Schema of its arguments. */
+export function describeToolDetail(name: string, tool: ToolSet[string], readOnly: boolean): string {
+  return [
+    `${name}${readOnly ? ' [read-only]' : ''}`,
+    toolDescription(name, tool),
+    '',
+    'Arguments (JSON Schema):',
+    JSON.stringify(toolJsonSchema(tool), null, 2),
+  ].join('\n');
+}
+
+function toolDescription(name: string, tool: ToolSet[string]): string {
+  return typeof tool.description === 'string' && tool.description !== '' ? tool.description : name;
+}
+
+/** Abbreviations whose period does not end a sentence. */
+const ABBREVIATIONS = /\b(?:e\.g|i\.e|etc|vs)\./gi;
+
+function firstSentence(text: string): string {
+  const flat = text.replaceAll(/\s+/g, ' ').trim();
+  const guarded = flat.replaceAll(ABBREVIATIONS, (match) => match.replaceAll('.', '\u0000'));
+  const end = guarded.search(/[.!?](?:\s|$)/);
+  const sentence = (end === -1 ? guarded : guarded.slice(0, end + 1)).replaceAll('\u0000', '.');
+  if (sentence.length <= CATALOG_SENTENCE_MAX) return sentence;
+  const cut = sentence.lastIndexOf(' ', CATALOG_SENTENCE_MAX - 1);
+  return `${sentence.slice(0, cut > 0 ? cut : CATALOG_SENTENCE_MAX - 1).replace(/[,;:]$/, '')}…`;
+}
+
+/**
+ * Validates the arguments against the tool's own schema and runs it. The
+ * server's `call` tool takes any object, so this is where a wrong argument is
+ * caught, with the same message a model would get, before the tool runs.
+ */
+export async function invokeTool(
+  name: string,
+  tool: ToolSet[string],
+  args: Record<string, unknown>,
+  extra: McpToolCallExtra,
+): Promise<McpToolResult> {
+  if (tool.execute === undefined) {
+    throw new ConfigurationError('UNSUPPORTED_CAPABILITY', `tool "${name}" has no execute function`);
+  }
+  const input = await validateArgs(name, tool, args);
+  const options: ToolExecutionOptions<unknown> = {
+    toolCallId: `mcp-${Date.now().toString(36)}`,
+    messages: [],
+    abortSignal: extra.signal,
+    context: undefined,
+  };
+  return resultFromOutput(tool, await resolveOutput(await tool.execute(input, options)), input);
+}
+
+async function validateArgs(name: string, tool: ToolSet[string], args: Record<string, unknown>): Promise<unknown> {
+  const schema = asSchema(tool.inputSchema);
+  if (schema.validate === undefined) return args;
+  const result = await schema.validate(args);
+  if (result.success) return result.value;
+  throw new ConfigurationError(
+    'INVALID_ARGUMENT',
+    `call ${name}: ${describeValidationError(result.error)}; tools {tool: ${JSON.stringify(name)}} shows its arguments`,
+  );
+}
+
+/** The issues a zod (or any standard schema) failure carries, one per line; else the message. */
+function describeValidationError(error: unknown): string {
+  const issues = issuesOf(error) ?? issuesOf((error as { cause?: unknown } | undefined)?.cause);
+  if (issues === undefined || issues.length === 0) return errorMessage(error);
+  return issues
+    .map((issue) => {
+      const path = Array.isArray(issue.path) && issue.path.length > 0 ? `${issue.path.map(String).join('.')}: ` : '';
+      return `${path}${typeof issue.message === 'string' ? issue.message : 'invalid'}`;
+    })
+    .join('; ');
+}
+
+function issuesOf(value: unknown): { path?: unknown; message?: unknown }[] | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const issues = (value as { issues?: unknown }).issues;
+  return Array.isArray(issues) ? (issues as { path?: unknown; message?: unknown }[]) : undefined;
 }
 
 /** An execute function may stream; the last value is the tool's output. */

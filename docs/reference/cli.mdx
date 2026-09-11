@@ -126,12 +126,14 @@ an agent uses it.
 npx --no-install e2e mcp [--config <path>] [--target <name>] [--headless]
 ```
 
-Serves the project's live app to a coding agent over the Model Context
-Protocol on stdio: a session on one target with the tools the testing agent
-gets (`observe`, `tap`, `type`, `press`, `select`, `scroll`, `navigate`,
-`type_secret`), plus `locate` and `screenshot`, so the agent looks at the
-real screen and checks a locator before writing a test. `e2e init` registers
-the server for Claude Code and Cursor. The tools, the session rules, and the
+Serves a project's live app to a coding agent over the Model Context
+Protocol on stdio, through four fixed tools: `open_session` opens a session
+on one target (any config the agent names), `call` runs any tool of that
+session (`observe`, `tap`, `type`, `press`, `select`, `scroll`, `navigate`,
+`type_secret`, `locate`, `screenshot`, and the project's own tools), `tools`
+describes them, and `close_session` ends it. The agent looks at the real
+screen and checks a locator before writing a test. `e2e init` registers the
+server for Claude Code and Cursor. The tools, the session rules, and the
 flags are on the [MCP server](/reference/mcp) page.
 
 ## e2e run

@@ -1,6 +1,6 @@
 ---
 title: MCP server (e2e mcp)
-description: Give a coding agent a live session on the app, with the testing agent's tools.
+description: Give a coding agent a live session on the app, with the testing agent's tools behind four fixed MCP tools.
 ---
 
 ```bash
@@ -15,6 +15,15 @@ values, plus `locate` to try a semantic locator before writing it and a
 masked `screenshot`. The agent explores the real app, checks the exact
 accessible names and locators, then writes deterministic tests and runs them
 with `e2e run` from its shell. The agent skill is served as resources.
+
+The server registers four MCP tools and never changes them. The session's
+vocabulary is a catalog behind `call`, in the style of
+[executor.sh](https://github.com/UsefulSoftwareCo/executor): one `call` tool
+runs any catalog tool by name, and `tools` describes them. The catalog
+therefore follows whatever config and target the agent opens, a project tool
+added to the config is available on the next `open_session`, and one server
+serves every e2e project the agent can reach without a restart or a change
+to the client's tool list.
 
 ## Setup
 
@@ -37,14 +46,16 @@ Every client that reads a project-level MCP config takes the same entry:
 ```
 
 The client starts the server in the project directory (Claude Code uses the
-directory that holds `.mcp.json`, Cursor the workspace root), and the server
-finds the config the way `e2e run` does: the nearest `e2e.config.ts` or
-`e2e.config.mts`, searching upward to the repository root. In a monorepo whose
-config lives in a subfolder, add `--config path/to/e2e.config.ts` to the args.
+directory that holds `.mcp.json`, Cursor the workspace root). `open_session`
+then finds the config the way `e2e run` does: the nearest `e2e.config.ts` or
+`e2e.config.mts`, searching upward to the repository root. A config
+elsewhere, in a monorepo subfolder or a second project, is named per session
+with `open_session`'s `config` argument, or fixed for every session with
+`--config`.
 
 | Flag | Behavior |
 | --- | --- |
-| `--config <path>` | Config file (default: the nearest `e2e.config.ts`). The config is loaded again on every `open_session`, so an edit applies without restarting the server. |
+| `--config <path>` | The config every session loads unless `open_session` names one (default: the nearest `e2e.config.ts`). Configs are loaded again on every `open_session`, so an edit applies without restarting the server. |
 | `--target <name>` | The target every session opens on. Otherwise `open_session` names one, or the only target is used; with several targets and no name the call fails with `TARGET_REQUIRED`. |
 | `--headless` | Hide the browser or simulator during sessions. Sessions are headed by default outside CI, so the developer can watch. |
 
@@ -54,37 +65,44 @@ that writes to stdout is redirected to stderr for the life of the process.
 
 ## Tools
 
-The grammar tools come from the engines the config declares, so a project
-serves what its targets can do:
-
-| Config target | Grammar tools offered |
-| --- | --- |
-| `playwright(...)` | `observe`, `tap`, `type`, `press`, `select`, `scroll`, `navigate` |
-| `agentDevice(...)` | `observe`, `tap`, `type`, `press`, `select`, `scroll`; no `navigate`, the engine declares no URL navigation |
-| Several targets | The union; a session on a target that lacks a verb refuses it with `UNSUPPORTED_CAPABILITY` |
-
 | Tool | Arguments | Result |
 | --- | --- | --- |
-| `open_session` | `target` (optional) | Grades and prepares the engine, starts the app command the engine declares, boots the engine, starts one attempt, opens the app URL when the engine can navigate, and returns the session summary and the first observation. |
+| `open_session` | `target` (optional), `config` (optional path, relative to the server's directory) | Loads the config, grades and prepares the engine, starts the app command the engine declares, boots the engine, starts one attempt, opens the app URL when the engine can navigate, and returns the session id, the catalog, and the first observation. |
+| `tools` | `tool` (optional), `session` (optional) | The session's catalog: one line per tool with its argument names, the first sentence of its description, and a read-only mark. With `tool`, that tool's full description and the JSON Schema of its arguments. |
+| `call` | `tool`, `args` (optional object), `session` (optional) | Runs one catalog tool. Arguments are validated against the tool's own schema first (`INVALID_ARGUMENT` names the field). The result is the tool's: an action's summary and what changed on screen, a locate verdict, an image for `screenshot`. |
+| `close_session` | `session` (optional) | Ends the attempt, disposes the engine, and stops the app processes the session started; reports cleanup failures. |
+
+Results carry the session id, and every session tool accepts it as
+`session`; today one session is open at a time, and a call naming another id
+fails with `NO_SESSION`.
+
+### The catalog
+
+What `call` can run depends on the session's target, so a project serves
+what its engine can do:
+
+| Catalog tool | Arguments | Result |
+| --- | --- | --- |
 | `observe` | none | A fresh observation: one node per line as `#id role "name" ...`, the current path, and the revision. |
-| `tap`, `type`, `press`, `select`, `scroll`, `navigate`, `type_secret` | As the testing agent's tools: a node id from the newest observation, plus the value, key, direction, URL, or credential name | The action's summary and what changed on screen since the last observation. `type_secret` is offered when the config declares `credentials`, and fills the named credential's password without the plaintext ever reaching the agent. |
+| `tap`, `type`, `press`, `select`, `scroll`, `navigate`, `type_secret` | As the testing agent's tools: a node id from the newest observation, plus the value, key, direction, URL, or credential name | The action's summary and what changed on screen since the last observation. A verb the engine does not declare is not in the catalog (`agentDevice(...)` has no `navigate`); calling it fails with `UNSUPPORTED_CAPABILITY`. `type_secret` is listed when the config declares `credentials`, and fills the named credential's password without the plaintext ever reaching the agent. |
 | `locate` | Exactly one of `role` (with optional `name`), `text`, `label`, `placeholder`, `testId`; `exact` | How many nodes match, which (role, name, text, states), and the `screen.*` call to write. Zero or several matches name the error a test would get (`LOCATOR_NOT_FOUND`, `LOCATOR_AMBIGUOUS`) and how to narrow. |
 | `screenshot` | none | The masked viewport as an image, or the reason it is withheld. |
-| `close_session` | none | Ends the attempt, disposes the engine, and stops the app processes the session started; reports cleanup failures. |
 
-Project tools passed to `createAgent({ tools })` are served under their own
-names, scoped to the platforms of the targets a session can open, and run
-through the same accounting as in a test step (`mutates` is honored). A
-mobile project that passes `agentDeviceTools(...)` therefore also serves
-`open_app`, `swipe`, `type_text`, and `alert`. A project tool named like a
-built-in tool is not served; the server logs which.
+Project tools passed to `createAgent({ tools })` follow in the catalog under
+their own names, scoped to the session target's platform, and run through
+the same accounting as in a test step (`mutates` is honored; a tool that
+declares `mutates: false` is marked read-only). A mobile project that passes
+`agentDeviceTools(...)` therefore also catalogs `open_app`, `swipe`,
+`type_text`, and `alert`. A project tool named like a catalog built-in is not
+served; the server logs which. A name the catalog does not have fails with
+`UNKNOWN_TOOL` and the list of names it does.
 
 A session is one attempt on one target, and one at a time: a second
-`open_session` fails with `SESSION_OPEN`, a session tool without a session
-with `NO_SESSION` (naming why the previous one ended). A session closes on
-`close_session`, after 30 idle minutes, after 4 hours, when the client
-disconnects, and on SIGINT or SIGTERM, so no browser or simulator is left
-behind. An `open_session` that fails partway tears down what it started.
+`open_session` fails with `SESSION_OPEN`, a `call` or `tools` without a
+session with `NO_SESSION` (naming why the previous one ended). A session
+closes on `close_session`, after 30 idle minutes, after 4 hours, when the
+client disconnects, and on SIGINT or SIGTERM, so no browser or simulator is
+left behind. An `open_session` that fails partway tears down what it started.
 
 Sessions enforce what tests enforce. Navigation stays inside the engine's
 allowed origins (`POLICY_DENIED` otherwise). Node ids are valid only against

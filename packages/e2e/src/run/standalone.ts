@@ -37,6 +37,8 @@ export interface StandaloneAttemptOptions {
   readonly timeoutMs: number;
   /** Where artifacts land, normally `<projectRoot>/.e2e/artifacts`. */
   readonly artifactsRoot: string;
+  /** The configured agent the `agent` fixture runs as when a call names none; default the run's first. */
+  readonly agent?: string | undefined;
   /** Run-level progress outside any step: engine provisioning, an app process. */
   readonly notice?: (target: string, message: string) => void;
   /** Live step progress, the same feed a run's reporters get. */
@@ -154,6 +156,7 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
     attempt,
     artifacts: artifacts.sink,
     priorSteps: () => steps.completed(),
+    agent: options.agent,
     agentContext: undefined,
     saveSession: undefined,
     // A model preflight failure is a run abort in a test; here it is one more

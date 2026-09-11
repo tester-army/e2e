@@ -1,9 +1,10 @@
 /**
  * `e2e mcp` with a project that has two targets, a custom engine with fewer
- * verbs, and project tools from `createAgent({ tools })`: the tool list is the
- * union over targets, a project tool named like a built-in is skipped, tools
- * scoped to a platform no target has are not offered, and each live session
- * refuses what its own target cannot honor.
+ * verbs, and project tools from `createAgent({ tools })`: the server's tool
+ * list stays the same four, each session's catalog is what its own target
+ * can do (the engine's verbs, the project tools for its platform), a project
+ * tool named like a built-in is skipped, and a second config in the same
+ * project opens without restarting the server.
  */
 
 import path from 'node:path';
@@ -17,18 +18,21 @@ import { createProject, type FixtureProject } from '../helpers/run-project.ts';
 const PACKAGE_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const CLI = path.join(PACKAGE_ROOT, 'dist', 'cli', 'bin.js');
 
-const CONFIG = `import type { E2EConfig } from '@e2edev/e2e';
-import { createAgent, defineTool, getToolContext } from '@e2edev/e2e/agent';
-import { playwright } from '@e2edev/playwright';
-import { z } from 'zod';
-import { createFakeEngine } from '../../helpers/fake-engine.ts';
+const KIOSK = `import { createFakeEngine } from '../../helpers/fake-engine.ts';
 
-const kiosk = createFakeEngine({
+export const kiosk = createFakeEngine({
   tree: { ref: { id: 'root', revision: '' }, role: 'root', children: [
     { ref: { id: 'k-1', revision: '' }, role: 'button', name: 'Start order', states: { hidden: false } },
     { ref: { id: 'k-2', revision: '' }, role: 'textbox', name: 'Table', states: { hidden: false } },
   ] },
 });
+`;
+
+const CONFIG = `import type { E2EConfig } from '@e2edev/e2e';
+import { createAgent, defineTool, getToolContext } from '@e2edev/e2e/agent';
+import { playwright } from '@e2edev/playwright';
+import { z } from 'zod';
+import { kiosk } from './kiosk.ts';
 
 export default {
   targets: [
@@ -62,6 +66,15 @@ export default {
 } satisfies E2EConfig;
 `;
 
+/** A second project config beside the first: one target, no project tools. */
+const KIOSK_ONLY_CONFIG = `import type { E2EConfig } from '@e2edev/e2e';
+import { kiosk } from './kiosk.ts';
+
+export default {
+  targets: [{ name: 'kiosk-only', platform: 'kiosk', engine: kiosk.engine }],
+} satisfies E2EConfig;
+`;
+
 interface ToolText {
   readonly text: string;
   readonly isError: boolean;
@@ -73,7 +86,7 @@ describe('e2e mcp with project tools and a custom engine', { timeout: 120_000 },
   let client: Client;
   let stderr = '';
 
-  const call = async (name: string, args: Record<string, unknown> = {}): Promise<ToolText> => {
+  const invoke = async (name: string, args: Record<string, unknown> = {}): Promise<ToolText> => {
     const result = (await client.callTool({ name, arguments: args }, undefined, { timeout: 110_000 })) as {
       content: { type: string; text?: string }[];
       isError?: boolean;
@@ -83,10 +96,16 @@ describe('e2e mcp with project tools and a custom engine', { timeout: 120_000 },
       isError: result.isError === true,
     };
   };
+  const call = (tool: string, args?: Record<string, unknown>): Promise<ToolText> => invoke('call', { tool, ...(args === undefined ? {} : { args }) });
+  const catalogNames = (text: string): string[] =>
+    text
+      .split('\n')
+      .filter((line) => line.startsWith('- '))
+      .map((line) => /^- (\S+?)(?: \{|:)/.exec(line)![1]!);
 
   beforeAll(async () => {
     app = await startFixtureApp();
-    project = createProject({ 'e2e.config.ts': CONFIG });
+    project = createProject({ 'e2e.config.ts': CONFIG, 'kiosk.ts': KIOSK, 'kiosk.config.ts': KIOSK_ONLY_CONFIG });
     const transport = new StdioClientTransport({
       command: process.execPath,
       args: [CLI, 'mcp', '--headless'],
@@ -107,32 +126,39 @@ describe('e2e mcp with project tools and a custom engine', { timeout: 120_000 },
     await app?.close();
   });
 
-  it('registers the union of verbs and project tools, once each, and skips the colliding name', async () => {
+  it('serves the same four tools whatever the project declares', async () => {
     const { tools } = await client.listTools();
-    const names = tools.map((tool) => tool.name);
-    expect(names.filter((name) => name === 'screenshot')).toHaveLength(1);
-    expect(tools.find((tool) => tool.name === 'screenshot')?.description).toContain('masked pixels');
-    expect(names).toEqual(expect.arrayContaining(['seed_data', 'count_nodes', 'kiosk_reset', 'scroll', 'navigate', 'tap']));
-    expect(names).not.toContain('shake');
-    expect(tools.find((tool) => tool.name === 'seed_data')?.annotations).toMatchObject({ readOnlyHint: false });
-    expect(tools.find((tool) => tool.name === 'count_nodes')?.annotations).toMatchObject({ readOnlyHint: true });
-    expect(stderr).toContain('project tool "screenshot" is not served over MCP');
+    expect(tools.map((tool) => tool.name)).toEqual(['open_session', 'tools', 'call', 'close_session']);
   });
 
   it('needs a target name when the config declares several', async () => {
-    const result = await call('open_session');
+    const result = await invoke('open_session');
     expect(result.isError).toBe(true);
     expect(result.text).toContain('TARGET_REQUIRED');
     expect(result.text).toContain('web, kiosk');
   });
 
-  it('runs project tools in a web session and refuses the kiosk-only one', async () => {
-    const opened = await call('open_session', { target: 'web' });
+  it('catalogs the project tools of a web session, runs them, and skips the colliding and foreign ones', async () => {
+    const opened = await invoke('open_session', { target: 'web' });
     expect(opened.isError, opened.text).toBe(false);
-    const toolsLine = opened.text.split('\n').find((line) => line.startsWith('Tools: '))!;
-    expect(toolsLine).toContain('seed_data, count_nodes');
-    expect(toolsLine).not.toContain('kiosk_reset');
-    expect(toolsLine.match(/screenshot/g)).toHaveLength(1);
+    expect(catalogNames(opened.text)).toEqual([
+      'observe',
+      'tap',
+      'type',
+      'press',
+      'select',
+      'scroll',
+      'navigate',
+      'locate',
+      'screenshot',
+      'seed_data',
+      'count_nodes',
+    ]);
+    expect(opened.text).toContain('- seed_data {tenant}: Seed a tenant with demo data.');
+    expect(opened.text).toContain('- count_nodes: Count the nodes on screen. [read-only]');
+    expect(stderr).toContain('project tool "screenshot" is not served over MCP');
+    const detail = await invoke('tools', { tool: 'screenshot' });
+    expect(detail.text).toContain('masked pixels');
 
     const seeded = await call('seed_data', { tenant: 'acme' });
     expect(seeded.isError, seeded.text).toBe(false);
@@ -143,20 +169,20 @@ describe('e2e mcp with project tools and a custom engine', { timeout: 120_000 },
 
     const foreign = await call('kiosk_reset');
     expect(foreign.isError).toBe(true);
-    expect(foreign.text).toContain('UNSUPPORTED_CAPABILITY');
+    expect(foreign.text).toContain('UNKNOWN_TOOL');
 
-    const closed = await call('close_session');
+    const closed = await invoke('close_session');
     expect(closed.isError, closed.text).toBe(false);
   });
 
   it('drives a custom engine with the verbs it declares and nothing more', async () => {
-    const opened = await call('open_session', { target: 'kiosk' });
+    const opened = await invoke('open_session', { target: 'kiosk' });
     expect(opened.isError, opened.text).toBe(false);
     expect(opened.text).toContain('platform kiosk, engine fake');
     expect(opened.text).toContain('button "Start order"');
-    const toolsLine = opened.text.split('\n').find((line) => line.startsWith('Tools: '))!;
-    expect(toolsLine).toContain('kiosk_reset');
-    expect(toolsLine).not.toContain('scroll');
+    const names = catalogNames(opened.text);
+    expect(names).toContain('kiosk_reset');
+    expect(names).not.toContain('scroll');
 
     const observed = await call('observe');
     const id = /#(\S+) button "Start order"/.exec(observed.text)?.[1];
@@ -170,13 +196,25 @@ describe('e2e mcp with project tools and a custom engine', { timeout: 120_000 },
     const scrolled = await call('scroll', { direction: 'down' });
     expect(scrolled.isError).toBe(true);
     expect(scrolled.text).toContain('UNSUPPORTED_CAPABILITY');
+    expect(scrolled.text).toContain('declares no such action');
 
     const reset = await call('kiosk_reset');
     expect(reset.isError, reset.text).toBe(false);
     expect(reset.text).toBe('kiosk reset');
 
-    const closed = await call('close_session');
+    const closed = await invoke('close_session');
     expect(closed.isError, closed.text).toBe(false);
     expect(closed.text).not.toContain('Cleanup:');
+  });
+
+  it('opens another config of the same project without a restart', async () => {
+    const opened = await invoke('open_session', { config: 'kiosk.config.ts' });
+    expect(opened.isError, opened.text).toBe(false);
+    expect(opened.text).toContain('open on target "kiosk-only"');
+    expect(opened.text).toContain('config ');
+    expect(opened.text).toContain('kiosk.config.ts');
+    expect(catalogNames(opened.text)).toEqual(['observe', 'tap', 'type', 'press', 'select', 'navigate', 'locate', 'screenshot']);
+    const closed = await invoke('close_session');
+    expect(closed.isError, closed.text).toBe(false);
   });
 });

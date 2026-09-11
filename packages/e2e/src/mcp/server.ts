@@ -1,7 +1,10 @@
 /**
  * The `e2e mcp` server: a live session on the app for a coding agent, with
- * the skill as resources, served over one stdio transport. Streams are
- * injected, so the CLI hands it the process's and a test hands it pipes.
+ * the skill as resources, served over one stdio transport. The tool list is
+ * four tools and never changes: the session's own vocabulary is a catalog
+ * behind `call`, so it follows the config the agent opens rather than the
+ * config the server started next to. Streams are injected, so the CLI hands
+ * it the process's and a test hands it pipes.
  */
 
 import type { Readable, Writable } from 'node:stream';
@@ -14,6 +17,7 @@ import { SessionHost } from './session.ts';
 
 export interface ServeOptions {
   readonly cwd: string;
+  /** The config every session loads unless `open_session` names one. */
   readonly configPath?: string | undefined;
   /** The target every session opens on; otherwise a call names one, or the only one is used. */
   readonly target?: string | undefined;
@@ -29,15 +33,14 @@ export interface ServeOptions {
   readonly signal?: AbortSignal | undefined;
 }
 
-const INSTRUCTIONS = `e2e is a local-first end-to-end test runner; this server drives one project's app (its e2e.config.ts) live.
-Call open_session, then observe, tap, type, press, select, scroll, navigate, and type_secret to explore the real app the way the testing agent will; verify locators with locate; close_session when done.
+const INSTRUCTIONS = `e2e is a local-first end-to-end test runner; this server drives an e2e project's app (its e2e.config.ts) live.
+Call open_session (optionally with a target and a config path) to get a session, its tool catalog, and the first observation. Then call {tool, args} runs any catalog tool: observe, tap, type, press, select, scroll, navigate, type_secret, locate, screenshot, and the project's own tools; tools lists them, tools {tool} shows one tool's arguments. close_session when done.
 Write deterministic tests (tests/*.e2e.ts) from what you saw and run them with the CLI: npx --no-install e2e run <file>. Resources e2e://guide and e2e://guide/{topic} hold the writing guide.`;
 
 type LogLevel = 'info' | 'warning' | 'error';
 
 /** Serves until the client disconnects or `signal` aborts; resolves with the exit code. */
 export async function serveMcp(options: ServeOptions): Promise<number> {
-  const project = { cwd: options.cwd, configPath: options.configPath, env: options.env };
   const server = new McpServer(
     { name: 'e2e', version: options.version },
     { capabilities: { logging: {}, tools: {}, resources: {} }, instructions: INSTRUCTIONS },
@@ -47,16 +50,8 @@ export async function serveMcp(options: ServeOptions): Promise<number> {
     if (server.isConnected()) void server.sendLoggingMessage({ level, logger: 'e2e', data: message }).catch(() => undefined);
   };
 
-  let startupConfig;
-  try {
-    startupConfig = await loadProjectConfig(project);
-  } catch (cause) {
-    startupConfig = undefined;
-    log('warning', `config not loaded at startup: ${errorMessage(cause)}; open_session loads it again`);
-  }
   const host = new SessionHost({
-    config: startupConfig,
-    loadConfig: () => loadProjectConfig(project),
+    loadConfig: (configPath) => loadProjectConfig({ cwd: options.cwd, configPath: configPath ?? options.configPath, env: options.env }),
     env: options.env,
     headed: options.headed,
     defaultTarget: options.target,
@@ -84,7 +79,7 @@ export async function serveMcp(options: ServeOptions): Promise<number> {
     options.signal?.addEventListener('abort', () => resolve(), { once: true });
   });
   await server.connect(transport);
-  log('info', `e2e mcp ${options.version} serving ${project.cwd}`);
+  log('info', `e2e mcp ${options.version} serving ${options.cwd}`);
   await closed;
   try {
     const summary = await host.close('server shutdown');

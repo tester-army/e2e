@@ -1,16 +1,15 @@
 /**
- * The live half of `e2e mcp`: one open attempt on one target, driven by a
- * coding agent through the same tools the testing agent gets.
- *
- * The session is one long `agent.act()` step whose executor is not a model
- * loop but a queue: every MCP tool call is a job the executor runs inside
- * the step, so observations, actions, secrets, origin policy, budgets, and
- * recording are the harness's own, byte for byte what a test step sees.
- * `createGrammarTools` supplies the vocabulary; nothing here reimplements a
- * verb.
+ * The live session behind `e2e mcp`: one standalone attempt on one target,
+ * driven by a coding agent through a fixed, four-tool surface. `open_session`
+ * loads the project's config and opens the attempt; `tools` renders the
+ * session's catalog (the grammar the engine honors, `observe`, `locate`,
+ * `screenshot`, and the project's own tools); `call` runs one catalog tool
+ * by name; `close_session` tears everything down. The catalog is data, not
+ * registrations, so it follows the config and the target without a restart
+ * and the client's tool list never changes.
  */
 
-import type { ToolSet } from 'ai';
+import { tool as aiTool, type ToolSet } from 'ai';
 import path from 'node:path';
 import { z } from 'zod';
 import { executorTools, projectToolsFor } from '../agent/default-agent.ts';
@@ -19,15 +18,14 @@ import { createGrammarTools } from '../agent/primitives.ts';
 import { ScreenPresenter } from '../agent/screen-update.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import { credentials, setCredentialRegistry } from '../credentials.ts';
-import { createEngineSession } from '../engine/session.ts';
-import type { GrammarVerb, LocatorExpression, SemanticNode } from '../engine/surface.ts';
+import type { LocatorExpression, SemanticNode } from '../engine/surface.ts';
 import { ConfigurationError, errorMessage } from '../internal/errors.ts';
 import { uuidv7 } from '../internal/ids.ts';
 import { describeExpression, roleQuery, testIdQuery, textQuery } from '../locator/expression.ts';
 import { LocatorEngine } from '../locator/engine.ts';
 import { openStandaloneAttempt, type StandaloneAttempt } from '../run/standalone.ts';
 import type { AgentParams, Role } from '../types.ts';
-import { adaptToolSet, errorResult, textResult, type McpToolSpec } from './tools.ts';
+import { catalogLine, describeToolDetail, errorResult, invokeTool, textResult, type McpToolCallExtra, type McpToolResult, type McpToolSpec } from './tools.ts';
 
 /** How long one session may live, whatever happens. */
 const SESSION_TTL_MS = 4 * 60 * 60 * 1000;
@@ -38,8 +36,10 @@ const UNBOUNDED = 1_000_000;
 /** How many matching nodes `locate` describes. */
 const MAX_LOCATE_NODES = 10;
 const SESSION_INSTRUCTION = 'Interactive session: a coding agent drives the app over MCP.';
-/** The session's own tools beside the grammar; a project tool with one of these names is not served. */
-const BUILT_IN_TOOL_NAMES: readonly string[] = ['open_session', 'close_session', 'locate', 'screenshot'];
+/** The configured-agent name the session runs under: the project's agents stay untouched beside it. */
+const SESSION_AGENT = 'e2e-mcp';
+/** The grammar's tool names: a missing one is a verb the target's engine does not declare, not a typo. */
+const GRAMMAR_TOOL_NAMES: ReadonlySet<string> = new Set(['tap', 'type', 'type_secret', 'press', 'select', 'scroll', 'navigate']);
 
 /**
  * The executor behind a session: `runStep` hands its context out and then
@@ -137,14 +137,74 @@ function fullObserveTool(context: StepExecutorContext, screen: ScreenPresenter):
   };
 }
 
+/**
+ * The session's `screenshot`: the masked pixels as an image part, or the
+ * reason they are withheld, rendered through `toModelOutput` like the device
+ * pack's own screenshot tool so `call` serves both the same way.
+ */
+function screenshotTool(context: StepExecutorContext): ToolSet[string] {
+  return aiTool({
+    description:
+      'Look at the masked pixels of the current screen. Secure fields are masked; the image is withheld when masking cannot be proven or a secret was filled in this session. Use when the observation tree is sparse or contradicts what you expect.',
+    inputSchema: z.object({}),
+    execute: async () => context.observe({ pixels: true }),
+    toModelOutput: ({ output }) => {
+      if (output.pixels === undefined) {
+        return {
+          type: 'text',
+          value: `Screenshot withheld: ${output.pixelsWithheld ?? 'the engine captures no pixels'}. The observation tree is still available through observe.`,
+        };
+      }
+      const { data, mediaType, width, height } = output.pixels;
+      return {
+        type: 'content',
+        value: [
+          { type: 'text', text: `Screen ${width}x${height} at revision ${output.revision}${output.path === undefined ? '' : ` (${output.path})`}.` },
+          { type: 'file-data', data: Buffer.from(data).toString('base64'), mediaType },
+        ],
+      };
+    },
+  });
+}
+
+/** The session's `locate`: a semantic locator tried against the live screen, with the verdict a test would get. */
+function locateTool(live: Pick<LiveSession, 'locator' | 'attempt'>): ToolSet[string] {
+  return {
+    description:
+      'Try a semantic locator against the live screen before writing it into a test: screen.getByRole(role, { name }), getByText, getByLabel, getByPlaceholder, or getByTestId. Returns how many nodes match and which, plus the test code to use. Exactly one of role, text, label, placeholder, or testId; name narrows a role query. Matching is exact unless exact is false.',
+    inputSchema: z.object({
+      role: z.string().min(1).optional().describe('ARIA role, e.g. "button", "textbox", "link"'),
+      name: z.string().min(1).optional().describe('Accessible name, with role'),
+      text: z.string().min(1).optional(),
+      label: z.string().min(1).optional(),
+      placeholder: z.string().min(1).optional(),
+      testId: z.string().min(1).optional(),
+      exact: z.boolean().optional().describe('false for substring, case-insensitive matching'),
+    }),
+    execute: async (args: Record<string, unknown>) => {
+      const query = locateQuery(args);
+      const refs = await live.locator.resolveAll(query.expression);
+      const read: SemanticNode[] = [];
+      for (const ref of refs.slice(0, MAX_LOCATE_NODES)) {
+        read.push(await live.attempt.session.read(ref, live.locator.operation()));
+      }
+      return describeLocate(query, refs.length, read);
+    },
+  };
+}
+
 interface LiveSession {
   readonly id: string;
   readonly target: ResolvedTarget;
+  readonly configPath: string;
   readonly attempt: StandaloneAttempt;
   readonly executor: QueueExecutor;
   readonly context: StepExecutorContext;
   readonly screen: ScreenPresenter;
+  /** The catalog: every tool `call` can run, in the order `tools` lists them. */
   readonly tools: ToolSet;
+  /** The catalog tools that change nothing on the app. */
+  readonly readOnly: ReadonlySet<string>;
   readonly locator: LocatorEngine;
   /** Settles when the underlying `agent.act()` step ends, for any reason. */
   readonly done: Promise<{ error?: unknown }>;
@@ -153,11 +213,16 @@ interface LiveSession {
   actions: number;
 }
 
+export interface OpenSessionOptions {
+  /** The target to open; otherwise the server's `--target`, else the config's only target. */
+  readonly target?: string | undefined;
+  /** A config file to load instead of the server's default, relative to the server's directory. */
+  readonly config?: string | undefined;
+}
+
 export interface SessionHostOptions {
-  /** The config as loaded at startup, for tool registration; undefined when it failed to load. */
-  readonly config: ResolvedConfig | undefined;
-  /** Loads the config fresh for each session, so an edited config applies without a restart. */
-  readonly loadConfig: () => Promise<ResolvedConfig>;
+  /** Loads a config fresh for each session, so an edited config applies without a restart; `configPath` overrides the server's default. */
+  readonly loadConfig: (configPath: string | undefined) => Promise<ResolvedConfig>;
   readonly env: NodeJS.ProcessEnv;
   readonly headed: boolean;
   /** The target every session opens on, from `--target`; a call may still name one. */
@@ -167,7 +232,7 @@ export interface SessionHostOptions {
   readonly ttlMs?: number | undefined;
 }
 
-/** Owns at most one live session and the MCP tools that drive it. */
+/** Owns at most one live session and the fixed MCP tools that drive it. */
 export class SessionHost {
   private live: LiveSession | undefined;
   private opening: Promise<string> | undefined;
@@ -180,43 +245,32 @@ export class SessionHost {
     return this.live !== undefined;
   }
 
-  /**
-   * Every session tool, in the order clients list them. Built-in names win:
-   * a project tool named like one (the agent-device pack's `screenshot`, say)
-   * is not served, the same precedence the testing agent's toolset applies.
-   */
+  /** The server's tools: the same four whatever the project, the config, or the target. */
   toolSpecs(): McpToolSpec[] {
-    const builtIn = [this.openSpec(), ...this.grammarSpecs(), this.locateSpec(), this.screenshotSpec()];
-    const close = this.closeSpec();
-    const taken = new Set([...builtIn, close].map((spec) => spec.name));
-    const project = this.projectSpecs().filter((spec) => {
-      if (!taken.has(spec.name)) return true;
-      this.options.log('warning', `project tool "${spec.name}" is not served over MCP: the name belongs to a built-in session tool`);
-      return false;
-    });
-    return [...builtIn, ...project, close];
+    return [this.openSpec(), this.catalogSpec(), this.callSpec(), this.closeSpec()];
   }
 
-  /** Opens a session on the target and returns its opening text. */
-  open(targetName: string | undefined): Promise<string> {
+  /** Opens a session and returns its opening text: the summary, the catalog, and the first screen. */
+  open(options: OpenSessionOptions): Promise<string> {
     if (this.live !== undefined) {
       return Promise.reject(
         new ConfigurationError(
           'SESSION_OPEN',
-          `a session is already open on target "${this.live.target.name}"; use it, or close_session first`,
+          `session ${this.live.id} is already open on target "${this.live.target.name}"; use it, or close_session first`,
         ),
       );
     }
-    this.opening ??= this.openSession(targetName).finally(() => {
+    this.opening ??= this.openSession(options).finally(() => {
       this.opening = undefined;
     });
     return this.opening;
   }
 
   /** Closes the live session, if any, and returns what happened. */
-  async close(reason: string): Promise<string> {
+  async close(reason: string, session?: string): Promise<string> {
     const live = this.live;
     if (live === undefined) return 'No session is open.';
+    if (session !== undefined && session !== live.id) throw this.wrongSession(live, session);
     this.live = undefined;
     this.lastEnd = reason;
     if (live.idleTimer !== undefined) clearTimeout(live.idleTimer);
@@ -231,20 +285,39 @@ export class SessionHost {
     return lines.join('\n');
   }
 
-  private async openSession(targetName: string | undefined): Promise<string> {
-    const base = await this.options.loadConfig();
-    const target = this.resolveTarget(base, targetName);
+  /** The session's catalog, or one tool's full contract. */
+  catalog(session: string | undefined, tool: string | undefined): string {
+    const live = this.requireLive(session);
+    if (tool === undefined) {
+      return [`Session ${live.id} on target "${live.target.name}": ${Object.keys(live.tools).length} tools. Run one with call {tool, args}; tools {tool} shows a tool's arguments.`, ...this.catalogLines(live)].join('\n');
+    }
+    const found = live.tools[tool];
+    if (found === undefined) throw this.unknownTool(live, tool);
+    return describeToolDetail(tool, found, live.readOnly.has(tool));
+  }
+
+  /** Runs one catalog tool inside the live session's step. */
+  async call(session: string | undefined, name: string, args: Record<string, unknown>, extra: McpToolCallExtra): Promise<McpToolResult> {
+    try {
+      const live = this.requireLive(session);
+      const tool = live.tools[name];
+      if (tool === undefined) throw this.unknownTool(live, name);
+      return await this.run(live, () => invokeTool(name, tool, args, extra));
+    } catch (cause) {
+      return errorResult(cause);
+    }
+  }
+
+  private async openSession(options: OpenSessionOptions): Promise<string> {
+    const base = await this.options.loadConfig(options.config);
+    const target = this.resolveTarget(base, options.target);
     const executor = new QueueExecutor();
     // The session never calls a model: the coding agent is the brain, so the
     // configured model (and its credential preflight) stays out of the way.
-    // The fixture graph picks the run's agent by name, so the name maps to
-    // the session's executor too.
+    // The session's agent is the project's default agent with the queue as
+    // its executor, registered under its own name; the attempt runs as it.
     const agent = { ...base.agent, executor, model: undefined, visionModel: undefined, maxSteps: UNBOUNDED, maxModelCalls: UNBOUNDED };
-    const config: ResolvedConfig = {
-      ...base,
-      agent,
-      agents: new Map([...base.agents, [base.agentName, agent]]),
-    };
+    const config: ResolvedConfig = { ...base, agents: new Map([...base.agents, [SESSION_AGENT, agent]]) };
     const ttlMs = this.options.ttlMs ?? SESSION_TTL_MS;
     const abort = new AbortController();
     const id = uuidv7();
@@ -260,6 +333,7 @@ export class SessionHost {
         signal: abort.signal,
         timeoutMs: ttlMs + 60_000,
         artifactsRoot: path.join(config.projectRoot, '.e2e', 'artifacts'),
+        agent: SESSION_AGENT,
         notice: (scope, message) => this.options.log('info', `${scope}: ${message}`),
       });
       const params = this.secretParams(config);
@@ -272,30 +346,27 @@ export class SessionHost {
           throw outcome.error ?? new Error('the session step ended before it started');
         }),
       ]);
-      // Built-in names win here as they do at registration, so a shadowed
-      // project tool is neither listed nor reachable in the session.
       const screen = new ScreenPresenter();
-      const grammar: ToolSet = { ...createGrammarTools(context, { screen }), observe: fullObserveTool(context, screen) };
-      const reserved = new Set([...BUILT_IN_TOOL_NAMES, ...Object.keys(grammar)]);
-      const project = Object.fromEntries(
-        Object.entries(projectToolsFor(context, executorTools(base.agent.executor))).filter(([name]) => !reserved.has(name)),
-      );
+      const locator = new LocatorEngine({
+        session: attempt.session,
+        budget: attempt.budget,
+        runId: attempt.runId,
+        attemptId: attempt.attemptId,
+        actionTimeout: config.actionTimeout,
+        assertionTimeout: config.assertionTimeout,
+      });
+      const { tools, readOnly } = this.buildCatalog(context, screen, { locator, attempt }, base);
       const live: LiveSession = {
         id,
         target,
+        configPath: config.configPath ?? options.config ?? 'e2e.config.ts',
         attempt,
         executor,
         context,
         screen,
-        tools: { ...project, ...grammar },
-        locator: new LocatorEngine({
-          session: attempt.session,
-          budget: attempt.budget,
-          runId: attempt.runId,
-          attemptId: attempt.attemptId,
-          actionTimeout: config.actionTimeout,
-          assertionTimeout: config.assertionTimeout,
-        }),
+        tools,
+        readOnly,
+        locator,
         done,
         abort,
         idleTimer: undefined,
@@ -311,7 +382,7 @@ export class SessionHost {
         await this.close(why);
       });
       this.touch(live);
-      return this.opening_text(live, config, await this.firstScreen(live));
+      return this.openingText(live, config, await this.firstScreen(live));
     } catch (cause) {
       // Whatever failed after the attempt opened, the attempt is torn down:
       // an engine or app process left behind would block the next session.
@@ -322,6 +393,42 @@ export class SessionHost {
       setCredentialRegistry(undefined);
       throw cause;
     }
+  }
+
+  /**
+   * The session's catalog: `observe`, the grammar the target honors, `locate`
+   * and `screenshot`, then the project's tools for this platform. Built-in
+   * names win: a project tool named like one (the device pack's `screenshot`,
+   * say) is neither listed nor reachable, the precedence the testing agent's
+   * toolset applies, and the collision is logged.
+   */
+  private buildCatalog(
+    context: StepExecutorContext,
+    screen: ScreenPresenter,
+    live: Pick<LiveSession, 'locator' | 'attempt'>,
+    config: ResolvedConfig,
+  ): { tools: ToolSet; readOnly: ReadonlySet<string> } {
+    // The grammar's own observe reports a diff for the model loop; the
+    // session's shows the whole screen, so it replaces the grammar's.
+    const { observe: _diffObserve, ...verbs } = createGrammarTools(context, { screen });
+    const builtIn: ToolSet = {
+      observe: fullObserveTool(context, screen),
+      ...verbs,
+      locate: locateTool(live),
+      screenshot: screenshotTool(context),
+    };
+    const defined = executorTools(config.agent.executor);
+    const project: ToolSet = {};
+    for (const [name, tool] of Object.entries(projectToolsFor(context, defined))) {
+      if (name in builtIn) {
+        this.options.log('warning', `project tool "${name}" is not served over MCP: the name belongs to a built-in session tool`);
+        continue;
+      }
+      project[name] = tool;
+    }
+    const readOnly = new Set(['observe', 'locate', 'screenshot']);
+    for (const name of Object.keys(project)) if (defined[name]?.annotations.mutates === false) readOnly.add(name);
+    return { tools: { ...builtIn, ...project }, readOnly };
   }
 
   /** Opens the app when the engine can navigate, then observes. */
@@ -338,10 +445,10 @@ export class SessionHost {
     return live.screen.initial(observation);
   }
 
-  private opening_text(live: LiveSession, config: ResolvedConfig, screen: string): string {
+  private openingText(live: LiveSession, config: ResolvedConfig, screen: string): string {
     const engine = live.target.engine;
     const lines = [
-      `Session ${live.id} open on target "${live.target.name}" (platform ${live.target.platform}, engine ${engine === undefined ? 'none' : `${engine.name} ${engine.version}`}), ${this.options.headed ? 'headed' : 'headless'}.`,
+      `Session ${live.id} open on target "${live.target.name}" (platform ${live.target.platform}, engine ${engine === undefined ? 'none' : `${engine.name} ${engine.version}`}), ${this.options.headed ? 'headed' : 'headless'}; config ${live.configPath}.`,
     ];
     if (live.target.app.base !== undefined) {
       lines.push(`App: ${live.target.app.base.href}; allowed origins: ${live.target.app.allowedOrigins.join(', ')}.`);
@@ -352,11 +459,15 @@ export class SessionHost {
       );
       lines.push(`Credentials: ${described.join(', ')}. Type the username with type; fill the password with type_secret and the credential name.`);
     }
-    const names = Object.keys(live.tools);
+    lines.push(`Tools (run one with call {tool, args}; tools {tool} shows a tool's arguments):`, ...this.catalogLines(live));
     lines.push(
-      `Tools: ${[...names, 'locate', 'screenshot', 'close_session'].join(', ')}. Node ids ("n42") are valid only for the newest observation; every action reports what changed on screen, and observe shows the whole screen. Close the session when you are done.`,
+      'Node ids ("n42") are valid only for the newest observation; every action reports what changed on screen, and observe shows the whole screen. Call close_session when you are done.',
     );
     return `${lines.join('\n')}\n\n${screen}`;
+  }
+
+  private catalogLines(live: LiveSession): string[] {
+    return Object.entries(live.tools).map(([name, tool]) => catalogLine(name, tool, live.readOnly.has(name)));
   }
 
   private resolveTarget(config: ResolvedConfig, requested: string | undefined): ResolvedTarget {
@@ -384,12 +495,27 @@ export class SessionHost {
     return Object.fromEntries([...config.credentials.keys()].map((name) => [name, credentials.user(name).password]));
   }
 
-  private requireLive(): LiveSession {
+  private requireLive(session: string | undefined): LiveSession {
     if (this.live === undefined) {
       const previous = this.lastEnd === undefined ? '' : ` (the previous session ended: ${this.lastEnd})`;
       throw new ConfigurationError('NO_SESSION', `no session is open; call open_session first${previous}`);
     }
+    if (session !== undefined && session !== this.live.id) throw this.wrongSession(this.live, session);
     return this.live;
+  }
+
+  private wrongSession(live: LiveSession, session: string): ConfigurationError {
+    return new ConfigurationError('NO_SESSION', `session "${session}" is not open; the open session is ${live.id}`);
+  }
+
+  private unknownTool(live: LiveSession, name: string): ConfigurationError {
+    if (GRAMMAR_TOOL_NAMES.has(name)) {
+      return new ConfigurationError(
+        'UNSUPPORTED_CAPABILITY',
+        `tool "${name}" is not available in this session: the engine of target "${live.target.name}" declares no such action; tools lists what it can do`,
+      );
+    }
+    return new ConfigurationError('UNKNOWN_TOOL', `tool "${name}" is not available in this session; tools: ${Object.keys(live.tools).join(', ')}`);
   }
 
   private touch(live: LiveSession): void {
@@ -404,88 +530,79 @@ export class SessionHost {
   }
 
   /** Runs one tool body inside the live session's step. */
-  private run<T>(body: (context: StepExecutorContext) => Promise<T>): Promise<T> {
-    const live = this.requireLive();
+  private run<T>(live: LiveSession, body: () => Promise<T>): Promise<T> {
     this.touch(live);
     live.actions += 1;
     return live.executor.submit(body);
   }
 
-  // --- tool specs ---
-
-  /** The grammar verbs the registration target(s) can honor, so unsupported verbs are never offered. */
-  /** The targets a session may open, from the startup config: the fixed one, else all. */
-  private registrationTargets(): readonly ResolvedTarget[] {
-    const targets = this.options.config?.targets ?? [];
-    const fixed = targets.filter((target) => target.name === this.options.defaultTarget);
-    return fixed.length === 0 ? targets : fixed;
-  }
-
-  private registrationVerbs(): ReadonlySet<GrammarVerb> {
-    const all: GrammarVerb[] = ['tap', 'type', 'typeSecret', 'press', 'select', 'scroll', 'navigate'];
-    if (this.options.config === undefined) return new Set(all);
-    const verbs = new Set<GrammarVerb>();
-    for (const target of this.registrationTargets()) {
-      for (const verb of createEngineSession({ engine: target.engine, targetName: target.name }).verbs) verbs.add(verb);
-    }
-    return verbs;
-  }
-
-  /** A context with only what tool construction reads: verbs, platform, and the declared secrets. */
-  private stubContext(target: ResolvedTarget | undefined = this.registrationTargets()[0]): StepExecutorContext {
-    const config = this.options.config;
-    const secrets = [...(config?.credentials.values() ?? [])].map((credential) => ({ name: credential.name, purpose: 'password' as const }));
-    return {
-      target: { name: target?.name ?? 'default', platform: target?.platform ?? 'web', verbs: this.registrationVerbs() },
-      step: { kind: 'act', index: 0, instruction: SESSION_INSTRUCTION, params: undefined, secrets },
-    } as unknown as StepExecutorContext;
-  }
-
-  private grammarSpecs(): McpToolSpec[] {
-    const stub = this.stubContext();
-    return adaptToolSet(
-      { ...createGrammarTools(stub), observe: fullObserveTool(stub, new ScreenPresenter()) },
-      (_name, execute) => this.run(() => execute()),
-      () => this.live?.tools ?? {},
-    );
-  }
-
-  /**
-   * Project tools for every platform a session can open, so a tool scoped to
-   * the second target is registered too; the live lookup still filters by
-   * the session's own platform.
-   */
-  private projectSpecs(): McpToolSpec[] {
-    const tools = executorTools(this.options.config?.agent.executor);
-    if (Object.keys(tools).length === 0) return [];
-    const union: ToolSet = {};
-    for (const target of this.registrationTargets()) {
-      for (const [name, tool] of Object.entries(projectToolsFor(this.stubContext(target), tools))) union[name] ??= tool;
-    }
-    return adaptToolSet(
-      union,
-      (_name, execute) => this.run(() => execute()),
-      () => this.live?.tools ?? {},
-      (name) => tools[name]?.annotations.mutates === false,
-    );
-  }
+  // --- the fixed tools ---
 
   private openSpec(): McpToolSpec {
     return {
       name: 'open_session',
       description:
-        'Open a live session on one target: starts the app command the engine declares (if any), boots the engine (a browser, a simulator), opens the app URL, and returns the first observation. One session at a time; run_tests closes it. Node ids in the observation address nodes for tap, type, press, select, and scroll.',
+        'Open a live session on one target of an e2e project: loads the config, starts the app command the engine declares (if any), boots the engine (a browser, a simulator), opens the app URL, and returns the session id, the catalog of tools it can run, and the first observation. One session at a time. Then act with call and look with call {tool: "observe"}.',
       inputSchema: z.object({
-        target: z.string().min(1).optional().describe('Target name from e2e.config.ts; required when the config declares several'),
+        target: z.string().min(1).optional().describe('Target name from the config; required when the config declares several'),
+        config: z.string().min(1).optional().describe('Path to an e2e config file, relative to the server\'s directory; default: the nearest e2e.config.ts'),
       }),
       readOnly: false,
       call: async (args) => {
         try {
-          return textResult(await this.open(typeof args['target'] === 'string' ? args['target'] : undefined));
+          return textResult(
+            await this.open({
+              target: typeof args['target'] === 'string' ? args['target'] : undefined,
+              config: typeof args['config'] === 'string' ? args['config'] : undefined,
+            }),
+          );
         } catch (cause) {
           return errorResult(cause);
         }
       },
+    };
+  }
+
+  private catalogSpec(): McpToolSpec {
+    return {
+      name: 'tools',
+      description:
+        'List the tools the open session can run through call: observe, the grammar its engine honors (tap, type, press, select, scroll, navigate, type_secret), locate, screenshot, and the project\'s own tools. With tool, shows that tool\'s full description and the JSON Schema of its arguments.',
+      inputSchema: z.object({
+        tool: z.string().min(1).optional().describe('A catalog tool name, for its full contract'),
+        session: z.string().min(1).optional().describe('Session id; defaults to the open session'),
+      }),
+      readOnly: true,
+      call: async (args) => {
+        try {
+          return textResult(
+            this.catalog(typeof args['session'] === 'string' ? args['session'] : undefined, typeof args['tool'] === 'string' ? args['tool'] : undefined),
+          );
+        } catch (cause) {
+          return errorResult(cause);
+        }
+      },
+    };
+  }
+
+  private callSpec(): McpToolSpec {
+    return {
+      name: 'call',
+      description:
+        'Run one tool of the open session by name, with its arguments as an object: call {tool: "tap", args: {target: "n42"}}. The session\'s catalog (from open_session or tools) names the tools and their arguments. Actions report what changed on screen; node ids are valid only for the newest observation.',
+      inputSchema: z.object({
+        tool: z.string().min(1).describe('A catalog tool name, e.g. "observe", "tap", "locate", "screenshot"'),
+        args: z.record(z.string(), z.unknown()).optional().describe('The tool\'s arguments; omit for a tool without any'),
+        session: z.string().min(1).optional().describe('Session id; defaults to the open session'),
+      }),
+      readOnly: false,
+      call: (args, extra) =>
+        this.call(
+          typeof args['session'] === 'string' ? args['session'] : undefined,
+          String(args['tool']),
+          typeof args['args'] === 'object' && args['args'] !== null ? (args['args'] as Record<string, unknown>) : {},
+          extra,
+        ),
     };
   }
 
@@ -493,73 +610,13 @@ export class SessionHost {
     return {
       name: 'close_session',
       description: 'Close the live session: end the attempt, dispose the engine, and stop the app processes the session started.',
-      inputSchema: z.object({}),
-      readOnly: false,
-      call: async () => {
-        try {
-          return textResult(await this.close('closed by the agent'));
-        } catch (cause) {
-          return errorResult(cause);
-        }
-      },
-    };
-  }
-
-  private screenshotSpec(): McpToolSpec {
-    return {
-      name: 'screenshot',
-      description:
-        'Look at the masked pixels of the current screen. Secure fields are masked; the image is withheld when masking cannot be proven or a secret was filled in this session. Use when the observation tree is sparse or contradicts what you expect.',
-      inputSchema: z.object({}),
-      readOnly: true,
-      call: async () => {
-        try {
-          const observation = await this.run((context) => context.observe({ pixels: true }));
-          if (observation.pixels === undefined) {
-            return textResult(`Screenshot withheld: ${observation.pixelsWithheld ?? 'the engine captures no pixels'}. The observation tree is still available through observe.`);
-          }
-          const { data, mediaType, width, height } = observation.pixels;
-          return {
-            content: [
-              { type: 'text', text: `Screen ${width}x${height} at revision ${observation.revision}${observation.path === undefined ? '' : ` (${observation.path})`}.` },
-              { type: 'image', data: Buffer.from(data).toString('base64'), mimeType: mediaType },
-            ],
-          };
-        } catch (cause) {
-          return errorResult(cause);
-        }
-      },
-    };
-  }
-
-  private locateSpec(): McpToolSpec {
-    return {
-      name: 'locate',
-      description:
-        'Try a semantic locator against the live screen before writing it into a test: screen.getByRole(role, { name }), getByText, getByLabel, getByPlaceholder, or getByTestId. Returns how many nodes match and which, plus the test code to use. Exactly one of role, text, label, placeholder, or testId; name narrows a role query. Matching is exact unless exact is false. Read-only.',
       inputSchema: z.object({
-        role: z.string().min(1).optional().describe('ARIA role, e.g. "button", "textbox", "link"'),
-        name: z.string().min(1).optional().describe('Accessible name, with role'),
-        text: z.string().min(1).optional(),
-        label: z.string().min(1).optional(),
-        placeholder: z.string().min(1).optional(),
-        testId: z.string().min(1).optional(),
-        exact: z.boolean().optional().describe('false for substring, case-insensitive matching'),
+        session: z.string().min(1).optional().describe('Session id; defaults to the open session'),
       }),
-      readOnly: true,
+      readOnly: false,
       call: async (args) => {
         try {
-          const query = locateQuery(args);
-          const live = this.requireLive();
-          const nodes = await this.run(async () => {
-            const refs = await live.locator.resolveAll(query.expression);
-            const read: SemanticNode[] = [];
-            for (const ref of refs.slice(0, MAX_LOCATE_NODES)) {
-              read.push(await live.attempt.session.read(ref, live.locator.operation()));
-            }
-            return { count: refs.length, read };
-          });
-          return textResult(describeLocate(query, nodes.count, nodes.read));
+          return textResult(await this.close('closed by the agent', typeof args['session'] === 'string' ? args['session'] : undefined));
         } catch (cause) {
           return errorResult(cause);
         }

@@ -51,6 +51,9 @@ the guessing: it serves a live session on one target over MCP, with the same
 `observe`, `tap`, `type`, `press`, `select`, `scroll`, and `navigate` tools
 the testing agent has, plus `locate`, which tries a `screen.*` locator against
 the live screen and prints the call to write when exactly one node matches.
+The server itself has four tools (`open_session`, `tools`, `call`,
+`close_session`); the session's vocabulary is a catalog `call` runs by name,
+so one server covers every project and config the agent opens.
 
 `init` registers the server in `.mcp.json` for Claude Code and
 `.cursor/mcp.json` for Cursor; by hand, `claude mcp add e2e -- npx --no-install e2e mcp`.
