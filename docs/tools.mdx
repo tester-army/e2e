@@ -40,7 +40,11 @@ export default {
 
 Now `agent.act('seed three items and check out')` can call your test API.
 `createAgent()` with no tools is exactly what runs by default; `system`
-appends guidance and `model` sets the model.
+appends guidance and `model` sets the model. Tool names are the model's
+vocabulary, and the agent's own names (`observe`, `tap`, `type`, `type_secret`,
+`press`, `select`, `scroll`, `navigate`, `screenshot`, `tap_at`,
+`complete_step`) are reserved: `createAgent` rejects a project tool that
+reuses one, since it would be shadowed on one engine and live on another.
 
 ## Declare what a tool does
 

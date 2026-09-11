@@ -293,15 +293,15 @@ Each agent takes three shapes: an options object, an options object with an
 
 | Key | Type | Default | Valid range | Notes |
 | --- | --- | --- | --- | --- |
-| `executor` | `StepExecutor` | the built-in AI SDK executor | `createAgent(...)` or any `{ name, runStep(context) }` | The brain `agent.act()` dispatches to. Anything else is `INVALID_CONFIG`. Like a model instance it never crosses a process boundary; workers rebuild it from the config module. See [Your own agent](/agents). |
-| `model` | `ModelInstance` | unset | an AI SDK model instance | No implicit default and no runner-side gateway: the config constructs the model with a provider package. Unset means acquiring `agent` fails with `MODEL_UNAVAILABLE`; a string is `INVALID_CONFIG` naming the constructor to write. Naming a model that differs from the one passed to `createAgent({ model })` is `INVALID_CONFIG`. |
-| `visionModel` | `ModelInstance` | the agent's `model` | an AI SDK model instance | Model used by judgments with `vision`; the act loop's screenshots go to `model`. |
+| `executor` | `StepExecutor` | the built-in agent | `createAgent(...)` or any `{ name, runStep(context) }` | The brain `agent.act()` dispatches to. Never crosses a process boundary; workers rebuild it from the config module. See [Custom executors](/executors) |
+| `model` | `ModelInstance` | unset | an AI SDK model instance | Unset means acquiring `agent` fails with `MODEL_UNAVAILABLE`; a string is `INVALID_CONFIG` naming the constructor to write. Naming a model that differs from `createAgent({ model })` is `INVALID_CONFIG` |
+| `visionModel` | `ModelInstance` | the agent's `model` | an AI SDK model instance | Model used by judgments with `vision`; the act loop's screenshots go to `model` |
 | `maxSteps` | `number` | `25` | integer 1-100 | Committed actions per agent call |
 | `maxModelCalls` | `number` | `25` | integer 1-100 | Model requests per agent call |
-| `maxObservationBytes` | `number` | `262144` | integer 1024-16777216 | Observation payload ceiling for `act` turns and judgment calls alike; the per-call token limit clamps it lower on a dense screen. Not a `limits` key. |
-| `context` | `string` | unset | at most `limits.maxAgentContextBytes` UTF-8 bytes | Trusted project context prepended to agent prompts. Exceeding the budget is `INVALID_CONFIG`. |
-| `vision` | `boolean \| 'only'` | `false` | - | Project-wide default for the per-call `vision` option; `'only'` sends pixels instead of the tree. A per-call value wins. |
-| `providerOptions` | `Record<string, Record<string, unknown>>` | unset | object keyed by provider name | AI SDK provider options sent with every model call of both `act` and the judgments, e.g. `{ openai: { reasoningEffort: 'low' } }`. Values pass through unchecked; a non-object provider entry is `INVALID_CONFIG`. `createAgent({ providerOptions })` overrides it for `act`. |
+| `maxObservationBytes` | `number` | `262144` | integer 1024-16777216 | Observation payload ceiling for `act` turns and judgment calls alike |
+| `context` | `string` | unset | at most `limits.maxAgentContextBytes` UTF-8 bytes | Trusted project context prepended to agent prompts |
+| `vision` | `boolean \| 'only'` | `false` | | Project-wide default for the per-call `vision` option; `'only'` sends pixels instead of the tree. See [Vision](/reference/agent#vision) |
+| `providerOptions` | `Record<string, Record<string, unknown>>` | unset | object keyed by provider name | AI SDK provider options sent with every model call, e.g. `{ openai: { reasoningEffort: 'low' } }`. `createAgent({ providerOptions })` overrides it for `act` |
 
 Judgments (`assert`, `waitFor`, `extract`) allow 8192 output tokens per call
 and set no temperature.

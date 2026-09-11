@@ -212,8 +212,9 @@ runs one attempt at a time):
 | `type_text` | gap | Type into the focused field, optionally pressing Return; for editors that hide the focused field from the tree. |
 | `alert` | gap | Accept or dismiss a system alert. |
 
-The grammar verbs (`tap`, `type`, `scroll`, `screenshot`, `tap_at`) come from
-the engine manifest and need no tool; the engine declares `tapAt`, so a
+The grammar verbs (`tap`, `type`, `scroll`) come from the engine manifest and
+need no tool. `screenshot` and `tap_at` are the agent's own pixel tools,
+offered while no secret has been filled; the engine declares `tapAt`, so a
 `tap_at` whose point lands on nothing the tree lists taps the bare point in
 logical pixels. `type_secret` is not offered: secret fills require an origin the
 runner can check, and `app://` has none.

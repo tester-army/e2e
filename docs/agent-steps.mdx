@@ -50,6 +50,10 @@ are withheld once a secret has been filled in the attempt. The
 The model gets exactly the verbs the target's engine declares: `tap`, `type`,
 `press`, `select`, `scroll`, `navigate`, and `type_secret` for a credential it
 was handed by name. An engine that cannot navigate has no `navigate` verb.
+While no secret has been filled, `screenshot` and `tap_at` join them: the
+model can attach the viewport's masked pixels to a result and tap a point in
+that image, for a canvas, a map, or a screen the tree cannot describe
+([reference](/reference/agent#pixel-tools-screenshot-and-tap_at)).
 [Project tools](/tools) add to that vocabulary; nothing removes the policing
 around it.
 
@@ -97,11 +101,13 @@ These defaults describe the built-in agent and judgment tier:
 | `waitFor` | up to `maxModelCalls`, default 25 | 30 s, or `actionTimeout` when larger |
 
 `assert` and `extract` spend one judgment and one repair round at most.
-With `vision: false` or `vision: 'fallback'`, `waitFor` skips judgments while
+With `vision: false`, `waitFor` skips judgments while
 the observed tree shape is unchanged. With `vision: true` or `vision: 'only'`,
 it judges every interval even when the tree is unchanged.
 Exceeding a budget raises `STEP_BUDGET_EXHAUSTED`; running out of time,
-`STEP_TIMEOUT`.
+`STEP_TIMEOUT`. `act` takes no `vision`: pixels reach it through its
+`screenshot` and `tap_at` tools, and while pixels stay available every action
+result after the first screenshot carries a fresh one.
 
 With a custom executor, `agent.assert` runs through `runStep` under the same
 action and model-call budgets as `act`, with `config.timeout` as its default

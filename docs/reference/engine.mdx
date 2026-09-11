@@ -15,7 +15,9 @@ export function isEngineHandle(value: unknown): value is EngineHandle;
 ```
 
 Validation fails with `INVALID_CONFIG`, never a silent demotion: a missing or
-empty `version`, a `spiVersion` other than `1`, an unknown top-level key,
+empty `version`, a `spiVersion` other than `1`, an unknown top-level key on
+an object literal (a class instance's own fields are its state and are not
+checked),
 `perform`, `locate`, `swipe`, or `tapAt` without `observe`, a `state`, `artifacts`, or
 `app` manifest that is not an object, carries an unknown key, or has a
 non-function member (`state` needs both `capture` and `restore`; `artifacts`
@@ -179,13 +181,6 @@ export type LocatorAction =
   | { kind: 'swipe'; direction: ScrollDirection; momentum?: Momentum };
 ```
 
-`tapAt(point, context)` is the one action addressed by a point rather than a
-node: a `ViewportPoint` in the CSS pixels of `SemanticNode.rect`, already
-clamped to the viewport by the harness, which the vision tier reads off the
-observation's pixels (divided by `ObservationPixels.scale`) when the tree
-lists nothing at the target. Dispatch the pointer at the point as given; there
-is no element to wait on.
-
 `perform(ref, action, context)` performs exactly one action on a ref this
 engine minted, from the newest observation or from `locate` (both live in one
 id space), with the platform's actionability checks. The agent's grammar verbs
@@ -194,6 +189,13 @@ each action once. Throw a retryable `NODE_STALE` when the ref no longer binds
 and `ACTION_MAY_HAVE_COMMITTED` when input may have reached the app; the harness
 never blindly repeats an uncertain mutation. An action kind the surface cannot
 express fails with `UNSUPPORTED_CAPABILITY`.
+
+`tapAt(point, context)` is the one action addressed by a point rather than a
+node: a `ViewportPoint` in the CSS pixels of `SemanticNode.rect`, already
+clamped to the viewport by the harness, which the agent's `tap_at` reads off
+the observation's pixels (divided by `ObservationPixels.scale`) when the tree
+lists nothing at the target. Dispatch the pointer at the point as given; there
+is no element to wait on.
 
 The grammar is closed. Anything beyond it is an agent-side `defineTool`.
 

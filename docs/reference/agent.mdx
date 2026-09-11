@@ -93,7 +93,7 @@ nothing lost in a description.
 | Tool | What it does |
 | --- | --- |
 | `screenshot()` | Attaches a masked screenshot of the viewport to the tool result, with the changes since the screen the model holds. From then on the step is in pixel mode: every action result carries a fresh screenshot, so the model sees what each action did. |
-| `tap_at({ x, y })` | Taps a point given in the latest screenshot's pixel coordinates. The harness scales the point into the observation's CSS pixels and hit-tests it against the tree: a listed control under it is tapped by its id, exactly like `tap`, with a replayable descriptor; a point on nothing listed is tapped as a bare point through the engine's `tapAt`. The result names what was tapped or what sits under the point, and carries a fresh screenshot. |
+| `tap_at({ x, y })` | Taps a point given in the latest screenshot's pixel coordinates. The harness scales the point into the observation's CSS pixels and hit-tests it against the tree: on an engine with `perform`, a listed control under it is tapped by its id, exactly like `tap`, with a replayable descriptor; a point on nothing listed, or any point on an engine that taps by point only, is tapped as a bare point through the engine's `tapAt`. The result names what was tapped or what sits under the point, and carries a fresh screenshot. |
 
 While the step is showing pixels, the wait after an action watches the
 pixels too: a tap that redraws a canvas is read as soon as the redraw lands,
@@ -108,8 +108,9 @@ images, and each is resampled to a long side of at most 768 pixels before it
 goes to the model: on a drawn keypad and a drawn wizard that size kept every
 run passing at a third less cost than the full capture, and 512 did not.
 Coordinates the model returns are in that image; the harness scales them
-back. Both tools are offered only while no secret has been filled in the
-attempt, since pixels are withheld from then on (`PIXEL_TAINTED`); `tap_at`
+back. Both tools are offered while no secret has been filled when the step
+opens; a secret filled during the step keeps them listed but withholds every
+later screenshot (`PIXEL_TAINTED`), and each result says so; `tap_at`
 needs an engine that can tap by node (`perform`) or by point (`tapAt`, the
 `pointer` capability, which the Playwright and agent-device engines declare),
 and on an engine without `tapAt` the point must land on a listed control. A
@@ -134,106 +135,7 @@ step could not reach a product verdict; `STEP_BUDGET_EXHAUSTED` and
 a malformed instruction, oversized `params`, or an unknown option; and
 `UNSUPPORTED_CAPABILITY` for `schema` or `vision`, which `act` does not take.
 
-## Vision
-
-`assert`, `waitFor`, and `extract` accept `vision`. It controls what evidence
-the model is shown: the semantic tree, a masked screenshot of the current
-observation, or both. Sending pixels needs a model that accepts images. (`act`
-has no such option; its pixel path is the `screenshot` and `tap_at` tools above.)
-
-```ts
-await agent.assert('the chart trends upward', { vision: true });
-await agent.assert('the search form is visible and not covered', { vision: 'only' });
-```
-
-| Name | Type | Default |
-| --- | --- | --- |
-| `options.vision` | `boolean \| 'only'` | `config.agent.vision`, `false` |
-
-| Mode | What the model sees | Cost |
-| --- | --- | --- |
-| `false` | the tree | no image tokens |
-| `true` | the tree and a screenshot, every call | image tokens on every call |
-| `'only'` | the screenshot, and not the tree | image tokens, minus the observation bytes |
-
-Set `agent.vision` in config to make a mode the project default; a per-call value
-always wins. Images are billed as input tokens, so `true` costs more than the
-same call without it on every call.
-
-### Judging pixels and nothing else
-
-`vision: true` sends the tree *and* the screenshot, and that is a problem for a
-visual assertion: the tree is a cheaper path to an answer, and the model will take
-it.
-
-```ts
-// Passes on the tree alone (the form is present, enabled, and named) while a
-// consent sheet covers it on screen.
-await agent.assert('the search form is visible and not covered', { vision: true });
-
-// Judged on the screenshot. There is no tree in the request to answer from.
-await agent.assert('the search form is visible and not covered', { vision: 'only' });
-```
-
-Same for a price rendered at `opacity: 0`, a button under a cookie banner, or a
-broken layout, all of which the tree happily reports as fine. Use `'only'` when
-the question is about what the page *presents*; use `true` when the tree is part
-of the answer (`'the submit button is disabled'` is in the tree and often not
-visible at all).
-
-`'only'` is cheaper than `true`, not more expensive: you drop the observation
-bytes. The runner still captures the observation and reports against it; it
-just isn't sent. The step records `visionOnly: true` and zero
-`observationBytes`.
-
-<Warning>
-**Pixels are viewport-scoped, the tree is document-scoped**
-
-The screenshot is the viewport, never the full page. So a condition the tree
-satisfies can be false on screen, and that is usually the point. But it also
-means `'only'` cannot see below the fold.
-
-```ts
-// Tree: passes. The DOM holds prices for all 6701 matched offers.
-// 'only':  fails. The first card is cut off just above its price.
-await agent.waitFor('a list of offers with hotel names and prices is visible', { vision: 'only' });
-```
-
-Write `'only'` conditions about what is on screen, and let the flow scroll first
-when you want to ask about something further down.
-</Warning>
-
-One consequence worth knowing: **no pixels means no answer.** If the viewport is
-pixel-tainted by a secret fill, or masking cannot be proven complete, `'only'`
-fails with `POLICY_DENIED`. Every other mode degrades to the tree; `'only'` will
-not answer a question about pixels from the tree instead.
-
-Calls that send pixels use the agent's `visionModel` when it is set, and its `model`
-otherwise, and keep it for the rest of the invocation, including polling rounds
-whose pixels were withheld, so a polling method never switches models between
-rounds.
-
-<Note>
-**Additive, never pixels-only**
-
-In every mode but `'only'`, the tree is always sent. It is byte-budgeted and
-cheap, and its node references are what keep a step auditable.
-</Note>
-
-Pixel evidence degrades instead of failing the call. It is withheld, and the tree
-sent alone, when the viewport is pixel-tainted by a secret fill
-(`visionDegraded: "PIXEL_TAINTED"` on the step), when the engine masked fewer
-regions than the secure fields it observed (`MASKING_UNPROVEN`), or when the
-engine cannot capture pixels (`UNSUPPORTED_CAPABILITY`). A step that did send
-pixels to the model records `visionInput: true` and `metrics.pixelBytes`.
-
-`options.vision` and `assert`'s `options.screenshot` are unrelated: `screenshot`
-controls failure evidence attached to the report after the judgment, `vision`
-controls what the model is shown before it.
-
-## Judgments and extraction
-
-### agent.assert
+## agent.assert
 
 ```ts
 assert(assertion: string, options?: AssertOptions): Promise<void>;
@@ -320,14 +222,14 @@ const summary = await agent.extract('the workspace name and plan', {
 
 `assert`, `waitFor`, and `extract` accept `vision`. It controls what evidence
 the model is shown. Sending pixels needs a model that accepts images; images
-are billed as input tokens.
+are billed as input tokens. `act` has no such option; its pixel path is the
+`screenshot` and `tap_at` tools above.
 
 | Mode | What the model sees | Cost |
 | --- | --- | --- |
 | `false` | the tree | no image tokens |
 | `true` | the tree and a masked screenshot, every call | image tokens on every call |
 | `'only'` | the screenshot, and not the tree | image tokens, minus the observation bytes |
-| `'fallback'` | the tree; behaves like `false` for the judgments | no image tokens |
 
 Set `vision` on the agent in config to make a mode the project default; a
 per-call value wins. Calls that send pixels use the agent's `visionModel`
@@ -365,20 +267,14 @@ the engine masked fewer regions than the secure fields it observed
 cases rather than answer a question about pixels from the tree. A step that
 sent pixels records `visionInput: true` and `metrics.pixelBytes`.
 
-`'fallback'` exists for calls that could discover mid-flight that the tree
-was not enough. A judgment never does, so the three judgments run tree-only
-under it.
-
 ## Types
 
 ```ts
-export type VisionMode = boolean | 'fallback' | 'only';
+export type VisionMode = boolean | 'only';
 
 export interface VisionOption {
   vision?: VisionMode;
 }
-
-export type VisionMode = boolean | 'only';
 
 export interface AssertOptions extends VisionOption {
   timeout?: number;
