@@ -1,5 +1,6 @@
 import type { E2EConfig } from '@e2edev/e2e';
 import { playwright } from '@e2edev/playwright';
+import { gateway } from 'ai';
 
 /**
  * `e2e explore` against the bug garden (`app/bug-garden.mjs`), a bookshop
@@ -35,7 +36,7 @@ export default {
   actionTimeout: 60_000,
   agents: {
     default: {
-      model: process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast',
+      model: gateway(process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast'),
       context: 'Bookshelf is a small online bookshop: a catalog, a cart, checkout, an account page, an orders page, and sign-in.',
     },
   },
