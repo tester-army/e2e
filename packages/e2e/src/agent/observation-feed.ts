@@ -104,11 +104,16 @@ export class ObservationFeed {
     return this.queue.run(() => this.observeNow(true, pixels));
   }
 
-  /** The executor's view of one capture: redacted text, and the tree and pixels it asked for. */
-  async view(observation: AgentObservation, options: ExecutorObserveOptions): Promise<ExecutorObservation> {
+  /** The executor-facing observe: the options checked before anything is captured, then one settled look, viewed. */
+  async observe(options: ExecutorObserveOptions = {}): Promise<ExecutorObservation> {
     if (options === null || typeof options !== 'object') {
       throw new TestError('INVALID_ARGUMENT', 'observe options must be an object');
     }
+    return this.view(await this.observeSettled(options.pixels === true), options);
+  }
+
+  /** The executor's view of one capture: redacted text, and the tree and pixels it asked for. */
+  private async view(observation: AgentObservation, options: ExecutorObserveOptions): Promise<ExecutorObservation> {
     const redact = this.runtime.redact;
     // Prefer location from this capture; only engines without it need a separate probe.
     const path = await this.currentPath(observation);

@@ -257,7 +257,7 @@ class ActDispatch {
         recordModelCall: (usage) => this.accounting.recordModelCall(usage),
         runTool: (call, body) => this.dispatcher.runTool(call, body),
       },
-      observe: async (options = {}) => this.feed.view(await this.feed.observeSettled(options?.pixels === true), options),
+      observe: (options) => this.feed.observe(options),
       get pixelsTainted() {
         return dispatch.runtime.taint.value;
       },

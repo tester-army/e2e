@@ -87,7 +87,20 @@ type ModelOutput =
       readonly value: ({ readonly type: 'text'; readonly text: string } | { readonly type: 'file'; readonly data: { readonly type: 'data'; readonly data: string }; readonly mediaType: string })[];
     };
 
-/** A rendered screen as the model receives it: text, or text with the screenshot attached as a file part. */
+/**
+ * A grammar tool: its result is a rendered screen, text or text with the
+ * screenshot attached as a file part, so every one encodes its output the
+ * same way. A tool that skipped the encoder would hand the model the image
+ * bytes as JSON the first time an action ran in pixel mode.
+ */
+function screenTool<Schema extends z.ZodType>(definition: {
+  readonly description: string;
+  readonly inputSchema: Schema;
+  readonly execute: (input: z.output<Schema>) => Promise<ScreenOutput>;
+}): Tool {
+  return schemaTool({ ...definition, toModelOutput: screenModelOutput });
+}
+
 function screenModelOutput({ output }: { readonly output: ScreenOutput }): ModelOutput {
   if (typeof output === 'string') return { type: 'text', value: output };
   return {
@@ -263,25 +276,23 @@ export function createGrammarTools(
     .describe('Node id from any screen in this conversation that is still present, e.g. "n42"');
 
   const tools: ToolSet = {
-    observe: schemaTool({
+    observe: screenTool({
       description:
         'Look at the screen again and get what changed since the screen you last received. Action results already include their changes, so call this only after waiting for something in progress, never right after an action.',
       inputSchema: z.object({}),
       execute: () => inOrder(() => guard(() => present('Observed.', false))),
-      toModelOutput: screenModelOutput,
     }),
   };
   if (verbs.has('tap')) {
-    tools['tap'] = schemaTool({
+    tools['tap'] = screenTool({
       description:
         'Tap or click one node. The result waits for the effect (a navigation, a route change, a submit) and reports what changed.',
       inputSchema: z.object({ target }),
       execute: ({ target: id }) => acting(`Tapped #${id}.`, () => context.actions.tap({ id })),
-      toModelOutput: screenModelOutput,
     });
   }
   if (verbs.has('type')) {
-    tools['type'] = schemaTool({
+    tools['type'] = screenTool({
       description: 'Type a plain-text value into one input node, replacing its current value. Several fields can be typed in one turn.',
       inputSchema: z.object({ target, value: z.string() }),
       execute: ({ target: id, value }) =>
@@ -289,7 +300,7 @@ export function createGrammarTools(
     });
   }
   if (verbs.has('press')) {
-    tools['press'] = schemaTool({
+    tools['press'] = screenTool({
       description: 'Send one key (e.g. "Enter", "Escape", "Tab") to one node.',
       inputSchema: z.object({ target, key: z.string().min(1).max(64) }),
       execute: ({ target: id, key }) =>
@@ -297,7 +308,7 @@ export function createGrammarTools(
     });
   }
   if (verbs.has('select')) {
-    tools['select'] = schemaTool({
+    tools['select'] = screenTool({
       description: 'Pick one option from a select-like control by its visible label.',
       inputSchema: z.object({ target, value: z.string().min(1) }),
       execute: ({ target: id, value }) =>
@@ -325,14 +336,14 @@ export function createGrammarTools(
       count === 1 ? `Scrolled ${way}.` : `Scrolled ${way} ${String(count)} screens.`;
     // Node-targeted scrolling rides `perform`; without it only the viewport scrolls.
     tools['scroll'] = verbs.has('tap')
-      ? schemaTool({
+      ? screenTool({
           description:
             'Scroll the viewport, or one scrollable node when target is given. The result reports the rows that came into or left the tree.',
           inputSchema: z.object({ direction, target: target.optional(), times }),
           execute: ({ direction: way, target: id, times: count }) =>
             acting(scrolled(way, count ?? 1), () => scrolling(way, id, count ?? 1), false),
         })
-      : schemaTool({
+      : screenTool({
           description: 'Scroll the viewport. The result reports the rows that came into or left the tree.',
           inputSchema: z.object({ direction, times }),
           execute: ({ direction: way, times: count }) =>
@@ -340,11 +351,10 @@ export function createGrammarTools(
         });
   }
   if (verbs.has('navigate')) {
-    tools['navigate'] = schemaTool({
+    tools['navigate'] = screenTool({
       description: 'Navigate to a URL or app-relative path within the allowed origins.',
       inputSchema: z.object({ url: z.string().min(1) }),
       execute: ({ url }) => acting(`Navigated to ${url}.`, () => context.actions.navigate(url)),
-      toModelOutput: screenModelOutput,
     });
   }
   // The pixel verbs are offered while pixels can still leave the runner. Once
@@ -353,15 +363,14 @@ export function createGrammarTools(
   // turn. tap_at lands either as a tap by id or as a bare point, so it needs
   // one of the two; screenshot needs only the observation every step has.
   if (!context.pixelsTainted) {
-    tools['screenshot'] = schemaTool({
+    tools['screenshot'] = screenTool({
       description:
         'Attach a screenshot of the current viewport. Use it when the screen lists too little to act on (a canvas, a map, an image, a game, a system sheet) or contradicts what you expect. From then on every action result carries a fresh screenshot too, so you can see what each action did.',
       inputSchema: z.object({}),
       execute: () => inOrder(() => guard(async () => screen.present(await context.observe({ pixels: true })))),
-      toModelOutput: screenModelOutput,
     });
     if (verbs.has('tap') || verbs.has('tapAt')) {
-      tools['tap_at'] = schemaTool({
+      tools['tap_at'] = screenTool({
         description:
           'Tap a point in the latest screenshot, given as pixel coordinates in that image (x from the left edge, y from the top edge). Aim for the center of the target. A listed control under the point is tapped by its id; otherwise the bare point is tapped' +
           (verbs.has('tapAt') ? '.' : ', which this engine cannot do: the point must land on a listed control.') +
@@ -377,14 +386,13 @@ export function createGrammarTools(
           const point = imagePointToViewport({ x, y }, shot.pixels, shot.viewport);
           return acting(`tap_at (${String(x)}, ${String(y)})`, async () => (await context.actions.tapAt(point)).summary);
         },
-        toModelOutput: screenModelOutput,
-      });
+        });
     }
   }
   // Offered only when the step declared secrets and the surface can fill: an
   // empty vocabulary is better than a tool the model can only be rejected on.
   if (verbs.has('typeSecret') && context.step.secrets.length > 0) {
-    tools['type_secret'] = schemaTool({
+    tools['type_secret'] = screenTool({
       description:
         'Fill one declared secret credential into a secure input field; the plaintext never passes through you and never shows on screen. Available: ' +
         context.step.secrets.map((secret) => `"${secret.name}" (${secret.purpose})`).join(', ') +
