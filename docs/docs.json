@@ -55,7 +55,8 @@
             "group": "Web",
             "pages": [
               "starting-your-app",
-              "browser"
+              "browser",
+              "viewports"
             ]
           },
           {

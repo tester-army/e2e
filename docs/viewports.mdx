@@ -1,0 +1,127 @@
+---
+title: Testing viewports
+description: Run a suite at several sizes, resize inside a test, and know what the agent sees at each.
+---
+
+A viewport is set in two places. The target fixes the size every attempt
+starts at, and a test resizes from inside its body. The agent works at
+whichever size is current and never resizes on its own.
+
+## One size per target
+
+`viewport` on `playwright(...)` is the initial size of every attempt's page.
+The default is 1280 by 720. A suite that has to hold at several sizes
+declares one target per size:
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from '@e2edev/e2e';
+import { playwright } from '@e2edev/playwright';
+
+const app = { url: 'http://localhost:3000' };
+
+export default {
+  targets: [
+    { name: 'desktop', engine: playwright(app) },
+    { name: 'tablet', engine: playwright({ ...app, viewport: { width: 820, height: 1180 } }) },
+    { name: 'phone', engine: playwright({ ...app, browser: 'webkit', viewport: { width: 390, height: 844 } }) },
+  ],
+} satisfies E2EConfig;
+```
+
+Every test runs once per target and each run is its own result, tagged
+`[desktop]`, `[tablet]`, or `[phone]` in the terminal, the report, and JUnit
+output. Targets that declare the same `command` share one app process, so
+three sizes cost three browsers, not three dev servers. `--target phone`
+runs one size; `e2e list` prints the test-target pairs a run would select.
+
+A retry starts a fresh attempt, and a fresh attempt starts at the target's
+size again, whatever the failed attempt resized to.
+
+## Resize inside a test
+
+`web.setViewport` resizes the page for the rest of the attempt:
+
+```ts
+import { test } from '@e2edev/playwright';
+import { expect } from '@e2edev/e2e';
+
+test('the menu collapses on a narrow screen', async ({ app, screen, web }) => {
+  await app.open('/');
+  await expect(screen.getByRole('navigation')).toBeVisible();
+
+  await web.setViewport({ width: 390, height: 844 });
+  await expect(screen.getByRole('button', { name: 'Menu' })).toBeVisible();
+  await expect(screen.getByRole('navigation')).toBeHidden();
+});
+```
+
+Reach for this when one test walks through several sizes, or when a single
+test in a desktop suite needs a narrow layout. When the whole suite needs
+the size, a target is the better home: it is visible in the config, in the
+report, and in `--target`, and nothing in the test body has to remember to
+call it.
+
+The call records the new size on its step, so the report shows the
+dimensions each step ran at. There is no viewport matcher; a test that has to
+assert the size reads it from the page:
+
+```ts
+const width = await web.evaluate(() => window.innerWidth);
+expect(width).toBe(390);
+```
+
+## What the agent sees
+
+Every observation the model receives is stamped with the size it was taken
+at, as `viewport="390x844@1"` in the observation header, and a screenshot is
+the viewport, never the full page. An `agent.act()` after a resize therefore
+reasons about the narrow layout: the hamburger button is in the tree, the
+full navigation is not, and anything below the fold needs a `scroll` before
+it can be tapped.
+
+The agent cannot resize. Its verbs are `tap`, `type`, `press`, `select`,
+`type_secret`, `scroll`, `navigate`, and `back`, and none of them changes the
+page size. Resize in the test, then hand the step to the agent:
+
+```ts
+test('the mobile menu reaches pricing', async ({ app, agent, web }) => {
+  await app.open('/');
+  await web.setViewport({ width: 390, height: 844 });
+  await agent.act('open the navigation menu and go to Pricing');
+  await expect(web).toHaveURL('/pricing');
+});
+```
+
+An instruction such as "switch to a phone-sized window" has no verb to land
+on and cannot succeed. Say what to do on the page, not how large the page
+should be.
+
+## Scoping a test to one size
+
+`platforms` and `requires` cannot tell two browser targets apart: every
+Playwright target is platform `web` with the same capabilities, so a test
+scoped with them runs on the phone and the desktop alike. To run a test at
+one size only, either resize inside it with `web.setViewport`, or keep the
+size-specific tests in their own config and run them with `--config`.
+
+## Limits
+
+The browser engine sets a size and nothing else about the device. A `phone`
+target is a narrow window in a desktop browser: no touch events, a device
+scale factor of 1 (the `@1` in every observation), the browser's own user
+agent, and no `prefers-reduced-motion` or color scheme emulation. Layouts
+that key off `hover: none` or `pointer: coarse` media queries see a desktop.
+Real touch, a real scale factor, and a real mobile browser are what the
+[device engine](/mobile) provides on a simulator or emulator.
+
+A `--video` recording is sized to the viewport the attempt started with. A
+resize mid-attempt does not change the recording's dimensions.
+
+<CardGroup cols={2}>
+  <Card title="Working with the browser" href="/browser">
+    Routes, cookies, dialogs, downloads, and the rest of the `web` fixture.
+  </Card>
+  <Card title="Playwright reference" href="/reference/playwright">
+    Every engine option and `web` method, with timeouts and errors.
+  </Card>
+</CardGroup>
