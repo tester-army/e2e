@@ -71,7 +71,7 @@ recorded flow is stale — `--no-cache` only skips the cache for one run.
 
 - `list` (default): one line per file and target, a `Failed Tests` section
   with each error, its code, the failing line and a code frame, then a
-  summary (`Test Files`, `Tests`, `AI`, `Start at`, `Duration`, `Report`); setup steps (a first-run browser download, each service and app command) print above the tests and stay out of `Duration` or are split out of it as `(startup …)`.
+  summary (`Test Files`, `Tests`, `AI`, `Cache` when the trace cache was on: agent steps `replayed` whole, `handed off` to the model part-way, or `missed`, `Start at`, `Duration`, `Report`); setup steps (a first-run browser download, each service and app command) print above the tests and stay out of `Duration` or are split out of it as `(startup …)`.
 - `.e2e/report.json` is written on every run whatever the reporters:
   `run.status`, `run.exitCode`, `run.errors[]` (run-level failures such as
   `APP_UNREACHABLE`), and `run.results[]`, one per test and target, with
