@@ -11,6 +11,7 @@ import { findInstalledSkillDirs, planSkillInstall, SKILL_LOCATIONS } from './ini
 import { isLoopbackHost } from '../internal/urls.ts';
 import { getEnginePresets, DEFAULT_ENGINE_ID, type EngineId } from './init/engines.ts';
 import { GATEWAYS, type GatewayId } from './init/gateways.ts';
+import { findRegisteredMcpFiles, MCP_LOCATIONS, planMcpRegistration } from './init/mcp-config.ts';
 import { addDependencies, addScripts, describeManifestError, readPackage, serializePackage } from './init/package.ts';
 import { createScaffold, type ScaffoldModel } from './init/scaffold.ts';
 import { MISSING_SKILL_MESSAGE, readSkillFiles } from './skill.ts';
@@ -133,23 +134,29 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
     }
   }
 
-  // The skill goes where an earlier run put it; a project without one chooses.
-  let skillDirs: readonly string[] = findInstalledSkillDirs(cwd);
-  if (skillDirs.length === 0) {
-    if (options.yes) {
-      skillDirs = SKILL_LOCATIONS.map((location) => location.dir);
-    } else {
-      const selected = await clack.multiselect<string>({
-        message: 'Install the e2e skill for coding agents?',
-        options: SKILL_LOCATIONS.map(({ dir, hint }) => ({ value: dir, label: dir, hint })),
-        initialValues: SKILL_LOCATIONS.map((location) => location.dir),
-        required: false,
-      });
-      if (isCancelled(selected)) return cancelled();
-      skillDirs = selected;
-    }
-  }
+  const skillDirs = await chooseLocations(
+    findInstalledSkillDirs(cwd),
+    SKILL_LOCATIONS.map(({ dir, hint }) => ({ value: dir, hint })),
+    'Install the e2e skill for coding agents?',
+    options.yes,
+  );
+  if (isCancelled(skillDirs)) return cancelled();
   const skillInstalls = planSkillInstall(cwd, skillDirs, bundledSkill);
+
+  const mcpFiles = await chooseLocations(
+    findRegisteredMcpFiles(cwd),
+    MCP_LOCATIONS.map(({ file, hint }) => ({ value: file, hint })),
+    'Register the e2e MCP server for coding agents?',
+    options.yes,
+  );
+  if (isCancelled(mcpFiles)) return cancelled();
+  let mcpRegistrations: ReturnType<typeof planMcpRegistration>;
+  try {
+    mcpRegistrations = planMcpRegistration(cwd, mcpFiles);
+  } catch (cause) {
+    clack.log.error(cause instanceof Error ? cause.message : String(cause));
+    return 2;
+  }
 
   const scaffold = createScaffold(engine, model);
   const dependencies = addDependencies(pkg.manifest, scaffold.dependencies);
@@ -169,7 +176,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
     ...(exampleExists ? [] : [{ relative: examplePath, content: scaffold.example, existing: false }]),
   ];
 
-  if (files.length === 0 && skillInstalls.length === 0 && missingIgnore.length === 0) {
+  if (files.length === 0 && skillInstalls.length === 0 && mcpRegistrations.length === 0 && missingIgnore.length === 0) {
     clack.outro('nothing to create; project already initialized');
     return 0;
   }
@@ -178,6 +185,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
     const actions = [
       ...files.map((file) => `${file.existing ? 'update' : 'create'} ${file.relative}`),
       ...skillInstalls.map((install) => `${install.existing ? 'update' : 'create'} ${install.relative}/`),
+      ...mcpRegistrations.map((registration) => `${registration.existing ? 'update' : 'create'} ${registration.relative}`),
       ...(missingIgnore.length > 0 ? ['update .gitignore'] : []),
     ];
     const proceed = await clack.confirm({ message: `${actions.join(', ')}?` });
@@ -209,6 +217,14 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
   }
   if (skillDirs.length === 0) {
     clack.log.info(`skipped the agent skill; agents can still print it with ${execCommand(manager, 'e2e guide')}`);
+  }
+  for (const registration of mcpRegistrations) {
+    mkdirSync(path.dirname(registration.absolute), { recursive: true });
+    writeFileSync(registration.absolute, registration.content, 'utf8');
+    clack.log.success(`${registration.existing ? 'updated' : 'created'} ${registration.relative} (e2e mcp server)`);
+  }
+  if (mcpFiles.length === 0) {
+    clack.log.info('skipped the MCP server; register it later with: claude mcp add e2e -- npx --no-install e2e mcp');
   }
   if (missingIgnore.length > 0) {
     const prefix = existingIgnore === '' || existingIgnore.endsWith('\n') ? '' : '\n';
@@ -274,6 +290,27 @@ function validateEndpoint(value: string | undefined): string | undefined {
  * prompts still resolve to `Value | symbol`, so the guard alone no longer
  * removes `symbol` from a prompt result. This one does.
  */
+/**
+ * Where an agent-facing artifact (the skill, the MCP registration) goes: the
+ * locations an earlier run chose, refreshed and never extended; for a project
+ * without one, every known location under `--yes`, else the user's pick.
+ */
+async function chooseLocations(
+  found: readonly string[],
+  locations: readonly { readonly value: string; readonly hint: string }[],
+  message: string,
+  yes: boolean | undefined,
+): Promise<readonly string[] | symbol> {
+  if (found.length > 0) return found;
+  if (yes) return locations.map((location) => location.value);
+  return clack.multiselect<string>({
+    message,
+    options: locations.map(({ value, hint }) => ({ value, label: value, hint })),
+    initialValues: locations.map((location) => location.value),
+    required: false,
+  });
+}
+
 function isCancelled<Value>(value: Value | symbol): value is symbol {
   return clack.isCancel(value);
 }

@@ -15,10 +15,13 @@ import type { ArtifactRecord, AttemptRecord, ResultStatus, SerialGroupRecord } f
 import type { Reporter, ReporterSummary } from '../types.ts';
 import { codeFrame, userFrame } from './code-frame.ts';
 import {
+  addCacheTally,
   addUsage,
   aiSegment,
   bounded,
+  cacheText,
   ellipsize,
+  emptyCacheTally,
   emptyCounters,
   emptyUsage,
   F_CHECK,
@@ -31,12 +34,14 @@ import {
   rule,
   stateString,
   statusBucket,
+  stepsCacheTally,
   stepsUsage,
   sumUsage,
   tally,
   terminalColumns,
   usageText,
   type AiUsage,
+  type CacheTally,
   type Colors,
   type Counters,
 } from './format.ts';
@@ -88,6 +93,7 @@ function pairKey(testId: string, agent: string, target: string): string {
 interface ResultDetails {
   readonly durationMs: number;
   readonly usage: AiUsage;
+  readonly cache: CacheTally;
   readonly error: SerializedError | undefined;
   /** Report-relative paths of the recordings the attempts kept, in attempt order. */
   readonly videos: readonly string[];
@@ -98,6 +104,7 @@ function attemptDetails(attempts: readonly AttemptRecord[]): ResultDetails {
   return {
     durationMs: attempts.reduce((total, attempt) => total + attempt.durationMs, 0),
     usage: stepsUsage(attempts.map((attempt) => attempt.steps)),
+    cache: stepsCacheTally(attempts.map((attempt) => attempt.steps)),
     error: attempts[attempts.length - 1]?.error,
     videos: videoPaths(attempts),
   };
@@ -132,6 +139,7 @@ function serialMemberDetails(group: SerialGroupRecord, testId: string): ResultDe
   return {
     durationMs: runs.reduce((total, run) => total + (run.member?.durationMs ?? 0), 0),
     usage: stepsUsage(runs.map((run) => run.member?.steps ?? [])),
+    cache: stepsCacheTally(runs.map((run) => run.member?.steps ?? [])),
     error: own?.error ?? (neverRan ? last?.attempt.error : undefined),
     // The group's recording covers every member, so a failed member points at it.
     videos: videoPaths(group.attempts),
@@ -207,6 +215,8 @@ export class ListReporter implements Reporter {
   private startupMs = 0;
   /** Run-wide model usage, summed from every reported result and serial group. */
   private readonly runUsage = emptyUsage();
+  /** The trace cache's part in every reported step, for the summary's `Cache` row. */
+  private readonly runCache = emptyCacheTally();
   /**
    * The configured models as the summary names them, `provider/id` plus
    * `vision provider/id` when pixels go to a separate model: `runUsage` sums
@@ -511,8 +521,9 @@ export class ListReporter implements Reporter {
     const steps = this.pairs.get(key)?.steps ?? [];
     this.pairs.delete(key);
     const group = this.group(result.test.file, result.target.name);
-    const { durationMs, usage, error, videos } = this.detailsOf(result);
+    const { durationMs, usage, cache, error, videos } = this.detailsOf(result);
     addUsage(this.runUsage, usage);
+    addCacheTally(this.runCache, cache);
     const title = this.titledAs(result.test.titlePath.join(' > '), result.agent);
     const line: TestLine = {
       title,
@@ -635,7 +646,8 @@ export class ListReporter implements Reporter {
 
   /**
    * vitest's padded summary, shared by the live window and the final report:
-   * files, tests, model usage, run errors, start time, and elapsed time. The
+   * files, tests, model usage, the trace cache's part, run errors, start
+   * time, and elapsed time. The
    * clock rows wait for `plan`; the final summary of a run that never got
    * there (a config or collection failure, a failed download) counts from
    * the launch instead, so the time it took to fail is still on record.
@@ -653,6 +665,8 @@ export class ListReporter implements Reporter {
       const models = this.models === undefined ? '' : ` · ${this.models}`;
       rows.push(padTitle(pc, 'AI') + `${ai} · ${this.runUsage.calls} model calls${models}`);
     }
+    const cache = cacheText(pc, this.runCache);
+    if (cache !== undefined) rows.push(padTitle(pc, 'Cache') + cache);
     if (this.errors.length > 0) {
       const count = this.errors.length;
       rows.push(padTitle(pc, 'Errors') + pc.bold(pc.red(`${count} error${count === 1 ? '' : 's'}`)));

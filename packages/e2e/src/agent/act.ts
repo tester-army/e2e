@@ -115,9 +115,13 @@ const MAX_RECENT_OBSERVATIONS = 8;
  */
 const SCROLL_MOMENTUM: Momentum = 'slow';
 
+/** What a dispatch needs of the agent a step runs with; an interactive step supplies its own. */
+export type DispatchAgent = Pick<AgentSelection, 'name' | 'config' | 'executor' | 'agentContext'>;
+
 /** Everything one dispatched step is, resolved before the step opens. */
-interface DispatchSpec {
-  readonly api: 'agent.act' | 'agent.assert';
+export interface DispatchSpec {
+  /** The public API the step ran as, or `session` for a step a host drives from outside the loop. */
+  readonly api: 'agent.act' | 'agent.assert' | 'session';
   readonly kind: 'act' | 'assert';
   readonly instruction: string;
   readonly params: Readonly<Record<string, JsonValue>> | undefined;
@@ -198,10 +202,13 @@ export async function runAssertStep(
  * passing is what confirms the traces staged before it at attempt end
  * (cache/context.ts).
  */
-async function dispatchAgentStep(runtime: AgentContext, spec: DispatchSpec): Promise<ActResult> {
+export async function dispatchAgentStep(
+  runtime: AgentContext,
+  spec: DispatchSpec,
   // Resolved before the step opens, so an unknown name fails the call, not a
   // recorded step, and the step carries the agent it ran with.
-  const agent = runtime.select(spec.agent);
+  agent: DispatchAgent = runtime.select(spec.agent),
+): Promise<ActResult> {
   return runtime.steps.run('agent', spec.api, spec.instruction, async () => {
     const dispatch = new ActDispatch(runtime, spec, agent);
     try {
@@ -299,7 +306,7 @@ class ActDispatch {
     private readonly runtime: AgentContext,
     private readonly spec: DispatchSpec,
     /** The agent this step runs with. */
-    private readonly agent: AgentSelection,
+    private readonly agent: DispatchAgent,
   ) {
     this.stepSignal = AbortSignal.any([runtime.engine.signal, this.stepAbort.signal]);
     this.timeoutMs = resolveTimeout(spec.timeout, runtime.config.timeout);

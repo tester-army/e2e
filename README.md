@@ -64,6 +64,11 @@ await screen.getByRole('button', { name: 'Confirm' }).tap();
 anywhere else. Without it, `npx --no-install e2e guide` prints the same text.
 See [Coding agents](https://e2e.mintlify.app/coding-agents).
 
+`e2e mcp` opens a live session on the app for a coding agent over MCP, with
+the same tools the testing agent has behind four fixed MCP tools, so the
+agent can look at the real screen and check a locator before writing the
+test. `e2e init` registers it for Claude Code and Cursor.
+
 ## Packages
 
 - [`@e2edev/e2e`](./packages/e2e) — the SDK, runner, and CLI.

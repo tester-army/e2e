@@ -23,7 +23,7 @@ function runtime(overrides: E2EConfig = {}) {
   );
   const signal = new AbortController().signal;
   const steps = new StepRecorder('attempt');
-  const fixtures = createFixtures({
+  const { fixtures } = createFixtures({
     config,
     target: config.targets[0]!,
     session: createEngineSession({ engine, targetName: 'fake' }),

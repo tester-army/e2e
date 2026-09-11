@@ -28,7 +28,7 @@ describe('the built CLI and the bundled skill', () => {
     expect(topic.stdout).toBe(readFileSync(path.join(REPO_SKILL, 'references', 'writing-tests.md'), 'utf8'));
     await expect(execFileAsync(process.execPath, [CLI, 'guide', 'nope'], { cwd: dir })).rejects.toMatchObject({
       code: 2,
-      stderr: expect.stringContaining('unknown topic "nope"; topics: agent, debugging, explore, running, setup, writing-tests'),
+      stderr: expect.stringContaining('unknown topic "nope"; topics: agent, debugging, explore, mcp, running, setup, writing-tests'),
     });
     const help = await execFileAsync(process.execPath, [CLI, '--help'], { cwd: dir });
     expect(help.stdout).toContain('guide [topic]');

@@ -3,9 +3,9 @@ title: Coding agents
 description: What e2e gives Claude Code, Codex, Cursor, and friends, and how they should use it.
 ---
 
-e2e ships no MCP server. A coding agent works with the same three things you
-do: the skill that teaches the API, the `e2e` CLI, and the JSON report a run
-writes. `e2e init` installs the skill; the skill explains the other two.
+A coding agent uses the skill, the `e2e` CLI, and the JSON report.
+`e2e mcp` also gives it a live session on the app to inspect controls before
+writing a test. `e2e init` installs the skill and registers the MCP server.
 
 ## The skill
 
@@ -15,7 +15,7 @@ npx --no-install e2e init
 
 | Path | Read by | Content |
 | --- | --- | --- |
-| `.agents/skills/e2e/` | Codex, Cursor, Copilot, Gemini CLI, OpenCode, Zed, and most other agents | `SKILL.md` plus `references/setup.md`, `writing-tests.md`, `agent.md`, `running.md`, `explore.md`, and `debugging.md` |
+| `.agents/skills/e2e/` | Codex, Cursor, Copilot, Gemini CLI, OpenCode, Zed, and most other agents | `SKILL.md` plus `references/setup.md`, `writing-tests.md`, `agent.md`, `running.md`, `explore.md`, `debugging.md`, and `mcp.md` |
 | `.claude/skills/e2e/` | Claude Code | The same files |
 
 `SKILL.md` is the entry point: the mental model, a sample test, the rules,
@@ -33,6 +33,24 @@ always-on pointer, one line in the project's instructions file is enough:
 ```md title="AGENTS.md"
 End-to-end tests use @e2edev/e2e; read .agents/skills/e2e/SKILL.md before writing or running one.
 ```
+
+## How an agent looks at the app
+
+`e2e mcp` serves a live session on one target. Its catalog includes the
+engine's action tools and `locate`, which tries a `screen.*` locator and
+returns the call to write when exactly one node matches. The server exposes
+`open_session`, `tools`, `call`, and `close_session`; `call` dispatches to the
+session's catalog by name.
+
+`init` registers the server in `.mcp.json` for Claude Code and
+`.cursor/mcp.json` for Cursor. To register it with Claude Code by hand:
+
+```bash
+claude mcp add e2e -- npx --no-install e2e mcp
+```
+
+See the [MCP server reference](/reference/mcp) for its tools, session rules,
+and flags. Run tests and read reports through the CLI.
 
 ## How an agent writes a test
 
@@ -144,7 +162,10 @@ needs a second attempt, the skill is missing something; the fix belongs in
 
 <CardGroup cols={2}>
   <Card title="CLI reference" href="/reference/cli">
-    init, guide, and run, flag by flag.
+    init, guide, mcp, and run, flag by flag.
+  </Card>
+  <Card title="MCP server" href="/reference/mcp">
+    Inspect the app before writing a test.
   </Card>
   <Card title="Debugging a run" href="/debugging">
     The report, the artifacts, and the agent flags.

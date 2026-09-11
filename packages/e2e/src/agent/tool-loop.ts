@@ -79,11 +79,11 @@ const TEXT_REPLY_NOTICE =
 /** Loop services the executor's tool bodies run under. */
 export interface ToolLoopHelpers {
   /**
-   * Runs one string-returning tool body under loop policy: nothing executes
-   * once the step is concluding, a runtime hard stop ends the loop, and every
-   * other failure goes back to the model as text it can react to.
+   * Runs one tool body under loop policy: nothing executes once the step is
+   * concluding, a runtime hard stop ends the loop, and every other failure
+   * goes back to the model as text it can react to, named by `label`.
    */
-  guard(body: () => Promise<string>): Promise<string>;
+  guard<Value>(body: () => Promise<Value>, label?: string): Promise<Value | string>;
   /** True once a verdict or hard stop landed; late tool calls should no-op. */
   concluding(): boolean;
   /** Records a runtime hard stop (budget/timeout/cancel) that ends the loop. */
@@ -403,7 +403,7 @@ class LoopRun {
       reportHardStop: (error) => {
         this.hardStop ??= error;
       },
-      guard: async (body) => {
+      guard: async (body, label = 'Action') => {
         if (this.conclusion.concluded() || this.hardStop !== undefined) {
           return 'The step is already concluding; no further actions run.';
         }
@@ -415,7 +415,7 @@ class LoopRun {
             return `HARD STOP (${cause.code}): ${cause.message}`;
           }
           const message = cause instanceof Error ? cause.message : String(cause);
-          return `Action failed: ${message}`;
+          return `${label} failed: ${message}`;
         }
       },
     };

@@ -13,6 +13,7 @@ import { cache, type CacheCommand } from './cache.ts';
 import { DOCS_URL } from './docs-url.ts';
 import { guide } from './guide.ts';
 import { init } from './init.ts';
+import { mcp } from './mcp.ts';
 import { SignalLadder } from './signals.ts';
 import { skillTopics } from './skill.ts';
 import { telemetry as telemetryCommand, TELEMETRY_ACTIONS, type TelemetryAction } from './telemetry.ts';
@@ -198,6 +199,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           'e2e list --tag smoke',
           'e2e cache ls',
           'e2e guide',
+          'e2e mcp',
           'e2e telemetry disable',
         ]),
         '',
@@ -248,6 +250,28 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .addHelpText('after', ['', examples(['e2e guide', 'e2e guide writing-tests']), '', docsLine('/reference/cli#e2e-guide')].join('\n'))
     .action((topic: string | undefined) => {
       process.exitCode = guide(topic);
+    });
+
+  program
+    .command('mcp')
+    .summary('serve the project to a coding agent over MCP')
+    .description(
+      'Serve an MCP server over stdio for a coding agent such as Claude Code or Cursor: open_session opens a live session on one target of any config the agent names, call runs the session\'s tools (observe, tap, type, press, select, scroll, navigate, type_secret, locate, screenshot, and the project\'s own), tools describes them, close_session ends it. The agent explores the real app before writing a test. Register it with the client, e.g. claude mcp add e2e -- npx --no-install e2e mcp.',
+    )
+    .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
+    .option('--target <name>', 'target every session opens on (default: the only target, or the one open_session names)')
+    .option('--headless', 'hide the UI during live sessions (default: headed outside CI)')
+    .addHelpText(
+      'after',
+      [
+        '',
+        examples(['e2e mcp', 'e2e mcp --target web --headless', 'claude mcp add e2e -- npx --no-install e2e mcp']),
+        '',
+        docsLine('/reference/mcp'),
+      ].join('\n'),
+    )
+    .action(async (options: { config?: string; target?: string; headless?: boolean }) => {
+      process.exitCode = await mcp(version, options);
     });
 
   program
@@ -353,7 +377,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .command('explore')
     .summary('explore the app toward a goal and report findings, without a test file')
     .description(
-      'Run the agent against the app with a goal instead of a test: it plans one exploration step at a time, drives the app, reports every defect it has evidence of, and ends with an assessment. The run writes .e2e/report.json like e2e run, with the exploration record under run.explore. The model comes from agent.model or E2E_MODEL.',
+      'Run the agent against the app with a goal instead of a test: it plans one exploration step at a time, drives the app, reports every defect it has evidence of, and ends with an assessment. The run writes .e2e/report.json like e2e run, with the exploration record under run.explore. The model is the one the selected agent holds, as for e2e run.',
     )
     .argument('[goal]', 'what to explore, in a sentence (default: "Explore the app and find bugs")')
     .optionsGroup('Selection:')
@@ -388,7 +412,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           "e2e explore 'Explore the checkout flow like a first-time buyer and report anything off'",
           'e2e explore --target web --max-steps 4 --headed',
           "e2e explore --agent ux 'Review onboarding as a first-time user'",
-          "E2E_MODEL=provider/model-id e2e explore 'Hunt for broken forms and dead links' --video",
+          "e2e explore 'Hunt for broken forms and dead links' --video",
         ]),
         '',
         exitCodesSection(EXPLORE_EXIT_CODES),

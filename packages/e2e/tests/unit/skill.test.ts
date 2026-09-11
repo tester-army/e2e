@@ -20,7 +20,7 @@ describe('the bundled agent skill', () => {
 
   it('offers one topic per reference file and lists every topic in SKILL.md', () => {
     const topics = skillTopics();
-    expect(topics).toEqual(['agent', 'debugging', 'explore', 'running', 'setup', 'writing-tests']);
+    expect(topics).toEqual(['agent', 'debugging', 'explore', 'mcp', 'running', 'setup', 'writing-tests']);
     const overview = readGuide(undefined) ?? '';
     const linked = [...overview.matchAll(/\[references\/([a-z-]+)\.md\]\(references\/\1\.md\)/g)].map((match) => match[1]);
     expect(linked.toSorted()).toEqual([...topics]);

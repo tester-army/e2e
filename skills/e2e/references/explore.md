@@ -3,14 +3,14 @@
 `e2e explore` runs the agent against the app with a goal instead of a test
 file. Use it to see what the agent can do with an app before tests exist, to
 hunt for regressions on a branch, or to find what is worth turning into a
-test. It needs a config with a target and a model (on the agent, or
-`E2E_MODEL`), nothing else.
+test. It needs a config with a target and an agent that holds a model,
+nothing else.
 
 ```bash
 npx --no-install e2e explore                                         # goal: "Explore the app and find bugs"
 npx --no-install e2e explore 'Explore checkout like a first-time buyer and report anything off'
 npx --no-install e2e explore --target web --max-steps 4 --headed
-E2E_MODEL=provider/model-id npx --no-install e2e explore 'Hunt for broken forms' --video
+npx --no-install e2e explore 'Hunt for broken forms' --video
 ```
 
 ## What a run does

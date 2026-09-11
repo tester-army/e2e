@@ -40,10 +40,13 @@ descriptions and commit bodies; `git log` and `gh pr view` are the archive.
   ranges they write. Each preset owns its prompt label, dependencies, config,
   example, and run command; interactive choices derive from this list. These
   presets never import engine implementations.
-  - `src/run/` runner core (scheduler, units, workers, retries, sessions),
+  - `src/run/` runner core (scheduler, units, workers, retries, sessions;
+    `standalone.ts` opens one attempt with no test body for hosts),
     `src/collect/` registration+selection, `src/locator/` locator AST/engine,
     `src/agent/` the agent (the `act` executor socket plus the judgment
-    methods).
+    methods), `src/mcp/` the `e2e mcp` server (a live session that rides
+    the `act` socket with a queue executor so every MCP call is a harness
+    action).
 - `packages/playwright` — the published `@e2edev/playwright` package: the
   browser engine, built with the public `defineEngine`, contributing the
   `web` fixture and `expect(web)`. It depends on `@e2edev/e2e` (peer), never the
