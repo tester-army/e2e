@@ -30,6 +30,7 @@ const layout = (title, body) => `<!doctype html>
     <a href="/board">Board</a>
     <a href="/canvas">Canvas</a>
     <a href="/canvas-flow">Keypad</a>
+    <a href="/canvas-wizard">Wizard</a>
     <a href="/downloads">Downloads</a>
   </nav>
   ${body}
@@ -448,6 +449,93 @@ const pages = {
              document.getElementById('result').textContent = 'code accepted: ' + entered;
            } else if (entered.length < 12) entered += key.label;
            draw();
+         });
+       </script>`,
+    ),
+
+  // A long pixels-only flow of a different shape: eight drawn screens, each
+  // asking for one of four drawn shapes by colour and kind, with a drawn Next.
+  // The model must read each new screen's instruction from pixels and track
+  // which screen it is on; the DOM shows the picks only at the end.
+  '/canvas-wizard': () =>
+    layout(
+      'Drawn wizard',
+      `<h1>Drawn wizard</h1>
+       <p>Eight drawn screens; nothing below is marked up.</p>
+       <canvas id="wiz" width="520" height="420"></canvas>
+       <output id="wizard-result" role="status" aria-label="Wizard result">in progress</output>
+       <script>
+         const canvas = document.getElementById('wiz');
+         const context = canvas.getContext('2d');
+         const shapes = [
+           { key: 'red-circle', color: '#d92b2b', kind: 'circle', label: 'red circle' },
+           { key: 'blue-square', color: '#2b56d9', kind: 'square', label: 'blue square' },
+           { key: 'green-triangle', color: '#15803d', kind: 'triangle', label: 'green triangle' },
+           { key: 'orange-diamond', color: '#ea580c', kind: 'diamond', label: 'orange diamond' },
+         ];
+         // Which shape each screen asks for, and where the four shapes sit on it
+         // (a rotation per screen, so a position memorised on one screen is wrong on the next).
+         const asks = [2, 0, 3, 1, 1, 3, 0, 2];
+         const slots = [ { x: 90, y: 200 }, { x: 210, y: 200 }, { x: 330, y: 200 }, { x: 450, y: 200 } ];
+         let screen = 0;
+         let picked = null;
+         const picks = [];
+         function order(index) { return shapes.map((_, i) => shapes[(i + index) % 4]); }
+         function draw() {
+           context.fillStyle = '#f4f4f5';
+           context.fillRect(0, 0, 520, 420);
+           context.fillStyle = '#111827';
+           context.font = 'bold 22px sans-serif';
+           context.textAlign = 'left';
+           context.textBaseline = 'middle';
+           context.fillText('Step ' + (screen + 1) + ' of 8: tap the ' + shapes[asks[screen]].label + ', then Next', 20, 40);
+           const arranged = order(screen);
+           arranged.forEach((shape, i) => {
+             const { x, y } = slots[i];
+             context.fillStyle = shape.color;
+             context.beginPath();
+             if (shape.kind === 'circle') context.arc(x, y, 36, 0, Math.PI * 2);
+             else if (shape.kind === 'square') context.rect(x - 34, y - 34, 68, 68);
+             else if (shape.kind === 'triangle') { context.moveTo(x, y - 38); context.lineTo(x + 40, y + 32); context.lineTo(x - 40, y + 32); context.closePath(); }
+             else { context.moveTo(x, y - 40); context.lineTo(x + 40, y); context.lineTo(x, y + 40); context.lineTo(x - 40, y); context.closePath(); }
+             context.fill();
+             if (picked === shape.key) { context.lineWidth = 6; context.strokeStyle = '#111827'; context.stroke(); }
+           });
+           context.fillStyle = picked ? '#15803d' : '#9ca3af';
+           context.fillRect(380, 330, 120, 60);
+           context.fillStyle = '#ffffff';
+           context.font = 'bold 26px sans-serif';
+           context.textAlign = 'center';
+           context.fillText('Next', 440, 360);
+           context.fillStyle = '#374151';
+           context.font = '18px sans-serif';
+           context.textAlign = 'left';
+           context.fillText(picked ? 'Selected: ' + shapes.find((s) => s.key === picked).label : 'Nothing selected', 20, 360);
+         }
+         draw();
+         canvas.addEventListener('click', (event) => {
+           if (screen >= 8) return;
+           const box = canvas.getBoundingClientRect();
+           const x = event.clientX - box.left;
+           const y = event.clientY - box.top;
+           if (x >= 380 && x <= 500 && y >= 330 && y <= 390) {
+             if (!picked) return;
+             picks.push(picked === shapes[asks[screen]].key ? 'ok' : 'wrong');
+             picked = null;
+             screen += 1;
+             if (screen === 8) {
+               document.getElementById('wizard-result').textContent = 'wizard done: ' + picks.join(',');
+               context.fillStyle = '#f4f4f5'; context.fillRect(0, 0, 520, 420);
+               context.fillStyle = '#111827'; context.font = 'bold 24px sans-serif'; context.textAlign = 'left';
+               context.fillText('All eight steps done.', 20, 40);
+               return;
+             }
+             draw();
+             return;
+           }
+           const arranged = order(screen);
+           const hit = arranged.findIndex((_, i) => Math.hypot(slots[i].x - x, slots[i].y - y) <= 42);
+           if (hit >= 0) { picked = arranged[hit].key; draw(); }
          });
        </script>`,
     ),
