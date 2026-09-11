@@ -10,13 +10,8 @@
 import type { ToolExecutionOptions, ToolSet } from 'ai';
 
 import type { SdkLanguageModel } from '../config/agent.ts';
-import { AgentError, isAgentError } from './error.ts';
-import {
-  RUNTIME_CODES,
-  type ReplayedPrefix,
-  type StepExecutor,
-  type StepExecutorContext,
-} from './executor.ts';
+import { AgentError } from './error.ts';
+import type { ReplayedPrefix, StepExecutor, StepExecutorContext } from './executor.ts';
 import { createGrammarTools } from './primitives.ts';
 import { compactScreenHistory, ScreenPresenter } from './screen-update.ts';
 import { createToolLoopExecutor, type ToolLoopHelpers } from './tool-loop.ts';
@@ -73,6 +68,8 @@ const DEFAULT_AGENT_MARKER = Symbol.for('e2e.default-agent.v1');
 export interface DefaultAgent extends StepExecutor {
   /** What `createAgent` was given, with the tools validated. */
   readonly options: CreateAgentOptions;
+  /** The project tools, validated; what a host outside the model loop (`e2e mcp`) serves. */
+  readonly tools: Readonly<Record<string, DefinedTool>>;
 }
 
 /** True when an executor came from `createAgent`, in this or another realm. */
@@ -95,7 +92,7 @@ export function createAgent(options: CreateAgentOptions = {}): DefaultAgent {
     ...(options.providerOptions === undefined ? {} : { providerOptions: options.providerOptions }),
     prepareMessages: (messages) => compactScreenHistory(messages),
     tools: (context, helpers) => ({
-      ...wrapUserTools(context, helpers, userTools),
+      ...guardedTools(helpers, projectTools(context, userTools)),
       ...createGrammarTools(context, { guard: helpers.guard, screen: presenterFor(context) }),
     }),
     buildPrompt: async (context) => {
@@ -118,29 +115,9 @@ export function createAgent(options: CreateAgentOptions = {}): DefaultAgent {
       return parts.join('\n\n');
     },
   });
-  const agent: DefaultAgent = { ...executor, options: { ...options, tools: userTools } };
+  const agent: DefaultAgent = { ...executor, options: { ...options, tools: userTools }, tools: userTools };
   Object.defineProperty(agent, DEFAULT_AGENT_MARKER, { value: true });
   return agent;
-}
-
-/**
- * The project tools an executor was built with, when it came from
- * `createAgent`. Any other executor (a custom brain) declares none this way.
- */
-export function executorTools(executor: StepExecutor | undefined): Readonly<Record<string, DefinedTool>> {
-  return isDefaultAgent(executor) ? (executor.options.tools ?? {}) : {};
-}
-
-/**
- * Wraps project tools so they run the same accounting pipeline as the
- * grammar, keyed by the platform they apply to, for a host outside the model
- * loop. Failures propagate: the host decides how to report them.
- */
-export function projectToolsFor(
-  context: StepExecutorContext,
-  tools: Readonly<Record<string, DefinedTool>>,
-): ToolSet {
-  return wrapUserTools(context, { concluding: () => false, reportHardStop: () => undefined, guard: (body) => body() }, tools, { rethrow: true });
 }
 
 /**
@@ -193,18 +170,17 @@ function validateUserTools(
 }
 
 /**
- * Wraps project tools so they run the same accounting pipeline as the
- * grammar: every call is recorded, a mutating tool consumes an action-budget
- * slot - refused before it runs once the ceiling is reached, consumed whether
- * it succeeds or fails, exactly like a grammar action - and a runtime hard
- * stop ends the loop. Any other failure goes back to the model as text it can
- * react to, never as a provider failure of the step.
+ * The project tools that apply to the step's platform, run through the same
+ * accounting pipeline as the grammar: every call is recorded, a mutating tool
+ * consumes an action-budget slot (refused before it runs once the ceiling is
+ * reached, consumed whether it succeeds or fails, exactly like a grammar
+ * action), and a text result is bounded like everything else the model reads.
+ * Failures propagate: the model loop turns them into text through its guard,
+ * and a host outside the loop reports them its own way.
  */
-function wrapUserTools(
+export function projectTools(
   context: StepExecutorContext,
-  helpers: ToolLoopHelpers,
   tools: Readonly<Record<string, DefinedTool>>,
-  wrapOptions: { readonly rethrow?: boolean } = {},
 ): ToolSet {
   const wrapped: Record<string, ToolSet[string]> = {};
   for (const [name, defined] of Object.entries(tools)) {
@@ -217,32 +193,36 @@ function wrapUserTools(
     wrapped[name] = {
       ...defined.tool,
       execute: async (input: never, executionOptions: ToolExecutionOptions<unknown>) => {
-        if (helpers.concluding()) return 'The step is already concluding; no further actions run.';
-        try {
-          const result: unknown = await context.budgets.runTool({ name, mutates }, async () =>
-            execute(input, withToolContext(executionOptions, {
-              observe: (options) => {
-                if (mutates) {
-                  throw new AgentError('POLICY_DENIED', 'only read-only tools may request observations; observe in a separate tool call');
-                }
-                return context.observe(options);
-              },
-              attachScreenshot: (pixels, label) => context.attachScreenshot(pixels, label),
-            })),
-          );
-          // A text result is bounded like every other thing the model reads;
-          // structured results are the tool's own contract and pass through.
-          return typeof result === 'string' ? boundToolOutput(result).text : result;
-        } catch (cause) {
-          if (wrapOptions.rethrow === true) throw cause;
-          if (isAgentError(cause) && RUNTIME_CODES.has(cause.code)) {
-            helpers.reportHardStop(cause);
-            return `HARD STOP (${cause.code}): ${cause.message}`;
-          }
-          return `Tool "${name}" failed: ${cause instanceof Error ? cause.message : String(cause)}`;
-        }
+        const result: unknown = await context.budgets.runTool({ name, mutates }, async () =>
+          execute(input, withToolContext(executionOptions, {
+            observe: (options) => {
+              if (mutates) {
+                throw new AgentError('POLICY_DENIED', 'only read-only tools may request observations; observe in a separate tool call');
+              }
+              return context.observe(options);
+            },
+            attachScreenshot: (pixels, label) => context.attachScreenshot(pixels, label),
+          })),
+        );
+        // A text result is bounded like every other thing the model reads;
+        // structured results are the tool's own contract and pass through.
+        return typeof result === 'string' ? boundToolOutput(result).text : result;
       },
     } as ToolSet[string];
   }
   return wrapped;
+}
+
+/** Runs each tool under the loop's guard: nothing after the verdict, hard stops end the loop, other failures become text. */
+function guardedTools(helpers: ToolLoopHelpers, tools: ToolSet): ToolSet {
+  const guarded: Record<string, ToolSet[string]> = {};
+  for (const [name, tool] of Object.entries(tools)) {
+    const execute = tool.execute!.bind(tool);
+    guarded[name] = {
+      ...tool,
+      execute: (input: never, options: ToolExecutionOptions<unknown>) =>
+        helpers.guard(async () => execute(input, options), `Tool "${name}"`),
+    } as ToolSet[string];
+  }
+  return guarded;
 }

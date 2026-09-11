@@ -93,33 +93,33 @@ describe('invokeTool', () => {
 describe('resultFromOutput', () => {
   const plain: Tool = { description: 'x', inputSchema: z.object({}) };
 
-  it('passes text through and serializes structured output as JSON', () => {
-    expect(resultFromOutput(plain, 'Done.')).toEqual({ content: [{ type: 'text', text: 'Done.' }] });
-    expect(resultFromOutput(plain, { ok: true })).toEqual({ content: [{ type: 'text', text: '{\n  "ok": true\n}' }] });
-    expect(resultFromOutput(plain, undefined)).toEqual({ content: [{ type: 'text', text: 'Done.' }] });
+  it('passes text through and serializes structured output as JSON', async () => {
+    expect(await resultFromOutput(plain, 'Done.')).toEqual({ content: [{ type: 'text', text: 'Done.' }] });
+    expect(await resultFromOutput(plain, { ok: true })).toEqual({ content: [{ type: 'text', text: '{\n  "ok": true\n}' }] });
+    expect(await resultFromOutput(plain, undefined)).toEqual({ content: [{ type: 'text', text: 'Done.' }] });
   });
 
-  it('renders a toModelOutput file part as an image, the way the device screenshot tool does', () => {
+  it('renders a toModelOutput file part as an image, the way the device screenshot tool does', async () => {
     const screenshot: Tool = {
       ...plain,
       toModelOutput: ({ output }) =>
         (output as { png?: string }).png === undefined
           ? { type: 'text', value: 'Screenshot withheld: UNSUPPORTED_CAPABILITY' }
-          : { type: 'content', value: [{ type: 'file', data: { type: 'data', data: (output as { png: string }).png }, mediaType: 'image/png' }] as never },
+          : { type: 'content', value: [{ type: 'file', data: { type: 'data', data: (output as { png: string }).png }, mediaType: 'image/png' }] },
     };
-    expect(resultFromOutput(screenshot, { png: 'AAAA' })).toEqual({ content: [{ type: 'image', data: 'AAAA', mimeType: 'image/png' }] });
-    expect(resultFromOutput(screenshot, { withheld: 'UNSUPPORTED_CAPABILITY' })).toEqual({
+    expect(await resultFromOutput(screenshot, { png: 'AAAA' })).toEqual({ content: [{ type: 'image', data: 'AAAA', mimeType: 'image/png' }] });
+    expect(await resultFromOutput(screenshot, { withheld: 'UNSUPPORTED_CAPABILITY' })).toEqual({
       content: [{ type: 'text', text: 'Screenshot withheld: UNSUPPORTED_CAPABILITY' }],
     });
   });
 
-  it('hands the call arguments to a renderer that reads its input', () => {
+  it('hands the call arguments to a renderer that reads its input', async () => {
     const echo: Tool = {
       description: 'x',
       inputSchema: z.object({ label: z.string() }),
       toModelOutput: ({ input, output }) => ({ type: 'text', value: `${(input as { label: string }).label}: ${String(output)}` }),
     };
-    expect(resultFromOutput(echo, 42, { label: 'answer' })).toEqual({ content: [{ type: 'text', text: 'answer: 42' }] });
+    expect(await resultFromOutput(echo, 42, { label: 'answer' })).toEqual({ content: [{ type: 'text', text: 'answer: 42' }] });
   });
 });
 

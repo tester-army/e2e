@@ -7,6 +7,7 @@
  */
 
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
+import type { EnginePrepareResult } from '../engine/index.ts';
 import type { DebugTrace } from '../internal/debug.ts';
 import { ConfigurationError, translateProvisioningError } from '../internal/errors.ts';
 import { describeTarget, type TargetProvenance } from '../report/build.ts';
@@ -32,35 +33,32 @@ export function validateEngine(target: ResolvedTarget, config: ResolvedConfig): 
   return provenance;
 }
 
+export interface PrepareScope {
+  readonly runId: string;
+  /** The same `env` the workers are started with: what prepare provisions must be where a launch will look for it. */
+  readonly env: NodeJS.ProcessEnv;
+  readonly signal: AbortSignal;
+}
+
 /**
- * Runs each target's `prepare` hook in turn. Sequential on purpose: two
- * engines provisioning the same toolchain would race, and the notices of
- * one download read better than two interleaved.
+ * Runs one target's `prepare` hook for `slots` worker slots, streaming its
+ * progress lines to `log`. Resolves to nothing when the engine declares no
+ * hook. Callers run targets in turn: two engines provisioning the same
+ * toolchain would race, and the notices of one download read better than
+ * two interleaved.
  */
-export async function prepareEngines(
-  targets: readonly ResolvedTarget[],
-  scope: { runId: string; env: NodeJS.ProcessEnv; signal: AbortSignal },
-  notice: (target: string, message: string) => void,
-): Promise<void> {
-  for (const target of targets) {
-    const engine = target.engine;
-    if (engine?.prepare === undefined) continue;
-    if (scope.signal.aborted) return;
-    try {
-      // The same `env` the workers are started with: what prepare provisions
-      // must be where a worker's launch will look for it.
-      // A standalone attempt is one worker on one target: one slot to provision.
-      await engine.prepare({
-        runId: scope.runId,
-        targetName: target.name,
-        slots: 1,
-        env: scope.env,
-        signal: scope.signal,
-        log: (line) => notice(target.name, line),
-      });
-    } catch (cause) {
-      throw translateProvisioningError(cause, ` while preparing engine ${engine.name} for target "${target.name}"`);
-    }
+export async function prepareEngine(
+  target: ResolvedTarget,
+  slots: number,
+  scope: PrepareScope,
+  log: (line: string) => void,
+): Promise<EnginePrepareResult | void> {
+  const engine = target.engine;
+  if (engine?.prepare === undefined) return;
+  try {
+    return await engine.prepare({ runId: scope.runId, targetName: target.name, slots, env: scope.env, signal: scope.signal, log });
+  } catch (cause) {
+    throw translateProvisioningError(cause, ` while preparing engine ${engine.name} for target "${target.name}"`);
   }
 }
 
@@ -74,6 +72,9 @@ export interface AppProcesses {
   stop(onFailure: (cause: unknown) => void): Promise<void>;
 }
 
+/** The hooks each kind of process reports through; a run narrates them as distinct setup steps. */
+export type ProcessHooks = (kind: 'service' | 'app') => ManagedProcessHooks;
+
 /**
  * Starts what the targets' engines declare: the dependency services first,
  * then every distinct app command. Declarations are deduplicated across
@@ -84,7 +85,7 @@ export interface AppProcesses {
 export async function startDeclaredProcesses(
   targets: readonly ResolvedTarget[],
   projectRoot: string,
-  hooks: ManagedProcessHooks,
+  hooks: ProcessHooks,
   signal: AbortSignal,
   debug: DebugTrace,
 ): Promise<AppProcesses> {
@@ -105,13 +106,13 @@ export async function startDeclaredProcesses(
   };
   try {
     if (declared.services.length > 0) {
-      const stack = new ServiceStack(declared.services, projectRoot, hooks);
+      const stack = new ServiceStack(declared.services, projectRoot, hooks('service'));
       services = stack;
       await debug.time('app.services.start', () => stack.start(signal));
       if (signal.aborted) return processes;
     }
     for (const { label, command, readyUrl } of declared.commands) {
-      const app = new ManagedProcess(label, command, projectRoot, { readyUrl }, hooks);
+      const app = new ManagedProcess(label, command, projectRoot, { readyUrl }, hooks('app'));
       apps.push(app);
       await debug.time(`app.start(${label})`, () => app.start(signal));
       if (signal.aborted) return processes;
@@ -121,7 +122,7 @@ export async function startDeclaredProcesses(
     // A service or command that failed to start must not leave the earlier
     // ones running; the startup failure is the one reported, so a cleanup
     // failure here is a notice at most.
-    await processes.stop((failure) => hooks.notice?.(`cleanup after a failed start: ${String(failure)}`));
+    await processes.stop((failure) => hooks('app').notice?.(`cleanup after a failed start: ${String(failure)}`));
     throw cause;
   }
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SemanticNode } from '../../src/engine/surface.ts';
-import { describeLocate, locateQuery } from '../../src/mcp/session.ts';
+import { describeLocate, locateQuery } from '../../src/mcp/catalog.ts';
 
 function node(role: string, name: string, extra: Partial<SemanticNode> = {}): SemanticNode {
   return { ref: { id: 'l1', revision: 'l1' }, role, name, ...extra };

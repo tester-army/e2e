@@ -14,6 +14,7 @@ import { readGuide, skillTopics } from '../cli/skill.ts';
 import { ConfigurationError, errorMessage } from '../internal/errors.ts';
 import { loadProjectConfig } from './config.ts';
 import { SessionHost } from './session.ts';
+import { errorResult } from './tools.ts';
 
 export interface ServeOptions {
   readonly cwd: string;
@@ -42,7 +43,7 @@ type LogLevel = 'info' | 'warning' | 'error';
 /** Serves until the client disconnects or `signal` aborts; resolves with the exit code. */
 export async function serveMcp(options: ServeOptions): Promise<number> {
   const server = new McpServer(
-    { name: 'e2e', version: options.version },
+    { name: 'e2e', title: 'e2e', version: options.version },
     { capabilities: { logging: {}, tools: {}, resources: {} }, instructions: INSTRUCTIONS },
   );
   const log = (level: LogLevel, message: string): void => {
@@ -63,10 +64,17 @@ export async function serveMcp(options: ServeOptions): Promise<number> {
       spec.name,
       {
         description: spec.description,
-        inputSchema: spec.inputSchema as never,
+        inputSchema: spec.inputSchema,
         annotations: { readOnlyHint: spec.readOnly, openWorldHint: false },
       },
-      (async (args: Record<string, unknown>, extra: { signal: AbortSignal }) => spec.call(args ?? {}, { signal: extra.signal })) as never,
+      async (args, extra) => {
+        // A failure is a result the agent can react to, never a protocol error.
+        try {
+          return await spec.call(args, { signal: extra.signal });
+        } catch (cause) {
+          return errorResult(cause);
+        }
+      },
     );
   }
   registerGuide(server);

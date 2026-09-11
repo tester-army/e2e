@@ -134,41 +134,22 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
     }
   }
 
-  // The skill goes where an earlier run put it; a project without one chooses.
-  let skillDirs: readonly string[] = findInstalledSkillDirs(cwd);
-  if (skillDirs.length === 0) {
-    if (options.yes) {
-      skillDirs = SKILL_LOCATIONS.map((location) => location.dir);
-    } else {
-      const selected = await clack.multiselect<string>({
-        message: 'Install the e2e skill for coding agents?',
-        options: SKILL_LOCATIONS.map(({ dir, hint }) => ({ value: dir, label: dir, hint })),
-        initialValues: SKILL_LOCATIONS.map((location) => location.dir),
-        required: false,
-      });
-      if (isCancelled(selected)) return cancelled();
-      skillDirs = selected;
-    }
-  }
+  const skillDirs = await chooseLocations(
+    findInstalledSkillDirs(cwd),
+    SKILL_LOCATIONS.map(({ dir, hint }) => ({ value: dir, hint })),
+    'Install the e2e skill for coding agents?',
+    options.yes,
+  );
+  if (isCancelled(skillDirs)) return cancelled();
   const skillInstalls = planSkillInstall(cwd, skillDirs, bundledSkill);
 
-  // The MCP server registration follows the same rule as the skill: offered
-  // once, refreshed where an earlier run put it.
-  let mcpFiles: readonly string[] = findRegisteredMcpFiles(cwd);
-  if (mcpFiles.length === 0) {
-    if (options.yes) {
-      mcpFiles = MCP_LOCATIONS.map((location) => location.file);
-    } else {
-      const selected = await clack.multiselect<string>({
-        message: 'Register the e2e MCP server for coding agents?',
-        options: MCP_LOCATIONS.map(({ file, hint }) => ({ value: file, label: file, hint })),
-        initialValues: MCP_LOCATIONS.map((location) => location.file),
-        required: false,
-      });
-      if (isCancelled(selected)) return cancelled();
-      mcpFiles = selected;
-    }
-  }
+  const mcpFiles = await chooseLocations(
+    findRegisteredMcpFiles(cwd),
+    MCP_LOCATIONS.map(({ file, hint }) => ({ value: file, hint })),
+    'Register the e2e MCP server for coding agents?',
+    options.yes,
+  );
+  if (isCancelled(mcpFiles)) return cancelled();
   let mcpRegistrations: ReturnType<typeof planMcpRegistration>;
   try {
     mcpRegistrations = planMcpRegistration(cwd, mcpFiles);
@@ -309,6 +290,27 @@ function validateEndpoint(value: string | undefined): string | undefined {
  * prompts still resolve to `Value | symbol`, so the guard alone no longer
  * removes `symbol` from a prompt result. This one does.
  */
+/**
+ * Where an agent-facing artifact (the skill, the MCP registration) goes: the
+ * locations an earlier run chose, refreshed and never extended; for a project
+ * without one, every known location under `--yes`, else the user's pick.
+ */
+async function chooseLocations(
+  found: readonly string[],
+  locations: readonly { readonly value: string; readonly hint: string }[],
+  message: string,
+  yes: boolean | undefined,
+): Promise<readonly string[] | symbol> {
+  if (found.length > 0) return found;
+  if (yes) return locations.map((location) => location.value);
+  return clack.multiselect<string>({
+    message,
+    options: locations.map(({ value, hint }) => ({ value, label: value, hint })),
+    initialValues: locations.map((location) => location.value),
+    required: false,
+  });
+}
+
 function isCancelled<Value>(value: Value | symbol): value is symbol {
   return clack.isCancel(value);
 }

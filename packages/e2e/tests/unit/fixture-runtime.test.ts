@@ -21,7 +21,7 @@ function runtime(engine: EngineHandle, overrides: E2EConfig = {}) {
   });
   const signal = new AbortController().signal;
   const steps = new StepRecorder('attempt');
-  const fixtures = createFixtures({
+  const { fixtures } = createFixtures({
     config, target: config.targets[0]!, session: createEngineSession({ engine, targetName: 'fake' }),
     steps, budget: new AttemptBudget(signal, new Deadline(10_000)), runId: 'run', attemptId: 'attempt',
     attempt: { testId: 'test', attemptId: 'attempt', index: 0, signal, memory: new Map() },

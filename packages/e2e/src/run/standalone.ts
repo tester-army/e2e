@@ -10,7 +10,9 @@
 
 import path from 'node:path';
 import type { ExecutorAttempt } from '../agent/executor.ts';
+import type { AgentContext } from '../agent/invocation.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
+import { setCredentialRegistry } from '../credentials.ts';
 import type { TargetSession } from '../engine/surface.ts';
 import { DebugTrace } from '../internal/debug.ts';
 import { classifyError, serializeError, type SerializedError } from '../internal/errors.ts';
@@ -21,7 +23,7 @@ import { createAttemptArtifacts } from './artifacts.ts';
 import { AttemptBudget } from './budget.ts';
 import { TargetExecutor, type ClosingRecord } from './execute.ts';
 import { createFixtures } from './fixtures.ts';
-import { prepareEngines, startDeclaredProcesses, validateEngine, type AppProcesses } from './provision.ts';
+import { prepareEngine, startDeclaredProcesses, validateEngine, type AppProcesses } from './provision.ts';
 import { SessionStore } from './sessions.ts';
 import { StepRecorder, type StepProgress } from './steps.ts';
 import { WorkerModels } from './worker-models.ts';
@@ -51,6 +53,8 @@ export interface StandaloneAttempt {
   readonly attemptId: string;
   /** The attempt's fixtures: `agent`, `app`, `screen`, and whatever the engine contributes. */
   readonly fixtures: TestFixtures;
+  /** The runtime behind `fixtures.agent`, for a host that opens steps itself. */
+  readonly agentRuntime: AgentContext;
   readonly session: TargetSession;
   readonly steps: StepRecorder;
   /** The attempt's signal and deadline, for a host that drives the session directly. */
@@ -78,14 +82,19 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
   const attemptId = uuidv7();
 
   validateEngine(target, config);
-  await prepareEngines([target], { runId, env: options.env, signal }, notice);
-  const processes: AppProcesses = await startDeclaredProcesses(
-    [target],
-    config.projectRoot,
-    { ci: config.ci, notice: (message) => notice('app', message) },
-    signal,
-    debug,
-  );
+  // The credential registry is process-wide, as in a run: `credentials.user()`
+  // resolves while the attempt is open.
+  setCredentialRegistry(config.credentials);
+  let processes: AppProcesses;
+  try {
+    // One worker on one target: one slot to provision.
+    await prepareEngine(target, 1, { runId, env: options.env, signal }, (line) => notice(target.name, line));
+    const hooks = { ci: config.ci, notice: (message: string) => notice('app', message) };
+    processes = await startDeclaredProcesses([target], config.projectRoot, () => hooks, signal, debug);
+  } catch (cause) {
+    setCredentialRegistry(undefined);
+    throw cause;
+  }
 
   const sessionStore = SessionStore.create(runId, path.join(config.projectRoot, '.e2e', 'sessions'));
   const executor = new TargetExecutor({
@@ -125,6 +134,7 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
     } catch (cause) {
       recordCleanupFailure(cause);
     }
+    setCredentialRegistry(undefined);
   };
 
   let session: TargetSession;
@@ -145,7 +155,7 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
     memory: new Map<string, unknown>(),
   };
   const budget = new AttemptBudget(signal, new Deadline(options.timeoutMs));
-  const fixtures = createFixtures({
+  const { fixtures, agentRuntime } = createFixtures({
     config,
     target,
     session,
@@ -170,6 +180,7 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
     runId,
     attemptId,
     fixtures,
+    agentRuntime,
     session,
     steps,
     budget,

@@ -785,7 +785,7 @@ export class TargetExecutor implements SerialHost {
               );
               context.staging.stage(name, state);
             };
-      const fixtures = createFixtures({
+      const { fixtures } = createFixtures({
         config: this.config,
         target: this.target,
         session,

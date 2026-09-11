@@ -9,7 +9,8 @@
  * output in the MCP result envelope.
  */
 
-import { asSchema, type JSONSchema7, type ToolExecutionOptions, type ToolSet } from 'ai';
+import { asSchema, type JSONSchema7, type Tool, type ToolExecutionOptions, type ToolSet } from 'ai';
+import type { z } from 'zod';
 import { ConfigurationError, errorMessage, E2EError, isForeignE2EError } from '../internal/errors.ts';
 
 /** One MCP content part this server emits. */
@@ -30,14 +31,19 @@ export interface McpToolCallExtra {
 }
 
 /** What the server registers: the contract and the body of one of its fixed tools. */
-export interface McpToolSpec {
+export interface McpToolSpec<Shape extends z.ZodRawShape = z.ZodRawShape> {
   readonly name: string;
   readonly description: string;
-  /** A zod object schema for the arguments. */
-  readonly inputSchema: unknown;
+  readonly inputSchema: z.ZodObject<Shape>;
   /** Hint for clients: a tool that changes nothing on the app or disk. */
   readonly readOnly: boolean;
-  call(args: Record<string, unknown>, extra: McpToolCallExtra): Promise<McpToolResult>;
+  /** Runs the tool on validated arguments; a thrown error becomes an error result. */
+  call(args: z.infer<z.ZodObject<Shape>>, extra: McpToolCallExtra): Promise<McpToolResult>;
+}
+
+/** Declares one fixed tool with `call` typed from its `inputSchema`. */
+export function defineMcpTool<Shape extends z.ZodRawShape>(spec: McpToolSpec<Shape>): McpToolSpec<Shape> {
+  return spec;
 }
 
 export function textResult(text: string): McpToolResult {
@@ -145,9 +151,13 @@ async function validateArgs(name: string, tool: ToolSet[string], args: Record<st
   );
 }
 
-/** The issues a zod (or any standard schema) failure carries, one per line; else the message. */
-function describeValidationError(error: unknown): string {
-  const issues = issuesOf(error) ?? issuesOf((error as { cause?: unknown } | undefined)?.cause);
+/**
+ * The issues a zod (or any standard schema) failure carries, one per line;
+ * else the message. The SDK types the failure as a plain `Error`, so the
+ * issues are probed on it and on its cause.
+ */
+function describeValidationError(error: Error): string {
+  const issues = issuesOf(error) ?? issuesOf(error.cause);
   if (issues === undefined || issues.length === 0) return errorMessage(error);
   return issues
     .map((issue) => {
@@ -173,39 +183,44 @@ async function resolveOutput(value: unknown): Promise<unknown> {
   return value;
 }
 
+/** What a tool's `toModelOutput` renders for the model. */
+type ModelOutput = Awaited<ReturnType<NonNullable<Tool['toModelOutput']>>>;
+
 /**
  * Renders a tool's output the way the tool renders it for a model: text as
  * text, and a `toModelOutput` that yields file parts as images. Anything
  * else is JSON, so a structured output is never lost.
  */
-export function resultFromOutput(tool: ToolSet[string], output: unknown, input: unknown = undefined): McpToolResult {
+export async function resultFromOutput(tool: ToolSet[string], output: unknown, input: unknown = undefined): Promise<McpToolResult> {
   if (typeof output === 'string') return textResult(output);
   if (tool.toModelOutput !== undefined) {
-    const modelOutput = tool.toModelOutput({ toolCallId: 'mcp', input, output }) as unknown;
-    const content = contentFromModelOutput(modelOutput);
+    const content = contentFromModelOutput(await tool.toModelOutput({ toolCallId: 'mcp', input, output }));
     if (content !== undefined) return { content };
   }
   return textResult(output === undefined ? 'Done.' : JSON.stringify(output, null, 2));
 }
 
-function contentFromModelOutput(value: unknown): McpContent[] | undefined {
-  if (typeof value !== 'object' || value === null) return undefined;
-  const output = value as { type?: unknown; value?: unknown };
-  if (output.type === 'text' || output.type === 'error-text') {
-    return typeof output.value === 'string' ? [{ type: 'text', text: output.value }] : undefined;
-  }
-  if (output.type === 'json') return [{ type: 'text', text: JSON.stringify(output.value, null, 2) }];
-  if (output.type !== 'content' || !Array.isArray(output.value)) return undefined;
-  const parts: McpContent[] = [];
-  for (const part of output.value as { type?: unknown; text?: unknown; data?: unknown; mediaType?: unknown }[]) {
-    if (part.type === 'text' && typeof part.text === 'string') {
-      parts.push({ type: 'text', text: part.text });
-      continue;
+function contentFromModelOutput(output: ModelOutput): McpContent[] | undefined {
+  switch (output.type) {
+    case 'text':
+    case 'error-text':
+      return [{ type: 'text', text: output.value }];
+    case 'json':
+    case 'error-json':
+      return [{ type: 'text', text: JSON.stringify(output.value, null, 2) }];
+    case 'content': {
+      const parts: McpContent[] = [];
+      for (const part of output.value) {
+        if (part.type === 'text') {
+          parts.push({ type: 'text', text: part.text });
+        } else if (part.type === 'file' && part.data.type === 'data') {
+          const data = typeof part.data.data === 'string' ? part.data.data : Buffer.from(new Uint8Array(part.data.data)).toString('base64');
+          parts.push({ type: 'image', data, mimeType: part.mediaType });
+        }
+      }
+      return parts.length === 0 ? undefined : parts;
     }
-    if ((part.type === 'file' || part.type === 'file-data' || part.type === 'media') && typeof part.mediaType === 'string') {
-      const data = typeof part.data === 'string' ? part.data : (part.data as { data?: unknown } | undefined)?.data;
-      if (typeof data === 'string') parts.push({ type: 'image', data, mimeType: part.mediaType });
-    }
+    default:
+      return undefined;
   }
-  return parts.length === 0 ? undefined : parts;
 }

@@ -1,7 +1,7 @@
 /** Attempt-scoped fixture graph. */
 
 import { createAgentFixture } from '../agent/index.ts';
-import type { AgentSelection } from '../agent/invocation.ts';
+import type { AgentContext, AgentSelection } from '../agent/invocation.ts';
 import type { ExecutorAttempt, StepExecutor } from '../agent/executor.ts';
 import type { AgentCacheContext } from '../cache/context.ts';
 import { createModelRouter } from '../agent/model/router.ts';
@@ -82,9 +82,13 @@ export interface AttemptEnvironment {
 }
 
 /** Builds the lazy fixture graph for one attempt. */
-export function createFixtures(
-  environment: AttemptEnvironment,
-): TestFixtures & { readonly session: SetupSession } {
+export interface AttemptFixtures {
+  readonly fixtures: TestFixtures & { readonly session: SetupSession };
+  /** The runtime behind `fixtures.agent`, for a host that opens steps itself (`e2e mcp`). */
+  readonly agentRuntime: AgentContext;
+}
+
+export function createFixtures(environment: AttemptEnvironment): AttemptFixtures {
   const engine = new LocatorEngine({
     session: environment.session,
     budget: environment.budget,
@@ -168,31 +172,33 @@ export function createFixtures(
     return selection;
   };
 
+  const agentRuntime: AgentContext = {
+    engine,
+    steps: environment.steps,
+    select,
+    config: environment.config,
+    target: {
+      name: environment.target.name,
+      platform: environment.target.platform,
+      verbs: environment.session.verbs,
+    },
+    app: environment.target.app,
+    attempt: environment.attempt,
+    priorSteps: environment.priorSteps,
+    secrets,
+    redact: ledger.redact,
+    taint,
+    artifacts: environment.artifacts,
+    ...(environment.cache !== undefined ? { cache: environment.cache } : {}),
+    ...(environment.debug !== undefined ? { debug: environment.debug } : {}),
+  };
+
   const fixtures: TestFixtures & { session: SetupSession } = {
     get agent(): Agent {
       if (agent !== undefined) return agent;
       // The attempt's own agent is checked as the fixture is acquired, as before.
       select(undefined);
-      agent = createAgentFixture({
-        engine,
-        steps: environment.steps,
-        select,
-        config: environment.config,
-        target: {
-          name: environment.target.name,
-          platform: environment.target.platform,
-          verbs: environment.session.verbs,
-        },
-        app: environment.target.app,
-        attempt: environment.attempt,
-        priorSteps: environment.priorSteps,
-        secrets,
-        redact: ledger.redact,
-        taint,
-        artifacts: environment.artifacts,
-        ...(environment.cache !== undefined ? { cache: environment.cache } : {}),
-        ...(environment.debug !== undefined ? { debug: environment.debug } : {}),
-      });
+      agent = createAgentFixture(agentRuntime);
       return agent;
     },
     app,
@@ -218,7 +224,7 @@ export function createFixtures(
     Object.getOwnPropertyDescriptors(contributedFixtures(environment, engine, screenContext)),
   );
 
-  return gateUnknownFixtures(fixtures, environment);
+  return { fixtures: gateUnknownFixtures(fixtures, environment), agentRuntime };
 }
 
 /** Keys a test body may probe without meaning a fixture. */
