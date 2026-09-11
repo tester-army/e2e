@@ -67,6 +67,14 @@ Three options matter most:
 - **`log`** keeps what the server printed. Without it the runner discards the
   output, and a dev server that crashes on boot leaves nothing behind but
   `APP_UNREACHABLE`. The file is unredacted; keep it in an ignored directory.
+  With `log` set, a startup failure (an exit before the URL answered, or
+  `startupTimeout` spent) ends its `APP_UNREACHABLE` message with the last 20
+  lines appended to the log since the command started, each `command.env`
+  value replaced by its `<secret:NAME>` marker, so the report alone shows
+  what the process was doing. A wait that
+  passes half of `startupTimeout` prints one notice, `target "web" command
+  still starting after 30s: waiting for http://localhost:3000/; log:
+  .e2e/logs/app.log`, once that half is at least 5 s.
 - **`env`** passes what the app needs. The child inherits only `PATH`, `HOME`,
   the temp-directory variables, and on Windows `SystemRoot` and `COMSPEC`.
   Model keys and CI tokens are not inherited automatically. Values you put
@@ -116,7 +124,14 @@ engine: playwright({
 A service is ready when its `readyUrl` answers, or, with `waitForExit`, when
 the process exits 0. Each one takes the same `log`, `env`, and `cwd` options
 as `command`. The list reporter shows each service starting with a ticking
-clock and splits the startup time out of the run's duration.
+clock and splits the startup time out of the run's duration. A service still
+not ready at half its `startupTimeout` prints one notice (`service "postgres"
+still starting after 90s: waiting for it to exit`), provided that half is at
+least 5 s; a service that exits non-zero or runs out of budget ends its
+`APP_UNREACHABLE` with the lines appended to its `log` since it started, so a
+`docker compose up --wait` that hangs on `Image postgres Pulling` says so in
+the report. Services that share one log file also share that tail: an
+earlier `readyUrl` service still running can add lines to it.
 
 ## Several targets
 

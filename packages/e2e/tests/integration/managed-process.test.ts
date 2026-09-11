@@ -235,7 +235,7 @@ describe('ServiceStack', () => {
     expect(failure).toBeInstanceOf(InfrastructureError);
     expect((failure as InfrastructureError).code).toBe('APP_UNREACHABLE');
     expect((failure as InfrastructureError).message).toBe(
-      `service "auth-emulator" was not reachable at http://127.0.0.1:${port}/ within 1500 ms`,
+      `service "auth-emulator" was not reachable at http://127.0.0.1:${port}/ within 1500 ms\nset log on this command to keep its output`,
     );
     expect(await stopAll(stack)).toEqual([]);
   }, 20_000);

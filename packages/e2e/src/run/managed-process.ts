@@ -3,8 +3,10 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { stripVTControlCharacters } from 'node:util';
 import type { Readiness, ResolvedService } from '../config/app.ts';
 import { InfrastructureError } from '../internal/errors.ts';
+import { createRedactor } from '../internal/redact.ts';
 import { sleep } from '../internal/time.ts';
 import type { CommandConfig } from '../types.ts';
 
@@ -15,6 +17,21 @@ const READY_POLL_MIN_MS = 25;
 const READY_POLL_MAX_MS = 250;
 /** One readiness probe never outlives this, so a half-open server cannot stall the deadline check. */
 const READY_PROBE_TIMEOUT_MS = 2_000;
+/**
+ * A wait past half its budget narrates once, so a stalled service is visible
+ * while it stalls and not only 180 s later. Under this floor a short budget
+ * stays quiet: half of it is not long enough to call a stall.
+ */
+const PROGRESS_NOTICE_MIN_MS = 5_000;
+/** How much of the process's own output a startup failure quotes. */
+const OUTPUT_TAIL_LINES = 20;
+const OUTPUT_TAIL_BYTES = 4_096;
+/**
+ * `command.env` values this long are redacted from the quoted output; shorter
+ * ones (a port, a flag) would blank ordinary text without hiding anything.
+ * The shared redactor has no floor of its own.
+ */
+const REDACTED_ENV_MIN_LENGTH = 4;
 
 /** Every spawned process group still running, for the forced exit that cannot wait on `stop`. */
 const live = new Set<ChildProcess>();
@@ -162,6 +179,10 @@ export class ManagedProcess {
     Object.assign(env, this.command.env ?? {});
 
     const logFd = this.openLog();
+    // The log appends across commands and runs; a failure quotes what landed
+    // past this offset. An earlier service still running on the same file
+    // appends there too, which the quote's header admits.
+    const logOffset = logFd === undefined ? undefined : fs.fstatSync(logFd).size;
     let child: ChildProcess;
     try {
       child = spawn(this.command.executable, [...(this.command.args ?? [])], {
@@ -191,6 +212,8 @@ export class ManagedProcess {
       });
     });
 
+    const half = startupTimeout / 2;
+    let noticed = half < PROGRESS_NOTICE_MIN_MS;
     let pollMs = READY_POLL_MIN_MS;
     for (;;) {
       if (aborted()) {
@@ -206,31 +229,109 @@ export class ManagedProcess {
       }
       if (exit !== undefined) {
         if (readyUrl === undefined && exit.code === 0) return;
-        throw new InfrastructureError(
-          'APP_UNREACHABLE',
+        throw this.unreachable(
           `${this.label} ${describeExit(exit)} ${readyUrl === undefined ? 'instead of 0' : 'before becoming ready'}`,
+          logOffset,
         );
       }
       const remaining = deadline - Date.now();
       if (remaining <= 0) {
         await this.stop();
-        throw new InfrastructureError(
-          'APP_UNREACHABLE',
+        throw this.unreachable(
           readyUrl === undefined
             ? `${this.label} did not exit within ${startupTimeout} ms`
             : `${this.label} was not reachable at ${readyUrl} within ${startupTimeout} ms`,
+          logOffset,
         );
       }
-      if (readyUrl !== undefined && (await answers(readyUrl, Math.min(READY_PROBE_TIMEOUT_MS, remaining)))) {
+      if (!noticed && remaining <= half) {
+        noticed = true;
+        const waitingFor = readyUrl === undefined ? 'waiting for it to exit' : `waiting for ${readyUrl}`;
+        const log = this.command.log === undefined ? '' : `; log: ${this.logDisplayPath()}`;
+        this.hooks.notice?.(
+          `${this.label} still starting after ${Math.round((startupTimeout - remaining) / 1000)}s: ${waitingFor}${log}`,
+        );
+      }
+      // Until the notice is out, neither a probe nor a sleep runs past the
+      // half mark, so it lands on time instead of after a 2 s probe.
+      const untilHalf = noticed ? Number.POSITIVE_INFINITY : Math.max(READY_POLL_MIN_MS, remaining - half);
+      if (
+        readyUrl !== undefined &&
+        (await answers(readyUrl, Math.min(READY_PROBE_TIMEOUT_MS, remaining, untilHalf)))
+      ) {
         return;
       }
       // The exit event wakes the wait early so an exit is seen at once, not on the next poll.
       await Promise.race([
-        sleep(Math.min(pollMs, Math.max(0, deadline - Date.now())), signal).catch(() => undefined),
+        sleep(Math.min(pollMs, untilHalf, Math.max(0, deadline - Date.now())), signal).catch(() => undefined),
         exited,
       ]);
       pollMs = Math.min(pollMs * 2, READY_POLL_MAX_MS);
     }
+  }
+
+  /**
+   * The startup failure with the log's tail under it, so the report alone
+   * says what the process was doing when it stalled or died. The message
+   * lands in the report, so `command.env` values are redacted from the quote
+   * with the same redactor and markers as the traces, the way the log itself
+   * never is. Without a log there is nothing to quote, and the message says
+   * how to get one.
+   */
+  private unreachable(message: string, logOffset: number | undefined): InfrastructureError {
+    if (logOffset === undefined) {
+      return new InfrastructureError('APP_UNREACHABLE', `${message}\nset log on this command to keep its output`);
+    }
+    const redact = createRedactor(
+      Object.entries(this.command.env ?? {}).filter(([, value]) => value.length >= REDACTED_ENV_MIN_LENGTH),
+    );
+    const lines = this.outputSince(logOffset).map(redact);
+    const detail =
+      lines.length === 0
+        ? `no output in ${this.logDisplayPath()}`
+        : `output in ${this.logDisplayPath()} since ${this.label} started:\n${lines.map((line) => `  ${line}`).join('\n')}`;
+    return new InfrastructureError('APP_UNREACHABLE', `${message}\n${detail}`);
+  }
+
+  /**
+   * The last lines appended to the log past `offset`, terminal controls
+   * stripped, bounded in bytes before lines so a chatty process cannot turn
+   * the message into the whole log.
+   */
+  private outputSince(offset: number): string[] {
+    let fd: number | undefined;
+    try {
+      fd = fs.openSync(this.logPath(), 'r');
+      const end = fs.fstatSync(fd).size;
+      const start = Math.max(offset, end - OUTPUT_TAIL_BYTES);
+      if (end <= start) return [];
+      // One byte before a cut tells whether it landed mid-line: a fragment
+      // says nothing and goes, a line that ended right at the cut stays.
+      const readFrom = start > offset ? start - 1 : start;
+      const buffer = Buffer.alloc(end - readFrom);
+      fs.readSync(fd, buffer, 0, buffer.length, readFrom);
+      const text = buffer.toString('utf8');
+      const cutMidLine = start > offset && !/^[\r\n]/.test(text);
+      const lines = stripVTControlCharacters(text)
+        .split(/\r\n|\n|\r/)
+        .map((line) => line.trimEnd())
+        .filter((line) => line.length > 0);
+      if (cutMidLine) lines.shift();
+      return lines.slice(-OUTPUT_TAIL_LINES);
+    } catch {
+      return [];
+    } finally {
+      if (fd !== undefined) fs.closeSync(fd);
+    }
+  }
+
+  private logPath(): string {
+    return path.resolve(this.projectRoot, this.command.log ?? '');
+  }
+
+  /** The log as the config names it, relative to the project root, for messages. */
+  private logDisplayPath(): string {
+    return path.relative(this.projectRoot, this.logPath());
   }
 
   /**
@@ -241,7 +342,7 @@ export class ManagedProcess {
    */
   private openLog(): number | undefined {
     if (this.command.log === undefined) return undefined;
-    const logPath = path.resolve(this.projectRoot, this.command.log);
+    const logPath = this.logPath();
     try {
       fs.mkdirSync(path.dirname(logPath), { recursive: true });
       return fs.openSync(logPath, 'a');

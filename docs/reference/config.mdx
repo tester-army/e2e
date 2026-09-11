@@ -142,9 +142,9 @@ export interface CommandConfig {
 | `args` | `readonly string[]` | `[]` | Passed verbatim |
 | `cwd` | `string` | project root | Resolved from the project root |
 | `env` | `Record<string, string>` | `{}` | Adds to the inherited set |
-| `startupTimeout` | `number` | `60000` | Ready-probe budget; expiry is `APP_UNREACHABLE` |
+| `startupTimeout` | `number` | `60000` | Ready-probe budget; expiry is `APP_UNREACHABLE`. One `still starting` notice at half the budget, once that half is at least 5 s |
 | `shutdownTimeout` | `number` | `10000` | Grace period before force-kill |
-| `log` | `string` | unset (output discarded) | File that receives stdout and stderr, appended; resolved from the project root and must stay inside it. The raw, unredacted output; keep it in an ignored directory |
+| `log` | `string` | unset (output discarded) | File that receives stdout and stderr, appended; resolved from the project root and must stay inside it. The raw, unredacted output; keep it in an ignored directory. A startup failure quotes the last 20 lines appended since the command started, `env` values replaced by `<secret:NAME>` markers |
 | `reuseExisting` | `boolean` | `false` | If `readyUrl` already answers before the spawn, attach to that process and leave it alone on teardown. Without it, an already-answering URL is `APP_ALREADY_RUNNING`. Ignored in CI, with a notice |
 
 The child inherits only `PATH`, `HOME`, `TMPDIR`, `TMP`, `TEMP`,

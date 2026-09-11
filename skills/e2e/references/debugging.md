@@ -28,7 +28,7 @@ jq '.run.results[] | select(.status != "passed") | .attempts[-1]
 | `CONFIG_NOT_FOUND`, `CONFIG_AMBIGUOUS` | Wrong `--config` path; both `.ts` and `.mts` present | Fix the path; keep one config file |
 | `NO_TESTS` | The glob or a positional matched nothing | The message names each positional that matched nothing. Check `tests` in the config and the `.e2e.ts` suffix |
 | `COLLECTION_ERROR` | `async` describe body, `test.setup` inside `describe`, an option forbidden in a serial group, registration outside collection | Rework the structure per `writing-tests` |
-| `APP_UNREACHABLE` | `command` never answered `readyUrl` within `startupTimeout`; a service exited non-zero | Set `command.log` and read it; check the port and `url`; pass the env the app needs through `command.env`; raise `startupTimeout` |
+| `APP_UNREACHABLE` | `command` never answered `readyUrl` within `startupTimeout`; a service exited non-zero | Read the last log lines quoted under the error; set `command.log` if it says to; check the port and `url`; pass the env the app needs through `command.env`; raise `startupTimeout` |
 | `APP_ALREADY_RUNNING` | Something already serves `url` when the runner wanted to start `command` | Stop it, or set `reuseExisting: true` for local runs |
 | `APP_URL_REQUIRED` | A navigation on an engine without `url` | Add `url` to `playwright({ ... })` |
 | `LOCATOR_NOT_FOUND` | Wrong role or name, text not exact, element off screen or inside an iframe, page not open | Read the markup for the accessible name; try `exact: false` or a RegExp; `web.frameLocator` for iframes; `app.open()` first; `--headed` to look |
