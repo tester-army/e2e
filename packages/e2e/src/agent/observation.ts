@@ -222,13 +222,29 @@ function formatNode(
  * Lives next to `formatNode` so the line grammar keeps one owner.
  */
 export function observationShape(observation: AgentObservation): string {
-  return observation.text
+  const text = observation.text
     .replaceAll(/(^|\n)(\s*)#\S+/g, '$1$2')
     .replaceAll(/ \[([^\]]*)\]/g, (_match, states: string) => {
       const stable = states.split(' ').filter((state) => state !== 'focused');
       return stable.length === 0 ? '' : ` [${stable.join(' ')}]`;
     })
     .replaceAll(CLOCK_PATTERN, '<time>');
+  // A capture taken with pixels is shaped by them too: on a canvas, a map, or
+  // a game the tree never moves, and without the pixels every action would
+  // wait out the whole change window and then be reported as having done
+  // nothing. A digest keeps the shape a string and the comparison cheap.
+  const pixels = observation.pixels;
+  return pixels === undefined ? text : `${text}\n<pixels ${digest(pixels.data)}>`;
+}
+
+/** FNV-1a over the image bytes: fast, and equal frames encode to equal bytes. */
+function digest(bytes: Uint8Array): string {
+  let hash = 0x811c9dc5;
+  for (const byte of bytes) {
+    hash ^= byte;
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16);
 }
 
 /** `12:05`, `0:59`, `23:59:59`: a value that changes on its own once a second or minute. */

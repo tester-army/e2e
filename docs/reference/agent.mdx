@@ -95,6 +95,9 @@ nothing lost in a description.
 | `screenshot()` | Attaches a masked screenshot of the viewport to the tool result, with the changes since the screen the model holds. From then on the step is in pixel mode: every action result carries a fresh screenshot, so the model sees what each action did. |
 | `tap_at({ x, y })` | Taps a point given in the latest screenshot's pixel coordinates. The harness scales the point into the observation's CSS pixels and hit-tests it against the tree: a listed control under it is tapped by its id, exactly like `tap`, with a replayable descriptor; a point on nothing listed is tapped as a bare point through the engine's `tapAt`. The result names what was tapped or what sits under the point, and carries a fresh screenshot. |
 
+While the step is showing pixels, the wait after an action watches the
+pixels too: a tap that redraws a canvas is read as soon as the redraw lands,
+instead of waiting out the change window on a tree that never moves.
 A screen that lists nothing to act on by id (a canvas, a game, a
 semantics-free native screen) opens with a screenshot already attached, so
 the model never spends a turn discovering that it needs one; any screen with
@@ -109,6 +112,15 @@ and on an engine without `tapAt` the point must land on a listed control. A
 bare-point tap is recorded in the trace cache as a gap, so a step that needed
 one does not replay past it. A step that sent pixels records `visionInput:
 true` and `metrics.pixelBytes`.
+
+The pixel path asks the act model to ground a point in an image, and models
+differ widely there. Measured on a drawn ten-key keypad and an eight-screen
+drawn wizard: the gpt-5.6 luna family and Gemini 3.8 Flash completed both;
+Claude Sonnet 5 completed the wizard's large shapes but never the keypad's
+small keys; DeepSeek and GLM flash models gave up, and their providers bill a
+1280 by 720 screenshot at tens of thousands of input tokens against a few
+hundred on OpenAI. Pin an act model that grounds well when your flows leave
+the tree.
 
 Throws `ACTION_FAILED` for a failed verdict with no more specific code; a
 blocked code (`AUTH_CREDENTIAL_UNAVAILABLE`, `ENVIRONMENT_UNAVAILABLE`,

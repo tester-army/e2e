@@ -560,7 +560,7 @@ class LoopRun {
       lines.push(`tool call: ${call.toolName}(${truncate(safeJson(call.input), 400)})`);
     }
     for (const result of step.toolResults) {
-      lines.push(`tool result [${result.toolName}]: ${truncate(safeJson(result.output), 600)}`);
+      lines.push(`tool result [${result.toolName}]: ${truncate(describeOutput(result.output), 600)}`);
     }
     this.transcript.push(lines.join('\n'));
   }
@@ -628,6 +628,15 @@ function textChars(messages: readonly ModelMessage[]): number {
 
 function truncate(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max)}…[truncated]`;
+}
+
+/** A tool result for the transcript: a screenshot-carrying result reads as its text plus the image size, never the bytes. */
+function describeOutput(output: unknown): string {
+  if (typeof output === 'object' && output !== null && 'pixels' in output && 'text' in output) {
+    const { text, pixels } = output as { text: unknown; pixels: { data?: { byteLength?: number } } };
+    return `${String(text)}\n[screenshot, ${String(pixels.data?.byteLength ?? 0)} bytes]`;
+  }
+  return safeJson(output);
 }
 
 function safeJson(value: unknown): string {

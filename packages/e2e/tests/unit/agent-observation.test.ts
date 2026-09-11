@@ -191,6 +191,17 @@ describe('observationShape', () => {
     );
   });
 
+  it('is shaped by the pixels when a capture carries them, so a canvas that redrew counts as changed', () => {
+    const withPixels = (data: number[]) =>
+      observationShape({
+        text: '#n1 document "Map"',
+        pixels: { data: new Uint8Array(data), mediaType: 'image/png', width: 2, height: 1, scale: 1, maskedRegionCount: 0 },
+      } as unknown as Parameters<typeof observationShape>[0]);
+    expect(withPixels([1, 2, 3])).toBe(withPixels([1, 2, 3]));
+    expect(withPixels([1, 2, 3])).not.toBe(withPixels([1, 2, 4]));
+    expect(withPixels([1, 2, 3])).not.toBe(shapeOf('#n1 document "Map"'));
+  });
+
   it('still notices a state that is about the page', () => {
     expect(shapeOf('#n1 checkbox "Terms" [checked]')).not.toBe(shapeOf('#n1 checkbox "Terms"'));
     expect(shapeOf('#n1 button "Save" [disabled]')).not.toBe(shapeOf('#n1 button "Save"'));
