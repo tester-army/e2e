@@ -30,7 +30,7 @@ const layout = (title, body) => `<!doctype html>
     <a href="/board">Board</a>
     <a href="/canvas">Canvas</a>
     <a href="/canvas-flow">Keypad</a>
-    <a href="/canvas-wizard">Wizard</a>
+    <a href="/canvas-wizard">Canvas wizard</a>
     <a href="/downloads">Downloads</a>
   </nav>
   ${body}
