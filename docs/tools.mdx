@@ -27,7 +27,7 @@ const seedCart = defineTool(
 
 export default {
   targets: [{ engine: playwright({ url: process.env.APP_URL! }) }],
-  agents: { default: createAgent({ model: gateway('openai/gpt-5.4-mini'), tools: { seedCart } }) },
+  agents: { default: createAgent({ model: gateway('openai/gpt-5.6-luna'), tools: { seedCart } }) },
 } satisfies E2EConfig;
 ```
 

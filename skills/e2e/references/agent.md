@@ -15,13 +15,13 @@ import { gateway } from 'ai';
 
 export default {
   // 1. The built-in agent with an AI SDK model: gateway() from 'ai' is the Vercel AI Gateway and reads AI_GATEWAY_API_KEY.
-  agents: { default: createAgent({ model: gateway('openai/gpt-5.4-mini'), system: 'You are a thorough QA agent. Verify every outcome on screen.' }) },
+  agents: { default: createAgent({ model: gateway('openai/gpt-5.6-luna'), system: 'You are a thorough QA agent. Verify every outcome on screen.' }) },
 
   // 2. An options block: a model plus project vocabulary. openrouter() from '@openrouter/ai-sdk-provider' reads OPENROUTER_API_KEY.
   // agents: { default: { model: openrouter('anthropic/claude-sonnet-4.5'), context: 'A billing dashboard. Plans are Free, Team, and Pro.' } },
 
   // 3. A live AI SDK model instance for a provider called directly.
-  // agents: { default: createAgent({ model: openai('gpt-5.4-mini') }) },
+  // agents: { default: createAgent({ model: openai('gpt-5.6-luna') }) },
 } satisfies E2EConfig;
 ```
 

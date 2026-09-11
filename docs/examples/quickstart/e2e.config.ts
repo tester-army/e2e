@@ -6,10 +6,10 @@ import { gateway } from 'ai';
 export default {
   // One model for every agent.* call, checked once when the first test acquires the agent fixture.
   // The Vercel AI Gateway serves the model id and reads AI_GATEWAY_API_KEY.
-  // Any AI SDK model works here: openai('gpt-5.4-mini') from @ai-sdk/openai calls the provider directly.
+  // Any AI SDK model works here: openai('gpt-5.6-luna') from @ai-sdk/openai calls the provider directly.
   agents: {
     default: createAgent({
-      model: gateway('openai/gpt-5.4-mini'),
+      model: gateway('openai/gpt-5.6-luna'),
       system: 'You are a thorough QA agent. Verify every outcome.',
     }),
   },

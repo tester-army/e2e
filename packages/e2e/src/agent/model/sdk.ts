@@ -1,6 +1,6 @@
 /**
  * AI SDK adapter. One implementation serves every provider: the
- * caller-supplied AI SDK model instance (`gateway('openai/gpt-5.4-mini')`,
+ * caller-supplied AI SDK model instance (`gateway('openai/gpt-5.6-luna')`,
  * `openrouter(...)`, `openai('gpt-4o')`, a local provider, a scripted test
  * model) is used as is. Everything after the model — bounded requests,
  * closed-grammar validation, usage and error translation — is

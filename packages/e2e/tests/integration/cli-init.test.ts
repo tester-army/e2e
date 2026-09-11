@@ -67,8 +67,8 @@ describe('initializing standalone projects', () => {
 
       expect(config.targets).toMatchObject([{ name: 'web', platform: 'web', engine: { name: 'playwright' } }]);
       // --yes writes the default gateway as its provider's constructor; the runner implies none, and no key is needed to load it.
-      expect(readFileSync(path.join(dir, 'e2e.config.ts'), 'utf8')).toContain("model: gateway('openai/gpt-5.4-mini'),");
-      expect(config.agent.model).toMatchObject({ provider: 'gateway', id: 'openai/gpt-5.4-mini' });
+      expect(readFileSync(path.join(dir, 'e2e.config.ts'), 'utf8')).toContain("model: gateway('openai/gpt-5.6-luna'),");
+      expect(config.agent.model).toMatchObject({ provider: 'gateway', id: 'openai/gpt-5.6-luna' });
       expect(config.targets[0]!.app.base).toMatchObject({ origin: appUrl ?? 'http://localhost:3000' });
       expect(config.targets[0]!.app.command).toBeUndefined();
       expect(collection.tests.map((test) => ({ title: test.title, file: test.file }))).toEqual([
@@ -92,7 +92,7 @@ describe('initializing standalone projects', () => {
 
     expect(scaffold.dependencies).not.toHaveProperty('@e2edev/playwright');
     expect(scaffold.dependencies).toMatchObject({ ai: '^7.0.0', '@openrouter/ai-sdk-provider': '^3.0.0' });
-    expect(config.agent.model).toMatchObject({ provider: expect.stringMatching(/^openrouter/), id: 'openai/gpt-5.4-mini' });
+    expect(config.agent.model).toMatchObject({ provider: expect.stringMatching(/^openrouter/), id: 'openai/gpt-5.6-luna' });
     expect(config.targets[0]!.app.base).toBeUndefined();
     expect(collection.tests.map((test) => test.title)).toEqual(['app responds']);
   });

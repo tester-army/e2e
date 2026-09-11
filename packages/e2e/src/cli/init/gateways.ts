@@ -28,7 +28,7 @@ export const GATEWAYS: readonly GatewayPreset[] = [
     dependencies: {},
     import: "import { gateway } from 'ai';",
     comment: 'The Vercel AI Gateway serves the model id and reads AI_GATEWAY_API_KEY.',
-    model: () => "gateway('openai/gpt-5.4-mini')",
+    model: () => "gateway('openai/gpt-5.6-luna')",
   },
   {
     id: 'openrouter',
@@ -37,7 +37,7 @@ export const GATEWAYS: readonly GatewayPreset[] = [
     dependencies: { '@openrouter/ai-sdk-provider': '^3.0.0' },
     import: "import { openrouter } from '@openrouter/ai-sdk-provider';",
     comment: 'OpenRouter serves the model id and reads OPENROUTER_API_KEY.',
-    model: () => "openrouter('openai/gpt-5.4-mini')",
+    model: () => "openrouter('openai/gpt-5.6-luna')",
   },
   {
     id: 'openai-compatible',
@@ -51,7 +51,7 @@ export const GATEWAYS: readonly GatewayPreset[] = [
         name: 'openai-compatible',
         baseURL: ${quote(endpoint ?? 'http://127.0.0.1:11434/v1')},
         // apiKey: process.env.LLM_API_KEY,
-      }).chatModel('gpt-5.4-mini')`,
+      }).chatModel('gpt-5.6-luna')`,
   },
 ];
 

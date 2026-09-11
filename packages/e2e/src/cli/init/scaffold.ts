@@ -20,7 +20,7 @@ function agentConfig(model: ScaffoldModel): string {
   const preset = getGatewayPreset(model.gateway);
   return `  // One model for every agent.* call, checked once when the first test acquires the agent fixture.
   // ${preset.comment}
-  // Any AI SDK model works here: openai('gpt-5.4-mini') from @ai-sdk/openai calls the provider directly.
+  // Any AI SDK model works here: openai('gpt-5.6-luna') from @ai-sdk/openai calls the provider directly.
   agents: {
     default: createAgent({
       model: ${preset.model(model.endpoint)},

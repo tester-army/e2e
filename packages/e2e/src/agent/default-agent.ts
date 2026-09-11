@@ -48,7 +48,7 @@ function presenterFor(context: StepExecutorContext): ScreenPresenter {
 
 export interface CreateAgentOptions {
   /**
-   * AI SDK language model, e.g. `gateway('openai/gpt-5.4-mini')` from `ai`;
+   * AI SDK language model, e.g. `gateway('openai/gpt-5.6-luna')` from `ai`;
    * defaults to the config-resolved `agent.model`.
    */
   readonly model?: SdkLanguageModel;

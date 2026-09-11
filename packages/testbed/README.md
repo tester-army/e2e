@@ -59,7 +59,7 @@ across providers:
 
 ```bash
 AI_GATEWAY_API_KEY=...  pnpm --filter @e2edev/testbed test:agent
-E2E_MODEL=openai/gpt-5.4-mini AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed test:agent
+E2E_MODEL=openai/gpt-5.6-luna AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed test:agent
 ```
 
 Agentic assertions are structurally comparable across models, not textually

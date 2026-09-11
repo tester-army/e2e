@@ -127,7 +127,7 @@ directly:
 import { openai } from '@ai-sdk/openai';
 
 export default {
-  agents: { default: { model: openai('gpt-5.4-mini') } },
+  agents: { default: { model: openai('gpt-5.6-luna') } },
 } satisfies E2EConfig;
 ```
 

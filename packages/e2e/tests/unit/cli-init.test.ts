@@ -59,9 +59,9 @@ describe('e2e init', () => {
     expect(read('e2e.config.ts')).toContain('agents: {\n    default: createAgent({');
     // The default gateway is written out as its own provider's constructor, never implied by the runner.
     expect(read('e2e.config.ts')).toContain("import { gateway } from 'ai';");
-    expect(read('e2e.config.ts')).toContain("model: gateway('openai/gpt-5.4-mini'),");
+    expect(read('e2e.config.ts')).toContain("model: gateway('openai/gpt-5.6-luna'),");
     expect(read('e2e.config.ts')).toContain('// The Vercel AI Gateway serves the model id and reads AI_GATEWAY_API_KEY.');
-    expect(read('e2e.config.ts')).toContain("// Any AI SDK model works here: openai('gpt-5.4-mini') from @ai-sdk/openai calls the provider directly.");
+    expect(read('e2e.config.ts')).toContain("// Any AI SDK model works here: openai('gpt-5.6-luna') from @ai-sdk/openai calls the provider directly.");
     expect(read('tests/example.e2e.ts')).toContain('// Runs once the key the model in e2e.config.ts reads is in the environment:');
     expect(read('e2e.config.ts')).toContain("playwright({\n      url: process.env.APP_URL ?? 'http://localhost:3000',");
     expect(read('e2e.config.ts')).toContain('// command: {');
@@ -114,7 +114,7 @@ describe('e2e init', () => {
     expect(manifest.devDependencies['@openrouter/ai-sdk-provider']).toBe(ai ? '^3.0.0' : undefined);
     expect(read('e2e.config.ts').includes('createAgent')).toBe(ai);
     expect(read('e2e.config.ts').includes("import { openrouter } from '@openrouter/ai-sdk-provider';")).toBe(ai);
-    expect(read('e2e.config.ts').includes("model: openrouter('openai/gpt-5.4-mini'),")).toBe(ai);
+    expect(read('e2e.config.ts').includes("model: openrouter('openai/gpt-5.6-luna'),")).toBe(ai);
     expect(read('e2e.config.ts').includes('// OpenRouter serves the model id and reads OPENROUTER_API_KEY.')).toBe(ai);
     expect(clack.text).not.toHaveBeenCalled();
     expect(read('e2e.config.ts').includes('@e2edev/playwright')).toBe(engine === 'playwright');
@@ -168,7 +168,7 @@ describe('e2e init', () => {
     expect(clack.text).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ placeholder: 'http://127.0.0.1:11434/v1' }));
     expect(read('e2e.config.ts')).toContain("import { createOpenAICompatible } from '@ai-sdk/openai-compatible';");
     expect(read('e2e.config.ts')).toContain(
-      "      model: createOpenAICompatible({\n        name: 'openai-compatible',\n        baseURL: 'http://127.0.0.1:11434/v1',\n        // apiKey: process.env.LLM_API_KEY,\n      }).chatModel('gpt-5.4-mini'),",
+      "      model: createOpenAICompatible({\n        name: 'openai-compatible',\n        baseURL: 'http://127.0.0.1:11434/v1',\n        // apiKey: process.env.LLM_API_KEY,\n      }).chatModel('gpt-5.6-luna'),",
     );
     expect(read('e2e.config.ts')).toContain('// The endpoint serves the model id over the OpenAI chat API; pass apiKey when it needs one.');
     expect(JSON.parse(read('package.json')).devDependencies).toHaveProperty('ai', '^7.0.0');

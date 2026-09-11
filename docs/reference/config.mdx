@@ -263,8 +263,8 @@ or `.`. See [Agents and personas](/agents).
 ```ts title="e2e.config.ts"
 export default {
   agents: {
-    default: { model: gateway('openai/gpt-5.4-mini') },
-    ux: createAgent({ model: gateway('openai/gpt-5.4-mini'), system: UX_REVIEW_PLAYBOOK, tools: { contrastCheck } }),
+    default: { model: gateway('openai/gpt-5.6-luna') },
+    ux: createAgent({ model: gateway('openai/gpt-5.6-luna'), system: UX_REVIEW_PLAYBOOK, tools: { contrastCheck } }),
     thorough: { model: gateway('anthropic/claude-opus-5'), context: 'Verify every claim on screen.' },
   },
 } satisfies E2EConfig;
@@ -305,10 +305,10 @@ it, and the instance owns its transport and credentials.
 
 | Gateway | Constructor | Package | Reads |
 | --- | --- | --- | --- |
-| [Vercel AI Gateway](https://vercel.com/docs/ai-gateway) | `gateway('openai/gpt-5.4-mini')` | `ai` | `AI_GATEWAY_API_KEY` |
-| [OpenRouter](https://openrouter.ai/models) | `openrouter('openai/gpt-5.4-mini')` | `@openrouter/ai-sdk-provider` | `OPENROUTER_API_KEY` |
+| [Vercel AI Gateway](https://vercel.com/docs/ai-gateway) | `gateway('openai/gpt-5.6-luna')` | `ai` | `AI_GATEWAY_API_KEY` |
+| [OpenRouter](https://openrouter.ai/models) | `openrouter('openai/gpt-5.6-luna')` | `@openrouter/ai-sdk-provider` | `OPENROUTER_API_KEY` |
 | Any OpenAI-compatible endpoint | `createOpenAICompatible({ name, baseURL, apiKey? }).chatModel('llama3.2')` | `@ai-sdk/openai-compatible` | `apiKey`, when the endpoint needs one |
-| A provider directly | `openai('gpt-5.4-mini')`, `anthropic(...)`, ... | `@ai-sdk/openai`, `@ai-sdk/anthropic`, ... | the provider's own variable |
+| A provider directly | `openai('gpt-5.6-luna')`, `anthropic(...)`, ... | `@ai-sdk/openai`, `@ai-sdk/anthropic`, ... | the provider's own variable |
 
 Reports record the instance's `provider` and `modelId` as the step's
 `provider` and `model`. Each worker re-resolves the config module and

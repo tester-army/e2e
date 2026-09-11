@@ -32,7 +32,7 @@ export default {
   // Only needed for agent.* steps. The model is an AI SDK instance; gateway() from 'ai' reads AI_GATEWAY_API_KEY.
   agents: {
     default: createAgent({
-      model: gateway('openai/gpt-5.4-mini'),
+      model: gateway('openai/gpt-5.6-luna'),
       system: 'You are a thorough QA agent. Verify every outcome on screen.',
     }),
   },

@@ -210,7 +210,7 @@ describe('model resolution', () => {
       /agents\.default\.model must be an AI SDK model instance, not the string "openai\/gpt-5\.4-mini": import a provider and construct the model, e\.g\. gateway\("openai\/gpt-5\.4-mini"\) from 'ai' or openrouter\("openai\/gpt-5\.4-mini"\) from '@openrouter\/ai-sdk-provider'/,
     );
     expect(() => resolve({ agents: { default: { model: { provider: 'openai', id: 'gpt-5.4-mini' } } } } as never)).toThrow(
-      /agents\.default\.model must be an AI SDK model instance, e\.g\. gateway\('openai\/gpt-5\.4-mini'\) from 'ai'/,
+      /agents\.default\.model must be an AI SDK model instance, e\.g\. gateway\('openai\/gpt-5\.6-luna'\) from 'ai'/,
     );
     expect(() => resolve({ agents: { ux: { model: 42 } } } as never)).toThrow(/agents\.ux\.model must be an AI SDK model instance/);
   });
