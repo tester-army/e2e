@@ -97,8 +97,9 @@ These defaults describe the built-in agent and judgment tier:
 | `waitFor` | up to `maxModelCalls`, default 25 | 30 s, or `actionTimeout` when larger |
 
 `assert` and `extract` spend one judgment and one repair round at most.
-Tree-only `waitFor` skips judgments while the observed tree is unchanged.
-With vision enabled, it judges every interval even when the tree is unchanged.
+With `vision: false` or `vision: 'fallback'`, `waitFor` skips judgments while
+the observed tree shape is unchanged. With `vision: true` or `vision: 'only'`,
+it judges every interval even when the tree is unchanged.
 Exceeding a budget raises `STEP_BUDGET_EXHAUSTED`; running out of time,
 `STEP_TIMEOUT`.
 
