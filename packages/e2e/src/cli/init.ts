@@ -14,6 +14,7 @@ import { GATEWAYS, type GatewayId } from './init/gateways.ts';
 import { findRegisteredMcpFiles, MCP_LOCATIONS, planMcpRegistration } from './init/mcp-config.ts';
 import { addDependencies, addScripts, describeManifestError, readPackage, serializePackage } from './init/package.ts';
 import { createScaffold, type ScaffoldModel } from './init/scaffold.ts';
+import { findWorkspace, isWorkspaceMember } from './init/workspace.ts';
 import { MISSING_SKILL_MESSAGE, readSkillFiles } from './skill.ts';
 
 export interface InitOptions {
@@ -166,6 +167,22 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
   }
   if (scripts.length > 0) {
     clack.log.info(`add scripts: ${scripts.map(([name, command]) => `${name} (${command})`).join(', ')}`);
+  }
+  // A suite scaffolded outside its monorepo's workspace becomes a second
+  // install root; the message says so before anything is written. A directory
+  // that already is such a root (its own workspace file with no members) is
+  // judged by the workspace enclosing it, and by nothing when there is none.
+  let workspace = findWorkspace(cwd);
+  if (workspace !== undefined && workspace.root === cwd && workspace.patterns.length === 0) {
+    workspace = findWorkspace(path.dirname(cwd));
+  }
+  if (workspace !== undefined && workspace.root === cwd) {
+    clack.log.info(`this is the workspace root (${workspace.file}); the suite usually lives in the app's package, e.g. e2e init apps/<app>`);
+  } else if (workspace !== undefined && isWorkspaceMember(workspace.patterns, path.relative(workspace.root, cwd).split(path.sep).join('/')) === false) {
+    const globs = workspace.patterns.length === 0 ? 'no packages' : `packages: ${workspace.patterns.join(', ')}`;
+    clack.log.warn(
+      `${options.directory ?? cwd} is outside the workspace at ${workspace.root} (${workspace.file} lists ${globs}); an install here will not share its lockfile. Add a matching entry to ${workspace.file}, or run e2e init inside the app's package`,
+    );
   }
 
   const files = [

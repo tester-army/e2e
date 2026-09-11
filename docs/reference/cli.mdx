@@ -66,7 +66,7 @@ needs the Android SDK and an emulator. See [Testing iOS and Android](/mobile).
 
 | Argument or flag | Type | Default | Behavior |
 | --- | --- | --- | --- |
-| `[directory]` | path | the working directory | Where to scaffold; created when missing |
+| `[directory]` | path | the working directory | Where to scaffold; created when missing. In a monorepo, name the app's package (`e2e init apps/web`): at the workspace root, `init` prints guidance to run in the app's package instead, and a directory that no workspace glob covers gets a warning that its install will not share the workspace lockfile |
 | `-y`, `--yes` | boolean | `false` | Skips prompts; a new config gets Web (Playwright) and the Vercel AI Gateway, nothing is installed, and the skill is written to both agent directories |
 
 | Creates | Content |

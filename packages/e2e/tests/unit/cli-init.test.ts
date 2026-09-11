@@ -358,6 +358,51 @@ describe('e2e init', () => {
     expect(existsSync(target)).toBe(false);
   });
 
+  it('stays quiet about placement inside a workspace member directory', async () => {
+    writeFileSync(path.join(dir, 'pnpm-workspace.yaml'), "packages:\n  - 'apps/*'\n  - 'packages/*'\n  - '!packages/e2e-tests'\n");
+    expect(await init(path.join(dir, 'apps', 'web'), { yes: true, directory: 'apps/web' })).toBe(0);
+    expect(output()).not.toContain('outside the workspace');
+    expect(output()).not.toContain('workspace root');
+
+    stdoutSpy.mockClear();
+    rmSync(path.join(dir, 'pnpm-workspace.yaml'));
+    writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'repo', private: true, workspaces: { packages: ['apps/*'] } }));
+    expect(await init(path.join(dir, 'apps', 'admin'), { yes: true, directory: 'apps/admin' })).toBe(0);
+    expect(output()).not.toContain('outside the workspace');
+  });
+
+  it('warns with the root and its globs when the new directory falls outside the workspace', async () => {
+    writeFileSync(path.join(dir, 'pnpm-workspace.yaml'), "packages:\n  - 'apps/*'\n  - 'packages/*'\n  - '!packages/e2e-tests'\n");
+    expect(await init(path.join(dir, 'packages', 'e2e-tests'), { yes: true, directory: 'packages/e2e-tests' })).toBe(0);
+    expect(output()).toContain(
+      `packages/e2e-tests is outside the workspace at ${dir} (pnpm-workspace.yaml lists packages: apps/*, packages/*, !packages/e2e-tests); an install here will not share its lockfile. Add a matching entry to pnpm-workspace.yaml, or run e2e init inside the app's package`,
+    );
+    expect(existsSync(path.join(dir, 'packages', 'e2e-tests', 'e2e.config.ts'))).toBe(true);
+
+    stdoutSpy.mockClear();
+    rmSync(path.join(dir, 'pnpm-workspace.yaml'));
+    writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'repo', private: true, workspaces: ['apps/*'] }));
+    expect(await init(path.join(dir, 'tools', 'e2e'), { yes: true, directory: 'tools/e2e' })).toBe(0);
+    expect(output()).toContain(`tools/e2e is outside the workspace at ${dir} (package.json lists packages: apps/*)`);
+  });
+
+  it('judges a directory that is already its own install root by the workspace enclosing it', async () => {
+    writeFileSync(path.join(dir, 'pnpm-workspace.yaml'), "packages:\n  - 'apps/*'\n  - 'packages/*'\n  - '!packages/e2e-tests'\n");
+    const target = path.join(dir, 'packages', 'e2e-tests');
+    mkdirSync(target, { recursive: true });
+    writeFileSync(path.join(target, 'pnpm-workspace.yaml'), 'packages: []\n');
+    expect(await init(target, { yes: true, directory: 'packages/e2e-tests' })).toBe(0);
+    expect(output()).toContain(`packages/e2e-tests is outside the workspace at ${dir} (pnpm-workspace.yaml lists packages: apps/*, packages/*, !packages/e2e-tests)`);
+    expect(output()).not.toContain('workspace root');
+  });
+
+  it('points at the app package when run at the workspace root', async () => {
+    writeFileSync(path.join(dir, 'pnpm-workspace.yaml'), "packages:\n  - 'apps/*'\n");
+    expect(await init(dir, { yes: true })).toBe(0);
+    expect(output()).toContain("this is the workspace root (pnpm-workspace.yaml); the suite usually lives in the app's package, e.g. e2e init apps/<app>");
+    expect(output()).not.toContain('outside the workspace');
+  });
+
   it('rejects a directory argument that names a file', async () => {
     writeFileSync(path.join(dir, 'notes.txt'), '');
     expect(await init(path.join(dir, 'notes.txt'), { yes: true, directory: 'notes.txt' })).toBe(2);

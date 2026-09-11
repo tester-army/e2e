@@ -187,6 +187,24 @@ A `tsconfig.json` is optional; add one for editor completions.
 For a mobile app, choose **Mobile (iOS/Android)** in `init` and follow
 [Testing iOS and Android](/mobile).
 
+### In a monorepo
+
+The suite belongs in the app's own package. From the workspace root run
+`e2e init apps/web`, or `cd` there first: `e2e.config.ts` and `tests/` sit
+beside the app's `package.json`, the runner and engine join its
+`devDependencies`, `test:e2e` joins its scripts, and support code imports the
+app's modules the ordinary way. Run at the workspace root, `init` says so and
+points at the app package instead.
+
+A separate package is the right call only when the app is not a Node package,
+or the suite must install different major versions of shared dependencies
+than the app. Then make it a workspace member, a `packages/*` entry the root
+`pnpm-workspace.yaml` or `workspaces` field already covers, never a second
+install root with its own lockfile. A nested root costs you relative-path
+imports into the app's `node_modules`, a second lockfile that drifts from the
+first, and root `test` and `typecheck` scripts that skip the suite. `init`
+warns when the directory it scaffolds matches none of the workspace's globs.
+
 ## Next
 
 <CardGroup cols={2}>

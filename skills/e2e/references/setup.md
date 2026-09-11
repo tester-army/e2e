@@ -43,6 +43,20 @@ output, and the skill. Existing config and test files are never touched. Re-run 
 upgrade to refresh the skill; it changes nothing else in an initialized
 project.
 
+### Where the suite lives
+
+In a monorepo the suite belongs in the app's own package: run
+`e2e init apps/web` from the workspace root, or `cd` into the app first, so
+`e2e.config.ts` and `tests/` sit beside the app's `package.json`, the runner
+and engine join its `devDependencies`, and support code imports the app's
+modules the ordinary way. Only when the app is not a Node package, or the
+suite needs different major versions of shared dependencies, make a separate
+package, and then a workspace member covered by the root workspace globs (a
+`packages/*` entry, for example), never a nested
+install root with its own lockfile: that costs relative-path imports into the
+app's `node_modules`, a second lockfile, and root scripts that skip the suite.
+`init` warns when the directory matches none of the workspace's globs.
+
 Without the wizard:
 
 ```bash
