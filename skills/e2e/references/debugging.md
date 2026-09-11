@@ -40,7 +40,7 @@ jq '.run.results[] | select(.status != "passed") | .attempts[-1]
 | `MODEL_PROVIDER_FAILED` | Network, 5xx, rate limit, or no credits after the transport retries | Check the key and the quota; retry; exit code 3 |
 | `STEP_TIMEOUT`, `STEP_BUDGET_EXHAUSTED` | The goal was too big or ambiguous, or the provider slow | Split the goal, use on-screen wording, add `context`, raise `timeout` and `actionTimeout`, `--debug` to read the transcript |
 | `CONTEXT_OVERFLOW` | The screen plus the step's history did not fit the model's context window, even after the loop shrank the history and retried once | Lower `agent.maxObservationBytes`, split the step, or pick a model with a larger window |
-| `POLICY_DENIED` | Navigation outside `allowedOrigins`; a `Secret` given to a sink that is not a password field; reading a secure field | Add the origin to `allowedOrigins`; fill secrets only into password inputs; assert the outcome instead of the value |
+| `POLICY_DENIED` | Navigation outside `allowedOrigins`; a `Secret` given to a sink that is not a password field; reading a secure field; `app.screenshot()` after a secret fill | Add the origin to `allowedOrigins`; fill secrets only into password inputs; assert the outcome instead of the value; capture screenshots before filling secrets |
 | `UNSUPPORTED_CAPABILITY` | A fixture the engine does not contribute (`web` on a device), `schema` or `vision` on `act`, an action the surface lacks | Declare `requires: ['web']`; drop the option; use a supported action |
 | `SESSION_UNAVAILABLE`, `SESSION_CONTRACT` | `session: 'x'` with no setup saving `x`; a setup that did not save every declared name | Add or fix the `test.setup` |
 | `ONLY_IN_CI` | `test.only` reached CI | Remove it |
@@ -58,7 +58,7 @@ jq '.run.results[] | select(.status != "passed") | .attempts[-1]
 | `--ai-trace`, then `npx unbox-ai runs .e2e/ai-trace.json` | See exactly what the model was shown and called |
 | `--video` | Watch the failed attempt; `step.startedAt` minus the video artifact's `startedAt` is the step's offset into it |
 | `command.log: '.e2e/logs/app.log'` | Read the app's own output when it never becomes ready or errors mid-test |
-| `await app.screenshot('before-submit')` | Attach evidence at a chosen point |
+| `await app.screenshot('before-submit')` | Attach evidence before any secret is filled; later calls fail with `POLICY_DENIED` |
 | `CI=1 npx --no-install e2e run` | Reproduce CI-only behaviour: `ONLY_IN_CI`, read-only cache, `reuseExisting` ignored |
 
 ## Flaky tests

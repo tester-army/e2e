@@ -93,7 +93,7 @@ These appear in terminal output and in the report as plain string codes.
 | `NO_TESTS` | Zero runnable ordinary test-target pairs. The message names the cause: no file matched the `tests` globs (with look-alike files), a positional matched nothing, a file registered no tests, or filters excluded everything. Suppress with `--pass-with-no-tests`. | configuration | 2 |
 | `ONLY_IN_CI` | A focused test reached a CI run | configuration | 2 |
 | `COLLECTION_ERROR` | Registration outside collection, an invalid title, a non-function body, an async `describe` body, nested serial groups, an option forbidden inside a serial group, a setup test inside `describe`, an invalid session name, or a positional path outside the project root | configuration | 2 |
-| `POLICY_DENIED` | Origin, cookie, scheme, secret-sink, or route policy denial | configuration | 2 |
+| `POLICY_DENIED` | Origin, cookie, scheme, secret-sink, or route policy denial; `app.screenshot()` after a secret has tainted the attempt | configuration | 2 |
 | `SESSION_MISMATCH` | A stored session does not match the current run, target, engine, platform, or app identity | configuration | 2 |
 | `SESSION_EXPIRED` | A stored session is past its expiry at restore time (configuration, exit 2), or a setup test saved state whose expiry is not after its creation (test, exit 1) | configuration or test | 2 or 1 |
 | `SESSION_INVALID` | A stored session failed authentication. Tampered or corrupt. | configuration | 2 |

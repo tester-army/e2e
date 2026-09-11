@@ -12,7 +12,7 @@ import { expectationBrand } from '../internal/brands.ts';
 import type { DebugTrace } from '../internal/debug.ts';
 import { ConfigurationError, errorMessage, InfrastructureError, TestError } from '../internal/errors.ts';
 import { didYouMean } from '../internal/suggest.ts';
-import { sessionSecrecy } from './secrecy.ts';
+import { sessionSecrecy, type SessionSecrecy } from './secrecy.ts';
 import { obj } from '../internal/objects.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
 import { FixtureRecorder } from './fixture-recording.ts';
@@ -132,7 +132,7 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
     projectRoot: environment.config.projectRoot,
   };
   const screen = createScreen(screenContext);
-  const app = createApp(environment, engine);
+  const app = createApp(environment, engine, taint);
 
   let agent: Agent | undefined;
 
@@ -410,7 +410,8 @@ function unreachableApp(cause: unknown, url: string): InfrastructureError | unde
   );
 }
 
-function createApp(environment: AttemptEnvironment, engine: LocatorEngine): App {
+/** Builds the portable app fixture with the session's shared screenshot policy. */
+function createApp(environment: AttemptEnvironment, engine: LocatorEngine, taint: SessionSecrecy['taint']): App {
   const { config, steps, target } = environment;
 
   /** One recorded navigation: policy-resolved against the base URL, on the test budget. */
@@ -447,6 +448,12 @@ function createApp(environment: AttemptEnvironment, engine: LocatorEngine): App 
     },
     async screenshot(label?: string): Promise<string> {
       return steps.run('app', 'app.screenshot', label ?? '', async () => {
+        if (taint.value) {
+          throw new ConfigurationError(
+            'POLICY_DENIED',
+            'app.screenshot() is denied after a secret fill because the app may display the secret outside a secure field',
+          );
+        }
         const relative = await engine.session.artifacts.screenshot(label, engine.operation());
         environment.steps.attachArtifact(environment.artifacts.register('screenshot', relative));
         return relative;

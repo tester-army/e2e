@@ -94,7 +94,7 @@ Fixtures are lazy; destructure them in the callback.
 | `back()` | One history step back. |
 | `restart()` | Recreates the context and keeps persisted state, including a restored session. |
 | `clearState()` | Clears cookies and storage, then relaunches. Not inside a serial group. |
-| `screenshot(label?)` | Saves a redacted screenshot as an artifact and returns its path. |
+| `screenshot(label?)` | Saves a redacted screenshot as an artifact and returns its path. Fails with `POLICY_DENIED` after a secret fill. |
 
 ## Locators
 
@@ -232,9 +232,10 @@ credentials: {
 `E2E_USER_ADMIN_USERNAME` and `E2E_USER_ADMIN_PASSWORD` override either
 field per run. `credentials.user('admin').password` is a `Secret` with no
 plaintext accessor; only `fill()` and `agent.act` params accept it. Once a
-secret is filled, screenshots stop being attached for the rest of that
-attempt, so sign in inside a setup test and keep the evidence in the tests
-that matter.
+secret is filled, model pixels and assertion screenshots are withheld for
+the rest of that session, including later tests sharing a serial session.
+`app.screenshot()` fails with `POLICY_DENIED` before capture. Sign in inside
+a setup test and keep the evidence in the tests that matter.
 
 ## The web fixture (browser only)
 

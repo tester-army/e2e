@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { defineEngine, type EngineHandle } from '../../src/engine/index.ts';
 import { createEngineSession } from '../../src/engine/session.ts';
 import { resolveConfig } from '../../src/config/resolve.ts';
+import { credentials, setCredentialRegistry } from '../../src/credentials.ts';
 import { expect as expectFixture } from '../../src/expect/index.ts';
 import { Deadline } from '../../src/internal/time.ts';
 import { AttemptBudget } from '../../src/run/budget.ts';
@@ -21,18 +22,79 @@ function runtime(engine: EngineHandle, overrides: E2EConfig = {}) {
   });
   const signal = new AbortController().signal;
   const steps = new StepRecorder('attempt');
+  const registerArtifact = vi.fn(() => 'artifact');
   const { fixtures } = createFixtures({
     config, target: config.targets[0]!, session: createEngineSession({ engine, targetName: 'fake' }),
     steps, budget: new AttemptBudget(signal, new Deadline(10_000)), runId: 'run', attemptId: 'attempt',
     attempt: { testId: 'test', attemptId: 'attempt', index: 0, signal, memory: new Map() },
-    artifacts: { dir: '/tmp', register: () => 'artifact' }, priorSteps: () => steps.completed(),
+    artifacts: { dir: '/tmp', register: registerArtifact }, priorSteps: () => steps.completed(),
     agentContext: undefined, saveSession: undefined,
     models: new WorkerModels(() => {}),
   });
-  return { fixtures, steps };
+  return { fixtures, steps, config, registerArtifact };
 }
 
 const empty = () => defineEngine({ name: 'fake', version: '1', spiVersion: 1, observe: async () => ({ nodes: [] }) });
+
+describe('explicit screenshot secrecy', () => {
+  it.each(['static', 'provider'] as const)('captures before a %s secret fill and denies capture and registration afterward', async (source) => {
+    const sentinel = 'synthetic-screenshot-secret-2718';
+    const screenshot = vi.fn(async () => 'screenshots/evidence.png');
+    let filled: string | undefined;
+    const engine = defineEngine({
+      name: 'fake', version: '1', spiVersion: 1,
+      observe: async () => ({ nodes: [{ ref: { id: 'echo', revision: '' }, role: 'status', text: filled ?? '' }] }),
+      locate: async () => [{ ref: { id: 'password', revision: '' }, role: 'textbox', states: { secure: true } }],
+      perform: async (_ref, action) => { if (action.kind === 'fill') filled = action.value; },
+      artifacts: { screenshot },
+    });
+    const { fixtures, steps, config, registerArtifact } = runtime(engine, {
+      credentials: { member: { username: 'ada', password: source === 'static' ? sentinel : async () => sentinel } },
+    });
+    setCredentialRegistry(config.credentials);
+    try {
+      await expect(fixtures.app.screenshot('before-fill')).resolves.toBe('screenshots/evidence.png');
+      expect(screenshot).toHaveBeenCalledExactlyOnceWith('before-fill', expect.any(Object));
+      expect(registerArtifact).toHaveBeenCalledExactlyOnceWith('screenshot', 'screenshots/evidence.png');
+      screenshot.mockClear();
+      registerArtifact.mockClear();
+
+      await fixtures.screen.getByRole('textbox').fill(credentials.user('member').password);
+      expect(filled).toBe(sentinel);
+      await expect(fixtures.app.screenshot('after-fill')).rejects.toMatchObject({
+        code: 'POLICY_DENIED', category: 'configuration',
+      });
+      expect(screenshot).not.toHaveBeenCalled();
+      expect(registerArtifact).not.toHaveBeenCalled();
+      expect(steps.all().at(-1)).toMatchObject({
+        api: 'app.screenshot', status: 'failed', artifacts: [], error: { code: 'POLICY_DENIED' },
+      });
+      expect(JSON.stringify(steps.all())).not.toContain(sentinel);
+    } finally {
+      setCredentialRegistry(undefined);
+    }
+  });
+
+  it('still captures when a credential provider fails before supplying a secret', async () => {
+    const screenshot = vi.fn(async () => 'screenshots/evidence.png');
+    const { fixtures, config, registerArtifact } = runtime(defineEngine({
+      name: 'fake', version: '1', spiVersion: 1, artifacts: { screenshot },
+    }), {
+      credentials: { member: { username: 'ada', password: async () => '' } },
+    });
+    setCredentialRegistry(config.credentials);
+    try {
+      await expect(fixtures.screen.getByRole('textbox').fill(credentials.user('member').password)).rejects.toMatchObject({
+        code: 'AUTH_CREDENTIAL_UNAVAILABLE',
+      });
+      await expect(fixtures.app.screenshot()).resolves.toBe('screenshots/evidence.png');
+      expect(screenshot).toHaveBeenCalledOnce();
+      expect(registerArtifact).toHaveBeenCalledExactlyOnceWith('screenshot', 'screenshots/evidence.png');
+    } finally {
+      setCredentialRegistry(undefined);
+    }
+  });
+});
 
 describe('explicit fixture operations', () => {
   it('preserves mutable state, identity, and private-field receivers', async () => {
