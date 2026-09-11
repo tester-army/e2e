@@ -53,6 +53,8 @@ test.afterAll(async () => {});
 test.skip('later', async () => {});
 test.only('focus', async () => {});         // local only: CI fails with ONLY_IN_CI
 test.setup('sign in', { sessions: ['admin'] }, async ({ app, screen, session }) => {}); // see Sign-in sessions
+const wsTest = test.extend<{ ws: Ws }>({ ws: async ({ web }, use) => { await use(await seed()); await drop(); } });
+wsTest('uses the workspace', async ({ ws }) => {}); // code after use() is teardown, runs after failures too
 ```
 
 | Option | Default | Notes |

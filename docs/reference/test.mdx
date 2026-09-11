@@ -14,6 +14,7 @@ export interface TestAPI<Fixtures = TestFixtures> {
   only(title: string, fn: TestFn<Fixtures>): TestCase;
   setup(title: string, options: SetupOptions, fn: SetupFn<Fixtures>): TestCase;
   extend<Extra>(): TestAPI<Fixtures & Extra>;
+  extend<Extra>(fixtures: FixtureDefinitions<Fixtures, Extra>): TestAPI<Fixtures & Extra>;
   describe<Result>(title: string, body: SynchronousBody<Result>): void;
   describe<Result>(
     title: string,
@@ -42,7 +43,7 @@ throws `COLLECTION_ERROR`.
 | `test.only` | `only(title: string, fn: TestFn): TestCase` | Other ordinary tests are reported as `filtered`. In CI the run fails with `ONLY_IN_CI`, exit code 2. |
 | `test.setup` | `setup(title: string, options: SetupOptions, fn: SetupFn): TestCase` | `options.sessions` is required. Must be top-level, not inside `test.describe`. |
 | `test.describe` | `describe(title, body)` / `describe(title, options, body)` | Group body must be synchronous. An `async` body is a type error and a `COLLECTION_ERROR`. |
-| `test.extend` | `extend<Extra>(): TestAPI<Fixtures & Extra>` | The same `test`, typed with fixtures an engine contributes. `@e2edev/playwright` and `@e2edev/agent-device` export one already extended. |
+| `test.extend` | `extend<Extra>()` / `extend<Extra>(fixtures)` | Without an argument, types an engine's contributed fixtures. With one, returns a new `test` that sets your own fixtures up around each attempt; see [Your own fixtures](#your-own-fixtures). |
 
 ```ts
 import { test } from '@e2edev/playwright';
@@ -202,15 +203,98 @@ export interface SuiteFixtures {
 | `screen` | [`Screen`](/reference/screen) | Always available. |
 | `platform` | `Platform` | `'web' \| 'ios' \| 'android' \| (string & {})`. |
 
-Everything else is a **contributed fixture**: the target's engine declares it,
-and `test.extend<{ ... }>()` types it. `@e2edev/playwright` contributes
-[`web`](/reference/playwright) and exports a `test` already typed with it; a
-device engine contributes `device` the same way. Reaching for a fixture the
-engine does not declare fails at first touch with `UNSUPPORTED_CAPABILITY`;
-declare `requires: ['web']` to skip such tests at selection instead.
+Everything else is a **contributed fixture** the target's engine declares, or
+one of [your own](#your-own-fixtures). The zero-argument `test.extend<{ ... }>()`
+types a contributed fixture without defining anything: `@e2edev/playwright`
+contributes [`web`](/reference/playwright) and exports a `test` already typed
+with it; a device engine contributes `device` the same way. Reaching for a
+fixture neither the engine nor a `test.extend()` defines fails at first touch
+with `UNSUPPORTED_CAPABILITY`; declare `requires: ['web']` to skip such tests
+at selection instead.
 
 Fixtures are lazy. Destructuring in the callback parameter list acquires them
 before the first statement of the body.
+
+### Your own fixtures
+
+`test.extend(fixtures)` defines a fixture per test: a resource the body needs
+set up before it runs and cleaned up after, however the body ended. Each
+definition is one function in Playwright's shape. Everything before
+`await use(value)` is the setup, `value` is what the test receives, and
+everything after is the teardown.
+
+```ts
+import { test as base } from '@e2edev/playwright';
+
+export const test = base.extend<{ workspace: Workspace }>({
+  workspace: async ({ web }, use) => {
+    const workspace = await createWorkspace();
+    await signIn(web, workspace);
+    await use(workspace); // the hooks and the body run here
+    await workspace.cleanup(); // teardown, after the body even when it failed
+  },
+});
+
+test('renames the workspace', async ({ workspace, screen }) => {
+  await screen.getByLabel('Name').fill(`${workspace.name} (renamed)`);
+});
+```
+
+```ts
+export type FixtureFn<Fixtures, Value> = (
+  fixtures: Fixtures,
+  use: (value: Value) => Promise<void>,
+) => Promise<void>;
+
+export type FixtureDefinitions<Base, Extra> = {
+  readonly [K in keyof Extra]: K extends keyof Base
+    ? never
+    : FixtureFn<Base, Extra[K]>;
+};
+```
+
+`extend` returns a new `test`; the one it was called on is unchanged. The
+new object carries every definition of the chain, the parent's first, and
+every test, setup test, or hook registered through it records that chain.
+A definition is typed against the fixtures of the `test` it extends, not its
+siblings in the same call. A fixture that needs another fixture goes in a
+chained second `extend`: `base.extend({ a }).extend({ b })` gives `b` a
+fixture object that already has `a`.
+
+Timing, per attempt:
+
+1. The engine's fixtures exist. Each definition runs in declaration order,
+   with the fixtures defined so far, until it calls `use`. Setup counts
+   against the test `timeout` and a failure is reported in phase
+   `beforeEach`, before any `beforeEach` hook has run.
+2. `beforeEach` hooks, then the body, then `afterEach` hooks, all with the
+   same fixture object. The fixture set is decided by the test's own chain:
+   a hook registered through `base` that wraps a test registered through
+   `test` sees `workspace` too, and a hook that reads `workspace` around a
+   test registered through `base` fails with `UNSUPPORTED_CAPABILITY`.
+3. `use` resolves. The continuation of each definition runs in reverse
+   order, after the last `afterEach`, whether or not the body passed. Each
+   teardown has its own `cleanupTimeout` budget like an `afterEach` hook; an
+   error there fails a passing attempt in phase `afterEach` and joins
+   `secondaryErrors` after a body failure.
+
+What fails, and where:
+
+| Mistake | Fails |
+| --- | --- |
+| A value that is not a plain object of functions, an empty name, a core name (`agent`, `app`, `screen`, `platform`, `session`), or a name an earlier `extend` in the chain defined | At import, `COLLECTION_ERROR` naming the fixture |
+| A name the target's engine contributes (`web` on a Playwright target) | The attempt, in `beforeEach`, `TEST_SETUP_FAILED` |
+| A definition that returns without calling `use` | The attempt, in `beforeEach`, `TEST_SETUP_FAILED` |
+| A definition that calls `use` twice | The attempt, at teardown, `TEST_SETUP_FAILED` |
+| A definition that throws before `use` | The attempt, in `beforeEach`, with that error |
+| A definition that throws after `use` | The attempt, in `afterEach`, with that error |
+
+A body or hook that hits the test `timeout` is abandoned, not cancelled:
+teardown starts while it may still be running, as with `afterEach`. A
+fixture whose setup was abandoned the same way has no teardown to run yet;
+if it reaches `use` later, `use` resolves at once (there is no attempt to
+hand the value to) and the code after it runs detached from the run, so what
+the setup allocated is still released.
 
 ## Function types
 
@@ -219,6 +303,10 @@ export type TestFn<Fixtures = TestFixtures> = (fixtures: Fixtures) => void | Pro
 export type SetupFn<Fixtures = TestFixtures> = (fixtures: Fixtures & SetupFixtures) => void | Promise<void>;
 export type TestHookFn<Fixtures = TestFixtures> = (fixtures: Fixtures) => void | Promise<void>;
 export type SuiteHookFn = (fixtures: SuiteFixtures) => void | Promise<void>;
+export type FixtureFn<Fixtures, Value> = (
+  fixtures: Fixtures,
+  use: (value: Value) => Promise<void>,
+) => Promise<void>;
 export type SynchronousBody<Result> = Extract<
   Result,
   PromiseLike<unknown>

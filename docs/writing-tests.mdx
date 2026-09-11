@@ -143,6 +143,11 @@ frames, downloads. Import `test` from `@e2edev/playwright` to have it typed.
 See the [Playwright reference](/reference/playwright) and the
 [screen reference](/reference/screen).
 
+A resource every test needs, a seeded workspace or a signed-in account, is a
+fixture of your own: `test.extend({ workspace: async ({ web }, use) => { ... } })`
+returns a `test` that sets it up before each body and tears it down after,
+failed or not. See [Your own fixtures](/reference/test#your-own-fixtures).
+
 ## Structure
 
 ```ts

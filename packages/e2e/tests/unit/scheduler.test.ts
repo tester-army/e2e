@@ -65,6 +65,7 @@ function makeTest(file: string, title: string, overrides: Partial<CollectedTest>
     options: {},
     sessions: [],
     fn: () => undefined,
+    fixtures: [],
     group: undefined,
     mode: 'normal',
     source: undefined,

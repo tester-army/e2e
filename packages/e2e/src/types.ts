@@ -476,6 +476,25 @@ export type SetupFn<Fixtures = TestFixtures> = (
 ) => void | Promise<void>;
 export type TestHookFn<Fixtures = TestFixtures> = (fixtures: Fixtures) => void | Promise<void>;
 export type SuiteHookFn = (fixtures: SuiteFixtures) => void | Promise<void>;
+/**
+ * Defines one fixture: everything before `await use(value)` is its setup,
+ * everything after is its teardown. The body, its hooks, and later fixtures
+ * run while `use` is pending; it resolves once they are done, whether or not
+ * the body failed.
+ */
+export type FixtureFn<Fixtures, Value> = (
+  fixtures: Fixtures,
+  use: (value: Value) => Promise<void>,
+) => Promise<void>;
+/**
+ * One definition per fixture `test.extend()` adds. A definition sees the
+ * fixtures of the `test` it extends, not its siblings: a fixture that needs
+ * another one goes in a chained `extend()`. A name the base already has is a
+ * type error (and a `COLLECTION_ERROR` at runtime).
+ */
+export type FixtureDefinitions<Base, Extra> = {
+  readonly [K in keyof Extra]: K extends keyof Base ? never : FixtureFn<Base, Extra[K]>;
+};
 export type SynchronousBody<Result> = Extract<Result, PromiseLike<unknown>> extends never
   ? () => Result
   : never;
@@ -497,13 +516,28 @@ export interface TestAPI<Fixtures = TestFixtures> {
   setup(title: string, options: SetupOptions, fn: SetupFn<Fixtures>): TestCase;
   /**
    * Returns the same runtime `test`, typed with an engine's contributed
-   * fixtures. A pure type refinement — the fixtures still resolve from the
-   * target's engine at runtime — so a project types its device/desktop/web
+   * fixtures. A pure type refinement, the fixtures still resolve from the
+   * target's engine at runtime, so a project types its device/desktop/web
    * surface without a global `declare module` augmentation:
    *
    *   export const test = base.extend<{ device: Device }>();
    */
   extend<Extra>(): TestAPI<Fixtures & Extra>;
+  /**
+   * Returns a new `test` whose registrations carry these fixture
+   * definitions on top of the ones it already had. Each attempt sets them up
+   * in declaration order after the engine's fixtures, runs the hooks and the
+   * body with them, and tears them down in reverse order after `afterEach`:
+   *
+   *   export const test = base.extend<{ workspace: Workspace }>({
+   *     workspace: async ({ web }, use) => {
+   *       const workspace = await createWorkspace();
+   *       await use(workspace);
+   *       await workspace.cleanup();
+   *     },
+   *   });
+   */
+  extend<Extra>(fixtures: FixtureDefinitions<Fixtures, Extra>): TestAPI<Fixtures & Extra>;
   /** Declares a group synchronously. */
   describe<Result>(title: string, body: SynchronousBody<Result>): void;
   /** Declares a configured group synchronously. */

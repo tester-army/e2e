@@ -41,6 +41,7 @@ function makeTest(
     options: {},
     sessions: [],
     fn: () => undefined,
+    fixtures: [],
     group: undefined,
     mode: 'normal',
     source: undefined,

@@ -29,6 +29,7 @@ import { createAttemptArtifacts, sanitizePathSegment } from './artifacts.ts';
 import { AttemptBudget } from './budget.ts';
 import { ENGINE_SPI_VERSION } from '../engine/contract.ts';
 import { createEngineSession } from '../engine/session.ts';
+import { createExtendedFixtures } from './extended-fixtures.ts';
 import { createFixtures, type ArtifactSink } from './fixtures.ts';
 import { findRegistered, RealmManager, runHook, type Realm } from './realm.ts';
 import type {
@@ -806,9 +807,17 @@ export class TargetExecutor implements SerialHost {
 
       const beforeEachHooks = this.realms.hooksFor(realm, registered, 'beforeEach');
       const afterEachHooks = this.realms.hooksFor(realm, registered, 'afterEach');
+      // The test's own chain decides the fixture set; hooks get the same
+      // object, whichever `test` they were registered through.
+      const extended = createExtendedFixtures(
+        registered.fixtures,
+        fixtures,
+        this.target.engine?.name ?? 'none',
+      );
 
       const mainWork = async (): Promise<void> => {
         phase = 'beforeEach';
+        await extended.setUp();
         for (const hook of beforeEachHooks) {
           await hook.fn(fixtures);
         }
@@ -848,14 +857,22 @@ export class TargetExecutor implements SerialHost {
       }
 
       phase = 'afterEach';
-      for (const hook of afterEachHooks) {
-        // Each teardown hook gets its own cleanup budget: a body that timed
-        // out or was cancelled must not leave the hook with dead fixtures, and
-        // a hook that overruns has its own operations cancelled, not the next
-        // hook's. Only a run interrupt still cuts cleanup short.
+      // Each teardown gets its own cleanup budget: a body that timed out or
+      // was cancelled must not leave the hook with dead fixtures, and a hook
+      // that overruns has its own operations cancelled, not the next hook's.
+      // Only a run interrupt still cuts cleanup short. Fixture teardowns
+      // follow the hooks, last set up first, and fail the attempt like them.
+      const teardowns = [
+        ...afterEachHooks.map((hook) => ({ label: `${hook.kind} hook`, run: () => hook.fn(fixtures) })),
+        ...extended.teardowns().map((teardown) => ({
+          label: `fixture "${teardown.name}" teardown`,
+          run: teardown.run,
+        })),
+      ];
+      for (const teardown of teardowns) {
         const hookAbort = budget.enter(this.interruptSignal, this.config.cleanupTimeout);
         try {
-          await runHook(hook.kind, () => hook.fn(fixtures), this.config.cleanupTimeout, () =>
+          await runHook(teardown.label, teardown.run, this.config.cleanupTimeout, () =>
             hookAbort.abort(),
           );
         } catch (cause) {

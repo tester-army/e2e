@@ -8,6 +8,7 @@ import { validateTitle } from '../internal/ids.ts';
 import { realmSlot } from '../internal/realm-slot.ts';
 import type {
   DescribeOptions,
+  FixtureFn,
   SetupFn,
   SetupOptions,
   SuiteHookFn,
@@ -33,6 +34,12 @@ export interface GroupNode {
 
 export type TestMode = 'normal' | 'skip' | 'only';
 
+/** One fixture a `test.extend()` call defined: its name and its setup/teardown function. */
+export interface FixtureDefinition {
+  readonly name: string;
+  readonly fn: FixtureFn<object, unknown>;
+}
+
 export interface RegisteredTest {
   readonly kind: 'test' | 'setup';
   readonly title: string;
@@ -41,6 +48,8 @@ export interface RegisteredTest {
   readonly options: TestOptions;
   readonly sessions: readonly string[];
   readonly fn: TestFn | SetupFn;
+  /** The `test.extend()` chain the test was registered through, outermost definition first. */
+  readonly fixtures: readonly FixtureDefinition[];
   readonly group: GroupNode | undefined;
   readonly mode: TestMode;
   readonly source: SourceLocation | undefined;
@@ -51,10 +60,15 @@ interface HookBase {
   readonly declarationIndex: number;
 }
 
-/** A per-test hook: runs with the attempt's fixtures. */
+/**
+ * A per-test hook: runs with the attempt's fixtures. The chain it was
+ * registered through is recorded; at run time the hook receives the test's
+ * fixture object, which the test's own chain shapes.
+ */
 export interface TestHook extends HookBase {
   readonly kind: 'beforeEach' | 'afterEach';
   readonly fn: TestHookFn;
+  readonly fixtures: readonly FixtureDefinition[];
 }
 
 /** A suite hook: runs once per scope instance with suite fixtures only. */
@@ -64,8 +78,7 @@ export interface SuiteHook extends HookBase {
 }
 
 export type RegisteredHook = TestHook | SuiteHook;
-export type HookKind = RegisteredHook['kind'];
-type HookDeclaration = Pick<TestHook, 'kind' | 'fn'> | Pick<SuiteHook, 'kind' | 'fn'>;
+type HookDeclaration = Pick<TestHook, 'kind' | 'fn' | 'fixtures'> | Pick<SuiteHook, 'kind' | 'fn'>;
 
 export interface ModuleRegistration {
   readonly tests: readonly RegisteredTest[];
@@ -101,6 +114,7 @@ class Collector {
     options: TestOptions,
     sessions: readonly string[],
     fn: TestFn | SetupFn,
+    fixtures: readonly FixtureDefinition[],
   ): TestCase {
     this.assertOpen(kind === 'setup' ? 'test.setup()' : 'test()');
     const titleError = validateTitle(title);
@@ -140,6 +154,7 @@ class Collector {
       options,
       sessions,
       fn,
+      fixtures,
       group: this.currentGroup,
       mode,
       source: captureSource(),
@@ -348,55 +363,116 @@ function normalizeArgs(
   return { options: optionsOrFn, fn: maybeFn };
 }
 
-const testFunction = (
-  title: string,
-  optionsOrFn: TestOptions | TestFn,
-  maybeFn?: TestFn,
-): TestCase => {
-  const { options, fn } = normalizeArgs(optionsOrFn, maybeFn);
-  const mode: TestMode = options.only === true ? 'only' : options.skip !== undefined && options.skip !== false ? 'skip' : 'normal';
-  return requireCollector('test()').registerTest('test', mode, title, options, [], fn);
-};
+/** Fixtures every attempt has without any engine or `test.extend()` defining them. */
+const CORE_FIXTURE_NAMES: ReadonlySet<string> = new Set(['agent', 'app', 'screen', 'platform', 'session']);
 
-export const test: TestAPI = Object.assign(testFunction, {
-  skip(title: string, fn: TestFn): TestCase {
-    return requireCollector('test.skip()').registerTest('test', 'skip', title, { skip: true }, [], fn);
-  },
-  only(title: string, fn: TestFn): TestCase {
-    return requireCollector('test.only()').registerTest('test', 'only', title, { only: true }, [], fn);
-  },
-  setup(title: string, options: SetupOptions, fn: SetupFn): TestCase {
-    if (options === undefined || !Array.isArray(options.sessions)) {
-      throw new CollectionError('test.setup() requires a static sessions list');
+/**
+ * Checks one `test.extend()` argument against the chain it extends. Names
+ * are validated here, at import time, so a typo or a clash fails the file
+ * before any attempt runs; the engine's own fixtures are only known per
+ * target and are checked when the attempt builds its fixtures.
+ */
+function validateFixtureDefinitions(
+  definitions: unknown,
+  chain: readonly FixtureDefinition[],
+): FixtureDefinition[] {
+  if (
+    typeof definitions !== 'object' ||
+    definitions === null ||
+    Array.isArray(definitions) ||
+    (Object.getPrototypeOf(definitions) !== Object.prototype &&
+      Object.getPrototypeOf(definitions) !== null)
+  ) {
+    throw new CollectionError(
+      'test.extend() takes a plain object of fixture definitions, one function per fixture name',
+    );
+  }
+  const taken = new Set(chain.map((definition) => definition.name));
+  const added: FixtureDefinition[] = [];
+  for (const [name, fn] of Object.entries(definitions)) {
+    if (name === '') throw new CollectionError('test.extend(): a fixture name must not be empty');
+    if (CORE_FIXTURE_NAMES.has(name)) {
+      throw new CollectionError(
+        `test.extend(): "${name}" is a core fixture and cannot be redefined`,
+      );
     }
-    const { sessions, ...rest } = options;
-    return requireCollector('test.setup()').registerTest('setup', 'normal', title, rest, sessions, fn);
-  },
-  describe<Result>(
+    if (taken.has(name)) {
+      throw new CollectionError(
+        `test.extend(): fixture "${name}" is already defined by an earlier test.extend()`,
+      );
+    }
+    if (typeof fn !== 'function') {
+      throw new CollectionError(
+        `test.extend(): fixture "${name}" must be a function (fixtures, use) => Promise<void>`,
+      );
+    }
+    taken.add(name);
+    added.push({ name, fn: fn as FixtureFn<object, unknown> });
+  }
+  return added;
+}
+
+/**
+ * One `test` object per fixture chain. Every registration made through it
+ * records the chain, so an attempt knows which fixtures to set up; the
+ * shared `test` is the empty chain.
+ */
+function createTestAPI(chain: readonly FixtureDefinition[]): TestAPI {
+  const testFunction = (
     title: string,
-    optionsOrBody: DescribeOptions | (() => Result),
-    maybeBody?: () => Result,
-  ): void {
-    const options = typeof optionsOrBody === 'function' ? {} : optionsOrBody;
-    const body = typeof optionsOrBody === 'function' ? optionsOrBody : maybeBody;
-    if (body === undefined) throw new CollectionError('describe body function is required');
-    requireCollector('test.describe()').registerDescribe(title, options, body);
-  },
-  beforeEach(fn: TestHookFn): void {
-    requireCollector('test.beforeEach()').registerHook({ kind: 'beforeEach', fn });
-  },
-  afterEach(fn: TestHookFn): void {
-    requireCollector('test.afterEach()').registerHook({ kind: 'afterEach', fn });
-  },
-  beforeAll(fn: SuiteHookFn): void {
-    requireCollector('test.beforeAll()').registerHook({ kind: 'beforeAll', fn });
-  },
-  afterAll(fn: SuiteHookFn): void {
-    requireCollector('test.afterAll()').registerHook({ kind: 'afterAll', fn });
-  },
-  // Type-only refinement: contributed fixtures are resolved from the engine
-  // at runtime, so the same test object serves every fixture shape.
-  extend(): TestAPI {
-    return test;
-  },
-}) as TestAPI;
+    optionsOrFn: TestOptions | TestFn,
+    maybeFn?: TestFn,
+  ): TestCase => {
+    const { options, fn } = normalizeArgs(optionsOrFn, maybeFn);
+    const mode: TestMode = options.only === true ? 'only' : options.skip !== undefined && options.skip !== false ? 'skip' : 'normal';
+    return requireCollector('test()').registerTest('test', mode, title, options, [], fn, chain);
+  };
+
+  const api: TestAPI = Object.assign(testFunction, {
+    skip(title: string, fn: TestFn): TestCase {
+      return requireCollector('test.skip()').registerTest('test', 'skip', title, { skip: true }, [], fn, chain);
+    },
+    only(title: string, fn: TestFn): TestCase {
+      return requireCollector('test.only()').registerTest('test', 'only', title, { only: true }, [], fn, chain);
+    },
+    setup(title: string, options: SetupOptions, fn: SetupFn): TestCase {
+      if (options === undefined || !Array.isArray(options.sessions)) {
+        throw new CollectionError('test.setup() requires a static sessions list');
+      }
+      const { sessions, ...rest } = options;
+      return requireCollector('test.setup()').registerTest('setup', 'normal', title, rest, sessions, fn, chain);
+    },
+    describe<Result>(
+      title: string,
+      optionsOrBody: DescribeOptions | (() => Result),
+      maybeBody?: () => Result,
+    ): void {
+      const options = typeof optionsOrBody === 'function' ? {} : optionsOrBody;
+      const body = typeof optionsOrBody === 'function' ? optionsOrBody : maybeBody;
+      if (body === undefined) throw new CollectionError('describe body function is required');
+      requireCollector('test.describe()').registerDescribe(title, options, body);
+    },
+    beforeEach(fn: TestHookFn): void {
+      requireCollector('test.beforeEach()').registerHook({ kind: 'beforeEach', fn, fixtures: chain });
+    },
+    afterEach(fn: TestHookFn): void {
+      requireCollector('test.afterEach()').registerHook({ kind: 'afterEach', fn, fixtures: chain });
+    },
+    beforeAll(fn: SuiteHookFn): void {
+      requireCollector('test.beforeAll()').registerHook({ kind: 'beforeAll', fn });
+    },
+    afterAll(fn: SuiteHookFn): void {
+      requireCollector('test.afterAll()').registerHook({ kind: 'afterAll', fn });
+    },
+    // Without definitions this is a type-only refinement: contributed
+    // fixtures resolve from the engine at runtime, so the same object serves.
+    // With definitions it is a new object, so the shared `test` never changes.
+    extend(definitions?: unknown): TestAPI {
+      if (definitions === undefined) return api;
+      return createTestAPI([...chain, ...validateFixtureDefinitions(definitions, chain)]);
+    },
+  }) as TestAPI;
+  return api;
+}
+
+export const test: TestAPI = createTestAPI([]);

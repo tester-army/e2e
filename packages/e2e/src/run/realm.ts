@@ -17,7 +17,6 @@ import {
   groupChain,
   groupTitles,
   type GroupNode,
-  type HookKind,
   type ModuleRegistration,
   type RegisteredHook,
   type RegisteredTest,
@@ -53,11 +52,12 @@ export function findRegistered(realm: Realm, test: CollectedTest): RegisteredTes
 }
 
 /**
- * Runs one hook within its budget. A hook that overruns fails with the
- * runner's timeout error; `onTimeout` lets the caller cancel what it started.
+ * Runs one hook, or a fixture teardown, within its budget. One that overruns
+ * fails with the runner's timeout error naming `label`; `onTimeout` lets the
+ * caller cancel what it started.
  */
 export function runHook(
-  kind: HookKind,
+  label: string,
   run: () => void | Promise<void>,
   timeoutMs: number,
   onTimeout?: () => void,
@@ -67,7 +67,7 @@ export function runHook(
     timeoutMs,
     () => {
       onTimeout?.();
-      return new TestTimeoutError(`${kind} hook timed out`);
+      return new TestTimeoutError(`${label} timed out`);
     },
   );
 }
@@ -138,7 +138,7 @@ export class RealmManager {
       let failed: SerializedError | undefined;
       for (const hook of this.scopeHooks<SuiteHook>(realm, scope, 'beforeAll')) {
         try {
-          await runHook(hook.kind, () => hook.fn(this.suiteFixtures()), this.options.timeout);
+          await runHook(`${hook.kind} hook`, () => hook.fn(this.suiteFixtures()), this.options.timeout);
         } catch (cause) {
           const error = classifyError(cause);
           failed = serializeError(
@@ -182,7 +182,7 @@ export class RealmManager {
       realm.entered.delete(scope);
       for (const hook of this.scopeHooks<SuiteHook>(realm, scope, 'afterAll').toReversed()) {
         try {
-          await runHook(hook.kind, () => hook.fn(this.suiteFixtures()), this.options.cleanupTimeout);
+          await runHook(`${hook.kind} hook`, () => hook.fn(this.suiteFixtures()), this.options.cleanupTimeout);
         } catch (cause) {
           const error = classifyError(cause);
           const failed = serializeError(

@@ -144,6 +144,66 @@ describe('serial groups', () => {
   });
 });
 
+describe('test.extend', () => {
+  const fixture = async (_fixtures: unknown, use: (value: string) => Promise<void>) => {
+    await use('value');
+  };
+
+  it('without definitions returns the same test object', () => {
+    expect(test.extend<{ web: unknown }>()).toBe(test);
+  });
+
+  it('returns a new test whose registrations carry the accumulated chain in order', async () => {
+    const first = test.extend<{ one: string }>({ one: fixture });
+    const second = first.extend<{ two: string }>({ two: fixture });
+    expect(first).not.toBe(test);
+    expect(second).not.toBe(first);
+    const registration = await collectModule(async () => {
+      test('plain', noop);
+      first('one', noop);
+      second('two', noop);
+      second.skip('skipped', noop);
+      second.only('focused', noop);
+      second.setup('auth', { sessions: ['member'] }, noop);
+      second.beforeEach(noop);
+      second.afterEach(noop);
+      first.afterAll(noop);
+    });
+    const chains = registration.tests.map((item) => item.fixtures.map((definition) => definition.name));
+    expect(chains).toEqual([[], ['one'], ['one', 'two'], ['one', 'two'], ['one', 'two'], ['one', 'two']]);
+    expect(registration.tests[2]!.fixtures[1]!.fn).toBe(fixture);
+    const hookChains = registration.hooks.map((hook) =>
+      hook.kind === 'beforeEach' || hook.kind === 'afterEach'
+        ? hook.fixtures.map((definition) => definition.name)
+        : hook.kind,
+    );
+    expect(hookChains).toEqual([['one', 'two'], ['one', 'two'], 'afterAll']);
+  });
+
+  it('rejects anything but a plain object of functions', () => {
+    for (const definitions of [null, [], 'workspace', new Map()]) {
+      expect(() => test.extend(definitions as never)).toThrow(CollectionError);
+      expect(() => test.extend(definitions as never)).toThrow(/plain object/);
+    }
+    expect(() => test.extend({ workspace: 'not a function' } as never)).toThrow(
+      /fixture "workspace" must be a function/,
+    );
+    expect(() => test.extend({ '': fixture } as never)).toThrow(/must not be empty/);
+  });
+
+  it('rejects core fixture names and names an earlier extend already defined', () => {
+    for (const name of ['agent', 'app', 'screen', 'platform', 'session']) {
+      expect(() => test.extend({ [name]: fixture } as never)).toThrow(
+        new RegExp(`"${name}" is a core fixture`),
+      );
+    }
+    const extended = test.extend<{ workspace: string }>({ workspace: fixture });
+    expect(() => extended.extend({ workspace: fixture } as never)).toThrow(
+      /fixture "workspace" is already defined by an earlier test.extend\(\)/,
+    );
+  });
+});
+
 describe('collectFromRegistration', () => {
   it('derives stable IDs and detects duplicate title paths', async () => {
     const registration = await collectModule(async () => {

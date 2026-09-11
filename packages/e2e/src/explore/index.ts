@@ -231,6 +231,7 @@ function exploreRegistration(state: ExploreState, openApp: boolean, accounts: re
     },
     sessions: [],
     fn: createExploreBody({ state, stepTimeoutMs: STEP_TIMEOUT_MS, openApp, accounts }),
+    fixtures: [],
     group: undefined,
     mode: 'normal',
     source: undefined,

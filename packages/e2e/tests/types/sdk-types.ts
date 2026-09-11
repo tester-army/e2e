@@ -100,6 +100,49 @@ declare const condition: boolean;
 // @ts-expect-error a conditionally async describe is still asynchronous
 test.describe('conditionally asynchronous', () => condition ? undefined : Promise.resolve());
 
+// test.extend defines fixtures with setup and teardown; the body and the hooks see them typed.
+interface Workspace {
+  readonly id: string;
+  cleanup(): Promise<void>;
+}
+declare const createWorkspace: () => Promise<Workspace>;
+const withWorkspace = test.extend<{ workspace: Workspace }>({
+  workspace: async ({ app }, use) => {
+    await app.open();
+    const workspace = await createWorkspace();
+    await use(workspace);
+    await workspace.cleanup();
+  },
+});
+withWorkspace('renames it', async ({ workspace, app }) => {
+  workspace.id satisfies string;
+  await app.open();
+});
+withWorkspace.beforeEach(async ({ workspace }) => {
+  workspace.id satisfies string;
+});
+// A fixture that needs another fixture goes in a chained extend.
+withWorkspace.extend<{ member: string }>({
+  member: async ({ workspace }, use) => {
+    await use(workspace.id);
+  },
+});
+test.extend<{ owner: string; member: string }>({
+  owner: async (_fixtures, use) => {
+    await use('owner');
+  },
+  // @ts-expect-error a definition sees the fixtures of the test it extends, not its siblings
+  member: async ({ owner }, use) => {
+    await use(owner);
+  },
+});
+// @ts-expect-error a core fixture cannot be redefined
+test.extend<{ agent: string }>({ agent: async (_fixtures, use) => { await use('x'); } });
+// @ts-expect-error the value handed to use() has the declared fixture type
+test.extend<{ count: number }>({ count: async (_fixtures, use) => { await use('one'); } });
+// The zero-argument form still types an engine's contributed fixtures without defining them.
+test.extend<{ device: unknown }>()('types a device', async ({ device }) => { device satisfies unknown; });
+
 // A test, a group, and a call each pin a configured agent by name.
 test('as the buyer', { agent: 'buyer' }, async () => {});
 test.describe('admin flows', { agent: 'admin' }, () => {});
