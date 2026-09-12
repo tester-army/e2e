@@ -16,11 +16,11 @@ and needs no `APP_URL`. iOS needs Xcode and a simulator; Android needs the
 Android SDK and an emulator.
 
 Bring your own agent-device: the package declares `agent-device` as a peer
-dependency (`>=0.21.0 <0.22`) and does not install it. A project that already
+dependency (`0.21.x`) and does not install it. A project that already
 drives devices with the agent-device CLI keeps its version and one copy in
 `node_modules`; `e2e init` adds `agent-device` only to a project that has
-none. agent-device is 0.x, where a minor can break, so the range pins the
-minor the engine was built and tested against and widens with each engine
+none. agent-device is 0.x and its minors break, so the range pins the
+minor the engine was built and tested against and moves with each engine
 release. A version outside the range may be rejected by your package manager
 as an unmet peer (npm's `ERESOLVE`).
 

@@ -22,8 +22,9 @@ describe('playwrightRange', () => {
 });
 
 describe('agentDeviceRange', () => {
-  it('pins the minor of the agent-device the engine was built against, since 0.x minors can break', () => {
-    expect(agentDeviceRange('0.21.0')).toBe('>=0.21.0 <0.22');
+  it('pins the minor line of the agent-device the engine was built against, since 0.x minors break', () => {
+    expect(agentDeviceRange('0.21.1')).toBe('0.21.x');
+    expect(agentDeviceRange('0.22.0')).toBe('0.22.x');
   });
 
   it('accepts any 0.x when running from source, where nothing was recorded', () => {

@@ -53,15 +53,15 @@ export function playwrightRange(version: string | undefined): string {
  * The range init writes for `agent-device`, which `@e2edev/agent-device` peers
  * on rather than installs, so a project that already drives devices with the
  * agent-device CLI keeps one copy and one set of sessions. agent-device is
- * 0.x, where a minor can break, so the range pins the minor the engine was
- * built and tested against; the build records that version, and each
- * agent-device minor widens the range with an engine release. From source,
- * where nothing is recorded, any 0.x will do.
+ * 0.x and its minors break, so the range pins the minor the engine was built
+ * and tested against; the build records that version, and each agent-device
+ * minor moves the range with an engine release. From source, where nothing is
+ * recorded, any 0.x will do.
  */
 export function agentDeviceRange(version: string | undefined): string {
   if (version === undefined) return '0.x';
   const [major = '0', minor = '0'] = version.split('.');
-  return `>=${version} <${major}.${Number(minor) + 1}`;
+  return `${major}.${minor}.x`;
 }
 
 /** Builds prompt choices and scaffolds with defaults for the machine running init. */
