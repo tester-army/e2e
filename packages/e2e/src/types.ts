@@ -20,7 +20,6 @@ export type {
   Credentials,
   Secret,
   SecretConfig,
-  SecretDeclaration,
   SecretProvider,
   SecretPurpose,
   Secrets,

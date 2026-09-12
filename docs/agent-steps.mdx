@@ -65,9 +65,8 @@ around it.
 Every action goes through the runner: the action budget, and a 15 second
 bound on any single targeted action, so a tap blocked by a consent banner
 reports the element in the way instead of spending the whole
-`actionTimeout`. A secret fill is authorized against the app's site (or the
-credential's own `allowedOrigins`) and the field's purpose before the runner
-types it.
+`actionTimeout`. A secret fill is authorized against the step's declared
+secrets and the field's purpose before the runner types it.
 
 The loop guards itself. Three failed actions in a row earn a notice to change
 approach; five force a conclusion. A model that repeats the same call or

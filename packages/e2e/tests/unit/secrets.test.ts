@@ -8,9 +8,8 @@ const adminPassword: ResolvedSecret = {
   name: 'admin',
   purpose: 'password',
   value: 'super-secret-password',
-  allowedOrigins: undefined,
 };
-const apiKey: ResolvedSecret = { name: 'api-key', purpose: 'generic-secret', value: 'sk_live_1', allowedOrigins: undefined };
+const apiKey: ResolvedSecret = { name: 'api-key', purpose: 'generic-secret', value: 'sk_live_1' };
 
 function registry(credentialList: ResolvedCredential[], secretList: ResolvedSecret[]): SecretRegistry {
   return {

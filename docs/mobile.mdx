@@ -189,7 +189,7 @@ The read-only `screenshot` tool creates no gap.
 | --- | --- |
 | `app.open('/path')` and the agent's `navigate` verb | No URL. The attempt starts in the pinned `app`; there is no `navigate` |
 | `test.setup` saves a session, `session:` restores it | Not available. A simulator has no portable session snapshot; sign in per test or seed the app |
-| A `Secret` fills through `type_secret` | Not offered. A secret fill needs a page origin the runner can check, and `app://` has none. Use `screen.getByLabel(...).fill(secret)` in a deterministic step |
+| A `Secret` fills through `type_secret` | The same: `type_secret` fills a declared secret into a secure field, and `screen.getByLabel(...).fill(secret)` works in a deterministic step |
 | Playwright trace per attempt | Screenshots only, with every secure field painted black. No trace |
 | `--video` writes a WebM screencast | `--video` writes an MP4 of the device screen with taps shown |
 | The cache anchors on the page path | The cache anchors on `app://device/<bundle id>/<screen title>`, read off the navigation bar |

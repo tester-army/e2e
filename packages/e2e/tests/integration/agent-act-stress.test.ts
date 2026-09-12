@@ -65,38 +65,6 @@ describe('secret fill policy under a hostile executor', () => {
     }
   }, 120_000);
 
-  it('refuses to fill a secret on a disallowed origin', async () => {
-    const executor: StepExecutor = {
-      name: 'origin-attacker',
-      async runStep(context: StepExecutorContext) {
-        const observation = await context.observe();
-        const password = nodeIdFor(observation.text, /textbox "Password"/);
-        await context.actions.typeSecret({ id: password }, 'admin');
-        return { status: 'passed' as const, summary: 'should never get here' };
-      },
-    };
-    const { outcome, project } = await runProject(
-      { 'tests/secret.e2e.ts': SECRET_SUITE },
-      {
-        appUrl: app.url,
-        config: {
-          tests: 'tests/**/*.e2e.ts',
-          agents: { default: executor },
-          credentials: {
-            admin: { ...CREDS.admin, allowedOrigins: ['https://elsewhere.example'] },
-          },
-        },
-      },
-    );
-    try {
-      const result = resultByTitle(outcome, 'secret probe');
-      expect(result.status).toBe('failed');
-      expect(result.attempts.at(-1)!.error?.code).toBe('POLICY_DENIED');
-      expect(result.attempts.at(-1)!.error?.message).toContain('origin');
-    } finally {
-      project.cleanup();
-    }
-  }, 120_000);
 
   it('never leaks the plaintext into prompts or the transcript', async () => {
     const model = installFakeLoopModel((call) => {

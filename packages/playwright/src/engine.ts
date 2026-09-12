@@ -51,7 +51,7 @@ export function playwright(options: PlaywrightOptions = {}): EngineHandle {
   if ('allowedOrigins' in options) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
-      'playwright({ allowedOrigins }) is gone: secrets, headers, and basicAuth stay on the site of `url` by default, and a credential or secret that belongs elsewhere declares its own allowedOrigins',
+      'playwright({ allowedOrigins }) is gone: navigation and secret fills are not gated by origin; remove the option',
     );
   }
   if (options.headers !== undefined) validateHeaders(options.headers);

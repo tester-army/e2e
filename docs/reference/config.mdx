@@ -97,8 +97,8 @@ acquiring a fixture it does not contribute fails with
 The app is declared by the engine that drives it. The browser engine takes
 the declaration as options of `playwright(...)`; the device engine derives it
 from the app it pins. The runner resolves it at config load and owns what is
-built on it: the site secrets and headers stay on, cache and session
-identity, the report's target record, and the app process.
+built on it: the site the browser engine's headers stay on, cache and
+session identity, the report's target record, and the app process.
 
 ```ts
 export interface EngineAppDeclaration {
@@ -123,15 +123,12 @@ export interface EngineAppDeclaration {
 ### The app's site
 
 A test or the agent may open any http(s) URL; `file:`, `data:`, and
-`javascript:` are `POLICY_DENIED`. What stays on the app is where its secrets
-go: a credential or secret is filled only on a page whose host is on the
-**site** of `url`, the registrable domain (`app.example.com` and
-`auth.example.com` are one site, `example.co.uk` and `shop.example.co.uk`
-too; `localhost` and an IP literal are sites of their own). The same rule
-scopes the browser engine's `headers` and decides which child frames an
-observation reads. Without a `url` there is no site and no check. A
-credential that belongs to a third-party page, a sign-in provider, declares
-its own [`allowedOrigins`](#credentials).
+`javascript:` are `POLICY_DENIED`. Secret fills are not gated by origin
+either. The **site** of `url`, its registrable domain (`app.example.com` and
+`auth.example.com` are one site; `localhost` and an IP literal are sites of
+their own), scopes two things only: the browser engine's
+[`headers`](/reference/playwright#options) reach the site and no other host,
+and child frames off the site stay out of observations.
 
 ### Free ports
 
@@ -394,7 +391,6 @@ credentials?: Readonly<
     {
       username: string;
       password: string | SecretProvider;
-      allowedOrigins?: readonly string[];
     }
   >
 >;
@@ -406,7 +402,6 @@ type SecretProvider = () => string | Promise<string>;
 | --- | --- | --- | --- |
 | `username` | `string` | yes | Default username |
 | `password` | `string \| SecretProvider` | yes | A static value, or a provider called on every authorized fill (a vault lookup, a freshly computed TOTP). Recorded in the config digest by name only. An `E2E_USER_*` override wins over a provider |
-| `allowedOrigins` | `readonly string[]` | no | The exact origins this credential may be filled on, replacing the [site rule](#the-apps-site) for it: a sign-in provider on another domain, or one origin of several on the site. Serialized origins, checked on every fill, deterministic or agentic |
 
 `credentials.user(name)` resolves a configured entry into a `Credential`.
 The username is a plain string; the password is an opaque `Secret` that test
@@ -432,19 +427,14 @@ See [Signing in](/authentication).
 ```ts
 secrets?: Readonly<Record<string, SecretConfig>>;
 
-type SecretConfig =
-  | string
-  | SecretProvider
-  | { value: string | SecretProvider; allowedOrigins?: readonly string[] };
+type SecretConfig = string | SecretProvider;
 ```
 
-| Key | Type | Required | Notes |
-| --- | --- | --- | --- |
-| `value` | `string \| SecretProvider` | yes | A static value, or a provider called on every authorized fill. Recorded in the config digest by name only. An `E2E_SECRET_<NAME>` override wins over both |
-| `allowedOrigins` | `readonly string[]` | no | The exact origins this secret may be filled on, replacing the [site rule](#the-apps-site) for it. Serialized origins, checked on every fill, deterministic or agentic |
-
-A bare string or function is shorthand for `{ value }`. Every entry must
-resolve to a non-empty string or a function; anything else is `INVALID_CONFIG`.
+An entry is a static value, or a provider called on every authorized fill (a
+vault lookup, a freshly computed TOTP). It is recorded in the config digest by
+name only, and an `E2E_SECRET_<NAME>` override wins over both. Every entry
+must resolve to a non-empty string or a function; anything else is
+`INVALID_CONFIG`.
 
 `secrets.get(name)` returns the opaque `Secret` for a configured entry. It has
 no plaintext accessor and is accepted only by `locator.fill` and `agent.act`

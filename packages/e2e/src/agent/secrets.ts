@@ -1,7 +1,6 @@
 /** Host-side secret fill authorization. */
 
 import type { TargetSession, OperationContext, SemanticNode } from '../engine/surface.ts';
-import { secretOriginAllowed } from '../config/secrets.ts';
 import { unavailableCode } from '../secrets.ts';
 import type { Secret } from '../types.ts';
 import { AgentError, toAgentError } from './error.ts';
@@ -39,15 +38,6 @@ export async function authorizeSecretFill(
     throw new AgentError(code, `secret "${secret.name}" is not configured`);
   }
 
-  const origin = await currentOrigin(host);
-  if (!secretOriginAllowed(origin, runtime.app.site, registered)) {
-    host.recordPolicy('secret.origin', 'denied', 'POLICY_DENIED');
-    throw new AgentError(
-      'POLICY_DENIED',
-      `origin ${origin} is not authorized for secret "${secret.name}"`,
-    );
-  }
-
   if (node.states?.disabled === true) {
     host.recordPolicy('secret.sink', 'denied', 'POLICY_DENIED');
     throw new AgentError('POLICY_DENIED', 'the target field is disabled');
@@ -78,24 +68,3 @@ export async function authorizeSecretFill(
   }
 }
 
-/** Reads the current top-level origin for origin policy checks. */
-async function currentOrigin(host: SecretFillHost): Promise<string> {
-  const url = host.session.url;
-  if (url === undefined) {
-    throw new AgentError(
-      'POLICY_DENIED',
-      'secret fills require an engine that exposes the current top-level URL',
-    );
-  }
-  let href: string;
-  try {
-    href = await url(host.operation());
-  } catch (cause) {
-    throw toAgentError(cause);
-  }
-  try {
-    return new URL(href).origin;
-  } catch {
-    throw new AgentError('POLICY_DENIED', `the current URL ${href} is not a valid origin`);
-  }
-}

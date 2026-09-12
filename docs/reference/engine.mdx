@@ -236,7 +236,7 @@ browser engine passes its `url` and `command` options through, a device
 engine declares the bundle id it pins as `identity`. The runner resolves it
 once per target at config load (invalid values fail naming the target) and
 owns everything built on it: the app's site (the URL's registrable domain,
-where secrets and headers may go), cache and session identity (`identity`
+where a browser engine's headers may go), cache and session identity (`identity`
 defaults to the URL's origin and path; a surface without a URL declares one
 or keys entries on the target alone), the report's target record, and the
 app process (`command`, polled at `readyUrl`, default `url`; targets

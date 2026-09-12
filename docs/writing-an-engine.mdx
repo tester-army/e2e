@@ -103,7 +103,7 @@ never silently.
 | `artifacts.{screenshot,startTrace?,stopTrace?,startVideo?,stopVideo?}` | `artifacts` | Screenshots while pixels are allowed (`app.screenshot()` raises `POLICY_DENIED` after a secret fill); traces when the trace hooks exist; video and `--video` when both `startVideo` and `stopVideo` exist |
 | `app.{url?,environment?,identity?,command?,readyUrl?,services?}` | | declares the app under test: its site, cache and session identity, the app process ([reference](/reference/config#the-app-under-test)) |
 | `app.{navigate?,back?,restart?,clearState?}` | | `app.open()` and the agent's `navigate` verb, `app.back()`, `app.restart()`, `app.clearState()` |
-| `url(context)` | | trace start anchors, the secret-fill site check |
+| `url(context)` | | trace start anchors, the observation's URL line |
 | `fixtures.<name>` | `<name>` | a contributed fixture, typed through `test.extend` |
 
 The agent derives its toolset from this manifest and the step's declared
@@ -113,8 +113,8 @@ as one `LocatorAction` on `perform`. Implement each action once and throw
 `UNSUPPORTED_CAPABILITY` for a kind the surface cannot express.
 
 There is no separate secure-fill capability flag. Before dispatching a
-secret fill, the runner checks the declared credential, the page's site,
-current observation, and compatible editable field. The engine receives a
+secret fill, the runner checks the declared credential, current
+observation, and compatible editable field. The engine receives a
 `fill` action with `sensitive: true` and must handle it securely or throw
 `UNSUPPORTED_CAPABILITY`; declaring `perform` does not hide the tool when
 that particular action is unsupported.

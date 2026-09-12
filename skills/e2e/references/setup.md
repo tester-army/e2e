@@ -102,8 +102,8 @@ export default {
 | `reporters` | `['list']` | `list`, `json`, `junit`, `markdown`, and reporter objects (`{ name, onEvent?, onRunFinished? }`) that receive the finished run. `json` excludes `list`; `--reporter` keeps the objects. |
 | `cache` | `'read-write'`, `'read-only'` in CI | The trace cache for `agent.act`; `'off'` disables it. |
 | `agents` | `{ default: built-in }` | Agents by name. `default` is what tests run with; `e2e run --agent <name>` runs with another. Each entry is `createAgent(...)`, an options block `{ model, judge, context, maxSteps, maxModelCalls, vision, providerOptions }`, or a custom `StepExecutor`. `model` is an AI SDK instance; without one anywhere, acquiring `agent` is `MODEL_UNAVAILABLE`. |
-| `credentials` | `{}` | Named `{ username, password, allowedOrigins? }` entries; `password` may be a function returning the value. A credential fills only on the site of the engine's `url` unless `allowedOrigins` names other exact origins (a third-party sign-in page). |
-| `secrets` | `{}` | Named values the model never sees (API keys, tokens): a string, a function returning the value, or `{ value, allowedOrigins? }`. A name cannot also be a credential. |
+| `credentials` | `{}` | Named `{ username, password }` entries; `password` may be a function returning the value. |
+| `secrets` | `{}` | Named values the model never sees (API keys, tokens): a string or a function returning the value. A name cannot also be a credential. |
 | `screen.testIdAttribute` | `'data-testid'` | Attribute read by `getByTestId`. |
 | `artifacts` | `['screenshot', 'trace']` | Kinds to keep (`screenshot`, `trace`, and the opt-in `video`), or `{ kinds, store, video }`; `video: { retain: 'on-failure' }` keeps only the recordings of attempts that did not pass. |
 | `projectId` | the package name | Report and cache identity. |

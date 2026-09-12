@@ -13,7 +13,6 @@ import type { DebugTrace } from '../internal/debug.ts';
 import { ConfigurationError, errorMessage, InfrastructureError, TestError } from '../internal/errors.ts';
 import { didYouMean } from '../internal/suggest.ts';
 import { sessionSecrecy, type SessionSecrecy } from './secrecy.ts';
-import { secretOriginAllowed } from '../config/secrets.ts';
 import { unavailableCode } from '../secrets.ts';
 import { obj } from '../internal/objects.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
@@ -106,19 +105,6 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
       const registered = environment.config.secrets.get(secret.name);
       if (registered === undefined) {
         throw new ConfigurationError(unavailableCode(secret), `secret "${secret.name}" is not configured`);
-      }
-      // A test names the field, so the sink is the author's choice; the page
-      // is not. A redirect must not carry the value off the app's site, so a
-      // deterministic fill runs the same site rule as `type_secret` on a
-      // target that has one. A device target has none: its `app://` URL is a
-      // cache anchor, not a place a page can steer to, and the deterministic
-      // fill is the documented way to fill a secret there.
-      const url = environment.session.url;
-      if (url !== undefined && environment.target.app.site !== undefined) {
-        const origin = new URL(await url(engine.operation())).origin;
-        if (!secretOriginAllowed(origin, environment.target.app.site, registered)) {
-          throw new ConfigurationError('POLICY_DENIED', `origin ${origin} is not authorized for secret "${secret.name}"`);
-        }
       }
       const value = registered.value;
       const plaintext = typeof value === 'function' ? await value() : value;

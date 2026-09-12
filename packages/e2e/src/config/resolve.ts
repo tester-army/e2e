@@ -36,7 +36,7 @@ import {
   type ResolvedBaseLimits,
 } from './agent.ts';
 import { digestAppDeclaration, resolveTargetApp, type ResolvedApp } from './app.ts';
-import { envName, isSecretValue, normalizeSecretConfig, validateAllowedOrigins, validateSecretDeclaration } from './secrets.ts';
+import { envName, isSecretValue } from './secrets.ts';
 
 export type { ResolvedAgentConfig, ResolvedLimits } from './agent.ts';
 export type { ResolvedApp } from './app.ts';
@@ -63,8 +63,6 @@ export interface ResolvedSecret {
   readonly purpose: SecretPurpose;
   /** A static value, or a provider resolved fresh on every authorized fill. */
   readonly value: string | SecretProvider;
-  /** Narrows the target's origin policy for this secret; undefined leaves it as is. */
-  readonly allowedOrigins: readonly string[] | undefined;
 }
 
 /**
@@ -736,9 +734,8 @@ function resolveSecrets(
         `credential "${name}" password must be a non-empty string or a provider function`,
       );
     }
-    validateAllowedOrigins(`credential "${name}"`, credential.allowedOrigins);
     credentials.set(name, { name, username });
-    secrets.set(name, { name, purpose: 'password', value: password, allowedOrigins: credential.allowedOrigins });
+    secrets.set(name, { name, purpose: 'password', value: password });
   }
   for (const [name, entry] of Object.entries(raw.secrets ?? {})) {
     if (secrets.has(name)) {
@@ -747,16 +744,14 @@ function resolveSecrets(
         `secret "${name}" is also a credential; a credential's password is the secret of its name, so declare one or the other`,
       );
     }
-    const declared = normalizeSecretConfig(entry);
-    if (declared === entry) validateSecretDeclaration(`secret "${name}"`, declared);
-    const value = env[envName('E2E_SECRET', name)] ?? declared.value;
+    const value = env[envName('E2E_SECRET', name)] ?? entry;
     if (!isSecretValue(value)) {
       throw new ConfigurationError(
         'INVALID_CONFIG',
-        `secret "${name}" must be a non-empty string or a provider function, or { value, allowedOrigins? }`,
+        `secret "${name}" must be a non-empty string or a provider function`,
       );
     }
-    secrets.set(name, { name, purpose: 'generic-secret', value, allowedOrigins: declared.allowedOrigins });
+    secrets.set(name, { name, purpose: 'generic-secret', value });
   }
   return { credentials, secrets };
 }
@@ -863,22 +858,13 @@ function computeConfigDigest(raw: E2EConfig, projectId: string): string {
     sanitized['credentials'] = Object.fromEntries(
       Object.entries(raw.credentials).map(([name, credential]) => [
         name,
-        {
-          username: credential.username,
-          password: { secretName: name },
-          ...(credential.allowedOrigins !== undefined
-            ? { allowedOrigins: credential.allowedOrigins }
-            : {}),
-        },
+        { username: credential.username, password: { secretName: name } },
       ]),
     );
   }
   if (raw.secrets !== undefined) {
     sanitized['secrets'] = Object.fromEntries(
-      Object.entries(raw.secrets).map(([name, entry]) => [
-        name,
-        { ...normalizeSecretConfig(entry), value: { secretName: name } },
-      ]),
+      Object.keys(raw.secrets).map((name) => [name, { secretName: name }]),
     );
   }
   if (raw.targets !== undefined) {

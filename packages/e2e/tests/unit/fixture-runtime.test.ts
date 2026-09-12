@@ -144,12 +144,10 @@ describe('generic secrets', () => {
   });
 
   it.each([
-    ['the app origin', 'https://app.test/checkout', undefined, true],
-    ['another host on the app\'s site', 'https://auth.app.test/login', undefined, true],
-    ['a foreign site', 'https://evil.test/collect', undefined, false],
-    ['an origin the secret\'s own list names, off the app\'s site', 'https://accounts.idp.test/', ['https://accounts.idp.test'], true],
-    ['an origin outside the secret\'s own list', 'https://app.test/', ['https://accounts.idp.test'], false],
-  ])('a deterministic fill runs the site rule: %s', async (_label, currentUrl, allowedOrigins, allowed) => {
+    ['the app origin', 'https://app.test/checkout'],
+    ['another host on the app\'s site', 'https://auth.app.test/login'],
+    ['a third-party sign-in page', 'https://accounts.idp.test/'],
+  ])('a deterministic fill is not gated by origin: %s', async (_label, currentUrl) => {
     let filled: string | undefined;
     const engine = defineEngine({
       name: 'fake', version: '1', spiVersion: 1,
@@ -159,19 +157,11 @@ describe('generic secrets', () => {
       locate: async () => [{ ref: { id: 'key', revision: '' }, role: 'textbox', name: 'API key' }],
       perform: async (_ref, action) => { if (action.kind === 'fill') filled = action.value; },
     });
-    const { fixtures, config } = runtime(engine, {
-      secrets: { key: allowedOrigins === undefined ? 'sk_live_1' : { value: 'sk_live_1', allowedOrigins } },
-    });
+    const { fixtures, config } = runtime(engine, { secrets: { key: 'sk_live_1' } });
     setSecretRegistry(config);
     try {
-      const fill = fixtures.screen.getByLabel('API key').fill(secrets.get('key'));
-      if (allowed) {
-        await fill;
-        expect(filled).toBe('sk_live_1');
-      } else {
-        await expect(fill).rejects.toMatchObject({ code: 'POLICY_DENIED' });
-        expect(filled).toBeUndefined();
-      }
+      await fixtures.screen.getByLabel('API key').fill(secrets.get('key'));
+      expect(filled).toBe('sk_live_1');
     } finally {
       setSecretRegistry(undefined);
     }

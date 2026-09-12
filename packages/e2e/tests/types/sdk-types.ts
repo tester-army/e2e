@@ -42,8 +42,8 @@ declare const engine: EngineHandle;
 ({ targets: [{ engine }] }) satisfies E2EConfig;
 declare const model: import('../../src/types.ts').ModelInstance;
 
-// Secrets: a bare value, a provider, or a narrowed entry; every handle is the same opaque Secret.
-({ secrets: { key: 'sk_test', totp: () => '123456', scoped: { value: 'v', allowedOrigins: ['https://a.test'] } } }) satisfies E2EConfig;
+// Secrets: a bare value or a provider; every handle is the same opaque Secret.
+({ secrets: { key: 'sk_test', totp: () => '123456' } }) satisfies E2EConfig;
 // @ts-expect-error a secret needs a value; an env variable that may be unset must be defaulted.
 ({ secrets: { key: process.env['STRIPE_KEY'] } }) satisfies E2EConfig;
 secrets.get('key') satisfies Secret;

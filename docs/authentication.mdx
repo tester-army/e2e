@@ -164,31 +164,6 @@ Two consequences worth planning for:
   because a page is free to mirror a typed value anywhere. Fill secrets in a
   setup test and consume the session elsewhere to keep full evidence.
 
-### Where a credential may be used
-
-A password is filled only on a page on the app's site: the registrable
-domain of the engine's `url`, so `auth.example.com` is fine for an app at
-`app.example.com` and a redirect to another domain is not. A credential that
-belongs elsewhere, a sign-in provider on its own domain, names the exact
-origins it may be filled on:
-
-```ts title="e2e.config.ts"
-credentials: {
-  admin: {
-    username: 'admin@example.test',
-    password: process.env.ADMIN_PASSWORD ?? '',
-    allowedOrigins: ['https://accounts.idp.example'],
-  },
-},
-```
-
-A per-credential `allowedOrigins` replaces the site rule for that credential,
-so a page that steers the flow anywhere else cannot collect the password. The
-rule applies to both forms on a target with a URL: `locator.fill` checks the
-current origin before resolving the value, exactly as `type_secret` does. A
-device target has no site, so its deterministic fills are not checked. Each
-entry must be a serialized origin; anything else fails config loading.
-
 ## Secrets that are not passwords
 
 An API key pasted into a settings form, a webhook token, a license code: any
@@ -200,7 +175,7 @@ export default {
   targets: [{ engine: playwright({ url: 'http://127.0.0.1:3000' }) }],
   secrets: {
     'stripe-key': process.env.STRIPE_TEST_KEY ?? '',
-    'webhook-token': { value: process.env.WEBHOOK_TOKEN ?? '', allowedOrigins: ['https://app.staging.example.com'] },
+    'webhook-token': process.env.WEBHOOK_TOKEN ?? '',
   },
 } satisfies E2EConfig;
 ```
@@ -250,9 +225,8 @@ The agentic form is the one to trust least, so here is the whole path:
    is replaced with `{ kind: 'secret', name: 'stripe-key', purpose: 'generic-secret' }`.
    The handle itself holds no value, so there is nothing else to serialize.
 2. The model plans with the placeholder and calls `type_secret` with a field
-   and the name. The runner refuses a name the step's params did not declare,
-   checks the page is on the app's site or on an origin the secret's own
-   `allowedOrigins` names, and checks the field is an editable input.
+   and the name. The runner refuses a name the step's params did not declare
+   and checks the field is an editable input.
 3. Only then is the plaintext resolved, on the host, and handed straight to
    the engine's fill. The model and the executor never receive it.
 4. A plain input now shows the value. Every observation, action result,
