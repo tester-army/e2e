@@ -48,6 +48,7 @@ function foreignStale(retryable: boolean): Error {
 
 function makeEngine(script: ScreenScript, options: { actionTimeout?: number } = {}) {
   const calls = { resolve: 0, read: 0, perform: 0 };
+  const origins: (string | undefined)[] = [];
   const next = <T>(steps: T[] | undefined, kind: keyof typeof calls): T | undefined => {
     const step = steps?.[calls[kind]];
     calls[kind] += 1;
@@ -71,7 +72,8 @@ function makeEngine(script: ScreenScript, options: { actionTimeout?: number } = 
         if (step === 'stale-retryable') throw new EngineError('NODE_STALE', 'stale', { retryable: true });
         throw new EngineError('ENGINE_FAILURE', 'engine died', { retryable: false });
       },
-      async perform() {
+      async perform(_ref: unknown, _action: unknown, operation: { origin?: string }) {
+        origins.push(operation.origin);
         const step = next(script.perform, 'perform');
         if (step === undefined || typeof step === 'function') return step?.();
         if (step === 'stale') throw new EngineError('NODE_STALE', 'stale', { retryable: true });
@@ -92,7 +94,7 @@ function makeEngine(script: ScreenScript, options: { actionTimeout?: number } = 
     actionTimeout: options.actionTimeout ?? 1_000,
     assertionTimeout: 1_000,
   });
-  return { engine, calls };
+  return { engine, calls, origins };
 }
 
 describe('LocatorEngine read retry contract', () => {
@@ -165,6 +167,12 @@ describe('LocatorEngine perform contract', () => {
     await engine.perform(EXPRESSION, { kind: 'tap' });
     expect(calls.perform).toBe(2);
     expect(calls.resolve).toBe(2);
+  });
+
+  it('marks every action it performs with the test origin, so an engine can act without settling', async () => {
+    const { engine, origins } = makeEngine({});
+    await engine.perform(EXPRESSION, { kind: 'tap' });
+    expect(origins).toEqual(['test']);
   });
 
   it('never repeats an action that may have committed', async () => {

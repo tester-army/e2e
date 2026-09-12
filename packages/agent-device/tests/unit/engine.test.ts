@@ -17,7 +17,7 @@ import { buildEngine } from '../../src/engine.ts';
 import type { Device } from '../../src/device.ts';
 import type { AgentDeviceOptions } from '../../src/options.ts';
 import { AgentDeviceSurface } from '../../src/surface.ts';
-import { createFakeClient, SETTINGS_SNAPSHOT, type FakeClient } from '../helpers/fake-client.ts';
+import { createFakeClient, SETTINGS_NODES, SETTINGS_SNAPSHOT, type FakeClient } from '../helpers/fake-client.ts';
 
 /** Deliberately not `process.cwd()`: relative build paths must resolve here, not there. */
 const PROJECT_ROOT = '/project';
@@ -36,6 +36,8 @@ function poolVariableIn(env: NodeJS.ProcessEnv, readable: string): string {
   if (key === undefined) throw new Error(`no pool variable for ${readable} in ${Object.keys(env).join(', ')}`);
   return key;
 }
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function boot(engine: EngineHandle, targetName = 'ios-simulator', workerSlot = 0): Promise<void> {
   await engine.init!({
@@ -1122,5 +1124,84 @@ describe('video', () => {
     await h.engine.endAttempt!(cleanup());
     expect(stops).toBe(3);
     expect(h.fake.lastArgs('recording.record')).toEqual({ action: 'stop' });
+  });
+});
+
+describe('deterministic actions', () => {
+  const test = (): OperationContext => ({ ...operation(), origin: 'test' });
+
+  it('acts at once and without settling on a control that was already on screen before the last action', async () => {
+    const h = harness();
+    await openAttempt(h);
+    // Two looks at the screen: the second is the one the action resolves from, the first stands for the screen before the launch.
+    await observed(h, 'About');
+    await h.engine.perform!((await observed(h, 'Back')).ref, { kind: 'tap' }, test());
+    const startedAt = Date.now();
+    const about = await observed(h, 'About');
+    await h.engine.perform!(about.ref, { kind: 'tap' }, test());
+    expect(Date.now() - startedAt).toBeLessThan(200);
+    expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e4' });
+    expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(3);
+  });
+
+  it('gives a control that came with the last action the transition budget before acting on it', async () => {
+    const h = harness({ transition: 120 });
+    await openAttempt(h);
+    await h.engine.perform!((await observed(h, 'Back')).ref, { kind: 'tap' }, test());
+    // The next look shows a control that was not there before the tap: a sheet's button.
+    h.fake.respond('capture.snapshot', () => ({
+      ...SETTINGS_SNAPSHOT,
+      nodes: [
+        ...SETTINGS_NODES,
+        { ref: '@e11', index: 10, parentIndex: 0, depth: 1, type: 'button', label: 'Submit', rect: { x: 0, y: 600, width: 390, height: 44 } },
+      ],
+    }));
+    const startedAt = Date.now();
+    const submit = await observed(h, 'Submit');
+    await h.engine.perform!(submit.ref, { kind: 'tap' }, test());
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(100);
+    expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e11' });
+  });
+
+  it('gives a control that moved with the last action the budget too, and skips it once the budget has elapsed', async () => {
+    const h = harness({ transition: 120 });
+    await openAttempt(h);
+    await h.engine.perform!((await observed(h, 'Back')).ref, { kind: 'tap' }, test());
+    h.fake.respond('capture.snapshot', () => ({
+      ...SETTINGS_SNAPSHOT,
+      nodes: SETTINGS_NODES.map((node) =>
+        node.identifier === 'ABOUT' || node.label === 'About' ? { ...node, rect: { x: 0, y: 300, width: 390, height: 44 } } : node,
+      ),
+    }));
+    let startedAt = Date.now();
+    await h.engine.perform!((await observed(h, 'About')).ref, { kind: 'tap' }, test());
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(100);
+    // Well after the last action, nothing waits.
+    await sleep(150);
+    startedAt = Date.now();
+    await h.engine.perform!((await observed(h, 'About')).ref, { kind: 'tap' }, test());
+    expect(Date.now() - startedAt).toBeLessThan(80);
+  });
+
+  it('fills, goes back, and taps at a point without settling; the agent keeps the settle path', async () => {
+    const h = harness();
+    await openAttempt(h);
+    await sleep(0);
+    const search = await observed(h, 'Search');
+    await h.engine.perform!(search.ref, { kind: 'fill', value: 'blue', sensitive: false }, test());
+    expect(h.fake.lastArgs('interactions.fill')).toEqual({ ref: '@e7', text: 'blue' });
+    await h.engine.app!.back!(test());
+    expect(h.fake.lastArgs('command.back')).toEqual({});
+    await h.engine.tapAt!({ x: 10, y: 20 }, test());
+    expect(h.fake.lastArgs('interactions.press')).toEqual({ x: 10, y: 20 });
+
+    const about = await observed(h, 'About');
+    await h.engine.perform!(about.ref, { kind: 'tap' }, { ...operation(), origin: 'agent' });
+    expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e4', settle: true, settleQuietMs: 150 });
+  });
+
+  it('rejects a negative or fractional transition budget', () => {
+    expect(() => harness({ transition: -5 })).toThrow(/non-negative integer/);
+    expect(() => harness({ transition: 0.5 })).toThrow(/non-negative integer/);
   });
 });

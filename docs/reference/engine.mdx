@@ -61,6 +61,14 @@ export interface Engine {
 and is part of the trace cache identity: an engine that resolves nodes
 differently must never replay another version's traces.
 
+Every surface call carries an `OperationContext`: the abort signal, the
+remaining budget, the run and attempt ids, and `origin`, who is acting.
+`'test'` is a test's own deterministic step, `'agent'` the agent; absent means
+the agent. A step verifies its outcome with `expect`, so an engine may act as
+soon as the target holds still; the agent reads the screen right after
+acting, so an engine may let the transition end first. The device engine uses
+this to tap without settling for tests and to settle for the agent.
+
 `workers` bounds how many workers the engine serves per target at once: one
 per surface it can drive concurrently, such as the size of a device pool. The
 scheduler never starts more for that target, whatever `config.workers`

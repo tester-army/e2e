@@ -25,7 +25,7 @@ export function boundedOperation(
   actionTimeout: number,
   deadline: Deadline,
 ): OperationContext {
-  return engine.operation(Math.max(1, Math.min(actionTimeout, deadline.remaining())));
+  return { ...engine.operation(Math.max(1, Math.min(actionTimeout, deadline.remaining()))), origin: 'agent' };
 }
 
 /** Records one policy decision as a child event of the current step. */

@@ -91,6 +91,30 @@ interface NodeBinding {
   readonly controlRef: string;
 }
 
+
+/**
+ * How long a control that appeared or moved with the last action is given to
+ * finish arriving before a test acts on it. Accessibility frames come from
+ * the model layer, which jumps to the final position the moment a transition
+ * starts, so the tree cannot tell a sliding control from a landed one; a
+ * modal or pushed screen keeps sliding for about half a second after the
+ * action that opened it, and a tap at a point the control has not reached
+ * yet lands on whatever is behind it. Controls that were already on screen
+ * at the same place before the action are acted on at once.
+ */
+const DEFAULT_TRANSITION_MS = 500;
+
+/** The centre of a rect in logical pixels. */
+function centreOf(rect: Rect): { x: number; y: number } {
+  return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+}
+
+/** Whether two rects are the same to the pixel; a missing rect never matches, so a target must be measurable to be stable. */
+function sameRect(a: Rect | undefined, b: Rect | undefined): boolean {
+  if (a === undefined || b === undefined) return false;
+  return Math.abs(a.x - b.x) < 1 && Math.abs(a.y - b.y) < 1 && Math.abs(a.width - b.width) < 1 && Math.abs(a.height - b.height) < 1;
+}
+
 const MAX_LOCATED_REFS = 2048;
 
 interface Attempt {
@@ -145,6 +169,15 @@ type SettleOptions = { readonly settle: true; readonly settleQuietMs: number } |
 
 const DEFAULT_SETTLE_QUIET_MS = 150;
 
+/** Resolves the `transition` option: the default budget or a custom one. */
+function transitionMs(transition: AgentDeviceOptions['transition']): number {
+  const budget = transition ?? DEFAULT_TRANSITION_MS;
+  if (!Number.isInteger(budget) || budget < 0) {
+    throw new ConfigurationError('INVALID_CONFIG', 'agentDevice: `transition` must be a non-negative integer of milliseconds');
+  }
+  return budget;
+}
+
 /** Resolves the `settle` option: the default window, a custom one, or no wait at all. */
 function settleOptions(settle: AgentDeviceOptions['settle']): SettleOptions {
   if (settle === false) return {};
@@ -181,6 +214,14 @@ export class AgentDeviceSurface {
   readonly pool: DevicePool;
   /** The settle wait every action carries: quiet window from the `settle` option, or nothing when it is `false`. */
   readonly settleOptions: SettleOptions;
+  /** When this surface last acted on the device (an input or an app launch); the screen may be in transition for a while after. */
+  private lastActionAt = 0;
+  /** The screen as last projected before that action, to tell controls that were already there from ones that came with it. */
+  private indexBeforeAction: readonly ProjectedNode[] | undefined;
+  /** The most recent projection of the screen, from any observe or locate. */
+  private latestIndex: readonly ProjectedNode[] | undefined;
+  /** Budget a control that came with the last action gets to finish arriving; see DEFAULT_TRANSITION_MS. */
+  private readonly transitionMs: number;
 
   constructor(
     readonly options: AgentDeviceOptions,
@@ -188,6 +229,7 @@ export class AgentDeviceSurface {
   ) {
     this.pool = new DevicePool(options, createClient);
     this.settleOptions = settleOptions(options.settle);
+    this.transitionMs = transitionMs(options.transition);
   }
 
   /** Whether the manifest declares app restart and state clearing. */
@@ -365,6 +407,7 @@ export class AgentDeviceSurface {
         }),
       signal,
     );
+    this.markAction(this.latestIndex);
     this.appIdentity = result.appBundleId ?? result.appName ?? app;
     this.generation = new Map();
     this.located.clear();
@@ -427,13 +470,15 @@ export class AgentDeviceSurface {
   }
 
   private project(raw: RawSnapshot): ProjectedSnapshot {
-    return projectSnapshot(raw.nodes ?? [], {
+    const projected = projectSnapshot(raw.nodes ?? [], {
       testIdAttribute: this.testIdAttribute,
       mintId: () => {
         this.idCounter += 1;
         return `n${this.idCounter}`;
       },
     });
+    this.latestIndex = projected.index;
+    return projected;
   }
 
   async observe(operation: OperationContext, options?: EngineObserveOptions): Promise<EngineSnapshot> {
@@ -503,43 +548,108 @@ export class AgentDeviceSurface {
   /** Copies the fields actions use and pre-resolves a toggle's inner control. */
   private bind(entry: ProjectedNode, snapshot: readonly ProjectedNode[]): NodeBinding {
     const { children: _children, ...node } = entry.node;
-    return { id: entry.id, ref: entry.ref, node, controlRef: this.controlOf(entry, snapshot).ref };
+    const control = this.controlOf(entry, snapshot);
+    return { id: entry.id, ref: entry.ref, node, controlRef: control.ref };
+  }
+
+  /**
+   * The node a binding stands for, in a fresh snapshot: same role, same test
+   * id, same name and text, and of those the one closest to where it was.
+   */
+  private refind(entry: NodeBinding, index: readonly ProjectedNode[]): ProjectedNode | undefined {
+    const testId = entry.node.attributes?.[this.testIdAttribute];
+    const candidates = index.filter(
+      (candidate) =>
+        candidate.node.role === entry.node.role &&
+        candidate.node.attributes?.[this.testIdAttribute] === testId &&
+        candidate.node.name === entry.node.name &&
+        candidate.node.text === entry.node.text,
+    );
+    if (candidates.length <= 1 || entry.node.rect === undefined) return candidates[0];
+    const was = centreOf(entry.node.rect);
+    let best = candidates[0];
+    let bestDistance = Number.POSITIVE_INFINITY;
+    for (const candidate of candidates) {
+      if (candidate.node.rect === undefined) continue;
+      const at = centreOf(candidate.node.rect);
+      const distance = Math.hypot(at.x - was.x, at.y - was.y);
+      if (distance < bestDistance) {
+        best = candidate;
+        bestDistance = distance;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * Lets a control that came with the last action finish arriving before a
+   * test acts on it. A control already present at the same place in the
+   * snapshot the last action was resolved from is not in transition and is
+   * acted on at once; anything else waits out the remainder of the
+   * transition budget since that action. Nothing is observed here: the
+   * budget is the only signal, because the tree reports final frames.
+   */
+  private async awaitTransition(entry: NodeBinding, operation: OperationContext): Promise<void> {
+    const since = Date.now() - this.lastActionAt;
+    const remaining = this.transitionMs - since;
+    if (remaining <= 0) return;
+    const before = this.indexBeforeAction;
+    if (before !== undefined) {
+      const prior = this.refind(entry, before);
+      if (prior !== undefined && sameRect(prior.node.rect, entry.node.rect)) return;
+    }
+    await sleep(remaining, operation.signal);
+  }
+
+  /**
+   * Records an action the device received: the screen as it was projected
+   * before it, and when it returned. The transition budget counts from the
+   * return, since the input lands late in the command's own round trip.
+   */
+  private markAction(before: readonly ProjectedNode[] | undefined): void {
+    this.indexBeforeAction = before;
+    this.lastActionAt = Date.now();
   }
 
   async perform(ref: NodeRef, action: LocatorAction, operation: OperationContext): Promise<void> {
     const entry = this.resolveRef(ref);
     const label = `perform ${action.kind}`;
     const client = this.requireClient();
+    // A test's step verifies its outcome with `expect`, so it never waits for
+    // the screen to settle afterwards; it only lets a control that came with
+    // the last action finish arriving. The agent reads the screen right after
+    // acting, so its actions settle first.
+    const deterministic = operation.origin === 'test';
+    const settle = deterministic ? {} : this.settleOptions;
+    const before = this.latestIndex;
     const run = async (): Promise<unknown> => {
+      if (deterministic) await this.awaitTransition(entry, operation);
       switch (action.kind) {
-        // `settle` waits for the UI to go quiet after the input lands, so the
-        // observation that follows describes the screen the action produced,
-        // not a frame of its transition. Best-effort on agent-device's side.
         case 'tap':
-          return client.interactions.press({ ...this.actionTarget(entry, true), ...this.settleOptions });
+          return client.interactions.press({ ...this.actionTarget(entry, true), ...settle });
         case 'focus':
           // A touch surface focuses by tapping, and a tap on anything but an
           // editable field activates it; focus is offered for fields only.
           if (entry.node.role !== 'textbox') {
             throw unsupported(`agent-device can only focus editable fields; node ${entry.id} is ${entry.node.role ?? 'unknown'}`);
           }
-          return client.interactions.press({ ...this.actionTarget(entry), ...this.settleOptions });
+          return client.interactions.press({ ...this.actionTarget(entry), ...settle });
         case 'doubleTap':
-          return client.interactions.press({ ...this.actionTarget(entry), doubleTap: true, ...this.settleOptions });
+          return client.interactions.press({ ...this.actionTarget(entry), doubleTap: true, ...settle });
         case 'longPress':
           return client.interactions.longPress({
             ...this.actionTarget(entry),
-            ...this.settleOptions,
+            ...settle,
             ...(action.durationMs === undefined ? {} : { durationMs: action.durationMs }),
           });
         case 'hover':
           return client.interactions.hover(this.actionTarget(entry));
         case 'fill':
           // oxlint-disable-next-line unicorn/no-array-fill-with-reference-type -- agent-device fill, not Array#fill
-          return client.interactions.fill({ ...this.actionTarget(entry), text: action.value, ...this.settleOptions });
+          return client.interactions.fill({ ...this.actionTarget(entry), text: action.value, ...settle });
         case 'clear':
           // oxlint-disable-next-line unicorn/no-array-fill-with-reference-type -- agent-device fill, not Array#fill
-          return client.interactions.fill({ ...this.actionTarget(entry), text: '', ...this.settleOptions });
+          return client.interactions.fill({ ...this.actionTarget(entry), text: '', ...settle });
         case 'check':
         case 'uncheck': {
           const wanted = action.kind === 'check';
@@ -550,10 +660,10 @@ export class AgentDeviceSurface {
             throw unsupported(`agent-device cannot read whether node ${entry.id} is checked; tap it instead`);
           }
           if (checked === wanted) return undefined;
-          return client.interactions.press({ ...this.actionTarget(entry, true), ...this.settleOptions });
+          return client.interactions.press({ ...this.actionTarget(entry, true), ...settle });
         }
         case 'press':
-          return this.pressKey(client, entry, action.key);
+          return this.pressKey(client, entry, action.key, settle);
         case 'swipe': {
           const rect = entry.node.rect;
           if (rect === undefined) throw notActionable(`node ${entry.id} has no bounds to swipe within`);
@@ -577,6 +687,7 @@ export class AgentDeviceSurface {
     } catch (cause) {
       throw staleOr(cause, label);
     }
+    this.markAction(before);
   }
 
   /**
@@ -584,13 +695,13 @@ export class AgentDeviceSurface {
    * single character is typed into the focused field; there is no key event
    * bus to send `Escape` or `Tab` to.
    */
-  private async pressKey(client: AgentDeviceClient, entry: NodeBinding, key: string): Promise<unknown> {
+  private async pressKey(client: AgentDeviceClient, entry: NodeBinding, key: string, settle: SettleOptions): Promise<unknown> {
     if (key === 'Enter' || key === 'Return') {
       return client.command.keyboard({ action: 'enter' });
     }
     if ([...key].length === 1) {
       if (entry.node.role === 'textbox' && entry.node.states?.focused !== true) {
-        await client.interactions.press({ ...this.actionTarget(entry), ...this.settleOptions });
+        await client.interactions.press({ ...this.actionTarget(entry), ...settle });
       }
       return client.interactions.type({ text: key });
     }
@@ -598,7 +709,9 @@ export class AgentDeviceSurface {
   }
 
   async swipe(direction: ScrollDirection, _momentum: Momentum | undefined, operation: OperationContext): Promise<void> {
+    const before = this.latestIndex;
     await this.command('swipe', (client) => client.interactions.scroll({ direction }), operation.signal);
+    this.markAction(before);
   }
 
   /**
@@ -607,15 +720,21 @@ export class AgentDeviceSurface {
    * UI to go quiet, as the node taps do.
    */
   async tapAt(point: ViewportPoint, operation: OperationContext): Promise<void> {
+    const settle = operation.origin === 'test' ? {} : this.settleOptions;
+    const before = this.latestIndex;
     await this.command(
       'tapAt',
-      (client) => client.interactions.press({ x: point.x, y: point.y, ...this.settleOptions }),
+      (client) => client.interactions.press({ x: point.x, y: point.y, ...settle }),
       operation.signal,
     );
+    this.markAction(before);
   }
 
   async back(operation: OperationContext): Promise<void> {
-    await this.command('back', (client) => client.command.back({ ...this.settleOptions }), operation.signal);
+    const settle = operation.origin === 'test' ? {} : this.settleOptions;
+    const before = this.latestIndex;
+    await this.command('back', (client) => client.command.back({ ...settle }), operation.signal);
+    this.markAction(before);
   }
 
   async restart(operation: OperationContext): Promise<void> {

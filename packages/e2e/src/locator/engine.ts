@@ -69,6 +69,7 @@ export class LocatorEngine {
       timeoutMs: Math.max(1, deadline.remaining()),
       runId: this.options.runId,
       attemptId: this.options.attemptId,
+      origin: 'test',
     };
   }
 

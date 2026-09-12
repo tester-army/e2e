@@ -22,6 +22,14 @@ export interface OperationContext {
   readonly timeoutMs: number;
   readonly runId: string;
   readonly attemptId: string;
+  /**
+   * Who asked: a test's own deterministic step, or the agent acting on a
+   * screen it observed. A deterministic step verifies its outcome with
+   * `expect`, so an engine may act as soon as the target holds still; an
+   * agent reads the screen right after acting, so an engine may wait for the
+   * transition to end first. Absent, an engine treats the call as the agent's.
+   */
+  readonly origin?: 'test' | 'agent';
 }
 
 export type TextPattern =

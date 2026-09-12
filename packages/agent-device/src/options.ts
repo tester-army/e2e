@@ -75,4 +75,15 @@ export interface AgentDeviceOptions {
    * settle in stages, or lower it to 0 to keep only the first re-observation.
    */
   readonly settle?: number | false | undefined;
+  /**
+   * How long a control that appeared or moved with the last action is given
+   * to finish arriving before a test acts on it, in milliseconds. Default
+   * 500, the length of a modal or screen transition. Accessibility frames
+   * report a control's final position from the first frame of a transition,
+   * so this budget is the only thing that keeps a test from tapping a point
+   * the control has not reached; controls already on screen at the same
+   * place before the action are acted on at once. Raise it for slower
+   * transitions.
+   */
+  readonly transition?: number | undefined;
 }
