@@ -62,9 +62,9 @@ the size, a target is the better home: it is visible in the config, in the
 report, and in `--target`, and nothing in the test body has to remember to
 call it.
 
-The call records the new size on its step, so the report shows the
-dimensions each step ran at. There is no viewport matcher; a test that has to
-assert the size reads it from the page:
+The call records the new size on its own step in the report; later steps do
+not repeat it. There is no viewport matcher; a test that has to assert the
+size reads it from the page:
 
 ```ts
 const width = await web.evaluate(() => window.innerWidth);
@@ -82,8 +82,9 @@ the page renders it, and `tap` scrolls it into view on its own; `scroll` is
 for content the page has not rendered yet.
 
 The agent cannot resize. Its verbs are `tap`, `type`, `press`, `select`,
-`type_secret`, `scroll`, and `navigate`, and none of them changes the page
-size. Resize in the test, then hand the step to the agent:
+`scroll`, `navigate`, and `type_secret` when the step has a credential, and
+none of them changes the page size. Resize in the test, then hand the step to
+the agent:
 
 ```ts
 test('the mobile menu reaches pricing', async ({ app, agent, web }) => {
@@ -116,8 +117,9 @@ that key off `hover: none` or `pointer: coarse` media queries see a desktop.
 Real touch, a real scale factor, and a real mobile browser are what the
 [device engine](/mobile) provides on a simulator or emulator.
 
-A `--video` recording is sized to the viewport the attempt started with. A
-resize mid-attempt does not change the recording's dimensions.
+A `--video` recording on a Playwright target is sized to the viewport the
+attempt started with. A resize mid-attempt does not change the recording's
+dimensions.
 
 <CardGroup cols={2}>
   <Card title="Working with the browser" href="/browser">
