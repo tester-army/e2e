@@ -1,7 +1,6 @@
 import { appendFile, readFile } from 'node:fs/promises';
-import type { FinishedRun, Reporter, ReporterSummary } from '@e2edev/e2e';
+import { renderMarkdownReport, type FinishedRun, type MarkdownReportOptions, type Reporter, type ReporterSummary } from '@e2edev/e2e';
 import { detectActions, type ActionsContext, type ActionsDeps } from './actions.ts';
-import { renderComment, type CommentOptions } from './comment.ts';
 import { upsertComment } from './post.ts';
 
 const SUMMARY_LABEL = 'GitHub';
@@ -50,7 +49,8 @@ export function github(options: GitHubOptions = {}): Reporter {
 
 /**
  * Each encoded marker field is cut to this many characters, so four fields
- * and their names stay under `MAX_MARKER_CHARS` whatever the input. The cut
+ * and their names stay under a kilobyte whatever the input, well inside the
+ * room the page leaves under GitHub's size limit. The cut
  * never lands inside a percent escape, and it is the same on every run.
  */
 const MAX_MARKER_FIELD_CHARS = 200;
@@ -79,7 +79,7 @@ function commentMarker(run: FinishedRun, context: ActionsContext, key: string | 
   return `<!-- e2e-github ${parts.join(' ')} -->`;
 }
 
-function sourceUrl(context: ActionsContext): CommentOptions['sourceUrl'] {
+function sourceUrl(context: ActionsContext): MarkdownReportOptions['sourceUrl'] {
   const sha = context.sha;
   if (sha === undefined) return undefined;
   return (file, line) =>
@@ -119,8 +119,9 @@ export async function reportRun(
   const context = await detectActions(deps);
   if (context === undefined) return [{ label: SUMMARY_LABEL, text: 'not posted: not running on GitHub Actions' }];
 
-  const links: CommentOptions = { artifactsUrl: context.runUrl, sourceUrl: sourceUrl(context) };
-  const summary = await writeSummary(context, renderComment(run.report, links), deps);
+  // One page for both places; the comment carries the marker a rerun finds it by.
+  const page = renderMarkdownReport(run.report, { artifactsUrl: context.runUrl, sourceUrl: sourceUrl(context) });
+  const summary = await writeSummary(context, page, deps);
   const post = posting(context);
   const marker = commentMarker(run, context, options.key);
   const lead =
@@ -133,7 +134,7 @@ export async function reportRun(
           repository: context.repository,
           ...post,
           marker,
-          body: renderComment(run.report, { ...links, marker }),
+          body: `${marker}\n${page}`,
         });
 
   return [

@@ -103,8 +103,8 @@ call, not into the helper). Then one row per test file, worst first, and
 every test folded away under it, grouped by file. A run-level error such as
 `APP_UNREACHABLE` appears above the blocks. Titles, labels, and messages are
 escaped and clipped, and the body stays under GitHub's size limit: past
-thirty blocks the page says how many more did not pass, and the folded list
-goes first when room runs out. The page is
+thirty blocks the page says how many more did not pass, and when room runs
+out the page is cut where it stands, the folded list first, and says so. The page is
 [`renderMarkdownReport`](/reference/reporters), the one the built-in
 `markdown` reporter writes to `.e2e/summary.md`.
 
@@ -143,14 +143,3 @@ post, it says why in one row under the summary:
 The reporter reads the token and the event payload when the run finishes,
 never when the config loads, and the token never enters the report. GitHub
 Enterprise Server works through `GITHUB_SERVER_URL` and `GITHUB_API_URL`.
-
-## Rendering the comment elsewhere
-
-`renderComment(report, { marker, artifactsUrl, sourceUrl })` is exported. It
-takes a report document and returns the comment body, so a service that
-receives the report can post the same comment under its own identity. It is
-`renderMarkdownReport` from `@e2edev/e2e` under this package's older name: the
-same page the built-in [`markdown` reporter](/reference/cli#output) writes to
-`.e2e/summary.md`, so a comment and a checkout read alike. A
-marker longer than 1024 characters or an `artifactsUrl` longer than 2048 is
-rejected rather than posted incomplete.

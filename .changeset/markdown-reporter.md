@@ -15,9 +15,10 @@ renders its record instead: the goal and steps, every finding with what was
 expected, what the screen showed, the actions that reach it, and its
 screenshot, then the assessment. It is the text a coding agent pastes into a
 pull request or a handoff instead of retelling the result.
-`renderMarkdownReport(report, options)` is exported from the main entrypoint
-for a reporter that posts the page elsewhere. `@e2edev/github` renders its
-pull request comment from it, so the comment takes this layout in place of
-the one table of tests that did not pass; its `renderComment` export is the
-same function under the older name, and the package now needs `@e2edev/e2e`
-0.13 or later. `e2e init` ignores `.e2e/summary.md`.
+`renderMarkdownReport(report, { artifactsUrl, artifactsDir, sourceUrl })` is
+exported from the main entrypoint for a reporter that posts the page
+elsewhere. `@e2edev/github` posts this page as the pull request comment in
+place of its one table of tests that did not pass; its `renderComment`,
+`CommentOptions`, `MAX_MARKER_CHARS`, and `MAX_URL_CHARS` exports are gone
+(nothing consumed them), and the package now needs `@e2edev/e2e` 0.13 or
+later. `e2e init` ignores `.e2e/summary.md`.

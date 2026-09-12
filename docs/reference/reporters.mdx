@@ -65,9 +65,10 @@ The built-in `junit` reporter is the smallest complete example: it reads
 naming the file relative to `run.projectRoot`. `markdown` does the same with
 `summary.md`, through `renderMarkdownReport(report, options)`, which the main
 entrypoint exports so a reporter of your own can post the same page elsewhere:
-`marker` prepends a hidden comment a rerun finds its post by, `artifactsUrl`
-links the evidence to a run page, `artifactsDir` lists it as paths under that
-directory instead, and `sourceUrl` links each failing line. `json` is an
+`artifactsUrl` links the evidence to a run page, `artifactsDir` lists it as
+paths under that directory instead, and `sourceUrl` links each failing line.
+`@e2edev/github` is that reporter: it renders the page once, writes it to the
+job summary, and posts it with a marker comment prepended. `json` is an
 `onRunFinished` that writes the document to stdout; `list` is an `onEvent`.
 [`@e2edev/github`](/github) is a reporter package on the same contract; it
 comments on the pull request from GitHub Actions.

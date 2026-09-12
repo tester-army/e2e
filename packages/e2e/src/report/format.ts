@@ -67,7 +67,7 @@ export function formatTokens(count: number): string {
 }
 
 /** USD with enough precision for sub-cent model calls. */
-function formatCost(costUsd: number): string {
+export function formatCost(costUsd: number): string {
   return `$${costUsd.toFixed(costUsd < 0.1 ? 4 : 2)}`;
 }
 

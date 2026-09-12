@@ -11,7 +11,7 @@ export { BLOCKABLE_CODES, RUNTIME_CODES } from './agent/executor.ts';
 export { buildTraceEntry, readTraceEntry } from './cache/trace.ts';
 // The markdown page the `markdown` reporter writes, for a reporter that posts
 // it elsewhere: @e2edev/github renders the pull request comment from it.
-export { renderMarkdownReport, MAX_MARKER_CHARS, MAX_URL_CHARS } from './report/markdown.ts';
+export { renderMarkdownReport } from './report/markdown.ts';
 export type { MarkdownReportOptions } from './report/markdown.ts';
 
 export type * from './types.ts';

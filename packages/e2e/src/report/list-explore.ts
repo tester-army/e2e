@@ -13,6 +13,7 @@ import type { SerializedError } from '../internal/errors.ts';
 import { collapseText } from '../internal/text.ts';
 import type { ReportExplore, ReportExploreFinding, ReportExploreStep } from '../report/build.ts';
 import type { ArtifactRecord } from '../run/records.ts';
+import { ENDED_TEXT, orderFindings, SEVERITY_WORDS, stepCountParts } from './explore-text.ts';
 import type { StepEvent } from '../run/steps.ts';
 import {
   bounded,
@@ -51,22 +52,6 @@ const FINDING_TOOL_EVENT = 'tool:report_finding';
 /** Width of the label gutter in a finding's block: four for the number, then `expected  `. */
 const DETAIL_LABEL_WIDTH = 8;
 const DETAIL_INDENT = '    ';
-
-const SEVERITY_WORDS: Record<ReportExploreFinding['severity'], string> = {
-  5: 'critical',
-  4: 'high',
-  3: 'medium',
-  2: 'low',
-  1: 'trivial',
-};
-
-const ENDED_TEXT: Record<ReportExplore['ended'], string> = {
-  finished: 'the agent covered the goal',
-  'step-limit': 'the step limit was reached',
-  time: 'the time budget ran out',
-  stuck: 'steps kept failing',
-  aborted: 'the run was cut short',
-};
 
 const STATUS_WORDS: Record<ReportExploreStep['status'], string> = {
   passed: '',
@@ -315,17 +300,11 @@ export class ExploreView {
     return [padTitle(pc, 'Findings') + findings, padTitle(pc, 'Steps') + steps.join(pc.dim(' · '))];
   }
 
-  /** `3 passed`, `1 failed`, ... over the finished steps, zero counts left out. */
+  /** `3 passed`, `1 failed`, ... over the finished steps, zero counts left out, colored by status. */
   private outcomeParts(): string[] {
     const { pc } = this;
-    const counts = { passed: 0, failed: 0, blocked: 0, exhausted: 0 };
-    for (const { step } of this.steps) counts[step.status] += 1;
-    return [
-      ...(counts.passed > 0 ? [pc.green(`${counts.passed} passed`)] : []),
-      ...(counts.failed > 0 ? [pc.red(`${counts.failed} failed`)] : []),
-      ...(counts.exhausted > 0 ? [pc.yellow(`${counts.exhausted} ended at their limit`)] : []),
-      ...(counts.blocked > 0 ? [pc.yellow(`${counts.blocked} blocked`)] : []),
-    ];
+    const color = { passed: pc.green, failed: pc.red, exhausted: pc.yellow, blocked: pc.yellow } as const;
+    return stepCountParts(this.steps.map(({ step }) => step)).map((part) => color[part.status](part.text));
   }
 
   /**
@@ -353,9 +332,7 @@ export class ExploreView {
     if (this.findings.length === 0) return [];
     const issues = this.issues.length;
     const lines = ['', this.banner(`Findings ${this.findings.length}`, issues > 0 ? pc.red : pc.yellow), ''];
-    const ordered = this.findings.toSorted(
-      (a, b) => Number(a.kind === 'warning') - Number(b.kind === 'warning') || b.severity - a.severity || a.index - b.index,
-    );
+    const ordered = orderFindings(this.findings);
     const columns = terminalColumns();
     ordered.forEach((finding, position) => {
       const number = `${String(position + 1).padStart(2)}. `;

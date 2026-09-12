@@ -29,9 +29,7 @@ import { timestamp, uuidv7 } from '../internal/ids.ts';
 import type { ExploreProgress } from '../explore/progress.ts';
 import { buildReport, type Report1Document, type ReportExplore, type TargetProvenance } from '../report/build.ts';
 import { agentStepTable } from '../report/debug-steps.ts';
-import { jsonReporter } from '../report/json.ts';
-import { junitReporter } from '../report/junit.ts';
-import { markdownReporter } from '../report/markdown.ts';
+import { STATELESS_REPORTERS } from '../report/builtin.ts';
 import { ListReporter } from '../report/list.ts';
 import { writeJsonReport } from '../report/write.ts';
 import { createRunEventEmitter, toEventResult, type RunEventSink, type RunExitCode, type RunStatus, type RunEventFact, type SetupStep } from './events.ts';
@@ -261,9 +259,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     options.quiet === true || !reporterIds.includes('list') ? undefined : new ListReporter();
   const activeReporters: readonly Reporter[] = [
     ...(listReporter === undefined ? [] : [listReporter]),
-    ...(reporterIds.includes('json') ? [jsonReporter] : []),
-    ...(reporterIds.includes('junit') ? [junitReporter] : []),
-    ...(reporterIds.includes('markdown') ? [markdownReporter] : []),
+    ...reporterIds.filter((id) => id !== 'list').map((id) => STATELESS_REPORTERS[id]),
     ...(loaded.config?.customReporters ?? []),
   ];
   const emit = createRunEventEmitter([

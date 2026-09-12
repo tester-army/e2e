@@ -2,17 +2,8 @@
 
 import { sanitizeText } from '../internal/errors.ts';
 import type { Report1Document, ReportError, ReportResult, ReportSerialGroup } from './build.ts';
-import path from 'node:path';
-import type { Reporter } from '../types.ts';
-import { writeTextReport } from './write.ts';
-
-/** What the final attempt of one result left behind, in the terms JUnit knows. */
-interface FinalAttempt {
-  durationMs: number;
-  error: ReportError | undefined;
-  /** Attempts that did not pass before the final one; the flaky note counts these. */
-  failedAttempts: number;
-}
+import { outcome } from './outcome.ts';
+import { fileReporter } from './write.ts';
 
 interface SuiteCounts {
   tests: number;
@@ -91,33 +82,6 @@ function addCounts(total: SuiteCounts, part: SuiteCounts): void {
   total.timeMs += part.timeMs;
 }
 
-/**
- * A serial member's result carries no attempts of its own: its duration and
- * error live on the group's final attempt, keyed by test id. Every other
- * result answers from its own final attempt.
- */
-function finalAttempt(
-  result: ReportResult,
-  groups: ReadonlyMap<string, ReportSerialGroup>,
-): FinalAttempt {
-  if (result.serialGroupId === undefined) {
-    const last = result.attempts.at(-1);
-    return {
-      durationMs: last?.durationMs ?? 0,
-      error: last?.error,
-      failedAttempts: result.attempts.slice(0, -1).filter((attempt) => attempt.status !== 'passed').length,
-    };
-  }
-  const group = groups.get(result.serialGroupId);
-  const last = group?.attempts.at(-1);
-  const member = last?.members.find((candidate) => candidate.testId === result.testId);
-  return {
-    durationMs: member?.durationMs ?? 0,
-    error: member?.error ?? last?.error,
-    failedAttempts: (group?.attempts ?? []).slice(0, -1).filter((attempt) => attempt.status !== 'passed').length,
-  };
-}
-
 /** `<failure>` for a product verdict, `<error>` for anything that prevented one. */
 function verdictElement(error: ReportError | undefined, status: ReportResult['status']): 'failure' | 'error' {
   if (error !== undefined) return error.category === 'test' ? 'failure' : 'error';
@@ -130,7 +94,7 @@ function errorBody(error: ReportError): string {
 }
 
 function renderResult(result: ReportResult, groups: ReadonlyMap<string, ReportSerialGroup>): RenderedCase {
-  const final = finalAttempt(result, groups);
+  const final = outcome(result, groups);
   // The agent joins the name only when it is not `default`, so a suite that
   // never names one keeps the case names its CI history is keyed on.
   const agent = result.agent === 'default' ? '' : ` [${result.agent}]`;
@@ -162,8 +126,8 @@ function renderResult(result: ReportResult, groups: ReadonlyMap<string, ReportSe
         durationMs: final.durationMs,
       };
     default: {
-      const element = verdictElement(final.error, result.status);
-      const error = final.error;
+      const element = verdictElement(final.final.error, result.status);
+      const error = final.final.error;
       const message = error?.message ?? result.status;
       const type = error?.code ?? result.status;
       const body = error === undefined ? result.status : errorBody(error);
@@ -244,15 +208,6 @@ export function renderJunitReport(report: Report1Document): string {
 
 /**
  * The built-in `junit` reporter: the report as JUnit XML in `junit.xml`
- * beside `report.json`, for CI test summaries. Nothing to write beside when
- * the report itself was not written.
+ * beside `report.json`, for CI test summaries.
  */
-export const junitReporter: Reporter = {
-  name: 'junit',
-  async onRunFinished(run) {
-    if (run.reportPath === undefined) return;
-    const file = path.join(path.dirname(run.reportPath), 'junit.xml');
-    await writeTextReport(file, renderJunitReport(run.report));
-    return [{ label: 'JUnit', text: path.relative(run.projectRoot, file) || file }];
-  },
-};
+export const junitReporter = fileReporter('junit', 'JUnit', 'junit.xml', (run) => renderJunitReport(run.report));

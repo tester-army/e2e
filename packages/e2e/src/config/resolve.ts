@@ -7,6 +7,7 @@ import { envFlag } from '../internal/env.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import { canonicalDigest, sha256Hex } from '../internal/ids.ts';
 import { didYouMean } from '../internal/suggest.ts';
+import { BUILTIN_REPORTER_LIST, BUILTIN_REPORTERS, isBuiltinReporter } from '../report/builtin.ts';
 import { isStepExecutor } from '../agent/executor.ts';
 import { boundedInt, positiveInt } from './validate.ts';
 import type {
@@ -519,7 +520,6 @@ function isArtifactsObject(value: unknown): value is ArtifactsConfig {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-const BUILTIN_REPORTERS: readonly BuiltinReporter[] = ['list', 'json', 'junit', 'markdown'];
 
 /**
  * Splits `reporters` into the built-in ids and the reporter objects.
@@ -542,19 +542,19 @@ function resolveReporters(
   const customReporters: Reporter[] = [];
   for (const reporter of configured as readonly unknown[]) {
     if (typeof reporter === 'string') {
-      if (!(BUILTIN_REPORTERS as readonly string[]).includes(reporter)) {
+      if (!isBuiltinReporter(reporter)) {
         throw new ConfigurationError(
           'INVALID_CONFIG',
-          `unknown reporter "${reporter}"; reporters are list, json, junit, and markdown${didYouMean(reporter, BUILTIN_REPORTERS)}`,
+          `unknown reporter "${reporter}"; reporters are ${BUILTIN_REPORTER_LIST}${didYouMean(reporter, BUILTIN_REPORTERS)}`,
         );
       }
-      ids.push(reporter as BuiltinReporter);
+      ids.push(reporter);
     } else if (isReporter(reporter)) {
       customReporters.push(reporter);
     } else {
       throw new ConfigurationError(
         'INVALID_CONFIG',
-        'a reporter is a built-in id (list, json, junit) or an object with a name and an onEvent or onRunFinished method',
+        `a reporter is a built-in id (${BUILTIN_REPORTERS.join(', ')}) or an object with a name and an onEvent or onRunFinished method`,
       );
     }
   }
