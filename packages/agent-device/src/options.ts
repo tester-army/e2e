@@ -64,4 +64,15 @@ export interface AgentDeviceOptions {
    * is cheaper on screens with long lists.
    */
   readonly snapshot?: 'full' | 'interactive' | undefined;
+  /**
+   * How long the UI must hold still after a tap, fill, or back before the
+   * action counts as landed, in milliseconds; `false` skips the wait. The
+   * wait keeps the observation that follows an action off a transition
+   * frame; the runner's own polling (`expect`, actions waiting for their
+   * node) covers the rest, so a short window suffices. Default 150. Every
+   * frame of a running animation changes the tree, so a 150 ms window still
+   * catches a transition in flight; raise it for slow devices or apps that
+   * settle in stages, or lower it to 0 to keep only the first re-observation.
+   */
+  readonly settle?: number | false | undefined;
 }

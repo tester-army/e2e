@@ -55,6 +55,7 @@ Options:
 | `device` | Simulator or emulator name or UDID. A list is a pool: one worker per entry, worker slot `n` driving the `n`th. Omitted, every booted device of the platform is the pool, as many as the run has slots. |
 | `session` | agent-device session name, before the worker slot: slot `n` drives its device under `<session>-<n>`, `e2e-<target name>-<n>` by default. One run per session at a time. |
 | `snapshot` | `'full'` (default, includes static text) or `'interactive'` (actionable nodes only). |
+| `settle` | Milliseconds the UI must hold still after an action before it counts as landed, default `150`; `false` skips the wait. Each tap costs about the window plus one snapshot, so this is the knob for suite speed against stability on slow devices. |
 
 Every optional value also accepts `undefined`, so a config passes
 `device: process.env.E2E_DEVICE` or `appPath: process.env.E2E_APP_PATH`

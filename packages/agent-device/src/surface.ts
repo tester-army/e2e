@@ -30,6 +30,7 @@ import {
   type ScrollDirection,
   type SemanticNode,
   type ViewportPoint,
+  ConfigurationError,
 } from '@e2edev/e2e/engine';
 import { runCommand, staleOr } from './errors.ts';
 import { resolveExpression } from './locate.ts';
@@ -139,6 +140,21 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
+/** What agent-device is told about settling after an action. */
+export type SettleOptions = { readonly settle: true; readonly settleQuietMs: number } | Record<never, never>;
+
+const DEFAULT_SETTLE_QUIET_MS = 150;
+
+/** Resolves the `settle` option: the default window, a custom one, or no wait at all. */
+export function settleOptions(settle: AgentDeviceOptions['settle']): SettleOptions {
+  if (settle === false) return {};
+  const quietMs = settle ?? DEFAULT_SETTLE_QUIET_MS;
+  if (!Number.isInteger(quietMs) || quietMs < 0) {
+    throw new ConfigurationError('INVALID_CONFIG', 'agentDevice: `settle` must be a non-negative integer of milliseconds, or false');
+  }
+  return { settle: true, settleQuietMs: quietMs };
+}
+
 export class AgentDeviceSurface {
   private client: AgentDeviceClient | undefined;
   private testIdAttribute = 'data-testid';
@@ -163,12 +179,15 @@ export class AgentDeviceSurface {
 
   /** The target's devices, one per worker slot; `init` takes this worker's from it. */
   readonly pool: DevicePool;
+  /** The settle wait every action carries: quiet window from the `settle` option, or nothing when it is `false`. */
+  readonly settleOptions: SettleOptions;
 
   constructor(
     readonly options: AgentDeviceOptions,
     private readonly createClient: ClientFactory,
   ) {
     this.pool = new DevicePool(options, createClient);
+    this.settleOptions = settleOptions(options.settle);
   }
 
   /** Whether the manifest declares app restart and state clearing. */
@@ -497,30 +516,30 @@ export class AgentDeviceSurface {
         // observation that follows describes the screen the action produced,
         // not a frame of its transition. Best-effort on agent-device's side.
         case 'tap':
-          return client.interactions.press({ ...this.actionTarget(entry, true), settle: true });
+          return client.interactions.press({ ...this.actionTarget(entry, true), ...this.settleOptions });
         case 'focus':
           // A touch surface focuses by tapping, and a tap on anything but an
           // editable field activates it; focus is offered for fields only.
           if (entry.node.role !== 'textbox') {
             throw unsupported(`agent-device can only focus editable fields; node ${entry.id} is ${entry.node.role ?? 'unknown'}`);
           }
-          return client.interactions.press({ ...this.actionTarget(entry), settle: true });
+          return client.interactions.press({ ...this.actionTarget(entry), ...this.settleOptions });
         case 'doubleTap':
-          return client.interactions.press({ ...this.actionTarget(entry), doubleTap: true, settle: true });
+          return client.interactions.press({ ...this.actionTarget(entry), doubleTap: true, ...this.settleOptions });
         case 'longPress':
           return client.interactions.longPress({
             ...this.actionTarget(entry),
-            settle: true,
+            ...this.settleOptions,
             ...(action.durationMs === undefined ? {} : { durationMs: action.durationMs }),
           });
         case 'hover':
           return client.interactions.hover(this.actionTarget(entry));
         case 'fill':
           // oxlint-disable-next-line unicorn/no-array-fill-with-reference-type -- agent-device fill, not Array#fill
-          return client.interactions.fill({ ...this.actionTarget(entry), text: action.value, settle: true });
+          return client.interactions.fill({ ...this.actionTarget(entry), text: action.value, ...this.settleOptions });
         case 'clear':
           // oxlint-disable-next-line unicorn/no-array-fill-with-reference-type -- agent-device fill, not Array#fill
-          return client.interactions.fill({ ...this.actionTarget(entry), text: '', settle: true });
+          return client.interactions.fill({ ...this.actionTarget(entry), text: '', ...this.settleOptions });
         case 'check':
         case 'uncheck': {
           const wanted = action.kind === 'check';
@@ -531,7 +550,7 @@ export class AgentDeviceSurface {
             throw unsupported(`agent-device cannot read whether node ${entry.id} is checked; tap it instead`);
           }
           if (checked === wanted) return undefined;
-          return client.interactions.press({ ...this.actionTarget(entry, true), settle: true });
+          return client.interactions.press({ ...this.actionTarget(entry, true), ...this.settleOptions });
         }
         case 'press':
           return this.pressKey(client, entry, action.key);
@@ -571,7 +590,7 @@ export class AgentDeviceSurface {
     }
     if ([...key].length === 1) {
       if (entry.node.role === 'textbox' && entry.node.states?.focused !== true) {
-        await client.interactions.press({ ...this.actionTarget(entry), settle: true });
+        await client.interactions.press({ ...this.actionTarget(entry), ...this.settleOptions });
       }
       return client.interactions.type({ text: key });
     }
@@ -590,13 +609,13 @@ export class AgentDeviceSurface {
   async tapAt(point: ViewportPoint, operation: OperationContext): Promise<void> {
     await this.command(
       'tapAt',
-      (client) => client.interactions.press({ x: point.x, y: point.y, settle: true }),
+      (client) => client.interactions.press({ x: point.x, y: point.y, ...this.settleOptions }),
       operation.signal,
     );
   }
 
   async back(operation: OperationContext): Promise<void> {
-    await this.command('back', (client) => client.command.back({ settle: true }), operation.signal);
+    await this.command('back', (client) => client.command.back({ ...this.settleOptions }), operation.signal);
   }
 
   async restart(operation: OperationContext): Promise<void> {

@@ -65,6 +65,7 @@ is unavailable on these targets.
 | `device` | `string \| readonly string[]` | every booted device | Simulator or emulator name or UDID. A list is a pool: the engine declares one worker per entry and worker slot `n` drives the `n`th; an empty list is `INVALID_CONFIG`. Omitted, `prepare` discovers the booted devices of the platform and drives as many as the run has slots; with none booted, agent-device boots one. |
 | `session` | `string` | `e2e-<target name>` | agent-device session name, before the worker slot: slot `n` drives its device under `<session>-<n>`. One run per session at a time. |
 | `snapshot` | `'full' \| 'interactive'` | `'full'` | Whether observations include static text. |
+| `settle` | `number \| false` | `150` | Milliseconds the UI must hold still after a tap, fill, or back before the action counts as landed; `false` skips the wait. The runner's polling covers the rest, so a short window suffices; raise it for apps that settle in stages. |
 | `identity` | `string` | `app`, else `appPath` | Logical app identity for cache and session keying; see [the app under test](/reference/config#the-app-under-test). |
 | `environment` | `'test' \| 'staging' \| 'production'` | `'test'` | A label for the report and the identity digest. |
 

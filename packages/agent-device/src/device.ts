@@ -171,7 +171,7 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Engine
       await surface.command('device.home', (client) => client.command.home({}), context.signal);
     },
     async back() {
-      await surface.command('device.back', (client) => client.command.back({ settle: true }), context.signal);
+      await surface.command('device.back', (client) => client.command.back({ ...surface.settleOptions }), context.signal);
     },
     async alert(action) {
       await surface.command('device.alert', (client) => client.command.alert({ action }), context.signal);

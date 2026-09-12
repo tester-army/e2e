@@ -328,6 +328,25 @@ describe('lifecycle', () => {
     expect(byId.fake.lastArgs('apps.open')).toEqual({ app: 'Settings', platform: 'ios', udid: '2BBF3F07-AF66-4F95-82AB-BF442506FC89', relaunch: true });
   });
 
+  it('carries the configured settle window on actions, and none when settle is false', async () => {
+    const slow = harness({ settle: 600 });
+    await openAttempt(slow);
+    const node = await observed(slow, 'About');
+    await slow.engine.perform!(node.ref, { kind: 'tap' }, operation());
+    expect(slow.fake.lastArgs('interactions.press')).toEqual({ ref: '@e4', settle: true, settleQuietMs: 600 });
+
+    const none = harness({ settle: false });
+    await openAttempt(none);
+    const target = await observed(none, 'About');
+    await none.engine.perform!(target.ref, { kind: 'tap' }, operation());
+    expect(none.fake.lastArgs('interactions.press')).toEqual({ ref: '@e4' });
+    await none.engine.app!.back!(operation());
+    expect(none.fake.lastArgs('command.back')).toEqual({});
+
+    expect(() => harness({ settle: -1 })).toThrow(/non-negative integer/);
+    expect(() => harness({ settle: 1.5 })).toThrow(/non-negative integer/);
+  });
+
   it('rejects an empty pool at config time', () => {
     expect(() => harness({ device: [] })).toThrow(/empty pool/);
   });
@@ -540,8 +559,8 @@ describe('location', () => {
     await h.engine.perform!(back!.ref, { kind: 'tap' }, operation());
     await h.engine.perform!(about.ref, { kind: 'tap' }, operation());
     expect(h.fake.calls.filter((call) => call.method === 'interactions.press').map((call) => call.args)).toEqual([
-      { ref: '@e3', settle: true },
-      { ref: '@e4', settle: true },
+      { ref: '@e3', settle: true, settleQuietMs: 150 },
+      { ref: '@e4', settle: true, settleQuietMs: 150 },
     ]);
   });
 });
@@ -570,16 +589,16 @@ describe('perform', () => {
     await h.engine.perform!(scroller!.ref, { kind: 'swipe', direction: 'down' }, op);
     await h.engine.perform!(about!.ref, { kind: 'dragTo', target: back!.ref }, op);
     expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
-      ['interactions.press', { ref: '@e4', settle: true }],
-      ['interactions.press', { ref: '@e4', doubleTap: true, settle: true }],
-      ['interactions.longPress', { ref: '@e4', settle: true, durationMs: 900 }],
-      ['interactions.press', { ref: '@e7', settle: true }],
+      ['interactions.press', { ref: '@e4', settle: true, settleQuietMs: 150 }],
+      ['interactions.press', { ref: '@e4', doubleTap: true, settle: true, settleQuietMs: 150 }],
+      ['interactions.longPress', { ref: '@e4', settle: true, settleQuietMs: 150, durationMs: 900 }],
+      ['interactions.press', { ref: '@e7', settle: true, settleQuietMs: 150 }],
       ['interactions.hover', { ref: '@e4' }],
-      ['interactions.fill', { ref: '@e7', text: 'blue', settle: true }],
-      ['interactions.fill', { ref: '@e7', text: '', settle: true }],
-      ['interactions.press', { ref: '@e6', settle: true }],
+      ['interactions.fill', { ref: '@e7', text: 'blue', settle: true, settleQuietMs: 150 }],
+      ['interactions.fill', { ref: '@e7', text: '', settle: true, settleQuietMs: 150 }],
+      ['interactions.press', { ref: '@e6', settle: true, settleQuietMs: 150 }],
       ['command.keyboard', { action: 'enter' }],
-      ['interactions.press', { ref: '@e7', settle: true }],
+      ['interactions.press', { ref: '@e7', settle: true, settleQuietMs: 150 }],
       ['interactions.type', { text: 'a' }],
       ['interactions.swipe', { from: { x: 195, y: 620 }, to: { x: 195, y: 420 } }],
       ['interactions.drag', { source: '@e4', destination: '@e3' }],
@@ -613,10 +632,10 @@ describe('perform', () => {
     );
     await h.engine.perform!(located!.ref, { kind: 'uncheck' }, operation());
     expect(h.fake.calls.slice(before).filter((call) => call.method === 'interactions.press').map((call) => call.args)).toEqual([
-      { ref: '@e4', settle: true },
-      { ref: '@e4', settle: true },
-      { ref: '@e5', settle: true },
-      { ref: '@e4', settle: true },
+      { ref: '@e4', settle: true, settleQuietMs: 150 },
+      { ref: '@e4', settle: true, settleQuietMs: 150 },
+      { ref: '@e5', settle: true, settleQuietMs: 150 },
+      { ref: '@e4', settle: true, settleQuietMs: 150 },
     ]);
   });
 
@@ -666,7 +685,7 @@ describe('app hooks, swipe, url, artifacts', () => {
     await h.engine.app!.clearState!(operation());
     expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
       ['interactions.scroll', { direction: 'down' }],
-      ['command.back', { settle: true }],
+      ['command.back', { settle: true, settleQuietMs: 150 }],
       ['apps.open', { app: 'Settings', platform: 'ios', relaunch: true }],
       ['settings.update', { setting: 'clear-app-state', state: 'clear', app: 'Settings' }],
       ['apps.open', { app: 'Settings', platform: 'ios', relaunch: true }],
@@ -946,7 +965,7 @@ describe('device fixture', () => {
       ['apps.close', {}],
       ['command.appState', {}],
       ['command.home', {}],
-      ['command.back', { settle: true }],
+      ['command.back', { settle: true, settleQuietMs: 150 }],
       ['command.alert', { action: 'accept' }],
       ['command.keyboard', { action: 'dismiss' }],
       ['command.clipboard', { action: 'read' }],

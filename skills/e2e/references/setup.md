@@ -244,6 +244,9 @@ export default {
   single `device` runs one worker whatever `workers` says; a list,
   `device: ['iPhone 17', 'iPhone 17 Pro']`, is an explicit pool. Devices boot
   in `prepare`, before the run's clock starts.
+- Every tap, fill, and back waits for the UI to hold still for `settle` ms
+  (default 150) before the next observation; `settle: false` skips the wait.
+  Raise it for apps that settle in stages, at about the window per action.
 - Cancelled device commands keep running; the next attempt waits for them.
   Raw screenshot files are removed when capture finishes, including after
   cancellation.
