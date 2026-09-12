@@ -9,13 +9,14 @@
  */
 
 import { timestamp, uuidv7 } from '../internal/ids.ts';
-import type { ReportExplore, ReportExploreFinding, ReportExploreStep } from '../report/build.ts';
+import type { ReportExplore, ReportExploreBaseline, ReportExploreFinding, ReportExploreStep } from '../report/build.ts';
+import { BaselineMatcher, type LoadedBaseline } from './baseline.ts';
 import type { ExploreBudgets, ExploreListener, ExploreProgress, OpenedStep } from './progress.ts';
 
 export type { ExploreBudgets, OpenedStep } from './progress.ts';
 
 /** A finding as the tool reports it; the state assigns identity, position, and time. */
-export type FindingInput = Omit<ReportExploreFinding, 'id' | 'index' | 'step' | 'reportedAt'>;
+export type FindingInput = Omit<ReportExploreFinding, 'id' | 'index' | 'step' | 'reportedAt' | 'novelty' | 'baselineFindingId'>;
 
 /** Ceilings mirroring `schema/report-v1.schema.json` `explore`. */
 export const MAX_TITLE_CHARS = 200;
@@ -38,12 +39,17 @@ export class ExploreState {
   #summary: string | undefined;
   #open: OpenStep | undefined;
   readonly #listeners: ExploreListener[] = [];
+  /** Tells findings apart from an earlier run's, when the run was given a baseline. */
+  readonly #baseline: BaselineMatcher | undefined;
 
   constructor(
     readonly goal: string,
     readonly budgets: ExploreBudgets,
     private readonly now: () => number = Date.now,
-  ) {}
+    baseline?: LoadedBaseline,
+  ) {
+    this.#baseline = baseline === undefined ? undefined : new BaselineMatcher(baseline);
+  }
 
   /** Why exploration stopped; `aborted` until `end` says otherwise. */
   get ended(): ReportExplore['ended'] {
@@ -110,8 +116,13 @@ export class ExploreState {
     return step;
   }
 
-  /** Records one finding against the step in progress, with its evidence screenshot's artifact id when one was kept. */
+  /**
+   * Records one finding against the step in progress, with its evidence
+   * screenshot's artifact id when one was kept, and, against a baseline,
+   * whether it reads like a finding the earlier run already made.
+   */
   addFinding(input: FindingInput): ReportExploreFinding {
+    const known = this.#baseline?.match(input);
     const finding: ReportExploreFinding = {
       id: uuidv7(this.now()),
       index: this.findings.length,
@@ -126,6 +137,7 @@ export class ExploreState {
       ...(input.observationRevision === undefined ? {} : { observationRevision: input.observationRevision }),
       ...(input.artifactId === undefined ? {} : { artifactId: input.artifactId }),
       reportedAt: timestamp(new Date(this.now())),
+      ...(this.#baseline === undefined ? {} : known === undefined ? { novelty: 'new' } : { novelty: 'known', baselineFindingId: known.id }),
     };
     this.findings.push(finding);
     this.#notify({ phase: 'finding', finding });
@@ -136,7 +148,23 @@ export class ExploreState {
   end(ended: ReportExplore['ended'], summary?: string): void {
     this.#ended = ended;
     this.#summary = summary === undefined || summary.trim() === '' ? undefined : clip(summary, MAX_SUMMARY_CHARS);
-    this.#notify({ phase: 'finished', ended, summary: this.#summary });
+    const baseline = this.baseline;
+    this.#notify({ phase: 'finished', ended, summary: this.#summary, ...(baseline === undefined ? {} : { baseline }) });
+  }
+
+  /** How the baseline's findings fared against this run's so far; undefined without a baseline. */
+  get baseline(): ReportExploreBaseline | undefined {
+    const matcher = this.#baseline;
+    if (matcher === undefined) return undefined;
+    const known = this.findings.filter((finding) => finding.novelty === 'known').length;
+    return {
+      source: matcher.baseline.source,
+      goal: matcher.baseline.goal,
+      findings: matcher.baseline.findings.length,
+      known,
+      new: this.findings.length - known,
+      notSeen: matcher.notSeen.map(({ id, kind, severity, title }) => ({ id, kind, severity, title })),
+    };
   }
 
   get issues(): readonly ReportExploreFinding[] {
@@ -169,6 +197,7 @@ export class ExploreState {
       ...(this.#summary === undefined ? {} : { summary: this.#summary }),
       steps: [...this.steps],
       findings: [...this.findings],
+      ...(this.#baseline === undefined ? {} : { baseline: this.baseline }),
     };
   }
 }

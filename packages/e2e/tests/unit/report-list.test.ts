@@ -1767,3 +1767,69 @@ describe('explore runs', () => {
     expect(lines).toContain('      Steps  0 of 4 · the run was cut short');
   });
 });
+
+describe('explore runs against a baseline', () => {
+  const GOAL = 'Explore checkout on this branch';
+  const known = {
+    id: 'f-1',
+    index: 0,
+    step: 1,
+    kind: 'issue' as const,
+    severity: 4 as const,
+    title: 'Cart total shows $0.00 with two items',
+    expected: 'The total equals the sum of the two line items',
+    actual: 'Total: $0.00',
+    reproduction: ['Open the cart'],
+    path: '/cart',
+    reportedAt: '2026-09-11T10:00:05.000Z',
+    novelty: 'known' as const,
+    baselineFindingId: 'b-1',
+  };
+  const fresh = { ...known, id: 'f-2', index: 1, title: 'Coupon field accepts an expired code', expected: 'Rejected', actual: 'Accepted', path: '/checkout', novelty: 'new' as const, baselineFindingId: undefined };
+  const baseline = {
+    source: 'main/report.json',
+    goal: 'Explore checkout on main',
+    findings: 2,
+    known: 1,
+    new: 1,
+    notSeen: [{ id: 'b-2', kind: 'warning' as const, severity: 1 as const, title: 'Footer misspells Receive' }],
+  };
+
+  it('tags each finding as it is reported, lists what the baseline had that was not seen, and adds a Baseline summary row', () => {
+    const { lines, output } = capture();
+    const reporter = plainReporter(output);
+    reporter.handle(runStarted({ targets: ['web'] }));
+    reporter.handle(plan([{ file: 'explore', target: 'web', tests: 1 }]));
+    reporter.handle(testStarted('t1', GOAL, 'web', 'explore'));
+    reporter.handle({ type: 'explore', progress: { phase: 'started', goal: GOAL, budgets: { maxSteps: 4, timeoutMs: 300_000 } } });
+    reporter.handle({ type: 'explore', progress: { phase: 'step-started', step: { index: 1, title: 'Cart', instruction: 'Open the cart' } } });
+    reporter.handle({ type: 'explore', progress: { phase: 'finding', finding: known } });
+    reporter.handle({ type: 'explore', progress: { phase: 'finding', finding: fresh } });
+    reporter.handle({
+      type: 'explore',
+      progress: { phase: 'step-finished', step: { index: 1, title: 'Cart', instruction: 'Open the cart', status: 'passed', startedAt: '2026-09-11T10:00:01.000Z', durationMs: 5_000 } },
+    });
+    reporter.handle({ type: 'explore', progress: { phase: 'finished', ended: 'finished', summary: 'One new defect.', baseline } });
+    reporter.handle(
+      finished(
+        result({
+          status: 'failed',
+          id: 't1',
+          file: 'explore',
+          title: [GOAL],
+          target: 'web',
+          attempts: [attempt({ status: 'failed', error: { category: 'test', code: 'ASSERTION_FAILED', message: 'exploration found 2 issue(s)', retryable: false } })],
+        }),
+      ),
+    );
+    reporter.handle(runFinished({ status: 'failed', exitCode: 1 }));
+    expect(lines).toContain('   ⚑ high issue  Cart total shows $0.00 with two items (/cart) known');
+    expect(lines).toContain('   ⚑ high issue  Coupon field accepts an expired code (/checkout) new');
+    const first = lines.indexOf(' 1. high issue       Cart total shows $0.00 with two items');
+    expect(lines[first + 1]).toBe('    /cart · step 1 · known');
+    const section = lines.indexOf(' Not seen since the baseline main/report.json');
+    expect(section).toBeGreaterThan(first);
+    expect(lines[section + 1]).toBe('   trivial warning  Footer misspells Receive');
+    expect(lines).toContain('   Baseline  1 new · 1 known · 1 not seen · main/report.json');
+  });
+});

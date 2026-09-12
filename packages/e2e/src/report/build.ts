@@ -101,6 +101,31 @@ export interface ReportExploreFinding {
   reportedAt: string;
   /** The attempt's `screenshot` artifact holding the evidence, by id, when pixels were granted. */
   artifactId?: string | undefined;
+  /** Against `--baseline`: `known` reads like a finding the baseline holds, `new` like none. Absent without a baseline. */
+  novelty?: 'new' | 'known' | undefined;
+  /** The baseline finding a `known` one reads like, by its id in the baseline report. */
+  baselineFindingId?: string | undefined;
+}
+
+/** A baseline finding nothing in this run read like: named, so the reader knows what to look for. */
+export interface ReportExploreNotSeen {
+  id: string;
+  kind: 'issue' | 'warning';
+  severity: 1 | 2 | 3 | 4 | 5;
+  title: string;
+}
+
+/** The `run.explore.baseline` block: the earlier run this one was compared with, and how its findings fared. */
+export interface ReportExploreBaseline {
+  /** The baseline report's path, relative to the project root when inside it. */
+  source: string;
+  goal: string;
+  /** Findings the baseline holds. */
+  findings: number;
+  /** This run's findings that read like one of them, and those that read like none. */
+  known: number;
+  new: number;
+  notSeen: readonly ReportExploreNotSeen[];
 }
 
 /** One exploration step: a charter the agent planned and then executed as an `agent.act` step. */
@@ -126,6 +151,8 @@ export interface ReportExplore {
   summary?: string | undefined;
   steps: readonly ReportExploreStep[];
   findings: readonly ReportExploreFinding[];
+  /** Present when the run was given `--baseline`. */
+  baseline?: ReportExploreBaseline | undefined;
 }
 
 // --- report-1 wire shapes (schema/report-v1.schema.json) ---

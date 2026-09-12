@@ -8,6 +8,7 @@
  * rides along as `run.explore`.
  */
 
+import path from 'node:path';
 import { MAX_PARAMS_BYTES } from '../agent/act-validation.ts';
 import { isStepExecutor, type StepExecutor } from '../agent/executor.ts';
 import type { ModuleRegistration, RegisteredTest } from '../collect/registry.ts';
@@ -20,6 +21,7 @@ import { run, type RunOutcome } from '../run/runner.ts';
 import type { AgentConfig, BuiltinReporter, E2EConfig } from '../types.ts';
 import { createExploreBody } from './body.ts';
 import { createExplorer } from './executor.ts';
+import { loadBaseline } from './baseline.ts';
 import type { PlanAccount } from './plan.ts';
 import { ExploreState } from './state.ts';
 
@@ -55,6 +57,12 @@ export interface ExploreOptions {
   readonly agent?: string | undefined;
   readonly maxSteps?: number | undefined;
   readonly timeoutMs?: number | undefined;
+  /**
+   * The `report.json` of an earlier exploration to tell this run's findings
+   * apart from: each is labeled `known` or `new`, and the record says which
+   * baseline findings were not seen again. Relative to `cwd`.
+   */
+  readonly baseline?: string | undefined;
   readonly headed?: boolean | undefined;
   readonly reporters?: readonly BuiltinReporter[] | undefined;
   readonly artifactsDir?: string | undefined;
@@ -97,6 +105,8 @@ export async function explore(options: ExploreOptions = {}): Promise<ExploreOutc
   };
 
   const { raw, projectRoot } = await loadRawConfig(options, cwd);
+  const baseline = options.baseline === undefined ? undefined : loadBaseline(path.resolve(cwd, options.baseline), projectRoot);
+  if (baseline !== undefined) notice(`comparing with the baseline ${baseline.source}: ${baseline.findings.length} finding(s)`);
   // Nothing replays an exploration, and a retry would explore twice.
   const rawConfig: E2EConfig = { ...raw, cache: 'off', retries: 0 };
   const resolved = resolveConfig(rawConfig, { projectRoot, env, cli: options.agent === undefined ? {} : { agents: [options.agent] } });
@@ -106,7 +116,7 @@ export async function explore(options: ExploreOptions = {}): Promise<ExploreOutc
   const agentName = resolved.agentNames[0]!;
   if (agentName !== 'default') notice(`exploring with agent "${agentName}"`);
 
-  const state = new ExploreState(goal, budgets);
+  const state = new ExploreState(goal, budgets, Date.now, baseline);
   const explorer = createExplorer({ state, from: resolved.agent.executor, notice });
   const outcome = await run({
     cwd: projectRoot,

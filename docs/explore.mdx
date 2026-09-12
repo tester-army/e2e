@@ -131,6 +131,46 @@ fill, screenshot evidence is withheld for the rest of the attempt.
 `e2e run`. In both commands, `--video` requires a selected engine that records
 video; otherwise the run fails with `UNSUPPORTED_ARTIFACT`.
 
+## Comparing with a baseline
+
+An exploration reports what it met. To read a branch against its base, or a
+release against the last, give the run the `report.json` of an earlier
+exploration and it tells the findings apart:
+
+```bash
+git checkout main && npx e2e explore 'Explore checkout' && cp .e2e/report.json /tmp/main.json
+git checkout my-branch && npx e2e explore 'Explore checkout' --baseline /tmp/main.json
+```
+
+Each finding is tagged as it is reported: `known` when it reads like a
+finding the baseline holds, `new` when it reads like none. The `Findings`
+section carries the tag, a `Not seen since the baseline` list names what the
+earlier run found and this one did not, and the summary gains a `Baseline`
+row.
+
+```text
+   ⚑ high issue  Cart total does not update when quantity increases (/cart) known
+   ⚑ medium issue  Coupon field accepts an expired code (/checkout) new
+   ...
+ Not seen since the baseline /tmp/main.json
+   trivial warning  Checkout newsletter label misspells Receive
+
+   Findings  2 issues
+   Baseline  1 new · 1 known · 1 not seen · /tmp/main.json
+```
+
+The match is word overlap over the title and the expected-and-actual text,
+weighted toward the title, with no model in the loop, so the same two reports
+compare the same way every time. Each baseline finding is matched at most
+once. Read the tags as a reading aid, not a verdict: a `known` finding is one
+the base already had, a `new` one deserves the first look, and a finding not
+seen again has not been shown fixed, since the agent may simply not have
+gone there. The run's own verdict does not change: any issue fails it,
+baseline or not. In `.e2e/report.json`, `run.explore.baseline` holds the
+source, the counts, and the not-seen list, and each finding carries
+`novelty` and, when known, `baselineFindingId`. A file that is not the
+`report.json` of an explore run is `INVALID_BASELINE` before anything starts.
+
 ## Your config applies
 
 Explore reads `e2e.config.ts`. The target's engine, app command, allowed

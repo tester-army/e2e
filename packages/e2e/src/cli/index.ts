@@ -424,6 +424,8 @@ function createProgram(version: string, telemetry: Telemetry): Command {
       `wall clock in milliseconds, ${TIMEOUT_BOUNDS.min} through ${TIMEOUT_BOUNDS.max} (default: ${TIMEOUT_BOUNDS.default})`,
       parseBoundedInt(TIMEOUT_BOUNDS),
     )
+    .optionsGroup('Comparison:')
+    .option('--baseline <path>', 'the report.json of an earlier explore run; findings are labeled new or known against it')
     .optionsGroup('Execution:')
     .option('--headed', 'show the UI while the agent explores, when the engine supports it')
     .optionsGroup('Output:')
@@ -442,6 +444,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           'e2e explore --target web --max-steps 4 --headed',
           "e2e explore --agent ux 'Review onboarding as a first-time user'",
           "e2e explore 'Hunt for broken forms and dead links' --video",
+          "e2e explore 'Explore checkout' --baseline main-report.json",
         ]),
         '',
         exitCodesSection(EXPLORE_EXIT_CODES),
@@ -458,6 +461,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           agent?: string;
           maxSteps?: number;
           timeout?: number;
+          baseline?: string;
           headed?: boolean;
           reporter?: Reporter[];
           artifacts?: string;
@@ -475,6 +479,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
             agent: options.agent,
             maxSteps: options.maxSteps,
             timeoutMs: options.timeout,
+            baseline: options.baseline,
             headed: options.headed,
             reporters: options.reporter,
             artifactsDir: options.artifacts,

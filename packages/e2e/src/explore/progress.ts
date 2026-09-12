@@ -6,7 +6,7 @@
  * report is the record; these are its moments.
  */
 
-import type { ReportExplore, ReportExploreFinding, ReportExploreStep } from '../report/build.ts';
+import type { ReportExplore, ReportExploreBaseline, ReportExploreFinding, ReportExploreStep } from '../report/build.ts';
 
 export interface ExploreBudgets {
   readonly maxSteps: number;
@@ -25,6 +25,12 @@ export type ExploreProgress =
   | { readonly phase: 'step-finished'; readonly step: ReportExploreStep }
   /** One finding, as recorded; its evidence screenshot, when kept, is the attempt artifact `artifactId` names. */
   | { readonly phase: 'finding'; readonly finding: ReportExploreFinding }
-  | { readonly phase: 'finished'; readonly ended: ReportExplore['ended']; readonly summary?: string | undefined };
+  /** The record closes; `baseline` says how the earlier run's findings fared when one was given. */
+  | {
+      readonly phase: 'finished';
+      readonly ended: ReportExplore['ended'];
+      readonly summary?: string | undefined;
+      readonly baseline?: ReportExploreBaseline | undefined;
+    };
 
 export type ExploreListener = (progress: ExploreProgress) => void;

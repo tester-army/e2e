@@ -597,7 +597,36 @@
         "path": { "type": "string", "maxLength": 2048 },
         "observationRevision": { "type": "string", "minLength": 1 },
         "reportedAt": { "$ref": "#/$defs/timestamp" },
-        "artifactId": { "type": "string", "minLength": 1 }
+        "artifactId": { "type": "string", "minLength": 1 },
+        "novelty": { "enum": ["new", "known"] },
+        "baselineFindingId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "exploreBaseline": {
+      "description": "The earlier e2e explore run this one was compared with (--baseline), and how its findings fared: known ones were found again, new ones were not in it, notSeen ones were not found again.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "goal", "findings", "known", "new", "notSeen"],
+      "properties": {
+        "source": { "type": "string", "minLength": 1 },
+        "goal": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "findings": { "type": "integer", "minimum": 0 },
+        "known": { "type": "integer", "minimum": 0 },
+        "new": { "type": "integer", "minimum": 0 },
+        "notSeen": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "kind", "severity", "title"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "kind": { "enum": ["issue", "warning"] },
+              "severity": { "type": "integer", "minimum": 1, "maximum": 5 },
+              "title": { "type": "string", "minLength": 1, "maxLength": 200 }
+            }
+          }
+        }
       }
     },
     "exploreStep": {
@@ -634,7 +663,8 @@
         "ended": { "enum": ["finished", "step-limit", "time", "stuck", "aborted"] },
         "summary": { "type": "string", "maxLength": 4000 },
         "steps": { "type": "array", "items": { "$ref": "#/$defs/exploreStep" } },
-        "findings": { "type": "array", "items": { "$ref": "#/$defs/exploreFinding" } }
+        "findings": { "type": "array", "items": { "$ref": "#/$defs/exploreFinding" } },
+        "baseline": { "$ref": "#/$defs/exploreBaseline" }
       }
     }
   }

@@ -84,6 +84,7 @@ These appear in terminal output and in the report as plain string codes.
 | `INVALID_APP_URL` | Base URL with userinfo, a query, a fragment, a non-HTTP scheme, plain HTTP on a non-loopback host, port 0 on a host other than a literal loopback address (`127.0.0.1`, `[::1]`), a loopback address the run could not bind a free port on, or unparseable | configuration | 2 |
 | `INVALID_GLOB` | Empty pattern, a leading `!` exclusion, or unsupported glob syntax | configuration | 2 |
 | `UNKNOWN_TARGET` | `--target` named an ID that is not configured | configuration | 2 |
+| `INVALID_BASELINE` | `e2e explore --baseline <path>` named a file that is missing, not JSON, not a `report-1` document, or a report with no `run.explore` record (a test run rather than an exploration), or one whose finding is malformed | configuration | 2 |
 | `TARGET_REQUIRED` | `e2e mcp`: the config declares several targets and neither `--target` nor `open_session` named one | configuration | 2 |
 | `NO_SESSION` | `e2e mcp`: `call`, `tools`, or `close_session` before `open_session` or after the session ended (the message names why), or naming a `session` id that is not the open one | configuration | 2 |
 | `SESSION_OPEN` | `e2e mcp`: `open_session` while a session is already open; use it or `close_session` first | configuration | 2 |

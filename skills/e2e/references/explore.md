@@ -41,6 +41,7 @@ usernames, and the agent fills passwords with `type_secret` by name.
 | `--agent <name>` | `default` | Build the explorer from another configured agent (`agents.<name>`). |
 | `--max-steps <n>` | 8 (1 to 12) | Exploration steps at most. |
 | `--timeout <ms>` | 600000 (180000 to 900000) | Wall clock; the last minute is for the assessment. |
+| `--baseline <path>` | none | The `report.json` of an earlier explore run. Findings are tagged `known` (reads like one the baseline holds) or `new`; the report lists baseline findings not seen again. Word overlap, no model; the verdict does not change. |
 | `--headed`, `--reporter`, `--artifacts`, `--debug`, `--ai-trace`, `--video` | as `run` | Same meaning as for `e2e run`. |
 
 Per-step action and model-call budgets default to 40 each; `agent.maxSteps`
@@ -76,6 +77,14 @@ high 4, medium 3, low 2, trivial 1. `.e2e/report.json` has the record under
 
 `artifactId` names the evidence screenshot among the attempt's `artifacts` in
 `run.results[0]`, where its path, size, and digest are.
+
+To compare two states of the app (a branch against its base), explore the
+base, keep its `report.json`, then explore the branch with `--baseline
+<that file>`: read the `new` findings first, treat `known` ones as the base's,
+and do not read a `Not seen since the baseline` entry as fixed, since the
+agent may not have gone there. `run.explore.baseline` in the report holds the
+counts and the not-seen list. A file that is not an explore report is
+`INVALID_BASELINE`.
 
 Turn a finding into a test: its `reproduction` steps are the `agent.act()`
 instructions or `screen.*` actions, and `expected` is the assertion.

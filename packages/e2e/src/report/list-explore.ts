@@ -11,7 +11,7 @@ import path from 'node:path';
 import type { ExploreBudgets, ExploreProgress, OpenedStep } from '../explore/progress.ts';
 import type { SerializedError } from '../internal/errors.ts';
 import { collapseText } from '../internal/text.ts';
-import type { ReportExplore, ReportExploreFinding, ReportExploreStep } from '../report/build.ts';
+import type { ReportExplore, ReportExploreBaseline, ReportExploreFinding, ReportExploreStep } from '../report/build.ts';
 import type { ArtifactRecord } from '../run/records.ts';
 import type { StepEvent } from '../run/steps.ts';
 import {
@@ -99,6 +99,8 @@ export class ExploreView {
   private planning: 'step' | 'closing' | undefined;
   private ended: ReportExplore['ended'] | undefined;
   private summary: string | undefined;
+  /** How the baseline's findings fared, once the record closed; undefined without `--baseline`. */
+  private baseline: ReportExploreBaseline | undefined;
   /** The exploration test's artifacts, once its result arrived: where a finding's screenshot is. */
   private artifacts: readonly ArtifactRecord[] = [];
   /** High-water mark of the live rows; the window pads up to it. */
@@ -140,6 +142,7 @@ export class ExploreView {
         this.planning = undefined;
         this.ended = progress.ended;
         this.summary = progress.summary;
+        this.baseline = progress.baseline;
         break;
     }
   }
@@ -213,11 +216,18 @@ export class ExploreView {
     return lines;
   }
 
-  /** One finding on one line: `⚑ high issue  Title (/path)`. */
+  /** One finding on one line: `⚑ high issue  Title (/path)`, tagged `new` or `known` against a baseline. */
   findingLine(finding: ReportExploreFinding, indent = ROW_INDENT): string {
     const { pc } = this;
     const location = finding.path === undefined ? '' : pc.dim(` (${bounded(finding.path)})`);
-    return `${indent}${this.severityColor(finding)(`${F_FINDING} ${this.grade(finding)}`)}  ${bounded(collapseText(finding.title))}${location}`;
+    const novelty = finding.novelty === undefined ? '' : ` ${this.noveltyTag(finding.novelty)}`;
+    return `${indent}${this.severityColor(finding)(`${F_FINDING} ${this.grade(finding)}`)}  ${bounded(collapseText(finding.title))}${location}${novelty}`;
+  }
+
+  /** `new` stands out, since it is what a comparison is run for; `known` recedes. */
+  private noveltyTag(novelty: NonNullable<ReportExploreFinding['novelty']>): string {
+    const { pc } = this;
+    return novelty === 'new' ? pc.bold(pc.magenta('new')) : pc.dim('known');
   }
 
   /** `high issue`, `low warning`. */
@@ -312,7 +322,21 @@ export class ExploreView {
     } else {
       steps.push(`${done} of ${this.budgets.maxSteps}`, ...this.outcomeParts(), pc.dim(ENDED_TEXT[this.ended]));
     }
-    return [padTitle(pc, 'Findings') + findings, padTitle(pc, 'Steps') + steps.join(pc.dim(' · '))];
+    return [padTitle(pc, 'Findings') + findings, ...this.baselineRow(), padTitle(pc, 'Steps') + steps.join(pc.dim(' · '))];
+  }
+
+  /** `Baseline  2 new · 1 known · 1 not seen · main-report.json`, once the record closed with one. */
+  private baselineRow(): string[] {
+    const { pc } = this;
+    const baseline = this.baseline;
+    if (baseline === undefined) return [];
+    const parts = [
+      baseline.new > 0 ? pc.bold(pc.magenta(`${baseline.new} new`)) : pc.dim('0 new'),
+      `${baseline.known} known`,
+      `${baseline.notSeen.length} not seen`,
+      pc.dim(bounded(baseline.source)),
+    ];
+    return [padTitle(pc, 'Baseline') + parts.join(pc.dim(' · '))];
   }
 
   /** `3 passed`, `1 failed`, ... over the finished steps, zero counts left out. */
@@ -362,10 +386,11 @@ export class ExploreView {
       const grade = this.grade(finding);
       lines.push(`${number}${this.severityColor(finding)(grade.padEnd(16))} ${pc.bold(bounded(collapseText(finding.title)))}`);
       const where = [
-        ...(finding.path === undefined ? [] : [bounded(finding.path)]),
-        ...(finding.step === undefined ? [] : [`step ${finding.step}`]),
+        ...(finding.path === undefined ? [] : [pc.dim(bounded(finding.path))]),
+        ...(finding.step === undefined ? [] : [pc.dim(`step ${finding.step}`)]),
+        ...(finding.novelty === undefined ? [] : [this.noveltyTag(finding.novelty)]),
       ];
-      if (where.length > 0) lines.push(`${DETAIL_INDENT}${pc.dim(where.join(' · '))}`);
+      if (where.length > 0) lines.push(`${DETAIL_INDENT}${where.join(pc.dim(' · '))}`);
       lines.push(...this.detail('expected', finding.expected, columns));
       lines.push(...this.detail('actual', finding.actual, columns));
       finding.reproduction.forEach((action, index) => {
@@ -375,6 +400,24 @@ export class ExploreView {
       if (screenshot !== undefined) lines.push(`${DETAIL_INDENT}${pc.dim('evidence'.padEnd(DETAIL_LABEL_WIDTH))}  ${pc.cyan(screenshot)}`);
       lines.push('');
     });
+    lines.push(...this.notSeenSection());
+    return lines;
+  }
+
+  /**
+   * The baseline findings nothing in this run read like, by grade and title:
+   * what to look for by hand, since an exploration that did not meet a defect
+   * again has not shown it fixed.
+   */
+  private notSeenSection(): string[] {
+    const { pc } = this;
+    const notSeen = this.baseline?.notSeen ?? [];
+    if (notSeen.length === 0) return [];
+    const lines = [` ${pc.bold(`Not seen since the baseline ${bounded(this.baseline!.source)}`)}`];
+    for (const finding of notSeen) {
+      lines.push(`${ROW_INDENT}${pc.dim(`${SEVERITY_WORDS[finding.severity]} ${finding.kind}`.padEnd(16))} ${bounded(collapseText(finding.title))}`);
+    }
+    lines.push('');
     return lines;
   }
 

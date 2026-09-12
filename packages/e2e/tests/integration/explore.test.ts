@@ -6,7 +6,7 @@
  * user gets.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createAgent, defineTool } from '../../src/agent/public.ts';
@@ -346,6 +346,57 @@ describe('e2e explore', () => {
     // The plaintext reaches neither the planner nor the explorer.
     expect(planPrompts.join('\n')).not.toContain('bookworm');
     expect(loopCalls.map((call) => call.prompt).join('\n')).not.toContain('bookworm');
+  }, 120_000);
+
+  it('tells its findings apart from a baseline report: known, new, and not seen, and refuses a report that is not an exploration', async () => {
+    const baselineFile = path.join(project.dir, 'baseline-report.json');
+    writeFileSync(
+      baselineFile,
+      JSON.stringify({
+        schemaVersion: 'report-1',
+        run: {
+          explore: {
+            goal: 'Explore the home page on main',
+            findings: [
+              { id: 'b-counter', index: 0, kind: 'issue', severity: 3, title: 'Counter starts at 0 and never says what it counts', expected: 'A label', actual: 'Counter reads 0', reproduction: [], reportedAt: '2026-01-01T00:00:00.000Z' },
+              { id: 'b-footer', index: 1, kind: 'warning', severity: 1, title: 'Footer misspells Receive', expected: 'Receive', actual: 'Recieve', reproduction: [], reportedAt: '2026-01-01T00:00:00.000Z' },
+            ],
+          },
+        },
+      }),
+    );
+    const model = installExploreModel({
+      plan: (call) => (call.instruction.includes('1. [passed]') ? { decision: 'finish', summary: 'done' } : { decision: 'step', title: 'Counter', instruction: 'Check the counter' }),
+      loop: (call) => {
+        if (call.turn === 1) return [{ toolName: FINDING_TOOL_NAME, input: COUNTER_FINDING }];
+        if (call.turn === 2) return [{ toolName: FINDING_TOOL_NAME, input: { ...COUNTER_FINDING, title: 'Increment has no keyboard shortcut', expected: 'A shortcut', actual: 'None' } }];
+        return [{ toolName: 'complete_step', input: { status: 'passed', summary: 'Counter checked' } }];
+      },
+    });
+    const outcome = await runExplore(project, app, model, { baseline: 'baseline-report.json' });
+    expect((outcome as unknown as { notices: string[] }).notices).toContain('comparing with the baseline baseline-report.json: 2 finding(s)');
+    assertValidReport(outcome.report);
+    const record = outcome.report.run.explore!;
+    expect(record.findings.map((finding) => [finding.novelty, finding.baselineFindingId])).toEqual([
+      ['known', 'b-counter'],
+      ['new', undefined],
+    ]);
+    expect(record.baseline).toEqual({
+      source: 'baseline-report.json',
+      goal: 'Explore the home page on main',
+      findings: 2,
+      known: 1,
+      new: 1,
+      notSeen: [{ id: 'b-footer', kind: 'warning', severity: 1, title: 'Footer misspells Receive' }],
+    });
+    // The verdict is the findings', baseline or not: two issues fail the run.
+    expect(outcome.exitCode).toBe(1);
+
+    writeFileSync(baselineFile, JSON.stringify({ schemaVersion: 'report-1', run: { results: [] } }));
+    await expect(runExplore(project, app, model, { baseline: 'baseline-report.json' })).rejects.toMatchObject({
+      code: 'INVALID_BASELINE',
+      message: expect.stringContaining('the report holds no exploration record'),
+    });
   }, 120_000);
 
   it('rejects a goal past the ceiling, a budget out of range, and a credential inventory that would not fit a step before anything starts', async () => {
