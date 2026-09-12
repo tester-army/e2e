@@ -71,7 +71,7 @@
   "devDependencies": {
     "@types/node": "26.4.1",
     "@types/pngjs": "6.0.5",
-    "agent-device": "0.21.0",
+    "agent-device": "0.21.1",
     "ai": "7.0.97",
     "@e2edev/e2e": "workspace:*",
     "typescript": "7.0.2",

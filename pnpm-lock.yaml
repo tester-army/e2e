@@ -6,6 +6,9 @@ importers:
   .:
     configDependencies: {}
     packageManagerDependencies:
+      '@pnpm/exe':
+        specifier: 12.3.4
+        version: 12.3.4
       pnpm:
         specifier: 12.3.4
         version: 12.3.4
@@ -56,6 +59,11 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@pnpm/exe@12.3.4':
+    resolution: {integrity: sha512-Rq7JokWAyYF9IFfn8zofB/q2AgnZlmoMuH5fMHB2+Ta61I9aD7sNm+woZpx6iH+5vb38chdSoYRvOtSqlH72YQ==}
+    engines: {node: '>=18.*'}
+    hasBin: true
+
   pnpm@12.3.4:
     resolution: {integrity: sha512-lhqkH7B32joEpEHZ+OFevAyW2o73ELLrZ7+e58sGEOq9SPH9hfUc/+c4RnhfoPh8VqOocqHYk/hEZ0G1zORUVw==}
     engines: {node: '>=18.*'}
@@ -86,6 +94,17 @@ snapshots:
 
   '@pnpm/exe.win32-x64@12.3.4':
     optional: true
+
+  '@pnpm/exe@12.3.4':
+    optionalDependencies:
+      '@pnpm/exe.darwin-arm64': 12.3.4
+      '@pnpm/exe.darwin-x64': 12.3.4
+      '@pnpm/exe.linux-arm64': 12.3.4
+      '@pnpm/exe.linux-arm64-musl': 12.3.4
+      '@pnpm/exe.linux-x64': 12.3.4
+      '@pnpm/exe.linux-x64-musl': 12.3.4
+      '@pnpm/exe.win32-arm64': 12.3.4
+      '@pnpm/exe.win32-x64': 12.3.4
 
   pnpm@12.3.4:
     optionalDependencies:
@@ -181,8 +200,8 @@ importers:
         specifier: 6.0.5
         version: 6.0.5
       agent-device:
-        specifier: 0.21.0
-        version: 0.21.0(ai@7.0.97(zod@4.6.1))
+        specifier: 0.21.1
+        version: 0.21.1(ai@7.0.97(zod@4.6.1))
       ai:
         specifier: 7.0.97
         version: 7.0.97(zod@4.6.1)
@@ -327,8 +346,8 @@ importers:
         specifier: 19.3.0
         version: 19.3.0(@types/react@19.3.0)
       agent-device:
-        specifier: 0.21.0
-        version: 0.21.0
+        specifier: 0.21.1
+        version: 0.21.1(ai@7.0.97(zod@4.6.1))
       ai:
         specifier: 7.0.97
         version: 7.0.97(zod@4.6.1)
@@ -2134,8 +2153,8 @@ packages:
     resolution: {integrity: sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==}
     engines: {node: '>= 14'}
 
-  agent-device@0.21.0:
-    resolution: {integrity: sha512-s/7KlieaLLemNtKlc/EWmkphRzdmNu7c3AuAPFb9OZGG6SLCPBvS0wTKJCbmfxhLMGpEQ88GhinOj/0zoqY7hg==}
+  agent-device@0.21.1:
+    resolution: {integrity: sha512-vFhcqkQlusuOHR389h7WLhINfLdsMie3D5YPYNm8OOIjh4iy/YCQtNoKVqxQ+zeTrYZMOBxbWEHnL07/WVzTPA==}
     engines: {node: '>=22.12'}
     hasBin: true
     peerDependencies:
@@ -7281,7 +7300,7 @@ snapshots:
 
   agent-base@7.1.4: {}
 
-  agent-device@0.21.0(ai@7.0.97(zod@4.6.1)):
+  agent-device@0.21.1(ai@7.0.97(zod@4.6.1)):
     optionalDependencies:
       ai: 7.0.97(zod@4.6.1)
 
