@@ -114,7 +114,7 @@ describe('resolveConfig', () => {
     );
     expect(() => resolve({ targets: [{ ...WEB, platfrom: 'web' }] } as never)).toThrow('did you mean "platform"?');
     expect(() => resolve({ reporters: ['lst'] } as never)).toThrow(
-      'unknown reporter "lst"; reporters are list, json, and junit; did you mean "list"?',
+      'unknown reporter "lst"; reporters are list, json, junit, and markdown; did you mean "list"?',
     );
     expect(() => resolve({ targets: [{ ...WEB, engine: 'playwright' }] } as never)).toThrow(
       'target "web" engine must be an engine handle, got the string "playwright"; call the engine\'s factory',

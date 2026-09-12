@@ -126,6 +126,9 @@ Enterprise Server works through `GITHUB_SERVER_URL` and `GITHUB_API_URL`.
 
 `renderComment(report, { marker, artifactsUrl, sourceUrl })` is exported. It
 takes a report document and returns the comment body, so a service that
-receives the report can post the same comment under its own identity. A
+receives the report can post the same comment under its own identity. It is
+`renderMarkdownReport` from `@e2edev/e2e` under this package's older name: the
+same page the built-in [`markdown` reporter](/reference/cli#output) writes to
+`.e2e/summary.md`, so a comment and a checkout read alike. A
 marker longer than 1024 characters or an `artifactsUrl` longer than 2048 is
 rejected rather than posted incomplete.

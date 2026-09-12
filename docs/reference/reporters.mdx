@@ -3,7 +3,7 @@ title: Reporters
 description: Reporter objects in `reporters`, what they receive, and what the runner guarantees them.
 ---
 
-`reporters` takes the built-in ids (`list`, `json`, `junit`; see
+`reporters` takes the built-in ids (`list`, `json`, `junit`, `markdown`; see
 [CLI output](/reference/cli#output)) and reporter objects. Both are the same
 thing: each id names a `Reporter` the runner ships, on the contract below, and
 a reporter object is one you supply. A reporter is how a run's outcome leaves
@@ -62,8 +62,13 @@ reporter in `e2e.config.ts` types its handlers from one import.
 
 The built-in `junit` reporter is the smallest complete example: it reads
 `run.report`, writes `junit.xml` beside `run.reportPath`, and returns one row
-naming the file relative to `run.projectRoot`. `json` is an `onRunFinished`
-that writes the document to stdout; `list` is an `onEvent`.
+naming the file relative to `run.projectRoot`. `markdown` does the same with
+`summary.md`, through `renderMarkdownReport(report, options)`, which the main
+entrypoint exports so a reporter of your own can post the same page elsewhere:
+`marker` prepends a hidden comment a rerun finds its post by, `artifactsUrl`
+links the evidence to a run page, `artifactsDir` lists it as paths under that
+directory instead, and `sourceUrl` links each failing line. `json` is an
+`onRunFinished` that writes the document to stdout; `list` is an `onEvent`.
 [`@e2edev/github`](/github) is a reporter package on the same contract; it
 comments on the pull request from GitHub Actions.
 

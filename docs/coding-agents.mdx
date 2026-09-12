@@ -109,6 +109,10 @@ process, or the model provider.
 
 Every run writes `.e2e/report.json`. `--reporter json` prints the same
 document on stdout for an agent that would rather parse than open a file.
+`--reporter list,markdown` adds `.e2e/summary.md`: the same report as one
+markdown page, evidence listed as paths from the project root, which an agent
+pastes into a pull request description or a handoff instead of retelling the
+result in its own words.
 
 ```json
 {

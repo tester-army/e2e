@@ -837,7 +837,7 @@ export interface AgentConfig {
 }
 
 /** The reporters the runner ships, named by id; each is a `Reporter` on the same contract. */
-export type BuiltinReporter = 'list' | 'json' | 'junit';
+export type BuiltinReporter = 'list' | 'json' | 'junit' | 'markdown';
 
 /**
  * The run's report document, the one `.e2e/report.json` holds. Its
@@ -903,7 +903,8 @@ export interface E2EConfig {
   artifacts?: readonly ConfiguredArtifactKind[] | ArtifactsConfig;
   /**
    * Output renderers and reporter objects. `junit` writes `.e2e/junit.xml`,
-   * `json` prints the report and excludes `list`; a `Reporter` object runs
+   * `markdown` writes `.e2e/summary.md`, `json` prints the report and
+   * excludes `list`; a `Reporter` object runs
    * beside them and `--reporter` never removes it.
    */
   reporters?: readonly (BuiltinReporter | Reporter)[];

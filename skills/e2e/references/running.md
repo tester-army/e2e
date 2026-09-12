@@ -24,7 +24,7 @@ npx e2e telemetry [disable|enable] # anonymous usage telemetry: status, or the s
 | `--headed` | Visible browser or simulator when the engine supports it. |
 | `--agent <names>` | Run unpinned tests as other configured agents (`agents.<name>`), comma-separated or repeated; several names run each such test once per agent. Default is `agents.default`. |
 | `--workers <n>`, `--retries <n>` | Override the resolved values. |
-| `--reporter <ids>` | `list`, `json`, `junit`, comma-separated. `json` cannot combine with `list`. |
+| `--reporter <ids>` | `list`, `json`, `junit`, `markdown`, comma-separated. `json` cannot combine with `list`. |
 | `--artifacts <dir>` | Artifact root, default `.e2e/artifacts`. |
 | `--no-cache` | Run with the trace cache off. |
 | `--pass-with-no-tests` | Exit 0 when nothing matches instead of `NO_TESTS`. |
@@ -84,6 +84,10 @@ recorded flow is stale — `--no-cache` only skips the cache for one run.
   `artifacts[]`, and `error`.
 - `junit`: `.e2e/junit.xml` beside the report, for CI test summaries.
   Combine it with the terminal output: `--reporter list,junit`.
+- `markdown`: `.e2e/summary.md` beside the report: the counts, every test
+  that did not pass with its error and evidence paths, or an exploration's
+  findings and assessment. Paste it into a pull request or a handoff rather
+  than retelling the result: `--reporter list,markdown`.
 - `json`: the report document on stdout.
 - `github()` from `@e2edev/github`: on GitHub Actions, one pull request comment per
   run (edited on rerun) and the job summary; needs `pull-requests: write` and

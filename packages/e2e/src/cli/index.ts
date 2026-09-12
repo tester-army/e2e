@@ -79,7 +79,7 @@ function rejectForwardedFlags(command: Command, files: readonly string[]): void 
   );
 }
 
-const REPORTERS = ['list', 'json', 'junit'] as const;
+const REPORTERS = ['list', 'json', 'junit', 'markdown'] as const;
 type Reporter = (typeof REPORTERS)[number];
 
 function isReporter(value: string): value is Reporter {
@@ -328,7 +328,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .option('--retries <n>', 'retries per failing test (default: from the config)', parseNonNegativeInt)
     .option('--no-cache', 'run with the trace cache off, whatever the config says')
     .optionsGroup('Output:')
-    .option('--reporter <ids>', 'comma-separated reporters: list, json, junit', parseReporters)
+    .option('--reporter <ids>', 'comma-separated reporters: list, json, junit, markdown', parseReporters)
     .option('--artifacts <dir>', 'artifact root (default: .e2e/artifacts)')
     .option('--debug', 'print phase timings and the agent step table to stderr')
     .option('--ai-trace', 'record every model call to .e2e/ai-trace.json (unbox-ai)')
@@ -427,7 +427,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .optionsGroup('Execution:')
     .option('--headed', 'show the UI while the agent explores, when the engine supports it')
     .optionsGroup('Output:')
-    .option('--reporter <ids>', 'comma-separated reporters: list, json, junit', parseReporters)
+    .option('--reporter <ids>', 'comma-separated reporters: list, json, junit, markdown', parseReporters)
     .option('--artifacts <dir>', 'artifact root (default: .e2e/artifacts)')
     .option('--debug', 'print phase timings and the agent step table to stderr')
     .option('--ai-trace', 'record every model call to .e2e/ai-trace.json (unbox-ai)')

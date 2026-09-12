@@ -128,7 +128,9 @@ budgets, why the run ended, the assessment, every step, and every finding.
 A finding with a saved screenshot includes its artifact id. After a secret
 fill, screenshot evidence is withheld for the rest of the attempt.
 `--reporter`, `--video`, `--ai-trace`, and `--debug` work as they do for
-`e2e run`. In both commands, `--video` requires a selected engine that records
+`e2e run`; `--reporter list,markdown` also writes the findings as a markdown
+page in `.e2e/summary.md`, ready to paste into a pull request or an issue.
+In both commands, `--video` requires a selected engine that records
 video; otherwise the run fails with `UNSUPPORTED_ARTIFACT`.
 
 ## Your config applies

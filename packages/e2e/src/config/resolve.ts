@@ -519,7 +519,7 @@ function isArtifactsObject(value: unknown): value is ArtifactsConfig {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-const BUILTIN_REPORTERS: readonly BuiltinReporter[] = ['list', 'json', 'junit'];
+const BUILTIN_REPORTERS: readonly BuiltinReporter[] = ['list', 'json', 'junit', 'markdown'];
 
 /**
  * Splits `reporters` into the built-in ids and the reporter objects.
@@ -545,7 +545,7 @@ function resolveReporters(
       if (!(BUILTIN_REPORTERS as readonly string[]).includes(reporter)) {
         throw new ConfigurationError(
           'INVALID_CONFIG',
-          `unknown reporter "${reporter}"; reporters are list, json, and junit${didYouMean(reporter, BUILTIN_REPORTERS)}`,
+          `unknown reporter "${reporter}"; reporters are list, json, junit, and markdown${didYouMean(reporter, BUILTIN_REPORTERS)}`,
         );
       }
       ids.push(reporter as BuiltinReporter);

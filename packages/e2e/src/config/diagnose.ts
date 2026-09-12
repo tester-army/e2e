@@ -23,6 +23,9 @@ export const RUNTIME_EXPORTS: readonly string[] = [
   'RUNTIME_CODES',
   'buildTraceEntry',
   'readTraceEntry',
+  'renderMarkdownReport',
+  'MAX_MARKER_CHARS',
+  'MAX_URL_CHARS',
 ];
 
 interface Manifest {

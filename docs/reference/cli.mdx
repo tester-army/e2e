@@ -74,7 +74,7 @@ needs the Android SDK and an emulator. See [Testing iOS and Android](/mobile).
 | `package.json` | Created as a private ESM package when missing; otherwise only missing selected dependencies and scripts are added. The runner uses the current CLI's version range, engine packages use the caret range of the engine version released with the CLI, AI uses `ai@^7.0.0` plus `@openrouter/ai-sdk-provider@^3.0.0` or `@ai-sdk/openai-compatible@^3.0.0` when that gateway was chosen. A `test:e2e` script runs `e2e run` unless the project already defines one |
 | `e2e.config.ts` | Imports and target configuration match the selected engine and AI options. Playwright setup hands `APP_URL` (default `http://localhost:3000`) to `playwright({ url })` and shows the `command` option in a comment for starting the dev server; the HTTP example reads `APP_URL` in the test itself; device setup pins an app without a URL. With a gateway, `agents.default` is `createAgent({ model, system })` built with that gateway's constructor, and a comment shows how to call a provider directly instead |
 | `tests/example.e2e.ts` | For Playwright, an app-open test that visits `/` and asserts `web.locator('body')` is visible, so it passes against any page, plus a commented agent test; an HTTP response check for the minimal setup; a deterministic Settings check for the selected device platform |
-| `.gitignore` | Appends `node_modules/`, `.e2e/artifacts/`, `.e2e/cache/`, `.e2e/sessions/`, `.e2e/report.json`, `.e2e/ai-trace.json`, `.e2e/junit.xml`, and `.e2e/logs/` when missing. Adding `.e2e/cache/` prints a pointer to [committing your traces](/reference/config#commit-your-traces), since committing replays is opt-in |
+| `.gitignore` | Appends `node_modules/`, `.e2e/artifacts/`, `.e2e/cache/`, `.e2e/sessions/`, `.e2e/report.json`, `.e2e/ai-trace.json`, `.e2e/junit.xml`, `.e2e/summary.md`, and `.e2e/logs/` when missing. Adding `.e2e/cache/` prints a pointer to [committing your traces](/reference/config#commit-your-traces), since committing replays is opt-in |
 | `.agents/skills/e2e/`, `.claude/skills/e2e/` | The agent skill: `SKILL.md` and one `references/<topic>.md` per `e2e guide` topic, in the directories selected in the wizard |
 
 ```bash
@@ -199,7 +199,7 @@ platform, skipped, or is a setup test.
 | `--agent <names>` | list of strings | `default` | The configured agents unpinned tests run as, comma-separated or repeated: every test and call that names no `agent` of its own runs once per name, one result each. A test or group pinned with `{ agent }` runs as the pinned names the flag also gives, or as its whole pin when the flag names none of them. An unknown name is `INVALID_CONFIG` before any process starts, naming the configured agents. |
 | `--retries <n>` | integer 0-10 | resolved config value | Replaces `config.retries`; out of range is `INVALID_CONFIG` |
 | `--workers <n>` | integer 1-1024 | resolved config value | Replaces `config.workers`; `--workers 0` is `INVALID_CONFIG` |
-| `--reporter <ids>` | comma-separated list | resolved config value | Replaces the built-in IDs in `config.reporters`: `list`, `json`, `junit`. An unknown ID exits 2. `json` combined with `list` is `INVALID_CONFIG`; `junit` combines with either. [Reporter objects](/reference/reporters) in the config keep running. |
+| `--reporter <ids>` | comma-separated list | resolved config value | Replaces the built-in IDs in `config.reporters`: `list`, `json`, `junit`, `markdown`. An unknown ID exits 2. `json` combined with `list` is `INVALID_CONFIG`; `junit` and `markdown` combine with either. [Reporter objects](/reference/reporters) in the config keep running. |
 | `--artifacts <dir>` | string | `.e2e/artifacts` | Relocates the report and artifact tree |
 | `--no-cache` | boolean | `false` | Runs with the trace cache off, overriding `config.cache`. The quickest way to check whether a failure is cache-related. |
 | `--pass-with-no-tests` | boolean | `false` | Allows zero runnable ordinary test-target pairs instead of failing with `NO_TESTS` |
@@ -264,13 +264,14 @@ npx e2e run --reporter list,junit
 | `list` | Human-readable progress to the terminal: a `RUN` banner naming the run, targets, and model; one line per setup step once it is done (a service or app command ready, a first-run browser download); one line per test file and target, with every test listed under a file that failed, was flaky, is the run's only file, or ran agent steps, and each finished agent step nested under its test with duration and model calls; a `Failed Tests` section with each error, the failing line, and a code frame; and a summary (`Test Files`, `Tests`, `AI`, `Cache` with replayed, handed-off, and missed agent-step counts when the cache is enabled, `Start at`, `Duration` with startup split out, `Report`). On a TTY a live window below the log shows the work in flight: the setup step, the running tests, the current agent step with its model turns and tool calls, `Thinking` during a model turn and `Replaying` while the cache replays. Without a TTY, finished agent steps print as they complete, prefixed with their test. Control characters are stripped and each untrusted field is capped at 8 KiB. |
 | `json` | The report document to stdout, and nothing else on stdout: diagnostics and `--debug` tables go to stderr, so `e2e run --reporter json \| jq` works. The document is the same one written to `.e2e/report.json`, described by `schema/report-v1.schema.json` in the package. The shape is stable: it changes only together with the `schemaVersion` field (`report-1` today), so a tool that parses it is a supported consumer. Cannot be combined with `list`. |
 | `junit` | The same report as JUnit XML to `.e2e/junit.xml`, beside `report.json`, for CI test summaries. One `<testsuite>` per test file, one `<testcase>` per test-target pair named `title > path [target]`; a test-category error is a `<failure>`, any other category an `<error>`, a skip a `<skipped>` with its reason, and a flaky pass a passed case with a `<system-out>` note. Run-level errors (an unreachable app, say) form a `run` suite of `<error>` cases. Combines with `list` or `json`; alone, the terminal stays silent. |
+| `markdown` | The same report as one markdown page in `.e2e/summary.md`, beside `report.json`: a headline with the counts, run-level errors, a table of every test that did not simply pass with its error and the paths of its evidence from the project root, and the passed tests folded away. An `e2e explore` run renders its record instead: the goal and steps, every finding with what was expected, what the screen showed, the actions that reach it, and its screenshot path, then the assessment. It is the text a coding agent pastes into a pull request or a handoff, and the same text [`/github`](/github) posts as the pull request comment. Combines with `list` or `json`; alone, the terminal stays silent. |
 
 Every run atomically writes `.e2e/report.json` under the artifact parent
-regardless of the selected reporters. The three ids name
+regardless of the selected reporters. The four ids name
 [reporters](/reference/reporters) on the same contract a config can supply its
-own on: `junit` writes `junit.xml` beside the report from that same document
-once the summary has printed, and a `junit.xml` that could not be written is a
-line on stderr, never a run error. A reporter can never change run status; the
+own on: `junit` and `markdown` write `junit.xml` and `summary.md` beside the
+report from that same document once the summary has printed, and a file that
+could not be written is a line on stderr, never a run error. A reporter can never change run status; the
 rows it returns print under the `list` summary.
 
 With `--ai-trace`, the run also writes `.e2e/ai-trace.json` next to the
@@ -369,7 +370,7 @@ a set of files, tags, and targets selects before paying for the run.
 The positional arguments and the selection flags are those of `run`:
 `--config`, `--target`, `--tag`, `--tag-mode`, and `--pass-with-no-tests`,
 with the same meaning. `--reporter` accepts `list` (the default) or `json`;
-`junit` exits 2. The same `NO_TESTS`, `UNKNOWN_TARGET`, and config errors
+`junit` and `markdown` exit 2. The same `NO_TESTS`, `UNKNOWN_TARGET`, and config errors
 apply, with the same exit codes.
 
 | Reporter | Writes |

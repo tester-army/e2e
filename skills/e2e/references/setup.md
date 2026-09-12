@@ -99,7 +99,7 @@ export default {
 | `assertionTimeout` | `5000` | `expect` polling window. |
 | `retries` | `0`, `1` in CI | 0 to 10. |
 | `workers` | half the cores, `1` in CI | Test files run in parallel across workers, at most the `workers` the engine declares per target (a device target: one per device). |
-| `reporters` | `['list']` | `list`, `json`, `junit`, and reporter objects (`{ name, onEvent?, onRunFinished? }`) that receive the finished run. `json` excludes `list`; `--reporter` keeps the objects. |
+| `reporters` | `['list']` | `list`, `json`, `junit`, `markdown`, and reporter objects (`{ name, onEvent?, onRunFinished? }`) that receive the finished run. `json` excludes `list`; `--reporter` keeps the objects. |
 | `cache` | `'read-write'`, `'read-only'` in CI | The trace cache for `agent.act`; `'off'` disables it. |
 | `agents` | `{ default: built-in }` | Agents by name. `default` is what tests run with; `e2e run --agent <name>` runs with another. Each entry is `createAgent(...)`, an options block `{ model, context, maxSteps, maxModelCalls, vision, providerOptions }`, or a custom `StepExecutor`. `model` is an AI SDK instance; without one anywhere, acquiring `agent` is `MODEL_UNAVAILABLE`. |
 | `credentials` | `{}` | Named `{ username, password, allowedOrigins? }` entries; `password` may be a function returning the value. |

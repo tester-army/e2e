@@ -77,6 +77,7 @@ describe('e2e init', () => {
     expect(JSON.parse(read('.cursor/mcp.json'))).toEqual({ mcpServers: { e2e: { command: 'npx', args: ['e2e', 'mcp'] } } });
     expect(read('.gitignore')).toContain('node_modules/');
     expect(read('.gitignore')).toContain('.e2e/junit.xml');
+    expect(read('.gitignore')).toContain('.e2e/summary.md');
     expect(read('.gitignore')).toContain('.e2e/cache/');
     expect(output()).toContain('.e2e/cache/ is ignored; committing agent.act replays is opt-in, see https://e2e.mintlify.app/cache#commit-your-traces');
     expect(read('.agents/skills/e2e/SKILL.md')).toMatch(/^---\nname: e2e\n/);
@@ -400,7 +401,7 @@ describe('e2e init', () => {
     await init(dir, { yes: true });
     expect(read('e2e.config.ts')).toBe('// custom config\n');
     expect(read('tests/example.e2e.ts')).toBe('// custom test\n');
-    expect(read('.gitignore')).toBe(`${older}.e2e/ai-trace.json\n.e2e/junit.xml\n.e2e/logs/\n`);
+    expect(read('.gitignore')).toBe(`${older}.e2e/ai-trace.json\n.e2e/junit.xml\n.e2e/summary.md\n.e2e/logs/\n`);
     expect(output()).not.toContain('commit-your-traces');
   });
 
