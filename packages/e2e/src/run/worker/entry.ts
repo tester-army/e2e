@@ -90,8 +90,9 @@ async function bootstrap(
   let collectCounter = 0;
   const resolvePairs = async (unit: RunUnitMessage): Promise<ResolvedUnitPairs> => {
     collectCounter += 1;
-    const registration = await collectModule(() =>
-      importModule(unit.absolutePath, `worker-collect-${collectCounter}`),
+    const registration = await collectModule(
+      () => importModule(unit.absolutePath, `worker-collect-${collectCounter}`),
+      unit.absolutePath,
     );
     const collected = collectFromRegistration(config.projectRoot, unit.absolutePath, registration);
     const byId = new Map(collected.tests.map((test) => [test.id, test]));

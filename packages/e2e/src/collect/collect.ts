@@ -328,7 +328,7 @@ export async function collect(
     const absolutePath = path.join(config.projectRoot, file);
     let registration: ModuleRegistration;
     try {
-      registration = await collectModule(() => importModule(absolutePath, 'collect'));
+      registration = await collectModule(() => importModule(absolutePath, 'collect'), absolutePath);
     } catch (cause) {
       if (cause instanceof CollectionError) throw cause;
       throw new CollectionError(

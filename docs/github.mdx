@@ -79,7 +79,9 @@ Screenshots, traces, and recordings: [run artifacts](https://github.com/acme/sho
 ```
 
 Failed tests first, then flaky, then skipped; passed tests are folded away.
-The test column links to the source line at the pull request's head commit.
+The test column links to the line in the test file that declared the test, at
+the pull request's head commit; a test declared through a project helper that
+wraps `test()` links to the helper call, not into the helper.
 A run-level error such as `APP_UNREACHABLE` appears above the table. Titles
 and error messages are escaped and clipped, and the body stays under GitHub's
 size limit: past fifty rows the table says how many more there are.

@@ -1,5 +1,6 @@
 /** Synchronous registration during module evaluation. */
 
+import { realpathSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { testCaseBrand } from '../internal/brands.ts';
@@ -93,6 +94,12 @@ class Collector {
   private currentGroup: GroupNode | undefined = undefined;
   private declarationCounter = 0;
   private closed = false;
+  /** Real path of the module being collected, the file a test's source prefers. */
+  private readonly moduleFile: string | undefined;
+
+  constructor(moduleFile: string | undefined) {
+    this.moduleFile = moduleFile === undefined ? undefined : realPath(moduleFile);
+  }
 
   close(): ModuleRegistration {
     this.closed = true;
@@ -157,7 +164,7 @@ class Collector {
       fixtures,
       group: this.currentGroup,
       mode,
-      source: captureSource(),
+      source: captureSource(this.moduleFile),
     };
     this.declarationCounter += 1;
     this.tests.push(registered);
@@ -304,12 +311,19 @@ function validateDescribeOptions(options: DescribeOptions, parent: GroupNode | u
  */
 const collectorSlot = realmSlot<Collector>('e2e.activeCollector.v1');
 
-/** Runs `load` with a fresh collector active and returns everything it registered. */
-export async function collectModule(load: () => Promise<unknown>): Promise<ModuleRegistration> {
+/**
+ * Runs `load` with a fresh collector active and returns everything it
+ * registered. `moduleFile` is the absolute path of the module `load` imports;
+ * a test's source prefers a frame in that file.
+ */
+export async function collectModule(
+  load: () => Promise<unknown>,
+  moduleFile?: string,
+): Promise<ModuleRegistration> {
   if (collectorSlot.get(globalThis) !== undefined) {
     throw new CollectionError('collection is already in progress');
   }
-  const collector = new Collector();
+  const collector = new Collector(moduleFile);
   collectorSlot.set(globalThis, collector);
   try {
     await load();
@@ -336,20 +350,46 @@ const PACKAGE_ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import
  * relocate those very frames (and where the module runs in this repository).
  */
 const RUNNER_ROOTS = ['src', 'dist'].map((dir) => `${path.join(PACKAGE_ROOT, dir)}${path.sep}`);
+/** `at name (file:line:column)` or `at file:line:column`, with or without a `file://` scheme. */
+const STACK_FRAME = /\(?(?:file:\/\/)?([^()\s]+?):(\d+):(\d+)\)?$/;
+const NODE_MODULES_SEGMENT = /[\\/]node_modules[\\/]/;
 
-function captureSource(): SourceLocation | undefined {
+/** The path with symlinks resolved, or the path itself when it cannot be resolved. */
+function realPath(file: string): string {
+  try {
+    return realpathSync.native(file);
+  } catch {
+    return file;
+  }
+}
+
+/**
+ * Where a test was declared, read off the stack of its `test()` call. The
+ * innermost frame in the module being collected wins, so a test declared
+ * through a project helper (`dashboardTest()` in `support/test.ts`) points at
+ * the helper's call in the test file. When no frame is in that module (the
+ * file imports a module that declares the tests), the innermost frame outside
+ * the runner and outside `node_modules` stands. The runner's own frames,
+ * whether source maps relocate them to `src/` or not, and an installed
+ * package's frames are never a test's location.
+ */
+function captureSource(moduleFile: string | undefined): SourceLocation | undefined {
   const stack = new Error().stack;
   if (stack === undefined) return undefined;
-  const lines = stack.split('\n').slice(1);
-  for (const line of lines) {
-    const match = /\(?(?:file:\/\/)?([^()\s]+?):(\d+):(\d+)\)?$/.exec(line.trim());
+  let outsideModule: SourceLocation | undefined;
+  for (const line of stack.split('\n').slice(1)) {
+    const match = STACK_FRAME.exec(line.trim());
     if (match === null) continue;
     // The loader imports every module with a cache-busting query, which is not part of the file.
     const file = decodeURIComponent(match[1]!).replace(/[?#].*$/, '');
     if (RUNNER_ROOTS.some((root) => file.startsWith(root)) || file.startsWith('node:')) continue;
-    return { file, line: Number(match[2]), column: Number(match[3]) };
+    const location = { file, line: Number(match[2]), column: Number(match[3]) };
+    if (moduleFile !== undefined && (file === moduleFile || realPath(file) === moduleFile)) {
+      return location;
+    }
+    if (outsideModule === undefined && !NODE_MODULES_SEGMENT.test(file)) outsideModule = location;
   }
-  return undefined;
+  return outsideModule;
 }
 
 function normalizeArgs(

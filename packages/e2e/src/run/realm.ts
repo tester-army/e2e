@@ -95,8 +95,9 @@ export class RealmManager {
   async create(absolutePath: string): Promise<Realm> {
     this.realmCounter += 1;
     const registration = await this.debug.time('realm.import', () =>
-      collectModule(() =>
-        importModule(absolutePath, `${this.options.targetName}-${this.realmCounter}`),
+      collectModule(
+        () => importModule(absolutePath, `${this.options.targetName}-${this.realmCounter}`),
+        absolutePath,
       ),
     );
     return this.adopt(registration);
