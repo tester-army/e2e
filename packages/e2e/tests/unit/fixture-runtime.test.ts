@@ -14,6 +14,7 @@ import { createAgent } from '../../src/agent/default-agent.ts';
 import { defineTool, getToolContext } from '../../src/agent/tool.ts';
 import type { E2EConfig } from '../../src/types.ts';
 import { installFakeLoopModel } from '../helpers/fake-loop-model.ts';
+import { installFakeModel, judgment } from '../helpers/fake-model.ts';
 
 /** A real fixture graph with an in-memory engine and no runner process or model provider. */
 function runtime(engine: EngineHandle, overrides: E2EConfig = {}) {
@@ -301,6 +302,40 @@ describe('explicit fixture operations', () => {
     expect(() => surfaces.widget).toThrow(
       expect.objectContaining({ code: 'INVALID_CONFIG', message: expect.stringContaining('declared as "gadget"') }),
     );
+  });
+});
+
+describe('model reasoning on step events', () => {
+  it('carries an act turn\'s reasoning onto its model event', async () => {
+    const model = installFakeLoopModel(() => ({
+      toolCalls: [{ toolName: 'complete_step', input: { status: 'passed', summary: 'done' } }],
+      reasoning: 'The counter already reads 1; nothing left to do.',
+    }));
+    const { fixtures, steps } = runtime(empty(), { agents: { default: { executor: createAgent(), model } } });
+    await fixtures.agent.act('check the counter');
+    const event = steps.all().flatMap((step) => step.events).find((candidate) => candidate.kind === 'model');
+    expect(event?.reasoning).toBe('The counter already reads 1; nothing left to do.');
+  });
+
+  it('carries a judgment call\'s reasoning onto its model event', async () => {
+    const model = installFakeModel(() => judgment(true, 'the status reads 1'), {
+      reasoning: 'The status node text is "1".',
+    });
+    const { fixtures, steps } = runtime(empty(), { agents: { default: { model } } });
+    await fixtures.agent.assert('the status reads 1');
+    const event = steps.all().flatMap((step) => step.events).find((candidate) => candidate.kind === 'model');
+    expect(event?.reasoning).toBe('The status node text is "1".');
+  });
+
+  it('omits the field when the turn produced no reasoning', async () => {
+    const model = installFakeLoopModel(() => ({
+      toolCalls: [{ toolName: 'complete_step', input: { status: 'passed', summary: 'done' } }],
+    }));
+    const { fixtures, steps } = runtime(empty(), { agents: { default: { executor: createAgent(), model } } });
+    await fixtures.agent.act('check the counter');
+    const event = steps.all().flatMap((step) => step.events).find((candidate) => candidate.kind === 'model');
+    expect(event).toBeDefined();
+    expect(event).not.toHaveProperty('reasoning');
   });
 });
 

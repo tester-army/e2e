@@ -47,6 +47,13 @@ export interface StepEvent {
    * secret values never appear (the name stands in), and the text is bounded.
    */
   detail?: string;
+  /**
+   * Bounded excerpt of the reasoning a model turn produced, when the provider
+   * returns one. Lets a live reporter show why the model acted, not just that
+   * it did. Secrets never reach model input, so reasoning cannot carry one;
+   * the full text lives in the AI trace, never here.
+   */
+  reasoning?: string;
 }
 
 /** Required accounting for every agent step. */

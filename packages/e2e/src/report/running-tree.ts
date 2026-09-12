@@ -178,8 +178,9 @@ export class RunningTree {
     if (current.kind !== 'agent') return rows.slice(0, budget);
     const overflow = current.events.length - maxEvents;
     if (overflow > 0) rows.push(`  ${foldMarker(pc, overflow, 'call')}`);
+    const maxWidth = terminalColumns() - WIDTH_MARGIN - DETAIL_INDENT.length - 2;
     for (const event of overflow > 0 ? current.events.slice(overflow) : current.events) {
-      rows.push(`  ${eventLine(pc, event)}`);
+      rows.push(`  ${eventLine(pc, event, { maxWidth })}`);
     }
     rows.push(`  ${waitingRow(pc, now, current.replaying ? 'Replaying' : 'Thinking')}`);
     return rows.slice(0, budget);

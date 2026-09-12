@@ -12,6 +12,7 @@ import {
   F_CROSS,
   formatTime,
   formatTokens,
+  terminalColumns,
   visibleWidth,
   type Colors,
 } from './format.ts';
@@ -29,6 +30,10 @@ const F_MODEL = '•';
 const F_TOOL = '›';
 const F_INPUT = '↑';
 const F_OUTPUT = '↓';
+/** Columns the ` · ` between a turn's timing and its reasoning excerpt takes. */
+const REASONING_SEPARATOR_WIDTH = 3;
+/** A narrower clip than this hides more than it says; the excerpt is dropped instead. */
+const MIN_REASONING_CHARS = 24;
 
 /** One-line, quoted step label; `maxChars` clips it further to fit a row. */
 export function stepLabel(label: string, maxChars = MAX_STEP_LABEL_CHARS): string {
@@ -75,14 +80,29 @@ function tokenSplit(event: ShownEvent): string {
 /**
  * One model turn or tool call under the current step. A tool call reads as
  * the act it performed when the engine described it, else as the tool name
- * (`tool:` prefixes come from executor tool accounting).
+ * (`tool:` prefixes come from executor tool accounting). A model turn the
+ * model reasoned its way through appends an excerpt of that reasoning,
+ * clipped to the row: why it acted, not just that it did.
  */
-export function eventLine(pc: Colors, event: ShownEvent): string {
+export function eventLine(pc: Colors, event: ShownEvent, options: { maxWidth?: number } = {}): string {
   if (event.kind === 'model') {
-    return pc.dim(`${F_MODEL} Thinking (${formatTime(event.durationMs)})${tokenSplit(event)}`);
+    const head = `${F_MODEL} Thinking (${formatTime(event.durationMs)})${tokenSplit(event)}`;
+    const reasoning = reasoningExcerpt(event.reasoning, visibleWidth(head), options.maxWidth);
+    return pc.dim(reasoning === undefined ? head : `${head} · ${reasoning}`);
   }
   const name = sanitizeText(event.name ?? 'engine').replace(/^tool:/, '');
   const act = event.detail === undefined ? name : sanitizeText(collapseText(event.detail));
   const failed = event.status === 'passed' ? '' : ` ${pc.red(F_CROSS)}`;
   return `${pc.dim(`${F_TOOL} ${truncateUtf8(act, 60)} (${formatTime(event.durationMs)})`)}${failed}`;
+}
+
+/**
+ * The one-line form of a turn's reasoning for its Thinking row, or undefined
+ * when the row has no room worth reading at.
+ */
+function reasoningExcerpt(reasoning: string | undefined, headWidth: number, maxWidth?: number): string | undefined {
+  if (reasoning === undefined) return undefined;
+  const room = (maxWidth ?? terminalColumns()) - headWidth - REASONING_SEPARATOR_WIDTH;
+  if (room < MIN_REASONING_CHARS) return undefined;
+  return ellipsize(collapseText(reasoning), room);
 }

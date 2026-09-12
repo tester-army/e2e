@@ -155,6 +155,7 @@
         "decision": { "enum": ["allowed", "denied"] },
         "code": { "type": "string", "maxLength": 128 },
         "detail": { "type": "string", "maxLength": 300 },
+        "reasoning": { "type": "string", "maxLength": 600 },
         "extensions": { "$ref": "#/$defs/extensions" }
       }
     },

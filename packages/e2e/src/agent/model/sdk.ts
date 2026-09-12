@@ -101,7 +101,7 @@ export function createModelAdapter(model: ResolvedModel | undefined): ModelAdapt
           if (!validation.ok) {
             throw new ModelOutputInvalidError(validation.issue, { rawText: result.text });
           }
-          return { value: validation.value, usage: readUsage(result, inputBound) };
+          return { value: validation.value, usage: readUsage(result, inputBound), reasoning: result.finalStep.reasoningText };
         }
         const result = await generateText({
           ...settings,
@@ -121,7 +121,7 @@ export function createModelAdapter(model: ResolvedModel | undefined): ModelAdapt
         if (output === undefined) {
           throw new ModelOutputInvalidError('provider returned no structured output');
         }
-        return { value: output, usage: readUsage(result, inputBound) };
+        return { value: output, usage: readUsage(result, inputBound), reasoning: result.finalStep.reasoningText };
       } catch (cause) {
         throw translateModelError(cause, issue, call.signal);
       }

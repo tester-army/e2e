@@ -266,10 +266,11 @@ export class ExploreView {
 
   /** The step's calls and its findings, interleaved by time; the finding tool's own call gives way to the finding. */
   private timeline(events: readonly ShownEvent[]): string[] {
+    const maxWidth = terminalColumns() - WIDTH_MARGIN - LIVE_INDENT.length - 2;
     const rows = [
       ...events
         .filter((event) => event.name !== FINDING_TOOL_EVENT)
-        .map((event) => ({ at: event.startedAt, row: eventLine(this.pc, event) })),
+        .map((event) => ({ at: event.startedAt, row: eventLine(this.pc, event, { maxWidth }) })),
       ...(this.open?.findings ?? []).map((finding) => ({ at: finding.reportedAt, row: this.findingLine(finding, '') })),
     ];
     return rows.toSorted((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0)).map((entry) => entry.row);

@@ -27,7 +27,7 @@ import type {
 } from '../run/steps.ts';
 import type { VisionMode } from '../types.ts';
 import { AgentError } from './error.ts';
-import { ModelUsage, tokenFields } from './usage.ts';
+import { ModelUsage, reasoningField, tokenFields } from './usage.ts';
 import type { ExecutorAttempt, StepExecutor } from './executor.ts';
 import {
   boundedOperation,
@@ -353,6 +353,7 @@ export class Invocation {
           (generated) => ({
             count: this.usage.record(generated.usage),
             ...tokenFields(generated.usage),
+            ...reasoningField(generated.reasoning),
           }),
         );
         return result.value;

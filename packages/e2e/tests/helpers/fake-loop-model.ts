@@ -38,8 +38,13 @@ export interface LoopToolCall {
   readonly input: Record<string, unknown>;
 }
 
-/** A turn's scripted answer: tool calls, or prose without any (`{ text }`). */
-export type LoopResponder = (call: LoopCall) => readonly LoopToolCall[] | { readonly text: string };
+/** A turn's scripted answer: tool calls, or prose without any (`{ text }`). Either form may carry `reasoning`. */
+export type LoopResponder = (
+  call: LoopCall,
+) =>
+  | readonly LoopToolCall[]
+  | { readonly text: string; readonly reasoning?: string }
+  | { readonly toolCalls: readonly LoopToolCall[]; readonly reasoning?: string };
 
 /** Recorded calls, newest last. Cleared by every installFakeLoopModel call. */
 export const loopCalls: LoopCall[] = [];
@@ -91,17 +96,24 @@ export function installFakeLoopModel(respond: LoopResponder): ModelInstance {
     };
     loopCalls.push(call);
     const answer = respond(call);
-    if (!Array.isArray(answer)) {
-      const { text } = answer as { readonly text: string };
-      return scriptedResult([{ type: 'text', text }], 'stop');
-    }
-    const content = answer.map((toolCall) => ({
+    const toPart = (toolCall: LoopToolCall) => ({
       type: 'tool-call' as const,
       toolCallId: `scripted_${(callCounter += 1)}`,
       toolName: toolCall.toolName,
       input: JSON.stringify(toolCall.input),
-    }));
-    return scriptedResult(content, 'tool-calls');
+    });
+    if (Array.isArray(answer)) {
+      return scriptedResult(answer.map(toPart), 'tool-calls');
+    }
+    const object = answer as
+      | { readonly text: string; readonly reasoning?: string }
+      | { readonly toolCalls: readonly LoopToolCall[]; readonly reasoning?: string };
+    const reasoning =
+      object.reasoning === undefined ? [] : [{ type: 'reasoning' as const, text: object.reasoning }];
+    if ('toolCalls' in object) {
+      return scriptedResult([...reasoning, ...object.toolCalls.map(toPart)], 'tool-calls');
+    }
+    return scriptedResult([...reasoning, { type: 'text' as const, text: object.text }], 'stop');
   });
 }
 

@@ -19,6 +19,15 @@
                   "kind": "attempt"
                 }
               }
+            ],
+            "steps": [
+              {
+                "kind": "model",
+                "startedAt": "2026-07-24T12:00:00.100Z",
+                "durationMs": 10,
+                "status": "passed",
+                "reasoning": 42
+              }
             ]
           }
         ]

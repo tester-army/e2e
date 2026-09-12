@@ -96,7 +96,7 @@ type FakePrompt = readonly {
  */
 export function installFakeModel(
   responder: FakeResponder,
-  options: { modelId?: string } = {},
+  options: { modelId?: string; reasoning?: string } = {},
 ): ModelInstance {
   fakeCalls.length = 0;
   const modelId = options.modelId ?? 'scripted';
@@ -131,7 +131,9 @@ export function installFakeModel(
       };
       fakeCalls.push(parsed);
       const raw = enforceRequestSchema(responder(parsed), request.responseFormat?.schema);
-      return scriptedResult([{ type: 'text' as const, text: JSON.stringify(raw) }], 'stop');
+      const reasoning =
+        options.reasoning === undefined ? [] : [{ type: 'reasoning' as const, text: options.reasoning }];
+      return scriptedResult([...reasoning, { type: 'text' as const, text: JSON.stringify(raw) }], 'stop');
     },
   );
 }

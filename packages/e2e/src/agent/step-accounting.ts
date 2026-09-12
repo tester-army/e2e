@@ -18,7 +18,7 @@ import { AgentError, isAgentError } from './error.ts';
 import type { ExecutorModelCall, StepExecutor } from './executor.ts';
 import type { AgentContext } from './invocation.ts';
 import { boundedOperation, checkStepClock } from './phases.ts';
-import { ModelUsage, tokenFields } from './usage.ts';
+import { ModelUsage, reasoningField, tokenFields } from './usage.ts';
 
 /**
  * Ceiling on one targeted grammar action: the time the engine may wait for a
@@ -167,6 +167,7 @@ export class StepAccounting {
       name: 'executor',
       count: tokens,
       ...tokenFields(usage),
+      ...reasoningField(usage?.reasoning),
     });
     this.runtime.debug?.record('agent.model', Math.max(0, Math.round(usage?.durationMs ?? 0)));
     this.countModelCall();

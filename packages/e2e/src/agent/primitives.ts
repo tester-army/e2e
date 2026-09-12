@@ -416,10 +416,11 @@ export interface ModelCallTracker {
   onStepStart(): void;
   /**
    * Pass as `onStepEnd` (or `onStepFinish`); records the turn's usage, cost,
-   * and provenance. Throws `STEP_BUDGET_EXHAUSTED` past the model-call budget,
-   * which ends a raw loop the same way it ends the chassis.
+   * reasoning, and provenance. Throws `STEP_BUDGET_EXHAUSTED` past the
+   * model-call budget, which ends a raw loop the same way it ends the
+   * chassis.
    */
-  onStepEnd(step: Pick<StepResult<ToolSet>, 'usage' | 'providerMetadata'>): void;
+  onStepEnd(step: Pick<StepResult<ToolSet>, 'usage' | 'providerMetadata' | 'reasoningText'>): void;
 }
 
 /**
@@ -446,6 +447,7 @@ export function trackModelCalls(
         ...(typeof model?.provider === 'string' ? { provider: model.provider } : {}),
         ...(typeof model?.modelId === 'string' ? { modelId: model.modelId } : {}),
         ...(estimatedCostUsd === undefined ? {} : { estimatedCostUsd }),
+        ...(step.reasoningText === undefined ? {} : { reasoning: step.reasoningText }),
       });
     },
   };

@@ -67,6 +67,8 @@ export interface ModelCall<Value> {
 export interface ModelResult<Value> {
   readonly value: Value;
   readonly usage: ModelUsage;
+  /** The model's reasoning text for the call, when it produced one. */
+  readonly reasoning: string | undefined;
 }
 
 export interface ModelAdapter {

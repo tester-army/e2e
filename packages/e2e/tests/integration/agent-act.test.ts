@@ -680,7 +680,10 @@ describe('agent.act with the default ToolLoopAgent executor', () => {
       if (call.lastToolResult === '') {
         // First turn: the prompt carries the instruction and initial screen.
         const id = nodeIdFor(call.prompt, /button "Increment"/);
-        return [{ toolName: 'tap', input: { target: id } }];
+        return {
+          toolCalls: [{ toolName: 'tap', input: { target: id } }],
+          reasoning: 'The counter starts at 0; tapping Increment once.',
+        };
       }
       // The tap result reports the change; conclude once the counter reads 1.
       if (/text="1"/.test(call.lastToolResult)) {
@@ -758,6 +761,20 @@ describe('agent.act with the default ToolLoopAgent executor', () => {
     expect(step!.events.filter((event) => event.kind === 'model')).toHaveLength(
       step!.metrics!.modelCalls,
     );
+  });
+
+  it('carries a turn\'s reasoning onto its model event and into the valid report', () => {
+    const attempt = resultByTitle(outcome, 'default agent increments the counter').attempts.at(
+      -1,
+    )!;
+    const step = attempt.steps.find((candidate) => candidate.api === 'agent.act');
+    const modelEvents = step!.events.filter((event) => event.kind === 'model');
+    expect(modelEvents[0]!.reasoning).toBe('The counter starts at 0; tapping Increment once.');
+    expect(modelEvents.at(-1)).not.toHaveProperty('reasoning');
+    const report = JSON.parse(
+      readFileSync(path.join(project.dir, '.e2e', 'report.json'), 'utf8'),
+    ) as object;
+    assertValidReport(report);
   });
 });
 

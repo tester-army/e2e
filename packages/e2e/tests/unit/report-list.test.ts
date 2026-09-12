@@ -1255,6 +1255,106 @@ describe('ListReporter', () => {
       expect(window).toContain('└── b');
     });
 
+    it('appends a model turn\'s collapsed reasoning to its Thinking line', () => {
+      const restore = withTerminalSize({ columns: 120, rows: 40 });
+      try {
+        const { chunks, output } = liveCapture();
+        const reporter = plainReporter(output, true);
+        reporter.handle(runStarted());
+        reporter.handle(testStarted('t1', 'a', 'chromium'));
+        reporter.handle({
+          type: 'step',
+          testId: 't1',
+          agent: 'default',
+          target: 'chromium',
+          progress: { phase: 'start', kind: 'agent', api: 'agent.act', label: 'pay' },
+        });
+        reporter.handle({
+          type: 'step',
+          testId: 't1',
+          agent: 'default',
+          target: 'chromium',
+          progress: {
+            phase: 'event',
+            api: 'agent.act',
+            event: {
+              kind: 'model',
+              startedAt: new Date(0).toISOString(),
+              durationMs: 1_200,
+              status: 'passed',
+              inputTokens: 100,
+              outputTokens: 20,
+              reasoning: 'The modal blocks checkout.\nClosing it first, then paying.',
+            },
+          },
+        });
+        const window = chunks.at(-1)!.replace(ANSI_PATTERN, '');
+        expect(window).toContain('• Thinking (1.20s) (↑100 ↓20) · The modal blocks checkout. Closing it first, then paying.');
+      } finally {
+        restore();
+      }
+    });
+
+    it('clips the reasoning excerpt at the terminal width', () => {
+      const restore = withTerminalSize({ columns: 80, rows: 40 });
+      try {
+        const { chunks, output } = liveCapture();
+        const reporter = plainReporter(output, true);
+        reporter.handle(runStarted());
+        reporter.handle(testStarted('t1', 'a', 'chromium'));
+        const step = (progress: object) => reporter.handle({ type: 'step', testId: 't1', agent: 'default', target: 'chromium', progress } as never);
+        step({ phase: 'start', kind: 'agent', api: 'agent.act', label: 'pay' });
+        step({
+          phase: 'event',
+          api: 'agent.act',
+          event: {
+            kind: 'model',
+            startedAt: new Date(0).toISOString(),
+            durationMs: 1_200,
+            status: 'passed',
+            inputTokens: 100,
+            outputTokens: 20,
+            reasoning: 'The modal blocks checkout, so I will close it before trying to pay for the cart.',
+          },
+        });
+        const row = chunks.at(-1)!.replace(ANSI_PATTERN, '').split('\n').find((line) => line.includes('• Thinking'))!;
+        expect([...row].length).toBeLessThanOrEqual(78);
+        expect(row).toMatch(/…$/);
+      } finally {
+        restore();
+      }
+    });
+
+    it('drops the reasoning excerpt when the terminal leaves it no room', () => {
+      const restore = withTerminalSize({ columns: 40, rows: 40 });
+      try {
+        const { chunks, output } = liveCapture();
+        const reporter = plainReporter(output, true);
+        reporter.handle(runStarted());
+        reporter.handle(testStarted('t1', 'a', 'chromium'));
+        const step = (progress: object) => reporter.handle({ type: 'step', testId: 't1', agent: 'default', target: 'chromium', progress } as never);
+        step({ phase: 'start', kind: 'agent', api: 'agent.act', label: 'pay' });
+        step({
+          phase: 'event',
+          api: 'agent.act',
+          event: {
+            kind: 'model',
+            startedAt: new Date(0).toISOString(),
+            durationMs: 1_200,
+            status: 'passed',
+            inputTokens: 100,
+            outputTokens: 20,
+            reasoning: 'The modal blocks checkout.',
+          },
+        });
+        const row = chunks.at(-1)!.replace(ANSI_PATTERN, '').split('\n').find((line) => line.includes('• Thinking'))!;
+        expect(row).toContain('• Thinking (1.20s) (↑100 ↓20)');
+        expect(row).not.toContain('modal');
+      } finally {
+        restore();
+      }
+    });
+
     it('lists a passing file\u2019s tests and steps when it ran agent steps, and keeps other files to one line', () => {
       const lines: string[] = [];
       const output = { write: (line: string) => lines.push(line.replace(ANSI_PATTERN, '')), raw: () => {} };
@@ -1715,12 +1815,26 @@ describe('explore runs', () => {
     expect(frames.at(-1)).toContain('Steps  0 done of 4 · closing');
     reporter.handle(explore({ phase: 'step-started', step: STEP_1 }));
     reporter.handle(stepEvent({ phase: 'start', kind: 'agent', api: 'agent.act', label: STEP_1.instruction }));
+    reporter.handle(
+      stepEvent({
+        phase: 'event',
+        api: 'agent.act',
+        event: {
+          kind: 'model',
+          startedAt: '2026-09-11T10:00:03.000Z',
+          durationMs: 2_500,
+          status: 'passed',
+          reasoning: 'The cart total is stale; adding an item first.',
+        },
+      }),
+    );
     reporter.handle(engineEvent('tap', 'tap button "Add to cart"'));
     reporter.handle(engineEvent('tool:report_finding'));
     reporter.handle(explore({ phase: 'finding', finding: FINDING }));
     const frame = frames.at(-1)!;
     expect(frame).toContain(`Exploring  ${GOAL}`);
     expect(frame).toContain('↳ 1  Cart (step 1 of 4)');
+    expect(frame).toContain('• Thinking (2.50s) · The cart total is stale; adding an item first.');
     expect(frame).toContain('› tap button "Add to cart" (40ms)');
     expect(frame).toContain('⚑ high issue  Cart total shows $0.00 with two items (/cart)');
     expect(frame).not.toContain('report_finding');
