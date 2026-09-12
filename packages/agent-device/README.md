@@ -86,13 +86,13 @@ straight through, with no conditional spread.
 ## Trace cache
 
 The runner caches `agent.act` steps by their location anchor, and a device has
-no address bar. This engine reports one anyway: `app://device/<bundle
-id>/<screen title>`, with the title read off the navigation bar on iOS and the
-collapsing toolbar on Android. The cache compares pathnames, so the app
-identity is part of the path and two apps with a "General" screen never share
-an anchor. A step recorded on `/com.apple.preferences/General` replays only
-when that app is on that screen again, and a flow that stays within tap, type,
-and scroll replays with zero model calls. Pin `app` so every attempt starts on the same screen, and
+no address bar. This engine reports one anyway: `<bundle id> / <screen
+title>`, with the title read off the navigation bar on iOS and the collapsing
+toolbar on Android. The app identity is part of the location, so two apps with
+a "General" screen never share an anchor. A step recorded on
+`com.apple.Preferences / General` replays only when that app is on that
+screen again, and a flow that stays within tap, type, and scroll replays with
+zero model calls. Pin `app` so every attempt starts on the same screen, and
 prefer the grammar over the `open_app` tool inside a step: a tool call is a
 replay gap.
 
@@ -139,9 +139,9 @@ targets can hand the pack to one `createAgent`.
 
 ## Secrets
 
-Secret fills need an origin the runner can check, and an `app://` location has
-an opaque origin that no allowlist can name, so `type_secret` is denied on a
-device target before any plaintext reaches the device. Fill credentials
+Secret fills need an origin the runner can check, and a device location is
+not a URL, so it has no origin an allowlist can name: `type_secret` is denied
+on a device target before any plaintext reaches the device. Fill credentials
 through a deterministic `screen` action in a setup step instead.
 
 ## Documentation

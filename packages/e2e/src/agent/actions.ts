@@ -127,12 +127,11 @@ export interface DescribedAction {
 export function describeAction(
   action: RecordableAction,
   redact: (text: string) => string,
-  testIdAttribute: string,
 ): DescribedAction {
   const node = 'node' in action ? action.node : action.name === 'tapAt' ? action.under : undefined;
   const within = 'within' in action ? action.within : undefined;
   const position = 'position' in action ? action.position : undefined;
-  const described = node === undefined ? undefined : describeTarget(node, redact, testIdAttribute);
+  const described = node === undefined ? undefined : describeTarget(node, redact);
   const target =
     described === undefined
       ? undefined
@@ -178,7 +177,6 @@ export function describeAction(
 export function describeTarget(
   node: SemanticNode,
   redact: (text: string) => string,
-  testIdAttribute: string,
 ): TraceTargetDescriptor | undefined {
   const field = (value: string | undefined): string | undefined => {
     if (value === undefined) return undefined;
@@ -188,7 +186,7 @@ export function describeTarget(
   const role = field(node.role);
   const name = field(node.name);
   const text = field(node.text);
-  const testId = field(node.attributes?.[testIdAttribute]);
+  const testId = field(node.testId);
   const placeholder = field(node.attributes?.['placeholder']);
   const selector = node.selector === undefined ? undefined : bound(node.selector, MAX_TRACE_DESCRIPTOR_CHARS);
   const inputPurpose =

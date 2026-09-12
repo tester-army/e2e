@@ -186,7 +186,7 @@ export class TargetExecutor implements SerialHost {
 
   /** Builds one engine operation context. */
   private op(attemptId: string, timeoutMs: number, signal: AbortSignal): OperationContext {
-    return { signal, timeoutMs, runId: this.options.runId, attemptId };
+    return { signal, timeoutMs, runId: this.options.runId, attemptId, origin: 'test' };
   }
 
   /** Run-level errors recorded so far, in order. */
@@ -218,8 +218,7 @@ export class TargetExecutor implements SerialHost {
             runId: this.options.runId,
             targetName: this.target.name,
             projectRoot: this.config.projectRoot,
-            app: obj({ baseUrl: this.target.app.base?.href, site: this.target.app.site }),
-            testIdAttribute: this.config.testIdAttribute,
+            app: obj({ site: this.target.app.site }),
             headed: this.options.headed,
             workerSlot: this.options.workerSlot,
             signal,

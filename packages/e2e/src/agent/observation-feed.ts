@@ -128,12 +128,20 @@ export class ObservationFeed {
     };
   }
 
-  /** Best-effort current location path + query, for trace preconditions. */
+  /**
+   * Best-effort current location path + query, for trace preconditions. An
+   * observation at hand answers from its own location; without one the
+   * session observes afresh. A location that is not a URL has no path, and a
+   * surface that cannot be observed yet (no app opened) has none either.
+   */
   async currentPath(observation?: AgentObservation): Promise<string | undefined> {
-    const currentUrl = this.runtime.engine.session.url;
-    if (observation?.url === undefined && currentUrl === undefined) return undefined;
     try {
-      const url = new URL(observation?.url ?? (await currentUrl!(this.accounting.operation())));
+      const location =
+        observation === undefined
+          ? await this.runtime.engine.session.location(this.accounting.operation())
+          : observation.location;
+      if (location === undefined) return undefined;
+      const url = new URL(location);
       return `${url.pathname}${url.search}`;
     } catch {
       return undefined;
@@ -183,8 +191,8 @@ export class ObservationFeed {
    * queued observation would wait on its own caller.
    */
   async relocate(stale: SemanticNode): Promise<{ node: SemanticNode; observation: AgentObservation } | undefined> {
-    const options = { redact: this.runtime.redact, testIdAttribute: this.runtime.config.testIdAttribute };
-    const descriptor = describeTarget(stale, options.redact, options.testIdAttribute);
+    const options = { redact: this.runtime.redact };
+    const descriptor = describeTarget(stale, options.redact);
     if (descriptor === undefined) return undefined;
     this.accounting.checkpoint();
     const observation = await instrumentPhase(
@@ -267,7 +275,6 @@ export class ObservationFeed {
     return prepareObservation(raw, {
       redact: this.runtime.redact,
       maxBytes: this.byteBudget(pixels),
-      testIdAttribute: this.runtime.config.testIdAttribute,
     });
   }
 
@@ -321,8 +328,8 @@ export class ObservationFeed {
       earlier = this.recent[index]!.nodes.get(id);
     }
     if (earlier === undefined) return undefined;
-    const options = { redact: this.runtime.redact, testIdAttribute: this.runtime.config.testIdAttribute };
-    const descriptor = describeTarget(earlier, options.redact, options.testIdAttribute);
+    const options = { redact: this.runtime.redact };
+    const descriptor = describeTarget(earlier, options.redact);
     if (descriptor === undefined) return undefined;
     const relocated = relocateDescriptor(descriptor, latest.nodes, options);
     return relocated.kind === 'found' ? latest.nodes.get(relocated.id) : undefined;

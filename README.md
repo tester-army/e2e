@@ -5,6 +5,10 @@ An open framework for agentic end-to-end testing.
 Write tests in ordinary TypeScript. Describe what a user does in natural
 language, and pin exact values and outcomes with regular assertions.
 
+e2e tests applications through their user interface: web, mobile, desktop,
+and anything else with a UI. It is not an agent-eval harness and not an
+API-only tool.
+
 ```ts
 import { test } from '@e2edev/e2e';
 

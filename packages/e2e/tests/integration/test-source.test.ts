@@ -30,7 +30,7 @@ export default {
         name: 'fake',
         version: '1',
         spiVersion: 1,
-        observe: async () => ({ nodes: [] }),
+        observe: async () => snapshot([]),
       }),
     },
   ],

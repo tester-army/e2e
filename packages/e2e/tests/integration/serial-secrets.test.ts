@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { defineEngine } from '../../src/engine/index.ts';
+import { defineEngine, LOCATOR_ACTION_KINDS } from '../../src/engine/index.ts';
 import { createProject, runExisting } from '../helpers/run-project.ts';
+import { snapshot } from '../helpers/snapshot.ts';
 
 const SENTINEL = 'synthetic-serial-secret-2718';
 
@@ -25,12 +26,13 @@ describe('serial session secrecy', () => {
       startAttempt: async () => { echo = ''; launches += 1; },
       observe: async (_operation, options) => {
         if (options?.pixels) pixelCaptures += 1;
-        return {
-          nodes: [{ ref: { id: 'echo', revision: '' }, role: 'status', text: echo }],
-          ...(options?.pixels ? { pixels: { data: new Uint8Array([1]), mediaType: 'image/png' as const, width: 1, height: 1, scale: 1 }, maskedRegionCount: 0 } : {}),
-        };
+        return snapshot(
+          [{ ref: { id: 'echo', revision: '' }, role: 'status', text: echo }],
+          options?.pixels ? { pixels: { data: new Uint8Array([1]), mediaType: 'image/png' as const, width: 1, height: 1, scale: 1 }, maskedRegionCount: 0 } : {},
+        );
       },
       locate: async () => [{ ref: { id: 'field', revision: '' }, role: 'textbox' }],
+      actions: LOCATOR_ACTION_KINDS,
       perform: async (_ref, action) => { if (action.kind === 'fill') echo = action.value; },
     });
     const project = createProject({ 'tests/serial.e2e.ts': suite });

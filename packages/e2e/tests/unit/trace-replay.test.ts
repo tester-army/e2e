@@ -60,7 +60,6 @@ function makeHost(options: {
     signal: new AbortController().signal,
     remainingMs: () => options.remainingMs ?? 60_000,
     redact: (text: string) => text,
-    testIdAttribute: 'data-testid',
   };
   return host;
 }
@@ -160,7 +159,7 @@ describe('replayTrace', () => {
       ref: { id: 'n5', revision: 'r1' },
       role: 'button',
       name: 'Activate plan',
-      attributes: { 'data-testid': 'toggle-zz9-r4-0' },
+      testId: 'toggle-zz9-r4-0',
     };
     const host = makeHost({ nodes: [churned, email] });
     const outcome = await replayTrace(

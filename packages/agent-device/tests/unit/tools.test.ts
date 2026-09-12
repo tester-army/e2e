@@ -33,7 +33,6 @@ describe('agent tool pack', () => {
         targetName,
         projectRoot: '/project',
         app: {},
-        testIdAttribute: 'data-testid',
         headed: false,
         workerSlot: 0,
         signal: new AbortController().signal,

@@ -26,7 +26,7 @@ function cleanup(signal = new AbortController().signal): EngineCleanupContext {
 }
 
 function operation(attemptId: string, signal = new AbortController().signal): OperationContext {
-  return { signal, timeoutMs: 30_000, runId: 'run-pool', attemptId };
+  return { signal, timeoutMs: 30_000, runId: 'run-pool', attemptId, origin: 'test' };
 }
 
 function attempt(attemptId: string, artifactsDir: string) {
@@ -108,8 +108,7 @@ async function boot(engine: EngineHandle, app: FixtureApp): Promise<void> {
     runId: 'run-pool',
     targetName: 'web',
     projectRoot: process.cwd(),
-    app: { baseUrl: app.url, site: new URL(app.url).hostname },
-    testIdAttribute: 'data-testid',
+    app: { site: new URL(app.url).hostname },
     headed: false,
     workerSlot: 0,
     signal: new AbortController().signal,
@@ -123,7 +122,7 @@ async function openAttempt(
   attemptId: string,
 ): Promise<string> {
   await engine.startAttempt!({ attemptId, artifactsDir, signal: new AbortController().signal });
-  await engine.app!.navigate!(`${app.url}/`, operation(attemptId));
+  await engine.session!.open!(`${app.url}/`, operation(attemptId));
   const nodes = await engine.locate!(
     { kind: 'query', query: { kind: 'role', value: { kind: 'string', value: 'heading', exact: true } } },
     operation(attemptId),
@@ -164,7 +163,7 @@ describe('playwright engine lifecycle', () => {
     try {
       await boot(engine, app);
       expect(await openAttempt(engine, app, artifactsDir, 'a1')).toBe('Home');
-      expect(await engine.url!(operation('a1'))).toBe(`${app.url}/`);
+      expect((await engine.observe!(operation('a1'))).location).toBe(`${app.url}/`);
       await engine.endAttempt!(cleanup());
       // The next attempt reuses the pooled browser process, not a new launch.
       expect(await openAttempt(engine, app, artifactsDir, 'a2')).toBe('Home');
@@ -196,11 +195,13 @@ describe('playwright engine lifecycle', () => {
     try {
       await boot(engine, app);
       await engine.startAttempt!({ attemptId: 'd1', artifactsDir, signal: new AbortController().signal });
-      await engine.app!.navigate!(`${app.url}/form`, operation('d1'));
+      await engine.session!.open!(`${app.url}/form`, operation('d1'));
 
       const snapshot = await engine.observe!(operation('d1'));
-      expect(snapshot.nodes).toHaveLength(1);
-      expect(snapshot.nodes[0]?.children?.length ?? 0).toBeGreaterThan(0);
+      expect(snapshot.root.ref.id).toBe('root');
+      expect(snapshot.root.role).toBe('document');
+      expect(snapshot.root.children?.length ?? 0).toBeGreaterThan(0);
+      expect(snapshot.location).toBe(`${app.url}/form`);
       expect(snapshot.viewport).toEqual({ width: 1280, height: 720, scale: 1 });
 
       // displayValue is filtered from the values the batch read returned:
@@ -233,10 +234,10 @@ describe('playwright engine lifecycle', () => {
     try {
       await boot(engine, app);
       await engine.startAttempt!({ attemptId: 'attributes1', artifactsDir, signal: new AbortController().signal });
-      await engine.app!.navigate!(`${app.url}/`, operation('attributes1'));
+      await engine.session!.open!(`${app.url}/`, operation('attributes1'));
 
       const snapshot = await engine.observe!(operation('attributes1'));
-      const treeNodes = [...walk(snapshot.nodes[0]!)];
+      const treeNodes = [...walk(snapshot.root)];
       expect(treeNodes.some((node) => node.attributes?.class === 'card active')).toBe(false);
       expect(treeNodes.some((node) => node.attributes?.readonly !== undefined)).toBe(false);
       expect(treeNodes.some((node) => node.attributes?.['data-extra'] !== undefined)).toBe(false);
@@ -271,7 +272,7 @@ describe('playwright engine lifecycle', () => {
     try {
       await boot(engine, app);
       await engine.startAttempt!({ attemptId: 'dv1', artifactsDir, signal: new AbortController().signal });
-      await engine.app!.navigate!(`${app.url}/values`, operation('dv1'));
+      await engine.session!.open!(`${app.url}/values`, operation('dv1'));
 
       // Positions are relative to the value-filtered matches, not to every
       // form control on the page: "Other" sits between none of them.
@@ -377,7 +378,7 @@ describe('playwright engine lifecycle', () => {
     try {
       await boot(engine, app);
       await engine.startAttempt!({ attemptId: 'v1', artifactsDir, signal: new AbortController().signal });
-      await engine.app!.navigate!(`${app.url}/twins`, operation('v1'));
+      await engine.session!.open!(`${app.url}/twins`, operation('v1'));
 
       const twins: Array<[Parameters<typeof query>[0], string]> = [
         ['text', 'No memories yet'],
@@ -473,7 +474,7 @@ describe('playwright engine lifecycle', () => {
     try {
       await boot(engine, app);
       await engine.startAttempt!({ attemptId: 'v2', artifactsDir, signal: new AbortController().signal });
-      await engine.app!.navigate!(`${app.url}/twins`, operation('v2'));
+      await engine.session!.open!(`${app.url}/twins`, operation('v2'));
       const locate = (expression: LocatorExpression) => engine.locate!(expression, operation('v2'));
 
       // The aria-hidden paragraph comes first in document order.
@@ -523,7 +524,7 @@ describe('playwright engine lifecycle', () => {
     try {
       await boot(engine, app);
       await engine.startAttempt!({ attemptId: 'dv2', artifactsDir, signal: new AbortController().signal });
-      await engine.app!.navigate!(`${app.url}/twins`, operation('dv2'));
+      await engine.session!.open!(`${app.url}/twins`, operation('dv2'));
       const locate = (expression: LocatorExpression) => engine.locate!(expression, operation('dv2'));
 
       // The display:none control comes first in document order, so without
@@ -578,8 +579,8 @@ describe('playwright engine lifecycle', () => {
         code: 'INVALID_STATE',
         retryable: false,
       });
-      await engine.app!.navigate!(`${app.url}/`, operation('e1'));
-      expect(await engine.url!(operation('e1'))).toBe(`${app.url}/`);
+      await engine.session!.open!(`${app.url}/`, operation('e1'));
+      expect((await engine.observe!(operation('e1'))).location).toBe(`${app.url}/`);
     });
   });
 
@@ -619,31 +620,38 @@ describe('playwright engine lifecycle', () => {
     await withAttempt(engine, app, artifactsDir, 'h1', async () => {
       const controller = new AbortController();
       const started = Date.now();
-      const pending = engine.app!.navigate!(`${app.url}/slow`, operation('h1', controller.signal));
+      const pending = engine.session!.open!(`${app.url}/slow`, operation('h1', controller.signal));
       setTimeout(() => controller.abort(), 100);
       await expect(pending).rejects.toMatchObject({ code: 'CANCELLED' });
       expect(Date.now() - started).toBeLessThan(3_000);
     });
   });
 
-  it('round-trips persisted state through capture and restore, and clearState drops it', async () => {
+  it('round-trips persisted state through capture and restore, and reset drops it', async () => {
     const engine = playwright();
     await withAttempt(engine, app, artifactsDir, 's1', async () => {
       const token = async (): Promise<string> => {
         const [heading] = await engine.locate!(byRole('heading'), operation('s1'));
         return heading?.name ?? '';
       };
-      await engine.app!.navigate!(`${app.url}/state?set=abc`, operation('s1'));
+      await engine.session!.open!(`${app.url}/state?set=abc`, operation('s1'));
       expect(await token()).toBe('abc');
       const state = await engine.state!.capture(operation('s1'));
       expect(state.format).toBe('playwright-storage-state');
 
-      await engine.app!.clearState!(operation('s1'));
-      await engine.app!.navigate!(`${app.url}/state`, operation('s1'));
+      await engine.session!.reset!(operation('s1'));
+      await engine.session!.open!(`${app.url}/state`, operation('s1'));
       expect(await token()).toBe('none');
 
       await engine.state!.restore(state, operation('s1'));
-      await engine.app!.navigate!(`${app.url}/state`, operation('s1'));
+      await engine.session!.open!(`${app.url}/state`, operation('s1'));
+      expect(await token()).toBe('abc');
+
+      // A restart keeps the persisted state and shows nothing until the harness reopens the app.
+      await engine.session!.restart!(operation('s1'));
+      expect(surfaceOf(engine)!.page().url()).toBe('about:blank');
+      expect((await engine.observe!(operation('s1'))).location).toBe('about:blank');
+      await engine.session!.open!(`${app.url}/state`, operation('s1'));
       expect(await token()).toBe('abc');
 
       await expect(
@@ -655,39 +663,92 @@ describe('playwright engine lifecycle', () => {
   it('keeps a node id across observations while its element lives, and reports it stale once it is gone', async () => {
     const engine = playwright();
     await withAttempt(engine, app, artifactsDir, 'o1', async () => {
-      await engine.app!.navigate!(`${app.url}/form`, operation('o1'));
+      await engine.session!.open!(`${app.url}/form`, operation('o1'));
       const first = await engine.observe!(operation('o1'));
-      const textbox = [...walk(first.nodes[0]!)].find((node) => node.role === 'textbox');
+      const textbox = [...walk(first.root)].find((node) => node.role === 'textbox');
       expect(textbox).toBeDefined();
       await engine.perform!(textbox!.ref, { kind: 'fill', value: 'fresh', sensitive: false }, operation('o1'));
 
       // The id is stamped on the element: a second look names the same
       // textbox by the same id, and the earlier ref still acts on it.
       const second = await engine.observe!(operation('o1'));
-      const again = [...walk(second.nodes[0]!)].find((node) => node.role === 'textbox');
+      const again = [...walk(second.root)].find((node) => node.role === 'textbox');
       expect(again!.ref.id).toBe(textbox!.ref.id);
       await engine.perform!(textbox!.ref, { kind: 'fill', value: 'late', sensitive: false }, operation('o1'));
 
       // A new document has none of the old elements: the id is gone with it.
-      await engine.app!.navigate!(`${app.url}/`, operation('o1'));
+      await engine.session!.open!(`${app.url}/`, operation('o1'));
       const third = await engine.observe!(operation('o1'));
-      expect([...walk(third.nodes[0]!)].some((node) => node.ref.id === textbox!.ref.id)).toBe(false);
+      expect([...walk(third.root)].some((node) => node.ref.id === textbox!.ref.id)).toBe(false);
       await expect(
         engine.perform!(textbox!.ref, { kind: 'fill', value: 'gone', sensitive: false }, operation('o1')),
       ).rejects.toMatchObject({ code: 'NODE_STALE', retryable: true });
     });
   });
 
+  it('mints one root id that survives navigation, and swipes the viewport when it is the target', async () => {
+    const engine = playwright();
+    await withAttempt(engine, app, artifactsDir, 'r1', async () => {
+      await engine.session!.open!(`${app.url}/form`, operation('r1'));
+      const first = await engine.observe!(operation('r1'));
+      expect(first.root.ref.id).toBe('root');
+      expect(first.root.name).toBe('Fixture Form');
+      // The element ids under the root are stamped in the page; the root's is the engine's.
+      expect([...walk(first.root)].slice(1).every((node) => /^n\d+$/.test(node.ref.id))).toBe(true);
+
+      // A new document stamps new numbers; the root keeps its id.
+      await engine.session!.open!(`${app.url}/`, operation('r1'));
+      const second = await engine.observe!(operation('r1'));
+      expect(second.root.ref.id).toBe('root');
+      expect(second.root.name).toBe('Fixture Home');
+      expect(second.location).toBe(`${app.url}/`);
+
+      // The viewport swipe arrives as a swipe on the root, addressed from an earlier observation.
+      const page = surfaceOf(engine)!.page();
+      await page.setContent('<div style="height: 5000px">tall</div>');
+      await engine.perform!(first.root.ref, { kind: 'swipe', direction: 'down' }, operation('r1'));
+      await page.waitForFunction(() => window.scrollY > 0);
+      expect(await page.evaluate(() => window.scrollY)).toBe(360);
+      await engine.perform!(first.root.ref, { kind: 'swipe', direction: 'up', momentum: 'fast' }, operation('r1'));
+      await page.waitForFunction(() => window.scrollY === 0);
+    });
+  });
+
+  it('reports the configured test-id attribute as testId, on observed and located nodes alike', async () => {
+    const engine = playwright({ testIdAttribute: 'data-qa' });
+    const byTestId = (value: string): LocatorExpression => ({
+      kind: 'query',
+      query: { kind: 'testId', value: { kind: 'string', value, exact: true } },
+    });
+    await withAttempt(engine, app, artifactsDir, 'tid1', async () => {
+      await engine.session!.open!(`${app.url}/`, operation('tid1'));
+      await surfaceOf(engine)!.page().setContent(
+        '<button data-qa="go">Go</button><button data-testid="stop">Stop</button>',
+      );
+      const observed = [...walk((await engine.observe!(operation('tid1'))).root)];
+      const go = observed.find((node) => node.name === 'Go');
+      const stop = observed.find((node) => node.name === 'Stop');
+      expect(go?.testId).toBe('go');
+      expect(stop?.testId).toBeUndefined();
+      // The tree carries the id as a field, not as an attribute.
+      expect(go?.attributes?.['data-qa']).toBeUndefined();
+
+      const located = await engine.locate!(byTestId('go'), operation('tid1'));
+      expect(located.map((node) => node.testId)).toEqual(['go']);
+      expect(await engine.locate!(byTestId('stop'), operation('tid1'))).toEqual([]);
+    });
+  });
+
   it('observes and acts inside a closed shadow root, which Playwright locators cannot reach', async () => {
     const engine = playwright();
     await withAttempt(engine, app, artifactsDir, 'cs1', async () => {
-      await engine.app!.navigate!(`${app.url}/closed-shadow`, operation('cs1'));
+      await engine.session!.open!(`${app.url}/closed-shadow`, operation('cs1'));
       // The control exists only for the reader: a role query goes through
       // Playwright, which stops at a closed root.
       expect(await engine.locate!(byRole('button'), operation('cs1'))).toHaveLength(0);
 
       const snapshot = await engine.observe!(operation('cs1'));
-      const checkout = [...walk(snapshot.nodes[0]!)].find((node) => node.role === 'button');
+      const checkout = [...walk(snapshot.root)].find((node) => node.role === 'button');
       expect(checkout?.name).toBe('Checkout');
 
       await engine.perform!(checkout!.ref, { kind: 'tap' }, operation('cs1'));
@@ -699,9 +760,9 @@ describe('playwright engine lifecycle', () => {
   it('walks through a display:contents element to the fields it lays out', async () => {
     const engine = playwright();
     await withAttempt(engine, app, artifactsDir, 'dc1', async () => {
-      await engine.app!.navigate!(`${app.url}/contents`, operation('dc1'));
+      await engine.session!.open!(`${app.url}/contents`, operation('dc1'));
       const snapshot = await engine.observe!(operation('dc1'));
-      const fields = [...walk(snapshot.nodes[0]!)].filter((node) => node.role === 'textbox').map((node) => node.name);
+      const fields = [...walk(snapshot.root)].filter((node) => node.role === 'textbox').map((node) => node.name);
       expect(fields).toEqual(['Email', 'First name']);
     });
   });
@@ -712,9 +773,9 @@ describe('playwright engine lifecycle', () => {
     try {
       await boot(engine, app);
       await engine.startAttempt!(attempt('cm1', shotDir));
-      await engine.app!.navigate!(`${app.url}/closed-login`, operation('cm1'));
+      await engine.session!.open!(`${app.url}/closed-login`, operation('cm1'));
       const snapshot = await engine.observe!(operation('cm1'));
-      const nodes = [...walk(snapshot.nodes[0]!)];
+      const nodes = [...walk(snapshot.root)];
       const user = nodes.find((node) => node.role === 'textbox' && node.name === 'User');
       const password = nodes.find((node) => node.states?.secure === true);
       expect(user?.rect).toBeDefined();
@@ -736,17 +797,17 @@ describe('playwright engine lifecycle', () => {
     }
   });
 
-  it('keeps tracing across clearState: the earlier segment is kept and the trace still stops', async () => {
+  it('keeps tracing across reset: the earlier segment is kept and the trace still stops', async () => {
     const engine = playwright();
     const traceDir = mkdtempSync(path.join(tmpdir(), 'e2e-trace-'));
     try {
       await withAttempt(engine, app, traceDir, 't1', async () => {
         await engine.artifacts!.startTrace!(operation('t1'));
-        await engine.app!.navigate!(`${app.url}/`, operation('t1'));
-        await engine.app!.clearState!(operation('t1'));
-        await engine.app!.navigate!(`${app.url}/form`, operation('t1'));
+        await engine.session!.open!(`${app.url}/`, operation('t1'));
+        await engine.session!.reset!(operation('t1'));
+        await engine.session!.open!(`${app.url}/form`, operation('t1'));
         const archives = await engine.artifacts!.stopTrace!(operation('t1'));
-        // The segment closed at clearState comes first, then the final archive.
+        // The segment closed at reset comes first, then the final archive.
         expect(archives).toEqual(['trace/trace-part1.zip', 'trace/trace.zip']);
         for (const file of archives as readonly string[]) {
           const absolute = path.join(traceDir, file);
@@ -763,13 +824,13 @@ describe('playwright engine lifecycle', () => {
   it('records a video per page at the viewport size: a restart and a state reset each continue in a new segment', async () => {
     const engine = playwright();
     const videoDir = mkdtempSync(path.join(tmpdir(), 'e2e-video-'));
-    const nodesOf = (snapshot: { nodes: readonly SemanticNode[] }) => snapshot.nodes.flatMap((node) => [...walk(node)]);
+    const nodesOf = (snapshot: { root: SemanticNode }) => [...walk(snapshot.root)];
     // Frames reach the recorder asynchronously: a page must live a moment
     // past its last paint for that paint to be in its segment.
     const settle = () => surfaceOf(engine)!.page().waitForTimeout(400);
     try {
       await withAttempt(engine, app, videoDir, 'v1', async () => {
-        await engine.app!.navigate!(`${app.url}/form`, operation('v1'));
+        await engine.session!.open!(`${app.url}/form`, operation('v1'));
         // Video before trace, as the harness orders them: a page's first
         // screencast client sizes it, and the trace's would cap it at 800px.
         await engine.artifacts!.startVideo!(operation('v1'));
@@ -782,13 +843,17 @@ describe('playwright engine lifecycle', () => {
         await engine.perform!(textbox!.ref, { kind: 'fill', value: 'recorded', sensitive: false }, operation('v1'));
         await engine.artifacts!.screenshot('shot', operation('v1'));
         await settle();
-        // A restart closes the page and opens another: the recording continues in a second segment.
-        await engine.app!.restart!(operation('v1'));
+        // A restart closes the page and opens another, blank until the harness
+        // reopens the app: the recording continues in a second segment.
+        await engine.session!.restart!(operation('v1'));
         expect(surfaceOf(engine)!.page()).not.toBe(page);
+        expect(surfaceOf(engine)!.page().url()).toBe('about:blank');
+        await engine.session!.open!(`${app.url}/form`, operation('v1'));
         await settle();
         // A state reset recreates the context; the recording continues in a third.
-        await engine.app!.clearState!(operation('v1'));
-        await engine.app!.navigate!(`${app.url}/`, operation('v1'));
+        await engine.session!.reset!(operation('v1'));
+        expect(surfaceOf(engine)!.page().url()).toBe('about:blank');
+        await engine.session!.open!(`${app.url}/`, operation('v1'));
         await settle();
         const segments = await engine.artifacts!.stopVideo!(operation('v1'));
         // The restart and the state reset each closed a trace segment before the final archive.
@@ -833,7 +898,7 @@ describe('playwright engine lifecycle', () => {
         // The page exists before any navigation: the recording owns its screencast.
         expect(surfaceOf(engine)!.page().url()).toBe('about:blank');
         await engine.artifacts!.startTrace!(operation('v2'));
-        await engine.app!.navigate!(`${app.url}/`, operation('v2'));
+        await engine.session!.open!(`${app.url}/`, operation('v2'));
         const segments = await engine.artifacts!.stopVideo!(operation('v2'));
         expect(segments.map((segment) => segment.path)).toEqual(['video/video.webm']);
         expect(await engine.artifacts!.stopTrace!(operation('v2'))).toBe('trace/trace.zip');
@@ -850,12 +915,12 @@ describe('playwright engine lifecycle', () => {
     try {
       await boot(engine, app);
       await engine.startAttempt!(attempt('m1', shotDir));
-      await engine.app!.navigate!(`${app.url}/login`, operation('m1'));
+      await engine.session!.open!(`${app.url}/login`, operation('m1'));
       expect(await engine.artifacts!.screenshot('first', operation('m1'))).toBe('screenshots/001-first.png');
       await engine.endAttempt!(cleanup());
 
       await engine.startAttempt!(attempt('m2', shotDir));
-      await engine.app!.navigate!(`${app.url}/login`, operation('m2'));
+      await engine.session!.open!(`${app.url}/login`, operation('m2'));
       const nodes = await engine.locate!(byRole('textbox'), operation('m2'));
       const user = nodes.find((node) => node.name === 'User');
       expect(user?.rect).toBeDefined();

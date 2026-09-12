@@ -114,7 +114,7 @@ subtree.
 | `getByPlaceholder(text)` | Inputs by placeholder. |
 | `getByText(text, { exact?, visible? })` | Visible text. |
 | `getByDisplayValue(value)` | Inputs by current value. |
-| `getByTestId(id, { visible? })` | `data-testid` (or `screen.testIdAttribute`). Last resort. |
+| `getByTestId(id, { visible? })` | `data-testid` on the web (or `playwright({ testIdAttribute })`), the accessibility identifier or resource id on a device. Last resort. |
 
 Roles: `button`, `link`, `textbox`, `searchbox`, `combobox`, `listbox`,
 `option`, `checkbox`, `radio`, `switch`, `slider`, `image`, `heading`, `tab`,

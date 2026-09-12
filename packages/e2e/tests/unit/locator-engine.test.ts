@@ -16,9 +16,10 @@ import { LocatorEngine, isNodeVisible, translateLocatorError } from '../../src/l
 import { E2EError } from '../../src/internal/errors.ts';
 import { Deadline } from '../../src/internal/time.ts';
 import { AttemptBudget } from '../../src/run/budget.ts';
-import { defineEngine } from '../../src/engine/index.ts';
+import { defineEngine, LOCATOR_ACTION_KINDS } from '../../src/engine/index.ts';
 import { createEngineSession } from '../../src/engine/session.ts';
 import { roleQuery, testIdQuery, textQuery } from '../../src/locator/expression.ts';
+import { snapshot } from '../helpers/snapshot.ts';
 
 const REF: NodeRef = { id: 'node-1', revision: 'rev-1' };
 const NODE: SemanticNode = { ref: REF, role: 'button', name: 'Submit' };
@@ -84,7 +85,7 @@ function makeEngine(script: ScreenScript, options: { actionTimeout?: number } = 
           });
         throw new EngineError('NOT_ACTIONABLE', 'covered by overlay', { retryable: false });
       },
-      async swipe() {},
+      actions: new Set(LOCATOR_ACTION_KINDS),
   } as unknown as TargetSession;
   const engine = new LocatorEngine({
     session,
@@ -276,7 +277,7 @@ describe('LocatorEngine visible queries', () => {
         name: 'twins',
         version: '1.0.0',
         spiVersion: 1,
-        observe: async () => ({ nodes: [] }),
+        observe: async () => snapshot([]),
         locate: async (expression) => {
           expressions.push(expression);
           return nodes;

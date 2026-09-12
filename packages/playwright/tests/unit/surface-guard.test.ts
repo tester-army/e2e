@@ -11,7 +11,7 @@ import { raceAbort, withinCleanupBudget } from '@e2edev/e2e/engine';
 import { PlaywrightSurface } from '../../src/surface.ts';
 
 function operation(signal = new AbortController().signal): OperationContext {
-  return { signal, timeoutMs: 1_000, runId: 'run', attemptId: 'a1' };
+  return { signal, timeoutMs: 1_000, runId: 'run', attemptId: 'a1', origin: 'test' };
 }
 
 describe('PlaywrightSurface.guard', () => {

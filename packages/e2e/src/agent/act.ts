@@ -211,7 +211,6 @@ class ActDispatch {
               ...(agent.executor.version === undefined ? {} : { version: agent.executor.version }),
             },
             redact: runtime.redact,
-            testIdAttribute: runtime.config.testIdAttribute,
             maxActions: this.accounting.maxActions,
             stepIndex,
           });
@@ -401,7 +400,6 @@ class ActDispatch {
       signal: this.accounting.signal,
       remainingMs: () => this.accounting.remainingMs(),
       redact: this.runtime.redact,
-      testIdAttribute: this.runtime.config.testIdAttribute,
       currentPath: (nodes) => {
         const latest = this.feed.latest;
         return this.feed.currentPath(nodes !== undefined && nodes === latest?.nodes ? latest : undefined);

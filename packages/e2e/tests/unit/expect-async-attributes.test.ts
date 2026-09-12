@@ -9,6 +9,7 @@ import { AttemptBudget } from '../../src/run/budget.ts';
 import { createFixtures } from '../../src/run/fixtures.ts';
 import { StepRecorder } from '../../src/run/steps.ts';
 import { WorkerModels } from '../../src/run/worker-models.ts';
+import { snapshot } from '../helpers/snapshot.ts';
 
 /** Creates a locator fixture backed by one stable semantic node. */
 function createAttributeFixture(node: SemanticNode) {
@@ -16,7 +17,7 @@ function createAttributeFixture(node: SemanticNode) {
     name: 'fake',
     version: '1',
     spiVersion: 1,
-    observe: async () => ({ nodes: [node] }),
+    observe: async () => snapshot([node]),
     locate: async () => [node],
   });
   const config = resolveConfig(

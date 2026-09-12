@@ -44,10 +44,11 @@ export interface ProjectedNode {
 }
 
 export interface ProjectedSnapshot {
+  /** The device's top-level elements (windows, the application node); the surface wraps them in one root. */
   readonly roots: readonly SemanticNode[];
   /** Every node in document order, parents before children. */
   readonly index: readonly ProjectedNode[];
-  readonly viewport: { readonly width: number; readonly height: number; readonly scale: number } | undefined;
+  readonly viewport: Viewport | undefined;
 }
 
 /**
@@ -216,10 +217,7 @@ function parentPositions(raw: readonly RawNode[]): (number | undefined)[] {
  * Projects one snapshot. `mintId` is called once per node in document order,
  * so the surface's id space stays unique across observations.
  */
-export function projectSnapshot(
-  raw: readonly RawNode[],
-  options: { readonly testIdAttribute: string; readonly mintId: () => string },
-): ProjectedSnapshot {
+export function projectSnapshot(raw: readonly RawNode[], options: { readonly mintId: () => string }): ProjectedSnapshot {
   const parents = parentPositions(raw);
   const children = new Map<number, number[]>();
   const roots: number[] = [];
@@ -278,7 +276,8 @@ export function projectSnapshot(
         : { value: source.value }),
       ...(secure ? { inputPurpose: 'password' as const } : {}),
       ...(Object.keys(states).length === 0 ? {} : { states }),
-      ...(identifier === undefined ? {} : { attributes: { [options.testIdAttribute]: identifier } }),
+      // The accessibility identifier (iOS) or resource id (Android) is the node's test id.
+      ...(identifier === undefined ? {} : { testId: identifier }),
       ...(source.rect === undefined ? {} : { rect: { ...source.rect } }),
       // Structural hint for tuned replay policies: an identifier survives relabeling; a label does not anchor.
       ...(identifier === undefined ? {} : { selector: `id=${quoteTerm(identifier)}` }),
@@ -301,9 +300,7 @@ function quoteTerm(value: string): string {
  * the platform emits one, else the extent of every rect; undefined for a
  * snapshot with no geometry at all.
  */
-export function viewportOf(
-  raw: readonly RawNode[],
-): { readonly width: number; readonly height: number; readonly scale: number } | undefined {
+export function viewportOf(raw: readonly RawNode[]): Viewport | undefined {
   const screen = raw.find((node) => SCREEN_KINDS.has(kindOf(node)) && node.rect !== undefined);
   if (screen?.rect !== undefined && screen.rect.width > 0 && screen.rect.height > 0) {
     return { width: screen.rect.width, height: screen.rect.height, scale: 1 };
@@ -316,6 +313,29 @@ export function viewportOf(
     height = Math.max(height, node.rect.y + node.rect.height);
   }
   return width > 0 && height > 0 ? { width, height, scale: 1 } : undefined;
+}
+
+/**
+ * The id of the root node every observation is reported under. It is the
+ * same across observations, as the contract requires: `perform(root, swipe)`
+ * is the viewport swipe, addressed from an earlier observation.
+ */
+export const ROOT_ID = 'root';
+
+export type Viewport = { readonly width: number; readonly height: number; readonly scale: number };
+
+/**
+ * The one root the contract wants over a device's several top-level
+ * elements. Its box is the viewport; it carries no name of its own, the
+ * foreground app being reported as the snapshot's location.
+ */
+export function screenRoot(roots: readonly SemanticNode[], viewport: Viewport): SemanticNode {
+  return {
+    ref: { id: ROOT_ID, revision: '' },
+    role: 'screen',
+    rect: { x: 0, y: 0, width: viewport.width, height: viewport.height },
+    ...(roots.length === 0 ? {} : { children: roots }),
+  };
 }
 
 /**

@@ -19,7 +19,6 @@ function observation(tree: SemanticNode, pixels?: Observation['pixels']): Observ
 }
 
 const NO_REDACT = (text: string): string => text;
-const TEST_ID = 'data-testid';
 
 describe('prepareObservation', () => {
   it('withholds pixels whose masking the engine cannot prove and keeps the tree', () => {
@@ -27,7 +26,6 @@ describe('prepareObservation', () => {
     const prepared = prepareObservation(observation(node('root'), pixels), {
       redact: NO_REDACT,
       maxBytes: 4_096,
-      testIdAttribute: TEST_ID,
     });
     // One secure node, zero masked regions: the image is not provably redacted.
     expect(prepared.pixels).toBeUndefined();
@@ -47,7 +45,6 @@ describe('prepareObservation', () => {
     const prepared = prepareObservation(observation(tree), {
       redact: NO_REDACT,
       maxBytes: 4_096,
-      testIdAttribute: TEST_ID,
     });
     expect(prepared.text.split('\n')).toEqual([
       '#n1 document "Home"',
@@ -74,7 +71,6 @@ describe('prepareObservation', () => {
     const prepared = prepareObservation(observation(tree), {
       redact: NO_REDACT,
       maxBytes: 4_096,
-      testIdAttribute: TEST_ID,
     });
     expect(prepared.text).toContain('value=<secure>');
     expect(prepared.text).toContain('purpose=password');
@@ -91,7 +87,6 @@ describe('prepareObservation', () => {
     const prepared = prepareObservation(observation(tree), {
       redact: createRedactor(new Map([['member', 'hunter2']])),
       maxBytes: 4_096,
-      testIdAttribute: TEST_ID,
     });
     expect(prepared.text).not.toContain('hunter2');
     expect(prepared.text).toContain('<secret:member>');
@@ -104,7 +99,6 @@ describe('prepareObservation', () => {
     const prepared = prepareObservation(observation(node('n1', { role: 'document', children })), {
       redact: NO_REDACT,
       maxBytes: 256,
-      testIdAttribute: TEST_ID,
     });
     expect(prepared.truncated).toBe(true);
     expect(prepared.text.startsWith('#n1 document')).toBe(true);
@@ -115,7 +109,7 @@ describe('prepareObservation', () => {
   it('keeps the root even when it alone exceeds the limit', () => {
     const prepared = prepareObservation(
       observation(node('n1', { role: 'document', name: 'x'.repeat(500) })),
-      { redact: NO_REDACT, maxBytes: 1_024, testIdAttribute: TEST_ID },
+      { redact: NO_REDACT, maxBytes: 1_024 },
     );
     expect(prepared.text).toContain('#n1 document');
   });
@@ -123,7 +117,7 @@ describe('prepareObservation', () => {
   it('collapses whitespace and strips control characters from app text', () => {
     const prepared = prepareObservation(
       observation(node('n1', { role: 'status', text: 'line\u0007one\n   two  ' })),
-      { redact: NO_REDACT, maxBytes: 4_096, testIdAttribute: TEST_ID },
+      { redact: NO_REDACT, maxBytes: 4_096 },
     );
     expect(prepared.text).toContain('text="line\uFFFDone two"');
   });
@@ -134,7 +128,7 @@ describe('disambiguating attributes', () => {
     const tree = node('n1', {
       children: [
         node('n2', { role: 'link', name: 'About', attributes: { href: 'https://app.test/about' } }),
-        node('n3', { role: 'listitem', text: 'Alpha', attributes: { 'data-testid': 'item' } }),
+        node('n3', { role: 'listitem', text: 'Alpha', testId: 'item' }),
         node('n4', { role: 'textbox', attributes: { placeholder: 'you@example.test' } }),
         node('n5', { role: 'textbox', name: 'Email', attributes: { placeholder: 'ignored' } }),
       ],
@@ -142,7 +136,6 @@ describe('disambiguating attributes', () => {
     const lines = prepareObservation(observation(tree), {
       redact: NO_REDACT,
       maxBytes: 4_096,
-      testIdAttribute: TEST_ID,
     }).text.split('\n');
 
     expect(lines[1]).toBe(' #n2 link "About" href="https://app.test/about"');
@@ -162,7 +155,7 @@ describe('observation byte budget', () => {
     for (const maxBytes of [200, 512, 2_048, 4_096]) {
       const prepared = prepareObservation(
         observation(node('n1', { role: 'document', children })),
-        { redact: NO_REDACT, maxBytes, testIdAttribute: TEST_ID },
+        { redact: NO_REDACT, maxBytes },
       );
       expect(prepared.bytes).toBeLessThanOrEqual(maxBytes);
       expect(prepared.truncated).toBe(true);

@@ -1,7 +1,7 @@
 /**
  * The agent-device engine through the public contract, with a scripted
  * client: lifecycle order, the command each contract member issues, id
- * staleness, the path anchor, artifacts, and the contributed fixture. No
+ * staleness, the screen location, artifacts, and the contributed fixture. No
  * simulator: what is asserted is the command stream, which is the whole of
  * what this engine owes agent-device.
  */
@@ -22,8 +22,9 @@ import { createFakeClient, SETTINGS_NODES, SETTINGS_SNAPSHOT, type FakeClient } 
 /** Deliberately not `process.cwd()`: relative build paths must resolve here, not there. */
 const PROJECT_ROOT = '/project';
 
+/** An agent's operation: the agent reads the screen right after acting, so its actions settle. */
 function operation(signal = new AbortController().signal): OperationContext {
-  return { signal, timeoutMs: 30_000, runId: 'run-1', attemptId: 'a1' };
+  return { signal, timeoutMs: 30_000, runId: 'run-1', attemptId: 'a1', origin: 'agent' };
 }
 
 function cleanup() {
@@ -45,7 +46,6 @@ async function boot(engine: EngineHandle, targetName = 'ios-simulator', workerSl
     targetName,
     projectRoot: PROJECT_ROOT,
     app: {},
-    testIdAttribute: 'data-testid',
     headed: false,
     workerSlot,
     signal: new AbortController().signal,
@@ -64,6 +64,8 @@ function harness(options: Partial<AgentDeviceOptions> = {}, pinned = true): Harn
   const fake = createFakeClient({
     'capture.snapshot': () => SETTINGS_SNAPSHOT,
     'apps.open': () => ({ session: 's', appName: 'Settings', appBundleId: 'com.apple.Preferences', identifiers: {} }),
+    // The viewport probe's answer for a tree without geometry; tests that read pixels script a real file instead.
+    'capture.screenshot': () => ({ logicalWidth: 390, logicalHeight: 844 }),
   });
   const sessions: string[] = [];
   const base: AgentDeviceOptions = pinned ? { platform: 'ios', app: 'Settings' } : { platform: 'ios' };
@@ -92,35 +94,45 @@ async function openAttempt(h: Harness, attemptId = 'a1'): Promise<void> {
 /** The observed node with this name, from a fresh observation. */
 async function observed(h: Harness, name: string): Promise<SemanticNode> {
   const snapshot = await h.engine.observe!(operation());
-  return named(snapshot.nodes, name);
+  return named(snapshot.root, name);
 }
 
-function named(nodes: readonly SemanticNode[], name: string): SemanticNode {
-  const found = [...walk(nodes)].find((node) => node.name === name);
+function named(root: SemanticNode, name: string): SemanticNode {
+  const found = [...walk(root)].find((node) => node.name === name);
   if (found === undefined) throw new Error(`no node named ${name}`);
   return found;
 }
 
-function* walk(nodes: readonly SemanticNode[]): Generator<SemanticNode> {
-  for (const node of nodes) {
+/** Every node under the root, the root excluded: the device's own tree. */
+function* walk(root: SemanticNode): Generator<SemanticNode> {
+  for (const node of root.children ?? []) {
     yield node;
-    yield* walk(node.children ?? []);
+    yield* walk(node);
   }
 }
 
+/** The screen root of an observation, `perform(root, swipe)` being the viewport swipe. */
+async function screenRootOf(h: Harness): Promise<SemanticNode> {
+  return (await h.engine.observe!(operation())).root;
+}
+
 describe('manifest', () => {
-  it('declares observation, actions, location, artifacts, the device fixture, and app hooks by option', () => {
+  it('declares observation, actions, location, artifacts, the device fixture, and session hooks by option', () => {
     const pinned = harness().engine;
     expect([...pinned.capabilities].toSorted()).toEqual(['actions', 'artifacts', 'device', 'location', 'observation', 'pointer']);
     expect(pinned.name).toBe('agent-device');
     expect(pinned.version).not.toBe('unknown');
-    expect(Object.keys(pinned.app!).toSorted()).toEqual(['back', 'clearState', 'identity', 'restart']);
+    expect(Object.keys(pinned.app!)).toEqual(['identity']);
     expect(pinned.app!.identity).toBe('Settings');
-    expect(pinned.url).toBeDefined();
+    expect(Object.keys(pinned.session!).toSorted()).toEqual(['back', 'reset', 'restart']);
+    // No `open`: a device app has no URL. No select verb either: the touch surface has no option lists to pick from.
+    expect(pinned.session!.open).toBeUndefined();
+    expect(pinned.actions).toEqual(['tap', 'doubleTap', 'longPress', 'fill', 'clear', 'press', 'check', 'uncheck', 'focus', 'hover', 'dragTo', 'swipe']);
     expect(pinned.state).toBeUndefined();
 
     const free = harness({}, false).engine;
-    expect(Object.keys(free.app!)).toEqual(['back']);
+    expect(free.app).toEqual({});
+    expect(Object.keys(free.session!)).toEqual(['back']);
   });
 
   it('declares the app identity from the option, the build path, or an explicit identity', () => {
@@ -264,7 +276,7 @@ describe('lifecycle', () => {
       signal: new AbortController().signal,
       log: (line) => lines.push(line),
     });
-    expect(result).toEqual({ workers: 2 });
+    expect(result).toMatchObject({ workers: 2 });
     expect(h.fake.lastArgs('devices.list')).toEqual({ platform: 'ios' });
     // Both booted iPhones, by UDID, under slot sessions; the Android device and the shut-down iPhone are not the pool's.
     expect(h.fake.calls.filter((call) => call.method === 'devices.boot').map((call) => call.args)).toEqual([
@@ -273,14 +285,16 @@ describe('lifecycle', () => {
     ]);
     expect(h.sessions).toEqual(['e2e-ios-0', 'e2e-ios-0', 'e2e-ios-1']);
     expect(lines[0]).toMatch(/2 booted ios device\(s\); driving 2/);
-    // The workers read the pool from the run's environment, never from a second inventory.
-    const variable = poolVariableIn(env, 'IOS');
-    expect(env[variable]).toBe(
+    // The workers read the pool from the environment prepare's result adds, never from a second inventory.
+    const handed = result?.env ?? {};
+    const variable = poolVariableIn(handed, 'IOS');
+    expect(handed[variable]).toBe(
       JSON.stringify(['2BBF3F07-AF66-4F95-82AB-BF442506FC89', '8A2DC8D6-7B20-44FA-ADBB-47D3EAE6E8F3']),
     );
+    expect(env).toEqual({});
     const worker = harness({ device: undefined });
     const previous = process.env[variable];
-    process.env[variable] = env[variable];
+    process.env[variable] = handed[variable];
     try {
       await boot(worker.engine, 'ios', 1);
     } finally {
@@ -300,24 +314,31 @@ describe('lifecycle', () => {
     ]);
     const env: NodeJS.ProcessEnv = {};
     const info = { runId: 'run-1', targetName: 'ios', slots: 1, env, signal: new AbortController().signal, log: () => undefined };
-    expect(await h.engine.prepare!(info)).toEqual({ workers: 1 });
+    const first = await h.engine.prepare!(info);
+    expect(first?.workers).toBe(1);
+    const firstEnv = first?.env ?? {};
     expect(h.fake.calls.filter((call) => call.method === 'devices.boot').map((call) => call.args)).toEqual([{ platform: 'ios', device: 'A' }]);
-    expect(env[poolVariableIn(env, 'IOS')]).toBe(JSON.stringify(['A']));
-    // The same handle prepared again, for another target, discovers afresh and writes that target's own variable.
+    expect(firstEnv[poolVariableIn(firstEnv, 'IOS')]).toBe(JSON.stringify(['A']));
+    // The same handle prepared again, for another target, discovers afresh and hands back that target's own variable.
     h.fake.respond('devices.list', () => [{ platform: 'ios', id: 'C', name: 'C', booted: true }]);
-    await h.engine.prepare!({ ...info, targetName: 'ios.a', env });
+    const second = await h.engine.prepare!({ ...info, targetName: 'ios.a', env });
+    const secondEnv = second?.env ?? {};
     expect(h.fake.methods().filter((method) => method === 'devices.list')).toHaveLength(2);
-    expect(env[poolVariableIn(env, 'IOS_A')]).toBe(JSON.stringify(['C']));
+    expect(secondEnv[poolVariableIn(secondEnv, 'IOS_A')]).toBe(JSON.stringify(['C']));
     // Names that sanitize alike keep distinct variables.
-    await h.engine.prepare!({ ...info, targetName: 'ios-a', env });
-    expect(Object.keys(env).filter((key) => key.startsWith('E2E_AGENT_DEVICE_POOL_IOS_A_'))).toHaveLength(2);
+    const third = await h.engine.prepare!({ ...info, targetName: 'ios-a', env });
+    expect(Object.keys(third?.env ?? {})[0]).not.toBe(Object.keys(secondEnv)[0]);
+    expect(Object.keys(third?.env ?? {})[0]).toMatch(/^E2E_AGENT_DEVICE_POOL_IOS_A_/);
 
     const cold = harness({ device: undefined });
     cold.fake.respond('devices.list', () => []);
     const coldEnv: NodeJS.ProcessEnv = {};
-    expect(await cold.engine.prepare!({ ...info, env: coldEnv })).toEqual({ workers: 1 });
+    const coldResult = await cold.engine.prepare!({ ...info, env: coldEnv });
+    expect(coldResult).toMatchObject({ workers: 1 });
     expect(cold.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios' });
-    expect(coldEnv[poolVariableIn(coldEnv, 'IOS')]).toBe('[]');
+    const coldHanded = coldResult?.env ?? {};
+    expect(coldHanded[poolVariableIn(coldHanded, 'IOS')]).toBe('[]');
+    expect(coldEnv).toEqual({});
   });
 
   it('selects a named device by name and a UDID by udid', async () => {
@@ -342,7 +363,7 @@ describe('lifecycle', () => {
     const target = await observed(none, 'About');
     await none.engine.perform!(target.ref, { kind: 'tap' }, operation());
     expect(none.fake.lastArgs('interactions.press')).toEqual({ ref: '@e4' });
-    await none.engine.app!.back!(operation());
+    await none.engine.session!.back!(operation());
     expect(none.fake.lastArgs('command.back')).toEqual({});
 
     expect(() => harness({ settle: -1 })).toThrow(/non-negative integer/);
@@ -358,7 +379,7 @@ describe('lifecycle', () => {
       { app: undefined, appPath: undefined, identity: undefined, environment: undefined, device: undefined, session: undefined, snapshot: undefined },
       false,
     );
-    expect(Object.keys(h.engine.app!)).toEqual(['back']);
+    expect(Object.keys(h.engine.session!)).toEqual(['back']);
     await openAttempt(h);
     expect(h.sessions).toEqual(['e2e-ios-simulator-0']);
     expect(h.fake.methods()).toEqual(['devices.boot']);
@@ -374,7 +395,7 @@ describe('lifecycle', () => {
       bundleId: 'com.example.app',
       identifiers: {},
     }));
-    expect(Object.keys(h.engine.app!).toSorted()).toEqual(['back', 'clearState', 'identity', 'restart']);
+    expect(Object.keys(h.engine.session!).toSorted()).toEqual(['back', 'reset', 'restart']);
     await openAttempt(h);
     expect(h.fake.methods()).toEqual(['devices.boot', 'apps.install', 'apps.open']);
     expect(h.fake.lastArgs('apps.install')).toEqual({ platform: 'ios', appPath: '/project/build/App.app' });
@@ -384,7 +405,7 @@ describe('lifecycle', () => {
     await h.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal });
     expect(h.fake.methods().filter((m) => m === 'apps.install')).toHaveLength(1);
 
-    await h.engine.app!.clearState!(operation());
+    await h.engine.session!.reset!(operation());
     expect(h.fake.lastArgs('settings.update')).toEqual({ setting: 'clear-app-state', state: 'clear', app: 'com.example.app' });
 
     // A new worker installs again: the build on the device is the worker's.
@@ -447,17 +468,22 @@ describe('lifecycle', () => {
 });
 
 describe('observation', () => {
-  it('projects the snapshot with a viewport and a fresh id generation each time', async () => {
+  it('projects the snapshot under one stable screen root with a viewport, and a fresh id generation each time', async () => {
     const h = harness();
     await openAttempt(h);
     const first = await h.engine.observe!(operation());
     expect(first.viewport).toEqual({ width: 390, height: 844, scale: 1 });
-    expect(first.nodes).toHaveLength(1);
+    expect(first.location).toBe('com.apple.Preferences / General');
+    // The device's application node sits under a root the engine mints: same id every time, the viewport as its box.
+    expect(first.root).toMatchObject({ ref: { id: 'root' }, role: 'screen', rect: { x: 0, y: 0, width: 390, height: 844 } });
+    expect(first.root.children).toHaveLength(1);
+    expect(first.root.children![0]!.role).toBe('application');
     expect(h.fake.lastArgs('capture.snapshot')).toEqual({ interactiveOnly: false });
-    const about = [...walk(first.nodes)].find((node) => node.name === 'About')!;
+    const about = named(first.root, 'About');
 
     const second = await h.engine.observe!(operation());
-    const aboutAgain = [...walk(second.nodes)].find((node) => node.name === 'About')!;
+    expect(second.root.ref.id).toBe(first.root.ref.id);
+    const aboutAgain = named(second.root, 'About');
     expect(aboutAgain.ref.id).not.toBe(about.ref.id);
     await expect(h.engine.perform!(about.ref, { kind: 'tap' }, operation())).rejects.toMatchObject({
       code: 'NODE_STALE',
@@ -482,7 +508,7 @@ describe('observation', () => {
     await openAttempt(h);
     const snapshot = await h.engine.observe!(operation());
     expect(calls).toBe(2);
-    expect([...walk(snapshot.nodes)]).toHaveLength(10);
+    expect([...walk(snapshot.root)]).toHaveLength(10);
   });
 
   it('is an empty screen before any app is open when no app is pinned, and a fault when one is', async () => {
@@ -490,8 +516,26 @@ describe('observation', () => {
     free.fake.respond('capture.snapshot', () => {
       throw new AppError('SESSION_NOT_FOUND', 'No active app session');
     });
+    // No tree means no geometry: the viewport comes from the device's screenshot metadata, once.
+    free.fake.respond('capture.screenshot', () => ({ logicalWidth: 390, logicalHeight: 844, width: 1170, height: 2532, pixelDensity: 3 }));
     await openAttempt(free);
-    expect(await free.engine.observe!(operation())).toEqual({ nodes: [] });
+    const empty = await free.engine.observe!(operation());
+    expect(empty).toEqual({
+      root: { ref: { id: 'root', revision: '' }, role: 'screen', rect: { x: 0, y: 0, width: 390, height: 844 } },
+      viewport: { width: 390, height: 844, scale: 1 },
+    });
+    await free.engine.observe!(operation());
+    expect(free.fake.methods().filter((method) => method === 'capture.screenshot')).toHaveLength(1);
+
+    // A device that reports no geometry at all cannot be observed: an invented viewport would misplace every tap.
+    const blind = harness({}, false);
+    blind.fake.respond('capture.snapshot', () => ({ nodes: [] }));
+    blind.fake.respond('capture.screenshot', () => ({}));
+    await openAttempt(blind);
+    await expect(blind.engine.observe!(operation())).rejects.toMatchObject({
+      code: 'ENGINE_FAILURE',
+      message: expect.stringContaining('viewport is unknown'),
+    });
 
     const pinned = harness();
     pinned.fake.respond('capture.snapshot', () => {
@@ -526,7 +570,9 @@ describe('observation', () => {
     }));
     const unmaskable = await h.engine.observe!(operation(), { pixels: true });
     expect(unmaskable.pixels).toBeUndefined();
-    expect(unmaskable.nodes).toHaveLength(1);
+    expect(unmaskable.root.children).toHaveLength(1);
+    // A snapshot without geometry keeps the viewport the session last learned.
+    expect(unmaskable.viewport).toEqual({ width: 390, height: 844, scale: 1 });
 
     h.fake.respond('capture.snapshot', () => SETTINGS_SNAPSHOT);
     h.fake.respond('capture.screenshot', () => {
@@ -534,7 +580,7 @@ describe('observation', () => {
     });
     const treeOnly = await h.engine.observe!(operation(), { pixels: true });
     expect(treeOnly.pixels).toBeUndefined();
-    expect(treeOnly.nodes).toHaveLength(1);
+    expect(treeOnly.root.children).toHaveLength(1);
   });
 
   it('cancels a snapshot when the operation aborts', async () => {
@@ -572,9 +618,9 @@ describe('perform', () => {
     const h = harness();
     await openAttempt(h);
     const op = operation();
-    const { nodes } = await h.engine.observe!(op);
+    const { root } = await h.engine.observe!(op);
     const [about, toggle, search, scroller, back] = ['About', 'Airplane Mode', 'Search', 'Scroller', 'Back'].map((name) =>
-      named(nodes, name),
+      named(root, name),
     );
     const before = h.fake.calls.length;
     await h.engine.perform!(about!.ref, { kind: 'tap' }, op);
@@ -588,7 +634,9 @@ describe('perform', () => {
     await h.engine.perform!(toggle!.ref, { kind: 'check' }, op);
     await h.engine.perform!(search!.ref, { kind: 'press', key: 'Enter' }, op);
     await h.engine.perform!(search!.ref, { kind: 'press', key: 'a' }, op);
+    await h.engine.perform!(search!.ref, { kind: 'press', key: 'Space' }, op);
     await h.engine.perform!(scroller!.ref, { kind: 'swipe', direction: 'down' }, op);
+    await h.engine.perform!(root.ref, { kind: 'swipe', direction: 'up', momentum: 'fast' }, op);
     await h.engine.perform!(about!.ref, { kind: 'dragTo', target: back!.ref }, op);
     expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
       ['interactions.press', { ref: '@e4', settle: true, settleQuietMs: 150 }],
@@ -602,7 +650,12 @@ describe('perform', () => {
       ['command.keyboard', { action: 'enter' }],
       ['interactions.press', { ref: '@e7', settle: true, settleQuietMs: 150 }],
       ['interactions.type', { text: 'a' }],
+      // Space is typed like a character, the unfocused field tapped first.
+      ['interactions.press', { ref: '@e7', settle: true, settleQuietMs: 150 }],
+      ['interactions.type', { text: ' ' }],
       ['interactions.swipe', { from: { x: 195, y: 620 }, to: { x: 195, y: 420 } }],
+      // The root swipe is the viewport swipe: agent-device's whole-screen scroll.
+      ['interactions.scroll', { direction: 'up' }],
       ['interactions.drag', { source: '@e4', destination: '@e3' }],
     ]);
   });
@@ -619,9 +672,9 @@ describe('perform', () => {
       ],
     }));
     await openAttempt(h);
-    const { nodes } = await h.engine.observe!(operation());
-    const haptic = named(nodes, 'Haptic Feedback');
-    const sound = named(nodes, 'Sound');
+    const { root } = await h.engine.observe!(operation());
+    const haptic = named(root, 'Haptic Feedback');
+    const sound = named(root, 'Sound');
     const before = h.fake.calls.length;
     await h.engine.perform!(haptic.ref, { kind: 'uncheck' }, operation());
     await h.engine.perform!(haptic.ref, { kind: 'tap' }, operation());
@@ -649,7 +702,11 @@ describe('perform', () => {
       { kind: 'selectOption', value: 'x' },
       { kind: 'setInputFiles', paths: ['/tmp/x'] },
       { kind: 'scrollIntoView' },
+      // Named keys other than Enter and Space, and every modifier, have no soft-keyboard equivalent.
       { kind: 'press', key: 'Escape' },
+      { kind: 'press', key: 'Tab' },
+      { kind: 'press', key: 'Control+a' },
+      { kind: 'press', key: 'Shift+Enter' },
       // A tap would activate the row; focus is for editable fields only.
       { kind: 'focus' },
       // The row-level cell exposes no checked state; a blind flip could undo a correct one.
@@ -659,6 +716,18 @@ describe('perform', () => {
         code: 'UNSUPPORTED_CAPABILITY',
       });
     }
+    // A spelling outside the grammar is refused with the grammar named, never reinterpreted.
+    for (const key of ['Return', 'ab', '', 'Enter+']) {
+      await expect(h.engine.perform!(about.ref, { kind: 'press', key }, operation())).rejects.toMatchObject({
+        code: 'UNSUPPORTED_CAPABILITY',
+        message: expect.stringContaining('[Modifier+]...Key'),
+      });
+    }
+    // The root takes swipe only.
+    await expect(h.engine.perform!({ id: 'root', revision: '' }, { kind: 'tap' }, operation())).rejects.toMatchObject({
+      code: 'NOT_ACTIONABLE',
+    });
+    expect(h.fake.methods().filter((method) => method === 'interactions.press')).toHaveLength(0);
     h.fake.respond('interactions.press', () => {
       throw new AppError('INVALID_ARGS', 'ref @e4 not found; take a new snapshot');
     });
@@ -676,15 +745,16 @@ describe('perform', () => {
   });
 });
 
-describe('app hooks, swipe, url, artifacts', () => {
-  it('scrolls the viewport, goes back, relaunches, and clears state through the pinned app', async () => {
+describe('session hooks, viewport swipe, location, artifacts', () => {
+  it('scrolls the viewport through the root, goes back, relaunches, and resets state through the pinned app', async () => {
     const h = harness();
     await openAttempt(h);
+    const root = await screenRootOf(h);
     const before = h.fake.calls.length;
-    await h.engine.swipe!('down', 'fast', operation());
-    await h.engine.app!.back!(operation());
-    await h.engine.app!.restart!(operation());
-    await h.engine.app!.clearState!(operation());
+    await h.engine.perform!(root.ref, { kind: 'swipe', direction: 'down', momentum: 'fast' }, operation());
+    await h.engine.session!.back!(operation());
+    await h.engine.session!.restart!(operation());
+    await h.engine.session!.reset!(operation());
     expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
       ['interactions.scroll', { direction: 'down' }],
       ['command.back', { settle: true, settleQuietMs: 150 }],
@@ -694,16 +764,21 @@ describe('app hooks, swipe, url, artifacts', () => {
     ]);
   });
 
-  it('anchors the path on the foreground app and the screen title', async () => {
+  it('locates the observation on the foreground app and the screen title, and omits what it does not know', async () => {
     const h = harness();
     await openAttempt(h);
-    expect(await h.engine.url!(operation())).toBe('app://device/com.apple.preferences/General');
+    const location = async (harnessed: Harness) => (await harnessed.engine.observe!(operation())).location;
+    expect(await location(h)).toBe('com.apple.Preferences / General');
+    // No title bar: the app alone. The app identity is remembered from the launch when the snapshot omits it.
     h.fake.respond('capture.snapshot', () => ({ nodes: [{ ref: '@e1', type: 'button', label: 'Go' }] }));
-    expect(await h.engine.url!(operation())).toBe('app://device/com.apple.preferences/');
+    expect(await location(h)).toBe('com.apple.Preferences');
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, appBundleId: 'other.app' }));
+    expect(await location(h)).toBe('other.app / General');
+    // Nothing pinned, nothing opened, no title: no location, and never an invented URL.
     const cold = harness({}, false);
     await openAttempt(cold);
-    cold.fake.respond('capture.snapshot', () => ({ nodes: [{ ref: '@e1', type: 'button' }] }));
-    expect(await cold.engine.url!(operation())).toBe('app://device/unknown/');
+    cold.fake.respond('capture.snapshot', () => ({ nodes: [{ ref: '@e1', type: 'button', rect: { x: 0, y: 0, width: 10, height: 10 } }] }));
+    expect(await location(cold)).toBeUndefined();
   });
 
   it('numbers screenshots per attempt, masks secure fields in them, and refuses an unmaskable one', async () => {
@@ -999,15 +1074,13 @@ describe('reference lifetime and cancellation', () => {
     await expect(h.engine.perform!(observation.ref, { kind: 'tap' }, operation())).resolves.toBeUndefined();
   });
 
-  it('captures an observation location in the same snapshot while explicit URL probes stay fresh', async () => {
+  it('reads the observation location off the same snapshot as the tree', async () => {
     const h = harness();
     await openAttempt(h);
     const before = h.fake.methods().filter((method) => method === 'capture.snapshot').length;
     const snapshot = await h.engine.observe!(operation());
-    expect(snapshot.url).toBe('app://device/com.apple.preferences/General');
+    expect(snapshot.location).toBe('com.apple.Preferences / General');
     expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(before + 1);
-    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, appBundleId: 'other.app' }));
-    expect(await h.engine.url!(operation())).toBe('app://device/other.app/General');
   });
 
   it('never dispatches a command or action when its signal is already aborted', async () => {
@@ -1190,7 +1263,7 @@ describe('deterministic actions', () => {
     const search = await observed(h, 'Search');
     await h.engine.perform!(search.ref, { kind: 'fill', value: 'blue', sensitive: false }, test());
     expect(h.fake.lastArgs('interactions.fill')).toEqual({ ref: '@e7', text: 'blue' });
-    await h.engine.app!.back!(test());
+    await h.engine.session!.back!(test());
     expect(h.fake.lastArgs('command.back')).toEqual({});
     await h.engine.tapAt!({ x: 10, y: 20 }, test());
     expect(h.fake.lastArgs('interactions.press')).toEqual({ x: 10, y: 20 });
@@ -1217,7 +1290,7 @@ describe('deterministic actions', () => {
     await sleep(150);
     await observed(h, 'About');
     // A relaunch: the same About cell at the same place is on the new screen too.
-    await h.engine.app!.restart!(test());
+    await h.engine.session!.restart!(test());
     const startedAt = Date.now();
     await h.engine.perform!((await observed(h, 'About')).ref, { kind: 'tap' }, test());
     expect(Date.now() - startedAt).toBeGreaterThanOrEqual(100);

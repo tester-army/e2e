@@ -10,6 +10,7 @@ import type { BrowserContext, Page } from 'playwright';
 import {
   ConfigurationError,
   defineEngine,
+  LOCATOR_ACTION_KINDS,
   obj,
   type EngineAppDeclaration,
   type EngineHandle,
@@ -56,6 +57,7 @@ export function playwright(options: PlaywrightOptions = {}): EngineHandle {
   }
   if (options.headers !== undefined) validateHeaders(options.headers);
   if (options.basicAuth !== undefined) validateBasicAuth(options.basicAuth);
+  if (options.testIdAttribute !== undefined) validateTestIdAttribute(options.testIdAttribute);
   const surface = new PlaywrightSurface(options);
   const handle = defineEngine({
     name: 'playwright',
@@ -70,14 +72,15 @@ export function playwright(options: PlaywrightOptions = {}): EngineHandle {
     observe: (operation, observeOptions) => surface.observe(operation, observeOptions),
     locate: (expression, operation) => surface.locate(expression, operation),
     perform: (ref, action, operation) => surface.perform(ref, action, operation),
-    swipe: (direction, momentum, operation) => surface.swipe(direction, momentum, operation),
+    // A browser honors every action kind of the contract; `actions.ts` dispatches each.
+    actions: LOCATOR_ACTION_KINDS,
     tapAt: (point, operation) => surface.tapAt(point, operation),
-    app: {
-      ...declaredApp(options),
-      navigate: (url, operation) => surface.navigate(url, operation),
+    app: declaredApp(options),
+    session: {
+      open: (url, operation) => surface.open(url, operation),
       back: (operation) => surface.back(operation),
       restart: (operation) => surface.restart(operation),
-      clearState: (operation) => surface.clearState(operation),
+      reset: (operation) => surface.reset(operation),
     },
     artifacts: {
       screenshot: (label, operation) => surface.screenshot(label, operation),
@@ -90,7 +93,6 @@ export function playwright(options: PlaywrightOptions = {}): EngineHandle {
       capture: (operation) => surface.captureState(operation),
       restore: (state, operation) => surface.restoreState(state, operation),
     },
-    url: (operation) => surface.url(operation),
     fixtures: {
       web: (context) => createWebFixture(surface, context),
     },
@@ -154,6 +156,23 @@ function validateBasicAuth(basicAuth: unknown): void {
   }
   if (typeof password !== 'string') {
     throw new ConfigurationError('INVALID_CONFIG', 'playwright({ basicAuth }) requires a password string');
+  }
+}
+
+/**
+ * An attribute name the document grammar accepts (XML `Name`, ASCII): a value
+ * outside it could never be on an element, so `getByTestId` would match nothing
+ * and every `testId` query would fail silently.
+ */
+const ATTRIBUTE_NAME = /^[A-Za-z_:][A-Za-z0-9_:.-]*$/;
+
+/** Refuses a test-id attribute no element could carry, at config load. */
+function validateTestIdAttribute(attribute: unknown): void {
+  if (typeof attribute !== 'string' || !ATTRIBUTE_NAME.test(attribute)) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `playwright({ testIdAttribute }) must be an attribute name such as "data-testid", got ${JSON.stringify(attribute)}`,
+    );
   }
 }
 

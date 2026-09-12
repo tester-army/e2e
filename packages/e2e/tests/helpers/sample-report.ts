@@ -164,7 +164,7 @@ export function sampleReport(): Report1Document {
       maxLedgerBytes: 1,
       maxObservationBytes: 1,
       artifactBytes: 4096,
-      downloads: 0,
+      files: 0,
       events: 12,
       modelTokens: 2850,
       maxModelCallsInStep: 3,

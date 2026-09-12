@@ -67,9 +67,9 @@ describe('runner <-> engine contract', () => {
       expect(resultByTitle(outcome, 'taps a node').status).toBe('passed');
       expect(fake.inits).toHaveLength(1);
       const info = fake.inits[0]!;
-      expect(info.app.baseUrl).toContain('127.0.0.1:4599');
       expect(info.app.site).toBe('127.0.0.1');
-      expect(info.testIdAttribute).toBe('data-testid');
+      expect((info.app as { baseUrl?: unknown }).baseUrl).toBeUndefined();
+      expect((info as { testIdAttribute?: unknown }).testIdAttribute).toBeUndefined();
       expect(info.headed).toBe(false);
       expect(info.runId).toBe(outcome.report.run.id);
       expect(info.targetName).toBe('fake');

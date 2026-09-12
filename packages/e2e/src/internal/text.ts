@@ -1,13 +1,11 @@
 /** Text normalization and matching rules. */
 
+import type { TextPattern } from '../engine/contract.ts';
 import type { TextMatch } from '../types.ts';
 import { sanitizeText } from './errors.ts';
 import { testPattern } from './regexp.ts';
 
-export type TextPattern =
-  | { readonly kind: 'string'; readonly value: string; readonly exact: boolean }
-  | { readonly kind: 'regexp'; readonly source: string; readonly flags: string };
-
+export type { TextPattern };
 
 /**
  * Normalizes text by trimming leading/trailing whitespace and replacing every

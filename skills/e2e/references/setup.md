@@ -104,7 +104,6 @@ export default {
 | `agents` | `{ default: built-in }` | Agents by name. `default` is what tests run with; `e2e run --agent <name>` runs with another. Each entry is `createAgent(...)`, an options block `{ model, judge, context, maxSteps, maxModelCalls, vision, providerOptions }`, or a custom `StepExecutor`. `model` is an AI SDK instance; without one anywhere, acquiring `agent` is `MODEL_UNAVAILABLE`. |
 | `credentials` | `{}` | Named `{ username, password }` entries; `password` may be a function returning the value. |
 | `secrets` | `{}` | Named values the model never sees (API keys, tokens): a string or a function returning the value. A name cannot also be a credential. |
-| `screen.testIdAttribute` | `'data-testid'` | Attribute read by `getByTestId`. |
 | `artifacts` | `['screenshot', 'trace']` | Kinds to keep (`screenshot`, `trace`, and the opt-in `video`), or `{ kinds, store, video }`; `video: { retain: 'on-failure' }` keeps only the recordings of attempts that did not pass. |
 | `projectId` | the package name | Report and cache identity. |
 

@@ -23,8 +23,8 @@ export interface AgentDeviceOptions {
   /**
    * App opened fresh at the start of every attempt: a bundle id, a package
    * name, or a display name agent-device resolves (`Settings`). Without it the
-   * surface observes whatever is in the foreground, and `app.restart` and
-   * `app.clearState` are not declared.
+   * surface observes whatever is in the foreground, and `app.restart()` and
+   * `app.clearState()` are not available.
    */
   readonly app?: string | undefined;
   /**

@@ -6,7 +6,7 @@ import { MAX_TRACE_ANCHORS } from '../../src/cache/trace.ts';
 import type { SemanticNode } from '../../src/engine/surface.ts';
 import { createRedactor } from '../../src/internal/redact.ts';
 
-const options = { redact: createRedactor(new Map()), testIdAttribute: 'data-testid' };
+const options = { redact: createRedactor(new Map()) };
 
 function nodes(list: SemanticNode[]): ReadonlyMap<string, SemanticNode> {
   return new Map(list.map((entry) => [entry.ref.id, entry]));
@@ -102,14 +102,14 @@ describe('describeAnchors', () => {
   });
 
   it('does not mistake a re-minted test id for a new node', () => {
-    const before = node('t1', { role: 'button', name: 'Start sync', attributes: { 'data-testid': 'toggle-r1-2' } });
-    const after = node('t2', { role: 'button', name: 'Start sync', attributes: { 'data-testid': 'toggle-r2-2' } });
+    const before = node('t1', { role: 'button', name: 'Start sync', testId: 'toggle-r1-2' });
+    const after = node('t2', { role: 'button', name: 'Start sync', testId: 'toggle-r2-2' });
     const effect = node('e', { text: 'Activate plan is on' });
     expect(describeAnchors(nodes([before]), nodes([after, effect]), options)).toEqual([
       { text: 'Activate plan is on' },
     ]);
     // A node only its test id identifies still counts by that id.
-    const idOnly = node('x', { role: 'generic', attributes: { 'data-testid': 'spinner' } });
+    const idOnly = node('x', { role: 'generic', testId: 'spinner' });
     expect(describeAnchors(nodes([]), nodes([idOnly]), options)).toEqual([{ role: 'generic', testId: 'spinner' }]);
   });
 
@@ -169,7 +169,7 @@ describe('anchorsPresent', () => {
 
   it('forgives a churned test id when the other fields still identify the node', () => {
     const anchor = { role: 'link', name: 'PB-Twin-Alpha', testId: 'row-1a2b' };
-    const rerendered = node('r2', { role: 'link', name: 'PB-Twin-Alpha', attributes: { 'data-testid': 'row-9f8e' } });
+    const rerendered = node('r2', { role: 'link', name: 'PB-Twin-Alpha', testId: 'row-9f8e' });
     expect(anchorsPresent([anchor], nodes([rerendered]), options)).toBe(true);
     expect(anchorsPresent([{ role: 'listitem', testId: 'row-1a2b' }], nodes([rerendered]), options)).toBe(false);
   });

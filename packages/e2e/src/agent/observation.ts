@@ -14,8 +14,8 @@ const TRUNCATION_MARKER = '[observation truncated at the resolved observation by
 type PixelsWithheld = 'MASKING_UNPROVEN';
 
 export interface AgentObservation {
-  /** Location captured with this tree, when the engine can provide it. */
-  readonly url?: string;
+  /** Where the surface was when captured, when the platform has a location. */
+  readonly location?: string;
   readonly revision: string;
   /** Redacted, size-bounded serialization sent to the model. */
   readonly text: string;
@@ -46,7 +46,6 @@ export function prepareObservation(
   options: {
     redact: (text: string) => string;
     maxBytes: number;
-    testIdAttribute: string;
   },
 ): AgentObservation {
   const nodes = new Map<string, SemanticNode>();
@@ -65,7 +64,7 @@ export function prepareObservation(
 
   const emit = (node: SemanticNode, depth: number): void => {
     if (truncated) return;
-    const line = formatNode(node, depth, redact, options.testIdAttribute);
+    const line = formatNode(node, depth, redact);
     const size = encoder.encode(`${line}\n`).byteLength;
     if (lines.length > 0 && bytes + size > budget) {
       truncated = true;
@@ -86,7 +85,7 @@ export function prepareObservation(
   const pixels = clearPixels(observation);
   return {
     revision: observation.revision,
-    ...(observation.url === undefined ? {} : { url: options.redact(observation.url) }),
+    ...(observation.location === undefined ? {} : { location: options.redact(observation.location) }),
     text,
     bytes: textBytes,
     nodes,
@@ -217,7 +216,6 @@ function formatNode(
   node: SemanticNode,
   depth: number,
   redact: (text: string) => string,
-  testIdAttribute: string,
 ): string {
   const parts: string[] = [`#${node.ref.id}`];
   if (node.role !== undefined && node.role !== '') parts.push(node.role);
@@ -226,8 +224,7 @@ function formatNode(
   if (text !== '' && text !== node.name) parts.push(`text=${JSON.stringify(redact(text))}`);
   // Disambiguators the model needs when role and name repeat. The engine has
   // already reduced href to origin and path.
-  const testId = node.attributes?.[testIdAttribute];
-  if (testId !== undefined && testId !== '') parts.push(`testid=${JSON.stringify(testId)}`);
+  if (node.testId !== undefined && node.testId !== '') parts.push(`testid=${JSON.stringify(node.testId)}`);
   const href = node.attributes?.['href'];
   if (href !== undefined && href !== '') parts.push(`href=${JSON.stringify(redact(href))}`);
   const placeholder = node.attributes?.['placeholder'];

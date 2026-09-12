@@ -11,7 +11,7 @@ import { createAgentDeviceClient } from 'agent-device';
 import { defineEngine, obj, type EngineAppDeclaration, type EngineHandle } from '@e2edev/e2e/engine';
 import { createDeviceFixture } from './device.ts';
 import type { AgentDeviceOptions, ClientFactory } from './options.ts';
-import { AgentDeviceSurface } from './surface.ts';
+import { AgentDeviceSurface, DEVICE_ACTIONS } from './surface.ts';
 
 const surfaces = new WeakMap<EngineHandle, AgentDeviceSurface>();
 
@@ -31,15 +31,17 @@ export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
     observe: (operation, options) => surface.observe(operation, options),
     locate: (expression, operation) => surface.locate(expression, operation),
     perform: (ref, action, operation) => surface.perform(ref, action, operation),
-    swipe: (direction, momentum, operation) => surface.swipe(direction, momentum, operation),
+    actions: DEVICE_ACTIONS,
     tapAt: (point, operation) => surface.tapAt(point, operation),
-    app: {
-      ...declaredApp(surface.options),
+    app: declaredApp(surface.options),
+    // No `open`: a device app has no URL to open. Relaunching the pinned app
+    // is the device's "recreate the context", so restart and reset need one.
+    session: {
       back: (operation) => surface.back(operation),
       ...(surface.managesApp
         ? {
             restart: (operation) => surface.restart(operation),
-            clearState: (operation) => surface.clearState(operation),
+            reset: (operation) => surface.reset(operation),
           }
         : {}),
     },
@@ -48,7 +50,6 @@ export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
       startVideo: (operation) => surface.startVideo(operation),
       stopVideo: (operation) => surface.stopVideo(operation),
     },
-    url: (operation) => surface.url(operation),
     fixtures: {
       device: (context) => createDeviceFixture(surface, context),
     },

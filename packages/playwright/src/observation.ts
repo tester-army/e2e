@@ -20,6 +20,14 @@ import {
   type RawObservedNode,
 } from './read-node.ts';
 
+/**
+ * The id of every observation's root: the main document's element under one
+ * id the engine mints, stable across observations and navigations, so the
+ * harness can address the viewport (`perform(root, swipe)`) from an earlier
+ * observation. Outside the `n<number>` space stamped ids and located ids share.
+ */
+export const ROOT_NODE_ID = 'root';
+
 /** Nested iframe capture depth; deeper frames stay boundary nodes. */
 const MAX_FRAME_DEPTH = 4;
 
@@ -147,6 +155,10 @@ async function captureInto(
     // even when this capture is abandoned, and a later document must not
     // hand the same number to a different node.
     deps.advanceIds(nextId);
+    // The main document's element is the observation root, under the minted
+    // id rather than the one stamped on it: a new document stamps a new
+    // number, the root's id must not change with it.
+    if (framePath.length === 0 && ids.length > 0) ids[0] = ROOT_NODE_ID;
     elementsHandle = await captured.getProperty('elements');
     const elements = await collectElementHandles(elementsHandle, nodes.length);
     elements.forEach((element, index) => stage(ids[index] as string, element));
@@ -311,6 +323,7 @@ export function toSemanticNode(
     ...(raw.name !== null ? { name: raw.name } : {}),
     ...(raw.text !== null ? { text: raw.text } : {}),
     ...(raw.value !== null ? { value: raw.value } : {}),
+    ...(raw.testId !== null ? { testId: raw.testId } : {}),
     inputPurpose: raw.inputPurpose,
     states,
     attributes: raw.attributes,

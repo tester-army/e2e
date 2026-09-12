@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { defineEngine } from '../../src/engine/index.ts';
+import { snapshot } from '../helpers/snapshot.ts';
 
 describe('defineEngine fixtures', () => {
   it('binds fixture factories to the spec like every other member', () => {
@@ -10,7 +11,7 @@ describe('defineEngine fixtures', () => {
       readonly greeting = 'hello';
       readonly fixtures = { hello: this.hello };
       async observe() {
-        return { nodes: [] };
+        return snapshot([]);
       }
       hello(this: ClassEngine) {
         return this.greeting;

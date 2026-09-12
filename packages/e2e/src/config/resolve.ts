@@ -100,7 +100,6 @@ export interface ResolvedConfig {
   readonly reporters: readonly BuiltinReporter[];
   /** The reporter objects the config names; `--reporter` never removes one. */
   readonly customReporters: readonly Reporter[];
-  readonly testIdAttribute: string;
   /**
    * The agents unpinned tests run as, one result each: `agents.default`, or
    * the names `--agent` gave, in order and deduplicated. Never empty.
@@ -166,7 +165,6 @@ const TOP_LEVEL_KEYS = new Set([
   'workers',
   'artifacts',
   'reporters',
-  'screen',
   'agents',
   'cache',
   'limits',
@@ -192,6 +190,7 @@ const FOREIGN_TOP_LEVEL_KEYS: Readonly<Record<string, string>> = {
   use: 'browser and app options are engine options: engine: playwright({ ... })',
   projects: 'one target per browser or device: targets: [{ engine }]',
   agent: 'agents are named: agents: { default: <what agent held> }; e2e run --agent <name> runs with another',
+  screen: 'the test-id attribute is an engine option: engine: playwright({ testIdAttribute })',
 };
 
 /** Keys authors put on a target that belong to its engine. */
@@ -281,7 +280,6 @@ export function resolveConfig(
   const { artifacts, artifactStore, videoRetain } = resolveArtifactsConfig(raw, cli);
   const { reporters, customReporters } = resolveReporters(raw, cli);
 
-  const testIdAttribute = raw.screen?.testIdAttribute ?? 'data-testid';
   const projectId = resolveProjectId(raw.projectId, options.projectRoot);
   const { credentials, secrets } = resolveSecrets(raw, env);
   // Limits first: the agent context budget is a limits key, and the resolved
@@ -317,7 +315,6 @@ export function resolveConfig(
     videoRetain,
     reporters,
     customReporters,
-    testIdAttribute,
     agentNames,
     agent,
     agents,

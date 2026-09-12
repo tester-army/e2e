@@ -48,7 +48,7 @@ Every query returns a `Locator` synchronously and performs no work.
 | `getByPlaceholder(text, options?)` | Inputs by placeholder |
 | `getByText(text, options?)` | Nodes by visible text |
 | `getByDisplayValue(value, options?)` | Inputs by currently displayed value |
-| `getByTestId(id, options?)` | Nodes carrying `config.screen.testIdAttribute`, default `data-testid` |
+| `getByTestId(id, options?)` | Nodes whose `testId` matches: on the web the value of the engine's test-id attribute (`playwright({ testIdAttribute })`, default `data-testid`), on a device the accessibility identifier or resource id |
 
 ```ts
 screen.getByRole('button', { name: 'Save' });
@@ -129,7 +129,9 @@ swipe(options: SwipeOptions): Promise<void>;
 ```
 
 Viewport-level gesture. `direction` is required, `momentum` optional. Uses
-`config.actionTimeout`. Throws `ACTION_FAILED` when the gesture is rejected.
+`config.actionTimeout`. Throws `ACTION_FAILED` when the gesture is rejected,
+and `UNSUPPORTED_CAPABILITY` on a target whose engine does not list `swipe`
+in its actions.
 
 ## screen.scrollUntilVisible
 
@@ -178,9 +180,22 @@ deadline, and performs one operation. Default timeout `config.actionTimeout`,
 | `scrollIntoView` | `scrollIntoView(options?: ActionOptions): Promise<void>` |
 | `swipe` | `swipe(options: SwipeOptions & ActionOptions): Promise<void>` |
 
+- Every action is available only on a target whose engine lists its kind
+  in `actions`; otherwise it throws `UNSUPPORTED_CAPABILITY` before reaching
+  the engine. The engine references list what each one honors.
 - `click` is an alias of `tap`.
 - `longPress` `duration` is milliseconds, default 500, integer 100 through 10000. Out of
   range throws `INVALID_ARGUMENT`.
+- `press` takes one key in the grammar every engine shares: zero or more
+  modifiers (`Shift`, `Control`, `Alt`, `Meta`, `ControlOrMeta`) and one key,
+  joined with `+`. The key is a named key (`Enter`, `Escape`, `Tab`,
+  `Backspace`, `Delete`, `Insert`, `Space`, `ArrowUp`, `ArrowDown`,
+  `ArrowLeft`, `ArrowRight`, `Home`, `End`, `PageUp`, `PageDown`, `F1` to
+  `F12`) or one printable character typed as itself. `Control+a`,
+  `Shift+Tab`, `Enter`, `$`; `Shift++` presses `+`. `ControlOrMeta` is
+  Control on Windows and Linux, Meta on macOS. A key the platform lacks
+  throws `UNSUPPORTED_CAPABILITY`; see the
+  [key grammar](/reference/engine#keys).
 - `fill` replaces the current content. A `Secret` is resolved on the host
   immediately before the call and never logged, reported, or sent to a model.
 - `setInputFiles` needs one or more non-empty paths, resolved from the project
@@ -196,6 +211,8 @@ await screen.getByRole('checkbox', { name: 'Remember me' }).check();
 await screen.getByLabel('Plan').selectOption({ label: 'Pro' });
 await screen.getByLabel('Plan').selectOption({ value: 'pro' });
 await screen.getByRole('button', { name: 'Save' }).tap({ timeout: 10_000 });
+await screen.getByRole('textbox', { name: 'Search' }).press('Enter');
+await screen.getByRole('textbox', { name: 'Notes' }).press('ControlOrMeta+a');
 ```
 
 ## Locator reads

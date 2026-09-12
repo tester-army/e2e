@@ -119,7 +119,7 @@ interface Entry {
 }
 
 /** Screenshots first, then the recording, then the trace; the compiler fails when a kind is missing here. */
-const KIND_RANK: Record<ArtifactKind, number> = { screenshot: 0, video: 1, trace: 2, download: 3, log: 4 };
+const KIND_RANK: Record<ArtifactKind, number> = { screenshot: 0, video: 1, trace: 2, file: 3, log: 4 };
 
 const ICON: Record<Bucket, string> = { failed: '🔴', flaky: '⚠️', skipped: '⏭️', passed: '🟢' };
 /** Worst first: the order failures are listed, files are sorted, and a file's glyph is chosen in. */

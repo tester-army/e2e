@@ -49,7 +49,6 @@ const NESTED_HOOKS = {
  */
 const APP_DECLARATION_KEYS = [
   'url',
-  'allowedOrigins',
   'environment',
   'identity',
   'command',

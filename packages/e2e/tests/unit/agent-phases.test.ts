@@ -23,7 +23,7 @@ const OBSERVATION: Observation = {
   redaction: { secureNodeCount: 0, maskedRegionCount: 0 },
 };
 
-const operation = () => ({ runId: 'run', attemptId: 'attempt', timeoutMs: 1_000, signal: new AbortController().signal });
+const operation = () => ({ runId: 'run', attemptId: 'attempt', timeoutMs: 1_000, signal: new AbortController().signal, origin: 'agent' as const });
 
 describe('retryingObserve', () => {
   it('re-reads after a retryable race reported by an engine from another module registry', async () => {

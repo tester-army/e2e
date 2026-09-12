@@ -13,10 +13,11 @@ import { StepRecorder } from '../../src/run/steps.ts';
 import { WorkerModels } from '../../src/run/worker-models.ts';
 import type { E2EConfig } from '../../src/types.ts';
 import { installFakeLoopModel, loopCalls, type LoopResponder } from '../helpers/fake-loop-model.ts';
+import { snapshot } from '../helpers/snapshot.ts';
 
 /** A real fixture graph with an in-memory engine and no runner process or model provider. */
 function runtime(overrides: E2EConfig = {}) {
-  const engine = defineEngine({ name: 'fake', version: '1', spiVersion: 1, observe: async () => ({ nodes: [] }) });
+  const engine = defineEngine({ name: 'fake', version: '1', spiVersion: 1, observe: async () => snapshot([]) });
   const config = resolveConfig(
     { targets: [{ name: 'fake', platform: 'custom', engine }], cache: 'off', ...overrides },
     { projectRoot: process.cwd(), env: {} },

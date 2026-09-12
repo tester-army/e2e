@@ -551,7 +551,7 @@ describe('renderMarkdownReport for an exploration', () => {
 
 describe('renderMarkdownReport evidence paths', () => {
   it('lists artifact paths under artifactsDir when there is no run page, capped, in kind order, and names kinds when no path was kept', () => {
-    const evidence = attempt({ status: 'failed', error: { code: 'E', message: 'm' }, artifacts: ['trace', 'screenshot', 'video', 'log', 'download'] });
+    const evidence = attempt({ status: 'failed', error: { code: 'E', message: 'm' }, artifacts: ['trace', 'screenshot', 'video', 'log', 'file'] });
     const body = renderMarkdownReport(page({ status: 'failed', results: [named({ title: 't', status: 'failed', attempts: [evidence] })] }), { artifactsDir: '.e2e/artifacts' });
     expect(body).toContain('Evidence: `.e2e/artifacts/t/attempt-0/screenshot-1.bin`, `.e2e/artifacts/t/attempt-0/video-2.bin`, `.e2e/artifacts/t/attempt-0/trace-0.bin`, and 2 more · `tests/example.e2e.ts:3`');
     const withheld = attempt({ status: 'failed', error: { code: 'E', message: 'm' }, artifacts: ['screenshot'] });

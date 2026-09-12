@@ -29,7 +29,6 @@
         "platform": "web",
         "baseOrigin": "https://example.test",
         "environment": "test",
-        "testIdAttribute": "data-testid",
         "engine": {
           "name": "playwright",
           "version": "1.0.0",
@@ -168,7 +167,7 @@
       "maxLedgerBytes": 0,
       "maxObservationBytes": 0,
       "artifactBytes": 8,
-      "downloads": 0,
+      "files": 0,
       "events": 0,
       "modelTokens": 0,
       "modelCachedTokens": 0,

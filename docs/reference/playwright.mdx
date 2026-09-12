@@ -35,6 +35,7 @@ browser choices:
 | `environment`, `identity` | | derived from `url` | Cache/session identity and the report label. See [the app under test](/reference/config#the-app-under-test). |
 | `browser` | `'chromium' \| 'firefox' \| 'webkit'` | `'chromium'` | The browser to launch. |
 | `viewport` | `{ width, height }` | `1280` by `720` | Initial viewport of every attempt's page. |
+| `testIdAttribute` | `string` | `'data-testid'` | The attribute whose value is a node's `testId`, read by `screen.getByTestId` and the agent's observation. `playwright({ testIdAttribute: 'data-cy' })` for a Cypress-style app. |
 | `connect` | `PlaywrightConnectOptions` | unset | Attach to a remote browser over CDP instead of launching locally. Chromium only. `cdpEndpoint(signal)` resolves the DevTools URL; it is called once per worker and again when a session drops. |
 | `headers` | `Record<string, string>` | unset | HTTP headers added to every request bound for the [app's site](/reference/config#the-apps-site) and to none other. Names are case-insensitive. Routes every request through the runner, which turns the browser's HTTP cache off and blocks service workers for the target. A trace records request headers. |
 | `basicAuth` | `{ username, password }` | unset | Answers a `401` challenge from any origin, as Playwright's own `httpCredentials` does. `:` is not allowed in the user name. |
@@ -247,7 +248,7 @@ await web.setCookies([{ url: 'http://localhost:3000', name: 'tz', value: 'UTC' }
 | Method | Behavior | Throws |
 | --- | --- | --- |
 | `onDialog(handler)` | Registers an attempt-scoped handler and returns an idempotent unsubscribe function. Removed automatically at attempt end. A function handler must call `accept` or `dismiss`; one that returns without deciding has the dialog dismissed and fails the next step with `APP_NOT_OPEN`, as an unhandled dialog does. | |
-| `waitForDownload(trigger, options?)` | Starts a download watch, runs `trigger`, waits for completion inside the same deadline, and registers the file as a `download` artifact. A failure in `trigger` keeps its own error. | `ACTION_FAILED` when the download does not complete in time |
+| `waitForDownload(trigger, options?)` | Starts a download watch, runs `trigger`, waits for completion inside the same deadline, and registers the file as a `file` artifact. A failure in `trigger` keeps its own error. | `ACTION_FAILED` when the download does not complete in time |
 
 ```ts
 export interface Dialog {

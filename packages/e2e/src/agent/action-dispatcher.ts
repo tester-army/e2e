@@ -11,6 +11,8 @@
  */
 
 import type { SemanticNode, ViewportPoint } from '../engine/surface.ts';
+import { invalidKeyMessage } from '../internal/keys.ts';
+import { parseKey } from '../engine/contract.ts';
 import { asEngineError, TestError } from '../internal/errors.ts';
 import { clampToViewport } from '../internal/geometry.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
@@ -194,6 +196,7 @@ export class ActionDispatcher {
     if (typeof key !== 'string' || key.trim() === '' || key.length > 64) {
       throw new TestError('INVALID_ARGUMENT', 'press key must be a short non-empty string');
     }
+    if (parseKey(key) === undefined) throw new TestError('INVALID_ARGUMENT', invalidKeyMessage(key));
     return this.commitTargeted('press', target, async (node) => {
       await this.session.perform(node.ref, { kind: 'press', key }, this.accounting.actionOperation());
       return { name: 'press', node, key };
@@ -262,8 +265,8 @@ export class ActionDispatcher {
     await this.commitTargeted('typeSecret', target, async (node) => {
       const plaintext = await authorizeSecretFill(
         {
-          session: this.session,
-          operation: () => this.accounting.actionOperation(),
+          location: async () =>
+            this.feed.latest?.location ?? (await this.session.location(this.accounting.actionOperation())),
           recordPolicy: (policy, decision, code) => recordPolicyEvent(this.runtime.steps, policy, decision, code),
         },
         this.runtime,
@@ -295,14 +298,13 @@ export class ActionDispatcher {
   private async runActionNow(name: string, body: () => Promise<RecordableAction>): Promise<void> {
     this.accounting.reserveAction();
     const redact = this.runtime.redact;
-    const testIdAttribute = this.runtime.config.testIdAttribute;
     let action: RecordableAction;
     try {
       action = await instrumentPhase(
         this.runtime,
         { api: this.accounting.api, kind: 'engine', phase: 'agent.action', name },
         body,
-        (committed) => ({ detail: describeAction(committed, redact, testIdAttribute).summary }),
+        (committed) => ({ detail: describeAction(committed, redact).summary }),
       );
     } catch (cause) {
       this.accounting.checkpoint(cause);
@@ -349,14 +351,13 @@ export class ActionDispatcher {
     return async () => {
       let { node, observation } = this.feed.resolve(target);
       const redact = this.runtime.redact;
-      const testIdAttribute = this.runtime.config.testIdAttribute;
       for (let relocations = 0; ; relocations += 1) {
         // The container the node sits in is captured with it: that is what
         // tells this row's "Delete" from the next row's when the flow replays.
         const within = containerKey(node.ref.id, observation.nodes, observation.parents, redact);
         // When the description still matches several controls, the position among
         // them is recorded too; a replay that finds the same number picks the same one.
-        const position = describePosition(node, within, observation.nodes, { redact, testIdAttribute });
+        const position = describePosition(node, within, observation.nodes, { redact });
         try {
           const action = await perform(node);
           return {

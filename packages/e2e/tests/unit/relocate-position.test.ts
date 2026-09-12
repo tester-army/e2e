@@ -7,7 +7,7 @@ import { buildTraceEntry, readTraceEntry, type ActionTrace } from '../../src/cac
 import type { SemanticNode } from '../../src/engine/surface.ts';
 import { createRedactor } from '../../src/internal/redact.ts';
 
-const options = { redact: createRedactor(new Map()), testIdAttribute: 'data-testid' };
+const options = { redact: createRedactor(new Map()) };
 
 function button(id: string, name = 'Set up'): SemanticNode {
   return { ref: { id, revision: 'r' }, role: 'button', name };
@@ -73,7 +73,6 @@ describe('relocation with a recorded position', () => {
     const described = describeAction(
       { name: 'tap', node: cards.get('b')!, position: { index: 1, of: 2 } },
       options.redact,
-      options.testIdAttribute,
     );
     expect(described.summary).toBe('tap button "Set up" (2 of 2)');
     expect(described.target?.position).toEqual({ index: 1, of: 2 });

@@ -120,23 +120,23 @@ export default {
 
 | Contract member | On a device |
 | --- | --- |
-| `observe` | The accessibility tree with rects and a viewport. iOS: `Button` is `button`, `TextField` and `SearchField` are `textbox`, `SecureTextField` is a secure `textbox`, `Cell` is `listitem`, `StaticText` is `text`, `Switch` is `switch` with `checked`. Android: `TextView` is `text`, `EditText` is `textbox`, `Switch` and `CheckBox` keep their roles (no `checked` state: Android exposes none), layouts are `group`, `RecyclerView` is `list`; a label echoed as the value is dropped. Other types keep their kebab-cased name. Element identifiers surface under the configured `testIdAttribute`. Pixels on request, with every secure node's bounds painted black; a secure node without bounds withholds the image. |
-| `perform` | `tap`, `doubleTap`, `longPress`, `fill`, `clear`, `hover`, `check`, `uncheck`, `press` (`Enter` or one character), `swipe` within a node, `dragTo`, and `focus` on editable fields (a touch surface focuses by tapping, and a tap on a control would activate it). A tap, check, or uncheck on a `switch` or `checkbox` lands on its innermost control, because UIKit reports a settings row as a labelled switch spanning the row with the real toggle as an unlabelled child; `check` and `uncheck` need the tree to expose the checked state, which Android switches do not. `selectOption`, `setInputFiles`, `scrollIntoView`, focus on a control, and other keys are `UNSUPPORTED_CAPABILITY`. |
+| `observe` | The accessibility tree with rects and a viewport. iOS: `Button` is `button`, `TextField` and `SearchField` are `textbox`, `SecureTextField` is a secure `textbox`, `Cell` is `listitem`, `StaticText` is `text`, `Switch` is `switch` with `checked`. Android: `TextView` is `text`, `EditText` is `textbox`, `Switch` and `CheckBox` keep their roles (no `checked` state: Android exposes none), layouts are `group`, `RecyclerView` is `list`; a label echoed as the value is dropped. Other types keep their kebab-cased name. An element's accessibility identifier (iOS) or resource id (Android) is the node's `testId`, so `screen.getByTestId` finds it. Pixels on request, with every secure node's bounds painted black; a secure node without bounds withholds the image. |
+| `perform` | Declared `actions`: `tap`, `doubleTap`, `longPress`, `fill`, `clear`, `hover`, `check`, `uncheck`, `press` (`Enter` or one character), `swipe` (on the root the viewport scroll in four directions, within any other node), `dragTo`, and `focus` on editable fields (a touch surface focuses by tapping, and a tap on a control would activate it). A tap, check, or uncheck on a `switch` or `checkbox` lands on its innermost control, because UIKit reports a settings row as a labelled switch spanning the row with the real toggle as an unlabelled child; `check` and `uncheck` need the tree to expose the checked state, which Android switches do not. `selectOption`, `setInputFiles`, and `scrollIntoView` are not declared, so `screen`/`Locator` never offer them; focus on a control and other keys are `UNSUPPORTED_CAPABILITY`. |
 | `locate` | Every `screen` query. Role queries skip nodes the platform reports as not visible; `visible: true` applies the same rule to the other query kinds. Text queries answer with the innermost match, so a host view echoing its child's label (iOS `Text` over `StaticText`) counts once. |
-| `swipe` | Viewport scroll in four directions. |
-| `app` | `back`; `restart` and `clearState` when `app` or `appPath` is pinned. No `navigate`: a device has no app URL. |
+| `app` | `identity` from the pinned `app`, else `appPath`; no `url`. |
+| `session` | `back`; `restart` and `reset` (behind `app.clearState()`) when `app` or `appPath` is pinned. No `open`: a device has no app URL, so `app.open()` and the agent's `navigate` verb are unavailable. |
 | `artifacts` | Redacted screenshots under `screenshots/NNN-<label>.png`: every secure field's bounds are painted black first, and a screenshot that cannot be redacted fails instead of being written. Video with `--video`, as `video/video.mp4` with taps shown. No traces. |
-| `url` | `app://device/<bundle id>/<screen title>`, the trace cache's anchor; the cache compares pathnames, so the app identity is in the path. The title is the navigation bar's on iOS and the collapsing toolbar's on Android. |
+| `location` | `<bundle id> / <screen title>` on every observation, the trace cache's anchor. It is not a URL, so the origin policy never applies to it. The app identity is part of the location, so two apps with a `General` screen never share an anchor. The title is the navigation bar's on iOS and the collapsing toolbar's on Android. |
 | `state` | Not declared. `test.setup` and `session:` are unavailable. |
 
 ## Trace cache on a device
 
-The cache anchors a recorded `agent.act` step on the path the surface reports
-when the step begins and ends. This engine reports `app://device/<bundle
-id>/<title>`, with the title read off the navigation bar (its label, its inner
-text, or its identifier). A step recorded on `/com.apple.preferences/General`
+The cache anchors a recorded `agent.act` step on the location the surface
+reports when the step begins and ends. This engine reports `<bundle id> /
+<title>`, with the title read off the navigation bar (its label, its inner
+text, or its identifier). A step recorded on `com.apple.Preferences / General`
 replays only when Settings is on General again. Recorded node actions replay
-through `perform`; viewport scrolling uses `swipe`. A mutating project-tool
+through `perform`; a viewport scroll is a `swipe` on the observation root. A mutating project-tool
 call such as `open_app` ends a replay, as does a target that no longer
 relocates. The read-only `screenshot` tool creates no replay gap.
 Pin `app` so attempts start on the same screen, and keep in-step app switching
@@ -228,7 +228,7 @@ need no tool. `screenshot` and `tap_at` are the agent's own pixel tools,
 offered while no secret has been filled; the engine declares `tapAt`, so a
 `tap_at` whose point lands on nothing the tree lists taps the bare point in
 logical pixels. `type_secret` is not offered: secret fills require an origin the
-runner can check, and `app://` has none.
+runner can check, and a device location is not a URL, so it has none.
 
 After a secret fill the agent offers neither `screenshot` nor `tap_at` and
 captures no pixels, including in later members of the same serial group.

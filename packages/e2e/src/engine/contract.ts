@@ -313,6 +313,8 @@ const NAME_SET: ReadonlySet<string> = new Set(KEY_NAMES);
 export function parseKey(key: string): ParsedKey | undefined {
   if (key === '') return undefined;
   if (key === '+') return { modifiers: [], key: { kind: 'char', char: '+' } };
+  // A trailing `+` is the key itself, so the separator before it (the last
+  // two characters, `<sep>+`) is cut and `+` appended as the final part.
   const parts = key.endsWith('+') && key.length > 1 ? [...key.slice(0, -2).split('+'), '+'] : key.split('+');
   const last = parts.pop();
   if (last === undefined || last === '') return undefined;

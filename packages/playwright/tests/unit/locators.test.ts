@@ -6,8 +6,8 @@
 
 import type { Locator as PwLocator, Page } from 'playwright';
 import { describe, expect, it } from 'vitest';
-import type { LocatorExpression } from '@e2edev/e2e/engine';
-import { applyPostSteps, projectExpression, type PostStep } from '../../src/locators.ts';
+import type { LocatorExpression, TextPattern } from '@e2edev/e2e/engine';
+import { applyPostSteps, projectExpression as projectWith, type PostStep } from '../../src/locators.ts';
 
 /** A chain-recording stand-in for a Playwright locator. */
 interface FakeLocator {
@@ -44,6 +44,9 @@ function chainOf(locator: PwLocator): readonly string[] {
 
 const page = fakeLocator([]) as unknown as Page;
 
+/** Projects with the default test-id attribute; the attribute itself is exercised in its own case. */
+const projectExpression = (target: Page, expression: LocatorExpression) => projectWith(target, expression, 'data-testid');
+
 const shared: LocatorExpression = {
   kind: 'query',
   query: { kind: 'displayValue', value: { kind: 'string', value: 'shared', exact: true } },
@@ -78,6 +81,23 @@ describe('projectExpression', () => {
       query: { kind: 'label', value: { kind: 'string', value: 'Display', exact: false } },
     });
     expect(loose.name).toBeNull();
+  });
+
+  it('projects a testId query onto the configured attribute, encoded as getByTestId encodes it', () => {
+    const testId = (value: TextPattern): LocatorExpression => ({
+      kind: 'query',
+      query: { kind: 'testId', value },
+    });
+    const exact = projectWith(page, testId({ kind: 'string', value: 'save "draft"', exact: true }), 'data-qa');
+    expect(chainOf(exact.locator)).toEqual(['locator(internal:testid=[data-qa="save \\"draft\\""s])']);
+    // A string is always an exact match, whatever `exact` says: getByTestId has no substring mode.
+    const loose = projectWith(page, testId({ kind: 'string', value: 'save', exact: false }), 'data-qa');
+    expect(chainOf(loose.locator)).toEqual(['locator(internal:testid=[data-qa="save"s])']);
+    const pattern = projectWith(page, testId({ kind: 'regexp', source: '^row-\\d+$', flags: 'i' }), 'data-test-id');
+    expect(chainOf(pattern.locator)).toEqual(['locator(internal:testid=[data-test-id=/^row-\\d+$/i])']);
+    // An attribute with a comma is quoted, as Playwright quotes it.
+    const quoted = projectWith(page, testId({ kind: 'string', value: 'x', exact: true }), 'a,b');
+    expect(chainOf(quoted.locator)).toEqual(['locator(internal:testid=["a,b"="x"s])']);
   });
 
   it('composes positions natively for every query but displayValue', () => {

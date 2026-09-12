@@ -21,7 +21,7 @@ function cleanup(): EngineCleanupContext {
 }
 
 function operation(attemptId: string): OperationContext {
-  return { signal: new AbortController().signal, timeoutMs: 30_000, runId: 'run-cdp', attemptId };
+  return { signal: new AbortController().signal, timeoutMs: 30_000, runId: 'run-cdp', attemptId, origin: 'test' };
 }
 
 /** A live Chrome with a random remote-debugging port; the host the engine attaches to. */
@@ -128,8 +128,7 @@ describe('playwright engine over CDP', () => {
       runId: 'run-cdp',
       targetName: 'web',
       projectRoot: process.cwd(),
-      app: { baseUrl: app.url, site: new URL(app.url).hostname },
-      testIdAttribute: 'data-testid',
+      app: { site: new URL(app.url).hostname },
       headed: false,
       workerSlot: 0,
       signal: new AbortController().signal,
@@ -138,14 +137,14 @@ describe('playwright engine over CDP', () => {
 
     try {
       await engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal });
-      await engine.app!.navigate!(`${app.url}/`, operation('a1'));
+      await engine.session!.open!(`${app.url}/`, operation('a1'));
       const headings = await engine.locate!(
         { kind: 'query', query: { kind: 'role', value: { kind: 'string', value: 'heading', exact: true } } },
         operation('a1'),
       );
       // Proof the attempt ran over the attached remote, not a local launch.
       expect(headings[0]?.name).toBe('Home');
-      expect(await engine.url!(operation('a1'))).toBe(`${app.url}/`);
+      expect((await engine.observe!(operation('a1'))).location).toBe(`${app.url}/`);
       await engine.endAttempt!(cleanup());
     } finally {
       await engine.dispose!(cleanup());
@@ -170,15 +169,14 @@ describe('playwright engine over CDP', () => {
       runId: 'run-cdp',
       targetName: 'web',
       projectRoot: process.cwd(),
-      app: { baseUrl: app.url, site: new URL(app.url).hostname },
-      testIdAttribute: 'data-testid',
+      app: { site: new URL(app.url).hostname },
       headed: false,
       workerSlot: 0,
       signal: new AbortController().signal,
     });
     try {
       await engine.startAttempt!({ attemptId: 'r1', artifactsDir, signal: new AbortController().signal });
-      await engine.app!.navigate!(`${app.url}/`, operation('r1'));
+      await engine.session!.open!(`${app.url}/`, operation('r1'));
       await engine.endAttempt!(cleanup());
       expect(resolved).toBe(1);
 
@@ -194,7 +192,7 @@ describe('playwright engine over CDP', () => {
       // running the resolver again, and works over the new session.
       await engine.startAttempt!({ attemptId: 'r2', artifactsDir, signal: new AbortController().signal });
       expect(resolved).toBe(2);
-      await engine.app!.navigate!(`${app.url}/`, operation('r2'));
+      await engine.session!.open!(`${app.url}/`, operation('r2'));
       const headings = await engine.locate!(
         { kind: 'query', query: { kind: 'role', value: { kind: 'string', value: 'heading', exact: true } } },
         operation('r2'),
@@ -224,8 +222,7 @@ describe('playwright engine over CDP', () => {
       runId: 'run-cdp',
       targetName: 'web',
       projectRoot: process.cwd(),
-      app: { baseUrl: app.url, site: new URL(app.url).hostname },
-      testIdAttribute: 'data-testid',
+      app: { site: new URL(app.url).hostname },
       headed: false,
       workerSlot: 0,
     };

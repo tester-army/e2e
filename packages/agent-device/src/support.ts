@@ -1,4 +1,4 @@
-/** Shared helpers for the agent-device engine: abort racing, filenames, PNG headers, gestures, path anchors. */
+/** Shared helpers for the agent-device engine: error constructors, filenames, PNG headers, gestures, the screen location. */
 
 import { EngineError, type Momentum, type ScrollDirection } from '@e2edev/e2e/engine';
 
@@ -74,16 +74,17 @@ export function swipeWithin(
 }
 
 /**
- * The location a device surface reports through `url`. A simulator has no
- * address bar, but the trace cache anchors every recorded step on a path and
- * refuses to write a trace for a surface without one, so the engine mints
- * one: `app://device/<app>/<screen title>`. The cache compares pathnames
- * only, so the app identity lives in the path, not the host: two apps with a
- * screen called "General" must not share an anchor. `new URL(...)` parses
- * it, and its pathname changes exactly when the app or its screen changes.
+ * The location a device surface reports in a snapshot: the foreground app
+ * and the screen shown, `<app> / <screen title>`. A simulator has no address
+ * bar, so this is an opaque address the harness shows to the model and the
+ * report and anchors trace replay on; it changes exactly when the app or its
+ * screen changes. It is deliberately not a URL: no scheme, no colon, so the
+ * harness never mistakes it for one and applies an origin policy to it.
+ * Undefined when neither the app nor a title is known.
  */
-export function screenUrl(app: string | undefined, title: string | undefined): string {
-  const identity = (app ?? '').replaceAll(/[^A-Za-z0-9.-]/g, '-').replaceAll(/^-+|-+$/g, '').toLowerCase() || 'unknown';
-  const trimmed = title === undefined ? '' : title.replaceAll(/\s+/g, ' ').trim();
-  return `app://device/${identity}/${trimmed === '' ? '' : encodeURIComponent(trimmed)}`;
+export function screenLocation(app: string | undefined, title: string | undefined): string | undefined {
+  const parts = [app, title]
+    .map((part) => (part === undefined ? '' : part.replaceAll(/\s+/g, ' ').trim()))
+    .filter((part) => part !== '');
+  return parts.length === 0 ? undefined : parts.join(' / ');
 }

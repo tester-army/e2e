@@ -115,7 +115,7 @@ export function anchorsPresent(
 
 /** One node's anchor projection, or undefined when it could identify nothing. */
 function anchorDescriptor(node: SemanticNode, options: AnchorOptions): TraceTargetDescriptor | undefined {
-  const described = describeTarget(node, options.redact, options.testIdAttribute);
+  const described = describeTarget(node, options.redact);
   if (described === undefined || descriptorTiers(described).length === 0) return undefined;
   const { selector: _selector, ...anchor } = described;
   return anchor;

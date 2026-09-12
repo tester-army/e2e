@@ -20,7 +20,7 @@ function cleanup(): EngineCleanupContext {
 }
 
 function operation(attemptId: string): OperationContext {
-  return { signal: new AbortController().signal, timeoutMs: 30_000, runId: 'run-protected', attemptId };
+  return { signal: new AbortController().signal, timeoutMs: 30_000, runId: 'run-protected', attemptId, origin: 'test' };
 }
 
 async function boot(engine: EngineHandle, app: FixtureApp, artifactsDir: string, attemptId: string): Promise<void> {
@@ -28,8 +28,7 @@ async function boot(engine: EngineHandle, app: FixtureApp, artifactsDir: string,
     runId: 'run-protected',
     targetName: 'web',
     projectRoot: process.cwd(),
-    app: { baseUrl: app.url, site: new URL(app.url).hostname },
-    testIdAttribute: 'data-testid',
+    app: { site: new URL(app.url).hostname },
     headed: false,
     workerSlot: 0,
     signal: new AbortController().signal,
@@ -44,7 +43,7 @@ async function shutdown(engine: EngineHandle): Promise<void> {
 
 /** Navigates and reads the page's one heading. */
 async function headingAt(engine: EngineHandle, attemptId: string, url: string): Promise<string> {
-  await engine.app!.navigate!(url, operation(attemptId));
+  await engine.session!.open!(url, operation(attemptId));
   const nodes = await engine.locate!(
     { kind: 'query', query: { kind: 'role', value: { kind: 'string', value: 'heading', exact: true } } },
     operation(attemptId),
@@ -78,7 +77,7 @@ describe('playwright({ headers, basicAuth })', () => {
       // A third-party site gets the request without them.
       expect(await headingAt(engine, 'h1', `${other.url}/headers`)).toBe('none');
       // A state reset replaces the context; the headers come along.
-      await engine.app!.clearState!(operation('h1'));
+      await engine.session!.reset!(operation('h1'));
       expect(await headingAt(engine, 'h1', `${app.url}/headers`)).toBe('let-me-in');
     } finally {
       await shutdown(engine);

@@ -192,7 +192,7 @@ The read-only `screenshot` tool creates no gap.
 | A `Secret` fills through `type_secret` | The same: `type_secret` fills a declared secret into a secure field, and `screen.getByLabel(...).fill(secret)` works in a deterministic step |
 | Playwright trace per attempt | Screenshots only, with every secure field painted black. No trace |
 | `--video` writes a WebM screencast | `--video` writes an MP4 of the device screen with taps shown |
-| The cache anchors on the page path | The cache anchors on `app://device/<bundle id>/<screen title>`, read off the navigation bar |
+| The cache anchors on the page path | The cache anchors on the location `<bundle id> / <screen title>`, the title read off the navigation bar |
 
 <CardGroup cols={2}>
   <Card title="agent-device reference" icon="mobile-screen" href="/reference/agent-device">

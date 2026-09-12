@@ -3,6 +3,7 @@
 import {
   type TargetSession,
   type LocatorAction,
+  type LocatorActionKind,
   type LocatorExpression,
   type NodeRef,
   type OperationContext,
@@ -10,6 +11,7 @@ import {
 } from '../engine/surface.ts';
 import {
   asEngineError,
+  ConfigurationError,
   E2EError,
   TestError,
   translateEngineError,
@@ -71,6 +73,17 @@ export class LocatorEngine {
       attemptId: this.options.attemptId,
       origin: 'test',
     };
+  }
+
+  /** Fails with `UNSUPPORTED_CAPABILITY` for an action kind the engine did not declare. */
+  requireAction(kind: LocatorActionKind): void {
+    if (this.session.actions.has(kind)) return;
+    throw new ConfigurationError(
+      'UNSUPPORTED_CAPABILITY',
+      `the "${kind}" action is not available on this target: its engine declares ${
+        this.session.actions.size === 0 ? 'no actions' : [...this.session.actions].join(', ')
+      }`,
+    );
   }
 
   /** One immediate engine resolve, retrying retryable frame misses within the deadline. */
@@ -184,6 +197,9 @@ export class LocatorEngine {
     action: LocatorAction | ((deadline: Deadline) => Promise<LocatorAction>),
     timeoutMs?: number,
   ): Promise<void> {
+    // An undeclared kind fails before the locator is even resolved: waiting
+    // for a node the engine could never act on would report it as missing.
+    if (typeof action !== 'function') this.requireAction(action.kind);
     const deadline = this.deadline(timeoutMs);
     for (;;) {
       const ref = await this.resolveExactlyOne(expression, deadline);

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { isCiMode, resolveConfig } from '../../src/config/resolve.ts';
 import { defineEngine, type EngineAppDeclaration } from '../../src/engine/index.ts';
+import { snapshot } from '../helpers/snapshot.ts';
 
 const ROOT = '/tmp/e2e-config-project';
 const BASE_ENV = {} as NodeJS.ProcessEnv;
@@ -16,7 +17,7 @@ function resolve(raw: Parameters<typeof resolveConfig>[0], env: NodeJS.ProcessEn
 
 /** A minimal observing engine declaring the given app facts, the way playwright() or agentDevice() would. */
 function fakeEngine(app: EngineAppDeclaration = {}) {
-  return defineEngine({ name: 'fake', version: '1.0.0', spiVersion: 1, observe: async () => ({ nodes: [] }), app });
+  return defineEngine({ name: 'fake', version: '1.0.0', spiVersion: 1, observe: async () => snapshot([]), app });
 }
 
 /** Resolves one web target whose engine declares `app`, and returns the resolved app. */
@@ -47,7 +48,6 @@ describe('resolveConfig', () => {
     expect(config.tests).toEqual(['tests/**/*.e2e.ts']);
     expect(Object.fromEntries(config.artifacts)).toEqual({ screenshot: 'best-effort', trace: 'best-effort' });
     expect(config.reporters).toEqual(['list']);
-    expect(config.testIdAttribute).toBe('data-testid');
   });
 
   it('applies the config bounds to CLI overrides too', () => {
@@ -109,6 +109,9 @@ describe('resolveConfig', () => {
     );
     expect(() => resolve({ app: {} } as never)).toThrow('the app under test is declared by the engine: engine: playwright({ url })');
     expect(() => resolve({ webServer: {} } as never)).toThrow('playwright({ url, command: { executable, args } })');
+    expect(() => resolve({ screen: { testIdAttribute: 'data-qa' } } as never)).toThrow(
+      'unknown config key "screen"; the test-id attribute is an engine option: engine: playwright({ testIdAttribute })',
+    );
     expect(() => resolve({ targets: [{ ...WEB, url: 'http://localhost:3000' }] } as never)).toThrow(
       'target "web" has unknown key "url"; a target is { name?, platform?, engine? }; the app under test is declared by the engine',
     );
@@ -453,7 +456,7 @@ describe('resolveConfig', () => {
 
   it('digests the platform an engine declares, which a named target inherits', () => {
     const driving = (platform: string) =>
-      defineEngine({ name: 'fake', version: '1.0.0', spiVersion: 1, platform, observe: async () => ({ nodes: [] }) });
+      defineEngine({ name: 'fake', version: '1.0.0', spiVersion: 1, platform, observe: async () => snapshot([]) });
     const digest = (platform: string) =>
       resolve({ targets: [{ name: 'app', engine: driving(platform) }] }).configDigest;
     expect(digest('web')).toBe(digest('web'));

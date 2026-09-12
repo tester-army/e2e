@@ -74,7 +74,7 @@
       "required": ["id", "kind", "mediaType", "redaction", "producer"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
-        "kind": { "enum": ["screenshot", "trace", "video", "download", "log", "other"] },
+        "kind": { "enum": ["screenshot", "trace", "video", "file", "log", "other"] },
         "mediaType": { "type": "string", "minLength": 1 },
         "path": { "$ref": "#/$defs/relativePath" },
         "size": { "type": "integer", "minimum": 0 },
@@ -456,14 +456,13 @@
     "target": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "index", "platform", "environment", "testIdAttribute", "engine", "capabilities", "artifactCapabilities", "stateCapability"],
+      "required": ["id", "index", "platform", "environment", "engine", "capabilities", "artifactCapabilities", "stateCapability"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "index": { "type": "integer", "minimum": 0 },
         "platform": { "type": "string", "minLength": 1 },
         "baseOrigin": { "type": "string", "format": "uri" },
         "environment": { "enum": ["test", "staging", "production"] },
-        "testIdAttribute": { "type": "string", "minLength": 1 },
         "engine": {
           "type": "object",
           "additionalProperties": false,
@@ -513,14 +512,14 @@
     "usage": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["discoveredResults", "maxAgentContextBytes", "maxLedgerBytes", "maxObservationBytes", "artifactBytes", "downloads", "events", "modelTokens", "maxModelCallsInStep", "maxActionStepsInStep"],
+      "required": ["discoveredResults", "maxAgentContextBytes", "maxLedgerBytes", "maxObservationBytes", "artifactBytes", "files", "events", "modelTokens", "maxModelCallsInStep", "maxActionStepsInStep"],
       "properties": {
         "discoveredResults": { "type": "integer", "minimum": 0 },
         "maxAgentContextBytes": { "type": "integer", "minimum": 0 },
         "maxLedgerBytes": { "type": "integer", "minimum": 0 },
         "maxObservationBytes": { "type": "integer", "minimum": 0 },
         "artifactBytes": { "type": "integer", "minimum": 0 },
-        "downloads": { "type": "integer", "minimum": 0 },
+        "files": { "type": "integer", "minimum": 0 },
         "events": { "type": "integer", "minimum": 0 },
         "modelTokens": { "type": "integer", "minimum": 0 },
         "modelCachedTokens": { "type": "integer", "minimum": 0 },

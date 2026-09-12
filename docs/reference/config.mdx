@@ -57,7 +57,6 @@ config or test written with `require` or `module.exports` fails to load.
 | `workers` | `number` | `1` in CI, else `max(1, floor(availableParallelism() / 2))` | integer 1-1024; a target never runs more than the `workers` its engine declares |
 | `artifacts` | kinds array or `{ kinds?, store?, video? }` | `['screenshot', 'trace']` | see [artifacts](#artifacts) |
 | `reporters` | `readonly ('list' \| 'json' \| 'junit' \| 'markdown' \| Reporter)[]` | `['list']` | the four IDs and [reporter objects](/reference/reporters); `json` cannot be combined with `list`; `--reporter` replaces the IDs and keeps the objects |
-| `screen` | object | see [screen](#screen) | |
 | `agents` | object of agents by name | see [agents](#agents) | `default` is the agent tests run with |
 | `cache` | string or object | `'read-write'` (`'read-only'` in CI when unset) | see [cache](#cache) |
 | `limits` | object | see [limits](#limits) | |
@@ -281,18 +280,6 @@ Recording costs an encoder per page and about a megabit per second of disk.
 A recording masks nothing, so a video artifact is recorded with
 `redaction: 'incomplete'`. Turning video on or off never invalidates cached
 replays.
-
-## screen
-
-```ts
-screen?: {
-  testIdAttribute?: string;
-};
-```
-
-| Key | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `testIdAttribute` | `string` | `'data-testid'` | Attribute read by `screen.getByTestId` |
 
 ## agents
 

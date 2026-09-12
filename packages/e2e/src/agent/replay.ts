@@ -54,7 +54,6 @@ export interface ReplayHost {
   readonly signal: AbortSignal;
   remainingMs(): number;
   readonly redact: (text: string) => string;
-  readonly testIdAttribute: string;
 }
 
 export interface ReplayOutcome {
@@ -246,7 +245,7 @@ async function relocate(
   host: ReplayHost,
   descriptor: TraceTargetDescriptor,
 ): Promise<Relocated> {
-  const options = { redact: host.redact, testIdAttribute: host.testIdAttribute };
+  const options = { redact: host.redact };
   const settled = await pollSettled(host, ({ nodes }): Relocated | undefined => {
     const result = relocateDescriptor(descriptor, nodes, options);
     if (result.kind === 'failed') return result.failure === 'target-not-found' ? undefined : result;

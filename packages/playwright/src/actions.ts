@@ -1,6 +1,6 @@
 /** Locator action dispatch for the Playwright engine. */
 
-import { EngineError, type LocatorAction, type NodeRef } from '@e2edev/e2e/engine';
+import { EngineError, parseKey, type LocatorAction, type NodeRef } from '@e2edev/e2e/engine';
 import {
   asActionable,
   isClassified,
@@ -41,6 +41,14 @@ export async function dispatchLocatorAction(
       await locator.fill('', { timeout });
       return;
     case 'press':
+      // Playwright spells keys as the contract grammar does, so a key that
+      // parses is pressed as given; one that does not is refused here rather
+      // than reinterpreted by the browser.
+      if (parseKey(action.key) === undefined) {
+        throw new EngineError('UNSUPPORTED_CAPABILITY', `press: unknown key ${JSON.stringify(action.key)}`, {
+          retryable: false,
+        });
+      }
       await locator.press(action.key, { timeout });
       return;
     case 'check':

@@ -348,7 +348,7 @@ describe('web platform integration', () => {
     expect(waitStep?.artifacts).toHaveLength(1);
     const tapStep = attempt.steps.find((step) => step.api === 'locator.tap');
     expect(tapStep?.artifacts ?? []).toHaveLength(0);
-    expect(attempt.artifacts.find((artifact) => artifact.kind === 'download')?.path).toContain('downloads/');
+    expect(attempt.artifacts.find((artifact) => artifact.kind === 'file')?.path).toContain('downloads/');
   });
 
   it('records steps and screenshot artifacts on attempts', () => {

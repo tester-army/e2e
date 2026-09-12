@@ -46,7 +46,8 @@ Artifacts land under `.e2e/artifacts/`, one directory per attempt:
   `app.screenshot('label')` captures one explicitly when pixels are allowed.
 - **Playwright traces** when the `trace` artifact kind is enabled and capture
   succeeds. Open a trace with `npx playwright show-trace <file>`.
-- **Downloads** a test saved through `web.waitForDownload`.
+- **Files** the app handed the test, such as a download saved through
+  `web.waitForDownload`; the report records them with kind `file`.
 - **Videos** and **agent transcripts** when you ask for them; see below.
 
 After a secret fill, the runner rewrites credential text in the attempt's

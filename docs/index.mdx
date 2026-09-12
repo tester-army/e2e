@@ -7,11 +7,16 @@ description: Agentic end-to-end testing framework for any app.
 or a question in natural language, and a model interacts with the app to
 reach it. Exact values and exact checks go in the same test as regular locator calls and assertions.
 
+**e2e tests applications through their user interface**: web, mobile,
+desktop, and anything else with a UI. It is not an agent-eval harness and not
+an API-only tool; what it drives is what a user sees and touches.
 
 **The runner is platform agnostic.** Browsers, iOS simulators, and Android
 emulators ship as engines, and the same test runs on each.
 
-The engine contract is flexible enough to test literally anything. You can write [your own engine](/writing-an-engine) and test terminals, voice agents and more.
+The engine contract carries no platform noun, so a desktop shell or a TV app
+fits it as well as a browser does. You can write [your own engine](/writing-an-engine)
+for any surface with a user interface.
 
 **The agent thinks once.** With the [cache](/cache) on, a passing `agent.act`
 records its actions, and later runs **replay them with no model call** until

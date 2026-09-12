@@ -221,7 +221,6 @@ export class Invocation {
         return prepareObservation(raw, {
           redact: this.runtime.redact,
           maxBytes: this.observationByteBudget(),
-          testIdAttribute: this.runtime.config.testIdAttribute,
         });
       },
       (prepared) => ({ count: prepared.nodes.size, bytes: prepared.bytes }),

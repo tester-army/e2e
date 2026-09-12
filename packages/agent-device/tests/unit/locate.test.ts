@@ -4,8 +4,6 @@ import { resolveExpression } from '../../src/locate.ts';
 import { projectSnapshot } from '../../src/nodes.ts';
 import { SETTINGS_NODES } from '../helpers/fake-client.ts';
 
-const OPTIONS = { testIdAttribute: 'data-testid' };
-
 function exact(value: string): TextPattern {
   return { kind: 'string', value, exact: true };
 }
@@ -16,11 +14,8 @@ function query(kind: 'role' | 'label' | 'placeholder' | 'text' | 'displayValue' 
 
 function names(expression: LocatorExpression): string[] {
   let counter = 0;
-  const { index } = projectSnapshot(SETTINGS_NODES, {
-    testIdAttribute: 'data-testid',
-    mintId: () => `n${++counter}`,
-  });
-  return resolveExpression(expression, index, OPTIONS).map((entry) => entry.node.name ?? '');
+  const { index } = projectSnapshot(SETTINGS_NODES, { mintId: () => `n${++counter}` });
+  return resolveExpression(expression, index).map((entry) => entry.node.name ?? '');
 }
 
 describe('locator expressions over a device snapshot', () => {
@@ -54,8 +49,8 @@ describe('locator expressions over a device snapshot', () => {
 
   it('answers text queries with the innermost match when an ancestor echoes the text', () => {
     let counter = 0;
-    const { index } = projectSnapshot(SETTINGS_NODES, { testIdAttribute: 'data-testid', mintId: () => `n${++counter}` });
-    const matches = resolveExpression(query('text', 'About'), index, OPTIONS);
+    const { index } = projectSnapshot(SETTINGS_NODES, { mintId: () => `n${++counter}` });
+    const matches = resolveExpression(query('text', 'About'), index);
     expect(matches.map((entry) => entry.node.role)).toEqual(['text']);
     // The echoing cell still answers label and role queries, and filters by its subtree text.
     expect(names(query('label', 'About'))).toEqual(['About', 'About']);

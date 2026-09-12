@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { assignPorts, resolveConfig, type PortAssignments } from '../../src/config/resolve.ts';
 import { defineEngine, type EngineAppDeclaration } from '../../src/engine/index.ts';
 import { allocateAppPorts, assignedPorts } from '../../src/run/app-ports.ts';
+import { snapshot } from '../helpers/snapshot.ts';
 
 const ROOT = '/tmp/e2e-app-ports';
 
@@ -12,7 +13,7 @@ function configOf(apps: Readonly<Record<string, EngineAppDeclaration>>, ports?: 
       targets: Object.entries(apps).map(([name, app]) => ({
         name,
         platform: 'web',
-        engine: defineEngine({ name: 'fake', version: '1.0.0', spiVersion: 1, observe: async () => ({ nodes: [] }), app }),
+        engine: defineEngine({ name: 'fake', version: '1.0.0', spiVersion: 1, observe: async () => snapshot([]), app }),
       })),
     },
     { projectRoot: ROOT, env: {} as NodeJS.ProcessEnv, ...(ports === undefined ? {} : { ports }) },

@@ -37,7 +37,16 @@ export type JsonValue =
   | { readonly [key: string]: JsonValue }
   | readonly JsonValue[];
 
-export type Platform = 'web' | 'ios' | 'android' | (string & {});
+export type Platform =
+  | 'web'
+  | 'ios'
+  | 'android'
+  | 'macos'
+  | 'windows'
+  | 'linux'
+  | 'tvos'
+  | 'androidtv'
+  | (string & {});
 export type Capability = string;
 export type ScrollDirection = 'up' | 'down' | 'left' | 'right';
 export type Momentum = 'none' | 'slow' | 'fast';
@@ -397,9 +406,15 @@ export interface App {
   readonly baseUrl: string | undefined;
   /** Opens the app: the declared URL, a path relative to it, or any absolute http(s) URL. */
   open(path?: string): Promise<void>;
-  /** Recreates the execution context while preserving persisted state. */
+  /**
+   * Recreates the execution context while preserving persisted state, then
+   * reopens the app at its base URL when the engine declares one.
+   */
   restart(): Promise<void>;
-  /** Clears persisted client state and relaunches. */
+  /**
+   * Clears persisted client state, recreates the execution context, then
+   * reopens the app at its base URL when the engine declares one.
+   */
   clearState(): Promise<void>;
   /** Navigates back once. */
   back(): Promise<void>;
@@ -748,7 +763,7 @@ export interface CacheConfig {
  * test, so a host may use it as its own key.
  */
 export interface StoredArtifact {
-  readonly kind: 'screenshot' | 'trace' | 'video' | 'download' | 'log';
+  readonly kind: 'screenshot' | 'trace' | 'video' | 'file' | 'log';
   readonly mediaType: string;
   readonly bytes: Uint8Array;
   readonly size: number;
@@ -915,9 +930,6 @@ export interface E2EConfig {
    * beside them and `--reporter` never removes it.
    */
   reporters?: readonly (BuiltinReporter | Reporter)[];
-  screen?: {
-    testIdAttribute?: string;
-  };
   /**
    * The agents by name. Each is either an options block or the agent itself:
    * `createAgent(...)` from `@e2edev/e2e/agent`, or any hand-rolled

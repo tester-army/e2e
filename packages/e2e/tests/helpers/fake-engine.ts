@@ -23,7 +23,7 @@ const builtEngineModule = '../../dist/engine/index.js';
 
 /** The EBML magic every WebM file starts with, followed by nothing worth decoding. */
 const FAKE_WEBM = Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x00, 0x00, 0x00, 0x00]);
-const { defineEngine, EngineError, ENGINE_SPI_VERSION } = (await import(
+const { defineEngine, EngineError, ENGINE_SPI_VERSION, LOCATOR_ACTION_KINDS } = (await import(
   builtEngineModule
 )) as typeof import('../../src/engine/index.ts');
 
@@ -46,7 +46,7 @@ export interface FakeEngineBehavior {
   onEndAttempt?(attemptIndex: number): void | Promise<void>;
   /** Throw to fail worker-end disposal. */
   onDispose?(): void | Promise<void>;
-  /** Throw to fail navigation (app.open). */
+  /** Throw to fail navigation (app.open); backs `session.open`. */
   onNavigate?(url: string, attemptIndex: number): void | Promise<void>;
   /** Overrides locate; default resolves one stable node. */
   locate?(
@@ -75,13 +75,13 @@ export interface FakeEngineBehavior {
    * segment began.
    */
   video?: boolean;
-  /** Declares a viewport swipe, unlocking the agent's scroll verb. */
+  /** Declares the `swipe` action kind, unlocking the agent's scroll verb and `screen.swipe()`. */
   swipe?: boolean;
   /** Throw to fail state restore after startAttempt succeeded. */
   onRestore?(state: EngineState): void | Promise<void>;
   /** Contributes a `gadget` fixture exercising every fixture-context facility. */
   fixtures?: boolean;
-  /** What the engine declares about its app; defaults to the URL its `url()` reports. */
+  /** What the engine declares about its app; defaults to `FAKE_APP_URL`, which every observation reports as its location. */
   app?: EngineAppDeclaration;
 }
 
@@ -178,19 +178,13 @@ export function createFakeEngine(behavior: FakeEngineBehavior = {}): FakeEngineH
     async observe(operation) {
       record('observe', operation);
       await behavior.observe?.(operation, current);
-      return { nodes: [tree], viewport: { width: 1280, height: 720, scale: 1 } };
+      return { location: `${FAKE_APP_URL}/`, root: tree, viewport: { width: 1280, height: 720, scale: 1 } };
     },
-    ...(behavior.swipe === true
-      ? {
-          async swipe(direction: string, _momentum: unknown, operation: OperationContext) {
-            record(`swipe(${direction})`, operation);
-          },
-        }
-      : {}),
-    app: {
-      ...(behavior.app ?? { url: FAKE_APP_URL }),
-      async navigate(url, operation) {
-        record(`app.navigate(${url})`, operation);
+    actions: LOCATOR_ACTION_KINDS.filter((kind) => kind !== 'swipe' || behavior.swipe === true),
+    app: behavior.app ?? { url: FAKE_APP_URL },
+    session: {
+      async open(url, operation) {
+        record(`session.open(${url})`, operation);
         await behavior.onNavigate?.(url, current);
       },
     },
@@ -202,10 +196,6 @@ export function createFakeEngine(behavior: FakeEngineBehavior = {}): FakeEngineH
     async perform(ref, action, operation) {
       record(`perform(${ref.id},${action.kind})`, operation);
       await behavior.perform?.(ref, action, operation, current);
-    },
-    async url(operation) {
-      record('url', operation);
-      return `${FAKE_APP_URL}/`;
     },
     ...(behavior.state === true
       ? {

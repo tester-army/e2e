@@ -16,14 +16,14 @@ describe('web.evaluate error boundaries', () => {
 
   beforeAll(async () => {
     await surface.init({ runId: 'evaluate', targetName: 'web', projectRoot: process.cwd(),
-      app: {}, testIdAttribute: 'data-testid', headed: false, workerSlot: 0, signal });
+      app: {}, headed: false, workerSlot: 0, signal });
   });
 
   beforeEach(async () => {
     await surface.startAttempt({ attemptId: 'evaluate', artifactsDir, signal });
     page = await surface.ensurePage();
     web = createWebFixture(surface, {
-      operation: () => ({ signal, timeoutMs: 1_000, runId: 'evaluate', attemptId: 'evaluate' }),
+      operation: () => ({ signal, timeoutMs: 1_000, runId: 'evaluate', attemptId: 'evaluate', origin: 'test' }),
       expectable: (target: object) => target,
       // The recorder is the harness's concern; these tests exercise evaluate's error boundaries only.
       fixture: (_name: string, target: object) => target,

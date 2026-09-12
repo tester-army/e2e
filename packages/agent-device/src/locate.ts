@@ -9,36 +9,28 @@ import { EngineError, matchesText, type LocatorExpression, type SemanticQuery } 
 import { isWithin, type ProjectedNode } from './nodes.ts';
 import { compileSelector } from './selector.ts';
 
-export interface LocateOptions {
-  readonly testIdAttribute: string;
-}
-
 /** Resolves one expression to the nodes it currently matches. */
-export function resolveExpression(
-  expression: LocatorExpression,
-  index: readonly ProjectedNode[],
-  options: LocateOptions,
-): ProjectedNode[] {
+export function resolveExpression(expression: LocatorExpression, index: readonly ProjectedNode[]): ProjectedNode[] {
   switch (expression.kind) {
     case 'query': {
       const candidates =
-        expression.scope === undefined ? index : descendantsOf(resolveExpression(expression.scope, index, options), index);
-      const matches = candidates.filter((entry) => matchesQuery(entry, expression.query, options));
+        expression.scope === undefined ? index : descendantsOf(resolveExpression(expression.scope, index), index);
+      const matches = candidates.filter((entry) => matchesQuery(entry, expression.query));
       return expression.query.kind === 'text' ? innermostOnly(matches) : matches;
     }
     case 'filter': {
-      const source = resolveExpression(expression.source, index, options);
+      const source = resolveExpression(expression.source, index);
       return source.filter((entry) => {
         if (expression.hasText !== undefined && !subtreeHasText(entry, index, expression.hasText)) return false;
         if (expression.has !== undefined) {
           const within = descendantsOf([entry], index);
-          if (resolveExpression(expression.has, within, options).length === 0) return false;
+          if (resolveExpression(expression.has, within).length === 0) return false;
         }
         return true;
       });
     }
     case 'index': {
-      const source = resolveExpression(expression.source, index, options);
+      const source = resolveExpression(expression.source, index);
       const position =
         expression.index === 'first' ? 0 : expression.index === 'last' ? source.length - 1 : expression.index;
       const picked = source[position];
@@ -90,7 +82,7 @@ const STATE_KEYS = ['checked', 'disabled', 'selected', 'expanded'] as const;
  * answer with every node and leave visibility to the action or assertion,
  * unless the query says `visible`, which drops hidden nodes for every kind.
  */
-function matchesQuery(entry: ProjectedNode, query: SemanticQuery, options: LocateOptions): boolean {
+function matchesQuery(entry: ProjectedNode, query: SemanticQuery): boolean {
   const node = entry.node;
   if (query.visible === true && node.states?.hidden === true) return false;
   switch (query.kind) {
@@ -121,9 +113,7 @@ function matchesQuery(entry: ProjectedNode, query: SemanticQuery, options: Locat
       );
     case 'displayValue':
       return node.value !== undefined && matchesText(node.value, query.value);
-    case 'testId': {
-      const testId = node.attributes?.[options.testIdAttribute];
-      return testId !== undefined && matchesText(testId, query.value);
-    }
+    case 'testId':
+      return node.testId !== undefined && matchesText(node.testId, query.value);
   }
 }

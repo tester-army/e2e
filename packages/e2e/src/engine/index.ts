@@ -319,11 +319,13 @@ export interface VideoSegment {
  * `navigate` verb. The app itself is described in `Engine.app`, as data;
  * node actions never live here, they are `perform`.
  *
- * `restart` and `reset` open nothing: they end at a fresh surface with no
- * location shown, and the harness reopens the app through `open` when the
- * target has an address. A surface therefore never needs to know the app's
- * URL, and an unreachable app after a restart is reported the same way as
- * on first open.
+ * `restart` and `reset` open nothing on an addressable surface: they end at
+ * a fresh surface with no location shown, and the harness reopens the app
+ * through `open` when the target has an address. A surface therefore never
+ * needs to know the app's URL, and an unreachable app after a restart is
+ * reported the same way as on first open. A surface without `open` (a
+ * device with a pinned app) relaunches the app inside `restart` and `reset`
+ * itself, since nothing else will.
  */
 export interface EngineSession {
   /**
@@ -340,10 +342,6 @@ export interface EngineSession {
 }
 
 /**
- * Facts handed to `prepare`, once per run and target in the runner process,
- * before any worker exists.
- */
-/**
  * What `prepare` learned that the run must honour. `workers` replaces the
  * engine's declared cap for this target and run: the surfaces the engine
  * actually provisioned, `1` to `info.slots`. Declared `workers` stays the
@@ -351,8 +349,19 @@ export interface EngineSession {
  */
 export interface EnginePrepareResult {
   readonly workers?: number;
+  /**
+   * Variables every worker of this target is spawned with, on top of the
+   * run's environment: how a runner-side `prepare` hands what it provisioned
+   * (a device pool it discovered) to each worker's `init`. The run's own
+   * variables win on a clash.
+   */
+  readonly env?: Readonly<Record<string, string>>;
 }
 
+/**
+ * Facts handed to `prepare`, once per run and target in the runner process,
+ * before any worker exists.
+ */
 export interface EnginePrepareInfo {
   readonly runId: string;
   readonly targetName: string;
@@ -463,8 +472,10 @@ export interface EngineSnapshot {
    * The observation tree under one root the engine minted. The root's id MUST
    * be stable for the surface across observations: `perform(root, swipe)` is
    * the viewport swipe, and the harness addresses it from an earlier
-   * observation. A platform with several top-level elements (a device's
-   * windows) wraps them in a root of its own.
+   * observation, possibly one taken before a `restart` or `reset`, so the
+   * root swipe MUST NOT depend on a live handle from that observation. A
+   * platform with several top-level elements (a device's windows) wraps them
+   * in a root of its own.
    */
   readonly root: SemanticNode;
   /** The viewport `SemanticNode.rect` and `ViewportPoint` are measured in. */

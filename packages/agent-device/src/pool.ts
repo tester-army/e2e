@@ -137,10 +137,13 @@ export class DevicePool {
         info.log(`${label}: automation runner not warmed up (${message(cause)}); the first attempt starts it`);
       }
     }
-    return { workers: Math.max(1, Math.min(slots, devices.length)) };
+    return {
+      workers: Math.max(1, Math.min(slots, devices.length)),
+      env: { [poolVariable(info.targetName)]: JSON.stringify(devices) },
+    };
   }
 
-  /** Discovers the pool for a run: the booted devices, as many as the run has slots, handed to the workers in `info.env`. */
+  /** Discovers the pool for a run: the booted devices, as many as the run has slots; `prepare` hands them to the workers through its result's `env`. */
   private async discoverForRun(info: EnginePrepareInfo): Promise<readonly string[]> {
     const booted = await this.bootedDevices(info.targetName, info.signal);
     const chosen = booted.slice(0, Math.max(1, info.slots));
@@ -151,7 +154,6 @@ export class DevicePool {
       const names = chosen.map((device) => device.name).join(', ');
       info.log(`${booted.length} booted ${this.options.platform} device(s); driving ${devices.length}: ${names}`);
     }
-    info.env[poolVariable(info.targetName)] = JSON.stringify(devices);
     this.discovered.set(info.targetName, devices);
     return devices;
   }

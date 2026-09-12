@@ -4,7 +4,7 @@
  * state behind `playwright()`; the engine hooks in `engine.ts` and the `web`
  * fixture in `web.ts` are thin delegates onto it. Action dispatch lives in
  * `actions.ts`, tree capture in `observation.ts`, and the recording in
- * `video.ts`; this file owns lifecycle, location, navigation, artifacts, and state.
+ * `video.ts`; this file owns lifecycle, location, steering, artifacts, and state.
  */
 
 import { mkdirSync } from 'node:fs';
@@ -26,10 +26,8 @@ import {
   type EngineState,
   type LocatorAction,
   type LocatorExpression,
-  type Momentum,
   type NodeRef,
   type OperationContext,
-  type ScrollDirection,
   type SemanticNode,
   type VideoSegment,
   type ViewportPoint,
@@ -40,7 +38,7 @@ import { BrowserConnection, connectCdp, type BrowserName } from './browser-conne
 import { DialogRouter } from './dialogs.ts';
 import { ensureBrowsersInstalled } from './install.ts';
 import { applyPostSteps, frameSelectors, projectExpression } from './locators.ts';
-import { captureDocument, toSemanticNode } from './observation.ts';
+import { captureDocument, ROOT_NODE_ID, toSemanticNode } from './observation.ts';
 import { capturePixels, maskOptions, secureFieldMasks, type PixelCapture } from './observe.ts';
 import {
   CLOSED_SHADOW_ROOTS_INIT_SCRIPT,
@@ -189,7 +187,16 @@ export interface PlaywrightOptions extends EngineAppDeclaration {
    * onto the page.
    */
   readonly basicAuth?: PlaywrightBasicAuth;
+  /**
+   * The attribute that carries an element's test id: what the `testId` query
+   * (`screen.getByTestId`) resolves and what `SemanticNode.testId` reports.
+   * Defaults to `data-testid`.
+   */
+  readonly testIdAttribute?: string;
 }
+
+/** The test-id attribute when the options name none. */
+const DEFAULT_TEST_ID_ATTRIBUTE = 'data-testid';
 
 export class PlaywrightSurface {
   /**
@@ -211,8 +218,8 @@ export class PlaywrightSurface {
   private booted = false;
   private context: BrowserContext | null = null;
   private page: Page | null = null;
+  private readonly testIdAttribute: string;
   private app: EngineAppInfo = {};
-  private testIdAttribute = 'data-testid';
   private headed = false;
   private artifactsDir = '';
   private artifactCounter = 0;
@@ -227,7 +234,7 @@ export class PlaywrightSurface {
    * Attempt-scoped network routes. Registered on the
    * context, not a page, so they cover every page the attempt opens - the
    * first navigation included - and re-applied to each context the attempt
-   * replaces on `clearState` or session restore.
+   * replaces on `reset` or session restore.
    */
   private readonly routes: StoredRoute[] = [];
   /** Located and observed node refs; see `RefRegistry` for the two lifetimes. */
@@ -239,6 +246,7 @@ export class PlaywrightSurface {
     this.viewport = options.viewport ?? DEFAULT_VIEWPORT;
     this.headers = options.headers === undefined ? undefined : lowercaseNames(options.headers);
     this.basicAuth = options.basicAuth;
+    this.testIdAttribute = options.testIdAttribute ?? DEFAULT_TEST_ID_ATTRIBUTE;
     this.video = new VideoRecorder(this.viewport);
   }
 
@@ -258,7 +266,6 @@ export class PlaywrightSurface {
   /** Provisions the shared browser once per worker: a local launch, or a CDP attach. */
   async init(info: EngineInitInfo): Promise<void> {
     this.app = info.app;
-    this.testIdAttribute = info.testIdAttribute;
     this.headed = info.headed;
     // The browser was installed in `prepare`; a launch or attach is the one
     // boot step left that can outlive a launch budget, and it honours the
@@ -586,13 +593,6 @@ export class PlaywrightSurface {
     this.tracing = true;
   }
 
-  private requireBaseUrl(): string {
-    if (this.app.baseUrl === undefined) {
-      throw invalidState('no app URL is configured; pass `url` to playwright() before relaunching the app');
-    }
-    return this.app.baseUrl;
-  }
-
   /**
    * The single entry of every operation: rethrows an error latched on an
    * unawaited path, refuses a cancelled operation, races `fn` against the
@@ -616,9 +616,10 @@ export class PlaywrightSurface {
     }
   }
 
-  // --- navigation and app lifecycle ---
+  // --- steering: the session hooks ---
 
-  navigate(url: string, operation: OperationContext): Promise<void> {
+  /** Opens one URL the harness resolved; the attempt's page is created on first use. */
+  open(url: string, operation: OperationContext): Promise<void> {
     return this.guard(operation, 'navigation', async () => {
       const page = await this.ensurePage();
       await page.goto(url, { waitUntil: 'load', timeout: operation.timeoutMs });
@@ -631,9 +632,13 @@ export class PlaywrightSurface {
     });
   }
 
+  /**
+   * Closes every page of the context and opens one fresh, blank page in it:
+   * persisted state (cookies, storage) stays, the document and every ref into
+   * it go. Nothing is navigated; the harness reopens the app through `open`.
+   */
   restart(operation: OperationContext): Promise<void> {
     return this.guard(operation, 'restart', async () => {
-      const baseUrl = this.requireBaseUrl();
       const context = this.requireContext();
       // The recording's segment ends before its page closes: Playwright writes
       // nothing for a screencast whose page went away first. Under a recording
@@ -645,23 +650,22 @@ export class PlaywrightSurface {
       const resumeTrace = this.video.isArmed ? await this.closeTraceSegment(context) : false;
       for (const page of context.pages()) await page.close();
       this.page = null;
-      const page = await this.ensurePage();
+      this.refs.clear();
+      await this.ensurePage();
       if (resumeTrace) await this.resumeTrace();
-      await page.goto(baseUrl, { waitUntil: 'load', timeout: operation.timeoutMs });
     });
   }
 
-  clearState(operation: OperationContext): Promise<void> {
+  /**
+   * Replaces the context with a clean one and opens its blank page, so the
+   * surface ends where `restart` does, without the persisted state. Nothing
+   * is navigated; the harness reopens the app through `open`.
+   */
+  reset(operation: OperationContext): Promise<void> {
     return this.guard(operation, 'state reset', async () => {
-      const baseUrl = this.requireBaseUrl();
       await this.replaceContext(undefined);
-      const page = await this.ensurePage();
-      await page.goto(baseUrl, { waitUntil: 'load', timeout: operation.timeoutMs });
+      await this.ensurePage();
     });
-  }
-
-  url(operation: OperationContext): Promise<string> {
-    return this.guard(operation, 'url', async () => this.requirePage().url());
   }
 
   // --- location tier ---
@@ -682,7 +686,7 @@ export class PlaywrightSurface {
       async () => {
         const page = this.requirePage();
         await this.validateFrames(expression);
-        const projected = projectExpression(page, expression);
+        const projected = projectExpression(page, expression, this.testIdAttribute);
         const { displayValue, name, steps } = projected;
         const readOptions = {
           testIdAttribute: this.testIdAttribute,
@@ -752,27 +756,26 @@ export class PlaywrightSurface {
     );
   }
 
+  /**
+   * One action on a located or observed node. A `swipe` on the observation
+   * root is the viewport swipe: a wheel gesture sized by the viewport, with no
+   * element resolved behind it, so it needs only the page. Every other action
+   * on the root acts on the document element the root stands for.
+   */
   perform(ref: NodeRef, action: LocatorAction, operation: OperationContext): Promise<void> {
     return this.guard(
       operation,
       action.kind,
       () => {
-        this.requirePage();
+        const page = this.requirePage();
+        if (action.kind === 'swipe' && ref.id === ROOT_NODE_ID) {
+          return performViewportSwipe(page, action.direction, action.momentum ?? 'none');
+        }
         return dispatchLocatorAction(this.refs.lookup(ref), action, operation.timeoutMs, (other) =>
           this.refs.lookup(other),
         );
       },
       (cause) => classifyActionError(cause, action),
-    );
-  }
-
-  swipe(
-    direction: ScrollDirection,
-    momentum: Momentum | undefined,
-    operation: OperationContext,
-  ): Promise<void> {
-    return this.guard(operation, 'swipe', () =>
-      performViewportSwipe(this.requirePage(), direction, momentum ?? 'none'),
     );
   }
 
@@ -1009,7 +1012,8 @@ export class PlaywrightSurface {
     }
     this.refs.publish(generation);
     return {
-      nodes: [captured.tree],
+      location: page.url(),
+      root: captured.tree,
       viewport: { width: viewport.width, height: viewport.height, scale: 1 },
       ...(capturedPixels === undefined
         ? {}

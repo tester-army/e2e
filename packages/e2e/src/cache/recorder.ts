@@ -33,7 +33,6 @@ import {
 export interface TraceRecorderOptions {
   /** The run's secret redactor; applied to every recorded string. */
   readonly redact: (text: string) => string;
-  readonly testIdAttribute: string;
   readonly maxActions?: number;
 }
 
@@ -41,12 +40,10 @@ export class TraceRecorder {
   private readonly actions: RecordedAction[] = [];
   private truncated = false;
   private readonly redact: (text: string) => string;
-  private readonly testIdAttribute: string;
   private readonly maxActions: number;
 
   constructor(options: TraceRecorderOptions) {
     this.redact = options.redact;
-    this.testIdAttribute = options.testIdAttribute;
     this.maxActions = Math.min(options.maxActions ?? MAX_TRACE_ACTIONS, MAX_TRACE_ACTIONS);
   }
 
@@ -57,7 +54,7 @@ export class TraceRecorder {
 
   /** Records one committed grammar action. */
   record(action: RecordableAction): void {
-    const { target, summary } = describeAction(action, this.redact, this.testIdAttribute);
+    const { target, summary } = describeAction(action, this.redact);
     this.push(this.toRecorded(action, target, summary));
   }
 

@@ -5,7 +5,6 @@ import { SETTINGS_NODES } from '../helpers/fake-client.ts';
 function project(nodes: readonly RawNode[]) {
   let counter = 0;
   return projectSnapshot(nodes, {
-    testIdAttribute: 'data-testid',
     mintId: () => {
       counter += 1;
       return `n${counter}`;
@@ -80,18 +79,16 @@ describe('snapshot projection', () => {
     expect(secure.states).toEqual({ secure: true });
     expect(secure.inputPurpose).toBe('password');
     expect(byName('Hidden').states).toEqual({ disabled: true, hidden: true });
-    expect(byName('About').attributes).toEqual({ 'data-testid': 'ABOUT' });
+    expect(byName('About').testId).toBe('ABOUT');
+    expect(byName('About').attributes).toBeUndefined();
     expect(byName('About').selector).toBe('id=ABOUT');
     expect(byName('Search').selector).toBeUndefined();
     expect(byName('Back').rect).toEqual({ x: 0, y: 47, width: 390, height: 44 });
   });
 
-  it('honours a configured test id attribute and quotes identifiers with spaces', () => {
-    const projected = projectSnapshot([{ ref: '@e1', type: 'button', identifier: 'save button' }], {
-      testIdAttribute: 'accessibilityIdentifier',
-      mintId: () => 'n1',
-    });
-    expect(projected.roots[0]?.attributes).toEqual({ accessibilityIdentifier: 'save button' });
+  it('reports the accessibility identifier as the test id and quotes identifiers with spaces in the selector', () => {
+    const projected = projectSnapshot([{ ref: '@e1', type: 'button', identifier: 'save button' }], { mintId: () => 'n1' });
+    expect(projected.roots[0]?.testId).toBe('save button');
     expect(projected.roots[0]?.selector).toBe('id="save button"');
   });
 
@@ -178,7 +175,7 @@ describe('snapshot projection', () => {
     expect(title.name).toBe('Airplane mode');
     expect(title.value).toBeUndefined();
     expect(projected.index[6]!.node.value).toBe('wifi');
-    expect(title.attributes).toEqual({ 'data-testid': 'android:id/title' });
+    expect(title.testId).toBe('android:id/title');
     expect(screenTitle(projected)).toBe('Network & internet');
     expect(screenTitle(project([{ ref: 'e1', type: 'android.widget.FrameLayout', label: 'x' }]))).toBeUndefined();
   });

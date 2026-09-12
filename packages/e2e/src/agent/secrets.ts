@@ -1,6 +1,6 @@
 /** Host-side secret fill authorization. */
 
-import type { TargetSession, OperationContext, SemanticNode } from '../engine/surface.ts';
+import type { SemanticNode } from '../engine/surface.ts';
 import { unavailableCode } from '../secrets.ts';
 import type { Secret } from '../types.ts';
 import { AgentError, toAgentError } from './error.ts';
@@ -12,8 +12,11 @@ import type { AgentContext } from './invocation.ts';
  * satisfies the same three members rather than re-deriving the policy.
  */
 interface SecretFillHost {
-  readonly session: TargetSession;
-  operation(): OperationContext;
+  /**
+   * The surface's current location: the newest observation's, so the check
+   * never observes again and invalidates the refs the action is about to use.
+   */
+  location(): Promise<string | undefined>;
   recordPolicy(name: string, decision: 'allowed' | 'denied', code?: string): void;
 }
 

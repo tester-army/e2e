@@ -36,8 +36,10 @@ default `url`), `environment`
 (`test`, `staging`, `production`; inferred from the host), and `identity` (a
 stable cache and session key when the origin is ephemeral). Browser options:
 `browser` (`chromium`, `firefox`, `webkit`; default `chromium`), `viewport`
-(`{ width, height }`; default 1280x720), and `connect` — attach to a remote
-browser over CDP instead of launching a local one.
+(`{ width, height }`; default 1280x720), `testIdAttribute` (the attribute
+`getByTestId` and a node's `testId` read; default `data-testid`), and
+`connect` — attach to a remote browser over CDP instead of launching a local
+one.
 
 ### Attaching to a remote browser (`connect`)
 

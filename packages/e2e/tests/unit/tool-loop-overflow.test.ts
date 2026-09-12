@@ -12,6 +12,7 @@ import { StepRecorder } from '../../src/run/steps.ts';
 import { WorkerModels } from '../../src/run/worker-models.ts';
 import type { E2EConfig } from '../../src/types.ts';
 import { installFakeLoopModel, loopCalls } from '../helpers/fake-loop-model.ts';
+import { snapshot } from '../helpers/snapshot.ts';
 
 /** A real fixture graph with an in-memory engine and no runner process or model provider. */
 function runtime(engine: EngineHandle, overrides: E2EConfig = {}) {
@@ -39,7 +40,7 @@ function runtime(engine: EngineHandle, overrides: E2EConfig = {}) {
   return { fixtures, steps };
 }
 
-const engine = () => defineEngine({ name: 'fake', version: '1', spiVersion: 1, observe: async () => ({ nodes: [] }) });
+const engine = () => defineEngine({ name: 'fake', version: '1', spiVersion: 1, observe: async () => snapshot([]) });
 
 /** A screen whose text is far longer than the overflow clip, as a dense page is. */
 const bigScreen = () =>
@@ -47,9 +48,8 @@ const bigScreen = () =>
     name: 'fake',
     version: '1',
     spiVersion: 1,
-    observe: async () => ({
-      nodes: Array.from({ length: 600 }, (_, i) => ({ ref: { id: `n${String(i)}`, revision: '' }, role: 'text', name: `row ${String(i)} ${'x'.repeat(40)}` })),
-    }),
+    observe: async () =>
+      snapshot(Array.from({ length: 600 }, (_, i) => ({ ref: { id: `n${String(i)}`, revision: '' }, role: 'text', name: `row ${String(i)} ${'x'.repeat(40)}` }))),
   });
 
 const OVERFLOW = 'prompt is too long: 300000 tokens > 200000 maximum';

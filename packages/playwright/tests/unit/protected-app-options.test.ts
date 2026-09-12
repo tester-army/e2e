@@ -1,7 +1,8 @@
 /**
- * The `headers` and `basicAuth` options are checked at config load, so a
- * header the browser could never send fails the run before a browser launches.
- * What the browser does with valid ones is in tests/integration.
+ * The `headers`, `basicAuth`, and `testIdAttribute` options are checked at
+ * config load, so a header the browser could never send or an attribute no
+ * element could carry fails the run before a browser launches. What the
+ * browser does with valid ones is in tests/integration.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -57,5 +58,21 @@ describe('playwright({ basicAuth })', () => {
     expect(() =>
       playwright({ basicAuth: { username: 'ada', password: undefined as unknown as string } }),
     ).toThrowError(/password string/);
+  });
+});
+
+describe('playwright({ testIdAttribute })', () => {
+  it('accepts an attribute name', () => {
+    for (const attribute of ['data-testid', 'data-qa', 'data-test-id', 'id', 'x:qa', 'data.qa']) {
+      expect(() => playwright({ testIdAttribute: attribute })).not.toThrow();
+    }
+  });
+
+  it('rejects anything that is not an attribute name as INVALID_CONFIG', () => {
+    for (const attribute of ['', ' data-qa', 'data qa', '1-qa', 'data="qa"', 'data-qa]', 3, null]) {
+      expect(() => playwright({ testIdAttribute: attribute as unknown as string })).toThrowError(
+        /testIdAttribute.*must be an attribute name/,
+      );
+    }
   });
 });

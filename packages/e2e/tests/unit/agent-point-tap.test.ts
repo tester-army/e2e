@@ -22,7 +22,7 @@ function observationOf(tree: SemanticNode) {
     viewport: { width: 1280, height: 720, scale: 1 },
     redaction: { secureNodeCount: 0, maskedRegionCount: 0 },
   };
-  return prepareObservation(raw, { redact: (text) => text, maxBytes: 65_536, testIdAttribute: 'data-testid' });
+  return prepareObservation(raw, { redact: (text) => text, maxBytes: 65_536 });
 }
 
 const screen = observationOf(

@@ -36,7 +36,7 @@ describe('container keys', () => {
 
   it('records the key with the action and reads it back in the prose', () => {
     const { nodes } = table();
-    const described = describeAction({ name: 'tap', node: nodes.get('d1')!, within: 'Budget draft' }, identity, 'data-testid');
+    const described = describeAction({ name: 'tap', node: nodes.get('d1')!, within: 'Budget draft' }, identity);
     expect(described.target?.within).toBe('Budget draft');
     expect(described.summary).toBe('tap button "Delete" in "Budget draft"');
   });
@@ -44,7 +44,7 @@ describe('container keys', () => {
   it('relocates a same-named control by its row instead of diverging as ambiguous', () => {
     const { nodes, parents } = table();
     void parents;
-    const options = { redact: identity, testIdAttribute: 'data-testid' };
+    const options = { redact: identity };
     expect(relocateDescriptor({ role: 'button', name: 'Delete', within: 'Vendor list' }, nodes, options)).toEqual({ kind: 'found', id: 'd2' });
     expect(relocateDescriptor({ role: 'button', name: 'Delete' }, nodes, options)).toEqual({ kind: 'failed', failure: 'target-ambiguous' });
     // The row is gone: not found, never the other row's button.

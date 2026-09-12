@@ -1,18 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { readPngSize, sanitizeFilename, screenUrl, swipeWithin } from '../../src/support.ts';
+import { readPngSize, sanitizeFilename, screenLocation, swipeWithin } from '../../src/support.ts';
 
 describe('support helpers', () => {
-  it('mints a parseable app URL whose pathname carries the app identity and the screen title', () => {
-    const url = new URL(screenUrl('com.apple.Preferences', 'General'));
-    expect(url.protocol).toBe('app:');
-    expect(url.host).toBe('device');
-    expect(url.pathname).toBe('/com.apple.preferences/General');
-    expect(new URL(screenUrl(undefined, undefined)).href).toBe('app://device/unknown/');
-    expect(new URL(screenUrl('My App!', ' Wi-Fi  Settings ')).pathname).toBe('/my-app/Wi-Fi%20Settings');
-    // Two apps with a screen of the same name never share a path.
-    expect(new URL(screenUrl('com.apple.Preferences', 'General')).pathname).not.toBe(
-      new URL(screenUrl('com.example.other', 'General')).pathname,
-    );
+  it('reports the app and the screen title as a location that is not a URL', () => {
+    expect(screenLocation('com.apple.Preferences', 'General')).toBe('com.apple.Preferences / General');
+    expect(screenLocation('com.apple.Preferences', undefined)).toBe('com.apple.Preferences');
+    expect(screenLocation(undefined, 'General')).toBe('General');
+    expect(screenLocation(undefined, undefined)).toBeUndefined();
+    expect(screenLocation('My App', ' Wi-Fi  Settings ')).toBe('My App / Wi-Fi Settings');
+    // Two apps with a screen of the same name never share a location.
+    expect(screenLocation('com.apple.Preferences', 'General')).not.toBe(screenLocation('com.example.other', 'General'));
+    // The harness applies its origin policy to anything that parses as a URL; a device location must not.
+    expect(URL.canParse(screenLocation('com.apple.Preferences', 'General')!)).toBe(false);
   });
 
   it('swipes against the scroll direction inside the rect', () => {

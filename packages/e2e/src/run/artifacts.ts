@@ -21,7 +21,7 @@ const REDACTION_BY_KIND: Readonly<Record<ArtifactRecord['kind'], ArtifactRecord[
   screenshot: 'complete',
   trace: 'incomplete',
   video: 'incomplete',
-  download: 'complete',
+  file: 'complete',
   log: 'complete',
 };
 

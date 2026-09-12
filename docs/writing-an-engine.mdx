@@ -46,36 +46,62 @@ stamps the brand that makes the handle acceptable in a target.
 ```ts title="src/index.ts"
 import { EngineError, defineEngine, type EngineHandle } from '@e2edev/e2e/engine';
 
-export function hyperdrive(options: { device: string }): EngineHandle {
+export function hyperdrive(options: { device: string; app: string }): EngineHandle {
   const client = createClient(options);
   return defineEngine({
     name: 'hyperdrive',
     version: '1.0.0',
     spiVersion: 1,
     platform: 'ios',
+    app: { identity: options.app },
     async init(info) { await client.boot(); },
     async dispose(context) { await client.shutdown({ signal: context.signal }); },
-    async observe() { return { nodes: await client.snapshot() }; },
+    async observe() {
+      const screen = await client.snapshot();
+      return {
+        location: screen.title,
+        // One root with a stable id: `perform(root, swipe)` is the viewport swipe.
+        root: { ref: { id: 'root', revision: '' }, role: 'window', children: screen.nodes },
+        viewport: screen.viewport,
+      };
+    },
+    actions: ['tap', 'fill', 'swipe'],
     async perform(ref, action) {
       switch (action.kind) {
         case 'tap': return client.tap(ref.id);
         case 'fill': return client.type(ref.id, action.value);
-        default:
-          throw new EngineError('UNSUPPORTED_CAPABILITY', `hyperdrive cannot ${action.kind}`, { retryable: false });
+        case 'swipe': return client.scroll(ref.id === 'root' ? undefined : ref.id, action.direction);
       }
     },
-    async swipe(direction) { await client.scroll(direction); },
+    session: {
+      async back() { await client.back(); },
+      async restart() { await client.relaunch(options.app); },
+    },
   });
 }
 ```
 
 ```ts title="e2e.config.ts"
-targets: [{ name: 'phone', engine: hyperdrive({ device: 'iPhone 16' }) }],
+targets: [{ name: 'phone', engine: hyperdrive({ device: 'iPhone 16', app: 'com.example.app' }) }],
 ```
 
 `version` is required. It is recorded as provenance and keys the trace
 cache, so an engine that resolves nodes differently never replays another
-version's traces.
+version's traces. `actions` is required with `perform` and lists exactly the
+kinds the switch handles: the agent's tools and the `screen`/`Locator`
+methods are derived from it, so a kind you leave out is never offered. `app`
+is data about the app under test; the hooks that steer it live on `session`.
+
+## What an engine is not
+
+An engine drives a user interface. It observes what is on screen and acts on
+it, and that is the whole job: a browser page, a simulator, a desktop
+window, a TV. The world around the UI is not an engine's to model. An inbox
+the app sends mail to, an API the test seeds, a database it inspects, a clock
+it moves: these enter a test as fixtures through
+[`test.extend`](/reference/test#your-own-fixtures), never as engines. The
+contract has no member for them on purpose; the one platform noun it carries
+is the `platform` label, and no member's shape depends on it.
 
 <Note>
 Depend on `@e2edev/e2e/engine` only, and take `@e2edev/e2e` as a **peer**
@@ -94,23 +120,46 @@ never silently.
 
 | Member | Capability | Unlocks |
 | --- | --- | --- |
-| `observe(context, options?)` | `observation` | `agent.act`, `waitFor`, `extract`, `assert`; prompt snapshots; trace replay |
-| `perform(ref, action, context)` | `actions` (needs `observe`) | Node-targeted actions: `tap`, `type`, `press`, `select`, node `scroll`, and the `Locator` action set; `type_secret` when the step declares credentials |
+| `observe(context, options?)` | `observation` | `agent.act`, `waitFor`, `extract`, `assert`; prompt snapshots; trace replay; the root a viewport swipe is addressed to |
+| `perform(ref, action, context)` + `actions` | `actions` (needs `observe`) | Node-targeted actions: `tap`, `type`, `press`, `select`, `scroll`, and the `Locator` action set, each for a kind listed in `actions`; `type_secret` when the step declares credentials; `screen.swipe` and `scrollUntilVisible` when `swipe` is listed |
 | `locate(expression, context)` | `location` (needs `observe`) | `screen`, `Locator`, `expect(locator)` |
-| `swipe(direction, momentum, context)` | (needs `observe`) | the agent's viewport `scroll` verb, `screen.swipe`, `scrollUntilVisible` |
 | `tapAt(point, context)` | `pointer` (needs `observe`) | the agent's `tap_at` verb when the point lands on nothing the tree lists |
 | `state.{capture,restore}` | `state` | `test.setup` and the `session` option |
 | `artifacts.{screenshot,startTrace?,stopTrace?,startVideo?,stopVideo?}` | `artifacts` | Screenshots while pixels are allowed (`app.screenshot()` raises `POLICY_DENIED` after a secret fill); traces when the trace hooks exist; video and `--video` when both `startVideo` and `stopVideo` exist |
-| `app.{url?,environment?,identity?,command?,readyUrl?,services?}` | | declares the app under test: its site, cache and session identity, the app process ([reference](/reference/config#the-app-under-test)) |
-| `app.{navigate?,back?,restart?,clearState?}` | | `app.open()` and the agent's `navigate` verb, `app.back()`, `app.restart()`, `app.clearState()` |
-| `url(context)` | | trace start anchors, the observation's URL line |
+| `app.{url?,environment?,identity?,command?,readyUrl?,services?}` | | data only: declares the app under test, its site, cache and session identity, the app process ([reference](/reference/config#the-app-under-test)) |
+| `session.{open?,back?,restart?,reset?}` | | `app.open()` and the agent's `navigate` verb, `app.back()`, `app.restart()`, `app.clearState()` |
 | `fixtures.<name>` | `<name>` | a contributed fixture, typed through `test.extend` |
 
-The agent derives its toolset from this manifest and the step's declared
-credentials: a verb whose member is absent is never offered to the model.
-Every node action, whether the agent or a `Locator` asked for it, arrives
-as one `LocatorAction` on `perform`. Implement each action once and throw
-`UNSUPPORTED_CAPABILITY` for a kind the surface cannot express.
+The agent derives its toolset from `actions`, `session`, and the step's
+declared credentials: a verb whose kind or hook is absent is never offered to
+the model, and a `screen`/`Locator` method for an undeclared kind fails with
+`UNSUPPORTED_CAPABILITY` before reaching you. Every node action, whether the
+agent or a `Locator` asked for it, arrives as one `LocatorAction` on
+`perform`. Implement each action once and throw `UNSUPPORTED_CAPABILITY` for a
+declared kind one particular node cannot take.
+
+There is no separate viewport-scroll member. The agent's `scroll` verb and
+`screen.swipe()` arrive as `perform(root, { kind: 'swipe' })` on the root of
+your observation, so the root's id must be stable across observations; the
+same action on any other node scrolls within it.
+
+`press` carries one key in the shared grammar: zero or more of `Shift`,
+`Control`, `Alt`, `Meta`, `ControlOrMeta`, then a named key from `KEY_NAMES`
+(`Enter`, `Escape`, `Tab`, `ArrowDown`, `F5`, ...) or one printable
+character, joined with `+`. Call the exported `parseKey` rather than parsing
+it yourself; map what the platform has and throw `UNSUPPORTED_CAPABILITY`
+for what it lacks, never reinterpret the spelling. The full grammar is on the
+[engine reference](/reference/engine#keys).
+
+Your observation reports `location` as an opaque address (a URL, a screen
+title, a window name) or omits it; the harness anchors trace replay on it and
+applies the origin policy only when it parses as a URL. You never learn the
+app's URL: `session.open` receives one the harness already resolved, and
+`restart` and `reset` end at a blank surface that the harness reopens
+through `open` when the target has an address. Without `open`, relaunch the
+app inside them yourself. What `prepare` provisions in the runner process
+reaches each worker's `init` through the `env` of its result, never by
+writing to `info.env`.
 
 There is no separate secure-fill capability flag. Before dispatching a
 secret fill, the runner checks the declared credential, current
@@ -123,9 +172,12 @@ that particular action is unsupported.
 
 `prepare` runs once per run and target in the runner process, after
 collection and before the run's clock starts: download runtimes there and
-narrate through `info.log`. `init` runs once per worker before the first
-attempt: boot devices there. A handle can outlive a worker, so `init` may run
-again after `dispose` on the same handle. `startAttempt` and `endAttempt`
+narrate through `info.log`. Spawn against `info.env`, the run's environment,
+not `process.env`. `init` runs once per worker before the first attempt: boot
+devices there. It receives the app's site (`info.app.site`), the
+project root, the worker slot, and whether the run is headed; never the app's
+URL. A handle can outlive a worker, so `init` may run again after `dispose`
+on the same handle. `startAttempt` and `endAttempt`
 bracket one test attempt: give each test a fresh surface here. When
 `startAttempt` fails or exceeds `launchTimeout`, its signal aborts and
 `endAttempt` runs right behind it, so keep `endAttempt` idempotent. `dispose`
@@ -133,17 +185,24 @@ runs at worker shutdown whether or not `init` ran.
 
 ### Nodes and refs
 
-`observe` and `locate` return `SemanticNode` trees. Ids are yours and must be
-unique for the surface's lifetime. The harness stamps revisions onto them and
-enforces the staleness rule, so you never implement it. `perform` receives
-`{ id, revision }`; look the id up and throw `NODE_STALE` when it no longer
-binds.
+`observe` returns one `SemanticNode` tree under a root you mint, `locate`
+returns the nodes an expression matches. Ids are yours and must be unique for
+the surface's lifetime; the root's id must also be stable across
+observations, because a viewport swipe is addressed to it. The harness stamps
+revisions onto them and enforces the staleness rule, so you never implement
+it. `perform` receives `{ id, revision }`; look the id up and throw
+`NODE_STALE` when it no longer binds.
+
+Put a node's test id in `testId`, wherever the platform keeps it: the
+project's test-id attribute in a document, an accessibility identifier on
+iOS, a resource id on Android, an automation id on a desktop. The `testId`
+query resolves against that field and nothing else.
 
 ### Vision-only surfaces
 
 A surface that offers screenshots and coordinates but no semantic tree (a
 desktop shell, a canvas app, a computer-use agent) declares `observe`
-returning a pixels-only snapshot (`nodes: []` plus `pixels`) and `tapAt` for
+returning a pixels-only snapshot (a childless `root` plus `pixels`) and `tapAt` for
 the taps: a screen that lists nothing opens with its screenshot attached, the
 model names a point in it with `tap_at`, and the harness hands the point to
 `tapAt` when the tree lists nothing there, so a surface with no refs to hand
@@ -196,7 +255,7 @@ export const test = base.extend<{ device: Device }>();
 ```
 
 The factory's `context` carries what a fixture legitimately needs from the
-harness: the app's base URL and origin policy, the configured timeouts,
+harness: the origin policy and a `resolveUrl` that applies it, the configured timeouts,
 `operation()` budgets, `attachArtifact` and `attachViewport` for the current
 step, `locator(expression)` and `screen(scope)` to mint core locators from a
 platform selector or a nested document, and `expectable(target, factory)` to

@@ -59,7 +59,6 @@ export interface StepCacheOptions {
   readonly params: Readonly<Record<string, JsonValue>> | undefined;
   readonly executor: { readonly name: string; readonly version?: string };
   readonly redact: (text: string) => string;
-  readonly testIdAttribute: string;
   readonly maxActions: number;
   /** Timeline index of the step being dispatched. */
   readonly stepIndex: number;
@@ -129,7 +128,6 @@ export class StepTraceSession {
     if (options.cache.mode === 'read-write') {
       this.recorder = new TraceRecorder({
         redact: options.redact,
-        testIdAttribute: options.testIdAttribute,
         maxActions: options.maxActions,
       });
     }

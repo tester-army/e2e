@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { defineEngine, type EngineHandle } from '../../src/engine/index.ts';
+import { defineEngine, type EngineHandle, LOCATOR_ACTION_KINDS } from '../../src/engine/index.ts';
 import { createEngineSession } from '../../src/engine/session.ts';
 import { resolveConfig } from '../../src/config/resolve.ts';
 import { credentials, secrets, setSecretRegistry } from '../../src/secrets.ts';
@@ -15,6 +15,7 @@ import { defineTool, getToolContext } from '../../src/agent/tool.ts';
 import type { E2EConfig } from '../../src/types.ts';
 import { installFakeLoopModel } from '../helpers/fake-loop-model.ts';
 import { installFakeModel, judgment } from '../helpers/fake-model.ts';
+import { snapshot } from '../helpers/snapshot.ts';
 
 /** A real fixture graph with an in-memory engine and no runner process or model provider. */
 function runtime(engine: EngineHandle, overrides: E2EConfig = {}) {
@@ -35,7 +36,7 @@ function runtime(engine: EngineHandle, overrides: E2EConfig = {}) {
   return { fixtures, steps, config, registerArtifact };
 }
 
-const empty = () => defineEngine({ name: 'fake', version: '1', spiVersion: 1, observe: async () => ({ nodes: [] }) });
+const empty = () => defineEngine({ name: 'fake', version: '1', spiVersion: 1, observe: async () => snapshot([]) });
 
 describe('explicit screenshot secrecy', () => {
   it.each(['static', 'provider'] as const)('captures before a %s secret fill and denies capture and registration afterward', async (source) => {
@@ -44,8 +45,9 @@ describe('explicit screenshot secrecy', () => {
     let filled: string | undefined;
     const engine = defineEngine({
       name: 'fake', version: '1', spiVersion: 1,
-      observe: async () => ({ nodes: [{ ref: { id: 'echo', revision: '' }, role: 'status', text: filled ?? '' }] }),
+      observe: async () => snapshot([{ ref: { id: 'echo', revision: '' }, role: 'status', text: filled ?? '' }]),
       locate: async () => [{ ref: { id: 'password', revision: '' }, role: 'textbox', states: { secure: true } }],
+      actions: LOCATOR_ACTION_KINDS,
       perform: async (_ref, action) => { if (action.kind === 'fill') filled = action.value; },
       artifacts: { screenshot },
     });
@@ -104,8 +106,9 @@ describe('generic secrets', () => {
     const screenshot = vi.fn(async () => 'screenshots/evidence.png');
     const engine = defineEngine({
       name: 'fake', version: '1', spiVersion: 1,
-      observe: async () => ({ nodes: [{ ref: { id: 'echo', revision: '' }, role: 'status', text: filled ?? '' }] }),
+      observe: async () => snapshot([{ ref: { id: 'echo', revision: '' }, role: 'status', text: filled ?? '' }]),
       locate: async () => [{ ref: { id: 'key', revision: '' }, role: 'textbox', name: 'API key' }],
+      actions: LOCATOR_ACTION_KINDS,
       perform: async (_ref, action) => { if (action.kind === 'fill') filled = action.value; },
       artifacts: { screenshot },
     });
@@ -129,9 +132,9 @@ describe('generic secrets', () => {
     const engine = defineEngine({
       name: 'fake', version: '1', spiVersion: 1,
       app: {},
-      url: async () => 'app://device/com.example.app/Sign%20In',
-      observe: async () => ({ nodes: [] }),
+      observe: async () => snapshot([], { location: 'app://device/com.example.app/Sign%20In' }),
       locate: async () => [{ ref: { id: 'key', revision: '' }, role: 'textbox', name: 'API key' }],
+      actions: LOCATOR_ACTION_KINDS,
       perform: async (_ref, action) => { if (action.kind === 'fill') filled = action.value; },
     });
     const { fixtures, config } = runtime(engine, { secrets: { key: 'sk_live_1' } });
@@ -153,9 +156,9 @@ describe('generic secrets', () => {
     const engine = defineEngine({
       name: 'fake', version: '1', spiVersion: 1,
       app: { url: 'https://app.test' },
-      url: async () => currentUrl,
-      observe: async () => ({ nodes: [] }),
+      observe: async () => snapshot([], { location: currentUrl }),
       locate: async () => [{ ref: { id: 'key', revision: '' }, role: 'textbox', name: 'API key' }],
+      actions: LOCATOR_ACTION_KINDS,
       perform: async (_ref, action) => { if (action.kind === 'fill') filled = action.value; },
     });
     const { fixtures, config } = runtime(engine, { secrets: { key: 'sk_live_1' } });
@@ -362,7 +365,8 @@ describe('project tool dispatch', () => {
   it('serializes grammar actions with project mutations and records failed tools accurately', async () => {
     const order: string[] = [];
     const engine = defineEngine({ name: 'fake', version: '1', spiVersion: 1,
-      observe: async () => ({ nodes: [{ ref: { id: 'button', revision: '' }, role: 'button' }] }),
+      observe: async () => snapshot([{ ref: { id: 'button', revision: '' }, role: 'button' }]),
+      actions: LOCATOR_ACTION_KINDS,
       perform: async () => { order.push('tap'); },
     });
     const { fixtures, steps } = runtime(engine, { agents: { default: { executor: { name: 'test', async runStep(context) {
@@ -386,10 +390,8 @@ describe('project tool dispatch', () => {
 
   it('gives read-only tools the guarded observation capability', async () => {
     let path: string | undefined;
-    let urlReads = 0;
     const engine = defineEngine({ name: 'fake', version: '1', spiVersion: 1,
-      observe: async () => ({ nodes: [], url: 'app://device/settings/general' }),
-      url: async () => { urlReads += 1; return 'app://device/wrong'; },
+      observe: async () => snapshot([], { location: 'app://device/settings/general' }),
     });
     const model = installFakeLoopModel(({ turn }) => turn === 1
       ? [{ toolName: 'inspect', input: {} }]
@@ -403,7 +405,6 @@ describe('project tool dispatch', () => {
     } });
     await runtime(engine, { agents: { default: { executor, model } } }).fixtures.agent.act('inspect');
     expect(path).toBe('/settings/general');
-    expect(urlReads).toBe(0);
   });
 
   it("rejects a project tool that takes one of the agent's own tool names", () => {
@@ -411,5 +412,101 @@ describe('project tool dispatch', () => {
     for (const name of ['screenshot', 'tap', 'observe', 'complete_step']) {
       expect(() => createAgent({ tools: { [name]: tool } })).toThrow(`the ${name} tool name is reserved`);
     }
+  });
+});
+
+describe('press key grammar', () => {
+  /** An engine that records every located expression and performed action. */
+  function keyboard() {
+    const locates: number[] = [];
+    const performed: string[] = [];
+    const engine = defineEngine({
+      name: 'fake', version: '1', spiVersion: 1,
+      observe: async () => snapshot([{ ref: { id: 'field', revision: '' }, role: 'textbox', name: 'Name' }]),
+      locate: async () => { locates.push(1); return [{ ref: { id: 'field', revision: '' }, role: 'textbox', name: 'Name' }]; },
+      actions: ['tap', 'press'],
+      perform: async (_ref, action) => { performed.push(action.kind === 'press' ? `press:${action.key}` : action.kind); },
+    });
+    return { engine, locates, performed };
+  }
+
+  it('rejects a key outside the grammar in the locator tier before the locator is resolved', async () => {
+    const { engine, locates, performed } = keyboard();
+    const { fixtures } = runtime(engine);
+    for (const key of ['Ctrl+a', 'Enter+Shift', '', 'ab', 'Shift']) {
+      await expect(fixtures.screen.getByLabel('Name').press(key)).rejects.toMatchObject({
+        code: 'INVALID_ARGUMENT',
+        message: expect.stringContaining(`press key ${JSON.stringify(key)} is not a key`),
+      });
+    }
+    expect(locates).toEqual([]);
+    expect(performed).toEqual([]);
+    await fixtures.screen.getByLabel('Name').press('Control+a');
+    await fixtures.screen.getByLabel('Name').press('Shift++');
+    expect(performed).toEqual(['press:Control+a', 'press:Shift++']);
+  });
+
+  it('rejects a key outside the grammar in the agent dispatcher before any engine call', async () => {
+    const { engine, performed } = keyboard();
+    let rejected: unknown;
+    const { fixtures } = runtime(engine, { agents: { default: { executor: { name: 'test', async runStep(context) {
+      await context.observe();
+      try {
+        await context.actions.press({ id: 'field' }, 'Ctrl+a');
+      } catch (cause) {
+        rejected = cause;
+      }
+      await context.actions.press({ id: 'field' }, 'Shift+Tab');
+      return { status: 'passed', summary: 'pressed' };
+    } } } } });
+    await fixtures.agent.act('press keys');
+    expect(rejected).toMatchObject({ code: 'INVALID_ARGUMENT', message: expect.stringContaining('"Ctrl+a" is not a key') });
+    expect(performed).toEqual(['press:Shift+Tab']);
+  });
+
+  it('fails an undeclared action kind with UNSUPPORTED_CAPABILITY before the locator is resolved', async () => {
+    const { engine, locates, performed } = keyboard();
+    const { fixtures } = runtime(engine);
+    await expect(fixtures.screen.getByLabel('Name').check()).rejects.toMatchObject({
+      code: 'UNSUPPORTED_CAPABILITY',
+      message: 'the "check" action is not available on this target: its engine declares tap, press',
+    });
+    await expect(fixtures.screen.swipe({ direction: 'down' })).rejects.toMatchObject({ code: 'UNSUPPORTED_CAPABILITY' });
+    expect(locates).toEqual([]);
+    expect(performed).toEqual([]);
+  });
+});
+
+describe('app steering hooks', () => {
+  function steerable(app: { url?: string }) {
+    const calls: string[] = [];
+    const engine = defineEngine({
+      name: 'fake', version: '1', spiVersion: 1,
+      app,
+      observe: async () => snapshot([]),
+      session: {
+        open: async (url) => { calls.push(`open ${url}`); },
+        restart: async () => { calls.push('restart'); },
+        reset: async () => { calls.push('reset'); },
+      },
+    });
+    return { engine, calls };
+  }
+
+  it('restart and clearState run the hook, then reopen the app at its base URL', async () => {
+    const { engine, calls } = steerable({ url: 'http://127.0.0.1:4599' });
+    const { fixtures, steps } = runtime(engine);
+    await fixtures.app.restart();
+    await fixtures.app.clearState();
+    expect(calls).toEqual(['restart', 'open http://127.0.0.1:4599/', 'reset', 'open http://127.0.0.1:4599/']);
+    expect(steps.all().map((step) => step.api)).toEqual(['app.restart', 'app.clearState']);
+  });
+
+  it('reopen nothing on a surface without an address', async () => {
+    const { engine, calls } = steerable({});
+    const { fixtures } = runtime(engine);
+    await fixtures.app.restart();
+    await fixtures.app.clearState();
+    expect(calls).toEqual(['restart', 'reset']);
   });
 });

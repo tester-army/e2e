@@ -37,7 +37,6 @@ export type DescriptorField = keyof TraceTargetDescriptor;
 
 export interface DescriptorMatchOptions {
   readonly redact: (text: string) => string;
-  readonly testIdAttribute: string;
 }
 
 /** A node's descriptor projection alongside its per-observation id. */
@@ -120,19 +119,13 @@ export function describeNodes(
   options: DescriptorMatchOptions,
 ): readonly DescribedNode[] {
   const cached = projections.get(nodes);
-  if (
-    cached !== undefined &&
-    cached.redact === options.redact &&
-    cached.testIdAttribute === options.testIdAttribute
-  ) {
-    return cached.described;
-  }
+  if (cached !== undefined && cached.redact === options.redact) return cached.described;
   const described: DescribedNode[] = [];
   for (const [id, node] of nodes) {
-    const descriptor = describeTarget(node, options.redact, options.testIdAttribute);
+    const descriptor = describeTarget(node, options.redact);
     if (descriptor !== undefined) described.push({ id, descriptor });
   }
-  projections.set(nodes, { redact: options.redact, testIdAttribute: options.testIdAttribute, described });
+  projections.set(nodes, { redact: options.redact, described });
   return described;
 }
 
@@ -214,7 +207,7 @@ export function describePosition(
   nodes: ReadonlyMap<string, SemanticNode>,
   options: DescriptorMatchOptions,
 ): TracePosition | undefined {
-  const described = describeTarget(node, options.redact, options.testIdAttribute);
+  const described = describeTarget(node, options.redact);
   if (described === undefined) return undefined;
   const ids = matchingIds(within === undefined ? described : { ...described, within }, nodes, options);
   if (ids.length < 2 || ids.length > MAX_POSITIONED_TWINS) return undefined;

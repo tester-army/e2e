@@ -6,6 +6,7 @@ import { judgment } from '../helpers/fake-model.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { createProject, runExisting } from '../helpers/run-project.ts';
 import { createScriptedInstance, scriptedResult } from '../helpers/scripted-model.ts';
+import { snapshot } from '../helpers/snapshot.ts';
 
 describe('reported model usage', () => {
   it('keeps run totals representable when separate steps overflow their sum', async () => {
@@ -22,7 +23,7 @@ describe('reported model usage', () => {
     try {
       const outcome = await runExisting(project, { appUrl: 'http://127.0.0.1:4599', config: {
         targets: [{ name: 'fake', platform: 'custom', engine: defineEngine({
-          name: 'fake', version: '1', spiVersion: 1, observe: async () => ({ nodes: [] }),
+          name: 'fake', version: '1', spiVersion: 1, observe: async () => snapshot([]),
         }) }], agents: { default: { model } }, cache: 'off',
       } });
       expect(outcome.status).toBe('passed');
@@ -48,7 +49,7 @@ describe('reported model usage', () => {
     try {
       const outcome = await runExisting(project, { appUrl: 'http://127.0.0.1:4599', config: {
         targets: [{ name: 'fake', platform: 'custom', engine: defineEngine({
-          name: 'fake', version: '1', spiVersion: 1, observe: async () => ({ nodes: [] }),
+          name: 'fake', version: '1', spiVersion: 1, observe: async () => snapshot([]),
         }) }], agents: { default: { model } }, cache: 'off',
       } });
       expect(outcome.status).toBe('passed');

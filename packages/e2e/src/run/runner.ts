@@ -734,6 +734,12 @@ async function prepareEngines(
     const startedMs = Date.now();
     const slots = plannedSlots(plan, runWorkers);
     const result = await prepareEngine(target, slots, scope, (line) => emit({ type: 'notice', target: target.name, message: line }));
+    // `result.env` is the typed channel from a runner-side prepare to each
+    // worker's init: merged into the environment workers are spawned with,
+    // the run's own variables winning on a clash.
+    for (const [key, value] of Object.entries(result?.env ?? {})) {
+      if (scope.env[key] === undefined) scope.env[key] = value;
+    }
     prepared.push(withPreparedWorkers(plan, engine.name, slots, result));
     if (!scope.signal.aborted) {
       emit({ type: 'setup', step, state: 'finished', durationMs: Date.now() - startedMs });

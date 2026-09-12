@@ -7,7 +7,7 @@ import { isDefaultAgent } from '../agent/default-agent.ts';
 import type { AgentCacheContext } from '../cache/context.ts';
 import type { WorkerModels } from './worker-models.ts';
 import type { EngineFixtureContext } from '../engine/index.ts';
-import type { TargetSession } from '../engine/surface.ts';
+import type { OperationContext, TargetSession } from '../engine/surface.ts';
 import { expectationBrand } from '../internal/brands.ts';
 import type { DebugTrace } from '../internal/debug.ts';
 import { ConfigurationError, errorMessage, InfrastructureError, TestError } from '../internal/errors.ts';
@@ -36,7 +36,7 @@ export interface ArtifactSink {
   readonly dir: string;
   /** Registers a produced artifact and returns its report artifact ID. */
   register(
-    kind: 'screenshot' | 'trace' | 'video' | 'download' | 'log',
+    kind: 'screenshot' | 'trace' | 'video' | 'file' | 'log',
     relativePath: string,
     options?: ArtifactRegistration,
   ): string;
@@ -311,7 +311,7 @@ function fixtureContext(
     targetName: environment.target.name,
     fixture: (name, surface, operations) => recorder.fixture(name, surface, operations),
     app: {
-      ...obj({ baseUrl: app.base?.href, site: app.site }),
+      ...obj({ site: app.site }),
       resolveUrl: (url) => {
         requireAppUrl(environment.target);
         return resolveNavigationUrl(url, app.base).url;
@@ -434,19 +434,29 @@ function createApp(environment: AttemptEnvironment, engine: LocatorEngine, taint
       }
     });
 
+  /**
+   * A steering hook ends at a fresh surface showing nothing; the app is
+   * reopened at its base URL through the same path as `app.open()`, so an
+   * unreachable app after a restart is reported exactly as on first open.
+   * A target without an address (a device app) has nothing to reopen.
+   */
+  const steer = (api: string, hook: (operation: OperationContext) => Promise<void>): Promise<void> =>
+    steps.run('app', api, '', async () => {
+      await hook(engine.operation(config.timeout));
+      if (target.app.base === undefined) return;
+      const resolved = target.app.base.href;
+      try {
+        await engine.session.app.open(resolved, engine.operation(config.timeout));
+      } catch (cause) {
+        throw unreachableApp(cause, resolved) ?? cause;
+      }
+    });
+
   return {
     baseUrl: target.app.base?.href,
     open: (openPath?: string) => navigate('app.open', openPath ?? '/', openPath),
-    async restart(): Promise<void> {
-      await steps.run('app', 'app.restart', '', async () => {
-        await engine.session.app.restart(engine.operation(config.timeout));
-      });
-    },
-    async clearState(): Promise<void> {
-      await steps.run('app', 'app.clearState', '', async () => {
-        await engine.session.app.clearState(engine.operation(config.timeout));
-      });
-    },
+    restart: () => steer('app.restart', (operation) => engine.session.app.restart(operation)),
+    clearState: () => steer('app.clearState', (operation) => engine.session.app.reset(operation)),
     async back(): Promise<void> {
       await steps.run('app', 'app.back', '', async () => {
         await engine.session.app.back(engine.operation());

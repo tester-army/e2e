@@ -112,6 +112,8 @@ export interface RawNodeData {
     secure: boolean;
   };
   attributes: Record<string, string>;
+  /** Value of the project's test-id attribute, when the element carries one. */
+  testId: string | null;
   rect: { x: number; y: number; width: number; height: number };
 }
 
@@ -222,7 +224,7 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
   } =
     options.mode.kind === 'tree'
       ? {
-          attributes: [options.testIdAttribute, 'type', 'autocomplete', 'href', 'role'],
+          attributes: ['type', 'autocomplete', 'href', 'role'],
           textLimit: options.mode.textLimit,
           nameLimit: options.mode.nameLimit,
           redactHref: true,
@@ -714,6 +716,7 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
         secure,
       },
       attributes,
+      testId: el.getAttribute(options.testIdAttribute),
       rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
     };
   };

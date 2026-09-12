@@ -14,7 +14,31 @@ function patternExact(pattern: TextPattern): boolean {
   return pattern.kind === 'string' ? pattern.exact : false;
 }
 
-function queryToPw(scope: PwScope, query: SemanticQuery): PwLocator {
+/**
+ * The selector `getByTestId` compiles to, with the project's attribute in
+ * place of Playwright's process-global one (`selectors.setTestIdAttribute`
+ * would leak one engine's attribute into every other engine of the process).
+ * The value is encoded as Playwright's `escapeForAttributeSelector` encodes it:
+ * a string is an exact, case-sensitive match; a RegExp is passed as written.
+ */
+function testIdSelector(attribute: string, pattern: TextPattern): string {
+  const name = attribute.includes(',') ? JSON.stringify(attribute) : attribute;
+  const value =
+    pattern.kind === 'regexp'
+      ? escapeRegexForSelector(new RegExp(pattern.source, pattern.flags))
+      : `"${pattern.value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"s`;
+  return `internal:testid=[${name}=${value}]`;
+}
+
+/** A RegExp written into a Playwright selector: quotes and `>>` escaped unless the flags forbid it. */
+function escapeRegexForSelector(re: RegExp): string {
+  if (/[uv]/.test(re.flags)) return String(re);
+  return String(re)
+    .replace(/(^|[^\\])(\\\\)*(["'`])/g, '$1$2\\$3')
+    .replace(/>>/g, '\\>\\>');
+}
+
+function queryToPw(scope: PwScope, query: SemanticQuery, testIdAttribute: string): PwLocator {
   switch (query.kind) {
     case 'role': {
       if (query.value.kind !== 'string') {
@@ -44,7 +68,7 @@ function queryToPw(scope: PwScope, query: SemanticQuery): PwLocator {
       // Candidate set; the surface filters by current value at locate time.
       return scope.locator('input, textarea, select');
     case 'testId':
-      return scope.getByTestId(patternToPw(query.value));
+      return scope.locator(testIdSelector(testIdAttribute, query.value));
   }
 }
 
@@ -80,8 +104,8 @@ const NOT_ARIA_HIDDEN = ':scope:not([aria-hidden="true"])';
  * where the two predicates differ (a zero-size element with a layout rect is
  * hidden to Playwright and shown to the semantic read).
  */
-function visibleQueryToPw(scope: PwScope, query: SemanticQuery): PwLocator {
-  const located = queryToPw(scope, query);
+function visibleQueryToPw(scope: PwScope, query: SemanticQuery, testIdAttribute: string): PwLocator {
+  const located = queryToPw(scope, query, testIdAttribute);
   if (query.visible !== true) return located;
   return located.filter({ visible: true }).locator(NOT_ARIA_HIDDEN);
 }
@@ -159,14 +183,18 @@ const DISPLAY_VALUE_COMPOSITION_MESSAGE =
  * unsupported: a display-value query as the scope of a child query, and as a
  * `has` filter.
  */
-function project(scope: PwScope, expression: LocatorExpression): ProjectedLocator {
+function project(scope: PwScope, expression: LocatorExpression, testIdAttribute: string): ProjectedLocator {
   switch (expression.kind) {
     case 'query': {
       const inner =
-        expression.scope === undefined ? scope : requireComposable(project(scope, expression.scope));
+        expression.scope === undefined
+          ? scope
+          : requireComposable(project(scope, expression.scope, testIdAttribute));
       const { query } = expression;
       const exactLabel = query.kind === 'label' && patternExact(query.value);
-      const locator = exactLabel ? inner.locator(LABELABLE_SELECTOR) : visibleQueryToPw(inner, query);
+      const locator = exactLabel
+        ? inner.locator(LABELABLE_SELECTOR)
+        : visibleQueryToPw(inner, query, testIdAttribute);
       return {
         locator,
         displayValue: query.kind === 'displayValue' ? query.value : null,
@@ -177,11 +205,11 @@ function project(scope: PwScope, expression: LocatorExpression): ProjectedLocato
       };
     }
     case 'filter': {
-      const source = project(scope, expression.source);
+      const source = project(scope, expression.source, testIdAttribute);
       const options: PwFilterOptions = {};
       if (expression.hasText !== undefined) options.hasText = patternToPw(expression.hasText);
       if (expression.has !== undefined) {
-        options.has = requireComposable(project(scope, expression.has));
+        options.has = requireComposable(project(scope, expression.has, testIdAttribute));
       }
       if (source.steps.length > 0) {
         return { ...source, steps: [...source.steps, { kind: 'filter', options }] };
@@ -194,7 +222,7 @@ function project(scope: PwScope, expression: LocatorExpression): ProjectedLocato
       };
     }
     case 'index': {
-      const source = project(scope, expression.source);
+      const source = project(scope, expression.source, testIdAttribute);
       if (source.displayValue !== null || source.name !== null) {
         return {
           ...source,
@@ -221,13 +249,17 @@ function project(scope: PwScope, expression: LocatorExpression): ProjectedLocato
         visible: false,
       };
     case 'frame':
-      return project(scope.frameLocator(expression.selector), expression.source);
+      return project(scope.frameLocator(expression.selector), expression.source, testIdAttribute);
   }
 }
 
-/** Projects an expression onto the page. */
-export function projectExpression(page: Page, expression: LocatorExpression): ProjectedLocator {
-  return project(page, expression);
+/** Projects an expression onto the page; `testIdAttribute` is what a `testId` query reads. */
+export function projectExpression(
+  page: Page,
+  expression: LocatorExpression,
+  testIdAttribute: string,
+): ProjectedLocator {
+  return project(page, expression, testIdAttribute);
 }
 
 /**

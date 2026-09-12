@@ -250,7 +250,6 @@ export interface ReportTarget {
   /** Origin of the engine's declared app URL; absent for a surface without one. */
   baseOrigin?: string;
   environment: string;
-  testIdAttribute: string;
   engine: { name: string; version: string; spiVersion: EngineSpiVersion };
   capabilities: readonly string[];
   artifactCapabilities: readonly string[];
@@ -269,7 +268,8 @@ export interface ReportUsage {
   maxLedgerBytes: number;
   maxObservationBytes: number;
   artifactBytes: number;
-  downloads: number;
+  /** Files the app produced during the run (downloads, exports). */
+  files: number;
   events: number;
   modelTokens: number;
   /** Input tokens served from provider prompt caches; present once any step reports the split. */
@@ -447,7 +447,6 @@ function serializeTarget(
       platform: target.platform,
       baseOrigin: target.app.base?.origin,
       environment: target.app.environment,
-      testIdAttribute: config.testIdAttribute,
     }),
     ...(provenance ?? describeTarget(target)),
   };
@@ -554,7 +553,7 @@ function computeUsage(options: {
     maxLedgerBytes: 0,
     maxObservationBytes: 0,
     artifactBytes: 0,
-    downloads: 0,
+    files: 0,
     events: 0,
     modelTokens: 0,
     maxModelCallsInStep: 0,
@@ -590,7 +589,7 @@ function computeUsage(options: {
   const countArtifacts = (artifacts: readonly ArtifactRecord[]): void => {
     for (const artifact of artifacts) {
       usage.artifactBytes += artifact.size ?? 0;
-      if (artifact.kind === 'download') usage.downloads += 1;
+      if (artifact.kind === 'file') usage.files += 1;
     }
   };
 

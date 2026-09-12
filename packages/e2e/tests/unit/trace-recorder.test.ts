@@ -12,7 +12,7 @@ const upgradeButton: SemanticNode = {
   role: 'button',
   name: 'Upgrade',
   text: 'Upgrade',
-  attributes: { 'data-testid': 'upgrade-cta' },
+  testId: 'upgrade-cta',
   selector: '[data-testid="upgrade-cta"]',
 };
 
@@ -27,7 +27,6 @@ const passwordField: SemanticNode = {
 function makeRecorder(options: { maxActions?: number; secrets?: ReadonlyMap<string, string> } = {}) {
   return new TraceRecorder({
     redact: createRedactor(options.secrets ?? new Map()),
-    testIdAttribute: 'data-testid',
     ...(options.maxActions === undefined ? {} : { maxActions: options.maxActions }),
   });
 }
@@ -129,11 +128,10 @@ describe('TraceRecorder', () => {
 describe('describeTarget', () => {
   it('drops text duplicating the name and never records values', () => {
     const identity = (text: string): string => text;
-    expect(describeTarget(upgradeButton, identity, 'data-testid')?.text).toBeUndefined();
+    expect(describeTarget(upgradeButton, identity)?.text).toBeUndefined();
     const described = describeTarget(
       { ...passwordField, value: 's3cr3t' },
       identity,
-      'data-testid',
     );
     expect(described).toEqual({ role: 'textbox', name: 'Password', inputPurpose: 'password' });
     expect(JSON.stringify(described)).not.toContain('s3cr3t');
@@ -141,7 +139,7 @@ describe('describeTarget', () => {
 
   it('returns undefined for a node with nothing durable to say', () => {
     expect(
-      describeTarget({ ref: { id: 'n1', revision: 'r1' } }, (text) => text, 'data-testid'),
+      describeTarget({ ref: { id: 'n1', revision: 'r1' } }, (text) => text),
     ).toBeUndefined();
   });
 });

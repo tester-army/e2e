@@ -204,7 +204,7 @@ export function createWebFixture(surface: PlaywrightSurface, context: EngineFixt
   const deadlineFor = (timeout: number | undefined): Deadline =>
     new Deadline(context.operation(timeout ?? context.timeouts.assertion).timeoutMs);
 
-  const currentUrl = () => surface.url(context.operation());
+  const currentUrl = () => surface.guard(context.operation(), 'url', async () => surface.requirePage().url());
   const currentTitle = () =>
     surface.guard(context.operation(), 'title', () => surface.requirePage().title());
   const expectation = createWebExpectation({ currentUrl, currentTitle, baseHref, deadlineFor, context });
@@ -429,7 +429,7 @@ export function createWebFixture(surface: PlaywrightSurface, context: EngineFixt
         const suggestedFilename = download.suggestedFilename();
         const { relative, absolute } = surface.artifactPath('downloads', suggestedFilename, '');
         await download.saveAs(absolute);
-        context.attachArtifact('download', relative);
+        context.attachArtifact('file', relative);
         return { path: relative, suggestedFilename };
       });
     },

@@ -57,7 +57,6 @@ function makeHost(
     // Short enough that a missing anchor is not waited for across the backoff.
     remainingMs: () => 50,
     redact: (text) => text,
-    testIdAttribute: 'data-testid',
     currentPath: async () => paths.shift(),
     replaying: () => undefined,
   };
@@ -70,7 +69,6 @@ function makeSession(cache: AgentCacheContext, host: StepCacheHost): StepTraceSe
     params: undefined,
     executor: { name: 'test' },
     redact: (text) => text,
-    testIdAttribute: 'data-testid',
     maxActions: 25,
     stepIndex: 1,
   });

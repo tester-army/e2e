@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { defineEngine, type EngineAppDeclaration } from '../../src/engine/index.ts';
 import { assignPorts, resolveConfig } from '../../src/config/resolve.ts';
 import { declaredProcesses } from '../../src/run/declared-processes.ts';
+import { snapshot } from '../helpers/snapshot.ts';
 
 const ROOT = '/tmp/e2e-declared-processes';
 
@@ -12,7 +13,7 @@ function configOf(...declarations: EngineAppDeclaration[]) {
       targets: declarations.map((app, index) => ({
         name: `t${index}`,
         platform: 'web',
-        engine: defineEngine({ name: 'fake', version: '1.0.0', spiVersion: 1, observe: async () => ({ nodes: [] }), app }),
+        engine: defineEngine({ name: 'fake', version: '1.0.0', spiVersion: 1, observe: async () => snapshot([]), app }),
       })),
     },
     { projectRoot: ROOT, env: {} as NodeJS.ProcessEnv },
