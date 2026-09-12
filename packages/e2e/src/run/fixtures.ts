@@ -108,10 +108,12 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
       }
       // A test names the field, so the sink is the author's choice; the page
       // is not. A redirect must not carry the value to a foreign origin, so
-      // a deterministic fill runs the same origin rule as `type_secret`. An
-      // engine with no notion of a URL has no origin to steer to.
+      // a deterministic fill runs the same origin rule as `type_secret` on a
+      // target that has an origin policy. A device target has none: its
+      // `app://` URL is a cache anchor, not a place a page can steer to, and
+      // the deterministic fill is the documented way to fill a secret there.
       const url = environment.session.url;
-      if (url !== undefined) {
+      if (url !== undefined && environment.target.app.allowedOrigins.length > 0) {
         const origin = new URL(await url(engine.operation())).origin;
         if (!secretOriginAllowed(origin, environment.target.app.allowedOrigins, registered)) {
           throw new ConfigurationError('POLICY_DENIED', `origin ${origin} is not authorized for secret "${secret.name}"`);

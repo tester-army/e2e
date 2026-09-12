@@ -123,6 +123,26 @@ describe('generic secrets', () => {
     }
   });
 
+  it('fills a secret on a target without an origin policy, such as a device whose URL is only a cache anchor', async () => {
+    let filled: string | undefined;
+    const engine = defineEngine({
+      name: 'fake', version: '1', spiVersion: 1,
+      app: { allowedOrigins: [] },
+      url: async () => 'app://device/com.example.app/Sign%20In',
+      observe: async () => ({ nodes: [] }),
+      locate: async () => [{ ref: { id: 'key', revision: '' }, role: 'textbox', name: 'API key' }],
+      perform: async (_ref, action) => { if (action.kind === 'fill') filled = action.value; },
+    });
+    const { fixtures, config } = runtime(engine, { secrets: { key: 'sk_live_1' } });
+    setSecretRegistry(config);
+    try {
+      await fixtures.screen.getByLabel('API key').fill(secrets.get('key'));
+      expect(filled).toBe('sk_live_1');
+    } finally {
+      setSecretRegistry(undefined);
+    }
+  });
+
   it.each([
     ['the app origin', 'https://app.test/checkout', true],
     ['a foreign origin', 'https://evil.test/collect', false],
