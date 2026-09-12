@@ -106,16 +106,23 @@ class AsyncExpectationImpl implements AsyncExpectation {
           if (!this.conditionEvaluable(spec, sample)) return undefined;
           return spec.predicate(sample);
         },
-        onTimeout: () =>
-          new TestError(
+        onTimeout: () => {
+          const expected = `${this.negated ? 'not ' : ''}${spec.describeExpected}`;
+          const observed = spec.observed(lastSample);
+          return new TestError(
             'ASSERTION_FAILED',
             [
               `${api} failed`,
               `locator: ${this.label}`,
-              `expected: ${this.negated ? 'not ' : ''}${spec.describeExpected}`,
-              `observed: ${spec.observed(lastSample)} (match count ${lastSample.count})`,
+              `expected: ${expected}`,
+              `observed: ${observed} (match count ${lastSample.count})`,
             ].join('\n'),
-          ),
+            {
+              // The same facts, one per field, for a reporter that lays them out.
+              details: { locator: this.label, expected, observed, matches: String(lastSample.count) },
+            },
+          );
+        },
       });
     }, { verifies: true });
   }

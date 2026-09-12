@@ -30,6 +30,7 @@ import { AttemptBudget } from './budget.ts';
 import { ENGINE_SPI_VERSION } from '../engine/contract.ts';
 import { createEngineSession } from '../engine/session.ts';
 import { createExtendedFixtures } from './extended-fixtures.ts';
+import { captureFailureEvidence } from './failure-evidence.ts';
 import { createFixtures, type ArtifactSink } from './fixtures.ts';
 import { publishAttempt } from '../expect/attempt.ts';
 import { findRegistered, RealmManager, runHook, type Realm } from './realm.ts';
@@ -902,6 +903,22 @@ export class TargetExecutor implements SerialHost {
       } else {
         record.status = classifyAttemptStatus(failure, timedOut, this.interruptSignal.aborted);
         record.error = serializeError(failure, { phase: failurePhase ?? phase });
+        // One more look at the app before the session closes: what the screen
+        // held when the failure landed is the evidence the message lacks.
+        if (openSession !== null && record.status !== 'interrupted') {
+          const session = openSession;
+          const evidence = await captureFailureEvidence({
+            session,
+            steps: steps.all(),
+            error: failure,
+            secrecy: sessionSecrecy(session, this.config.secrets),
+            config: this.config,
+            artifacts: artifacts.sink,
+            operation: (signal, timeoutMs) => this.op(attemptId, timeoutMs, signal),
+            interrupt: this.interruptSignal,
+          }).catch(() => undefined);
+          if (evidence !== undefined) record.failure = evidence;
+        }
       }
       if (openSession !== null && shared === undefined) {
         await this.closeSession(openSession, attemptId, record, artifacts.sink, secondaryErrors);

@@ -126,6 +126,22 @@ export interface StepAgentDetails {
    * zero, because the observation contributed nothing to the request.
    */
   visionOnly?: boolean;
+  /** The step's last model turns, bounded; see `StepTurn`. */
+  turns?: StepTurn[];
+}
+
+/**
+ * One model turn of an agent step, as the report keeps it: the tool calls
+ * the model made and what came back, each bounded. Enough to read why the
+ * step ended where it did without the full transcript.
+ */
+export interface StepTurn {
+  /** One-based turn number within the step. */
+  index: number;
+  /** `tap({"target":"n19"})`, one per tool call, arguments clipped. */
+  calls: string[];
+  /** The tool results of the turn, clipped; a screen diff reads as its first lines. */
+  outcome: string;
 }
 
 export interface StepRecord {
@@ -134,6 +150,12 @@ export interface StepRecord {
   kind: StepKind;
   api: string;
   label: string;
+  /**
+   * The stack at the step's start, so the report can name the test line the
+   * step was called from. Never serialized as is: `report/build.ts` resolves
+   * it to a `source` and drops it.
+   */
+  stack?: string;
   status: 'passed' | 'failed' | 'blocked' | 'timed-out' | 'cancelled';
   startedAt: string;
   durationMs: number;
@@ -146,6 +168,8 @@ export interface StepRecord {
   metrics?: StepMetrics;
   cache?: StepCacheInfo;
   events: StepEvent[];
+  /** The model turns of an agent step, most recent last, bounded. */
+  turns?: StepTurn[];
   model?: StepModelInfo;
   /** The configured agent an agent step ran with, by name. */
   agent?: string;
@@ -202,6 +226,25 @@ export interface StepRecorderOptions {
   readonly onProgress?: (progress: StepProgress) => void;
 }
 
+/** Frames kept when a step captures where it was called from; the user's line is a few frames up. */
+const STEP_STACK_FRAMES = 20;
+
+/**
+ * The stack at a step's start, as `{ stack }` or nothing. Captured in every
+ * step, since the failing one is not known until it fails; a report that can
+ * name the test line a step ran from is worth the capture.
+ */
+function stackOf(): { stack?: string } {
+  const limit = Error.stackTraceLimit;
+  Error.stackTraceLimit = STEP_STACK_FRAMES;
+  try {
+    const stack = new Error().stack;
+    return stack === undefined ? {} : { stack };
+  } finally {
+    Error.stackTraceLimit = limit;
+  }
+}
+
 export class StepRecorder {
   private readonly steps: StepRecord[] = [];
   private readonly scope = new AsyncLocalStorage<StepRecord>();
@@ -252,6 +295,7 @@ export class StepRecorder {
       kind,
       api,
       label,
+      ...stackOf(),
       status: 'passed',
       startedAt,
       durationMs: 0,
@@ -344,6 +388,7 @@ export class StepRecorder {
     if (details.visionInput !== undefined) current.visionInput = details.visionInput;
     if (details.visionDegraded !== undefined) current.visionDegraded = details.visionDegraded;
     if (details.visionOnly !== undefined) current.visionOnly = details.visionOnly;
+    if (details.turns !== undefined) current.turns = details.turns;
   }
 
   /** Records the viewport a step established. */

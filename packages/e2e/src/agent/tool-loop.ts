@@ -11,6 +11,7 @@
  * - model-call accounting and a step transcript for `--debug`.
  */
 
+import type { StepTurn } from '../run/steps.ts';
 import type { LanguageModel, ModelMessage, StepResult, ToolSet } from 'ai';
 import { asSdkLanguageModel, type SdkLanguageModel } from '../config/agent.ts';
 import { loadAiSdk, type AiSdk } from './ai-sdk.ts';
@@ -57,6 +58,11 @@ const FORCED_CONCLUSION_TURNS = 2;
 
 /** Transcript ceiling per step; enough for every turn without unbounded logs. */
 const MAX_TRANSCRIPT_CHARS = 262_144;
+/** The report's turn record: the last turns of a step, each clipped, always kept. */
+const MAX_KEPT_TURNS = 12;
+const MAX_TURN_CALLS = 8;
+const MAX_TURN_CALL_CHARS = 200;
+const MAX_TURN_OUTCOME_CHARS = 600;
 
 /**
  * Models that refused a forced tool choice once. The loop asks every model
@@ -177,6 +183,8 @@ class LoopRun {
   private noticedGuardReason: string | undefined;
   private noticedLowClock = false;
   private readonly transcript: string[] = [];
+  /** The last turns as the report keeps them, oldest first; the transcript above is the debug-only full text. */
+  private readonly turns: StepTurn[] = [];
   /** Model turns that ran; the transcript array mirrors it but is debug-only. */
   private turnsUsed = 0;
   private readonly maxTurns: number;
@@ -564,9 +572,22 @@ class LoopRun {
       lines.push(`tool result [${result.toolName}]: ${truncate(describeOutput(result.output), 600)}`);
     }
     this.transcript.push(lines.join('\n'));
+    this.turns.push({
+      index: turn,
+      calls: step.toolCalls.slice(0, MAX_TURN_CALLS).map((call) => `${call.toolName}(${truncate(safeJson(call.input), MAX_TURN_CALL_CHARS)})`),
+      outcome: truncate(
+        [
+          ...(step.text.trim() === '' ? [] : [`assistant: ${step.text.trim()}`]),
+          ...step.toolResults.map((result) => describeOutput(result.output)),
+        ].join('\n'),
+        MAX_TURN_OUTCOME_CHARS,
+      ),
+    });
+    if (this.turns.length > MAX_KEPT_TURNS) this.turns.splice(0, this.turns.length - MAX_KEPT_TURNS);
   }
 
   private attachTranscript(): void {
+    if (this.turns.length > 0) this.context.attachTurns?.(this.turns);
     if (this.transcript.length === 0) return;
     this.context.attachTranscript(truncate(this.transcript.join('\n'), MAX_TRANSCRIPT_CHARS));
   }

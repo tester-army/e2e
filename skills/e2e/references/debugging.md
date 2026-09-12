@@ -2,22 +2,35 @@
 
 ## Read the failure
 
-1. The `list` reporter ends with a `Failed Tests` section: each failure shows
-   the error code, the message, the test's failing line, and a code frame.
-   The summary's `Report` line names `.e2e/report.json`.
-2. `.e2e/report.json` has everything:
+1. Run with `--reporter list,markdown`. The `list` reporter ends with a
+   `Failed Tests` section: the error code, the message, the failing line with
+   a code frame, the page's location, the nodes closest to what a failed
+   locator asked for, and the path of the screen text. The summary's
+   `Failures` line names `.e2e/failures/`.
+2. Open the failed test's page under `.e2e/failures/` first. It has the error
+   in full, its facts (`Expected … · Observed …` for an `expect`, `Asked for:
+   button "Add" · waited 3.0s` for a locator), `Look at:` the line the failure
+   unwound through, whether every attempt failed the same way (a bug, not a
+   flake), every step with its own line, the last model turns of a failed
+   agent step, and the screen at failure inline: the accessibility tree as
+   the agent reads it, one node per line. Write the fix from what was there.
+3. `.e2e/report.json` is the record behind the pages:
 
 ```bash
 jq '.run | {status, exitCode, errors}' .e2e/report.json                  # run-level failures
 jq '.run.results[] | select(.status != "passed") | {titlePath, file, status}' .e2e/report.json
 jq '.run.results[] | select(.status != "passed") | .attempts[-1]
-    | {status, error, steps: [.steps[] | select(.status != "passed") | {api, label, status, error}], artifacts}' .e2e/report.json
+    | {status, error, failure, steps: [.steps[] | select(.status != "passed") | {api, label, source, status, error}], artifacts}' .e2e/report.json
 ```
 
-3. Artifacts named there live under `.e2e/artifacts/`: screenshots, a
-   Playwright `trace.zip` per attempt (`npx playwright show-trace <file>`),
-   downloads, with `--video` a `video/video.webm` per attempt, and with
-   `--debug` the transcript of every agent step.
+   `error.details` holds the facts, `error.source` the line, `failure` the
+   `url`, the `screen` and `screenshot` artifact ids, and the `candidates`;
+   a failed agent step has `turns`.
+4. Artifacts named there live under `.e2e/artifacts/`: `failure/screen.txt`
+   and `screenshots/*-failure.png` per failed attempt, a Playwright
+   `trace.zip` per attempt (`npx playwright show-trace <file>`), downloads,
+   with `--video` a `video/video.webm` per attempt, and with `--debug` the
+   full transcript of every agent step.
 
 ## Error codes and what to do
 

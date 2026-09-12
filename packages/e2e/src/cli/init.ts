@@ -42,6 +42,7 @@ const GITIGNORE_ENTRIES = [
   '.e2e/ai-trace.json',
   '.e2e/junit.xml',
   '.e2e/summary.md',
+  '.e2e/failures/',
   '.e2e/logs/',
 ];
 

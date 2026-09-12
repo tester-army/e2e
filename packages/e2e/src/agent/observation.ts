@@ -212,7 +212,7 @@ const MAX_INDENT_DEPTH = 10;
  * holders omit the role token entirely: on a large screen they are half the
  * lines, and the model needs their text, not a filler word.
  */
-function formatNode(
+export function formatNode(
   node: SemanticNode,
   depth: number,
   redact: (text: string) => string,

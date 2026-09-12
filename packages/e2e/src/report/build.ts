@@ -6,7 +6,7 @@ import { BLOCKABLE_CODES } from '../agent/executor.ts';
 import { DEFAULT_OBSERVATION_BYTES, resolveLimits } from '../config/agent.ts';
 import type { ResolvedConfig, ResolvedLimits, ResolvedTarget } from '../config/resolve.ts';
 import type { AgentErrorCode, ConfiguredArtifactKind } from '../types.ts';
-import type { ErrorCategory, ErrorPhase, SerializedError } from '../internal/errors.ts';
+import type { ErrorCategory, ErrorDetails, ErrorPhase, SerializedError } from '../internal/errors.ts';
 import { resultId, timestamp } from '../internal/ids.ts';
 import { obj } from '../internal/objects.ts';
 import { packageVersion } from '../internal/package-version.ts';
@@ -15,6 +15,7 @@ import type { SkipInfo } from '../collect/select.ts';
 import type {
   ArtifactRecord,
   AttemptRecord,
+  FailureEvidence,
   ResultRecord,
   RunError,
   SerialAttemptRecord,
@@ -27,8 +28,10 @@ import type {
   StepMetrics,
   StepModelInfo,
   StepRecord,
+  StepTurn,
   VisionDegradation,
 } from '../run/steps.ts';
+import { userFrame } from './code-frame.ts';
 
 export interface ReportSource {
   file: string;
@@ -135,7 +138,10 @@ export interface ReportExplore {
 // Explicit `| undefined` marks fields JSON serialization drops when absent;
 // Ajv treats undefined-valued keys as missing.
 
-/** SerializedError minus the stack, which never enters the report. */
+/**
+ * SerializedError minus the stack, which never enters the report; in its
+ * place, the test line the failure unwound through, when the stack named one.
+ */
 export interface ReportError {
   category: ErrorCategory;
   code: string;
@@ -143,7 +149,14 @@ export interface ReportError {
   retryable: boolean;
   phase?: ErrorPhase | undefined;
   scopeId?: string | undefined;
+  /** Structured facts beside the message: an assertion's expected and observed, a locator's role and name. */
+  details?: ErrorDetails | undefined;
+  /** The line in the test file the failure unwound through. */
+  source?: ReportSource | undefined;
 }
+
+/** `FailureEvidence` on the wire: the same fields, artifacts by id. */
+export type ReportFailureEvidence = FailureEvidence;
 
 export interface ReportStep {
   id: string;
@@ -164,6 +177,8 @@ export interface ReportStep {
   metrics?: StepMetrics | undefined;
   cache?: StepCacheInfo | undefined;
   events: readonly StepEvent[];
+  /** The last model turns of an agent step, oldest first. */
+  turns?: readonly StepTurn[] | undefined;
   model?: StepModelInfo | undefined;
   /** The configured agent an agent step ran with, by name. */
   agent?: string | undefined;
@@ -179,6 +194,8 @@ interface ReportAttemptBase {
   durationMs: number;
   artifacts: readonly ArtifactRecord[];
   error?: ReportError | undefined;
+  /** What the runner saw when the failure landed; absent on a pass or when nothing could be captured. */
+  failure?: ReportFailureEvidence | undefined;
   secondaryErrors: readonly ReportError[];
   cleanup: AttemptRecord['cleanup'];
 }
@@ -339,26 +356,37 @@ function relativeSource(
   return { file, line: Math.max(1, source.line), column: Math.max(1, source.column) };
 }
 
-/** Step source capture is not implemented yet. */
-const UNIMPLEMENTED_STEP_SOURCE: ReportSource = { file: 'unknown', line: 1, column: 1 };
+/** A step whose stack named no line in the project: a fixture's own call, or a step minted outside one. */
+const UNKNOWN_STEP_SOURCE: ReportSource = { file: 'unknown', line: 1, column: 1 };
 
-function serializeStep(step: StepRecord): ReportStep {
-  const { error, ...rest } = step;
+/**
+ * The project line a stack unwound through, relative to the project root, or
+ * nothing: the stack itself never enters the report.
+ */
+function sourceOf(config: ResolvedConfig | undefined, stack: string | undefined): ReportSource | undefined {
+  const frame = userFrame(stack, config?.projectRoot);
+  if (frame === undefined) return undefined;
+  const source = relativeSource(config, frame, 'unknown');
+  return source.file === 'unknown' ? undefined : source;
+}
+
+function serializeStep(config: ResolvedConfig | undefined, step: StepRecord): ReportStep {
+  const { error, stack, ...rest } = step;
   return {
     ...rest,
-    source: UNIMPLEMENTED_STEP_SOURCE,
-    error: error === undefined ? undefined : serializeErrorRecord(error),
+    source: sourceOf(config, stack) ?? UNKNOWN_STEP_SOURCE,
+    error: error === undefined ? undefined : serializeErrorRecord(config, error),
   };
 }
 
-/** SerializedError minus the stack, which never enters the report. */
-function serializeErrorRecord(error: SerializedError): ReportError {
+/** SerializedError minus the stack, plus the test line it resolved to. */
+function serializeErrorRecord(config: ResolvedConfig | undefined, error: SerializedError): ReportError {
   const { stack, ...report } = error;
-  void stack;
-  return report;
+  const source = sourceOf(config, stack);
+  return source === undefined ? report : { ...report, source };
 }
 
-function serializeAttemptBase(attempt: AttemptRecord | SerialAttemptRecord): ReportAttemptBase {
+function serializeAttemptBase(config: ResolvedConfig | undefined, attempt: AttemptRecord | SerialAttemptRecord): ReportAttemptBase {
   return {
     id: attempt.id,
     index: attempt.index,
@@ -366,17 +394,18 @@ function serializeAttemptBase(attempt: AttemptRecord | SerialAttemptRecord): Rep
     startedAt: attempt.startedAt,
     durationMs: attempt.durationMs,
     artifacts: attempt.artifacts,
-    error: attempt.error === undefined ? undefined : serializeErrorRecord(attempt.error),
-    secondaryErrors: attempt.secondaryErrors.map(serializeErrorRecord),
+    error: attempt.error === undefined ? undefined : serializeErrorRecord(config, attempt.error),
+    failure: attempt.failure,
+    secondaryErrors: attempt.secondaryErrors.map((error) => serializeErrorRecord(config, error)),
     cleanup: attempt.cleanup,
   };
 }
 
-function serializeAttempt(attempt: AttemptRecord): ReportAttempt {
-  return { ...serializeAttemptBase(attempt), steps: attempt.steps.map(serializeStep) };
+function serializeAttempt(config: ResolvedConfig | undefined, attempt: AttemptRecord): ReportAttempt {
+  return { ...serializeAttemptBase(config, attempt), steps: attempt.steps.map((step) => serializeStep(config, step)) };
 }
 
-function serializeSerialMember(member: SerialMemberRecord): ReportSerialMember {
+function serializeSerialMember(config: ResolvedConfig | undefined, member: SerialMemberRecord): ReportSerialMember {
   return {
     id: member.id,
     index: member.index,
@@ -384,18 +413,21 @@ function serializeSerialMember(member: SerialMemberRecord): ReportSerialMember {
     status: member.status,
     startedAt: member.startedAt,
     durationMs: member.durationMs,
-    steps: member.status === 'skipped' ? [] : member.steps.map(serializeStep),
-    error: member.error === undefined ? undefined : serializeErrorRecord(member.error),
+    steps: member.status === 'skipped' ? [] : member.steps.map((step) => serializeStep(config, step)),
+    error: member.error === undefined ? undefined : serializeErrorRecord(config, member.error),
     skip: member.status === 'skipped' ? member.skip : undefined,
-    secondaryErrors: member.secondaryErrors.map(serializeErrorRecord),
+    secondaryErrors: member.secondaryErrors.map((error) => serializeErrorRecord(config, error)),
   };
 }
 
-function serializeSerialAttempt(attempt: SerialAttemptRecord): ReportSerialAttempt {
-  return { ...serializeAttemptBase(attempt), members: attempt.members.map(serializeSerialMember) };
+function serializeSerialAttempt(config: ResolvedConfig | undefined, attempt: SerialAttemptRecord): ReportSerialAttempt {
+  return {
+    ...serializeAttemptBase(config, attempt),
+    members: attempt.members.map((member) => serializeSerialMember(config, member)),
+  };
 }
 
-function serializeSerialGroup(group: SerialGroupRecord): ReportSerialGroup {
+function serializeSerialGroup(config: ResolvedConfig | undefined, group: SerialGroupRecord): ReportSerialGroup {
   return {
     id: group.id,
     serialId: group.serialId,
@@ -409,7 +441,7 @@ function serializeSerialGroup(group: SerialGroupRecord): ReportSerialGroup {
     memberTestIds: group.memberTestIds,
     status: group.status,
     skip: group.status === 'skipped' ? group.skip : undefined,
-    attempts: group.attempts.map(serializeSerialAttempt),
+    attempts: group.attempts.map((attempt) => serializeSerialAttempt(config, attempt)),
   };
 }
 
@@ -428,7 +460,7 @@ function serializeResult(config: ResolvedConfig | undefined, result: ResultRecor
     serialGroupId: result.serialGroupId,
     status: result.status,
     skip: result.status === 'skipped' ? result.skip : undefined,
-    attempts: result.serialGroupId !== undefined ? [] : result.attempts.map(serializeAttempt),
+    attempts: result.serialGroupId !== undefined ? [] : result.attempts.map((attempt) => serializeAttempt(config, attempt)),
   };
 }
 
@@ -632,7 +664,7 @@ export function buildReport(options: BuildReportOptions): Report1Document {
   for (const target of config?.targets ?? []) targetIndex.set(target.name, target.index);
   const serialGroups = options.serialGroups
     .toSorted((a, b) => compareSerialGroups(a, b, targetIndex))
-    .map(serializeSerialGroup);
+    .map((group) => serializeSerialGroup(config, group));
 
   const summary = computeSummary(options.results);
 
@@ -665,7 +697,7 @@ export function buildReport(options: BuildReportOptions): Report1Document {
       targets,
       serialGroups,
       results,
-      errors: options.runErrors.map((runError) => serializeErrorRecord(runError.error)),
+      errors: options.runErrors.map((runError) => serializeErrorRecord(config, runError.error)),
       summary,
       limits: config?.limits ?? DEFAULT_LIMITS,
       usage: computeUsage({

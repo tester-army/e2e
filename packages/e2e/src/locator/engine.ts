@@ -16,7 +16,7 @@ import {
   translateEngineError,
 } from '../internal/errors.ts';
 import { requireKey } from '../internal/keys.ts';
-import { describeExpression } from './expression.ts';
+import { describeExpression, expressionHints } from './expression.ts';
 import { Deadline, POLL_INTERVAL_MS, sleep } from '../internal/time.ts';
 import type { AttemptBudget } from '../run/budget.ts';
 
@@ -123,6 +123,7 @@ export class LocatorEngine {
         throw new TestError(
           'LOCATOR_NOT_FOUND',
           `locator matched no nodes within ${describeExpression(expression)}`,
+          { details: locatorDetails(expression, deadline.totalMs) },
         );
       }
       await sleep(POLL_INTERVAL_MS, this.signal);
@@ -134,10 +135,9 @@ export class LocatorEngine {
     const deadline = this.deadline(this.options.actionTimeout);
     const ref = assertSingle(await this.resolveOnce(expression, deadline), expression);
     if (ref === null) {
-      throw new TestError(
-        'LOCATOR_NOT_FOUND',
-        `locator matched no nodes: ${describeExpression(expression)}`,
-      );
+      throw new TestError('LOCATOR_NOT_FOUND', `locator matched no nodes: ${describeExpression(expression)}`, {
+        details: locatorDetails(expression),
+      });
     }
     return ref;
   }
@@ -233,9 +233,22 @@ function assertSingle(refs: readonly NodeRef[], expression: LocatorExpression): 
     throw new TestError(
       'LOCATOR_AMBIGUOUS',
       `locator matched ${refs.length} nodes, expected exactly one: ${describeExpression(expression)}`,
+      { details: { ...locatorDetails(expression), matches: String(refs.length) } },
     );
   }
   return refs[0] ?? null;
+}
+
+/**
+ * The facts of a locator failure the report keeps beside the message: the
+ * locator as written, what it asked for, and how long it waited, in ms.
+ */
+function locatorDetails(expression: LocatorExpression, waitedMs?: number): Record<string, string> {
+  return {
+    locator: describeExpression(expression),
+    ...expressionHints(expression),
+    ...(waitedMs === undefined ? {} : { waitedMs: String(waitedMs) }),
+  };
 }
 
 /** Translates an engine error into the runner-owned public taxonomy. */

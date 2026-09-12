@@ -11,8 +11,10 @@ artifacts tell you why.
 ## Read the failure
 
 The `list` reporter ends with a `Failed Tests` section: the error code, the
-message, the failing line, and a code frame. The exit code says which side
-failed:
+message, the failing line with a code frame, and what the runner saw when
+the failure landed: the page's location, the nodes on screen closest to what
+a failed locator asked for, and the path of the screen text. The exit code
+says which side failed:
 
 | Exit | Meaning | Retry the job? |
 | ---: | --- | --- |
@@ -22,19 +24,77 @@ failed:
 | 4 | An internal runner error | Report it |
 | 130 | The run was interrupted | |
 
-The report has everything the terminal showed and more:
+## The failure pages
+
+`--reporter list,markdown` writes `.e2e/summary.md` and, for every test that
+failed or was flaky, one page under `.e2e/failures/`. The page is the
+hand-off: open it before anything else.
+
+````markdown
+# ✗ todos › archives a todo
+
+`tests/todos.e2e.ts` · failed · 16.2s
+
+**ASSERTION_FAILED**
+
+```text
+agent.act failed: the todo exposes only a "Delete" button; no "Archive" button is present.
+```
+
+Look at: `tests/todos.e2e.ts:8`
+Failed the same way on both attempts: **ASSERTION_FAILED** at step 2.
+
+## Steps
+1. ✓ `app.open` "/todos" (35ms) — `tests/todos.e2e.ts:4`
+2. ✗ `agent.act` "Archive the todo" (16.1s, 6 model calls) — **ASSERTION_FAILED** — `tests/todos.e2e.ts:8`
+
+## Agent turns of step 2
+**Turn 2** `tap({"target":"n19"})`
+> Tapped #n19.
+> Screen changes since revision b4 (now revision b6, path /todos, 29 nodes): 4 added, 2 changed.
+> added #n29 button "Delete Groceries"
+
+## Screen at failure
+URL: `http://127.0.0.1:3000/todos`
+```text
+#n18 textbox "New todo"
+#n19 button "Add"
+ #n34 listitem "Groceries" testid="todo"
+  #n37 button "Delete Groceries"
+```
+````
+
+The page has what the message cannot say. **Look at** is the line the
+failure unwound through, not the line that declared the test. For an
+`expect`, the block reads `Expected: … · Observed: …`; for a locator,
+`Asked for: button "Add todo item" · waited 3.0s` and, under the screen, the
+nodes closest to that request. **Failed the same way on both attempts** is
+the difference between a bug and a flake. **Agent turns** are the last model
+turns of a failed agent step: what the model called and what came back,
+whatever the debug setting. **Screen at failure** is the accessibility tree
+exactly as the agent reads it, one node per line, so the fix can be written
+from what was there.
+
+## The report
+
+`.e2e/report.json` is the record the pages render from, and the one a host
+ingests. `--reporter json` prints the same document on stdout.
 
 ```bash
 jq '.run | {status, exitCode, errors}' .e2e/report.json
 jq '.run.results[] | select(.status != "passed") | {titlePath, file, status}' .e2e/report.json
 jq '.run.results[] | select(.status != "passed") | .attempts[-1]
-    | {status, error, steps: [.steps[] | select(.status != "passed") | {api, label, status, error}], artifacts}' .e2e/report.json
+    | {status, error, failure, steps: [.steps[] | select(.status != "passed") | {api, label, source, status, error}], artifacts}' .e2e/report.json
 ```
 
 Read `run.errors` first: a run-level error such as `APP_UNREACHABLE` means no
-test result is meaningful. Then the `error` of the last attempt of each
-failed result, and the `artifacts` beside it. `steps` shows how far the test
-got. `--reporter json` prints the same document on stdout.
+test result is meaningful. Then the last attempt of each failed result:
+`error` has the code, the message, the `source` line it unwound through, and
+`details` (an assertion's `expected` and `observed`, a locator's `role`,
+`name`, and `waitedMs`); `failure` has the `url`, the `screen` and
+`screenshot` artifact ids, and the `candidates` closest to a failed locator;
+each step has the `source` it was called from, and a failed agent step its
+last `turns`. The `artifacts` beside them hold the files.
 
 ## Artifacts
 

@@ -11,7 +11,7 @@ import picocolors from 'picocolors';
 import type { SerializedError } from '../internal/errors.ts';
 import { packageVersion } from '../internal/package-version.ts';
 import type { RunEvent, RunEventFact, RunEventOf, RunEventResult, SetupStep } from '../run/events.ts';
-import type { ArtifactRecord, AttemptRecord, ResultStatus, SerialGroupRecord } from '../run/records.ts';
+import type { ArtifactRecord, AttemptRecord, FailureEvidence, ResultStatus, SerialGroupRecord } from '../run/records.ts';
 import type { Reporter, ReporterSummary } from '../types.ts';
 import { codeFrame, userFrame } from './code-frame.ts';
 import {
@@ -98,6 +98,9 @@ interface ResultDetails {
   readonly error: SerializedError | undefined;
   /** Report-relative paths of the recordings the attempts kept, in attempt order. */
   readonly videos: readonly string[];
+  /** What the runner saw when the last failure landed, with the screen text's report path when it kept one. */
+  readonly failure: FailureEvidence | undefined;
+  readonly screenPath: string | undefined;
 }
 
 /** Details of an ordinary result: summed over its attempts, the error from the last. */
@@ -108,7 +111,17 @@ function attemptDetails(attempts: readonly AttemptRecord[]): ResultDetails {
     cache: stepsCacheTally(attempts.map((attempt) => attempt.steps)),
     error: attempts[attempts.length - 1]?.error,
     videos: videoPaths(attempts),
+    ...failureOf(attempts[attempts.length - 1]),
   };
+}
+
+/** The failure evidence of one attempt, and the path of the screen text it points at. */
+function failureOf(
+  attempt: { readonly failure?: FailureEvidence | undefined; readonly artifacts: readonly ArtifactRecord[] } | undefined,
+): Pick<ResultDetails, 'failure' | 'screenPath'> {
+  const failure = attempt?.failure;
+  const screen = failure?.screen === undefined ? undefined : attempt?.artifacts.find((artifact) => artifact.id === failure.screen);
+  return { failure, screenPath: screen?.path };
 }
 
 /** Report-relative paths of the video artifacts these attempts kept, in order. */
@@ -144,6 +157,8 @@ function serialMemberDetails(group: SerialGroupRecord, testId: string): ResultDe
     error: own?.error ?? (neverRan ? last?.attempt.error : undefined),
     // The group's recording covers every member, so a failed member points at it.
     videos: videoPaths(group.attempts),
+    // The group attempt's capture is this member's only when the member is what failed.
+    ...(own !== undefined && own.status !== 'passed' && own.status !== 'skipped' ? failureOf(last?.attempt) : { failure: undefined, screenPath: undefined }),
   };
 }
 
@@ -155,6 +170,8 @@ interface Failure {
   readonly error: SerializedError | undefined;
   /** Report-relative paths of the recordings the failed attempts kept, if any. */
   readonly videos: readonly string[];
+  readonly failure: FailureEvidence | undefined;
+  readonly screenPath: string | undefined;
 }
 
 const DEFAULT_OUTPUT: ListReporterOutput = {
@@ -534,7 +551,7 @@ export class ListReporter implements Reporter {
     const steps = this.pairs.get(key)?.steps ?? [];
     this.pairs.delete(key);
     const group = this.group(result.test.file, result.target.name);
-    const { durationMs, usage, cache, error, videos } = this.detailsOf(result);
+    const { durationMs, usage, cache, error, videos, failure, screenPath } = this.detailsOf(result);
     addUsage(this.runUsage, usage);
     addCacheTally(this.runCache, cache);
     const title = this.titledAs(result.test.titlePath.join(' > '), result.agent);
@@ -542,7 +559,7 @@ export class ListReporter implements Reporter {
       // The exploration's verdict is its findings; any other error is a failure of its own.
       this.explore.result(result.attempts.flatMap((attempt) => attempt.artifacts));
       if (error !== undefined && !this.explore.isVerdict(error)) {
-        this.failures.push({ group, title, status: result.status, error, videos });
+        this.failures.push({ group, title, status: result.status, error, videos, failure, screenPath });
       }
       this.window.redraw();
       return;
@@ -559,7 +576,7 @@ export class ListReporter implements Reporter {
     };
     group.lines.push(line);
     if (statusBucket(result.status) === 'failed') {
-      this.failures.push({ group, title, status: result.status, error, videos });
+      this.failures.push({ group, title, status: result.status, error, videos, failure, screenPath });
     }
     if (group.planned !== undefined && group.lines.length >= group.planned) this.printGroup(group);
     this.window.redraw();
@@ -771,7 +788,7 @@ export class ListReporter implements Reporter {
     this.print('');
     this.print(this.errorBanner(`Failed Tests ${this.failures.length}`));
     this.print('');
-    this.failures.forEach(({ group, title, status, error, videos }, index) => {
+    this.failures.forEach(({ group, title, status, error, videos, failure, screenPath }, index) => {
       this.print(
         `${pc.bold(pc.bgRed(' FAIL '))} ${this.badge(group.target)} ${bounded(group.file)}${this.separator}${title}`,
       );
@@ -783,6 +800,7 @@ export class ListReporter implements Reporter {
         for (const line of rest) this.print(pc.red(line));
         this.printFailureLocation(error.stack);
       }
+      this.printEvidence(failure, screenPath);
       this.printVideos(videos);
       const marker = `[${index + 1}/${this.failures.length}]`;
       const { before, after } = rule(marker, 'right');
@@ -798,6 +816,25 @@ export class ListReporter implements Reporter {
     const label = pc.bold(pc.bgRed(` ${message} `));
     const { before, after } = rule(label, 'center');
     return `${pc.red(before)}${label}${pc.red(after)}`;
+  }
+
+  /**
+   * What the runner saw when the failure landed: the location, the nodes
+   * closest to what a failed locator asked for, and where the screen text
+   * is. The message says what was asked; these lines say what was there.
+   */
+  private printEvidence(failure: FailureEvidence | undefined, screenPath: string | undefined): void {
+    if (failure === undefined) return;
+    const { pc } = this;
+    const row = (label: string, text: string): void => {
+      this.print(pc.cyan(` ${pc.dim(F_POINTER)} ${pc.dim(label)} ${text}`));
+    };
+    if (failure.url !== undefined) row('at', bounded(failure.url));
+    for (const candidate of failure.candidates ?? []) row('on screen', bounded(candidate));
+    if (screenPath !== undefined) {
+      const target = this.artifactsRoot === undefined ? screenPath : path.join(this.artifactsRoot, screenPath);
+      row('screen', this.displayPath(target));
+    }
   }
 
   /** Where to watch a failed attempt: one line per recording it kept. */

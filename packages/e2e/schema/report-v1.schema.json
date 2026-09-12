@@ -64,6 +64,12 @@
         },
         "scopeId": { "type": "string", "minLength": 1, "maxLength": 1024 },
         "source": { "$ref": "#/$defs/source" },
+        "details": {
+          "type": "object",
+          "maxProperties": 16,
+          "propertyNames": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "additionalProperties": { "type": "string", "maxLength": 2048 }
+        },
         "stack": { "type": "string", "maxLength": 65536 },
         "extensions": { "$ref": "#/$defs/extensions" }
       }
@@ -208,6 +214,27 @@
         }
       ]
     },
+    "failureEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "stepIndex": { "type": "integer", "minimum": 0 },
+        "url": { "type": "string", "maxLength": 2048 },
+        "screen": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "screenshot": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "candidates": { "type": "array", "maxItems": 8, "items": { "type": "string", "maxLength": 1024 } }
+      }
+    },
+    "turn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["index", "calls", "outcome"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 1 },
+        "calls": { "type": "array", "maxItems": 16, "items": { "type": "string", "maxLength": 512 } },
+        "outcome": { "type": "string", "maxLength": 2048 }
+      }
+    },
     "step": {
       "type": "object",
       "additionalProperties": false,
@@ -240,6 +267,7 @@
         "metrics": { "$ref": "#/$defs/stepMetrics" },
         "cache": { "$ref": "#/$defs/stepCache" },
         "events": { "type": "array", "items": { "$ref": "#/$defs/event" } },
+        "turns": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/turn" } },
         "model": { "$ref": "#/$defs/model" },
         "agent": { "type": "string", "minLength": 1 },
         "error": { "$ref": "#/$defs/error" },
@@ -279,6 +307,7 @@
         "steps": { "type": "array", "items": { "$ref": "#/$defs/step" } },
         "artifacts": { "type": "array", "items": { "$ref": "#/$defs/artifact" } },
         "error": { "$ref": "#/$defs/error" },
+        "failure": { "$ref": "#/$defs/failureEvidence" },
         "secondaryErrors": { "type": "array", "items": { "$ref": "#/$defs/error" } },
         "cleanup": { "enum": ["complete", "failed", "forced"] },
         "extensions": { "$ref": "#/$defs/extensions" }
@@ -343,6 +372,7 @@
         "members": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/serialMember" } },
         "artifacts": { "type": "array", "items": { "$ref": "#/$defs/artifact" } },
         "error": { "$ref": "#/$defs/error" },
+        "failure": { "$ref": "#/$defs/failureEvidence" },
         "secondaryErrors": { "type": "array", "items": { "$ref": "#/$defs/error" } },
         "cleanup": { "enum": ["complete", "failed", "forced"] },
         "extensions": { "$ref": "#/$defs/extensions" }

@@ -187,3 +187,23 @@ describe('E2EError', () => {
     expect(error.retryable).toBe(false);
   });
 });
+
+
+describe('error details', () => {
+  it('carries structured details onto the serialized error, bounded and sanitized, and drops empty ones', () => {
+    const error = new TestError('ASSERTION_FAILED', 'nope', {
+      details: { expected: 'a', observed: 'b\u0007 red', empty: '', long: 'x'.repeat(5000) },
+    });
+    const serialized = serializeError(error);
+    expect(serialized.details).toEqual({ expected: 'a', observed: 'b\uFFFD red', long: 'x'.repeat(2048) });
+    expect(serializeError(new TestError('ASSERTION_FAILED', 'nope', { details: { empty: '' } })).details).toBeUndefined();
+    expect(serializeError(new TestError('ASSERTION_FAILED', 'nope')).details).toBeUndefined();
+  });
+
+  it('keeps the details of an error classified from another module copy', () => {
+    const foreign = new TestError('LOCATOR_NOT_FOUND', 'gone', { details: { role: 'button' } });
+    Object.setPrototypeOf(foreign, Error.prototype);
+    expect(foreign instanceof E2EError).toBe(false);
+    expect(classifyError(foreign).details).toEqual({ role: 'button' });
+  });
+});

@@ -18,7 +18,7 @@
  */
 
 import type { ObservationPixels, SemanticNode, ViewportPoint } from '../engine/surface.ts';
-import type { VisionDegradation } from '../run/steps.ts';
+import type { VisionDegradation, StepTurn } from '../run/steps.ts';
 import type {
   AgentErrorCode,
   JsonValue,
@@ -342,6 +342,13 @@ export interface StepExecutorContext {
    * otherwise. Call once, at conclusion.
    */
   attachTranscript(text: string): void;
+  /**
+   * Keeps a bounded record of the step's model turns on the step record,
+   * whatever the run's debug setting: each turn's tool calls and what came
+   * back, clipped. The report shows the last turns under a failed step, so
+   * a reader sees what the model did and saw without the transcript.
+   */
+  attachTurns?(turns: readonly StepTurn[]): void;
   /**
    * Keeps pixels the executor or one of its tools observed as a `screenshot`
    * artifact of the step in progress, and resolves with the artifact's report

@@ -19,9 +19,25 @@ import path from 'node:path';
 import { collapseText } from '../internal/text.ts';
 import type { Report1Document, ReportError, ReportExplore, ReportExploreFinding, ReportResult, ReportStep } from './build.ts';
 import { ENDED_TEXT, orderFindings, SEVERITY_WORDS, stepCountParts } from './explore-text.ts';
-import { ellipsize, formatCost, formatTokens, statusBucket, tally, type Counters } from './format.ts';
-import { outcome, type AttemptView, type Outcome } from './outcome.ts';
-import { fileReporter, toPosixPath } from './write.ts';
+import { formatCost, formatTokens, statusBucket, tally, type Counters } from './format.ts';
+import {
+  attemptsLine,
+  detailLines,
+  evidenceOf,
+  failedStepOf,
+  failureSource,
+  lastTurnsLine,
+  MAX_DETAIL_CHARS,
+  renderFailurePage,
+  screenLine,
+  sourceText,
+  toldAttempt,
+} from './failure-page.ts';
+import { cell, code, formatDuration, link, MAX_ID_CHARS, MAX_LABEL_CHARS, MAX_PATH_CHARS, MAX_TITLE_CHARS, plural } from './markdown-text.ts';
+import { outcome, type Outcome } from './outcome.ts';
+import { toPosixPath, writeTextReport } from './write.ts';
+import type { Reporter, ReporterSummary } from '../types.ts';
+import { readFileSync, rmSync } from 'node:fs';
 
 type ReportRun = Report1Document['run'];
 type ReportArtifact = ReportResult['attempts'][number]['artifacts'][number];
@@ -39,6 +55,12 @@ export interface MarkdownReportOptions {
   readonly artifactsDir?: string | undefined;
   /** A link to a source line, when the commit is known. */
   readonly sourceUrl?: ((file: string, line: number) => string) | undefined;
+  /**
+   * Where each failed or flaky result's own page is, by result id, as the
+   * reader should see the path; the block links there. The `markdown`
+   * reporter writes the pages under `failures/` beside the report.
+   */
+  readonly failurePages?: ReadonlyMap<string, string> | undefined;
 }
 
 /**
@@ -53,64 +75,12 @@ const MAX_RUN_ERRORS = 20;
 const MAX_LISTED_TESTS = 400;
 const MAX_FOOTER_TARGETS = 8;
 const MAX_FINDINGS = 30;
-const MAX_EVIDENCE_PATHS = 3;
+const MAX_EVIDENCE_PATHS = 4;
 /** Steps shown in a failure's timeline before the passed run collapses to a count. */
 const MAX_TIMELINE_STEPS = 6;
-/** Text widths, in code points. */
-const MAX_CELL_CHARS = 240;
-const MAX_PATH_CHARS = 200;
-const MAX_TITLE_CHARS = 120;
-const MAX_ID_CHARS = 64;
-const MAX_LABEL_CHARS = 60;
-/** Prose fields (a finding's expected and actual, the agent's explanation) get more room than a cell. */
-const MAX_DETAIL_CHARS = 600;
 const MAX_ASSESSMENT_CHARS = 2_000;
 const MAX_GOAL_CHARS = 400;
 const TRUNCATED_NOTE = '_Truncated to fit a pull request comment; the full report is in `report.json`._';
-
-/**
- * Text safe inside a table cell or a list item: one line, clipped by code
- * point so an emoji at the cut survives whole, markdown that could open a
- * construct escaped, angle brackets as entities so no HTML gets through, and
- * the cell separator escaped. An underscore stays: inside a word GitHub
- * never reads it as emphasis, and error codes are full of them.
- */
-function cell(text: string, max = MAX_CELL_CHARS): string {
-  return ellipsize(collapseText(text), max)
-    .replace(/[\\`*[\]~|]/g, (char) => `\\${char}`)
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;');
-}
-
-/** A path or label inside backticks: only the backtick and the cell separator have to go. */
-function code(text: string, max = MAX_CELL_CHARS): string {
-  return `\`${ellipsize(collapseText(text), max).replaceAll('`', '').replaceAll('|', '\\|')}\``;
-}
-
-/**
- * A URL inside a markdown link destination. The caller chose it, but a
- * character that closes the destination or breaks it must not get through
- * to the rendered page, so those are percent-encoded.
- */
-function href(url: string): string {
-  return collapseText(url).replace(/[\s()<>]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')}`);
-}
-
-function link(text: string, url: string): string {
-  return `[${text}](${href(url)})`;
-}
-
-function formatDuration(ms: number): string {
-  if (ms < 1_000) return `${Math.round(ms)}ms`;
-  if (ms < 60_000) return `${(ms / 1_000).toFixed(1)}s`;
-  // Round to whole seconds first, so 119.5 s is 2m 0s and never 1m 60s.
-  const total = Math.round(ms / 1_000);
-  return `${Math.floor(total / 60)}m ${total % 60}s`;
-}
-
-function plural(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? '' : 's'}`;
-}
 
 /** A result with what it left behind, read once. */
 interface Entry {
@@ -189,15 +159,15 @@ function errorText(error: ReportError): string {
  * paths under `artifactsDir` when the reader has the files, and named by
  * kind otherwise. Paths are POSIX, as the report keeps them.
  */
-function evidence(artifacts: readonly ReportArtifact[], options: MarkdownReportOptions): string {
+function evidence(artifacts: readonly ReportArtifact[], options: MarkdownReportOptions, labelKinds = true): string {
   if (artifacts.length === 0) return '';
   const sorted = artifacts.toSorted((a, b) => KIND_RANK[a.kind] - KIND_RANK[b.kind]);
   const named = [...new Set(sorted.map((artifact) => artifact.kind))].join(', ');
   if (options.artifactsUrl !== undefined) return link(named, options.artifactsUrl);
   const dir = options.artifactsDir;
-  const files = dir === undefined ? [] : sorted.flatMap((artifact) => (artifact.path === undefined ? [] : [path.posix.join(dir, artifact.path)]));
+  const files = dir === undefined ? [] : sorted.flatMap((artifact) => (artifact.path === undefined ? [] : [{ kind: artifact.kind, file: path.posix.join(dir, artifact.path) }]));
   if (files.length === 0) return named;
-  const shown = files.slice(0, MAX_EVIDENCE_PATHS).map((file) => code(file));
+  const shown = files.slice(0, MAX_EVIDENCE_PATHS).map(({ kind, file }) => (labelKinds ? `${kind} ${code(file)}` : code(file)));
   if (files.length > shown.length) shown.push(`and ${files.length - shown.length} more`);
   return shown.join(', ');
 }
@@ -217,13 +187,16 @@ const STEP_VERB: Record<Exclude<ReportStep['status'], 'passed'>, string> = {
  * label, how long it ran, and for an agent step the model calls it spent and
  * the agent's own explanation of what it saw.
  */
-function failedStepLine(steps: readonly ReportStep[]): string | undefined {
-  const index = steps.findIndex((step) => step.status !== 'passed');
-  const step = steps[index];
-  if (step === undefined || step.status === 'passed') return undefined;
+function failedStepLine(steps: readonly ReportStep[], error: ReportError | undefined): string | undefined {
+  const at = failedStepOf(steps);
+  if (at === undefined) return undefined;
+  const { index } = at;
+  const step = at.step as ReportStep & { status: Exclude<ReportStep['status'], 'passed'> };
   const calls = modelCalls(step);
   const spent = calls === 0 ? '' : ` after ${plural(calls, 'model call')}`;
-  const explanation = step.explanation === undefined || step.explanation.trim() === '' ? '' : `: "${cell(step.explanation, MAX_DETAIL_CHARS)}"`;
+  // An act that failed puts its explanation in the error message; quoting it again says nothing new.
+  const said = step.explanation?.trim() ?? '';
+  const explanation = said === '' || error?.message.includes(said) === true ? '' : `: "${cell(said, MAX_DETAIL_CHARS)}"`;
   return `Step ${index + 1} of ${steps.length}, ${code(step.api, MAX_ID_CHARS)} "${cell(step.label, MAX_LABEL_CHARS)}", ${STEP_VERB[step.status]}${spent} in ${formatDuration(step.durationMs)}${explanation}`;
 }
 
@@ -257,30 +230,50 @@ function testName(result: ReportResult, manyTargets: boolean): string {
   return `${title}${manyTargets ? ` (${cell(result.targetId, MAX_ID_CHARS)})` : ''}`;
 }
 
-/** The location, linked to the commit when known, else in backticks. */
-function location(result: ReportResult, options: MarkdownReportOptions): string {
-  const text = `${result.source.file}:${result.source.line}`;
-  return options.sourceUrl === undefined ? code(text) : link(cell(text), options.sourceUrl(result.source.file, result.source.line));
+/**
+ * The error in one line. When the details carry the facts (an assertion's
+ * expected and observed), the message's first line is enough: the rest of
+ * it repeats them.
+ */
+function errorLine(error: ReportError): string {
+  const structured = detailLines(error).length > 0;
+  const message = structured ? (error.message.split('\n')[0] ?? '') : error.message;
+  const phase = error.phase === undefined || error.phase === 'body' ? '' : ` (${collapseText(error.phase)})`;
+  return `**${cell(error.code, 128)}**${phase} ${cell(message)}`.trim();
 }
 
 /**
- * One block per test that failed or was flaky: what went wrong, at which
- * step, what the agent said, the evidence, and the source line. A flaky
- * test's story is its last failed attempt, not the retry that passed. Lines
- * end in two spaces so GitHub keeps the breaks inside one paragraph.
+ * One block per test that failed or was flaky: what went wrong, the facts
+ * behind it, at which step, whether every attempt failed alike, what the
+ * agent did last, what the screen held, the evidence, and the line to look
+ * at. A flaky test's story is its last failed attempt, not the retry that
+ * passed. Lines end in two spaces so GitHub keeps the breaks inside one
+ * paragraph.
  */
 function failureBlock({ result, final }: Entry, manyTargets: boolean, options: MarkdownReportOptions): string {
   const kind = statusBucket(result.status);
-  const told: AttemptView = kind === 'flaky' ? (final.lastFailed ?? final.final) : final.final;
+  const told = toldAttempt(result, final);
   const lines = [`**${ICON[kind]} ${cell(result.file, MAX_PATH_CHARS)} › ${testName(result, manyTargets)}**`];
   if (kind === 'flaky') lines.push(`Passed after ${plural(final.failedAttempts, 'failed attempt')}.`);
-  if (told.error !== undefined) lines.push(errorText(told.error));
-  const step = failedStepLine(told.steps);
+  if (told.error !== undefined) lines.push(errorLine(told.error), ...detailLines(told.error));
+  const step = failedStepLine(told.steps, told.error);
   if (step !== undefined) lines.push(step);
   const timeline = timelineLine(told.steps);
   if (timeline !== undefined) lines.push(timeline);
-  const where = evidence(final.artifacts, options);
-  lines.push(`${where === '' ? '' : `Evidence: ${where} · `}${location(result, options)}`);
+  const attempts = attemptsLine(result, final);
+  if (attempts !== undefined) lines.push(attempts);
+  const turns = lastTurnsLine(failedStepOf(told.steps)?.step);
+  if (turns !== undefined) lines.push(turns);
+  const screen = screenLine(told);
+  if (screen !== undefined) lines.push(screen);
+  const where = evidence(evidenceOf(told), options);
+  const page = options.failurePages?.get(result.id);
+  const tail = [
+    ...(where === '' ? [] : [`Evidence: ${where}`]),
+    ...(page === undefined ? [] : [`Details: ${code(page, MAX_PATH_CHARS)}`]),
+    sourceText(failureSource(result, told), options.sourceUrl),
+  ];
+  lines.push(tail.join(' · '));
   return lines.join('  \n');
 }
 
@@ -389,7 +382,7 @@ function findingBlock(finding: ReportExploreFinding, position: number, artifacts
     lines.push(`   Steps: ${finding.reproduction.map((action, index) => `${index + 1}. ${cell(action, MAX_PATH_CHARS)}`).join(' ')}`);
   }
   const screenshot = finding.artifactId === undefined ? undefined : artifacts.get(finding.artifactId);
-  if (screenshot !== undefined) lines.push(`   Evidence: ${evidence([screenshot], options)}`);
+  if (screenshot !== undefined) lines.push(`   Evidence: ${evidence([screenshot], options, false)}`);
   return lines.join('  \n');
 }
 
@@ -467,12 +460,69 @@ export function renderMarkdownReport(report: Report1Document, options: MarkdownR
   return fit(head, [...joinSections(sections), ''], footer(run, options));
 }
 
+/** Where a result's page goes under `failures/`: the file and title, readable, made unique by the result id. */
+function failurePageName(result: ReportResult): string {
+  const slug = `${result.file}-${result.titlePath.join('-')}`
+    .replaceAll(/[^A-Za-z0-9._-]+/g, '-')
+    .replaceAll(/^-+|-+$/g, '')
+    .slice(0, 80);
+  return `${slug}-${result.id.slice(0, 8)}.md`;
+}
+
+/**
+ * The results that get a page: every one that failed, timed out, was
+ * interrupted, or was flaky, except an exploration's own verdict, which its
+ * findings already tell.
+ */
+function pagedResults(report: Report1Document): ReportResult[] {
+  const explore = report.run.explore;
+  const serialGroups = new Map(report.run.serialGroups.map((group) => [group.id, group]));
+  return report.run.results.filter((result) => {
+    const bucket = statusBucket(result.status);
+    if (bucket !== 'failed' && bucket !== 'flaky') return false;
+    return explore === undefined || !isVerdict({ result, final: outcome(result, serialGroups) }, explore);
+  });
+}
+
 /**
  * The built-in `markdown` reporter: the report as one markdown page in
  * `summary.md` beside `report.json`, with evidence listed as paths from the
  * project root, for a reader with the checkout in front of it: a pull
- * request description, a coding agent's handoff, a wiki page.
+ * request description, a coding agent's handoff, a wiki page. Every test
+ * that did not pass gets a page of its own under `failures/`, with the
+ * screen at failure inline; the run page links each block to its page. The
+ * directory is the reporter's: what an earlier run left there is removed
+ * first, so a stale page never describes a failure this run did not have.
  */
-export const markdownReporter = fileReporter('markdown', 'Markdown', 'summary.md', (run) =>
-  renderMarkdownReport(run.report, { artifactsDir: toPosixPath(path.relative(run.projectRoot, run.artifactsRoot)) || '.' }),
-);
+export const markdownReporter: Reporter = {
+  name: 'markdown',
+  async onRunFinished(run) {
+    if (run.reportPath === undefined) return;
+    const reportDir = path.dirname(run.reportPath);
+    const artifactsDir = toPosixPath(path.relative(run.projectRoot, run.artifactsRoot)) || '.';
+    const failuresDir = path.join(reportDir, 'failures');
+    rmSync(failuresDir, { recursive: true, force: true });
+    const serialGroups = new Map(run.report.run.serialGroups.map((group) => [group.id, group]));
+    const readArtifact = (reportPath: string): string | undefined => {
+      try {
+        return readFileSync(path.join(run.artifactsRoot, reportPath), 'utf8');
+      } catch {
+        return undefined;
+      }
+    };
+    const pages = new Map<string, string>();
+    for (const result of pagedResults(run.report)) {
+      const file = path.join(failuresDir, failurePageName(result));
+      const page = renderFailurePage(run.report, result, outcome(result, serialGroups), { artifactsDir, readArtifact });
+      await writeTextReport(file, page);
+      pages.set(result.id, toPosixPath(path.relative(run.projectRoot, file)));
+    }
+    const summary = path.join(reportDir, 'summary.md');
+    await writeTextReport(summary, renderMarkdownReport(run.report, { artifactsDir, failurePages: pages }));
+    const rows: ReporterSummary = [
+      { label: 'Markdown', text: path.relative(run.projectRoot, summary) || summary },
+      ...(pages.size === 0 ? [] : [{ label: 'Failures', text: `${path.relative(run.projectRoot, failuresDir) || failuresDir}/ (${plural(pages.size, 'page')})` }]),
+    ];
+    return rows;
+  },
+};

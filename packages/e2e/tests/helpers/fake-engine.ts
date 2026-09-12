@@ -23,6 +23,8 @@ const builtEngineModule = '../../dist/engine/index.js';
 
 /** The EBML magic every WebM file starts with, followed by nothing worth decoding. */
 const FAKE_WEBM = Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x00, 0x00, 0x00, 0x00]);
+/** The PNG signature, followed by nothing worth decoding. */
+const FAKE_PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const { defineEngine, EngineError, ENGINE_SPI_VERSION, LOCATOR_ACTION_KINDS } = (await import(
   builtEngineModule
 )) as typeof import('../../src/engine/index.ts');
@@ -270,6 +272,12 @@ export function createFakeEngine(behavior: FakeEngineBehavior = {}): FakeEngineH
           artifacts: {
             async screenshot(label, operation) {
               record(`artifacts.screenshot(${label ?? ''})`, operation);
+              // A file the runner can measure, so the artifact record is complete.
+              const dir = attempts[current]?.artifactsDir;
+              if (dir !== undefined) {
+                mkdirSync(path.join(dir, 'screenshots'), { recursive: true });
+                writeFileSync(path.join(dir, 'screenshots', 'fake.png'), FAKE_PNG);
+              }
               return 'screenshots/fake.png';
             },
             ...(behavior.video === true

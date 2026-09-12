@@ -38,3 +38,13 @@ describe('StepRecorder.replaying', () => {
     expect(heard.map((progress) => progress.phase)).toEqual(['start', 'end']);
   });
 });
+
+
+describe('StepRecorder step source', () => {
+  it('keeps the stack of the call that minted the step, so the report can name its line', async () => {
+    const { steps } = recorder();
+    await steps.run('locator', 'locator.tap', 'tap', async () => undefined);
+    const [record] = steps.all();
+    expect(record?.stack).toContain('step-progress.test.ts');
+  });
+});

@@ -16,6 +16,7 @@
  * executor's verdict onto the runner's error taxonomy.
  */
 
+import type { StepTurn } from '../run/steps.ts';
 import { writeFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -162,6 +163,7 @@ class ActDispatch {
   private readonly stepIndex: number;
   private explanation: string | undefined;
   private transcript: string | undefined;
+  private turns: StepTurn[] | undefined;
   private sdkModel: ModelInstance | undefined;
   private sdkModelResolved = false;
 
@@ -267,6 +269,9 @@ class ActDispatch {
         if (this.runtime.debug?.enabled === true && typeof text === 'string' && text !== '') {
           this.transcript = text;
         }
+      },
+      attachTurns: (turns) => {
+        this.turns = [...turns];
       },
       attachScreenshot: (pixels, label) => this.attachScreenshot(pixels, label),
       actions: this.dispatcher.actions,
@@ -380,6 +385,7 @@ class ActDispatch {
       ...(cacheInfo === undefined ? {} : { cache: cacheInfo }),
       ...(this.explanation !== undefined ? { explanation: this.explanation } : {}),
       ...(latest !== undefined ? { observationRevision: latest.revision } : {}),
+      ...(this.turns !== undefined && this.turns.length > 0 ? { turns: this.turns } : {}),
       ...this.feed.visionReport(),
     });
     this.writeTranscript();

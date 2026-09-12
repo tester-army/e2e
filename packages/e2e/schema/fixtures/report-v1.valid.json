@@ -120,7 +120,16 @@
                   "contextBytes": 0,
                   "ledgerBytes": 0
                 },
-                "artifacts": []
+                "artifacts": [],
+                "turns": [
+                  {
+                    "index": 1,
+                    "calls": [
+                      "tap({\"target\":\"n19\"})"
+                    ],
+                    "outcome": "Tapped #n19.\nScreen changes: 4 added."
+                  }
+                ]
               }
             ],
             "artifacts": [
@@ -139,7 +148,33 @@
               }
             ],
             "secondaryErrors": [],
-            "cleanup": "complete"
+            "cleanup": "complete",
+            "failure": {
+              "stepIndex": 0,
+              "url": "http://127.0.0.1:3000/todos",
+              "screen": "018f0f5c-7b2a-7abc-8abc-1123456789ab:artifact:0",
+              "candidates": [
+                "#n19 button \"Add\""
+              ]
+            },
+            "error": {
+              "category": "test",
+              "code": "ASSERTION_FAILED",
+              "message": "expect.toHaveText failed",
+              "retryable": false,
+              "phase": "body",
+              "details": {
+                "locator": "getByRole(\"status\")",
+                "expected": "text \"2 remaining\"",
+                "observed": "text \"1 remaining\"",
+                "matches": "1"
+              },
+              "source": {
+                "file": "tests/example.e2e.ts",
+                "line": 9,
+                "column": 3
+              }
+            }
           }
         ]
       }

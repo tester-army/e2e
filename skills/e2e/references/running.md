@@ -85,10 +85,14 @@ recorded flow is stale — `--no-cache` only skips the cache for one run.
 - `junit`: `.e2e/junit.xml` beside the report, for CI test summaries.
   Combine it with the terminal output: `--reporter list,junit`.
 - `markdown`: `.e2e/summary.md` beside the report: the counts and what the
-  run spent, a block per failed or flaky test with its error, the step it went
-  wrong at, the agent's explanation, and evidence paths, a row per file, every
-  test folded; or an exploration's findings and assessment. Paste it into a
-  pull request or a handoff rather than retelling the result:
+  run spent, a block per failed or flaky test with its error and its facts
+  (expected and observed, what a locator asked for), the step it went wrong
+  at, whether every attempt failed alike, the last model turns, the screen's
+  location and closest nodes, evidence paths, a row per file, every test
+  folded; or an exploration's findings and assessment. Plus one page per
+  failed or flaky test under `.e2e/failures/`, with every step, every kept
+  turn, and the screen at failure inline. Read the page first; paste the
+  summary into a pull request or a handoff rather than retelling the result:
   `--reporter list,markdown`.
 - `json`: the report document on stdout.
 - `github()` from `@e2edev/github`: on GitHub Actions, one pull request comment per

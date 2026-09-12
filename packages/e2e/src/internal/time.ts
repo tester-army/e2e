@@ -4,9 +4,12 @@ import { E2EError } from './errors.ts';
 
 export class Deadline {
   readonly endsAt: number;
+  /** The budget the deadline was created with, for saying how long something waited. */
+  readonly totalMs: number;
 
   constructor(timeoutMs: number, now: number = Date.now()) {
     this.endsAt = now + timeoutMs;
+    this.totalMs = timeoutMs;
   }
 
   /** Remaining budget in ms, never negative. */

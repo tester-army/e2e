@@ -77,6 +77,13 @@ export type ErrorPhase =
   | 'cleanup'
   | 'report';
 
+/**
+ * Structured facts of one failure, beside its prose message: what an
+ * assertion expected and observed, the locator that matched nothing. Each
+ * value is bounded text; a reporter renders the ones it knows by name.
+ */
+export type ErrorDetails = Readonly<Record<string, string>>;
+
 export interface SerializedError {
   category: ErrorCategory;
   code: string;
@@ -84,6 +91,7 @@ export interface SerializedError {
   retryable: boolean;
   phase?: ErrorPhase;
   scopeId?: string;
+  details?: ErrorDetails;
   stack?: string;
 }
 
@@ -120,23 +128,28 @@ function isEngineErrorCode(value: unknown): value is EngineErrorCode {
 }
 
 /** Base class for every runner-classified error. */
+/** Options every runner error accepts. */
+export interface E2EErrorOptions {
+  retryable?: boolean;
+  cause?: unknown;
+  /** Structured facts of the failure; see `ErrorDetails`. */
+  details?: ErrorDetails;
+}
+
 export class E2EError extends Error {
   readonly category: ErrorCategory;
   readonly code: string;
   readonly retryable: boolean;
+  readonly details: ErrorDetails | undefined;
   readonly [E2E_ERROR_MARKER] = true;
 
-  constructor(
-    category: ErrorCategory,
-    code: string,
-    message: string,
-    options: { retryable?: boolean; cause?: unknown } = {},
-  ) {
+  constructor(category: ErrorCategory, code: string, message: string, options: E2EErrorOptions = {}) {
     super(message, options.cause === undefined ? undefined : { cause: options.cause });
     this.name = 'E2EError';
     this.category = category;
     this.code = code;
     this.retryable = options.retryable ?? false;
+    this.details = options.details;
   }
 }
 
@@ -163,28 +176,28 @@ export function isForeignE2EError(value: unknown): value is Error & {
 }
 
 export class ConfigurationError extends E2EError {
-  constructor(code: string, message: string, options: { cause?: unknown } = {}) {
+  constructor(code: string, message: string, options: Omit<E2EErrorOptions, 'retryable'> = {}) {
     super('configuration', code, message, options);
     this.name = 'ConfigurationError';
   }
 }
 
 export class CollectionError extends ConfigurationError {
-  constructor(message: string, options: { cause?: unknown } = {}) {
+  constructor(message: string, options: Omit<E2EErrorOptions, 'retryable'> = {}) {
     super('COLLECTION_ERROR', message, options);
     this.name = 'CollectionError';
   }
 }
 
 export class InfrastructureError extends E2EError {
-  constructor(code: string, message: string, options: { cause?: unknown } = {}) {
+  constructor(code: string, message: string, options: Omit<E2EErrorOptions, 'retryable'> = {}) {
     super('infrastructure', code, message, options);
     this.name = 'InfrastructureError';
   }
 }
 
 export class TestError extends E2EError {
-  constructor(code: string, message: string, options: { retryable?: boolean; cause?: unknown } = {}) {
+  constructor(code: string, message: string, options: E2EErrorOptions = {}) {
     super('test', code, message, options);
     this.name = 'TestError';
   }
@@ -276,9 +289,11 @@ export function translateProvisioningError(cause: unknown, suffix = ''): E2EErro
 export function classifyError(value: unknown): E2EError {
   if (value instanceof E2EError) return value;
   if (isForeignE2EError(value)) {
+    const details = (value as { details?: unknown }).details;
     return new E2EError(value.category, value.code, value.message, {
       retryable: value.retryable,
       cause: value,
+      ...(isDetails(details) ? { details } : {}),
     });
   }
   if (asEngineError(value) !== undefined) {
@@ -305,9 +320,34 @@ export function serializeError(
   };
   if (extras.phase !== undefined) serialized.phase = extras.phase;
   if (extras.scopeId !== undefined) serialized.scopeId = extras.scopeId;
+  if (error.details !== undefined) {
+    const details = boundedDetails(error.details);
+    if (details !== undefined) serialized.details = details;
+  }
   const stack = (error.cause instanceof Error ? error.cause.stack : undefined) ?? error.stack;
   if (stack !== undefined) serialized.stack = truncateUtf8(sanitizeText(stack), 65536);
   return serialized;
+}
+
+/** Detail entries past this count, and bytes past this size per value, are dropped. */
+const MAX_DETAIL_ENTRIES = 16;
+const MAX_DETAIL_BYTES = 2048;
+
+function isDetails(value: unknown): value is ErrorDetails {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    Object.values(value).every((entry) => typeof entry === 'string')
+  );
+}
+
+/** Details as the report carries them: a bounded number of sanitized, bounded values. */
+function boundedDetails(details: ErrorDetails): ErrorDetails | undefined {
+  const entries = Object.entries(details)
+    .filter(([key, value]) => key !== '' && value !== '')
+    .slice(0, MAX_DETAIL_ENTRIES)
+    .map(([key, value]) => [key, truncateUtf8(sanitizeText(value), MAX_DETAIL_BYTES)] as const);
+  return entries.length === 0 ? undefined : Object.fromEntries(entries);
 }
 
 /** C0/C1 control characters except tab and newline. */
