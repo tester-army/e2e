@@ -49,6 +49,13 @@ export interface CreateAgentOptions {
    * defaults to the config-resolved `agent.model`.
    */
   readonly model?: SdkLanguageModel;
+  /**
+   * The model that judges `assert`, `waitFor`, and `extract` for this agent;
+   * defaults to `model`. Naming a second model here keeps the grader apart
+   * from the actor: the judge never sees the act loop's transcript, and with
+   * its own model it does not share the actor's blind spots either.
+   */
+  readonly judge?: SdkLanguageModel;
   /** Extra system guidance appended to the base execution rules. */
   readonly system?: string;
   /** Project tools from `defineTool`, merged with the default toolset. */
@@ -135,7 +142,12 @@ export function createAgent(options: CreateAgentOptions = {}): DefaultAgent {
       ];
     },
   });
-  const agent: DefaultAgent = { ...executor, options: { ...options, tools: userTools }, tools: userTools };
+  const agent: DefaultAgent = {
+    ...executor,
+    ...(options.judge === undefined ? {} : { judge: options.judge }),
+    options: { ...options, tools: userTools },
+    tools: userTools,
+  };
   Object.defineProperty(agent, DEFAULT_AGENT_MARKER, { value: true });
   return agent;
 }

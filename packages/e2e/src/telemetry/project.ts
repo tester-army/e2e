@@ -15,22 +15,8 @@
  * working directory is not a project.
  */
 
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { COMMIT_HASH, git } from '../internal/git.ts';
 import { sha256Hex } from '../internal/ids.ts';
-
-const execFileAsync = promisify(execFile);
-const COMMIT_HASH = /^[a-f0-9]{40,64}$/u;
-
-/** One git command's stdout; undefined when git is missing, slow, or refuses. */
-async function git(cwd: string, args: readonly string[]): Promise<string | undefined> {
-  try {
-    const { stdout } = await execFileAsync('git', args, { cwd, timeout: 1_000, windowsHide: true, encoding: 'utf8' });
-    return stdout;
-  } catch {
-    return undefined;
-  }
-}
 
 /** The lexically first root commit reachable from HEAD; undefined outside git and in a shallow clone. */
 async function rootCommit(cwd: string): Promise<string | undefined> {
@@ -39,7 +25,7 @@ async function rootCommit(cwd: string): Promise<string | undefined> {
     git(cwd, ['rev-list', '--max-parents=0', 'HEAD']),
   ]);
   // Only an explicit `false` counts: a git too old for the flag echoes it back instead.
-  if (shallow?.trim() !== 'false' || roots === undefined) return undefined;
+  if (shallow !== 'false' || roots === undefined) return undefined;
   return roots
     .split('\n')
     .map((line) => line.trim())

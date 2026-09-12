@@ -146,7 +146,9 @@ a malformed instruction, oversized `params`, or an unknown option; and
 assert(assertion: string, options?: AssertOptions): Promise<void>;
 ```
 
-One fresh observation, exactly one judgment. It does not poll.
+One fresh observation, exactly one judgment. It does not poll. The judge is
+shown the assertion and that observation only, never the prior steps or the
+act loop's summaries, and answers `holds`, `fails`, or `inconclusive`.
 
 | Name | Type | Default |
 | --- | --- | --- |
@@ -156,8 +158,11 @@ One fresh observation, exactly one judgment. It does not poll.
 | `options.vision` | `VisionMode` | the agent's `vision`, `false` |
 | `options.agent` | `string` | the test's agent |
 
-Throws `ASSERTION_FAILED` on a false judgment, carrying the explanation and,
-when permitted, a screenshot path. Evidence is skipped with
+Throws `ASSERTION_FAILED` on a false judgment and `ASSERTION_INCONCLUSIVE`
+when the screen did not show enough to decide either way, each carrying the
+explanation and, when permitted, a screenshot path. Neither is a pass: a judge
+that guesses when the evidence is thin is how a broken flow stays green.
+Evidence is skipped with
 `screenshot: false` and once any secret has been filled in the attempt.
 `screenshot` controls failure evidence attached after the judgment; `vision`
 controls what the model is shown before it.
@@ -173,7 +178,8 @@ waitFor(condition: string, options?: WaitForOptions): Promise<void>;
 ```
 
 One observation per interval, and a judgment when the screen changed.
-Succeeds on the first true judgment.
+Succeeds on the first judgment that holds; a false or inconclusive round
+keeps waiting.
 
 | Name | Type | Default | Valid |
 | --- | --- | --- | --- |

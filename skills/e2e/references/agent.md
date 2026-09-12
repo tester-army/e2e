@@ -109,8 +109,13 @@ expect(data.titles).toContain('Buy milk');
 ```
 
 - `assert` does not poll. A false judgment is `ASSERTION_FAILED` with the
-  model's explanation and a screenshot in the report. Malformed output gets
-  one repair round, then `MODEL_OUTPUT_INVALID`.
+  model's explanation and a screenshot in the report. A judgment the screen
+  did not show enough to decide is `ASSERTION_INCONCLUSIVE`, also a failure:
+  open or wait for the right screen first, and ask about what is visible.
+  Malformed output gets one repair round, then `MODEL_OUTPUT_INVALID`.
+- Judgments see the assertion and the current screen only, never the steps
+  before or the act loop's summaries. `judge` in the agent config names a
+  separate model for them; unset, they use `model`.
 - `waitFor` observes every `interval` (default 3 s) and spends a judgment
   only when the screen changed; `STEP_TIMEOUT` after `timeout` (default
   30 s).

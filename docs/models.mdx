@@ -172,6 +172,24 @@ and `screenshot` options. An executor may implement both methods without a
 model. `agent.waitFor` and `agent.extract` still use the built-in judgment
 tier and its model routing; see [Custom executors](/executors#replace-the-executor).
 
+### A judge of its own
+
+`judge` names the model that answers `agent.assert`, `agent.waitFor`, and
+`agent.extract`. Unset, judgments use `model`.
+
+```ts title="Agent options fragment"
+model: gateway('openai/gpt-5.6-luna'),
+judge: gateway('anthropic/claude-sonnet-5'),
+```
+
+The judge is never shown the act loop's transcript, the steps before it, or
+the acting agent's account of what it did: only the assertion and the screen.
+Giving it a model of its own goes one step further, so a blind spot the actor
+has is not the blind spot that grades it. Every judgment step in the report
+names the model that produced it under `step.model`, so a reader can see the
+actor and the judge apart. `createAgent({ judge })` sets the same slot; a
+config `judge` that names a different model is `INVALID_CONFIG`.
+
 To switch models per run without editing the config, read a variable of your
 own:
 

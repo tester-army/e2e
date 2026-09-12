@@ -569,6 +569,16 @@
             "runtime": { "type": "string", "minLength": 1 }
           }
         },
+        "vcs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["commit"],
+          "properties": {
+            "commit": { "type": "string", "pattern": "^[a-f0-9]{40,64}$" },
+            "branch": { "type": "string", "minLength": 1, "maxLength": 512 },
+            "dirty": { "type": "boolean" }
+          }
+        },
         "targets": { "type": "array", "items": { "$ref": "#/$defs/target" } },
         "serialGroups": { "type": "array", "items": { "$ref": "#/$defs/serialGroup" } },
         "results": { "type": "array", "items": { "$ref": "#/$defs/result" } },

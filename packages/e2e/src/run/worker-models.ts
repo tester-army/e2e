@@ -29,7 +29,9 @@ export class WorkerModels {
       this.checked.add(agent);
       if (agent.executor === undefined || agent.model !== undefined) {
         try {
+          // Same instance, same adapter: a judge that is the model costs nothing.
           this.build(agent.model);
+          this.build(agent.judge);
         } catch (cause) {
           this.failure = classifyError(cause);
           this.onFailure(this.failure);

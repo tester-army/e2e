@@ -10,6 +10,7 @@ import type { ErrorCategory, ErrorPhase, SerializedError } from '../internal/err
 import { resultId, timestamp } from '../internal/ids.ts';
 import { obj } from '../internal/objects.ts';
 import { packageVersion } from '../internal/package-version.ts';
+import type { VcsInfo } from '../internal/vcs.ts';
 import type { SkipInfo } from '../collect/select.ts';
 import type {
   ArtifactRecord,
@@ -79,6 +80,8 @@ export interface BuildReportOptions {
   targetProvenance: ReadonlyMap<string, TargetProvenance>;
   /** The exploration record of an `e2e explore` run; absent for a test run. */
   explore?: ReportExplore | undefined;
+  /** The commit the code under test came from; absent outside git and CI. */
+  vcs?: VcsInfo | undefined;
 }
 
 /** One finding `e2e explore` recorded through its `report_finding` tool. */
@@ -304,6 +307,11 @@ export interface Report1Document {
       arch: string;
       runtime: string;
     };
+    /**
+     * The commit, branch, and cleanliness of the checkout the run tested.
+     * What joins a verdict to the pull request that produced the code.
+     */
+    vcs?: VcsInfo;
     targets: readonly ReportTarget[];
     serialGroups: readonly ReportSerialGroup[];
     results: readonly ReportResult[];
@@ -655,6 +663,7 @@ export function buildReport(options: BuildReportOptions): Report1Document {
         arch: os.arch(),
         runtime: `node ${process.version}`,
       },
+      ...(options.vcs === undefined ? {} : { vcs: options.vcs }),
       targets,
       serialGroups,
       results,

@@ -294,6 +294,7 @@ screen?: {
 agents?: Record<string, StepExecutor | {
   executor?: StepExecutor;
   model?: ModelInstance;
+  judge?: ModelInstance;
   maxSteps?: number;
   maxModelCalls?: number;
   maxObservationBytes?: number;
@@ -336,6 +337,7 @@ Each agent takes three shapes: an options object, an options object with an
 | --- | --- | --- | --- | --- |
 | `executor` | `StepExecutor` | the built-in agent | `createAgent(...)` or any `{ name, runStep(context) }` | The brain `agent.act()` dispatches to. Never crosses a process boundary; workers rebuild it from the config module. See [Custom executors](/executors) |
 | `model` | `ModelInstance` | unset | an AI SDK model instance | Unset means acquiring `agent` fails with `MODEL_UNAVAILABLE`; a string is `INVALID_CONFIG` naming the constructor to write. Naming a model that differs from `createAgent({ model })` is `INVALID_CONFIG` |
+| `judge` | `ModelInstance` | `model` | an AI SDK model instance | The model that judges `assert`, `waitFor`, and `extract`. Unset means judgments use `model`. Naming a model that differs from `createAgent({ judge })` is `INVALID_CONFIG`. See [A judge of its own](/models#a-judge-of-its-own) |
 | `maxSteps` | `number` | `25` | integer 1-100 | Committed actions per agent call |
 | `maxModelCalls` | `number` | `25` | integer 1-100 | Model requests per agent call |
 | `maxObservationBytes` | `number` | `262144` | integer 1024-16777216 | Observation payload ceiling for `act` turns and judgment calls alike |
@@ -344,7 +346,8 @@ Each agent takes three shapes: an options object, an options object with an
 | `providerOptions` | `Record<string, Record<string, unknown>>` | unset | object keyed by provider name | AI SDK provider options sent with every model call, e.g. `{ openai: { reasoningEffort: 'low' } }`. `createAgent({ providerOptions })` overrides it for `act` |
 
 Judgments (`assert`, `waitFor`, `extract`) allow 8192 output tokens per call
-and set no temperature.
+and set no temperature. A judgment is shown the instruction and the current
+screen only, never the steps before it or the acting agent's summaries.
 
 ### model
 

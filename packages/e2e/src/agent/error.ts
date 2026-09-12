@@ -49,6 +49,7 @@ export const AGENT_CODE_TABLE: Readonly<
   ACTION_FAILED: { category: 'test' },
   STEP_NO_CONCLUSION: { category: 'test' },
   ASSERTION_FAILED: { category: 'test' },
+  ASSERTION_INCONCLUSIVE: { category: 'test' },
 };
 
 /** Exit/result class per code; derived from the one table. */

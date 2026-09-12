@@ -45,6 +45,11 @@ test('a false judgment fails the assertion', async ({ app, agent }) => {
   await agent.assert('the checkout page is visible');
 });
 
+test('an inconclusive judgment fails the assertion too', async ({ app, agent }) => {
+  await app.open();
+  await agent.assert('the order total equals the sum of the line items');
+});
+
 test('waits without re-judging a page that has not changed', async ({
   app,
   agent,
@@ -77,6 +82,7 @@ test('a malformed judgment gets one repair round', async ({ app, agent }) => {
 `;
 
 const FALSE_ASSERTION = 'the checkout page is visible';
+const INCONCLUSIVE_ASSERTION = 'the order total equals the sum of the line items';
 const LATE_BUTTON_CONDITION = 'the Late arrival button exists';
 const NEVER_CONDITION = 'a checkout button is on the About page';
 const REPAIRED_ASSERTION = 'the Home heading is visible after a malformed first answer';
@@ -85,9 +91,12 @@ const PROVIDER_OPTIONS = { fake: { reasoningEffort: 'low' } };
 /** Scripted responder: judge and extract from the observation. */
 function respond(call: FakeCall): unknown {
   switch (call.schemaName) {
-    case 'agent-judgment-1': {
+    case 'agent-judgment-2': {
       if (call.instruction === FALSE_ASSERTION) {
         return judgment(false, 'the observation shows the Home page, not checkout');
+      }
+      if (call.instruction === INCONCLUSIVE_ASSERTION) {
+        return judgment('inconclusive', 'no order total or line items are on this screen');
       }
       if (call.instruction === NEVER_CONDITION) return judgment(false, 'no checkout button here');
       if (call.instruction === LATE_BUTTON_CONDITION) {
@@ -99,7 +108,7 @@ function respond(call: FakeCall): unknown {
         const first = !fakeCalls.some(
           (earlier) => earlier !== call && earlier.instruction === REPAIRED_ASSERTION,
         );
-        if (first) return { protocolVersion: 'agent-judgment-1', explanation: 'thinking' };
+        if (first) return { protocolVersion: 'agent-judgment-2', explanation: 'thinking' };
         return judgment(true, 'the Home heading is visible');
       }
       return judgment(true, 'the observation supports the assertion');
@@ -124,7 +133,10 @@ describe('agent judgment tier', () => {
 
   beforeAll(async () => {
     app = await startFixtureApp();
-    const model = installFakeModel(respond);
+    // The judge is a model of its own: every call in this suite is a judgment,
+    // so every recorded call must have reached it and none the act model.
+    const model = installFakeModel(respond, { modelId: 'actor' });
+    const judge = installFakeModel(respond, { modelId: 'judge' });
     const result = await runProject(
       { 'tests/agent.e2e.ts': AGENT_SUITE },
       {
@@ -134,6 +146,7 @@ describe('agent judgment tier', () => {
           agents: {
             default: {
               model,
+              judge,
               context: 'This is the e2e fixture application.',
               providerOptions: PROVIDER_OPTIONS,
             },
@@ -180,11 +193,11 @@ describe('agent judgment tier', () => {
     expect(step.metrics!.modelCalls).toBe(2);
     const repairCalls = fakeCalls.filter((call) => call.instruction === REPAIRED_ASSERTION);
     expect(repairCalls).toHaveLength(2);
-    expect(repairCalls[1]!.prompt).toContain('result must be a boolean');
+    expect(repairCalls[1]!.prompt).toContain('verdict must be "holds", "fails", or "inconclusive"');
   });
 
   it('leaves room for reasoning and sends provider options without pinning temperature', () => {
-    const judged = fakeCalls.find((call) => call.schemaName === 'agent-judgment-1')!;
+    const judged = fakeCalls.find((call) => call.schemaName === 'agent-judgment-2')!;
     expect(judged.settings.maxOutputTokens).toBe(8192);
     expect(judged.settings.temperature).toBeUndefined();
     expect(judged.settings.providerOptions).toEqual(PROVIDER_OPTIONS);
@@ -202,6 +215,40 @@ describe('agent judgment tier', () => {
     expect(error.message).toContain('Home page, not checkout');
   });
 
+  it('fails the test with ASSERTION_INCONCLUSIVE when the screen shows too little to judge', () => {
+    // A judge that cannot see the evidence must not pass the step: a guess
+    // in either direction is how a broken flow stays green.
+    const result = resultByTitle(outcome, 'an inconclusive judgment fails the assertion too');
+    expect(result.status).toBe('failed');
+    const error = result.attempts.at(-1)!.error!;
+    expect(error.code).toBe('ASSERTION_INCONCLUSIVE');
+    expect(error.category).toBe('test');
+    expect(error.message).toContain('no order total');
+  });
+
+  it('routes every judgment to the judge model, never the act model', () => {
+    expect(fakeCalls.length).toBeGreaterThan(4);
+    for (const call of fakeCalls) expect(call.modelId).toBe('judge');
+  });
+
+  it('shows the judge the screen and the question, never the prior steps', () => {
+    // 'judgments and polling' runs an assert and then a waitFor. The waitFor's
+    // judgment must not carry the assert's label or explanation: a judge that
+    // reads the actor's account of what happened is grading a story, not a
+    // screen.
+    const polled = fakeCalls.filter((call) => call.instruction === LATE_BUTTON_CONDITION);
+    expect(polled.length).toBeGreaterThan(0);
+    for (const call of polled) {
+      expect(call.prompt).not.toContain('<ledger>');
+      expect(call.prompt).not.toContain('the Home heading is visible');
+      expect(call.prompt).not.toContain('the observation supports the assertion');
+    }
+    const steps = report.run.results.flatMap((result) => result.attempts).flatMap((attempt) => attempt.steps);
+    for (const step of steps.filter((candidate) => candidate.kind === 'agent')) {
+      expect(step.metrics!.ledgerBytes).toBe(0);
+    }
+  });
+
   it('never exposes application-authored instructions as policy', () => {
     const system = fakeCalls[0]!.system;
     expect(system).toContain('policy-0.3');
@@ -212,7 +259,7 @@ describe('agent judgment tier', () => {
   });
 
   it('sends the semantic tree with node references and no secret values', () => {
-    const judged = fakeCalls.find((call) => call.schemaName === 'agent-judgment-1')!;
+    const judged = fakeCalls.find((call) => call.schemaName === 'agent-judgment-2')!;
     expect(judged.observation).toContain('#n');
     expect(judged.observation).toContain('button "Increment"');
     expect(judged.observation).toContain('value=<secure>');
@@ -242,9 +289,10 @@ describe('agent judgment tier', () => {
     const judged = agentSteps.find((step) => step.api === 'agent.assert')!;
     expect(judged.metrics).toMatchObject({ modelCalls: 1, actionSteps: 0 });
     expect(judged.metrics!.observationBytes).toBeGreaterThan(0);
+    // Provenance names the judge, the model this verdict actually came from.
     expect(judged.model).toMatchObject({
       provider: 'fake',
-      model: 'scripted',
+      model: 'judge',
       endpoint: 'provider-default',
       policyVersion: 'policy-0.3',
       calls: 1,

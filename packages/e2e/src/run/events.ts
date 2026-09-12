@@ -77,6 +77,11 @@ export type RunEventFact =
        * absent when none is configured or the run names several agents.
        */
       readonly model?: string;
+      /**
+       * The run agent's judge, the model its judgments use, in the same
+       * form; absent when judgments use `model`.
+       */
+      readonly judge?: string;
     }
   | {
       /**

@@ -41,10 +41,14 @@ it left. Ticking clocks are ignored when comparing. A failed action returns
 the failure together with the current screen, so a stale id costs no extra
 turn.
 
-Judgments (`assert`, `waitFor`, `extract`) can add a masked screenshot with
-`vision: true`, or judge the screenshot alone with `vision: 'only'`. Pixels
-are withheld once a secret has been filled in the attempt. The
-[agent reference](/reference/agent#vision) lists every mode.
+Judgments (`assert`, `waitFor`, `extract`) see less on purpose: the
+instruction and the current screen, never the ledger or the acting agent's
+summaries. A verdict rests on what is on screen, not on what the actor said
+it did, and a `judge` model of its own keeps the two apart entirely; see
+[A judge of its own](/models#a-judge-of-its-own). Judgments can add a masked
+screenshot with `vision: true`, or judge the screenshot alone with
+`vision: 'only'`. Pixels are withheld once a secret has been filled in the
+attempt. The [agent reference](/reference/agent#vision) lists every mode.
 
 ## What the model may do
 
@@ -74,7 +78,9 @@ the step clock.
 Every planned step ends in one of three verdicts:
 
 - **passed**: the app behaved as the step required, verified on screen.
-- **failed**: it did not. An ordinary test failure.
+- **failed**: it did not. An ordinary test failure. A judgment that could
+  not decide because the screen showed too little is `ASSERTION_INCONCLUSIVE`,
+  a failure of this kind and never a pass.
 - **blocked**: something prevented a product verdict. The error code decides
   the exit.
 

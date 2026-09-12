@@ -207,8 +207,12 @@ function section(prompt: string, name: string): string {
   return pattern.exec(prompt)?.[1] ?? '';
 }
 
-/** Builds a valid agent-judgment-1 response. */
-export function judgment(result: boolean, explanation: string): unknown {
-  return { protocolVersion: 'agent-judgment-1', result, explanation };
+/**
+ * Builds a valid agent-judgment-2 response. A boolean maps onto the two
+ * product verdicts; pass `'inconclusive'` for the third.
+ */
+export function judgment(result: boolean | 'inconclusive', explanation: string): unknown {
+  const verdict = result === 'inconclusive' ? 'inconclusive' : result ? 'holds' : 'fails';
+  return { protocolVersion: 'agent-judgment-2', verdict, explanation };
 }
 

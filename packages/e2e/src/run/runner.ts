@@ -45,6 +45,7 @@ import { setSecretRegistry } from '../secrets.ts';
 import { withAbort } from '../internal/time.ts';
 import type { BuiltinReporter, E2EConfig, FinishedRun, Reporter, ReporterSummary } from '../types.ts';
 import { modelLabel } from '../config/agent.ts';
+import { detectVcs, type VcsInfo } from '../internal/vcs.ts';
 import type { EnginePrepareResult } from '../engine/index.ts';
 import { prepareEngine, startDeclaredProcesses, validateEngine, type AppProcesses } from './provision.ts';
 
@@ -311,10 +312,14 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       ].filter((code) => code !== 130 || !runAborted),
     );
 
+  // Detected once the config names the project root; a report written before
+  // that (a config failure) has no checkout to describe.
+  let vcs: VcsInfo | undefined;
   const buildRunReport = (exitCode: RunExitCode): Report1Document =>
     buildReport({
       runId,
       config: loaded.config,
+      vcs,
       startedAt,
       status: statusOf(exitCode),
       exitCode,
@@ -441,8 +446,13 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     return finish();
   }
   const config = loaded.config;
+  vcs = await detectVcs(config.projectRoot, env);
 
   setSecretRegistry(config);
+  // Several run agents have no one model to name; each step names its own.
+  // The judge is named only when it is a model of its own.
+  const runAgent = config.agentNames.length === 1 ? config.agent : undefined;
+  const runJudge = runAgent?.judge?.model === runAgent?.model?.model ? undefined : runAgent?.judge;
   emit({
     type: 'run-started',
     runId,
@@ -452,8 +462,8 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     ci: isCiMode(env),
     targets: config.targets.map((target) => target.name),
     ...(config.agentNames.length === 1 && config.agentNames[0] === 'default' ? {} : { agents: config.agentNames }),
-    // Several run agents have no one model to name; each step names its own.
-    ...(config.agentNames.length !== 1 || config.agent.model === undefined ? {} : { model: modelLabel(config.agent.model) }),
+    ...(runAgent?.model === undefined ? {} : { model: modelLabel(runAgent.model) }),
+    ...(runJudge === undefined ? {} : { judge: modelLabel(runJudge) }),
   });
 
   const executeRun = async (): Promise<void> => {

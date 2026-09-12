@@ -220,9 +220,9 @@ export class ListReporter implements Reporter {
   private readonly runCache = emptyCacheTally();
   /**
    * The configured models as the summary names them, `provider/id` plus
-   * `vision provider/id` when pixels go to a separate model: `runUsage` sums
-   * both, so the row names both. Repeated in the summary because the header
-   * has scrolled away by the time a long run ends.
+   * `judge provider/id` when judgments go to a separate model: `runUsage`
+   * sums both, so the row names both. Repeated in the summary because the
+   * header has scrolled away by the time a long run ends.
    */
   private models: string | undefined;
   /**
@@ -356,6 +356,7 @@ export class ListReporter implements Reporter {
     this.output.write(BADGE_PADDING + pc.dim(details.join(' · ')));
     if (event.model !== undefined) {
       this.models = bounded(event.model);
+      if (event.judge !== undefined) this.models += ` · judge ${bounded(event.judge)}`;
       this.output.write(BADGE_PADDING + pc.dim(`model ${this.models}`));
     }
     this.output.write('');

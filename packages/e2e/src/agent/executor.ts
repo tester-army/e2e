@@ -380,6 +380,13 @@ export interface StepExecutor {
    * `INVALID_CONFIG` when both are set and differ.
    */
   readonly model?: ModelInstance;
+  /**
+   * The model the judgment tier (`assert`, `waitFor`, `extract`) calls for
+   * this executor's agent, when it differs from `model`. Config resolution
+   * reads it as the agent's judge when `agent.judge` is unset;
+   * `INVALID_CONFIG` when both are set and differ.
+   */
+  readonly judge?: ModelInstance;
   runStep(context: StepExecutorContext): Promise<StepVerdict>;
 }
 

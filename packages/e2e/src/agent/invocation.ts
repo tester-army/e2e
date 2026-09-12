@@ -37,7 +37,6 @@ import {
   retryingObserve,
   type PhaseSpec,
 } from './phases.ts';
-import { projectPriorSteps, serializeLedger, type LedgerContext } from './ledger.ts';
 import {
   ModelOutputInvalidError,
   tokenUpperBound,
@@ -66,8 +65,13 @@ export interface AgentSelection {
    * default path keeps the optimized single-judgment tier.
    */
   readonly customExecutor: boolean;
-  /** The adapter over the agent's model, built on first use. */
-  readonly model: () => ModelAdapter;
+  /**
+   * The adapter the judgment tier (`assert`, `waitFor`, `extract`) calls,
+   * built on first use. It is the only model the runtime calls itself: `act`
+   * goes through the executor, which brings its own. Config resolves `judge`
+   * to the agent's `model` unless a judge of its own was configured.
+   */
+  readonly judge: () => ModelAdapter;
   /** Trusted project context: the agent's `context` then test/group agentContext. */
   readonly agentContext: string | undefined;
 }
@@ -88,7 +92,11 @@ export interface AgentContext {
   readonly app: ResolvedApp;
   /** The attempt's identity, end signal, and executor scratch memory. */
   readonly attempt: ExecutorAttempt;
-  /** Completed steps quoted as prior context; serial members see the whole group. */
+  /**
+   * Completed steps quoted as prior context for `agent.act`; serial members
+   * see the whole group. A judgment never reads them: the judge sees the
+   * instruction and the current screen, not the acting agent's account.
+   */
   readonly priorSteps: () => readonly StepRecord[];
   readonly secrets: SecretResolver;
   /** The attempt's live redactor (SecretLedger); sees values the moment they exist. */
@@ -128,7 +136,7 @@ export interface InvocationOptions {
  */
 const MAX_OUTPUT_TOKENS = 8192;
 
-/** Model-call accounting plus observation/ledger metrics for one invocation. */
+/** Model-call accounting plus observation metrics for one invocation; a judgment carries no ledger. */
 export class Invocation {
   readonly deadline: Deadline;
 
@@ -141,12 +149,10 @@ export class Invocation {
   };
 
   /**
-   * Trusted system message and serialized prior-step ledger. Both are
-   * invariant for the invocation's lifetime — steps complete only between
-   * invocations — so they are computed exactly once.
+   * Trusted system message: runner policy, then project context. Measured
+   * once, because it is the fixed part of every request's token budget.
    */
   private readonly system: string;
-  private readonly ledger: LedgerContext;
 
   private readonly usage = new ModelUsage();
   private observationRevision: string | undefined;
@@ -173,18 +179,15 @@ export class Invocation {
     this.pixelTier = options.vision === true || options.vision === 'only';
     this.system = buildSystem(options.task, this.agent.agentContext);
     this.systemBytes = tokenUpperBound(this.system);
-    this.ledger = serializeLedger(
-      projectPriorSteps(runtime.priorSteps()),
-      runtime.config.limits.maxLedgerBytes,
-    );
   }
 
   get session(): TargetSession {
     return this.runtime.engine.session;
   }
 
+  /** The judge: a judgment is the only model call an invocation makes. */
   private get adapter(): ModelAdapter {
-    return this.agent.model();
+    return this.agent.judge();
   }
 
   /**
@@ -302,7 +305,7 @@ export class Invocation {
         maxObservationBytes: this.agent.config.maxObservationBytes,
         maxModelTokensPerCall: config.limits.maxModelTokensPerCall,
       },
-      { fixedBytes: this.systemBytes + this.ledger.bytes, pixels: this.pixelTier },
+      { fixedBytes: this.systemBytes, pixels: this.pixelTier },
     );
   }
 
@@ -319,14 +322,12 @@ export class Invocation {
   }): Promise<Value> {
     let repair: PromptInput['repair'] = request.prompt.repair;
     this.metrics.contextBytes = tokenUpperBound(this.agent.agentContext ?? '');
-    this.metrics.ledgerBytes = this.ledger.bytes;
     for (;;) {
       this.checkDeadline();
       this.consumeModelCall();
       const prompt = buildPrompt({
         ...request.prompt,
         ...(this.treeWithheld ? { withholdTree: true } : {}),
-        ledger: this.ledger.text,
         ...(repair === undefined ? {} : { repair }),
       });
       // Pixels travel with the observation they were captured for, so the

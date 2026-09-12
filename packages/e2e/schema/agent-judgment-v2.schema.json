@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://e2e.dev/schema/agent-judgment-v2.schema.json",
+  "title": "e2e agent-judgment-2 response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocolVersion", "verdict", "explanation"],
+  "properties": {
+    "protocolVersion": { "const": "agent-judgment-2" },
+    "verdict": { "enum": ["holds", "fails", "inconclusive"] },
+    "explanation": { "type": "string", "maxLength": 8192 }
+  }
+}

@@ -79,7 +79,7 @@ test('judges with the model createAgent brought', async ({ app, agent }) => {
 
 /** Scripted responder whose behavior is selected by the schema. */
 function respond(call: FakeCall): unknown {
-  if (call.schemaName === 'agent-judgment-1') return judgment(true, 'the field has a value');
+  if (call.schemaName === 'agent-judgment-2') return judgment(true, 'the field has a value');
   if (call.schemaName === 'agent-extract-1') {
     const status = call.lines.find((line) => line.includes('status'));
     const counter = /text="([^"]*)"/.exec(status ?? '')?.[1] ?? '';

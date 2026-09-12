@@ -98,10 +98,14 @@ export function createAgentFixture(runtime: AgentContext): Agent {
       { ...stepOptions, agent: runtime.select(options.agent).name },
     );
 
-  /** One judgment call against a fresh observation. */
+  /**
+   * One judgment call against a fresh observation. The judge is shown the
+   * instruction and the screen, never the prior steps or the acting agent's
+   * summaries: a verdict rests on evidence, not on what the actor said it did.
+   */
   const askJudgment = (invocation: Invocation, instruction: string, observation: AgentObservation) =>
     invocation.ask({
-      schemaName: 'agent-judgment-1',
+      schemaName: 'agent-judgment-2',
       schema: JUDGMENT_SCHEMA,
       validate: validateJudgmentResponse,
       prompt: { request: JUDGMENT_REQUEST, instruction, observation },
@@ -134,7 +138,9 @@ export function createAgentFixture(runtime: AgentContext): Agent {
             invocation.recordPoll('waitFor', round);
             const judgment = await askJudgment(invocation, condition, observation);
             invocation.note({ explanation: judgment.explanation });
-            if (judgment.result) return;
+            // An inconclusive round is one more thing to wait for; only the
+            // deadline turns it into a failure, with this explanation attached.
+            if (judgment.verdict === 'holds') return;
             observation = await waitForNextJudgment(invocation, {
               since: observation,
               intervalMs,
@@ -227,8 +233,15 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           const screenshot = evidenceAllowed(invocation, options?.screenshot)
             ? await captureEvidence(invocation)
             : undefined;
-          if (judgment.result) return;
-          throw new AgentError('ASSERTION_FAILED', judgment.explanation, (screenshot === undefined ? {} : { screenshot }));
+          if (judgment.verdict === 'holds') return;
+          // Both other verdicts fail the test. `inconclusive` gets its own code
+          // so a reader can tell "the screen contradicted the assertion" from
+          // "the screen did not show enough to judge"; neither is a pass.
+          throw new AgentError(
+            judgment.verdict === 'fails' ? 'ASSERTION_FAILED' : 'ASSERTION_INCONCLUSIVE',
+            judgment.explanation,
+            screenshot === undefined ? {} : { screenshot },
+          );
         },
         { verifies: true },
       );

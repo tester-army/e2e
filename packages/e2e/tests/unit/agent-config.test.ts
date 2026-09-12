@@ -164,6 +164,47 @@ describe('one canonical model', () => {
   });
 });
 
+describe('judge model', () => {
+  const instance = (id: string) => fakeModel('openai', id);
+
+  it('is the model unless one is configured, so judgments always have one rule', () => {
+    const model = instance('gpt-5.4-mini');
+    expect(resolve({ agents: { default: { model } } }).agent.judge).toMatchObject({ model });
+    expect(resolve({ agents: { default: createAgent({ model }) } }).agent.judge).toMatchObject({ model });
+    expect(resolve({}).agent.judge).toBeUndefined();
+  });
+
+  it('resolves agent.judge apart from agent.model', () => {
+    const judge = instance('gpt-5.4');
+    const config = resolve({ agents: { default: { model: instance('gpt-5.4-mini'), judge } } });
+    expect(config.agent.model).toMatchObject({ id: 'gpt-5.4-mini' });
+    expect(config.agent.judge).toMatchObject({ provider: 'openai', id: 'gpt-5.4', model: judge });
+  });
+
+  it('uses the judge createAgent brought', () => {
+    const judge = instance('gpt-5.4');
+    const config = resolve({ agents: { default: createAgent({ model: instance('gpt-5.4-mini'), judge }) } });
+    expect(config.agent.executor?.judge).toBe(judge);
+    expect(config.agent.judge).toMatchObject({ id: 'gpt-5.4', model: judge });
+  });
+
+  it('rejects agent.judge and an executor judge that differ', () => {
+    expect(() =>
+      resolve({
+        agents: {
+          default: { executor: createAgent({ model: instance('gpt-5.4-mini'), judge: instance('gpt-5.4') }), judge: instance('gpt-5.5') },
+        },
+      }),
+    ).toThrow(/agents\.default\.judge \(openai\/gpt-5\.5\) and the executor's own judge \(openai\/gpt-5\.4\) differ; configure the judge in one place/);
+  });
+
+  it('rejects a string judge the way it rejects a string model', () => {
+    expect(() => resolve({ agents: { default: { model: instance('gpt-5.4-mini'), judge: 'openai/gpt-5.4' } } } as never)).toThrow(
+      /agents\.default\.judge must be an AI SDK model instance/,
+    );
+  });
+});
+
 describe('model resolution', () => {
   it('accepts a live AI SDK model instance and records its identity', () => {
     const instance = {
@@ -249,7 +290,7 @@ describe('model error classification', () => {
     const call = {
       system: 's',
       prompt: 'p',
-      schemaName: 'agent-judgment-1',
+      schemaName: 'agent-judgment-2',
       schema: undefined,
       validate: (value: unknown) => ({ ok: true as const, value }),
       maxOutputTokens: 16,
@@ -355,7 +396,7 @@ function modelCall() {
   return {
     system: 's',
     prompt: 'p',
-    schemaName: 'agent-judgment-1',
+    schemaName: 'agent-judgment-2',
     schema: undefined,
     validate: (value: unknown) => ({ ok: true as const, value }),
     maxOutputTokens: 16,

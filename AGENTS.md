@@ -12,7 +12,7 @@ There is no separate spec. The code is the contract, pinned in three places:
   assertions (`@ts-expect-error` lines) for the parts that are easy to loosen
   by accident; it runs under the package `typecheck`, never under vitest.
 - Wire formats live in `packages/e2e/schema/*.schema.json` (report-1,
-  session-1, agent-judgment-1, agent-tool-1) with a valid and an invalid fixture
+  session-1, agent-judgment-2, agent-tool-1) with a valid and an invalid fixture
   each. Integration tests validate every generated report and session envelope
   against them; `tests/unit/schema-fixtures.test.ts` checks the fixtures. A
   wire change edits the schema, both fixtures, and the producer in one review.
@@ -197,9 +197,13 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
   locate cache are both gone, for example). Verify against `src/` before
   repeating or relying on any "not implemented yet" list — and fix the prose
   when you find it stale.
-- No implicit default model. One canonical model: the one `createAgent({ model })`
-  brought, else `agent.model`, else `E2E_MODEL`, serves `act` and the judgment
-  calls alike; two that differ are `INVALID_CONFIG`. Without one, the first
+- No implicit default model. One canonical model per slot: the one
+  `createAgent({ model })` brought, else `agent.model`, serves `act`; the
+  judgment calls (`assert`, `waitFor`, `extract`) use `judge` when one is
+  configured the same way, else `model`. Two that differ within a slot are
+  `INVALID_CONFIG`. A judgment never sees the prior-step ledger or the acting
+  agent's summaries, only the instruction and the current screen. Without a
+  model, the first
   `agent` acquisition in a run reports one run-level `MODEL_UNAVAILABLE` and
   stops the run (exit 2). No implicit target either: `targets` is required and
   each names its engine.

@@ -65,9 +65,12 @@ failures and exit 1. [How agent steps work](/agent-steps) lists the codes.
 
 ## Checks: `assert`, `waitFor`, `extract`
 
-`assert` asks one yes/no question about the current screen. A false answer is
-an `ASSERTION_FAILED` with the model's explanation and a screenshot in the
-report.
+`assert` asks one question about the current screen and gets one of three
+answers. A false answer is an `ASSERTION_FAILED` with the model's explanation
+and a screenshot in the report. An answer the screen did not show enough to
+decide is an `ASSERTION_INCONCLUSIVE`, also a failure: the judge does not
+guess. The judge sees the assertion and the screen, never the steps before,
+so a verdict rests on what is visible rather than on what the agent reported.
 
 ```ts
 await agent.assert('the dashboard shows a trial badge');

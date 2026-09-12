@@ -45,7 +45,7 @@ test('fails pixels-only rather than judging the tree after a secret fill', async
 `;
 
 function respond(call: FakeCall): unknown {
-  if (call.schemaName === 'agent-judgment-1') return judgment(true, 'it does');
+  if (call.schemaName === 'agent-judgment-2') return judgment(true, 'it does');
   throw new Error(`unexpected schema ${call.schemaName}`);
 }
 

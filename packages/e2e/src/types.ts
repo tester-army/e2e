@@ -210,6 +210,7 @@ export type AgentErrorCode =
   | 'STEP_TIMEOUT'
   | 'STEP_NO_CONCLUSION'
   | 'ASSERTION_FAILED'
+  | 'ASSERTION_INCONCLUSIVE'
   | 'CANCELLED';
 
 export interface Agent {
@@ -826,6 +827,13 @@ export interface AgentConfig {
   executor?: StepExecutor;
   /** An AI SDK model instance; no implicit default. */
   model?: ModelInstance;
+  /**
+   * The model that judges `assert`, `waitFor`, and `extract`; defaults to
+   * `model`. A judge of its own separates the model that grades a flow from
+   * the one that drove it. Must agree with `createAgent({ judge })` when both
+   * are set.
+   */
+  judge?: ModelInstance;
   maxSteps?: number;
   maxModelCalls?: number;
   maxObservationBytes?: number;

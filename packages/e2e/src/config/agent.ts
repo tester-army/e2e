@@ -47,6 +47,13 @@ export interface ResolvedAgentConfig {
   readonly executor: StepExecutor | undefined;
   /** Undefined until a model is configured; acquiring `agent` then fails. */
   readonly model: ResolvedModel | undefined;
+  /**
+   * The judgment tier's model: `agent.judge` or `createAgent({ judge })` when
+   * one is configured (both set must agree), else `model`. Undefined only
+   * when no model is configured at all, so downstream code has one rule:
+   * judgments call `judge`.
+   */
+  readonly judge: ResolvedModel | undefined;
   readonly maxSteps: number;
   readonly maxModelCalls: number;
   readonly maxObservationBytes: number;
@@ -75,6 +82,7 @@ export type ResolvedBaseLimits = Omit<ResolvedLimits, 'maxObservationBytes'>;
 const AGENT_KEYS = new Set([
   'executor',
   'model',
+  'judge',
   'maxSteps',
   'maxModelCalls',
   'maxObservationBytes',
@@ -160,9 +168,11 @@ export function resolveAgentConfig(
     );
   }
 
+  const model = resolveCanonicalModel(agent?.model, executor?.model, label, 'model');
   return {
     executor,
-    model: resolveCanonicalModel(agent?.model, executor?.model, label),
+    model,
+    judge: resolveCanonicalModel(agent?.judge, executor?.judge, label, 'judge') ?? model,
     maxSteps,
     maxModelCalls,
     maxObservationBytes,
@@ -262,24 +272,26 @@ export function isModelInstance(value: unknown): value is ModelInstance {
 }
 
 /**
- * The one model both tiers use. The model the executor brought
- * (`createAgent({ model })`) is it; without one, `agent.model`. An
- * `agent.model` naming a different model than the executor's is rejected: two
- * configured models would split the tiers silently.
+ * One model per slot. The model the executor brought (`createAgent({ model })`
+ * or `createAgent({ judge })`) is it; without one, the agent's own key. A
+ * config key naming a different model than the executor's is rejected: two
+ * configured models for one slot would split the run silently.
  */
 function resolveCanonicalModel(
   configured: ModelInstance | undefined,
   executorModel: ModelInstance | undefined,
   label: string,
+  slot: 'model' | 'judge',
 ): ResolvedModel | undefined {
-  if (executorModel === undefined) return resolveModel(configured, `${label}.model`);
-  const own = resolveModel(executorModel, `${label}.model`) as ResolvedModel;
+  const key = `${label}.${slot}`;
+  if (executorModel === undefined) return resolveModel(configured, key);
+  const own = resolveModel(executorModel, key) as ResolvedModel;
   if (configured === undefined) return own;
-  const explicit = resolveModel(configured, `${label}.model`) as ResolvedModel;
+  const explicit = resolveModel(configured, key) as ResolvedModel;
   if (explicit.provider !== own.provider || explicit.id !== own.id) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
-      `${label}.model (${modelLabel(explicit)}) and the executor's own model (${modelLabel(own)}) differ; configure the model in one place`,
+      `${key} (${modelLabel(explicit)}) and the executor's own ${slot} (${modelLabel(own)}) differ; configure the ${slot} in one place`,
     );
   }
   return own;
