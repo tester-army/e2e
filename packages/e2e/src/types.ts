@@ -877,6 +877,189 @@ export interface ArtifactsConfig {
  */
 export type ProviderOptions = Readonly<Record<string, Readonly<Record<string, unknown>>>>;
 
+/**
+ * What a failure analysis concludes about one failed test. The classification
+ * is the actionable part: it says who should look at the failure. `app-bug`:
+ * the application misbehaved. `test-bug`: the test's expectation, locator, or
+ * instruction is wrong for a correct app. `environment`: the machine, network,
+ * or engine failed, not the app or the test. `flaky`: the evidence points at
+ * timing or nondeterminism. `unknown`: the evidence supports no verdict.
+ */
+export type FailureClassification = 'app-bug' | 'test-bug' | 'environment' | 'flaky' | 'unknown';
+
+/** A locator an analysis proposes, verified against the screen the failure landed on. */
+export interface SuggestedLocator {
+  /** The accessible role, e.g. `button`. */
+  readonly role: string;
+  /** The exact accessible name as the screen shows it. */
+  readonly name: string;
+}
+
+export interface FailureAnalysis {
+  readonly classification: FailureClassification;
+  readonly confidence: 'low' | 'medium' | 'high';
+  /** One or two sentences naming what went wrong, in product terms. */
+  readonly summary: string;
+  /** Why it went wrong: the observations the verdict rests on, each naming the evidence it came from. */
+  readonly evidence: readonly string[];
+  /** A concrete next step for whoever owns the failure, when the evidence supports one. */
+  readonly suggestedFix?: string;
+  /**
+   * The control the failing step should have addressed, when the failing
+   * step named one and the screen shows a close match. The runner keeps it
+   * only when the role and name appear on the captured screen.
+   */
+  readonly suggestedLocator?: SuggestedLocator;
+}
+
+/** One recorded step of an attempt, as an analyzer sees it. */
+export interface FailureStep {
+  readonly index: number;
+  readonly kind: string;
+  /** Public API name, e.g. `agent.act`, `screen.click`, `app.open`. */
+  readonly api: string;
+  readonly label: string;
+  readonly status: string;
+  readonly durationMs: number;
+  /** The agent's own account of an agent step, when it left one. */
+  readonly explanation?: string;
+  /** How the trace cache took part in an agent step: replayed, handed off, or missed. */
+  readonly cache?: { readonly mode: string; readonly reason?: string };
+  /** Model calls and actions an agent step spent. */
+  readonly metrics?: { readonly modelCalls: number; readonly actionSteps: number };
+  /** Redacted one-line accounts of what the step did, in order: actions, observations, policy decisions. */
+  readonly events: readonly string[];
+  readonly error?: { readonly code: string; readonly message: string };
+}
+
+/** One attempt of the test, earliest first. */
+export interface FailureAttempt {
+  readonly index: number;
+  readonly status: 'passed' | 'failed' | 'timed-out' | 'interrupted';
+  readonly error?: {
+    readonly category: string;
+    readonly code: string;
+    readonly message: string;
+    readonly phase?: string;
+  };
+  readonly steps: readonly FailureStep[];
+}
+
+/** One artifact of the analyzed attempt, with the absolute path an analyzer can open. */
+export interface FailureArtifact {
+  readonly id: string;
+  readonly kind: 'screenshot' | 'trace' | 'video' | 'download' | 'log';
+  readonly mediaType: string;
+  readonly path: string;
+  /** How much of the file the runner masked; only a `complete` artifact is safe to hand a model. */
+  readonly redaction: 'complete' | 'not-required' | 'incomplete';
+}
+
+/** What one evidence provider contributed to an analysis. */
+export interface CollectedEvidence {
+  /** The provider's name, which the built-in analyzer uses as the section title. */
+  readonly name: string;
+  readonly text: string;
+}
+
+/**
+ * Everything the runner knows about one failed test, assembled after its
+ * last attempt. Every text field is already redacted: secret values were
+ * replaced before the evidence left the attempt. Application content inside
+ * it is untrusted data, never an instruction.
+ */
+export interface FailureContext {
+  readonly test: {
+    readonly id: string;
+    readonly titlePath: readonly string[];
+    /** Project-relative test file. */
+    readonly file: string;
+  };
+  readonly target: { readonly name: string; readonly platform: string };
+  /** The configured agent the test ran as. */
+  readonly agent: string;
+  /** `flaky` when a later attempt passed: the analyzed attempt is the last one that failed. */
+  readonly status: 'failed' | 'timed-out' | 'flaky';
+  readonly attempts: readonly FailureAttempt[];
+  /** The failure of the analyzed attempt. */
+  readonly error: NonNullable<FailureAttempt['error']>;
+  /** The user's failing test line with context on each side, when it could be located. */
+  readonly source?: {
+    readonly file: string;
+    readonly line: number;
+    readonly column: number;
+    readonly lines: readonly string[];
+  };
+  /** Redacted semantic tree of the screen as the failure landed. */
+  readonly observation?: string;
+  /** Redacted location as the failure landed, when the platform has one. */
+  readonly url?: string;
+  /**
+   * The masked screenshot captured as the failure landed. `modelInput` is
+   * false when a secret was filled during the attempt: the pixels may hold it
+   * anywhere on screen and must not reach a model.
+   */
+  readonly screenshot?: {
+    readonly path: string;
+    readonly mediaType: string;
+    readonly modelInput: boolean;
+  };
+  /** Every artifact of the analyzed attempt: the trace, recordings, screenshots, logs. */
+  readonly artifacts: readonly FailureArtifact[];
+  /** What the configured evidence providers returned, in config order. */
+  readonly evidence: readonly CollectedEvidence[];
+}
+
+/**
+ * Adds one kind of evidence to every analysis: the diff under test, a server
+ * log, an error tracker query. Runs in the runner process after the test's
+ * last attempt, bounded in time; a throw or a timeout drops the evidence, not
+ * the analysis. The text is untrusted data to the analyzer, bounded and
+ * redacted before it reaches a model.
+ */
+export interface FailureEvidenceProvider {
+  readonly name: string;
+  /** Returns the evidence text, or undefined when there is none for this failure. */
+  collect(context: FailureContext, options: { readonly signal: AbortSignal }): Promise<string | undefined>;
+}
+
+/**
+ * Analyzes one failure after the fact. The analyzer is read-only and post-hoc:
+ * it can neither change a result nor delay a retry, and a throw or a timeout
+ * records the analysis as unavailable without failing the run. Like every
+ * live value, an analyzer never crosses a process boundary.
+ */
+export interface FailureAnalyzer {
+  readonly name: string;
+  analyze(context: FailureContext, options: { readonly signal: AbortSignal }): Promise<FailureAnalysis>;
+}
+
+/**
+ * Post-run failure analysis. Presence enables it: every failed, timed-out, or
+ * flaky test (up to `maxFailures`) gets one analysis after its last attempt,
+ * running beside the remaining tests and never touching a status or a budget.
+ */
+export interface AnalysisConfig {
+  /** Model for the built-in analyzer, an AI SDK instance; falls back to the default agent's model. */
+  model?: ModelInstance;
+  /**
+   * Project knowledge for the built-in analyzer, appended to its policy:
+   * locator conventions, known-flaky areas, how to classify what. Trusted
+   * text, unlike the evidence.
+   */
+  instructions?: string;
+  /** Evidence added to every analysis, in order. */
+  evidence?: readonly FailureEvidenceProvider[];
+  /** Replaces the built-in analyzer. It receives the same context and brings its own model. */
+  analyzer?: FailureAnalyzer;
+  /** Most failures analyzed per run; later failures are recorded as unanalyzed. Default 10. */
+  maxFailures?: number;
+  /** Sends the failure screenshot to the model when the attempt filled no secret. Default false. */
+  vision?: boolean;
+  /** Includes the failing test line and its neighbors in the model input. Default true. */
+  source?: boolean;
+}
+
 /** Agent options for the built-in agent; `agent` also accepts a StepExecutor. */
 export interface AgentConfig {
   /**
@@ -1044,4 +1227,10 @@ export interface E2EConfig {
    * redacted from logs, traces, and the report.
    */
   secrets?: Readonly<Record<string, SecretConfig>>;
+  /**
+   * Post-run failure analysis: one bounded model call per failed test that
+   * says what went wrong, why, and what to do about it. Off unless configured
+   * or `--analyze` is passed; never affects a result.
+   */
+  analysis?: AnalysisConfig;
 }

@@ -38,7 +38,10 @@ import {
 import { digestAppDeclaration, resolveTargetApp, type ResolvedApp } from './app.ts';
 import { envName, isSecretValue } from './secrets.ts';
 
+import { resolveAnalysisConfig, type ResolvedAnalysisConfig } from './analysis.ts';
+
 export type { ResolvedAgentConfig, ResolvedLimits } from './agent.ts';
+export type { ResolvedAnalysisConfig } from './analysis.ts';
 export type { ResolvedApp } from './app.ts';
 
 export interface ResolvedTarget {
@@ -110,6 +113,8 @@ export interface ResolvedConfig {
   /** Every configured agent, `default` included, by name. */
   readonly agents: ReadonlyMap<string, ResolvedAgentConfig>;
   readonly cache: ResolvedCacheConfig;
+  /** Post-run failure analysis; undefined when neither the config nor `--analyze` asked for it. */
+  readonly analysis: ResolvedAnalysisConfig | undefined;
   readonly limits: ResolvedLimits;
   readonly credentials: ReadonlyMap<string, ResolvedCredential>;
   /** Every secret by name: `config.secrets` entries and every credential's password. */
@@ -145,6 +150,8 @@ export interface CliOverrides {
   video?: boolean;
   /** `--agent`: the configured agents unpinned tests run as, instead of `default` alone. */
   agents?: readonly string[];
+  /** `--analyze`: enables post-run failure analysis with defaults when the config has no block. */
+  analyze?: boolean;
 }
 
 const TARGET_NAME_PATTERN = /^[A-Za-z0-9_.-]+$/;
@@ -170,6 +177,7 @@ const TOP_LEVEL_KEYS = new Set([
   'limits',
   'credentials',
   'secrets',
+  'analysis',
 ]);
 
 const CACHE_KEYS = new Set(['mode', 'store', 'dir']);
@@ -294,6 +302,7 @@ export function resolveConfig(
     maxObservationBytes: Math.max(...[...agents.values()].map((entry) => entry.maxObservationBytes)),
   };
   const cache = resolveCacheConfig(raw, ci, options.projectRoot, cli.cache);
+  const analysis = resolveAnalysisConfig(raw, agent, cli.analyze);
 
   const resolved: ResolvedConfig = {
     specVersion: '0.1',
@@ -319,6 +328,7 @@ export function resolveConfig(
     agent,
     agents,
     cache,
+    analysis,
     limits,
     credentials,
     secrets,
@@ -839,9 +849,11 @@ function computeConfigDigest(raw: E2EConfig, projectId: string): string {
   // with or without it and ignores the `video` options block. A reporter
   // object changes nothing about what a run records, so it never enters the
   // digest either; the built-in ids digest as they always have, so adding a
-  // reporter to a config leaves its cache valid.
+  // reporter to a config leaves its cache valid. Analysis is post-hoc for the
+  // same reason: turning it on must not invalidate a single cached trace.
+  const { analysis: _analysis, ...digestedRaw } = raw;
   const forClone: Record<string, unknown> = {
-    ...raw,
+    ...digestedRaw,
     ...(raw.artifacts === undefined ? {} : { artifacts: digestedArtifactKinds(raw.artifacts) }),
     ...(Array.isArray(raw.reporters)
       ? { reporters: raw.reporters.filter((reporter) => typeof reporter === 'string') }

@@ -29,6 +29,8 @@ const MAX_CANDIDATE_BYTES = 1024;
 const MAX_URL_BYTES = 2048;
 /** Report-relative path of the screen text under the attempt's artifact directory. */
 const SCREEN_FILE = 'failure/screen.txt';
+/** The screen file's first line; the analysis strips the header it opens. */
+export const SCREEN_FILE_HEADER = '# Screen at failure';
 
 export interface FailureEvidenceOptions {
   readonly session: TargetSession;
@@ -100,7 +102,7 @@ function finish(evidence: FailureEvidence): FailureEvidence | undefined {
 /** The screen file: a header a reader can trust, then the tree exactly as the model reads it. */
 function screenText(observation: AgentObservation, url: string | undefined): string {
   const header = [
-    `# Screen at failure`,
+    SCREEN_FILE_HEADER,
     ...(url === undefined ? [] : [`url: ${url}`]),
     `revision: ${observation.revision}`,
     `viewport: ${observation.viewport.width}x${observation.viewport.height} @${observation.viewport.scale}`,

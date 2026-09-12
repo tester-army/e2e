@@ -23,7 +23,8 @@
     "test:device:cached": "pnpm run test:device && pnpm run test:device && node scripts/assert-cache-replay.mjs",
     "explore": "node node_modules/e2e/dist/cli/bin.js explore --config e2e.agent.config.ts",
     "explore:garden": "node node_modules/e2e/dist/cli/bin.js explore --config e2e.explore.config.ts",
-    "explore:bench": "node scripts/explore-bench.mjs"
+    "explore:bench": "node scripts/explore-bench.mjs",
+    "test:analysis": "node node_modules/e2e/dist/cli/bin.js run --config e2e.analysis.config.ts"
   },
   "dependencies": {
     "@e2edev/agent-device": "workspace:*",

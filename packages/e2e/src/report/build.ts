@@ -12,15 +12,17 @@ import { obj } from '../internal/objects.ts';
 import { packageVersion } from '../internal/package-version.ts';
 import type { VcsInfo } from '../internal/vcs.ts';
 import type { SkipInfo } from '../collect/select.ts';
-import type {
-  ArtifactRecord,
-  AttemptRecord,
-  FailureEvidence,
-  ResultRecord,
-  RunError,
-  SerialAttemptRecord,
-  SerialGroupRecord,
-  SerialMemberRecord,
+import {
+  ANALYSIS_EXTENSION_KEY,
+  type ArtifactRecord,
+  type AttemptRecord,
+  type FailureEvidence,
+  type FailureAnalysisRecord,
+  type ResultRecord,
+  type RunError,
+  type SerialAttemptRecord,
+  type SerialGroupRecord,
+  type SerialMemberRecord,
 } from '../run/records.ts';
 import type {
   StepCacheInfo,
@@ -258,6 +260,11 @@ export interface ReportResult {
   status: ResultRecord['status'];
   skip?: SkipInfo | undefined;
   attempts: readonly ReportAttempt[];
+  /**
+   * Namespaced extensions. The runner files a post-run failure analysis
+   * under `e2edev.analysis`; core fields stay closed.
+   */
+  extensions?: { readonly [ANALYSIS_EXTENSION_KEY]?: FailureAnalysisRecord } | undefined;
 }
 
 export interface ReportTarget {
@@ -451,6 +458,7 @@ function serializeResult(config: ResolvedConfig | undefined, result: ResultRecor
     status: result.status,
     skip: result.status === 'skipped' ? result.skip : undefined,
     attempts: result.serialGroupId !== undefined ? [] : result.attempts.map(serializeAttempt),
+    extensions: result.analysis === undefined ? undefined : { [ANALYSIS_EXTENSION_KEY]: result.analysis },
   };
 }
 

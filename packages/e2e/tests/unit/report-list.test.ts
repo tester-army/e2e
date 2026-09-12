@@ -1882,3 +1882,92 @@ describe('explore runs', () => {
     expect(lines).toContain('      Steps  0 of 4 · the run was cut short');
   });
 });
+
+describe('post-run analysis', () => {
+  it('prints the verdict, summary, evidence, fix, and locator under the failure it explains', () => {
+    const { lines, output } = capture();
+    const reporter = plainReporter(output);
+    reporter.handle(runStarted());
+    reporter.handle(plan([{ file: 'tests/a.e2e.ts', tests: 1 }]));
+    reporter.handle(finished(result({ status: 'failed', id: 'a', file: 'tests/a.e2e.ts', title: ['first'], attempts: [failedAttempt('boom')] })));
+    reporter.handle({
+      type: 'analysis',
+      testId: 'a',
+      agent: 'default',
+      title: 'first',
+      target: 'chromium',
+      analysis: {
+        status: 'analyzed',
+        analyzer: 'e2e-failure-analyst',
+        classification: 'test-bug',
+        confidence: 'high',
+        summary: 'The status reads "Saved!" while the test expects "Saved".',
+        evidence: ['error: expected "Saved" but found "Saved!"'],
+        suggestedFix: 'Expect "Saved!".',
+        suggestedLocator: { role: 'status', name: 'Save result' },
+        artifacts: {},
+        sources: ['git diff'],
+        model: { provider: 'fake', model: 'scripted', inputTokens: 100, outputTokens: 20 },
+        durationMs: 1_200,
+      },
+    });
+    reporter.handle(runFinished({ status: 'failed', exitCode: 1, reportPath: '/project/.e2e/report.json' }));
+    const failAt = lines.indexOf(' FAIL  |chromium| tests/a.e2e.ts > first');
+    const verdictAt = lines.findIndex((line) => line.includes('analysis test-bug · high confidence · fake/scripted · 1.20s'));
+    expect(failAt).toBeGreaterThanOrEqual(0);
+    expect(verdictAt).toBeGreaterThan(failAt);
+    expect(lines).toContain('    The status reads "Saved!" while the test expects "Saved".');
+    expect(lines).toContain('    - error: expected "Saved" but found "Saved!"');
+    expect(lines).toContain('    fix: Expect "Saved!".');
+    expect(lines).toContain('    locator: screen.getByRole("status", { name: "Save result" })');
+    // Before the numbered divider that closes the failure entry.
+    expect(verdictAt).toBeLessThan(lines.findIndex((line) => line.endsWith('[1/1]⎯')));
+  });
+
+  it('says why there is no verdict, and prints a flaky test’s analysis after the failures', () => {
+    const { lines, output } = capture();
+    const reporter = plainReporter(output);
+    reporter.handle(runStarted());
+    reporter.handle(plan([{ file: 'tests/a.e2e.ts', tests: 2 }]));
+    reporter.handle(finished(result({ status: 'failed', id: 'a', file: 'tests/a.e2e.ts', title: ['first'], attempts: [failedAttempt('boom')] })));
+    reporter.handle(finished(result({
+      status: 'flaky',
+      id: 'b',
+      file: 'tests/a.e2e.ts',
+      title: ['second'],
+      attempts: [failedAttempt('slow'), attempt({ index: 1 })],
+    })));
+    reporter.handle({
+      type: 'analysis',
+      testId: 'a',
+      agent: 'default',
+      title: 'first',
+      target: 'chromium',
+      analysis: { status: 'unavailable', analyzer: 'e2e-failure-analyst', reason: 'no-model', message: 'no analysis model', durationMs: 0 },
+    });
+    reporter.handle({
+      type: 'analysis',
+      testId: 'b',
+      agent: 'default',
+      title: 'second',
+      target: 'chromium',
+      analysis: {
+        status: 'analyzed',
+        analyzer: 'e2e-failure-analyst',
+        classification: 'flaky',
+        confidence: 'medium',
+        summary: 'The retry passed.',
+        evidence: [],
+        artifacts: {},
+        sources: [],
+        durationMs: 800,
+      },
+    });
+    reporter.handle(runFinished({ status: 'failed', exitCode: 1, reportPath: '/project/.e2e/report.json' }));
+    expect(lines.some((line) => line.includes('analysis unavailable (no-model): no analysis model'))).toBe(true);
+    const flakyAt = lines.indexOf(' FLAKY  second');
+    expect(flakyAt).toBeGreaterThan(lines.findIndex((line) => line.endsWith('[1/1]⎯')));
+    expect(lines[flakyAt + 1]).toContain('analysis flaky · medium confidence · 800ms');
+    expect(lines[flakyAt + 2]).toBe('    The retry passed.');
+  });
+});

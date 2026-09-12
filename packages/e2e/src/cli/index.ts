@@ -330,6 +330,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .option('--debug', 'print phase timings and the agent step table to stderr')
     .option('--ai-trace', 'record every model call to .e2e/ai-trace.json (unbox-ai)')
     .option('--video', 'record a video of every attempt, when the engine supports it')
+    .option('--analyze', 'analyze each failure with one model call after its last attempt: what went wrong, why, and a fix')
     .addHelpText(
       'after',
       [
@@ -342,6 +343,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           'e2e run --agent ux tests/onboarding.e2e.ts',
           'e2e run --agent buyer,admin tests/checkout.e2e.ts',
           'AI_GATEWAY_API_KEY=... e2e run --no-cache',
+          'e2e run --analyze',
         ]),
         '',
         exitCodesSection(EXIT_CODES),
@@ -370,6 +372,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           debug?: boolean;
           aiTrace?: boolean;
           video?: boolean;
+          analyze?: boolean;
         },
         command: Command,
       ) => {
@@ -392,6 +395,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
             debug: options.debug,
             aiTrace: options.aiTrace,
             video: options.video,
+            analyze: options.analyze,
             interruptSignal: signals.interruptSignal,
             forceSignal: signals.forceSignal,
           }),

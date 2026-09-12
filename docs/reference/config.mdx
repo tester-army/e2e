@@ -574,6 +574,81 @@ export interface Secret {
 
 See [Secrets that are not passwords](/authentication#secrets-that-are-not-passwords).
 
+## analysis
+
+```ts
+analysis?: AnalysisConfig;
+
+interface AnalysisConfig {
+  model?: ModelInstance;
+  instructions?: string;
+  evidence?: readonly FailureEvidenceProvider[];
+  analyzer?: FailureAnalyzer;
+  maxFailures?: number;
+  vision?: boolean;
+  source?: boolean;
+}
+```
+
+Post-run failure analysis. Off unless the key is present or `e2e run --analyze`
+is passed. When on, every failed, timed-out, or flaky test gets one bounded
+model call after its last attempt that says what went wrong, why, who should
+look at it, and what to do about it. The verdict prints under the failure in
+the `list` reporter, streams as an `analysis` [run event](/reference/reporters),
+lands in `report.json` as the result's `e2edev.analysis` extension, and joins
+the [GitHub comment](/github). Analysis is read-only and post-hoc: it never
+changes a status, never spends a test's budget, never fails the run, and never
+enters the config digest, so turning it on keeps every cached trace valid.
+
+| Key | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `model` | `ModelInstance` | `agents.default.model` | The built-in analyzer's model, an AI SDK instance like every model slot. Without one, each failure is recorded as `unavailable (no-model)` |
+| `instructions` | `string` | none | Project knowledge appended to the built-in analyzer's policy: locator conventions, known-flaky areas, how to classify what. Trusted text, unlike the evidence; at most 8 KiB |
+| `evidence` | `FailureEvidenceProvider[]` | `[]` | Providers whose text joins every analysis, in order: the diff under test, a server log, an error tracker query. Each runs in the runner process, bounded to 15 s and 16 KiB; one that throws or times out contributes nothing |
+| `analyzer` | `FailureAnalyzer` | built-in | Replaces the built-in analyzer. It receives the same `FailureContext` and brings its own model; its answer is held to the same closed grammar |
+| `maxFailures` | integer 1-100 | `10` | Most failures analyzed per run; later ones are recorded as `unavailable (limit-reached)` |
+| `vision` | boolean | `false` | Sends the failure screenshot to the model. Never when a secret was filled during the attempt: the pixels may hold it anywhere on screen |
+| `source` | boolean | `true` | Includes the failing test line and four lines on each side in the model input. Set `false` if test code must not leave the machine |
+
+Every analysis classifies the failure as one of `app-bug` (the application
+misbehaved), `test-bug` (the expectation, locator, or instruction is wrong for
+a correct app), `environment` (the machine, network, or engine failed),
+`flaky` (timing or nondeterminism), or `unknown` (the evidence supports no
+verdict), with a confidence, a two-sentence summary, the evidence each
+conclusion rests on, an optional fix, and an optional `suggestedLocator`. The
+runner keeps a suggested locator only when the captured screen shows exactly
+that role and name, so a control that was not there is never printed.
+
+```ts
+import { execSync } from 'node:child_process';
+
+export default {
+  analysis: {
+    model: gateway('openai/gpt-5.6-luna-fast'),
+    instructions: 'Controls carry data-testid; prefer it over accessible names in fixes.',
+    evidence: [
+      {
+        name: 'git diff',
+        async collect() {
+          return execSync('git diff --stat origin/main...HEAD', { encoding: 'utf8' });
+        },
+      },
+    ],
+  },
+} satisfies E2EConfig;
+```
+
+Every analysis starts from what the runner captured the moment the failure
+landed: the screen as a `failure/screen.txt` `log` artifact, a masked
+screenshot when `screenshot` is a configured [artifact kind](#artifacts) and
+no secret was filled, and the location. See
+[Read the failure](/debugging#read-the-failure); the capture happens whether
+or not analysis is on. A custom analyzer or evidence provider receives them,
+the error, every attempt's step timeline with what each step did, the failing
+source, and every artifact of the attempt by absolute path, so it can open
+the trace or the video itself. Everything is redacted before it leaves the
+attempt; application content inside it is untrusted data.
+
 ## cache
 
 In `read-write` mode the trace cache records an `agent.act()` only after a

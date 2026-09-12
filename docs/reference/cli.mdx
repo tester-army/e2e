@@ -159,6 +159,7 @@ or every test was filtered out.
 | `--debug` | boolean | `false` | Phase timings and an agent step table on stderr after the run. |
 | `--ai-trace` | boolean | `false` | Records every model call to `.e2e/ai-trace.json`, an AI SDK devtools database. Open it with [unbox-ai](https://github.com/tester-army/unbox-ai). |
 | `--video` | boolean | `false` | Records every attempt (WebM on a browser engine, MP4 on a device engine). Adds the `video` kind to `config.artifacts` for this run; an engine that cannot record fails with `UNSUPPORTED_ARTIFACT`. See [video](/reference/config#video). |
+| `--analyze` | boolean | `false` | One model call per failed, timed-out, or flaky test after its last attempt: what went wrong, why, who should look, and a fix. Enables [analysis](/reference/config#analysis) with its defaults; the model is `agents.default.model` unless `analysis.model` names one. Never changes a status or the exit code. |
 
 Out-of-range `--retries` and `--workers` fail with `INVALID_CONFIG` before
 anything starts, the same as the config value would.

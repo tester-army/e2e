@@ -258,6 +258,7 @@ function failureBlock({ result, final }: Entry, manyTargets: boolean, options: M
     lead,
     quotedWords(error, at?.step).join('\n'),
     facts.map((fact) => `- ${fact}`).join('\n'),
+    analysisLine(result) ?? '',
     tail.join(' · '),
   ];
   return paragraphs.filter((paragraph) => paragraph !== '').join('\n\n');
@@ -284,6 +285,19 @@ function flakyFold(entries: readonly Entry[], manyTargets: boolean, options: Mar
   if (entries.length > shown.length) shown.push(`and ${entries.length - shown.length} more`);
   const summary = `${ICON.flaky} ${plural(entries.length, 'flaky test')} passed on a retry`;
   return [['<details>', `<summary>${summary}</summary>`, '', shown.join('\n\n'), '</details>'].join('\n')];
+}
+
+/**
+ * The runner's post-run analysis of the failure, when the run made one: the
+ * verdict, its summary, and the fix. Filed under the `e2edev.analysis`
+ * result extension; an analysis that could not be made is left out, since
+ * the reason is for the terminal, not the summary.
+ */
+function analysisLine(result: ReportResult): string | undefined {
+  const analysis = result.extensions?.['e2edev.analysis'];
+  if (analysis === undefined || analysis.status !== 'analyzed') return undefined;
+  const fix = analysis.suggestedFix === undefined ? '' : ` Fix: ${cell(analysis.suggestedFix)}`;
+  return `🔎 **${cell(analysis.classification, 32)}** (${cell(analysis.confidence, 16)} confidence): ${cell(analysis.summary)}${fix}`;
 }
 
 // --- every test, by file ---

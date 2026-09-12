@@ -441,6 +441,7 @@ describe('e2e --version and --help', () => {
       '--debug',
       '--ai-trace',
       '--video',
+      '--analyze',
       '-h',
     ]);
     // Commander wraps at the help width, so the choices may span two lines.

@@ -885,7 +885,6 @@ export class TargetExecutor implements SerialHost {
         recordFailure(cause, phase);
         await captureEvidence();
       }
-
       phase = 'afterEach';
       // Each teardown gets its own cleanup budget: a body that timed out or
       // was cancelled must not leave the hook with dead fixtures, and a hook

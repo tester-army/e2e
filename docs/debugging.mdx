@@ -96,6 +96,32 @@ test result is meaningful. Then the last attempt of each failed result:
 each step has the `source` it was called from, and a failed agent step its
 last `turns`. The `artifacts` beside them hold the files.
 
+## Ask why it failed
+
+`e2e run --analyze` adds one model call per failure after its last attempt.
+Instead of the bare error, the `Failed Tests` section then carries a verdict:
+
+```text
+ ❯ analysis test-bug · high confidence · openai/gpt-5.6-luna-fast · 4.1s
+    The status reads "Saved!" while the test expects "Saved".
+    - error: expected "Saved" but found "Saved!"
+    - screen: #14 status "Save result" text="Saved!"
+    fix: Expect "Saved!" or make the app drop the exclamation mark.
+```
+
+The classification says who should look: `app-bug`, `test-bug`,
+`environment`, `flaky`, or `unknown` when the evidence supports no verdict.
+When a locator missed a control the screen spells differently, the analysis
+names the control as `screen.getByRole(...)`, and only when that role and
+name are on the captured screen. The same record is in `report.json` under
+the result's `extensions["e2edev.analysis"]` and in the GitHub comment.
+
+The analysis reads what the run already captured: the error, every step and
+what it did, the failing source line, and the screen as the failure landed.
+Configure `analysis` to give it more: your own instructions, evidence such as
+the diff under test, or a different analyzer. See
+[analysis](/reference/config#analysis).
+
 ## Artifacts
 
 Artifacts land under `.e2e/artifacts/`, one directory per attempt:

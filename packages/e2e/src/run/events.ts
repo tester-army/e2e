@@ -20,7 +20,7 @@
 import type { ExploreProgress } from '../explore/progress.ts';
 import type { SerializedError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
-import type { ResultRecord, SerialGroupRecord } from './records.ts';
+import type { FailureAnalysisRecord, ResultRecord, SerialGroupRecord } from './records.ts';
 import type { StepProgress } from './steps.ts';
 import { encodeResult, type WireResultRecord } from './worker/protocol.ts';
 
@@ -159,6 +159,20 @@ export type RunEventFact =
       readonly progress: StepProgress;
     }
   | { readonly type: 'test-finished'; readonly result: RunEventResult }
+  | {
+      /**
+       * A failed test's post-run analysis landed. Always after that test's
+       * `test-finished`, and possibly after other tests' results: analysis
+       * runs beside the remaining tests. The same record reaches the report
+       * as the result's `e2edev.analysis` extension.
+       */
+      readonly type: 'analysis';
+      readonly testId: string;
+      readonly agent: string;
+      readonly title: string;
+      readonly target: string;
+      readonly analysis: FailureAnalysisRecord;
+    }
   | {
       /**
        * A finished serial group, emitted before its members' `test-finished`

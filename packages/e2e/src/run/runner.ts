@@ -23,6 +23,7 @@ import {
   type ErrorPhase,
 } from '../internal/errors.ts';
 import { loadAiSdk } from '../agent/ai-sdk.ts';
+import { FailureAnalysisRunner } from '../analysis/run.ts';
 import { AiTraceCollector, AiTraceRecorder, registerAiTraceRecorder } from '../internal/ai-trace.ts';
 import { DebugTrace } from '../internal/debug.ts';
 import { timestamp, uuidv7 } from '../internal/ids.ts';
@@ -72,6 +73,8 @@ export interface RunOptions {
   debug?: boolean | undefined;
   /** Records every model call to `.e2e/ai-trace.json` (`--ai-trace`). */
   aiTrace?: boolean | undefined;
+  /** Enables post-run failure analysis with defaults when the config has no `analysis` block (`--analyze`). */
+  analyze?: boolean | undefined;
   /**
    * Records a video of every attempt (`--video`), on top of the configured
    * artifact kinds. The engine must be able to record; one that cannot fails
@@ -226,6 +229,18 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   /** The services and app commands the targets' engines declared, once started. */
   let processes: AppProcesses | undefined;
   let sessionStore: SessionStore | undefined;
+  let analysis: FailureAnalysisRunner | undefined;
+
+  /**
+   * The in-process AI trace recorder, registered once. In-process execution
+   * needs it for the tests' own calls; post-run analysis needs it in the
+   * runner process whichever transport ran the tests.
+   */
+  const ensureAiTraceRecorder = async (): Promise<void> => {
+    if (aiTrace === undefined || aiTraceRecorder !== undefined) return;
+    aiTraceRecorder = new AiTraceRecorder();
+    await registerAiTraceRecorder(aiTraceRecorder, loadAiSdk);
+  };
 
   // Hoisted: workers re-resolve the same config file and need these overrides,
   // or a flag would apply in the runner and be dropped in every worker.
@@ -235,6 +250,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   if (options.reporters !== undefined) cli.reporters = options.reporters;
   if (options.noCache === true) cli.cache = 'off';
   if (options.video === true) cli.video = true;
+  if (options.analyze === true) cli.analyze = true;
   if (options.agent !== undefined) cli.agents = typeof options.agent === 'string' ? [options.agent] : options.agent;
 
   // Config resolves before anything is emitted, and its failure is kept rather
@@ -592,11 +608,21 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
 
     // Both transports are reached through `SpawnUnitRunner`: the scheduler is
     // the only engine either way.
-    if (aiTrace !== undefined && inProcess) {
+    if (inProcess) {
       // In-process execution shares this process with the runner, so the
       // recorder lives here and is drained straight into the collector.
-      aiTraceRecorder = new AiTraceRecorder();
-      await registerAiTraceRecorder(aiTraceRecorder, loadAiSdk);
+      await ensureAiTraceRecorder();
+    }
+    if (config.analysis !== undefined) {
+      analysis = new FailureAnalysisRunner({
+        config,
+        artifactsRoot,
+        interruptSignal: interrupted,
+        emit,
+        debug,
+      });
+      // The analyzer's own model calls are attributed like every other.
+      await ensureAiTraceRecorder();
     }
     const spawn =
       workerConfigPath === undefined
@@ -640,6 +666,8 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
           onResult: (result) => {
             results.push(result);
             emit({ type: 'test-finished', result: toEventResult(result) });
+            // Queued, never awaited here: analysis runs beside the remaining tests.
+            analysis?.consider(result);
           },
           onSerialGroup: (group) => {
             serialGroups.push(group);
@@ -693,7 +721,10 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     }
     // Services go down after the apps that depended on them; a failing service
     // teardown command is a cleanup error of the run, not a crash.
+    // Analyses settle first: the report must carry every verdict that was
+    // going to land, and an interrupt has already aborted them.
     for (const teardown of [
+      () => analysis?.settle(),
       () => sessionStore?.cleanup(),
       () => processes?.stop((cause) => recordFailure(cause, 'cleanup')),
     ]) {

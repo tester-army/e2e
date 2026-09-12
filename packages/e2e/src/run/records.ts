@@ -5,6 +5,7 @@ import type { TestIdentity } from '../collect/collect.ts';
 import type { SkipInfo } from '../collect/select.ts';
 import type { ResolvedTarget } from '../config/resolve.ts';
 import type { StepRecord } from './steps.ts';
+import type { FailureAnalysis } from '../types.ts';
 
 export type ArtifactProducer = { kind: 'step'; stepId: string } | { kind: 'attempt' };
 
@@ -124,7 +125,44 @@ export interface ResultRecord {
   skip?: SkipInfo | undefined;
   attempts: AttemptRecord[];
   serialGroupId?: string;
+  /** Post-run failure analysis, attached by the runner after the last attempt. */
+  analysis?: FailureAnalysisRecord;
 }
+
+/**
+ * How one failed test was analyzed, as the report and the event stream carry
+ * it. `analyzed` holds the verdict; `unavailable` says why there is none, so
+ * a missing verdict is never silent.
+ */
+export type FailureAnalysisRecord =
+  | ({
+      status: 'analyzed';
+      analyzer: string;
+      /** Artifact IDs the analysis was given, so a reader can open what the analyzer saw. */
+      artifacts: { screenshot?: string; screen?: string };
+      /** Names of the evidence providers that contributed. */
+      sources: string[];
+      /** Provenance and usage of the built-in analyzer's model call; absent for a custom analyzer. */
+      model?: {
+        provider: string;
+        model: string;
+        inputTokens: number;
+        outputTokens: number;
+        estimatedCostUsd?: number;
+      };
+      durationMs: number;
+    } & Omit<FailureAnalysis, 'evidence'> & { evidence: string[] })
+  | {
+      status: 'unavailable';
+      analyzer: string;
+      /** Closed reason set, so hosts can branch without parsing prose. */
+      reason: 'no-model' | 'limit-reached' | 'failed' | 'timed-out' | 'interrupted';
+      message: string;
+      durationMs: number;
+    };
+
+/** The report-1 extension key a result's analysis is filed under. */
+export const ANALYSIS_EXTENSION_KEY = 'e2edev.analysis';
 
 export interface RunError {
   error: SerializedError;

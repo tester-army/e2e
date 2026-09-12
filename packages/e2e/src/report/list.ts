@@ -11,7 +11,14 @@ import picocolors from 'picocolors';
 import type { SerializedError } from '../internal/errors.ts';
 import { packageVersion } from '../internal/package-version.ts';
 import type { RunEvent, RunEventFact, RunEventOf, RunEventResult, SetupStep } from '../run/events.ts';
-import type { ArtifactRecord, AttemptRecord, FailureEvidence, ResultStatus, SerialGroupRecord } from '../run/records.ts';
+import type {
+  ArtifactRecord,
+  AttemptRecord,
+  FailureAnalysisRecord,
+  FailureEvidence,
+  ResultStatus,
+  SerialGroupRecord,
+} from '../run/records.ts';
 import type { Reporter, ReporterSummary } from '../types.ts';
 import { codeFrame, userFrame } from './code-frame.ts';
 import {
@@ -163,6 +170,8 @@ function serialMemberDetails(group: SerialGroupRecord, testId: string): ResultDe
 
 /** One failed pair, held for the `Failed Tests` section. */
 interface Failure {
+  /** The pair's identity, the key its analysis arrives under. */
+  readonly key: string;
   readonly group: FileGroup;
   readonly title: string;
   readonly status: ResultStatus;
@@ -208,6 +217,8 @@ export class ListReporter implements Reporter {
   /** Whether a live window paints; without one, finished steps stream permanently. */
   private readonly live: boolean;
   private readonly failures: Failure[] = [];
+  /** Post-run analyses by pair key, printed under the failure they belong to. */
+  private readonly analyses = new Map<string, { readonly title: string; readonly record: FailureAnalysisRecord }>();
   /**
    * Serial groups whose members' results are still to come, by group id. The
    * runner emits a group before its member results, and a member's details
@@ -291,6 +302,12 @@ export class ListReporter implements Reporter {
         break;
       case 'test-finished':
         this.testFinished(event.result);
+        break;
+      case 'analysis':
+        this.analyses.set(pairKey(event.testId, event.agent, event.target), {
+          title: this.titledAs(event.title, event.agent),
+          record: event.analysis,
+        });
         break;
       case 'serial-group':
         this.serialGroup(event.group);
@@ -558,7 +575,7 @@ export class ListReporter implements Reporter {
       // The exploration's verdict is its findings; any other error is a failure of its own.
       this.explore.result(result.attempts.flatMap((attempt) => attempt.artifacts));
       if (error !== undefined && !this.explore.isVerdict(error)) {
-        this.failures.push({ group, title, status: result.status, error, videos, failure, screenPath });
+        this.failures.push({ key, group, title, status: result.status, error, videos, failure, screenPath });
       }
       this.window.redraw();
       return;
@@ -575,7 +592,7 @@ export class ListReporter implements Reporter {
     };
     group.lines.push(line);
     if (statusBucket(result.status) === 'failed') {
-      this.failures.push({ group, title, status: result.status, error, videos, failure, screenPath });
+      this.failures.push({ key, group, title, status: result.status, error, videos, failure, screenPath });
     }
     if (group.planned !== undefined && group.lines.length >= group.planned) this.printGroup(group);
     this.window.redraw();
@@ -787,7 +804,7 @@ export class ListReporter implements Reporter {
     this.print('');
     this.print(this.errorBanner(`Failed Tests ${this.failures.length}`));
     this.print('');
-    this.failures.forEach(({ group, title, status, error, videos, failure, screenPath }, index) => {
+    this.failures.forEach(({ key, group, title, status, error, videos, failure, screenPath }, index) => {
       this.print(
         `${pc.bold(pc.bgRed(' FAIL '))} ${this.badge(group.target)} ${bounded(group.file)}${this.separator}${title}`,
       );
@@ -801,12 +818,68 @@ export class ListReporter implements Reporter {
       }
       this.printEvidence(failure, screenPath);
       this.printVideos(videos);
+      const analysis = this.analyses.get(key);
+      if (analysis !== undefined) {
+        this.analyses.delete(key);
+        this.printAnalysis(analysis.record);
+      }
       const marker = `[${index + 1}/${this.failures.length}]`;
       const { before, after } = rule(marker, 'right');
       this.print('');
       this.print(pc.red(pc.dim(`${before}${marker}${after}`)));
       this.print('');
     });
+  }
+
+  /**
+   * A post-run analysis under the failure it explains: the verdict line, the
+   * summary, the evidence it rests on, and the fix when there is one. An
+   * analysis that could not be made says why, so a missing verdict is never
+   * silent.
+   */
+  private printAnalysis(record: FailureAnalysisRecord): void {
+    const { pc } = this;
+    const head = ` ${pc.dim(F_POINTER)} ${pc.dim('analysis')}`;
+    if (record.status === 'unavailable') {
+      this.print(`${head} ${pc.dim(`unavailable (${record.reason}): ${bounded(record.message)}`)}`);
+      return;
+    }
+    const paint =
+      record.classification === 'app-bug'
+        ? pc.red
+        : record.classification === 'unknown'
+          ? pc.dim
+          : pc.yellow;
+    const model = record.model === undefined ? '' : ` · ${record.model.provider}/${record.model.model}`;
+    this.print(
+      `${head} ${paint(pc.bold(record.classification))} ${pc.dim(
+        `· ${record.confidence} confidence${model} · ${formatTime(record.durationMs)}`,
+      )}`,
+    );
+    for (const line of bounded(record.summary).split('\n')) this.print(`    ${line}`);
+    for (const item of record.evidence) this.print(`    ${pc.dim(`- ${bounded(item)}`)}`);
+    if (record.suggestedFix !== undefined) this.print(`    ${pc.cyan('fix:')} ${bounded(record.suggestedFix)}`);
+    if (record.suggestedLocator !== undefined) {
+      const { role, name } = record.suggestedLocator;
+      this.print(
+        `    ${pc.cyan('locator:')} ${bounded(`screen.getByRole(${JSON.stringify(role)}, { name: ${JSON.stringify(name)} })`)}`,
+      );
+    }
+  }
+
+  /**
+   * Analyses of results that did not print as failures — a flaky test whose
+   * failed attempt was analyzed — each under the test it belongs to.
+   */
+  private printRemainingAnalyses(): void {
+    if (this.analyses.size === 0) return;
+    this.print('');
+    for (const { title, record } of this.analyses.values()) {
+      this.print(`${this.pc.yellow(this.pc.bold(' FLAKY '))} ${title}`);
+      this.printAnalysis(record);
+      this.print('');
+    }
+    this.analyses.clear();
   }
 
   /** A full-width red rule with a centered `FAIL`-style label. */
@@ -897,6 +970,7 @@ export class ListReporter implements Reporter {
     }
     this.printExplore();
     this.printFailures();
+    this.printRemainingAnalyses();
     this.printErrors();
     this.print('');
     for (const row of this.summaryRows(true)) this.print(row);

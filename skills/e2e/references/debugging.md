@@ -71,6 +71,7 @@ jq '.run.results[] | select(.status != "passed") | .attempts[-1]
 | `--no-cache` | Rule out a stale `agent.act` replay |
 | `--debug` | Read each agent step's duration, model calls, cost, and transcript |
 | `--ai-trace`, then `npx unbox-ai runs .e2e/ai-trace.json` | See exactly what the model was shown and called |
+| `--analyze` | One model call per failure after its last attempt: what went wrong, why, who should look (`app-bug`, `test-bug`, `environment`, `flaky`), a fix, and the locator the screen actually shows. Verdict prints under the failure and lands in `report.json` as `extensions["e2edev.analysis"]` |
 | `--video` | Watch the failed attempt; `step.startedAt` minus the video artifact's `startedAt` is the step's offset into it |
 | `command.log: '.e2e/logs/app.log'` | Read the app's own output when it never becomes ready or errors mid-test |
 | `await app.screenshot('before-submit')` | Attach evidence before any secret is filled; later calls fail with `POLICY_DENIED` |

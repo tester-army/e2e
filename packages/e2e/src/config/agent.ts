@@ -315,7 +315,7 @@ function resolveCanonicalModel(
  * no environment fallback; an unconfigured model fails at its first model
  * call, so a custom-executor run needs none.
  */
-function resolveModel(model: ModelInstance | undefined, label: string): ResolvedModel | undefined {
+export function resolveModel(model: ModelInstance | undefined, label: string): ResolvedModel | undefined {
   if (model === undefined) return undefined;
   if (typeof model === 'string') {
     throw new ConfigurationError(

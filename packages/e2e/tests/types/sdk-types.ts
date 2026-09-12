@@ -15,6 +15,9 @@ import {
   type ArtifactStore,
   type AsyncExpectation,
   type E2EConfig,
+  type FailureAnalyzer,
+  type FailureEvidenceProvider,
+  type ModelInstance,
   type PollExpectation,
   type Reporter,
   type RunEvent,
@@ -68,6 +71,24 @@ void agent.act('use the key', { params: { apiKey: secrets.get('key') } });
 ({ artifacts: { video: { retain: 'sometimes' } } }) satisfies E2EConfig;
 ({ put: async (artifact) => ({ ref: artifact.startedAt ?? artifact.sha256 }) }) satisfies ArtifactStore;
 declare const reporter: Reporter;
+declare const modelInstance: ModelInstance;
+({ analysis: {} }) satisfies E2EConfig;
+({ analysis: { model: modelInstance, instructions: 'x', maxFailures: 3, vision: true, source: false } }) satisfies E2EConfig;
+({ name: 'git diff', collect: async (context, { signal }) => (signal.aborted ? undefined : context.test.file) }) satisfies FailureEvidenceProvider;
+({
+  name: 'host',
+  analyze: async (context) => ({
+    classification: 'test-bug',
+    confidence: 'high',
+    summary: context.error.message,
+    evidence: context.artifacts.map((artifact) => artifact.path),
+    suggestedLocator: { role: 'button', name: 'Save' },
+  }),
+}) satisfies FailureAnalyzer;
+// @ts-expect-error the analysis model is an instance, never a string
+({ analysis: { model: 'openai/gpt-5' } }) satisfies E2EConfig;
+// @ts-expect-error classification is a closed union
+({ name: 'host', analyze: async () => ({ classification: 'maybe', confidence: 'low', summary: '', evidence: [] }) }) satisfies FailureAnalyzer;
 ({ reporters: ['list', reporter] }) satisfies E2EConfig;
 ({ reporters: [reporter] }) satisfies E2EConfig;
 ({

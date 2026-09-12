@@ -283,6 +283,39 @@ describe('renderMarkdownReport', () => {
     expect(worded).toContain(', after 15.1s\n\n> the Save button stayed\n\n- Expected:');
   });
 
+  it('adds the post-run analysis as its own paragraph, and leaves out one that could not be made', () => {
+    const analyzed: ReportResult = {
+      ...failing,
+      extensions: {
+        'e2edev.analysis': {
+          status: 'analyzed',
+          analyzer: 'e2e-failure-analyst',
+          classification: 'test-bug',
+          confidence: 'high',
+          summary: 'The heading reads "Welcome back, Ada" | while the test expects "Welcome, Ada".',
+          evidence: ['error: expected heading "Welcome, Ada"'],
+          suggestedFix: 'Expect "Welcome back, Ada".',
+          artifacts: {},
+          sources: [],
+          durationMs: 900,
+        },
+      },
+    };
+    const unavailable: ReportResult = {
+      ...named({ title: 'signs out', status: 'failed', attempts: [attempt({ status: 'failed', error: { code: 'X', message: 'boom' } })] }),
+      extensions: {
+        'e2edev.analysis': { status: 'unavailable', analyzer: 'e2e-failure-analyst', reason: 'no-model', message: 'no analysis model', durationMs: 0 },
+      },
+    };
+    const body = renderMarkdownReport(page({ status: 'failed', results: [analyzed, unavailable] }));
+    // Its own paragraph, after the facts and before the source line.
+    expect(body).toContain(
+      '\n\n🔎 **test-bug** (high confidence): The heading reads "Welcome back, Ada" \\| while the test expects "Welcome, Ada". Fix: Expect "Welcome back, Ada".\n\n`tests/members.e2e.ts:41`',
+    );
+    expect(body).not.toContain('no analysis model');
+    expect(body).not.toContain('unavailable');
+  });
+
   it('puts run-level errors before the failures and says no tests ran', () => {
     const body = renderMarkdownReport(
       page({
