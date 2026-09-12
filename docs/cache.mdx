@@ -24,8 +24,9 @@ The run summary counts the outcomes:
 
 A replayed step made no model call. A handed-off step ran part of its
 recording before the agent finished it. A missed step ran live from the
-top. The report keeps the outcome and a `reason` on each agent step as
-`step.cache`, and `agent.act()` resolves with the same object.
+top. The report keeps the outcome on each agent step as `step.cache`, with
+a `reason` on misses and hand-offs, and `agent.act()` resolves with the
+same object. With the cache off there is no `step.cache` at all.
 
 To rule the cache out of a failure, run once without it:
 
@@ -111,7 +112,9 @@ An unconfirmed recording is deleted, not kept, so a broken flow re-records
 on the next passing run instead of replaying forever. A failing attempt
 writes what was verified before the failure and deletes the rest. A replayed
 step that then fails, or that the agent had to repair, deletes its entry.
-Ctrl-C writes nothing and deletes nothing.
+Ctrl-C writes nothing and deletes nothing. Deletion goes through the store's
+`delete` method: the file store has one, and a custom `cache.store` without
+it keeps stale entries until the next confirmed write.
 
 ## Why a step was not replayed
 
@@ -177,8 +180,9 @@ button the page adds shortly after load. Text that cannot read the same
 twice, such as a minted id, a countdown, or a date, is skipped while a stable
 anchor exists.
 
-Never stored: model prompts or output, screenshots, the observed tree, and
-secret values. A secret fill stores the credential name only. Deleting
+Never stored: the model's prompts and conversation, screenshots, the
+observed tree, and secret values. The step's one-line verdict is kept as
+`summary`. A secret fill stores the credential name only. Deleting
 `.e2e/cache/` slows the next run and changes nothing else.
 
 ## Modes
