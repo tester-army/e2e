@@ -179,7 +179,9 @@ credentials: {
 A per-credential `allowedOrigins` narrows the target's origin policy for that
 credential and can never widen it. Use it when a credential belongs to one of
 several allowed origins, so a page that steers the flow elsewhere cannot
-collect the password.
+collect the password. The rule applies to both forms: `locator.fill` checks
+the current origin before resolving the value, exactly as `type_secret` does.
+Each entry must be a serialized origin; anything else fails config loading.
 
 ## Secrets that are not passwords
 

@@ -12,6 +12,7 @@ import type { DebugTrace } from '../internal/debug.ts';
 import { ConfigurationError, errorMessage, InfrastructureError, TestError } from '../internal/errors.ts';
 import { didYouMean } from '../internal/suggest.ts';
 import { sessionSecrecy, type SessionSecrecy } from './secrecy.ts';
+import { secretOriginAllowed } from '../config/secrets.ts';
 import { unavailableCode } from '../secrets.ts';
 import { obj } from '../internal/objects.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
@@ -104,6 +105,17 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
       const registered = environment.config.secrets.get(secret.name);
       if (registered === undefined) {
         throw new ConfigurationError(unavailableCode(secret), `secret "${secret.name}" is not configured`);
+      }
+      // A test names the field, so the sink is the author's choice; the page
+      // is not. A redirect must not carry the value to a foreign origin, so
+      // a deterministic fill runs the same origin rule as `type_secret`. An
+      // engine with no notion of a URL has no origin to steer to.
+      const url = environment.session.url;
+      if (url !== undefined) {
+        const origin = new URL(await url(engine.operation())).origin;
+        if (!secretOriginAllowed(origin, environment.target.app.allowedOrigins, registered)) {
+          throw new ConfigurationError('POLICY_DENIED', `origin ${origin} is not authorized for secret "${secret.name}"`);
+        }
       }
       const value = registered.value;
       const plaintext = typeof value === 'function' ? await value() : value;

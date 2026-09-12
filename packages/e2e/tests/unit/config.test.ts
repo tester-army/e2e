@@ -403,6 +403,21 @@ describe('resolveConfig', () => {
     ).toThrow(/secret "admin" is also a credential/);
   });
 
+  it('rejects malformed allowedOrigins and unknown keys on a secret or credential at load, not at fill', () => {
+    expect(() => resolve({ secrets: { key: { value: 'v', allowedOrigins: 42 as never } } })).toThrow(
+      /secret "key" allowedOrigins must be an array/,
+    );
+    expect(() => resolve({ secrets: { key: { value: 'v', allowedOrigins: ['https://a.test/path'] } } })).toThrow(
+      /secret "key" allowedOrigins must hold serialized origins/,
+    );
+    expect(() => resolve({ secrets: { key: { value: 'v', origins: [] } as never } })).toThrow(
+      /unknown secret "key" key "origins"/,
+    );
+    expect(() =>
+      resolve({ credentials: { admin: { username: 'u', password: 'p', allowedOrigins: ['not an origin'] } } }),
+    ).toThrow(/credential "admin" allowedOrigins must hold serialized origins/);
+  });
+
   it('replaces secret values in the config digest', () => {
     const a = resolve({ secrets: { key: 'secret-1' } });
     const b = resolve({ secrets: { key: 'secret-2' } });

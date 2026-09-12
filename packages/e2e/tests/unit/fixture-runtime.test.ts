@@ -123,6 +123,36 @@ describe('generic secrets', () => {
     }
   });
 
+  it.each([
+    ['the app origin', 'https://app.test/checkout', true],
+    ['a foreign origin', 'https://evil.test/collect', false],
+    ['an origin outside the secret\'s own list', 'https://other.test/', false],
+  ])('a deterministic fill runs the origin rule: %s', async (_label, currentUrl, allowed) => {
+    let filled: string | undefined;
+    const engine = defineEngine({
+      name: 'fake', version: '1', spiVersion: 1,
+      app: { url: 'https://app.test', allowedOrigins: ['https://app.test', 'https://other.test'] },
+      url: async () => currentUrl,
+      observe: async () => ({ nodes: [] }),
+      locate: async () => [{ ref: { id: 'key', revision: '' }, role: 'textbox', name: 'API key' }],
+      perform: async (_ref, action) => { if (action.kind === 'fill') filled = action.value; },
+    });
+    const { fixtures, config } = runtime(engine, { secrets: { key: { value: 'sk_live_1', allowedOrigins: ['https://app.test'] } } });
+    setSecretRegistry(config);
+    try {
+      const fill = fixtures.screen.getByLabel('API key').fill(secrets.get('key'));
+      if (allowed) {
+        await fill;
+        expect(filled).toBe('sk_live_1');
+      } else {
+        await expect(fill).rejects.toMatchObject({ code: 'POLICY_DENIED' });
+        expect(filled).toBeUndefined();
+      }
+    } finally {
+      setSecretRegistry(undefined);
+    }
+  });
+
   it('fails a secret the config does not declare with SECRET_UNAVAILABLE', () => {
     const { config } = runtime(empty(), { secrets: { known: 'v' } });
     setSecretRegistry(config);

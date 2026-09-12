@@ -394,7 +394,7 @@ type SecretProvider = () => string | Promise<string>;
 | --- | --- | --- | --- |
 | `username` | `string` | yes | Default username |
 | `password` | `string \| SecretProvider` | yes | A static value, or a provider called on every authorized fill (a vault lookup, a freshly computed TOTP). Recorded in the config digest by name only. An `E2E_USER_*` override wins over a provider |
-| `allowedOrigins` | `readonly string[]` | no | Narrows this credential relative to the target's allowed origins. It can only narrow |
+| `allowedOrigins` | `readonly string[]` | no | Narrows this credential relative to the target's allowed origins. It can only narrow. Serialized origins, checked on every fill, deterministic or agentic |
 
 `credentials.user(name)` resolves a configured entry into a `Credential`.
 The username is a plain string; the password is an opaque `Secret` that test
@@ -429,7 +429,7 @@ type SecretConfig =
 | Key | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `value` | `string \| SecretProvider` | yes | A static value, or a provider called on every authorized fill. Recorded in the config digest by name only. An `E2E_SECRET_<NAME>` override wins over both |
-| `allowedOrigins` | `readonly string[]` | no | Narrows this secret relative to the target's allowed origins. It can only narrow |
+| `allowedOrigins` | `readonly string[]` | no | Narrows this secret relative to the target's allowed origins. It can only narrow. Serialized origins, checked on every fill, deterministic or agentic |
 
 A bare string or function is shorthand for `{ value }`. Every entry must
 resolve to a non-empty string or a function; anything else is `INVALID_CONFIG`.

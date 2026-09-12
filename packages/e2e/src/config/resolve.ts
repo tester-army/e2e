@@ -35,7 +35,7 @@ import {
   type ResolvedBaseLimits,
 } from './agent.ts';
 import { digestAppDeclaration, resolveTargetApp, type ResolvedApp } from './app.ts';
-import { envName, isSecretValue, normalizeSecretConfig } from './secrets.ts';
+import { envName, isSecretValue, normalizeSecretConfig, validateAllowedOrigins, validateSecretDeclaration } from './secrets.ts';
 
 export type { ResolvedAgentConfig, ResolvedLimits } from './agent.ts';
 export type { ResolvedApp } from './app.ts';
@@ -736,6 +736,7 @@ function resolveSecrets(
         `credential "${name}" password must be a non-empty string or a provider function`,
       );
     }
+    validateAllowedOrigins(`credential "${name}"`, credential.allowedOrigins);
     credentials.set(name, { name, username });
     secrets.set(name, { name, purpose: 'password', value: password, allowedOrigins: credential.allowedOrigins });
   }
@@ -747,6 +748,7 @@ function resolveSecrets(
       );
     }
     const declared = normalizeSecretConfig(entry);
+    if (declared === entry) validateSecretDeclaration(`secret "${name}"`, declared);
     const value = env[envName('E2E_SECRET', name)] ?? declared.value;
     if (!isSecretValue(value)) {
       throw new ConfigurationError(

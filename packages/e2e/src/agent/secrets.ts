@@ -1,6 +1,7 @@
 /** Host-side secret fill authorization. */
 
 import type { TargetSession, OperationContext, SemanticNode } from '../engine/surface.ts';
+import { secretOriginAllowed } from '../config/secrets.ts';
 import { unavailableCode } from '../secrets.ts';
 import type { Secret } from '../types.ts';
 import { AgentError, toAgentError } from './error.ts';
@@ -39,10 +40,7 @@ export async function authorizeSecretFill(
   }
 
   const origin = await currentOrigin(host);
-  const appAllows = runtime.app.allowedOrigins.includes(origin);
-  const secretAllows =
-    registered.allowedOrigins === undefined || registered.allowedOrigins.includes(origin);
-  if (!appAllows || !secretAllows) {
+  if (!secretOriginAllowed(origin, runtime.app.allowedOrigins, registered)) {
     host.recordPolicy('secret.origin', 'denied', 'POLICY_DENIED');
     throw new AgentError(
       'POLICY_DENIED',

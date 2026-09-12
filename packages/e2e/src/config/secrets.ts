@@ -7,6 +7,8 @@
  */
 
 import type { credentialBrand, secretBrand } from '../internal/brands.ts';
+import { ConfigurationError } from '../internal/errors.ts';
+import { didYouMean } from '../internal/suggest.ts';
 
 /**
  * What a secret is for, which decides where it may be filled: a `password`
@@ -86,4 +88,63 @@ export function isSecretValue(value: unknown): value is string | SecretProvider 
 /** `E2E_USER_ADMIN`, `E2E_SECRET_STRIPE_KEY`: the name uppercased, everything outside A-Z0-9 as `_`. */
 export function envName(prefix: 'E2E_USER' | 'E2E_SECRET', name: string): string {
   return `${prefix}_${name.toUpperCase().replaceAll(/[^A-Z0-9]/g, '_')}`;
+}
+
+const SECRET_DECLARATION_KEYS = new Set(['value', 'allowedOrigins']);
+
+/**
+ * Validates the object form of a `secrets` entry the way config resolution
+ * validates every other block, so a mistake fails the run at load rather than
+ * at the first fill: no unknown keys, and `allowedOrigins` a list of
+ * serialized origins if present. The value itself is checked by the caller,
+ * after the environment override.
+ */
+export function validateSecretDeclaration(where: string, declared: SecretDeclaration): void {
+  for (const key of Object.keys(declared)) {
+    if (!SECRET_DECLARATION_KEYS.has(key)) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `unknown ${where} key "${key}"${didYouMean(key, [...SECRET_DECLARATION_KEYS])}`,
+      );
+    }
+  }
+  validateAllowedOrigins(where, declared.allowedOrigins);
+}
+
+/** `allowedOrigins` on a credential or a secret: absent, or a list of serialized origins. */
+export function validateAllowedOrigins(where: string, origins: unknown): void {
+  if (origins === undefined) return;
+  if (!Array.isArray(origins)) {
+    throw new ConfigurationError('INVALID_CONFIG', `${where} allowedOrigins must be an array`);
+  }
+  for (const origin of origins) {
+    let parsed: URL | undefined;
+    try {
+      parsed = typeof origin === 'string' ? new URL(origin) : undefined;
+    } catch {
+      parsed = undefined;
+    }
+    if (parsed === undefined || parsed.origin !== origin) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `${where} allowedOrigins must hold serialized origins such as https://auth.example.com, got ${JSON.stringify(origin)}`,
+      );
+    }
+  }
+}
+
+/**
+ * Whether a secret may be filled on `origin`: the target must allow it, and
+ * the secret's own list, when declared, may only narrow that. One rule for
+ * the agent's `type_secret` and a test's `locator.fill`.
+ */
+export function secretOriginAllowed(
+  origin: string,
+  appAllowedOrigins: readonly string[],
+  secret: { readonly allowedOrigins: readonly string[] | undefined },
+): boolean {
+  return (
+    appAllowedOrigins.includes(origin) &&
+    (secret.allowedOrigins === undefined || secret.allowedOrigins.includes(origin))
+  );
 }
