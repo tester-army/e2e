@@ -141,12 +141,12 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 /** What agent-device is told about settling after an action. */
-export type SettleOptions = { readonly settle: true; readonly settleQuietMs: number } | Record<never, never>;
+type SettleOptions = { readonly settle: true; readonly settleQuietMs: number } | Record<never, never>;
 
 const DEFAULT_SETTLE_QUIET_MS = 150;
 
 /** Resolves the `settle` option: the default window, a custom one, or no wait at all. */
-export function settleOptions(settle: AgentDeviceOptions['settle']): SettleOptions {
+function settleOptions(settle: AgentDeviceOptions['settle']): SettleOptions {
   if (settle === false) return {};
   const quietMs = settle ?? DEFAULT_SETTLE_QUIET_MS;
   if (!Number.isInteger(quietMs) || quietMs < 0) {
