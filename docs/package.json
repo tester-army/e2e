@@ -9,9 +9,11 @@
     "typecheck": "tsc --noEmit --project examples/tsconfig.json"
   },
   "devDependencies": {
+    "@e2edev/agent-device": "workspace:*",
     "@e2edev/e2e": "workspace:*",
     "@e2edev/playwright": "workspace:*",
     "@types/node": "26.4.1",
+    "agent-device": "0.21.1",
     "ai": "7.0.97",
     "mint": "4.2.883",
     "playwright": "1.63.0",

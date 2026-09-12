@@ -6,9 +6,9 @@ test('app opens', async ({ app, web }) => {
   await expect(web.locator('body')).toBeVisible();
 });
 
-// Runs once the key the model in e2e.config.ts reads is in the environment:
+// With the model key in the environment, uncomment:
 // test('the agent drives a flow', async ({ app, agent }) => {
 //   await app.open('/');
-//   await agent.act('one goal in plain language');
+//   await agent.act('one goal in natural language');
 //   await agent.assert('one question about the screen');
 // });

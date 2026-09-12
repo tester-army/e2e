@@ -20,6 +20,9 @@ const EXAMPLES: Record<string, string> = {
   'docs/examples/quickstart/e2e.config.ts': 'docs/quickstart.mdx',
   'docs/examples/quickstart/tests/example.e2e.ts': 'docs/quickstart.mdx',
   'docs/examples/quickstart/tests/agent.e2e.ts': 'docs/quickstart.mdx',
+  'docs/examples/quickstart/mobile/e2e.config.ts': 'docs/quickstart.mdx',
+  'docs/examples/quickstart/mobile/tests/example.e2e.ts': 'docs/quickstart.mdx',
+  'docs/examples/quickstart/mobile/tests/agent.e2e.ts': 'docs/quickstart.mdx',
   'docs/examples/quickstart/e2e.command.config.ts': 'docs/starting-your-app.mdx',
 };
 

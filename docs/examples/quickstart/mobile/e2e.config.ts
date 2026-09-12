@@ -1,6 +1,6 @@
 import type { E2EConfig } from '@e2edev/e2e';
 import { createAgent } from '@e2edev/e2e/agent';
-import { playwright } from '@e2edev/playwright';
+import { agentDevice } from '@e2edev/agent-device';
 import { gateway } from 'ai';
 
 export default {
@@ -11,11 +11,7 @@ export default {
       system: 'You are a thorough QA agent. Verify every outcome.',
     }),
   },
-  targets: [{
-    engine: playwright({
-      url: process.env.APP_URL ?? 'http://localhost:3000',
-      // Or let the runner start the dev server:
-      // command: { executable: 'npm', args: ['run', 'dev'] },
-    }),
-  }],
+  // Replace Settings with your app's bundle id.
+  targets: [{ name: 'ios', engine: agentDevice({ platform: 'ios', app: 'Settings' }) }],
+  workers: 1,
 } satisfies E2EConfig;

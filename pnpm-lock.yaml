@@ -159,6 +159,9 @@ importers:
 
   docs:
     devDependencies:
+      '@e2edev/agent-device':
+        specifier: workspace:*
+        version: link:../packages/agent-device
       '@e2edev/e2e':
         specifier: workspace:*
         version: link:../packages/e2e
@@ -168,6 +171,9 @@ importers:
       '@types/node':
         specifier: 26.4.1
         version: 26.4.1
+      agent-device:
+        specifier: 0.21.1
+        version: 0.21.1(ai@7.0.97(zod@4.6.1))
       ai:
         specifier: 7.0.97
         version: 7.0.97(zod@4.6.1)

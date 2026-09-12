@@ -18,38 +18,20 @@ emulator. Run the doctor once before handing the target to the runner:
 npx agent-device doctor
 ```
 
-Then scaffold, choosing **Mobile (iOS/Android)** in the wizard:
-
-```bash
-npx @e2edev/e2e@beta init
-```
-
-`init` defaults to iOS on macOS and Android elsewhere, pins the Settings app
-so the first run works on any machine, and sets one worker. There is no
-`APP_URL`; a device target declares no URL.
+Then follow the [Quickstart](/quickstart) and choose **Mobile (iOS/Android)**
+in the wizard. `init` defaults to iOS on macOS and Android elsewhere, pins the
+Settings app so the first run works on any machine, and sets one worker.
+There is no `APP_URL`; a device target declares no URL.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from '@e2edev/e2e';
 import { agentDevice } from '@e2edev/agent-device';
 
 export default {
-  // Requires Xcode and an iOS simulator. Replace Settings with your app's bundle ID.
+  // Replace Settings with your app's bundle id.
   targets: [{ name: 'ios', engine: agentDevice({ platform: 'ios', app: 'Settings' }) }],
   workers: 1,
 } satisfies E2EConfig;
-```
-
-```ts title="tests/example.e2e.ts"
-import { test } from '@e2edev/agent-device';
-import { expect } from '@e2edev/e2e';
-
-test('Settings opens', async ({ screen }) => {
-  await expect(screen.getByRole('button', { name: 'General' })).toBeVisible();
-});
-```
-
-```bash
-npx e2e run
 ```
 
 The devices boot before the run's clock starts. On a CI runner, where a cold
@@ -213,10 +195,10 @@ The read-only `screenshot` tool creates no gap.
 | The cache anchors on the page path | The cache anchors on `app://device/<bundle id>/<screen title>`, read off the navigation bar |
 
 <CardGroup cols={2}>
-  <Card title="agent-device reference" href="/reference/agent-device">
+  <Card title="agent-device reference" icon="mobile-screen" href="/reference/agent-device">
     Every option, the `device` fixture, and the tool pack.
   </Card>
-  <Card title="Writing tests" href="/writing-tests">
+  <Card title="Writing tests" icon="pen-to-square" href="/writing-tests">
     Goals, checks, and the deterministic APIs, on any platform.
   </Card>
 </CardGroup>

@@ -74,12 +74,10 @@ export function getEnginePresets() {
       hint: 'Playwright',
       dependencies: { ...engineDependency('@e2edev/playwright'), playwright: playwrightRange(ENGINE_VERSIONS?.['playwright']) },
       imports: ["import { playwright } from '@e2edev/playwright';"],
-      config: `  // The engine declares the app it drives; APP_URL overrides the default at run time.
-  targets: [{
-    // Named after the platform the engine declares: "web".
+      config: `  targets: [{
     engine: playwright({
       url: process.env.APP_URL ?? 'http://localhost:3000',
-      // Let the runner start the dev server and wait for url to answer:
+      // Or let the runner start the dev server:
       // command: { executable: 'npm', args: ['run', 'dev'] },
     }),
   }],`,
@@ -92,10 +90,10 @@ test('app opens', async ({ app, web }) => {
 });
 `,
       aiExample: `
-// Runs once the key the model in e2e.config.ts reads is in the environment:
+// With the model key in the environment, uncomment:
 // test('the agent drives a flow', async ({ app, agent }) => {
 //   await app.open('/');
-//   await agent.act('one goal in plain language');
+//   await agent.act('one goal in natural language');
 //   await agent.assert('one question about the screen');
 // });
 `,
@@ -108,10 +106,10 @@ test('app opens', async ({ app, web }) => {
       dependencies: { ...engineDependency('@e2edev/agent-device'), 'agent-device': agentDeviceRange(ENGINE_VERSIONS?.['agent-device']) },
       imports: ["import { agentDevice } from '@e2edev/agent-device';"],
       config: ios
-        ? `  // Requires Xcode and an iOS simulator. Replace Settings with your app's bundle ID.
+        ? `  // Replace Settings with your app's bundle id.
   targets: [{ name: 'ios', engine: agentDevice({ platform: 'ios', app: 'Settings' }) }],
   workers: 1,`
-        : `  // Requires the Android SDK and an emulator. Replace com.android.settings with your app's package.
+        : `  // Replace com.android.settings with your app's package name.
   targets: [{ name: 'android', engine: agentDevice({ platform: 'android', app: 'com.android.settings' }) }],
   workers: 1,`,
       example: `import { test } from '@e2edev/agent-device';
@@ -123,14 +121,14 @@ test('Settings opens', async ({ screen }) => {
 `,
       aiExample: ios
         ? `
-// Runs once the key the model in e2e.config.ts reads is in the environment:
+// With the model key in the environment, uncomment:
 // test('the agent opens General', async ({ agent, device }) => {
 //   await agent.act('open General settings');
 //   await expect(device.locator('role=NavigationBar id=General')).toBeVisible();
 // });
 `
         : `
-// Runs once the key the model in e2e.config.ts reads is in the environment:
+// With the model key in the environment, uncomment:
 // test('the agent opens Network settings', async ({ agent, device }) => {
 //   await agent.act('open Network & internet settings');
 //   await expect(device.locator('id=com.android.settings:id/collapsing_toolbar')).toHaveText('Network & internet');

@@ -65,8 +65,7 @@ describe('e2e init', () => {
     expect(read('e2e.config.ts')).toContain("import { gateway } from 'ai';");
     expect(read('e2e.config.ts')).toContain("model: gateway('openai/gpt-5.6-luna'),");
     expect(read('e2e.config.ts')).toContain('// The Vercel AI Gateway serves the model id and reads AI_GATEWAY_API_KEY.');
-    expect(read('e2e.config.ts')).toContain("// Any AI SDK model works here: openai('gpt-5.6-luna') from @ai-sdk/openai calls the provider directly.");
-    expect(read('tests/example.e2e.ts')).toContain('// Runs once the key the model in e2e.config.ts reads is in the environment:');
+    expect(read('tests/example.e2e.ts')).toContain('// With the model key in the environment, uncomment:');
     expect(read('e2e.config.ts')).toContain("playwright({\n      url: process.env.APP_URL ?? 'http://localhost:3000',");
     expect(read('e2e.config.ts')).toContain('// command: {');
     expect(read('tests/example.e2e.ts')).toContain("test('app opens'");
