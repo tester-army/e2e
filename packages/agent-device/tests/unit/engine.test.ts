@@ -1200,6 +1200,48 @@ describe('deterministic actions', () => {
     expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e4', settle: true, settleQuietMs: 150 });
   });
 
+  it('does not dispatch an action whose transition wait was cancelled', async () => {
+    const h = harness({ transition: 300 });
+    await openAttempt(h);
+    const about = await observed(h, 'About');
+    const controller = new AbortController();
+    const pending = h.engine.perform!(about.ref, { kind: 'tap' }, { ...operation(controller.signal), origin: 'test' });
+    setTimeout(() => controller.abort(), 20);
+    await expect(pending).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(h.fake.methods().filter((method) => method === 'interactions.press')).toHaveLength(0);
+  });
+
+  it('treats every control as arriving after a launch, even one the previous screen also had', async () => {
+    const h = harness({ transition: 120 });
+    await openAttempt(h);
+    await sleep(150);
+    await observed(h, 'About');
+    // A relaunch: the same About cell at the same place is on the new screen too.
+    await h.engine.app!.restart!(test());
+    const startedAt = Date.now();
+    await h.engine.perform!((await observed(h, 'About')).ref, { kind: 'tap' }, test());
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(100);
+  });
+
+  it('does not count a toggle already in the wanted state as an action', async () => {
+    const h = harness({ transition: 120 });
+    await openAttempt(h);
+    await sleep(150);
+    // Airplane Mode reads unchecked, so uncheck sends nothing.
+    await h.engine.perform!((await observed(h, 'Airplane Mode')).ref, { kind: 'uncheck' }, test());
+    expect(h.fake.methods().filter((method) => method === 'interactions.press')).toHaveLength(0);
+    h.fake.respond('capture.snapshot', () => ({
+      ...SETTINGS_SNAPSHOT,
+      nodes: [
+        ...SETTINGS_NODES,
+        { ref: '@e11', index: 10, parentIndex: 0, depth: 1, type: 'button', label: 'Save', rect: { x: 0, y: 600, width: 390, height: 44 } },
+      ],
+    }));
+    const startedAt = Date.now();
+    await h.engine.perform!((await observed(h, 'Save')).ref, { kind: 'tap' }, test());
+    expect(Date.now() - startedAt).toBeLessThan(80);
+  });
+
   it('rejects a negative or fractional transition budget', () => {
     expect(() => harness({ transition: -5 })).toThrow(/non-negative integer/);
     expect(() => harness({ transition: 0.5 })).toThrow(/non-negative integer/);

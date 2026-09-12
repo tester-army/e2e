@@ -407,7 +407,9 @@ export class AgentDeviceSurface {
         }),
       signal,
     );
-    this.markAction(this.latestIndex);
+    // A launch has no screen before it worth matching against: every control
+    // of the new screen is arriving, whatever the previous one looked like.
+    this.markAction(undefined);
     this.appIdentity = result.appBundleId ?? result.appName ?? app;
     this.generation = new Map();
     this.located.clear();
@@ -599,6 +601,11 @@ export class AgentDeviceSurface {
       if (prior !== undefined && sameRect(prior.node.rect, entry.node.rect)) return;
     }
     await sleep(remaining, operation.signal);
+    // The sleep resolves on abort; the action behind it must not go out once
+    // the caller has already been told the operation was cancelled.
+    if (operation.signal.aborted) {
+      throw new EngineError('CANCELLED', 'transition wait cancelled', { retryable: false });
+    }
   }
 
   /**
@@ -621,6 +628,11 @@ export class AgentDeviceSurface {
     // acting, so its actions settle first.
     const deterministic = operation.origin === 'test';
     const settle = deterministic ? {} : this.settleOptions;
+    // A toggle already in the wanted state sends nothing, so it neither waits
+    // for a transition nor counts as an action the next control must wait on.
+    if ((action.kind === 'check' || action.kind === 'uncheck') && entry.node.states?.checked === (action.kind === 'check')) {
+      return;
+    }
     const before = this.latestIndex;
     const run = async (): Promise<unknown> => {
       if (deterministic) await this.awaitTransition(entry, operation);
