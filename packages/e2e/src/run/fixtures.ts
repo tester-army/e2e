@@ -11,6 +11,7 @@ import type { OperationContext, TargetSession } from '../engine/surface.ts';
 import { expectationBrand } from '../internal/brands.ts';
 import type { DebugTrace } from '../internal/debug.ts';
 import { ConfigurationError, errorMessage, InfrastructureError, TestError } from '../internal/errors.ts';
+import { Deadline } from '../internal/time.ts';
 import { didYouMean } from '../internal/suggest.ts';
 import { sessionSecrecy, type SessionSecrecy } from './secrecy.ts';
 import { unavailableCode } from '../secrets.ts';
@@ -440,13 +441,15 @@ function createApp(environment: AttemptEnvironment, engine: LocatorEngine, taint
    * unreachable app after a restart is reported exactly as on first open.
    * A target without an address (a device app) has nothing to reopen.
    */
+  /** One steering hook and the reopen that follows it share one `config.timeout` budget. */
   const steer = (api: string, hook: (operation: OperationContext) => Promise<void>): Promise<void> =>
     steps.run('app', api, '', async () => {
-      await hook(engine.operation(config.timeout));
+      const deadline = new Deadline(config.timeout);
+      await hook(engine.operation(deadline.remaining()));
       if (target.app.base === undefined) return;
       const resolved = target.app.base.href;
       try {
-        await engine.session.app.open(resolved, engine.operation(config.timeout));
+        await engine.session.app.open(resolved, engine.operation(Math.max(1, deadline.remaining())));
       } catch (cause) {
         throw unreachableApp(cause, resolved) ?? cause;
       }

@@ -23,6 +23,7 @@ import { createAttemptArtifacts } from './artifacts.ts';
 import { AttemptBudget } from './budget.ts';
 import { TargetExecutor, type ClosingRecord } from './execute.ts';
 import { createFixtures } from './fixtures.ts';
+import type { EnginePrepareResult } from '../engine/index.ts';
 import { prepareEngine, startDeclaredProcesses, validateEngine, type AppProcesses } from './provision.ts';
 import { SessionStore } from './sessions.ts';
 import { StepRecorder, type StepProgress } from './steps.ts';
@@ -86,9 +87,10 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
   // resolve while the attempt is open.
   setSecretRegistry(config);
   let processes: AppProcesses;
+  let prepared: EnginePrepareResult | void;
   try {
     // One worker on one target: one slot to provision.
-    await prepareEngine(target, 1, { runId, env: options.env, signal }, (line) => notice(target.name, line));
+    prepared = await prepareEngine(target, 1, { runId, env: options.env, signal }, (line) => notice(target.name, line));
     const hooks = { ci: config.ci, notice: (message: string) => notice('app', message) };
     processes = await startDeclaredProcesses([target], config.projectRoot, () => hooks, signal, debug);
   } catch (cause) {
@@ -105,6 +107,7 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
     sessionStore,
     headed: options.headed,
     workerSlot: 0,
+    env: { ...prepared?.env, ...options.env },
     isolated: false,
     interruptSignal: signal,
     debug,

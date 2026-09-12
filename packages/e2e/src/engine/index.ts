@@ -407,6 +407,13 @@ export interface EngineInitInfo {
    */
   readonly projectRoot: string;
   readonly app: EngineAppInfo;
+  /**
+   * This worker's environment: the run's, plus what this target's `prepare`
+   * returned in its result's `env`. Read what `prepare` provisioned from
+   * here, never from `process.env`: an in-process worker shares its process
+   * with the runner and every other target.
+   */
+  readonly env: Readonly<Record<string, string | undefined>>;
   /** Whether the run asked for a visible surface (`--headed`). */
   readonly headed: boolean;
   /**

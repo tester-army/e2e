@@ -73,6 +73,8 @@ export interface TargetExecutorOptions {
   readonly headed: boolean;
   /** This worker's slot among the target's workers; see `EngineInitInfo.workerSlot`. */
   readonly workerSlot: number;
+  /** This worker's environment; see `EngineInitInfo.env`. */
+  readonly env: Readonly<Record<string, string | undefined>>;
   /**
    * Whether this executor runs in a process of its own that ends with its
    * work. Only then can an interrupted test body be abandoned mid-flight:
@@ -219,6 +221,7 @@ export class TargetExecutor implements SerialHost {
             targetName: this.target.name,
             projectRoot: this.config.projectRoot,
             app: obj({ site: this.target.app.site }),
+            env: this.options.env,
             headed: this.options.headed,
             workerSlot: this.options.workerSlot,
             signal,

@@ -15,6 +15,7 @@ function initInfo(signal = new AbortController().signal): EngineInitInfo {
     targetName: 'web',
     projectRoot: '/project',
     app: { site: 'localhost' },
+    env: {},
     headed: false,
     workerSlot: 0,
     signal,

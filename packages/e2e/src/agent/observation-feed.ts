@@ -129,10 +129,12 @@ export class ObservationFeed {
   }
 
   /**
-   * Best-effort current location path + query, for trace preconditions. An
-   * observation at hand answers from its own location; without one the
-   * session observes afresh. A location that is not a URL has no path, and a
-   * surface that cannot be observed yet (no app opened) has none either.
+   * Best-effort current location, for trace anchors. An observation at hand
+   * answers from its own location; without one the session observes afresh.
+   * A URL anchors on its path and query, so the origin a preview deploys
+   * under never enters an entry; any other location (a device's screen, a
+   * window) anchors as the opaque string it is. A surface that reports no
+   * location, or cannot be observed yet (no app opened), has no anchor.
    */
   async currentPath(observation?: AgentObservation): Promise<string | undefined> {
     try {
@@ -141,6 +143,7 @@ export class ObservationFeed {
           ? await this.runtime.engine.session.location(this.accounting.operation())
           : observation.location;
       if (location === undefined) return undefined;
+      if (!URL.canParse(location)) return location;
       const url = new URL(location);
       return `${url.pathname}${url.search}`;
     } catch {

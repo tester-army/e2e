@@ -44,6 +44,8 @@ export interface TargetWorkerDeps {
   readonly headed: boolean;
   /** See `TargetExecutorOptions.workerSlot`. */
   readonly workerSlot: number;
+  /** See `TargetExecutorOptions.env`. */
+  readonly env: Readonly<Record<string, string | undefined>>;
   /** Whether the worker has a process of its own; see `TargetExecutorOptions.isolated`. */
   readonly isolated: boolean;
   readonly resolvePairs: ResolveUnitPairs;
@@ -87,6 +89,7 @@ export class TargetWorker {
         sessionStore: deps.sessionStore,
         headed: deps.headed,
         workerSlot: deps.workerSlot,
+        env: deps.env,
         isolated: deps.isolated,
         interruptSignal: this.interruptController.signal,
         ...(deps.debug !== undefined ? { debug: deps.debug } : {}),

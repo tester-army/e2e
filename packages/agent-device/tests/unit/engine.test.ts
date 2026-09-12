@@ -40,12 +40,18 @@ function poolVariableIn(env: NodeJS.ProcessEnv, readable: string): string {
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function boot(engine: EngineHandle, targetName = 'ios-simulator', workerSlot = 0): Promise<void> {
+async function boot(
+  engine: EngineHandle,
+  targetName = 'ios-simulator',
+  workerSlot = 0,
+  env: Readonly<Record<string, string | undefined>> = {},
+): Promise<void> {
   await engine.init!({
     runId: 'run-1',
     targetName,
     projectRoot: PROJECT_ROOT,
     app: {},
+    env,
     headed: false,
     workerSlot,
     signal: new AbortController().signal,
@@ -292,15 +298,9 @@ describe('lifecycle', () => {
       JSON.stringify(['2BBF3F07-AF66-4F95-82AB-BF442506FC89', '8A2DC8D6-7B20-44FA-ADBB-47D3EAE6E8F3']),
     );
     expect(env).toEqual({});
+    // A worker reads the pool from the environment it was started with, never process.env.
     const worker = harness({ device: undefined });
-    const previous = process.env[variable];
-    process.env[variable] = handed[variable];
-    try {
-      await boot(worker.engine, 'ios', 1);
-    } finally {
-      if (previous === undefined) delete process.env[variable];
-      else process.env[variable] = previous;
-    }
+    await boot(worker.engine, 'ios', 1, { [variable]: handed[variable] });
     expect(worker.fake.methods()).toEqual(['devices.boot']);
     expect(worker.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios', udid: '8A2DC8D6-7B20-44FA-ADBB-47D3EAE6E8F3' });
     expect(worker.sessions).toEqual(['e2e-ios-1']);

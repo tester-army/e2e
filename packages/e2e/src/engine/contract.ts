@@ -302,6 +302,8 @@ export interface ParsedKey {
 }
 
 const MODIFIER_SET: ReadonlySet<string> = new Set(KEY_MODIFIERS);
+/** Control, format, surrogate, private-use, unassigned, and line or paragraph separators: never a printable key. */
+const NON_PRINTABLE = /[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}\p{Zl}\p{Zp}]/u;
 const NAME_SET: ReadonlySet<string> = new Set(KEY_NAMES);
 
 /**
@@ -324,7 +326,7 @@ export function parseKey(key: string): ParsedKey | undefined {
     modifiers.push(part as KeyModifier);
   }
   if (NAME_SET.has(last)) return { modifiers, key: { kind: 'named', name: last as KeyName } };
-  if ([...last].length === 1) return { modifiers, key: { kind: 'char', char: last } };
+  if ([...last].length === 1 && !NON_PRINTABLE.test(last)) return { modifiers, key: { kind: 'char', char: last } };
   return undefined;
 }
 

@@ -32,6 +32,8 @@ export interface InProcessRunnerOptions {
   readonly sessionStore: SessionStore;
   readonly headed: boolean;
   readonly debug: DebugTrace;
+  /** The environment each target's workers run with; see `EngineInitInfo.env`. */
+  readonly envFor: (targetName: string) => Readonly<Record<string, string | undefined>>;
 }
 
 class InProcessRunner implements UnitRunner {
@@ -130,6 +132,7 @@ class InProcessRunner implements UnitRunner {
       artifactsRoot: this.options.artifactsRoot,
       headed: this.options.headed,
       workerSlot: this.workerSlot,
+      env: this.options.envFor(this.targetName),
       isolated: false,
       debug: this.options.debug,
       resolvePairs: (unit) => resolveFromSelection(this.options.selection, target, unit, this.options.registration),

@@ -90,8 +90,8 @@ export class DevicePool {
    * device. A slot beyond the pool is a broken invariant: the runner caps the
    * target at the workers this engine declared or reported.
    */
-  device(targetName: string, slot: number): string | undefined {
-    const devices = this.configured ?? this.discovered.get(targetName) ?? this.fromEnvironment(process.env, targetName);
+  device(targetName: string, slot: number, env: Readonly<Record<string, string | undefined>>): string | undefined {
+    const devices = this.configured ?? this.discovered.get(targetName) ?? this.fromEnvironment(env, targetName);
     if (devices === undefined || devices.length === 0) return undefined;
     if (slot >= devices.length) {
       throw new EngineError(
@@ -159,7 +159,7 @@ export class DevicePool {
   }
 
   /** The pool `prepare` left for this target in the environment, if any. */
-  private fromEnvironment(env: NodeJS.ProcessEnv, targetName: string): readonly string[] | undefined {
+  private fromEnvironment(env: Readonly<Record<string, string | undefined>>, targetName: string): readonly string[] | undefined {
     const raw = env[poolVariable(targetName)];
     if (raw === undefined) return undefined;
     try {

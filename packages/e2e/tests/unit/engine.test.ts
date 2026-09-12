@@ -197,6 +197,12 @@ describe('defineEngine', () => {
 });
 
 describe('parseKey', () => {
+  it('rejects non-printable single code points: control, format, surrogate, separators', () => {
+    for (const key of ['\n', '\u0000', '\u200b', '\ud800', '\u2028', '\u007f', 'Shift+\t']) {
+      expect(parseKey(key)).toBeUndefined();
+    }
+    expect(parseKey('\u00e9')).toEqual({ modifiers: [], key: { kind: 'char', char: '\u00e9' } });
+  });
   it('parses named keys, single characters, and modifier chords', () => {
     expect(parseKey('Enter')).toEqual({ modifiers: [], key: { kind: 'named', name: 'Enter' } });
     expect(parseKey('a')).toEqual({ modifiers: [], key: { kind: 'char', char: 'a' } });

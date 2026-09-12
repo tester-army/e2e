@@ -173,6 +173,8 @@ export interface EngineInitInfo {
   /** Directory relative paths in the config resolve against. */
   readonly projectRoot: string;
   readonly app: EngineAppInfo;
+  /** This worker's environment: the run's plus this target's `prepare` result `env`. Never read `process.env` for it. */
+  readonly env: Readonly<Record<string, string | undefined>>;
   /** Whether the run asked for a visible surface (`--headed`). */
   readonly headed: boolean;
   /** 0-based slot among the target's workers; the lowest one free at spawn. */

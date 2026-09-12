@@ -158,8 +158,9 @@ app's URL: `session.open` receives one the harness already resolved, and
 `restart` and `reset` end at a blank surface that the harness reopens
 through `open` when the target has an address. Without `open`, relaunch the
 app inside them yourself. What `prepare` provisions in the runner process
-reaches each worker's `init` through the `env` of its result, never by
-writing to `info.env`.
+reaches each worker's `init` as `info.env`, through the `env` of the
+prepare result, never by writing to the run's environment or reading
+`process.env`.
 
 There is no separate secure-fill capability flag. Before dispatching a
 secret fill, the runner checks the declared credential, current

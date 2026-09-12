@@ -74,6 +74,7 @@ function toyEngine(
 ) {
   const lifecycle: string[] = [];
   const fixtureCalls: string[] = [];
+  let initEnv: Record<string, string | undefined> = {};
   let count = 0;
   const nodes = (): SemanticNode[] => [
     { ref: { id: 'counter', revision: '' }, role: 'status', name: 'count', text: String(count) },
@@ -101,8 +102,9 @@ function toyEngine(
     ...(options.withoutInit === true
       ? {}
       : {
-          async init() {
+          async init(info: { env: Readonly<Record<string, string | undefined>> }) {
             lifecycle.push('init');
+            initEnv = { TOY_POOL: info.env['TOY_POOL'], TOY_CACHE: info.env['TOY_CACHE'] };
           },
         }),
     ...(options.withIsolation !== true
@@ -177,7 +179,7 @@ function toyEngine(
           },
         }),
   });
-  return { engine, lifecycle, fixtureCalls, current: () => count };
+  return { initEnv: () => initEnv, engine, lifecycle, fixtureCalls, current: () => count };
 }
 
 /** Observes, taps until the counter reads the goal, verifies, concludes. */
@@ -421,9 +423,9 @@ test('second attempt also starts fresh', async ({ screen }) => {
       expect(toy.lifecycle).toEqual(['prepare', 'init', 'dispose']);
       // The hook sees the run's environment, the one the workers start with.
       expect(notices).toEqual([{ target: 'toy-sim', message: 'provisioning toy device for /run/cache' }]);
-      // The result's env joined the workers' environment; the run's own value won.
-      expect(env['TOY_POOL']).toBe('sim-a,sim-b');
-      expect(env['TOY_CACHE']).toBe('/run/cache');
+      // The result's env reached init as the worker's environment; the run's own value won.
+      expect(toy.initEnv()).toEqual({ TOY_POOL: 'sim-a,sim-b', TOY_CACHE: '/run/cache' });
+      expect(env['TOY_POOL']).toBeUndefined();
       // Collection and provisioning are setup steps between the header and
       // the plan; the notice narrates under the prepare step, which names the
       // engine and lasts at least the hook's own wait.

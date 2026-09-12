@@ -129,6 +129,7 @@ describe('playwright engine over CDP', () => {
       targetName: 'web',
       projectRoot: process.cwd(),
       app: { site: new URL(app.url).hostname },
+      env: {},
       headed: false,
       workerSlot: 0,
       signal: new AbortController().signal,
@@ -170,6 +171,7 @@ describe('playwright engine over CDP', () => {
       targetName: 'web',
       projectRoot: process.cwd(),
       app: { site: new URL(app.url).hostname },
+      env: {},
       headed: false,
       workerSlot: 0,
       signal: new AbortController().signal,
@@ -223,6 +225,7 @@ describe('playwright engine over CDP', () => {
       targetName: 'web',
       projectRoot: process.cwd(),
       app: { site: new URL(app.url).hostname },
+      env: {},
       headed: false,
       workerSlot: 0,
     };

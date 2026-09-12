@@ -344,7 +344,7 @@ export class AgentDeviceSurface {
 
   async init(info: EngineInitInfo): Promise<void> {
     this.projectRoot = info.projectRoot;
-    this.device = this.pool.device(info.targetName, info.workerSlot);
+    this.device = this.pool.device(info.targetName, info.workerSlot, info.env);
     this.client ??= this.createClient(this.pool.session(info.targetName, info.workerSlot));
     await this.command('boot', (client) => client.devices.boot(this.selection()), info.signal);
     if (this.options.appPath === undefined) return;

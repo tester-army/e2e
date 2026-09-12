@@ -109,6 +109,7 @@ async function boot(engine: EngineHandle, app: FixtureApp): Promise<void> {
     targetName: 'web',
     projectRoot: process.cwd(),
     app: { site: new URL(app.url).hostname },
+    env: {},
     headed: false,
     workerSlot: 0,
     signal: new AbortController().signal,

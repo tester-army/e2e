@@ -10,7 +10,7 @@ Breaking: the engine contract (`@e2edev/e2e/engine`) is reshaped as the locked, 
 - `Engine.app` is data only. The hooks move to `Engine.session: { open, back, restart, reset }` (were `app.navigate`, `back`, `restart`, `clearState`). `restart` and `reset` open nothing on an addressable surface; the harness reopens the app through `open`.
 - `EngineInitInfo.testIdAttribute` and `EngineInitInfo.app.baseUrl` are gone. `SemanticNode.testId` carries the node's test id and the `testId` query resolves against it. The root config key `screen.testIdAttribute` is rejected; set `playwright({ testIdAttribute })` instead.
 - `press` keys follow one grammar in Playwright spelling (`Control+a`, `Shift+Tab`, `Enter`, one printable character); `parseKey`, `KEY_NAMES`, `KEY_MODIFIERS`, and `LOCATOR_ACTION_KINDS` are exported for engines. An invalid key fails with `INVALID_ARGUMENT` before it reaches an engine.
-- `OperationContext.origin` is required. `EnginePrepareInfo.env` is a plain readonly record, and `EnginePrepareResult.env` is the typed channel from a runner-side `prepare` to each worker's `init`.
+- `OperationContext.origin` is required. `EnginePrepareInfo.env` is a plain readonly record, and `EnginePrepareResult.env` is the typed channel from a runner-side `prepare` to each worker's `init`, which reads it as `EngineInitInfo.env` (the run's environment plus that target's additions; other targets never see them).
 - Report: the `download` artifact kind is `file`, `usage.downloads` is `usage.files`, and the target record no longer carries `testIdAttribute`.
 - `platform` labels the harness recognizes: `web`, `ios`, `android`, `macos`, `windows`, `linux`, `tvos`, `androidtv`.
 
