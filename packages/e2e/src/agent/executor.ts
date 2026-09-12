@@ -163,7 +163,7 @@ export interface ExecutorActions {
   press(target: ExecutorTarget, key: string): Promise<void>;
   select(target: ExecutorTarget, value: string): Promise<void>;
   scroll(direction: ScrollDirection, target?: ExecutorTarget): Promise<void>;
-  /** Navigates within the configured allowed origins. */
+  /** Navigates to an http(s) URL or an app-relative path. */
   navigate(url: string): Promise<void>;
   /**
    * Taps one viewport point, in the CSS pixels of the newest observation

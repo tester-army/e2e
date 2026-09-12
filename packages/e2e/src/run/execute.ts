@@ -218,10 +218,7 @@ export class TargetExecutor implements SerialHost {
             runId: this.options.runId,
             targetName: this.target.name,
             projectRoot: this.config.projectRoot,
-            app: obj({
-              baseUrl: this.target.app.base?.href,
-              allowedOrigins: this.target.app.allowedOrigins,
-            }),
+            app: obj({ baseUrl: this.target.app.base?.href, site: this.target.app.site }),
             testIdAttribute: this.config.testIdAttribute,
             headed: this.options.headed,
             workerSlot: this.options.workerSlot,

@@ -208,9 +208,9 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     expect(tainted.text).toContain('No screenshot: a secret was filled in this attempt');
     expect(tainted.text).toContain('PIXEL_TAINTED');
 
-    const denied = await call('navigate', { url: 'https://example.com/' });
-    expect(denied.text).toMatch(/^Navigated to https:\/\/example\.com\/\. failed: /);
-    expect(denied.text).toContain('is not in allowedOrigins');
+    const denied = await call('navigate', { url: 'javascript:alert(1)' });
+    expect(denied.text).toMatch(/^Navigated to javascript:alert\(1\)\. failed: /);
+    expect(denied.text).toContain('forbidden URL scheme');
 
     const again = await invoke('open_session');
     expect(again.isError).toBe(true);

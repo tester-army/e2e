@@ -9,6 +9,7 @@
 import type { credentialBrand, secretBrand } from '../internal/brands.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import { didYouMean } from '../internal/suggest.ts';
+import { sameSite } from '../internal/urls.ts';
 
 /**
  * What a secret is for, which decides where it may be filled: a `password`
@@ -134,17 +135,17 @@ export function validateAllowedOrigins(where: string, origins: unknown): void {
 }
 
 /**
- * Whether a secret may be filled on `origin`: the target must allow it, and
- * the secret's own list, when declared, may only narrow that. One rule for
- * the agent's `type_secret` and a test's `locator.fill`.
+ * Whether a secret may be filled on `origin`: the page must be on the app's
+ * site, and the secret's own list, when declared, may name any origin, a
+ * third-party sign-in page included. A target without a site (no URL) has no
+ * page a redirect can steer to and admits every origin. One rule for the
+ * agent's `type_secret` and a test's `locator.fill`.
  */
 export function secretOriginAllowed(
   origin: string,
-  appAllowedOrigins: readonly string[],
+  site: string | undefined,
   secret: { readonly allowedOrigins: readonly string[] | undefined },
 ): boolean {
-  return (
-    appAllowedOrigins.includes(origin) &&
-    (secret.allowedOrigins === undefined || secret.allowedOrigins.includes(origin))
-  );
+  if (secret.allowedOrigins !== undefined) return secret.allowedOrigins.includes(origin);
+  return site === undefined || sameSite(origin, site);
 }

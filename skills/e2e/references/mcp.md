@@ -74,9 +74,9 @@ Resources: `e2e://guide` and `e2e://guide/<topic>` hold this skill.
 
 ## Rules
 
-- Sessions enforce the same policy as tests: navigation stays inside the
-  engine's allowed origins, secrets fill only through `type_secret`, and
-  pixels are withheld once a secret is on screen.
+- Sessions enforce the same policy as tests: secrets fill only through
+  `type_secret`, only on the app's site, and pixels are withheld once a
+  secret is on screen.
 - Nothing a session does is recorded as a test or into the trace cache. A
   session is for looking and trying; the test is what you write afterwards.
 - A run from the shell and a live session can share the app only if the

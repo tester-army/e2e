@@ -40,7 +40,7 @@ export async function authorizeSecretFill(
   }
 
   const origin = await currentOrigin(host);
-  if (!secretOriginAllowed(origin, runtime.app.allowedOrigins, registered)) {
+  if (!secretOriginAllowed(origin, runtime.app.site, registered)) {
     host.recordPolicy('secret.origin', 'denied', 'POLICY_DENIED');
     throw new AgentError(
       'POLICY_DENIED',

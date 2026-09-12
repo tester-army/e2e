@@ -396,7 +396,7 @@ export interface App {
    * engine declares no `url`.
    */
   readonly baseUrl: string | undefined;
-  /** Opens the app: the declared URL, a path relative to it, or an absolute URL within the allowed origins. */
+  /** Opens the app: the declared URL, a path relative to it, or any absolute http(s) URL. */
   open(path?: string): Promise<void>;
   /** Recreates the execution context while preserving persisted state. */
   restart(): Promise<void>;

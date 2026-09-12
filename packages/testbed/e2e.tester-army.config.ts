@@ -20,10 +20,7 @@ export default {
   targets: [
     {
       name: 'web',
-      engine: playwright({
-        url: 'https://tester.army',
-        allowedOrigins: ['https://tester.army', 'https://www.tester.army', 'https://auth.tester.army'],
-      }),
+      engine: playwright({ url: 'https://tester.army' }),
     },
   ],
   timeout: 600_000,

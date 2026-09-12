@@ -83,7 +83,7 @@ describe('resolveConfig', () => {
   it('resolves the empty app for a target without an engine, or whose engine declares none', () => {
     expect(resolve({}).targets[0]!.app).toEqual({
       base: undefined,
-      allowedOrigins: [],
+      site: undefined,
       environment: 'test',
       identity: undefined,
       command: undefined,
@@ -296,16 +296,10 @@ describe('resolveConfig', () => {
     expect(() => fakeEngine({ allowProduction: true } as never)).toThrow(/app has unknown key "allowProduction"/);
   });
 
-  it('defaults allowedOrigins to the exact base origin, or to none without a URL', () => {
-    expect(resolveApp({ url: 'http://localhost:3000/app' }).allowedOrigins).toEqual(['http://localhost:3000']);
-    expect(resolveApp().allowedOrigins).toEqual([]);
-    expect(resolveApp({ allowedOrigins: ['https://api.test'] }).allowedOrigins).toEqual(['https://api.test']);
-  });
-
-  it('rejects non-origin allowedOrigins entries', () => {
-    expect(() => resolveApp({ url: 'http://localhost:3000', allowedOrigins: ['http://x.test/path'] })).toThrow(
-      /serialized origin/,
-    );
+  it('derives the site from the base URL, or none without one', () => {
+    expect(resolveApp({ url: 'http://localhost:3000/app' }).site).toBe('localhost');
+    expect(resolveApp({ url: 'https://app.staging.example.com' }).site).toBe('example.com');
+    expect(resolveApp().site).toBeUndefined();
   });
 
   it('rejects json combined with list reporters', () => {

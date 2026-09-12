@@ -102,7 +102,7 @@ export default {
 | `reporters` | `['list']` | `list`, `json`, `junit`, `markdown`, and reporter objects (`{ name, onEvent?, onRunFinished? }`) that receive the finished run. `json` excludes `list`; `--reporter` keeps the objects. |
 | `cache` | `'read-write'`, `'read-only'` in CI | The trace cache for `agent.act`; `'off'` disables it. |
 | `agents` | `{ default: built-in }` | Agents by name. `default` is what tests run with; `e2e run --agent <name>` runs with another. Each entry is `createAgent(...)`, an options block `{ model, judge, context, maxSteps, maxModelCalls, vision, providerOptions }`, or a custom `StepExecutor`. `model` is an AI SDK instance; without one anywhere, acquiring `agent` is `MODEL_UNAVAILABLE`. |
-| `credentials` | `{}` | Named `{ username, password, allowedOrigins? }` entries; `password` may be a function returning the value. |
+| `credentials` | `{}` | Named `{ username, password, allowedOrigins? }` entries; `password` may be a function returning the value. A credential fills only on the site of the engine's `url` unless `allowedOrigins` names other exact origins (a third-party sign-in page). |
 | `secrets` | `{}` | Named values the model never sees (API keys, tokens): a string, a function returning the value, or `{ value, allowedOrigins? }`. A name cannot also be a credential. |
 | `screen.testIdAttribute` | `'data-testid'` | Attribute read by `getByTestId`. |
 | `artifacts` | `['screenshot', 'trace']` | Kinds to keep (`screenshot`, `trace`, and the opt-in `video`), or `{ kinds, store, video }`; `video: { retain: 'on-failure' }` keeps only the recordings of attempts that did not pass. |
@@ -119,14 +119,13 @@ process, and identity. `playwright()` accepts:
 | `command` | The process that serves `url`. `{port}` in `args` and `env` expands to the port of `url`. See below. |
 | `readyUrl` | Readiness probe when it differs from `url`. `{port}` expands here too. |
 | `services` | Dependency processes started before `command`, in order. |
-| `allowedOrigins` | Origins tests and the agent may navigate to. Default: the origin of `url`. |
 | `environment` | `'test'`, `'staging'`, `'production'`. Inferred from the host; a label for the report and the cache key. |
 | `identity` | Stable app identity for cache and session keys when the origin changes per deploy (preview URLs). |
 | `browser` | `'chromium'` (default), `'firefox'`, `'webkit'`. |
 | `viewport` | `{ width, height }`, default 1280x720. |
 | `connect` | `{ cdpEndpoint }` to attach to a remote Chromium over CDP instead of launching. |
-| `headers` | Request headers sent to allowed origins only (a Vercel `x-vercel-protection-bypass`, ngrok's `ngrok-skip-browser-warning`). Reaches every path onto the page, `agent.act` included; turns the browser HTTP cache off and blocks service workers. |
-| `basicAuth` | `{ username, password }` answering a `401` challenge from an allowed origin; never sent to any other. |
+| `headers` | Request headers sent to the app's site only (a Vercel `x-vercel-protection-bypass`, ngrok's `ngrok-skip-browser-warning`). Reaches every path onto the page, `agent.act` included; turns the browser HTTP cache off and blocks service workers. |
+| `basicAuth` | `{ username, password }` answering a `401` challenge. |
 
 Two browsers are two targets sharing one app declaration:
 

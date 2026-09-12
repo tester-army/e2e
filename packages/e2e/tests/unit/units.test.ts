@@ -13,7 +13,7 @@ import type { ResultRecord } from '../../src/run/records.ts';
 const EMPTY_APP: ResolvedTarget['app'] = {
   base: undefined,
   portRequest: undefined,
-  allowedOrigins: [],
+  site: undefined,
   environment: 'test',
   identity: undefined,
   command: undefined,

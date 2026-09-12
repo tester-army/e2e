@@ -48,6 +48,12 @@ export function playwright(options: PlaywrightOptions = {}): EngineHandle {
       `playwright({ connect }) requires the chromium browser; CDP attach is chromium-only, got "${options.browser}"`,
     );
   }
+  if ('allowedOrigins' in options) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      'playwright({ allowedOrigins }) is gone: secrets, headers, and basicAuth stay on the site of `url` by default, and a credential or secret that belongs elsewhere declares its own allowedOrigins',
+    );
+  }
   if (options.headers !== undefined) validateHeaders(options.headers);
   if (options.basicAuth !== undefined) validateBasicAuth(options.basicAuth);
   const surface = new PlaywrightSurface(options);
@@ -153,8 +159,8 @@ function validateBasicAuth(basicAuth: unknown): void {
 
 /** The app-declaration half of the options, so browser knobs never reach the manifest. */
 function declaredApp(options: PlaywrightOptions): EngineAppDeclaration {
-  const { url, allowedOrigins, environment, identity, command, readyUrl, services } = options;
-  return obj({ url, allowedOrigins, environment, identity, command, readyUrl, services });
+  const { url, environment, identity, command, readyUrl, services } = options;
+  return obj({ url, environment, identity, command, readyUrl, services });
 }
 
 /** This package's published version, read through require resolution. */

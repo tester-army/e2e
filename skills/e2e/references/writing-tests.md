@@ -95,7 +95,7 @@ Fixtures are lazy; destructure them in the callback.
 
 | Method | Does |
 | --- | --- |
-| `open(path?)` | Opens the engine's `url`, a path relative to it, or an absolute URL inside `allowedOrigins`. |
+| `open(path?)` | Opens the engine's `url`, a path relative to it, or any absolute http(s) URL. |
 | `back()` | One history step back. |
 | `restart()` | Recreates the context and keeps persisted state, including a restored session. |
 | `clearState()` | Clears cookies and storage, then relaunches. Not inside a serial group. |
@@ -266,7 +266,7 @@ Import `test` from `@e2edev/playwright`. Prefer `app` and `screen`; use
 | `evaluate(fn, arg?)` | Runs serialized code in the page. JSON in and out only, no closures. |
 | `route(pattern, handler)`, `unroute(pattern)` | Intercept requests: `route.fulfill({ json })`, `route.continue()`, `route.abort()`. |
 | `waitForResponse(pattern)` | Resolves with `{ status, headers, json(), text() }`. |
-| `cookies()`, `setCookies([...])` | Cookies within `allowedOrigins`. |
+| `cookies()`, `setCookies([...])` | Read and set cookies; a target is an http(s) URL or a domain. |
 | `setViewport({ width, height })` | Resize. |
 | `onDialog('accept' \| 'dismiss' \| handler)` | Returns an unsubscribe function. Register it before the tap that opens the dialog. |
 | `waitForDownload(() => trigger)` | Returns `{ path, suggestedFilename }`. |

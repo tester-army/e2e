@@ -31,7 +31,7 @@ it('collects captured metadata while published element handles stay actionable',
       const snapshot = await captureDocument(
         {
           testIdAttribute: 'data-testid',
-          allowedOrigins: [],
+          site: undefined,
           idSeed: () => nextId,
           advanceIds: (value) => { nextId = value; },
           commit: (id, element) => { published.set(id, element); },

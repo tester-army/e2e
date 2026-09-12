@@ -44,7 +44,7 @@ async function boot(engine: EngineHandle, targetName = 'ios-simulator', workerSl
     runId: 'run-1',
     targetName,
     projectRoot: PROJECT_ROOT,
-    app: { allowedOrigins: [] },
+    app: {},
     testIdAttribute: 'data-testid',
     headed: false,
     workerSlot,

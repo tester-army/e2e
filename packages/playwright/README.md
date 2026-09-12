@@ -32,7 +32,7 @@ export default {
 The engine declares the app it drives. App options: `url` (the base URL
 `app.open()` opens; required once a test navigates), `command` (a process the
 runner starts before the run and stops after it, with `readyUrl` to poll,
-default `url`), `allowedOrigins` (default: the URL's origin), `environment`
+default `url`), `environment`
 (`test`, `staging`, `production`; inferred from the host), and `identity` (a
 stable cache and session key when the origin is ephemeral). Browser options:
 `browser` (`chromium`, `firefox`, `webkit`; default `chromium`), `viewport`

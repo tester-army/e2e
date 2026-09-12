@@ -41,7 +41,7 @@ evaluated as code, selectors, shell, or config.
 
 Secrets follow from that split. A `Secret` never reaches model input, digests,
 logs, reports, or artifacts. A secret fill is authorized by the runner from
-its own observation (an unresolved handle, a secure sink, an allowed origin,
+its own observation (an unresolved handle, a secure sink, a page on the app's site,
 an editable node with a compatible purpose, no control transfer since); the
 model never sees or picks the value. Once a secret is filled, the viewport
 stays pixel-tainted for the rest of the attempt, and the attempt's Playwright
@@ -50,17 +50,20 @@ in every encoding a trace spells it, becomes `<secret:name>`, and a trace that
 cannot be rewritten is deleted. Sessions are per-run, target-bound, encrypted
 with a memory-only key, and deleted at cleanup.
 
-## Navigation policy
+## Navigation and the app's site
 
-Every navigation the runner or the agent requests is checked against the
-target's `allowedOrigins`. `file:`, `data:`, `javascript:`, link-local, and
-cloud-metadata destinations are denied. Child frames outside the allowed
-origins are dropped from observations.
+A test or the agent may open any http(s) URL; `file:`, `data:`, and
+`javascript:` are denied. There is no origin allowlist on navigation: a
+click, a redirect, or a popup reaches another origin just as a typed URL
+would, so a gate on typed navigation alone would guard nothing. Treat a
+target whose app can send the agent elsewhere as one the agent may follow
+there.
 
-Two gaps are open and on the roadmap. The top-level document is not
-re-checked after a server redirect lands somewhere else, and popups the page
-opens are not checked at all. Until both close, treat a target whose app can
-redirect or open windows off-origin as one the agent may follow there.
+What stays on the app is where its secrets go. A credential or secret is
+filled only on a page whose host is on the site of the target's `url`, its
+registrable domain, unless the entry names its own `allowedOrigins`. The
+browser engine's `headers` reach the site and no other host. Child frames
+off the site are dropped from observations.
 
 ## Telemetry and outbound traffic
 

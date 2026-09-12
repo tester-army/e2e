@@ -105,8 +105,8 @@ closes on `close_session`, after 30 idle minutes, after 4 hours, when the
 client disconnects, and on SIGINT or SIGTERM, so no browser or simulator is
 left behind. An `open_session` that fails partway tears down what it started.
 
-Sessions enforce what tests enforce. Navigation stays inside the engine's
-allowed origins (`POLICY_DENIED` otherwise). Node ids are valid only against
+Sessions enforce what tests enforce. A secret fills only on the app's site
+(`POLICY_DENIED` otherwise). Node ids are valid only against
 the newest observation; a stale id fails with `LOCATOR_NOT_FOUND` instead of
 acting on the wrong node. Secrets fill only through `type_secret`, and once a
 secret has been filled `screenshot` and `tap_at` leave the catalog: pixels are

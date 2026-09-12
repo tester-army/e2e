@@ -135,9 +135,8 @@ video; otherwise the run fails with `UNSUPPORTED_ARTIFACT`.
 
 ## Your config applies
 
-Explore reads `e2e.config.ts`. The target's engine, app command, allowed
-origins, and the agent's `context`, `vision`, and provider options all
-apply. `--agent <name>` explores as another configured agent, so a UX-review
+Explore reads `e2e.config.ts`. The target's engine, app command, secrets,
+and the agent's `context`, `vision`, and provider options all apply. `--agent <name>` explores as another configured agent, so a UX-review
 agent and a functional one can explore the same app in turn. An agent built
 with `createAgent({ tools, system })` lends its tools and guidance to the
 explorer; a hand-rolled executor has no vocabulary to reuse and is replaced

@@ -108,7 +108,7 @@ async function boot(engine: EngineHandle, app: FixtureApp): Promise<void> {
     runId: 'run-pool',
     targetName: 'web',
     projectRoot: process.cwd(),
-    app: { baseUrl: app.url, allowedOrigins: [new URL(app.url).origin] },
+    app: { baseUrl: app.url, site: new URL(app.url).hostname },
     testIdAttribute: 'data-testid',
     headed: false,
     workerSlot: 0,

@@ -234,7 +234,7 @@ export class SessionHost {
       `Session ${live.id} open on target "${live.target.name}" (platform ${live.target.platform}, engine ${engine === undefined ? 'none' : `${engine.name} ${engine.version}`}), ${this.options.headed ? 'headed' : 'headless'}; config ${live.configPath}.`,
     ];
     if (live.target.app.base !== undefined) {
-      lines.push(`App: ${live.target.app.base.href}; allowed origins: ${live.target.app.allowedOrigins.join(', ')}.`);
+      lines.push(`App: ${live.target.app.base.href}.`);
     }
     if (config.credentials.size > 0) {
       const described = [...config.credentials.values()].map(

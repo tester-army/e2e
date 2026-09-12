@@ -5,6 +5,8 @@ import {
   portOf,
   requestsFreePort,
   resolveNavigationUrl,
+  sameSite,
+  siteOf,
   urlMatches,
   withPort,
 } from '../../src/internal/urls.ts';
@@ -80,27 +82,46 @@ describe('isLoopbackHost', () => {
 
 describe('resolveNavigationUrl', () => {
   const base = normalizeBaseUrl('http://localhost:3000/app/');
-  const allowed = ['http://localhost:3000'];
 
   it('resolves relative paths against the base', () => {
-    expect(resolveNavigationUrl('/billing', base, allowed).url).toBe(
-      'http://localhost:3000/billing',
-    );
-    expect(resolveNavigationUrl('settings', base, allowed).url).toBe(
-      'http://localhost:3000/app/settings',
-    );
+    expect(resolveNavigationUrl('/billing', base).url).toBe('http://localhost:3000/billing');
+    expect(resolveNavigationUrl('settings', base).url).toBe('http://localhost:3000/app/settings');
   });
 
-  it('denies origins outside the allowlist', () => {
-    expect(() => resolveNavigationUrl('https://evil.test/x', base, allowed)).toThrow(
-      /allowedOrigins/,
-    );
+  it('admits any http(s) origin: a click reaches one just as well', () => {
+    expect(resolveNavigationUrl('https://other.test/x', base).url).toBe('https://other.test/x');
   });
 
   it('always denies file:, data:, and javascript:', () => {
-    expect(() => resolveNavigationUrl('file:///etc/passwd', base, allowed)).toThrow(/scheme/);
-    expect(() => resolveNavigationUrl('data:text/html,x', base, allowed)).toThrow(/scheme/);
-    expect(() => resolveNavigationUrl('javascript:alert(1)', base, allowed)).toThrow(/scheme/);
+    expect(() => resolveNavigationUrl('file:///etc/passwd', base)).toThrow(/scheme/);
+    expect(() => resolveNavigationUrl('data:text/html,x', base)).toThrow(/scheme/);
+    expect(() => resolveNavigationUrl('javascript:alert(1)', base)).toThrow(/scheme/);
+  });
+});
+
+describe('siteOf and sameSite', () => {
+  it('reads the registrable domain without a public suffix list', () => {
+    expect(siteOf('tester.army')).toBe('tester.army');
+    expect(siteOf('auth.tester.army')).toBe('tester.army');
+    expect(siteOf('a.b.app.example.com')).toBe('example.com');
+    expect(siteOf('shop.example.co.uk')).toBe('example.co.uk');
+    expect(siteOf('example.co.uk')).toBe('example.co.uk');
+    expect(siteOf('Example.COM')).toBe('example.com');
+  });
+
+  it('treats loopback names and IP literals as sites of their own', () => {
+    expect(siteOf('localhost')).toBe('localhost');
+    expect(siteOf('app.localhost')).toBe('app.localhost');
+    expect(siteOf('127.0.0.1')).toBe('127.0.0.1');
+    expect(siteOf('[::1]')).toBe('[::1]');
+  });
+
+  it('compares a URL to a site by host alone, and puts an unparseable URL off every site', () => {
+    expect(sameSite('https://auth.tester.army/login', 'tester.army')).toBe(true);
+    expect(sameSite('http://127.0.0.1:4000/api', '127.0.0.1')).toBe(true);
+    expect(sameSite('http://localhost:4000/', '127.0.0.1')).toBe(false);
+    expect(sameSite('https://evil.test/', 'tester.army')).toBe(false);
+    expect(sameSite('null', 'tester.army')).toBe(false);
   });
 });
 

@@ -1,9 +1,10 @@
 /**
- * Reaching an app behind a gate: configured request headers and basic-auth
- * credentials reach the allowed origin on every context the attempt opens,
- * and never any other origin. Driven through the engine hooks, as the
- * attempt executor drives them; a second fixture instance stands in for a
- * third-party origin.
+ * Reaching an app behind a gate: configured request headers reach the app's
+ * site on every context the attempt opens, and never another site; basic-auth
+ * credentials answer a challenge wherever one is issued, as Playwright's own
+ * do. Driven through the engine hooks, as the attempt executor drives them; a
+ * second fixture instance reached as `localhost` rather than `127.0.0.1`
+ * stands in for a third-party site.
  */
 
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -27,7 +28,7 @@ async function boot(engine: EngineHandle, app: FixtureApp, artifactsDir: string,
     runId: 'run-protected',
     targetName: 'web',
     projectRoot: process.cwd(),
-    app: { baseUrl: app.url, allowedOrigins: [new URL(app.url).origin] },
+    app: { baseUrl: app.url, site: new URL(app.url).hostname },
     testIdAttribute: 'data-testid',
     headed: false,
     workerSlot: 0,
@@ -58,6 +59,9 @@ describe('playwright({ headers, basicAuth })', () => {
 
   beforeAll(async () => {
     [app, other] = await Promise.all([startFixtureApp(), startFixtureApp()]);
+    // The same loopback server under another host name: `localhost` is a
+    // site of its own, `127.0.0.1` another.
+    other = { ...other, url: other.url.replace('127.0.0.1', 'localhost') };
     artifactsDir = mkdtempSync(path.join(tmpdir(), 'e2e-protected-'));
   });
 
@@ -66,12 +70,12 @@ describe('playwright({ headers, basicAuth })', () => {
     rmSync(artifactsDir, { recursive: true, force: true });
   });
 
-  it('sends the headers to the allowed origin only, on every context of the attempt', async () => {
+  it('sends the headers to the app\'s site only, on every context of the attempt', async () => {
     const engine = playwright({ url: app.url, headers: { 'X-Fixture-Header': 'let-me-in' } });
     try {
       await boot(engine, app, artifactsDir, 'h1');
       expect(await headingAt(engine, 'h1', `${app.url}/headers`)).toBe('let-me-in');
-      // A third-party origin gets the request without them.
+      // A third-party site gets the request without them.
       expect(await headingAt(engine, 'h1', `${other.url}/headers`)).toBe('none');
       // A state reset replaces the context; the headers come along.
       await engine.app!.clearState!(operation('h1'));
@@ -124,7 +128,7 @@ describe('playwright({ headers, basicAuth })', () => {
     }
   });
 
-  it('answers a basic-auth challenge from the allowed origin and from no other', async () => {
+  it('answers a basic-auth challenge wherever one is issued', async () => {
     const unauthenticated = playwright({ url: app.url });
     try {
       await boot(unauthenticated, app, artifactsDir, 'b0');
@@ -136,7 +140,7 @@ describe('playwright({ headers, basicAuth })', () => {
     try {
       await boot(engine, app, artifactsDir, 'b1');
       expect(await headingAt(engine, 'b1', `${app.url}/protected`)).toBe('Protected');
-      expect(await headingAt(engine, 'b1', `${other.url}/protected`)).toBe('Unauthorized');
+      expect(await headingAt(engine, 'b1', `${other.url}/protected`)).toBe('Protected');
     } finally {
       await shutdown(engine);
     }

@@ -237,9 +237,9 @@ test('screenshots land in the artifact directory', async ({ app }) => {
   if (!shot.includes('screenshots/')) throw new Error('unexpected screenshot path: ' + shot);
 });
 
-test('absolute URLs honor origin policy', async ({ app }) => {
+test('forbidden URL schemes are refused', async ({ app }) => {
   await app.open();
-  await app.open('https://evil.example.com/phish');
+  await app.open('javascript:alert(1)');
 });
 `;
 
@@ -312,8 +312,8 @@ describe('web platform integration', () => {
     expect(result.attempts[0]!.error?.code).toBe('APP_NOT_OPEN');
   });
 
-  it('denies navigation outside allowed origins', () => {
-    const result = resultByTitle(outcome, 'absolute URLs honor origin policy');
+  it('denies navigation to a forbidden scheme', () => {
+    const result = resultByTitle(outcome, 'forbidden URL schemes are refused');
     expect(result.status).toBe('failed');
     expect(result.attempts[0]!.error?.code).toBe('POLICY_DENIED');
   });

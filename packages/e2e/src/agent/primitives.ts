@@ -353,7 +353,7 @@ export function createGrammarTools(
   }
   if (verbs.has('navigate')) {
     tools['navigate'] = screenTool({
-      description: 'Navigate to a URL or app-relative path within the allowed origins.',
+      description: 'Navigate to a URL or an app-relative path.',
       inputSchema: z.object({ url: z.string().min(1) }),
       execute: ({ url }) => acting(`Navigated to ${url}.`, () => context.actions.navigate(url)),
     });

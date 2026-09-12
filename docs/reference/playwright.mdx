@@ -32,12 +32,12 @@ browser choices:
 | --- | --- | --- | --- |
 | `url` | `string` | unset | The app's base URL; required once a test navigates. See [the app under test](/reference/config#the-app-under-test). |
 | `command`, `readyUrl`, `services` | | unset | The app process and its dependencies. See [command](/reference/config#command) and [services](/reference/config#services). |
-| `allowedOrigins`, `environment`, `identity` | | derived from `url` | Origin policy and cache/session identity. See [the app under test](/reference/config#the-app-under-test). |
+| `environment`, `identity` | | derived from `url` | Cache/session identity and the report label. See [the app under test](/reference/config#the-app-under-test). |
 | `browser` | `'chromium' \| 'firefox' \| 'webkit'` | `'chromium'` | The browser to launch. |
 | `viewport` | `{ width, height }` | `1280` by `720` | Initial viewport of every attempt's page. |
 | `connect` | `PlaywrightConnectOptions` | unset | Attach to a remote browser over CDP instead of launching locally. Chromium only. `cdpEndpoint(signal)` resolves the DevTools URL; it is called once per worker and again when a session drops. |
-| `headers` | `Record<string, string>` | unset | HTTP headers added to every request bound for an allowed origin and to none other. Names are case-insensitive. Routes every request through the runner, which turns the browser's HTTP cache off and blocks service workers for the target. A trace records request headers. |
-| `basicAuth` | `{ username, password }` | unset | Answers a `401` challenge from an allowed origin; a challenge from any other origin gets nothing. `:` is not allowed in the user name. |
+| `headers` | `Record<string, string>` | unset | HTTP headers added to every request bound for the [app's site](/reference/config#the-apps-site) and to none other. Names are case-insensitive. Routes every request through the runner, which turns the browser's HTTP cache off and blocks service workers for the target. A trace records request headers. |
+| `basicAuth` | `{ username, password }` | unset | Answers a `401` challenge from any origin, as Playwright's own `httpCredentials` does. `:` is not allowed in the user name. |
 
 `headers` and `basicAuth` are how a test reaches a [protected preview](/starting-your-app#protected-previews).
 
@@ -114,7 +114,7 @@ it fails with `UNSUPPORTED_CAPABILITY`.
 
 | Method | Behavior | Throws |
 | --- | --- | --- |
-| `goto(url, options?)` | Absolute URL or route relative to the base URL. `waitUntil` defaults to `'load'`. | `POLICY_DENIED` for a disallowed origin or scheme, `ACTION_FAILED` |
+| `goto(url, options?)` | Absolute URL or route relative to the base URL. `waitUntil` defaults to `'load'`. | `POLICY_DENIED` for a `file:`, `data:`, or `javascript:` URL, `ACTION_FAILED` |
 | `reload(options?)` | One history reload | `ACTION_FAILED` |
 | `back(options?)` | One history entry back | `ACTION_FAILED` |
 | `forward(options?)` | One history entry forward | `ACTION_FAILED` |
@@ -215,7 +215,7 @@ empty body.
 | Method | Behavior | Throws |
 | --- | --- | --- |
 | `cookies()` | Returns a mutable array copy of the cookies visible to the current context | |
-| `setCookies(cookies)` | Validates every cookie's target origin before setting any. For the `domain` form the scheme follows the base URL and a leading `.` is stripped. | `POLICY_DENIED` for an unparseable target or a disallowed origin; nothing is set when any entry is rejected |
+| `setCookies(cookies)` | Validates every cookie's target origin before setting any. For the `domain` form the scheme follows the base URL and a leading `.` is stripped. | `POLICY_DENIED` for an unparseable target or a forbidden scheme; nothing is set when any entry is rejected |
 | `setViewport(size)` | Resizes the viewport and records the new size on the report | |
 
 ```ts

@@ -68,7 +68,7 @@ describe('runner <-> engine contract', () => {
       expect(fake.inits).toHaveLength(1);
       const info = fake.inits[0]!;
       expect(info.app.baseUrl).toContain('127.0.0.1:4599');
-      expect(info.app.allowedOrigins.length).toBeGreaterThan(0);
+      expect(info.app.site).toBe('127.0.0.1');
       expect(info.testIdAttribute).toBe('data-testid');
       expect(info.headed).toBe(false);
       expect(info.runId).toBe(outcome.report.run.id);

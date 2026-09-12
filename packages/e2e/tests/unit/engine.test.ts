@@ -278,7 +278,7 @@ describe('engine targets in config', () => {
     const target = config.targets[0];
     expect(target?.engine?.name).toBe('toy');
     expect(target?.platform).toBe('ios');
-    expect(target?.app).toMatchObject({ base: undefined, allowedOrigins: [], identity: undefined });
+    expect(target?.app).toMatchObject({ base: undefined, site: undefined, identity: undefined });
   });
 
   it('rejects a non-handle engine value', () => {

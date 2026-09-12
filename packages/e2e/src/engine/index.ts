@@ -36,7 +36,7 @@ export { describePattern, matchesText, toTextPattern } from '../internal/text.ts
 export type { TextMatch } from '../types.ts';
 export { raceAbort } from './timing.ts';
 export { Deadline, pollCondition, withTimeout, withinCleanupBudget, type PollConditionOptions } from '../internal/time.ts';
-export { urlMatches } from '../internal/urls.ts';
+export { sameSite, siteOf, urlMatches } from '../internal/urls.ts';
 export { obj, type WithoutUndefined } from '../internal/objects.ts';
 import type {
   CommandConfig,
@@ -118,11 +118,6 @@ export interface EngineAppDeclaration {
    */
   readonly url?: string;
   /**
-   * Origins navigation and secret fills admit; each entry a serialized
-   * origin. Defaults to the URL's origin, or to none without a URL.
-   */
-  readonly allowedOrigins?: readonly string[];
-  /**
    * Labels the target in the report and joins the cache and session identity
    * digest; never gates a run. Defaults to `test` for loopback, `.localhost`,
    * and `.test` hosts and for a surface without a URL, `production` otherwise.
@@ -169,8 +164,13 @@ export interface EngineAppInfo {
    * call that needs it, and never navigates to a placeholder.
    */
   readonly baseUrl?: string;
-  /** Origins navigation and cookie policy admit. */
-  readonly allowedOrigins: readonly string[];
+  /**
+   * The site of `baseUrl`, its registrable domain as `siteOf` reads it.
+   * Where the app's secrets, headers, and basic-auth credentials may go, and
+   * whose child frames an observation reads; `sameSite` applies it. Absent
+   * with `baseUrl`, which is no policy at all.
+   */
+  readonly site?: string;
 }
 
 /** Explicit recording policy for one async fixture method. Arguments enter reports only through label. */
@@ -197,10 +197,10 @@ export interface EngineFixtureContext {
   fixture<T extends object>(name: string, surface: T, operations: FixtureOperations<T>): T;
   readonly app: EngineAppInfo & {
     /**
-     * Resolves a navigation target against the base URL and the origin
-     * policy. Throws `APP_URL_REQUIRED` when the engine declared no URL and
-     * `POLICY_DENIED` for a disallowed origin or scheme, so a fixture never
-     * re-implements the policy the harness owns.
+     * Resolves a navigation target against the base URL. Throws
+     * `APP_URL_REQUIRED` when the engine declared no URL and `POLICY_DENIED`
+     * for a `file:`, `data:`, or `javascript:` scheme, so a fixture never
+     * re-implements the rule the harness owns.
      */
     resolveUrl(url: string): string;
   };
@@ -633,7 +633,6 @@ const NESTED_KEYS = {
  */
 const APP_DECLARATION_KEYS = [
   'url',
-  'allowedOrigins',
   'environment',
   'identity',
   'command',

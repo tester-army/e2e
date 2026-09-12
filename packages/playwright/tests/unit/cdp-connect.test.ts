@@ -14,7 +14,7 @@ function initInfo(signal = new AbortController().signal): EngineInitInfo {
     runId: 'run-cdp',
     targetName: 'web',
     projectRoot: '/project',
-    app: { baseUrl: 'http://localhost/', allowedOrigins: ['http://localhost'] },
+    app: { baseUrl: 'http://localhost/', site: new URL('http://localhost/').hostname },
     testIdAttribute: 'data-testid',
     headed: false,
     workerSlot: 0,

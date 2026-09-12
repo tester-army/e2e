@@ -52,7 +52,7 @@ describe.skipIf(!enabled)('agent-device engine on a booted iOS simulator', () =>
       runId: 'run-sim',
       targetName: 'ios',
       projectRoot: process.cwd(),
-      app: { allowedOrigins: [] },
+      app: {},
       testIdAttribute: 'data-testid',
       headed: true,
       workerSlot: 0,

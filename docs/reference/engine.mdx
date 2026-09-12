@@ -131,7 +131,7 @@ export interface EngineInitInfo {
   readonly runId: string;
   readonly targetName: string;
   readonly projectRoot: string;
-  readonly app: { readonly baseUrl?: string; readonly allowedOrigins: readonly string[] };
+  readonly app: { readonly baseUrl?: string; readonly site?: string };
   readonly testIdAttribute: string;
   readonly headed: boolean;
   /** 0-based slot among the target's workers; the lowest one free at spawn. */
@@ -216,7 +216,6 @@ and the hooks behind the universal `app` fixture.
 ```ts
 export interface EngineAppDeclaration {
   readonly url?: string;
-  readonly allowedOrigins?: readonly string[];
   readonly environment?: 'test' | 'staging' | 'production';
   readonly identity?: string;
   readonly command?: CommandConfig;
@@ -236,14 +235,15 @@ The declaration is the engine's to make and the runner's to enforce: a
 browser engine passes its `url` and `command` options through, a device
 engine declares the bundle id it pins as `identity`. The runner resolves it
 once per target at config load (invalid values fail naming the target) and
-owns everything built on it: navigation and origin policy (`allowedOrigins`
-defaults to the URL's origin), cache and session identity (`identity`
+owns everything built on it: the app's site (the URL's registrable domain,
+where secrets and headers may go), cache and session identity (`identity`
 defaults to the URL's origin and path; a surface without a URL declares one
 or keys entries on the target alone), the report's target record, and the
 app process (`command`, polled at `readyUrl`, default `url`; targets
 declaring the same command share one process). Every field is documented
 under [the app under test](/reference/config#the-app-under-test); the resolved
-URL and origins come back to the engine in `EngineInitInfo.app`.
+URL and site come back to the engine in `EngineInitInfo.app`, and `sameSite`
+from `@e2edev/e2e/engine` applies the site to a URL.
 `navigate` receives a URL the harness already resolved against the base URL and
 the origin policy, and is absent on a surface without addressable locations.
 Node actions never live here; they are `perform`.
@@ -384,7 +384,7 @@ export type EngineFixtureFactory = (context: EngineFixtureContext) => object;
 export interface EngineFixtureContext {
   readonly targetName: string;
   fixture<T extends object>(name: string, surface: T, operations: FixtureOperations<T>): T;
-  readonly app: { baseUrl?: string; allowedOrigins: readonly string[]; resolveUrl(url: string): string };
+  readonly app: { baseUrl?: string; site?: string; resolveUrl(url: string): string };
   readonly timeouts: { test: number; action: number; assertion: number };
   readonly signal: AbortSignal;
   operation(timeoutMs?: number): OperationContext;
@@ -422,7 +422,7 @@ use `context.fixture('expect', matchers, operations)` in its factory to declare
 matcher recording. Type the fixture with `test.extend<{ name: Type }>()`.
 
 `app.resolveUrl` throws `APP_URL_REQUIRED` when no app URL is configured and
-`POLICY_DENIED` for a disallowed origin or scheme.
+`POLICY_DENIED` for a `file:`, `data:`, or `javascript:` URL.
 
 The engine entrypoint also exports `obj(value)`, which drops
 `undefined`-valued keys and types them as absent optional properties, so a

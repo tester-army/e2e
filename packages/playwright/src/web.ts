@@ -5,11 +5,11 @@
  * runs as a harness-recorded `web.<method>` step; `expect(web)` reaches the
  * matchers attached through `context.expectable`.
  *
- * Layering rule: policy and validation (`resolveUrl`, JSON checks, cookie
- * origins, the download trigger) run outside `surface.guard`, so a runner
- * error keeps its classification and only Playwright faults are translated.
- * The origin policy itself is never re-implemented here: `context.app.
- * resolveUrl` is the one place that says which URLs the app admits.
+ * Layering rule: validation (`resolveUrl`, JSON checks, cookie URLs, the
+ * download trigger) runs outside `surface.guard`, so a runner error keeps its
+ * classification and only Playwright faults are translated. The URL rule is
+ * never re-implemented here: `context.app.resolveUrl` is the one place that
+ * says which URLs a test may open.
  */
 
 import type { Download, Route } from 'playwright';
@@ -141,7 +141,7 @@ export interface Web extends Expectable<WebExpectation> {
   ): Promise<WebResponse>;
   /** Returns cookies visible to the current context. */
   cookies(): Promise<Cookie[]>;
-  /** Sets cookies after origin policy validation. */
+  /** Sets cookies after URL validation. */
   setCookies(cookies: readonly Cookie[]): Promise<void>;
   /** Sets the viewport size. */
   setViewport(size: { width: number; height: number }): Promise<void>;
@@ -378,8 +378,8 @@ export function createWebFixture(surface: PlaywrightSurface, context: EngineFixt
       }),
     setCookies(cookies) {
       const scheme = new URL(baseHref()).protocol === 'https:' ? 'https' : 'http';
-      // The harness's origin policy decides which cookie targets are admitted;
-      // a domain cookie is checked as the origin it would be sent to.
+      // The harness's URL rule decides which cookie targets are admitted; a
+      // domain cookie is checked as the origin it would be sent to.
       for (const cookie of cookies) {
         context.app.resolveUrl(
           cookie.url === undefined ? `${scheme}://${cookie.domain.replace(/^\./, '')}` : cookie.url,

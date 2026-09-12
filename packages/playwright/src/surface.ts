@@ -13,6 +13,7 @@ import type { Browser, BrowserContext, ElementHandle, Page, Route } from 'playwr
 import {
   EngineError,
   raceAbort,
+  sameSite,
   withinCleanupBudget,
   type EngineAppDeclaration,
   type EngineAppInfo,
@@ -104,11 +105,10 @@ interface StoredRoute {
   readonly handler: RouteHandler;
 }
 
-/** One entry of Playwright's per-origin credential list. */
+/** The credentials Playwright answers an HTTP authentication challenge with. */
 interface PlaywrightHttpCredential {
   readonly username: string;
   readonly password: string;
-  readonly origin: string;
 }
 
 /** Header names lowercased, as Playwright reports a request's own headers. */
@@ -146,7 +146,7 @@ export interface PlaywrightConnectOptions {
   readonly cdpEndpoint: (signal: AbortSignal) => string | Promise<string>;
 }
 
-/** HTTP basic authentication the browser answers a challenge from an allowed origin with. */
+/** HTTP basic authentication the browser answers a `401` challenge with. */
 export interface PlaywrightBasicAuth {
   /** The user name; `:` is not allowed in one (RFC 7617). */
   readonly username: string;
@@ -155,7 +155,7 @@ export interface PlaywrightBasicAuth {
 
 /**
  * Options of the browser engine: the app it drives (`url`, `command`,
- * `services`, `allowedOrigins`, `environment`, `identity`, `readyUrl` - the
+ * `services`, `environment`, `identity`, `readyUrl` - the
  * engine contract's app declaration) plus the browser itself.
  */
 export interface PlaywrightOptions extends EngineAppDeclaration {
@@ -184,9 +184,9 @@ export interface PlaywrightOptions extends EngineAppDeclaration {
   readonly headers?: Readonly<Record<string, string>>;
   /**
    * HTTP basic authentication for a staging app behind a browser challenge.
-   * The browser answers a `401` from an allowed origin with these credentials
-   * and a challenge from any other origin with nothing, so a third-party page
-   * cannot collect them. Applies to every path onto the page.
+   * The browser answers a `401` with these credentials wherever one is
+   * issued, as Playwright's own `httpCredentials` does. Applies to every path
+   * onto the page.
    */
   readonly basicAuth?: PlaywrightBasicAuth;
 }
@@ -211,7 +211,7 @@ export class PlaywrightSurface {
   private booted = false;
   private context: BrowserContext | null = null;
   private page: Page | null = null;
-  private app: EngineAppInfo = { allowedOrigins: [] };
+  private app: EngineAppInfo = {};
   private testIdAttribute = 'data-testid';
   private headed = false;
   private artifactsDir = '';
@@ -443,17 +443,17 @@ export class PlaywrightSurface {
     }
   }
 
-  // --- protected-app access, scoped to the allowed origins ---
+  // --- protected-app access, scoped to the app's site ---
 
-  /** True for a request the app's origin policy admits; the only requests that carry headers or credentials. */
-  private isAllowedOrigin(url: URL): boolean {
-    return this.app.allowedOrigins.includes(url.origin);
+  /** True for a request bound for the app's site; the only requests that carry the configured headers. */
+  private isOnSite(url: URL): boolean {
+    return this.app.site !== undefined && sameSite(url, this.app.site);
   }
 
   /**
-   * Adds the configured headers to every request bound for an allowed
-   * origin, via a context route that falls back to the network. A request for
-   * any other origin is not routed at all. Nothing awaits a route handler, so
+   * Adds the configured headers to every request bound for the app's site,
+   * via a context route that falls back to the network. A request for any
+   * other site is not routed at all. Nothing awaits a route handler, so
    * a fallback that fails (the page closed under the request) is dropped
    * rather than left to surface as an unhandled rejection.
    */
@@ -461,7 +461,7 @@ export class PlaywrightSurface {
     const headers = this.headers;
     if (headers === undefined) return;
     await context.route(
-      (url) => this.isAllowedOrigin(url),
+      (url) => this.isOnSite(url),
       async (route) => {
         await route
           .fallback({ headers: { ...route.request().headers(), ...headers } })
@@ -471,15 +471,15 @@ export class PlaywrightSurface {
   }
 
   /**
-   * The basic-auth credentials the context answers challenges with, one entry
-   * per allowed origin so Playwright itself withholds them from every other
-   * origin. With no allowed origins there is nothing to scope them to and no
-   * origin the runner lets the attempt reach, so none are set.
+   * The basic-auth credentials the context answers a challenge with, as
+   * Playwright's own `httpCredentials` does: on a 401 from any origin. A site
+   * cannot be enumerated into the exact origins Playwright scopes by, and a
+   * challenge is answered only where one is issued.
    */
-  private httpCredentials(): PlaywrightHttpCredential[] | undefined {
-    if (this.basicAuth === undefined || this.app.allowedOrigins.length === 0) return undefined;
+  private httpCredentials(): PlaywrightHttpCredential | undefined {
+    if (this.basicAuth === undefined) return undefined;
     const { username, password } = this.basicAuth;
-    return this.app.allowedOrigins.map((origin) => ({ username, password, origin }));
+    return { username, password };
   }
 
   // --- network routes shared with the web fixture ---
@@ -984,7 +984,7 @@ export class PlaywrightSurface {
         captureDocument(
           {
             testIdAttribute: this.testIdAttribute,
-            allowedOrigins: this.app.allowedOrigins,
+            site: this.app.site,
             idSeed: () => this.refs.idSeed(),
             advanceIds: (nextId) => this.refs.advanceIds(nextId),
             commit: (id: string, element: ElementHandle<Element>) => {

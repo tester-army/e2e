@@ -6,6 +6,7 @@
 import type { ElementHandle, Frame, JSHandle } from 'playwright';
 import {
   EngineError,
+  sameSite,
   withTimeout,
   OBSERVED_NAME_LIMIT,
   OBSERVED_TEXT_LIMIT,
@@ -37,7 +38,8 @@ export type DocumentHost = Pick<Frame, 'evaluateHandle'>;
 /** What one capture needs from the surface that owns the generation. */
 export interface CaptureDeps {
   readonly testIdAttribute: string;
-  readonly allowedOrigins: readonly string[];
+  /** The app's site; a child frame off it stays a boundary node. Undefined admits no child frame. */
+  readonly site: string | undefined;
   /**
    * First numeric id the next document may stamp on a node it sees for the
    * first time. The surface owns one id space for the whole session: stamped
@@ -158,11 +160,11 @@ async function captureInto(
         if (remaining <= 0 || Date.now() >= deadline) break;
         const frame = await elements[index]!.contentFrame().catch(() => null);
         if (frame === null) continue;
-        // Only frames within allowedOrigins enter observations. Third-party
+        // Only frames on the app's site enter observations. Third-party
         // frames (ads, trackers, embeds) are not the agent's to read or act
         // on - and a stalled ad frame must not tax the capture. They stay
         // boundary nodes, exactly like frames past the depth limit.
-        if (!isAllowedFrameOrigin(frame.url(), deps.allowedOrigins)) continue;
+        if (!isOnSiteFrame(frame.url(), deps.site)) continue;
         const child = await captureDocument(deps, frame, {
           framePath: [...framePath, selector],
           budget: remaining,
@@ -181,7 +183,7 @@ async function captureInto(
 }
 
 /**
- * True when a frame document's origin is inside the app's allowed origins.
+ * True when a frame document is on the app's site.
  *
  * `about:blank` and `srcdoc` documents inherit their parent's origin, so they
  * are the app's own content (consent managers, editors) and always allowed; the
@@ -189,15 +191,13 @@ async function captureInto(
  *
  * A `data:` document is *not* admitted, even though its bytes are written by the
  * page that embeds it. It has an opaque origin rather than an inherited one, and
- * origin policy denies the scheme by name alongside `file:` and `javascript:`.
+ * navigation denies the scheme by name alongside `file:` and `javascript:`.
  */
-function isAllowedFrameOrigin(url: string, allowedOrigins: readonly string[]): boolean {
+function isOnSiteFrame(url: string, site: string | undefined): boolean {
   if (url === '' || url === 'about:blank' || url === 'about:srcdoc') return true;
-  try {
-    return allowedOrigins.includes(new URL(url).origin);
-  } catch {
-    return false;
-  }
+  if (site === undefined) return false;
+  const protocol = URL.canParse(url) ? new URL(url).protocol : undefined;
+  return protocol !== 'data:' && sameSite(url, site);
 }
 
 /**

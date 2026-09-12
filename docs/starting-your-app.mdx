@@ -198,17 +198,17 @@ engine: playwright({
 }),
 ```
 
-`headers` go on every request the browser sends to an allowed origin and on
-no request to any other, so a bypass secret never reaches a CDN or an
-identity provider the page also talks to. The same option skips ngrok's
+`headers` go on every request the browser sends to the app's site, the
+registrable domain of `url`, and on no request to any other, so a bypass
+secret never reaches a CDN or an identity provider the page also talks to. The same option skips ngrok's
 interstitial with `'ngrok-skip-browser-warning': '1'`.
 
 A preview origin changes with every deploy. `identity` keeps cache and
 session entries keyed by what the app is, so they survive a redeploy.
 
 A host behind HTTP basic authentication takes `basicAuth`. The browser
-answers a `401` from an allowed origin with the credentials and a challenge
-from any other origin with nothing.
+answers a `401` challenge with the credentials, as Playwright's own
+`httpCredentials` does.
 
 ```ts title="Target fragment"
 engine: playwright({

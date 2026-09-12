@@ -97,8 +97,8 @@ acquiring a fixture it does not contribute fails with
 The app is declared by the engine that drives it. The browser engine takes
 the declaration as options of `playwright(...)`; the device engine derives it
 from the app it pins. The runner resolves it at config load and owns what is
-built on it: navigation and origin policy, cache and session identity, the
-report's target record, and the app process.
+built on it: the site secrets and headers stay on, cache and session
+identity, the report's target record, and the app process.
 
 ```ts
 export interface EngineAppDeclaration {
@@ -106,7 +106,6 @@ export interface EngineAppDeclaration {
   command?: CommandConfig;
   readyUrl?: string;
   services?: readonly ServiceConfig[];
-  allowedOrigins?: readonly string[];
   environment?: 'test' | 'staging' | 'production';
   identity?: string;
 }
@@ -118,9 +117,21 @@ export interface EngineAppDeclaration {
 | `command` | `CommandConfig` | unset | The app process. `{port}` in `args` entries and `env` values expands to the port of the resolved `url`. Targets declaring the same command share one process |
 | `readyUrl` | `string` | the resolved `url` | Absolute http(s) readiness probe; a status of 200-499 counts as ready. `{port}` expands to the port of `url`. A `command` with neither is `APP_URL_REQUIRED` at config load |
 | `services` | `readonly ServiceConfig[]` | `[]` | Dependency processes started in order before the app command and torn down in reverse |
-| `allowedOrigins` | `readonly string[]` | the origin of `url`, else none | Each entry must be a serialized origin |
 | `environment` | `'test' \| 'staging' \| 'production'` | `'test'` for loopback, `.localhost`, and `.test` hosts and without a URL, otherwise `'production'` | A label for the report and the cache/session identity; it never gates a run |
 | `identity` | `string` | the URL's origin and base path, else none | Stable logical app identity for cache and session keying. Set it when the origin is ephemeral (a per-PR preview URL) so entries survive redeploys; never share one across different apps. A `url` with port `0` derives it from the declared `:0`, not from the port a run was given |
+
+### The app's site
+
+A test or the agent may open any http(s) URL; `file:`, `data:`, and
+`javascript:` are `POLICY_DENIED`. What stays on the app is where its secrets
+go: a credential or secret is filled only on a page whose host is on the
+**site** of `url`, the registrable domain (`app.example.com` and
+`auth.example.com` are one site, `example.co.uk` and `shop.example.co.uk`
+too; `localhost` and an IP literal are sites of their own). The same rule
+scopes the browser engine's `headers` and decides which child frames an
+observation reads. Without a `url` there is no site and no check. A
+credential that belongs to a third-party page, a sign-in provider, declares
+its own [`allowedOrigins`](#credentials).
 
 ### Free ports
 
@@ -128,9 +139,7 @@ A `url` on a literal loopback address with port `0` (`http://127.0.0.1:0`,
 `http://[::1]:0`) asks the run for a free TCP port on that address. The runner
 picks one when the config loads, before anything spawns, and substitutes it
 wherever the declaration used the port: the base URL `app.open()` resolves
-against, the default `allowedOrigins` entry (and an explicit entry spelled
-with the same host and `:0`), the default `readyUrl`, and the report's target
-record. Worker processes receive the same assignment. The command must take
+against, the default `readyUrl`, and the report's target record. Worker processes receive the same assignment. The command must take
 the port through `{port}` in `args` or `env`; nothing else tells it where to
 listen, and a server left on its default port never answers where the runner
 probes.
@@ -397,7 +406,7 @@ type SecretProvider = () => string | Promise<string>;
 | --- | --- | --- | --- |
 | `username` | `string` | yes | Default username |
 | `password` | `string \| SecretProvider` | yes | A static value, or a provider called on every authorized fill (a vault lookup, a freshly computed TOTP). Recorded in the config digest by name only. An `E2E_USER_*` override wins over a provider |
-| `allowedOrigins` | `readonly string[]` | no | Narrows this credential relative to the target's allowed origins. It can only narrow. Serialized origins, checked on every fill, deterministic or agentic |
+| `allowedOrigins` | `readonly string[]` | no | The exact origins this credential may be filled on, replacing the [site rule](#the-apps-site) for it: a sign-in provider on another domain, or one origin of several on the site. Serialized origins, checked on every fill, deterministic or agentic |
 
 `credentials.user(name)` resolves a configured entry into a `Credential`.
 The username is a plain string; the password is an opaque `Secret` that test
@@ -432,7 +441,7 @@ type SecretConfig =
 | Key | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `value` | `string \| SecretProvider` | yes | A static value, or a provider called on every authorized fill. Recorded in the config digest by name only. An `E2E_SECRET_<NAME>` override wins over both |
-| `allowedOrigins` | `readonly string[]` | no | Narrows this secret relative to the target's allowed origins. It can only narrow. Serialized origins, checked on every fill, deterministic or agentic |
+| `allowedOrigins` | `readonly string[]` | no | The exact origins this secret may be filled on, replacing the [site rule](#the-apps-site) for it. Serialized origins, checked on every fill, deterministic or agentic |
 
 A bare string or function is shorthand for `{ value }`. Every entry must
 resolve to a non-empty string or a function; anything else is `INVALID_CONFIG`.

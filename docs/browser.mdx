@@ -102,8 +102,8 @@ await web.setCookies([{ url: 'http://localhost:3000', name: 'tz', value: 'UTC' }
 await web.setViewport({ width: 390, height: 844 });
 ```
 
-A cookie's target origin must be one the target allows; nothing is set when
-any entry is rejected.
+A cookie's target must be an http(s) URL; nothing is set when any entry is
+rejected.
 
 ## Pick a browser and viewport
 

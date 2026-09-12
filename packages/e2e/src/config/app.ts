@@ -13,6 +13,7 @@ import {
   normalizeBaseUrl,
   portOf,
   requestsFreePort,
+  siteOf,
   withPort,
   type NormalizedBaseUrl,
 } from '../internal/urls.ts';
@@ -61,7 +62,12 @@ export interface ResolvedApp {
   readonly base: NormalizedBaseUrl | undefined;
   /** The free-port request the declared URL made; undefined when it names a port or there is no URL. */
   readonly portRequest: PortRequest | undefined;
-  readonly allowedOrigins: readonly string[];
+  /**
+   * The site of the base URL, as `siteOf` reads it: where secrets, headers,
+   * and basic-auth credentials may go and whose child frames observations
+   * read. Undefined without a URL, which is no policy at all.
+   */
+  readonly site: string | undefined;
   readonly environment: 'test' | 'staging' | 'production';
   /**
    * Stable identity keying cache and session entries: the declared identity,
@@ -80,15 +86,14 @@ const ENVIRONMENTS = new Set(['test', 'staging', 'production']);
 
 /**
  * Resolves one target's app from its engine's `app` declaration. Every fact
- * is optional: a URL normalizes like any base URL, origins must be serialized
- * origins, a command needs something to poll, services need one readiness
- * contract each, and the identity defaults to where the app is served when
- * the engine gives none. `projectRoot` anchors every command's `log` path.
- * `port` is the free port the run assigned to a URL declared with port 0: it
- * replaces the 0 in the base URL, the default origin and readiness probe, and
- * any explicit origin spelled with the same host and `:0`. The default
- * identity keeps the declared `:0`, so cache and session entries survive the
- * port changing every run. `{port}` in the command, the services, and their
+ * is optional: a URL normalizes like any base URL, a command needs something
+ * to poll, services need one readiness contract each, and the identity
+ * defaults to where the app is served when the engine gives none.
+ * `projectRoot` anchors every command's `log` path. `port` is the free port
+ * the run assigned to a URL declared with port 0: it replaces the 0 in the
+ * base URL and the default readiness probe. The default identity keeps the
+ * declared `:0`, so cache and session entries survive the port changing
+ * every run. `{port}` in the command, the services, and their
  * readiness URLs expands to the port the app is served on, assigned or fixed.
  */
 export function resolveTargetApp(
@@ -119,31 +124,6 @@ export function resolveTargetApp(
     );
   }
 
-  const declaredOrigins = declared.allowedOrigins ?? (base === undefined ? [] : [base.origin]);
-  if (!Array.isArray(declaredOrigins)) {
-    throw new ConfigurationError('INVALID_CONFIG', `${where} app.allowedOrigins must be an array`);
-  }
-  const allowedOrigins = declaredOrigins.map((origin) => {
-    let parsed: URL;
-    try {
-      parsed = new URL(origin);
-    } catch {
-      throw new ConfigurationError('INVALID_CONFIG', `${where} declares an invalid allowed origin: ${origin}`);
-    }
-    if (parsed.origin !== origin) {
-      throw new ConfigurationError(
-        'INVALID_CONFIG',
-        `${where} allowed origin must be a serialized origin, got ${origin} (expected ${parsed.origin})`,
-      );
-    }
-    // An explicit origin spelled like the declared URL follows its port.
-    if (portRequest?.port !== undefined && parsed.port === '0' && parsed.hostname === portRequest.host) {
-      parsed.port = String(portRequest.port);
-      return parsed.origin;
-    }
-    return origin;
-  });
-
   const identity = declared.identity;
   if (identity !== undefined && (typeof identity !== 'string' || identity.trim() === '')) {
     throw new ConfigurationError('INVALID_CONFIG', `${where} app.identity must be a non-empty string`);
@@ -167,7 +147,7 @@ export function resolveTargetApp(
   return {
     base,
     portRequest,
-    allowedOrigins,
+    site: base === undefined ? undefined : siteOf(new URL(base.href).hostname),
     environment,
     identity: identity ?? (declaredBase === undefined ? undefined : `${declaredBase.origin}${declaredBase.basePath}`),
     command,
@@ -406,10 +386,9 @@ function digestCommand<T extends CommandConfig>(command: T): Omit<T, 'env'> & Di
  * contributes to the digest.
  */
 export function digestAppDeclaration(app: EngineAppDeclaration) {
-  const { url, allowedOrigins, environment, identity, command, readyUrl, services } = app;
+  const { url, environment, identity, command, readyUrl, services } = app;
   return obj({
     url,
-    allowedOrigins,
     environment,
     identity,
     readyUrl,

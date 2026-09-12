@@ -112,14 +112,12 @@ export function isImplicitTestHost(hostname: string): boolean {
 const FORBIDDEN_PROTOCOLS = new Set(['file:', 'data:', 'javascript:']);
 
 /**
- * Resolves a navigation URL against the base and enforces the allowed-origin
- * policy. Returns the absolute URL string.
+ * Resolves a navigation URL against the base and refuses the schemes no test
+ * may open. Returns the absolute URL string. Any http(s) origin is admitted:
+ * a click can reach one just as well, so a gate on typed navigation alone
+ * would guard nothing.
  */
-export function resolveNavigationUrl(
-  input: string,
-  base: NormalizedBaseUrl | undefined,
-  allowedOrigins: readonly string[],
-): { url: string } {
+export function resolveNavigationUrl(input: string, base: NormalizedBaseUrl | undefined): { url: string } {
   let url: URL;
   try {
     url = new URL(input, base?.href);
@@ -137,13 +135,42 @@ export function resolveNavigationUrl(
   if (FORBIDDEN_PROTOCOLS.has(url.protocol)) {
     throw new ConfigurationError('POLICY_DENIED', `forbidden URL scheme: ${url.protocol}`);
   }
-  if (!allowedOrigins.includes(url.origin)) {
-    throw new ConfigurationError(
-      'POLICY_DENIED',
-      `origin ${url.origin} is not in allowedOrigins`,
-    );
-  }
   return { url: url.href };
+}
+
+/**
+ * The site a hostname belongs to: its registrable domain, approximated
+ * without a public suffix list as the last two labels, or the last three
+ * when the last is a two-letter country code and the one before it a short
+ * second-level label (`example.co.uk`, `shop.com.au`). An IP literal or a
+ * single-label host such as `localhost` is a site of its own. Where the
+ * approximation errs it errs narrow, except on shared hosting suffixes such
+ * as `vercel.app`, which it reads as one site.
+ */
+export function siteOf(hostname: string): string {
+  const host = hostname.toLowerCase();
+  if (host.startsWith('[') || /^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return host;
+  const labels = host.split('.');
+  if (labels.length <= 2) return host;
+  const tld = labels[labels.length - 1]!;
+  const second = labels[labels.length - 2]!;
+  const keep = tld.length === 2 && second.length <= 3 ? 3 : 2;
+  return labels.slice(-keep).join('.');
+}
+
+/**
+ * True when a URL's host is on `site` as `siteOf` reads it. This is the one
+ * rule for where the app's secrets, headers, and basic-auth credentials may
+ * go and which child frames an observation reads; an unparseable URL is off
+ * every site.
+ */
+export function sameSite(url: string | URL, site: string): boolean {
+  try {
+    const parsed = typeof url === 'string' ? new URL(url) : url;
+    return siteOf(parsed.hostname) === site;
+  } catch {
+    return false;
+  }
 }
 
 /**

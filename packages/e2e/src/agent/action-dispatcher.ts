@@ -235,9 +235,9 @@ export class ActionDispatcher {
     if (typeof url !== 'string' || url.trim() === '') {
       throw new TestError('INVALID_ARGUMENT', 'navigate requires a URL');
     }
-    const resolved = resolveNavigationUrl(url, this.runtime.app.base, this.runtime.app.allowedOrigins).url;
+    const resolved = resolveNavigationUrl(url, this.runtime.app.base).url;
     // The raw argument is recorded, not the resolved URL: replay re-resolves
-    // through the same base and origin policy this call just passed.
+    // through the same base and scheme rule this call just passed.
     await this.runAction('navigate', async () => {
       await this.session.app.open(resolved, this.accounting.operation());
       return { name: 'navigate', url };

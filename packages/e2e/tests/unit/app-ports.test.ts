@@ -28,17 +28,16 @@ describe('port requests', () => {
     const app = appOf({ url: 'http://127.0.0.1:0', command: { executable: 'pnpm', args: ['dev'] } });
     expect(app.base?.href).toBe('http://127.0.0.1:0/');
     expect(app.portRequest).toEqual({ host: '127.0.0.1', port: undefined });
-    expect(app.allowedOrigins).toEqual(['http://127.0.0.1:0']);
+    expect(app.site).toBe('127.0.0.1');
     expect(app.readyUrl).toBe('http://127.0.0.1:0/');
     expect(app.identity).toBe('http://127.0.0.1:0/');
     expect(appOf({ url: 'http://localhost:3000' }).portRequest).toBeUndefined();
     expect(appOf({}).portRequest).toBeUndefined();
   });
 
-  it('substitutes the assigned port in the base URL, the origins spelled with :0, and the default readyUrl, keeping the identity', () => {
+  it('substitutes the assigned port in the base URL and the default readyUrl, keeping the identity', () => {
     const declaration: EngineAppDeclaration = {
       url: 'http://127.0.0.1:0/shop/',
-      allowedOrigins: ['http://127.0.0.1:0', 'https://auth.test', 'http://127.0.0.2:0'],
       command: { executable: 'pnpm', args: ['dev'] },
     };
     const pending = configOf({ web: declaration });
@@ -46,8 +45,6 @@ describe('port requests', () => {
     const app = assigned.targets[0]!.app;
     expect(app.base).toEqual({ href: 'http://127.0.0.1:4321/shop/', origin: 'http://127.0.0.1:4321', basePath: '/shop/' });
     expect(app.portRequest).toEqual({ host: '127.0.0.1', port: 4321 });
-    // Only an origin on the declared address follows the port; another loopback address spelled with :0 is left as written.
-    expect(app.allowedOrigins).toEqual(['http://127.0.0.1:4321', 'https://auth.test', 'http://127.0.0.2:0']);
     expect(app.readyUrl).toBe('http://127.0.0.1:4321/shop/');
     expect(app.identity).toBe(pending.targets[0]!.app.identity);
     expect(app.identity).toBe('http://127.0.0.1:0/shop/');

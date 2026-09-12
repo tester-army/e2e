@@ -32,7 +32,7 @@ describe('agent tool pack', () => {
         runId: 'r',
         targetName,
         projectRoot: '/project',
-        app: { allowedOrigins: [] },
+        app: {},
         testIdAttribute: 'data-testid',
         headed: false,
         workerSlot: 0,
