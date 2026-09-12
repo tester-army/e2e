@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { engineRange, playwrightRange } from '../../src/cli/init/engines.ts';
+import { agentDeviceRange, engineRange, playwrightRange } from '../../src/cli/init/engines.ts';
 
 describe('engineRange', () => {
   it('asks for the minor of the engine version the build recorded', () => {
@@ -18,5 +18,15 @@ describe('playwrightRange', () => {
 
   it('accepts any 1.x when running from source, where nothing was recorded', () => {
     expect(playwrightRange(undefined)).toBe('^1');
+  });
+});
+
+describe('agentDeviceRange', () => {
+  it('pins the minor of the agent-device the engine was built against, since 0.x minors can break', () => {
+    expect(agentDeviceRange('0.21.0')).toBe('>=0.21.0 <0.22');
+  });
+
+  it('accepts any 0.x when running from source, where nothing was recorded', () => {
+    expect(agentDeviceRange(undefined)).toBe('0.x');
   });
 });
