@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://e2e.dev/schema/agent-judgment-v1.schema.json",
+  "title": "e2e agent-judgment-1 response (deprecated)",
+  "description": "Superseded by agent-judgment-2 (agent-judgment-v2.schema.json), whose verdict is holds, fails, or inconclusive. The runner requests agent-judgment-2 only. Kept for the stability window; removal no earlier than April 1, 2027.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocolVersion",
+    "result",
+    "explanation"
+  ],
+  "properties": {
+    "protocolVersion": {
+      "const": "agent-judgment-1"
+    },
+    "result": {
+      "type": "boolean"
+    },
+    "explanation": {
+      "type": "string",
+      "maxLength": 8192
+    }
+  }
+}

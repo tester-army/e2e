@@ -833,10 +833,12 @@ function digestedArtifactKinds(artifacts: NonNullable<E2EConfig['artifacts']>): 
 function computeConfigDigest(raw: E2EConfig, projectId: string): string {
   // An agent may be the executor itself; its digest identity is name/version,
   // which is exactly what survives the function-stripping JSON clone below.
-  // Every model slot is reduced to its identity: a live instance carries
-  // provider settings (and possibly credentials) that must never be digested.
-  // Live values are reduced before the clone, not after: a store or a
-  // reporter may hold a client whose object graph JSON cannot serialize.
+  // Every model instance, wherever an agent entry carries it (`model`,
+  // `judge`, or inside a `createAgent` executor's options), is reduced to its
+  // identity by the clone: a live instance carries provider settings (and
+  // possibly credentials) that must never be digested, and its object graph
+  // may not serialize at all. Other live values are reduced before the clone:
+  // a store or a reporter may hold a client whose graph JSON cannot handle.
   //
   // An artifact store is a live value: only the kinds are configuration, so
   // the array and object forms digest identically and a host store never
@@ -852,21 +854,6 @@ function computeConfigDigest(raw: E2EConfig, projectId: string): string {
     ...(Array.isArray(raw.reporters)
       ? { reporters: raw.reporters.filter((reporter) => typeof reporter === 'string') }
       : {}),
-    ...(raw.agents === undefined
-      ? {}
-      : {
-          agents: Object.fromEntries(
-            Object.entries(raw.agents).map(([name, entry]) => [
-              name,
-              isStepExecutor(entry)
-                ? entry
-                : {
-                    ...entry,
-                    ...(isModelInstance(entry.model) ? { model: modelIdentity(entry.model) } : {}),
-                  },
-            ]),
-          ),
-        }),
   };
   const sanitized: Record<string, unknown> = {
     ...(structuredCloneJsonSafe(forClone) as Record<string, unknown>),
@@ -922,9 +909,17 @@ function computeConfigDigest(raw: E2EConfig, projectId: string): string {
   return canonicalDigest(sanitized);
 }
 
+/**
+ * A JSON round trip that drops functions and reduces every AI SDK model
+ * instance, at any depth, to its provider/id identity. The digest reads the
+ * same whether a model sits in `agents.<name>.model`, in `judge`, or inside
+ * the options a `createAgent` executor carries.
+ */
 function structuredCloneJsonSafe(value: unknown): unknown {
   return JSON.parse(
-    JSON.stringify(value, (_key, item: unknown) => (typeof item === 'function' ? undefined : item)) ??
-      'null',
+    JSON.stringify(value, (_key, item: unknown) => {
+      if (typeof item === 'function') return undefined;
+      return isModelInstance(item) ? modelIdentity(item) : item;
+    }) ?? 'null',
   );
 }

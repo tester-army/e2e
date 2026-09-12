@@ -166,11 +166,14 @@ model is first used.
 An `agents.<name>.model` that names a different model than the one passed to
 `createAgent({ model })` is `INVALID_CONFIG`.
 
-A configured executor, including `createAgent(...)`, handles `agent.act`
+A custom executor, one that is not `createAgent(...)`, handles `agent.act`
 and `agent.assert` through `runStep`. That assertion path rejects `vision`
 and `screenshot` options. An executor may implement both methods without a
 model. `agent.waitFor` and `agent.extract` still use the built-in judgment
 tier and its model routing; see [Custom executors](/executors#replace-the-executor).
+`createAgent(...)` is the built-in agent with options: its `agent.act` runs
+through its own loop, and its assertions go to the judgment tier and the
+`judge` like any other agent's.
 
 ### A judge of its own
 

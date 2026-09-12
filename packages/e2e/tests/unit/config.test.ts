@@ -354,6 +354,35 @@ describe('resolveConfig', () => {
     );
   });
 
+  it('reduces every model instance in an agent entry to its identity, judge and createAgent options included', async () => {
+    const { createAgent } = await import('../../src/agent/default-agent.ts');
+    // A provider client with a cycle: JSON cannot clone it, and its settings
+    // must never enter the digest anyway.
+    const client: Record<string, unknown> = {};
+    client['self'] = client;
+    const instance = (modelId: string) =>
+      ({
+        specificationVersion: 'v4',
+        provider: 'openai',
+        modelId,
+        client,
+        supportedUrls: {},
+        doGenerate: () => Promise.reject(new Error('not called')),
+        doStream: () => Promise.reject(new Error('not called')),
+      }) as never;
+    const withJudge = resolve({ agents: { default: { model: instance('actor'), judge: instance('verifier') } } });
+    expect(withJudge.configDigest).toBe(
+      resolve({ agents: { default: { model: instance('actor'), judge: instance('verifier') } } }).configDigest,
+    );
+    expect(withJudge.configDigest).not.toBe(
+      resolve({ agents: { default: { model: instance('actor'), judge: instance('other') } } }).configDigest,
+    );
+    const asExecutor = resolve({ agents: { default: createAgent({ model: instance('actor'), judge: instance('verifier') }) } });
+    expect(asExecutor.configDigest).toBe(
+      resolve({ agents: { default: createAgent({ model: instance('actor'), judge: instance('verifier') }) } }).configDigest,
+    );
+  });
+
   it('validates numeric bounds', () => {
     expect(() => resolve({ retries: 11 })).toThrow(/retries/);
     expect(() => resolve({ retries: -1 })).toThrow(/retries/);

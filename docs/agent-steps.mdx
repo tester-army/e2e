@@ -116,7 +116,7 @@ Exceeding a budget raises `STEP_BUDGET_EXHAUSTED`; running out of time,
 `screenshot` and `tap_at` tools, and while pixels stay available every action
 result after the first screenshot carries a fresh one.
 
-With a custom executor, `agent.assert` runs through `runStep` under the same
+With a custom executor, one that is not `createAgent(...)`, `agent.assert` runs through `runStep` under the same
 action and model-call budgets as `act`, with `config.timeout` as its default
 timeout. It does not use the built-in two-call judgment limit.
 

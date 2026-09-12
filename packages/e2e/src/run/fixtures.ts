@@ -3,6 +3,7 @@
 import { createAgentFixture } from '../agent/index.ts';
 import type { AgentContext, AgentSelection } from '../agent/invocation.ts';
 import type { ExecutorAttempt, StepExecutor } from '../agent/executor.ts';
+import { isDefaultAgent } from '../agent/default-agent.ts';
 import type { AgentCacheContext } from '../cache/context.ts';
 import type { WorkerModels } from './worker-models.ts';
 import type { EngineFixtureContext } from '../engine/index.ts';
@@ -175,7 +176,11 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
       name,
       config: resolved,
       executor: resolved.executor ?? lazyDefaultExecutor(),
-      customExecutor: resolved.executor !== undefined,
+      // `createAgent(...)` is the built-in agent with options, not a custom
+      // brain: its assertions go to the judgment tier like everyone else's,
+      // so a configured `judge` judges them. Only a hand-rolled executor
+      // judges its own assertions through `runStep`.
+      customExecutor: resolved.executor !== undefined && !isDefaultAgent(resolved.executor),
       // Built on first use: a run whose `agent.act()` steps go to a custom
       // executor may have no model at all and must not fail on a
       // MODEL_UNAVAILABLE it would never hit; a judgment still fails with it
