@@ -155,10 +155,10 @@ secret is rewritten before it is kept; see [Debugging a run](/debugging#artifact
 
 Two consequences worth planning for:
 
-- **Prefer the deterministic path in setup tests.** A login form is the most
-  addressable screen in your app, so filling it with `screen.getByLabel()`
-  costs no model calls. Reach for `agent.act` when the sign-in flow itself
-  varies: an IdP redirect, a consent screen.
+- **Sign in with exact fills in a setup test.** A login form takes exact
+  values, so `screen.getByLabel().fill()` is the natural fit and keeps the
+  evidence rule below out of your real tests. Use `agent.act` when the
+  sign-in flow itself varies: an IdP redirect, a consent screen.
 - **Screenshots stop after a secret fill.** Once a secret is filled,
   `agent.assert` attaches no screenshot evidence for the rest of the attempt,
   because a page is free to mirror a typed value anywhere. Fill secrets in a
@@ -237,10 +237,10 @@ persona that needs no sign-in skips the session and the loop: a list pin,
 [Agents and personas](/agents#one-flow-several-personas).
 
 <CardGroup cols={2}>
-  <Card title="test reference" href="/reference/test">
+  <Card title="test reference" icon="flask" href="/reference/test">
     `test.setup`, `sessions`, and the `session` option.
   </Card>
-  <Card title="Config reference" href="/reference/config#credentials">
+  <Card title="Config reference" icon="sliders" href="/reference/config#credentials">
     The `credentials` block.
   </Card>
 </CardGroup>

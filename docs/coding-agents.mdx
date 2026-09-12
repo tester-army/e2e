@@ -56,8 +56,9 @@ and flags. Run tests and read reports through the CLI.
 
 The skill tells an agent to look before it writes: read `e2e.config.ts` for
 the `tests` glob, targets, and credentials, then an existing test for the
-project's conventions. Then it writes deterministic steps first and reaches
-for the agent only where the flow varies.
+project's conventions. Then it drives the flow with `agent.act`, one goal
+per call, and pins each outcome with `expect`. Exact values, a sign-in form
+or a field that must hold one specific string, go through `screen` directly.
 
 ```ts title="tests/checkout.e2e.ts"
 import { test, expect, credentials } from '@e2edev/e2e';
@@ -163,13 +164,13 @@ needs a second attempt, the skill is missing something; the fix belongs in
 `skills/e2e/` in the e2e repository, not in your project's copy.
 
 <CardGroup cols={2}>
-  <Card title="CLI reference" href="/reference/cli">
+  <Card title="CLI reference" icon="terminal" href="/reference/cli">
     init, guide, mcp, and run, flag by flag.
   </Card>
-  <Card title="MCP server" href="/reference/mcp">
+  <Card title="MCP server" icon="server" href="/reference/mcp">
     Inspect the app before writing a test.
   </Card>
-  <Card title="Debugging a run" href="/debugging">
+  <Card title="Debugging a run" icon="bug" href="/debugging">
     The report, the artifacts, and the agent flags.
   </Card>
 </CardGroup>

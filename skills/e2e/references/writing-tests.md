@@ -12,28 +12,31 @@ test.describe('todos', { tags: ['todos'] }, () => {
     await app.open('/todos');
   });
 
-  test('adds and completes a todo', async ({ screen, web }) => {
-    await screen.getByLabel('New todo').fill('Write the release notes');
-    await screen.getByRole('button', { name: 'Add' }).tap();
-
+  test('adds and completes a todo', async ({ agent, screen, web }) => {
+    await agent.act('add a todo named {title}', { params: { title: 'Write the release notes' } });
     await expect(screen.getByRole('listitem')).toHaveCount(1);
     await expect(screen.getByRole('status', { name: 'Remaining' })).toHaveText('1 remaining');
 
-    await screen.getByRole('checkbox', { name: 'Write the release notes' }).check();
+    await agent.act('mark the todo as done');
     await expect(screen.getByRole('status', { name: 'Remaining' })).toHaveText('0 remaining');
     await expect(web).toHaveURL('/todos');
   });
 
   test('ignores an empty submission', async ({ screen }) => {
+    // An exact interaction: the empty submit is the point of the test.
     await screen.getByRole('button', { name: 'Add' }).tap();
     await expect(screen.getByRole('listitem')).toHaveCount(0);
   });
 });
 ```
 
-Files match the config `tests` glob, default `tests/**/*.e2e.ts`. Every test
-starts from clean state: a fresh browser context and no page open, so a test
-calls `app.open()` first (here in `beforeEach`).
+The agent does the flow; `expect` pins what must be true after each goal,
+and that check is what lets the trace cache replay the step on later runs.
+`screen` actions are for exact interactions and values, like the empty
+submit above or a sign-in form. Files match the config `tests` glob, default
+`tests/**/*.e2e.ts`. Every test starts from clean state: a fresh browser
+context and no page open, so a test calls `app.open()` first (here in
+`beforeEach`).
 
 ## Registration
 
@@ -282,8 +285,9 @@ expect(response.status).toBe(201);
   Otherwise tests are independent and may run on different workers.
 - Tag by area and by cost (`smoke`, `billing`, `agent`) and run subsets with
   `--tag`.
-- Mix agent steps in where the path varies and pin the outcome with
-  `expect`; see the `agent` topic.
+- Drive flows with `agent.act` and pin each outcome with `expect`. The
+  calls on this page are for exact values and exact checks; the `agent`
+  topic covers the steps that do the work.
 
 ## Mistakes to avoid
 

@@ -77,7 +77,7 @@ export default {
       }),
     },
   ],
-  // Only for agent.* steps. The model is an AI SDK instance; gateway() from 'ai' reads AI_GATEWAY_API_KEY.
+  // The model behind every agent.* step: an AI SDK instance; gateway() from 'ai' reads AI_GATEWAY_API_KEY.
   agents: {
     default: createAgent({
       model: gateway('openai/gpt-5.6-luna'),
@@ -264,5 +264,7 @@ export default {
 - `npx e2e run tests/example.e2e.ts` passes against the app.
 - `package.json` has a script such as `"test:e2e": "e2e run"`.
 - `.gitignore` lists the `.e2e/` outputs (init adds them). Committing
-  `.e2e/cache/` is opt-in: remove that line to share `agent.act` replays.
-- CI runs the deterministic suite on pull requests; see `running`.
+  `.e2e/cache/` is opt-in: remove that line so CI and teammates replay
+  `agent.act` steps instead of re-running the model.
+- CI runs the whole suite on pull requests, agent steps included; see
+  `running`.

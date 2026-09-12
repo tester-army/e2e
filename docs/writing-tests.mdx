@@ -48,6 +48,15 @@ Name what is visible and prefer the exact wording on screen. One goal per
 call. The flow inside a goal is the model's job; the order of goals is yours.
 </Tip>
 
+<Tip>
+**When a goal fails, tighten it before you replace it**
+
+Reword the goal with the labels on screen. Then move shared vocabulary into
+`context` on the agent, and shape the agent itself with `system`, tools, or
+a persona. [Agents and personas](/agents) has the loop. A goal rewritten as
+hand-written clicks loses the self-healing that made it an agent step.
+</Tip>
+
 A step ends passed, failed, or blocked. A block means the step could not
 reach a product verdict. Configuration blocks such as missing credentials
 exit 2, and infrastructure blocks such as an unreachable environment exit 3.
@@ -114,8 +123,10 @@ lists every mode.
 
 ## Deterministic APIs: `screen` and `expect`
 
-When a step or a check is too important to leave to a model, write it
-exactly. These calls cost no tokens and never vary.
+For exact values and exact checks: a field that must receive one specific
+string, a count that must be one specific number, a sign-in form in a setup
+test. These calls never vary, and the check after an `act` is what a
+[cache](/cache) replay is verified against.
 
 ```ts
 // Semantic queries: role and name first, label second, test ID last.
@@ -176,10 +187,10 @@ state, run in order on one worker, and retry as a whole.
 ## Next
 
 <CardGroup cols={2}>
-  <Card title="Signing in" href="/authentication">
+  <Card title="Signing in" icon="key" href="/authentication">
     Sessions and secrets.
   </Card>
-  <Card title="Agents and personas" href="/agents">
+  <Card title="Agents and personas" icon="users" href="/agents">
     Several agents in one suite, and running a flow as each of them.
   </Card>
 </CardGroup>

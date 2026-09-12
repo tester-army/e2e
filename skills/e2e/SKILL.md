@@ -1,17 +1,22 @@
 ---
 name: e2e
-description: Set up and write end-to-end tests with e2e, the @e2edev/e2e runner. Covers scaffolding e2e.config.ts, choosing the Playwright browser engine or the agent-device mobile engine, starting the app under test from the config, writing tests that mix deterministic screen, app, web, and expect calls with bounded agent.act, agent.assert, agent.waitFor, and agent.extract steps, running them with the e2e CLI, and reading .e2e/report.json when a run fails. Use when a project depends on @e2edev/e2e, when asked to add end-to-end, browser, mobile, or agentic UI tests, or when an e2e run fails.
+description: Set up and write agentic end-to-end tests with e2e, the @e2edev/e2e runner. Covers scaffolding e2e.config.ts, choosing the Playwright browser engine or the agent-device mobile engine, starting the app under test from the config, writing tests that drive flows with agent.act and judge them with agent.assert, agent.waitFor, and agent.extract, pinning exact values and outcomes with screen, app, web, and expect, shaping the agent for the app (context, system prompt, tools, personas), the trace cache that replays passing steps, running with the e2e CLI, and reading .e2e/report.json when a run fails. Use when a project depends on @e2edev/e2e, when asked to add end-to-end, browser, mobile, or agentic UI tests, or when an e2e run fails.
 ---
 
-# e2e: end-to-end tests in TypeScript, with bounded agent steps
+# e2e: agentic end-to-end tests in TypeScript
 
-e2e is a local-first end-to-end test runner. Tests are plain TypeScript.
-Deterministic calls (`screen`, `app`, `web`, `expect`) do exactly what they
-say and make no model calls. Agent calls (`agent.act`, `agent.assert`,
-`agent.waitFor`, `agent.extract`) hand one goal or one question to a model
-under a deadline and a call budget. The runner knows no platform: every
-target names an engine, `@e2edev/playwright` for browsers or
-`@e2edev/agent-device` for iOS simulators and Android emulators.
+e2e is an agentic end-to-end test runner. A test drives the app the way a
+user would: `agent.act` takes one goal in natural language and a model works
+through the live UI to reach it; `agent.assert`, `agent.waitFor`, and
+`agent.extract` ask one question about the screen. Every call runs under a
+deadline and a model-call budget and ends in a verdict. Exact values and
+exact outcomes go through `screen`, `app`, `web`, and `expect` in the same
+test. A passing `act` is recorded in the trace cache and replays with no
+model call until the app changes, so a suite pays for thinking once per
+change, not once per run, and a renamed button does not break it. The
+runner knows no platform: every target names an engine,
+`@e2edev/playwright` for browsers or `@e2edev/agent-device` for iOS
+simulators and Android emulators.
 
 ```ts
 // e2e.config.ts
@@ -29,7 +34,7 @@ export default {
       }),
     },
   ],
-  // Only needed for agent.* steps. The model is an AI SDK instance; gateway() from 'ai' reads AI_GATEWAY_API_KEY.
+  // The model behind every agent.* step: an AI SDK instance; gateway() from 'ai' reads AI_GATEWAY_API_KEY.
   agents: {
     default: createAgent({
       model: gateway('openai/gpt-5.6-luna'),
@@ -79,11 +84,15 @@ one. Without them, the installed CLI prints the same text:
    `--headed`, or drive the live app through the `e2e mcp` server when it is
    registered (topic `mcp`): `open_session`, `observe`, and `locate` show the
    exact names and check a locator before you write it.
-3. Write `tests/<feature>.e2e.ts`. Deterministic steps first. One `agent.act`
-   per goal where the flow varies, and an `expect` on its outcome right after.
-4. Run one file: `npx e2e run tests/<feature>.e2e.ts`. Agent
-   steps need a model in the config and its provider's key in the environment
-   (`AI_GATEWAY_API_KEY` for `gateway()`); deterministic tests need neither.
+3. Write `tests/<feature>.e2e.ts`. Drive the flow with `agent.act`, one goal
+   per call, and pin each outcome right after with `expect` or
+   `agent.assert`. Exact values go through `screen` directly: a sign-in form
+   in a setup test, a field that must receive one specific string, a count
+   that must be one specific number.
+4. Run one file: `npx e2e run tests/<feature>.e2e.ts`. Agent steps need a
+   model in the config and its provider's key in the environment
+   (`AI_GATEWAY_API_KEY` for `gateway()`). A test with no agent step needs
+   neither.
 5. Read the failure: the reporter prints the error code, the message, and a
    code frame; `.e2e/report.json` has every step and artifact path. Fix the
    locator, the expectation, or the app. Never add a sleep.
@@ -111,7 +120,14 @@ one. Without them, the installed CLI prints the same text:
 - Agent instructions: one goal per `act`, the wording on screen, real values
   in params. Judge meaning, not phrasing: `toContain('Pro')`, not an exact
   sentence a model produced.
-- Prefer `expect` for anything mechanical. Agent calls cost tokens and time;
-  spend them on the step whose wording or path varies.
+- Let the agent drive and pin the outcome. With the cache on, a passing
+  `act` costs model calls once and replays after that, so the cost of a step
+  is paid per UI change, not per run. Spend effort on the goal's wording,
+  not on avoiding agent steps.
+- Shape the agent for this app and keep iterating on it: `context` for
+  vocabulary the screens use, `system` on `createAgent` for how it works,
+  tools for a test API, and named personas under `agents`. When a step
+  fails, tighten the goal first, then the context, then the agent. Topic
+  `agent` has the loop.
 - `.e2e/` is output (`report.json`, `artifacts/`, `cache/`, `logs/`). Read it,
   never edit it.

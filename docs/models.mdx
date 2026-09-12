@@ -128,7 +128,7 @@ createOpenRouter({
 Three consequences:
 
 - **The key is read late.** Constructing `gateway('...')` needs no variable.
-  Deterministic suites, `e2e list`, and config loading all work without a
+  Tests without agent steps, `e2e list`, and config loading all work without a
   key. Only a step that calls a model needs the provider's key.
 - **There is no `E2E_*` key variable.** The runner never sees the key, so it
   has nothing to name. Set the variable the package you imported documents.
@@ -203,10 +203,10 @@ checked ahead of time: the runner does not know which variable to look for,
 so the provider reports it on the first call.
 
 <CardGroup cols={2}>
-  <Card title="Agents and personas" href="/agents">
+  <Card title="Agents and personas" icon="users" href="/agents">
     Several agents in one suite.
   </Card>
-  <Card title="Config reference" href="/reference/config#model">
+  <Card title="Config reference" icon="sliders" href="/reference/config#model">
     The `model` slot and every other key.
   </Card>
 </CardGroup>

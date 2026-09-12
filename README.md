@@ -2,8 +2,8 @@
 
 An open framework for agentic end-to-end testing.
 
-Write tests in ordinary TypeScript. Describe the parts that are tedious to
-select in plain language, and keep deterministic control everywhere else.
+Write tests in ordinary TypeScript. Describe what a user does in natural
+language, and pin exact values and outcomes with regular assertions.
 
 ```ts
 import { test } from '@e2edev/e2e';
@@ -20,7 +20,7 @@ pnpm add -D @e2edev/e2e @e2edev/playwright playwright
 AI_GATEWAY_API_KEY=... npx e2e run
 ```
 
-Deterministic suites using `screen`, `app`, `web`, and `expect` need no model.
+Tests without agent steps, using `screen`, `app`, `web`, and `expect`, need no model.
 The runner knows no platform: `@e2edev/playwright` is the browser engine a
 web target names in its config, and a device or desktop engine plugs into the
 same contract.

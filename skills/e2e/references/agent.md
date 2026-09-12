@@ -1,8 +1,9 @@
 # Agent steps
 
-`agent` is a fixture like `screen`. Each call is one bounded invocation: a
-fresh redacted observation, a deadline, a model-call budget, and no shared
-transcript between calls. Deterministic tests never load a model.
+`agent` is a fixture like `screen` and the main way a test drives the app.
+Each call is one bounded invocation: a fresh redacted observation, a
+deadline, a model-call budget, and no shared transcript between calls. A
+test with no agent step never loads a model.
 
 ## Configure a model
 
@@ -179,8 +180,9 @@ tool call before it executes.
 | `extract` | 2 | 30 s |
 | `waitFor` | up to `agent.maxModelCalls` (25) | 30 s |
 
-- Keep `agent.*` for steps whose path or wording varies; `expect` and
-  `screen` are free.
+- With the cache on, a passing `act` costs model calls once and replays on
+  later runs until the app changes. Budget for the runs where the UI moved,
+  not for every run.
 - Slow providers: raise the test `timeout` and `actionTimeout` (each
   observation and action inside a step is bounded by it) rather than reading
   latency as a defect. `STEP_TIMEOUT` and `STEP_BUDGET_EXHAUSTED` are test
@@ -226,6 +228,32 @@ The trace replaces inline bytes and base64 in SDK image and file message
 parts with decoded byte counts. URLs and text remain; encoded strings in
 arbitrary tool result JSON or other fields are preserved.
 
+## Make the agent yours
+
+The agent in the config is a starting point. The best agent for an app is
+the one that knows its screens, and that comes from iterating on it:
+
+1. **The goal.** A failed step usually means the goal named something the
+   screen does not. Reword it with the labels on screen. Check the step's
+   transcript with `--debug` to see what the model saw and tried.
+2. **`context`.** Vocabulary every step needs: what the plans are called,
+   what a "workspace" is, which tab holds billing. Set it once on the agent
+   or per test with `agentContext`, not in every instruction.
+3. **`system` on `createAgent`.** How the agent works: how carefully it
+   verifies, what it never does, how it treats a modal. A UX reviewer, a
+   cautious QA persona, and a fast smoke agent are three `system` prompts on
+   the same model.
+4. **Tools.** A test API the agent may call mid-flow (seed a cart, mint a
+   coupon) via `createAgent({ tools })`; see below.
+5. **The model and its options.** `providerOptions` for reasoning effort,
+   or a different model for one persona. `npx e2e run --agent <name>` runs
+   the suite as any configured agent, so two candidates can be compared on
+   the same tests; every result records which agent ran it.
+
+Personas are agents by name under `agents`, pinned with `{ agent }` on a
+test or block, or swept with `--agent buyer,admin`. The trace cache records
+per agent step, so a specialised agent gets the same replay benefit.
+
 ## Beyond the built-in agent
 
 - `createAgent({ tools: { seedCart } })` adds AI SDK tools wrapped with
@@ -241,8 +269,10 @@ Full reference: https://e2e.mintlify.app/agents
 
 ## In CI
 
-Deterministic tests gate merges; agentic tests are opt-in. Keep them in a
-separate config (`e2e.agent.config.ts` with its own `tests` glob and a larger
-`timeout`), run them on a schedule or `workflow_dispatch`, and pass the key
-the config's model reads (`env: { AI_GATEWAY_API_KEY }` for `gateway()`) from
-secrets.
+One suite, one job, on every pull request, agent steps included. Pass the
+key the config's model reads (`env: { AI_GATEWAY_API_KEY }` for `gateway()`)
+from secrets. Commit `.e2e/cache/` so CI replays recorded steps with no
+model call and consults the model only where the app changed; keep every
+`act` followed by a check so the recording is trusted. CI retries once and
+reports a pass-on-retry as flaky, so the report keeps naming the goals that
+need tightening.

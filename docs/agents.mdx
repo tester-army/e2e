@@ -41,6 +41,34 @@ An entry takes one of three shapes:
 `model` serves every call, screenshots included, so it has to accept images.
 The [config reference](/reference/config#agents) lists every key.
 
+## Make the agent yours
+
+The agent in the scaffold is a starting point. The best agent for your app
+is the one that knows its screens, and it gets there by iteration. When a
+step fails or takes too many calls, work down this list and stop at the
+first level that fixes it:
+
+1. **The goal.** Reword it with the labels on screen. `--debug` saves the
+   step's transcript as an artifact, so you can see what the model saw and
+   tried.
+2. **`context`.** Vocabulary every step needs: what the plans are called,
+   which tab holds billing, what a "workspace" is. Set it once on the agent,
+   or per test with `agentContext`, instead of repeating it in goals.
+3. **`system` on `createAgent`.** How the agent works: how carefully it
+   verifies, what it never does, how it treats a modal. A UX reviewer, a
+   cautious QA persona, and a fast smoke agent are three `system` prompts on
+   one model.
+4. **[Tools](/tools).** A test API the agent may call mid-flow: seed a cart,
+   mint a coupon, reset a fixture.
+5. **The model and its options.** `providerOptions` for reasoning effort, or
+   a different model for one agent. `--agent <name>` runs the suite as any
+   entry, so two candidates can be compared on the same tests, and every
+   result records which agent ran it.
+6. **A [custom executor](/executors)**, when the loop itself should change.
+
+Each level keeps the [cache](/cache): a specialised agent's passing steps
+replay the same way the default's do.
+
 ## Pick an agent per run
 
 Without a flag, tests run as `default`. `--agent` re-points them:
@@ -122,10 +150,10 @@ the setup test and the loop.
 ## Next
 
 <CardGroup cols={2}>
-  <Card title="Project tools" href="/tools">
+  <Card title="Project tools" icon="wrench" href="/tools">
     Give the agent a test API or a device toolkit.
   </Card>
-  <Card title="Custom executors" href="/executors">
+  <Card title="Custom executors" icon="gears" href="/executors">
     Keep the loop with your own prompt, or replace it.
   </Card>
 </CardGroup>

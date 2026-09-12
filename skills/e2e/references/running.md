@@ -160,6 +160,7 @@ jobs:
   launch timeout.
 - Start the app through the engine's `command`; the runner tears it down on
   every exit path.
-- Agentic suites: a separate config, run on `schedule` or
-  `workflow_dispatch`, the key the config's model reads (`AI_GATEWAY_API_KEY`
-  for `gateway()` from `ai`) as a secret, never a required check.
+- Agent steps run in the same job as everything else. Pass the key the
+  config's model reads (`AI_GATEWAY_API_KEY` for `gateway()` from `ai`) as
+  a secret in the run step's `env`, and commit `.e2e/cache/` so recorded
+  steps replay in CI with no model call.

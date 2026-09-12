@@ -1,12 +1,21 @@
 ---
 title: Introduction
-description: End-to-end tests in plain TypeScript, with agent steps you can bound and inspect.
+description: Agentic end-to-end testing framework for any app.
 ---
 
-e2e runs end-to-end tests written in TypeScript. A test mixes two kinds of
-calls. Deterministic calls (`screen`, `app`, `expect`) do exactly what they
-say and cost no model tokens. Agent calls (`agent.act`, `agent.assert`) hand
-one goal or one question to a model under a deadline and a call budget.
+**e2e lets an agent test your app like a real user.** You write a goal
+or a question in natural language, and a model interacts with the app to
+reach it. Exact values and exact checks go in the same test as regular locator calls and assertions.
+
+
+**The runner is platform agnostic.** Browsers, iOS simulators, and Android
+emulators ship as engines, and the same test runs on each.
+
+The engine contract is flexible enough to test literally anything. You can write [your own engine](/writing-an-engine) and test terminals, voice agents and more.
+
+**The agent thinks once.** With the [cache](/cache) on, a passing `agent.act`
+records its actions, and later runs **replay them with no model call** until
+the app changes. A suite costs tokens when the UI moves, not on every run. This substantially reduces the maintenance of tests.
 
 ```ts title="tests/checkout.e2e.ts"
 import { test, expect } from '@e2edev/e2e';
@@ -21,9 +30,9 @@ test('a member upgrades to Pro', async ({ app, agent, screen }) => {
 });
 ```
 
-The runner owns everything around the model: what it sees, what it may do,
-how many calls it gets, and what ends up in the report. You choose the model
-and can replace the agent outright.
+Agent steps stay under your control. The runner decides what the model
+sees, what it may do, how many calls it gets, and what ends up in the
+report. You choose the model and can replace the agent outright.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from '@e2edev/e2e';
@@ -39,34 +48,38 @@ export default {
 
 ## What you get
 
+- **Tests that survive UI changes.** An agent step names the outcome, not the
+  selector. Renamed buttons and rearranged forms do not break it.
+- **Replay instead of re-thinking.** In read-write cache mode, an `agent.act`
+  followed by a recorded verification can save its actions. Later runs replay
+  them with no model call until the app diverges.
 - **Bounded agent steps.** Every `agent.*` call has a deadline and a model-call
   budget, and ends in a verdict: passed, failed, or blocked.
 - **Secrets the model never sees.** A password is an opaque handle. The model
   gets its name; the runner fills the field.
-- **Replay instead of re-thinking.** In read-write cache mode, an `agent.act`
-  followed by a recorded verification can save its actions. Later runs replay
-  them with no model call until the app diverges.
-- **One contract, any surface.** `@e2edev/playwright` drives browsers and
-  `@e2edev/agent-device` drives iOS simulators and Android emulators. Tests
-  share the agent and locator APIs; setup follows the platform. A browser
-  test opens a URL, while a device attempt starts in its configured app.
-- **A report for every run.** `.e2e/report.json` carries results, steps, model
-  usage, and the artifacts the selected engine captured. Playwright can add
-  traces; device targets provide screenshots and optional video.
+- **One contract, any surface.** Tests share the agent and locator APIs
+  across engines; only setup follows the platform. Engines today:
+  - `@e2edev/playwright` drives Chromium, Firefox, and WebKit.
+  - `@e2edev/agent-device` drives iOS simulators and Android emulators.
+  - [Your own](/writing-an-engine), for anything else.
+- **Every run is on the record.** Each agent step is written down: what it
+  saw, what it did, what it cost, and why it stopped. A person or a coding
+  agent reads one [report](/debugging) to find out what went wrong, with
+  screenshots, traces, and video beside it.
 
 ## Where to go
 
 <CardGroup cols={2}>
-  <Card title="Quickstart" href="/quickstart">
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
     Scaffold a project, run a browser test, add an agent step.
   </Card>
-  <Card title="Writing tests" href="/writing-tests">
+  <Card title="Writing tests" icon="pen-to-square" href="/writing-tests">
     Goals, checks, extraction, and the deterministic APIs.
   </Card>
-  <Card title="Web" href="/starting-your-app">
+  <Card title="Web" icon="globe" href="/starting-your-app">
     Start your dev server from the config, mock APIs, reach protected previews.
   </Card>
-  <Card title="Mobile" href="/mobile">
+  <Card title="Mobile" icon="mobile-screen" href="/mobile">
     iOS simulators and Android emulators, the `device` fixture, what differs.
   </Card>
 </CardGroup>

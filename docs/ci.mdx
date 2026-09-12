@@ -1,9 +1,11 @@
 ---
 title: Continuous integration
-description: One workflow, the defaults the runner changes in CI, and how to keep model-backed tests opt-in.
+description: One workflow that gates every pull request, the defaults the runner changes in CI, and how agent steps hold up as a required check.
 ---
 
-With `command` in your config, the job is install, browser, run.
+One suite, one job, on every pull request. Deterministic and agent steps run
+together, and the job is a required check. With `command` in your config,
+the job is install, browser, run.
 
 ```yaml title=".github/workflows/e2e.yml"
 name: e2e
@@ -41,6 +43,7 @@ jobs:
         run: npx e2e run --reporter list,junit
         env:
           APP_URL: http://127.0.0.1:3000
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
           E2E_USER_ADMIN_USERNAME: ${{ secrets.E2E_USER_ADMIN_USERNAME }}
           E2E_USER_ADMIN_PASSWORD: ${{ secrets.E2E_USER_ADMIN_PASSWORD }}
 
@@ -102,45 +105,44 @@ machine and prints no notice. Add `E2E_TELEMETRY_DISABLED: '1'` to the job's
 
 ## Model credentials
 
-Deterministic tests need no model. For a suite that uses `agent`, the job
-passes the key the provider package reads:
+The job passes the key the provider package reads, `AI_GATEWAY_API_KEY` in
+the workflow above. The runner reads none of these variables, so the value
+never enters logs, reports, or the app process. Which variable each provider
+reads is on [Choosing a model](/models). A run whose tests never touch
+`agent` makes no model call, key or not.
 
-```yaml
-      - name: Run agentic suite
-        run: npx e2e run --config e2e.agent.config.ts
-        env:
-          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
-```
+## Gating pull requests on agent steps
 
-The runner reads none of these variables, so the value never enters logs,
-reports, or the app process. Which variable each provider reads is on
-[Choosing a model](/models).
-
-## Keep model-backed tests opt-in
-
-Deterministic tests are reproducible. Agentic tests can take a different,
-equally valid path on each run. Gating merges on them makes the model a shared
-dependency of every pull request.
+An agent step is a test like any other, and the suite is built so it can be
+a required check. Four things make that hold:
 
 <Steps>
-  <Step title="Split the config">
-  A separate `e2e.agent.config.ts` with its own `tests` glob and a larger
-  `timeout`, since every planned step includes model round trips.
+  <Step title="Commit the cache">
+  A passing `agent.act` records its actions. Commit `.e2e/cache/` and CI
+  replays those actions with no model call, so a pull request that leaves a
+  flow alone runs it exactly as it ran last time. The model is consulted
+  only when the app changed under a step. See
+  [Commit your traces](/cache#commit-your-traces).
   </Step>
-  <Step title="Split the workflow">
-  Run it on `workflow_dispatch` or `schedule`, never on `pull_request`.
+  <Step title="Write small, explicit goals">
+  One goal per `act`, worded the way the screen is. Real values go through
+  `params`. A narrow goal has one reasonable path, and that is the path the
+  cache records. See [Goals](/writing-tests#goals-agent-act).
   </Step>
-  <Step title="Keep it out of required checks">
-  Branch protection requires the deterministic job only.
+  <Step title="End every agent step in a recorded check">
+  Follow an `act` with an `agent.assert`, a `waitFor`, or a plain `expect`.
+  The check is what makes the recording trustworthy, and it is what a
+  reviewer reads when the step fails.
+  </Step>
+  <Step title="Let CI retry once">
+  `retries` is `1` in CI. A test that passes on the retry is reported as
+  flaky rather than passed, so the report keeps telling you which flows need
+  a tighter goal.
   </Step>
 </Steps>
 
-```yaml title="Nightly agentic run"
-on:
-  schedule:
-    - cron: '0 3 * * *'
-  workflow_dispatch:
-```
+A failed agent step fails the job the same way a failed `expect` does, with
+the step's explanation and screenshot in the uploaded artifacts.
 
 ## Exit codes
 
@@ -155,10 +157,10 @@ red. Exit 3 is the only code where a job-level retry is a reasonable reflex.
 </Warning>
 
 <CardGroup cols={2}>
-  <Card title="Pull request comments" href="/github">
+  <Card title="Pull request comments" icon="code-pull-request" href="/github">
     One comment per run, edited in place on a rerun.
   </Card>
-  <Card title="CLI reference" href="/reference/cli">
+  <Card title="CLI reference" icon="terminal" href="/reference/cli">
     Flags, reporters, and every exit code.
   </Card>
 </CardGroup>
