@@ -178,5 +178,6 @@ In the runner's process only. Workers load the config module too and so
 construct their own copy of every reporter object, but never call it:
 constructing a reporter must have no side effects, and anything it needs
 (a token from the environment, say) is read inside its handlers. Reporter
-objects never enter the [config digest](/reference/config#cache): adding one
-leaves the trace cache valid.
+objects never enter the config digest, and reporters are no part of a
+[trace cache key](/cache#what-must-match), so adding one leaves every
+recording valid.

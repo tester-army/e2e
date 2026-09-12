@@ -198,9 +198,18 @@ state is not on screen after the replay.
 - On by default (`read-write`), `read-only` in CI, `cache: 'off'` in the
   config or `--no-cache` on a run to disable. Entries live in `.e2e/cache/`;
   deleting the directory only slows the next run.
-- An entry is written only after a later verification step passes
-  (`expect`, `locator.waitFor`, `agent.assert`, `agent.waitFor`). An `act`
-  nothing checks is never replayed.
+- An entry is written only after a later verification step passes: a
+  locator or engine `expect` matcher, `locator.waitFor`, `web.waitForURL`,
+  `agent.assert`, or `agent.waitFor`. A plain-value `expect`, `expect.poll`,
+  `agent.extract`, another `act`, or the attempt passing confirms nothing.
+  An `act` nothing checks is never replayed.
+- A replay needs the app on the path the step was recorded on, unless the
+  recording opens with a navigation. It re-finds each control by role, name,
+  test id, placeholder, and input purpose, and passes on its own only when
+  the recorded end path and the controls that appeared during the step are
+  back. Otherwise the agent takes over mid-step. The report's
+  `step.cache.reason` says why: `no-entry`, `wrong-context`,
+  `target-not-found`, `target-ambiguous`, `end-mismatch`, and so on.
 - A step that records no actions creates no entry and skips the cache's
   end-state observation.
 - `e2e init` gitignores `.e2e/cache/`; committing entries is opt-in. Remove
