@@ -193,7 +193,9 @@ tool call before it executes.
 Each passing `agent.act` records the actions it performed. The next run
 replays them with zero model calls and hands back to the live agent the
 moment the app no longer matches the recording, or when the recorded end
-state is not on screen after the replay.
+state is not on screen after the replay. Replayed actions run as a test's
+own steps do, without the agent's settle wait, so a replay is as fast as
+the deterministic equivalent.
 
 - On by default (`read-write`), `read-only` in CI, `cache: 'off'` in the
   config or `--no-cache` on a run to disable. Entries live in `.e2e/cache/`;

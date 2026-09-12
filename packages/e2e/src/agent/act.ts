@@ -406,7 +406,10 @@ class ActDispatch {
         const latest = this.feed.latest;
         return this.feed.currentPath(nodes !== undefined && nodes === latest?.nodes ? latest : undefined);
       },
-      replaying: (active) => this.runtime.steps.replaying(active),
+      replaying: (active) => {
+        this.runtime.steps.replaying(active);
+        this.accounting.replaying(active);
+      },
     };
   }
 
