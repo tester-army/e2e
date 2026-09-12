@@ -111,6 +111,16 @@ never enters logs, reports, or the app process. Which variable each provider
 reads is on [Choosing a model](/models). A run whose tests never touch
 `agent` makes no model call, key or not.
 
+Treat the key like the app credentials beside it: it reaches the job's
+code, so use a gateway key with a spending limit. On a public repository,
+GitHub withholds secrets from pull requests opened from forks. Replayed
+steps still pass there, since a cache hit makes no model call, but a step the
+cache cannot replay fails at its first model call. Put the secrets in a
+[deployment environment](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments)
+with required reviewers, so a maintainer approves a fork's run before it gets
+a key. Do not switch to `pull_request_target`; that runs the fork's code with
+your secrets unreviewed.
+
 ## Gating pull requests on agent steps
 
 An agent step is a test like any other, and the suite is built so it can be
