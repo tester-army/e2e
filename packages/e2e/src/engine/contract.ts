@@ -27,9 +27,9 @@ export interface OperationContext {
    * screen it observed. A deterministic step verifies its outcome with
    * `expect`, so an engine may act as soon as the target holds still; an
    * agent reads the screen right after acting, so an engine may wait for the
-   * transition to end first. Absent, an engine treats the call as the agent's.
+   * transition to end first.
    */
-  readonly origin?: 'test' | 'agent';
+  readonly origin: 'test' | 'agent';
 }
 
 export type TextPattern =
@@ -112,6 +112,14 @@ export interface SemanticNode {
   readonly name?: string;
   readonly text?: string;
   readonly value?: string;
+  /**
+   * The node's test id, when the platform gives it one: the value of the
+   * project's test-id attribute on a document platform, an accessibility
+   * identifier on iOS, a resource id on Android, an automation id on a
+   * desktop. The `testId` query resolves against exactly this field, so the
+   * harness never knows where a platform keeps it.
+   */
+  readonly testId?: string;
   readonly inputPurpose?: 'username' | 'password' | 'one-time-code' | 'generic-secret' | 'none';
   readonly states?: Readonly<
     Partial<
@@ -182,7 +190,14 @@ export interface ObservationPixels {
   readonly scale: number;
 }
 
-/** One deterministic action the location tier performs on a located node. */
+/**
+ * One deterministic action `perform` carries out on a node. The `swipe`
+ * kind on the observation's root node is the viewport swipe: the agent's
+ * `scroll` verb and `screen.swipe()` both arrive as `perform(root, swipe)`,
+ * so a surface implements scrolling once.
+ *
+ * `press` takes one key in the `Key` grammar below.
+ */
 export type LocatorAction =
   | {
       readonly kind:
@@ -197,7 +212,7 @@ export type LocatorAction =
     }
   | { readonly kind: 'longPress'; readonly durationMs?: number }
   | { readonly kind: 'fill'; readonly value: string; readonly sensitive: boolean }
-  | { readonly kind: 'press'; readonly key: string }
+  | { readonly kind: 'press'; readonly key: Key }
   | { readonly kind: 'selectOption'; readonly value: SelectOption }
   | { readonly kind: 'setInputFiles'; readonly paths: readonly string[] }
   | { readonly kind: 'dragTo'; readonly target: NodeRef }
@@ -206,6 +221,110 @@ export type LocatorAction =
       readonly direction: ScrollDirection;
       readonly momentum?: Momentum;
     };
+
+/** Every action kind; what an engine declares in `actions`. */
+export type LocatorActionKind = LocatorAction['kind'];
+
+/** The closed list of action kinds, in contract order; the type is derived from it. */
+export const LOCATOR_ACTION_KINDS = [
+  'tap',
+  'doubleTap',
+  'longPress',
+  'fill',
+  'clear',
+  'press',
+  'check',
+  'uncheck',
+  'focus',
+  'hover',
+  'scrollIntoView',
+  'selectOption',
+  'setInputFiles',
+  'dragTo',
+  'swipe',
+] as const satisfies readonly LocatorActionKind[];
+
+/**
+ * The key grammar of `press`, shared by every engine so a test's key names are
+ * portable: zero or more modifiers and one key, joined by `+`.
+ *
+ * - Modifiers: `Shift`, `Control`, `Alt`, `Meta`, `ControlOrMeta` (Control on
+ *   Windows and Linux, Meta on macOS).
+ * - Named keys: those in `KEY_NAMES` (`Enter`, `Escape`, `Tab`, `Backspace`,
+ *   `Delete`, `ArrowUp`..., `Home`, `End`, `PageUp`, `PageDown`, `Insert`,
+ *   `Space`, `F1`..`F12`).
+ * - Any single printable character (`a`, `A`, `1`, `$`), typed as itself.
+ *
+ * `Control+a`, `Shift+Tab`, `Enter`, `$`. A platform without a key maps it
+ * or throws `UNSUPPORTED_CAPABILITY`; it never reinterprets the spelling.
+ * `parseKey` is the one parser, exported so no engine carries its own.
+ */
+export type Key = string;
+
+export const KEY_MODIFIERS = ['Shift', 'Control', 'Alt', 'Meta', 'ControlOrMeta'] as const;
+export type KeyModifier = (typeof KEY_MODIFIERS)[number];
+
+export const KEY_NAMES = [
+  'Enter',
+  'Escape',
+  'Tab',
+  'Backspace',
+  'Delete',
+  'Insert',
+  'Space',
+  'ArrowUp',
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
+  'Home',
+  'End',
+  'PageUp',
+  'PageDown',
+  'F1',
+  'F2',
+  'F3',
+  'F4',
+  'F5',
+  'F6',
+  'F7',
+  'F8',
+  'F9',
+  'F10',
+  'F11',
+  'F12',
+] as const;
+export type KeyName = (typeof KEY_NAMES)[number];
+
+/** One parsed `press` key: its modifiers and either a named key or a single character. */
+export interface ParsedKey {
+  readonly modifiers: readonly KeyModifier[];
+  readonly key: { readonly kind: 'named'; readonly name: KeyName } | { readonly kind: 'char'; readonly char: string };
+}
+
+const MODIFIER_SET: ReadonlySet<string> = new Set(KEY_MODIFIERS);
+const NAME_SET: ReadonlySet<string> = new Set(KEY_NAMES);
+
+/**
+ * Parses a `press` key against the grammar; `undefined` when it does not
+ * conform (an unknown name, a repeated modifier, a bare modifier, or several
+ * characters). A literal `+` is the character after the last separator, so
+ * `Shift++` presses `+` with Shift held.
+ */
+export function parseKey(key: string): ParsedKey | undefined {
+  if (key === '') return undefined;
+  if (key === '+') return { modifiers: [], key: { kind: 'char', char: '+' } };
+  const parts = key.endsWith('+') && key.length > 1 ? [...key.slice(0, -2).split('+'), '+'] : key.split('+');
+  const last = parts.pop();
+  if (last === undefined || last === '') return undefined;
+  const modifiers: KeyModifier[] = [];
+  for (const part of parts) {
+    if (!MODIFIER_SET.has(part) || modifiers.includes(part as KeyModifier)) return undefined;
+    modifiers.push(part as KeyModifier);
+  }
+  if (NAME_SET.has(last)) return { modifiers, key: { kind: 'named', name: last as KeyName } };
+  if ([...last].length === 1) return { modifiers, key: { kind: 'char', char: last } };
+  return undefined;
+}
 
 /** The closed engine error code set; the type is derived from it, so the two cannot drift. */
 export const ENGINE_ERROR_CODES = [

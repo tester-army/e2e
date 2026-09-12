@@ -11,6 +11,7 @@
 import type { Momentum, ScrollDirection } from '../types.ts';
 import type {
   LocatorAction,
+  LocatorActionKind,
   LocatorExpression,
   NodeRef,
   ObservationPixels,
@@ -25,16 +26,17 @@ export { EngineError } from './contract.ts';
 export type { EngineObserveOptions, EngineState, VideoSegment } from './index.ts';
 
 /**
- * The agent's action grammar, by verb. A session declares which verbs its
- * engine can honor so the agent offers the model exactly that vocabulary.
- * The vision-located tap is not a verb of its own: it rides `tap` when the
- * located point sits on a node the tree lists, and `tapAt` when it does not.
+ * The agent's action grammar, by verb. A session derives which verbs its
+ * engine can honor from the action kinds the engine declared, so the agent
+ * offers the model exactly that vocabulary. The vision-located tap is not a
+ * verb of its own: it rides `tap` when the located point sits on a node the
+ * tree lists, and `tapAt` when it does not.
  */
 export type GrammarVerb = 'tap' | 'type' | 'typeSecret' | 'press' | 'select' | 'scroll' | 'navigate' | 'tapAt';
 
 export interface Observation {
-  /** Location captured with this tree, when the engine can provide it. */
-  readonly url?: string;
+  /** Where the surface was when captured, when the platform has a location. */
+  readonly location?: string;
   readonly revision: string;
   readonly capturedAt: string;
   readonly pixels?: ObservationPixels;
@@ -60,10 +62,10 @@ export interface SessionApp {
   open(url: string, operation: OperationContext): Promise<void>;
   /** Navigates back once. */
   back(operation: OperationContext): Promise<void>;
-  /** Recreates the app context without clearing persisted state. */
+  /** Recreates the app context without clearing persisted state; shows nothing until `open`. */
   restart(operation: OperationContext): Promise<void>;
-  /** Clears persisted client state and relaunches. */
-  clearState(operation: OperationContext): Promise<void>;
+  /** Clears persisted client state and recreates the context; shows nothing until `open`. */
+  reset(operation: OperationContext): Promise<void>;
 }
 
 export interface SessionArtifacts {
@@ -80,8 +82,10 @@ export interface SessionArtifacts {
 }
 
 export interface TargetSession {
-  /** Grammar verbs the engine can honor, read from its declaration. */
+  /** Grammar verbs the engine can honor, derived from its declared action kinds and hooks. */
   readonly verbs: ReadonlySet<GrammarVerb>;
+  /** Action kinds the engine declared for `perform`; empty without the actions capability. */
+  readonly actions: ReadonlySet<LocatorActionKind>;
   /** Captures one atomic agent observation; the harness redacts it downstream. */
   observe(operation: OperationContext, options?: EngineObserveOptions): Promise<Observation>;
   /** Resolves immediately; the runner owns query polling and strictness. */
@@ -90,7 +94,10 @@ export interface TargetSession {
   read(ref: NodeRef, operation: OperationContext): Promise<SemanticNode>;
   /** Performs exactly one action on a located or observed node. */
   perform(ref: NodeRef, action: LocatorAction, operation: OperationContext): Promise<void>;
-  /** Performs a viewport-level swipe. */
+  /**
+   * Performs a viewport-level swipe: `perform(root, swipe)` on the observation
+   * root, observing first when no observation has named it yet.
+   */
   swipe(
     direction: ScrollDirection,
     momentum: Momentum | undefined,
@@ -104,8 +111,13 @@ export interface TargetSession {
   captureState?(operation: OperationContext): Promise<EngineState>;
   /** Replaces current app state with an immutable captured state. */
   restoreState?(state: EngineState, operation: OperationContext): Promise<void>;
-  /** Current top-level URL of the surface, when the platform has one. */
-  url?(operation: OperationContext): Promise<string>;
+  /**
+   * The surface's current location, read from a fresh observation so a
+   * policy decision never rests on a stale one. `undefined` when the platform
+   * reports no location. Callers holding a recent observation read
+   * `Observation.location` instead.
+   */
+  location(operation: OperationContext): Promise<string | undefined>;
   /** Ends the attempt's isolation within the operation's budget. Idempotent. */
   close(operation: OperationContext): Promise<void>;
 }

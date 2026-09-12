@@ -22,8 +22,6 @@
  */
 
 import { engineBrand } from '../internal/brands.ts';
-import { ConfigurationError } from '../internal/errors.ts';
-import { obj } from '../internal/objects.ts';
 
 // Semantics the spec requires every engine and contributed fixture to
 // reproduce exactly, exported so an engine never carries its own copy: the
@@ -38,26 +36,17 @@ export { raceAbort } from './timing.ts';
 export { Deadline, pollCondition, withTimeout, withinCleanupBudget, type PollConditionOptions } from '../internal/time.ts';
 export { sameSite, siteOf, urlMatches } from '../internal/urls.ts';
 export { obj, type WithoutUndefined } from '../internal/objects.ts';
+import type { CommandConfig, Expectable, Locator, Platform, Screen, ServiceConfig } from '../types.ts';
 import type {
-  CommandConfig,
-  Expectable,
-  Locator,
-  Momentum,
-  Platform,
-  Screen,
-  ScrollDirection,
-  ServiceConfig,
-} from '../types.ts';
-import {
-  ENGINE_SPI_VERSION,
-  type EngineSpiVersion,
-  type LocatorAction,
-  type LocatorExpression,
-  type NodeRef,
-  type ObservationPixels,
-  type OperationContext,
-  type SemanticNode,
-  type ViewportPoint,
+  EngineSpiVersion,
+  LocatorAction,
+  LocatorActionKind,
+  LocatorExpression,
+  NodeRef,
+  ObservationPixels,
+  OperationContext,
+  SemanticNode,
+  ViewportPoint,
 } from './contract.ts';
 
 export type * from './contract.ts';
@@ -65,9 +54,13 @@ export {
   ENGINE_ERROR_CODES,
   ENGINE_SPI_VERSION,
   EngineError,
+  KEY_MODIFIERS,
+  KEY_NAMES,
+  LOCATOR_ACTION_KINDS,
   OBSERVED_NAME_LIMIT,
   OBSERVED_TEXT_LIMIT,
   RETRYABLE_ENGINE_ERROR_CODES,
+  parseKey,
 } from './contract.ts';
 export type {
   CommandConfig,
@@ -156,19 +149,18 @@ export interface EngineAppDeclaration {
   readonly services?: readonly ServiceConfig[];
 }
 
-/** The app under test as the harness resolved the engine's declaration, handed back at init. */
+/**
+ * The site policy the harness resolved from the engine's declaration, handed
+ * back at init, for the decisions only a surface can make: which nested
+ * documents enter an observation, which requests carry injected credentials.
+ */
 export interface EngineAppInfo {
   /**
-   * Normalized base URL; the target of `app.open()` with no path. Absent when
-   * the engine declared no `url`: a surface that needs one then fails the
-   * call that needs it, and never navigates to a placeholder.
-   */
-  readonly baseUrl?: string;
-  /**
-   * The site of `baseUrl`, its registrable domain as `siteOf` reads it.
-   * Where the app's secrets, headers, and basic-auth credentials may go, and
+   * The site of the app's `url`, its registrable domain as `siteOf` reads it:
+   * where the app's secrets, headers, and basic-auth credentials may go, and
    * whose child frames an observation reads; `sameSite` applies it. Absent
-   * with `baseUrl`, which is no policy at all.
+   * for an app without a URL, which is no policy at all. The URL itself stays
+   * with the harness: a surface never learns where the app is.
    */
   readonly site?: string;
 }
@@ -221,7 +213,7 @@ export interface EngineFixtureContext {
   operation(timeoutMs?: number): OperationContext;
   /** Registers a file the current step produced under the attempt artifact directory. */
   attachArtifact(
-    kind: 'screenshot' | 'trace' | 'video' | 'download' | 'log',
+    kind: 'screenshot' | 'trace' | 'video' | 'file' | 'log',
     relativePath: string,
   ): void;
   /** Records the viewport the current step established. */
@@ -323,23 +315,28 @@ export interface VideoSegment {
 }
 
 /**
- * The app under test: what the engine declares about it
- * (`EngineAppDeclaration`) and the app-level hooks behind the universal
- * `app` fixture and the agent's `navigate` verb. Node actions never live
- * here; they are `perform`.
+ * Steering hooks behind the universal `app` fixture and the agent's
+ * `navigate` verb. The app itself is described in `Engine.app`, as data;
+ * node actions never live here, they are `perform`.
+ *
+ * `restart` and `reset` open nothing: they end at a fresh surface with no
+ * location shown, and the harness reopens the app through `open` when the
+ * target has an address. A surface therefore never needs to know the app's
+ * URL, and an unreachable app after a restart is reported the same way as
+ * on first open.
  */
-export interface EngineApp extends EngineAppDeclaration {
+export interface EngineSession {
   /**
    * Opens one URL the harness already resolved against the base URL and the
    * origin policy. Absent on a surface without addressable locations.
    */
-  navigate?(url: string, context: OperationContext): Promise<void>;
+  open?(url: string, context: OperationContext): Promise<void>;
   /** Navigates back once in the surface's history. */
   back?(context: OperationContext): Promise<void>;
-  /** Recreates the execution context, keeping persisted state, and relaunches. */
+  /** Recreates the execution context, keeping persisted state. */
   restart?(context: OperationContext): Promise<void>;
-  /** Clears persisted client state and relaunches. */
-  clearState?(context: OperationContext): Promise<void>;
+  /** Clears persisted client state and recreates the execution context. */
+  reset?(context: OperationContext): Promise<void>;
 }
 
 /**
@@ -374,7 +371,7 @@ export interface EnginePrepareInfo {
    * cache location) must be resolved and spawned against this, not
    * `process.env`.
    */
-  readonly env: NodeJS.ProcessEnv;
+  readonly env: Readonly<Record<string, string | undefined>>;
   /**
    * Aborts on interrupt only. Provisioning has no budget: a first-run
    * download is as long as the network makes it, and cutting it short would
@@ -401,8 +398,6 @@ export interface EngineInitInfo {
    */
   readonly projectRoot: string;
   readonly app: EngineAppInfo;
-  /** Attribute the `testId` query resolves against. */
-  readonly testIdAttribute: string;
   /** Whether the run asked for a visible surface (`--headed`). */
   readonly headed: boolean;
   /**
@@ -455,10 +450,25 @@ export interface EngineObserveOptions {
  * observation byte budget apply to every engine equally.
  */
 export interface EngineSnapshot {
-  /** Location captured with this tree, when the engine can provide it. */
-  readonly url?: string;
-  readonly nodes: readonly SemanticNode[];
-  readonly viewport?: { readonly width: number; readonly height: number; readonly scale: number };
+  /**
+   * Where the surface is, as an opaque address the platform understands: a
+   * URL on a document platform, the foreground screen or activity on a
+   * device, the front window on a desktop. The harness shows it to the model
+   * and to the report, anchors trace replay on it, and applies the origin
+   * policy to it only when it parses as a URL. Omit when the platform has no
+   * notion of a current location.
+   */
+  readonly location?: string;
+  /**
+   * The observation tree under one root the engine minted. The root's id MUST
+   * be stable for the surface across observations: `perform(root, swipe)` is
+   * the viewport swipe, and the harness addresses it from an earlier
+   * observation. A platform with several top-level elements (a device's
+   * windows) wraps them in a root of its own.
+   */
+  readonly root: SemanticNode;
+  /** The viewport `SemanticNode.rect` and `ViewportPoint` are measured in. */
+  readonly viewport: { readonly width: number; readonly height: number; readonly scale: number };
   /** Masked pixels, when requested and producible; omitted otherwise. */
   readonly pixels?: ObservationPixels;
   /** Regions masked in `pixels`; the harness checks it covers every secure node. */
@@ -480,9 +490,11 @@ export interface Engine {
    */
   readonly spiVersion: EngineSpiVersion;
   /**
-   * Platform this engine drives (`web`, `ios`, `android`, or a label of the
-   * engine's own). A target inherits it; a target that names a platform of
-   * its own must agree with it.
+   * Platform this engine drives. The harness recognizes `web`, `ios`,
+   * `android`, `macos`, `windows`, `linux`, `tvos`, and `androidtv` for
+   * platform-scoped tool packs and reporting; any other label is the
+   * engine's own and treated as unknown. A target inherits it; a target that
+   * names a platform of its own must agree with it.
    */
   readonly platform?: Platform;
   /**
@@ -499,9 +511,10 @@ export interface Engine {
    * capability: actions - requires observation. Performs exactly one action
    * on a ref this engine minted, from the newest observation or from
    * `locate` (both live in one id space), with the platform's actionability
-   * checks. The agent's grammar verbs (tap, type, press, select, node scroll)
-   * and the `screen` tier's actions both bottom out here, so a surface
-   * implements each action once.
+   * checks. The agent's grammar verbs (tap, type, press, select, scroll) and
+   * the `screen` tier's actions both bottom out here, so a surface
+   * implements each action once. A `swipe` on the observation root is the
+   * viewport swipe.
    *
    * Error contract (load-bearing for trace replay): throw a retryable
    * `NODE_STALE`-coded error when a ref no longer binds, and an
@@ -509,6 +522,15 @@ export interface Engine {
    * app - the harness never blindly repeats an uncertain mutation.
    */
   perform?(ref: NodeRef, action: LocatorAction, context: OperationContext): Promise<void>;
+  /**
+   * The action kinds `perform` honors, required with it. The harness offers
+   * the agent and the `screen` tier exactly these: a kind left out is never
+   * presented as a tool that can only decline, and `screen`/`Locator` methods
+   * for it fail with `UNSUPPORTED_CAPABILITY` before reaching the engine.
+   * `perform` still throws `UNSUPPORTED_CAPABILITY` for a declared kind one
+   * particular node cannot take (a `check` on a toggle whose state is unknown).
+   */
+  readonly actions?: readonly LocatorActionKind[];
   /**
    * capability: location - requires observation. Deterministic locator
    * resolution for the `screen`/`expect` tier: resolve one expression to the
@@ -519,15 +541,6 @@ export interface Engine {
     expression: LocatorExpression,
     context: OperationContext,
   ): Promise<readonly SemanticNode[]>;
-  /**
-   * Viewport-level swipe behind the agent's `scroll` verb, `screen.swipe`,
-   * and `scrollUntilVisible`; requires observation.
-   */
-  swipe?(
-    direction: ScrollDirection,
-    momentum: Momentum | undefined,
-    context: OperationContext,
-  ): Promise<void>;
   /**
    * capability: pointer - requires observation. Taps one viewport point, in
    * the CSS pixels of `SemanticNode.rect`, with no node behind it: the
@@ -547,13 +560,10 @@ export interface Engine {
   readonly state?: EngineStateCapability;
   /** capability: artifacts - screenshots and traces under the attempt directory. */
   readonly artifacts?: EngineArtifacts;
-  /** The app under test: its declaration (url, identity, command...) and hooks (navigate, back, restart, clearState). */
-  readonly app?: EngineApp;
-  /**
-   * Current top-level URL of the surface, when the platform has one. Enables
-   * trace start anchors and the secret-fill origin check.
-   */
-  url?(context: OperationContext): Promise<string>;
+  /** The app under test, as data: url, identity, environment, command, services. */
+  readonly app?: EngineAppDeclaration;
+  /** Steering hooks: open, back, restart, reset. */
+  readonly session?: EngineSession;
   /**
    * Once per run and target, in the runner process, before any worker starts
    * and outside every launch budget. Provision what the engine needs on this
@@ -595,258 +605,4 @@ export interface EngineHandle extends Engine {
   readonly capabilities: ReadonlySet<EngineCapability>;
 }
 
-/** Every key an engine may declare; anything else is rejected at config load. */
-const KNOWN_KEYS = [
-  'name',
-  'version',
-  'spiVersion',
-  'platform',
-  'workers',
-  'observe',
-  'locate',
-  'perform',
-  'swipe',
-  'tapAt',
-  'fixtures',
-  'state',
-  'artifacts',
-  'app',
-  'url',
-  'prepare',
-  'init',
-  'startAttempt',
-  'endAttempt',
-  'dispose',
-] as const satisfies readonly (keyof Engine)[];
-
-/** Keys of the nested manifests, closed like the top level. */
-const NESTED_KEYS = {
-  state: ['capture', 'restore'],
-  artifacts: ['screenshot', 'startTrace', 'stopTrace', 'startVideo', 'stopVideo'],
-  app: ['navigate', 'back', 'restart', 'clearState'],
-} as const;
-
-/**
- * Declarative members of the `app` manifest: facts about the app under test,
- * copied through as data. Their values are validated when the config resolves
- * the target, where an error can name it.
- */
-const APP_DECLARATION_KEYS = [
-  'url',
-  'environment',
-  'identity',
-  'command',
-  'readyUrl',
-  'services',
-] as const satisfies readonly (keyof EngineAppDeclaration)[];
-const FUNCTION_MEMBERS = [
-  'observe',
-  'locate',
-  'perform',
-  'swipe',
-  'tapAt',
-  'url',
-  'prepare',
-  'init',
-  'startAttempt',
-  'endAttempt',
-  'dispose',
-] as const;
-
-/** Universal fixture names a contribution may never shadow. */
-const RESERVED_FIXTURES = new Set(['agent', 'app', 'screen', 'platform', 'session']);
-
-const FIXTURE_NAME_PATTERN = /^[a-z][A-Za-z0-9]*$/;
-
-function invalid(name: string, detail: string): ConfigurationError {
-  return new ConfigurationError('INVALID_CONFIG', `engine "${name}": ${detail}`);
-}
-
-/**
- * Validates one nested manifest (`state`, `artifacts`, `app`): a plain object
- * whose keys are closed and whose declared members are functions, except the
- * `app` declaration's data members, which are copied through. Returns a copy
- * with every function bound to the manifest, so class-based bodies work.
- */
-function nestedManifest<K extends keyof typeof NESTED_KEYS>(
-  name: string,
-  key: K,
-  value: unknown,
-  required: readonly string[] = [],
-): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw invalid(name, `${key} must be an object`);
-  }
-  const hooks: readonly string[] = NESTED_KEYS[key];
-  const data: readonly string[] = key === 'app' ? APP_DECLARATION_KEYS : [];
-  const source = value as Record<string, unknown>;
-  for (const member of Object.keys(source)) {
-    if (!hooks.includes(member) && !data.includes(member)) {
-      throw invalid(
-        name,
-        `${key} has unknown key "${member}"; expected one of ${[...data, ...hooks].join(', ')}`,
-      );
-    }
-  }
-  const bound: Record<string, unknown> = {};
-  for (const member of data) {
-    const fact = source[member];
-    if (fact === undefined) continue;
-    if (typeof fact === 'function') throw invalid(name, `${key}.${member} is a declaration, not a hook`);
-    bound[member] = fact;
-  }
-  for (const member of hooks) {
-    const fn = source[member];
-    if (fn === undefined) {
-      if (required.includes(member)) throw invalid(name, `${key}.${member} must be a function`);
-      continue;
-    }
-    if (typeof fn !== 'function') throw invalid(name, `${key}.${member} must be a function`);
-    bound[member] = fn.bind(source);
-  }
-  return bound;
-}
-
-/**
- * Validates an engine and computes its capability set. Runs synchronously at
- * config load and fails loud: a misspelled member or an undeclared dependency
- * is `INVALID_CONFIG`, never a silent demotion to a lower tier.
- *
- * The handle is assembled member by member from the known keys, reading
- * through the prototype chain and binding every function to the spec, so a
- * class instance (own state fields included) is as valid a body as a literal.
- */
-export function defineEngine(spec: Engine): EngineHandle {
-  if (typeof spec !== 'object' || spec === null) {
-    throw new ConfigurationError('INVALID_CONFIG', 'defineEngine requires an engine object');
-  }
-  if (typeof spec.name !== 'string' || spec.name.trim() === '') {
-    throw new ConfigurationError('INVALID_CONFIG', 'engine.name must be a non-empty string');
-  }
-  const name = spec.name;
-  if (typeof spec.version !== 'string' || spec.version.trim() === '') {
-    throw invalid(name, 'version must be a non-empty string; it is provenance and keys the trace cache');
-  }
-  if (spec.spiVersion !== ENGINE_SPI_VERSION) {
-    throw invalid(
-      name,
-      `declares spiVersion ${String(spec.spiVersion)}; this runner supports ${ENGINE_SPI_VERSION}`,
-    );
-  }
-  if (spec.platform !== undefined && (typeof spec.platform !== 'string' || spec.platform.trim() === '')) {
-    throw invalid(name, 'platform must be a non-empty string when declared');
-  }
-  // A literal's unknown key is a misspelling or a misplaced tool; a class
-  // instance's own fields are its state, so only literals are checked.
-  if (Object.getPrototypeOf(spec) === Object.prototype) {
-    const known: readonly string[] = KNOWN_KEYS;
-    for (const key of Object.keys(spec)) {
-      if (!known.includes(key)) {
-        throw invalid(name, `unknown key "${key}" - tools belong on the agent, not the engine`);
-      }
-    }
-  }
-  for (const member of FUNCTION_MEMBERS) {
-    if (spec[member] !== undefined && typeof spec[member] !== 'function') {
-      throw invalid(name, `${member} must be a function`);
-    }
-  }
-  if (spec.workers !== undefined && (!Number.isSafeInteger(spec.workers) || spec.workers < 1)) {
-    throw invalid(name, 'workers must be a positive safe integer: the most workers the engine serves per target');
-  }
-
-  const capabilities = new Set<EngineCapability>();
-  if (spec.observe !== undefined) capabilities.add('observation');
-  if (spec.perform !== undefined) {
-    if (!capabilities.has('observation')) {
-      throw invalid(name, 'declares perform without observe: action targets are observation refs');
-    }
-    capabilities.add('actions');
-  }
-  if (spec.locate !== undefined) {
-    if (!capabilities.has('observation')) {
-      throw invalid(name, 'declares locate without observe: located nodes share the observation id space');
-    }
-    capabilities.add('location');
-  }
-  if (spec.swipe !== undefined && !capabilities.has('observation')) {
-    throw invalid(name, 'declares swipe without observe');
-  }
-  if (spec.tapAt !== undefined) {
-    if (!capabilities.has('observation')) {
-      throw invalid(name, 'declares tapAt without observe: a tapped point is read off the observation pixels');
-    }
-    capabilities.add('pointer');
-  }
-
-  const handle: Record<string, unknown> = obj({
-    name,
-    version: spec.version,
-    spiVersion: spec.spiVersion,
-    platform: spec.platform,
-    workers: spec.workers,
-  });
-  for (const member of FUNCTION_MEMBERS) {
-    const fn = spec[member];
-    if (fn !== undefined) handle[member] = fn.bind(spec);
-  }
-  if (spec.fixtures !== undefined) {
-    if (typeof spec.fixtures !== 'object' || spec.fixtures === null) {
-      throw invalid(name, 'fixtures must be an object');
-    }
-    for (const [fixture, factory] of Object.entries(spec.fixtures)) {
-      if (!FIXTURE_NAME_PATTERN.test(fixture)) {
-        throw invalid(name, `fixture name "${fixture}" must be a lower-camel identifier`);
-      }
-      if (RESERVED_FIXTURES.has(fixture)) {
-        throw invalid(name, `fixture name "${fixture}" shadows a universal fixture`);
-      }
-      if (typeof factory !== 'function') {
-        throw invalid(name, `fixtures.${fixture} must be a factory function`);
-      }
-      capabilities.add(fixture);
-    }
-    // Bound like every other member, so a class-based engine keeps `this`
-    // in its fixture factories too.
-    handle['fixtures'] = Object.freeze(
-      Object.fromEntries(
-        Object.entries(spec.fixtures).map(([fixture, factory]) => [
-          fixture,
-          (factory as (...args: unknown[]) => unknown).bind(spec),
-        ]),
-      ),
-    );
-  }
-  if (spec.state !== undefined) {
-    handle['state'] = nestedManifest(name, 'state', spec.state, ['capture', 'restore']);
-    capabilities.add('state');
-  }
-  if (spec.artifacts !== undefined) {
-    const artifacts = nestedManifest(name, 'artifacts', spec.artifacts, ['screenshot']);
-    if ((artifacts['startTrace'] === undefined) !== (artifacts['stopTrace'] === undefined)) {
-      throw invalid(name, 'artifacts.startTrace and stopTrace must be declared together');
-    }
-    if ((artifacts['startVideo'] === undefined) !== (artifacts['stopVideo'] === undefined)) {
-      throw invalid(name, 'artifacts.startVideo and stopVideo must be declared together');
-    }
-    handle['artifacts'] = artifacts;
-    capabilities.add('artifacts');
-  }
-  if (spec.app !== undefined) handle['app'] = nestedManifest(name, 'app', spec.app);
-
-  // Assembled key by key above, so the record is an Engine by construction.
-  return Object.freeze({
-    ...handle,
-    [engineBrand]: true as const,
-    capabilities,
-  }) as unknown as EngineHandle;
-}
-
-/** True for a defineEngine-branded handle, across realms. */
-export function isEngineHandle(value: unknown): value is EngineHandle {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    (value as Record<PropertyKey, unknown>)[engineBrand] === true
-  );
-}
+export { defineEngine, isEngineHandle } from './manifest.ts';

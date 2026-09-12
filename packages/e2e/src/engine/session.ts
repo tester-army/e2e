@@ -21,6 +21,7 @@ import type { EngineHandle } from './index.ts';
 import {
   EngineError,
   type GrammarVerb,
+  type LocatorActionKind,
   type NodeRef,
   type SemanticNode,
   type SessionApp,
@@ -55,20 +56,9 @@ function stampRevision(node: SemanticNode, revision: string): SemanticNode {
   };
 }
 
-/** Wraps an engine snapshot's root nodes into the single-root observation tree. */
-function toTree(nodes: readonly SemanticNode[], revision: string): SemanticNode {
-  const stamped = nodes.map((node) => stampRevision(node, revision));
-  const first = stamped[0];
-  if (stamped.length === 1 && first !== undefined) return first;
-  return { ref: { id: 'root', revision }, role: 'root', children: stamped };
-}
-
-function countSecure(nodes: readonly SemanticNode[]): number {
-  let count = 0;
-  for (const node of nodes) {
-    if (node.states?.secure === true) count += 1;
-    if (node.children !== undefined) count += countSecure(node.children);
-  }
+function countSecure(node: SemanticNode): number {
+  let count = node.states?.secure === true ? 1 : 0;
+  for (const child of node.children ?? []) count += countSecure(child);
   return count;
 }
 
@@ -87,15 +77,23 @@ function normalize(cause: unknown, label: string): never {
   });
 }
 
+/** Grammar verbs, by the action kind (or hook) that honors each. */
+const VERBS_BY_ACTION: Readonly<Partial<Record<LocatorActionKind, readonly GrammarVerb[]>>> = {
+  tap: ['tap'],
+  fill: ['type', 'typeSecret'],
+  press: ['press'],
+  selectOption: ['select'],
+  swipe: ['scroll'],
+};
+
 /** The grammar verbs an engine declaration can honor. */
 function declaredVerbs(engine: EngineHandle | undefined): ReadonlySet<GrammarVerb> {
   const verbs = new Set<GrammarVerb>();
-  if (engine?.perform !== undefined) {
-    for (const verb of ['tap', 'type', 'typeSecret', 'press', 'select'] as const) verbs.add(verb);
+  for (const kind of engine?.actions ?? []) {
+    for (const verb of VERBS_BY_ACTION[kind] ?? []) verbs.add(verb);
   }
-  if (engine?.swipe !== undefined) verbs.add('scroll');
   if (engine?.tapAt !== undefined) verbs.add('tapAt');
-  if (engine?.app?.navigate !== undefined) verbs.add('navigate');
+  if (engine?.session?.open !== undefined) verbs.add('navigate');
   return verbs;
 }
 
@@ -106,7 +104,8 @@ function declaredVerbs(engine: EngineHandle | undefined): ReadonlySet<GrammarVer
 export function createEngineSession(options: EngineSessionOptions): TargetSession {
   const { engine, targetName } = options;
   let revision = 0;
-  let viewport = { width: 1, height: 1, scale: 1 };
+  /** The root ref of the newest observation; the address of a viewport swipe. */
+  let root: NodeRef | undefined;
 
   const unsupported = (what: string): never => {
     const remedy =
@@ -158,12 +157,14 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
 
   const locateRaw = guard('locators (screen)', engine?.locate);
   const observeRaw = guard('observation', engine?.observe);
+  const performRaw = guard('actions', engine?.perform);
+  const actions: ReadonlySet<LocatorActionKind> = new Set(engine?.actions ?? []);
 
   const app: SessionApp = {
-    open: guard('navigation', engine?.app?.navigate),
-    back: guard('back navigation', engine?.app?.back),
-    restart: guard('app restart', engine?.app?.restart),
-    clearState: guard('app state clearing', engine?.app?.clearState),
+    open: guard('navigation', engine?.session?.open),
+    back: guard('back navigation', engine?.session?.back),
+    restart: guard('app restart', engine?.session?.restart),
+    reset: guard('app state reset', engine?.session?.reset),
   };
 
   const artifacts: SessionArtifacts = {
@@ -184,8 +185,9 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
 
   let ended = false;
 
-  return {
+  const session: TargetSession = {
     verbs: declaredVerbs(engine),
+    actions,
     app,
     artifacts,
     ...(engine?.state === undefined
@@ -194,24 +196,24 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
           captureState: guard('state capture', engine.state.capture),
           restoreState: guard('state restore', engine.state.restore),
         }),
-    ...(engine?.url === undefined ? {} : { url: guard('the current URL', engine.url) }),
     async observe(operation, observeOptions) {
       const snapshot = await observeRaw(
         operation,
         observeOptions?.pixels === true ? { pixels: true } : {},
       );
-      if (snapshot.viewport !== undefined) viewport = snapshot.viewport;
       revision += 1;
       const minted = `${OBSERVE_REVISION_PREFIX}${revision}`;
+      const tree = stampRevision(snapshot.root, minted);
+      root = tree.ref;
       return {
         revision: minted,
         capturedAt: new Date().toISOString(),
-        ...(snapshot.url === undefined ? {} : { url: snapshot.url }),
+        ...(snapshot.location === undefined ? {} : { location: snapshot.location }),
         ...(snapshot.pixels === undefined ? {} : { pixels: snapshot.pixels }),
-        tree: toTree(snapshot.nodes, minted),
-        viewport,
+        tree,
+        viewport: snapshot.viewport,
         redaction: {
-          secureNodeCount: countSecure(snapshot.nodes),
+          secureNodeCount: countSecure(snapshot.root),
           maskedRegionCount: snapshot.maskedRegionCount ?? 0,
         },
       };
@@ -247,12 +249,24 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
       return node;
     },
     async perform(ref, action, operation) {
+      if (!actions.has(action.kind)) unsupported(`the "${action.kind}" action`);
       rejectSupersededLocate(ref);
       if (action.kind === 'dragTo') rejectSupersededLocate(action.target);
-      await guard(`the "${action.kind}" action`, engine?.perform)(ref, action, operation);
+      await performRaw(ref, action, operation);
     },
-    swipe: guard('swipe gestures', engine?.swipe),
+    async swipe(direction, momentum, operation) {
+      if (!actions.has('swipe')) unsupported('swipe gestures');
+      if (root === undefined) await session.observe(operation);
+      await performRaw(
+        root!,
+        { kind: 'swipe', direction, ...(momentum === undefined ? {} : { momentum }) },
+        operation,
+      );
+    },
     tapAt: guard('point taps', engine?.tapAt),
+    async location(operation) {
+      return (await session.observe(operation)).location;
+    },
     // The engine outlives the attempt; only the per-attempt isolation ends
     // here, exactly once. dispose() belongs to the worker.
     close: guard('attempt end', async (operation) => {
@@ -261,4 +275,5 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
       await engine?.endAttempt?.({ signal: operation.signal, timeoutMs: operation.timeoutMs });
     }),
   };
+  return session;
 }
