@@ -4,6 +4,7 @@ import { credentialBrand, secretBrand } from './internal/brands.ts';
 import { ConfigurationError } from './internal/errors.ts';
 import { realmSlot } from './internal/realm-slot.ts';
 import type { ResolvedConfig } from './config/resolve.ts';
+import { envName } from './config/secrets.ts';
 import type { Credential, Credentials, Secret, SecretPurpose, Secrets } from './types.ts';
 
 /** What the handles resolve against: the run's accounts and every secret by name. */
@@ -73,7 +74,7 @@ export const secrets: Secrets = {
     if (resolved === undefined) {
       throw new ConfigurationError(
         'SECRET_UNAVAILABLE',
-        `secret "${name}" is not configured; add it to config.secrets or set E2E_SECRET_${name.toUpperCase().replaceAll(/[^A-Z0-9]/g, '_')}`,
+        `secret "${name}" is not configured; add it to config.secrets or set ${envName('E2E_SECRET', name)}`,
       );
     }
     return makeSecret(name, resolved.purpose);

@@ -14,7 +14,7 @@ import { z } from 'zod';
 import { openInteractiveStep, type InteractiveStep } from '../agent/interactive-step.ts';
 import { ScreenPresenter } from '../agent/screen-update.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
-import { credentials, secrets } from '../secrets.ts';
+import { secrets } from '../secrets.ts';
 import { ConfigurationError, errorMessage } from '../internal/errors.ts';
 import { uuidv7 } from '../internal/ids.ts';
 import { LocatorEngine } from '../locator/engine.ts';
@@ -280,10 +280,7 @@ export class SessionHost {
   private secretParams(config: ResolvedConfig): AgentParams | undefined {
     if (config.secrets.size === 0) return undefined;
     return Object.fromEntries(
-      [...config.secrets.values()].map((secret) => [
-        secret.name,
-        secret.purpose === 'password' ? credentials.user(secret.name).password : secrets.get(secret.name),
-      ]),
+      [...config.secrets.keys()].map((name) => [name, secrets.get(name)]),
     );
   }
 

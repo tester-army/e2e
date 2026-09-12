@@ -35,6 +35,7 @@ import {
   type ResolvedBaseLimits,
 } from './agent.ts';
 import { digestAppDeclaration, resolveTargetApp, type ResolvedApp } from './app.ts';
+import { envName, isSecretValue, normalizeSecretConfig } from './secrets.ts';
 
 export type { ResolvedAgentConfig, ResolvedLimits } from './agent.ts';
 export type { ResolvedApp } from './app.ts';
@@ -712,16 +713,6 @@ function resolveProjectId(explicit: string | undefined, projectRoot: string): st
   return `unportable-${sha256Hex(projectRoot).slice(0, 32)}`;
 }
 
-/** `E2E_USER_ADMIN`, `E2E_SECRET_STRIPE_KEY`: the name uppercased, everything outside A-Z0-9 as `_`. */
-function envName(prefix: string, name: string): string {
-  return `${prefix}_${name.toUpperCase().replaceAll(/[^A-Z0-9]/g, '_')}`;
-}
-
-/** A non-empty static value or a provider function; anything else is the caller's error to name. */
-function isSecretValue(value: unknown): value is string | SecretProvider {
-  return (typeof value === 'string' && value !== '') || typeof value === 'function';
-}
-
 /**
  * Credentials and secrets resolve together because they share one namespace:
  * a credential's password is the secret of the credential's name, so
@@ -755,7 +746,7 @@ function resolveSecrets(
         `secret "${name}" is also a credential; a credential's password is the secret of its name, so declare one or the other`,
       );
     }
-    const declared = typeof entry === 'object' && entry !== null ? entry : { value: entry };
+    const declared = normalizeSecretConfig(entry);
     const value = env[envName('E2E_SECRET', name)] ?? declared.value;
     if (!isSecretValue(value)) {
       throw new ConfigurationError(
@@ -895,10 +886,10 @@ function computeConfigDigest(raw: E2EConfig, projectId: string): string {
   }
   if (raw.secrets !== undefined) {
     sanitized['secrets'] = Object.fromEntries(
-      Object.entries(raw.secrets).map(([name, entry]) => {
-        const allowedOrigins = typeof entry === 'object' && entry !== null ? entry.allowedOrigins : undefined;
-        return [name, { value: { secretName: name }, ...(allowedOrigins === undefined ? {} : { allowedOrigins }) }];
-      }),
+      Object.entries(raw.secrets).map(([name, entry]) => [
+        name,
+        { ...normalizeSecretConfig(entry), value: { secretName: name } },
+      ]),
     );
   }
   if (raw.targets !== undefined) {

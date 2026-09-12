@@ -3,12 +3,8 @@
  * `tests/types/sdk-types.ts` pins the parts that are easy to loosen by accident.
  */
 
-import type {
-  credentialBrand,
-  expectationBrand,
-  secretBrand,
-  testCaseBrand,
-} from './internal/brands.ts';
+import type { expectationBrand, testCaseBrand } from './internal/brands.ts';
+import type { CredentialConfig, Secret, SecretConfig } from './config/secrets.ts';
 import type { StepExecutor } from './agent/executor.ts';
 import type { StepCacheInfo } from './run/steps.ts';
 import type { EngineHandle } from './engine/index.ts';
@@ -18,6 +14,17 @@ import type { Report1Document } from './report/build.ts';
 
 export type { CacheReadResult, TraceCacheStore } from './cache/store.ts';
 export type { StepCacheInfo } from './run/steps.ts';
+export type {
+  Credential,
+  CredentialConfig,
+  Credentials,
+  Secret,
+  SecretConfig,
+  SecretDeclaration,
+  SecretProvider,
+  SecretPurpose,
+  Secrets,
+} from './config/secrets.ts';
 export type {
   ActionTrace,
   RecordedAction,
@@ -35,42 +42,6 @@ export type Platform = 'web' | 'ios' | 'android' | (string & {});
 export type Capability = string;
 export type ScrollDirection = 'up' | 'down' | 'left' | 'right';
 export type Momentum = 'none' | 'slow' | 'fast';
-
-/**
- * What a secret is for, which decides where it may be filled: a `password`
- * goes only into a password field; a `generic-secret` (an API key, a token,
- * any value from the environment) goes into any editable input.
- */
-export type SecretPurpose = 'password' | 'generic-secret';
-
-/** Opaque host-side value accepted only by sensitive input sinks. */
-export interface Secret {
-  readonly name: string;
-  readonly purpose: SecretPurpose;
-  readonly [secretBrand]: true;
-}
-
-/** Named test identity. The password remains an opaque Secret. */
-export interface Credential {
-  readonly name: string;
-  readonly username: string;
-  readonly password: Secret;
-  readonly [credentialBrand]: true;
-}
-
-export interface Credentials {
-  /** Resolves a named credential without exposing its password. */
-  user(name: string): Credential;
-}
-
-export interface Secrets {
-  /**
-   * The opaque handle of a secret declared under `config.secrets`. Test code
-   * cannot read the value; `locator.fill` and `agent.act` params accept the
-   * handle and the runner fills the field itself.
-   */
-  get(name: string): Secret;
-}
 
 export interface StandardSchemaV1<Input = unknown, Output = Input> {
   readonly '~standard': StandardSchemaV1.Props<Input, Output>;
@@ -973,16 +944,7 @@ export interface E2EConfig {
    * Named accounts. A credential's password is registered as a secret under
    * the credential's name, so the name may not also appear under `secrets`.
    */
-  credentials?: Readonly<
-    Record<
-      string,
-      {
-        username: string;
-        password: string | SecretProvider;
-        allowedOrigins?: readonly string[];
-      }
-    >
-  >;
+  credentials?: Readonly<Record<string, CredentialConfig>>;
   /**
    * Named values the model must never see: API keys, tokens, anything sourced
    * from the environment. `secrets.get(name)` hands a test the opaque handle;
@@ -991,25 +953,3 @@ export interface E2EConfig {
    */
   secrets?: Readonly<Record<string, SecretConfig>>;
 }
-
-/**
- * One `config.secrets` entry: the value itself (or a provider computing it at
- * fill time), or an object narrowing the origins the secret may be filled on.
- */
-export type SecretConfig =
-  | string
-  | SecretProvider
-  | {
-      value: string | SecretProvider;
-      allowedOrigins?: readonly string[];
-    };
-
-/**
- * Resolves a secret's plaintext at fill time — a vault lookup, a freshly
- * computed TOTP — instead of a value baked at config load. Called on every
- * fill after the full authorization policy passes; the resolved value goes
- * straight to the trusted driver, joins runner-side redaction, and is never
- * logged, cached, or sent to a model. Like executors and stores, a provider
- * never crosses a process boundary: workers re-resolve the config module.
- */
-export type SecretProvider = () => string | Promise<string>;
