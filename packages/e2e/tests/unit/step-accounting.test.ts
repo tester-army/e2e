@@ -31,9 +31,13 @@ describe('step accounting operation contexts', () => {
       contextBytes: 0,
     });
     expect(accounting.actionOperation().origin).toBe('agent');
+    expect(accounting.operation().origin).toBe('agent');
     accounting.replaying(true);
+    // Both contexts: targeted actions take actionOperation(), navigation takes operation().
     expect(accounting.actionOperation().origin).toBe('test');
+    expect(accounting.operation().origin).toBe('test');
     accounting.replaying(false);
     expect(accounting.actionOperation().origin).toBe('agent');
+    expect(accounting.operation().origin).toBe('agent');
   });
 });

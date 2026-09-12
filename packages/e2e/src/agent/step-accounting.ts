@@ -186,7 +186,7 @@ export class StepAccounting {
 
   /** One engine operation: `actionTimeout`, capped by the step clock. */
   operation(): OperationContext {
-    return boundedOperation(this.runtime.engine, this.runtime.config.actionTimeout, this.deadline);
+    return this.stamped(boundedOperation(this.runtime.engine, this.runtime.config.actionTimeout, this.deadline));
   }
 
   /**
@@ -196,11 +196,13 @@ export class StepAccounting {
    * way it does for a deterministic step instead of settling for a model.
    */
   actionOperation(): OperationContext {
-    const operation = boundedOperation(
-      this.runtime.engine,
-      Math.min(this.runtime.config.actionTimeout, MAX_TARGETED_ACTION_MS),
-      this.deadline,
+    return this.stamped(
+      boundedOperation(this.runtime.engine, Math.min(this.runtime.config.actionTimeout, MAX_TARGETED_ACTION_MS), this.deadline),
     );
+  }
+
+  /** Every operation inside a replayed span is the test's, navigation included; outside it, the agent's. */
+  private stamped(operation: OperationContext): OperationContext {
     return this.replayingTrace ? { ...operation, origin: 'test' } : operation;
   }
 
