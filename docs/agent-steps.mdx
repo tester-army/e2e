@@ -25,7 +25,8 @@ The opening prompt carries the instruction, the params, a ledger of the
 steps completed so far in the test, and the whole screen once: a redacted
 text snapshot of roles, names, text, and states. Never raw HTML, cookies,
 headers, or environment values. Password fields arrive masked, and any
-configured credential value found on screen is replaced with a placeholder.
+configured secret value found on screen, a password or a `secrets` entry,
+is replaced with `<secret:name>`.
 
 After that, every action result reports what changed since the screen the
 model last received: lines that appeared, lines that changed with their

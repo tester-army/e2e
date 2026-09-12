@@ -40,12 +40,13 @@ jq '.run.results[] | select(.status != "passed") | .attempts[-1]
 | `MODEL_PROVIDER_FAILED` | Network, 5xx, rate limit, or no credits after the transport retries | Check the key and the quota; retry; exit code 3 |
 | `STEP_TIMEOUT`, `STEP_BUDGET_EXHAUSTED` | The goal was too big or ambiguous, or the provider slow | Split the goal, use on-screen wording, add `context`, raise `timeout` and `actionTimeout`, `--debug` to read the transcript |
 | `CONTEXT_OVERFLOW` | The screen plus the step's history did not fit the model's context window, even after the loop shrank the history and retried once | Lower `agent.maxObservationBytes`, split the step, or pick a model with a larger window |
-| `POLICY_DENIED` | Navigation outside `allowedOrigins`; a `Secret` given to a sink that is not a password field; reading a secure field; `app.screenshot()` after a secret fill | Add the origin to `allowedOrigins`; fill secrets only into password inputs; assert the outcome instead of the value; capture screenshots before filling secrets |
+| `POLICY_DENIED` | Navigation outside `allowedOrigins`; a password `Secret` given to a sink that is not a password field; reading a secure field; `app.screenshot()` after a secret fill | Add the origin to `allowedOrigins`; fill passwords only into password inputs; assert the outcome instead of the value; capture screenshots before filling secrets |
 | `UNSUPPORTED_CAPABILITY` | A fixture the engine does not contribute (`web` on a device), `schema` or `vision` on `act`, an action the surface lacks | Declare `requires: ['web']`; drop the option; use a supported action |
 | `SESSION_UNAVAILABLE`, `SESSION_CONTRACT` | `session: 'x'` with no setup saving `x`; a setup that did not save every declared name | Add or fix the `test.setup` |
 | `ONLY_IN_CI` | `test.only` reached CI | Remove it |
 | `BROWSER_INSTALL_FAILED`, `LAUNCH_TIMEOUT` | Browser download or launch failed | `npx playwright install chromium --with-deps`; raise `launchTimeout` on slow machines |
 | `AUTH_CREDENTIAL_UNAVAILABLE` | `credentials.user('x')` for an undeclared name | Add it to `config.credentials` |
+| `SECRET_UNAVAILABLE` | `secrets.get('x')` for an undeclared name | Add it to `config.secrets` or set `E2E_SECRET_X` |
 
 ## Tools
 

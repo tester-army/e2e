@@ -53,7 +53,7 @@
         "kind": { "const": "type" },
         "target": { "$ref": "#/$defs/node" },
         "sensitiveName": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "purpose": { "enum": ["password", "one-time-code", "generic-secret"] }
+        "purpose": { "enum": ["password", "generic-secret"] }
       }
     },
     "scroll": {

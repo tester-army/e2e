@@ -16,6 +16,7 @@ export const RUNTIME_EXPORTS: readonly string[] = [
   'test',
   'expect',
   'credentials',
+  'secrets',
   'AgentError',
   'isAgentError',
   'BLOCKABLE_CODES',

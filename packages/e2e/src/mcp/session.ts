@@ -14,7 +14,7 @@ import { z } from 'zod';
 import { openInteractiveStep, type InteractiveStep } from '../agent/interactive-step.ts';
 import { ScreenPresenter } from '../agent/screen-update.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
-import { credentials } from '../credentials.ts';
+import { credentials, secrets } from '../secrets.ts';
 import { ConfigurationError, errorMessage } from '../internal/errors.ts';
 import { uuidv7 } from '../internal/ids.ts';
 import { LocatorEngine } from '../locator/engine.ts';
@@ -242,6 +242,10 @@ export class SessionHost {
       );
       lines.push(`Credentials: ${described.join(', ')}. Type the username with type; fill the password with type_secret and the credential name.`);
     }
+    const generic = [...config.secrets.values()].filter((secret) => secret.purpose === 'generic-secret');
+    if (generic.length > 0) {
+      lines.push(`Secrets: ${generic.map((secret) => `"${secret.name}"`).join(', ')}. Fill one into any input with type_secret and its name; you never see the value.`);
+    }
     lines.push(`Tools (run one with call {tool, args}; tools {tool} shows a tool's arguments):`, ...this.catalogLines(live));
     lines.push(
       'Node ids ("n42") are valid only for the newest observation; every action reports what changed on screen, and observe shows the whole screen. Call close_session when you are done.',
@@ -272,10 +276,15 @@ export class SessionHost {
     );
   }
 
-  /** Every configured credential's password as a step secret, so `type_secret` can fill it. */
+  /** Every configured secret, passwords included, as a step secret, so `type_secret` can fill it. */
   private secretParams(config: ResolvedConfig): AgentParams | undefined {
-    if (config.credentials.size === 0) return undefined;
-    return Object.fromEntries([...config.credentials.keys()].map((name) => [name, credentials.user(name).password]));
+    if (config.secrets.size === 0) return undefined;
+    return Object.fromEntries(
+      [...config.secrets.values()].map((secret) => [
+        secret.name,
+        secret.purpose === 'password' ? credentials.user(secret.name).password : secrets.get(secret.name),
+      ]),
+    );
   }
 
   private requireLive(session: string | undefined): LiveSession {

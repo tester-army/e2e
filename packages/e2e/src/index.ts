@@ -2,7 +2,7 @@
 
 export { test } from './collect/registry.ts';
 export { expect } from './expect/index.ts';
-export { credentials } from './credentials.ts';
+export { credentials, secrets } from './secrets.ts';
 export { AgentError, isAgentError } from './agent/error.ts';
 export { BLOCKABLE_CODES, RUNTIME_CODES } from './agent/executor.ts';
 // Entry framing for custom TraceCacheStore implementations: a remote store

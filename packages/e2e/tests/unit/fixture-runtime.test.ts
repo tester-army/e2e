@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { defineEngine, type EngineHandle } from '../../src/engine/index.ts';
 import { createEngineSession } from '../../src/engine/session.ts';
 import { resolveConfig } from '../../src/config/resolve.ts';
-import { credentials, setCredentialRegistry } from '../../src/credentials.ts';
+import { credentials, secrets, setSecretRegistry } from '../../src/secrets.ts';
 import { expect as expectFixture } from '../../src/expect/index.ts';
 import { Deadline } from '../../src/internal/time.ts';
 import { AttemptBudget } from '../../src/run/budget.ts';
@@ -51,7 +51,7 @@ describe('explicit screenshot secrecy', () => {
     const { fixtures, steps, config, registerArtifact } = runtime(engine, {
       credentials: { member: { username: 'ada', password: source === 'static' ? sentinel : async () => sentinel } },
     });
-    setCredentialRegistry(config.credentials);
+    setSecretRegistry(config);
     try {
       await expect(fixtures.app.screenshot('before-fill')).resolves.toBe('screenshots/evidence.png');
       expect(screenshot).toHaveBeenCalledExactlyOnceWith('before-fill', expect.any(Object));
@@ -71,7 +71,7 @@ describe('explicit screenshot secrecy', () => {
       });
       expect(JSON.stringify(steps.all())).not.toContain(sentinel);
     } finally {
-      setCredentialRegistry(undefined);
+      setSecretRegistry(undefined);
     }
   });
 
@@ -82,7 +82,7 @@ describe('explicit screenshot secrecy', () => {
     }), {
       credentials: { member: { username: 'ada', password: async () => '' } },
     });
-    setCredentialRegistry(config.credentials);
+    setSecretRegistry(config);
     try {
       await expect(fixtures.screen.getByRole('textbox').fill(credentials.user('member').password)).rejects.toMatchObject({
         code: 'AUTH_CREDENTIAL_UNAVAILABLE',
@@ -91,8 +91,48 @@ describe('explicit screenshot secrecy', () => {
       expect(screenshot).toHaveBeenCalledOnce();
       expect(registerArtifact).toHaveBeenCalledExactlyOnceWith('screenshot', 'screenshots/evidence.png');
     } finally {
-      setCredentialRegistry(undefined);
+      setSecretRegistry(undefined);
     }
+  });
+});
+
+describe('generic secrets', () => {
+  it('fills a config.secrets value into a plain textbox, redacts it from steps, and taints the session', async () => {
+    const apiKey = 'sk_live_generic_2718';
+    let filled: string | undefined;
+    const screenshot = vi.fn(async () => 'screenshots/evidence.png');
+    const engine = defineEngine({
+      name: 'fake', version: '1', spiVersion: 1,
+      observe: async () => ({ nodes: [{ ref: { id: 'echo', revision: '' }, role: 'status', text: filled ?? '' }] }),
+      locate: async () => [{ ref: { id: 'key', revision: '' }, role: 'textbox', name: 'API key' }],
+      perform: async (_ref, action) => { if (action.kind === 'fill') filled = action.value; },
+      artifacts: { screenshot },
+    });
+    const { fixtures, steps, config } = runtime(engine, { secrets: { 'stripe-key': apiKey } });
+    setSecretRegistry(config);
+    try {
+      const handle = secrets.get('stripe-key');
+      expect(handle).toMatchObject({ name: 'stripe-key', purpose: 'generic-secret' });
+      expect(JSON.stringify(handle)).not.toContain(apiKey);
+      await fixtures.screen.getByLabel('API key').fill(handle);
+      expect(filled).toBe(apiKey);
+      await expect(fixtures.app.screenshot('after-fill')).rejects.toMatchObject({ code: 'POLICY_DENIED' });
+      expect(JSON.stringify(steps.all())).not.toContain(apiKey);
+    } finally {
+      setSecretRegistry(undefined);
+    }
+  });
+
+  it('fails a secret the config does not declare with SECRET_UNAVAILABLE', () => {
+    const { config } = runtime(empty(), { secrets: { known: 'v' } });
+    setSecretRegistry(config);
+    try {
+      expect(() => secrets.get('unknown')).toThrow(expect.objectContaining({ code: 'SECRET_UNAVAILABLE' }));
+      expect(() => secrets.get('unknown')).toThrow(/E2E_SECRET_UNKNOWN/);
+    } finally {
+      setSecretRegistry(undefined);
+    }
+    expect(() => secrets.get('known')).toThrow(/runner is active/);
   });
 });
 

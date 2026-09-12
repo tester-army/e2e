@@ -10,7 +10,7 @@
  */
 
 import { AgentError, isAgentError } from '../agent/error.ts';
-import { credentials } from '../credentials.ts';
+import { credentials } from '../secrets.ts';
 import type { ReportExplore, ReportExploreStep } from '../report/build.ts';
 import type { Agent, AgentParams, TestFn } from '../types.ts';
 import { planNext, type PlanAccount, type PlanDecision } from './plan.ts';

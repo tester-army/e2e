@@ -240,7 +240,12 @@ credentials: {
 
 `E2E_USER_ADMIN_USERNAME` and `E2E_USER_ADMIN_PASSWORD` override either
 field per run. `credentials.user('admin').password` is a `Secret` with no
-plaintext accessor; only `fill()` and `agent.act` params accept it. Once a
+plaintext accessor; only `fill()` and `agent.act` params accept it. Any other
+sensitive value (an API key, a token) is a `secrets` entry,
+`secrets: { 'stripe-key': process.env.STRIPE_KEY ?? '' }`, overridable with
+`E2E_SECRET_STRIPE_KEY`; `secrets.get('stripe-key')` is the same kind of
+handle and fills any editable input, with the value redacted by name
+everywhere the runner writes. Once a
 secret is filled, model pixels and assertion screenshots are withheld for
 the rest of that session, including later tests sharing a serial session.
 `app.screenshot()` fails with `POLICY_DENIED` before capture. Sign in inside

@@ -20,19 +20,19 @@ const secrecyBySession = new WeakMap<TargetSession, SessionSecrecy>();
 /**
  * The secrecy state of one session, created on first use and shared by every
  * attempt that borrows the session (a serial group's members). The ledger is
- * seeded with the passwords known up front; provider-backed values join
- * through the resolver at fill time.
+ * seeded with the static secret values known up front; provider-backed
+ * values join through the resolver at fill time.
  */
 export function sessionSecrecy(
   session: TargetSession,
-  credentials: ResolvedConfig['credentials'],
+  secrets: ResolvedConfig['secrets'],
 ): SessionSecrecy {
   let secrecy = secrecyBySession.get(session);
   if (secrecy === undefined) {
     secrecy = {
       ledger: new SecretLedger(
-        [...credentials].flatMap(([name, { password }]) =>
-          typeof password === 'string' ? [[name, password] as const] : [],
+        [...secrets].flatMap(([name, { value }]) =>
+          typeof value === 'string' ? [[name, value] as const] : [],
         ),
       ),
       taint: { value: false },

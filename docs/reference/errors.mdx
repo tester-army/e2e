@@ -46,6 +46,7 @@ try {
 | --- | --- | --- | ---: |
 | `AUTH_CREDENTIAL_UNAVAILABLE` | A `Secret` or `credentials.user()` names a credential absent from `config.credentials`, or the call happened outside an active runner | configuration | 2 |
 | `AUTH_CREDENTIAL_INVALID` | A configured credential was rejected by the application (blocked: credentials) | configuration | 2 |
+| `SECRET_UNAVAILABLE` | A `Secret` or `secrets.get()` names a secret absent from `config.secrets`, or the call happened outside an active runner | configuration | 2 |
 | `ENVIRONMENT_UNAVAILABLE` | The environment under test is down or unreachable beyond the app itself (blocked: environment) | infrastructure | 3 |
 | `SEED_DATA_MISSING` | Data the step depends on does not exist in the environment (blocked: seed_data) | configuration | 2 |
 | `TEST_SETUP_FAILED` | Test prerequisites outside the product failed to arrange (blocked: test_setup). Also a `test.extend()` fixture that broke its contract: returned without calling `use()`, called it twice, or redefined a fixture the target's engine contributes | configuration | 2 |

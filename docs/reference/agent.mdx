@@ -65,9 +65,10 @@ with an `ActResult`; a failing or blocked one throws an `AgentError` whose
 Values come from your code through `options.params`, never from the model. A
 `Secret` in `params` is projected before the model sees anything: the model
 receives the secret's name and purpose, and the harness fills the value
-host-side under the same authorization as `locator.fill`: the credential must
-be registered, the current origin allowed by both the target and the
-credential, and the field an enabled secure input whose purpose matches.
+host-side under the same authorization as `locator.fill`: the secret must be
+configured, the current origin allowed by both the target and the secret, and
+the field an enabled editable input; a password additionally requires a
+password field.
 
 ```ts
 await agent.act('invite {email} as an editor', { params: { email: 'ada@example.test' } });

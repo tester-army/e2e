@@ -15,8 +15,8 @@ const sessionModule = new URL('../../dist/mcp/session.js', import.meta.url).href
 const { SessionHost } = (await import(sessionModule)) as typeof import('../../src/mcp/session.ts');
 const resolveModule = new URL('../../dist/config/resolve.js', import.meta.url).href;
 const { resolveConfig } = (await import(resolveModule)) as typeof import('../../src/config/resolve.ts');
-const credentialsModule = new URL('../../dist/credentials.js', import.meta.url).href;
-const { credentials } = (await import(credentialsModule)) as typeof import('../../src/credentials.ts');
+const secretsModule = new URL('../../dist/secrets.js', import.meta.url).href;
+const { credentials } = (await import(secretsModule)) as typeof import('../../src/secrets.ts');
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 

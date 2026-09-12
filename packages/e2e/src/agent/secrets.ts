@@ -1,6 +1,7 @@
 /** Host-side secret fill authorization. */
 
 import type { TargetSession, OperationContext, SemanticNode } from '../engine/surface.ts';
+import { unavailableCode } from '../secrets.ts';
 import type { Secret } from '../types.ts';
 import { AgentError, toAgentError } from './error.ts';
 import type { AgentContext } from './invocation.ts';
@@ -16,7 +17,7 @@ interface SecretFillHost {
   recordPolicy(name: string, decision: 'allowed' | 'denied', code?: string): void;
 }
 
-/** Roles that expose an editable secure input sink. */
+/** Roles that expose an editable input sink. */
 const EDITABLE_ROLES = new Set(['textbox', 'searchbox', 'combobox']);
 
 /**
@@ -30,20 +31,18 @@ export async function authorizeSecretFill(
   secret: Secret,
   node: SemanticNode,
 ): Promise<string> {
-  const credential = runtime.config.credentials.get(secret.name);
-  if (credential === undefined) {
-    host.recordPolicy('secret.registered', 'denied', 'AUTH_CREDENTIAL_UNAVAILABLE');
-    throw new AgentError(
-      'AUTH_CREDENTIAL_UNAVAILABLE',
-      `credential "${secret.name}" is not configured`,
-    );
+  const registered = runtime.config.secrets.get(secret.name);
+  if (registered === undefined) {
+    const code = unavailableCode(secret);
+    host.recordPolicy('secret.registered', 'denied', code);
+    throw new AgentError(code, `secret "${secret.name}" is not configured`);
   }
 
   const origin = await currentOrigin(host);
   const appAllows = runtime.app.allowedOrigins.includes(origin);
-  const credentialAllows =
-    credential.allowedOrigins === undefined || credential.allowedOrigins.includes(origin);
-  if (!appAllows || !credentialAllows) {
+  const secretAllows =
+    registered.allowedOrigins === undefined || registered.allowedOrigins.includes(origin);
+  if (!appAllows || !secretAllows) {
     host.recordPolicy('secret.origin', 'denied', 'POLICY_DENIED');
     throw new AgentError(
       'POLICY_DENIED',
@@ -62,7 +61,10 @@ export async function authorizeSecretFill(
       `the target is not an editable input (role ${node.role ?? 'none'})`,
     );
   }
-  if (node.inputPurpose !== secret.purpose) {
+  // A password belongs in a password field, where the surface masks it. A
+  // generic secret has no field of its own: it goes wherever the test says,
+  // and redaction covers the value the moment it shows on screen.
+  if (secret.purpose === 'password' && node.inputPurpose !== 'password') {
     host.recordPolicy('secret.purpose', 'denied', 'POLICY_DENIED');
     throw new AgentError(
       'POLICY_DENIED',

@@ -62,6 +62,7 @@ config or test written with `require` or `module.exports` fails to load.
 | `cache` | string or object | `'read-write'` (`'read-only'` in CI when unset) | see [cache](#cache) |
 | `limits` | object | see [limits](#limits) | |
 | `credentials` | record | `{}` | see [credentials](#credentials) |
+| `secrets` | record | `{}` | see [secrets](#secrets) |
 
 Every numeric value must be a safe integer.
 
@@ -400,13 +401,10 @@ The username is a plain string; the password is an opaque `Secret` that test
 code cannot read, accepted only by `locator.fill` and `agent.act` params. An
 unconfigured name throws `AUTH_CREDENTIAL_UNAVAILABLE`.
 
-```ts
-export interface Secret {
-  readonly name: string;
-  readonly purpose: 'password' | 'one-time-code' | 'generic-secret';
-  readonly [secretBrand]: true;
-}
+A credential's password is registered as the secret of the credential's name,
+so a name declared under both `credentials` and `secrets` is `INVALID_CONFIG`.
 
+```ts
 export interface Credential {
   readonly name: string;
   readonly username: string;
@@ -416,6 +414,46 @@ export interface Credential {
 ```
 
 See [Signing in](/authentication).
+
+## secrets
+
+```ts
+secrets?: Readonly<Record<string, SecretConfig>>;
+
+type SecretConfig =
+  | string
+  | SecretProvider
+  | { value: string | SecretProvider; allowedOrigins?: readonly string[] };
+```
+
+| Key | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `value` | `string \| SecretProvider` | yes | A static value, or a provider called on every authorized fill. Recorded in the config digest by name only. An `E2E_SECRET_<NAME>` override wins over both |
+| `allowedOrigins` | `readonly string[]` | no | Narrows this secret relative to the target's allowed origins. It can only narrow |
+
+A bare string or function is shorthand for `{ value }`. Every entry must
+resolve to a non-empty string or a function; anything else is `INVALID_CONFIG`.
+
+`secrets.get(name)` returns the opaque `Secret` for a configured entry. It has
+no plaintext accessor and is accepted only by `locator.fill` and `agent.act`
+params; the runner fills the field, masks the value in every observation, and
+redacts it from logs, traces, and the report. An unconfigured name throws
+`SECRET_UNAVAILABLE`.
+
+```ts
+export type SecretPurpose = 'password' | 'generic-secret';
+
+export interface Secret {
+  readonly name: string;
+  readonly purpose: SecretPurpose;
+  readonly [secretBrand]: true;
+}
+```
+
+The purpose decides where a secret may be filled. A credential's password
+(`'password'`) fills only a password field. A `secrets` entry
+(`'generic-secret'`) fills any editable input, since redaction covers a value
+the page shows. See [Secrets that are not passwords](/authentication#secrets-that-are-not-passwords).
 
 ## cache
 

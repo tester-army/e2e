@@ -27,6 +27,7 @@ export const AGENT_CODE_TABLE: Readonly<
 > = {
   AUTH_CREDENTIAL_UNAVAILABLE: { category: 'configuration', blockedCategory: 'credentials' },
   AUTH_CREDENTIAL_INVALID: { category: 'configuration', blockedCategory: 'credentials' },
+  SECRET_UNAVAILABLE: { category: 'configuration', blockedCategory: 'credentials' },
   ENVIRONMENT_UNAVAILABLE: { category: 'infrastructure', blockedCategory: 'environment' },
   APP_UNREACHABLE: { category: 'infrastructure', blockedCategory: 'environment' },
   APP_ALREADY_RUNNING: { category: 'infrastructure', blockedCategory: 'environment' },

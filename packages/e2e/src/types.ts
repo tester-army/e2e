@@ -36,10 +36,17 @@ export type Capability = string;
 export type ScrollDirection = 'up' | 'down' | 'left' | 'right';
 export type Momentum = 'none' | 'slow' | 'fast';
 
+/**
+ * What a secret is for, which decides where it may be filled: a `password`
+ * goes only into a password field; a `generic-secret` (an API key, a token,
+ * any value from the environment) goes into any editable input.
+ */
+export type SecretPurpose = 'password' | 'generic-secret';
+
 /** Opaque host-side value accepted only by sensitive input sinks. */
 export interface Secret {
   readonly name: string;
-  readonly purpose: 'password' | 'one-time-code' | 'generic-secret';
+  readonly purpose: SecretPurpose;
   readonly [secretBrand]: true;
 }
 
@@ -54,6 +61,15 @@ export interface Credential {
 export interface Credentials {
   /** Resolves a named credential without exposing its password. */
   user(name: string): Credential;
+}
+
+export interface Secrets {
+  /**
+   * The opaque handle of a secret declared under `config.secrets`. Test code
+   * cannot read the value; `locator.fill` and `agent.act` params accept the
+   * handle and the runner fills the field itself.
+   */
+  get(name: string): Secret;
 }
 
 export interface StandardSchemaV1<Input = unknown, Output = Input> {
@@ -202,6 +218,7 @@ export interface ActResult {
 export type AgentErrorCode =
   | 'AUTH_CREDENTIAL_UNAVAILABLE'
   | 'AUTH_CREDENTIAL_INVALID'
+  | 'SECRET_UNAVAILABLE'
   | 'AUTHENTICATION_FAILED'
   | 'ENVIRONMENT_UNAVAILABLE'
   | 'SEED_DATA_MISSING'
@@ -952,6 +969,10 @@ export interface E2EConfig {
     maxEventsPerStep?: number;
     maxModelTokensPerCall?: number;
   };
+  /**
+   * Named accounts. A credential's password is registered as a secret under
+   * the credential's name, so the name may not also appear under `secrets`.
+   */
   credentials?: Readonly<
     Record<
       string,
@@ -962,7 +983,26 @@ export interface E2EConfig {
       }
     >
   >;
+  /**
+   * Named values the model must never see: API keys, tokens, anything sourced
+   * from the environment. `secrets.get(name)` hands a test the opaque handle;
+   * the value is filled by the runner, masked in every observation, and
+   * redacted from logs, traces, and the report.
+   */
+  secrets?: Readonly<Record<string, SecretConfig>>;
 }
+
+/**
+ * One `config.secrets` entry: the value itself (or a provider computing it at
+ * fill time), or an object narrowing the origins the secret may be filled on.
+ */
+export type SecretConfig =
+  | string
+  | SecretProvider
+  | {
+      value: string | SecretProvider;
+      allowedOrigins?: readonly string[];
+    };
 
 /**
  * Resolves a secret's plaintext at fill time — a vault lookup, a freshly

@@ -103,6 +103,7 @@ export default {
 | `cache` | `'read-write'`, `'read-only'` in CI | The trace cache for `agent.act`; `'off'` disables it. |
 | `agents` | `{ default: built-in }` | Agents by name. `default` is what tests run with; `e2e run --agent <name>` runs with another. Each entry is `createAgent(...)`, an options block `{ model, context, maxSteps, maxModelCalls, vision, providerOptions }`, or a custom `StepExecutor`. `model` is an AI SDK instance; without one anywhere, acquiring `agent` is `MODEL_UNAVAILABLE`. |
 | `credentials` | `{}` | Named `{ username, password, allowedOrigins? }` entries; `password` may be a function returning the value. |
+| `secrets` | `{}` | Named values the model never sees (API keys, tokens): a string, a function returning the value, or `{ value, allowedOrigins? }`. A name cannot also be a credential. |
 | `screen.testIdAttribute` | `'data-testid'` | Attribute read by `getByTestId`. |
 | `artifacts` | `['screenshot', 'trace']` | Kinds to keep (`screenshot`, `trace`, and the opt-in `video`), or `{ kinds, store, video }`; `video: { retain: 'on-failure' }` keeps only the recordings of attempts that did not pass. |
 | `projectId` | the package name | Report and cache identity. |
@@ -210,6 +211,7 @@ or read the address from the environment:
 | --- | --- |
 | `AI_GATEWAY_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, ... | Read by the provider package the config constructs the model with (`gateway()` from `ai`, `openrouter()`, `openai()`), not by the runner. The runner reads no model variable; the model is always an AI SDK instance in the config. |
 | `E2E_USER_<NAME>_USERNAME`, `E2E_USER_<NAME>_PASSWORD` | Override `credentials.<name>`. `<NAME>` is the credential name uppercased, other characters as `_`. |
+| `E2E_SECRET_<NAME>` | Overrides the value of `secrets.<name>`, same uppercasing rule. |
 | `CI` | Turns on CI defaults: `retries: 1`, `workers: 1`, `test.only` rejected, cache read-only, `reuseExisting` ignored. |
 | `E2E_TELEMETRY_DISABLED`, `DO_NOT_TRACK` | Turn anonymous usage telemetry off; `e2e telemetry disable` saves the same choice. `E2E_TELEMETRY_DEBUG=1` prints each event instead of sending it. |
 

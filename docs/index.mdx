@@ -55,8 +55,9 @@ export default {
   them with no model call until the app diverges.
 - **Bounded agent steps.** Every `agent.*` call has a deadline and a model-call
   budget, and ends in a verdict: passed, failed, or blocked.
-- **Secrets the model never sees.** A password is an opaque handle. The model
-  gets its name; the runner fills the field.
+- **Secrets the model never sees.** A password, an API key, any value from the
+  environment is an opaque handle. The model gets its name; the runner fills
+  the field and redacts the value everywhere.
 - **One contract, any surface.** Tests share the agent and locator APIs
   across engines; only setup follows the platform. Engines today:
   - `@e2edev/playwright` drives Chromium, Firefox, and WebKit.

@@ -26,6 +26,7 @@ const MODEL_ERROR_CODES = [
   'AUTHENTICATION_FAILED',
   'AUTH_CREDENTIAL_UNAVAILABLE',
   'AUTH_CREDENTIAL_INVALID',
+  'SECRET_UNAVAILABLE',
   'ENVIRONMENT_UNAVAILABLE',
   'SEED_DATA_MISSING',
   'TEST_SETUP_FAILED',
@@ -394,13 +395,13 @@ export function createGrammarTools(
   if (verbs.has('typeSecret') && context.step.secrets.length > 0) {
     tools['type_secret'] = screenTool({
       description:
-        'Fill one declared secret credential into a secure input field; the plaintext never passes through you and never shows on screen. Available: ' +
+        'Fill one declared secret into an input by its name; the plaintext never passes through you. A password fills only a password field; a generic-secret fills any editable input. Available: ' +
         context.step.secrets.map((secret) => `"${secret.name}" (${secret.purpose})`).join(', ') +
         '.',
       inputSchema: z.object({ target, name: z.string().min(1) }),
       execute: ({ target: id, name }) =>
         acting(
-          `Filled secret "${name}" into #${id}; secure values never show on screen.`,
+          `Filled secret "${name}" into #${id}; its value is masked in every observation.`,
           () => context.actions.typeSecret({ id }, name),
           false,
         ),

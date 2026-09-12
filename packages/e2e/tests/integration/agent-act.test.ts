@@ -395,6 +395,62 @@ describe('agent.act verdict mapping', () => {
     }
   }, 120_000);
 
+  it('fills a generic secret into a plain textbox through typeSecret and refuses a password there', async () => {
+    const executor: StepExecutor = {
+      name: 'api-key-executor',
+      async runStep(context: StepExecutorContext) {
+        if (JSON.stringify(context.step.params).includes('sk_live_generic')) {
+          return { status: 'failed' as const, summary: 'plaintext leaked into params' };
+        }
+        const declared = context.step.secrets.map((secret) => `${secret.name}:${secret.purpose}`).toSorted();
+        if (declared.join(',') !== 'admin:password,stripe-key:generic-secret') {
+          return { status: 'failed' as const, summary: `unexpected secrets ${declared.join(',')}` };
+        }
+        const observation = await context.observe();
+        const focusTarget = nodeIdFor(observation.text, /textbox "Focus target"/);
+        // A password belongs in a password field only.
+        try {
+          await context.actions.typeSecret({ id: focusTarget }, 'admin');
+          return { status: 'failed' as const, summary: 'a password was accepted by a plain textbox' };
+        } catch (cause) {
+          if (!(cause instanceof Error) || !cause.message.includes('incompatible')) {
+            return { status: 'failed' as const, summary: `unexpected refusal: ${String(cause)}` };
+          }
+        }
+        // A generic secret goes wherever the test points it.
+        await context.actions.typeSecret({ id: focusTarget }, 'stripe-key');
+        const after = await context.observe();
+        if (after.text.includes('sk_live_generic')) {
+          return { status: 'failed' as const, summary: 'the generic secret value reached the observation' };
+        }
+        if (!after.text.includes('<secret:stripe-key>')) {
+          return { status: 'failed' as const, summary: 'the filled value was not redacted by name' };
+        }
+        return { status: 'passed' as const, summary: 'filled the generic secret into a plain field' };
+      },
+    };
+    const { outcome, project } = await runProject(
+      { 'tests/secret.e2e.ts': GENERIC_SECRET_SUITE },
+      {
+        appUrl: app.url,
+        config: {
+          tests: 'tests/**/*.e2e.ts',
+          agents: { default: executor },
+          credentials: { admin: { username: 'admin', password: 'admin-pass' } },
+          secrets: { 'stripe-key': 'sk_live_generic_4242' },
+        },
+      },
+    );
+    try {
+      const result = resultByTitle(outcome, 'executor fills a generic secret');
+      expect(result.attempts.at(-1)!.error?.message ?? '').toBe('');
+      expect(result.status).toBe('passed');
+      expect(JSON.stringify(outcome.report)).not.toContain('sk_live_generic');
+    } finally {
+      project.cleanup();
+    }
+  }, 120_000);
+
   it('resolves a provider-backed secret at fill time and keeps the plaintext out of the report', async () => {
     const provider: { calls: number } = { calls: 0 };
     // Read through a call so control-flow narrowing cannot pin the counter:
@@ -529,6 +585,17 @@ test('executor fills a declared secret', async ({ app, agent, screen }) => {
   // Secure fields refuse value reads by design; visibility is the most a
   // deterministic assertion may observe. The executor verified the fill.
   await expect(screen.getByLabel('Password')).toBeVisible();
+});
+`;
+
+const GENERIC_SECRET_SUITE = `import { test, credentials, secrets, expect } from '@e2edev/e2e';
+
+test('executor fills a generic secret', async ({ app, agent, screen }) => {
+  await app.open();
+  await agent.act('paste the API key into the focus target field', {
+    params: { password: credentials.user('admin').password, apiKey: secrets.get('stripe-key') },
+  });
+  await expect(screen.getByLabel('Focus target')).toBeVisible();
 });
 `;
 

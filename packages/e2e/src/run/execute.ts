@@ -591,7 +591,7 @@ export class TargetExecutor implements SerialHost {
         // it. Only a session a secret was filled on can have recorded one:
         // the taint is the fill's own mark, so an untainted trace needs no
         // rewriting, and a tainted one is kept only once rewritten.
-        const secrecy = sessionSecrecy(session, this.config.credentials);
+        const secrecy = sessionSecrecy(session, this.config.secrets);
         let redaction: 'complete' | 'not-required' = 'not-required';
         if (secrecy.taint.value) {
           try {

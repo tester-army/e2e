@@ -12,7 +12,7 @@ import path from 'node:path';
 import type { ExecutorAttempt } from '../agent/executor.ts';
 import type { AgentContext } from '../agent/invocation.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
-import { releaseCredentialRegistry, setCredentialRegistry } from '../credentials.ts';
+import { releaseSecretRegistry, setSecretRegistry } from '../secrets.ts';
 import type { TargetSession } from '../engine/surface.ts';
 import { DebugTrace } from '../internal/debug.ts';
 import { classifyError, serializeError, type SerializedError } from '../internal/errors.ts';
@@ -82,9 +82,9 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
   const attemptId = uuidv7();
 
   validateEngine(target, config);
-  // The credential registry is process-wide, as in a run: `credentials.user()`
-  // resolves while the attempt is open.
-  setCredentialRegistry(config.credentials);
+  // The secret registry is process-wide, as in a run: `credentials.user()` and `secrets.get()`
+  // resolve while the attempt is open.
+  setSecretRegistry(config);
   let processes: AppProcesses;
   try {
     // One worker on one target: one slot to provision.
@@ -92,7 +92,7 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
     const hooks = { ci: config.ci, notice: (message: string) => notice('app', message) };
     processes = await startDeclaredProcesses([target], config.projectRoot, () => hooks, signal, debug);
   } catch (cause) {
-    releaseCredentialRegistry(config.credentials);
+    releaseSecretRegistry(config);
     throw cause;
   }
 
@@ -134,7 +134,7 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
     } catch (cause) {
       recordCleanupFailure(cause);
     }
-    releaseCredentialRegistry(config.credentials);
+    releaseSecretRegistry(config);
   };
 
   let session: TargetSession;

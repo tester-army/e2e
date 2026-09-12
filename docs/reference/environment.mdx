@@ -31,16 +31,18 @@ and a missing key is the provider's own error on the first agent step. See
 
 The order is spelled out under [Resolution order](/reference/config#resolution-order).
 
-## Credentials
+## Credentials and secrets
 
 | Variable | Reading | Effect |
 | --- | --- | --- |
 | `E2E_USER_<NAME>_USERNAME` | set | Replaces `credentials.<name>.username` |
 | `E2E_USER_<NAME>_PASSWORD` | set | Replaces `credentials.<name>.password` |
+| `E2E_SECRET_<NAME>` | set | Replaces the value of `secrets.<name>` |
 
-`<NAME>` is the credential name uppercased with every character outside
-`A-Z0-9` replaced by `_`. A pair for a name absent from `credentials` is
-ignored. These two are read as set-or-unset, so an empty string is a value.
+`<NAME>` is the credential or secret name uppercased with every character
+outside `A-Z0-9` replaced by `_`. A variable for a name absent from the config
+is ignored. These are read as set-or-unset, so an empty string is a value, and
+an empty value is `INVALID_CONFIG`.
 
 ## Run mode
 

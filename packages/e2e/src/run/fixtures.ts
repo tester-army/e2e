@@ -12,6 +12,7 @@ import type { DebugTrace } from '../internal/debug.ts';
 import { ConfigurationError, errorMessage, InfrastructureError, TestError } from '../internal/errors.ts';
 import { didYouMean } from '../internal/suggest.ts';
 import { sessionSecrecy, type SessionSecrecy } from './secrecy.ts';
+import { unavailableCode } from '../secrets.ts';
 import { obj } from '../internal/objects.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
 import { FixtureRecorder } from './fixture-recording.ts';
@@ -97,22 +98,19 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
     assertionTimeout: environment.config.assertionTimeout,
   });
 
-  const { ledger, taint } = sessionSecrecy(environment.session, environment.config.credentials);
+  const { ledger, taint } = sessionSecrecy(environment.session, environment.config.secrets);
   const secrets: SecretResolver = {
     async resolve(secret) {
-      const credential = environment.config.credentials.get(secret.name);
-      if (credential === undefined) {
-        throw new ConfigurationError(
-          'AUTH_CREDENTIAL_UNAVAILABLE',
-          `credential "${secret.name}" is not configured`,
-        );
+      const registered = environment.config.secrets.get(secret.name);
+      if (registered === undefined) {
+        throw new ConfigurationError(unavailableCode(secret), `secret "${secret.name}" is not configured`);
       }
-      const password = credential.password;
-      const plaintext = typeof password === 'function' ? await password() : password;
+      const value = registered.value;
+      const plaintext = typeof value === 'function' ? await value() : value;
       if (typeof plaintext !== 'string' || plaintext === '') {
         throw new ConfigurationError(
-          'AUTH_CREDENTIAL_UNAVAILABLE',
-          `credential "${secret.name}" provider did not return a non-empty string`,
+          unavailableCode(secret),
+          `secret "${secret.name}" provider did not return a non-empty string`,
         );
       }
       // Only a value that exists can reach the screen: a failed provider

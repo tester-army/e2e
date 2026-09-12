@@ -105,7 +105,7 @@ one. Without them, the installed CLI prints the same text:
   each target names its engine. The engine declares the app:
   `playwright({ url, command })`. There is no top-level `app` key and no
   `defineConfig`.
-- Import `test`, `expect`, and `credentials` from `@e2edev/e2e`. A test that
+- Import `test`, `expect`, `credentials`, and `secrets` from `@e2edev/e2e`. A test that
   uses the `web` fixture imports `test` from `@e2edev/playwright` instead: the
   same runtime `test`, typed with `web`.
 - Config and tests are ES modules and load as such whatever `package.json` sets as `type`.
@@ -114,9 +114,11 @@ one. Without them, the installed CLI prints the same text:
   matcher when a value has to settle.
 - A locator that matches two nodes fails with `LOCATOR_AMBIGUOUS`. Narrow it
   with `{ name }`, `filter()`, `first()`, `nth()`, or `{ visible: true }`.
-- Secrets never appear in test code. Declare `credentials` in the config,
-  resolve with `credentials.user(name)`, and hand `.password` (an opaque
-  `Secret`) only to `fill()` or to `agent.act` params.
+- Secrets never appear in test code. Declare accounts under `credentials`
+  and every other sensitive value (API keys, tokens) under `secrets` in the
+  config; resolve with `credentials.user(name).password` or
+  `secrets.get(name)`, and hand the opaque `Secret` only to `fill()` or to
+  `agent.act` params.
 - Agent instructions: one goal per `act`, the wording on screen, real values
   in params. Judge meaning, not phrasing: `toContain('Pro')`, not an exact
   sentence a model produced.

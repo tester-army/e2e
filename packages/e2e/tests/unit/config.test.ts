@@ -251,14 +251,14 @@ describe('resolveConfig', () => {
     const withProvider = resolve({
       credentials: { admin: { username: 'admin', password: provider } },
     });
-    expect(withProvider.credentials.get('admin')?.password).toBe(provider);
+    expect(withProvider.secrets.get('admin')).toMatchObject({ purpose: 'password', value: provider });
     const overridden = resolve(
       {
         credentials: { admin: { username: 'admin', password: provider } },
       },
       { E2E_USER_ADMIN_PASSWORD: 'rotated' },
     );
-    expect(overridden.credentials.get('admin')?.password).toBe('rotated');
+    expect(overridden.secrets.get('admin')?.value).toBe('rotated');
     expect(() =>
       resolve({
         credentials: { admin: { username: 'admin', password: 42 as never } },
@@ -370,10 +370,47 @@ describe('resolveConfig', () => {
         E2E_USER_MEMBER_PASSWORD: 'env-pass',
       } as NodeJS.ProcessEnv,
     );
-    expect(config.credentials.get('member')).toMatchObject({
-      username: 'env-user',
-      password: 'env-pass',
-    });
+    expect(config.credentials.get('member')).toMatchObject({ username: 'env-user' });
+    expect(config.secrets.get('member')?.value).toBe('env-pass');
+  });
+
+  it('resolves config.secrets as generic secrets: values, providers, origin narrowing, and E2E_SECRET_* overrides', () => {
+    const provider = () => 'fresh';
+    const config = resolve(
+      {
+        secrets: {
+          'stripe-key': 'sk_test_123',
+          totp: provider,
+          scoped: { value: 'v', allowedOrigins: ['https://auth.example.test'] },
+          rotated: 'stale',
+        },
+      },
+      { ...BASE_ENV, E2E_SECRET_ROTATED: 'fresh-from-env' } as NodeJS.ProcessEnv,
+    );
+    expect(config.secrets.get('stripe-key')).toEqual({ name: 'stripe-key', purpose: 'generic-secret', value: 'sk_test_123', allowedOrigins: undefined });
+    expect(config.secrets.get('totp')?.value).toBe(provider);
+    expect(config.secrets.get('scoped')?.allowedOrigins).toEqual(['https://auth.example.test']);
+    expect(config.secrets.get('rotated')?.value).toBe('fresh-from-env');
+  });
+
+  it('rejects an empty or non-string secret and a secret sharing a credential name', () => {
+    expect(() => resolve({ secrets: { key: '' } })).toThrow(/secret "key" must be a non-empty string/);
+    expect(() => resolve({ secrets: { key: 42 as never } })).toThrow(/secret "key" must be a non-empty string/);
+    expect(() => resolve({ secrets: { key: { value: '' } } })).toThrow(/secret "key" must be a non-empty string/);
+    expect(() => resolve({ secrets: { key: 'v' } }, { ...BASE_ENV, E2E_SECRET_KEY: '' } as NodeJS.ProcessEnv)).toThrow(/secret "key" must be/);
+    expect(() =>
+      resolve({ credentials: { admin: { username: 'u', password: 'p' } }, secrets: { admin: 'v' } }),
+    ).toThrow(/secret "admin" is also a credential/);
+  });
+
+  it('replaces secret values in the config digest', () => {
+    const a = resolve({ secrets: { key: 'secret-1' } });
+    const b = resolve({ secrets: { key: 'secret-2' } });
+    expect(a.configDigest).toBe(b.configDigest);
+    const c = resolve({ secrets: { other: 'secret-1' } });
+    expect(a.configDigest).not.toBe(c.configDigest);
+    const d = resolve({ secrets: { key: { value: 'secret-1', allowedOrigins: ['https://a.test'] } } });
+    expect(a.configDigest).not.toBe(d.configDigest);
   });
 
   it('replaces credential passwords in the config digest', () => {

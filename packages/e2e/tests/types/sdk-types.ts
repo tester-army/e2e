@@ -6,7 +6,9 @@
 
 import { z } from 'zod';
 import {
+  credentials,
   expect,
+  secrets,
   test,
   type Agent,
   type App,
@@ -17,6 +19,7 @@ import {
   type Reporter,
   type RunEvent,
   type Screen,
+  type Secret,
   type TraceCacheStore,
   type ValueExpectation,
 } from '../../src/index.ts';
@@ -38,6 +41,17 @@ declare const engine: EngineHandle;
 // A target inherits its platform from the engine; the resolver rejects one with neither.
 ({ targets: [{ engine }] }) satisfies E2EConfig;
 declare const model: import('../../src/types.ts').ModelInstance;
+
+// Secrets: a bare value, a provider, or a narrowed entry; every handle is the same opaque Secret.
+({ secrets: { key: 'sk_test', totp: () => '123456', scoped: { value: 'v', allowedOrigins: ['https://a.test'] } } }) satisfies E2EConfig;
+// @ts-expect-error a secret needs a value; an env variable that may be unset must be defaulted.
+({ secrets: { key: process.env['STRIPE_KEY'] } }) satisfies E2EConfig;
+secrets.get('key') satisfies Secret;
+credentials.user('admin').password satisfies Secret;
+// @ts-expect-error a Secret has no plaintext accessor.
+secrets.get('key').value;
+void screen.getByLabel('Key').fill(secrets.get('key'));
+void agent.act('use the key', { params: { apiKey: secrets.get('key') } });
 ({ agents: { default: { model }, ux: { context: 'Review the UX.' } } }) satisfies E2EConfig;
 // @ts-expect-error a model is an AI SDK instance the config constructs; the runner implies no gateway for a string
 ({ agents: { default: { model: 'openai/gpt-5.6-luna-fast' } } }) satisfies E2EConfig;

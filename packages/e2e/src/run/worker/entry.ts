@@ -10,7 +10,7 @@ import { collectModule } from '../../collect/registry.ts';
 import type { TestTargetPair } from '../../collect/select.ts';
 import { importModule, loadConfigModule } from '../../config/load.ts';
 import { resolveConfig } from '../../config/resolve.ts';
-import { setCredentialRegistry } from '../../credentials.ts';
+import { setSecretRegistry } from '../../secrets.ts';
 import { loadAiSdk } from '../../agent/ai-sdk.ts';
 import { AiTraceRecorder, registerAiTraceRecorder } from '../../internal/ai-trace.ts';
 import { DebugTrace } from '../../internal/debug.ts';
@@ -86,7 +86,7 @@ async function bootstrap(
   if (target === undefined) {
     throw new ConfigurationError('UNKNOWN_TARGET', `unknown target "${message.targetName}"`);
   }
-  setCredentialRegistry(config.credentials);
+  setSecretRegistry(config);
 
   let collectCounter = 0;
   const resolvePairs = async (unit: RunUnitMessage): Promise<ResolvedUnitPairs> => {

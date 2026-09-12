@@ -1,6 +1,6 @@
 ---
 title: Signing in
-description: Sign in once in a setup test, reuse the session everywhere, and keep the password out of the model.
+description: Sign in once in a setup test, reuse the session everywhere, and keep passwords, API keys, and every other secret out of the model.
 ---
 
 Signing in through the UI in every test is slow and usually the flakiest code
@@ -181,6 +181,90 @@ credential and can never widen it. Use it when a credential belongs to one of
 several allowed origins, so a page that steers the flow elsewhere cannot
 collect the password.
 
+## Secrets that are not passwords
+
+An API key pasted into a settings form, a webhook token, a license code: any
+value the model must not see is a `secrets` entry. The value comes from the
+environment, like a password:
+
+```ts title="e2e.config.ts"
+export default {
+  targets: [{ engine: playwright({ url: 'http://127.0.0.1:3000' }) }],
+  secrets: {
+    'stripe-key': process.env.STRIPE_TEST_KEY ?? '',
+    'webhook-token': { value: process.env.WEBHOOK_TOKEN ?? '', allowedOrigins: ['https://app.staging.example.com'] },
+  },
+} satisfies E2EConfig;
+```
+
+`E2E_SECRET_<NAME>` overrides an entry per run, with the same uppercasing rule
+as credentials, so a CI job can supply the value without touching the config:
+
+```bash
+E2E_SECRET_STRIPE_KEY=sk_test_... npx e2e run
+```
+
+A test asks for the handle, never the value, and hands it to the same two
+sinks a password goes to:
+
+<Tabs>
+  <Tab title="Deterministic">
+
+```ts
+import { secrets } from '@e2edev/e2e';
+
+await screen.getByLabel('Secret key').fill(secrets.get('stripe-key'));
+```
+
+  </Tab>
+  <Tab title="Agentic">
+
+```ts
+import { secrets } from '@e2edev/e2e';
+
+await agent.act('Connect Stripe with the given key', {
+  params: { apiKey: secrets.get('stripe-key') },
+});
+```
+
+  </Tab>
+</Tabs>
+
+The difference from a password is where it may land. A password fills only a
+password field, because the browser masks it there. A `secrets` entry fills
+any editable input. An unconfigured name throws `SECRET_UNAVAILABLE`.
+
+### Where the value goes
+
+The agentic form is the one to trust least, so here is the whole path:
+
+1. `agent.act` validates its params before anything is sent. Every `Secret`
+   is replaced with `{ kind: 'secret', name: 'stripe-key', purpose: 'generic-secret' }`.
+   The handle itself holds no value, so there is nothing else to serialize.
+2. The model plans with the placeholder and calls `type_secret` with a field
+   and the name. The runner refuses a name the step's params did not declare,
+   checks the origin against the target's and the secret's `allowedOrigins`,
+   and checks the field is an editable input.
+3. Only then is the plaintext resolved, on the host, and handed straight to
+   the engine's fill. The model and the executor never receive it.
+4. A plain input now shows the value. Every observation, action result,
+   transcript line, trace, and report string is rewritten before the model
+   or the disk sees it: the value, in its raw, JSON, HTML, and URL-encoded
+   forms, becomes `<secret:stripe-key>`. Screenshots and pixel tools are
+   withheld for the rest of the attempt, so nothing reads the field visually.
+
+<Warning>
+**Redaction matches the exact value.** A page that shows a transformed form,
+such as the last four characters of a key, shows a fragment that is not the
+secret, and that fragment passes through. A password field never has this
+problem, because the browser masks it. Fill secrets in a setup test where
+the value is submitted and gone, and assert the outcome, never the value.
+</Warning>
+
+A credential's password is itself the secret of the credential's name, so
+`secrets.get('admin')` and `credentials.user('admin').password` are the same
+handle, and one name cannot appear under both blocks.
+
 ## Several signed-in users
 
 The same flow as several users is one setup test that saves a session per
@@ -241,6 +325,6 @@ persona that needs no sign-in skips the session and the loop: a list pin,
     `test.setup`, `sessions`, and the `session` option.
   </Card>
   <Card title="Config reference" icon="sliders" href="/reference/config#credentials">
-    The `credentials` block.
+    The `credentials` and `secrets` blocks.
   </Card>
 </CardGroup>

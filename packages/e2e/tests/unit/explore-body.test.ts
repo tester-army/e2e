@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AgentError, isAgentError } from '../../src/agent/error.ts';
-import { setCredentialRegistry } from '../../src/credentials.ts';
+import { setSecretRegistry } from '../../src/secrets.ts';
 import { isSecret } from '../../src/locator/screen.ts';
 import { CONSECUTIVE_FAILURE_LIMIT, createExploreBody } from '../../src/explore/body.ts';
 import { ExploreState } from '../../src/explore/state.ts';
@@ -226,7 +226,10 @@ describe('the exploration body', () => {
   });
 
   it('hands the configured credentials to every charter as secrets and tells the planner which accounts exist', async () => {
-    setCredentialRegistry(new Map([['ada', { name: 'ada', username: 'ada@example.test', password: 'bookworm', allowedOrigins: undefined }]]));
+    setSecretRegistry({
+      credentials: new Map([['ada', { name: 'ada', username: 'ada@example.test' }]]),
+      secrets: new Map([['ada', { name: 'ada', purpose: 'password', value: 'bookworm', allowedOrigins: undefined }]]),
+    });
     try {
       const state = new ExploreState('goal', budgets);
       const planInstructions: string[] = [];
@@ -252,7 +255,7 @@ describe('the exploration body', () => {
       expect(isSecret(params.credentials.ada.password)).toBe(true);
       expect(JSON.stringify(params)).not.toContain('bookworm');
     } finally {
-      setCredentialRegistry(undefined);
+      setSecretRegistry(undefined);
     }
   });
 

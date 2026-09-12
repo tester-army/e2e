@@ -41,7 +41,7 @@ import { runUnits } from './scheduler.ts';
 import { buildWorkPlans, plannedSlots, type TargetWorkPlan } from './units.ts';
 import { SessionStore } from './sessions.ts';
 import { childProcessSpawner } from './worker/handle.ts';
-import { setCredentialRegistry } from '../credentials.ts';
+import { setSecretRegistry } from '../secrets.ts';
 import { withAbort } from '../internal/time.ts';
 import type { BuiltinReporter, E2EConfig, FinishedRun, Reporter, ReporterSummary } from '../types.ts';
 import { modelLabel } from '../config/agent.ts';
@@ -399,7 +399,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // `blocked` from the results, and the outcome and the event must agree
     // with the file a host reads afterwards.
     const status = report.run.status;
-    setCredentialRegistry(undefined);
+    setSecretRegistry(undefined);
     emit({
       type: 'run-finished',
       status,
@@ -442,7 +442,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   }
   const config = loaded.config;
 
-  setCredentialRegistry(config.credentials);
+  setSecretRegistry(config);
   emit({
     type: 'run-started',
     runId,
