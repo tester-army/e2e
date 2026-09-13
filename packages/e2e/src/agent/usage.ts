@@ -99,10 +99,15 @@ export const MAX_REASONING_CHARS = 600;
 
 /**
  * The `reasoning` field of one model event, absent when the turn produced
- * none. An excerpt, not the transcript: the report schema caps the field at
- * MAX_REASONING_CHARS.
+ * none. Reasoning is redacted by construction (secrets never reach model
+ * input), but the attempt redactor runs over it anyway, the same defense in
+ * depth `detail` prose gets. An excerpt, not the transcript: the report
+ * schema caps the field at MAX_REASONING_CHARS.
  */
-export function reasoningField(text: string | undefined): Pick<StepEvent, 'reasoning'> {
+export function reasoningField(
+  text: string | undefined,
+  redact: (text: string) => string,
+): Pick<StepEvent, 'reasoning'> {
   const trimmed = text?.trim() ?? '';
-  return trimmed === '' ? {} : { reasoning: bound(trimmed, MAX_REASONING_CHARS) };
+  return trimmed === '' ? {} : { reasoning: bound(redact(trimmed), MAX_REASONING_CHARS) };
 }

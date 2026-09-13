@@ -20,7 +20,7 @@ function runtime(): AgentContext & { steps: StepRecorder } {
       origin: 'test',
     }),
   };
-  return { engine, config: { actionTimeout: 1_000 }, steps: new StepRecorder('attempt') } as unknown as AgentContext & {
+  return { engine, config: { actionTimeout: 1_000 }, steps: new StepRecorder('attempt'), redact: (text: string) => text.replaceAll('s3cret', '[redacted]') } as unknown as AgentContext & {
     steps: StepRecorder;
   };
 }
@@ -72,5 +72,14 @@ describe('step accounting model reasoning', () => {
     expect(events[0]!.reasoning).toBe('closing the modal first');
     expect(events[1]!.reasoning).toBe(`${'x'.repeat(MAX_REASONING_CHARS - 1)}…`);
     expect(events[2]).not.toHaveProperty('reasoning');
+  });
+
+  it('runs the attempt redactor over the reasoning excerpt', async () => {
+    const { accounting, steps } = accountingWithSteps();
+    await steps.run('agent', 'agent.act', 'probe', async () => {
+      accounting.recordModelCall({ inputTokens: 1, outputTokens: 1, reasoning: 'the field held s3cret' });
+    });
+    const event = steps.all()[0]!.events.find((candidate) => candidate.kind === 'model');
+    expect(event?.reasoning).toBe('the field held [redacted]');
   });
 });

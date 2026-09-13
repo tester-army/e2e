@@ -167,7 +167,7 @@ export class StepAccounting {
       name: 'executor',
       count: tokens,
       ...tokenFields(usage),
-      ...reasoningField(usage?.reasoning),
+      ...reasoningField(usage?.reasoning, this.runtime.redact),
     });
     this.runtime.debug?.record('agent.model', Math.max(0, Math.round(usage?.durationMs ?? 0)));
     this.countModelCall();

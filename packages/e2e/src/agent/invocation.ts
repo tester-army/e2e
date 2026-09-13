@@ -353,7 +353,7 @@ export class Invocation {
           (generated) => ({
             count: this.usage.record(generated.usage),
             ...tokenFields(generated.usage),
-            ...reasoningField(generated.reasoning),
+            ...reasoningField(generated.reasoning, this.runtime.redact),
           }),
         );
         return result.value;

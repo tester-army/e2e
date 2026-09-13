@@ -209,8 +209,8 @@ export interface ExecutorModelCall {
   readonly estimatedCostUsd?: number;
   /**
    * The model's own reasoning for the turn, when it produced one. Reported so
-   * the step's `model` event can show why the model acted; the harness bounds
-   * the excerpt, and the AI trace keeps the full text.
+   * the step's `model` event can show why the model acted; the harness
+   * redacts and bounds the excerpt, and the AI trace keeps the full text.
    */
   readonly reasoning?: string;
 }
