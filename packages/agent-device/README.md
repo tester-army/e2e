@@ -146,4 +146,4 @@ through a deterministic `screen` action in a setup step instead.
 
 ## Documentation
 
-Full documentation lives at [e2e.mintlify.app](https://e2e.mintlify.app).
+Full documentation lives at [docs.e2e.army](https://docs.e2e.army).
