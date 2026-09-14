@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { dependencyRange } from '../../src/cli/init/engines.ts';
 
 // Use the built modules, just as config and test imports use the installed packages.
 const loaderModule = '../../dist/config/load.js';
@@ -142,7 +143,7 @@ describe('initializing standalone projects', () => {
       expect(stdout).toContain('1 passed');
       const manifest = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'));
       const playwrightVersion = (JSON.parse(readFileSync(path.resolve(PACKAGE_ROOT, '..', 'playwright', 'package.json'), 'utf8')) as { version: string }).version;
-      expect(manifest.devDependencies['@e2edev/playwright']).toBe(`^${playwrightVersion}`);
+      expect(manifest.devDependencies['@e2edev/playwright']).toBe(dependencyRange(playwrightVersion));
       const recorded = JSON.parse(readFileSync(path.join(PACKAGE_ROOT, 'dist', 'cli', 'init', 'engine-versions.json'), 'utf8')) as Record<string, string>;
       expect(Object.keys(recorded).toSorted()).toEqual(['@e2edev/agent-device', '@e2edev/playwright', 'playwright']);
       expect(manifest.devDependencies.playwright).toBe(`^${recorded.playwright}`);

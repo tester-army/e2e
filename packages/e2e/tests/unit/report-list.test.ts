@@ -233,7 +233,8 @@ describe('ListReporter', () => {
   it('prints a RUN banner with the version, root, run id, targets, and CI marker', () => {
     const { lines, output } = capture();
     plainReporter(output).handle(runStarted({ targets: ['chromium', 'firefox'], ci: true }));
-    expect(lines[1]).toMatch(/^ RUN {2}e2e v\d+\.\d+\.\d+ \/project$/);
+    // The version is whatever the package carries: a stable tuple or a canary prerelease.
+    expect(lines[1]).toMatch(/^ RUN {2}e2e v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)? \/project$/);
     expect(lines[2]).toContain('run run-1');
     expect(lines[2]).toContain('targets: chromium, firefox');
     expect(lines[2]).toContain('CI');

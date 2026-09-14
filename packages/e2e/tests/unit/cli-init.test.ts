@@ -5,6 +5,7 @@ import path from 'node:path';
 import * as clack from '@clack/prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { init } from '../../src/cli/init.ts';
+import { dependencyRange } from '../../src/cli/init/engines.ts';
 import { readSkillFiles } from '../../src/cli/skill.ts';
 
 vi.mock('@clack/prompts', { spy: true });
@@ -54,10 +55,12 @@ afterEach(() => {
 describe('e2e init', () => {
   it('adds the runner, Playwright, and AI with --yes and does not install or prompt', async () => {
     expect(await init(dir, { yes: true })).toBe(0);
+    // The runner pins itself the way it pins engines: a caret on a stable version, exact on a canary.
+    const runnerVersion = (JSON.parse(readFileSync(path.resolve(import.meta.dirname, '../../package.json'), 'utf8')) as { version: string }).version;
     expect(JSON.parse(read('package.json'))).toEqual({
       private: true,
       type: 'module',
-      devDependencies: { 'e2e': expect.stringMatching(/^\^\d+\.\d+\.\d+/), '@e2edev/playwright': '0.x', playwright: '^1', ai: '^7.0.0' },
+      devDependencies: { 'e2e': dependencyRange(runnerVersion), '@e2edev/playwright': '0.x', playwright: '^1', ai: '^7.0.0' },
       scripts: { 'test:e2e': 'e2e run' },
     });
     expect(read('e2e.config.ts')).toContain('agents: {\n    default: createAgent({');
