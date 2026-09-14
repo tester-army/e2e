@@ -511,6 +511,35 @@ describe('observation', () => {
     expect([...walk(snapshot.root)]).toHaveLength(10);
   });
 
+  it('asks once more for a snapshot the runner restart could not deliver', async () => {
+    const h = harness();
+    let calls = 0;
+    h.fake.respond('capture.snapshot', () => {
+      calls += 1;
+      if (calls === 1) {
+        throw new AppError(
+          'COMMAND_FAILED',
+          'iOS runner was already restarted during this request and "snapshot" still failed, so agent-device stopped instead of paying for another runner boot.',
+        );
+      }
+      return SETTINGS_SNAPSHOT;
+    });
+    await openAttempt(h);
+    const snapshot = await h.engine.observe!(operation());
+    expect(calls).toBe(2);
+    expect([...walk(snapshot.root)]).toHaveLength(10);
+  });
+
+  it('fails a snapshot the runner cannot deliver twice after a restart', async () => {
+    const h = harness();
+    h.fake.respond('capture.snapshot', () => {
+      throw new AppError('COMMAND_FAILED', 'iOS runner was already restarted during this request and "snapshot" still failed');
+    });
+    await openAttempt(h);
+    await expect(h.engine.observe!(operation())).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
+    expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(2);
+  });
+
   it('is an empty screen before any app is open when no app is pinned, and a fault when one is', async () => {
     const free = harness({}, false);
     free.fake.respond('capture.snapshot', () => {

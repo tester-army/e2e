@@ -36,7 +36,7 @@ import {
   type ViewportPoint,
   ConfigurationError,
 } from 'e2e/engine';
-import { runCommand, staleOr } from './errors.ts';
+import { runCommand, runnerRestarted, staleOr } from './errors.ts';
 import { resolveExpression } from './locate.ts';
 import {
   isWithin,
@@ -157,6 +157,15 @@ interface Recording {
  * returning the sparse tree costs the model a confused turn.
  */
 const SPARSE_RETRY_BACKOFF_MS = [0, 1_200, 3_000] as const;
+
+/**
+ * A snapshot the runner could not deliver even after agent-device restarted
+ * it mid-request, on a screen whose accessibility tree is slow (a live feed
+ * re-rendering under the walk), gets one more request after this pause: the
+ * next request may restart the runner again, and the screen has had time
+ * to settle.
+ */
+const RUNNER_RESTART_RETRY_MS = 2_000;
 
 /** Number of parent hops from `entry` up to `ancestor`. */
 function depthBelow(entry: ProjectedNode, ancestor: ProjectedNode): number {
@@ -466,17 +475,30 @@ export class AgentDeviceSurface {
     for (const backoffMs of SPARSE_RETRY_BACKOFF_MS) {
       if (backoffMs > 0) await sleep(backoffMs, operation.signal);
       if (operation.signal.aborted) throw new EngineError('CANCELLED', 'snapshot cancelled', { retryable: false });
-      last = (await this.command(
-        'snapshot',
-        (client) => client.capture.snapshot({ interactiveOnly }),
-        operation.signal,
-      )) as RawSnapshot;
+      last = await this.snapshotOnce(operation, interactiveOnly);
       if (last.appBundleId !== undefined || last.appName !== undefined) {
         this.appIdentity = last.appBundleId ?? last.appName;
       }
       if (last.snapshotQuality?.state !== 'sparse') return last;
     }
     return last;
+  }
+
+  /** One snapshot request, repeated once when the runner restarted under it. */
+  private async snapshotOnce(operation: OperationContext, interactiveOnly: boolean): Promise<RawSnapshot> {
+    const request = (): Promise<RawSnapshot> =>
+      this.command(
+        'snapshot',
+        (client) => client.capture.snapshot({ interactiveOnly }),
+        operation.signal,
+      ) as Promise<RawSnapshot>;
+    try {
+      return await request();
+    } catch (cause) {
+      if (!runnerRestarted(cause)) throw cause;
+      await sleep(RUNNER_RESTART_RETRY_MS, operation.signal);
+      return await request();
+    }
   }
 
   /**

@@ -37,6 +37,7 @@ const NO_SESSION_PATTERN = /no active (?:app )?session|session\b.*\bnot found|op
 const UNSUPPORTED_CODES = new Set(['UNSUPPORTED_OPERATION', 'NOT_IMPLEMENTED', 'UNSUPPORTED_PLATFORM']);
 const UNSUPPORTED_PATTERN = /\b(?:is )?not supported\b|\bunsupported\b/i;
 const TIMEOUT_PATTERN = /\btimed?\s?out\b/i;
+const RUNNER_RESTARTED_PATTERN = /\brunner was already restarted\b/i;
 const STALE_PATTERN =
   /\bref\b.*\b(?:not found|unknown|stale|no longer|expired|invalid|missing)|\b(?:not found|unknown|stale|no longer|expired|invalid|missing)\b.*\bref\b|refs?generation/i;
 
@@ -55,6 +56,16 @@ export function translateError(cause: unknown, operation: string): Error {
   }
   if (TIMEOUT_PATTERN.test(normalized.message)) return new EngineError('OPERATION_TIMEOUT', text, options);
   return new EngineError('ENGINE_FAILURE', text, options);
+}
+
+/**
+ * True when agent-device gave up on a command after restarting its iOS
+ * runner mid-request: the runner is back, the app's accessibility tree was
+ * still too slow for it. One more request gets one more restart, so a
+ * caller that can afford a pause may try again.
+ */
+export function runnerRestarted(cause: unknown): boolean {
+  return RUNNER_RESTARTED_PATTERN.test(message(cause));
 }
 
 /**
