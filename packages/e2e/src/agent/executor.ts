@@ -84,8 +84,8 @@ export interface ExecutorObserveOptions {
   /**
    * Include masked viewport pixels as `pixels`. Granted only when the engine
    * captures pixels, its masking is proven, and no secret has been filled in
-   * this attempt; otherwise `pixelsWithheld` names the reason. Defaults to
-   * the step's `vision`: off at `false`, on at `true`, forced at `'only'`.
+   * this attempt, and the step's `vision` allows them; otherwise
+   * `pixelsWithheld` names the reason. Forced at `vision: 'only'`.
    */
   readonly pixels?: boolean;
 }
@@ -374,12 +374,12 @@ export interface StepExecutorContext {
    */
   readonly pixelsTainted: boolean;
   /**
-   * What the step asked to see. `false`: the tree, with pixels on request.
-   * `true`: pixels wanted from the first turn; `observe()` captures them
-   * unless asked not to. `'only'`: the harness withholds the tree from every
-   * observation (`text` is empty, no `tree`), always captures pixels, and
-   * fails the observation with `POLICY_DENIED` when pixels cannot leave the
-   * runner, because the executor has nothing else to act on.
+   * What the step asked to see. `true` (the default): the tree, with pixels
+   * when a look asks for them. `false`: the tree alone; a look that asks for
+   * pixels gets `pixelsWithheld`. `'only'`: the harness withholds the tree
+   * from every observation (`text` is empty, no `tree`), always captures
+   * pixels, and fails the observation with `POLICY_DENIED` when pixels
+   * cannot leave the runner, because the executor has nothing else to act on.
    */
   readonly vision: VisionMode;
   /**

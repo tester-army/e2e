@@ -45,7 +45,7 @@ test('refuses a pixels-only step on a tainted viewport', async ({ app, agent, sc
   await agent.act('note the page', { vision: 'only' });
 });
 
-test('opens an ordinary page in pixel mode with vision true', async ({ app, agent }) => {
+test('opens an ordinary page tree-only with pixel tools on offer under vision true', async ({ app, agent }) => {
   await app.open('/');
   await agent.act('note the home page', { vision: true });
 });
@@ -283,16 +283,16 @@ describe('agent.act with vision only', () => {
     expect(second!.lastToolResult).toContain('nothing that takes keystrokes has focus: the typed text would reach no field');
   });
 
-  it('opens an ordinary page with the tree and a screenshot under vision true', () => {
-    expect(resultByTitle(outcome, 'opens an ordinary page in pixel mode with vision true').status).toBe('passed');
+  it('opens an ordinary page tree-only under vision true, with screenshot and tap_at on offer', () => {
+    expect(resultByTitle(outcome, 'opens an ordinary page tree-only with pixel tools on offer under vision true').status).toBe('passed');
     const [first] = turnsOf('note the home page');
     expect(first!.prompt).toMatch(/#n\d+ button "Increment"/);
-    expect(first!.prompt).toContain('Screenshot attached: 768 by 432 pixels');
+    expect(first!.prompt).not.toContain('Screenshot attached');
     expect(first!.toolNames).toContain('tap');
     expect(first!.toolNames).toContain('tap_at');
     expect(first!.toolNames).toContain('screenshot');
-    const step = stepOf('opens an ordinary page in pixel mode with vision true');
-    expect(step.visionInput).toBe(true);
+    const step = stepOf('opens an ordinary page tree-only with pixel tools on offer under vision true');
+    expect(step.visionInput).toBeUndefined();
     expect(step.visionOnly).toBeUndefined();
   });
 });

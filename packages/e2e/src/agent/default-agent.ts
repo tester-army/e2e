@@ -123,15 +123,15 @@ export function createAgent(options: CreateAgentOptions = {}): DefaultAgent {
       ...createGrammarTools(context, { guard: helpers.guard, screen: presenterFor(context) }),
     }),
     buildPrompt: async (context) => {
-      // `vision: true` and `'only'` open in pixel mode; the feed captures for
-      // them by default. Otherwise the opening look is tree-only, unless no
-      // listed interactive node exists at all: then the opening prompt
-      // carries a screenshot, because the tree describes a canvas, a game, or
-      // a semantics-free native screen too poorly to act on, and the model
+      // `'only'` opens on pixels; the feed captures for it. Otherwise the
+      // opening look is tree-only, unless pixels are allowed and no listed
+      // interactive node exists at all: then the opening prompt carries a
+      // screenshot, because the tree describes a canvas, a game, or a
+      // semantics-free native screen too poorly to act on, and the model
       // would only spend a turn asking for one. One listed control is enough
       // to leave the decision to the model; a small page is not a blind one.
       let observation = await context.observe();
-      if (context.vision === false && !context.pixelsTainted && interactiveNodeCount(observation) === 0) {
+      if (context.vision === true && !context.pixelsTainted && interactiveNodeCount(observation) === 0) {
         observation = await context.observe({ pixels: true });
       }
       const parts = [

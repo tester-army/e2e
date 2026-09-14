@@ -396,12 +396,13 @@ export function createGrammarTools(
       execute: ({ url }) => acting(`Navigated to ${url}.`, () => context.actions.navigate(url)),
     });
   }
-  // The pixel verbs are offered while pixels can still leave the runner. Once
-  // a secret was filled in the attempt they could only decline, and a verb
-  // that is absent costs the model nothing where one that declines costs a
-  // turn. tap_at lands either as a tap by id or as a bare point, so it needs
-  // one of the two; screenshot needs only the observation every step has.
-  if (!context.pixelsTainted) {
+  // The pixel verbs are offered while pixels can still leave the runner and
+  // the step allows them. Once a secret was filled in the attempt they could
+  // only decline, and a verb that is absent costs the model nothing where one
+  // that declines costs a turn. tap_at lands either as a tap by id or as a
+  // bare point, so it needs one of the two; screenshot needs only the
+  // observation every step has.
+  if (!context.pixelsTainted && context.vision !== false) {
     tools['screenshot'] = screenTool({
       description:
         'Attach a screenshot of the current viewport. Use it when the screen lists too little to act on (a canvas, a map, an image, a game, a system sheet) or contradicts what you expect. From then on every action result carries a fresh screenshot too, so you can see what each action did.',

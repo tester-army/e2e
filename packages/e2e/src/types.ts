@@ -124,9 +124,10 @@ export type AgentParams = Readonly<Record<string, AgentParam>>;
  * has nothing to degrade to, so it fails with `POLICY_DENIED` instead of
  * answering the wrong question from the tree.
  *
- * On `act` the same three values shape the executor's view. `true` opens the
- * step in pixel mode: the first screen and every action result carry a
- * screenshot next to the tree. `'only'` withholds the tree from the executor
+ * On `act` the same three values shape the executor's view. `true`, the
+ * default, offers the model `screenshot` and `tap_at`: it looks at pixels
+ * when the tree lacks what it needs, and nothing is attached unasked. `false`
+ * offers no pixel tools at all. `'only'` withholds the tree from the executor
  * for the whole step and gives the model a point-addressed vocabulary
  * (`tap_at`, `type_at`, `press_at`, `select_at`, `scroll`); it refuses a step
  * that declares a secret, because a fill would taint the only evidence.
@@ -135,10 +136,11 @@ export type VisionMode = boolean | 'only';
 
 export interface VisionOption {
   /**
-   * What the model is shown; defaults to the agent's `vision`, `true`. On a
-   * judgment: the tree, the tree with a masked screenshot, or the screenshot
-   * alone. On `act`: the tree with pixel tools on demand, pixel mode from the
-   * first turn, or pixels alone with a point-addressed vocabulary.
+   * What the model is shown; defaults to the agent's `vision`. On a judgment
+   * (default `false`): the tree, the tree with a masked screenshot, or the
+   * screenshot alone. On `act` (default `true`): the tree with no pixel
+   * tools, the tree with pixel tools on demand, or pixels alone with a
+   * point-addressed vocabulary.
    */
   vision?: VisionMode;
 }
@@ -916,7 +918,7 @@ export interface AgentConfig {
   maxObservationBytes?: number;
   /** Trusted project context prepended to agent prompts, at most `limits.maxAgentContextBytes`. */
   context?: string;
-  /** Project-wide default for the per-call `vision` option; `true` unless set. `false` opts out of pixels, `'only'` drops the tree. */
+  /** Project-wide default for the per-call `vision` option. Unset, `act` behaves as `true` (pixel tools on demand) and judgments as `false` (tree alone). */
   vision?: VisionMode;
   /** Provider options every model call carries, e.g. a reasoning effort. */
   providerOptions?: ProviderOptions;

@@ -88,7 +88,8 @@ on pixel mode, where every action result carries a fresh screenshot; `tap_at`
 taps a point in the latest screenshot (a canvas shape, a map pin, an image
 region, a control in a system sheet), hit-tested against the tree first so a
 listed control is tapped by id. A screen with nothing to tap by id opens with
-a screenshot already attached. `vision: true` opens every step in pixel mode.
+a screenshot already attached. That is `vision: true`, the default for `act`;
+`vision: false` withholds both pixel tools.
 On an engine with a keyboard (browser and device), `type` and `press` also
 take no target and reach whatever has focus: `tap_at` a field the tree does
 not list, then `type` without a target; a device adds `dismiss_keyboard`.
@@ -133,9 +134,9 @@ expect(data.titles).toContain('Buy milk');
   gets one repair round, then `MODEL_OUTPUT_INVALID`.
 - Judgments are never cached and always read a fresh observation.
 
-`vision` on a judgment controls the evidence: `true` (the default) the tree
-plus a masked screenshot; `false` the semantic tree alone, cheaper; `'only'`
-the screenshot alone. Use `'only'` for a question about what the screen presents (an
+`vision` on a judgment controls the evidence: `false` (the default) the
+semantic tree; `true` the tree plus a masked screenshot; `'only'` the
+screenshot alone. Use `'only'` for a question about what the screen presents (an
 overlay, a broken layout, a chart), because the tree would otherwise answer
 first. Pixels show the viewport only and are withheld once a secret was
 filled in the attempt.

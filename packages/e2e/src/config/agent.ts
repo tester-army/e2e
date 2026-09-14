@@ -60,8 +60,13 @@ export interface ResolvedAgentConfig {
   readonly timeout: number;
   readonly maxObservationBytes: number;
   readonly context: string | undefined;
-  /** Default for the per-call `vision` option, `true` unless configured; a per-call value always wins. */
-  readonly vision: VisionMode;
+  /**
+   * Default for the per-call `vision` option, when configured. Unset, each
+   * tier applies its own: `act` behaves as `true` (pixel tools on demand),
+   * a judgment as `false` (the tree alone), because a judgment has no tool
+   * to ask for pixels with and attaching them to every call is a cost.
+   */
+  readonly vision: VisionMode | undefined;
   /**
    * Provider options sent with every model call, judgments included. This is
    * how a reasoning model's effort is lowered project-wide; an executor that
@@ -171,8 +176,8 @@ export function resolveAgentConfig(
 
 
   const context = resolveContext(agent?.context, limits.maxAgentContextBytes, label);
-  const vision = agent?.vision ?? true;
-  if (!isVisionMode(vision)) {
+  const vision = agent?.vision;
+  if (vision !== undefined && !isVisionMode(vision)) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
       `${label}.vision must be true, false, or 'only'`,

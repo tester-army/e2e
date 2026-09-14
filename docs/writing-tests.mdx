@@ -111,14 +111,13 @@ survives a model swap; `toBe('Pro plan')` does not.
 
 ### Judging pixels
 
-The model reads a redacted text snapshot of the screen (roles, names, text,
-states) and, by default, a masked screenshot next to it, so a chart or a
-layout is judged from what is drawn. `vision: false` judges the snapshot
-alone and saves the image tokens; `vision: 'only'` judges the screenshot
-alone.
+The model reads a redacted text snapshot of the screen: roles, names, text,
+states. Add `vision: true` when the answer lives in pixels the snapshot cannot
+describe, such as a chart or a layout, or `vision: 'only'` to judge the
+screenshot alone.
 
 ```ts
-await agent.assert('the todo count reads 1 remaining', { vision: false });
+await agent.assert('the chart trends upward', { vision: true });
 await agent.assert('the search form is not covered by a banner', { vision: 'only' });
 ```
 

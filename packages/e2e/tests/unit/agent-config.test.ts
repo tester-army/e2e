@@ -40,7 +40,7 @@ describe('agent config defaults', () => {
     expect(config.agent.maxObservationBytes).toBe(262_144);
     expect(config.agent.model).toBeUndefined();
     expect(config.agent.context).toBeUndefined();
-    expect(config.agent.vision).toBe(true);
+    expect(config.agent.vision).toBeUndefined();
   });
 
   it('accepts every vision mode as a project default and rejects anything else', () => {

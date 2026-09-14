@@ -33,7 +33,7 @@ test('pixels-only act drives a marked-up todo page through points', async ({ web
   await expect(screen.getByText('Walk the dog')).toBeVisible();
 });
 
-test('pixel-mode act (vision true) picks a canvas pin without asking for a screenshot', async ({ web, agent, screen }) => {
+test('act with pixel tools on offer (vision true) picks a canvas pin; the bare canvas opens with a screenshot', async ({ web, agent, screen }) => {
   await web.goto('/canvas');
   await agent.act('pick the red pin on the map', { vision: true });
   await expect(screen.getByRole('status')).toHaveText('picked the red pin');
