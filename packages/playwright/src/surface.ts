@@ -834,7 +834,7 @@ export class PlaywrightSurface {
     });
   }
 
-  /** Coordinate and root actions must not use the screen captured before a transport drop. */
+  /** Observation-derived actions must not use the screen captured before a transport drop. */
   private requireObservation(): void {
     if (this.needsObservation) {
       throw new EngineError('NODE_STALE', 'observe the screen again after CDP recovery before acting', { retryable: true });

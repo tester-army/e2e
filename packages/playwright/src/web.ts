@@ -186,7 +186,11 @@ export interface Web extends Expectable<WebExpectation> {
     /** Types plain text. */
     type(text: string): Promise<void>;
   };
-  /** Viewport-level pointer. */
+  /**
+   * Direct pointer input from test code, independent of agent observations.
+   * After CDP recovery, test code can read current geometry with `evaluate`
+   * before starting a pointer sequence.
+   */
   readonly mouse: {
     /** Moves the pointer. */
     move(x: number, y: number): Promise<void>;

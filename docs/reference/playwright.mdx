@@ -103,9 +103,14 @@ ID and the original page's target ID. It refuses browsers that do not expose
 the default context ID. A missing page or a different context fails the attempt.
 A URL match is insufficient to select a replacement tab.
 
-Recovery clears old node references and requires a new observation before
-coordinate or root actions. It preserves the page's unsaved state, storage,
-the attempt's secret taint, and the agent ledger. Operations already dispatched
+Recovery clears old node references. Observation-derived `tapAt` calls and
+observation-root swipes require a fresh engine observation before they resume.
+The deterministic `web.mouse` fixture remains available without an agent
+observation. Test code owns its coordinates and can read current geometry with
+`web.evaluate` before starting a pointer sequence.
+
+Recovery preserves the page's unsaved state, storage, the attempt's secret
+taint, and the agent ledger. Operations already dispatched
 are never retried. Dialog and route handlers are reattached. Video and trace
 recording resume, but a segment lost during the disconnect cannot be recovered.
 Code using `surfaceOf(engine)` must read its accessors again after recovery;
@@ -182,7 +187,11 @@ export interface Web extends Expectable<WebExpectation> {
     /** Types plain text. */
     type(text: string): Promise<void>;
   };
-  /** Viewport-level pointer. */
+  /**
+   * Direct pointer input from test code, independent of agent observations.
+   * After CDP recovery, test code can read current geometry with `evaluate`
+   * before starting a pointer sequence.
+   */
   readonly mouse: {
     /** Moves the pointer. */
     move(x: number, y: number): Promise<void>;

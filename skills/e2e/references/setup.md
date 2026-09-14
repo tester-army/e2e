@@ -126,11 +126,15 @@ process, and identity. `playwright()` accepts:
 | `basicAuth` | `{ username, password }` answering a `401` challenge. |
 
 CDP recovery never repeats a dispatched operation. The host owns remote browser
-cleanup. Persistent recovery requires the default context's CDP identity and a
-new observation before coordinate or root actions after reconnect. It does not
-support `headers`, `basicAuth`, context reset, or session state capture and
-restore. Without `reconnectEndpoint`, contexts remain isolated and a dropped
-connection is reacquired only at the next attempt start.
+cleanup. Persistent recovery requires the default context's CDP identity.
+Observation-derived `tapAt` calls and observation-root swipes need a fresh
+engine observation after reconnect. Deterministic `web.mouse` calls use
+test-supplied coordinates without an agent observation; test code can read
+current geometry with `web.evaluate` before starting a pointer sequence.
+Persistent recovery does not support `headers`, `basicAuth`, context reset,
+or session state capture and restore. Without `reconnectEndpoint`, contexts
+remain isolated and a dropped connection is reacquired only at the next attempt
+start.
 
 Two browsers are two targets sharing one app declaration:
 

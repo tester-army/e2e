@@ -342,4 +342,50 @@ describe('CDP session recovery', () => {
     const failure = new Error('test trigger failed');
     await expect(webOf(engine).waitForDownload(async () => { throw failure; })).rejects.toBe(failure);
   });
+
+  it('allows direct test-code mouse input using current geometry while observation-derived taps stay stale', async () => {
+    const remote = await host();
+    let reconnected = 0;
+    const engine = await start({
+      cdpEndpoint: () => remote.endpoint,
+      reconnectEndpoint: () => { reconnected += 1; return remote.endpoint; },
+    });
+    const original = surfaceOf(engine)!.page();
+    await original.evaluate(() => {
+      const button = document.createElement('button');
+      button.id = 'pointer-target';
+      button.textContent = 'Count';
+      button.style.cssText = 'position:fixed;left:20px;top:200px;width:120px;height:50px';
+      button.addEventListener('click', () => {
+        document.body.dataset['clicks'] = String(Number(document.body.dataset['clicks'] ?? 0) + 1);
+      });
+      document.addEventListener('wheel', (event) => {
+        document.body.dataset['wheel'] = String(event.deltaY);
+        event.preventDefault();
+      }, { passive: false });
+      document.body.append(button);
+    });
+    await engine.observe!(operation());
+    await original.locator('#pointer-target').evaluate((button) => { (button as HTMLElement).style.left = '260px'; });
+    await original.context().browser()!.close();
+
+    const web = webOf(engine);
+    const point = await web.evaluate(() => {
+      const bounds = document.querySelector('#pointer-target')!.getBoundingClientRect();
+      return { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
+    });
+    expect(point.x).toBe(320);
+    expect(reconnected).toBe(1);
+    await web.mouse.move(point.x, point.y);
+    await web.mouse.down();
+    await web.mouse.up();
+    await web.mouse.wheel(0, 25);
+    await expect.poll(() => web.evaluate(() => document.body.dataset['wheel'] ?? null)).toBe('25');
+    expect(await web.evaluate(() => document.body.dataset['clicks'] ?? null)).toBe('1');
+
+    await expect(engine.tapAt!(point, operation())).rejects.toMatchObject({ code: 'NODE_STALE' });
+    await engine.observe!(operation());
+    await engine.tapAt!(point, operation());
+    expect(await web.evaluate(() => document.body.dataset['clicks'] ?? null)).toBe('2');
+  });
 });
