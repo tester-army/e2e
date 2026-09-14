@@ -7,12 +7,21 @@
  * offers it on a browser.
  */
 
-import { tool } from 'ai';
+import type { Tool } from 'ai';
 import { z } from 'zod';
 import { defineTool, type DefinedTool, type ToolAnnotations } from 'e2e/agent';
 import { EngineError, type EngineHandle } from 'e2e/engine';
 import { surfaceOf } from './engine.ts';
 import type { AgentDeviceSurface } from './surface.ts';
+
+/**
+ * Types a tool the way the SDK's `tool()` does, without importing it: `ai`
+ * is an optional peer dependency, and this module loads with the project's
+ * config, so it must not need the package at run time.
+ */
+function deviceTool<INPUT>(definition: Tool<INPUT, string>): Tool<INPUT, string> {
+  return definition;
+}
 
 function requireSurface(engine: EngineHandle): AgentDeviceSurface {
   const surface = surfaceOf(engine);
@@ -63,7 +72,7 @@ export function agentDeviceTools(
 
   return {
     open_app: defineTool(
-      tool({
+      deviceTool({
         description:
           'Open an app by bundle id, package, or display name (e.g. "Settings"), bringing it to the foreground. Set relaunch to restart it fresh.',
         inputSchema: z.object({ app: z.string().min(1), relaunch: z.boolean().optional() }),
@@ -75,7 +84,7 @@ export function agentDeviceTools(
       annotate(true),
     ),
     swipe: defineTool(
-      tool({
+      deviceTool({
         description:
           'Swipe from one screen point to another in logical pixels, e.g. to reveal a row action (swipe the row far left) or to dismiss a sheet.',
         inputSchema: z.object({
@@ -90,7 +99,7 @@ export function agentDeviceTools(
       annotate(true),
     ),
     type_text: defineTool(
-      tool({
+      deviceTool({
         description:
           'Type text into whatever field currently has keyboard focus, then optionally press Return. Use only when the focused field is missing from the observation (some editors hide it); otherwise use the type verb on a node.',
         inputSchema: z.object({ text: z.string().min(1), submit: z.boolean().optional() }),
@@ -106,7 +115,7 @@ export function agentDeviceTools(
       annotate(true),
     ),
     alert: defineTool(
-      tool({
+      deviceTool({
         description: 'Accept or dismiss a visible system alert or permission prompt.',
         inputSchema: z.object({ action: z.enum(['accept', 'dismiss']) }),
         execute: async ({ action }, options) => {
