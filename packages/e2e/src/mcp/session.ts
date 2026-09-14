@@ -11,6 +11,7 @@
 
 import path from 'node:path';
 import { z } from 'zod';
+import { loadAiSdk } from '../agent/ai-sdk.ts';
 import { openInteractiveStep, type InteractiveStep } from '../agent/interactive-step.ts';
 import { ScreenPresenter } from '../agent/screen-update.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
@@ -137,6 +138,10 @@ export class SessionHost {
   }
 
   private async openSession(options: OpenSessionOptions): Promise<string> {
+    // The catalog reads the tools' schemas through the AI SDK, synchronously
+    // and on every render, so the optional SDK is loaded once here: a project
+    // without it learns so before an attempt opens a browser.
+    await loadAiSdk();
     // A session is its own run: a URL declared with port 0 gets a port here.
     const config = await allocateAppPorts(await this.options.loadConfig(options.config));
     const target = this.resolveTarget(config, options.target);

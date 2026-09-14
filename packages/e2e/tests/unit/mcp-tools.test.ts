@@ -1,10 +1,14 @@
 import type { Tool, ToolSet } from 'ai';
 import { z } from 'zod';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { loadAiSdk } from '../../src/agent/ai-sdk.ts';
 import { TestError } from '../../src/internal/errors.ts';
 import { catalogLine, describeToolDetail, errorResult, invokeTool, resultFromOutput, toolJsonSchema } from '../../src/mcp/tools.ts';
 
 const extra = { signal: new AbortController().signal };
+
+// The catalog renders synchronously off the loaded SDK, as it does after the session host primes it.
+beforeAll(() => loadAiSdk());
 
 const tap: ToolSet[string] = {
   description: 'Tap or click one node. The result waits for the effect and reports what changed.',

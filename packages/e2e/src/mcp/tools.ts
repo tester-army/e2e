@@ -7,10 +7,16 @@
  * the same descriptions and schemas the testing agent reads, and `call`
  * validates the arguments against the schema, runs the tool, and renders its
  * output in the MCP result envelope.
+ *
+ * The schemas are read through the AI SDK's `asSchema`, and the SDK is an
+ * optional peer dependency: this module reaches it only through the lazy
+ * loader, never a static import, since the CLI loads this module for every
+ * command and `e2e init` runs before `ai` is installed.
  */
 
-import { asSchema, type JSONSchema7, type Tool, type ToolExecutionOptions, type ToolSet } from 'ai';
+import type { JSONSchema7, Tool, ToolExecutionOptions, ToolSet } from 'ai';
 import type { z } from 'zod';
+import { aiSdk, loadAiSdk } from '../agent/ai-sdk.ts';
 import { ConfigurationError, errorMessage, E2EError, isForeignE2EError } from '../internal/errors.ts';
 
 /** One MCP content part this server emits. */
@@ -66,10 +72,11 @@ const CATALOG_SENTENCE_MAX = 160;
  * The JSON Schema of a tool's arguments, without the draft marker clients
  * never need. A zod schema converts synchronously; a schema that only
  * resolves lazily is shown as an open object rather than awaited, since the
- * catalog is rendered inline.
+ * catalog is rendered inline. Synchronous, so the session that renders the
+ * catalog has loaded the SDK first.
  */
 export function toolJsonSchema(tool: ToolSet[string]): JSONSchema7 {
-  const raw = asSchema(tool.inputSchema).jsonSchema;
+  const raw = aiSdk().asSchema(tool.inputSchema).jsonSchema;
   if (typeof (raw as PromiseLike<JSONSchema7>).then === 'function') return { type: 'object' };
   const { $schema: _draft, ...schema } = raw as JSONSchema7;
   return schema;
@@ -141,6 +148,7 @@ export async function invokeTool(
 }
 
 async function validateArgs(name: string, tool: ToolSet[string], args: Record<string, unknown>): Promise<unknown> {
+  const { asSchema } = await loadAiSdk();
   const schema = asSchema(tool.inputSchema);
   if (schema.validate === undefined) return args;
   const result = await schema.validate(args);
