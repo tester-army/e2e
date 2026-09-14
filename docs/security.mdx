@@ -165,14 +165,19 @@ A cache entry replays recorded actions without a model call, so a bad entry
 is a bad test, not a compromise of the runner. The design keeps it that way.
 
 - An entry holds grammar actions with durable target descriptors and the
-  verbatim typed input, never model output and never a secret value. A
-  `typeSecret` action names the secret; replay authorizes the fill again.
+  verbatim typed input, plus the model's verdict summary, redacted and
+  capped. Replay executes the actions, never the summary; the summary only
+  stands in as prior-step context for later steps. No secret value is ever
+  stored. A `typeSecret` action names the secret; replay authorizes the fill
+  again.
 - Files are named by the SHA-256 of the key the reader just computed, so the
   reader cannot be steered to another path, and a file over 1 MiB is refused
   before it is read.
 - A document the runner cannot replay verbatim is a miss, never a repaired
-  entry and never an error. An entry implicated in a failed attempt is
-  evicted.
+  entry and never an error. In `read-write` mode an entry implicated in a
+  failed attempt is evicted, when the store supports deletion; `read-only`
+  never writes or deletes, so a stale entry stays until the next confirmed
+  write.
 - There is no signature. `e2e init` writes `.e2e/cache/` to `.gitignore`, and
   in CI an unset cache mode runs `read-only`, because a committed cache is
   untrusted input. If you [commit your traces](/cache#commit-your-traces),
@@ -180,7 +185,9 @@ is a bad test, not a compromise of the runner. The design keeps it that way.
 
 ## Artifacts and logs
 
-Everything a run writes lands under `.e2e/`.
+By default everything a run writes lands under `.e2e/`. The `--artifacts`
+flag moves the artifact root, and `command.log` is whatever project-relative
+path you configure.
 
 | Path | Contents | Redaction |
 | --- | --- | --- |
