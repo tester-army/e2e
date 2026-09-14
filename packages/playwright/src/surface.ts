@@ -13,7 +13,6 @@ import type { Browser, BrowserContext, ElementHandle, Page, Route } from 'playwr
 import {
   EngineError,
   raceAbort,
-  sameSite,
   withinCleanupBudget,
   type EngineAppDeclaration,
   type EngineAppInfo,
@@ -46,6 +45,7 @@ import {
   readManySemanticsFunction,
   SECURE_FIELD_SELECTOR,
 } from './read-node.ts';
+import { httpCredentials, installSiteHeaders, lowercaseNames } from './protected-app.ts';
 import { RefRegistry } from './refs.ts';
 import {
   cancelled,
@@ -101,17 +101,6 @@ type RouteHandler = (route: Route) => Promise<void>;
 interface StoredRoute {
   readonly predicate: RoutePredicate;
   readonly handler: RouteHandler;
-}
-
-/** The credentials Playwright answers an HTTP authentication challenge with. */
-interface PlaywrightHttpCredential {
-  readonly username: string;
-  readonly password: string;
-}
-
-/** Header names lowercased, as Playwright reports a request's own headers. */
-function lowercaseNames(headers: Readonly<Record<string, string>>): Readonly<Record<string, string>> {
-  return Object.fromEntries(Object.entries(headers).map(([name, value]) => [name.toLowerCase(), value]));
 }
 
 /** True for the storage-state object shape; a string (a file path) or anything else is refused. */
@@ -415,12 +404,12 @@ export class PlaywrightSurface {
     try {
       const browser =
         reacquire === undefined ? this.requireBrowser() : await this.ensureBrowser(reacquire);
-      const httpCredentials = this.httpCredentials();
+      const credentials = httpCredentials(this.basicAuth);
       this.context = await browser.newContext({
         viewport: this.viewport,
         acceptDownloads: true,
         ...(storageState === undefined ? {} : { storageState }),
-        ...(httpCredentials === undefined ? {} : { httpCredentials }),
+        ...(credentials === undefined ? {} : { httpCredentials: credentials }),
         // Routing never sees a request a service worker made, so under
         // injected headers a worker would carry the page past the gate bare.
         ...(this.headers === undefined ? {} : { serviceWorkers: 'block' as const }),
@@ -436,7 +425,7 @@ export class PlaywrightSurface {
       // first, so the header route is the last stop before the network and a
       // `web.route` handler that continues still sends the headers, while one
       // that fulfills or aborts never reaches it.
-      await this.installHeaders(this.context);
+      await installSiteHeaders(this.context, this.app.site, this.headers);
       for (const stored of this.routes) await this.context.route(stored.predicate, stored.handler);
     } catch (cause) {
       await this.context?.close().catch(() => undefined);
@@ -448,45 +437,6 @@ export class PlaywrightSurface {
         cause,
       });
     }
-  }
-
-  // --- protected-app access, scoped to the app's site ---
-
-  /** True for a request bound for the app's site; the only requests that carry the configured headers. */
-  private isOnSite(url: URL): boolean {
-    return this.app.site !== undefined && sameSite(url, this.app.site);
-  }
-
-  /**
-   * Adds the configured headers to every request bound for the app's site,
-   * via a context route that falls back to the network. A request for any
-   * other site is not routed at all. Nothing awaits a route handler, so
-   * a fallback that fails (the page closed under the request) is dropped
-   * rather than left to surface as an unhandled rejection.
-   */
-  private async installHeaders(context: BrowserContext): Promise<void> {
-    const headers = this.headers;
-    if (headers === undefined) return;
-    await context.route(
-      (url) => this.isOnSite(url),
-      async (route) => {
-        await route
-          .fallback({ headers: { ...route.request().headers(), ...headers } })
-          .catch(() => undefined);
-      },
-    );
-  }
-
-  /**
-   * The basic-auth credentials the context answers a challenge with, as
-   * Playwright's own `httpCredentials` does: on a 401 from any origin. A site
-   * cannot be enumerated into the exact origins Playwright scopes by, and a
-   * challenge is answered only where one is issued.
-   */
-  private httpCredentials(): PlaywrightHttpCredential | undefined {
-    if (this.basicAuth === undefined) return undefined;
-    const { username, password } = this.basicAuth;
-    return { username, password };
   }
 
   // --- network routes shared with the web fixture ---

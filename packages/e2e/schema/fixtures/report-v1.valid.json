@@ -167,7 +167,7 @@
       "maxLedgerBytes": 0,
       "maxObservationBytes": 0,
       "artifactBytes": 8,
-      "files": 0,
+      "downloads": 0,
       "events": 0,
       "modelTokens": 0,
       "modelCachedTokens": 0,

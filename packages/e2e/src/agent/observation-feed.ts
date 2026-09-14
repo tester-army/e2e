@@ -130,7 +130,8 @@ export class ObservationFeed {
 
   /**
    * Best-effort current location, for trace anchors. An observation at hand
-   * answers from its own location; without one the session observes afresh.
+   * answers from its own location; without one the session observes afresh,
+   * which is why callers holding a recent observation pass it.
    * A URL anchors on its path and query, so the origin a preview deploys
    * under never enters an entry; any other location (a device's screen, a
    * window) anchors as the opaque string it is. A surface that reports no
@@ -138,10 +139,7 @@ export class ObservationFeed {
    */
   async currentPath(observation?: AgentObservation): Promise<string | undefined> {
     try {
-      const location =
-        observation === undefined
-          ? await this.runtime.engine.session.location(this.accounting.operation())
-          : observation.location;
+      const location = (observation ?? (await this.runtime.engine.session.observe(this.accounting.operation()))).location;
       if (location === undefined) return undefined;
       if (!URL.canParse(location)) return location;
       const url = new URL(location);

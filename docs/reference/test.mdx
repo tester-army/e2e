@@ -201,7 +201,7 @@ export interface SuiteFixtures {
 | `agent` | [`Agent`](/reference/agent) | Acquiring it without a configured model fails with `MODEL_UNAVAILABLE`. |
 | `app` | [`App`](/reference/app) | Always available. |
 | `screen` | [`Screen`](/reference/screen) | Always available. |
-| `platform` | `Platform` | The target's label: `web`, `ios`, `android`, `macos`, `windows`, `linux`, `tvos`, `androidtv`, or an engine's own string. |
+| `platform` | `Platform` | The target's label: `web`, `ios`, `android`, or an engine's own string. |
 
 Everything else is a **contributed fixture** the target's engine declares, or
 one of [your own](#your-own-fixtures). The zero-argument `test.extend<{ ... }>()`

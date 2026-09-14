@@ -268,8 +268,7 @@ export interface ReportUsage {
   maxLedgerBytes: number;
   maxObservationBytes: number;
   artifactBytes: number;
-  /** Files the app produced during the run (downloads, exports). */
-  files: number;
+  downloads: number;
   events: number;
   modelTokens: number;
   /** Input tokens served from provider prompt caches; present once any step reports the split. */
@@ -553,7 +552,7 @@ function computeUsage(options: {
     maxLedgerBytes: 0,
     maxObservationBytes: 0,
     artifactBytes: 0,
-    files: 0,
+    downloads: 0,
     events: 0,
     modelTokens: 0,
     maxModelCallsInStep: 0,
@@ -589,7 +588,7 @@ function computeUsage(options: {
   const countArtifacts = (artifacts: readonly ArtifactRecord[]): void => {
     for (const artifact of artifacts) {
       usage.artifactBytes += artifact.size ?? 0;
-      if (artifact.kind === 'file') usage.files += 1;
+      if (artifact.kind === 'download') usage.downloads += 1;
     }
   };
 

@@ -27,7 +27,6 @@ import {
   type EngineObserveOptions,
   type EngineSnapshot,
   type LocatorAction,
-  type LocatorActionKind,
   type LocatorExpression,
   type NodeRef,
   type ObservationPixels,
@@ -56,35 +55,15 @@ import { DevicePool, deviceSelection } from './pool.ts';
 import {
   invalidState,
   notActionable,
+  logicalScreenSize,
   readPngSize,
   sanitizeFilename,
   screenLocation,
+  type RawScreenshotResult,
   swipeWithin,
   unsupported,
   type Rect,
 } from './support.ts';
-
-/**
- * The action kinds a device honors, declared so the harness offers exactly
- * these: no `select` verb on a device (`selectOption`, `setInputFiles`, and
- * `scrollIntoView` have no touch equivalent), and `perform` still refuses a
- * declared kind one node cannot take (`check` on a toggle whose state is
- * unknown, `focus` on anything but a field).
- */
-export const DEVICE_ACTIONS: readonly LocatorActionKind[] = [
-  'tap',
-  'doubleTap',
-  'longPress',
-  'fill',
-  'clear',
-  'press',
-  'check',
-  'uncheck',
-  'focus',
-  'hover',
-  'dragTo',
-  'swipe',
-];
 
 /** How `installApp` puts a build on the device. */
 export interface InstallAppOptions {
@@ -118,16 +97,6 @@ interface RawSnapshot {
   readonly appName?: string;
   readonly appBundleId?: string;
   readonly snapshotQuality?: { readonly state?: string };
-}
-
-/** The screenshot fields the viewport probe reads off agent-device's response. */
-interface RawScreenshotResult {
-  readonly path?: string;
-  readonly width?: number;
-  readonly height?: number;
-  readonly logicalWidth?: number;
-  readonly logicalHeight?: number;
-  readonly pixelDensity?: number;
 }
 
 /** Action data only: located references never retain a projected snapshot through parent links. */
@@ -558,28 +527,10 @@ export class AgentDeviceSurface {
     return probed;
   }
 
-  /** The device's logical screen size as its screenshot reports it, in points; undefined when it reports none. */
+  /** The device's logical screen size as its screenshot reports it; undefined when it reports none. */
   private async probeViewport(signal: AbortSignal): Promise<Viewport | undefined> {
-    const result = await this.command(
-      'screenshot',
-      async (client) => {
-        const directory = mkdtempSync(path.join(tmpdir(), 'e2e-agent-device-'));
-        try {
-          return (await client.capture.screenshot({ path: path.join(directory, 'viewport.png') })) as RawScreenshotResult;
-        } finally {
-          rmSync(directory, { recursive: true, force: true });
-        }
-      },
-      signal,
-    );
-    const logical =
-      result.logicalWidth !== undefined && result.logicalHeight !== undefined
-        ? { width: result.logicalWidth, height: result.logicalHeight }
-        : result.width !== undefined && result.height !== undefined && result.pixelDensity !== undefined && result.pixelDensity > 0
-          ? { width: result.width / result.pixelDensity, height: result.height / result.pixelDensity }
-          : undefined;
-    if (logical === undefined || logical.width <= 0 || logical.height <= 0) return undefined;
-    return { ...logical, scale: 1 };
+    const result = await this.captureScreenshot(signal, async (shot) => shot);
+    return logicalScreenSize(result);
   }
 
   async observe(operation: OperationContext, options?: EngineObserveOptions): Promise<EngineSnapshot> {
@@ -799,7 +750,7 @@ export class AgentDeviceSurface {
         case 'scrollIntoView':
         case 'selectOption':
         case 'setInputFiles':
-          // Not in DEVICE_ACTIONS, so the harness never sends them; kept exhaustive.
+          // Not in DEVICE_ACTIONS (actions.ts), so the harness never sends them; kept exhaustive.
           throw unsupported(`agent-device cannot perform "${action.kind}" on a device surface`);
       }
     };
@@ -902,13 +853,24 @@ export class AgentDeviceSurface {
   }
 
   /** Raw device pixels; cleanup follows the capture even when its caller abandons it. */
-  private async rawScreenshot(signal?: AbortSignal): Promise<Uint8Array> {
+  private rawScreenshot(signal?: AbortSignal): Promise<Uint8Array> {
+    return this.captureScreenshot(signal, async (shot, file) => new Uint8Array(readFileSync(shot.path ?? file)));
+  }
+
+  /**
+   * One screenshot into a temp directory that is removed once `read` has
+   * taken what it needs from the response or the file, even when the caller
+   * abandons the capture.
+   */
+  private captureScreenshot<T>(
+    signal: AbortSignal | undefined,
+    read: (shot: RawScreenshotResult, file: string) => Promise<T>,
+  ): Promise<T> {
     return this.command('screenshot', async (client) => {
       const directory = mkdtempSync(path.join(tmpdir(), 'e2e-agent-device-'));
       const file = path.join(directory, 'screenshot.png');
       try {
-        const shot = await client.capture.screenshot({ path: file });
-        return new Uint8Array(readFileSync(shot.path ?? file));
+        return await read((await client.capture.screenshot({ path: file })) as RawScreenshotResult, file);
       } finally {
         rmSync(directory, { recursive: true, force: true });
       }

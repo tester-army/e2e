@@ -9,14 +9,9 @@ import type { AgentContext } from './invocation.ts';
 /**
  * The narrow surface a secret fill needs from its step machinery: the act
  * dispatch is its one caller today, and any future tier that fills secrets
- * satisfies the same three members rather than re-deriving the policy.
+ * satisfies the same member rather than re-deriving the policy.
  */
 interface SecretFillHost {
-  /**
-   * The surface's current location: the newest observation's, so the check
-   * never observes again and invalidates the refs the action is about to use.
-   */
-  location(): Promise<string | undefined>;
   recordPolicy(name: string, decision: 'allowed' | 'denied', code?: string): void;
 }
 

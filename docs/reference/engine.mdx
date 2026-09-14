@@ -74,9 +74,9 @@ differently must never replay another version's traces.
 never bump it; changed required semantics do.
 
 `platform` labels what the engine drives, and its target inherits the label.
-The harness recognizes `web`, `ios`, `android`, `macos`, `windows`, `linux`,
-`tvos`, and `androidtv` for platform-scoped tool packs and reporting; any
-other label is the engine's own and is treated as unknown. No member's shape
+The harness recognizes `web`, `ios`, and `android` for platform-scoped tool
+packs and reporting; any other label is the engine's own and is treated as
+unknown. No member's shape
 depends on it. A target that names a platform of its own must agree with it.
 
 Every surface call carries an `OperationContext`: the abort signal, the
@@ -546,7 +546,7 @@ export interface EngineFixtureContext {
   readonly timeouts: { test: number; action: number; assertion: number };
   readonly signal: AbortSignal;
   operation(timeoutMs?: number): OperationContext;
-  attachArtifact(kind: 'screenshot' | 'trace' | 'video' | 'file' | 'log', relativePath: string): void;
+  attachArtifact(kind: 'screenshot' | 'trace' | 'video' | 'download' | 'log', relativePath: string): void;
   attachViewport(viewport: { width: number; height: number; scale: number }): void;
   locator(expression: LocatorExpression): Locator;
   screen(scope: (expression: LocatorExpression) => LocatorExpression): Screen;

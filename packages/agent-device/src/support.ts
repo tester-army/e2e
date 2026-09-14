@@ -1,4 +1,4 @@
-/** Shared helpers for the agent-device engine: error constructors, filenames, PNG headers, gestures, the screen location. */
+/** Shared helpers for the agent-device engine: error constructors, filenames, PNG headers, gestures, the screen location and size. */
 
 import { EngineError, type Momentum, type ScrollDirection } from '@e2edev/e2e/engine';
 
@@ -87,4 +87,32 @@ export function screenLocation(app: string | undefined, title: string | undefine
     .map((part) => (part === undefined ? '' : part.replaceAll(/\s+/g, ' ').trim()))
     .filter((part) => part !== '');
   return parts.length === 0 ? undefined : parts.join(' / ');
+}
+
+/** The screenshot fields a viewport probe reads off agent-device's response. */
+export interface RawScreenshotResult {
+  readonly path?: string;
+  readonly width?: number;
+  readonly height?: number;
+  readonly logicalWidth?: number;
+  readonly logicalHeight?: number;
+  readonly pixelDensity?: number;
+}
+
+/**
+ * The device's logical screen size as its screenshot reports it, in points:
+ * the logical dimensions when given, else the pixel dimensions over the
+ * density. Undefined when the response carries neither.
+ */
+export function logicalScreenSize(
+  result: RawScreenshotResult,
+): { readonly width: number; readonly height: number; readonly scale: number } | undefined {
+  const logical =
+    result.logicalWidth !== undefined && result.logicalHeight !== undefined
+      ? { width: result.logicalWidth, height: result.logicalHeight }
+      : result.width !== undefined && result.height !== undefined && result.pixelDensity !== undefined && result.pixelDensity > 0
+        ? { width: result.width / result.pixelDensity, height: result.height / result.pixelDensity }
+        : undefined;
+  if (logical === undefined || logical.width <= 0 || logical.height <= 0) return undefined;
+  return { ...logical, scale: 1 };
 }

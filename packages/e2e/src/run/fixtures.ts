@@ -37,7 +37,7 @@ export interface ArtifactSink {
   readonly dir: string;
   /** Registers a produced artifact and returns its report artifact ID. */
   register(
-    kind: 'screenshot' | 'trace' | 'video' | 'file' | 'log',
+    kind: 'screenshot' | 'trace' | 'video' | 'download' | 'log',
     relativePath: string,
     options?: ArtifactRegistration,
   ): string;
@@ -420,39 +420,37 @@ function unreachableApp(cause: unknown, url: string): InfrastructureError | unde
 function createApp(environment: AttemptEnvironment, engine: LocatorEngine, taint: SessionSecrecy['taint']): App {
   const { config, steps, target } = environment;
 
+  /** Opens one resolved URL; a refused connection is reported as the app being down. */
+  const openAt = async (resolved: string, timeoutMs: number): Promise<void> => {
+    try {
+      await engine.session.app.open(resolved, engine.operation(timeoutMs));
+    } catch (cause) {
+      throw unreachableApp(cause, resolved) ?? cause;
+    }
+  };
+
   /** One recorded navigation: resolved against the base URL, on the test budget. */
   const navigate = (api: string, label: string, url: string | undefined): Promise<void> =>
     steps.run('app', api, label, async () => {
       requireAppUrl(target);
-      const resolved =
-        url === undefined
-          ? target.app.base.href
-          : resolveNavigationUrl(url, target.app.base).url;
-      try {
-        await engine.session.app.open(resolved, engine.operation(config.timeout));
-      } catch (cause) {
-        throw unreachableApp(cause, resolved) ?? cause;
-      }
+      const resolved = url === undefined ? target.app.base.href : resolveNavigationUrl(url, target.app.base).url;
+      await openAt(resolved, config.timeout);
     });
 
   /**
-   * A steering hook ends at a fresh surface showing nothing; the app is
-   * reopened at its base URL through the same path as `app.open()`, so an
+   * A steering hook ends at a fresh surface showing nothing, so the app is
+   * reopened at its base URL through the same path as `app.open()`, and an
    * unreachable app after a restart is reported exactly as on first open.
-   * A target without an address (a device app) has nothing to reopen.
+   * The hook and the reopen share one `config.timeout` budget. A target
+   * without an address, or whose engine cannot open one (a device relaunches
+   * its pinned app inside the hook), has nothing to reopen.
    */
-  /** One steering hook and the reopen that follows it share one `config.timeout` budget. */
   const steer = (api: string, hook: (operation: OperationContext) => Promise<void>): Promise<void> =>
     steps.run('app', api, '', async () => {
       const deadline = new Deadline(config.timeout);
       await hook(engine.operation(deadline.remaining()));
-      if (target.app.base === undefined) return;
-      const resolved = target.app.base.href;
-      try {
-        await engine.session.app.open(resolved, engine.operation(Math.max(1, deadline.remaining())));
-      } catch (cause) {
-        throw unreachableApp(cause, resolved) ?? cause;
-      }
+      if (target.app.base === undefined || !engine.session.verbs.has('navigate')) return;
+      await openAt(target.app.base.href, deadline.remaining());
     });
 
   return {

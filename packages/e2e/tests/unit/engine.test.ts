@@ -307,29 +307,6 @@ describe('createEngineSession', () => {
     expect(performed[1]).toEqual({ id: 'screen', revision: 'b2', kind: 'swipe', direction: 'left', momentum: 'fast' });
   });
 
-  it('reads the location from a fresh observation', async () => {
-    let location: string | undefined = 'https://example.test/a';
-    let observes = 0;
-    const session = createEngineSession({
-      engine: defineEngine(
-        observingEngine({
-          observe: async () => {
-            observes += 1;
-            return { ...snapshot([]), ...(location === undefined ? {} : { location }) };
-          },
-        }),
-      ),
-      targetName: 'toy-target',
-    });
-    await expect(session.location(OP)).resolves.toBe('https://example.test/a');
-    location = 'https://example.test/b';
-    await expect(session.location(OP)).resolves.toBe('https://example.test/b');
-    location = undefined;
-    await expect(session.location(OP)).resolves.toBeUndefined();
-    expect(observes).toBe(3);
-    expect((await session.observe(OP)).location).toBeUndefined();
-  });
-
   it('carries the engine location and viewport onto the observation', async () => {
     const session = createEngineSession({
       engine: defineEngine(observingEngine({ observe: async () => snapshot([], { location: 'app://device/Home' }) })),

@@ -11,7 +11,8 @@ import { createAgentDeviceClient } from 'agent-device';
 import { defineEngine, obj, type EngineAppDeclaration, type EngineHandle } from '@e2edev/e2e/engine';
 import { createDeviceFixture } from './device.ts';
 import type { AgentDeviceOptions, ClientFactory } from './options.ts';
-import { AgentDeviceSurface, DEVICE_ACTIONS } from './surface.ts';
+import { DEVICE_ACTIONS } from './actions.ts';
+import { AgentDeviceSurface } from './surface.ts';
 
 const surfaces = new WeakMap<EngineHandle, AgentDeviceSurface>();
 

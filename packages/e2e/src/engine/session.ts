@@ -3,9 +3,11 @@
  * the internal `TargetSession` surface over the engine contract, so the agent
  * tier, the judgment tier, the trace cache, and the fixture graph program
  * against one shape. It is the single seam every engine call crosses, which
- * makes it the one place two rules are enforced: a capability the engine does
- * not declare fails loud with `UNSUPPORTED_CAPABILITY` at the moment of use,
- * and anything an engine throws that is not an `EngineError` is normalized to
+ * makes it the one place three rules are enforced: a capability the engine
+ * does not declare fails loud with `UNSUPPORTED_CAPABILITY` at the moment of
+ * use, a `press` key outside the contract grammar fails with
+ * `INVALID_ARGUMENT` before any engine sees it, and anything an engine throws
+ * that is not an `EngineError` is normalized to
  * a non-retryable `ENGINE_FAILURE`, so a crashed engine is an infrastructure
  * failure everywhere and never a retry-eligible test failure.
  */
@@ -17,6 +19,7 @@ import {
   errorMessage,
   isForeignE2EError,
 } from '../internal/errors.ts';
+import { requireKey } from '../internal/keys.ts';
 import type { EngineHandle } from './index.ts';
 import {
   EngineError,
@@ -104,7 +107,7 @@ function declaredVerbs(engine: EngineHandle | undefined): ReadonlySet<GrammarVer
 export function createEngineSession(options: EngineSessionOptions): TargetSession {
   const { engine, targetName } = options;
   let revision = 0;
-  /** The root ref of the newest observation; the address of a viewport swipe. */
+  /** The root ref of the newest observation, the address of a viewport swipe; unset until the first observation. */
   let root: NodeRef | undefined;
 
   const unsupported = (what: string): never => {
@@ -250,23 +253,17 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
     },
     async perform(ref, action, operation) {
       if (!actions.has(action.kind)) unsupported(`the "${action.kind}" action`);
+      if (action.kind === 'press') requireKey(action.key);
       rejectSupersededLocate(ref);
       if (action.kind === 'dragTo') rejectSupersededLocate(action.target);
       await performRaw(ref, action, operation);
     },
     async swipe(direction, momentum, operation) {
       if (!actions.has('swipe')) unsupported('swipe gestures');
-      if (root === undefined) await session.observe(operation);
-      await performRaw(
-        root!,
-        { kind: 'swipe', direction, ...(momentum === undefined ? {} : { momentum }) },
-        operation,
-      );
+      const target = root ?? (await session.observe(operation)).tree.ref;
+      await performRaw(target, { kind: 'swipe', direction, ...(momentum === undefined ? {} : { momentum }) }, operation);
     },
     tapAt: guard('point taps', engine?.tapAt),
-    async location(operation) {
-      return (await session.observe(operation)).location;
-    },
     // The engine outlives the attempt; only the per-attempt isolation ends
     // here, exactly once. dispose() belongs to the worker.
     close: guard('attempt end', async (operation) => {

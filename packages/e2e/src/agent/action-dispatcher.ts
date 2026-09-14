@@ -11,9 +11,8 @@
  */
 
 import type { SemanticNode, ViewportPoint } from '../engine/surface.ts';
-import { invalidKeyMessage } from '../internal/keys.ts';
-import { parseKey } from '../engine/contract.ts';
 import { asEngineError, TestError } from '../internal/errors.ts';
+import { requireKey } from '../internal/keys.ts';
 import { clampToViewport } from '../internal/geometry.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
 import type { JsonValue, Momentum, ScrollDirection, Secret } from '../types.ts';
@@ -193,10 +192,9 @@ export class ActionDispatcher {
   }
 
   private press(target: ExecutorTarget, key: string): Promise<void> {
-    if (typeof key !== 'string' || key.trim() === '' || key.length > 64) {
-      throw new TestError('INVALID_ARGUMENT', 'press key must be a short non-empty string');
-    }
-    if (parseKey(key) === undefined) throw new TestError('INVALID_ARGUMENT', invalidKeyMessage(key));
+    // Checked before the action is committed, as the locator tier does, so a
+    // bad argument is INVALID_ARGUMENT to the executor and never a failed action.
+    requireKey(key);
     return this.commitTargeted('press', target, async (node) => {
       await this.session.perform(node.ref, { kind: 'press', key }, this.accounting.actionOperation());
       return { name: 'press', node, key };
@@ -264,11 +262,7 @@ export class ActionDispatcher {
     }
     await this.commitTargeted('typeSecret', target, async (node) => {
       const plaintext = await authorizeSecretFill(
-        {
-          location: async () =>
-            this.feed.latest?.location ?? (await this.session.location(this.accounting.actionOperation())),
-          recordPolicy: (policy, decision, code) => recordPolicyEvent(this.runtime.steps, policy, decision, code),
-        },
+        { recordPolicy: (policy, decision, code) => recordPolicyEvent(this.runtime.steps, policy, decision, code) },
         this.runtime,
         secret,
         node,

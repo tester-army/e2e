@@ -146,9 +146,11 @@ same action on any other node scrolls within it.
 `press` carries one key in the shared grammar: zero or more of `Shift`,
 `Control`, `Alt`, `Meta`, `ControlOrMeta`, then a named key from `KEY_NAMES`
 (`Enter`, `Escape`, `Tab`, `ArrowDown`, `F5`, ...) or one printable
-character, joined with `+`. Call the exported `parseKey` rather than parsing
-it yourself; map what the platform has and throw `UNSUPPORTED_CAPABILITY`
-for what it lacks, never reinterpret the spelling. The full grammar is on the
+character, joined with `+`. The harness refuses a key outside the grammar
+with `INVALID_ARGUMENT` before it reaches you, so parse only to map: call the
+exported `parseKey` rather than parsing it yourself, map what the platform
+has, and throw `UNSUPPORTED_CAPABILITY` for what it lacks, never reinterpret
+the spelling. The full grammar is on the
 [engine reference](/reference/engine#keys).
 
 Your observation reports `location` as an opaque address (a URL, a screen

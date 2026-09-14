@@ -3,7 +3,6 @@
 import {
   type TargetSession,
   type LocatorAction,
-  type LocatorActionKind,
   type LocatorExpression,
   type NodeRef,
   type OperationContext,
@@ -16,6 +15,7 @@ import {
   TestError,
   translateEngineError,
 } from '../internal/errors.ts';
+import { requireKey } from '../internal/keys.ts';
 import { describeExpression } from './expression.ts';
 import { Deadline, POLL_INTERVAL_MS, sleep } from '../internal/time.ts';
 import type { AttemptBudget } from '../run/budget.ts';
@@ -75,15 +75,22 @@ export class LocatorEngine {
     };
   }
 
-  /** Fails with `UNSUPPORTED_CAPABILITY` for an action kind the engine did not declare. */
-  requireAction(kind: LocatorActionKind): void {
-    if (this.session.actions.has(kind)) return;
-    throw new ConfigurationError(
-      'UNSUPPORTED_CAPABILITY',
-      `the "${kind}" action is not available on this target: its engine declares ${
-        this.session.actions.size === 0 ? 'no actions' : [...this.session.actions].join(', ')
-      }`,
-    );
+  /**
+   * Refuses an action the session would refuse, before the locator is
+   * resolved: an undeclared kind is `UNSUPPORTED_CAPABILITY`, a `press` key
+   * outside the grammar is `INVALID_ARGUMENT`. Waiting for a node the engine
+   * could never act on would report it as missing instead.
+   */
+  private checkAction(action: LocatorAction): void {
+    if (!this.session.actions.has(action.kind)) {
+      throw new ConfigurationError(
+        'UNSUPPORTED_CAPABILITY',
+        `the "${action.kind}" action is not available on this target: its engine declares ${
+          this.session.actions.size === 0 ? 'no actions' : [...this.session.actions].join(', ')
+        }`,
+      );
+    }
+    if (action.kind === 'press') requireKey(action.key);
   }
 
   /** One immediate engine resolve, retrying retryable frame misses within the deadline. */
@@ -197,9 +204,7 @@ export class LocatorEngine {
     action: LocatorAction | ((deadline: Deadline) => Promise<LocatorAction>),
     timeoutMs?: number,
   ): Promise<void> {
-    // An undeclared kind fails before the locator is even resolved: waiting
-    // for a node the engine could never act on would report it as missing.
-    if (typeof action !== 'function') this.requireAction(action.kind);
+    if (typeof action !== 'function') this.checkAction(action);
     const deadline = this.deadline(timeoutMs);
     for (;;) {
       const ref = await this.resolveExactlyOne(expression, deadline);

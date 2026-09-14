@@ -127,7 +127,7 @@ export function reportDocument(overrides: Partial<Report1Document['run']> = {}):
         maxLedgerBytes: 0,
         maxObservationBytes: 0,
         artifactBytes: 0,
-        files: 0,
+        downloads: 0,
         events: 0,
         modelTokens: 0,
         maxModelCallsInStep: 0,

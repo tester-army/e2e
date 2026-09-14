@@ -111,13 +111,6 @@ export interface TargetSession {
   captureState?(operation: OperationContext): Promise<EngineState>;
   /** Replaces current app state with an immutable captured state. */
   restoreState?(state: EngineState, operation: OperationContext): Promise<void>;
-  /**
-   * The surface's current location, read from a fresh observation so a
-   * policy decision never rests on a stale one. `undefined` when the platform
-   * reports no location. Callers holding a recent observation read
-   * `Observation.location` instead.
-   */
-  location(operation: OperationContext): Promise<string | undefined>;
   /** Ends the attempt's isolation within the operation's budget. Idempotent. */
   close(operation: OperationContext): Promise<void>;
 }

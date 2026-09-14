@@ -429,7 +429,7 @@ export function createWebFixture(surface: PlaywrightSurface, context: EngineFixt
         const suggestedFilename = download.suggestedFilename();
         const { relative, absolute } = surface.artifactPath('downloads', suggestedFilename, '');
         await download.saveAs(absolute);
-        context.attachArtifact('file', relative);
+        context.attachArtifact('download', relative);
         return { path: relative, suggestedFilename };
       });
     },

@@ -4,8 +4,6 @@ import nodePath from 'node:path';
 import type { LocatorExpression, SemanticNode } from '../engine/surface.ts';
 import { locatorBrand, secretBrand } from '../internal/brands.ts';
 import { ConfigurationError, TestError } from '../internal/errors.ts';
-import { invalidKeyMessage } from '../internal/keys.ts';
-import { parseKey } from '../engine/contract.ts';
 import { rejectUnknownOptions } from '../internal/options.ts';
 import { realmSlot } from '../internal/realm-slot.ts';
 import { normalizeText } from '../internal/text.ts';
@@ -247,14 +245,9 @@ class LocatorImpl extends ScreenImpl implements Locator {
   }
 
   press(key: string, options?: ActionOptions): Promise<void> {
-    return this.action('locator.press', async () => {
-      // The contract's key grammar is checked here, so a misspelt key fails
-      // the step at once instead of waiting for the locator to resolve.
-      if (typeof key !== 'string' || parseKey(key) === undefined) {
-        throw new TestError('INVALID_ARGUMENT', invalidKeyMessage(key));
-      }
-      await this.context.engine.perform(this.expression, { kind: 'press', key }, options?.timeout);
-    });
+    return this.action('locator.press', () =>
+      this.context.engine.perform(this.expression, { kind: 'press', key }, options?.timeout),
+    );
   }
 
   check(options?: ActionOptions): Promise<void> {

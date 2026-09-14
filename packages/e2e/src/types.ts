@@ -37,16 +37,7 @@ export type JsonValue =
   | { readonly [key: string]: JsonValue }
   | readonly JsonValue[];
 
-export type Platform =
-  | 'web'
-  | 'ios'
-  | 'android'
-  | 'macos'
-  | 'windows'
-  | 'linux'
-  | 'tvos'
-  | 'androidtv'
-  | (string & {});
+export type Platform = 'web' | 'ios' | 'android' | (string & {});
 export type Capability = string;
 export type ScrollDirection = 'up' | 'down' | 'left' | 'right';
 export type Momentum = 'none' | 'slow' | 'fast';
@@ -763,7 +754,7 @@ export interface CacheConfig {
  * test, so a host may use it as its own key.
  */
 export interface StoredArtifact {
-  readonly kind: 'screenshot' | 'trace' | 'video' | 'file' | 'log';
+  readonly kind: 'screenshot' | 'trace' | 'video' | 'download' | 'log';
   readonly mediaType: string;
   readonly bytes: Uint8Array;
   readonly size: number;

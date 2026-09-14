@@ -213,7 +213,7 @@ export interface EngineFixtureContext {
   operation(timeoutMs?: number): OperationContext;
   /** Registers a file the current step produced under the attempt artifact directory. */
   attachArtifact(
-    kind: 'screenshot' | 'trace' | 'video' | 'file' | 'log',
+    kind: 'screenshot' | 'trace' | 'video' | 'download' | 'log',
     relativePath: string,
   ): void;
   /** Records the viewport the current step established. */
@@ -508,11 +508,10 @@ export interface Engine {
    */
   readonly spiVersion: EngineSpiVersion;
   /**
-   * Platform this engine drives. The harness recognizes `web`, `ios`,
-   * `android`, `macos`, `windows`, `linux`, `tvos`, and `androidtv` for
-   * platform-scoped tool packs and reporting; any other label is the
-   * engine's own and treated as unknown. A target inherits it; a target that
-   * names a platform of its own must agree with it.
+   * Platform this engine drives. The harness recognizes `web`, `ios`, and
+   * `android` for platform-scoped tool packs and reporting; any other label
+   * is the engine's own and treated as unknown. A target inherits it; a
+   * target that names a platform of its own must agree with it.
    */
   readonly platform?: Platform;
   /**

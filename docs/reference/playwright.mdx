@@ -248,7 +248,7 @@ await web.setCookies([{ url: 'http://localhost:3000', name: 'tz', value: 'UTC' }
 | Method | Behavior | Throws |
 | --- | --- | --- |
 | `onDialog(handler)` | Registers an attempt-scoped handler and returns an idempotent unsubscribe function. Removed automatically at attempt end. A function handler must call `accept` or `dismiss`; one that returns without deciding has the dialog dismissed and fails the next step with `APP_NOT_OPEN`, as an unhandled dialog does. | |
-| `waitForDownload(trigger, options?)` | Starts a download watch, runs `trigger`, waits for completion inside the same deadline, and registers the file as a `file` artifact. A failure in `trigger` keeps its own error. | `ACTION_FAILED` when the download does not complete in time |
+| `waitForDownload(trigger, options?)` | Starts a download watch, runs `trigger`, waits for completion inside the same deadline, and registers the file as a `download` artifact. A failure in `trigger` keeps its own error. | `ACTION_FAILED` when the download does not complete in time |
 
 ```ts
 export interface Dialog {
