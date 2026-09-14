@@ -2,7 +2,7 @@
  * The Playwright engine for e2e: a browser body built with the
  * public `defineEngine`, validated by the same rules and graded by the same
  * capabilities as any other engine. Core imports nothing from here; this
- * package imports the contract from `@e2edev/e2e/engine` and contributes the `web`
+ * package imports the contract from `e2e/engine` and contributes the `web`
  * fixture the way a device engine contributes `device`.
  */
 
@@ -14,7 +14,7 @@ import {
   obj,
   type EngineAppDeclaration,
   type EngineHandle,
-} from '@e2edev/e2e/engine';
+} from 'e2e/engine';
 import { createRequire } from 'node:module';
 import { PlaywrightSurface, type PlaywrightOptions } from './surface.ts';
 import { createWebFixture } from './web.ts';

@@ -1,5 +1,5 @@
-import type { E2EConfig } from '@e2edev/e2e';
-import { createAgent } from '@e2edev/e2e/agent';
+import type { E2EConfig } from 'e2e';
+import { createAgent } from 'e2e/agent';
 import { playwright } from '@e2edev/playwright';
 import { gateway } from 'ai';
 

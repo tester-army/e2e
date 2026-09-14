@@ -15,7 +15,7 @@ import {
 import { resultByTitle, runProject, type FixtureProject } from '../helpers/run-project.ts';
 import type { RunOutcome } from '../helpers/run-project.ts';
 
-const SUITE = `import { test, credentials, expect } from '@e2edev/e2e';
+const SUITE = `import { test, credentials, expect } from 'e2e';
 
 test('judges an assertion with pixel evidence', async ({ app, agent }) => {
   await app.open();

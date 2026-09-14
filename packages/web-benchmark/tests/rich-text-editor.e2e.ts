@@ -1,7 +1,7 @@
 import { test } from '@e2edev/playwright';
 import type { Web } from '@e2edev/playwright';
-import { expect } from '@e2edev/e2e';
-import type { Screen } from '@e2edev/e2e';
+import { expect } from 'e2e';
+import type { Screen } from 'e2e';
 
 /** Types the phrase, then selects its last `length` characters with the keyboard. */
 async function typeAndSelectTail(screen: Screen, web: Web, length: number) {

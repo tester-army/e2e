@@ -9,8 +9,8 @@ endpoint, a device toolkit. The model can call them mid-flow, and the runner
 still budgets, serializes, and records every call.
 
 ```ts title="e2e.config.ts"
-import type { E2EConfig } from '@e2edev/e2e';
-import { createAgent, defineTool } from '@e2edev/e2e/agent';
+import type { E2EConfig } from 'e2e';
+import { createAgent, defineTool } from 'e2e/agent';
 import { playwright } from '@e2edev/playwright';
 import { gateway, tool } from 'ai';
 import { z } from 'zod';
@@ -66,7 +66,7 @@ executor uses. This tool saves the available pixels as report evidence:
 
 ```ts
 import { randomUUID } from 'node:crypto';
-import { defineTool, getToolContext } from '@e2edev/e2e/agent';
+import { defineTool, getToolContext } from 'e2e/agent';
 import { tool } from 'ai';
 import { z } from 'zod';
 
@@ -106,8 +106,8 @@ ones.
 `@e2edev/agent-device` ships a ready tool pack for its engine:
 
 ```ts
-import type { E2EConfig } from '@e2edev/e2e';
-import { createAgent } from '@e2edev/e2e/agent';
+import type { E2EConfig } from 'e2e';
+import { createAgent } from 'e2e/agent';
 import { agentDevice } from '@e2edev/agent-device';
 import { agentDeviceTools } from '@e2edev/agent-device/tools';
 import { gateway } from 'ai';

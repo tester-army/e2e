@@ -1,6 +1,6 @@
 /** The action kinds a device surface declares. */
 
-import type { LocatorActionKind } from '@e2edev/e2e/engine';
+import type { LocatorActionKind } from 'e2e/engine';
 
 /**
  * The action kinds a device honors, declared so the harness offers exactly

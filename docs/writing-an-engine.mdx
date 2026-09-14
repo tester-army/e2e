@@ -5,7 +5,7 @@ description: How the runner talks to a surface, and what it takes to add a new o
 
 Everything above the engine is portable. `test`, `expect`, `screen`, `app`,
 and the agent never touch a browser or a device: they speak one narrow
-contract from `@e2edev/e2e/engine`, and an engine is the package that maps it
+contract from `e2e/engine`, and an engine is the package that maps it
 onto a real surface.
 
 `@e2edev/playwright` and `@e2edev/agent-device` are two such packages, built
@@ -44,7 +44,7 @@ the manifest at config load, freezes it, computes its capability set, and
 stamps the brand that makes the handle acceptable in a target.
 
 ```ts title="src/index.ts"
-import { EngineError, defineEngine, type EngineHandle } from '@e2edev/e2e/engine';
+import { EngineError, defineEngine, type EngineHandle } from 'e2e/engine';
 
 export function hyperdrive(options: { device: string; app: string }): EngineHandle {
   const client = createClient(options);
@@ -104,7 +104,7 @@ contract has no member for them on purpose; the one platform noun it carries
 is the `platform` label, and no member's shape depends on it.
 
 <Note>
-Depend on `@e2edev/e2e/engine` only, and take `@e2edev/e2e` as a **peer**
+Depend on `e2e/engine` only, and take `e2e` as a **peer**
 dependency: the engine and the runner must agree on one copy of the error
 classes. Everything an engine has to reproduce exactly is exported there:
 the error taxonomy, text-pattern matching, URL matching, assertion polling,
@@ -251,7 +251,7 @@ fixtures: {
 ```
 
 ```ts title="tests/fixtures.ts"
-import { test as base } from '@e2edev/e2e';
+import { test as base } from 'e2e';
 import type { Device } from 'e2e-engine-hyperdrive';
 
 export const test = base.extend<{ device: Device }>();
@@ -289,7 +289,7 @@ rely on.
 
 <CardGroup cols={2}>
   <Card title="Engine contract" icon="gear" href="/reference/engine">
-    Every type and hook of `@e2edev/e2e/engine`.
+    Every type and hook of `e2e/engine`.
   </Card>
   <Card title="agent-device reference" icon="mobile-screen" href="/reference/agent-device">
     A complete device engine to read alongside.

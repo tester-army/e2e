@@ -25,12 +25,12 @@ const CLI = path.join(PACKAGE_ROOT, 'dist', 'cli', 'bin.js');
 const CONFIG = "export default { targets: [{ name: 'local', platform: 'test' }] };\n";
 let dir: string;
 
-/** Links workspace packages into the fixture's node_modules, standing in for an install. */
+/** Links workspace packages into the fixture's node_modules, standing in for an install: the runner as `e2e`, everything else under `@e2edev`. */
 function linkPackages(...names: readonly string[]): void {
-  const scope = path.join(dir, 'node_modules', '@e2edev');
-  mkdirSync(scope, { recursive: true });
   for (const name of names) {
-    symlinkSync(path.resolve(PACKAGE_ROOT, '..', name), path.join(scope, name), 'junction');
+    const target = path.join(dir, 'node_modules', ...(name === 'e2e' ? [name] : ['@e2edev', name]));
+    mkdirSync(path.dirname(target), { recursive: true });
+    symlinkSync(path.resolve(PACKAGE_ROOT, '..', name), target, 'junction');
   }
 }
 
@@ -163,7 +163,7 @@ describe('initializing standalone projects', () => {
       writeFileSync(path.join(dir, 'tests/helper.ts'), 'export const answer = (): number => 42;\n');
       writeFileSync(
         path.join(dir, 'tests/example.e2e.ts'),
-        "import { expect, test } from '@e2edev/e2e';\nimport { answer } from './helper.ts';\n\ntest('helpers load as ES modules', () => {\n  expect(answer()).toBe(42);\n});\n",
+        "import { expect, test } from 'e2e';\nimport { answer } from './helper.ts';\n\ntest('helpers load as ES modules', () => {\n  expect(answer()).toBe(42);\n});\n",
       );
       linkPackages('e2e');
 
@@ -183,7 +183,7 @@ describe('initializing standalone projects', () => {
     const testsDir = path.join(dir, 'tests');
     mkdirSync(testsDir);
     writeFileSync(path.join(testsDir, 'package.json'), '{"type":"commonjs"}');
-    writeFileSync(path.join(testsDir, 'example.e2e.ts'), "import { test } from '@e2edev/e2e';\n\ntest('registers', () => {});\n");
+    writeFileSync(path.join(testsDir, 'example.e2e.ts'), "import { test } from 'e2e';\n\ntest('registers', () => {});\n");
     linkPackages('e2e');
 
     const raw = await loadConfigModule(path.join(dir, 'e2e.config.mts'));
@@ -198,7 +198,7 @@ describe('initializing standalone projects', () => {
     await expect(execFileAsync(process.execPath, [CLI, 'run'], { cwd: dir })).rejects.toMatchObject({
       code: 2,
       stdout: expect.stringMatching(
-        /Cannot find package '@e2edev\/e2e' imported from [\s\S]*?@e2edev\/e2e is declared in \S+package\.json but is not installed: run pnpm install/,
+        /Cannot find package 'e2e' imported from [\s\S]*?e2e is declared in \S+package\.json but is not installed: run pnpm install/,
       ),
     });
   });
@@ -224,17 +224,17 @@ describe('initializing standalone projects', () => {
     linkPackages('e2e');
     writeFileSync(
       path.join(dir, 'e2e.config.ts'),
-      "import { defineConfig } from '@e2edev/e2e';\nexport default defineConfig({ targets: [{ name: 'local', platform: 'test' }] });\n",
+      "import { defineConfig } from 'e2e';\nexport default defineConfig({ targets: [{ name: 'local', platform: 'test' }] });\n",
     );
     await expect(loadConfigModule(path.join(dir, 'e2e.config.ts'))).rejects.toMatchObject({
       code: 'CONFIG_LOAD_FAILED',
-      message: expect.stringContaining('defineConfig was removed in @e2edev/e2e 0.5'),
+      message: expect.stringContaining('defineConfig was removed in e2e 0.5'),
     });
     // The import must be used, or the TypeScript transform elides it.
-    writeFileSync(path.join(dir, 'e2e.config.ts'), "import { test } from '@e2edev/e2e/test';\nexport default { marker: test };\n");
+    writeFileSync(path.join(dir, 'e2e.config.ts'), "import { test } from 'e2e/test';\nexport default { marker: test };\n");
     await expect(loadConfigModule(path.join(dir, 'e2e.config.ts'))).rejects.toMatchObject({
       code: 'CONFIG_LOAD_FAILED',
-      message: expect.stringContaining('@e2edev/e2e exports @e2edev/e2e, @e2edev/e2e/agent, @e2edev/e2e/engine'),
+      message: expect.stringContaining('e2e exports e2e, e2e/agent, e2e/engine'),
     });
   });
 

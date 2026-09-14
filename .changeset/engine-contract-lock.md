@@ -1,8 +1,8 @@
 ---
-"@e2edev/e2e": minor
+"e2e": minor
 ---
 
-Breaking: the engine contract (`@e2edev/e2e/engine`) is reshaped as the locked, UI-only, cross-platform SPI for 1.0. What breaks and what replaces it:
+Breaking: the engine contract (`e2e/engine`) is reshaped as the locked, UI-only, cross-platform SPI for 1.0. What breaks and what replaces it:
 
 - `EngineSnapshot.nodes` is `root`, one engine-minted node with an id that stays stable across observations; `url` is `location`, an opaque address (a URL on the web, the foreground screen on a device) the harness treats as a URL only when it parses as one; `viewport` is required.
 - `Engine.url()` is gone; read `location` off an observation. `Engine.swipe` is gone; the viewport swipe is `perform(root, { kind: 'swipe' })`.

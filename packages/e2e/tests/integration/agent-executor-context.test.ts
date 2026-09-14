@@ -11,7 +11,7 @@ import { nodeIdFor } from '../helpers/fake-loop-model.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { resultByTitle, runProject, type FixtureProject, type RunOutcome } from '../helpers/run-project.ts';
 
-const TWO_TESTS_SUITE = `import { test } from '@e2edev/e2e';
+const TWO_TESTS_SUITE = `import { test } from 'e2e';
 
 test('first test runs two steps', async ({ app, agent }) => {
   await app.open();
@@ -25,7 +25,7 @@ test('second test starts fresh', async ({ app, agent }) => {
 });
 `;
 
-const ONE_STEP_SUITE = `import { test } from '@e2edev/e2e';
+const ONE_STEP_SUITE = `import { test } from 'e2e';
 
 test('one act step', async ({ app, agent }) => {
   await app.open();

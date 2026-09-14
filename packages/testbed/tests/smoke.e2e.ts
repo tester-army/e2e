@@ -1,5 +1,5 @@
 import { test } from '@e2edev/playwright';
-import { expect } from '@e2edev/e2e';
+import { expect } from 'e2e';
 
 test('playground renders and navigates', { tags: ['smoke'] }, async ({ app, screen, web }) => {
   await app.open();

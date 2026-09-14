@@ -20,7 +20,7 @@ describe('test.extend fixtures', () => {
     'sets fixtures up in order, hands them to hooks and the body, and tears them down last first',
     async () => {
       const file = `import { appendFileSync } from 'node:fs';
-import { test as base } from '@e2edev/e2e';
+import { test as base } from 'e2e';
 
 const log = (entry: string) => appendFileSync(process.env.HOOK_LOG!, entry + '\\n');
 
@@ -144,7 +144,7 @@ clash('redefines an engine fixture', async ({ web }) => {
     'releases a fixture that reaches use() after the attempt timed out under its setup',
     async () => {
       const file = `import { appendFileSync } from 'node:fs';
-import { test as base } from '@e2edev/e2e';
+import { test as base } from 'e2e';
 
 const log = (entry: string) => appendFileSync(process.env.HOOK_LOG!, entry + '\\n');
 

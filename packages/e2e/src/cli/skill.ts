@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 export const SKILL_NAME = 'e2e';
 
 /** Printed when a build or an install left the skill files out of the package. */
-export const MISSING_SKILL_MESSAGE = 'this installation ships no skill files; reinstall @e2edev/e2e';
+export const MISSING_SKILL_MESSAGE = 'this installation ships no skill files; reinstall e2e';
 
 const TOPIC_PREFIX = 'references/';
 

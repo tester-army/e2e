@@ -9,8 +9,8 @@
  */
 
 import { test } from '@e2edev/playwright';
-import { expect } from '@e2edev/e2e';
-import type { Agent, App, Screen } from '@e2edev/e2e';
+import { expect } from 'e2e';
+import type { Agent, App, Screen } from 'e2e';
 
 interface Scenario {
   readonly slug: string;

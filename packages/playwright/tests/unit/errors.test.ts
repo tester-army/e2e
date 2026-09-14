@@ -5,8 +5,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { EngineError } from '@e2edev/e2e/engine';
-import { ConfigurationError, TestError } from '@e2edev/e2e/engine';
+import { EngineError } from 'e2e/engine';
+import { ConfigurationError, TestError } from 'e2e/engine';
 import { navigationStaleOr, staleOr, translatePwError } from '../../src/support.ts';
 
 function pwTimeout(text: string): Error {

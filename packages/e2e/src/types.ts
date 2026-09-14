@@ -923,7 +923,7 @@ export interface E2EConfig {
   reporters?: readonly (BuiltinReporter | Reporter)[];
   /**
    * The agents by name. Each is either an options block or the agent itself:
-   * `createAgent(...)` from `@e2edev/e2e/agent`, or any hand-rolled
+   * `createAgent(...)` from `e2e/agent`, or any hand-rolled
    * `StepExecutor`. `default` is the one tests run with; `e2e run --agent
    * <name>` runs them with another. With an agent value, the model is the
    * one it brought and every other option keeps its default. Agents never

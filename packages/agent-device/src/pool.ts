@@ -10,7 +10,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { ConfigurationError, EngineError, obj, type EnginePrepareInfo, type EnginePrepareResult } from '@e2edev/e2e/engine';
+import { ConfigurationError, EngineError, obj, type EnginePrepareInfo, type EnginePrepareResult } from 'e2e/engine';
 import { message, runCommand } from './errors.ts';
 import type { AgentDeviceOptions, AgentDevicePlatform, ClientFactory } from './options.ts';
 

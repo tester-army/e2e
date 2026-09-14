@@ -1,5 +1,5 @@
 import { test } from '@e2edev/playwright';
-import { expect, credentials } from '@e2edev/e2e';
+import { expect, credentials } from 'e2e';
 
 test.setup('authenticate as admin', { sessions: ['admin'] }, async ({ app, screen, session, web }) => {
   const admin = credentials.user('admin');

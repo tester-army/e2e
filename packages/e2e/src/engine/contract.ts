@@ -1,7 +1,7 @@
 /**
  * The engine contract vocabulary: the platform-neutral types every
  * engine speaks and the harness consumes. An engine imports these from
- * `@e2edev/e2e/engine`; core never imports anything from an engine.
+ * `e2e/engine`; core never imports anything from an engine.
  *
  * Everything here is capability vocabulary - semantic nodes, locator
  * expressions, action kinds, the error contract - never a platform noun. A

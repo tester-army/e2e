@@ -1,5 +1,5 @@
 import { test } from '@e2edev/playwright';
-import { expect } from '@e2edev/e2e';
+import { expect } from 'e2e';
 
 // Role names match exactly unless told otherwise; the home links' names carry
 // the scenario description too, so these opt into substring matching.

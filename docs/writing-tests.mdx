@@ -7,7 +7,7 @@ A test mixes two kinds of calls. Agent calls state a goal or ask a question.
 Deterministic calls pin down the parts that must not drift.
 
 ```ts title="tests/todos.e2e.ts"
-import { test, expect } from '@e2edev/e2e';
+import { test, expect } from 'e2e';
 
 test('todos survive a filter round-trip', async ({ app, agent, screen }) => {
   await app.open('/todos');

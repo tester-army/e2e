@@ -5,7 +5,7 @@
  */
 
 import { readFileSync } from 'node:fs';
-import type { FinishedRun, Report } from '@e2edev/e2e';
+import type { FinishedRun, Report } from 'e2e';
 
 type ReportRun = Report['run'];
 type ReportResult = ReportRun['results'][number];

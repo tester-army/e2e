@@ -27,10 +27,10 @@ export class AgentError extends Error {
 
 Test files load in their own module realm, so `instanceof AgentError` can be
 false for an error the runner threw. Use `isAgentError`, exported from
-`@e2edev/e2e`, which checks a cross-realm marker, and branch on `code`:
+`e2e`, which checks a cross-realm marker, and branch on `code`:
 
 ```ts
-import { isAgentError } from '@e2edev/e2e';
+import { isAgentError } from 'e2e';
 
 try {
   await agent.act('upgrade the workspace to Pro');

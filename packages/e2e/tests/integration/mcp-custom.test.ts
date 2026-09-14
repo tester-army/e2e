@@ -28,8 +28,8 @@ export const kiosk = createFakeEngine({
 });
 `;
 
-const CONFIG = `import type { E2EConfig } from '@e2edev/e2e';
-import { createAgent, defineTool, getToolContext } from '@e2edev/e2e/agent';
+const CONFIG = `import type { E2EConfig } from 'e2e';
+import { createAgent, defineTool, getToolContext } from 'e2e/agent';
 import { playwright } from '@e2edev/playwright';
 import { z } from 'zod';
 import { kiosk } from './kiosk.ts';
@@ -67,7 +67,7 @@ export default {
 `;
 
 /** A second project config beside the first: one target, no project tools. */
-const KIOSK_ONLY_CONFIG = `import type { E2EConfig } from '@e2edev/e2e';
+const KIOSK_ONLY_CONFIG = `import type { E2EConfig } from 'e2e';
 import { kiosk } from './kiosk.ts';
 
 export default {

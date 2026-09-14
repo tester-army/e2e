@@ -27,8 +27,8 @@ as an unmet peer (npm's `ERESOLVE`).
 ## Engine
 
 ```ts title="e2e.config.ts"
-import type { E2EConfig } from '@e2edev/e2e';
-import { createAgent } from '@e2edev/e2e/agent';
+import type { E2EConfig } from 'e2e';
+import { createAgent } from 'e2e/agent';
 import { agentDevice } from '@e2edev/agent-device';
 import { agentDeviceTools } from '@e2edev/agent-device/tools';
 import { gateway } from 'ai';
@@ -101,7 +101,7 @@ four. The discovered pool reaches workers through the run's environment,
 `prepare` booted for it.
 
 ```ts
-import type { E2EConfig } from '@e2edev/e2e';
+import type { E2EConfig } from 'e2e';
 import { agentDevice } from '@e2edev/agent-device';
 
 const iphones = agentDevice({

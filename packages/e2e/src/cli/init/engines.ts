@@ -24,24 +24,25 @@ export interface EnginePreset {
 const ENGINE_VERSIONS = readJson(import.meta.url, './engine-versions.json') as Readonly<Record<string, string>> | undefined;
 
 /**
- * The range init writes for an engine. Engines version independently of the
- * runner and pin it through their own peer range, so init asks for the minor
- * of the engine released alongside this runner. Package managers resolve a
+ * The range init writes for the runner and for an engine. Engines version
+ * independently of the runner and pin it through their own peer range, so init
+ * asks for the minor of the engine released alongside this runner. Package managers resolve a
  * range to the registry's `latest` tag whenever it satisfies, and `latest`
  * can trail the tag the runner came from by several minors, so a bare `0.x`
  * installed engines whose peer range rejected the runner.
  *
- * A canary runner pins the exact engine build it shipped with. Every canary
- * engine names one runner build in its peer range, and a caret on a prerelease
- * resolves to the newest prerelease of that tuple, which names a different one.
+ * A canary runner pins itself and the exact engine build it shipped with.
+ * Every canary engine names one runner build in its peer range, and a caret on
+ * a prerelease resolves to the newest prerelease of that tuple, which names a
+ * different one.
  */
-export function engineRange(version: string | undefined): string {
+export function dependencyRange(version: string | undefined): string {
   if (version === undefined) return '0.x';
   return version.includes('-') ? version : `^${version}`;
 }
 
 function engineDependency(name: string): Readonly<Record<string, string>> {
-  return { [name]: engineRange(ENGINE_VERSIONS?.[name]) };
+  return { [name]: dependencyRange(ENGINE_VERSIONS?.[name]) };
 }
 
 /**
@@ -87,7 +88,7 @@ export function getEnginePresets() {
     }),
   }],`,
       example: `import { test } from '@e2edev/playwright';
-import { expect } from '@e2edev/e2e';
+import { expect } from 'e2e';
 
 test('app opens', async ({ app, web }) => {
   await app.open('/');
@@ -118,7 +119,7 @@ test('app opens', async ({ app, web }) => {
   targets: [{ name: 'android', engine: agentDevice({ platform: 'android', app: 'com.android.settings' }) }],
   workers: 1,`,
       example: `import { test } from '@e2edev/agent-device';
-import { expect } from '@e2edev/e2e';
+import { expect } from 'e2e';
 
 test('Settings opens', async ({ screen }) => {
   await expect(${ios ? "screen.getByRole('button', { name: 'General' })" : "screen.getByText('Network & internet')"}).toBeVisible();
@@ -149,7 +150,7 @@ test('Settings opens', async ({ screen }) => {
       imports: [],
       config: `  // Add an engine here when your tests need to drive an app.
   targets: [{ name: 'default', platform: 'custom' }],`,
-      example: `import { test, expect } from '@e2edev/e2e';
+      example: `import { test, expect } from 'e2e';
 
 test('app responds', async () => {
   const response = await fetch(process.env.APP_URL ?? 'http://localhost:3000');

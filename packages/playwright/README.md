@@ -1,17 +1,17 @@
 # @e2edev/playwright
 
-The browser engine for [`@e2edev/e2e`](https://www.npmjs.com/package/@e2edev/e2e), built on
+The browser engine for [`e2e`](https://www.npmjs.com/package/e2e), built on
 [Playwright](https://playwright.dev).
 
 `e2e` ships no engine of its own: every target names the engine that drives
 it, and this package is the one for browsers. It implements the public
-`@e2edev/e2e/engine` contract, so a device or desktop engine plugs into the same
+`e2e/engine` contract, so a device or desktop engine plugs into the same
 seam with no privilege either way.
 
 ## Install
 
 ```bash
-npm install --save-dev @e2edev/e2e @e2edev/playwright playwright
+npm install --save-dev e2e @e2edev/playwright playwright
 ```
 
 Bring your own Playwright: `playwright` is a peer dependency (`>=1.63.0 <2`),
@@ -21,7 +21,7 @@ outside the range may be rejected by your package manager as an unmet peer
 (npm's `ERESOLVE`), so upgrade `playwright` within the range.
 
 ```ts title="e2e.config.ts"
-import type { E2EConfig } from '@e2edev/e2e';
+import type { E2EConfig } from 'e2e';
 import { playwright } from '@e2edev/playwright';
 
 export default {
@@ -68,7 +68,7 @@ typed; it is the same runtime `test` as `e2e`'s.
 
 ```ts
 import { test } from '@e2edev/playwright';
-import { expect } from '@e2edev/e2e';
+import { expect } from 'e2e';
 
 test('signs in', async ({ app, screen, web }) => {
   await app.open('/login');

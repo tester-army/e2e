@@ -7,7 +7,7 @@ import { resultByTitle, runProject, type FixtureProject } from '../helpers/run-p
 import type { RunOutcome } from '../helpers/run-project.ts';
 
 const KITCHEN_SINK = `import { test } from '@e2edev/playwright';
-import { expect } from '@e2edev/e2e';
+import { expect } from 'e2e';
 
 test('deterministic queries and reads', async ({ app, screen, web }) => {
   await app.open();

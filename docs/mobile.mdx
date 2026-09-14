@@ -24,7 +24,7 @@ Settings app so the first run works on any machine, and sets one worker.
 There is no `APP_URL`; a device target declares no URL.
 
 ```ts title="e2e.config.ts"
-import type { E2EConfig } from '@e2edev/e2e';
+import type { E2EConfig } from 'e2e';
 import { agentDevice } from '@e2edev/agent-device';
 
 export default {
@@ -64,7 +64,7 @@ gives every attempt the same starting screen, which the
 One engine per device family; a config declares as many as it has devices:
 
 ```ts title="e2e.config.ts"
-import type { E2EConfig } from '@e2edev/e2e';
+import type { E2EConfig } from 'e2e';
 import { agentDevice } from '@e2edev/agent-device';
 
 const iphone = agentDevice({ platform: 'ios', app: 'com.example.app' });
@@ -106,7 +106,7 @@ Element identifiers surface under `getByTestId`.
 
 ```ts
 import { test } from '@e2edev/agent-device';
-import { expect } from '@e2edev/e2e';
+import { expect } from 'e2e';
 
 test('shows the version offline in dark mode', async ({ agent, device, screen }) => {
   await device.setAppearance('dark');
@@ -154,8 +154,8 @@ tool. For app switching, free-form swipes, typing into editors that hide the
 focused field, and system alerts, hand the agent the device tool pack:
 
 ```ts title="e2e.config.ts"
-import type { E2EConfig } from '@e2edev/e2e';
-import { createAgent } from '@e2edev/e2e/agent';
+import type { E2EConfig } from 'e2e';
+import { createAgent } from 'e2e/agent';
 import { agentDevice } from '@e2edev/agent-device';
 import { agentDeviceTools } from '@e2edev/agent-device/tools';
 import { gateway } from 'ai';

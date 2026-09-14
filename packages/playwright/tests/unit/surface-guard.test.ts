@@ -5,9 +5,9 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { OperationContext } from '@e2edev/e2e/engine';
-import { TestError } from '@e2edev/e2e/engine';
-import { raceAbort, withinCleanupBudget } from '@e2edev/e2e/engine';
+import type { OperationContext } from 'e2e/engine';
+import { TestError } from 'e2e/engine';
+import { raceAbort, withinCleanupBudget } from 'e2e/engine';
 import { PlaywrightSurface } from '../../src/surface.ts';
 
 function operation(signal = new AbortController().signal): OperationContext {

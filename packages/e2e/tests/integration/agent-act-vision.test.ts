@@ -14,7 +14,7 @@ import { installFakeLoopModel, loopCalls, type LoopCall } from '../helpers/fake-
 import { resultByTitle, runProject, type FixtureProject } from '../helpers/run-project.ts';
 import type { RunOutcome } from '../helpers/run-project.ts';
 
-const SUITE = `import { test, credentials, expect } from '@e2edev/e2e';
+const SUITE = `import { test, credentials, expect } from 'e2e';
 
 test('taps a canvas pin the tree does not list', async ({ app, agent, screen }) => {
   await app.open('/canvas');
@@ -200,7 +200,7 @@ describe('actions.tapAt from a custom executor', () => {
     app = await startFixtureApp();
     const run = await runProject(
       {
-        'tests/race.e2e.ts': `import { test, expect } from '@e2edev/e2e';
+        'tests/race.e2e.ts': `import { test, expect } from 'e2e';
 
 test('a point tap issued alongside a node tap lands first', async ({ app, agent, screen }) => {
   await app.open('/canvas');

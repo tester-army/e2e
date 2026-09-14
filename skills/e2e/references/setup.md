@@ -22,11 +22,11 @@
 ## Scaffold
 
 ```bash
-npx @e2edev/e2e@beta init       # npm
-pnpm dlx @e2edev/e2e@beta init  # pnpm
+npx e2e@beta init       # npm
+pnpm dlx e2e@beta init  # pnpm
 ```
 
-When `@e2edev/e2e` is already installed, run `npx e2e init` instead, so the
+When `e2e` is already installed, run `npx e2e init` instead, so the
 installed version scaffolds.
 
 The wizard asks for the engine (Web with Playwright by default; Mobile with
@@ -50,7 +50,7 @@ project.
 Without the wizard:
 
 ```bash
-npm install --save-dev @e2edev/e2e@beta @e2edev/playwright@beta playwright ai@^7
+npm install --save-dev e2e@beta @e2edev/playwright@beta playwright ai@^7
 ```
 
 `ai` (the Vercel AI SDK, v7) is only needed for `agent.*` steps.
@@ -62,8 +62,8 @@ literal ending in `satisfies E2EConfig`. The runner validates it at load:
 unknown keys are `INVALID_CONFIG`.
 
 ```ts
-import type { E2EConfig } from '@e2edev/e2e';
-import { createAgent } from '@e2edev/e2e/agent';
+import type { E2EConfig } from 'e2e';
+import { createAgent } from 'e2e/agent';
 import { playwright } from '@e2edev/playwright';
 import { gateway } from 'ai';
 
@@ -221,8 +221,8 @@ with a simulator runtime, or the Android SDK with an emulator; run
 `npx agent-device doctor` once.
 
 ```ts
-import type { E2EConfig } from '@e2edev/e2e';
-import { createAgent } from '@e2edev/e2e/agent';
+import type { E2EConfig } from 'e2e';
+import { createAgent } from 'e2e/agent';
 import { agentDevice } from '@e2edev/agent-device';
 import { agentDeviceTools } from '@e2edev/agent-device/tools';
 

@@ -13,7 +13,7 @@ body:
     id: proposal
     attributes:
       label: Proposed API
-      description: How the test file would look with the change. Sketch the types if it touches `@e2edev/e2e` exports.
+      description: How the test file would look with the change. Sketch the types if it touches `e2e` exports.
       render: ts
   - type: dropdown
     id: surface
@@ -24,7 +24,7 @@ body:
         - public types (SDK)
         - config keys
         - CLI flags
-        - engine contract (`@e2edev/e2e/engine`)
+        - engine contract (`e2e/engine`)
         - report or cache format
         - docs only
   - type: checkboxes

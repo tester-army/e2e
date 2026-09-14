@@ -27,7 +27,7 @@ describe('parallel worker execution', () => {
       const pidDir = mkdtempSync(path.join(tmpdir(), 'e2e-pids-'));
       const testFile = (name: string) => `import { writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { test } from '@e2edev/e2e';
+import { test } from 'e2e';
 
 test('${name} runs', async ({ app }) => {
   await app.open();
@@ -57,7 +57,7 @@ test('${name} runs', async ({ app }) => {
   it(
     'produces sessions in one worker and restores them in another',
     async () => {
-      const setupFile = `import { test, expect } from '@e2edev/e2e';
+      const setupFile = `import { test, expect } from 'e2e';
 
 test.setup('seed storage', { sessions: ['seeded'] }, async ({ app, screen, session }) => {
   await app.open('/storage');
@@ -66,7 +66,7 @@ test.setup('seed storage', { sessions: ['seeded'] }, async ({ app, screen, sessi
   await session.save('seeded');
 });
 `;
-      const consumerFile = `import { test, expect } from '@e2edev/e2e';
+      const consumerFile = `import { test, expect } from 'e2e';
 
 test('starts with the seeded state', { session: 'seeded' }, async ({ app, screen }) => {
   await app.open('/storage');
@@ -88,20 +88,20 @@ test('starts with the seeded state', { session: 'seeded' }, async ({ app, screen
   it(
     'gates dependents across workers when their setup fails',
     async () => {
-      const setupFile = `import { test } from '@e2edev/e2e';
+      const setupFile = `import { test } from 'e2e';
 
 test.setup('failing setup', { sessions: ['broken'] }, async ({ app }) => {
   await app.open();
   throw new Error('cannot authenticate');
 });
 `;
-      const dependentFile = `import { test } from '@e2edev/e2e';
+      const dependentFile = `import { test } from 'e2e';
 
 test('depends on broken', { session: 'broken' }, async ({ app }) => {
   await app.open();
 });
 `;
-      const unrelatedFile = `import { test } from '@e2edev/e2e';
+      const unrelatedFile = `import { test } from 'e2e';
 
 test('unrelated still runs', async ({ app }) => {
   await app.open();
@@ -128,7 +128,7 @@ test('unrelated still runs', async ({ app }) => {
   it(
     'runs serial groups as one unit on one worker',
     async () => {
-      const serialFile = `import { test, expect } from '@e2edev/e2e';
+      const serialFile = `import { test, expect } from 'e2e';
 
 test.describe('wizard', { serial: true }, () => {
   let shared = 0;
@@ -146,7 +146,7 @@ test.describe('wizard', { serial: true }, () => {
   });
 });
 `;
-      const otherFile = `import { test } from '@e2edev/e2e';
+      const otherFile = `import { test } from 'e2e';
 
 test('parallel neighbor', async ({ app }) => {
   await app.open();
@@ -174,7 +174,7 @@ test('parallel neighbor', async ({ app }) => {
   it(
     'reports a worker crash as infrastructure failure and finishes the run',
     async () => {
-      const crashFile = `import { test } from '@e2edev/e2e';
+      const crashFile = `import { test } from 'e2e';
 
 test('crashes the worker', async ({ app }) => {
   await app.open();
@@ -185,7 +185,7 @@ test('never reached in this file', async ({ app }) => {
   await app.open();
 });
 `;
-      const survivorFile = `import { test } from '@e2edev/e2e';
+      const survivorFile = `import { test } from 'e2e';
 
 test('survivor passes', async ({ app }) => {
   await app.open();
@@ -215,7 +215,7 @@ test('survivor passes', async ({ app }) => {
   it(
     'interrupts workers and reports 130',
     async () => {
-      const slowFile = `import { test } from '@e2edev/e2e';
+      const slowFile = `import { test } from 'e2e';
 
 test('sleeps a long time', { timeout: 8000 }, async ({ app }) => {
   await app.open();

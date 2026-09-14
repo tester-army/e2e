@@ -6,7 +6,7 @@
  */
 
 import { test } from '@e2edev/playwright';
-import { expect } from '@e2edev/e2e';
+import { expect } from 'e2e';
 
 test('act walks an eight-screen wizard painted on a canvas', async ({ web, agent, screen }) => {
   await web.goto('/canvas-wizard');

@@ -24,7 +24,7 @@ it loads anything else on an older runtime.
 | Flag | Behavior |
 | --- | --- |
 | `-h`, `--help` | Prints the help of the command it follows and exits 0. `e2e --help` opens with the installed version, lists the commands with examples, and links these docs. `e2e run --help` groups the flags into Selection, Execution, and Output, then lists examples and the exit codes. `e2e help run` prints the same text. |
-| `-v`, `--version` | Prints the installed `@e2edev/e2e` version, nothing else, and exits 0. |
+| `-v`, `--version` | Prints the installed `e2e` version, nothing else, and exits 0. |
 
 ```console
 $ npx e2e --version
@@ -38,7 +38,7 @@ the help on stderr and exits 2. A misspelled command exits 2 with a suggestion
 
 ## e2e init
 
-Scaffolds a project and adds `@e2edev/e2e` to `devDependencies` when it is not
+Scaffolds a project and adds `e2e` to `devDependencies` when it is not
 already declared. Existing config and test files are reported and skipped.
 Existing dependency versions and other package fields are preserved. With a
 `directory` argument the project is scaffolded there, the directory is created

@@ -11,7 +11,7 @@ import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { createProject, runExisting, type FixtureProject } from '../helpers/run-project.ts';
 import type { FinishedRun, Reporter, RunEvent } from '../../src/index.ts';
 
-const SUITE = `import { test, expect } from '@e2edev/e2e';
+const SUITE = `import { test, expect } from 'e2e';
 
 test('shows the counter', async ({ app, screen }) => {
   await app.open();

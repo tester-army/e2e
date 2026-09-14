@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Page } from 'playwright';
 import { afterEach, describe, expect, it } from 'vitest';
-import { EngineError } from '@e2edev/e2e/engine';
+import { EngineError } from 'e2e/engine';
 import { VideoRecorder } from '../../src/video.ts';
 
 const VIEWPORT = { width: 320, height: 200 };

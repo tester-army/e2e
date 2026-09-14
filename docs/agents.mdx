@@ -9,8 +9,8 @@ that reads screens more carefully, a playbook for a UX review, a persona who
 has never seen the app.
 
 ```ts title="e2e.config.ts"
-import type { E2EConfig } from '@e2edev/e2e';
-import { createAgent } from '@e2edev/e2e/agent';
+import type { E2EConfig } from 'e2e';
+import { createAgent } from 'e2e/agent';
 import { playwright } from '@e2edev/playwright';
 import { gateway } from 'ai';
 
@@ -94,7 +94,7 @@ The test bodies below are abbreviated to show agent selection; replace
 the placeholder bodies with your app's checkout and refund steps.
 
 ```ts title="tests/checkout.e2e.ts"
-import { test } from '@e2edev/e2e';
+import { test } from 'e2e';
 
 test.describe('checkout as a first-time buyer', { agent: 'buyer' }, () => {
   test('pays for one item', async ({ app, agent }) => { /* ... */ });
@@ -125,7 +125,7 @@ A pin can be a list. The test then runs once per agent named, as one result
 each, in one run:
 
 ```ts title="tests/checkout.e2e.ts"
-import { test } from '@e2edev/e2e';
+import { test } from 'e2e';
 
 test.describe('checkout', { agent: ['buyer', 'admin'] }, () => {
   test('pays for one item', async ({ app, agent }) => { /* runs once per persona */ });

@@ -1,5 +1,5 @@
 import { test } from '@e2edev/agent-device';
-import { expect } from '@e2edev/e2e';
+import { expect } from 'e2e';
 
 test('the agent opens General', async ({ agent, device }) => {
   await agent.act('open {section} settings', { params: { section: 'General' } });

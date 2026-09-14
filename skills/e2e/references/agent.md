@@ -11,7 +11,7 @@ Agents live under `agents` by name; `default` is the one tests use, `e2e run --a
 
 ```ts
 // e2e.config.ts
-import { createAgent } from '@e2edev/e2e/agent';
+import { createAgent } from 'e2e/agent';
 import { gateway } from 'ai';
 
 export default {
@@ -53,7 +53,7 @@ AI_GATEWAY_API_KEY=... npx e2e run
 ## act: one goal
 
 ```ts
-import { credentials } from '@e2edev/e2e';
+import { credentials } from 'e2e';
 
 await agent.act('add a todo named "Buy milk" and mark it done');
 await agent.act('invite {email} as an editor', { params: { email: 'ada@example.test' } });
@@ -273,7 +273,7 @@ per agent step, so a specialised agent gets the same replay benefit.
 ## Beyond the built-in agent
 
 - `createAgent({ tools: { seedCart } })` adds AI SDK tools wrapped with
-  `defineTool(tool({ ... }), { mutates: true })` from `@e2edev/e2e/agent`, so
+  `defineTool(tool({ ... }), { mutates: true })` from `e2e/agent`, so
   a flow can call a test API mid-step.
 - `createToolLoopExecutor` keeps the loop and replaces the prompt and the
   tool vocabulary.

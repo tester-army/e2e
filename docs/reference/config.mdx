@@ -10,7 +10,7 @@ literal type. Every rule below is enforced when the runner resolves the
 config, not by the type.
 
 ```ts title="e2e.config.ts"
-import type { E2EConfig } from '@e2edev/e2e';
+import type { E2EConfig } from 'e2e';
 import { playwright } from '@e2edev/playwright';
 
 export default {
@@ -71,7 +71,7 @@ Every numeric value must be a safe integer.
 export interface Target {
   name?: string;         // defaults to platform
   platform?: Platform;   // defaults to the engine's
-  engine?: EngineHandle; // defineEngine(...) from '@e2edev/e2e/engine'
+  engine?: EngineHandle; // defineEngine(...) from 'e2e/engine'
 }
 ```
 
@@ -307,8 +307,8 @@ written: `--agent` is `INVALID_CONFIG`, a pin is `COLLECTION_ERROR`, a call's
 or `.`. See [Agents and personas](/agents).
 
 ```ts title="e2e.config.ts"
-import type { E2EConfig } from '@e2edev/e2e';
-import { createAgent } from '@e2edev/e2e/agent';
+import type { E2EConfig } from 'e2e';
+import { createAgent } from 'e2e/agent';
 import { playwright } from '@e2edev/playwright';
 import { gateway } from 'ai';
 

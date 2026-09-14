@@ -48,12 +48,12 @@
     "test:unit": "vitest run tests/unit"
   },
   "peerDependencies": {
-    "@e2edev/e2e": ">=0.8.0 <1",
+    "e2e": ">=0.8.0 <1",
     "playwright": ">=1.63.0 <2"
   },
   "devDependencies": {
     "@types/node": "26.4.1",
-    "@e2edev/e2e": "workspace:*",
+    "e2e": "workspace:*",
     "@types/pngjs": "6.0.5",
     "pngjs": "7.0.0",
     "playwright": "1.63.0",

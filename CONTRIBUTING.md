@@ -38,7 +38,7 @@ Fix the prose when you find it stale.
 
 This project is a pnpm monorepo containing:
 
-- `packages/e2e`: the published `@e2edev/e2e` package (SDK, runner, CLI, engine contract)
+- `packages/e2e`: the published `e2e` package (SDK, runner, CLI, engine contract)
 - `packages/playwright`: the published `@e2edev/playwright` browser engine
 - `packages/agent-device`: the published `@e2edev/agent-device` mobile engine
 - `packages/testbed`: private dogfood suite that consumes the built packages
@@ -101,7 +101,7 @@ We use [changesets](https://github.com/changesets/changesets) to publish new
 versions. It handles bumping the version based on semver, writing the
 changelog, and creating tags and GitHub releases.
 
-If your change affects `@e2edev/e2e`, `@e2edev/playwright`, or
+If your change affects `e2e`, `@e2edev/playwright`, or
 `@e2edev/agent-device`, add a changeset:
 
 ```sh
@@ -116,14 +116,13 @@ git tag. Never hand-edit a package `version` or
 
 ## Releases
 
-Packages publish to npmjs under the `@e2edev` scope as public packages;
-anyone can install them and read the release on GitHub. After a PR with a
-changeset lands on `main`, the release workflow opens a `chore: version
-packages` pull request that applies the pending changesets. Merging that PR
-re-runs the full gate, publishes the new versions, and creates the matching
-GitHub release. The `e2e` CLI binary keeps its unscoped name; the unscoped
-`e2e` package on npmjs is a placeholder the team reserved so that nobody
-else can claim the bin name.
+The runner publishes to npmjs as `e2e`; engines and reporters publish under
+the `@e2edev` scope. All are public packages: anyone can install them and read
+the release on GitHub. After a PR with a changeset lands on `main`, the release
+workflow opens a `chore: version packages` pull request that applies the
+pending changesets. Merging that PR re-runs the full gate, publishes the new
+versions, and creates the matching GitHub release. `@e2edev/e2e` is the
+runner's retired name and is deprecated on npm.
 
 ### Release channels
 
@@ -165,7 +164,7 @@ committed.
 The following are the public contract. A change that breaks any of them is a
 breaking change and follows the rules below:
 
-- Public types exported from `@e2edev/e2e` and `@e2edev/e2e/engine`, as
+- Public types exported from `e2e` and `e2e/engine`, as
   emitted in `dist/index.d.ts` and `dist/engine/index.d.ts`. Removing an
   export, narrowing an accepted input, widening a returned type, or changing a
   fixture's runtime behavior all count.
@@ -202,9 +201,9 @@ prompts and tool descriptions.
 
 ### Engine contract
 
-`@e2edev/e2e/engine` is what `@e2edev/playwright` and `@e2edev/agent-device`
+`e2e/engine` is what `@e2edev/playwright` and `@e2edev/agent-device`
 build against, and what a third-party engine builds against too. A change to
 that contract bumps all three packages together in one release, with a
 changeset for each, so an engine and a runner from the same release always
-match. Engines declare a peer range on `@e2edev/e2e` that points one way only
+match. Engines declare a peer range on `e2e` that points one way only
 (engine to runner, `>=x <1`); do not make it mutual or narrow it.

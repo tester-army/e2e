@@ -28,8 +28,8 @@ const LOG_HELPER =
  */
 function config(app = ''): string {
   return `import { appendFileSync } from 'node:fs';
-import type { E2EConfig } from '@e2edev/e2e';
-import { defineEngine } from '@e2edev/e2e/engine';
+import type { E2EConfig } from 'e2e';
+import { defineEngine } from 'e2e/engine';
 
 ${LOG_HELPER}
 const node = { ref: { id: 'n1', revision: '' }, role: 'button', name: 'Go', states: { hidden: false } };
@@ -90,7 +90,7 @@ const STUCK_SERVICE_APP = `app: {
 
 /** A body that never calls the harness: only the interrupt race can end it. */
 const SLEEPING_TEST = `import { appendFileSync } from 'node:fs';
-import { test } from '@e2edev/e2e';
+import { test } from 'e2e';
 
 ${LOG_HELPER}
 
@@ -106,7 +106,7 @@ test('sleeps until interrupted', async () => {
  * signal is guaranteed to land mid-teardown.
  */
 const SLOW_TEARDOWN_TEST = `import { appendFileSync } from 'node:fs';
-import { test } from '@e2edev/e2e';
+import { test } from 'e2e';
 
 ${LOG_HELPER}
 

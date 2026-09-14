@@ -7,7 +7,7 @@
  * ids the surface owns.
  */
 
-import type { SemanticNode } from '@e2edev/e2e/engine';
+import type { SemanticNode } from 'e2e/engine';
 import type { Rect } from './support.ts';
 
 /** The subset of an agent-device snapshot node this engine reads. */

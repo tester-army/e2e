@@ -312,7 +312,7 @@ function describeNoTests(
   }
   if (tests.length === 0) {
     const named = nameFiles(files.map((file) => file.file));
-    return `${named} registered no tests; import { test } from '@e2edev/e2e' (or from the engine package) and call test() at the top level of the module`;
+    return `${named} registered no tests; import { test } from 'e2e' (or from the engine package) and call test() at the top level of the module`;
   }
   const reasons = new Map<string, Set<string>>();
   const count = (reason: string, test: CollectedTest): void => {

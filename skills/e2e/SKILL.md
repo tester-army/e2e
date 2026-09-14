@@ -1,6 +1,6 @@
 ---
 name: e2e
-description: Set up and write agentic end-to-end tests with e2e, the @e2edev/e2e runner. Covers scaffolding e2e.config.ts, choosing the Playwright browser engine or the agent-device mobile engine, starting the app under test from the config, writing tests that drive flows with agent.act and judge them with agent.assert, agent.waitFor, and agent.extract, pinning exact values and outcomes with screen, app, web, and expect, shaping the agent for the app (context, system prompt, tools, personas), the trace cache that replays passing steps, running with the e2e CLI, and reading .e2e/report.json when a run fails. Use when a project depends on @e2edev/e2e, when asked to add end-to-end, browser, mobile, or agentic UI tests, or when an e2e run fails.
+description: Set up and write agentic end-to-end tests with e2e, the e2e runner. Covers scaffolding e2e.config.ts, choosing the Playwright browser engine or the agent-device mobile engine, starting the app under test from the config, writing tests that drive flows with agent.act and judge them with agent.assert, agent.waitFor, and agent.extract, pinning exact values and outcomes with screen, app, web, and expect, shaping the agent for the app (context, system prompt, tools, personas), the trace cache that replays passing steps, running with the e2e CLI, and reading .e2e/report.json when a run fails. Use when a project depends on e2e, when asked to add end-to-end, browser, mobile, or agentic UI tests, or when an e2e run fails.
 ---
 
 # e2e: agentic end-to-end tests in TypeScript
@@ -20,8 +20,8 @@ simulators and Android emulators.
 
 ```ts
 // e2e.config.ts
-import type { E2EConfig } from '@e2edev/e2e';
-import { createAgent } from '@e2edev/e2e/agent';
+import type { E2EConfig } from 'e2e';
+import { createAgent } from 'e2e/agent';
 import { playwright } from '@e2edev/playwright';
 import { gateway } from 'ai';
 
@@ -47,7 +47,7 @@ export default {
 ```ts
 // tests/billing.e2e.ts
 import { test } from '@e2edev/playwright';
-import { expect } from '@e2edev/e2e';
+import { expect } from 'e2e';
 
 test('a member upgrades to Pro', async ({ app, agent, screen, web }) => {
   await app.open('/settings/billing');
@@ -76,7 +76,7 @@ one. Without them, the installed CLI prints the same text:
 ## Workflow
 
 1. Look at what exists: `e2e.config.ts` or `e2e.config.mts`, the `tests` glob
-   (default `tests/**/*.e2e.ts`), `@e2edev/e2e` in `package.json`. Nothing
+   (default `tests/**/*.e2e.ts`), `e2e` in `package.json`. Nothing
    there: follow `setup`.
 2. Learn the screens you will drive before writing a test: routes, labels,
    roles, button text. Semantic locators need the accessible names the app
@@ -101,11 +101,11 @@ one. Without them, the installed CLI prints the same text:
 
 - Run the CLI as `npx e2e ...` (or `pnpm exec e2e ...`).
 - The config is `export default { ... } satisfies E2EConfig` with
-  `import type { E2EConfig } from '@e2edev/e2e'`. `targets` is required and
+  `import type { E2EConfig } from 'e2e'`. `targets` is required and
   each target names its engine. The engine declares the app:
   `playwright({ url, command })`. There is no top-level `app` key and no
   `defineConfig`.
-- Import `test`, `expect`, `credentials`, and `secrets` from `@e2edev/e2e`. A test that
+- Import `test`, `expect`, `credentials`, and `secrets` from `e2e`. A test that
   uses the `web` fixture imports `test` from `@e2edev/playwright` instead: the
   same runtime `test`, typed with `web`.
 - Config and tests are ES modules and load as such whatever `package.json` sets as `type`.

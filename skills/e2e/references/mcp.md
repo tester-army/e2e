@@ -8,7 +8,7 @@ Running tests and reading a failed run stay on the CLI (topics `running` and
 
 ## Setup
 
-The server ships with `@e2edev/e2e`. `e2e init` offers to register it; by
+The server ships with `e2e`. `e2e init` offers to register it; by
 hand:
 
 ```bash

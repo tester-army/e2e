@@ -21,21 +21,21 @@ with an emulator.
 
   <CodeGroup>
   ```bash npm
-  npx @e2edev/e2e@canary init
+  npx e2e@canary init
   ```
 
   ```bash pnpm
-  pnpm dlx @e2edev/e2e@canary init
+  pnpm dlx e2e@canary init
   ```
 
   ```bash bun
-  bunx @e2edev/e2e@canary init
+  bunx e2e@canary init
   ```
   </CodeGroup>
 
   The wizard asks which platform to test, then offers defaults for the rest:
   the Vercel AI Gateway for the model and the coding-agent skill. `init` adds
-  `@e2edev/e2e`, the engine packages, and `ai` to `devDependencies`, a
+  `e2e`, the engine packages, and `ai` to `devDependencies`, a
   `test:e2e` script, and `.gitignore` entries, and writes the config, an
   example test, and the skill files. It never overwrites a file that exists.
 
@@ -44,8 +44,8 @@ with an emulator.
     Choose **Web (Playwright)**, with your dev server on `http://localhost:3000`.
 
   ```ts title="e2e.config.ts"
-  import type { E2EConfig } from '@e2edev/e2e';
-  import { createAgent } from '@e2edev/e2e/agent';
+  import type { E2EConfig } from 'e2e';
+  import { createAgent } from 'e2e/agent';
   import { playwright } from '@e2edev/playwright';
   import { gateway } from 'ai';
 
@@ -69,7 +69,7 @@ with an emulator.
 
   ```ts title="tests/example.e2e.ts"
   import { test } from '@e2edev/playwright';
-  import { expect } from '@e2edev/e2e';
+  import { expect } from 'e2e';
 
   test('app opens', async ({ app, web }) => {
     await app.open('/');
@@ -92,8 +92,8 @@ with an emulator.
     is `platform: 'android'` with `app: 'com.android.settings'`.
 
   ```ts title="e2e.config.ts"
-  import type { E2EConfig } from '@e2edev/e2e';
-  import { createAgent } from '@e2edev/e2e/agent';
+  import type { E2EConfig } from 'e2e';
+  import { createAgent } from 'e2e/agent';
   import { agentDevice } from '@e2edev/agent-device';
   import { gateway } from 'ai';
 
@@ -113,7 +113,7 @@ with an emulator.
 
   ```ts title="tests/example.e2e.ts"
   import { test } from '@e2edev/agent-device';
-  import { expect } from '@e2edev/e2e';
+  import { expect } from 'e2e';
 
   test('Settings opens', async ({ screen }) => {
     await expect(screen.getByRole('button', { name: 'General' })).toBeVisible();
@@ -186,7 +186,7 @@ goal your app can satisfy, or write a new file next to it:
   <Tab title="Web">
 ```ts title="tests/agent.e2e.ts"
 import { test } from '@e2edev/playwright';
-import { expect } from '@e2edev/e2e';
+import { expect } from 'e2e';
 
 test('a visitor signs up for a trial', async ({ app, agent, screen }) => {
   await app.open('/');
@@ -203,7 +203,7 @@ test('a visitor signs up for a trial', async ({ app, agent, screen }) => {
   <Tab title="Mobile">
 ```ts title="tests/agent.e2e.ts"
 import { test } from '@e2edev/agent-device';
-import { expect } from '@e2edev/e2e';
+import { expect } from 'e2e';
 
 test('the agent opens General', async ({ agent, device }) => {
   await agent.act('open {section} settings', { params: { section: 'General' } });

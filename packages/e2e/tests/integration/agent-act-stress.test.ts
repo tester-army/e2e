@@ -16,7 +16,7 @@ import { AGENT_CODE_TABLE } from '../../src/agent/error.ts';
 
 const CREDS = { admin: { username: 'admin', password: 'admin-pass' } };
 
-const SECRET_SUITE = `import { test, credentials } from '@e2edev/e2e';
+const SECRET_SUITE = `import { test, credentials } from 'e2e';
 
 test('secret probe', async ({ app, agent }) => {
   await app.open();
@@ -122,7 +122,7 @@ describe('input boundaries and adversarial loops', () => {
   });
 
   it('rejects params past the canonical size and depth bounds', async () => {
-    const suite = `import { test } from '@e2edev/e2e';
+    const suite = `import { test } from 'e2e';
 
 test('oversized params', async ({ app, agent }) => {
   await app.open();
@@ -164,7 +164,7 @@ test('too-deep params', async ({ app, agent }) => {
       const id = nodeIdFor(call.prompt, /button "Increment"/);
       return [{ toolName: 'tap', input: { target: id } }];
     });
-    const suite = `import { test } from '@e2edev/e2e';
+    const suite = `import { test } from 'e2e';
 
 test('defiant model', async ({ app, agent }) => {
   await app.open();
@@ -203,7 +203,7 @@ test('defiant model', async ({ app, agent }) => {
       },
     };
     const calls = Array.from({ length: 10 }, () => "  await agent.act('tap once');").join('\n');
-    const suite = `import { test, expect } from '@e2edev/e2e';
+    const suite = `import { test, expect } from 'e2e';
 
 test('ten steps', async ({ app, agent, screen }) => {
   await app.open();
@@ -249,7 +249,7 @@ describe('taxonomy and run derivation under mixed outcomes', () => {
   });
 
   it('blocks the run on a new code, but one real failure keeps it failed', async () => {
-    const suite = `import { test } from '@e2edev/e2e';
+    const suite = `import { test } from 'e2e';
 
 test('blocked by seed data', async ({ app, agent }) => {
   await app.open();
@@ -304,8 +304,8 @@ describe('config-file executor across worker processes', () => {
   });
 
   it('reconstructs the executor per worker and passes in parallel', async () => {
-    const configSource = `import type { E2EConfig } from '@e2edev/e2e';
-import type { StepExecutor } from '@e2edev/e2e';
+    const configSource = `import type { E2EConfig } from 'e2e';
+import type { StepExecutor } from 'e2e';
 import { playwright } from '@e2edev/playwright';
 
 const executor: StepExecutor = {
@@ -326,7 +326,7 @@ export default {
   agents: { default: executor },
 } satisfies E2EConfig;
 `;
-    const testFile = (name: string) => `import { test } from '@e2edev/e2e';
+    const testFile = (name: string) => `import { test } from 'e2e';
 
 test('${name}', async ({ app, agent }) => {
   await app.open();

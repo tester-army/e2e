@@ -12,7 +12,7 @@ ordinary tests declare which session they want.
 
 ```ts
 import { test } from '@e2edev/playwright';
-import { expect, credentials } from '@e2edev/e2e';
+import { expect, credentials } from 'e2e';
 
 test.setup('authenticate as admin', { sessions: ['admin'] }, async ({ app, screen, session, web }) => {
   const admin = credentials.user('admin');
@@ -34,7 +34,7 @@ test.setup('authenticate as admin', { sessions: ['admin'] }, async ({ app, scree
 
 ```ts
 import { test } from '@e2edev/playwright';
-import { expect } from '@e2edev/e2e';
+import { expect } from 'e2e';
 
 test('the dashboard opens directly', { session: 'admin' }, async ({ app, screen, web }) => {
   await app.open('/dashboard');
@@ -112,7 +112,7 @@ vault lookup or a freshly computed one-time code.
 ## The password is a handle
 
 ```ts
-import { credentials } from '@e2edev/e2e';
+import { credentials } from 'e2e';
 
 const admin = credentials.user('admin');
 
@@ -194,7 +194,7 @@ sinks a password goes to:
   <Tab title="Deterministic">
 
 ```ts
-import { secrets } from '@e2edev/e2e';
+import { secrets } from 'e2e';
 
 await screen.getByLabel('Secret key').fill(secrets.get('stripe-key'));
 ```
@@ -203,7 +203,7 @@ await screen.getByLabel('Secret key').fill(secrets.get('stripe-key'));
   <Tab title="Agentic">
 
 ```ts
-import { secrets } from '@e2edev/e2e';
+import { secrets } from 'e2e';
 
 await agent.act('Connect Stripe with the given key', {
   params: { apiKey: secrets.get('stripe-key') },
@@ -258,7 +258,7 @@ the persona's [agent](/agents) and its session.
 
 ```ts
 import { test } from '@e2edev/playwright';
-import { expect, credentials } from '@e2edev/e2e';
+import { expect, credentials } from 'e2e';
 
 const PERSONAS = ['buyer', 'admin'] as const;
 

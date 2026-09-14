@@ -6,7 +6,7 @@ packages:
 # already decide what we install, so the delay only blocks deliberate bumps.
 minimumReleaseAge: 0
 
-# @e2edev/e2e and @e2edev/playwright develop against each other; pnpm 12 would
+# e2e and @e2edev/playwright develop against each other; pnpm 12 would
 # otherwise refuse to run recursive scripts across that cycle.
 ignoreWorkspaceCycles: true
 

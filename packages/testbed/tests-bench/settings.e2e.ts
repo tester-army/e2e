@@ -5,7 +5,7 @@
  */
 
 import { test } from '@e2edev/playwright';
-import { expect } from '@e2edev/e2e';
+import { expect } from 'e2e';
 
 test('upgrades the plan through the confirm panel', async ({ web, agent, screen }) => {
   await web.goto('/settings');

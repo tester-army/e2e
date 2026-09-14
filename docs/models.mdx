@@ -19,9 +19,9 @@ calls one vendor directly. `e2e init` writes the one you chose.
   <Tab title="Vercel AI Gateway">
 
 ```ts title="e2e.config.ts"
-import type { E2EConfig } from '@e2edev/e2e';
+import type { E2EConfig } from 'e2e';
 import { playwright } from '@e2edev/playwright';
-import { createAgent } from '@e2edev/e2e/agent';
+import { createAgent } from 'e2e/agent';
 import { gateway } from 'ai';
 
 export default {
@@ -36,9 +36,9 @@ export default {
   <Tab title="OpenRouter">
 
 ```ts title="e2e.config.ts"
-import type { E2EConfig } from '@e2edev/e2e';
+import type { E2EConfig } from 'e2e';
 import { playwright } from '@e2edev/playwright';
-import { createAgent } from '@e2edev/e2e/agent';
+import { createAgent } from 'e2e/agent';
 import { openrouter } from '@openrouter/ai-sdk-provider';
 
 export default {
@@ -53,9 +53,9 @@ export default {
   <Tab title="OpenAI-compatible endpoint">
 
 ```ts title="e2e.config.ts"
-import type { E2EConfig } from '@e2edev/e2e';
+import type { E2EConfig } from 'e2e';
 import { playwright } from '@e2edev/playwright';
-import { createAgent } from '@e2edev/e2e/agent';
+import { createAgent } from 'e2e/agent';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 
 const local = createOpenAICompatible({
@@ -77,10 +77,10 @@ own APIs speak this protocol. You pass the URL and the key; there is no default.
   <Tab title="A provider directly">
 
 ```ts title="e2e.config.ts"
-import type { E2EConfig } from '@e2edev/e2e';
+import type { E2EConfig } from 'e2e';
 import { playwright } from '@e2edev/playwright';
 import { openai } from '@ai-sdk/openai';
-import { createAgent } from '@e2edev/e2e/agent';
+import { createAgent } from 'e2e/agent';
 
 export default {
   targets: [{ engine: playwright({ url: 'http://localhost:3000' }) }],
@@ -143,7 +143,7 @@ Each model slot is its own instance, so they can come from different
 packages:
 
 ```ts title="e2e.config.ts"
-import type { E2EConfig } from '@e2edev/e2e';
+import type { E2EConfig } from 'e2e';
 import { playwright } from '@e2edev/playwright';
 import { gateway } from 'ai';
 

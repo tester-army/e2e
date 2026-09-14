@@ -5,7 +5,7 @@
 ```ts
 // tests/todos.e2e.ts
 import { test } from '@e2edev/playwright';
-import { expect } from '@e2edev/e2e';
+import { expect } from 'e2e';
 
 test.describe('todos', { tags: ['todos'] }, () => {
   test.beforeEach(async ({ app }) => {
@@ -201,7 +201,7 @@ tests declare it. Selecting a dependent test alone still runs its setup.
 ```ts
 // tests/auth.setup.e2e.ts
 import { test } from '@e2edev/playwright';
-import { expect, credentials } from '@e2edev/e2e';
+import { expect, credentials } from 'e2e';
 
 test.setup('authenticate as admin', { sessions: ['admin'] }, async ({ app, screen, session, web }) => {
   const admin = credentials.user('admin');
@@ -216,7 +216,7 @@ test.setup('authenticate as admin', { sessions: ['admin'] }, async ({ app, scree
 
 ```ts
 // tests/dashboard.e2e.ts
-import { test, expect } from '@e2edev/e2e';
+import { test, expect } from 'e2e';
 
 test('the dashboard opens directly', { session: 'admin' }, async ({ app, screen }) => {
   await app.open('/dashboard');

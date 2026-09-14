@@ -14,7 +14,7 @@ The default is 1280 by 720. A suite that has to hold at several sizes
 declares one target per size:
 
 ```ts title="e2e.config.ts"
-import type { E2EConfig } from '@e2edev/e2e';
+import type { E2EConfig } from 'e2e';
 import { playwright } from '@e2edev/playwright';
 
 const app = { url: 'http://localhost:3000' };
@@ -44,7 +44,7 @@ size again, whatever the failed attempt resized to.
 
 ```ts
 import { test } from '@e2edev/playwright';
-import { expect } from '@e2edev/e2e';
+import { expect } from 'e2e';
 
 test('the menu collapses on a narrow screen', async ({ app, screen, web }) => {
   await app.open('/');

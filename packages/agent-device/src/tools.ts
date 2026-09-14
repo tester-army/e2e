@@ -9,8 +9,8 @@
 
 import { tool } from 'ai';
 import { z } from 'zod';
-import { defineTool, type DefinedTool, type ToolAnnotations } from '@e2edev/e2e/agent';
-import { EngineError, type EngineHandle } from '@e2edev/e2e/engine';
+import { defineTool, type DefinedTool, type ToolAnnotations } from 'e2e/agent';
+import { EngineError, type EngineHandle } from 'e2e/engine';
 import { surfaceOf } from './engine.ts';
 import type { AgentDeviceSurface } from './surface.ts';
 

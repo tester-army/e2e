@@ -335,7 +335,7 @@ describe('select', () => {
   it('points at the import when a matched file registered no tests', async () => {
     const col = await collection(() => {});
     expect(() => select(col, config())).toThrow(
-      "tests/a.e2e.ts registered no tests; import { test } from '@e2edev/e2e' (or from the engine package) and call test() at the top level of the module",
+      "tests/a.e2e.ts registered no tests; import { test } from 'e2e' (or from the engine package) and call test() at the top level of the module",
     );
   });
 

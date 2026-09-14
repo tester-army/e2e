@@ -31,7 +31,7 @@ load skills on demand find this one by its frontmatter description. For an
 always-on pointer, one line in the project's instructions file is enough:
 
 ```md title="AGENTS.md"
-End-to-end tests use @e2edev/e2e; read .agents/skills/e2e/SKILL.md before writing or running one.
+End-to-end tests use e2e; read .agents/skills/e2e/SKILL.md before writing or running one.
 ```
 
 ## How an agent looks at the app
@@ -61,7 +61,7 @@ per call, and pins each outcome with `expect`. Exact values, a sign-in form
 or a field that must hold one specific string, go through `screen` directly.
 
 ```ts title="tests/checkout.e2e.ts"
-import { test, expect, credentials } from '@e2edev/e2e';
+import { test, expect, credentials } from 'e2e';
 
 test('a signed-in user reaches checkout', async ({ screen, app, agent }) => {
   const user = credentials.user('customer');

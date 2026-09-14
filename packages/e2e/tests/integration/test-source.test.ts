@@ -19,7 +19,7 @@ import { createProject } from '../helpers/run-project.ts';
 const execFileAsync = promisify(execFile);
 const CLI = fileURLToPath(new URL('../../dist/cli/bin.js', import.meta.url));
 
-const CONFIG = `import { defineEngine } from '@e2edev/e2e/engine';
+const CONFIG = `import { defineEngine } from 'e2e/engine';
 
 export default {
   targets: [
@@ -38,13 +38,13 @@ export default {
 };
 `;
 
-const DIRECT = `import { test } from '@e2edev/e2e';
+const DIRECT = `import { test } from 'e2e';
 
 test('declares its source', async () => {});
 `;
 
 /** A project helper every test goes through, as suites with shared setup have. */
-const HELPER = `import { test } from '@e2edev/e2e';
+const HELPER = `import { test } from 'e2e';
 
 export function dashboardTest(title: string, body: () => Promise<void>) {
   return test(title, async () => {
@@ -58,7 +58,7 @@ const WRAPPED = `import { dashboardTest } from '../support/test.ts';
 dashboardTest('declares its source through a helper', async () => {});
 `;
 
-const SHARED = `import { test } from '@e2edev/e2e';
+const SHARED = `import { test } from 'e2e';
 
 test('declares its source in an imported module', async () => {});
 `;

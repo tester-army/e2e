@@ -19,7 +19,7 @@ import { createProject, resultByTitle, runExisting, type FixtureProject } from '
 
 const SECRET = 'trace-secret-Qx7#"&=2718';
 
-const SUITE = `import { test, credentials } from '@e2edev/e2e';
+const SUITE = `import { test, credentials } from 'e2e';
 
 test('fills through screen', async ({ app, screen }) => {
   await app.open();

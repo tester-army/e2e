@@ -1,5 +1,5 @@
 import { appendFile, readFile } from 'node:fs/promises';
-import { renderMarkdownReport, type FinishedRun, type MarkdownReportOptions, type Reporter, type ReporterSummary } from '@e2edev/e2e';
+import { renderMarkdownReport, type FinishedRun, type MarkdownReportOptions, type Reporter, type ReporterSummary } from 'e2e';
 import { detectActions, type ActionsContext, type ActionsDeps } from './actions.ts';
 import { upsertComment } from './post.ts';
 

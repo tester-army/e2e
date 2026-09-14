@@ -1,6 +1,6 @@
 /** Locator action dispatch for the Playwright engine. */
 
-import { EngineError, type LocatorAction, type NodeRef } from '@e2edev/e2e/engine';
+import { EngineError, type LocatorAction, type NodeRef } from 'e2e/engine';
 import {
   asActionable,
   isClassified,

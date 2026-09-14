@@ -1,5 +1,5 @@
 /** Separates exceptions thrown by trusted page code from failures of the evaluation transport. */
-import { TestError } from '@e2edev/e2e/engine';
+import { TestError } from 'e2e/engine';
 import { message } from './support.ts';
 
 type EvaluationResult =

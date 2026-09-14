@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { EngineError, InfrastructureError } from '@e2edev/e2e/engine';
+import { EngineError, InfrastructureError } from 'e2e/engine';
 import { browserType, type BrowserName } from './browser-connection.ts';
 
 /**

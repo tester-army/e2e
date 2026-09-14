@@ -1,4 +1,4 @@
-import { test, expect } from '@e2edev/e2e';
+import { test, expect } from 'e2e';
 
 test.describe('workspace wizard', { serial: true, tags: ['wizard'] }, () => {
   let chosenPlan = '';

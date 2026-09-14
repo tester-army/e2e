@@ -30,8 +30,8 @@ import {
   type SemanticNode,
   type VideoSegment,
   type ViewportPoint,
-} from '@e2edev/e2e/engine';
-import { matchesText } from '@e2edev/e2e/engine';
+} from 'e2e/engine';
+import { matchesText } from 'e2e/engine';
 import { classifyActionError, dispatchLocatorAction } from './actions.ts';
 import { BrowserConnection, connectCdp, type BrowserName } from './browser-connection.ts';
 import { DialogRouter } from './dialogs.ts';

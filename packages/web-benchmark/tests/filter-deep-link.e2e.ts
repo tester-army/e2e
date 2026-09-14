@@ -1,5 +1,5 @@
 import { test } from '@e2edev/playwright';
-import { expect } from '@e2edev/e2e';
+import { expect } from 'e2e';
 
 test.describe('filter deep link', () => {
   test('filtering writes the query to the URL', async ({ app, screen, web }) => {

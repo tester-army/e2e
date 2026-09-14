@@ -98,7 +98,7 @@ that committed no action records nothing.
 So pair every `act` with a check of its outcome:
 
 ```ts title="tests/cart.e2e.ts"
-import { expect, test } from '@e2edev/e2e';
+import { expect, test } from 'e2e';
 
 test('adds an item', async ({ app, agent, screen }) => {
   await app.open('/cart');

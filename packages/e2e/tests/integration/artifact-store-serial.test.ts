@@ -12,7 +12,7 @@ import type { ArtifactStore, StoredArtifact } from '../../src/types.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { createProject, runExisting, type FixtureProject } from '../helpers/run-project.ts';
 
-const SERIAL_SUITE = `import { test, expect } from '@e2edev/e2e';
+const SERIAL_SUITE = `import { test, expect } from 'e2e';
 
 test.describe('wizard', { serial: true }, () => {
   test('step 1', async ({ app, screen }) => {

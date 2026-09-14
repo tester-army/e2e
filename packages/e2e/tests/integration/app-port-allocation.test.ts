@@ -26,7 +26,7 @@ const TITLE = 'reads the allocated base URL';
 
 /** Appends what the test saw, one line per attempt: the fixture's base URL beside where the browser landed. */
 const TEST = `import { appendFileSync } from 'node:fs';
-import { test } from '@e2edev/e2e';
+import { test } from 'e2e';
 
 test('${TITLE}', async ({ app, web }) => {
   await app.open('/');
@@ -42,7 +42,7 @@ const DECLARATION = {
 };
 
 /** The same declaration as a config file, so the worker path re-resolves it from disk. */
-const CONFIG_SOURCE = `import type { E2EConfig } from '@e2edev/e2e';
+const CONFIG_SOURCE = `import type { E2EConfig } from 'e2e';
 import { playwright } from '@e2edev/playwright';
 
 export default {

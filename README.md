@@ -10,7 +10,7 @@ and anything else with a UI. It is not an agent-eval harness and not an
 API-only tool.
 
 ```ts
-import { test } from '@e2edev/e2e';
+import { test } from 'e2e';
 
 test('user can sign up', async ({ app, agent }) => {
   await app.open();
@@ -20,7 +20,7 @@ test('user can sign up', async ({ app, agent }) => {
 ```
 
 ```bash
-pnpm add -D @e2edev/e2e @e2edev/playwright playwright
+pnpm add -D e2e @e2edev/playwright playwright
 AI_GATEWAY_API_KEY=... npx e2e run
 ```
 
@@ -75,7 +75,7 @@ test. `e2e init` registers it for Claude Code and Cursor.
 
 ## Packages
 
-- [`@e2edev/e2e`](./packages/e2e) — the SDK, runner, and CLI.
+- [`e2e`](./packages/e2e) — the SDK, runner, and CLI.
 - [`@e2edev/playwright`](./packages/playwright) — the browser engine, passed
   to a target as `engine: playwright()`.
 - [`@e2edev/agent-device`](./packages/agent-device) — the mobile engine for iOS

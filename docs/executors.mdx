@@ -21,8 +21,8 @@ This example gives a browser agent two tools: read the screen and tap a
 button by its accessible name. The same loop can wrap a device SDK.
 
 ```ts title="e2e.config.ts"
-import type { E2EConfig } from '@e2edev/e2e';
-import { createToolLoopExecutor } from '@e2edev/e2e/agent';
+import type { E2EConfig } from 'e2e';
+import { createToolLoopExecutor } from 'e2e/agent';
 import { playwright, surfaceOf } from '@e2edev/playwright';
 import { gateway, tool } from 'ai';
 import { z } from 'zod';
@@ -85,7 +85,7 @@ verdict so the executor cannot claim to have checked something it does not
 understand.
 
 ```ts title="e2e.config.ts"
-import type { E2EConfig, StepExecutor } from '@e2edev/e2e';
+import type { E2EConfig, StepExecutor } from 'e2e';
 import { playwright } from '@e2edev/playwright';
 
 const scripted: StepExecutor = {
@@ -151,7 +151,7 @@ passed to the target. Both accessors throw `INVALID_STATE` before an attempt
 is running.
 
 ```ts
-import type { E2EConfig, StepExecutor } from '@e2edev/e2e';
+import type { E2EConfig, StepExecutor } from 'e2e';
 import { playwright, surfaceOf } from '@e2edev/playwright';
 
 const engine = playwright({ url: 'http://localhost:3000' });

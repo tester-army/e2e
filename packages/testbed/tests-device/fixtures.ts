@@ -4,4 +4,4 @@
  */
 
 export { test } from '@e2edev/agent-device';
-export { expect } from '@e2edev/e2e';
+export { expect } from 'e2e';

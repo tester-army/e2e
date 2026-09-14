@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { EngineInitInfo } from '@e2edev/e2e/engine';
+import type { EngineInitInfo } from 'e2e/engine';
 import { playwright } from '../../src/index.ts';
 import { PlaywrightSurface } from '../../src/surface.ts';
 

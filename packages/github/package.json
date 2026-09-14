@@ -50,10 +50,10 @@
     "test:unit": "vitest run tests/unit"
   },
   "peerDependencies": {
-    "@e2edev/e2e": ">=0.13.0 <1"
+    "e2e": ">=0.13.0 <1"
   },
   "devDependencies": {
-    "@e2edev/e2e": "workspace:*",
+    "e2e": "workspace:*",
     "@types/node": "26.4.1",
     "typescript": "7.0.2",
     "vitest": "5.0.0"

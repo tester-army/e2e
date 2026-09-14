@@ -3,13 +3,13 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { expect, it } from 'vitest';
-import { createAgent } from '@e2edev/e2e/agent';
+import { createAgent } from 'e2e/agent';
 import { buildEngine } from '../../src/engine.ts';
 import { AgentDeviceSurface } from '../../src/surface.ts';
 import { agentDeviceTools } from '../../src/tools.ts';
 import { createFakeClient, SETTINGS_SNAPSHOT } from '../helpers/fake-client.ts';
 
-// The runner is internal to @e2edev/e2e; the test drives the built one the way
+// The runner is internal to e2e; the test drives the built one the way
 // the core package's own integration tests do. The specifier is a file URL so
 // neither the bundler root nor the typechecker resolves it before a build.
 const builtRunnerModule = new URL('../../../e2e/dist/run/runner.js', import.meta.url).href;
@@ -21,7 +21,7 @@ it('offers no pixel verbs after a secret fill and captures no pixels', async () 
   const root = fileURLToPath(new URL('../../../e2e/tests/tmp-projects/', import.meta.url));
   mkdirSync(root, { recursive: true });
   const project = mkdtempSync(path.join(root, 'tool-pixels-'));
-  writeFileSync(path.join(project, 'test.e2e.ts'), `import { test, credentials } from '@e2edev/e2e';
+  writeFileSync(path.join(project, 'test.e2e.ts'), `import { test, credentials } from 'e2e';
     test('withhold pixels', async ({ screen, agent }) => {
       await screen.getByRole('textbox', { name: 'Password' }).fill(credentials.user('audit').password);
       await agent.act('inspect the pixels');

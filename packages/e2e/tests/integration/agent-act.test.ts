@@ -15,7 +15,7 @@ import { resultByTitle, runProject, type FixtureProject } from '../helpers/run-p
 import type { RunOutcome } from '../helpers/run-project.ts';
 import type { StepExecutor, StepExecutorContext } from '../../src/agent/executor.ts';
 
-const SUITE = `import { test, expect } from '@e2edev/e2e';
+const SUITE = `import { test, expect } from 'e2e';
 
 test('scripted executor increments the counter', async ({ app, agent, screen }) => {
   await app.open();
@@ -24,7 +24,7 @@ test('scripted executor increments the counter', async ({ app, agent, screen }) 
 });
 `;
 
-const BLOCKED_SUITE = `import { test } from '@e2edev/e2e';
+const BLOCKED_SUITE = `import { test } from 'e2e';
 
 test('executor reports a blocked step', async ({ app, agent }) => {
   await app.open();
@@ -32,7 +32,7 @@ test('executor reports a blocked step', async ({ app, agent }) => {
 });
 `;
 
-const BUDGET_SUITE = `import { test } from '@e2edev/e2e';
+const BUDGET_SUITE = `import { test } from 'e2e';
 
 test('executor overruns the action budget', async ({ app, agent }) => {
   await app.open();
@@ -40,7 +40,7 @@ test('executor overruns the action budget', async ({ app, agent }) => {
 });
 `;
 
-const HANG_SUITE = `import { test } from '@e2edev/e2e';
+const HANG_SUITE = `import { test } from 'e2e';
 
 test('executor hangs past the step timeout', async ({ app, agent }) => {
   await app.open();
@@ -48,7 +48,7 @@ test('executor hangs past the step timeout', async ({ app, agent }) => {
 });
 `;
 
-const HANGING_PAGE_SUITE = `import { test } from '@e2edev/e2e';
+const HANGING_PAGE_SUITE = `import { test } from 'e2e';
 
 test('a page that never settles costs one action timeout', async ({ app, agent }) => {
   await app.open();
@@ -56,7 +56,7 @@ test('a page that never settles costs one action timeout', async ({ app, agent }
 });
 `;
 
-const OVERSPEND_SUITE = `import { test } from '@e2edev/e2e';
+const OVERSPEND_SUITE = `import { test } from 'e2e';
 
 test('executor overspends the model-call budget', async ({ app, agent }) => {
   await app.open();
@@ -64,7 +64,7 @@ test('executor overspends the model-call budget', async ({ app, agent }) => {
 });
 `;
 
-const INHERIT_SUITE = `import { test } from '@e2edev/e2e';
+const INHERIT_SUITE = `import { test } from 'e2e';
 
 test('failed verdict inherits the runtime code', async ({ app, agent }) => {
   await app.open();
@@ -72,7 +72,7 @@ test('failed verdict inherits the runtime code', async ({ app, agent }) => {
 });
 `;
 
-const LOOP_SUITE = `import { test, expect } from '@e2edev/e2e';
+const LOOP_SUITE = `import { test, expect } from 'e2e';
 
 test('default agent increments the counter', async ({ app, agent, screen }) => {
   await app.open();
@@ -566,7 +566,7 @@ describe('agent.act engine operations are bounded by actionTimeout', () => {
   }, 120_000);
 });
 
-const ASSERT_SUITE = `import { test } from '@e2edev/e2e';
+const ASSERT_SUITE = `import { test } from 'e2e';
 
 test('custom executor judges assertions', async ({ app, agent }) => {
   await app.open();
@@ -575,7 +575,7 @@ test('custom executor judges assertions', async ({ app, agent }) => {
 });
 `;
 
-const SECRET_SUITE = `import { test, credentials, expect } from '@e2edev/e2e';
+const SECRET_SUITE = `import { test, credentials, expect } from 'e2e';
 
 test('executor fills a declared secret', async ({ app, agent, screen }) => {
   await app.open();
@@ -588,7 +588,7 @@ test('executor fills a declared secret', async ({ app, agent, screen }) => {
 });
 `;
 
-const GENERIC_SECRET_SUITE = `import { test, credentials, secrets, expect } from '@e2edev/e2e';
+const GENERIC_SECRET_SUITE = `import { test, credentials, secrets, expect } from 'e2e';
 
 test('executor fills a generic secret', async ({ app, agent, screen }) => {
   await app.open();
@@ -599,7 +599,7 @@ test('executor fills a generic secret', async ({ app, agent, screen }) => {
 });
 `;
 
-const LOOP_GUARD_SUITE = `import { test } from '@e2edev/e2e';
+const LOOP_GUARD_SUITE = `import { test } from 'e2e';
 
 test('agent goes in circles', async ({ app, agent }) => {
   await app.open();
@@ -778,7 +778,7 @@ describe('agent.act with the default ToolLoopAgent executor', () => {
   });
 });
 
-const DELAYED_SUITE = `import { test, expect } from '@e2edev/e2e';
+const DELAYED_SUITE = `import { test, expect } from 'e2e';
 
 test('default agent reads the second view', async ({ app, agent, screen }) => {
   await app.open('/delayed');
@@ -787,7 +787,7 @@ test('default agent reads the second view', async ({ app, agent, screen }) => {
 });
 `;
 
-const DEAD_END_SUITE = `import { test } from '@e2edev/e2e';
+const DEAD_END_SUITE = `import { test } from 'e2e';
 
 test('default agent taps a control with no effect', async ({ app, agent }) => {
   await app.open('/delayed');
@@ -795,7 +795,7 @@ test('default agent taps a control with no effect', async ({ app, agent }) => {
 });
 `;
 
-const BATCH_SUITE = `import { test, expect } from '@e2edev/e2e';
+const BATCH_SUITE = `import { test, expect } from 'e2e';
 
 test('default agent fills two fields in one turn', async ({ app, agent, screen }) => {
   await app.open();
@@ -914,7 +914,7 @@ describe('the default agent reads action results after their effect', () => {
   }, 120_000);
 });
 
-const CHURN_SUITE = `import { test, expect } from '@e2edev/e2e';
+const CHURN_SUITE = `import { test, expect } from 'e2e';
 
 test('default agent taps a control that remounts under it', async ({ app, agent, screen }) => {
   await app.open('/churn');

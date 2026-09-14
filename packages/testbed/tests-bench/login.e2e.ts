@@ -4,7 +4,7 @@
  */
 
 import { test } from '@e2edev/playwright';
-import { expect, credentials } from '@e2edev/e2e';
+import { expect, credentials } from 'e2e';
 
 test('signs in with the member credential', async ({ web, agent, screen }) => {
   await web.goto('/login');

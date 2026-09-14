@@ -19,7 +19,7 @@ import { createProject, type FixtureProject } from '../helpers/run-project.ts';
 const PACKAGE_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const CLI = path.join(PACKAGE_ROOT, 'dist', 'cli', 'bin.js');
 
-const CONFIG = `import type { E2EConfig } from '@e2edev/e2e';
+const CONFIG = `import type { E2EConfig } from 'e2e';
 import { playwright } from '@e2edev/playwright';
 
 // Anything a config prints must reach stderr, never the protocol stream.

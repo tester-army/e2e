@@ -10,7 +10,7 @@
   },
   "devDependencies": {
     "@e2edev/agent-device": "workspace:*",
-    "@e2edev/e2e": "workspace:*",
+    "e2e": "workspace:*",
     "@e2edev/playwright": "workspace:*",
     "@types/node": "26.4.1",
     "agent-device": "0.21.1",

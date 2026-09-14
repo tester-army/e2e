@@ -35,7 +35,7 @@ import {
   type SemanticNode,
   type ViewportPoint,
   ConfigurationError,
-} from '@e2edev/e2e/engine';
+} from 'e2e/engine';
 import { runCommand, staleOr } from './errors.ts';
 import { resolveExpression } from './locate.ts';
 import {

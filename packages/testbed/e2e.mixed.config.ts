@@ -1,4 +1,4 @@
-import type { E2EConfig } from '@e2edev/e2e';
+import type { E2EConfig } from 'e2e';
 import agentConfig from './e2e.agent.config.ts';
 
 /**

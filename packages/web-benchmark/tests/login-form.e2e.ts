@@ -1,6 +1,6 @@
 import { test } from '@e2edev/playwright';
-import { expect, credentials } from '@e2edev/e2e';
-import type { Credential } from '@e2edev/e2e';
+import { expect, credentials } from 'e2e';
+import type { Credential } from 'e2e';
 
 test.describe('login form', () => {
   // The scenario's hardcoded account, declared once in e2e.config.ts. Every

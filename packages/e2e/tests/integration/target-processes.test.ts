@@ -8,7 +8,7 @@ import { createProject, runExisting } from '../helpers/run-project.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 
 const FILES = {
-  'tests/selected.e2e.ts': `import { test } from '@e2edev/e2e';
+  'tests/selected.e2e.ts': `import { test } from 'e2e';
 test('selected test', async () => {});
 `,
   'service.cjs': `require('node:fs').appendFileSync('startup.log', process.argv[2] + '\\n');`,

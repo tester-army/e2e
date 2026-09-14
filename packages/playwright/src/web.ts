@@ -13,7 +13,7 @@
  */
 
 import type { Download, Route } from 'playwright';
-import type { ActionOptions, Expectable, JsonValue, Locator, Screen, TextMatch } from '@e2edev/e2e';
+import type { ActionOptions, Expectable, JsonValue, Locator, Screen, TextMatch } from 'e2e';
 import {
   Deadline,
   describePattern,
@@ -28,7 +28,7 @@ import {
   type FixtureOperations,
   type OperationContext,
   type TextPattern,
-} from '@e2edev/e2e/engine';
+} from 'e2e/engine';
 import type { DialogHandler } from './dialogs.ts';
 import { message as causeMessage } from './support.ts';
 import { compileEvaluation } from './evaluation.ts';

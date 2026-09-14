@@ -5,7 +5,7 @@ import { snapshot } from '../helpers/snapshot.ts';
 
 const SENTINEL = 'synthetic-serial-secret-2718';
 
-const suite = `import { test, credentials } from '@e2edev/e2e';
+const suite = `import { test, credentials } from 'e2e';
 test.describe('shared', { serial: true, retries: 1 }, () => {
   test('fill', async ({ screen, agent }) => {
     await agent.act('before fill');

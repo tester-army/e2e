@@ -6,7 +6,7 @@
  */
 
 import type { BrowserContext } from 'playwright';
-import { sameSite } from '@e2edev/e2e/engine';
+import { sameSite } from 'e2e/engine';
 import type { PlaywrightBasicAuth } from './surface.ts';
 
 /** The credentials Playwright answers an HTTP authentication challenge with. */

@@ -1,5 +1,5 @@
 {
-  "name": "@e2edev/e2e",
+  "name": "e2e",
   "version": "0.14.0",
   "description": "SDK, runner, and CLI for agentic end-to-end testing",
   "keywords": [

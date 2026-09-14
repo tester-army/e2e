@@ -1,5 +1,5 @@
 ---
-'@e2edev/e2e': minor
+'e2e': minor
 ---
 
 A finished model turn in the live window now appends an excerpt of the

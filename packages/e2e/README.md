@@ -4,7 +4,7 @@ The `e2e` SDK, runner, and CLI for agentic end-to-end testing. Full
 documentation: [e2e.mintlify.app](https://e2e.mintlify.app).
 
 ```bash
-pnpm dlx @e2edev/e2e init
+pnpm dlx e2e init
 ```
 
 ## Usage
@@ -19,7 +19,7 @@ install. Choose Playwright for the config and browser test below. `--yes`
 skips the prompts: Playwright, AI on, no installation.
 
 ```ts title="e2e.config.ts"
-import type { E2EConfig } from '@e2edev/e2e';
+import type { E2EConfig } from 'e2e';
 import { playwright } from '@e2edev/playwright';
 
 export default {
@@ -80,7 +80,7 @@ server printed, since its output is otherwise discarded. Every option is listed 
 
 ```ts
 import { test } from '@e2edev/playwright';
-import { expect } from '@e2edev/e2e';
+import { expect } from 'e2e';
 
 test('user signs in', async ({ app, screen, web }) => {
   await app.open('/login');

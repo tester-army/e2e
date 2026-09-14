@@ -31,7 +31,7 @@ planted bug.
 
 ## Commands
 
-Build the runner first; the suites run the built `@e2edev/e2e` CLI by path, like
+Build the runner first; the suites run the built `e2e` CLI by path, like
 the testbed does: pnpm links no `e2e` bin for a workspace package whose `dist`
 does not exist yet at install time, and CI installs before it builds.
 
@@ -53,7 +53,7 @@ stopped. Run one file at a time from the package directory:
 ```bash
 pnpm --filter @e2edev/web-benchmark dev
 cd packages/web-benchmark
-node node_modules/@e2edev/e2e/dist/cli/bin.js run tests/login-form.e2e.ts --headed
+node node_modules/e2e/dist/cli/bin.js run tests/login-form.e2e.ts --headed
 ```
 
 Two things bite here:

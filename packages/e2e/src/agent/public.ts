@@ -1,5 +1,5 @@
 /**
- * The `@e2edev/e2e/agent` entrypoint: the builders that assemble a step
+ * The `e2e/agent` entrypoint: the builders that assemble a step
  * executor on the AI SDK. `createAgent` is the golden path;
  * `createToolLoopExecutor` is the same loop with a caller's own prompt and
  * tool vocabulary. The socket vocabulary itself — `StepExecutor`, verdicts,

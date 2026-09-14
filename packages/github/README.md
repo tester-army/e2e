@@ -1,6 +1,6 @@
 # @e2edev/github
 
-The GitHub reporter for [`@e2edev/e2e`](https://www.npmjs.com/package/@e2edev/e2e).
+The GitHub reporter for [`e2e`](https://www.npmjs.com/package/e2e).
 From GitHub Actions, every run becomes one pull request comment, edited in
 place on reruns, and the same text lands in the job summary.
 
@@ -9,7 +9,7 @@ npm install --save-dev @e2edev/github
 ```
 
 ```ts title="e2e.config.ts"
-import type { E2EConfig } from '@e2edev/e2e';
+import type { E2EConfig } from 'e2e';
 import { playwright } from '@e2edev/playwright';
 import { github } from '@e2edev/github';
 

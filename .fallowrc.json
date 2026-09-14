@@ -21,7 +21,7 @@
   ],
   "ignoreDependencies": [
     "@ai-sdk/openai-compatible",
-    "@e2edev/e2e",
+    "e2e",
     "@e2edev/playwright",
     "@openrouter/ai-sdk-provider"
   ],

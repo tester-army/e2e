@@ -29,8 +29,8 @@ Add `command` and the runner spawns the dev server, waits until `url`
 answers, and stops it when the run ends, fails, or is interrupted:
 
 ```ts title="e2e.config.ts"
-import type { E2EConfig } from '@e2edev/e2e';
-import { createAgent } from '@e2edev/e2e/agent';
+import type { E2EConfig } from 'e2e';
+import { createAgent } from 'e2e/agent';
 import { playwright } from '@e2edev/playwright';
 import { gateway } from 'ai';
 
@@ -161,7 +161,7 @@ earlier `readyUrl` service still running can add lines to it.
 Two browsers on one app are two targets that each name it:
 
 ```ts title="e2e.config.ts"
-import type { E2EConfig } from '@e2edev/e2e';
+import type { E2EConfig } from 'e2e';
 import { playwright } from '@e2edev/playwright';
 
 const app = { url: 'http://localhost:3000' };

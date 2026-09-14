@@ -1,4 +1,4 @@
-import type { CacheMode, E2EConfig } from '@e2edev/e2e';
+import type { CacheMode, E2EConfig } from 'e2e';
 import { playwright } from '@e2edev/playwright';
 import { gateway } from 'ai';
 

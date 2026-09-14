@@ -4,7 +4,7 @@
  */
 
 import { test } from '@e2edev/playwright';
-import { expect } from '@e2edev/e2e';
+import { expect } from 'e2e';
 
 test('drives a multi-step expense journey', async ({ web, agent, screen }) => {
   // Deterministic isolation: a retry or a leftover server must never start

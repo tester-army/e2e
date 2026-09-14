@@ -6,7 +6,7 @@
  */
 
 import { test } from '@e2edev/playwright';
-import { expect } from '@e2edev/e2e';
+import { expect } from 'e2e';
 
 /** Whether the flow reported the product misbehaving, as an act verdict or a judgment. */
 async function caughtTheBug(flow: () => Promise<void>): Promise<boolean> {

@@ -57,7 +57,7 @@ describe('e2e init', () => {
     expect(JSON.parse(read('package.json'))).toEqual({
       private: true,
       type: 'module',
-      devDependencies: { '@e2edev/e2e': expect.stringMatching(/^\^\d+\.\d+\.\d+/), '@e2edev/playwright': '0.x', playwright: '^1', ai: '^7.0.0' },
+      devDependencies: { 'e2e': expect.stringMatching(/^\^\d+\.\d+\.\d+/), '@e2edev/playwright': '0.x', playwright: '^1', ai: '^7.0.0' },
       scripts: { 'test:e2e': 'e2e run' },
     });
     expect(read('e2e.config.ts')).toContain('agents: {\n    default: createAgent({');
@@ -111,7 +111,7 @@ describe('e2e init', () => {
     const manifest = JSON.parse(read('package.json'));
     const device = engine === 'agent-device';
     expect(Object.keys(manifest.devDependencies)).toEqual([
-      '@e2edev/e2e',
+      'e2e',
       ...(engine === 'playwright' ? ['@e2edev/playwright', 'playwright'] : []),
       ...(device ? ['@e2edev/agent-device', 'agent-device'] : []),
       ...(ai ? ['ai', '@openrouter/ai-sdk-provider'] : []),
@@ -245,7 +245,7 @@ describe('e2e init', () => {
     async (type) => {
       const manifest = `${JSON.stringify({
         name: 'existing-app', type, scripts: { 'test:e2e': 'e2e run --workers 1' },
-        dependencies: { '@e2edev/e2e': 'workspace:*', '@e2edev/playwright': 'workspace:*', playwright: '1.59.0-alpha-2026-01-01', ai: '^7.0.12' },
+        dependencies: { 'e2e': 'workspace:*', '@e2edev/playwright': 'workspace:*', playwright: '1.59.0-alpha-2026-01-01', ai: '^7.0.12' },
       }, null, 4)}\n`;
       writeFileSync(path.join(dir, 'package.json'), manifest);
       for (let run = 0; run < 2; run += 1) {
@@ -284,7 +284,7 @@ describe('e2e init', () => {
     expect(JSON.parse(read('package.json'))).toEqual({
       ...manifest,
       scripts: { dev: 'vite', 'test:e2e': 'e2e run' },
-      devDependencies: { ...manifest.devDependencies, '@e2edev/e2e': expect.any(String), playwright: '^1' },
+      devDependencies: { ...manifest.devDependencies, 'e2e': expect.any(String), playwright: '^1' },
     });
     expect(read('package.json')).toContain('\r\n    "name"');
   });
@@ -300,7 +300,7 @@ describe('e2e init', () => {
     await init(dir);
     const written = JSON.parse(read('package.json'));
     expect(written.dependencies).toEqual(manifest.dependencies);
-    expect(Object.keys(written.devDependencies)).toEqual(['@e2edev/e2e', '@e2edev/playwright']);
+    expect(Object.keys(written.devDependencies)).toEqual(['e2e', '@e2edev/playwright']);
   });
 
   it.each([
@@ -387,7 +387,7 @@ describe('e2e init', () => {
     writeFileSync(path.join(dir, config), '// custom config\n');
     await init(dir, { yes: true });
     expect(read(config)).toBe('// custom config\n');
-    expect(Object.keys(JSON.parse(read('package.json')).devDependencies)).toEqual(['@e2edev/e2e']);
+    expect(Object.keys(JSON.parse(read('package.json')).devDependencies)).toEqual(['e2e']);
     expect(JSON.parse(read('package.json')).scripts).toEqual({ 'test:e2e': 'e2e run' });
     if (config.endsWith('.mts')) expect(existsSync(path.join(dir, 'e2e.config.ts'))).toBe(false);
   });
@@ -453,7 +453,7 @@ describe('e2e init', () => {
     expect(readdirSync(dir)).toEqual([]);
     expect(clack.select).not.toHaveBeenCalled();
     expect(clack.multiselect).not.toHaveBeenCalled();
-    expect(output()).toContain('reinstall @e2edev/e2e');
+    expect(output()).toContain('reinstall e2e');
   });
 
   it('offers the skill to an initialized project and points at e2e guide when declined', async () => {

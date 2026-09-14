@@ -8,7 +8,7 @@ import { createProject, runExisting, type FixtureProject } from '../helpers/run-
 
 const SUITE = `
 import { test } from '@e2edev/playwright';
-import { expect } from '@e2edev/e2e';
+import { expect } from 'e2e';
 
 test('asks the agent', async ({ app, agent }) => {
   await app.open();
@@ -19,7 +19,7 @@ test('asks the agent', async ({ app, agent }) => {
 
 const PINNED_SUITE = `
 import { test } from '@e2edev/playwright';
-import { expect } from '@e2edev/e2e';
+import { expect } from 'e2e';
 
 test.describe('as the buyer', { agent: 'buyer' }, () => {
   test('buyer browses', async ({ app, agent }) => {
@@ -50,7 +50,7 @@ test('an unknown agent on a call fails that call', async ({ app, agent }) => {
 
 const PERSONA_SUITE = `
 import { test } from '@e2edev/playwright';
-import { expect } from '@e2edev/e2e';
+import { expect } from 'e2e';
 
 test.describe('checkout', { agent: ['buyer', 'admin'] }, () => {
   test('pays for one item', async ({ app, agent }) => {

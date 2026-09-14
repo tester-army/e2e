@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defineEngine } from '@e2edev/e2e/engine';
+import { defineEngine } from 'e2e/engine';
 import { buildEngine } from '../../src/engine.ts';
 import { AgentDeviceSurface } from '../../src/surface.ts';
 import { agentDeviceTools } from '../../src/tools.ts';

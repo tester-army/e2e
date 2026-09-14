@@ -30,8 +30,8 @@ descriptions and commit bodies; `git log` and `gh pr view` are the archive.
 
 ## Layout
 
-- `packages/e2e` — the published `@e2edev/e2e` package: SDK surface, runner, CLI,
-  `@e2edev/e2e/engine` contract. Core knows the contract and never an engine's
+- `packages/e2e` — the published `e2e` package: SDK surface, runner, CLI,
+  `e2e/engine` contract. Core knows the contract and never an engine's
   internals: no `Web`, `browser`, `page`, `route`, or `playwright` noun lives in
   `src/` (grep for them; zero hits is the invariant). The one exception is the
   `e2e init` scaffold presets in `src/cli/init/engines.ts`, which write the
@@ -49,12 +49,12 @@ descriptions and commit bodies; `git log` and `gh pr view` are the archive.
     action).
 - `packages/playwright` — the published `@e2edev/playwright` package: the
   browser engine, built with the public `defineEngine`, contributing the
-  `web` fixture and `expect(web)`. It depends on `@e2edev/e2e` (peer), never the
+  `web` fixture and `expect(web)`. It depends on `e2e` (peer), never the
   reverse; a target names it explicitly as `engine: playwright()`. There is
   no default engine and no well-known id registry in core. It imports from
-  `@e2edev/e2e/engine` only: the semantics every engine must reproduce
+  `e2e/engine` only: the semantics every engine must reproduce
   (error taxonomy, text and URL matching, assertion polling, JSON-value rules)
-  are exported there, and there is no `@e2edev/e2e/internal` subpath.
+  are exported there, and there is no `e2e/internal` subpath.
 - `packages/testbed` (`@e2edev/testbed`, private) — dogfood project that
   consumes the **built** packages like a real user would.
 - `packages/web-benchmark` (`@e2edev/web-benchmark`, private) — a Next.js app of
@@ -71,7 +71,7 @@ descriptions and commit bodies; `git log` and `gh pr view` are the archive.
 - `skills/e2e/` — the agent skill for consumers: `SKILL.md` plus
   `references/<topic>.md`, one per `e2e guide` topic. It lives at the repo
   root because `npx skills add tester-army/e2e` only looks in well-known
-  directories. The `@e2edev/e2e` build copies it to `packages/e2e/skills/`
+  directories. The `e2e` build copies it to `packages/e2e/skills/`
   (gitignored) so the published package ships it; `src/cli/skill.ts` reads
   that copy first and the repo source as the fallback, and `e2e init` writes
   it into a project's `.agents/skills/` and `.claude/skills/`.
@@ -90,16 +90,16 @@ pnpm test:web-benchmark   # builds, then runs the real CLI against the benchmark
 Focused work:
 
 ```bash
-pnpm --filter @e2edev/e2e run build
-pnpm --filter @e2edev/e2e run test:unit                       # unit only, no build
-pnpm --filter @e2edev/e2e exec vitest run tests/unit/scheduler.test.ts
-pnpm --filter @e2edev/e2e exec vitest run -t 'name fragment'
+pnpm --filter e2e run build
+pnpm --filter e2e run test:unit                       # unit only, no build
+pnpm --filter e2e exec vitest run tests/unit/scheduler.test.ts
+pnpm --filter e2e exec vitest run -t 'name fragment'
 pnpm --filter @e2edev/playwright run test
 pnpm --filter @e2edev/testbed run test:headed
 ```
 
 - Package `test` scripts do **not** build. Root `build` and `test` order the
-  packages explicitly rather than relying on topological sort, because `@e2edev/e2e`
+  packages explicitly rather than relying on topological sort, because `e2e`
   devDepends on the playwright engine for its browser-backed integration tests
   while the engine peer-depends on `e2e` — pnpm reports that cycle on every
   install.
@@ -135,7 +135,7 @@ pnpm --filter @e2edev/testbed run test:headed
   produces timeouts indistinguishable from real failures.
 - Integration tests write throwaway projects into
   `packages/e2e/tests/tmp-projects/` (gitignored) and import the runner from
-  `dist/` via a non-literal specifier so the fixture's `@e2edev/e2e` self-reference
+  `dist/` via a non-literal specifier so the fixture's `e2e` self-reference
   shares one registry. Stale `dist` means confusing failures — rebuild.
 - Testbed suites beyond the default one never gate a PR: `test:public` and
   `test:selenium` (real websites) run in no workflow, and `test:agent` /
@@ -247,7 +247,7 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
   any prose an agent writes here; other agents install it with
   `npx skills add okwasniewski/dotfiles --skill unslop`.
 - Releases go through changesets: a user-visible change adds a `.changeset/`
-  entry. Peer ranges point one way only (engine -> `@e2edev/e2e`, widened to `>=x <1`);
+  entry. Peer ranges point one way only (engine -> `e2e`, widened to `>=x <1`);
   making them mutual or narrow forces changesets to bump both packages to a
   major on every release.
 - The root `release` script publishes with `--tag beta`, so releases land on the
@@ -258,7 +258,7 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
   here: npmjs auto-assigns `latest` on a package's *first* publish in addition to
   `--tag`, so a brand-new package lands on `latest` once regardless.
   Do not switch to changesets pre mode to get a real prerelease version: it is
-  outside the engine's `@e2edev/e2e` peer range, which majors `@e2edev/playwright` on
+  outside the engine's `e2e` peer range, which majors `@e2edev/playwright` on
   every runner minor and rewrites the peer range. Widening the range does not
   rescue it — node-semver only lets a prerelease satisfy a comparator set when a
   comparator with the same `major.minor.patch` carries a prerelease, so
@@ -275,12 +275,12 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
   newest canary of that tuple, whose peer range names a different runner build.
   Nothing the script writes is committed; `git checkout -- packages .changeset`
   afterwards.
-- Every package publishes public under the `@e2edev` scope (`e2e` ->
-  `@e2edev/e2e`; entry points follow the name). Provenance stays off until the
-  repository is public, and the release job authenticates with the `NPM_TOKEN`
-  secret. The unscoped `e2e` on npmjs is a placeholder the team reserved so the
-  bin name cannot be claimed by anyone else. Document the CLI as `npx e2e`; npx
-  runs the locally installed bin first, and the flag `--no-install` adds
-  nothing once the package is a dependency.
+- The runner publishes as the unscoped `e2e` (entry points `e2e`, `e2e/agent`,
+  `e2e/engine`; the bin is `e2e` too); engines and reporters publish public
+  under the `@e2edev` scope. `@e2edev/e2e` is the retired name: deprecated on
+  npm, never referenced here. Provenance stays off until the repository is
+  public, and the release job authenticates with the `NPM_TOKEN` secret.
+  Document the CLI as `npx e2e`; npx runs the locally installed bin first, and
+  the flag `--no-install` adds nothing once the package is a dependency.
 - Private packages are skipped entirely by changesets (`privatePackages: false`),
   so `@e2edev/testbed` gets no version bump, no `CHANGELOG.md`, and no git tag.

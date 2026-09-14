@@ -15,7 +15,7 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { Page } from 'playwright';
-import { EngineError, type VideoSegment } from '@e2edev/e2e/engine';
+import { EngineError, type VideoSegment } from 'e2e/engine';
 import { message } from './support.ts';
 
 /** One segment in progress: the page it records and where its file lands. */

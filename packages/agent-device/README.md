@@ -1,20 +1,20 @@
 # @e2edev/agent-device
 
-The mobile engine for [`@e2edev/e2e`](https://www.npmjs.com/package/@e2edev/e2e), built on
+The mobile engine for [`e2e`](https://www.npmjs.com/package/e2e), built on
 [agent-device](https://github.com/callstack/agent-device): iOS simulators and
-Android emulators through the same `@e2edev/e2e/engine` contract the browser engine
+Android emulators through the same `e2e/engine` contract the browser engine
 implements. A test written against `screen`, `expect`, `app`, and `agent` runs
 on a device target unchanged; nothing in `e2e` core knows this package exists.
 
 ## Install
 
-Run `npx @e2edev/e2e init` and choose **agent-device** for a Settings
+Run `npx e2e init` and choose **agent-device** for a Settings
 example with optional AI testing. Init defaults to iOS on macOS and Android
 elsewhere; change the platform in `e2e.config.ts` when needed.
 Or add the packages to an existing project:
 
 ```bash
-npm install --save-dev @e2edev/e2e @e2edev/agent-device
+npm install --save-dev e2e @e2edev/agent-device
 ```
 
 `agent-device` needs Xcode with an iOS simulator runtime, or the Android SDK
@@ -22,8 +22,8 @@ with an emulator. Run `npx agent-device doctor` once before handing the target
 to the runner.
 
 ```ts title="e2e.config.ts"
-import type { E2EConfig } from '@e2edev/e2e';
-import { createAgent } from '@e2edev/e2e/agent';
+import type { E2EConfig } from 'e2e';
+import { createAgent } from 'e2e/agent';
 import { agentDevice } from '@e2edev/agent-device';
 import { agentDeviceTools } from '@e2edev/agent-device/tools';
 
@@ -103,7 +103,7 @@ Deterministic device management, recorded as `device.<method>` steps. Import
 
 ```ts
 import { test } from '@e2edev/agent-device';
-import { expect } from '@e2edev/e2e';
+import { expect } from 'e2e';
 
 test('shows the version offline in dark mode', async ({ agent, device, screen }) => {
   await device.setAppearance('dark');

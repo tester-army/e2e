@@ -3,12 +3,12 @@ title: e2e/engine
 description: The engine contract a target's surface implements, and the fixture context it contributes through.
 ---
 
-`@e2edev/e2e/engine` is the authoring import for an engine. `defineEngine` validates
+`e2e/engine` is the authoring import for an engine. `defineEngine` validates
 the body synchronously at config load, freezes it, computes its capability set,
 and returns the branded handle a target accepts.
 
 ```ts
-import { defineEngine, type EngineHandle } from '@e2edev/e2e/engine';
+import { defineEngine, type EngineHandle } from 'e2e/engine';
 
 export function defineEngine(spec: Engine): EngineHandle;
 export function isEngineHandle(value: unknown): value is EngineHandle;
@@ -370,7 +370,7 @@ app process (`command`, polled at `readyUrl`, default `url`; targets
 declaring the same command share one process). Every field is documented
 under [the app under test](/reference/config#the-app-under-test); the resolved
 The site of the app's `url` comes back to the engine as `EngineInitInfo.app.site`, and `sameSite`
-from `@e2edev/e2e/engine` applies it to a URL; the URL itself never does.
+from `e2e/engine` applies it to a URL; the URL itself never does.
 
 ## Session
 
@@ -605,7 +605,7 @@ wait does not stop an underlying command.
 `ParsedKey`, `ENGINE_SPI_VERSION`, `LOCATOR_ACTION_KINDS`, `KEY_MODIFIERS`,
 `KEY_NAMES`, `parseKey`, `ENGINE_ERROR_CODES`, `RETRYABLE_ENGINE_ERROR_CODES`,
 `OBSERVED_NAME_LIMIT`, `OBSERVED_TEXT_LIMIT`, and the shared semantics above
-are exported from `@e2edev/e2e/engine` and are the platform-neutral words
+are exported from `e2e/engine` and are the platform-neutral words
 every engine speaks. The `selector` expression kind carries a platform-native
 selector string (CSS or XPath on a document platform, a predicate on a device
 platform); `frame` scopes a query into a nested document.

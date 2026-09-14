@@ -4,7 +4,7 @@
  */
 
 import { test } from '@e2edev/playwright';
-import { expect, credentials } from '@e2edev/e2e';
+import { expect, credentials } from 'e2e';
 
 test('act drives a multi-action todo flow', async ({ web, agent, screen }) => {
   await web.goto('/todos');

@@ -10,7 +10,7 @@ import type { E2EConfig } from '../../src/index.ts';
 
 export type { RunOptions, RunOutcome };
 
-// The built runner is used so fixture test files resolving the "@e2edev/e2e"
+// The built runner is used so fixture test files resolving the "e2e"
 // self-reference share the same registry instance. The specifier is kept
 // non-literal so typechecking does not require a prior build.
 const builtRunnerModule = '../../dist/run/runner.js';
@@ -105,7 +105,7 @@ export async function listProject(
 
 /** Default file-backed config used by worker-path integration tests. */
 export function workerConfigSource(workers: number, extra = ''): string {
-  return `import type { E2EConfig } from '@e2edev/e2e';
+  return `import type { E2EConfig } from 'e2e';
 import { playwright } from '@e2edev/playwright';
 
 export default {

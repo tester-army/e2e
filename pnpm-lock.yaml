@@ -162,9 +162,6 @@ importers:
       '@e2edev/agent-device':
         specifier: workspace:*
         version: link:../packages/agent-device
-      '@e2edev/e2e':
-        specifier: workspace:*
-        version: link:../packages/e2e
       '@e2edev/playwright':
         specifier: workspace:*
         version: link:../packages/playwright
@@ -177,6 +174,9 @@ importers:
       ai:
         specifier: 7.0.97
         version: 7.0.97(zod@4.6.1)
+      e2e:
+        specifier: workspace:*
+        version: link:../packages/e2e
       mint:
         specifier: 4.2.883
         version: 4.2.883(@base-ui/react@1.8.0(@types/react@19.3.0)(react-dom@19.3.0(react@19.2.3))(react@19.2.3))(@types/node@26.4.1)(@types/react@19.3.0)(debug@4.4.3)(react-dom@19.3.0(react@19.2.3))(typescript@7.0.2)
@@ -196,9 +196,6 @@ importers:
         specifier: 4.6.1
         version: 4.6.1
     devDependencies:
-      '@e2edev/e2e':
-        specifier: workspace:*
-        version: link:../e2e
       '@types/node':
         specifier: 26.4.1
         version: 26.4.1
@@ -211,6 +208,9 @@ importers:
       ai:
         specifier: 7.0.97
         version: 7.0.97(zod@4.6.1)
+      e2e:
+        specifier: workspace:*
+        version: link:../e2e
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -281,12 +281,12 @@ importers:
 
   packages/github:
     devDependencies:
-      '@e2edev/e2e':
-        specifier: workspace:*
-        version: link:../e2e
       '@types/node':
         specifier: 26.4.1
         version: 26.4.1
+      e2e:
+        specifier: workspace:*
+        version: link:../e2e
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -296,15 +296,15 @@ importers:
 
   packages/playwright:
     devDependencies:
-      '@e2edev/e2e':
-        specifier: workspace:*
-        version: link:../e2e
       '@types/node':
         specifier: 26.4.1
         version: 26.4.1
       '@types/pngjs':
         specifier: 6.0.5
         version: 6.0.5
+      e2e:
+        specifier: workspace:*
+        version: link:../e2e
       playwright:
         specifier: 1.63.0
         version: 1.63.0
@@ -323,12 +323,12 @@ importers:
       '@e2edev/agent-device':
         specifier: workspace:*
         version: link:../agent-device
-      '@e2edev/e2e':
-        specifier: workspace:*
-        version: link:../e2e
       '@e2edev/playwright':
         specifier: workspace:*
         version: link:../playwright
+      e2e:
+        specifier: workspace:*
+        version: link:../e2e
       next:
         specifier: 16.3.4
         version: 16.3.4(@types/node@26.4.1)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -369,12 +369,12 @@ importers:
 
   packages/web-benchmark:
     dependencies:
-      '@e2edev/e2e':
-        specifier: workspace:*
-        version: link:../e2e
       '@e2edev/playwright':
         specifier: workspace:*
         version: link:../playwright
+      e2e:
+        specifier: workspace:*
+        version: link:../e2e
       next:
         specifier: 16.3.4
         version: 16.3.4(@types/node@26.4.1)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)

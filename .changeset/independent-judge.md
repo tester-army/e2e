@@ -1,5 +1,5 @@
 ---
-"@e2edev/e2e": minor
+"e2e": minor
 ---
 
 Judgments are independent of the act loop. `agent.assert`, `agent.waitFor`,

@@ -5,7 +5,7 @@
  * `device.<method>` step bounded by the action timeout.
  */
 
-import type { EngineFixtureContext, Locator } from '@e2edev/e2e/engine';
+import type { EngineFixtureContext, Locator } from 'e2e/engine';
 import type { AgentDeviceSurface, InstallAppOptions, InstalledApp } from './surface.ts';
 
 /** Permissions agent-device can grant, deny, or reset on an open app. */

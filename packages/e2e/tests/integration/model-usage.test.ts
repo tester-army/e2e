@@ -10,7 +10,7 @@ import { snapshot } from '../helpers/snapshot.ts';
 
 describe('reported model usage', () => {
   it('keeps run totals representable when separate steps overflow their sum', async () => {
-    const project = createProject({ 'tests/usage.e2e.ts': `import { test } from '@e2edev/e2e';
+    const project = createProject({ 'tests/usage.e2e.ts': `import { test } from 'e2e';
       test('judge twice', async ({ agent }) => {
         await agent.assert('ready');
         await agent.assert('still ready');
@@ -39,7 +39,7 @@ describe('reported model usage', () => {
   });
 
   it.each([-1, 0.5, NaN, Infinity])('sanitizes malformed judgment counters (%s) before recording events', async (invalid) => {
-    const project = createProject({ 'tests/usage.e2e.ts': `import { test } from '@e2edev/e2e';
+    const project = createProject({ 'tests/usage.e2e.ts': `import { test } from 'e2e';
       test('judge', async ({ agent }) => { await agent.assert('ready'); });` });
     const model = createScriptedInstance('test', 'usage', async () => ({
       ...scriptedResult([{ type: 'text', text: JSON.stringify(judgment(true, 'ready')) }], 'stop'),

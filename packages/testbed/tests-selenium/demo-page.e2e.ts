@@ -1,5 +1,5 @@
 import { test } from '@e2edev/playwright';
-import { expect } from '@e2edev/e2e';
+import { expect } from 'e2e';
 
 /**
  * seleniumbase.io/demo_page is one wide table holding most of the HTML control

@@ -5,7 +5,7 @@
  * the `@e2edev/agent-device/tools` subpath so this entry never loads the AI SDK.
  */
 
-import { test as base } from '@e2edev/e2e';
+import { test as base } from 'e2e';
 import type { Device } from './device.ts';
 
 export { agentDevice } from './engine.ts';
