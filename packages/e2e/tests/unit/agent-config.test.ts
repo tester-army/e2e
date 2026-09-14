@@ -36,6 +36,7 @@ describe('agent config defaults', () => {
     const config = resolve({});
     expect(config.agent.maxSteps).toBe(25);
     expect(config.agent.maxModelCalls).toBe(25);
+    expect(config.agent.timeout).toBe(30_000);
     expect(config.agent.maxObservationBytes).toBe(262_144);
     expect(config.agent.model).toBeUndefined();
     expect(config.agent.context).toBeUndefined();
@@ -81,6 +82,15 @@ describe('agent config defaults', () => {
     expect(() => resolve({ agents: { default: { maxObservationBytes: 16_777_217 } } })).toThrow(
       /maxObservationBytes/,
     );
+  });
+
+  it('owns the judgment budget: timeout is per agent and independent of actionTimeout', () => {
+    const config = resolve({ actionTimeout: 90_000, agents: { default: {}, slow: { timeout: 120_000 } } });
+    expect(config.agent.timeout).toBe(30_000);
+    expect(config.agents.get('slow')?.timeout).toBe(120_000);
+    expect(config.actionTimeout).toBe(90_000);
+    expect(() => resolve({ agents: { default: { timeout: 0 } } })).toThrow(/agents\.default\.timeout must be a positive/);
+    expect(() => resolve({ agents: { default: { timeout: 1.5 } } })).toThrow(/agents\.default\.timeout/);
   });
 
   it('rejects unknown agent keys, including the removed cache mode', () => {

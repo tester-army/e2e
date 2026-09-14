@@ -138,7 +138,7 @@ export interface AgentOption {
 
 /** `assert` options: one judgment plus one repair round, within `timeout`. */
 export interface AssertOptions extends VisionOption, AgentOption {
-  /** Deadline in milliseconds; defaults to the judgment budget, `max(30000, actionTimeout)`. */
+  /** Deadline in milliseconds; defaults to the agent's `timeout`, 30000. */
   timeout?: number;
   /** Attach a redacted screenshot to the step; on by default, denied after a secret fill. */
   screenshot?: boolean;
@@ -146,7 +146,7 @@ export interface AssertOptions extends VisionOption, AgentOption {
 
 /** `waitFor` options: a judgment at most once per `interval` until `timeout`. */
 export interface WaitForOptions extends VisionOption, AgentOption {
-  /** Deadline in milliseconds; defaults to the judgment budget, `max(30000, actionTimeout)`. */
+  /** Deadline in milliseconds; defaults to the agent's `timeout`, 30000. */
   timeout?: number;
   /** Least time between two judgments, in milliseconds; 100 through 60000, default 3000. */
   interval?: number;
@@ -158,7 +158,7 @@ export interface WaitForOptions extends VisionOption, AgentOption {
 export interface ExtractOptions<Schema extends StandardSchemaV1> extends VisionOption, AgentOption {
   /** Any Standard Schema v1 validator; the output is validated against it, with one repair round. */
   schema: Schema;
-  /** Deadline in milliseconds; defaults to the judgment budget, `max(30000, actionTimeout)`. */
+  /** Deadline in milliseconds; defaults to the agent's `timeout`, 30000. */
   timeout?: number;
 }
 
@@ -898,6 +898,12 @@ export interface AgentConfig {
   maxSteps?: number;
   /** Model requests per agent call, 1 through 100; default 25. */
   maxModelCalls?: number;
+  /**
+   * Deadline of one `assert`, `waitFor`, or `extract` call in milliseconds;
+   * default 30000. This is the judgment tier's model-latency headroom: raise
+   * it for a slow judge. Engine operations keep their own `actionTimeout`.
+   */
+  timeout?: number;
   /** Observation payload ceiling for act turns and judgments, 1024 through 16777216; default 262144. */
   maxObservationBytes?: number;
   /** Trusted project context prepended to agent prompts, at most `limits.maxAgentContextBytes`. */

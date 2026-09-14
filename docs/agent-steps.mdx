@@ -103,9 +103,9 @@ These defaults describe the built-in agent and judgment tier:
 | Call | Model calls | Default timeout |
 | --- | --- | --- |
 | `act` | up to `maxModelCalls`, default 25 | test `timeout`, 120 s |
-| `assert` | 2 | 30 s, or `actionTimeout` when larger |
-| `extract` | 2 | 30 s, or `actionTimeout` when larger |
-| `waitFor` | up to `maxModelCalls`, default 25 | 30 s, or `actionTimeout` when larger |
+| `assert` | 2 | the agent's `timeout`, 30 s |
+| `extract` | 2 | the agent's `timeout`, 30 s |
+| `waitFor` | up to `maxModelCalls`, default 25 | the agent's `timeout`, 30 s |
 
 `assert` and `extract` spend one judgment and one repair round at most.
 With `vision: false`, `waitFor` skips judgments while

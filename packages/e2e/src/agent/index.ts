@@ -29,7 +29,6 @@ import { acceptAnyJson, JUDGMENT_SCHEMA, validateJudgmentResponse } from './prot
 import { EXTRACT_REQUEST, JUDGMENT_REQUEST } from './prompts.ts';
 import { deriveJsonSchema } from './model/schema.ts';
 
-const MIN_STEP_TIMEOUT_MS = 30_000;
 const DEFAULT_WAIT_INTERVAL_MS = 3_000;
 
 /**
@@ -53,12 +52,11 @@ const ASSERT_KEYS = ['timeout', 'screenshot', 'vision', 'agent'] as const;
 /** Builds the agent fixture for one attempt. */
 export function createAgentFixture(runtime: AgentContext): Agent {
   /**
-   * Default budget for polling, judgment, and extraction steps: the action
-   * timeout expresses the suite's model-latency headroom in one place, with a
-   * 30 s floor. Tests then rarely need per-call
-   * timeouts.
+   * Default deadline of a judgment-tier call: the selected agent's `timeout`.
+   * It is the agent's model-latency headroom, configured once per agent, so
+   * tests rarely need per-call timeouts.
    */
-  const stepTimeout = Math.max(MIN_STEP_TIMEOUT_MS, runtime.config.actionTimeout);
+  const judgmentTimeout = (agent: string | undefined): number => runtime.select(agent).config.timeout;
 
   /** A per-call `vision` value always wins over the agent's default. */
   const resolveVision = (requested: VisionMode | undefined, agent: string | undefined): VisionMode => {
@@ -123,7 +121,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           api: 'agent.waitFor',
           agent: options?.agent,
           task: 'judge whether a condition holds',
-          timeoutMs: resolveTimeout(options?.timeout, stepTimeout),
+          timeoutMs: resolveTimeout(options?.timeout, judgmentTimeout(options?.agent)),
           maxModelCalls: resolveBoundedBudget(
             options?.maxModelCalls,
             runtime.select(options?.agent).config.maxModelCalls,
@@ -162,7 +160,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           api: 'agent.extract',
           agent: options.agent,
           task: 'extract structured data from the observation',
-          timeoutMs: resolveTimeout(options.timeout, stepTimeout),
+          timeoutMs: resolveTimeout(options.timeout, judgmentTimeout(options.agent)),
           maxModelCalls: EXTRACT_MODEL_CALLS,
           vision: resolveVision(options.vision, options.agent),
         },
@@ -219,7 +217,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           api: 'agent.assert',
           agent: options?.agent,
           task: 'judge whether an assertion holds',
-          timeoutMs: resolveTimeout(options?.timeout, stepTimeout),
+          timeoutMs: resolveTimeout(options?.timeout, judgmentTimeout(options?.agent)),
           maxModelCalls: ASSERT_MODEL_CALLS,
           vision: resolveVision(options?.vision, options?.agent),
         },

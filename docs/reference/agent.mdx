@@ -32,11 +32,12 @@ remaining test timeout.
 | Method | Model calls | Action steps | Default timeout |
 | --- | ---: | ---: | --- |
 | `act` | `agents.<name>.maxModelCalls`, 25 | `agents.<name>.maxSteps`, 25 | `config.timeout`, 120000 ms |
-| `waitFor` | `agents.<name>.maxModelCalls`, 25 | 0 | the judgment budget |
-| `extract` | 2 | 0 | the judgment budget |
-| `assert` | 2 | 0 | the judgment budget |
+| `waitFor` | `agents.<name>.maxModelCalls`, 25 | 0 | `agents.<name>.timeout`, 30000 ms |
+| `extract` | 2 | 0 | `agents.<name>.timeout`, 30000 ms |
+| `assert` | 2 | 0 | `agents.<name>.timeout`, 30000 ms |
 
-The judgment budget is `max(30000, config.actionTimeout)` milliseconds.
+The judgment budget is `agents.<name>.timeout`, 30000 milliseconds by
+default; `actionTimeout` bounds engine operations only.
 Per-call budgets must be positive integers and can only lower the configured
 limits. Every duration option is milliseconds.
 
@@ -224,7 +225,7 @@ export interface AgentOption {
 
 /** `assert` options: one judgment plus one repair round, within `timeout`. */
 export interface AssertOptions extends VisionOption, AgentOption {
-  /** Deadline in milliseconds; defaults to the judgment budget, `max(30000, actionTimeout)`. */
+  /** Deadline in milliseconds; defaults to the agent's `timeout`, 30000. */
   timeout?: number;
   /** Attach a redacted screenshot to the step; on by default, denied after a secret fill. */
   screenshot?: boolean;
@@ -232,7 +233,7 @@ export interface AssertOptions extends VisionOption, AgentOption {
 
 /** `waitFor` options: a judgment at most once per `interval` until `timeout`. */
 export interface WaitForOptions extends VisionOption, AgentOption {
-  /** Deadline in milliseconds; defaults to the judgment budget, `max(30000, actionTimeout)`. */
+  /** Deadline in milliseconds; defaults to the agent's `timeout`, 30000. */
   timeout?: number;
   /** Least time between two judgments, in milliseconds; 100 through 60000, default 3000. */
   interval?: number;
@@ -244,7 +245,7 @@ export interface WaitForOptions extends VisionOption, AgentOption {
 export interface ExtractOptions<Schema extends StandardSchemaV1> extends VisionOption, AgentOption {
   /** Any Standard Schema v1 validator; the output is validated against it, with one repair round. */
   schema: Schema;
-  /** Deadline in milliseconds; defaults to the judgment budget, `max(30000, actionTimeout)`. */
+  /** Deadline in milliseconds; defaults to the agent's `timeout`, 30000. */
   timeout?: number;
 }
 

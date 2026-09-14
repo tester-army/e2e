@@ -22,13 +22,12 @@ import { ModelUsage, reasoningField, tokenFields } from './usage.ts';
 
 /**
  * Ceiling on one targeted grammar action: the time the engine may wait for a
- * node to become actionable before the failure goes back to the model.
- * `actionTimeout` bounds every engine operation and doubles as the judgment
- * tier's clock, so projects raise it for slow models; a tap under a consent
- * overlay then sits in the engine's actionability retry for the whole budget
- * (90 s in the testbed) before the model learns anything, when the useful
- * answer — what is in the way — is known within seconds. Navigation keeps the
- * full budget: a slow page really can take that long to load.
+ * node to become actionable before the failure goes back to the model. A tap
+ * under a consent overlay would otherwise sit in the engine's actionability
+ * retry for the whole `actionTimeout` before the model learns anything, when
+ * the useful answer — what is in the way — is known within seconds.
+ * Navigation keeps the full budget: a slow page really can take that long to
+ * load.
  */
 const MAX_TARGETED_ACTION_MS = 15_000;
 

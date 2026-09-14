@@ -37,13 +37,13 @@ export default {
     { name: 'android-emulator', engine: android },
   ],
   timeout: 300_000,
-  actionTimeout: 90_000,
   workers: 1,
   agents: {
     default: {
       executor: createAgent({ tools: agentDeviceTools(ios, android) }),
       model: gateway(process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast'),
       maxModelCalls: 40,
+      timeout: 90_000,
       context: [
         'The surface is a real mobile device (an iOS simulator or an Android',
         'emulator) observed through its accessibility tree; its Settings app is',

@@ -40,14 +40,14 @@ export default {
       }),
     },
   ],
-  // Every agent step includes model round trips, so the deterministic
-  // 30 s action budget is too tight for a loaded provider. Latency is not a
-  // product defect: give it room rather than reading timeouts as failures.
+  // Every agent step includes model round trips; a loaded provider needs
+  // room. Latency is not a product defect: give the test and the judgment
+  // tier time rather than reading timeouts as failures.
   timeout: 300_000,
-  actionTimeout: 90_000,
   agents: {
     default: {
       model: gateway(process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast'),
+      timeout: 90_000,
       // The drawn keypad flow is one step of a dozen taps, each a model turn.
       maxSteps: 40,
       maxModelCalls: 60,

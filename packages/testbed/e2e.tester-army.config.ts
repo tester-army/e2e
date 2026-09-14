@@ -24,12 +24,12 @@ export default {
     },
   ],
   timeout: 600_000,
-  actionTimeout: 90_000,
   agents: {
     default: {
       model: gateway(process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast'),
       maxSteps: 40,
       maxModelCalls: 40,
+      timeout: 90_000,
       context: [
         'You are touring the production tester.army marketing site READ-ONLY.',
         'Never sign up, never submit any form, never type into inputs, and never',

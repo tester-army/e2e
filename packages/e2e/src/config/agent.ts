@@ -2,7 +2,7 @@
 
 import type { LanguageModel } from 'ai';
 import { isStepExecutor, type StepExecutor } from '../agent/executor.ts';
-import { boundedInt } from './validate.ts';
+import { boundedInt, positiveInt } from './validate.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import { didYouMean } from '../internal/suggest.ts';
 import type {
@@ -56,6 +56,8 @@ export interface ResolvedAgentConfig {
   readonly judge: ResolvedModel | undefined;
   readonly maxSteps: number;
   readonly maxModelCalls: number;
+  /** Deadline of one judgment-tier call (`assert`, `waitFor`, `extract`), in milliseconds. */
+  readonly timeout: number;
   readonly maxObservationBytes: number;
   readonly context: string | undefined;
   /** Default for the per-call `vision` option; a per-call value always wins. */
@@ -85,6 +87,7 @@ const AGENT_KEYS = new Set([
   'judge',
   'maxSteps',
   'maxModelCalls',
+  'timeout',
   'maxObservationBytes',
   'context',
   'vision',
@@ -97,6 +100,15 @@ const AGENT_KEYS = new Set([
  * every act turn; the per-call token ceiling clamps a dense screen below it.
  */
 export const DEFAULT_OBSERVATION_BYTES = 262_144;
+
+/**
+ * Default judgment budget. A judgment is one observation and one or two model
+ * calls; 30 s covers a loaded provider without hiding a stuck screen. It is
+ * the agent's own knob, not `actionTimeout`: an engine operation and a model
+ * round trip have nothing in common, and coupling them made projects inflate
+ * the engine budget to buy the judge time.
+ */
+const DEFAULT_JUDGMENT_TIMEOUT_MS = 30_000;
 
 /** Hard ceilings mirroring `schema/report-v1.schema.json` `limits`. */
 const LIMIT_BOUNDS = {
@@ -154,6 +166,7 @@ export function resolveAgentConfig(
 
   const maxSteps = boundedInt(agent?.maxSteps, `${label}.maxSteps`, 1, 100) ?? 25;
   const maxModelCalls = boundedInt(agent?.maxModelCalls, `${label}.maxModelCalls`, 1, 100) ?? 25;
+  const timeout = positiveInt(agent?.timeout, `${label}.timeout`, 'milliseconds') ?? DEFAULT_JUDGMENT_TIMEOUT_MS;
   const maxObservationBytes =
     boundedInt(agent?.maxObservationBytes, `${label}.maxObservationBytes`, 1_024, 16_777_216) ??
     DEFAULT_OBSERVATION_BYTES;
@@ -175,6 +188,7 @@ export function resolveAgentConfig(
     judge: resolveCanonicalModel(agent?.judge, executor?.judge, label, 'judge') ?? model,
     maxSteps,
     maxModelCalls,
+    timeout,
     maxObservationBytes,
     context,
     vision,

@@ -25,13 +25,13 @@ export default {
   tests: 'tests-reminders/**/*.e2e.ts',
   targets: [{ name: 'ios-simulator', engine: device }],
   timeout: 900_000,
-  actionTimeout: 90_000,
   workers: 1,
   agents: {
     default: {
       executor: createAgent({ tools: agentDeviceTools(device) }),
       model: gateway(process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast'),
       maxModelCalls: 60,
+      timeout: 90_000,
       context: [
         'The surface is a real iOS simulator observed through its accessibility',
         'tree; the Reminders app is already open when a step starts. The device',
