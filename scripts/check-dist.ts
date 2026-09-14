@@ -9,9 +9,9 @@
  * `stamp-dist.ts` wrote at build time does not name the version in
  * package.json.
  *
- * A bare `changeset publish` goes through `pnpm publish` in each package
- * directory, so the hook runs there too; only the root `canary` and
- * `release` scripts build before publishing.
+ * `changeset publish` goes through `pnpm publish` in each package directory,
+ * so the hook runs for `pnpm run canary:publish` and for a hand-typed
+ * `changeset publish` alike.
  *
  * Usage: `node ../../scripts/check-dist.ts`, from the package directory.
  */
@@ -23,14 +23,14 @@ const { name, version } = JSON.parse(readFileSync('package.json', 'utf8')) as { 
 const stampPath = resolve('dist', '.build.json');
 
 if (!existsSync(stampPath)) {
-  console.error(`${name}@${version}: dist has no build stamp (${stampPath}); use \`pnpm run canary\` or \`pnpm run release\`, which build first`);
+  console.error(`${name}@${version}: dist has no build stamp (${stampPath}); run \`pnpm run canary\` (or \`pnpm run build\`) first`);
   process.exit(1);
 }
 
 const stamp = JSON.parse(readFileSync(stampPath, 'utf8')) as { version?: string };
 if (stamp.version !== version) {
   console.error(
-    `${name}@${version}: dist was built for ${stamp.version ?? 'an unknown version'}; use \`pnpm run canary\` or \`pnpm run release\`, which build first`,
+    `${name}@${version}: dist was built for ${stamp.version ?? 'an unknown version'}; run \`pnpm run canary\` (or \`pnpm run build\`) first`,
   );
   process.exit(1);
 }

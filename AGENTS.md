@@ -265,8 +265,12 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
   `0.3.0-beta.0` satisfies neither `>=0.1.0-0 <1` nor `*`. Never hand-edit a
   package `version` or `CHANGELOG.md`; `changesets/action` owns both.
 - Canaries are hand-run, never from CI: `pnpm run canary` with `GITHUB_TOKEN`
-  set publishes every public package to the `canary` dist-tag as a changesets
-  snapshot. `scripts/canary-changeset.ts` first writes a changeset bumping all
+  set versions and builds every public package as a changesets snapshot, and
+  `pnpm run canary:publish` publishes them to the `canary` dist-tag. Publishing
+  is its own step because npm's two-factor prompt is interactive. Never publish
+  without building first: each build stamps `dist/.build.json`, and every
+  package's `prepublishOnly` (`scripts/check-dist.ts`) refuses a `dist` whose
+  stamp does not match `package.json`. `scripts/canary-changeset.ts` first writes a changeset bumping all
   of them, so they move together: a snapshot of one engine alone would keep a
   peer range the runner's canary does not satisfy. Snapshot versions read
   `0.10.0-canary-<datetime>` (`snapshot.useCalculatedVersion`); the build runs

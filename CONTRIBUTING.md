@@ -146,15 +146,21 @@ machine, never from CI:
 
 ```sh
 GITHUB_TOKEN=<token> pnpm run canary
+pnpm run canary:publish
 git checkout -- packages .changeset
 ```
 
-The script writes a changeset that bumps every public package, versions them
-as `<next version>-canary-<datetime>`, builds, and publishes with
-`--tag canary`. Bumping all of them together is what keeps the engines
-installable: their peer ranges are rewritten to the runner's exact canary
-version, and `init` pins the engine build it shipped with. The build has to
-run after versioning for that pin to hold. Nothing the script writes is
+The first script writes a changeset that bumps every public package, versions
+them as `<next version>-canary-<datetime>`, and builds. The second publishes
+with `--tag canary`; it is a separate step because npm's two-factor prompt
+(a hardware key, for instance) has to be answered at the terminal. Bumping all
+of them together is what keeps the engines installable: their peer ranges are
+rewritten to the runner's exact canary version, and `init` pins the engine
+build it shipped with. The build has to run after versioning for that pin to
+hold, and each build stamps `dist/.build.json` with its version; a
+`prepublishOnly` hook in every package refuses to publish a `dist` whose stamp
+does not match `package.json`, so a publish without the build step in front of
+it fails instead of shipping the previous build. Nothing the scripts write is
 committed.
 
 ## Stability policy
