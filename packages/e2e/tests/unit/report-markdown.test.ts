@@ -1,9 +1,9 @@
 /**
  * The markdown page: counts and spend in the head, one block per test that
- * failed or was flaky with the step it went wrong at, one row per file,
- * every test folded, an exploration rendered as its findings, untrusted text
- * escaped, and a body that never outgrows a pull request comment. The
- * `markdown` reporter writes it beside the report.
+ * failed with the step it went wrong at, the flaky tests folded, every test
+ * folded by file with the file's counts, an exploration rendered as its
+ * findings, untrusted text escaped, and a body that never outgrows a pull
+ * request comment. The `markdown` reporter writes it beside the report.
  */
 
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -60,7 +60,7 @@ function attempt(
   input: {
     readonly status?: ReportAttempt['status'];
     readonly durationMs?: number;
-    readonly error?: { code: string; message: string };
+    readonly error?: { code: string; message: string; details?: NonNullable<ReportAttempt['error']>['details'] };
     readonly artifacts?: readonly ReportAttempt['artifacts'][number]['kind'][];
     readonly steps?: readonly ReportStep[];
   } = {},
@@ -153,7 +153,7 @@ function spent(document: Report1Document): Report1Document {
 }
 
 describe('renderMarkdownReport', () => {
-  it("leads with the counts and the spend, blocks each failure with its step and the agent's word, tables the files, and folds every test", () => {
+  it("leads with the counts and the spend, blocks each failure with its step and the agent's word, folds the flaky tests, and folds every test by file", () => {
     const body = renderMarkdownReport(spent(page({ status: 'failed', results: [passing, failing, flaky, skipped, judged] })), links);
     expect(body).toBe(
       [
@@ -161,72 +161,73 @@ describe('renderMarkdownReport', () => {
         '4 agent steps · 1 replayed from cache · 17 model calls · 128.4k tokens (62% cached) · $0.31',
         '',
         [
-          '**🔴 tests/members.e2e.ts › members › an email invitation is accepted by the invited account only**',
-          '**ASSERTION_FAILED** expected heading "Welcome, Ada" to be visible',
-          'Step 4 of 6, `agent.act` "Accept the invitation from the email", failed after 12 model calls in 38.0s: "The Accept button opened a page that still shows Sign in."',
-          'Steps: ✓ open / › ✓ Sign in as the owner › ✓ tap Send invitation › ✗ Accept the invitation from the email › 2 not run',
-          'Evidence: [screenshot, video, trace](https://github.com/o/r/actions/runs/9) · [tests/members.e2e.ts:41](https://github.com/o/r/blob/abc/tests/members.e2e.ts#L41)',
-        ].join('  \n'),
+          // Paragraphs: the title; the error and the step in one lead; what the error and the agent said, quoted; the line and the evidence.
+          // The file is named once, in the source link; a locator label reads as code, a sentence the author wrote is quoted.
+          '**🔴 members › an email invitation is accepted by the invited account only**',
+          '**ASSERTION_FAILED** at step 4 of 6: `agent.act` "Accept the invitation from the email", after 38.0s and 12 model calls',
+          '> expected heading "Welcome, Ada" to be visible\n> The Accept button opened a page that still shows Sign in.',
+          '[tests/members.e2e.ts:41](https://github.com/o/r/blob/abc/tests/members.e2e.ts#L41) · Evidence: [screenshot, video, trace](https://github.com/o/r/actions/runs/9)',
+        ].join('\n\n'),
         '',
-        // A flaky test tells the story of the attempt that failed, not the retry that passed.
-        [
-          '**⚠️ tests/todos.e2e.ts › todos survive a filter round-trip**',
-          'Passed after 1 failed attempt.',
-          '**STEP_TIMEOUT** slow',
-          'Step 2 of 2, `agent.waitFor` "the filtered list", timed out in 30.0s',
-          'Steps: ✓ open /todos › ✗ the filtered list',
-          'Evidence: [screenshot](https://github.com/o/r/actions/runs/9) · [tests/todos.e2e.ts:3](https://github.com/o/r/blob/abc/tests/todos.e2e.ts#L3)',
-        ].join('  \n'),
-        '',
-        '| | File | Tests | Agent | Time |',
-        '| --- | --- | --- | --- | --- |',
-        '| 🔴 | tests/members.e2e.ts | 1 failed | 2 steps · 16 calls | 1.2s |',
-        '| ⚠️ | tests/todos.e2e.ts | 1 flaky, 1 skipped | 1 step | 6.4s |',
-        '| 🟢 | tests/smoke.e2e.ts | 2 passed | 1 step · 1 call | 3.0s |',
-        '',
+        // A flaky test is folded: the run is green, and its story is the attempt that failed, not the retry that passed.
         [
           '<details>',
-          '<summary>All 5 tests</summary>',
+          '<summary>⚠️ 1 flaky test passed on a retry</summary>',
           '',
-          '**tests/members.e2e.ts**',
+          [
+            '**⚠️ todos survive a filter round-trip**',
+            '**STEP_TIMEOUT** at step 2 of 2: `agent.waitFor` "the filtered list", after 30.0s',
+            '> slow',
+            '[tests/todos.e2e.ts:3](https://github.com/o/r/blob/abc/tests/todos.e2e.ts#L3) · Evidence: [screenshot](https://github.com/o/r/actions/runs/9)',
+          ].join('\n\n'),
+          '</details>',
+        ].join('\n'),
+        '',
+        // Files worst first, each with its counts, agent work, and time; no table above.
+        [
+          '<details>',
+          '<summary>All 5 tests in 3 files</summary>',
+          '',
+          '**tests/members.e2e.ts** · 1 failed · 2 steps · 16 calls · 1.2s',
           '- 🔴 members › an email invitation is accepted by the invited account only (1.2s)',
           '',
-          '**tests/todos.e2e.ts**',
+          '**tests/todos.e2e.ts** · 1 flaky, 1 skipped · 1 step · 6.4s',
           '- ⚠️ todos survive a filter round-trip (6.4s, 1 failed attempt first)',
           '- ⏭️ not ready yet (skipped: waiting on the API)',
           '',
-          '**tests/smoke.e2e.ts**',
+          '**tests/smoke.e2e.ts** · 2 passed · 1 step · 1 call · 3.0s',
           '- 🟢 opens the app (850ms)',
           '- 🟢 dashboard › opens directly (2.1s)',
           '</details>',
         ].join('\n'),
         '',
-        'Screenshots, traces, and recordings: [run artifacts](https://github.com/o/r/actions/runs/9).',
-        '<sub>e2e 0.9.0 · 8.4s · 1 target (web)</sub>',
+        '<sub>e2e 0.9.0 · 8.4s · web · [run artifacts](https://github.com/o/r/actions/runs/9)</sub>',
         '',
       ].join('\n'),
     );
   });
 
-  it('is a passing headline, the file table, and the folded list when everything passed, with no spend line for a deterministic run', () => {
+  it('is a passing headline, the folded list, and the footer when everything passed, with no spend line for a deterministic run', () => {
     expect(renderMarkdownReport(page({ results: [passing] }))).toBe(
       [
         '### 🟢 e2e: 1 passed',
         '',
-        '| | File | Tests | Agent | Time |',
-        '| --- | --- | --- | --- | --- |',
-        '| 🟢 | tests/smoke.e2e.ts | 1 passed |  | 850ms |',
+        '<details>\n<summary>All 1 test in 1 file</summary>\n\n**tests/smoke.e2e.ts** · 1 passed · 850ms\n- 🟢 opens the app (850ms)\n</details>',
         '',
-        '<details>\n<summary>All 1 test</summary>\n\n**tests/smoke.e2e.ts**\n- 🟢 opens the app (850ms)\n</details>',
-        '',
-        '<sub>e2e 0.9.0 · 8.4s · 1 target (web)</sub>',
+        '<sub>e2e 0.9.0 · 8.4s · web</sub>',
         '',
       ].join('\n'),
     );
   });
 
-  it('collapses a long passed run in the timeline so the failing step stays in view, and words every non-passed status', () => {
-    const many = Array.from({ length: 9 }, (_, index) => step({ index, label: `step ${index}` }));
+  it('names the page after its title, so two comments on one pull request read apart', () => {
+    expect(renderMarkdownReport(page({ results: [passing] }), { title: 'regression' })).toContain('### 🟢 e2e regression: 1 passed\n');
+    expect(renderMarkdownReport(page({ results: [passing] }), { title: '  ' })).toContain('### 🟢 e2e: 1 passed\n');
+    expect(renderMarkdownReport(explored(), { title: 'nightly' })).toContain('### 🔴 e2e nightly explore: 1 issue\n');
+  });
+
+  it('names the failed step whatever its status, and never retells the steps before it', () => {
+    const many = Array.from({ length: 9 }, (_, index) => step({ index, kind: 'agent', api: 'agent.act', label: `step ${index}` }));
     const at = (status: Exclude<ReportStep['status'], 'passed'>) =>
       renderMarkdownReport(
         page({
@@ -246,16 +247,40 @@ describe('renderMarkdownReport', () => {
           ],
         }),
       );
-    expect(at('timed-out')).toContain('Step 10 of 11, `agent.waitFor` "the order confirmation", timed out in 30.0s');
-    expect(at('timed-out')).toContain('Steps: ✓ 5 passed steps › ✓ step 5 › ✓ step 6 › ✓ step 7 › ✓ step 8 › ✗ the order confirmation › 1 not run');
-    expect(at('blocked')).toContain('"the order confirmation", was blocked in 30.0s');
-    expect(at('cancelled')).toContain('"the order confirmation", was cancelled in 30.0s');
-    expect(at('cancelled')).toContain('› – the order confirmation › 1 not run');
-    // A one-step attempt has no timeline to draw.
+    for (const status of ['timed-out', 'blocked', 'cancelled'] as const) {
+      expect(at(status)).toContain('**E** at step 10 of 11: `agent.waitFor` "the order confirmation", after 30.0s\n\n> m\n\n`tests/example.e2e.ts:3`');
+      expect(at(status)).not.toContain('step 8');
+    }
+    // The label of a step that is not the agent's reads as code.
     const single = named({ title: 'one', status: 'failed', attempts: [attempt({ status: 'failed', error: { code: 'E', message: 'm' }, steps: [step({ index: 0, label: 'only', status: 'failed' })] })] });
-    const one = renderMarkdownReport(page({ status: 'failed', results: [single] }));
-    expect(one).toContain('Step 1 of 1, `screen.tap` "only", failed in 900ms');
-    expect(one).not.toContain('Steps:');
+    expect(renderMarkdownReport(page({ status: 'failed', results: [single] }))).toContain('**E** at step 1 of 1: `screen.tap` `only`, after 900ms');
+  });
+
+  it('quotes nothing when the message only says the api failed, lists the facts, and shows a loopback screen as its path', () => {
+    const locators = [
+      step({ index: 0, kind: 'locator', api: 'getByRole', label: 'getByRole("button", name: "Save Changes")' }),
+      step({ index: 1, kind: 'assertion', api: 'expect.toBeHidden', label: 'getByRole("button", name: "Save Changes")', status: 'failed', durationMs: 15_100 }),
+    ];
+    const error = {
+      code: 'ASSERTION_FAILED',
+      message: 'expect.toBeHidden failed\nlocator: getByRole("button", name: "Save Changes")\nexpected: hidden or absent\nobserved: default states (match count 1)',
+      details: { locator: 'getByRole("button", name: "Save Changes")', expected: 'hidden or absent', observed: 'default states', matches: 1 },
+    };
+    const failedAttempt = attempt({ status: 'failed', error, steps: locators });
+    failedAttempt.failure = { url: 'http://127.0.0.1:3100/dashboard/p1/settings?tab=env', candidates: ['#n41 button "Save Changes" [disabled]'] };
+    const body = renderMarkdownReport(page({ status: 'failed', results: [named({ title: 'settings', status: 'failed', attempts: [failedAttempt] })] }));
+    // The message's first line only says the api failed, which the lead says; nothing is quoted. Nobody can open a loopback URL, so its path is enough.
+    expect(body).toContain(
+      [
+        '**🔴 settings**',
+        '**ASSERTION_FAILED** at step 2 of 2: `expect.toBeHidden` `getByRole("button", name: "Save Changes")`, after 15.1s',
+        '- Expected: hidden or absent\n- Observed: default states (1 match)\n- Screen: `/dashboard/p1/settings?tab=env`\n- Closest to the locator: `#n41 button "Save Changes" [disabled]`',
+        '`tests/example.e2e.ts:3`',
+      ].join('\n\n'),
+    );
+    // A message that says more than the api is quoted, first line only: the facts carry the rest.
+    const worded = renderMarkdownReport(page({ status: 'failed', results: [named({ title: 'settings', status: 'failed', attempts: [attempt({ status: 'failed', error: { ...error, message: 'the Save button stayed\nexpected: hidden' }, steps: locators })] })] }));
+    expect(worded).toContain(', after 15.1s\n\n> the Save button stayed\n\n- Expected:');
   });
 
   it('puts run-level errors before the failures and says no tests ran', () => {
@@ -266,11 +291,11 @@ describe('renderMarkdownReport', () => {
       }),
     );
     expect(body).toContain('### 🔴 e2e: no tests ran\n\n> **APP_UNREACHABLE** (launch) http://127.0.0.1:3000 did not answer\n');
-    expect(body).not.toContain('| File |');
+    expect(body).not.toContain('<details>');
   });
 
   it('says no tests selected when nothing ran and nothing failed', () => {
-    expect(renderMarkdownReport(page())).toContain('### 🟢 e2e: no tests selected\n');
+    expect(renderMarkdownReport(page())).toBe('### 🟢 e2e: no tests selected\n\n<sub>e2e 0.9.0 · 8.4s · web</sub>\n');
   });
 
   it('escapes what a test wrote, keeps it on one line, and keeps a link destination closed', () => {
@@ -293,8 +318,8 @@ describe('renderMarkdownReport', () => {
     expect(body).toContain('a \\| b &lt;img src=x onerror=alert(1)&gt; \\*c\\*');
     // The canonical sanitizer drops color sequences and marks a control character, as the terminal does.
     expect(body).toContain('line one line two red �\\`tick\\`');
-    expect(body).toContain('Step 1 of 2, `screen.tap` "tap \\`x\\` \\| y", failed in 900ms: "saw &lt;b&gt;bold&lt;/b&gt; and more"');
-    expect(body).toContain('| 🔴 | tests/we\\|rd.e2e.ts |');
+    expect(body).toContain('at step 1 of 2: `screen.tap` `tap x \\| y`, after 900ms\n\n> line one line two red �\\`tick\\`\n> saw &lt;b&gt;bold&lt;/b&gt; and more');
+    expect(body).toContain('**tests/we\\|rd.e2e.ts** · 1 failed · 1.2s');
     expect(body).toContain('[tests/we\\|rd.e2e.ts:3](https://x.test/blob%29%3Cscript%3E)');
     expect(body).toContain('[run artifacts](https://x.test/run%20%281%29)');
     expect(body).not.toContain('');
@@ -312,7 +337,10 @@ describe('renderMarkdownReport', () => {
     const loneSurrogate = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
     expect(body).not.toMatch(loneSurrogate);
     expect(body).toContain(`${'x'.repeat(118)}💥…`);
-    expect(body).toContain(`${'m'.repeat(238)}💥…`);
+    // A quoted message gets the room prose gets: 600 code points.
+    expect(body).toContain(`> ${'m'.repeat(238)}💥zz`);
+    const prose = named({ title: 'p', status: 'failed', attempts: [attempt({ status: 'failed', error: { code: 'E', message: `${'m'.repeat(598)}💥zz` } })] });
+    expect(renderMarkdownReport(page({ status: 'failed', results: [prose] }))).toContain(`> ${'m'.repeat(598)}💥…`);
   });
 
   it('rounds a duration to whole seconds before splitting off the minutes, and formats tokens and cost as the terminal does', () => {
@@ -330,31 +358,42 @@ describe('renderMarkdownReport', () => {
     expect(usage(2_400_000, 12)).toContain('· 2.4M tokens · $12.00\n');
   });
 
-  it('names the target only when the run has several: in the blocks, the table, the list, and the footer, capped there', () => {
+  it('names the target only when the run has several: in the blocks, the list, and the footer, capped there', () => {
     const body = renderMarkdownReport(page({ status: 'failed', results: [failing, passing], targets: [reportTarget(), reportTarget({ id: 'mobile', index: 1 })] }));
-    expect(body).toContain('**🔴 tests/members.e2e.ts › members › an email invitation is accepted by the invited account only (web)**');
-    expect(body).toContain('| 🔴 | tests/members.e2e.ts (web) | 1 failed |');
-    expect(body).toContain('**tests/smoke.e2e.ts (web)**\n- 🟢 opens the app (web) (850ms)');
+    expect(body).toContain('**🔴 members › an email invitation is accepted by the invited account only (web)**');
+    expect(body).toContain('**tests/smoke.e2e.ts (web)** · 1 passed · 850ms\n- 🟢 opens the app (web) (850ms)');
     expect(body).toContain('2 targets (web, mobile)');
     const many = renderMarkdownReport(page({ results: [passing], targets: Array.from({ length: 12 }, (_, index) => reportTarget({ id: `t${index}`, index })) }));
     expect(many).toContain('12 targets (t0, t1, t2, t3, t4, t5, t6, t7, and 4 more)</sub>');
   });
 
-  it('orders files worst first and gives each the glyph of its worst test', () => {
+  it('lists files worst first in the fold, each with the counts of its tests', () => {
     const skippedOnly = named({ title: 'later', file: 'tests/a.e2e.ts', status: 'skipped', skip: { cause: 'explicit', reason: 'later' } });
     const body = renderMarkdownReport(page({ status: 'failed', results: [passing, skippedOnly, flaky, failing] }));
-    const rows = body.split('\n').filter((line) => line.startsWith('| ') && !line.startsWith('| |') && !line.startsWith('| ---'));
-    expect(rows.map((row) => row.slice(0, row.indexOf(' |', 2)))).toEqual(['| 🔴', '| ⚠️', '| ⏭️', '| 🟢']);
-    expect(rows[2]).toContain('| tests/a.e2e.ts | 1 skipped |');
+    const headings = body.split('\n').filter((line) => line.startsWith('**tests/'));
+    expect(headings).toEqual([
+      '**tests/members.e2e.ts** · 1 failed · 2 steps · 16 calls · 1.2s',
+      '**tests/todos.e2e.ts** · 1 flaky · 1 step · 6.4s',
+      '**tests/a.e2e.ts** · 1 skipped · 0ms',
+      '**tests/smoke.e2e.ts** · 1 passed · 850ms',
+    ]);
   });
 
-  it('caps the file table and the folded list, saying how many more there are', () => {
+  it('caps the folded list, saying how many more there are', () => {
     const results = Array.from({ length: 450 }, (_, index) => named({ title: `t${index}`, file: `tests/f${String(index).padStart(3, '0')}.e2e.ts`, status: 'passed', attempts: [attempt()] }));
     const body = renderMarkdownReport(page({ results }));
-    expect(body).toContain('| | and 250 more files | | | |');
-    expect(body).toContain('<summary>All 450 tests</summary>');
+    expect(body).toContain('<summary>All 450 tests in 450 files</summary>');
     expect(body).toContain('- and 50 more');
     expect(body).not.toContain('**tests/f449.e2e.ts**');
+  });
+
+  it('folds every flaky test under one summary and caps them', () => {
+    const flakes = Array.from({ length: 35 }, (_, index) => named({ title: `flake ${index}`, status: 'flaky', attempts: [attempt({ status: 'failed', error: { code: 'E', message: 'm' } }), attempt()] }));
+    const body = renderMarkdownReport(page({ results: flakes }));
+    expect(body).toContain('<summary>⚠️ 35 flaky tests passed on a retry</summary>');
+    expect(body).toContain('**⚠️ flake 29**');
+    expect(body).not.toContain('**⚠️ flake 30**');
+    expect(body).toContain('and 5 more\n</details>');
   });
 
   it('reads a serial member from its group: error, steps, failure evidence, and the artifacts of the attempt that failed', () => {
@@ -395,16 +434,16 @@ describe('renderMarkdownReport', () => {
     const body = renderMarkdownReport(page({ status: 'failed', results: [member], serialGroups: [group] }));
     // The evidence is the failing group attempt's own, not an earlier attempt's trace.
     expect(body).toContain(
-      '**ASSERTION_FAILED** nope  \nStep 1 of 1, `screen.tap` "tap Next", failed in 900ms  \nScreen: http://app.test/wizard · closest to the locator: `#n3 button "Next step"`  \nEvidence: screenshot · `tests/example.e2e.ts:3`',
+      '**ASSERTION_FAILED** at step 1 of 1: `screen.tap` `tap Next`, after 900ms\n\n> nope\n\n- Screen: `http://app.test/wizard`\n- Closest to the locator: `#n3 button "Next step"`\n\n`tests/example.e2e.ts:3` · Evidence: screenshot',
     );
     // A member whose group is missing renders what it has rather than an inspection of nothing.
-    expect(renderMarkdownReport(page({ status: 'failed', results: [member] }))).toContain('**🔴 tests/example.e2e.ts › step two**  \n`tests/example.e2e.ts:3`');
+    expect(renderMarkdownReport(page({ status: 'failed', results: [member] }))).toContain('**🔴 step two**\n\n**failed**\n\n`tests/example.e2e.ts:3`');
   });
 
   it('counts zero failed attempts for a flaky test a foreign document gives one attempt, never a negative', () => {
     const oneAttempt = named({ title: 'odd', status: 'flaky', attempts: [attempt({ status: 'passed' })] });
     const body = renderMarkdownReport(page({ results: [oneAttempt] }));
-    expect(body).toContain('Passed after 0 failed attempts.');
+    expect(body).toContain('(1.2s, 0 failed attempts first)');
     expect(body).not.toContain('-1');
   });
 
@@ -416,9 +455,8 @@ describe('renderMarkdownReport', () => {
       named({ title: [`suite ${index} `.repeat(15), 'b'.repeat(120), 'c'.repeat(120)], file: `tests/file-${index % 40}.e2e.ts`, status: 'passed', attempts: [attempt()] }),
     );
     const body = renderMarkdownReport(page({ status: 'failed', results: [...failures, ...passes] }));
-    // Thirty blocks, then how many were left out; the table fits, the folded list does not, and the note says so.
-    expect(body).toContain('and 50 more did not pass');
-    expect(body).toContain('| File | Tests |');
+    // Thirty blocks, then how many were left out; the folded list does not fit, and the note says so.
+    expect(body).toContain('and 50 more failed');
     expect(body).not.toContain('<details>');
     expect(body).toContain("_Truncated to fit a pull request comment; the full report is in `report.json`._");
     expect(body.length).toBeLessThan(65_536);
@@ -484,7 +522,7 @@ function explored(explore: Partial<ReportExplore> = {}, status: Report1Document[
 }
 
 describe('renderMarkdownReport for an exploration', () => {
-  it('renders the goal, the steps, every finding with its evidence, and the assessment in place of the file table', () => {
+  it('renders the goal, the steps, every finding with its evidence, and the assessment in place of the test list', () => {
     const body = renderMarkdownReport(
       explored({
         findings: [
@@ -521,13 +559,13 @@ describe('renderMarkdownReport for an exploration', () => {
         '',
         'The cart is the weak spot.',
         '',
-        '<sub>e2e 0.9.0 · 8.4s · 1 target (web)</sub>',
+        '<sub>e2e 0.9.0 · 8.4s · web</sub>',
         '',
       ].join('\n'),
     );
     // The exploration's own failure is the verdict the findings express, so it gets no block and no table.
     expect(body).not.toContain('**🔴 explore');
-    expect(body).not.toContain('| File |');
+    expect(body).not.toContain('<details>');
   });
 
   it('links the evidence to the run page when there is one, and names the kind when the reader has neither', () => {
@@ -544,7 +582,7 @@ describe('renderMarkdownReport for an exploration', () => {
     provider.run.results[0]!.attempts[0]!.error = { category: 'infrastructure', code: 'MODEL_PROVIDER_FAILED', message: 'gateway 502', retryable: true };
     const body = renderMarkdownReport(provider);
     expect(body).toContain('### 🔴 e2e explore: did not finish\n');
-    expect(body).toContain('**🔴 explore › Explore checkout**  \n**MODEL_PROVIDER_FAILED** gateway 502  \nEvidence: screenshot · `explore:3`');
+    expect(body).toContain('**🔴 Explore checkout**\n\n**MODEL_PROVIDER_FAILED**\n\n> gateway 502\n\n`explore:3` · Evidence: screenshot');
   });
 
   it('caps the findings and escapes what the agent wrote', () => {
@@ -561,12 +599,12 @@ describe('renderMarkdownReport evidence paths', () => {
     const body = renderMarkdownReport(page({ status: 'failed', results: [named({ title: 't', status: 'failed', attempts: [evidence] })] }), { artifactsDir: '.e2e/artifacts' });
     // One artifact per kind of the attempt the block tells, named by kind; a log is not evidence unless the failure captured it.
     expect(body).toContain(
-      'Evidence: screenshot `.e2e/artifacts/t/attempt-0/screenshot-1.bin`, video `.e2e/artifacts/t/attempt-0/video-2.bin`, trace `.e2e/artifacts/t/attempt-0/trace-0.bin`, download `.e2e/artifacts/t/attempt-0/download-4.bin` · `tests/example.e2e.ts:3`',
+      '`tests/example.e2e.ts:3` · Evidence: screenshot `.e2e/artifacts/t/attempt-0/screenshot-1.bin`, video `.e2e/artifacts/t/attempt-0/video-2.bin`, trace `.e2e/artifacts/t/attempt-0/trace-0.bin`, download `.e2e/artifacts/t/attempt-0/download-4.bin`',
     );
     const withheld = attempt({ status: 'failed', error: { code: 'E', message: 'm' }, artifacts: ['screenshot'] });
     withheld.artifacts = withheld.artifacts.map(({ path: _path, ...artifact }) => artifact);
     const named2 = renderMarkdownReport(page({ status: 'failed', results: [named({ title: 't', status: 'failed', attempts: [withheld] })] }), { artifactsDir: '.e2e/artifacts' });
-    expect(named2).toContain('Evidence: screenshot · ');
+    expect(named2).toContain(' · Evidence: screenshot\n');
   });
 });
 

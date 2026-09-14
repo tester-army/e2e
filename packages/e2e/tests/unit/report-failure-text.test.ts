@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ReportAttempt, ReportResult, ReportStep } from '../../src/report/build.ts';
 import type { ReportSerialGroup } from '../../src/report/build.ts';
-import { attemptsLine, detailLines, evidenceOf, failureSource, lastTurnsLine, renderFailurePage, screenLine, toldAttempt } from '../../src/report/failure-text.ts';
+import { attemptsLine, detailLines, evidenceOf, failureSource, lastTurnLines, renderFailurePage, screenLines, toldAttempt } from '../../src/report/failure-text.ts';
 import { outcome } from '../../src/report/outcome.ts';
 import { reportAttempt, reportDocument, reportError, reportResult, reportStep, reportTarget } from '../helpers/report.ts';
 
@@ -28,11 +28,12 @@ function result(overrides: Partial<ReportResult> = {}): ReportResult {
 }
 
 describe('detailLines', () => {
-  it("lays an assertion's expected and observed on one line with the match count, and says what a locator asked for and how long it waited", () => {
+  it("lays an assertion's expected and observed one per line with the match count, and says what a locator asked for and how long it waited", () => {
     expect(detailLines(reportError({ details: { locator: 'getByRole("status")', expected: 'text "2 remaining"', observed: 'text "1 remaining"', matches: 1 } }))).toEqual([
-      'Expected: text "2 remaining" · Observed: text "1 remaining" (1 match)',
+      'Expected: text "2 remaining"',
+      'Observed: text "1 remaining" (1 match)',
     ]);
-    expect(detailLines(reportError({ details: { locator: 'x', role: 'button', name: 'Add todo item', waitedMs: 3000 } }))).toEqual(['Asked for: button "Add todo item" · waited 3.0s']);
+    expect(detailLines(reportError({ details: { locator: 'x', role: 'button', name: 'Add todo item', waitedMs: 3000 } }))).toEqual(['Asked for: button "Add todo item"', 'Waited: 3.0s']);
     expect(detailLines(reportError({ details: { testId: 'todo' } }))).toEqual(['Asked for: test id "todo"']);
   });
 
@@ -76,20 +77,25 @@ describe('failureSource', () => {
   });
 });
 
-describe('lastTurnsLine and screenLine', () => {
-  it('shows the last turns without the verdict turn, counting the earlier ones, and reads a turn as its calls and the first line back', () => {
+describe('lastTurnLines and screenLines', () => {
+  it('shows the last three turns without the verdict turn, one per line, each as its calls and the first line back', () => {
     const turns = [1, 2, 3, 4, 5].map((index) => ({ index, calls: [`tap({"target":"n${index}"})`], outcome: `Tapped #n${index}.\n\nScreen changes: 1 changed.` }));
     turns.push({ index: 6, calls: ['complete_step({"status":"failed"})'], outcome: 'Step concluded.' });
-    const line = lastTurnsLine(step({ index: 1, kind: 'agent', api: 'agent.act', status: 'failed', turns }));
-    expect(line).toBe('Last turns: … 2 earlier · 3. `tap({"target":"n3"})` → Tapped #n3. · 4. `tap({"target":"n4"})` → Tapped #n4. · 5. `tap({"target":"n5"})` → Tapped #n5.');
-    expect(lastTurnsLine(step({ index: 1, kind: 'agent', api: 'agent.act', status: 'failed', turns: [{ index: 1, calls: [], outcome: 'nothing' }] }))).toBe('Last turns: 1. no tool call → nothing');
-    expect(lastTurnsLine(step({ index: 1 }))).toBeUndefined();
+    expect(lastTurnLines(step({ index: 1, kind: 'agent', api: 'agent.act', status: 'failed', turns }))).toEqual([
+      'Turn 3: `tap({"target":"n3"})` → Tapped #n3.',
+      'Turn 4: `tap({"target":"n4"})` → Tapped #n4.',
+      'Turn 5: `tap({"target":"n5"})` → Tapped #n5.',
+    ]);
+    expect(lastTurnLines(step({ index: 1, kind: 'agent', api: 'agent.act', status: 'failed', turns: [{ index: 1, calls: [], outcome: 'nothing' }] }))).toEqual(['Turn 1: no tool call → nothing']);
+    expect(lastTurnLines(step({ index: 1 }))).toEqual([]);
   });
 
-  it('names the location and the nodes closest to a failed locator, capped, and nothing without evidence', () => {
+  it('names the location as a path when it is loopback, the nodes closest to a failed locator, capped, and nothing without evidence', () => {
     const told = toldAttempt(result(), outcome(result({ attempts: [failed({ failure: { url: 'http://app.test/todos', candidates: ['#n1 button "Add"', '#n2 button "Add all"', '#n3 link "Todos"', '#n4 text="Add"'] } })] }), NO_GROUPS));
-    expect(screenLine(told)).toBe('Screen: http://app.test/todos · closest to the locator: `#n1 button "Add"`, `#n2 button "Add all"`, `#n3 link "Todos"`, and 1 more');
-    expect(screenLine(toldAttempt(result(), outcome(result(), NO_GROUPS)))).toBeUndefined();
+    expect(screenLines(told)).toEqual(['Screen: `http://app.test/todos`', 'Closest to the locator: `#n1 button "Add"`, `#n2 button "Add all"`, `#n3 link "Todos"`, and 1 more']);
+    const local = toldAttempt(result(), outcome(result({ attempts: [failed({ failure: { url: 'http://localhost:3000/todos?filter=open#top' } })] }), NO_GROUPS));
+    expect(screenLines(local)).toEqual(['Screen: `/todos?filter=open#top`']);
+    expect(screenLines(toldAttempt(result(), outcome(result(), NO_GROUPS)))).toEqual([]);
   });
 });
 
@@ -171,7 +177,7 @@ describe('renderFailurePage', () => {
         '',
         '## Steps',
         '',
-        '1. ✓ `app.open` "/todos" (40ms) — `tests/todos.e2e.ts:4`',
+        '1. ✓ `app.open` `/todos` (40ms) — `tests/todos.e2e.ts:4`',
         '2. ✗ `agent.act` "Archive the todo" (16.1s, 6 model calls) — **ASSERTION_FAILED**',
         '   > no Archive button',
         '',

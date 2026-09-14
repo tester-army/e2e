@@ -85,11 +85,12 @@ recorded flow is stale — `--no-cache` only skips the cache for one run.
 - `junit`: `.e2e/junit.xml` beside the report, for CI test summaries.
   Combine it with the terminal output: `--reporter list,junit`.
 - `markdown`: `.e2e/summary.md` beside the report: the counts and what the
-  run spent, a block per failed or flaky test with its error and its facts
+  run spent, a block per failed test with its error and its facts
   (expected and observed, what a locator asked for), the step it went wrong
   at, whether every attempt failed alike, the last model turns, the screen's
-  location and closest nodes, evidence paths, a row per file, every test
-  folded; or an exploration's findings and assessment. Plus one page per
+  location and closest nodes, the line to look at, evidence paths; the flaky
+  tests folded with the same block each; every test folded by file with the
+  file's counts; or an exploration's findings and assessment. Plus one page per
   failed or flaky test under `.e2e/failures/`, with every step, every kept
   turn, and the screen at failure inline. Read the page first; paste the
   summary into a pull request or a handoff rather than retelling the result:

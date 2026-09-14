@@ -1,9 +1,11 @@
 /**
  * The report-1 document as one markdown page, laid out for a pull request:
  * a headline with the counts and what the run spent, the run-level errors,
- * one block per test that failed or was flaky with the step it went wrong
- * at and the agent's last word, a table with one row per test file, and
- * every test folded away under it, grouped by file. An `e2e explore` run
+ * one block per test that failed with the step it went wrong at and the
+ * agent's last word, the flaky tests folded away with the same block each,
+ * and every test folded away under that, grouped by file with the file's
+ * counts and time. A green run is the headline, the folds, and the footer:
+ * nothing to read unless the reader opens it. An `e2e explore` run
  * renders its record instead: the goal, every finding with its evidence,
  * and the assessment. The built-in `markdown` reporter writes the page as
  * `summary.md` beside `report.json`; `@e2edev/github` posts it as the pull
@@ -25,15 +27,17 @@ import {
   detailLines,
   evidenceOf,
   failedStepOf,
+  type FailedStep,
   failureSource,
-  lastTurnsLine,
+  lastTurnLines,
   MAX_DETAIL_CHARS,
   renderFailurePage,
-  screenLine,
+  screenLines,
   sourceText,
+  stepLabel,
   toldAttempt,
 } from './failure-text.ts';
-import { cell, code, formatDuration, link, MAX_ID_CHARS, MAX_LABEL_CHARS, MAX_PATH_CHARS, MAX_TITLE_CHARS, plural } from './markdown-text.ts';
+import { cell, code, formatDuration, link, MAX_ID_CHARS, MAX_PATH_CHARS, MAX_TITLE_CHARS, plural } from './markdown-text.ts';
 import { outcome, type Outcome } from './outcome.ts';
 import { sanitizePathSegment } from '../run/artifacts.ts';
 import { toPosixPath, writeTextReport } from './write.ts';
@@ -62,6 +66,12 @@ export interface MarkdownReportOptions {
    * reporter writes the pages under `failures/` beside the report.
    */
   readonly failurePages?: ReadonlyMap<string, string> | undefined;
+  /**
+   * Tells this run's page apart from another's on the same pull request in
+   * the headline: `e2e regression: 77 passed`. The GitHub reporter passes
+   * its `key`.
+   */
+  readonly title?: string | undefined;
 }
 
 /**
@@ -71,14 +81,11 @@ export interface MarkdownReportOptions {
 const MAX_BODY_CHARS = 60_000;
 /** Reader caps, not size guards: past these the page says how many more there are. */
 const MAX_FAILURE_BLOCKS = 30;
-const MAX_FILE_ROWS = 200;
 const MAX_RUN_ERRORS = 20;
 const MAX_LISTED_TESTS = 400;
 const MAX_FOOTER_TARGETS = 8;
 const MAX_FINDINGS = 30;
 const MAX_EVIDENCE_PATHS = 4;
-/** Steps shown in a failure's timeline before the passed run collapses to a count. */
-const MAX_TIMELINE_STEPS = 6;
 const MAX_ASSESSMENT_CHARS = 2_000;
 const MAX_GOAL_CHARS = 400;
 const TRUNCATED_NOTE = '_Truncated to fit a pull request comment; the full report is in `report.json`._';
@@ -110,9 +117,15 @@ function countText(counts: Counters): string {
     .join(', ');
 }
 
-function headline(run: ReportRun): string {
+/** `e2e regression`, or `e2e` when the page has no title. */
+function pageName(options: MarkdownReportOptions): string {
+  const title = options.title?.trim() ?? '';
+  return title === '' ? 'e2e' : `e2e ${cell(title, MAX_ID_CHARS)}`;
+}
+
+function headline(run: ReportRun, options: MarkdownReportOptions): string {
   const summary = countText(tally(run.results)) || (run.errors.length > 0 ? 'no tests ran' : 'no tests selected');
-  return `### ${run.status === 'passed' ? ICON.passed : ICON.failed} e2e: ${summary}`;
+  return `### ${run.status === 'passed' ? ICON.passed : ICON.failed} ${pageName(options)}: ${summary}`;
 }
 
 /** The model calls an agent step made; the step's metrics are the source of truth. */
@@ -170,48 +183,84 @@ function evidence(artifacts: readonly ReportArtifact[], options: MarkdownReportO
 
 // --- a test that did not pass ---
 
-const STEP_GLYPH: Record<ReportStep['status'], string> = { passed: '✓', failed: '✗', blocked: '✗', 'timed-out': '✗', cancelled: '–' };
-const STEP_VERB: Record<Exclude<ReportStep['status'], 'passed'>, string> = {
-  failed: 'failed',
-  blocked: 'was blocked',
-  'timed-out': 'timed out',
-  cancelled: 'was cancelled',
-};
-
 /**
- * The step a failure happened at, in one sentence: its position, its api and
- * label, how long it ran, and for an agent step the model calls it spent and
- * the agent's own explanation of what it saw.
+ * `at step 6 of 6: \`expect.toBeHidden\` \`getByRole(...)\`, after 15.1s and 12
+ * model calls`: where a failure happened, how long the step ran, and what
+ * the agent spent on it.
  */
-function failedStepLine(steps: readonly ReportStep[], error: ReportError | undefined): string | undefined {
-  const at = failedStepOf(steps);
-  if (at === undefined) return undefined;
-  const { index, step } = at;
-  const calls = modelCalls(step);
-  const spent = calls === 0 ? '' : ` after ${plural(calls, 'model call')}`;
-  // An act that failed puts its explanation in the error message; quoting it again says nothing new.
-  const said = step.explanation?.trim() ?? '';
-  const explanation = said === '' || error?.message.includes(said) === true ? '' : `: "${cell(said, MAX_DETAIL_CHARS)}"`;
-  return `Step ${index + 1} of ${steps.length}, ${code(step.api, MAX_ID_CHARS)} "${cell(step.label, MAX_LABEL_CHARS)}", ${STEP_VERB[step.status]}${spent} in ${formatDuration(step.durationMs)}${explanation}`;
+function stepClause(steps: readonly ReportStep[], at: { index: number; step: FailedStep }): string {
+  const calls = modelCalls(at.step);
+  const spent = calls === 0 ? '' : ` and ${plural(calls, 'model call')}`;
+  return `at step ${at.index + 1} of ${steps.length}: ${code(at.step.api, MAX_ID_CHARS)} ${stepLabel(at.step, MAX_PATH_CHARS)}, after ${formatDuration(at.step.durationMs)}${spent}`;
+}
+
+/** `**CODE** (phase)`: how the error names itself. */
+function errorName(error: ReportError): string {
+  const phase = error.phase === undefined || error.phase === 'body' ? '' : ` (${collapseText(error.phase)})`;
+  return `**${cell(error.code, 128)}**${phase}`;
 }
 
 /**
- * `Steps: ✓ open the app › ✓ sign in › ✗ accept the invitation › 2 not run`:
- * the attempt's timeline up to the failure, a long passed run collapsed to a
- * count so the failing step stays in view.
+ * What the error and the agent said, for the quote under the lead. An
+ * assertion's message restates the facts the list carries, so only its
+ * first line is quoted, and not when that line just says the api failed. An
+ * agent step's explanation is quoted once: skipped when the message already
+ * is the explanation.
  */
-function timelineLine(steps: readonly ReportStep[]): string | undefined {
-  if (steps.length < 2) return undefined;
-  const failedAt = steps.findIndex((step) => step.status !== 'passed');
-  const end = failedAt === -1 ? steps.length : failedAt + 1;
-  const shown = steps.slice(0, end);
-  const collapse = shown.length > MAX_TIMELINE_STEPS ? shown.length - MAX_TIMELINE_STEPS + 1 : 0;
-  const parts = [
-    ...(collapse > 1 ? [`✓ ${plural(collapse, 'passed step')}`] : []),
-    ...(collapse > 1 ? shown.slice(collapse) : shown).map((step) => `${STEP_GLYPH[step.status]} ${cell(step.label, MAX_LABEL_CHARS)}`),
-    ...(steps.length > end ? [`${steps.length - end} not run`] : []),
+function quotedWords(error: ReportError | undefined, at: FailedStep | undefined): string[] {
+  const words: string[] = [];
+  if (error !== undefined) {
+    const first = error.message.split('\n')[0] ?? '';
+    const message = detailLines(error).length > 0 ? first : error.message;
+    if (message.trim() !== '' && !(at !== undefined && first === `${at.api} failed`)) words.push(message);
+  }
+  const said = at?.explanation?.trim() ?? '';
+  if (said !== '' && !words.some((word) => word.includes(said))) words.push(said);
+  return words.map((word) => `> ${cell(word, MAX_DETAIL_CHARS)}`);
+}
+
+/** A run-level error in one quoted line: name, message, facts. */
+function runErrorLine(error: ReportError): string {
+  const facts = detailLines(error);
+  const message = facts.length > 0 ? (error.message.split('\n')[0] ?? '') : error.message;
+  return `> ${[`${errorName(error)} ${cell(message)}`.trim(), ...facts].join(' · ')}`;
+}
+
+/**
+ * One block per test that failed or was flaky, in paragraphs the eye can
+ * rest between: the title; one lead sentence naming the error and the step
+ * it happened at; what the error and the agent said, quoted; the facts as a
+ * list (expected and observed, whether every attempt failed alike, the last
+ * turns, the screen); and the line to look at with the evidence. The file
+ * is named once, in the source link. The steps before the failed one are
+ * not retold: the lead says where in the flow it was, and the trace has the
+ * rest. A flaky test's story is its last failed attempt, not the retry that
+ * passed.
+ */
+function failureBlock({ result, final }: Entry, manyTargets: boolean, options: MarkdownReportOptions): string {
+  const kind = statusBucket(result.status);
+  const told = toldAttempt(result, final);
+  const at = failedStepOf(told.steps);
+  const error = told.error;
+  const name = error === undefined ? `**${cell(result.status, MAX_ID_CHARS)}**` : errorName(error);
+  const lead = at === undefined ? name : `${name} ${stepClause(told.steps, at)}`;
+  const alike = attemptsLine(result, final);
+  const facts = [...detailLines(error), ...(alike === undefined ? [] : [alike]), ...lastTurnLines(at?.step), ...screenLines(told)];
+  const where = evidence(evidenceOf(told), options);
+  const page = options.failurePages?.get(result.id);
+  const tail = [
+    sourceText(failureSource(result, told), options.sourceUrl),
+    ...(where === '' ? [] : [`Evidence: ${where}`]),
+    ...(page === undefined ? [] : [`Details: ${code(page, MAX_PATH_CHARS)}`]),
   ];
-  return `Steps: ${parts.join(' › ')}`;
+  const paragraphs = [
+    `**${ICON[kind]} ${testName(result, manyTargets)}**`,
+    lead,
+    quotedWords(error, at?.step).join('\n'),
+    facts.map((fact) => `- ${fact}`).join('\n'),
+    tail.join(' · '),
+  ];
+  return paragraphs.filter((paragraph) => paragraph !== '').join('\n\n');
 }
 
 /** `file (target)`, the target named only when the run has several. */
@@ -226,52 +275,18 @@ function testName(result: ReportResult, manyTargets: boolean): string {
 }
 
 /**
- * The error in one line: code, the phase when it was not the test body, and
- * the message. When the details carry the facts (an assertion's expected and
- * observed), the message's first line is enough: the rest repeats them.
+ * The tests that were flaky, folded: the headline counts them and the run is
+ * green, so their blocks are there for the reader who asks, not in the way.
  */
-function errorLine(error: ReportError): string {
-  const message = detailLines(error).length > 0 ? (error.message.split('\n')[0] ?? '') : error.message;
-  const phase = error.phase === undefined || error.phase === 'body' ? '' : ` (${collapseText(error.phase)})`;
-  return `**${cell(error.code, 128)}**${phase} ${cell(message)}`.trim();
+function flakyFold(entries: readonly Entry[], manyTargets: boolean, options: MarkdownReportOptions): string[] {
+  if (entries.length === 0) return [];
+  const shown = entries.slice(0, MAX_FAILURE_BLOCKS).map((entry) => failureBlock(entry, manyTargets, options));
+  if (entries.length > shown.length) shown.push(`and ${entries.length - shown.length} more`);
+  const summary = `${ICON.flaky} ${plural(entries.length, 'flaky test')} passed on a retry`;
+  return [['<details>', `<summary>${summary}</summary>`, '', shown.join('\n\n'), '</details>'].join('\n')];
 }
 
-/**
- * One block per test that failed or was flaky: what went wrong, the facts
- * behind it, at which step, whether every attempt failed alike, what the
- * agent did last, what the screen held, the evidence, and the line to look
- * at. A flaky test's story is its last failed attempt, not the retry that
- * passed. Lines end in two spaces so GitHub keeps the breaks inside one
- * paragraph.
- */
-function failureBlock({ result, final }: Entry, manyTargets: boolean, options: MarkdownReportOptions): string {
-  const kind = statusBucket(result.status);
-  const told = toldAttempt(result, final);
-  const lines = [`**${ICON[kind]} ${cell(result.file, MAX_PATH_CHARS)} › ${testName(result, manyTargets)}**`];
-  if (kind === 'flaky') lines.push(`Passed after ${plural(final.failedAttempts, 'failed attempt')}.`);
-  if (told.error !== undefined) lines.push(errorLine(told.error), ...detailLines(told.error));
-  const step = failedStepLine(told.steps, told.error);
-  if (step !== undefined) lines.push(step);
-  const timeline = timelineLine(told.steps);
-  if (timeline !== undefined) lines.push(timeline);
-  const attempts = attemptsLine(result, final);
-  if (attempts !== undefined) lines.push(attempts);
-  const turns = lastTurnsLine(failedStepOf(told.steps)?.step);
-  if (turns !== undefined) lines.push(turns);
-  const screen = screenLine(told);
-  if (screen !== undefined) lines.push(screen);
-  const where = evidence(evidenceOf(told), options);
-  const page = options.failurePages?.get(result.id);
-  const tail = [
-    ...(where === '' ? [] : [`Evidence: ${where}`]),
-    ...(page === undefined ? [] : [`Details: ${code(page, MAX_PATH_CHARS)}`]),
-    sourceText(failureSource(result, told), options.sourceUrl),
-  ];
-  lines.push(tail.join(' · '));
-  return lines.join('  \n');
-}
-
-// --- the file table ---
+// --- every test, by file ---
 
 interface FileGroup {
   readonly file: string;
@@ -292,20 +307,6 @@ function fileGroups(entries: readonly Entry[]): FileGroup[] {
   return rows.toSorted((a, b) => rank(a) - rank(b) || a.file.localeCompare(b.file) || a.target.localeCompare(b.target));
 }
 
-function fileTable(groups: readonly FileGroup[], manyTargets: boolean): string[] {
-  if (groups.length === 0) return [];
-  const lines = ['| | File | Tests | Agent | Time |', '| --- | --- | --- | --- | --- |'];
-  for (const group of groups.slice(0, MAX_FILE_ROWS)) {
-    const results = group.entries.map((entry) => entry.result);
-    const totals = agentTotals(group.entries.flatMap((entry) => entry.final.final.steps));
-    const agent = totals.steps === 0 ? '' : `${plural(totals.steps, 'step')}${totals.calls > 0 ? ` · ${plural(totals.calls, 'call')}` : ''}`;
-    const time = formatDuration(group.entries.reduce((total, entry) => total + entry.final.durationMs, 0));
-    lines.push(`| ${ICON[worstBucket(results)]} | ${fileLabel(group.file, group.target, manyTargets)} | ${countText(tally(results))} | ${agent} | ${time} |`);
-  }
-  if (groups.length > MAX_FILE_ROWS) lines.push(`| | and ${groups.length - MAX_FILE_ROWS} more files | | | |`);
-  return lines;
-}
-
 /** One line of the folded list: glyph, name, and how the test ended. */
 function listedTest({ result, final }: Entry, manyTargets: boolean): string {
   const note =
@@ -317,7 +318,18 @@ function listedTest({ result, final }: Entry, manyTargets: boolean): string {
   return `- ${ICON[statusBucket(result.status)]} ${testName(result, manyTargets)} (${note})`;
 }
 
-/** Every test, grouped by file in the table's order, folded away; one block since a `<details>` cannot be cut halfway. */
+/** `**tests/billing.e2e.ts** · 1 failed, 2 passed · 3 steps · 19 calls · 41.2s`: a file's line in the folded list. */
+function fileHeading(group: FileGroup, manyTargets: boolean): string {
+  const results = group.entries.map((entry) => entry.result);
+  const totals = agentTotals(group.entries.flatMap((entry) => entry.final.final.steps));
+  const parts = [`**${fileLabel(group.file, group.target, manyTargets)}**`, countText(tally(results))];
+  if (totals.steps > 0) parts.push(plural(totals.steps, 'step'));
+  if (totals.calls > 0) parts.push(plural(totals.calls, 'call'));
+  parts.push(formatDuration(group.entries.reduce((total, entry) => total + entry.final.durationMs, 0)));
+  return parts.join(' · ');
+}
+
+/** Every test, grouped by file worst first, each file with its counts and time, folded away; one block since a `<details>` cannot be cut halfway. */
 function allTests(groups: readonly FileGroup[], total: number, manyTargets: boolean): string[] {
   if (total === 0) return [];
   let budget = MAX_LISTED_TESTS;
@@ -326,32 +338,34 @@ function allTests(groups: readonly FileGroup[], total: number, manyTargets: bool
     if (budget === 0) break;
     const shown = group.entries.slice(0, budget);
     budget -= shown.length;
-    blocks.push([`**${fileLabel(group.file, group.target, manyTargets)}**`, ...shown.map((entry) => listedTest(entry, manyTargets))].join('\n'));
+    blocks.push([fileHeading(group, manyTargets), ...shown.map((entry) => listedTest(entry, manyTargets))].join('\n'));
   }
   if (total > MAX_LISTED_TESTS) blocks.push(`- and ${total - MAX_LISTED_TESTS} more`);
-  return [['<details>', `<summary>All ${plural(total, 'test')}</summary>`, '', blocks.join('\n\n'), '</details>'].join('\n')];
+  const summary = `All ${plural(total, 'test')} in ${plural(groups.length, 'file')}`;
+  return [['<details>', `<summary>${summary}</summary>`, '', blocks.join('\n\n'), '</details>'].join('\n')];
 }
 
+/** `<sub>e2e 0.13.0 · 2m 15s · web · run artifacts</sub>`: one line of small print. */
 function footer(run: ReportRun, options: MarkdownReportOptions): string[] {
   const duration = formatDuration(Date.parse(run.finishedAt) - Date.parse(run.startedAt));
   const shown = run.targets.slice(0, MAX_FOOTER_TARGETS).map((target) => cell(target.id, MAX_ID_CHARS));
   if (run.targets.length > shown.length) shown.push(`and ${run.targets.length - shown.length} more`);
-  const targets = shown.length === 0 ? '' : ` (${shown.join(', ')})`;
-  return [
-    ...(options.artifactsUrl === undefined ? [] : [`Screenshots, traces, and recordings: ${link('run artifacts', options.artifactsUrl)}.`]),
-    `<sub>e2e ${cell(run.runner.version, MAX_ID_CHARS)} · ${duration} · ${plural(run.targets.length, 'target')}${targets}</sub>`,
-  ];
+  const parts = [`e2e ${cell(run.runner.version, MAX_ID_CHARS)}`, duration];
+  if (run.targets.length === 1) parts.push(shown[0] ?? '');
+  else if (run.targets.length > 1) parts.push(`${plural(run.targets.length, 'target')} (${shown.join(', ')})`);
+  if (options.artifactsUrl !== undefined) parts.push(link('run artifacts', options.artifactsUrl));
+  return [`<sub>${parts.join(' · ')}</sub>`];
 }
 
 // --- the exploration record ---
 
-function exploreHeadline(run: ReportRun, explore: ReportExplore): string {
+function exploreHeadline(run: ReportRun, explore: ReportExplore, options: MarkdownReportOptions): string {
   const issues = explore.findings.filter((finding) => finding.kind === 'issue').length;
   const warnings = explore.findings.length - issues;
   const counts = [...(issues > 0 ? [plural(issues, 'issue')] : []), ...(warnings > 0 ? [plural(warnings, 'warning')] : [])];
   const summary =
     counts.length > 0 ? counts.join(', ') : run.status === 'blocked' ? 'explored nothing' : run.status === 'passed' ? 'no findings' : 'did not finish';
-  return `### ${run.status === 'passed' ? ICON.passed : ICON.failed} e2e explore: ${summary}`;
+  return `### ${run.status === 'passed' ? ICON.passed : ICON.failed} ${pageName(options)} explore: ${summary}`;
 }
 
 /** `3 of 8 steps · 2 passed · 1 failed · the agent covered the goal`. */
@@ -428,30 +442,36 @@ export function renderMarkdownReport(report: Report1Document, options: MarkdownR
   const entries: Entry[] = run.results.map((result) => ({ result, final: outcome(result, serialGroups) }));
   const manyTargets = run.targets.length > 1;
 
-  const errors = run.errors.slice(0, MAX_RUN_ERRORS).map((error) => `> ${errorLine(error)}`);
+  const errors = run.errors.slice(0, MAX_RUN_ERRORS).map(runErrorLine);
   if (run.errors.length > errors.length) errors.push(`> and ${run.errors.length - errors.length} more`);
   // An exploration is the run's one test and its failure is the verdict the
   // findings express, so that block gives way to them; any other failure stays.
-  const notPassed = entries
-    .filter(({ result }) => statusBucket(result.status) === 'failed' || statusBucket(result.status) === 'flaky')
-    .filter((entry) => explore === undefined || !isVerdict(entry, explore));
-  const failures = notPassed.slice(0, MAX_FAILURE_BLOCKS).map((entry) => [failureBlock(entry, manyTargets, options)]);
-  if (notPassed.length > failures.length) failures.push([`and ${notPassed.length - failures.length} more did not pass`]);
+  const notPassed = entries.filter((entry) => explore === undefined || !isVerdict(entry, explore));
+  const failed = notPassed.filter(({ result }) => statusBucket(result.status) === 'failed');
+  const failures = failed.slice(0, MAX_FAILURE_BLOCKS).map((entry) => [failureBlock(entry, manyTargets, options)]);
+  if (failed.length > failures.length) failures.push([`and ${failed.length - failures.length} more failed`]);
+  const flaky = flakyFold(
+    notPassed.filter(({ result }) => statusBucket(result.status) === 'flaky'),
+    manyTargets,
+    options,
+  );
 
   const spend = spendLine(run, entries);
-  const head = [explore === undefined ? headline(run) : exploreHeadline(run, explore), ...(spend === undefined ? [] : [spend]), ''];
+  const head = [explore === undefined ? headline(run, options) : exploreHeadline(run, explore, options), ...(spend === undefined ? [] : [spend]), ''];
   const groups = fileGroups(entries);
   const sections =
     explore === undefined
-      ? [errors, ...failures, fileTable(groups, manyTargets), allTests(groups, run.results.length, manyTargets)]
+      ? [errors, ...failures, flaky, allTests(groups, run.results.length, manyTargets)]
       : [
           [`**Goal:** ${cell(explore.goal, MAX_GOAL_CHARS)}  `, `**Steps:** ${exploreSteps(explore)}`],
           errors,
           ...failures,
+          flaky,
           findingsSection(run, explore, options),
           explore.summary === undefined ? [] : ['**Assessment**', '', cell(explore.summary, MAX_ASSESSMENT_CHARS)],
         ];
-  return fit(head, [...joinSections(sections), ''], footer(run, options));
+  const body = joinSections(sections);
+  return fit(head, body.length === 0 ? [] : [...body, ''], footer(run, options));
 }
 
 /** Where a result's page goes under `failures/`: the file and title, made a path segment, made unique by the result id. */

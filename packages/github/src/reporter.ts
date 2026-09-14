@@ -10,7 +10,8 @@ export interface GitHubOptions {
    * Tells one job's comment apart from another's when the workflow, job, and
    * project are the same, as in a matrix: `key: process.env.MATRIX_BROWSER`.
    * Without it, matrix replicas of one job share a comment and the last one
-   * to finish wins. Never the run id: a rerun must find the old comment.
+   * to finish wins. Never the run id: a rerun must find the old comment. The
+   * key is also the comment's name in its headline: `e2e chromium: 77 passed`.
    */
   key?: string;
 }
@@ -120,7 +121,7 @@ export async function reportRun(
   if (context === undefined) return [{ label: SUMMARY_LABEL, text: 'not posted: not running on GitHub Actions' }];
 
   // One page for both places; the comment carries the marker a rerun finds it by.
-  const page = renderMarkdownReport(run.report, { artifactsUrl: context.runUrl, sourceUrl: sourceUrl(context) });
+  const page = renderMarkdownReport(run.report, { artifactsUrl: context.runUrl, sourceUrl: sourceUrl(context), title: options.key });
   const summary = await writeSummary(context, page, deps);
   const post = posting(context);
   const marker = commentMarker(run, context, options.key);

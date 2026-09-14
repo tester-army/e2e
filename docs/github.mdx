@@ -61,57 +61,72 @@ on its second attempt can still leave evidence worth inspecting.
 ### 🔴 e2e: 1 failed, 1 flaky, 3 passed, 1 skipped
 9 agent steps · 4 replayed from cache · 31 model calls · 128k tokens (62% cached) · $0.31
 
-**🔴 tests/billing.e2e.ts › billing › upgrades to Pro**
-**ASSERTION_FAILED** expected heading "Your cart" to be visible
-Step 4 of 6, `agent.act` "Pick the Pro plan and pay", failed after 12 model calls in 38.0s: "The Pay button opened a page that still shows the Free plan."
-Steps: ✓ open / › ✓ sign in as the owner › ✓ tap Upgrade › ✗ Pick the Pro plan and pay › 2 not run
-Evidence: [screenshot, video, trace](https://github.com/acme/shop/actions/runs/123) · [tests/billing.e2e.ts:12](https://github.com/acme/shop/blob/1a2b3c/tests/billing.e2e.ts#L12)
+**🔴 billing › upgrades to Pro**
 
-**⚠️ tests/team.e2e.ts › invite a member by email**
-Passed after 1 failed attempt; the last one hit **STEP_TIMEOUT** the invitation email took too long.
-Evidence: [screenshot, trace](https://github.com/acme/shop/actions/runs/123) · [tests/team.e2e.ts:21](https://github.com/acme/shop/blob/1a2b3c/tests/team.e2e.ts#L21)
+**ASSERTION_FAILED** at step 4 of 6: `agent.act` "Pick the Pro plan and pay", after 38.0s and 12 model calls
 
-| | File | Tests | Agent | Time |
-| --- | --- | --- | --- | --- |
-| 🔴 | tests/billing.e2e.ts | 1 failed | 3 steps · 19 calls | 41.2s |
-| ⚠️ | tests/team.e2e.ts | 1 flaky | 2 steps · 8 calls | 12.0s |
-| ⏭️ | tests/checkout.e2e.ts | 1 skipped |  | 0ms |
-| 🟢 | tests/dashboard.e2e.ts | 1 passed | 1 step · 1 call | 2.1s |
-| 🟢 | tests/todos.e2e.ts | 2 passed | 3 steps · 3 calls | 7.3s |
+> expected heading "Your cart" to be visible
+> The Pay button opened a page that still shows the Free plan.
+
+- Turn 9: `tap({"target":"n41"})` → Screen changed: /checkout/plan. New: #n50 heading "Free plan"
+- Screen: `/checkout/plan`
+
+[tests/billing.e2e.ts:12](https://github.com/acme/shop/blob/1a2b3c/tests/billing.e2e.ts#L12) · Evidence: [screenshot, video, trace](https://github.com/acme/shop/actions/runs/123)
 
 <details>
-<summary>All 6 tests</summary>
+<summary>⚠️ 1 flaky test passed on a retry</summary>
 
-**tests/billing.e2e.ts**
+**⚠️ invite a member by email**
+
+**STEP_TIMEOUT** at step 3 of 3: `agent.waitFor` "the invitation email", after 30.0s
+
+> the invitation email took too long
+
+[tests/team.e2e.ts:21](https://github.com/acme/shop/blob/1a2b3c/tests/team.e2e.ts#L21) · Evidence: [screenshot, trace](https://github.com/acme/shop/actions/runs/123)
+</details>
+
+<details>
+<summary>All 6 tests in 5 files</summary>
+
+**tests/billing.e2e.ts** · 1 failed · 3 steps · 19 calls · 41.2s
 - 🔴 billing › upgrades to Pro (41.2s)
 ...
 </details>
 
-Screenshots, traces, and recordings: [run artifacts](https://github.com/acme/shop/actions/runs/123).
-<sub>e2e 0.13.0 · 2m 15s · 1 target (web)</sub>
+<sub>e2e 0.13.0 · 2m 15s · web · [run artifacts](https://github.com/acme/shop/actions/runs/123)</sub>
 ```
 
 The headline carries the counts; the line under it what the run spent, when
 it used the agent: agent steps, how many the trace cache replayed, model
 calls, tokens with the share the provider served from its prompt cache, and
-the estimated cost. Each test that failed or was flaky gets a block: the
-error, the step it went wrong at with the agent's own explanation of what it
-saw, the attempt's step timeline, the evidence, and a link to the line in the
-test file that declared the test, at the pull request's head commit (a test
-declared through a project helper that wraps `test()` links to the helper
-call, not into the helper). Then one row per test file, worst first, and
-every test folded away under it, grouped by file. A run-level error such as
-`APP_UNREACHABLE` appears above the blocks. Titles, labels, and messages are
-escaped and clipped, and the body stays under GitHub's size limit: past
-thirty blocks the page says how many more did not pass, and when room runs
-out the page is cut where it stands, the folded list first, and says so. The page is
+the estimated cost. Each test that failed gets a block in short paragraphs:
+one lead naming the error and the step it went wrong at; what the error and
+the agent said, quoted; the facts as a list (expected and observed, whether
+every attempt failed alike, the last model turns, the screen at failure,
+where a loopback URL shows as its path since nobody reading the comment can
+open it); then a link to the line in the test file at the pull request's
+head commit (a test declared through a project helper that wraps `test()`
+links to the helper call, not into the helper) and the evidence. The steps
+before the failed one are not retold: the trace has them. A locator step's
+label reads as code, an agent step's as the sentence the author wrote.
+Flaky tests get the same block
+each, folded under one summary: the run is green and the headline counts
+them, so they are there for the reader who asks. Every test is folded away
+under that, grouped by file worst first, each file with its counts, its
+agent work, and its time. A green run is the headline, the folds, and one
+line of small print. A run-level error such as `APP_UNREACHABLE` appears
+above the blocks. Titles, labels, and messages are escaped and clipped, and
+the body stays under GitHub's size limit: past thirty blocks the page says
+how many more failed, and when room runs out the page is cut where it
+stands, the folded list first, and says so. The page is
 [`renderMarkdownReport`](/reference/reporters), the one the built-in
 `markdown` reporter writes to `.e2e/summary.md`.
 
 The comment carries a hidden marker naming the config's `projectId`, the
 workflow, and the job, so two configs or two jobs on one pull request each
 keep their own comment. Matrix replicas of one job share all three, so give
-each its own `key`:
+each its own `key`, which also names the comment in its headline
+(`e2e chromium: 77 passed`) so the reader tells the comments apart:
 
 ```ts
 reporters: ['list', github({ key: process.env.MATRIX_BROWSER })],

@@ -38,9 +38,9 @@ export interface FailurePageOptions {
 // --- facts shared with the run page ---
 
 /**
- * The structured facts of an error as lines: an assertion's expected and
- * observed with the match count, then what a locator asked for and how long
- * it waited. The locator as written is the step's label already.
+ * The structured facts of an error, one per line: an assertion's expected,
+ * its observed with the match count, what a locator asked for, how long it
+ * waited. The locator as written is the step's label already.
  */
 export function detailLines(error: ReportError | undefined): string[] {
   const details = error?.details;
@@ -48,26 +48,40 @@ export function detailLines(error: ReportError | undefined): string[] {
   const lines: string[] = [];
   const { expected, observed, matches, role, name, testId, waitedMs } = details;
   const matched = matches === undefined ? undefined : `${matches} ${matches === 1 ? 'match' : 'matches'}`;
-  if (expected !== undefined || observed !== undefined) {
-    lines.push(
-      [
-        ...(expected === undefined ? [] : [`Expected: ${cell(expected, MAX_DETAIL_CHARS)}`]),
-        ...(observed === undefined ? [] : [`Observed: ${cell(observed, MAX_DETAIL_CHARS)}${matched === undefined ? '' : ` (${matched})`}`]),
-      ].join(' · '),
-    );
-  } else if (matched !== undefined) {
-    lines.push(`Matched: ${matched}`);
-  }
+  if (expected !== undefined) lines.push(`Expected: ${cell(expected, MAX_DETAIL_CHARS)}`);
+  if (observed !== undefined) lines.push(`Observed: ${cell(observed, MAX_DETAIL_CHARS)}${matched === undefined ? '' : ` (${matched})`}`);
+  else if (matched !== undefined) lines.push(`Matched: ${matched}`);
   const asked = [
     ...(role === undefined ? [] : [cell(role, MAX_ID_CHARS)]),
     ...(name === undefined ? [] : [`"${cell(name, MAX_LABEL_CHARS)}"`]),
     ...(testId === undefined ? [] : [`test id "${cell(testId, MAX_LABEL_CHARS)}"`]),
   ];
-  const waited = waitedMs === undefined || waitedMs <= 0 ? undefined : `waited ${formatDuration(waitedMs)}`;
-  if (asked.length > 0 || waited !== undefined) {
-    lines.push([...(asked.length === 0 ? [] : [`Asked for: ${asked.join(' ')}`]), ...(waited === undefined ? [] : [waited])].join(' · '));
-  }
+  if (asked.length > 0) lines.push(`Asked for: ${asked.join(' ')}`);
+  if (waitedMs !== undefined && waitedMs > 0) lines.push(`Waited: ${formatDuration(waitedMs)}`);
   return lines;
+}
+
+/**
+ * A step's label as the reader should see it: an agent step's is a sentence
+ * the author wrote, quoted; any other step's is the locator or value it was
+ * called with, which reads as code.
+ */
+export function stepLabel(step: ReportStep, max = MAX_LABEL_CHARS): string {
+  return step.kind === 'agent' ? `"${cell(step.label, max)}"` : code(step.label, max);
+}
+
+/**
+ * A loopback URL cannot be opened by anyone reading the page, so its path is
+ * the whole of what it says; any other URL is kept whole.
+ */
+function screenUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const loopback = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1' || parsed.hostname === '[::1]';
+    return loopback ? `${parsed.pathname}${parsed.search}${parsed.hash}` : url;
+  } catch {
+    return url;
+  }
 }
 
 /** The attempt whose story a block tells: a flaky test's last failure, otherwise the final one. */
@@ -132,32 +146,30 @@ export function sourceText(source: ReportSource, sourceUrl: FailurePageOptions['
 function turnLine(turn: StepTurn, max = MAX_DETAIL_CHARS): string {
   const calls = turn.calls.length === 0 ? 'no tool call' : turn.calls.map((call) => code(call, MAX_LABEL_CHARS * 2)).join(', ');
   const outcome = turn.outcome.split('\n').find((line) => line.trim() !== '') ?? '';
-  return `${turn.index}. ${calls}${outcome === '' ? '' : ` → ${cell(outcome, max)}`}`;
+  return `Turn ${turn.index}: ${calls}${outcome === '' ? '' : ` → ${cell(outcome, max)}`}`;
 }
 
-/** `Last turns: 4. tap(...) → ...; 5. complete_step(...) → ...`, for a failed agent step's block on the run page. */
-export function lastTurnsLine(step: ReportStep | undefined): string | undefined {
+/** `Turn 4: tap(...) → ...`, one line per kept turn, the last few of a failed agent step, for the run page. */
+export function lastTurnLines(step: ReportStep | undefined): string[] {
   // The verdict turn repeats the explanation the block already quotes.
   const turns = step?.turns?.filter((turn) => !(turn.calls.length > 0 && turn.calls.every((call) => call.startsWith('complete_step('))));
-  if (turns === undefined || turns.length === 0) return undefined;
-  const shown = turns.slice(-MAX_SUMMARY_TURNS);
-  const omitted = turns.length - shown.length;
-  return `Last turns: ${omitted > 0 ? `… ${omitted} earlier · ` : ''}${shown.map((turn) => turnLine(turn, 160)).join(' · ')}`;
+  if (turns === undefined) return [];
+  return turns.slice(-MAX_SUMMARY_TURNS).map((turn) => turnLine(turn, 160));
 }
 
-/** `Screen: url · closest to the locator: ...`, for the run page. */
-export function screenLine(told: AttemptView): string | undefined {
+/** `Screen: /path` and `Closest to the locator: ...`, for the run page. */
+export function screenLines(told: AttemptView): string[] {
   const failure = told.failure;
-  if (failure === undefined) return undefined;
-  const parts: string[] = [];
-  if (failure.url !== undefined) parts.push(cell(failure.url, MAX_PATH_CHARS));
+  if (failure === undefined) return [];
+  const lines: string[] = [];
+  if (failure.url !== undefined) lines.push(`Screen: ${code(screenUrl(failure.url), MAX_PATH_CHARS)}`);
   const candidates = failure.candidates ?? [];
   if (candidates.length > 0) {
     const shown = candidates.slice(0, MAX_SUMMARY_CANDIDATES).map((line) => code(line, MAX_CELL_CHARS));
     if (candidates.length > shown.length) shown.push(`and ${candidates.length - shown.length} more`);
-    parts.push(`closest to the locator: ${shown.join(', ')}`);
+    lines.push(`Closest to the locator: ${shown.join(', ')}`);
   }
-  return parts.length === 0 ? undefined : `Screen: ${parts.join(' · ')}`;
+  return lines;
 }
 
 /** Artifacts of the told attempt by id, the failure's own first, one per kind. */
@@ -216,7 +228,10 @@ export function renderFailurePage(report: Report1Document, result: ReportResult,
   if (error !== undefined) {
     const phase = error.phase === undefined || error.phase === 'body' ? '' : ` in ${cell(error.phase, MAX_ID_CHARS)}`;
     lines.push(`**${cell(error.code, 128)}**${phase}`, '', '```text', error.message.replaceAll('```', "'''"), '```', '');
-    for (const line of detailLines(error)) lines.push(`${line}  `);
+    // An assertion's message already spells out expected and observed; the facts line would repeat the block above it.
+    const { expected, observed } = error.details ?? {};
+    const spelled = expected !== undefined && observed !== undefined && error.message.includes(expected) && error.message.includes(observed);
+    if (!spelled) for (const line of detailLines(error)) lines.push(`${line}  `);
   } else {
     lines.push(`_${STATUS_WORD[result.status]}: no error was recorded._`);
   }
@@ -233,7 +248,7 @@ export function renderFailurePage(report: Report1Document, result: ReportResult,
       const own = step.source.file === 'unknown' ? '' : ` — ${code(`${step.source.file}:${step.source.line}`, MAX_PATH_CHARS)}`;
       const calls = step.metrics === undefined || step.metrics.modelCalls === 0 ? '' : `, ${plural(step.metrics.modelCalls, 'model call')}`;
       const failed = step.status === 'passed' ? '' : ` — **${cell(step.error?.code ?? step.status, 128)}**`;
-      lines.push(`${index + 1}. ${STEP_GLYPH[step.status]} ${code(step.api, MAX_ID_CHARS)} "${cell(step.label, MAX_CELL_CHARS)}" (${formatDuration(step.durationMs)}${calls})${failed}${own}`);
+      lines.push(`${index + 1}. ${STEP_GLYPH[step.status]} ${code(step.api, MAX_ID_CHARS)} ${stepLabel(step, MAX_CELL_CHARS)} (${formatDuration(step.durationMs)}${calls})${failed}${own}`);
       if (step.status !== 'passed' && step.explanation !== undefined && step.explanation.trim() !== '') {
         lines.push(`   > ${cell(step.explanation, MAX_DETAIL_CHARS)}`);
       }
