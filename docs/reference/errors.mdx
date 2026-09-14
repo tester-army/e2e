@@ -26,8 +26,7 @@ export class AgentError extends Error {
 ```
 
 Test files load in their own module realm, so `instanceof AgentError` can be
-false for an error the runner threw. Use `isAgentError`, exported from
-`e2e`, which checks a cross-realm marker, and branch on `code`:
+false. Use `isAgentError` from `e2e` and branch on `code`:
 
 ```ts
 import { isAgentError } from 'e2e';
@@ -126,31 +125,6 @@ a code in that class today.
 
 ## Exit codes
 
-| Code | Meaning |
-| ---: | --- |
-| 0 | All selected tests passed, were flaky, or were explicitly skipped |
-| 1 | Final test or setup failure, or test timeout |
-| 2 | CLI, config, collection, dependency, credential, model-config, or policy error |
-| 3 | Engine, app process, model provider, artifact, or cleanup infrastructure failure |
-| 4 | Internal runner invariant or unhandled runner error |
-| 130 | Interrupted by a user or CI signal |
-
-Precedence:
-
-```
-130 > 4 > 3 > 2 > 1 > 0
-```
-
-For a mixed run the highest-precedence code present wins. The report keeps every
-individual result; precedence affects only the process exit code. A run with one
-infrastructure failure and forty test failures exits 3.
-
-A setup assertion failure is a test failure and skips its dependents. Missing
-setup infrastructure keeps its own configuration or infrastructure class.
-
-<CardGroup cols={2}>
-  <Card title="Debugging a run" icon="bug" href="/debugging" />
-  <Card title="CLI" icon="terminal" href="/reference/cli" />
-  <Card title="agent" icon="wand-magic-sparkles" href="/reference/agent" />
-  <Card title="Config" icon="sliders" href="/reference/config" />
-</CardGroup>
+For a mixed run the highest-precedence code present wins, `130 > 4 > 3 > 2 >
+1 > 0`. The report keeps every individual result. A setup failure is a test
+failure and skips its dependents.

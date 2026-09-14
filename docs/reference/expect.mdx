@@ -15,11 +15,10 @@ export interface Expect {
 }
 ```
 
-An engine-contributed fixture may carry its own expectation surface
-(`Expectable<E>`): `expect(web)` returns the `WebExpectation` the playwright
-engine attaches. Anything that is neither a runner locator nor such a fixture
-falls through to `ValueExpectation<T>`, including a promise. Await the value
-first.
+An engine fixture may carry its own expectations (`Expectable<E>`):
+`expect(web)` returns the `WebExpectation` the Playwright engine attaches.
+Anything else falls through to `ValueExpectation<T>`, including a promise, so
+await the value first.
 
 | Property | Value |
 | --- | --- |
@@ -162,9 +161,8 @@ expect(payload).toEqual({ ok: true });
 ## Polling a value
 
 `expect.poll(read)` re-reads a value until a value matcher passes. An agent
-step returns once the model has observed the app, which can be before the
-write it triggered has landed; poll the read that proves the write instead of
-sleeping.
+step can return before the write it triggered has landed; poll the read that
+proves the write instead of sleeping.
 
 ```ts
 export interface PollOptions {
@@ -182,11 +180,9 @@ export type PollExpectation<T> = {
 };
 ```
 
-Every value matcher is there under the same name and parameters, returning a
-promise; `.not` flips the check. Each sample calls `read`, then runs the
-matcher on the result. A matcher failure or a `read` that throws is one
-failing sample and polling continues. A `read` that hangs is cut at the
-deadline, so one stuck request cannot stretch the wait.
+Every value matcher is available, returning a promise. Each sample calls
+`read` and runs the matcher. A matcher failure or a `read` that throws is one
+failing sample; a `read` that hangs is cut at the deadline.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
@@ -194,12 +190,10 @@ deadline, so one stuck request cannot stretch the wait.
 | `interval` | 100 ms | Pause between samples. |
 | `message` | none | Extra line in the timeout error. |
 
-The poll runs on the attempt's budget. When the attempt is cancelled or
-times out, the loop and any read in flight stop at once with `CANCELLED`, so
-a timed-out test never keeps reading through teardown. `timeout` must be a
-finite number of milliseconds, 0 or more, and `interval` a finite number
-above 0; anything else is `INVALID_CONFIG` when `expect.poll` is called,
-before the first read.
+When the attempt is cancelled or times out, the loop and any read in flight
+stop with `CANCELLED`. `timeout` must be a finite number 0 or more and
+`interval` a finite number above 0; anything else is `INVALID_CONFIG` before
+the first read.
 
 At the deadline it throws `ASSERTION_FAILED` naming the matcher, then
 `message` when given, then the last sample: the last matcher failure, the
@@ -222,12 +216,5 @@ await expect.poll(async () => (await listTests(workspace)).length).toBeGreaterTh
 await expect.poll(() => readStatus(), { message: 'the batch never finished' }).not.toBe('running');
 ```
 
-Unlike a locator matcher, `expect.poll` is not recorded as a report step: it
-touches no fixture, so a timeout surfaces only as the test's failure.
-
-<CardGroup cols={2}>
-  <Card title="Writing tests" icon="pen-to-square" href="/writing-tests" />
-  <Card title="screen and Locator" icon="crosshairs" href="/reference/screen" />
-  <Card title="app and web" icon="masks-theater" href="/reference/playwright" />
-  <Card title="Errors" icon="triangle-exclamation" href="/reference/errors" />
-</CardGroup>
+`expect.poll` is not recorded as a report step; a timeout surfaces only as
+the test's failure.

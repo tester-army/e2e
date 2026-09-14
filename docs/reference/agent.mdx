@@ -3,10 +3,9 @@ title: agent
 description: Planned flows, judgments, extraction, and their budgets.
 ---
 
-Every `agent` call is one bounded invocation: a fresh observation, an
-explicit deadline, a model-call budget, and no shared transcript between
-calls. Acquiring the fixture without a configured model fails with
-`MODEL_UNAVAILABLE`.
+Every `agent` call starts from a fresh observation, has its own deadline and
+model-call budget, and shares no transcript with earlier calls. Acquiring the
+fixture without a configured model fails with `MODEL_UNAVAILABLE`.
 
 ```ts
 export interface Agent {
@@ -62,13 +61,10 @@ with an `ActResult`; a failing or blocked one throws an `AgentError` whose
 | `options.maxModelCalls` | `number` | the agent's `maxModelCalls` | positive integer, at most the resolved limit |
 | `options.agent` | `string` | the test's agent | a name in `agents`; unknown is `INVALID_ARGUMENT` before the step opens |
 
-Values come from your code through `options.params`, never from the model. A
-`Secret` in `params` is projected before the model sees anything: the model
-receives the secret's name and purpose, and the harness fills the value
-host-side under the same authorization as `locator.fill`: the secret must be
-configured, the current origin allowed by both the target and the secret, and
-the field an enabled editable input; a password additionally requires a
-password field.
+Values come from your code through `options.params`, never from the model. The
+model sees a `Secret` as its name and purpose only. The runner fills the value
+under the same rules as `locator.fill`: the field must be an enabled editable
+input, and a password goes only into a password field.
 
 ```ts
 await agent.act('invite {email} as an editor', { params: { email: 'ada@example.test' } });
@@ -86,51 +82,31 @@ caching is off).
 
 ### Pixel tools: screenshot and tap_at
 
-`act` takes no `vision` option. Pixels reach an `act` step through two tools
-the built-in agent offers while pixels can leave the runner. The act model
-itself receives the image: no separate vision model, no extra model call, and
-nothing lost in a description.
+`act` takes no `vision` option. The built-in agent offers two tools instead,
+while no secret has been filled. The act model receives the image itself; no
+second model is involved.
 
 | Tool | What it does |
 | --- | --- |
-| `screenshot()` | Attaches a masked screenshot of the viewport to the tool result, with the changes since the screen the model holds. From then on the step is in pixel mode: every action result carries a fresh screenshot, so the model sees what each action did. |
-| `tap_at({ x, y })` | Taps a point given in the latest screenshot's pixel coordinates. The harness scales the point into the observation's CSS pixels and hit-tests it against the tree: on an engine with `perform`, a listed control under it is tapped by its id, exactly like `tap`, with a replayable descriptor; a point on nothing listed, or any point on an engine that taps by point only, is tapped as a bare point through the engine's `tapAt`. The result names what was tapped or what sits under the point, and carries a fresh screenshot. |
+| `screenshot()` | Attaches a masked viewport screenshot to the tool result. From then on the step is in pixel mode: every action result carries a fresh screenshot. |
+| `tap_at({ x, y })` | Taps a point in the latest screenshot's pixel coordinates. The runner hit-tests the point against the tree. A listed control under it is tapped by id, exactly like `tap`. A point on nothing listed goes to the engine's `tapAt` as a bare point. |
 
-While the step is showing pixels, the wait after an action watches the
-pixels too: a tap that redraws a canvas is read as soon as the redraw lands,
-instead of waiting out the change window on a tree that never moves.
-A screen that lists nothing to act on by id (a canvas, a game, a
-semantics-free native screen) opens with a screenshot already attached, so
-the model never spends a turn discovering that it needs one; any screen with
-a listed control opens tree-only and the model asks when the tree falls
-short. Older screenshots are elided from the conversation in batches, keeping
-the newest two, so a long flow in pixel mode carries a bounded number of
-images, and each is resampled to a long side of at most 768 pixels before it
-goes to the model: on a drawn keypad and a drawn wizard that size kept every
-run passing at a third less cost than the full capture, and 512 did not.
-Coordinates the model returns are in that image; the harness scales them
-back. Both tools are offered while no secret has been filled when the step
-opens; a secret filled during the step keeps them listed but withholds every
-later screenshot (`PIXEL_TAINTED`), and each result says so; `tap_at`
-needs an engine that can tap by node (`perform`) or by point (`tapAt`, the
-`pointer` capability, which the Playwright and agent-device engines declare),
-and on an engine without `tapAt` the point must land on a listed control. A
-bare-point tap replays from the [trace cache](/cache) the way a
-coordinate-driven tool does: the same point on a viewport of the recorded
-size, or, when a listed node contained the point, the same place inside that
-node's live box. A viewport of another size or a node that cannot be re-found
-hands the step to the model, and the recorded end state still has to return
-before a replay passes on its own. A step that sent pixels records
-`visionInput: true` and `metrics.pixelBytes`.
+In pixel mode the wait after an action watches the pixels too, so a redraw on
+a canvas counts as a change. A screen that lists nothing to act on by id (a
+canvas, a game) opens with a screenshot already attached. Screenshots are
+resampled to a long side of 768 px, and older ones are dropped from the
+conversation in batches, keeping the newest two.
 
-The pixel path asks the act model to ground a point in an image, and models
-differ widely there. Measured on a drawn ten-key keypad and an eight-screen
-drawn wizard: the gpt-5.6 luna family and Gemini 3.8 Flash completed both;
-Claude Sonnet 5 completed the wizard's large shapes but never the keypad's
-small keys; DeepSeek and GLM flash models gave up, and their providers bill a
-1280 by 720 screenshot at tens of thousands of input tokens against a few
-hundred on OpenAI. Pin an act model that grounds well when your flows leave
-the tree.
+A secret filled during the step keeps both tools listed but withholds every
+later screenshot (`PIXEL_TAINTED`). `tap_at` needs an engine with `perform`
+or `tapAt`; without `tapAt` the point must land on a listed control. A
+bare-point tap replays from the [trace cache](/cache) only on a viewport of
+the recorded size, or at the same place inside the listed node that contained
+it. A step that sent pixels records `visionInput: true` and
+`metrics.pixelBytes`.
+
+Models differ widely at grounding a point in an image. Pin an act model that
+does it well when your flows leave the tree.
 
 Throws `ACTION_FAILED` for a failed verdict with no more specific code; a
 blocked code (`AUTH_CREDENTIAL_UNAVAILABLE`, `ENVIRONMENT_UNAVAILABLE`,
@@ -159,11 +135,9 @@ act loop's summaries, and answers `holds`, `fails`, or `inconclusive`.
 | `options.agent` | `string` | the test's agent |
 
 Throws `ASSERTION_FAILED` on a false judgment and `ASSERTION_INCONCLUSIVE`
-when the screen did not show enough to decide either way, each carrying the
-explanation and, when permitted, a screenshot path. Neither is a pass: a judge
-that guesses when the evidence is thin is how a broken flow stays green.
-Evidence is skipped with
-`screenshot: false` and once any secret has been filled in the attempt.
+when the screen did not show enough to decide. Both carry the explanation
+and, when permitted, a screenshot path. No evidence is captured with
+`screenshot: false` or once a secret has been filled in the attempt.
 `screenshot` controls failure evidence attached after the judgment; `vision`
 controls what the model is shown before it.
 
@@ -231,10 +205,9 @@ const summary = await agent.extract('the workspace name and plan', {
 
 ## Vision
 
-`assert`, `waitFor`, and `extract` accept `vision`. It controls what evidence
-the model is shown. Sending pixels needs a model that accepts images; images
-are billed as input tokens. `act` has no such option; its pixel path is the
-`screenshot` and `tap_at` tools above.
+`assert`, `waitFor`, and `extract` accept `vision`. Sending pixels needs a
+model that accepts images. `act` has no such option; see the pixel tools
+above.
 
 | Mode | What the model sees | Cost |
 | --- | --- | --- |
@@ -247,11 +220,9 @@ per-call value wins. Pixels go to the agent's `model`, the same one the act
 loop shows its screenshots to.
 
 <Warning>
-**Use `'only'` for questions about what the page presents**
-
-`vision: true` sends the tree *and* the screenshot, and the tree is a cheaper
-path to an answer. A consent sheet covering a form, a price at `opacity: 0`,
-a button under a cookie banner: the tree reports all of them as fine.
+Use `'only'` for questions about what the page presents. With `vision: true`
+the model can answer from the tree, and the tree reports a form under a
+consent sheet or a price at `opacity: 0` as fine.
 
 ```ts
 // Passes on the tree alone while a consent sheet covers the form.
@@ -269,14 +240,11 @@ The screenshot is the viewport, never the full page, so `'only'` cannot see
 below the fold. Write `'only'` conditions about what is on screen and let the
 flow scroll first.
 
-Pixel evidence degrades instead of failing the call in every mode but
-`'only'`. It is withheld, and the tree sent alone, when a secret fill has
-tainted the viewport (`visionDegraded: "PIXEL_TAINTED"` on the step), when
-the engine masked fewer regions than the secure fields it observed
-(`MASKING_UNPROVEN`), or when the engine cannot capture pixels
-(`UNSUPPORTED_CAPABILITY`). `'only'` fails with `POLICY_DENIED` in those
-cases rather than answer a question about pixels from the tree. A step that
-sent pixels records `visionInput: true` and `metrics.pixelBytes`.
+Pixels are withheld and the tree sent alone when a secret fill has tainted
+the viewport (`visionDegraded: "PIXEL_TAINTED"` on the step), when the engine
+masked fewer regions than the secure fields it observed (`MASKING_UNPROVEN`),
+or when the engine cannot capture pixels (`UNSUPPORTED_CAPABILITY`). In
+`'only'` mode those cases fail with `POLICY_DENIED` instead.
 
 ## Types
 
@@ -331,37 +299,7 @@ export type AgentParams = Readonly<Record<string, AgentParam>>;
 
 ## AgentError
 
-```ts
-export class AgentError extends Error {
-  readonly code: AgentErrorCode;
-  readonly explanation: string;
-  readonly screenshot?: string;
-  readonly blocked: boolean;
-}
-```
-
-| Property | Type | Description |
-| --- | --- | --- |
-| `code` | `AgentErrorCode` | Closed union, assigned by the runner, never taken from model text |
-| `explanation` | `string` | Sanitized, bounded prose. Same value as `message`. |
-| `screenshot` | `string \| undefined` | Artifact path, present only when evidence was captured and permitted |
-| `blocked` | `boolean` | True when the failure reports a blocked step (credentials, environment, or budget), not a product failure |
-
-Check `code` with `isAgentError(error)`, exported from `e2e`, rather
-than `instanceof`, which does not hold across the runner's module realms.
-Every code, its class, and its exit code are in [Errors](/reference/errors).
-
-## Usage accounting
-
-Model usage is accounted per step and per run. A step reports
-`tokenAccounting: 'provider'` only when every call supplied complete provider
-token counts; otherwise the aggregate stays at `adapter-upper-bound`.
-Reported costs accumulate where the provider gives one. Token sums saturate
-at `Number.MAX_SAFE_INTEGER` and an overflowing cost total is omitted.
-
-<CardGroup cols={2}>
-  <Card title="How agent steps work" icon="stairs" href="/agent-steps" />
-  <Card title="Agents and personas" icon="users" href="/agents" />
-  <Card title="Config" icon="sliders" href="/reference/config#agents" />
-  <Card title="Errors" icon="triangle-exclamation" href="/reference/errors" />
-</CardGroup>
+Every failure is an `AgentError` with a closed `code`, an `explanation`, an
+optional `screenshot` path, and a `blocked` flag. Check it with
+`isAgentError(error)` from `e2e`, not `instanceof`. The class and
+every code are in [Errors](/reference/errors#agenterror).

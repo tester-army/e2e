@@ -4,25 +4,19 @@ description: The mobile engine for iOS simulators and Android emulators, its opt
 ---
 
 `@e2edev/agent-device` drives iOS simulators and Android emulators through
-[agent-device](https://github.com/callstack/agent-device), against the same
-engine contract the browser engine implements. `agent`, `app`, `screen`, and
-`expect` work as they do everywhere; this page covers what is specific to a
-device target. Import `test` from the package to have `device` typed, and
-declare `requires: ['device']` in a suite that also runs on the web.
+[agent-device](https://github.com/callstack/agent-device). `agent`, `app`,
+`screen`, and `expect` work as they do everywhere; this page covers what is
+specific to a device target. Import `test` from the package to have `device`
+typed, and declare `requires: ['device']` in a suite that also runs on the
+web.
 
-Choose **Mobile (iOS/Android)** in `e2e init` to add the package with a Settings
-example. It defaults to iOS on macOS and Android elsewhere, uses one worker,
-and needs no `APP_URL`. iOS needs Xcode and a simulator; Android needs the
-Android SDK and an emulator.
+Choose **Mobile (iOS/Android)** in `e2e init` to add the package with a
+Settings example. iOS needs Xcode and a simulator; Android needs the Android
+SDK and an emulator.
 
-Bring your own agent-device: the package declares `agent-device` as a peer
-dependency (`0.21.x`) and does not install it. A project that already
-drives devices with the agent-device CLI keeps its version and one copy in
-`node_modules`; `e2e init` adds `agent-device` only to a project that has
-none. agent-device is 0.x and its minors break, so the range pins the
-minor the engine was built and tested against and moves with each engine
-release. A version outside the range may be rejected by your package manager
-as an unmet peer (npm's `ERESOLVE`).
+The package declares `agent-device` as a peer dependency (`0.21.x`) and does
+not install it. agent-device is 0.x and its minors break, so the range pins
+the minor the engine was tested against and moves with each engine release.
 
 ## Engine
 
@@ -51,11 +45,9 @@ export default {
 } satisfies E2EConfig;
 ```
 
-One engine per device family; a config declares as many as it needs. A test
-using the shared device APIs can run on iOS and Android. Platform-specific
-labels or operations need `platforms: ['ios']` or `platforms: ['android']`.
-Device attempts open their configured app; `app.open()` requires a URL and
-is unavailable on these targets.
+One engine per device family. Platform-specific labels or operations need
+`platforms: ['ios']` or `platforms: ['android']`. Device attempts open their
+configured app; `app.open()` is unavailable on these targets.
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -65,40 +57,26 @@ is unavailable on these targets.
 | `device` | `string \| readonly string[]` | every booted device | Simulator or emulator name or UDID. A list is a pool: the engine declares one worker per entry and worker slot `n` drives the `n`th; an empty list is `INVALID_CONFIG`. Omitted, `prepare` discovers the booted devices of the platform and drives as many as the run has slots; with none booted, agent-device boots one. |
 | `session` | `string` | `e2e-<target name>` | agent-device session name, before the worker slot: slot `n` drives its device under `<session>-<n>`. One run per session at a time. |
 | `snapshot` | `'full' \| 'interactive'` | `'full'` | Whether observations include static text. |
-| `settle` | `number \| false` | `150` | For agent actions: milliseconds the UI must hold still after a tap, fill, or back before the agent observes again; `false` skips the wait. A test's own steps never settle; `expect` verifies their outcome. |
-| `transition` | `number` | `500` | For a test's steps: how long a control that appeared or moved with the last action gets to finish arriving before it is acted on. Accessibility frames report final positions from a transition's first frame, so this budget is what keeps a test from tapping where a sliding control has not arrived. Controls already in place before the action are acted on at once. |
+| `settle` | `number \| false` | `150` | Milliseconds the UI must hold still after an agent action before the agent observes again; `false` skips the wait. A test's own steps never settle. |
+| `transition` | `number` | `500` | For a test's steps: how long a control that appeared or moved with the last action gets to finish arriving before it is acted on. Accessibility frames report final positions from a transition's first frame. |
 | `identity` | `string` | `app`, else `appPath` | Logical app identity for cache and session keying; see [the app under test](/reference/config#the-app-under-test). |
 | `environment` | `'test' \| 'staging' \| 'production'` | `'test'` | A label for the report and the identity digest. |
 
-Every optional value also accepts `undefined`, so a config passes
-`device: process.env.E2E_DEVICE` or `appPath: process.env.E2E_APP_PATH`
-straight through, with no conditional spread.
+Every optional value also accepts `undefined`, so `device:
+process.env.E2E_DEVICE` passes straight through.
 
-The devices boot in `prepare`, once per run and outside every launch budget:
-each worker slot the run will use boots its device and opens the pinned
-`app` once, so its automation runner is up before any worker starts, one slot
-after another. `init` then finds a booted device. On a CI runner, where a
-cold boot and a runner launch take a minute or more, that time is spent
-before the run's clock starts instead of inside `launchTimeout`. agent-device
-commands take no abort signal, so a cancelled or timed-out command is
-abandoned by its caller but keeps running on the device; the next attempt
-waits for every abandoned command to settle before it opens anything, within
-the launch timeout. Each attempt relaunches `app` when one is pinned; without
-it the surface observes whatever is in the foreground and the model opens
-apps with the `open_app` tool.
+Devices boot in `prepare`, once per run and before the run's clock starts, so
+a cold boot on CI is never charged against `launchTimeout`. agent-device
+commands take no abort signal, so a timed-out command keeps running on the
+device; the next attempt waits for it to settle. Each attempt relaunches
+`app` when one is pinned; without it the model opens apps with the `open_app`
+tool.
 
-The engine declares one worker per configured device: a single `device` is
-one worker and a pool is one per entry. With no `device`, `prepare` uses the
-booted devices it finds, capped by the run's slots. When none are booted, it
-boots one and reports a one-worker cap. The scheduler respects this cap, so
-two workers never drive the same simulator.
-
-To split a target's test files across several devices, pass a pool and let
-`workers` be at least its size, or omit `device` to discover booted devices.
-Four booted simulators can run four files at a time when `workers` is at least
-four. The discovered pool reaches workers through the run's environment,
-`E2E_AGENT_DEVICE_POOL_<TARGET>_<digest>`, so each slot resumes the device
-`prepare` booted for it.
+The engine declares one worker per configured device. With no `device`,
+`prepare` uses the booted devices it finds, capped by the run's slots, and
+boots one when none are. Two workers never drive the same simulator. To
+split a target's files across devices, pass a pool and set `workers` to at
+least its size.
 
 ```ts
 import type { E2EConfig } from 'e2e';
@@ -120,27 +98,22 @@ export default {
 
 | Contract member | On a device |
 | --- | --- |
-| `observe` | The accessibility tree with rects and a viewport. iOS: `Button` is `button`, `TextField` and `SearchField` are `textbox`, `SecureTextField` is a secure `textbox`, `Cell` is `listitem`, `StaticText` is `text`, `Switch` is `switch` with `checked`. Android: `TextView` is `text`, `EditText` is `textbox`, `Switch` and `CheckBox` keep their roles (no `checked` state: Android exposes none), layouts are `group`, `RecyclerView` is `list`; a label echoed as the value is dropped. Other types keep their kebab-cased name. An element's accessibility identifier (iOS) or resource id (Android) is the node's `testId`, so `screen.getByTestId` finds it. Pixels on request, with every secure node's bounds painted black; a secure node without bounds withholds the image. |
-| `perform` | Declared `actions`: `tap`, `doubleTap`, `longPress`, `fill`, `clear`, `hover`, `check`, `uncheck`, `press` (`Enter` or one character), `swipe` (on the root the viewport scroll in four directions, within any other node), `dragTo`, and `focus` on editable fields (a touch surface focuses by tapping, and a tap on a control would activate it). A tap, check, or uncheck on a `switch` or `checkbox` lands on its innermost control, because UIKit reports a settings row as a labelled switch spanning the row with the real toggle as an unlabelled child; `check` and `uncheck` need the tree to expose the checked state, which Android switches do not. `selectOption`, `setInputFiles`, and `scrollIntoView` are not declared, so `screen`/`Locator` never offer them; focus on a control and other keys are `UNSUPPORTED_CAPABILITY`. |
-| `locate` | Every `screen` query. Role queries skip nodes the platform reports as not visible; `visible: true` applies the same rule to the other query kinds. Text queries answer with the innermost match, so a host view echoing its child's label (iOS `Text` over `StaticText`) counts once. |
+| `observe` | The accessibility tree with rects. iOS: `Button` is `button`, `TextField` and `SearchField` are `textbox`, `SecureTextField` is a secure `textbox`, `Cell` is `listitem`, `StaticText` is `text`, `Switch` is `switch` with `checked`. Android: `TextView` is `text`, `EditText` is `textbox`, `Switch` and `CheckBox` keep their roles without a `checked` state, layouts are `group`, `RecyclerView` is `list`. The accessibility identifier (iOS) or resource id (Android) is the node's `testId`. Pixels on request, with every secure node's bounds painted black. |
+| `perform` | `tap`, `doubleTap`, `longPress`, `fill`, `clear`, `hover`, `check`, `uncheck`, `press` (`Enter` or one character), `swipe`, `dragTo`, and `focus` on editable fields. A tap on a `switch` or `checkbox` lands on its innermost control, since UIKit reports a settings row as one labelled switch with the real toggle as a child. `check` and `uncheck` need a `checked` state, which Android switches lack. `selectOption`, `setInputFiles`, and `scrollIntoView` are not declared. |
+| `locate` | Every `screen` query. Text queries answer with the innermost match. |
 | `app` | `identity` from the pinned `app`, else `appPath`; no `url`. |
-| `session` | `back`; `restart` and `reset` (behind `app.clearState()`) when `app` or `appPath` is pinned. No `open`: a device has no app URL, so `app.open()` and the agent's `navigate` verb are unavailable. |
-| `artifacts` | Redacted screenshots under `screenshots/NNN-<label>.png`: every secure field's bounds are painted black first, and a screenshot that cannot be redacted fails instead of being written. Video with `--video`, as `video/video.mp4` with taps shown. No traces. |
-| `location` | `<bundle id> / <screen title>` on every observation, the trace cache's anchor. It is not a URL, so the origin policy never applies to it. The app identity is part of the location, so two apps with a `General` screen never share an anchor. The title is the navigation bar's on iOS and the collapsing toolbar's on Android. |
+| `session` | `back`; `restart` and `reset` when `app` or `appPath` is pinned. No `open`, so `app.open()` and the agent's `navigate` verb are unavailable. |
+| `artifacts` | Redacted screenshots under `screenshots/NNN-<label>.png`; a screenshot that cannot be redacted fails instead of being written. Video with `--video` as `video/video.mp4`. No traces. |
+| `location` | `<bundle id> / <screen title>`, the trace cache's anchor. The title is the navigation bar's on iOS and the toolbar's on Android. |
 | `state` | Not declared. `test.setup` and `session:` are unavailable. |
 
 ## Trace cache on a device
 
-The cache anchors a recorded `agent.act` step on the location the surface
-reports when the step begins and ends. This engine reports `<bundle id> /
-<title>`, with the title read off the navigation bar (its label, its inner
-text, or its identifier). A step recorded on `com.apple.Preferences / General`
-replays only when Settings is on General again. Recorded node actions replay
-through `perform`; a viewport scroll is a `swipe` on the observation root. A mutating project-tool
-call such as `open_app` ends a replay, as does a target that no longer
-relocates. The read-only `screenshot` tool creates no replay gap.
-Pin `app` so attempts start on the same screen, and keep in-step app switching
-to the `device` fixture between steps.
+A step recorded on `com.apple.Preferences / General` replays only when
+Settings is on General again. A mutating project-tool call such as
+`open_app` ends a replay. Pin `app` so attempts start on the same screen,
+and switch apps through the `device` fixture between steps rather than inside
+one.
 
 ## Device
 
@@ -175,25 +148,22 @@ export type DeviceOrientation = 'portrait' | 'portrait-upside-down' | 'landscape
 ```
 
 Every async method is a recorded step named `device.<method>`, bounded by
-`config.actionTimeout` and the attempt signal, and never involves a model. A
-lost session is `APP_NOT_OPEN`, a command that timed out is `ACTION_FAILED`,
-a command the platform cannot run is `UNSUPPORTED_CAPABILITY`, and anything
-else is `ENGINE_FAILURE` carrying agent-device's message prefixed with the
-operation.
+`config.actionTimeout`. A lost session is `APP_NOT_OPEN`, a timeout is
+`ACTION_FAILED`, a command the platform cannot run is
+`UNSUPPORTED_CAPABILITY`, anything else `ENGINE_FAILURE`.
 
-`installApp` puts a build on the device from inside a test, for upgrade and
-fresh-install paths the `appPath` option cannot express. A plain install
-replaces the binary and keeps its data; `reinstall: true` removes the app named
-by `app` (default: the pinned app) first, and is `APP_NOT_OPEN` when neither
-names one. It resolves to the bundle id or package to `openApp` the build by.
+`installApp` installs a build from inside a test, for upgrade paths. A plain
+install keeps the app's data; `reinstall: true` removes the app named by
+`app` (default: the pinned app) first. It resolves to the id to `openApp`
+the build by.
 
 ```ts
 const { app } = await device.installApp('./build/MyApp.app', { reinstall: true });
 await device.openApp(app);
 ```
 
-`locator` is a synchronous accessor: it mints a core `Locator` from an
-agent-device selector, for nodes the closed `screen` vocabulary cannot name.
+`locator` mints a core `Locator` from an agent-device selector, for nodes the
+`screen` vocabulary cannot name.
 
 ```ts
 await expect(device.locator('role=NavigationBar id=About')).toBeVisible();
@@ -203,18 +173,14 @@ await device.locator('id=SW_VERSION_SPECIFIER role=Button').tap();
 
 Selector terms are agent-device's: `id`, `role`, `text`, `label`, `value`,
 `appname`, `windowtitle`, and the flags `visible`, `hidden`, `editable`,
-`selected`, `focused`, `enabled`, `hittable`. Text terms compare exactly after
-whitespace collapsing; `role` accepts either the platform type (`StaticText`)
-or the contract role (`text`). Polling and strictness are the runner's, as for
-any locator.
+`selected`, `focused`, `enabled`, `hittable`. `role` accepts the platform
+type (`StaticText`) or the contract role (`text`).
 
 ## Agent tools
 
 `agentDeviceTools(...engines)` returns a `defineTool` pack for `createAgent`.
-Pass every device engine the config declares: tool names are fixed, so two
-packs cannot be merged; the pack is scoped to the platforms of those engines
-and dispatches each call to the engine whose attempt is running (a worker
-runs one attempt at a time):
+Pass every device engine the config declares; two packs cannot be merged. The
+pack dispatches each call to the engine whose attempt is running:
 
 | Tool | Replay | Purpose |
 | --- | --- | --- |
@@ -223,21 +189,10 @@ runs one attempt at a time):
 | `type_text` | gap | Type into the focused field, optionally pressing Return; for editors that hide the focused field from the tree. |
 | `alert` | gap | Accept or dismiss a system alert. |
 
-The grammar verbs (`tap`, `type`, `scroll`) come from the engine manifest and
-need no tool. `screenshot` and `tap_at` are the agent's own pixel tools,
-offered while no secret has been filled; the engine declares `tapAt`, so a
-`tap_at` whose point lands on nothing the tree lists taps the bare point in
-logical pixels. `type_secret` is not offered: secret fills require an origin the
-runner can check, and a device location is not a URL, so it has none.
+The grammar verbs (`tap`, `type`, `scroll`) come from the engine and need no
+tool. The engine declares `tapAt`, so a `tap_at` on nothing the tree lists
+taps the bare point. `type_secret` is not offered on a device.
 
-After a secret fill the agent offers neither `screenshot` nor `tap_at` and
-captures no pixels, including in later members of the same serial group.
-Pixels whose masking the engine cannot prove are withheld as
-`MASKING_UNPROVEN`.
-
-<CardGroup cols={2}>
-  <Card title="Project tools" icon="wrench" href="/tools" />
-  <Card title="Writing an engine" icon="plug" href="/writing-an-engine" />
-  <Card title="app" icon="window-maximize" href="/reference/app" />
-  <Card title="Config" icon="sliders" href="/reference/config#targets" />
-</CardGroup>
+After a secret fill the agent offers neither `screenshot` nor `tap_at`,
+including in later members of the same serial group. Pixels whose masking the
+engine cannot prove are withheld as `MASKING_UNPROVEN`.

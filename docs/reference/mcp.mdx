@@ -8,28 +8,21 @@ npx e2e mcp [--config <path>] [--target <name>] [--headless]
 ```
 
 `e2e mcp` is an MCP server over stdio for a coding agent such as Claude Code
-or Cursor. It opens a live attempt on one target and hands the agent the
-vocabulary the testing agent gets on that engine: observe, tap, type, press,
-select, scroll, navigate, `type_secret`, and the project's own `defineTool`
-values, plus `locate` to try a semantic locator before writing it and a
-masked `screenshot`. The agent explores the real app, checks the exact
-accessible names and locators, then writes deterministic tests and runs them
-with `e2e run` from its shell. The agent skill is served as resources.
+or Cursor. It opens a live attempt on one target and gives the agent the
+tools the testing agent has on that engine, plus `locate` to try a semantic
+locator and a masked `screenshot`. The agent explores the real app, checks
+accessible names, then writes deterministic tests and runs them with
+`e2e run`.
 
-The server registers four MCP tools and never changes them. The session's
-vocabulary is a catalog behind `call`, in the style of
-[executor.sh](https://github.com/UsefulSoftwareCo/executor): one `call` tool
-runs any catalog tool by name, and `tools` describes them. The catalog
-therefore follows whatever config and target the agent opens, a project tool
-added to the config is available on the next `open_session`, and one server
-serves every e2e project the agent can reach without a restart or a change
-to the client's tool list.
+The server registers four MCP tools and never changes them. The engine's
+vocabulary is a catalog behind `call`, so one server serves every project the
+agent can reach, and a project tool added to the config appears on the next
+`open_session`.
 
 ## Setup
 
-The server ships with `e2e`; nothing else is installed. `e2e init`
-offers to register it in `.mcp.json` (Claude Code) and `.cursor/mcp.json`
-(Cursor); a later `init` refreshes the files that exist. By hand:
+The server ships with `e2e`. `e2e init` offers to register it in
+`.mcp.json` (Claude Code) and `.cursor/mcp.json` (Cursor). By hand:
 
 ```bash
 claude mcp add e2e -- npx e2e mcp
@@ -45,74 +38,61 @@ Every client that reads a project-level MCP config takes the same entry:
 }
 ```
 
-The client starts the server in the project directory (Claude Code uses the
-directory that holds `.mcp.json`, Cursor the workspace root). `open_session`
-then finds the config the way `e2e run` does: the nearest `e2e.config.ts` or
-`e2e.config.mts`, searching upward to the repository root. A config
-elsewhere, in a monorepo subfolder or a second project, is named per session
-with `open_session`'s `config` argument, or fixed for every session with
+The client starts the server in the project directory. `open_session` finds
+the config the way `e2e run` does. A config elsewhere is named per session
+with `open_session`'s `config` argument, or for every session with
 `--config`.
 
 | Flag | Behavior |
 | --- | --- |
-| `--config <path>` | The config every session loads unless `open_session` names one (default: the nearest `e2e.config.ts`). Configs are loaded again on every `open_session`, so an edit applies without restarting the server. |
-| `--target <name>` | The target every session opens on. Otherwise `open_session` names one, or the only target is used; with several targets and no name the call fails with `TARGET_REQUIRED`. |
-| `--headless` | Hide the browser or simulator during sessions. Sessions are headed by default outside CI, so the developer can watch. |
+| `--config <path>` | The config every session loads unless `open_session` names one. Configs are reloaded on every `open_session`. |
+| `--target <name>` | The target every session opens on. Otherwise `open_session` names one, or the only target is used; several targets and no name is `TARGET_REQUIRED`. |
+| `--headless` | Hide the browser or simulator. Sessions are headed by default outside CI. |
 
-Everything the server prints for the operator goes to stderr, prefixed
-`e2e mcp:`; stdout carries only the protocol. A config module or a library
-that writes to stdout is redirected to stderr for the life of the process.
+Operator output goes to stderr, prefixed `e2e mcp:`. Stdout carries only the
+protocol; anything a config module writes to stdout is redirected.
 
 ## Tools
 
 | Tool | Arguments | Result |
 | --- | --- | --- |
-| `open_session` | `target` (optional), `config` (optional path, relative to the server's directory) | Loads the config, grades and prepares the engine, starts the app command the engine declares, boots the engine, starts one attempt, opens the app URL when the engine can navigate, and returns the session id, the catalog, and the first observation. |
-| `tools` | `tool` (optional), `session` (optional) | The session's catalog: one line per tool with its argument names, the first sentence of its description, and a read-only mark. With `tool`, that tool's full description and the JSON Schema of its arguments. |
-| `call` | `tool`, `args` (optional object), `session` (optional) | Runs one catalog tool. Arguments are validated against the tool's own schema first (`INVALID_ARGUMENT` names the field). The result is the tool's: an action's summary and what changed on screen, a locate verdict, an image for `screenshot`. |
-| `close_session` | `session` (optional) | Ends the attempt, disposes the engine, and stops the app processes the session started; reports cleanup failures. |
+| `open_session` | `target` (optional), `config` (optional path) | Loads the config, starts the app command, boots the engine, starts one attempt, opens the app URL when the engine can navigate. Returns the session id, the catalog, and the first observation. |
+| `tools` | `tool` (optional), `session` (optional) | The catalog, one line per tool. With `tool`, its full description and argument schema. |
+| `call` | `tool`, `args` (optional), `session` (optional) | Runs one catalog tool. Arguments are validated against the tool's schema first. |
+| `close_session` | `session` (optional) | Ends the attempt, disposes the engine, stops the app processes the session started. |
 
-Results carry the session id, and every session tool accepts it as
-`session`; today one session is open at a time, and a call naming another id
-fails with `NO_SESSION`.
+One session is open at a time. A call naming another id fails with
+`NO_SESSION`.
 
 ### The catalog
 
-What `call` can run depends on the session's target, so a project serves
-what its engine can do:
+What `call` can run depends on the session's target:
 
 | Catalog tool | Arguments | Result |
 | --- | --- | --- |
-| `observe` | none | A fresh observation: one node per line as `#id role "name" ...`, the current path, and the revision. |
-| `tap`, `type`, `press`, `select`, `scroll`, `navigate`, `type_secret` | As the testing agent's tools: a node id from the newest observation, plus the value, key, direction, URL, or secret name | The action's summary and what changed on screen since the last observation. A verb the engine does not declare is not in the catalog (`agentDevice(...)` has no `navigate`); calling it fails with `UNSUPPORTED_CAPABILITY`. `type_secret` is listed when the config declares `credentials` or `secrets`, and fills the named secret (a password into a password field, a `secrets` entry into any editable input) without the plaintext ever reaching the agent. |
-| `locate` | Exactly one of `role` (with optional `name`), `text`, `label`, `placeholder`, `testId`; `exact` | How many nodes match, which (role, name, text, states), and the `screen.*` call to write. Zero or several matches name the error a test would get (`LOCATOR_NOT_FOUND`, `LOCATOR_AMBIGUOUS`) and how to narrow. |
-| `screenshot` | none | The masked viewport as an image, resampled to a 768 px long side, with what changed on screen. From then on every action result in the session carries a fresh screenshot. Listed while no secret has been filled. |
-| `tap_at` | `x`, `y` in the latest screenshot's pixels | Taps that point: a listed control under it by id, otherwise the bare point through the engine's `tapAt`. Listed with `screenshot`, on engines that can tap by node or by point. |
+| `observe` | none | A fresh observation, one node per line as `#id role "name" ...`, with the current path and revision. |
+| `tap`, `type`, `press`, `select`, `scroll`, `navigate`, `type_secret` | A node id from the newest observation, plus the value, key, direction, URL, or secret name | The action's summary and what changed on screen. A verb the engine does not declare is not in the catalog. `type_secret` is listed when the config declares `credentials` or `secrets`; the plaintext never reaches the agent. |
+| `locate` | Exactly one of `role` (with optional `name`), `text`, `label`, `placeholder`, `testId`; `exact` | How many nodes match, which, and the `screen.*` call to write. Zero or several matches name the error a test would get. |
+| `screenshot` | none | The masked viewport as an image. From then on every action result carries a fresh screenshot. Listed while no secret has been filled. |
+| `tap_at` | `x`, `y` in the latest screenshot's pixels | Taps that point: a listed control under it by id, otherwise the bare point through the engine's `tapAt`. |
 
 Project tools passed to `createAgent({ tools })` follow in the catalog under
-their own names, scoped to the session target's platform, and run through
-the same accounting as in a test step (`mutates` is honored; a tool that
-declares `mutates: false` is marked read-only). A mobile project that passes
-`agentDeviceTools(...)` therefore also catalogs `open_app`, `swipe`,
-`type_text`, and `alert`. A project tool named like a catalog built-in is not
-served; the server logs which. A name the catalog does not have fails with
-`UNKNOWN_TOOL` and the list of names it does.
+their own names, scoped to the target's platform. A mobile project that
+passes `agentDeviceTools(...)` also gets `open_app`, `swipe`, `type_text`,
+and `alert`. A project tool named like a built-in is not served. An unknown
+name fails with `UNKNOWN_TOOL` and the list of names.
 
-A session is one attempt on one target, and one at a time: a second
-`open_session` fails with `SESSION_OPEN`, a `call` or `tools` without a
-session with `NO_SESSION` (naming why the previous one ended). A session
+A session is one attempt on one target. A second `open_session` fails with
+`SESSION_OPEN`; a `call` without a session fails with `NO_SESSION`. A session
 closes on `close_session`, after 30 idle minutes, after 4 hours, when the
-client disconnects, and on SIGINT or SIGTERM, so no browser or simulator is
-left behind. An `open_session` that fails partway tears down what it started.
+client disconnects, and on SIGINT or SIGTERM.
 
-Sessions enforce what tests enforce. A secret fills only through
-`type_secret`, into an editable field. Node ids are valid only against
-the newest observation; a stale id fails with `LOCATOR_NOT_FOUND` instead of
-acting on the wrong node. Secrets fill only through `type_secret`, and once a
-secret has been filled `screenshot` and `tap_at` leave the catalog: pixels are
-withheld for the rest of the session (`PIXEL_TAINTED`).
-Nothing a session does is recorded as a test result or into the trace
-cache; its artifacts land under `.e2e/artifacts/<target>/sessions/`.
+Sessions enforce what tests enforce. Node ids are valid only against the
+newest observation. A secret fills only through `type_secret`, and once one
+has been filled `screenshot` and `tap_at` leave the catalog
+(`PIXEL_TAINTED`). Nothing a session does is recorded as a test result or
+into the trace cache; its artifacts land under
+`.e2e/artifacts/<target>/sessions/`.
 
 ## Resources
 
@@ -124,21 +104,5 @@ cache; its artifacts land under `.e2e/artifacts/<target>/sessions/`.
 ## Exit codes
 
 `e2e mcp` exits 0 when the client disconnects or a signal ends it, and 2
-when the command line is invalid. Config and engine failures never end the
-server: they come back as tool errors the agent can act on, with the same
-codes the CLI prints.
-
-<CardGroup cols={2}>
-  <Card title="Coding agents" icon="robot" href="/coding-agents">
-    What e2e gives an agent, and how it should use it.
-  </Card>
-  <Card title="CLI" icon="terminal" href="/reference/cli">
-    Every command, flag by flag.
-  </Card>
-  <Card title="Errors" icon="triangle-exclamation" href="/reference/errors">
-    Every error code and its fix.
-  </Card>
-  <Card title="agent" icon="wand-magic-sparkles" href="/reference/agent">
-    The agent fixture and createAgent.
-  </Card>
-</CardGroup>
+when the command line is invalid. Config and engine failures come back as
+tool errors with the same codes the CLI prints.

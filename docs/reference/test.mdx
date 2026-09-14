@@ -3,8 +3,7 @@ title: test
 description: Tests, setup tests, groups, hooks, options, and fixtures.
 ---
 
-`test` is the only registration surface. Every member registers synchronously
-while the test file is imported.
+Every `test` member registers synchronously while the test file is imported.
 
 ```ts
 export interface TestAPI<Fixtures = TestFixtures> {
@@ -37,13 +36,13 @@ throws `COLLECTION_ERROR`.
 
 | Member | Signature | Notes |
 | --- | --- | --- |
-| `test` | `test(title: string, fn: TestFn): TestCase` | Returns an opaque handle. Discovery follows registration order; exporting the handle changes nothing. |
+| `test` | `test(title: string, fn: TestFn): TestCase` | Returns an opaque handle. Discovery follows registration order. |
 | `test` | `test(title: string, options: TestOptions, fn: TestFn): TestCase` | See [Options](#options). |
 | `test.skip` | `skip(title: string, fn: TestFn): TestCase` | Body never runs. Reported as skipped, does not affect the exit code. For a reason, use `test(title, { skip: 'reason' }, fn)`. |
 | `test.only` | `only(title: string, fn: TestFn): TestCase` | Other ordinary tests are reported as `filtered`. In CI the run fails with `ONLY_IN_CI`, exit code 2. |
 | `test.setup` | `setup(title: string, options: SetupOptions, fn: SetupFn): TestCase` | `options.sessions` is required. Must be top-level, not inside `test.describe`. |
 | `test.describe` | `describe(title, body)` / `describe(title, options, body)` | Group body must be synchronous. An `async` body is a type error and a `COLLECTION_ERROR`. |
-| `test.extend` | `extend<Extra>()` / `extend<Extra>(fixtures)` | Without an argument, types an engine's contributed fixtures. With one, returns a new `test` that sets your own fixtures up around each attempt; see [Your own fixtures](#your-own-fixtures). |
+| `test.extend` | `extend<Extra>()` / `extend<Extra>(fixtures)` | Without an argument, types an engine's contributed fixtures. With one, defines [your own](#your-own-fixtures). |
 
 ```ts
 import { test } from '@e2edev/playwright';
@@ -95,28 +94,21 @@ export interface SetupSession {
 | `test.beforeAll` | `beforeAll(fn: SuiteHookFn): void` | `SuiteFixtures` | Once per suite instance, on first entry into the scope |
 | `test.afterAll` | `afterAll(fn: SuiteHookFn): void` | `SuiteFixtures` | Once per suite instance, when the scope's last test in the realm finishes |
 
-Hook order follows scope nesting, not position in the file: a file-level
-`beforeEach` declared below a `test.describe` still runs before the group's
-own `beforeEach`, and a hook declared after a test still applies to it.
+Hook order follows scope nesting, not position in the file. A hook declared
+after a test still applies to it.
 
-A suite instance is one execution realm: the module is re-imported for every
-retry, for every serial group, and for every setup test, so `beforeAll` runs
-again in each. A scope's `afterAll` runs as soon as its last runnable test in
-that realm is done, so one group's teardown never runs after a sibling group's
-tests. A realm that a failure discards runs `afterAll` for every scope whose
-`beforeAll` started. A failing `afterAll` ends the realm too: later tests in the
-file start in a fresh one, and inside a serial group the remaining members are
-skipped with cause `hook-failed` and the group fails without a retry.
+The module is re-imported for every retry, serial group, and setup test, so
+`beforeAll` runs again in each. A scope's `afterAll` runs as soon as its last
+test in that realm is done. A realm that a failure discards runs `afterAll`
+for every scope whose `beforeAll` started.
 
-`beforeEach` and the body share the test timeout. Each `afterEach` hook then
-gets its own `cleanupTimeout` budget with working fixtures, so teardown can
-still drive the app after the body timed out. A hook that overruns that budget
-fails, its fixture operations are cancelled, and the next hook still runs.
+`beforeEach` and the body share the test timeout. Each `afterEach` hook gets
+its own `cleanupTimeout` budget with working fixtures, so teardown can still
+drive the app after the body timed out.
 
-A throw inside `beforeAll` or `afterAll` is reported as `HOOK_FAILED` and skips
-the suite's tests with cause `hook-failed`. Inside a serial group, a
-`beforeAll` failure skips every remaining member and fails the group without
-retrying it.
+A throw inside `beforeAll` or `afterAll` is `HOOK_FAILED` and skips the
+suite's tests with cause `hook-failed`. Inside a serial group it skips every
+remaining member and fails the group without a retry.
 
 ## Options
 
@@ -156,19 +148,17 @@ export interface SetupOptions
 | `requires` | `readonly Capability[]` | `[]` | - | Innermost wins, replace |
 | `session` | `string` | unset | - | Innermost wins |
 | `agentContext` | `string` | unset | - | Concatenated outermost first, joined with a newline |
-| `agent` | `string \| readonly string[]` | the run's agents | names in `agents`, each once; unknown is `COLLECTION_ERROR` | Innermost wins, replace. Pins the test or group to configured agents; a list runs the test once per name, one result each. `--agent` narrows a pin to the names it also gives and never overrides a pin it does not name. A call's own `agent` option wins over it. Members of a serial group share the group's pin; a setup test pins one name. |
+| `agent` | `string \| readonly string[]` | the run's agents | names in `agents`; unknown is `COLLECTION_ERROR` | Innermost wins, replace. A list runs the test once per name. `--agent` narrows a pin to the names it also gives. A setup test pins one name. |
 | `serial` | `boolean` | `false` | groups only | Nesting inside a serial group is a `COLLECTION_ERROR` |
 | `sessions` | `readonly string[]` | - | required on `test.setup`, static non-empty array of unique names | - |
 
 Resolution order: test, nearest group, outer groups, config, built-in default.
 
-`serial: true` makes the group one ordered retry unit with shared app state.
-Secret redaction and pixel taint share that lifetime: provider-resolved values
-stay redacted in later members, and a secret fill withholds model pixels for
-the rest of the group's attempt. A retry starts fresh isolation and fresh
-secret state.
-Inside it, `retries`, `session`, `platforms`, `requires`, `skip`, `only`, and a
-nested `serial` on a member are collection errors. Set them on the group.
+`serial: true` makes the group one ordered retry unit with shared app state
+and shared secret state: a secret fill withholds pixels for the rest of the
+group's attempt. A retry starts fresh. Inside it, `retries`, `session`,
+`platforms`, `requires`, `skip`, `only`, and a nested `serial` on a member
+are collection errors. Set them on the group.
 
 ## Fixtures
 
@@ -203,25 +193,22 @@ export interface SuiteFixtures {
 | `screen` | [`Screen`](/reference/screen) | Always available. |
 | `platform` | `Platform` | The target's label: `web`, `ios`, `android`, or an engine's own string. |
 
-Everything else is a **contributed fixture** the target's engine declares, or
-one of [your own](#your-own-fixtures). The zero-argument `test.extend<{ ... }>()`
-types a contributed fixture without defining anything: `@e2edev/playwright`
-contributes [`web`](/reference/playwright) and exports a `test` already typed
-with it; a device engine contributes `device` the same way. Reaching for a
-fixture neither the engine nor a `test.extend()` defines fails at first touch
-with `UNSUPPORTED_CAPABILITY`; declare `requires: ['web']` to skip such tests
-at selection instead.
+Everything else is a fixture the target's engine contributes, or one of
+[your own](#your-own-fixtures). `@e2edev/playwright` contributes
+[`web`](/reference/playwright) and exports a `test` typed with it; a device
+engine contributes `device`. Reaching for a fixture the engine does not
+contribute fails with `UNSUPPORTED_CAPABILITY`; declare `requires: ['web']`
+to skip such tests at selection instead.
 
-Fixtures are lazy. Destructuring in the callback parameter list acquires them
-before the first statement of the body.
+Fixtures are lazy. Destructuring in the parameter list acquires them before
+the body's first statement.
 
 ### Your own fixtures
 
-`test.extend(fixtures)` defines a fixture per test: a resource the body needs
-set up before it runs and cleaned up after, however the body ended. Each
-definition is one function in Playwright's shape. Everything before
-`await use(value)` is the setup, `value` is what the test receives, and
-everything after is the teardown.
+`test.extend(fixtures)` defines a resource set up before each test and
+cleaned up after, however the body ended. Each definition is one function in
+Playwright's shape: everything before `await use(value)` is setup, `value` is
+what the test receives, everything after is teardown.
 
 ```ts
 import { test as base } from '@e2edev/playwright';
@@ -253,30 +240,25 @@ export type FixtureDefinitions<Base, Extra> = {
 };
 ```
 
-`extend` returns a new `test`; the one it was called on is unchanged. The
-new object carries every definition of the chain, the parent's first, and
-every test, setup test, or hook registered through it records that chain.
-A definition is typed against the fixtures of the `test` it extends, not its
-siblings in the same call. A fixture that needs another fixture goes in a
-chained second `extend`: `base.extend({ a }).extend({ b })` gives `b` a
-fixture object that already has `a`.
+`extend` returns a new `test`; the one it was called on is unchanged. A
+definition is typed against the fixtures of the `test` it extends, not its
+siblings in the same call. A fixture that needs another goes in a chained
+second `extend`: `base.extend({ a }).extend({ b })` gives `b` a fixture
+object that already has `a`.
 
-Timing, per attempt:
+Per attempt:
 
-1. The engine's fixtures exist. Each definition runs in declaration order,
-   with the fixtures defined so far, until it calls `use`. Setup counts
-   against the test `timeout` and a failure is reported in phase
+1. Each definition runs in declaration order until it calls `use`. Setup
+   counts against the test `timeout`; a failure is reported in phase
    `beforeEach`, before any `beforeEach` hook has run.
-2. `beforeEach` hooks, then the body, then `afterEach` hooks, all with the
-   same fixture object. The fixture set is decided by the test's own chain:
-   a hook registered through `base` that wraps a test registered through
-   `test` sees `workspace` too, and a hook that reads `workspace` around a
-   test registered through `base` fails with `UNSUPPORTED_CAPABILITY`.
-3. `use` resolves. The continuation of each definition runs in reverse
-   order, after the last `afterEach`, whether or not the body passed. Each
-   teardown has its own `cleanupTimeout` budget like an `afterEach` hook; an
-   error there fails a passing attempt in phase `afterEach` and joins
-   `secondaryErrors` after a body failure.
+2. `beforeEach` hooks, the body, then `afterEach` hooks run with the same
+   fixture object. The fixture set is the test's own chain: a hook that reads
+   `workspace` around a test registered through `base` fails with
+   `UNSUPPORTED_CAPABILITY`.
+3. Teardowns run in reverse order after the last `afterEach`, whether or not
+   the body passed, each with its own `cleanupTimeout` budget. An error there
+   fails a passing attempt in phase `afterEach` and joins `secondaryErrors`
+   after a body failure.
 
 What fails, and where:
 
@@ -289,12 +271,10 @@ What fails, and where:
 | A definition that throws before `use` | The attempt, in `beforeEach`, with that error |
 | A definition that throws after `use` | The attempt, in `afterEach`, with that error |
 
-A body or hook that hits the test `timeout` is abandoned, not cancelled:
-teardown starts while it may still be running, as with `afterEach`. A
-fixture whose setup was abandoned the same way has no teardown to run yet;
-if it reaches `use` later, `use` resolves at once (there is no attempt to
-hand the value to) and the code after it runs detached from the run, so what
-the setup allocated is still released.
+A body or hook that hits the test `timeout` is abandoned, not cancelled, so
+teardown starts while it may still be running. A setup abandoned this way
+that reaches `use` later gets an immediate resolve, and its teardown runs
+detached from the run, so what it allocated is still released.
 
 ## Function types
 
@@ -318,10 +298,3 @@ export interface TestCase {
   readonly [testCaseBrand]: true;
 }
 ```
-
-<CardGroup cols={2}>
-  <Card title="Writing tests" icon="pen-to-square" href="/writing-tests" />
-  <Card title="expect" icon="circle-check" href="/reference/expect" />
-  <Card title="Signing in" icon="key" href="/authentication" />
-  <Card title="Errors" icon="triangle-exclamation" href="/reference/errors" />
-</CardGroup>

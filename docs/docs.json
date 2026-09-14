@@ -194,6 +194,10 @@
     {
       "source": "/reference/backend",
       "destination": "/reference/engine"
+    },
+    {
+      "source": "/reference/app-web",
+      "destination": "/reference/app"
     }
   ]
 }

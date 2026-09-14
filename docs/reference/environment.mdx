@@ -3,33 +3,17 @@ title: Environment variables
 description: Every variable the runner and the first-party engines read, and what each one does.
 ---
 
-The runner reads a closed set of variables. This page lists all of them, from
-an inventory of every `process.env` and `env[...]` read in `e2e`,
-`@e2edev/playwright`, `@e2edev/agent-device`, and `@e2edev/github`. A
-variable not listed here has no effect on a run.
-
-Almost every read goes through an `env` object the runner is handed once, at
-config load. The exceptions are called out below.
-
-Two readings recur. A **value** counts when it is set and not blank. A **flag**
-is on when it is set and not blank, `0`, or `false`; the value is trimmed and
-lowercased first, so `FALSE` is off and `no` and `off` are on.
+The runner and the first-party packages read the variables below and no
+others. A **value** counts when it is set and not blank. A **flag** is on
+when it is set and not blank, `0`, or `false`, case-insensitive.
 
 ## Model
 
-| Variable | Reading | Effect |
-| --- | --- | --- |
-The runner reads no model variable. The model is an AI SDK instance your
-config constructs, and the provider package behind it reads its own
-credential: `gateway()` from `ai` reads `AI_GATEWAY_API_KEY`, `openrouter()`
-from `@openrouter/ai-sdk-provider` reads `OPENROUTER_API_KEY`, `openai()`
-from `@ai-sdk/openai` reads `OPENAI_API_KEY`, and so on. Those reads happen
-in your config module and the provider, on the first model call, not in the
-runner; a missing model is `MODEL_UNAVAILABLE` when `agent` is first acquired,
-and a missing key is the provider's own error on the first agent step. See
+The runner reads no model variable. The provider package behind your model
+instance reads its own key: `gateway()` reads `AI_GATEWAY_API_KEY`,
+`openrouter()` reads `OPENROUTER_API_KEY`, `openai()` reads `OPENAI_API_KEY`.
+A missing key is the provider's own error on the first agent step. See
 [Choosing a model](/models).
-
-The order is spelled out under [Resolution order](/reference/config#resolution-order).
 
 ## Credentials and secrets
 
@@ -39,10 +23,10 @@ The order is spelled out under [Resolution order](/reference/config#resolution-o
 | `E2E_USER_<NAME>_PASSWORD` | set | Replaces `credentials.<name>.password` |
 | `E2E_SECRET_<NAME>` | set | Replaces the value of `secrets.<name>` |
 
-`<NAME>` is the credential or secret name uppercased with every character
-outside `A-Z0-9` replaced by `_`. A variable for a name absent from the config
-is ignored. These are read as set-or-unset, so an empty string is a value, and
-an empty value is `INVALID_CONFIG`.
+`<NAME>` is the name uppercased with every character outside `A-Z0-9`
+replaced by `_`, so `power-user` becomes `E2E_USER_POWER_USER_USERNAME`. A
+variable for a name absent from the config is ignored. An empty value is
+`INVALID_CONFIG`.
 
 ## Run mode
 
@@ -71,9 +55,8 @@ an empty value is `INVALID_CONFIG`.
 | `XDG_CONFIG_HOME` | value | Directory of the preferences file, `$XDG_CONFIG_HOME/e2e`; default `~/.config/e2e` |
 | `APPDATA` | value | The same on Windows, `%APPDATA%\e2e`; default `~/AppData/Roaming/e2e` |
 
-Telemetry also inspects, without reading a value, the presence of the markers
-CI vendors and coding agents set, to attribute a run to a vendor or an agent
-rather than a person. Only the derived name is sent.
+Telemetry also checks for the markers CI vendors and coding agents set. Only
+the derived name is sent.
 
 | Markers | Reported as |
 | --- | --- |
@@ -102,20 +85,12 @@ What is sent and how to read it is on the [Telemetry](/telemetry) page.
 
 | Variable | Reading | Effect |
 | --- | --- | --- |
-| `PLAYWRIGHT_BROWSERS_PATH` | value | Playwright's browser cache. The engine's `prepare` hook checks for the browser in-process only when the run's environment agrees with the process's own; otherwise it defers to the `playwright install` CLI, which is a no-op when nothing is missing |
-| `E2E_AGENT_DEVICE_POOL_<TARGET>_<digest>` | value | Written by `@e2edev/agent-device` in `prepare` and read back by each worker: the booted devices discovered for the target, so each worker slot resumes the device booted for it. Not meant to be set by hand |
+| `PLAYWRIGHT_BROWSERS_PATH` | value | Playwright's browser cache, honored by the engine's `prepare` hook |
+| `E2E_AGENT_DEVICE_POOL_<TARGET>_<digest>` | value | Written by `@e2edev/agent-device` in `prepare` and read by each worker to find its booted device. Not meant to be set by hand |
 
 ## What app processes inherit
 
-An app `command` or `service` does not inherit the runner's environment. The
-child receives `PATH`, `HOME`, `TMPDIR`, `TMP`, `TEMP`, `SystemRoot`, and
-`COMSPEC` from `process.env`, plus whatever `command.env` sets. `APP_URL`,
-which the scaffolded config reads for `playwright({ url })`, is read by your
-config module, not by the runner; pass it to a dev server through
-`command.env` if the server needs it too.
-
-<CardGroup cols={2}>
-  <Card title="Config" icon="sliders" href="/reference/config" />
-  <Card title="CLI" icon="terminal" href="/reference/cli" />
-  <Card title="Telemetry" icon="chart-line" href="/telemetry" />
-</CardGroup>
+An app `command` or `service` receives `PATH`, `HOME`, `TMPDIR`, `TMP`,
+`TEMP`, `SystemRoot`, and `COMSPEC`, plus whatever `command.env` sets.
+`APP_URL` is read by the scaffolded config module, not the runner; pass it
+through `command.env` if the dev server needs it too.

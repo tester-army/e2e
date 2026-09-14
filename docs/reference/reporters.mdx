@@ -4,13 +4,11 @@ description: Reporter objects in `reporters`, what they receive, and what the ru
 ---
 
 `reporters` takes the built-in ids (`list`, `json`, `junit`, `markdown`; see
-[CLI output](/reference/cli#output)) and reporter objects. Both are the same
-thing: each id names a `Reporter` the runner ships, on the contract below, and
-a reporter object is one you supply. A reporter is how a run's outcome leaves
-the machine: it sees every run event as it happens and receives the finished
-run, report and artifact locations included, once the summary has printed. It
-is a live config value, so it lives in `e2e.config.ts`, never on the command
-line.
+[CLI output](/reference/cli#output)) and reporter objects. Each id names a
+`Reporter` the runner ships on the contract below. A reporter sees every run
+event as it happens and receives the finished run, report and artifact paths
+included, after the summary has printed. It lives in `e2e.config.ts`, never
+on the command line.
 
 ```ts
 import type { E2EConfig, Reporter } from 'e2e';
@@ -57,32 +55,23 @@ type ReporterSummary = readonly { label: string; text: string }[];
 ```
 
 `Reporter`, `FinishedRun`, `ReporterSummary`, `Report`, `RunEvent`, and
-`RunEventOf` are on the main entrypoint beside `ArtifactStore`, so an inline
-reporter in `e2e.config.ts` types its handlers from one import.
+`RunEventOf` are exported from the main entrypoint.
 
 The built-in `junit` reporter is the smallest complete example: it reads
 `run.report`, writes `junit.xml` beside `run.reportPath`, and returns one row
-naming the file relative to `run.projectRoot`. `markdown` does the same with
-`summary.md`, through `renderMarkdownReport(report, options)`, which the main
-entrypoint exports so a reporter of your own can post the same page elsewhere:
-`artifactsUrl` links the evidence to a run page, `artifactsDir` lists it as
-paths under that directory instead, and `sourceUrl` links each failing line.
-`@e2edev/github` is that reporter: it renders the page once, writes it to the
-job summary, and posts it with a marker comment prepended. `json` is an
-`onRunFinished` that writes the document to stdout; `list` is an `onEvent`.
-[`@e2edev/github`](/github) is a reporter package on the same contract; it
-comments on the pull request from GitHub Actions.
+naming the file. `markdown` does the same with `summary.md` through
+`renderMarkdownReport(report, options)`, also exported, so your own reporter
+can post the same page elsewhere. [`@e2edev/github`](/github) is that
+reporter for GitHub Actions.
 
-A name and at least one handler are required; the resolver rejects anything
-else with `INVALID_CONFIG`.
+A name and at least one handler are required; anything else is
+`INVALID_CONFIG`.
 
 ## The event stream
 
-`onEvent` receives every lifecycle fact as plain JSON data, the same records
-the report persists, streamed while the run is going. It is exactly the feed
-the `list` reporter renders, so a reporter can never see a different story
-than the terminal. Each event carries a `seq` stamped by the run's single
-writer and an ISO `at` timestamp.
+`onEvent` receives every lifecycle fact as plain JSON, the same records the
+report persists, streamed while the run is going. It is the feed the `list`
+reporter renders. Each event carries a `seq` and an ISO `at` timestamp.
 
 ```ts
 type RunEventFact =
@@ -101,53 +90,35 @@ type RunEventFact =
   | { type: 'run-finished'; status; exitCode; reportPath?; aiTracePath? };
 ```
 
-`explore` appears only in an `e2e explore` run: `started` as its test begins,
-`planning` while the model decides the next charter, `step-started`
-and `step-finished` around each exploration step, `finding` the moment one is
-reported, and `finished` with why the exploration ended and the assessment.
-The record of all of it is `run.explore` in the report.
+`explore` appears only in an `e2e explore` run: `started`, `planning`,
+`step-started`, `step-finished`, `finding`, and `finished`. The record of all
+of it is `run.explore` in the report.
 
-New event types are added over time, as `explore` was; a reporter handles the
-types it knows and ignores the rest, so a `switch` over `event.type` leaves
-its `default` branch empty rather than treating it as unreachable.
+New event types are added over time. Handle the types you know and ignore
+the rest; leave the `default` branch of a `switch` empty.
 
-`run-started` comes first and `run-finished` last. `test-finished` carries
-the full result record, including every attempt's artifacts, so a reporter
-that uploads evidence as it lands has what it needs before the run is over.
-A pair is a test on a target run as one configured agent: `test-started`,
-`step`, and the result all carry `agent`, and a test pinned to several
-agents starts and finishes once per agent, so key running state by test id,
-target, and agent together. `run-started` lists `agents` when the run names
-any besides `default` alone.
-The values the runner handles as secrets (filled credentials, provider keys)
-are redacted before events are built. An error message is only sanitized of
-control characters: what a test puts in one is the test's own, so a reporter
-treats error text as untrusted, the way the terminal does.
+`run-started` comes first and `run-finished` last. `test-finished` carries the
+full result record, including every attempt's artifacts. A test pinned to
+several agents starts and finishes once per agent, so key running state by
+test id, target, and agent together. Secrets are redacted before events are
+built. Error messages are only stripped of control characters; treat them as
+untrusted.
 
-`onEvent` must not block and must not throw: a throw quarantines the reporter
-for the rest of the run, and the run is never affected. Work that takes time
-belongs in `onRunFinished`.
+`onEvent` must not block and must not throw. A throw quarantines the reporter
+for the rest of the run. Slow work belongs in `onRunFinished`.
 
 ## The finished run
 
-`onRunFinished` runs last, after `report.json` is written and after the
-`list` summary has printed, so nothing reading the terminal waits on an
-upload. Every reporter's `onRunFinished` runs at once, the built-in ones
-included, so the `json` document reaches stdout without waiting on anyone.
-Each is awaited for one minute; one that takes longer is abandoned with a line
-on stderr, and the run ends with its own exit code. A reporter that throws is
-the same one line, and so is one that resolves with anything other than rows.
-A graceful interrupt (one Ctrl-C) still runs the reporters, since a cut-short
-run is often the one worth uploading; a forced interrupt (a second Ctrl-C)
-abandons them at once. Nothing a reporter does can change the run's status,
-its exit code, or its report: a `junit.xml` that could not be written is a
-stderr line, not a run error.
+`onRunFinished` runs after `report.json` is written and the `list` summary
+has printed. Every reporter's `onRunFinished` runs at once. Each is awaited
+for one minute; one that takes longer, throws, or resolves with anything
+other than rows is a line on stderr. A graceful interrupt (one Ctrl-C) still
+runs the reporters; a forced one (a second Ctrl-C) abandons them. Nothing a
+reporter does can change the run's status, exit code, or report.
 
-The second argument of `onRunFinished` is an `AbortSignal` that aborts when
-the budget runs out or the run is forced to stop. Hand it to every request
-and timer: an abandoned reporter that ignores it keeps running in the
-runner's process, and any handle it holds open keeps the CLI alive after the
-run has ended.
+The second argument is an `AbortSignal` that aborts when the budget runs out
+or the run is forced to stop. Hand it to every request and timer, or an
+abandoned reporter keeps the CLI alive after the run has ended.
 
 The rows a reporter resolves with print under the `list` summary in the same
 layout as `Report`; the `json` reporter does not carry them:
@@ -163,27 +134,20 @@ layout as `Report`; the `json` reporter does not carry them:
       Results  https://example.test/runs/0192c…
 ```
 
-Artifact paths in the report are POSIX paths relative to `artifactsRoot`;
-`path.join(run.artifactsRoot, artifact.path)` is the file. `path`, `size`, and
-`sha256` are all optional on an artifact record: an artifact whose file never
-appeared, or that a redaction withheld, is recorded without them, so a reporter
-checks for `path` before reading and can use `sha256` to skip bytes the other
-side already has.
+Artifact paths in the report are POSIX paths relative to `artifactsRoot`.
+`path`, `size`, and `sha256` are optional: an artifact whose file never
+appeared, or that a redaction withheld, is recorded without them. Check for
+`path` before reading.
 
 ## What `--reporter` does to reporter objects
 
-Nothing. `e2e run --reporter list,junit` replaces the built-in ids only: a
-reporter object has no id to name on the command line, so a CI flag choosing
-the terminal output never drops the upload the config asked for. A config
-whose `reporters` holds only objects prints nothing to the terminal, the same
-as `reporters: ['junit']`.
+Nothing. `--reporter` replaces the built-in ids only. A config whose
+`reporters` holds only objects prints nothing to the terminal.
 
 ## Where a reporter runs
 
-In the runner's process only. Workers load the config module too and so
-construct their own copy of every reporter object, but never call it:
-constructing a reporter must have no side effects, and anything it needs
-(a token from the environment, say) is read inside its handlers. Reporter
-objects never enter the config digest, and reporters are no part of a
+In the runner's process only. Workers construct their own copy of every
+reporter object but never call it, so constructing one must have no side
+effects; read tokens inside the handlers. Reporters are no part of a
 [trace cache key](/cache#what-must-match), so adding one leaves every
 recording valid.

@@ -3,10 +3,9 @@ title: screen and Locator
 description: Queries, refinement, actions, and reads.
 ---
 
-`screen` builds lazy queries. A `Locator` is a query expression, not a node:
-nothing resolves until an action, read, or assertion runs. `Locator extends
-Screen`, so every query method is also available on a locator and is scoped to
-its subtree.
+A `Locator` is a query expression, not a node; nothing resolves until an
+action, read, or assertion runs. `Locator extends Screen`, so every query
+method is also available on a locator, scoped to its subtree.
 
 ```ts
 export interface Screen {
@@ -24,10 +23,8 @@ export interface Screen {
 }
 ```
 
-An action, read, or assertion requires exactly one match; two matches fail
-immediately with `LOCATOR_AMBIGUOUS`. Reads do not retry for a value: they
-resolve once and read once, so use [`expect`](/reference/expect) when you need
-to wait for a value to change.
+An action, read, or assertion requires exactly one match. Reads resolve once
+and read once; use [`expect`](/reference/expect) to wait for a value.
 
 | Operation | Zero matches | Multiple matches |
 | --- | --- | --- |
@@ -59,22 +56,18 @@ screen.getByTestId('todo-3');
 
 ### Echoed text
 
-`getByText` answers with the innermost matching node. A node whose match is
-also matched by one of its descendants is not returned, so a container that
-echoes its child's text counts once. Browsers behave this way natively; on a
-device the engine applies the same rule, because iOS reports a React Native
-`Text` as a host view and a `StaticText` child carrying the same label, and a
-plain view inherits the labels of its children. Two matches that do not contain
-each other, such as the same text on two pages, remain `LOCATOR_AMBIGUOUS`.
+`getByText` answers with the innermost matching node, so a container that
+echoes its child's text counts once. Browsers do this natively; on a device
+the engine applies the same rule, since iOS reports a React Native `Text` as
+a host view plus a `StaticText` child with the same label. Two matches that
+do not contain each other remain `LOCATOR_AMBIGUOUS`.
 
 ### Hidden duplicates
 
-Every query accepts `visible: true`, which drops nodes the platform reports as
-hidden before the exactly-one rule runs. Frameworks routinely keep a hidden
-copy of content in the document: a prerendered segment that lingers after
-`web.reload()`, a closed drawer, an inactive tab panel. Without `visible`, both
-copies match and the query fails with `LOCATOR_AMBIGUOUS` even though only one
-is on screen.
+Every query accepts `visible: true`, which drops nodes the platform reports
+as hidden before the exactly-one rule runs. Frameworks often keep a hidden
+copy of content in the document, such as a closed drawer or an inactive tab
+panel, and without `visible` both copies match.
 
 ```ts
 await web.reload();
@@ -84,13 +77,10 @@ await screen.getByPlaceholder('Search memory...', { visible: true }).fill('launc
 await screen.getByTestId('memory-list', { visible: true }).getByRole('listitem').first().tap();
 ```
 
-The predicate is the one `toBeVisible()`, `isVisible()`, and `waitFor()` read,
-so a node that resolves with `visible: true` is one they accept. It composes
-with scopes, `filter`, `first`, `last`, and `nth`: `getByText('Save', { visible:
-true }).first()` is the first visible match, not the first match. Omitted or
-`false` keeps every node, so existing `LOCATOR_AMBIGUOUS` failures still fire.
-Prefer it over a platform selector such as `web.locator('p:visible')`, which
-ties the test to CSS and to one engine.
+The predicate is the one `toBeVisible()`, `isVisible()`, and `waitFor()`
+read. It composes with scopes, `filter`, `first`, `last`, and `nth`:
+`getByText('Save', { visible: true }).first()` is the first visible match.
+Prefer it over `web.locator('p:visible')`, which ties the test to CSS.
 
 ## Refinement
 
@@ -113,13 +103,10 @@ await row.getByRole('button', { name: 'Void' }).tap();
 ```
 
 <Note>
-In the `@e2edev/playwright` engine a `getByDisplayValue` locator supports
-`filter`, `first`, `last`, `nth`, actions, and assertions like any other query.
-Two compositions stay unsupported and fail with `UNSUPPORTED_CAPABILITY`: using
-it as the scope of a child query (`getByDisplayValue(v).getByRole(...)`) and
-passing it as a `has` filter. Playwright has no selector for a control's current
-value, so the engine reads the candidates and filters afterwards; those two
-shapes would need the value check inside Playwright's own locator chain.
+In the Playwright engine a `getByDisplayValue` locator cannot be the scope
+of a child query or a `has` filter; both fail with `UNSUPPORTED_CAPABILITY`.
+Playwright has no selector for a control's current value, so the engine
+filters candidates after the fact.
 </Note>
 
 ## screen.swipe
@@ -128,10 +115,9 @@ shapes would need the value check inside Playwright's own locator chain.
 swipe(options: SwipeOptions): Promise<void>;
 ```
 
-Viewport-level gesture. `direction` is required, `momentum` optional. Uses
-`config.actionTimeout`. Throws `ACTION_FAILED` when the gesture is rejected,
-and `UNSUPPORTED_CAPABILITY` on a target whose engine does not list `swipe`
-in its actions.
+Viewport-level gesture. Uses `config.actionTimeout`. Throws `ACTION_FAILED`
+when the gesture is rejected and `UNSUPPORTED_CAPABILITY` when the engine
+does not list `swipe` in its actions.
 
 ## screen.scrollUntilVisible
 
@@ -157,9 +143,9 @@ await screen.scrollUntilVisible(screen.getByRole('button', { name: 'Accept' }));
 
 ## Locator actions
 
-Each action resolves exactly one node, waits for actionability inside its
-deadline, and performs one operation. Default timeout `config.actionTimeout`,
-30000 ms, overridable with `{ timeout }`.
+Each action resolves one node, waits for actionability, and performs one
+operation. Default timeout `config.actionTimeout`, 30000 ms, overridable
+with `{ timeout }`.
 
 | Method | Signature |
 | --- | --- |
@@ -180,30 +166,24 @@ deadline, and performs one operation. Default timeout `config.actionTimeout`,
 | `scrollIntoView` | `scrollIntoView(options?: ActionOptions): Promise<void>` |
 | `swipe` | `swipe(options: SwipeOptions & ActionOptions): Promise<void>` |
 
-- Every action is available only on a target whose engine lists its kind
-  in `actions`; otherwise it throws `UNSUPPORTED_CAPABILITY` before reaching
-  the engine. The engine references list what each one honors.
+- An action whose kind the engine does not list in `actions` throws
+  `UNSUPPORTED_CAPABILITY` before reaching the engine.
 - `click` is an alias of `tap`.
-- `longPress` `duration` is milliseconds, default 500, integer 100 through 10000. Out of
-  range throws `INVALID_ARGUMENT`.
-- `press` takes one key in the grammar every engine shares: zero or more
-  modifiers (`Shift`, `Control`, `Alt`, `Meta`, `ControlOrMeta`) and one key,
-  joined with `+`. The key is a named key (`Enter`, `Escape`, `Tab`,
-  `Backspace`, `Delete`, `Insert`, `Space`, `ArrowUp`, `ArrowDown`,
-  `ArrowLeft`, `ArrowRight`, `Home`, `End`, `PageUp`, `PageDown`, `F1` to
-  `F12`) or one printable character typed as itself. `Control+a`,
-  `Shift+Tab`, `Enter`, `$`; `Shift++` presses `+`. `ControlOrMeta` is
-  Control on Windows and Linux, Meta on macOS. A key the platform lacks
-  throws `UNSUPPORTED_CAPABILITY`; see the
-  [key grammar](/reference/engine#keys).
+- `longPress` `duration` is milliseconds, default 500, integer 100 through
+  10000.
+- `press` takes zero or more modifiers (`Shift`, `Control`, `Alt`, `Meta`,
+  `ControlOrMeta`) and one key, joined with `+`: a named key (`Enter`,
+  `Escape`, `Tab`, `Backspace`, `Delete`, `Insert`, `Space`, the arrows,
+  `Home`, `End`, `PageUp`, `PageDown`, `F1` to `F12`) or one printable
+  character. `Shift++` presses `+`. A key the platform lacks throws
+  `UNSUPPORTED_CAPABILITY`. See the [key grammar](/reference/engine#keys).
 - `fill` replaces the current content. A `Secret` is resolved on the host
-  immediately before the call and never logged, reported, or sent to a model.
-- `setInputFiles` needs one or more non-empty paths, resolved from the project
-  root. An empty list or blank entry throws `INVALID_ARGUMENT`.
-- `dragTo` resolves the target first. A non-runner target throws
-  `INVALID_LOCATOR`.
-- An action that may already have committed surfaces as `ACTION_FAILED` rather
-  than being repeated.
+  right before the call and never logged, reported, or sent to a model.
+- `setInputFiles` paths resolve from the project root. An empty list or blank
+  entry throws `INVALID_ARGUMENT`.
+- `dragTo` with a non-runner target throws `INVALID_LOCATOR`.
+- An action that may already have committed surfaces as `ACTION_FAILED` and
+  is never repeated.
 
 ```ts
 await screen.getByLabel('Email').fill('ada@example.test');
@@ -232,10 +212,8 @@ await screen.getByRole('textbox', { name: 'Notes' }).press('ControlOrMeta+a');
 `waitFor` defaults `state` to `'visible'` and `timeout` to
 `config.actionTimeout`, and throws `LOCATOR_NOT_FOUND` on timeout.
 
-`textContent`, `inputValue`, and `getAttribute` throw `POLICY_DENIED` on a node
-the platform reports as a secure field. `value` is never exposed on secure
-fields. `isEnabled`, `isChecked`, and `boundingBox` are allowed there because
-they expose no value.
+`textContent`, `inputValue`, and `getAttribute` throw `POLICY_DENIED` on a
+secure field. `isEnabled`, `isChecked`, and `boundingBox` are allowed there.
 
 ```ts
 if (await screen.getByRole('alert').isVisible()) {
@@ -333,19 +311,10 @@ export type Momentum = 'none' | 'slow' | 'fast';
 String matching is exact by default. `exact: false` is case-insensitive
 substring matching. A `RegExp` ignores `exact`.
 
-A role query never matches a node hidden from the accessibility tree, on every
-engine. `visible` applies the same rule to the other query kinds, so
-`getByText` or `getByLabel` can drop a hidden twin too. See
+A role query never matches a node hidden from the accessibility tree.
+`visible` applies the same rule to the other query kinds. See
 [Hidden duplicates](#hidden-duplicates).
 
 `SelectOption`: a bare string is the option label. The object form names one of
 `label`, `value` (the option's `value` attribute, what the form submits), or
 `index`, never two.
-
-<CardGroup cols={2}>
-  <Card title="Writing tests" icon="pen-to-square" href="/writing-tests" />
-  <Card title="expect" icon="circle-check" href="/reference/expect" />
-  <Card title="app" icon="window-maximize" href="/reference/app" />
-  <Card title="Playwright" icon="masks-theater" href="/reference/playwright" />
-  <Card title="agent" icon="wand-magic-sparkles" href="/reference/agent" />
-</CardGroup>

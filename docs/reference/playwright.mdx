@@ -7,12 +7,9 @@ description: The browser engine, its options, and the web fixture it contributes
 A web target names it as its engine, and it contributes the `web` fixture for
 browser-only work. Import `test` from the package to have `web` typed.
 
-Bring your own Playwright: the package declares `playwright` as a peer
-dependency (`>=1.63.0 <2`) and does not install it. An app that already depends
-on Playwright keeps its version, one copy in `node_modules`, and one browser
-cache; `e2e init` adds `playwright` only to a project that has none. A version
-outside the range may be rejected by your package manager as an unmet peer
-(npm's `ERESOLVE`), so upgrade `playwright` within the range.
+The package declares `playwright` as a peer dependency (`>=1.63.0 <2`) and
+does not install it. An app that already depends on Playwright keeps its
+version; `e2e init` adds `playwright` only to a project that has none.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -36,9 +33,9 @@ browser choices:
 | `browser` | `'chromium' \| 'firefox' \| 'webkit'` | `'chromium'` | The browser to launch. |
 | `viewport` | `{ width, height }` | `1280` by `720` | Initial viewport of every attempt's page. |
 | `testIdAttribute` | `string` | `'data-testid'` | The attribute whose value is a node's `testId`, read by `screen.getByTestId` and the agent's observation. `playwright({ testIdAttribute: 'data-cy' })` for a Cypress-style app. |
-| `connect` | `PlaywrightConnectOptions` | unset | Attach to a remote browser over CDP instead of launching locally. Chromium only. `cdpEndpoint(signal)` resolves the DevTools URL; it is called once per worker and again when a session drops. |
-| `headers` | `Record<string, string>` | unset | HTTP headers added to every request bound for the [app's site](/reference/config#the-apps-site) and to none other. Names are case-insensitive. Routes every request through the runner, which turns the browser's HTTP cache off and blocks service workers for the target. A trace records request headers. |
-| `basicAuth` | `{ username, password }` | unset | Answers a `401` challenge from any origin, as Playwright's own `httpCredentials` does. `:` is not allowed in the user name. |
+| `connect` | `PlaywrightConnectOptions` | unset | Attach to a remote browser over CDP instead of launching locally. Chromium only. `cdpEndpoint(signal)` is called once per worker and again when a session drops. |
+| `headers` | `Record<string, string>` | unset | HTTP headers added to every request bound for the [app's site](/reference/config#the-apps-site) and no other host. Routes every request through the runner, which turns the browser's HTTP cache off and blocks service workers. |
+| `basicAuth` | `{ username, password }` | unset | Answers a `401` challenge from any origin. `:` is not allowed in the user name. |
 
 `headers` and `basicAuth` are how a test reaches a [protected preview](/starting-your-app#protected-previews).
 
@@ -105,11 +102,9 @@ export interface Web extends Expectable<WebExpectation> {
 | `waitForURL` | `config.assertionTimeout`, 5000 ms |
 | `url`, `title`, `evaluate`, `route`, `unroute`, `cookies`, `setCookies`, `setViewport`, `onDialog`, `keyboard.*`, `mouse.*` | `config.actionTimeout`, 30000 ms, not overridable |
 
-Every `web` call is a recorded `web.<method>` step. A relative URL or a URL
-match needs the engine's declared `url`; without it the call fails with
-`APP_URL_REQUIRED`. Declare `requires: ['web']` in a suite that also runs on
-other platforms; acquiring `web` on a target whose engine does not contribute
-it fails with `UNSUPPORTED_CAPABILITY`.
+Every `web` call is a recorded `web.<method>` step. A relative URL needs the
+engine's declared `url`, else `APP_URL_REQUIRED`. Declare `requires: ['web']`
+in a suite that also runs on other platforms.
 
 ### Navigation
 
@@ -132,8 +127,8 @@ await web.waitForURL(/\/orders\/\d+$/, { timeout: 15_000 });
 
 | Method | Returns | Notes |
 | --- | --- | --- |
-| `locator(selector)` | `Locator` | Web-only CSS or XPath locator, synchronous. Prefer semantic `screen` queries; a raw selector is not portable. Throws `INVALID_LOCATOR` for an empty selector. |
-| `frameLocator(selector)` | `Screen` | Query scope inside one iframe. You query inside it, you do not act on it. At resolve time it throws `LOCATOR_NOT_FOUND` for a missing frame and `LOCATOR_AMBIGUOUS` for several. |
+| `locator(selector)` | `Locator` | CSS or XPath locator. Not portable; prefer `screen` queries. Throws `INVALID_LOCATOR` for an empty selector. |
+| `frameLocator(selector)` | `Screen` | Query scope inside one iframe. Throws `LOCATOR_NOT_FOUND` for a missing frame and `LOCATOR_AMBIGUOUS` for several. |
 
 ```ts
 const payment = web.frameLocator('#payment-frame');
@@ -142,15 +137,13 @@ await payment.getByLabel('Card number').fill('4242424242424242');
 
 ### evaluate
 
-Both overloads serialize the function and run it in the page, so it cannot
-close over test-scope variables. Pass data through `arg`. Both `arg` and the
-return value must be `JsonValue`; anything else, including a non-finite
-number, throws `INVALID_ARGUMENT`.
+The function is serialized and run in the page, so it cannot close over
+test-scope variables; pass data through `arg`. Both `arg` and the return
+value must be `JsonValue`, else `INVALID_ARGUMENT`.
 
-Exceptions thrown by the evaluated code fail the test with `EVALUATE_FAILED`
-and preserve the message. A Playwright timeout is reported as
-`ACTION_FAILED`; page or browser closure, crashes, and lost execution
-contexts are `ENGINE_FAILURE`.
+An exception in the evaluated code is `EVALUATE_FAILED` with its message. A
+Playwright timeout is `ACTION_FAILED`; a closed page or lost context is
+`ENGINE_FAILURE`.
 
 ```ts
 const count = await web.evaluate(() => document.querySelectorAll('li').length);
@@ -164,9 +157,9 @@ const flag = await web.evaluate(
 
 | Method | Behavior | Throws |
 | --- | --- | --- |
-| `route(pattern, handler)` | Registers an attempt-scoped route. It may be registered before the first page opens and stays in force across `app.restart()`, `app.clearState()`, and session restore. The handler must decide exactly once with `fulfill`, `continue`, or `abort`. | `ACTION_FAILED` when the handler decides twice, or returns without deciding |
-| `unroute(pattern)` | Removes every attempt-scoped route registered with a matching pattern | |
-| `waitForResponse(pattern, options?)` | Resolves with a `WebResponse` whose `json()` and `text()` decode the buffered body | `ACTION_FAILED` when nothing matches inside the deadline |
+| `route(pattern, handler)` | Registers an attempt-scoped route that survives `app.restart()`, `app.clearState()`, and session restore. The handler must decide exactly once with `fulfill`, `continue`, or `abort`. | `ACTION_FAILED` when the handler decides twice or not at all |
+| `unroute(pattern)` | Removes every route registered with a matching pattern | |
+| `waitForResponse(pattern, options?)` | Resolves with a `WebResponse` | `ACTION_FAILED` when nothing matches inside the deadline |
 
 ```ts
 await web.route('**/api/quote', async (route) => {
@@ -215,8 +208,8 @@ empty body.
 
 | Method | Behavior | Throws |
 | --- | --- | --- |
-| `cookies()` | Returns a mutable array copy of the cookies visible to the current context | |
-| `setCookies(cookies)` | Validates every cookie's target origin before setting any. For the `domain` form the scheme follows the base URL and a leading `.` is stripped. | `POLICY_DENIED` for an unparseable target or a forbidden scheme; nothing is set when any entry is rejected |
+| `cookies()` | The cookies visible to the current context | |
+| `setCookies(cookies)` | Validates every cookie before setting any. For the `domain` form the scheme follows the base URL and a leading `.` is stripped. | `POLICY_DENIED` for an unparseable target or a forbidden scheme; nothing is set when any entry is rejected |
 | `setViewport(size)` | Resizes the viewport and records the new size on the report | |
 
 ```ts
@@ -247,8 +240,8 @@ await web.setCookies([{ url: 'http://localhost:3000', name: 'tz', value: 'UTC' }
 
 | Method | Behavior | Throws |
 | --- | --- | --- |
-| `onDialog(handler)` | Registers an attempt-scoped handler and returns an idempotent unsubscribe function. Removed automatically at attempt end. A function handler must call `accept` or `dismiss`; one that returns without deciding has the dialog dismissed and fails the next step with `APP_NOT_OPEN`, as an unhandled dialog does. | |
-| `waitForDownload(trigger, options?)` | Starts a download watch, runs `trigger`, waits for completion inside the same deadline, and registers the file as a `download` artifact. A failure in `trigger` keeps its own error. | `ACTION_FAILED` when the download does not complete in time |
+| `onDialog(handler)` | Registers an attempt-scoped handler and returns an unsubscribe function. A function handler must call `accept` or `dismiss`; one that does neither has the dialog dismissed and fails the next step with `APP_NOT_OPEN`. | |
+| `waitForDownload(trigger, options?)` | Runs `trigger`, waits for the download, and registers the file as a `download` artifact. | `ACTION_FAILED` when the download does not complete in time |
 
 ```ts
 export interface Dialog {
@@ -279,9 +272,9 @@ const file = await web.waitForDownload(() =>
 | `mouse.down()` | Presses the primary button |
 | `mouse.up()` | Releases the primary button |
 
-Both namespaces are viewport-level and unfocused. Prefer `locator.press` and
-`locator.fill` when a target exists. `keyboard.type` takes plain text only;
-use `locator.fill` with a `Secret` for secret material.
+Both namespaces are viewport-level. Prefer `locator.press` and
+`locator.fill` when a target exists. `keyboard.type` takes plain text only,
+never a `Secret`.
 
 ### JsonValue
 
@@ -317,14 +310,7 @@ live!.context();                  // its BrowserContext
 ```
 
 `surfaceOf(handle)` returns the `PlaywrightLiveSurface` behind a handle this
-package created, or `undefined` for any other handle. Both accessors throw
-`INVALID_STATE` before an attempt is running or a page is open. It exists for a [custom executor](/executors#driving-the-page-yourself)
-that brings its own browser tooling; what it does there is not recorded as
-steps.
-
-<CardGroup cols={2}>
-  <Card title="app" icon="window-maximize" href="/reference/app" />
-  <Card title="screen and Locator" icon="crosshairs" href="/reference/screen" />
-  <Card title="expect" icon="circle-check" href="/reference/expect" />
-  <Card title="Starting your app" icon="play" href="/starting-your-app" />
-</CardGroup>
+package created, or `undefined`. Both accessors throw `INVALID_STATE` before
+an attempt is running. It exists for a
+[custom executor](/executors#driving-the-page-yourself) that brings its own
+browser tooling; what it does there is not recorded as steps.

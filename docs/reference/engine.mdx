@@ -3,9 +3,9 @@ title: e2e/engine
 description: The engine contract a target's surface implements, and the fixture context it contributes through.
 ---
 
-`e2e/engine` is the authoring import for an engine. `defineEngine` validates
-the body synchronously at config load, freezes it, computes its capability set,
-and returns the branded handle a target accepts.
+`e2e/engine` is the authoring import for an engine. `defineEngine`
+validates the body at config load, freezes it, computes its capability set,
+and returns the handle a target accepts.
 
 ```ts
 import { defineEngine, type EngineHandle } from 'e2e/engine';
@@ -14,28 +14,30 @@ export function defineEngine(spec: Engine): EngineHandle;
 export function isEngineHandle(value: unknown): value is EngineHandle;
 ```
 
-An engine drives one user interface: a browser, a simulator, a desktop shell,
-a TV. The contract it implements is platform-neutral vocabulary (semantic
-nodes, locator expressions, action kinds, an error taxonomy) and never a
-platform noun; the one exception is the `platform` label. The world around
-the UI (an inbox, an API, a database, a clock) is not an engine's to model.
-It enters a test as a fixture through `test.extend`.
+An engine drives one user interface: a browser, a simulator, a desktop shell.
+The contract is platform-neutral vocabulary (semantic nodes, locator
+expressions, action kinds, an error taxonomy). The world around the UI (an
+inbox, an API, a database) is not an engine's to model; it enters a test as a
+fixture through `test.extend`.
 
-Validation fails with `INVALID_CONFIG`, never a silent demotion: a missing or
-empty `version`, a `spiVersion` other than `1`, an unknown top-level key on
-an object literal (a class instance's own fields are its state and are not
-checked), `perform`, `locate`, or `tapAt` without `observe`, `perform`
-without `actions` or `actions` without `perform`, an `actions` list that is
-empty, repeats a kind, or names one outside `LOCATOR_ACTION_KINDS`, a
-`state`, `artifacts`, or `session` manifest that is not an object, carries an
-unknown key, or has a non-function member (`state` needs both `capture` and
-`restore`; `artifacts` needs `screenshot`, and `startTrace`/`stopTrace` come
-together, as do `startVideo`/`stopVideo`), an `app` declaration that carries
-an unknown key or a function (hooks belong on `session`), or a fixture name
-that is not a lower-camel identifier or shadows a universal fixture (`agent`,
-`app`, `screen`, `platform`, `session`). Every function on the handle is bound
-to the spec it came from, so a class instance is as valid a body as an object
-literal.
+Validation fails with `INVALID_CONFIG` for:
+
+- a missing or empty `version`, or a `spiVersion` other than `1`;
+- an unknown top-level key on an object literal (a class instance's own
+  fields are not checked);
+- `perform`, `locate`, or `tapAt` without `observe`;
+- `perform` without `actions` or the reverse; an `actions` list that is
+  empty, repeats a kind, or names one outside `LOCATOR_ACTION_KINDS`;
+- a `state`, `artifacts`, or `session` manifest with an unknown key or a
+  non-function member. `state` needs both `capture` and `restore`;
+  `artifacts` needs `screenshot`; `startTrace`/`stopTrace` and
+  `startVideo`/`stopVideo` come in pairs;
+- an `app` declaration with an unknown key or a function;
+- a fixture name that is not a lower-camel identifier or shadows `agent`,
+  `app`, `screen`, `platform`, or `session`.
+
+Every function on the handle is bound to the spec it came from, so a class
+instance is as valid a body as an object literal.
 
 ## Engine
 
@@ -66,28 +68,19 @@ export interface Engine {
 }
 ```
 
-`version` is required and non-empty. It is recorded as provenance in the report
-and is part of the trace cache identity: an engine that resolves nodes
-differently must never replay another version's traces.
+`version` is recorded in the report and is part of the trace cache identity,
+so an engine that resolves nodes differently never replays another version's
+traces. `spiVersion` is `1`; additive optional members never bump it.
 
-`spiVersion` is the contract version literal, `1`. Additive optional members
-never bump it; changed required semantics do.
+`platform` labels what the engine drives. The runner recognizes `web`, `ios`,
+and `android` for platform-scoped tool packs and reporting; any other label
+is the engine's own. A target that names a platform must agree with it.
 
-`platform` labels what the engine drives, and its target inherits the label.
-The harness recognizes `web`, `ios`, and `android` for platform-scoped tool
-packs and reporting; any other label is the engine's own and is treated as
-unknown. No member's shape
-depends on it. A target that names a platform of its own must agree with it.
-
-Every surface call carries an `OperationContext`: the abort signal, the
-remaining budget, the run and attempt ids, and `origin`, who is acting.
-`'test'` is a test's own deterministic step, `'agent'` the agent acting on a
-screen it observed. A step verifies its outcome with `expect`, so an engine
-may act as soon as the target holds still; the agent reads the screen right
-after acting, so an engine may let the transition end first. A replayed trace
-action is marked `'test'` too: no model reads after it. The device engine uses
-this to tap without settling for tests and replays, and to settle for the
-agent.
+Every call carries an `OperationContext`. `origin` says who is acting:
+`'test'` for a deterministic step or a trace replay, `'agent'` for the model
+acting on a screen it observed. An engine may act at once for `'test'`, since
+`expect` verifies the outcome, and let a transition end first for `'agent'`,
+since the model reads the screen right after.
 
 ```ts
 export interface OperationContext {
@@ -100,10 +93,8 @@ export interface OperationContext {
 }
 ```
 
-`workers` bounds how many workers the engine serves per target at once: one
-per surface it can drive concurrently, such as the size of a device pool. The
-scheduler never starts more for that target, whatever `config.workers`
-allows; an engine without such a bound omits it.
+`workers` caps the workers per target, such as the size of a device pool. The
+scheduler never starts more for that target, whatever `config.workers` says.
 
 | Member | Capability | Requires | Unlocks |
 | --- | --- | --- | --- |
@@ -117,17 +108,12 @@ allows; an engine without such a bound omits it.
 | `app` | - | - | data only: the app under test, its origin policy, identity, and process |
 | `session` | - | - | `app.open()` and the agent's `navigate` verb (`open`), `app.back()` (`back`), `app.restart()` (`restart`), `app.clearState()` (`reset`) |
 
-The agent offers the model only what the engine declares, and it reads the
-declaration from `actions`: `tap` needs the `tap` kind, `type` and
-`type_secret` need `fill`, `press` needs `press`, `select` needs
-`selectOption`, `scroll` needs `swipe` (a viewport scroll is `perform` on the
-observation root with `{ kind: 'swipe' }`, a scroll aimed at a node is the
-same action on that node); `navigate` needs `session.open`; `tap_at` needs
-`tap` or `tapAt`. A `tap_at` whose point lands on nothing listed reaches
-`tapAt`; without it, the tool reports that this engine taps listed nodes
-only. An undeclared verb is absent from the toolset rather than a runtime
-surprise, and a `screen`/`Locator` method for an undeclared kind fails with
-`UNSUPPORTED_CAPABILITY` before reaching the engine.
+The agent offers the model only what `actions` declares: `tap` needs the
+`tap` kind, `type` and `type_secret` need `fill`, `press` needs `press`,
+`select` needs `selectOption`, `scroll` needs `swipe`, `navigate` needs
+`session.open`, `tap_at` needs `tap` or `tapAt`. An undeclared verb is absent
+from the toolset, and a `screen`/`Locator` method for an undeclared kind
+fails with `UNSUPPORTED_CAPABILITY` before reaching the engine.
 
 `engine.capabilities` is the computed `ReadonlySet` of capability names and is
 what selection, the report, and `UNSUPPORTED_CAPABILITY` messages read.
@@ -142,8 +128,8 @@ export type EngineCapability =
 
 | Hook | When | Budget |
 | --- | --- | --- |
-| `prepare(info)` | once per run and target, in the runner process, after collection and before any worker starts: install a browser engine, fetch a toolchain, boot the devices of the `info.slots` worker slots the run will use. Progress reported through `info.log` streams as `notice` run events, which the list reporter prints above its live status block. `plan` is emitted, the report's `startedAt` taken, and the app started only once every target is prepared, so nothing done here is on the run's clock | none; only `info.signal` (the run's interrupt) cuts it short, so a first-run download is never charged against `launchTimeout`; failure is infrastructure and ends the run before any test |
-| `init(info)` | once per worker, before the first attempt; runs again after `dispose` when a config-held handle outlives an in-process worker, so it must work on a disposed engine as on a fresh one | `launchTimeout`; `info.signal` aborts on interrupt or timeout; failure is infrastructure |
+| `prepare(info)` | once per run and target, in the runner process, before any worker starts: install a browser, boot the devices for `info.slots` worker slots. Lines passed to `info.log` print as `notice` events. The run's clock starts after every target is prepared | none; only `info.signal` (the run's interrupt) cuts it short; failure ends the run before any test |
+| `init(info)` | once per worker, before the first attempt; runs again after `dispose` when the handle outlives an in-process worker | `launchTimeout`; failure is infrastructure |
 | `startAttempt(context)` | before every attempt; `context.artifactsDir` is where artifacts go | `launchTimeout`; on failure or timeout `context.signal` aborts and `endAttempt` runs |
 | `endAttempt(context)` | after every attempt, idempotent, and safe after a failed `startAttempt` | `cleanupTimeout`; `context.signal` aborts when the budget is spent; failure marks cleanup failed, the test keeps its status |
 | `dispose(context)` | worker shutdown, whether or not `init` ran | `cleanupTimeout`; `context.signal` aborts when the budget is spent; failure is a run error |
@@ -199,20 +185,14 @@ export interface EngineCleanupContext {
 }
 ```
 
-`prepare` receives the run's environment as a plain readonly string record,
-not `process.env`: a host may hand the run an environment other than the
-runner process's own, so anything provisioned there that a worker later
-looks up by environment (a browser cache location) is resolved against
-`info.env`.
+`prepare` and `init` receive the run's environment as `info.env`, not
+`process.env`; a host may hand the run a different environment.
 
-`init` never learns where the app is. `EngineInitInfo.app` carries only the
-origin policy the harness resolved from the engine's declaration, for the
-decisions only a surface can make: which nested documents enter an
-observation, which requests carry injected credentials. Navigation and its
-URLs stay with the harness and arrive through `session.open`. `projectRoot` is
-the config file's directory, or the run's `cwd` for a programmatic config; an
-engine option naming a file (a build to install) resolves there, never
-against `process.cwd()`.
+`init` never learns the app URL. `EngineInitInfo.app` carries the site only,
+for the two decisions an engine makes with it: which nested documents enter
+an observation, and which requests carry injected headers. URLs arrive through
+`session.open`. File options resolve against `projectRoot`, never
+`process.cwd()`.
 
 ## Observation
 
@@ -231,29 +211,23 @@ export interface EngineObserveOptions {
 }
 ```
 
-Return the surface as it is right now. The harness mints the revision, stamps it
-onto every ref, redacts registered secret values, bounds the byte size, and
+Return the surface as it is right now. The runner mints the revision, stamps
+it onto every ref, redacts registered secret values, bounds the byte size, and
 checks that `maskedRegionCount` covers every `secure` node when `pixels` are
 present.
 
-`root` is the observation tree under one root the engine minted. The root's
-id MUST be stable for the surface across observations: `perform(root, { kind:
-'swipe' })` is the viewport swipe, and the harness addresses it from an
-earlier observation. A platform with several top-level elements (a device's
-windows) wraps them in a root of its own. A pixels-only snapshot (a root with
-no children plus `pixels`) is valid: that is how a screenshot-and-coordinates
-surface is observable.
+The root's id must be stable across observations: `perform(root, { kind:
+'swipe' })` is the viewport swipe, addressed from an earlier observation. A
+platform with several top-level elements wraps them in a root of its own. A
+pixels-only snapshot (a childless root plus `pixels`) is valid.
 
-`location` is where the surface is, as an opaque address the platform
-understands: a URL on a document platform, the foreground screen or activity
-on a device, the front window on a desktop. The harness shows it to the model
-and to the report, anchors trace replay on it, and applies the origin policy
-to it only when it parses as a URL. Omit it when the platform has no notion
-of a current location. There is no separate location probe: the harness reads
-it from a fresh observation whenever a policy decision needs one.
+`location` is an opaque address: a URL on a document platform, the foreground
+screen on a device, the front window on a desktop. The runner shows it to the
+model and the report and anchors trace replay on it. Omit it when the platform
+has no current location.
 
-`viewport` is required: it is the space `SemanticNode.rect` and
-`ViewportPoint` are measured in.
+`viewport` is the space `SemanticNode.rect` and `ViewportPoint` are measured
+in.
 
 ## Actions
 
@@ -274,40 +248,30 @@ export type LocatorActionKind = LocatorAction['kind'];
 export const LOCATOR_ACTION_KINDS: readonly LocatorActionKind[]; // tap, doubleTap, longPress, fill, clear, press, check, uncheck, focus, hover, scrollIntoView, selectOption, setInputFiles, dragTo, swipe
 ```
 
-`perform(ref, action, context)` performs exactly one action on a ref this
-engine minted, from the newest observation or from `locate` (both live in one
-id space), with the platform's actionability checks. The agent's grammar verbs
-and the `screen` tier's actions both bottom out here, so a surface implements
-each action once. Throw a retryable `NODE_STALE` when the ref no longer binds
-and `ACTION_MAY_HAVE_COMMITTED` when input may have reached the app; the harness
-never blindly repeats an uncertain mutation.
+`perform(ref, action, context)` performs one action on a ref this engine
+minted, from the newest observation or from `locate`, with the platform's
+actionability checks. The agent's verbs and the `screen` actions both end
+here. Throw a retryable `NODE_STALE` when the ref no longer binds and
+`ACTION_MAY_HAVE_COMMITTED` when input may have reached the app; the runner
+never repeats an uncertain mutation.
 
-`actions` is required with `perform`: the action kinds the surface honors, a
-non-empty list drawn from `LOCATOR_ACTION_KINDS`, each once. The harness
-offers the agent and the `screen` tier exactly these. A kind left out is
-never presented as a tool that can only decline, and `screen`/`Locator`
-methods for it fail with `UNSUPPORTED_CAPABILITY` before reaching the engine.
-`perform` still throws `UNSUPPORTED_CAPABILITY` for a declared kind one
-particular node cannot take (a `check` on a toggle whose state is unknown).
+`actions` lists the kinds the engine honors, drawn from
+`LOCATOR_ACTION_KINDS`, each once. `perform` may still throw
+`UNSUPPORTED_CAPABILITY` for a declared kind one node cannot take (a `check`
+on a toggle whose state is unknown).
 
-A `swipe` on the observation root is the viewport swipe. The agent's `scroll`
-verb and `screen.swipe()` both arrive as `perform(root, swipe)`, so a surface
-implements scrolling once; the same action on any other node scrolls within
-that node.
+A `swipe` on the observation root is the viewport swipe; on any other node it
+scrolls within that node.
 
-`tapAt(point, context)` is the one action addressed by a point rather than a
-node: a `ViewportPoint` in the CSS pixels of `SemanticNode.rect`, already
-clamped to the viewport by the harness, which the agent's `tap_at` reads off
-the observation's pixels (divided by `ObservationPixels.scale`) when the tree
-lists nothing at the target. Dispatch the pointer at the point as given; there
-is no element to wait on.
+`tapAt(point, context)` is the one action addressed by a point: a
+`ViewportPoint` in the CSS pixels of `SemanticNode.rect`, already clamped to
+the viewport. Dispatch the pointer as given; there is no element to wait on.
 
 The grammar is closed. Anything beyond it is an agent-side `defineTool`.
 
 ### Keys
 
-`press` takes one key in a grammar shared by every engine, so a test's key
-names are portable: zero or more modifiers and one key, joined by `+`.
+`press` takes zero or more modifiers and one key, joined by `+`.
 
 ```ts
 export type Key = string;
@@ -333,19 +297,14 @@ export function parseKey(key: string): ParsedKey | undefined;
 | Named keys | those in `KEY_NAMES`: `Enter`, `Escape`, `Tab`, `Backspace`, `Delete`, `Insert`, `Space`, `ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`, `Home`, `End`, `PageUp`, `PageDown`, `F1` to `F12` |
 | Characters | any single printable character (`a`, `A`, `1`, `$`), typed as itself |
 
-`Control+a`, `Shift+Tab`, `Enter`, and `$` are keys. A literal `+` is the
-character after the last separator, so `Shift++` presses `+` with Shift held.
-`parseKey` is the one parser, exported so no engine carries its own; it
-returns `undefined` for a spelling outside the grammar (an unknown name, a
-repeated modifier, a bare modifier, several characters). A platform without a
-key maps it or throws `UNSUPPORTED_CAPABILITY`; it never reinterprets the
-spelling.
+`Shift++` presses `+` with Shift held. `parseKey` returns `undefined` for a
+spelling outside the grammar. A platform without a key throws
+`UNSUPPORTED_CAPABILITY`; it never reinterprets the spelling.
 
 ## App
 
-`app` is the app under test, as data. It declares what the engine knows about
-the app and nothing about how to steer it: every member is a fact, and a
-function here is `INVALID_CONFIG`.
+`app` declares what the engine knows about the app under test. Every member
+is data; a function here is `INVALID_CONFIG`.
 
 ```ts
 export interface EngineAppDeclaration {
@@ -358,24 +317,19 @@ export interface EngineAppDeclaration {
 }
 ```
 
-The declaration is the engine's to make and the runner's to enforce: a
-browser engine passes its `url` and `command` options through, a device
-engine declares the bundle id it pins as `identity`. The runner resolves it
-once per target at config load (invalid values fail naming the target) and
-owns everything built on it: the app's site (the URL's registrable domain,
-where a browser engine's headers may go), cache and session identity (`identity`
-defaults to the URL's origin and path; a surface without a URL declares one
-or keys entries on the target alone), the report's target record, and the
-app process (`command`, polled at `readyUrl`, default `url`; targets
-declaring the same command share one process). Every field is documented
-under [the app under test](/reference/config#the-app-under-test); the resolved
-The site of the app's `url` comes back to the engine as `EngineInitInfo.app.site`, and `sameSite`
-from `e2e/engine` applies it to a URL; the URL itself never does.
+A browser engine passes its `url` and `command` options through; a device
+engine declares the bundle id it pins as `identity`. The runner resolves the
+declaration once per target at config load and owns everything built on it:
+the app's site, cache and session identity, the report's target record, and
+the app process. Every field is documented under
+[the app under test](/reference/config#the-app-under-test). The site comes
+back to the engine as `EngineInitInfo.app.site`; `sameSite` from
+`e2e/engine` applies it to a URL.
 
 ## Session
 
-`session` holds the steering hooks behind the universal `app` fixture and the
-agent's `navigate` verb. Node actions never live here; they are `perform`.
+`session` holds the hooks behind the `app` fixture and the agent's `navigate`
+verb. Node actions are `perform`, never here.
 
 ```ts
 export interface EngineSession {
@@ -397,14 +351,10 @@ export interface EngineSession {
 | `restart()` | `app.restart()` | `app.restart()` fails with `UNSUPPORTED_CAPABILITY` |
 | `reset()` | `app.clearState()` | `app.clearState()` fails with `UNSUPPORTED_CAPABILITY` |
 
-`open` receives a URL the harness already resolved; a surface never resolves
-a path itself. `restart` and `reset` open nothing: they
-end at a fresh surface with no location shown, and the harness reopens the
-app through `open` when the target has an address. A surface therefore never
-needs to know the app's URL, and an unreachable app after a restart is
-reported the same way as on first open. A surface without `open` (a device
-with a pinned app) relaunches the app inside `restart` and `reset` itself,
-since nothing else will.
+`open` receives a URL the runner already resolved. `restart` and `reset` end
+at a blank surface; the runner reopens the app through `open` when the target
+has a URL. An engine without `open` (a device with a pinned app) relaunches
+the app inside `restart` and `reset` itself.
 
 ## Errors
 
@@ -435,12 +385,11 @@ export type EngineErrorCode =
 | `INVALID_STATE` | `APP_NOT_OPEN` | no |
 | `ENGINE_FAILURE`, any non-`EngineError` | infrastructure `ENGINE_FAILURE` | no |
 
-Retryability is closed to `RETRYABLE_ENGINE_ERROR_CODES`, the two
-repeatable-read codes; a retryable claim on any other code is coerced to a
-non-retryable `ENGINE_FAILURE`.
+A retryable claim on any code outside `RETRYABLE_ENGINE_ERROR_CODES` is
+coerced to a non-retryable `ENGINE_FAILURE`.
 
-A contributed fixture method fails a step with the runner's own taxonomy,
-exported from the same entry so an engine never carries a copy:
+A contributed fixture method fails a step with the runner's own error
+classes, exported from the same entry:
 
 ```ts
 export class TestError extends Error {}            // a test failure: ASSERTION_FAILED, INVALID_LOCATOR, ACTION_FAILED, ...
@@ -450,19 +399,16 @@ export class InfrastructureError extends Error {}  // the surface itself failed:
 
 ## Shared semantics
 
-What the spec requires every engine and fixture to reproduce exactly is
-exported rather than re-implemented per engine:
+Behavior every engine must reproduce exactly is exported rather than
+re-implemented per engine:
 
-| Export | Spec | Use |
-| --- | --- | --- |
-| `matchesText(actual, pattern)`, `toTextPattern(match, { exact? })`, `describePattern(pattern)` | 04-locators | `TextPattern` matching for `locate` and text matchers |
-| `urlMatches(current, expected, baseHref)` | 03-assertions | `toHaveURL`-style comparison: relative strings resolve against the base, regexps test the serialized URL |
-| `pollCondition({ deadline, signal, negated, evaluate, onTimeout })`, `Deadline` | 03-assertions | Assertion polling cadence and the negation grace window |
-| `validateJsonValue(value, label)` | 04-locators | Rejects non-JSON data (`undefined`, `NaN`, cycles) a fixture would return |
-
-Beyond these and the four utilities described under Contributed fixtures
-(`obj`, `raceAbort`, `withTimeout`, `withinCleanupBudget`) there is no shared
-entry: anything else an engine needs is its own to write.
+| Export | Use |
+| --- | --- |
+| `matchesText(actual, pattern)`, `toTextPattern(match, { exact? })`, `describePattern(pattern)` | `TextPattern` matching for `locate` and text matchers |
+| `urlMatches(current, expected, baseHref)` | `toHaveURL`-style comparison |
+| `pollCondition({ deadline, signal, negated, evaluate, onTimeout })`, `Deadline` | Assertion polling and the negation grace window |
+| `validateJsonValue(value, label)` | Rejects `undefined`, `NaN`, and cycles in a value a fixture returns |
+| `obj`, `raceAbort`, `withTimeout`, `withinCleanupBudget` | See [Contributed fixtures](#contributed-fixtures) |
 
 ## State
 
@@ -480,11 +426,10 @@ export interface EngineStateCapability {
 }
 ```
 
-A snapshot is a credential. The harness encrypts it at rest with a per-run
-AES-256-GCM key, binds it to run, target, engine, and app identity, deletes it
-at run end, and never logs, reports, digests, or sends it to a model. An engine
-must not persist, cache, log, or echo a snapshot, and `restore` replaces the
-surface's persisted state rather than merging into it.
+A snapshot is a credential. The runner encrypts it at rest with a per-run
+AES-256-GCM key, binds it to run, target, engine, and app identity, and
+deletes it at run end. An engine must not persist, log, or echo a snapshot.
+`restore` replaces the persisted state rather than merging into it.
 
 ## Artifacts
 
@@ -505,34 +450,20 @@ export interface VideoSegment {
 }
 ```
 
-Every returned path is relative to the `artifactsDir` the engine received in
-`startAttempt`. `screenshot` masks secure fields at the source. `startTrace`
-and `stopTrace` are declared together or not at all, and so are `startVideo`
-and `stopVideo`.
+Every returned path is relative to the `artifactsDir` of `startAttempt`.
+`screenshot` masks secure fields at the source.
 
-The harness starts the video, then the trace, right after `startAttempt` (and
-after a session restore), under the launch budget, and stops them before
-`endAttempt`, under the cleanup budget. The video comes first because a
-surface that records both through one screencast sizes it for whichever
-client came first, and the recording is the one a person watches: the browser
-engine opens the attempt's page when the video starts, so the trace that
-follows records its frames at the recording's size. `stopVideo` returns every
-segment written, in order, each with the instant it started recording, so a
-consumer can place the report's step timestamps on it. A surface whose
-recording is bound to a page returns one segment per page the attempt showed
-(a restart or a state reset opens a new one), and an attempt that never showed
-anything returns none. `stopTrace` returns the trace's path, or every archive
-written in order when the trace had to be cut: a browser trace is bound to one
-context, so replacing the context closes the running trace as a segment and a
-new one records on from there (in the Playwright engine a state reset always
-replaces the context; a restart does so only while a recording is armed). The
-harness registers each returned archive once it is safe to keep: when a secret
-was filled in the attempt, every text entry of each archive is rewritten
-through the secret redactor first, and if that fails the archives are deleted
-and the attempt records `TRACE_WITHHELD` instead (see
-[authentication](/authentication)). Recordings are the one
-artifact the harness cannot vouch for: it records them with
-`redaction: 'incomplete'`, since a screencast masks nothing.
+The runner starts the video, then the trace, right after `startAttempt` (and
+after a session restore) under the launch budget, and stops them before
+`endAttempt` under the cleanup budget. Video comes first so an engine that
+records both through one screencast sizes it for the recording a person
+watches. `stopVideo` returns every segment in order, one per page the
+attempt showed. `stopTrace` returns the trace's path, or every archive in
+order when the trace had to be cut because the context was replaced. When a
+secret was filled in the attempt, every text entry of each archive is
+rewritten through the secret redactor; if that fails the archives are deleted
+and the attempt records `TRACE_WITHHELD`. Recordings mask nothing and are
+recorded with `redaction: 'incomplete'`.
 
 ## Contributed fixtures
 
@@ -554,48 +485,35 @@ export interface EngineFixtureContext {
 }
 ```
 
-Use `context.fixture(name, surface, operations)` to declare which methods are
-recorded. Each operation specifies `kind: 'resource' | 'assertion'`, an
-optional safe `label(...args)`, an optional `timeout` (milliseconds, a function
-of the arguments, or `false` when the method owns its deadline), and optional
+`context.fixture(name, surface, operations)` declares which methods are
+recorded steps. Each operation names a `kind: 'resource' | 'assertion'`, an
+optional `label(...args)`, an optional `timeout` (milliseconds, a function of
+the arguments, or `false` when the method owns its deadline), and optional
 `verifies`. The default timeout is `actionTimeout`; assertions verify by
-default. Passing verification steps confirm earlier staged action traces.
-Nested operation maps describe namespaces. Undeclared synchronous accessors
-retain their identity. Recording decorates the supplied fixture object in place,
-preserving mutable fields, private-field receivers, and namespace accessors.
-Create a fresh fixture surface in each factory invocation; declared methods and
-namespace properties must allow replacement.
+default. Nested maps describe namespaces. Recording decorates the object in
+place, so create a fresh surface in each factory invocation.
 
-The harness opens the step before calling a declared method, so synchronous
-attachments, failures, and asynchronous work have the same owner. Events and
-artifacts remain attached to that operation across nested and overlapping
-calls. Work arriving after its step has closed cannot attach to a later step.
+The runner opens the step before calling a declared method, so attachments
+and failures from synchronous and asynchronous work land on the same step.
+Work arriving after its step has closed cannot attach to a later one.
 
 A factory must return the surface it declared through `context.fixture`; a
-plain, undeclared surface is rejected with `INVALID_CONFIG` the first time a
-test reaches for the fixture, because its methods would run engine code
-outside any recorded step.
+plain surface is `INVALID_CONFIG` the first time a test reaches for it.
 `expectable` attaches an expectation surface so `expect(fixture)` returns it;
-use `context.fixture('expect', matchers, operations)` in its factory to declare
-matcher recording. Type the fixture with `test.extend<{ name: Type }>()`.
+declare matcher recording with `context.fixture('expect', matchers,
+operations)`. Type the fixture with `test.extend<{ name: Type }>()`.
 
-`app.resolveUrl` resolves a navigation target against the base URL the harness
-owns; it throws `APP_URL_REQUIRED` when the engine declared no URL and
-`POLICY_DENIED` for a `file:`, `data:`, or `javascript:` URL. The fixture
-context, like `init`, never sees the base URL itself. `attachArtifact`
-registers a file the current step produced, by kind: `screenshot`, `trace`,
-`video`, `file` (anything the app handed the test, such as a download), or
-`log`.
+`app.resolveUrl` resolves a navigation target against the base URL the runner
+owns. It throws `APP_URL_REQUIRED` when the engine declared no URL and
+`POLICY_DENIED` for a `file:`, `data:`, or `javascript:` URL.
+`attachArtifact` registers a file the current step produced.
 
-The engine entrypoint also exports `obj(value)`, which drops
-`undefined`-valued keys and types them as absent optional properties, so a
-manifest or fixture result built from optional inputs satisfies exact optional
-property types without a conditional spread per key. It also exports `raceAbort(work, signal, label)`,
-`withTimeout(promise, timeoutMs, onTimeout)`, and
-`withinCleanupBudget(promise, { signal, timeoutMs })`. Pass a thunk to
-`raceAbort` to check cancellation before dispatch. Cleanup waiting absorbs
-failures and releases its listeners at cancellation or timeout; abandoning a
-wait does not stop an underlying command.
+The entrypoint also exports `obj(value)`, which drops `undefined`-valued keys
+so a result built from optional inputs satisfies exact optional property
+types, plus `raceAbort(work, signal, label)`, `withTimeout(promise,
+timeoutMs, onTimeout)`, and `withinCleanupBudget(promise, { signal,
+timeoutMs })`. Pass a thunk to `raceAbort` to check cancellation before
+dispatch.
 
 ## Vocabulary
 
@@ -604,11 +522,10 @@ wait does not stop an underlying command.
 `LocatorAction`, `LocatorActionKind`, `Key`, `KeyModifier`, `KeyName`,
 `ParsedKey`, `ENGINE_SPI_VERSION`, `LOCATOR_ACTION_KINDS`, `KEY_MODIFIERS`,
 `KEY_NAMES`, `parseKey`, `ENGINE_ERROR_CODES`, `RETRYABLE_ENGINE_ERROR_CODES`,
-`OBSERVED_NAME_LIMIT`, `OBSERVED_TEXT_LIMIT`, and the shared semantics above
-are exported from `e2e/engine` and are the platform-neutral words
-every engine speaks. The `selector` expression kind carries a platform-native
-selector string (CSS or XPath on a document platform, a predicate on a device
-platform); `frame` scopes a query into a nested document.
+`OBSERVED_NAME_LIMIT` and `OBSERVED_TEXT_LIMIT` are exported from
+`e2e/engine`. The `selector` expression kind carries a
+platform-native selector string; `frame` scopes a query into a nested
+document.
 
 ```ts
 export interface SemanticNode {
@@ -630,23 +547,17 @@ export interface SemanticNode {
 export type QueryKind = 'role' | 'label' | 'placeholder' | 'text' | 'displayValue' | 'testId';
 ```
 
-`testId` is the node's test id, when the platform gives it one: the value of
-the engine's test-id attribute on a document platform (`playwright({
-testIdAttribute })`, default `data-testid`), an accessibility identifier on
-iOS, a resource id on Android, an automation id on a desktop. The `testId`
-query and `screen.getByTestId` resolve against exactly this field, so the
-harness never knows where a platform keeps it.
+`testId` is the platform's test id: the engine's test-id attribute on a
+document platform, an accessibility identifier on iOS, a resource id on
+Android. `screen.getByTestId` resolves against this field.
 
-`rect` is the node's box in the top-level viewport's CSS pixels for every
-node, including those inside nested documents. `name` and `text` in an
-observation tree are cut at `OBSERVED_NAME_LIMIT` (256) and
-`OBSERVED_TEXT_LIMIT` (512); a value whose length reaches the limit was
-truncated there, every shorter value is complete, and single-node reads
+`rect` is the node's box in the top-level viewport's CSS pixels, including
+for nodes inside nested documents. `name` and `text` are cut at
+`OBSERVED_NAME_LIMIT` (256) and `OBSERVED_TEXT_LIMIT` (512); single-node reads
 carry the full value.
 
 A `SemanticQuery` with `visible: true` must match only nodes whose
-`states.hidden` is false, judged by the same predicate the engine reports on
-`SemanticNode`, so `getByText('x', { visible: true })` and `toBeVisible()` never
-disagree about a node. The harness drops hidden nodes from a top-level query as
-a backstop; only the engine can apply the predicate under a scope, filter, or
-index, so evaluate it wherever the query sits in the expression.
+`states.hidden` is false, by the same predicate the engine reports on
+`SemanticNode`, so `getByText('x', { visible: true })` and `toBeVisible()`
+never disagree. Apply it wherever the query sits in the expression, under a
+scope, filter, or index too.
