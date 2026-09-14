@@ -197,7 +197,7 @@
     },
     {
       "source": "/reference/app-web",
-      "destination": "/reference/app"
+      "destination": "/reference/playwright"
     }
   ]
 }

@@ -126,5 +126,6 @@ a code in that class today.
 ## Exit codes
 
 For a mixed run the highest-precedence code present wins, `130 > 4 > 3 > 2 >
-1 > 0`. The report keeps every individual result. A setup failure is a test
-failure and skips its dependents.
+1 > 0`. The report keeps every individual result. A setup assertion failure
+is a test failure and skips its dependents. Missing setup infrastructure keeps
+its configuration or infrastructure class.

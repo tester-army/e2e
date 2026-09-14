@@ -452,7 +452,8 @@ secret, and `CI` switches the defaults below.
 | Credential username and password | the `E2E_USER_*` variable, then the config value |
 
 A missing model is checked once per run, when the `agent` fixture is first
-acquired, and stops the run with exit 2.
+acquired, and stops the run with exit 2. A custom executor without a model
+skips the check; its judgment methods still need one.
 
 ### CI
 
