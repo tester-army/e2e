@@ -189,6 +189,9 @@ importers:
 
   packages/agent-device:
     dependencies:
+      agent-device:
+        specifier: 0.21.1
+        version: 0.21.1(ai@7.0.97(zod@4.6.1))
       pngjs:
         specifier: 7.0.0
         version: 7.0.0
@@ -202,9 +205,6 @@ importers:
       '@types/pngjs':
         specifier: 6.0.5
         version: 6.0.5
-      agent-device:
-        specifier: 0.21.1
-        version: 0.21.1(ai@7.0.97(zod@4.6.1))
       ai:
         specifier: 7.0.97
         version: 7.0.97(zod@4.6.1)
@@ -351,9 +351,6 @@ importers:
       '@types/react-dom':
         specifier: 19.3.0
         version: 19.3.0(@types/react@19.3.0)
-      agent-device:
-        specifier: 0.21.1
-        version: 0.21.1(ai@7.0.97(zod@4.6.1))
       ai:
         specifier: 7.0.97
         version: 7.0.97(zod@4.6.1)

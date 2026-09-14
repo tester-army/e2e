@@ -16,8 +16,6 @@ const collectModule = '../../dist/collect/collect.js';
 const { collect } = await import(collectModule) as typeof import('../../src/collect/collect.ts');
 const scaffoldModule = '../../dist/cli/init/scaffold.js';
 const { createScaffold } = await import(scaffoldModule) as typeof import('../../src/cli/init/scaffold.ts');
-const enginesModule = '../../dist/cli/init/engines.js';
-const { agentDeviceRange } = await import(enginesModule) as typeof import('../../src/cli/init/engines.ts');
 
 const execFileAsync = promisify(execFile);
 const PACKAGE_ROOT = fileURLToPath(new URL('../../', import.meta.url));
@@ -123,8 +121,9 @@ describe('initializing standalone projects', () => {
     expect(config.workers).toBe(1);
     expect(config.targets).toMatchObject([{ name: platform, platform, engine: { name: 'agent-device' } }]);
     expect(collection.tests.map((test) => test.title)).toEqual(['Settings opens']);
-    const recorded = JSON.parse(readFileSync(path.join(PACKAGE_ROOT, 'dist', 'cli', 'init', 'engine-versions.json'), 'utf8')) as Record<string, string>;
-    expect(Object.entries(scaffold.dependencies)).toContainEqual(['agent-device', agentDeviceRange(recorded['agent-device'])]);
+    // The engine installs agent-device itself; init writes the engine, never the driver.
+    expect(scaffold.dependencies).toHaveProperty('@e2edev/agent-device');
+    expect(scaffold.dependencies).not.toHaveProperty('agent-device');
   });
 
   it('runs the generated browser example against any page without a model key', async () => {
@@ -145,7 +144,7 @@ describe('initializing standalone projects', () => {
       const playwrightVersion = (JSON.parse(readFileSync(path.resolve(PACKAGE_ROOT, '..', 'playwright', 'package.json'), 'utf8')) as { version: string }).version;
       expect(manifest.devDependencies['@e2edev/playwright']).toBe(`^${playwrightVersion}`);
       const recorded = JSON.parse(readFileSync(path.join(PACKAGE_ROOT, 'dist', 'cli', 'init', 'engine-versions.json'), 'utf8')) as Record<string, string>;
-      expect(Object.keys(recorded).toSorted()).toEqual(['@e2edev/agent-device', '@e2edev/playwright', 'agent-device', 'playwright']);
+      expect(Object.keys(recorded).toSorted()).toEqual(['@e2edev/agent-device', '@e2edev/playwright', 'playwright']);
       expect(manifest.devDependencies.playwright).toBe(`^${recorded.playwright}`);
       expect(manifest.devDependencies.ai).toBe('^7.0.0');
       expect(manifest.scripts).toEqual({ 'test:e2e': 'e2e run' });

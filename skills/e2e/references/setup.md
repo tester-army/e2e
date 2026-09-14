@@ -14,10 +14,9 @@
   (npm's `ERESOLVE`); upgrade `playwright` within the range.
   Missing browsers download when the engine first boots. In CI install them
   up front: `npx playwright install chromium --with-deps`.
-- For mobile tests, `@e2edev/agent-device` plus `agent-device` (`0.21.x`),
-  likewise a peer dependency: a project that already drives devices with the
-  agent-device CLI keeps its version. The range pins the tested minor because
-  agent-device minors break; it moves with each engine release.
+- For mobile tests, `@e2edev/agent-device`. It installs the `agent-device`
+  it was built and tested against, pinned exactly because agent-device minors
+  break; the pin moves with each engine release.
 
 ## Scaffold
 

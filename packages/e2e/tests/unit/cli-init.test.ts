@@ -113,7 +113,7 @@ describe('e2e init', () => {
     expect(Object.keys(manifest.devDependencies)).toEqual([
       'e2e',
       ...(engine === 'playwright' ? ['@e2edev/playwright', 'playwright'] : []),
-      ...(device ? ['@e2edev/agent-device', 'agent-device'] : []),
+      ...(device ? ['@e2edev/agent-device'] : []),
       ...(ai ? ['ai', '@openrouter/ai-sdk-provider'] : []),
     ]);
     expect(manifest.devDependencies.ai).toBe(ai ? '^7.0.0' : undefined);

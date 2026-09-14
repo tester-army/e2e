@@ -55,21 +55,6 @@ export function playwrightRange(version: string | undefined): string {
   return version === undefined ? '^1' : `^${version}`;
 }
 
-/**
- * The range init writes for `agent-device`, which `@e2edev/agent-device` peers
- * on rather than installs, so a project that already drives devices with the
- * agent-device CLI keeps one copy and one set of sessions. agent-device is
- * 0.x and its minors break, so the range pins the minor the engine was built
- * and tested against; the build records that version, and each agent-device
- * minor moves the range with an engine release. From source, where nothing is
- * recorded, any 0.x will do.
- */
-export function agentDeviceRange(version: string | undefined): string {
-  if (version === undefined) return '0.x';
-  const [major = '0', minor = '0'] = version.split('.');
-  return `${major}.${minor}.x`;
-}
-
 /** Builds prompt choices and scaffolds with defaults for the machine running init. */
 export function getEnginePresets() {
   const ios = os.platform() === 'darwin';
@@ -109,7 +94,7 @@ test('app opens', async ({ app, web }) => {
       id: 'agent-device',
       label: 'Mobile (iOS/Android)',
       hint: 'agent-device',
-      dependencies: { ...engineDependency('@e2edev/agent-device'), 'agent-device': agentDeviceRange(ENGINE_VERSIONS?.['agent-device']) },
+      dependencies: engineDependency('@e2edev/agent-device'),
       imports: ["import { agentDevice } from '@e2edev/agent-device';"],
       config: ios
         ? `  // Replace Settings with your app's bundle id.

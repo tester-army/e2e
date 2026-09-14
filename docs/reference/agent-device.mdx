@@ -14,9 +14,9 @@ Choose **Mobile (iOS/Android)** in `e2e init` to add the package with a
 Settings example. iOS needs Xcode and a simulator; Android needs the Android
 SDK and an emulator.
 
-The package declares `agent-device` as a peer dependency (`0.21.x`) and does
-not install it. agent-device is 0.x and its minors break, so the range pins
-the minor the engine was tested against and moves with each engine release.
+The package installs the `agent-device` it was built and tested against,
+pinned exactly: agent-device is 0.x and its minors break, so the pin moves
+with each engine release. There is nothing else to add to your project.
 
 ## Engine
 
