@@ -689,6 +689,7 @@ export class TargetExecutor implements SerialHost {
     const redact = (text: string): string =>
       openSession === null ? text : sessionSecrecy(openSession, this.config.secrets).ledger.redact(text);
     const steps = new StepRecorder(attemptId, {
+      attempt: { id: shared?.attemptId ?? attemptId, index: attemptIndex },
       maxEventsPerStep: this.config.limits.maxEventsPerStep,
       projectRoot: this.config.projectRoot,
       redact,

@@ -75,6 +75,19 @@ declare const reporter: Reporter;
   onEvent: (event: RunEvent) => void event.seq,
   onRunFinished: async (run) => [{ label: 'Results', text: run.report.run.id }],
 }) satisfies Reporter;
+declare const runEvent: RunEvent;
+if (runEvent.type === 'step') {
+  runEvent.progress.identity?.attemptId satisfies string | undefined;
+  runEvent.progress.identity?.attemptIndex satisfies number | undefined;
+  runEvent.progress.identity?.stepId satisfies string | undefined;
+  runEvent.progress.identity?.stepIndex satisfies number | undefined;
+  if (runEvent.progress.phase === 'end') {
+    runEvent.progress.error?.code satisfies string | undefined;
+    runEvent.progress.explanation satisfies string | undefined;
+  }
+  // @ts-expect-error only the end phase carries the step error
+  runEvent.progress.error;
+}
 // @ts-expect-error a reporter has a name
 ({ onRunFinished: async () => undefined }) satisfies Reporter;
 // @ts-expect-error reporter ids are a closed union
@@ -200,7 +213,6 @@ declare const report: Report;
 report.run.explore satisfies { goal: string; findings: readonly { severity: 1 | 2 | 3 | 4 | 5; artifactId?: string | undefined }[] } | undefined;
 
 // An explore run's events narrow to the exploration's progress.
-declare const runEvent: RunEvent;
 if (runEvent.type === 'explore') {
   runEvent.progress.phase satisfies 'started' | 'planning' | 'step-started' | 'step-finished' | 'finding' | 'finished';
   if (runEvent.progress.phase === 'finding') runEvent.progress.finding.severity satisfies 1 | 2 | 3 | 4 | 5;

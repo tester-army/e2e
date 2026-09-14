@@ -13,6 +13,8 @@ import { credentials } from '../../src/index.ts';
 import {
   createProject,
   runExisting,
+  runProjectWithConfigFile,
+  workerConfigSource,
   type FixtureProject,
   type RunOutcome,
 } from '../helpers/run-project.ts';
@@ -136,6 +138,98 @@ describe('run events', () => {
     expect(finished.exitCode).toBe(outcome.exitCode);
     expect(finished.reportPath).toBe(outcome.reportPath);
   });
+});
+
+describe('run events: attempt and step identity', () => {
+  it.each(['in-process', 'workers'] as const)('joins retries and serial members to their report records through %s', async (execution) => {
+    const app = await startFixtureApp();
+    const events: RunEvent[] = [];
+    const files = {
+      'tests/retry.e2e.ts': `import { test } from 'e2e';
+test('retry', { retries: 1 }, async ({ app, agent }) => {
+  await app.open();
+  await agent.act('retry me');
+});`,
+      'tests/serial.e2e.ts': `import { test } from 'e2e';
+test.describe('group', { serial: true, retries: 1 }, () => {
+  test('first', async ({ app, agent }) => {
+    await app.open();
+    await agent.act('pass');
+  });
+  test('second', async ({ agent }) => { await agent.act('retry me'); });
+});`,
+    };
+    const executor: StepExecutor = {
+      name: 'retry-once',
+      async runStep(context) {
+        return context.step.instruction === 'retry me' && context.attempt.index === 0
+          ? { status: 'failed', summary: 'first attempt fails' }
+          : { status: 'passed', summary: 'recovered' };
+      },
+    };
+    let project: FixtureProject | undefined;
+    try {
+      let outcome: RunOutcome;
+      const runOptions = { onEvent: (event: RunEvent) => { events.push(event); } };
+      if (execution === 'workers') {
+        const result = await runProjectWithConfigFile(files, {
+          appUrl: app.url,
+          configSource: workerConfigSource(2, `
+  cache: 'off',
+  agents: { default: {
+    name: 'retry-once',
+    async runStep(context) {
+      return context.step.instruction === 'retry me' && context.attempt.index === 0
+        ? { status: 'failed', summary: 'first attempt fails' }
+        : { status: 'passed', summary: 'recovered' };
+    },
+  } },`),
+          runOptions,
+        });
+        project = result.project;
+        outcome = result.outcome;
+      } else {
+        project = createProject(files);
+        outcome = await runExisting(project, {
+          appUrl: app.url,
+          config: { cache: 'off', agents: { default: executor } },
+          runOptions,
+        });
+      }
+      expect(outcome.status).toBe('passed');
+      const ordinary = outcome.report.run.results.find((result) => result.serialGroupId === undefined)!;
+      const group = outcome.report.run.serialGroups[0]!;
+      expect(ordinary.status).toBe('flaky');
+      expect(group.status).toBe('flaky');
+      expect(ordinary.attempts.map((attempt) => attempt.index)).toEqual([0, 1]);
+      expect(group.attempts.map((attempt) => attempt.index)).toEqual([0, 1]);
+      const records = [
+        ...ordinary.attempts.flatMap((attempt) => attempt.steps.map((step) => ({ attempt, step, testId: ordinary.testId }))),
+        ...group.attempts.flatMap((attempt) => attempt.members.flatMap((member) =>
+          member.steps.map((step) => ({ attempt, step, testId: member.testId })))),
+      ];
+      const stepEvents = events.filter((event) => event.type === 'step');
+      expect(stepEvents.filter((event) => event.progress.phase === 'start')).toHaveLength(records.length);
+      expect(stepEvents.filter((event) => event.progress.phase === 'end')).toHaveLength(records.length);
+      for (const event of stepEvents) {
+        const record = records.find(({ step }) => step.id === event.progress.identity?.stepId);
+        expect(record, JSON.stringify(event)).toBeDefined();
+        const { attempt, step, testId } = record!;
+        expect(event.testId).toBe(testId);
+        expect(event.progress.identity).toEqual({
+          attemptId: attempt.id, attemptIndex: attempt.index, stepId: step.id, stepIndex: step.index,
+        });
+        if (event.progress.phase === 'end') {
+          expect(event.progress.status).toBe(step.status);
+          expect(event.progress.error?.message).toBe(step.error?.message);
+          expect(event.progress.explanation).toBe(step.explanation);
+        }
+      }
+    } finally {
+      project?.cleanup();
+      await app.close();
+    }
+  }, 120_000);
 });
 
 describe('run events: run lifecycle hygiene', () => {

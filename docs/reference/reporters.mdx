@@ -98,6 +98,23 @@ says what the step waits on as it begins (`observe`, `action`, or `model`;
 on a device a snapshot or a tap takes seconds), and `replay` marks the trace
 cache taking or handing back the step.
 
+Every step phase emitted by the runner includes `progress.identity`:
+
+```ts
+{ attemptId: string; attemptIndex: number; stepId: string; stepIndex: number }
+```
+
+The IDs match the final report. Both indexes start at zero. A retry has a
+new attempt ID and a higher attempt index; its step indexes start again at
+zero. Serial-group members share the group's attempt ID and index, while
+each member's step IDs remain distinct. Use `stepId` to match start, activity,
+event, replay, and end phases, including nested steps. `identity` is optional
+in the type so a reporter can also accept older streams.
+
+An `end` phase also includes the step's redacted `error` and `explanation`
+when present. Preserve its `status`, including `blocked` and `cancelled`,
+instead of treating every non-passed step as a product failure.
+
 `explore` appears only in an `e2e explore` run: `started`, `planning`,
 `step-started`, `step-finished`, `finding`, and `finished`. The record of all
 of it is `run.explore` in the report.
@@ -108,7 +125,11 @@ the rest; leave the `default` branch of a `switch` empty.
 `run-started` comes first and `run-finished` last. `test-finished` carries the
 full result record, including every attempt's artifacts. A test pinned to
 several agents starts and finishes once per agent, so key running state by
-test id, target, and agent together. Secrets are redacted before events are
+test id, target, and agent together. Ordinary tests emit `test-started` once
+for that combination. Serial members emit it on each group attempt they
+execute. Use step progress identity to distinguish retries. An attempt
+that fails before any step emits no step progress and appears in the final
+result. Secrets are redacted before events are
 built. Error messages are only stripped of control characters; treat them as
 untrusted.
 

@@ -182,7 +182,16 @@ export interface StepRecord {
 /** The work a running agent step can be waiting on; see `StepProgress`. */
 export type StepActivity = 'observe' | 'model' | 'action';
 
-export type StepProgress =
+/** IDs join live progress to the report. Step indexes are local to each test or serial member. */
+interface StepProgressIdentity {
+  readonly attemptId: string;
+  readonly attemptIndex: number;
+  readonly stepId: string;
+  readonly stepIndex: number;
+}
+
+/** One progress payload before the recorder attaches its identity. */
+type StepProgressFact =
   | { readonly phase: 'start'; readonly kind: StepKind; readonly api: string; readonly label: string }
   | {
       readonly phase: 'end';
@@ -192,6 +201,9 @@ export type StepProgress =
       readonly status: StepRecord['status'];
       readonly durationMs: number;
       readonly modelCalls: number;
+      /** The same redacted error the finished step records. */
+      readonly error?: SerializedError;
+      readonly explanation?: string;
     }
   | { readonly phase: 'event'; readonly api: string; readonly event: StepEvent }
   /**
@@ -211,6 +223,9 @@ export type StepProgress =
    */
   | { readonly phase: 'replay'; readonly api: string; readonly active: boolean };
 
+/** Every runner-produced phase carries identity; optional for consumers of older event streams. */
+export type StepProgress = StepProgressFact & { readonly identity?: StepProgressIdentity };
+
 /** Per-step options for `StepRecorder.run`. */
 export interface StepRunOptions {
   /**
@@ -228,6 +243,8 @@ export interface StepRunOptions {
 }
 
 export interface StepRecorderOptions {
+  /** The report-owning attempt; serial members share their group's attempt identity. */
+  readonly attempt?: { readonly id: string; readonly index: number };
   /** Caps events retained per step (resolved limits.maxEventsPerStep). */
   readonly maxEventsPerStep?: number;
   /** Live progress sink; omitted in contexts with no reporter to feed. */
@@ -258,6 +275,7 @@ function stepSource(projectRoot: string | undefined): SourceLocation | undefined
 }
 
 export class StepRecorder {
+  private readonly attempt: { readonly id: string; readonly index: number };
   private readonly steps: StepRecord[] = [];
   private readonly scope = new AsyncLocalStorage<StepRecord>();
   /** IDs of steps whose bodies are still executing. */
@@ -273,6 +291,7 @@ export class StepRecorder {
     private readonly attemptId: string,
     options: StepRecorderOptions = {},
   ) {
+    this.attempt = options.attempt ?? { id: attemptId, index: 0 };
     this.maxEventsPerStep = options.maxEventsPerStep ?? 1_000;
     this.onProgress = options.onProgress;
     this.projectRoot = options.projectRoot;
@@ -322,7 +341,7 @@ export class StepRecorder {
     };
     this.steps.push(record);
     this.running.add(record.id);
-    this.onProgress?.({ phase: 'start', kind, api, label });
+    this.publish(record, { phase: 'start', kind, api, label });
     try {
       // Model calls made inside the body are attributed to this step.
       const result = await this.scope.run(record, () => withAiTraceStep(api, label, body));
@@ -344,7 +363,7 @@ export class StepRecorder {
       throw cause;
     } finally {
       this.running.delete(record.id);
-      this.onProgress?.({
+      this.publish(record, {
         phase: 'end',
         kind,
         api,
@@ -352,6 +371,8 @@ export class StepRecorder {
         status: record.status,
         durationMs: record.durationMs,
         modelCalls: record.events.filter((event) => event.kind === 'model').length,
+        ...(record.error === undefined ? {} : { error: record.error }),
+        ...(record.explanation === undefined ? {} : { explanation: record.explanation }),
       });
     }
   }
@@ -376,7 +397,7 @@ export class StepRecorder {
     if (current === undefined) return;
     if (current.events.length >= this.maxEventsPerStep) return;
     current.events.push(event);
-    this.onProgress?.({ phase: 'event', api: current.api, event });
+    this.publish(current, { phase: 'event', api: current.api, event });
   }
 
   /**
@@ -388,7 +409,7 @@ export class StepRecorder {
   replaying(active: boolean): void {
     const current = this.current();
     if (current === undefined) return;
-    this.onProgress?.({ phase: 'replay', api: current.api, active });
+    this.publish(current, { phase: 'replay', api: current.api, active });
   }
 
   /**
@@ -399,7 +420,7 @@ export class StepRecorder {
   activity(activity: StepActivity): void {
     const current = this.current();
     if (current === undefined) return;
-    this.onProgress?.({ phase: 'activity', api: current.api, activity });
+    this.publish(current, { phase: 'activity', api: current.api, activity });
   }
 
   /** Merges agent metrics, provenance, and judgment detail into the running step. */
@@ -412,7 +433,9 @@ export class StepRecorder {
     if (details.observationRevision !== undefined) {
       current.observationRevision = details.observationRevision;
     }
-    if (details.explanation !== undefined) current.explanation = details.explanation;
+    if (details.explanation !== undefined) {
+      current.explanation = this.redact?.(details.explanation) ?? details.explanation;
+    }
     if (details.visionInput !== undefined) current.visionInput = details.visionInput;
     if (details.visionDegraded !== undefined) current.visionDegraded = details.visionDegraded;
     if (details.visionOnly !== undefined) current.visionOnly = details.visionOnly;
@@ -437,5 +460,18 @@ export class StepRecorder {
   private current(): StepRecord | undefined {
     const record = this.scope.getStore();
     return record !== undefined && this.running.has(record.id) ? record : undefined;
+  }
+
+  /** Publishes a phase with the owning record's identity, including nested and finishing steps. */
+  private publish(record: StepRecord, progress: StepProgressFact): void {
+    this.onProgress?.({
+      ...progress,
+      identity: {
+        attemptId: this.attempt.id,
+        attemptIndex: this.attempt.index,
+        stepId: record.id,
+        stepIndex: record.index,
+      },
+    });
   }
 }
