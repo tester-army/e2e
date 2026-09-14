@@ -81,6 +81,18 @@ const payment = web.frameLocator('#payment-frame');
 await payment.getByLabel('Card number').fill('4242424242424242');
 ```
 
+The frame scope keeps the web-only escape hatches. `locator` takes a CSS or
+XPath selector for a control inside the frame that has no accessible name,
+and `frameLocator` steps into a frame nested in it. Prefer the role and label
+queries whenever the control has a name; they read as the user does and
+survive markup changes.
+
+```ts
+const editor = web.frameLocator('#result');
+await editor.locator('#upload').setInputFiles('fixtures/photo.png');
+await editor.frameLocator('#preview').getByRole('heading', { name: 'Uploaded' });
+```
+
 ## Read from the page
 
 `web.evaluate` runs a function in the page. It is serialized, so it cannot

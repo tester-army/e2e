@@ -262,7 +262,7 @@ Import `test` from `@e2edev/playwright`. Prefer `app` and `screen`; use
 | `goto(url, { waitUntil? })`, `reload()`, `back()`, `forward()` | Navigation. `goto` accepts a path relative to the base URL. |
 | `url()`, `title()`, `waitForURL(url \| RegExp)` | Reads and a URL wait. |
 | `locator(css)` | Raw CSS or XPath. Not portable; a last resort. |
-| `frameLocator(css)` | A `Screen` scoped to one iframe: `web.frameLocator('#payment').getByLabel('Card number')`. |
+| `frameLocator(css)` | A `Screen` scoped to one iframe: `web.frameLocator('#payment').getByLabel('Card number')`. The scope keeps `locator(css)` for unnamed controls inside the frame and `frameLocator(css)` for a nested frame. |
 | `evaluate(fn, arg?)` | Runs serialized code in the page. JSON in and out only, no closures. |
 | `route(pattern, handler)`, `unroute(pattern)` | Intercept requests: `route.fulfill({ json })`, `route.continue()`, `route.abort()`. |
 | `waitForResponse(pattern)` | Resolves with `{ status, headers, json(), text() }`. |

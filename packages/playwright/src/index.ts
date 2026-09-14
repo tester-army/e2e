@@ -16,6 +16,7 @@ export type { Dialog, DialogHandler } from './dialogs.ts';
 export type {
   Cookie,
   CookieFields,
+  FrameScreen,
   RouteFulfillResponse,
   Web,
   WebExpectation,

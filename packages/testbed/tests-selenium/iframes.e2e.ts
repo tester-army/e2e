@@ -8,12 +8,10 @@ import { expect } from 'e2e';
  * with no origin of its own — the shape that catches frame handling that only
  * works for same-origin `src` frames.
  *
- * Writing this file surfaced the sharpest limit in the SDK: `web.frameLocator`
- * returns a `Screen`, and `Screen` exposes only the six `getBy*` queries. There
- * is no `Screen.locator`, so inside a frame there is no CSS escape hatch — a
- * control with no accessible name is not addressable at all, and a second frame
- * boundary cannot be expressed. Three tests below are `skip`ped for exactly
- * that reason rather than deleted.
+ * `web.frameLocator` returns a frame scope that keeps `locator` and
+ * `frameLocator`, so a control with no accessible name and a second frame
+ * boundary are both reachable through the locator engine. The last three
+ * tests exercise exactly that.
  */
 test.describe('frames', { requires: ['web'] }, () => {
   test('checkboxes inside a written document', async ({ app, web }) => {
@@ -78,43 +76,30 @@ test.describe('frames', { requires: ['web'] }, () => {
     const result = web.frameLocator('#iframeResult');
     await expect(result.getByRole('heading', { name: /nested iframes/ })).toBeVisible();
 
-    // The inner document is reachable, but not through the locator engine:
-    // `Screen` has no `frameLocator`, so a second boundary cannot be expressed.
-    // Dropping to `evaluate` is the whole finding — and it also means no
-    // assertion, action, or auto-retry applies to anything in there.
-    const innerText = await web.evaluate(() => {
-      const outer = document.querySelector('#iframeResult');
-      const outerDoc = outer instanceof HTMLIFrameElement ? outer.contentDocument : null;
-      const inner = outerDoc?.querySelector('iframe');
-      return inner?.contentDocument?.body?.textContent ?? '';
-    });
-    expect(innerText).toContain('This page is displayed in an iframe.');
+    // The inner document sits one more boundary down; the frame scope steps
+    // into it, so assertions and auto-retry apply inside the nested frame too.
+    await expect(
+      result.frameLocator('iframe').getByText('This page is displayed in an iframe', { exact: false }),
+    ).toBeVisible();
   });
 
-  test(
-    'a file input inside a frame',
-    { skip: 'no Screen.locator: the file input has no accessible name, so it is unaddressable' },
-    async ({ app, web }) => {
-      await app.open('/w3schools/file_upload');
-      const result = web.frameLocator('#iframeResult');
+  test('a file input inside a frame', async ({ app, web }) => {
+    await app.open('/w3schools/file_upload');
+    const result = web.frameLocator('#iframeResult');
 
-      // `<input type="file" id="myFile">` — no label, no name, no test id. The
-      // only query that could reach it is a CSS selector, and `Screen` has
-      // none, so `setInputFiles` has no target inside a frame.
-      await expect(result.getByRole('button', { name: 'Try it' })).toBeVisible();
-    },
-  );
+    // `<input type="file" id="myFile">` has no label, no name, and no test id:
+    // only a CSS selector reaches it, and the frame scope carries one.
+    await result.locator('#myFile').setInputFiles('fixtures/attachment.txt');
+    await expect(result.locator('#myFile')).toHaveValue(/attachment\.txt$/);
+  });
 
-  test(
-    'HTML5 drag and drop inside a frame',
-    { skip: 'no Screen.locator: neither the dragged image nor the drop zone has a name' },
-    async ({ app, web }) => {
-      await app.open('/w3schools/drag_drop');
-      const result = web.frameLocator('#iframeResult');
+  test('HTML5 drag and drop inside a frame', async ({ app, web }) => {
+    await app.open('/w3schools/drag_drop');
+    const result = web.frameLocator('#iframeResult');
 
-      // `#drag1` is an `<img>` with no alt and `#div1` is an empty `<div>`:
-      // `dragTo` needs two locators and neither endpoint is nameable.
-      await expect(result.getByText('Drag the W3Schools image', { exact: false })).toBeVisible();
-    },
-  );
+    // `#drag1` is an `<img>` with no alt and `#div1` is an empty `<div>`:
+    // `dragTo` needs two locators and neither endpoint is nameable.
+    await result.locator('#drag1').dragTo(result.locator('#div1'));
+    await expect(result.locator('#div1 img')).toBeVisible();
+  });
 });

@@ -26,6 +26,7 @@ import {
   type EngineFixtureContext,
   type FixtureOperation,
   type FixtureOperations,
+  type LocatorExpression,
   type OperationContext,
   type TextPattern,
 } from 'e2e/engine';
@@ -107,6 +108,20 @@ export interface WebExpectation {
   toHaveClass(target: Locator, expected: TextMatch, options?: { timeout?: number }): Promise<void>;
 }
 
+/**
+ * The screen scope `web.frameLocator` returns. Every `Screen` query answers
+ * from inside the frame, and because the frame's document is Playwright's,
+ * the web-only escape hatches follow it in: `locator` for a CSS or XPath
+ * selector on a control with no accessible name, `frameLocator` for a frame
+ * nested inside this one.
+ */
+export interface FrameScreen extends Screen {
+  /** Creates a web-only CSS or XPath locator inside this frame. */
+  locator(selector: string): Locator;
+  /** Creates a screen query scope inside an iframe nested in this frame. */
+  frameLocator(selector: string): FrameScreen;
+}
+
 export interface Web extends Expectable<WebExpectation> {
   /** Navigates to an allowed URL. */
   goto(
@@ -131,7 +146,7 @@ export interface Web extends Expectable<WebExpectation> {
   /** Creates a web-only CSS or XPath locator. */
   locator(selector: string): Locator;
   /** Creates a screen query scope inside one iframe. */
-  frameLocator(selector: string): Screen;
+  frameLocator(selector: string): FrameScreen;
   /** Evaluates trusted test code in the page. */
   evaluate<T extends JsonValue>(fn: string | (() => T | Promise<T>)): Promise<T>;
   /** Evaluates trusted test code with one required JSON-safe argument. */
@@ -250,18 +265,8 @@ export function createWebFixture(surface: PlaywrightSurface, context: EngineFixt
     title: currentTitle,
     // The same poll as `expect(web).toHaveURL`, exposed as a wait.
     waitForURL: (url, options) => expectation.toHaveURL(url, options),
-    locator(selector) {
-      if (typeof selector !== 'string' || selector.length === 0) {
-        throw new TestError('INVALID_LOCATOR', 'web.locator() requires a nonempty selector');
-      }
-      return context.locator({ kind: 'selector', selector });
-    },
-    frameLocator(selector) {
-      if (typeof selector !== 'string' || selector.length === 0) {
-        throw new TestError('INVALID_LOCATOR', 'web.frameLocator() requires a nonempty selector');
-      }
-      return context.screen((expression) => ({ kind: 'frame', selector, source: expression }));
-    },
+    locator: (selector) => context.locator({ kind: 'selector', selector: requireSelector('web.locator', selector) }),
+    frameLocator: (selector) => frameScreen(context, [requireSelector('web.frameLocator', selector)]),
     async evaluate<T extends JsonValue>(
       fn: string | ((arg?: never) => T | Promise<T>),
       arg?: JsonValue,
@@ -579,4 +584,27 @@ function createWebExpectation(deps: ExpectationDeps, negated = false): WebExpect
       );
     },
   };
+}
+
+function requireSelector(method: string, selector: unknown): string {
+  if (typeof selector !== 'string' || selector.length === 0) {
+    throw new TestError('INVALID_LOCATOR', `${method}() requires a nonempty selector`);
+  }
+  return selector;
+}
+
+/**
+ * The scope for the innermost of `frames` (outermost first). Every query and
+ * both escape hatches compile through the same `frame` chain, so a `locator`
+ * inside it resolves against the innermost document.
+ */
+function frameScreen(context: EngineFixtureContext, frames: readonly string[]): FrameScreen {
+  const scope = (expression: LocatorExpression): LocatorExpression =>
+    frames.reduceRight<LocatorExpression>((source, selector) => ({ kind: 'frame', selector, source }), expression);
+  return Object.assign(context.screen(scope), {
+    locator: (selector: string) =>
+      context.locator(scope({ kind: 'selector', selector: requireSelector('locator', selector) })),
+    frameLocator: (selector: string) =>
+      frameScreen(context, [...frames, requireSelector('frameLocator', selector)]),
+  });
 }
