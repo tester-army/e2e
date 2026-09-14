@@ -179,6 +179,9 @@ export interface StepRecord {
  * runs. Derived from the same records the report persists; the report stays
  * the canonical record.
  */
+/** The work a running agent step can be waiting on; see `StepProgress`. */
+export type StepActivity = 'observe' | 'model' | 'action';
+
 export type StepProgress =
   | { readonly phase: 'start'; readonly kind: StepKind; readonly api: string; readonly label: string }
   | {
@@ -191,6 +194,14 @@ export type StepProgress =
       readonly modelCalls: number;
     }
   | { readonly phase: 'event'; readonly api: string; readonly event: StepEvent }
+  /**
+   * What the running step is waiting on right now: a device or browser being
+   * read (`observe`), an action landing (`action`), or a model turn
+   * (`model`). Emitted as each begins; the matching `event` reports its end.
+   * On a device a snapshot or a tap takes seconds, so between events the
+   * model is not always the one working.
+   */
+  | { readonly phase: 'activity'; readonly api: string; readonly activity: StepActivity }
   /**
    * The trace cache took the step (`active`), or handed it to the model after
    * a replay that could not finish it; a step the replay finishes ends while
@@ -378,6 +389,17 @@ export class StepRecorder {
     const current = this.current();
     if (current === undefined) return;
     this.onProgress?.({ phase: 'replay', api: current.api, active });
+  }
+
+  /**
+   * Tells reporters what the running step waits on now; the phase's `event`
+   * later reports how it went. Nothing is recorded. Outside a running step
+   * this is a no-op, as `recordEvent` is.
+   */
+  activity(activity: StepActivity): void {
+    const current = this.current();
+    if (current === undefined) return;
+    this.onProgress?.({ phase: 'activity', api: current.api, activity });
   }
 
   /** Merges agent metrics, provenance, and judgment detail into the running step. */

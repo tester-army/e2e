@@ -6,7 +6,7 @@
  */
 
 import { bounded, F_POINTER, formatTime, terminalColumns, terminalRows, type Colors } from './format.ts';
-import type { FileGroup, RunningTest, SetupInFlight } from './list-model.ts';
+import type { CurrentStep, FileGroup, RunningTest, SetupInFlight } from './list-model.ts';
 import { eventLine, stepLabel, stepLine } from './list-steps.ts';
 import { REPAINT_INTERVAL_MS, WIDTH_MARGIN } from './live-window.ts';
 
@@ -182,18 +182,27 @@ export class RunningTree {
     for (const event of overflow > 0 ? current.events.slice(overflow) : current.events) {
       rows.push(`  ${eventLine(pc, event, { maxWidth })}`);
     }
-    rows.push(`  ${waitingRow(pc, now, current.replaying ? 'Replaying' : 'Thinking')}`);
+    rows.push(`  ${waitingRow(pc, now, waitingWord(current))}`);
     return rows.slice(0, budget);
   }
 
 }
 
 /**
- * The work in flight: a spinner and a shimmering status word. Tool calls
- * take milliseconds and their turn is reported right after them, so between
- * events the model is the one working and the word is `Thinking`, except
- * while the trace cache replays recorded actions with no model in the loop.
+ * The status word for a running agent step: `Replaying` while the trace cache
+ * has it with no model in the loop; `Observing` or `Acting` while the step
+ * announced a screen read or an action and no event has ended it yet (a
+ * device snapshot or tap takes seconds); otherwise the model has the turn and
+ * the word is `Thinking`.
  */
+function waitingWord(current: Pick<CurrentStep, 'replaying' | 'activity'>): string {
+  if (current.replaying) return 'Replaying';
+  if (current.activity === 'observe') return 'Observing';
+  if (current.activity === 'action') return 'Acting';
+  return 'Thinking';
+}
+
+/** The work in flight: a spinner and a shimmering status word; see `waitingWord`. */
 export function waitingRow(pc: Colors, now: number, word: string): string {
   const frame = Math.floor(now / REPAINT_INTERVAL_MS);
   const spinner = pc.cyan(SPINNER_FRAMES[Math.floor(frame / SPINNER_HOLD_FRAMES) % SPINNER_FRAMES.length]!);

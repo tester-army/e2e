@@ -1256,6 +1256,30 @@ describe('ListReporter', () => {
       expect(window).toContain('└── b');
     });
 
+    it('names the screen read or the action in flight, and hands the turn back to the model when it ends', () => {
+      const { chunks, output } = liveCapture();
+      const reporter = plainReporter(output, true);
+      reporter.handle(runStarted());
+      reporter.handle(testStarted('t1', 'a', 'chromium'));
+      const progress = (step: RunEventOf<'step'>['progress']): RunEventOf<'step'> => ({
+        type: 'step',
+        testId: 't1',
+        agent: 'default',
+        target: 'chromium',
+        progress: step,
+      });
+      reporter.handle(progress({ phase: 'start', kind: 'agent', api: 'agent.act', label: 'add a todo' }));
+      reporter.handle(progress({ phase: 'activity', api: 'agent.act', activity: 'action' }));
+      expect(chunks.at(-1)!).toMatch(/[·✢✳✶✻✽] Acting\n/);
+      reporter.handle(progress({ phase: 'event', api: 'agent.act', event: { kind: 'engine', durationMs: 4_500, name: 'tap', status: 'passed' } as never }));
+      reporter.handle(progress({ phase: 'activity', api: 'agent.act', activity: 'observe' }));
+      expect(chunks.at(-1)!).toMatch(/[·✢✳✶✻✽] Observing\n/);
+      reporter.handle(progress({ phase: 'event', api: 'agent.act', event: { kind: 'observation', durationMs: 16_000, status: 'passed' } as never }));
+      expect(chunks.at(-1)!).toMatch(/[·✢✳✶✻✽] Thinking\n/);
+      reporter.handle(progress({ phase: 'activity', api: 'agent.act', activity: 'model' }));
+      expect(chunks.at(-1)!).toMatch(/[·✢✳✶✻✽] Thinking\n/);
+    });
+
     it('appends a model turn\'s collapsed reasoning to its Thinking line', () => {
       const restore = withTerminalSize({ columns: 120, rows: 40 });
       try {

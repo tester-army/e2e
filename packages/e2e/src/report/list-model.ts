@@ -5,7 +5,7 @@
  */
 
 import type { ResultStatus } from '../run/records.ts';
-import type { StepEvent, StepKind, StepProgress } from '../run/steps.ts';
+import type { StepActivity, StepEvent, StepKind, StepProgress } from '../run/steps.ts';
 import type { AiUsage } from './format.ts';
 
 /** Step events worth a glance in the live window; polls and policy decisions stay quiet. */
@@ -33,6 +33,12 @@ export interface CurrentStep {
    * no model is in the loop, so the wait between events is on the app.
    */
   replaying: boolean;
+  /**
+   * What the step waits on since its last event: a screen being read, an
+   * action landing. Cleared by the event that reports the phase's end, so
+   * with nothing announced the model is the one working.
+   */
+  activity: StepActivity | undefined;
 }
 
 /** One finished agent step of a pair, as the `end` progress reported it. */

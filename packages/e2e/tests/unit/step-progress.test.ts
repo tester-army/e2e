@@ -52,3 +52,26 @@ describe('StepRecorder step source', () => {
     expect(steps.all()[0]?.source).toBeUndefined();
   });
 });
+
+describe('StepRecorder.activity', () => {
+  it('announces what the running step waits on, recording nothing', async () => {
+    const { steps, heard } = recorder();
+    await steps.run('agent', 'agent.act', 'pay', async () => {
+      steps.activity('action');
+      steps.activity('observe');
+    });
+    expect(heard).toEqual([
+      { phase: 'start', kind: 'agent', api: 'agent.act', label: 'pay' },
+      { phase: 'activity', api: 'agent.act', activity: 'action' },
+      { phase: 'activity', api: 'agent.act', activity: 'observe' },
+      expect.objectContaining({ phase: 'end', api: 'agent.act', modelCalls: 0 }),
+    ]);
+    expect(steps.all()[0]?.events).toEqual([]);
+  });
+
+  it('says nothing outside a running step', () => {
+    const { steps, heard } = recorder();
+    steps.activity('observe');
+    expect(heard).toEqual([]);
+  });
+});

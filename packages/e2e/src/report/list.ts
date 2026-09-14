@@ -482,15 +482,27 @@ export class ListReporter implements Reporter {
     switch (progress.phase) {
       case 'start': {
         const { api, label, kind } = progress;
-        running.current = { api, label, kind, events: [], replaying: false };
+        running.current = { api, label, kind, events: [], replaying: false, activity: undefined };
         this.window.redraw();
         break;
       }
       case 'event': {
         const { current } = running;
         this.explore?.action(progress.event);
-        if (current === undefined || !isShownEvent(progress.event)) break;
-        current.events.push(progress.event);
+        if (current === undefined) break;
+        // The event ends whatever was announced; until the next announcement
+        // the model has the turn.
+        const announced = current.activity !== undefined;
+        current.activity = undefined;
+        const shown = isShownEvent(progress.event);
+        if (shown) current.events.push(progress.event);
+        if (shown || announced) this.window.redraw();
+        break;
+      }
+      case 'activity': {
+        const { current } = running;
+        if (current === undefined) break;
+        current.activity = progress.activity;
         this.window.redraw();
         break;
       }

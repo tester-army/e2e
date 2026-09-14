@@ -11,7 +11,7 @@ import { asEngineError, E2EError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
 import { POLL_INTERVAL_MS, sleep, type Deadline } from '../internal/time.ts';
 import type { LocatorEngine } from '../locator/engine.ts';
-import type { StepEvent, StepRecorder } from '../run/steps.ts';
+import type { StepActivity, StepEvent, StepRecorder } from '../run/steps.ts';
 import { AgentError, toAgentError } from './error.ts';
 
 /**
@@ -61,11 +61,20 @@ export interface PhaseSpec {
   readonly name?: string;
 }
 
+/** The live activity a phase announces as it begins; a cache probe announces nothing. */
+const ACTIVITY_BY_PHASE: Readonly<Record<PhaseSpec['phase'], StepActivity | undefined>> = {
+  'agent.observe': 'observe',
+  'agent.model': 'model',
+  'agent.action': 'action',
+  'agent.cache': undefined,
+};
+
 /**
- * Runs one phase with uniform accounting: a child event on success and
- * failure, one debug bucket, and translation onto the closed agent error set.
- * Every observe/model/action phase of every agent step goes through here so
- * the records cannot drift apart.
+ * Runs one phase with uniform accounting: the activity announced as it
+ * begins, a child event on success and failure, one debug bucket, and
+ * translation onto the closed agent error set. Every observe/model/action
+ * phase of every agent step goes through here so the records cannot drift
+ * apart.
  */
 export async function instrumentPhase<Value>(
   host: PhaseHost,
@@ -75,6 +84,8 @@ export async function instrumentPhase<Value>(
 ): Promise<Value> {
   const startedAt = timestamp();
   const startedMs = Date.now();
+  const activity = ACTIVITY_BY_PHASE[spec.phase];
+  if (activity !== undefined) host.steps.activity(activity);
   try {
     const value = await body();
     const eventDetail = detail?.(value);

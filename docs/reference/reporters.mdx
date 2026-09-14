@@ -92,6 +92,12 @@ type RunEventFact =
   | { type: 'run-finished'; status; exitCode; reportPath?; aiTracePath? };
 ```
 
+`step` progress has a `phase`: `start` and `end` bracket a step, `event`
+reports a model turn, tool call, or observation once it is done, `activity`
+says what the step waits on as it begins (`observe`, `action`, or `model`;
+on a device a snapshot or a tap takes seconds), and `replay` marks the trace
+cache taking or handing back the step.
+
 `explore` appears only in an `e2e explore` run: `started`, `planning`,
 `step-started`, `step-finished`, `finding`, and `finished`. The record of all
 of it is `run.explore` in the report.
