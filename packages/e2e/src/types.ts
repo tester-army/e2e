@@ -124,23 +124,23 @@ export type AgentParams = Readonly<Record<string, AgentParam>>;
  * has nothing to degrade to, so it fails with `POLICY_DENIED` instead of
  * answering the wrong question from the tree.
  *
- * On `act` the same three values shape the executor's view. `true`, the
- * default, offers the model `screenshot` and `tap_at`: it looks at pixels
- * when the tree lacks what it needs, and nothing is attached unasked. `false`
- * offers no pixel tools at all. `'only'` withholds the tree from the executor
- * for the whole step and gives the model a point-addressed vocabulary
- * (`tap_at`, `type_at`, `press_at`, `select_at`, `scroll`); it refuses a step
- * that declares a secret, because a fill would taint the only evidence.
+ * On `act` the same three values say how much pixel evidence is pushed to
+ * the model. At `false`, the default, the model pulls pixels itself with
+ * `screenshot` when the tree lacks what it needs, and every verb takes a
+ * point in that screenshot in place of a node id. `true` attaches a
+ * screenshot to every turn. `'only'` does that and withholds the tree, so
+ * every verb is addressed by point; it refuses a step that declares a
+ * secret, because a fill would taint the only evidence.
  */
 export type VisionMode = boolean | 'only';
 
 export interface VisionOption {
   /**
-   * What the model is shown; defaults to the agent's `vision`. On a judgment
-   * (default `false`): the tree, the tree with a masked screenshot, or the
-   * screenshot alone. On `act` (default `true`): the tree with no pixel
-   * tools, the tree with pixel tools on demand, or pixels alone with a
-   * point-addressed vocabulary.
+   * How much pixel evidence is pushed to the model; defaults to the agent's
+   * `vision`, `false`. On a judgment: the tree, the tree with a masked
+   * screenshot, or the screenshot alone. On `act`: pixels when the model asks
+   * with `screenshot`, a screenshot on every turn, or pixels alone with the
+   * tree withheld.
    */
   vision?: VisionMode;
 }
@@ -918,7 +918,7 @@ export interface AgentConfig {
   maxObservationBytes?: number;
   /** Trusted project context prepended to agent prompts, at most `limits.maxAgentContextBytes`. */
   context?: string;
-  /** Project-wide default for the per-call `vision` option. Unset, `act` behaves as `true` (pixel tools on demand) and judgments as `false` (tree alone). */
+  /** Project-wide default for the per-call `vision` option; `false` unless set. */
   vision?: VisionMode;
   /** Provider options every model call carries, e.g. a reasoning effort. */
   providerOptions?: ProviderOptions;

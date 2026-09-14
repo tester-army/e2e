@@ -39,11 +39,6 @@ test('asks for a screenshot before tapping a point', async ({ app, agent }) => {
   await agent.act('tap blind');
 });
 
-test('offers no pixel verbs with vision false', async ({ app, agent }) => {
-  await app.open('/canvas-bare');
-  await agent.act('note the bare canvas', { vision: false });
-});
-
 test('offers no pixel verbs after a secret fill', async ({ app, agent, screen }) => {
   await app.open();
   await screen.getByLabel('Password').fill(credentials.user('member').password);
@@ -157,15 +152,6 @@ describe('agent.act pixel verbs', () => {
     // An ordinary page opens tree-only: one listed control is enough to act by id.
     const [home] = turnsOf('tap blind');
     expect(home!.prompt).not.toContain('Screenshot attached');
-  });
-
-  it('offers no pixel verbs and attaches no opening screenshot with vision false, even on a bare canvas', () => {
-    expect(resultByTitle(outcome, 'offers no pixel verbs with vision false').status).toBe('passed');
-    const [first] = turnsOf('note the bare canvas');
-    expect(first!.toolNames).not.toContain('screenshot');
-    expect(first!.toolNames).not.toContain('tap_at');
-    expect(first!.prompt).not.toContain('Screenshot attached');
-    expect(stepOf('offers no pixel verbs with vision false').visionInput).toBeUndefined();
   });
 
   it('refuses a point tap before any screenshot, without spending an action', () => {

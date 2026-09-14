@@ -131,7 +131,7 @@ export function createAgent(options: CreateAgentOptions = {}): DefaultAgent {
       // would only spend a turn asking for one. One listed control is enough
       // to leave the decision to the model; a small page is not a blind one.
       let observation = await context.observe();
-      if (context.vision === true && !context.pixelsTainted && interactiveNodeCount(observation) === 0) {
+      if (context.vision === false && !context.pixelsTainted && interactiveNodeCount(observation) === 0) {
         observation = await context.observe({ pixels: true });
       }
       const parts = [

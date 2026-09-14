@@ -47,8 +47,8 @@ export interface ObservationFeedOptions {
   /**
    * What the step asked to see. `'only'` withholds the tree from every
    * executor view, captures pixels on every look, and fails a look whose
-   * pixels cannot leave the runner; `true` captures them when a look asks;
-   * `false` never captures them.
+   * pixels cannot leave the runner; `true` captures them on every look unless
+   * it declines; `false` captures them when a look asks.
    */
   readonly vision: VisionMode;
 }
@@ -127,15 +127,14 @@ export class ObservationFeed {
   }
 
   /**
-   * Whether one executor look captures pixels: what it asked for, unless the
-   * step's `vision` rules. `false` never captures them, so an executor that
-   * asks anyway gets `pixelsWithheld`; `'only'` always does, because the
-   * screenshot is the executor's whole view of the screen.
+   * Whether one executor look captures pixels: what it asked for, else what
+   * the step's `vision` pushes. `true` captures on every look unless the look
+   * declines; `'only'` always does, because the screenshot is the executor's
+   * whole view of the screen.
    */
   private wantsPixels(options: ExecutorObserveOptions): boolean {
     if (this.treeWithheld) return true;
-    if (this.options.vision === false) return false;
-    return options.pixels === true;
+    return options.pixels ?? this.options.vision === true;
   }
 
   /**

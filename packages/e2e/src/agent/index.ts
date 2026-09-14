@@ -117,7 +117,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           task: 'judge whether a condition holds',
           timeoutMs: resolveTimeout(options?.timeout, config.timeout),
           maxModelCalls: resolveBoundedBudget(options?.maxModelCalls, config.maxModelCalls, 'maxModelCalls'),
-          vision: resolveVision(options?.vision, config.vision ?? false),
+          vision: resolveVision(options?.vision, config.vision),
         },
         condition,
         async (invocation) => {
@@ -153,7 +153,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           task: 'extract structured data from the observation',
           timeoutMs: resolveTimeout(options.timeout, config.timeout),
           maxModelCalls: EXTRACT_MODEL_CALLS,
-          vision: resolveVision(options.vision, config.vision ?? false),
+          vision: resolveVision(options.vision, config.vision),
         },
         instruction,
         async (invocation) => {
@@ -211,7 +211,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           task: 'judge whether an assertion holds',
           timeoutMs: resolveTimeout(options?.timeout, config.timeout),
           maxModelCalls: ASSERT_MODEL_CALLS,
-          vision: resolveVision(options?.vision, config.vision ?? false),
+          vision: resolveVision(options?.vision, config.vision),
         },
         assertion,
         async (invocation) => {

@@ -88,8 +88,8 @@ on pixel mode, where every action result carries a fresh screenshot; `tap_at`
 taps a point in the latest screenshot (a canvas shape, a map pin, an image
 region, a control in a system sheet), hit-tested against the tree first so a
 listed control is tapped by id. A screen with nothing to tap by id opens with
-a screenshot already attached. That is `vision: true`, the default for `act`;
-`vision: false` withholds both pixel tools.
+a screenshot already attached. `vision: true` attaches a screenshot from the
+first turn instead of waiting for the model to ask.
 On an engine with a keyboard (browser and device), `type` and `press` also
 take no target and reach whatever has focus: `tap_at` a field the tree does
 not list, then `type` without a target; a device adds `dismiss_keyboard`.

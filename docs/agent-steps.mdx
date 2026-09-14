@@ -113,10 +113,10 @@ These defaults describe the built-in agent and judgment tier:
 `waitFor` skips judgments while the observed screen is unchanged: the tree
 shape, and the screenshot too when pixels are sent.
 Exceeding a budget raises `STEP_BUDGET_EXHAUSTED`; running out of time,
-`STEP_TIMEOUT`. By default (`vision: true`) pixels reach `act` through its
-`screenshot` and `tap_at` tools, and while pixels stay available every action
-result after the first screenshot carries a fresh one. `vision: false`
-withholds both tools; `vision: 'only'` withholds the tree and gives the model
+`STEP_TIMEOUT`. By default pixels reach `act` through its `screenshot` and
+`tap_at` tools, and while pixels stay available every action result after the
+first screenshot carries a fresh one. `vision: true` attaches a screenshot
+from the first turn; `vision: 'only'` withholds the tree and gives the model
 a point-addressed vocabulary. See [pixels only](/reference/agent#pixels-only-vision-only-on-act).
 
 With a custom executor, one that is not `createAgent(...)`, `agent.assert` runs through `runStep` under the same

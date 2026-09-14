@@ -164,7 +164,7 @@ class ActDispatch {
   private readonly accounting: StepAccounting;
   private readonly feed: ObservationFeed;
   private readonly dispatcher: ActionDispatcher;
-  /** What the executor sees: the call's `vision`, else the agent's, else `true` (pixel tools on demand). */
+  /** What the executor sees: the call's `vision`, else the agent's. */
   private readonly vision: VisionMode;
   /** The step's trace-cache session; undefined when caching is off or the kind is not cacheable. */
   private readonly stepCache: StepTraceSession | undefined;
@@ -192,7 +192,7 @@ class ActDispatch {
     // One queue for observations and actions alike: call order is what keeps
     // a batched turn from resolving two targets against one stale screen.
     const queue = new OperationQueue();
-    this.vision = spec.vision ?? agent.config.vision ?? true;
+    this.vision = spec.vision ?? agent.config.vision;
     this.feed = new ObservationFeed(runtime, this.accounting, queue, {
       maxObservationBytes: agent.config.maxObservationBytes,
       vision: this.vision,

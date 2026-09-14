@@ -233,49 +233,7 @@ export function createGrammarTools(
   options: GrammarToolOptions = {},
 ): ToolSet {
   if (context.vision === 'only') return createPixelTools(context, options);
-  const guard = options.guard ?? ((body) => body());
-  const screen: ScreenPresenter = options.screen ?? new ScreenPresenter();
-  const { verbs } = context.target;
-
-  // One queue for the tool bodies: an action and its look at the result run
-  // together, so a batched turn gets one coherent result per action.
-  const queue = new OperationQueue();
-  const inOrder = <T>(body: () => Promise<T>): Promise<T> => queue.run(body);
-
-  /**
-   * The screen after an action, as the model reads it: the changes since the
-   * screen it holds and, once the step is showing pixels, a fresh screenshot.
-   */
-  const present = async (lead: string, expectChange?: boolean): Promise<ScreenOutput> =>
-    screen.present(await context.observe({ pixels: screen.showingPixels }), { lead, expectChange });
-
-  /**
-   * Performs one action and reads its result. A failed action still returns
-   * the screen, so the model can act on a stale-id or not-found failure at
-   * once instead of spending a turn to observe; runtime hard stops propagate
-   * to the guard, which ends the loop. The guard runs inside the queue, so a
-   * batched call that queued behind a hard stop or a verdict is skipped when
-   * its turn comes rather than acted on because it was queued in time. The
-   * action may return its own lead line, for a result only it can describe.
-   */
-  const acting = (
-    description: string,
-    action: () => Promise<string | void>,
-    expectChange = true,
-  ): Promise<ScreenOutput> =>
-    inOrder(() =>
-      guard(async () => {
-        let lead = description;
-        try {
-          lead = (await action()) ?? description;
-        } catch (cause) {
-          if (isRuntimeHardStop(cause)) throw cause;
-          const message = cause instanceof Error ? cause.message : String(cause);
-          return present(`${description} failed: ${message}`);
-        }
-        return present(lead, expectChange);
-      }),
-    );
+  const { guard, screen, verbs, inOrder, present, acting } = verbKit(context, options);
 
   const target = z
     .string()
@@ -402,7 +360,7 @@ export function createGrammarTools(
   // that declines costs a turn. tap_at lands either as a tap by id or as a
   // bare point, so it needs one of the two; screenshot needs only the
   // observation every step has.
-  if (!context.pixelsTainted && context.vision !== false) {
+  if (!context.pixelsTainted) {
     tools['screenshot'] = screenTool({
       description:
         'Attach a screenshot of the current viewport. Use it when the screen lists too little to act on (a canvas, a map, an image, a game, a system sheet) or contradicts what you expect. From then on every action result carries a fresh screenshot too, so you can see what each action did.',
@@ -460,14 +418,7 @@ export function createGrammarTools(
  * dispatch refused a secret before the step opened.
  */
 function createPixelTools(context: StepExecutorContext, options: GrammarToolOptions): ToolSet {
-  const guard = options.guard ?? ((body) => body());
-  const screen: ScreenPresenter = options.screen ?? new ScreenPresenter({ treeWithheld: true });
-  const { verbs } = context.target;
-  const queue = new OperationQueue();
-  const inOrder = <T>(body: () => Promise<T>): Promise<T> => queue.run(body);
-
-  const present = async (lead: string): Promise<ScreenOutput> =>
-    screen.present(await context.observe(), { lead, expectChange: false });
+  const { guard, screen, verbs, inOrder, present, acting } = verbKit(context, options);
 
   /** Scales a point the model read off the latest screenshot into viewport pixels. */
   const viewportPoint = (x: number, y: number) => {
@@ -477,22 +428,6 @@ function createPixelTools(context: StepExecutorContext, options: GrammarToolOpti
     }
     return imagePointToViewport({ x, y }, shot.pixels, shot.viewport);
   };
-
-  /** Performs one action and reads its result; a failure returns the screen so the model can react at once. */
-  const acting = (description: string, action: () => Promise<string | void>): Promise<ScreenOutput> =>
-    inOrder(() =>
-      guard(async () => {
-        let lead = description;
-        try {
-          lead = (await action()) ?? description;
-        } catch (cause) {
-          if (isRuntimeHardStop(cause)) throw cause;
-          const message = cause instanceof Error ? cause.message : String(cause);
-          return present(`${description} failed: ${message}`);
-        }
-        return present(lead);
-      }),
-    );
 
   /**
    * The listed control at a point, for a verb that needs one (`type`,
@@ -707,6 +642,50 @@ function isNotFillable(cause: unknown): boolean {
     }
   }
   return false;
+}
+
+/**
+ * What every verb of either vocabulary runs through: the loop guard, the
+ * step's presenter, one queue for the tool bodies (an action and its look
+ * at the result run together, so a batched turn gets one coherent result
+ * per action), and the two moves each verb makes: present the screen after
+ * an action, and perform an action then present. A failed action still
+ * returns the screen, so the model can act on a stale-id or not-found
+ * failure at once instead of spending a turn to observe; runtime hard stops
+ * propagate to the guard, which ends the loop. The guard runs inside the
+ * queue, so a batched call that queued behind a hard stop or a verdict is
+ * skipped when its turn comes rather than acted on because it was queued in
+ * time. An action may return its own lead line, for a result only it can
+ * describe.
+ */
+function verbKit(context: StepExecutorContext, options: GrammarToolOptions) {
+  const guard = options.guard ?? (<T>(body: () => Promise<T>) => body());
+  const treeWithheld = context.vision === 'only';
+  const screen: ScreenPresenter = options.screen ?? new ScreenPresenter({ treeWithheld });
+  const queue = new OperationQueue();
+  const inOrder = <T>(body: () => Promise<T>): Promise<T> => queue.run(body);
+  /** The screen after an action: the changes since the one the model holds and, once the step shows pixels, a fresh screenshot. */
+  const present = async (lead: string, expectChange?: boolean): Promise<ScreenOutput> =>
+    screen.present(await context.observe({ pixels: screen.showingPixels }), { lead, expectChange });
+  const acting = (
+    description: string,
+    action: () => Promise<string | void>,
+    expectChange = true,
+  ): Promise<ScreenOutput> =>
+    inOrder(() =>
+      guard(async () => {
+        let lead = description;
+        try {
+          lead = (await action()) ?? description;
+        } catch (cause) {
+          if (isRuntimeHardStop(cause)) throw cause;
+          const message = cause instanceof Error ? cause.message : String(cause);
+          return present(`${description} failed: ${message}`);
+        }
+        return present(lead, expectChange);
+      }),
+    );
+  return { guard, screen, verbs: context.target.verbs, inOrder, present, acting };
 }
 
 /** Step handlers that report every model round trip to the harness budgets. */
