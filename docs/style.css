@@ -60,7 +60,7 @@ body {
   border-top-color: var(--ta-grey-400);
 }
 
-/* Code renders in Geist Mono, one dark surface in both color schemes (styling.codeblocks). */
+/* Code renders in Geist Mono; the GitHub light/dark themes follow the color scheme (styling.codeblocks). */
 code,
 pre,
 kbd,

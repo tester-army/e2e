@@ -28,7 +28,10 @@
   },
   "styling": {
     "codeblocks": {
-      "theme": "catppuccin-mocha"
+      "theme": {
+        "light": "github-light",
+        "dark": "github-dark"
+      }
     },
     "eyebrows": "breadcrumbs"
   },
