@@ -184,6 +184,7 @@ export type FixtureOperations<T extends object> = {
 
 /** Context handed to a contributed fixture factory, once per attempt. */
 export interface EngineFixtureContext {
+  /** The target the fixture serves. */
   readonly targetName: string;
   /** Records the declared operations before invoking them; undeclared accessors retain their identity. */
   fixture<T extends object>(name: string, surface: T, operations: FixtureOperations<T>): T;
@@ -245,8 +246,11 @@ export type EngineFixtureFactory = (context: EngineFixtureContext) => object;
  * engine reject a snapshot it can no longer read.
  */
 export interface EngineState {
+  /** Engine-defined format name. */
   readonly format: string;
+  /** Format version, for rejecting a snapshot the engine can no longer read. */
   readonly version: number;
+  /** Opaque JSON the runner never inspects. */
   readonly data: unknown;
   /** Earliest moment the state is known to be invalid, if the engine knows one. */
   readonly expiresAt?: string;
@@ -269,7 +273,9 @@ export interface EngineState {
  * next attempt.
  */
 export interface EngineStateCapability {
+  /** Captures the surface's persisted state. */
   capture(context: OperationContext): Promise<EngineState>;
+  /** Replaces the surface's persisted state with `state`. */
   restore(state: EngineState, context: OperationContext): Promise<void>;
 }
 
@@ -348,6 +354,7 @@ export interface EngineSession {
  * static answer for engines that know it up front.
  */
 export interface EnginePrepareResult {
+  /** Lowers the target's worker cap for this run, `1` to `info.slots`. */
   readonly workers?: number;
   /**
    * Variables every worker of this target is spawned with, on top of the
@@ -363,7 +370,9 @@ export interface EnginePrepareResult {
  * before any worker exists.
  */
 export interface EnginePrepareInfo {
+  /** The run id. */
   readonly runId: string;
+  /** The target being prepared. */
   readonly targetName: string;
   /**
    * The worker slots the run will start for this target, `0` to `slots - 1`:
@@ -397,7 +406,9 @@ export interface EnginePrepareInfo {
 
 /** Run identity and harness-resolved facts handed to `init`, once per worker before the first step. */
 export interface EngineInitInfo {
+  /** The run id. */
   readonly runId: string;
+  /** The target this worker serves. */
   readonly targetName: string;
   /**
    * Directory relative paths in the config resolve against: the config file's
@@ -406,6 +417,7 @@ export interface EngineInitInfo {
    * `process.cwd()`, which an in-process run does not change.
    */
   readonly projectRoot: string;
+  /** The site policy resolved from the engine's `app` declaration. */
   readonly app: EngineAppInfo;
   /**
    * This worker's environment: the run's, plus what this target's `prepare`
@@ -433,6 +445,7 @@ export interface EngineInitInfo {
  * `startAttempt` and tears it down in `endAttempt`.
  */
 export interface EngineAttemptContext {
+  /** The attempt id. */
   readonly attemptId: string;
   /** Absolute directory every artifact of this attempt is written under. */
   readonly artifactsDir: string;
@@ -450,6 +463,7 @@ export interface EngineAttemptContext {
  * of running on into the next attempt's setup.
  */
 export interface EngineCleanupContext {
+  /** Aborts when the cleanup budget is spent. */
   readonly signal: AbortSignal;
   /** Remaining cleanup budget when the call starts. */
   readonly timeoutMs: number;
@@ -495,6 +509,7 @@ export interface EngineSnapshot {
 
 /** The body of one target: typed, model-free, capability-graded. */
 export interface Engine {
+  /** Engine name, for diagnostics. */
   readonly name: string;
   /**
    * Implementation version, recorded as provenance and part of the trace

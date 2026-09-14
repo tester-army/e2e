@@ -31,7 +31,9 @@ export type {
   TraceTargetDescriptor,
 } from './cache/trace.ts';
 
+/** A JSON scalar. */
 export type JsonPrimitive = string | number | boolean | null;
+/** Data that survives JSON serialization. */
 export type JsonValue =
   | JsonPrimitive
   | { readonly [key: string]: JsonValue }
@@ -39,7 +41,9 @@ export type JsonValue =
 
 export type Platform = 'web' | 'ios' | 'android' | (string & {});
 export type Capability = string;
+/** A swipe or scroll direction. */
 export type ScrollDirection = 'up' | 'down' | 'left' | 'right';
+/** Fling strength of a swipe. */
 export type Momentum = 'none' | 'slow' | 'fast';
 
 export interface StandardSchemaV1<Input = unknown, Output = Input> {
@@ -91,20 +95,22 @@ export namespace StandardSchemaV1 {
   >['output'];
 }
 
+/** A JSON-safe value or a `Secret`. */
 export type AgentParam =
   | JsonPrimitive
   | Secret
   | readonly AgentParam[]
   | { readonly [key: string]: AgentParam };
+/** Values an `act` instruction refers to. */
 export type AgentParams = Readonly<Record<string, AgentParam>>;
 
 /**
  * What evidence the model is given: the semantic tree, a masked screenshot of
  * the current observation, or both.
  *
- * - `false` — the tree.
- * - `true` — the tree and a screenshot, on every call.
- * - `'only'` — the screenshot, and not the tree.
+ * - `false`: the tree.
+ * - `true`: the tree and a screenshot, on every call.
+ * - `'only'`: the screenshot, and not the tree.
  *
  * `'only'` exists because a tree sent alongside pixels is a cheaper path to an
  * answer, and a model will take it: asked whether a form is covered by an
@@ -121,6 +127,7 @@ export type AgentParams = Readonly<Record<string, AgentParam>>;
 export type VisionMode = boolean | 'only';
 
 export interface VisionOption {
+  /** What the judge is shown; defaults to the agent's `vision`, `false`. */
   vision?: VisionMode;
 }
 
@@ -149,6 +156,7 @@ export interface WaitForOptions extends VisionOption, AgentOption {
 
 /** `extract` options: one extraction plus one repair round, validated against `schema`. */
 export interface ExtractOptions<Schema extends StandardSchemaV1> extends VisionOption, AgentOption {
+  /** Any Standard Schema v1 validator; the output is validated against it, with one repair round. */
   schema: Schema;
   /** Deadline in milliseconds; defaults to the judgment budget, `max(30000, actionTimeout)`. */
   timeout?: number;
@@ -226,6 +234,7 @@ export interface Agent {
   assert(assertion: string, options?: AssertOptions): Promise<void>;
 }
 
+/** The closed role vocabulary; an unsupported role is a type error. */
 export type Role =
   | 'button'
   | 'link'
@@ -258,9 +267,11 @@ export type Role =
   | 'contentinfo'
   | 'complementary'
   | 'region';
+/** A string matches exactly; a RegExp uses its own source and flags. */
 export type TextMatch = string | RegExp;
 
 export interface TextMatchOptions {
+  /** Exact match, the default. `false` is case-insensitive substring matching; a RegExp ignores it. */
   exact?: boolean;
   /**
    * When true, nodes the platform reports as hidden are excluded before the
@@ -277,24 +288,33 @@ export interface TextMatchOptions {
  * that narrows the other query kinds the same way.
  */
 export interface RoleOptions extends TextMatchOptions {
+  /** Accessible name filter. */
   name?: TextMatch;
+  /** Requires the checked state. */
   checked?: boolean;
+  /** Requires the disabled state. */
   disabled?: boolean;
+  /** Requires the selected state. */
   selected?: boolean;
+  /** Requires the expanded state. */
   expanded?: boolean;
 }
 
 export interface ActionOptions {
+  /** Deadline in milliseconds; defaults to `config.actionTimeout`. */
   timeout?: number;
 }
 
 /** `longPress` options: the hold time in milliseconds, 100 through 10000, default 500. */
 export interface LongPressOptions extends ActionOptions {
+  /** Hold time in milliseconds, 100 through 10000; default 500. */
   duration?: number;
 }
 
 export interface SwipeOptions {
+  /** Swipe direction. */
   direction: ScrollDirection;
+  /** Fling strength; default `none`. */
   momentum?: Momentum;
 }
 
@@ -419,29 +439,44 @@ export interface SetupSession {
 }
 
 export interface TestFixtures {
+  /** Agent steps. Acquiring it without a configured model is `MODEL_UNAVAILABLE`. */
   readonly agent: Agent;
+  /** App lifecycle: open, restart, clear state, back, screenshot. */
   readonly app: App;
+  /** Semantic queries and the actions on their matches. */
   readonly screen: Screen;
+  /** The target's label: `web`, `ios`, `android`, or an engine's own string. */
   readonly platform: Platform;
 }
 
 export interface SetupFixtures extends TestFixtures {
+  /** Saves the sessions the setup test declared. */
   readonly session: SetupSession;
 }
 
 export interface SuiteFixtures {
+  /** The target's label: `web`, `ios`, `android`, or an engine's own string. */
   readonly platform: Platform;
 }
 
 export interface TestOptions {
+  /** Attempt deadline in milliseconds; defaults to `config.timeout`. Innermost wins. */
   timeout?: number;
+  /** Retries, 0 through 10; defaults to `config.retries`. Inside a serial group the group's value applies. */
   retries?: number;
+  /** Tags for `--tag`; every layer's tags are unioned. */
   tags?: readonly string[];
+  /** Skips the test; a string is the reason. Any truthy layer skips. */
   skip?: boolean | string;
+  /** Focuses the test locally. CI rejects it with `ONLY_IN_CI`. */
   only?: boolean;
+  /** Platforms the test runs on; other targets skip it. Innermost wins. */
   platforms?: readonly Platform[];
+  /** Capabilities the target must have; otherwise the test is skipped at selection. Innermost wins. */
   requires?: readonly Capability[];
+  /** Session a setup test saved, restored before the body runs. */
   session?: string;
+  /** Extra context for agent steps; layers are concatenated outermost first. */
   agentContext?: string;
   /**
    * The configured agent (`agents.<name>`) this test or group runs with, in
@@ -454,6 +489,7 @@ export interface TestOptions {
 }
 
 export interface DescribeOptions extends Omit<TestOptions, 'only'> {
+  /** Runs the group as one ordered retry unit with shared app state. Nesting one serial group in another is a `COLLECTION_ERROR`. */
   serial?: boolean;
 }
 
@@ -464,11 +500,15 @@ export interface SetupOptions extends Omit<TestOptions, 'session' | 'only' | 'sk
   agent?: string;
 }
 
+/** A test body. */
 export type TestFn<Fixtures = TestFixtures> = (fixtures: Fixtures) => void | Promise<void>;
+/** A setup test body; `session.save` is the extra fixture. */
 export type SetupFn<Fixtures = TestFixtures> = (
   fixtures: Fixtures & SetupFixtures,
 ) => void | Promise<void>;
+/** A `beforeEach` or `afterEach` body. */
 export type TestHookFn<Fixtures = TestFixtures> = (fixtures: Fixtures) => void | Promise<void>;
+/** A `beforeAll` or `afterAll` body. */
 export type SuiteHookFn = (fixtures: SuiteFixtures) => void | Promise<void>;
 /**
  * Defines one fixture: everything before `await use(value)` is its setup,
@@ -489,10 +529,12 @@ export type FixtureFn<Fixtures, Value> = (
 export type FixtureDefinitions<Base, Extra> = {
   readonly [K in keyof Extra]: K extends keyof Base ? never : FixtureFn<Base, Extra[K]>;
 };
+/** A `describe` body. An async body is a type error. */
 export type SynchronousBody<Result> = Extract<Result, PromiseLike<unknown>> extends never
   ? () => Result
   : never;
 
+/** Opaque handle of a registered test. */
 export interface TestCase {
   readonly [testCaseBrand]: true;
 }
@@ -551,6 +593,7 @@ export interface TestAPI<Fixtures = TestFixtures> {
 }
 
 export interface AsyncExpectation {
+  /** Inverts the matcher. A negated matcher passes after 1000 ms of continuous truth. */
   readonly not: AsyncExpectation;
   /** Waits for visibility. */
   toBeVisible(options?: { timeout?: number }): Promise<void>;
@@ -594,6 +637,7 @@ export interface Expectable<E> {
 }
 
 export interface ValueExpectation<T> {
+  /** Inverts the matcher. */
   readonly not: ValueExpectation<T>;
   /** Compares with Object.is. */
   toBe(expected: T): void;
@@ -651,11 +695,17 @@ export interface Expect {
 }
 
 export interface CommandConfig {
+  /** Resolved with `PATH`; never shell-interpreted. */
   executable: string;
+  /** Passed verbatim; `{port}` expands to the app's port. */
   args?: readonly string[];
+  /** Working directory, resolved from the project root. */
   cwd?: string;
+  /** Added to the inherited set; `{port}` expands in values. */
   env?: Readonly<Record<string, string>>;
+  /** Ready-probe budget in milliseconds; default 60000. Expiry is `APP_UNREACHABLE`. */
   startupTimeout?: number;
+  /** Grace period before force-kill in milliseconds; default 10000. */
   shutdownTimeout?: number;
   /** File that receives the process's stdout and stderr, appended, resolved from the project root. Omitted discards output. */
   log?: string;
@@ -710,6 +760,7 @@ export interface Target {
    * target without an engine; when both name one, they must agree.
    */
   platform?: Platform;
+  /** The engine driving the surface: `playwright(...)`, `agentDevice(...)`, or any `defineEngine` handle. */
   engine?: EngineHandle;
 }
 
@@ -723,8 +774,11 @@ export interface Target {
  * without this runner depending on it.
  */
 export interface ModelInstance {
+  /** The AI SDK specification the instance implements. */
   readonly specificationVersion: string;
+  /** Provider id, recorded per step in the report. */
   readonly provider: string;
+  /** Model id, recorded per step in the report. */
   readonly modelId: string;
 }
 
@@ -734,12 +788,13 @@ export type CacheMode = 'off' | 'read-only' | 'read-write';
 /**
  * Trace cache configuration. The store abstraction is the cloud seam: the
  * default file store keeps entries under `.e2e/cache/`, and a custom
- * `TraceCacheStore` (Redis, an API — anything implementing read/write over
+ * `TraceCacheStore` (Redis, an API, anything implementing read/write over
  * key digests) replaces it wholesale. Like agents and model instances, a
  * store never crosses a process boundary: workers re-resolve the config
  * module and construct their own.
  */
 export interface CacheConfig {
+  /** Default `read-write`; `read-only` in CI when unset. */
   mode?: CacheMode;
   /** Custom entry store; undefined selects the file store at `dir`. */
   store?: TraceCacheStore;
@@ -825,9 +880,9 @@ export type ProviderOptions = Readonly<Record<string, Readonly<Record<string, un
 /** Agent options for the built-in agent; `agent` also accepts a StepExecutor. */
 export interface AgentConfig {
   /**
-   * The step executor `agent.act()` dispatches to, alongside the options —
-   * a custom brain no longer forfeits `model`, budgets, or `context`
-   *. Omitted selects the built-in agent.
+   * The step executor `agent.act()` dispatches to, alongside the options: a
+   * custom brain keeps `model`, budgets, and `context`. Omitted selects the
+   * built-in agent.
    */
   executor?: StepExecutor;
   /** An AI SDK model instance; no implicit default. */
@@ -839,9 +894,13 @@ export interface AgentConfig {
    * are set.
    */
   judge?: ModelInstance;
+  /** Committed actions per agent call, 1 through 100; default 25. */
   maxSteps?: number;
+  /** Model requests per agent call, 1 through 100; default 25. */
   maxModelCalls?: number;
+  /** Observation payload ceiling for act turns and judgments, 1024 through 16777216; default 262144. */
   maxObservationBytes?: number;
+  /** Trusted project context prepended to agent prompts, at most `limits.maxAgentContextBytes`. */
   context?: string;
   /** Project-wide default for the per-call `vision` option. */
   vision?: VisionMode;
@@ -861,9 +920,11 @@ export type Report = Report1Document;
 
 /** What a reporter receives once the run is over and its report is on disk. */
 export interface FinishedRun {
+  /** The report-1 document, as written. */
   readonly report: Report;
   /** The same status `report.run.status` carries. */
   readonly status: RunStatus;
+  /** The exit code the process will end with. */
   readonly exitCode: RunExitCode;
   /** Absolute project root, what the terminal shows paths relative to. */
   readonly projectRoot: string;
@@ -895,22 +956,36 @@ export type ReporterSummary = readonly { readonly label: string; readonly text: 
  * side effects.
  */
 export interface Reporter {
+  /** Label in diagnostics; required. */
   readonly name: string;
+  /** Every run event as it happens. Must not block or throw. */
   onEvent?(event: RunEvent): void;
+  /** Runs once the report is written and the summary printed; awaited one minute. Returned rows print under the summary. */
   onRunFinished?(run: FinishedRun, signal: AbortSignal): Promise<ReporterSummary | void>;
 }
 
 export interface E2EConfig {
+  /** The config format this runner implements: `'0.1'`. */
   specVersion?: '0.1';
+  /** Stable project id, 1 through 256 characters; defaults to the root `package.json` name. */
   projectId?: string;
+  /** The surfaces tests run on; at least one. */
   targets?: readonly Target[];
+  /** Test file globs relative to the project root; default every `*.e2e.ts` under `tests/`. */
   tests?: string | readonly string[];
+  /** Test attempt deadline in milliseconds; default 120000. */
   timeout?: number;
+  /** Engine init and attempt start budget in milliseconds; default 60000. */
   launchTimeout?: number;
+  /** Budget of every engine operation in milliseconds; default 30000. */
   actionTimeout?: number;
+  /** Default `expect` deadline in milliseconds; default 5000. */
   assertionTimeout?: number;
+  /** Budget of each `afterEach` hook, fixture teardown, and engine cleanup in milliseconds; default 30000. */
   cleanupTimeout?: number;
+  /** Retries per test, 0 through 10; default 1 in CI, else 0. */
   retries?: number;
+  /** Parallel workers, 1 through 1024; default 1 in CI, else half the cores. An engine may cap it lower. */
   workers?: number;
   /** Artifact kinds, or `{ kinds, store, video }` to also hand every artifact to a host store. */
   artifacts?: readonly ConfiguredArtifactKind[] | ArtifactsConfig;
@@ -933,8 +1008,8 @@ export interface E2EConfig {
   agents?: Readonly<Record<string, AgentConfig | StepExecutor>>;
   /**
    * The adaptive trace cache. Opt-out: unset means
-   * `read-write`, and `'off'` — or the `--no-cache` flag, which wins over the
-   * config — disables it. A string is shorthand for `{ mode }`. In CI an
+   * `read-write`, and `'off'` disables it, as does the `--no-cache` flag,
+   * which wins over the config. A string is shorthand for `{ mode }`. In CI an
    * unset mode is demoted to `read-only`: a committed cache is untrusted
    * input. An explicit `read-write` is honored as the project's own statement
    * of trust in the cache it restores.
@@ -946,9 +1021,13 @@ export interface E2EConfig {
    * accepted, so a configured limit is never a silent no-op.
    */
   limits?: {
+    /** Trusted agent context, 1024 through 65536; default 16384. */
     maxAgentContextBytes?: number;
+    /** Prior-step ledger, 1024 through 65536; default 8192. */
     maxLedgerBytes?: number;
+    /** Events recorded per step, 1 through 10000; default 1000. */
     maxEventsPerStep?: number;
+    /** Tokens per model request, 1 through 1000000; default 64000. */
     maxModelTokensPerCall?: number;
   };
   /**

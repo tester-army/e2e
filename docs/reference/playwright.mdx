@@ -22,20 +22,57 @@ export default {
 
 ## Options
 
-`playwright(options)` takes the app declaration every engine makes plus the
-browser choices:
+```ts
+/**
+ * Options of the browser engine: the app it drives (`url`, `command`,
+ * `services`, `environment`, `identity`, `readyUrl` - the
+ * engine contract's app declaration) plus the browser itself.
+ */
+export interface PlaywrightOptions extends EngineAppDeclaration {
+  /** Browser to launch; defaults to chromium. */
+  readonly browser?: BrowserName;
+  /** Initial viewport of every attempt's page; default 1280 by 720. */
+  readonly viewport?: { readonly width: number; readonly height: number };
+  /**
+   * Attach to a remote browser over CDP instead of launching locally. Requires
+   * the chromium browser (the default). Wired by a hosted-browser engine.
+   */
+  readonly connect?: PlaywrightConnectOptions;
+  /**
+   * HTTP headers added to every request the browser sends to an allowed
+   * origin: a preview-protection bypass token, a tunnel's interstitial skip.
+   * Requests to any other origin (a CDN, an analytics endpoint, an identity
+   * provider) never carry them, so a header that is a secret stays with the
+   * app it unlocks. Names are case-insensitive; a header the page already
+   * sends under the same name is replaced. Applies to every path onto the
+   * page, deterministic and agent-driven alike. Injecting headers routes
+   * every request of the attempt, which turns the browser's HTTP cache off
+   * and blocks service workers (a worker's requests bypass routing, so a
+   * page it controlled would reach the gate bare), and a Playwright trace
+   * records request headers.
+   */
+  readonly headers?: Readonly<Record<string, string>>;
+  /**
+   * HTTP basic authentication for a staging app behind a browser challenge.
+   * The browser answers a `401` with these credentials wherever one is
+   * issued, as Playwright's own `httpCredentials` does. Applies to every path
+   * onto the page.
+   */
+  readonly basicAuth?: PlaywrightBasicAuth;
+  /**
+   * The attribute that carries an element's test id: what the `testId` query
+   * (`screen.getByTestId`) resolves and what `SemanticNode.testId` reports.
+   * Defaults to `data-testid`.
+   */
+  readonly testIdAttribute?: string;
+}
+```
 
-| Option | Type | Default | Meaning |
-| --- | --- | --- | --- |
-| `url` | `string` | unset | The app's base URL; required once a test navigates. See [the app under test](/reference/config#the-app-under-test). |
-| `command`, `readyUrl`, `services` | | unset | The app process and its dependencies. See [command](/reference/config#command) and [services](/reference/config#services). |
-| `environment`, `identity` | | derived from `url` | Cache/session identity and the report label. See [the app under test](/reference/config#the-app-under-test). |
-| `browser` | `'chromium' \| 'firefox' \| 'webkit'` | `'chromium'` | The browser to launch. |
-| `viewport` | `{ width, height }` | `1280` by `720` | Initial viewport of every attempt's page. |
-| `testIdAttribute` | `string` | `'data-testid'` | The attribute whose value is a node's `testId`, read by `screen.getByTestId` and the agent's observation. `playwright({ testIdAttribute: 'data-cy' })` for a Cypress-style app. |
-| `connect` | `PlaywrightConnectOptions` | unset | Attach to a remote browser over CDP instead of launching locally. Chromium only. `cdpEndpoint(signal)` is called once per worker and again when a session drops. |
-| `headers` | `Record<string, string>` | unset | HTTP headers added to every request bound for the [app's site](/reference/config#the-apps-site) and no other host. Routes every request through the runner, which turns the browser's HTTP cache off and blocks service workers. |
-| `basicAuth` | `{ username, password }` | unset | Answers a `401` challenge from any origin. `:` is not allowed in the user name. |
+The app declaration fields (`url`, `command`, `readyUrl`, `services`,
+`environment`, `identity`) are documented under
+[the app under test](/reference/config#the-app-under-test). `connect` needs
+chromium; `cdpEndpoint(signal)` is called once per worker and again when a
+session drops. `:` is not allowed in the `basicAuth` user name.
 
 `headers` and `basicAuth` are how a test reaches a [protected preview](/starting-your-app#protected-previews).
 
@@ -43,6 +80,7 @@ browser choices:
 
 ```ts
 export interface Web extends Expectable<WebExpectation> {
+  /** Navigates to an allowed URL. */
   goto(
     url: string,
     options?: {
@@ -50,46 +88,70 @@ export interface Web extends Expectable<WebExpectation> {
       timeout?: number;
     },
   ): Promise<void>;
+  /** Reloads the current document. */
   reload(options?: ActionOptions): Promise<void>;
+  /** Navigates browser history back once. */
   back(options?: ActionOptions): Promise<void>;
+  /** Navigates browser history forward once. */
   forward(options?: ActionOptions): Promise<void>;
+  /** Returns the current URL. */
   url(): Promise<string>;
+  /** Returns the current title. */
   title(): Promise<string>;
+  /** Waits for the current URL to match. */
   waitForURL(url: string | RegExp, options?: { timeout?: number }): Promise<void>;
+  /** Creates a web-only CSS or XPath locator. */
   locator(selector: string): Locator;
+  /** Creates a screen query scope inside one iframe. */
   frameLocator(selector: string): Screen;
+  /** Evaluates trusted test code in the page. */
   evaluate<T extends JsonValue>(fn: string | (() => T | Promise<T>)): Promise<T>;
+  /** Evaluates trusted test code with one required JSON-safe argument. */
   evaluate<T extends JsonValue, Arg extends JsonValue>(
     fn: string | ((arg: Arg) => T | Promise<T>),
     arg: Arg,
   ): Promise<T>;
+  /** Adds an attempt-scoped network route. */
   route(
     pattern: string | RegExp,
     handler: (route: WebRoute) => void | Promise<void>,
   ): Promise<void>;
+  /** Removes matching attempt-scoped routes. */
   unroute(pattern: string | RegExp): Promise<void>;
+  /** Waits for a matching response. */
   waitForResponse(
     pattern: string | RegExp,
     options?: { timeout?: number },
   ): Promise<WebResponse>;
+  /** Returns cookies visible to the current context. */
   cookies(): Promise<Cookie[]>;
+  /** Sets cookies after URL validation. */
   setCookies(cookies: readonly Cookie[]): Promise<void>;
+  /** Sets the viewport size. */
   setViewport(size: { width: number; height: number }): Promise<void>;
-  onDialog(
-    handler: 'accept' | 'dismiss' | ((dialog: Dialog) => void | Promise<void>),
-  ): Promise<() => Promise<void>>;
+  /** Registers an attempt-scoped dialog handler and returns an unsubscribe function. */
+  onDialog(handler: DialogHandler): Promise<() => Promise<void>>;
+  /** Runs a trigger and waits for its download. */
   waitForDownload(
     trigger: () => Promise<void>,
     options?: { timeout?: number },
   ): Promise<{ path: string; suggestedFilename: string }>;
+  /** Viewport-level keyboard, for whatever has focus. */
   readonly keyboard: {
+    /** Sends one key. */
     press(key: string): Promise<void>;
+    /** Types plain text. */
     type(text: string): Promise<void>;
   };
+  /** Viewport-level pointer. */
   readonly mouse: {
+    /** Moves the pointer. */
     move(x: number, y: number): Promise<void>;
+    /** Scrolls the pointer wheel. */
     wheel(deltaX: number, deltaY: number): Promise<void>;
+    /** Presses the primary pointer button. */
     down(): Promise<void>;
+    /** Releases the primary pointer button. */
     up(): Promise<void>;
   };
 }
@@ -108,15 +170,11 @@ in a suite that also runs on other platforms.
 
 ### Navigation
 
-| Method | Behavior | Throws |
-| --- | --- | --- |
-| `goto(url, options?)` | Absolute URL or route relative to the base URL. `waitUntil` defaults to `'load'`. | `POLICY_DENIED` for a `file:`, `data:`, or `javascript:` URL, `ACTION_FAILED` |
-| `reload(options?)` | One history reload | `ACTION_FAILED` |
-| `back(options?)` | One history entry back | `ACTION_FAILED` |
-| `forward(options?)` | One history entry forward | `ACTION_FAILED` |
-| `url()` | Current serialized URL, immediate read | |
-| `title()` | Current document title, immediate read | |
-| `waitForURL(url, options?)` | Polls every 100 ms. A relative string resolves against the base URL and matches exactly after normalization; a `RegExp` tests the full URL. | `ASSERTION_FAILED` on timeout |
+`goto` defaults `waitUntil` to `'load'` and throws `POLICY_DENIED` for a
+`file:`, `data:`, or `javascript:` URL. `waitForURL` polls every 100 ms; a
+relative string resolves against the base URL and matches exactly after
+normalization, a `RegExp` tests the full URL, and a timeout is
+`ASSERTION_FAILED`. The other navigations throw `ACTION_FAILED`.
 
 ```ts
 await web.goto('/dashboard', { waitUntil: 'networkidle' });
@@ -125,10 +183,9 @@ await web.waitForURL(/\/orders\/\d+$/, { timeout: 15_000 });
 
 ### Locators and frames
 
-| Method | Returns | Notes |
-| --- | --- | --- |
-| `locator(selector)` | `Locator` | CSS or XPath locator. Not portable; prefer `screen` queries. Throws `INVALID_LOCATOR` for an empty selector. |
-| `frameLocator(selector)` | `Screen` | Query scope inside one iframe. Throws `LOCATOR_NOT_FOUND` for a missing frame and `LOCATOR_AMBIGUOUS` for several. |
+`locator` throws `INVALID_LOCATOR` for an empty selector. `frameLocator`
+throws `LOCATOR_NOT_FOUND` for a missing frame and `LOCATOR_AMBIGUOUS` for
+several.
 
 ```ts
 const payment = web.frameLocator('#payment-frame');
@@ -155,11 +212,10 @@ const flag = await web.evaluate(
 
 ### Routing
 
-| Method | Behavior | Throws |
-| --- | --- | --- |
-| `route(pattern, handler)` | Registers an attempt-scoped route that survives `app.restart()`, `app.clearState()`, and session restore. The handler must decide exactly once with `fulfill`, `continue`, or `abort`. | `ACTION_FAILED` when the handler decides twice or not at all |
-| `unroute(pattern)` | Removes every route registered with a matching pattern | |
-| `waitForResponse(pattern, options?)` | Resolves with a `WebResponse` | `ACTION_FAILED` when nothing matches inside the deadline |
+A route survives `app.restart()`, `app.clearState()`, and session restore.
+The handler must decide exactly once with `fulfill`, `continue`, or `abort`;
+deciding twice or not at all is `ACTION_FAILED`, as is a `waitForResponse`
+that nothing matches inside the deadline.
 
 ```ts
 await web.route('**/api/quote', async (route) => {
@@ -171,6 +227,7 @@ expect(response.status).toBe(201);
 ```
 
 ```ts
+/** `json` or `body`, never both; neither fulfills with an empty body. */
 export type RouteFulfillResponse = {
   status?: number;
   headers?: Record<string, string>;
@@ -181,48 +238,59 @@ export type RouteFulfillResponse = {
 );
 
 export interface WebRoute {
+  /** The intercepted request. */
   readonly request: {
     readonly url: string;
     readonly method: string;
     readonly headers: Readonly<Record<string, string>>;
     readonly postData?: string;
   };
+  /** Fulfills the intercepted request once. */
   fulfill(response: RouteFulfillResponse): Promise<void>;
+  /** Continues the intercepted request once. */
   continue(): Promise<void>;
+  /** Aborts the intercepted request once. */
   abort(): Promise<void>;
 }
 
 export interface WebResponse {
+  /** Response URL. */
   readonly url: string;
+  /** HTTP status. */
   readonly status: number;
+  /** Response headers, lower-cased names. */
   readonly headers: Readonly<Record<string, string>>;
+  /** Parses the response body as JSON. */
   json<T = unknown>(): Promise<T>;
+  /** Reads the response body as text. */
   text(): Promise<string>;
 }
 ```
 
-`json` and `body` are mutually exclusive. Omitting both fulfills with an
-empty body.
-
 ### Cookies and viewport
 
-| Method | Behavior | Throws |
-| --- | --- | --- |
-| `cookies()` | The cookies visible to the current context | |
-| `setCookies(cookies)` | Validates every cookie before setting any. For the `domain` form the scheme follows the base URL and a leading `.` is stripped. | `POLICY_DENIED` for an unparseable target or a forbidden scheme; nothing is set when any entry is rejected |
-| `setViewport(size)` | Resizes the viewport and records the new size on the report | |
+`setCookies` validates every cookie before setting any; an unparseable
+target or a forbidden scheme is `POLICY_DENIED` and nothing is set. For the
+`domain` form the scheme follows the base URL and a leading `.` is stripped.
+`setViewport` records the new size on the report.
 
 ```ts
 export interface CookieFields {
+  /** Cookie name. */
   name: string;
+  /** Cookie value. */
   value: string;
   /** Unix timestamp in whole seconds. */
   expires?: number;
+  /** HttpOnly flag. */
   httpOnly?: boolean;
+  /** Secure flag. */
   secure?: boolean;
+  /** SameSite attribute. */
   sameSite?: 'Strict' | 'Lax' | 'None';
 }
 
+/** `url`, or `domain` with an optional `path`, never both. */
 export type Cookie = CookieFields &
   (
     | { url: string; domain?: never; path?: never }
@@ -230,23 +298,25 @@ export type Cookie = CookieFields &
   );
 ```
 
-Supply `url`, or `domain` with an optional `path`. Never both.
-
 ```ts
 await web.setCookies([{ url: 'http://localhost:3000', name: 'tz', value: 'UTC' }]);
 ```
 
 ### Dialogs and downloads
 
-| Method | Behavior | Throws |
-| --- | --- | --- |
-| `onDialog(handler)` | Registers an attempt-scoped handler and returns an unsubscribe function. A function handler must call `accept` or `dismiss`; one that does neither has the dialog dismissed and fails the next step with `APP_NOT_OPEN`. | |
-| `waitForDownload(trigger, options?)` | Runs `trigger`, waits for the download, and registers the file as a `download` artifact. | `ACTION_FAILED` when the download does not complete in time |
+A function handler must call `accept` or `dismiss`; one that does neither
+has the dialog dismissed and fails the next step with `APP_NOT_OPEN`, as an
+unhandled dialog does. `waitForDownload` registers the file as a `download`
+artifact and throws `ACTION_FAILED` when it does not complete in time.
 
 ```ts
+/** A native dialog as a test's handler sees it. */
 export interface Dialog {
+  /** The dialog's text. */
   readonly message: string;
+  /** Accepts the dialog once. */
   accept(text?: string): Promise<void>;
+  /** Dismisses the dialog once. */
   dismiss(): Promise<void>;
 }
 ```
@@ -263,15 +333,6 @@ const file = await web.waitForDownload(() =>
 
 ### keyboard and mouse
 
-| Method | Behavior |
-| --- | --- |
-| `keyboard.press(key)` | Sends one key to whatever has focus |
-| `keyboard.type(text)` | Types plain text into whatever has focus |
-| `mouse.move(x, y)` | Moves the pointer |
-| `mouse.wheel(deltaX, deltaY)` | Scrolls the pointer wheel |
-| `mouse.down()` | Presses the primary button |
-| `mouse.up()` | Releases the primary button |
-
 Both namespaces are viewport-level. Prefer `locator.press` and
 `locator.fill` when a target exists. `keyboard.type` takes plain text only,
 never a `Secret`.
@@ -279,7 +340,10 @@ never a `Secret`.
 ### JsonValue
 
 ```ts
+/** A JSON scalar. */
 export type JsonPrimitive = string | number | boolean | null;
+
+/** Data that survives JSON serialization. */
 export type JsonValue =
   | JsonPrimitive
   | { readonly [key: string]: JsonValue }

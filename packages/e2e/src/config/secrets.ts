@@ -16,15 +16,20 @@ export type SecretPurpose = 'password' | 'generic-secret';
 
 /** Opaque host-side value accepted only by sensitive input sinks. */
 export interface Secret {
+  /** The entry's name in `credentials` or `secrets`. */
   readonly name: string;
+  /** Where the value may be filled. */
   readonly purpose: SecretPurpose;
   readonly [secretBrand]: true;
 }
 
 /** Named test identity. The password remains an opaque Secret. */
 export interface Credential {
+  /** The entry's name in `credentials`. */
   readonly name: string;
+  /** Plain username. */
   readonly username: string;
+  /** Opaque; test code cannot read it. */
   readonly password: Secret;
   readonly [credentialBrand]: true;
 }

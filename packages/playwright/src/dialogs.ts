@@ -10,6 +10,7 @@ import { ErrorLatch, message } from './support.ts';
 
 /** A native dialog as a test's handler sees it. */
 export interface Dialog {
+  /** The dialog's text. */
   readonly message: string;
   /** Accepts the dialog once. */
   accept(text?: string): Promise<void>;

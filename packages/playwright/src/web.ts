@@ -35,6 +35,7 @@ import { compileEvaluation } from './evaluation.ts';
 import { routePatternMatches, routePatternsEqual, toRoutePattern } from './route-pattern.ts';
 import type { PlaywrightSurface } from './surface.ts';
 
+/** `json` or `body`, never both; neither fulfills with an empty body. */
 export type RouteFulfillResponse = {
   status?: number;
   headers?: Record<string, string>;
@@ -45,6 +46,7 @@ export type RouteFulfillResponse = {
 );
 
 export interface WebRoute {
+  /** The intercepted request. */
   readonly request: {
     readonly url: string;
     readonly method: string;
@@ -60,8 +62,11 @@ export interface WebRoute {
 }
 
 export interface WebResponse {
+  /** Response URL. */
   readonly url: string;
+  /** HTTP status. */
   readonly status: number;
+  /** Response headers, lower-cased names. */
   readonly headers: Readonly<Record<string, string>>;
   /** Parses the response body as JSON. */
   json<T = unknown>(): Promise<T>;
@@ -70,15 +75,21 @@ export interface WebResponse {
 }
 
 export interface CookieFields {
+  /** Cookie name. */
   name: string;
+  /** Cookie value. */
   value: string;
   /** Unix timestamp in whole seconds. */
   expires?: number;
+  /** HttpOnly flag. */
   httpOnly?: boolean;
+  /** Secure flag. */
   secure?: boolean;
+  /** SameSite attribute. */
   sameSite?: 'Strict' | 'Lax' | 'None';
 }
 
+/** `url`, or `domain` with an optional `path`, never both. */
 export type Cookie = CookieFields &
   (
     | { url: string; domain?: never; path?: never }
@@ -86,6 +97,7 @@ export type Cookie = CookieFields &
   );
 
 export interface WebExpectation {
+  /** Inverts the matcher. */
   readonly not: WebExpectation;
   /** Waits for the current URL to match. */
   toHaveURL(expected: string | RegExp, options?: { timeout?: number }): Promise<void>;
@@ -152,12 +164,14 @@ export interface Web extends Expectable<WebExpectation> {
     trigger: () => Promise<void>,
     options?: { timeout?: number },
   ): Promise<{ path: string; suggestedFilename: string }>;
+  /** Viewport-level keyboard, for whatever has focus. */
   readonly keyboard: {
     /** Sends one key. */
     press(key: string): Promise<void>;
     /** Types plain text. */
     type(text: string): Promise<void>;
   };
+  /** Viewport-level pointer. */
   readonly mouse: {
     /** Moves the pointer. */
     move(x: number, y: number): Promise<void>;

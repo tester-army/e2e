@@ -16,11 +16,15 @@ import type { Momentum, ScrollDirection, SelectOption } from '../types.ts';
 export const ENGINE_SPI_VERSION = 1;
 export type EngineSpiVersion = typeof ENGINE_SPI_VERSION;
 
+/** What every engine call carries: budget, ids, and who is acting. */
 export interface OperationContext {
+  /** Aborts with the attempt or when the operation budget is spent. */
   readonly signal: AbortSignal;
   /** Remaining operation budget when the call starts. */
   readonly timeoutMs: number;
+  /** The run id. */
   readonly runId: string;
+  /** The attempt id. */
   readonly attemptId: string;
   /**
    * Who asked: a test's own deterministic step, or the agent acting on a
@@ -36,6 +40,7 @@ export type TextPattern =
   | { readonly kind: 'string'; readonly value: string; readonly exact: boolean }
   | { readonly kind: 'regexp'; readonly source: string; readonly flags: string };
 
+/** The `screen` query kinds. */
 export type QueryKind = 'role' | 'label' | 'placeholder' | 'text' | 'displayValue' | 'testId';
 
 export interface SemanticQuery {
@@ -106,11 +111,17 @@ export interface NodeRef {
 export const OBSERVED_NAME_LIMIT = 256;
 export const OBSERVED_TEXT_LIMIT = 512;
 
+/** One node of an observation tree. */
 export interface SemanticNode {
+  /** Node reference, valid against the observation it came from. */
   readonly ref: NodeRef;
+  /** Semantic role. */
   readonly role?: string;
+  /** Accessible name, cut at `OBSERVED_NAME_LIMIT`. */
   readonly name?: string;
+  /** Visible text, cut at `OBSERVED_TEXT_LIMIT`. */
   readonly text?: string;
+  /** Current input value; never reported for a secure field. */
   readonly value?: string;
   /**
    * The node's test id, when the platform gives it one: the value of the
@@ -120,7 +131,9 @@ export interface SemanticNode {
    * harness never knows where a platform keeps it.
    */
   readonly testId?: string;
+  /** What a field takes, deciding which secrets may fill it. */
   readonly inputPurpose?: 'username' | 'password' | 'one-time-code' | 'generic-secret' | 'none';
+  /** Boolean states the platform reports. */
   readonly states?: Readonly<
     Partial<
       Record<
@@ -129,6 +142,7 @@ export interface SemanticNode {
       >
     >
   >;
+  /** Platform attributes, what `getAttribute` reads. */
   readonly attributes?: Readonly<Record<string, string>>;
   /**
    * The node's box in the top-level viewport's CSS pixels (`ViewportPoint`
@@ -160,6 +174,7 @@ export interface SemanticNode {
    * outermost first. Absent for nodes in the main document.
    */
   readonly framePath?: readonly string[];
+  /** Child nodes. */
   readonly children?: readonly SemanticNode[];
 }
 
@@ -297,7 +312,9 @@ export type KeyName = (typeof KEY_NAMES)[number];
 
 /** One parsed `press` key: its modifiers and either a named key or a single character. */
 export interface ParsedKey {
+  /** Modifiers, in the order written. */
   readonly modifiers: readonly KeyModifier[];
+  /** The key itself. */
   readonly key: { readonly kind: 'named'; readonly name: KeyName } | { readonly kind: 'char'; readonly char: string };
 }
 
@@ -344,6 +361,7 @@ export const ENGINE_ERROR_CODES = [
   'ENGINE_FAILURE',
 ] as const;
 
+/** One of `ENGINE_ERROR_CODES`. */
 export type EngineErrorCode = (typeof ENGINE_ERROR_CODES)[number];
 
 /**
@@ -363,7 +381,9 @@ export const RETRYABLE_ENGINE_ERROR_CODES: ReadonlySet<EngineErrorCode> = new Se
  * into repeating an action that may have committed.
  */
 export class EngineError extends Error {
+  /** One of `ENGINE_ERROR_CODES`. */
   readonly code: EngineErrorCode;
+  /** Whether the runner may re-resolve and retry; only `RETRYABLE_ENGINE_ERROR_CODES` can be. */
   readonly retryable: boolean;
 
   constructor(

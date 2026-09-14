@@ -49,21 +49,84 @@ One engine per device family. Platform-specific labels or operations need
 `platforms: ['ios']` or `platforms: ['android']`. Device attempts open their
 configured app; `app.open()` is unavailable on these targets.
 
-| Option | Type | Default | Meaning |
-| --- | --- | --- | --- |
-| `platform` | `'ios' \| 'android'` | required | Which device family the target boots. |
-| `app` | `string` | none | App opened fresh at the start of every attempt: a bundle id, a package name, or a display name. Declares `app.restart()` and `app.clearState()`. |
-| `appPath` | `string` | none | An iOS `.app` bundle or Android `.apk`, resolved against the project root, installed once per worker after boot and before the first attempt. Without `app`, the installed bundle id or package is the app opened per attempt. |
-| `device` | `string \| readonly string[]` | every booted device | Simulator or emulator name or UDID. A list is a pool: the engine declares one worker per entry and worker slot `n` drives the `n`th; an empty list is `INVALID_CONFIG`. Omitted, `prepare` discovers the booted devices of the platform and drives as many as the run has slots; with none booted, agent-device boots one. |
-| `session` | `string` | `e2e-<target name>` | agent-device session name, before the worker slot: slot `n` drives its device under `<session>-<n>`. One run per session at a time. |
-| `snapshot` | `'full' \| 'interactive'` | `'full'` | Whether observations include static text. |
-| `settle` | `number \| false` | `150` | Milliseconds the UI must hold still after an agent action before the agent observes again; `false` skips the wait. A test's own steps never settle. |
-| `transition` | `number` | `500` | For a test's steps: how long a control that appeared or moved with the last action gets to finish arriving before it is acted on. Accessibility frames report final positions from a transition's first frame. |
-| `identity` | `string` | `app`, else `appPath` | Logical app identity for cache and session keying; see [the app under test](/reference/config#the-app-under-test). |
-| `environment` | `'test' \| 'staging' \| 'production'` | `'test'` | A label for the report and the identity digest. |
+```ts
+/**
+ * Options of the device engine. Every optional value also accepts `undefined`,
+ * so values read straight from `process.env` need no conditional spread.
+ */
+export interface AgentDeviceOptions {
+  /** Platform the target's device runs. */
+  readonly platform: AgentDevicePlatform;
+  /**
+   * App opened fresh at the start of every attempt: a bundle id, a package
+   * name, or a display name agent-device resolves (`Settings`). Without it the
+   * surface observes whatever is in the foreground, and `app.restart()` and
+   * `app.clearState()` are not available.
+   */
+  readonly app?: string | undefined;
+  /**
+   * Build to install on the device once per worker, before the first attempt:
+   * an iOS `.app` bundle or an Android `.apk`, resolved against the project
+   * root (the config's directory). Without `app`, the installed bundle id or
+   * package becomes the app opened fresh at the start of every attempt.
+   */
+  readonly appPath?: string | undefined;
+  /**
+   * Stable identity keying trace cache and session entries; defaults to `app`,
+   * else `appPath`. Declare one when the pinned app differs per run (a build
+   * path with a version in it) so entries survive the rename.
+   */
+  readonly identity?: string | undefined;
+  /** Report label joining the cache identity; a simulator or emulator defaults to `test`. */
+  readonly environment?: 'test' | 'staging' | 'production' | undefined;
+  /**
+   * Simulator or emulator to use, by name or UDID. A list is a pool: the
+   * engine declares one worker per entry and worker slot `n` drives the
+   * `n`th, so `workers` at or above the pool size runs the target's files
+   * across every device at once. Omitted, the pool is every booted device of
+   * the platform at `prepare`, as many as the run has slots; with none booted,
+   * agent-device boots one.
+   */
+  readonly device?: string | readonly string[] | undefined;
+  /**
+   * agent-device session name, before the worker slot: slot `n` drives its
+   * device under `<session>-<n>`, `e2e-<target name>-<n>` by default. One run
+   * per session at a time: concurrent runs on the same session interleave
+   * taps.
+   */
+  readonly session?: string | undefined;
+  /**
+   * What an observation captures. `full` (default) includes static text, so
+   * judgments can read values; `interactive` keeps only actionable nodes and
+   * is cheaper on screens with long lists.
+   */
+  readonly snapshot?: 'full' | 'interactive' | undefined;
+  /**
+   * How long the UI must hold still after a tap, fill, or back before the
+   * action counts as landed, in milliseconds; `false` skips the wait. The
+   * wait keeps the observation that follows an action off a transition
+   * frame; the runner's own polling (`expect`, actions waiting for their
+   * node) covers the rest, so a short window suffices. Default 150. Every
+   * frame of a running animation changes the tree, so a 150 ms window still
+   * catches a transition in flight; raise it for slow devices or apps that
+   * settle in stages, or lower it to 0 to keep only the first re-observation.
+   */
+  readonly settle?: number | false | undefined;
+  /**
+   * How long a control that appeared or moved with the last action is given
+   * to finish arriving before a test acts on it, in milliseconds. Default
+   * 500, the length of a modal or screen transition. Accessibility frames
+   * report a control's final position from the first frame of a transition,
+   * so this budget is the only thing that keeps a test from tapping a point
+   * the control has not reached; controls already on screen at the same
+   * place before the action are acted on at once. Raise it for slower
+   * transitions.
+   */
+  readonly transition?: number | undefined;
+}
+```
 
-Every optional value also accepts `undefined`, so `device:
-process.env.E2E_DEVICE` passes straight through.
+An empty `device` list is `INVALID_CONFIG`.
 
 Devices boot in `prepare`, once per run and before the run's clock starts, so
 a cold boot on CI is never charged against `launchTimeout`. agent-device
@@ -118,32 +181,74 @@ one.
 ## Device
 
 ```ts
+/** Deterministic device management exposed to tests as `device`. */
 export interface Device {
+  /**
+   * A locator from an agent-device selector (`'id=SW_VERSION_SPECIFIER'`,
+   * `'role=StaticText label="26.2"'`), for nodes the closed `screen` query
+   * vocabulary cannot name. Same polling and strictness as any locator.
+   */
   locator(selector: string): Locator;
+  /** Toggles the device's Wi-Fi. */
   setNetwork(state: 'online' | 'offline'): Promise<void>;
+  /** Toggles airplane mode. */
   setAirplaneMode(enabled: boolean): Promise<void>;
+  /** Grants, denies, or resets one permission for the open app. */
   setPermission(permission: DevicePermission, state: 'grant' | 'deny' | 'reset'): Promise<void>;
+  /** Sets the simulated location. */
   setLocation(coordinates: { latitude: number; longitude: number }): Promise<void>;
+  /** Turns simulated location off. */
   clearLocation(): Promise<void>;
+  /** Sets the system appearance. */
   setAppearance(mode: 'light' | 'dark'): Promise<void>;
+  /** Rotates the device. */
   setOrientation(orientation: DeviceOrientation): Promise<void>;
-  setBiometrics(sensor: 'faceid' | 'touchid' | 'fingerprint', result: 'match' | 'nonmatch'): Promise<void>;
+  /** Simulates one biometric attempt on the open app. */
+  setBiometrics(sensor: BiometricSensor, result: 'match' | 'nonmatch'): Promise<void>;
+  /** Enrolls or unenrolls the simulator's Face ID or Touch ID. */
   enrollBiometrics(sensor: 'faceid' | 'touchid', enrolled: boolean): Promise<void>;
-  installApp(appPath: string, options?: { app?: string; reinstall?: boolean }): Promise<{ app: string; bundleId?: string }>;
+  /**
+   * Installs a build (an iOS `.app` bundle or an Android `.apk`, resolved
+   * against the project root) on the device. `reinstall: true` removes
+   * the app first so it starts with no data; a plain install replaces the
+   * binary and keeps its data. Resolves to the identity to `openApp` it by.
+   */
+  installApp(appPath: string, options?: InstallAppOptions): Promise<InstalledApp>;
+  /** Brings an app to the foreground; `relaunch` restarts it fresh. */
   openApp(app: string, options?: { relaunch?: boolean }): Promise<void>;
+  /** Closes the session's current app. */
   closeApp(): Promise<void>;
-  foregroundApp(): Promise<{ name: string; bundleId?: string }>;
+  /** The app currently in the foreground of the session. */
+  foregroundApp(): Promise<ForegroundApp>;
+  /** Sends the device to its home screen. */
   home(): Promise<void>;
+  /** Navigates back once (in-app back). */
   back(): Promise<void>;
+  /** Accepts or dismisses the visible system alert. */
   alert(action: 'accept' | 'dismiss'): Promise<void>;
+  /** Dismisses the soft keyboard. */
   dismissKeyboard(): Promise<void>;
+  /** Reads the clipboard. */
   clipboard(): Promise<string>;
+  /** Writes the clipboard. */
   setClipboard(text: string): Promise<void>;
 }
 
+/** Permissions agent-device can grant, deny, or reset on an open app. */
 export type DevicePermission =
-  | 'camera' | 'microphone' | 'photos' | 'contacts' | 'notifications' | 'calendar'
-  | 'location' | 'reminders' | 'motion' | 'siri' | 'media-library';
+  | 'camera'
+  | 'microphone'
+  | 'photos'
+  | 'contacts'
+  | 'notifications'
+  | 'calendar'
+  | 'location'
+  | 'reminders'
+  | 'motion'
+  | 'siri'
+  | 'media-library';
+
+/** Orientations `setOrientation` accepts. */
 export type DeviceOrientation = 'portrait' | 'portrait-upside-down' | 'landscape-left' | 'landscape-right';
 ```
 

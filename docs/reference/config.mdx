@@ -38,44 +38,118 @@ written with `require` or `module.exports` fails to load.
 
 ## Top level
 
-| Key | Type | Default | Valid range |
-| --- | --- | --- | --- |
-| `specVersion` | `'0.1'` | `'0.1'` | the one value this runner implements |
-| `projectId` | `string` | the `name` of the project root's `package.json`, else `unportable-<sha256 of the project root, 32 hex>` | 1-256 characters |
-| `targets` | `readonly Target[]` | required | non-empty; see [targets](#targets) |
-| `tests` | `string \| readonly string[]` | `'tests/**/*.e2e.ts'` | non-empty, `/` separators, duplicates removed |
-| `timeout` | `number` | `120000` | positive safe integer |
-| `launchTimeout` | `number` | `60000` | positive safe integer |
-| `actionTimeout` | `number` | `30000` | positive safe integer; bounds every engine operation, including each observation and navigation inside an agent step. A targeted agent action is bounded by the smaller of this and 15 s |
-| `assertionTimeout` | `number` | `5000` | positive safe integer |
-| `cleanupTimeout` | `number` | `30000` | positive safe integer |
-| `retries` | `number` | `1` in CI, else `0` | integer 0-10 |
-| `workers` | `number` | `1` in CI, else `max(1, floor(availableParallelism() / 2))` | integer 1-1024; a target never runs more than the `workers` its engine declares |
-| `artifacts` | kinds array or `{ kinds?, store?, video? }` | `['screenshot', 'trace']` | see [artifacts](#artifacts) |
-| `reporters` | `readonly ('list' \| 'json' \| 'junit' \| 'markdown' \| Reporter)[]` | `['list']` | the four IDs and [reporter objects](/reference/reporters); `json` cannot be combined with `list`; `--reporter` replaces the IDs and keeps the objects |
-| `agents` | object of agents by name | see [agents](#agents) | `default` is the agent tests run with |
-| `cache` | string or object | `'read-write'` (`'read-only'` in CI when unset) | see [cache](#cache) |
-| `limits` | object | see [limits](#limits) | |
-| `credentials` | record | `{}` | see [credentials](#credentials) |
-| `secrets` | record | `{}` | see [secrets](#secrets) |
+```ts
+export interface E2EConfig {
+  /** The config format this runner implements: `'0.1'`. */
+  specVersion?: '0.1';
+  /** Stable project id, 1 through 256 characters; defaults to the root `package.json` name. */
+  projectId?: string;
+  /** The surfaces tests run on; at least one. */
+  targets?: readonly Target[];
+  /** Test file globs relative to the project root; default every `*.e2e.ts` under `tests/`. */
+  tests?: string | readonly string[];
+  /** Test attempt deadline in milliseconds; default 120000. */
+  timeout?: number;
+  /** Engine init and attempt start budget in milliseconds; default 60000. */
+  launchTimeout?: number;
+  /** Budget of every engine operation in milliseconds; default 30000. */
+  actionTimeout?: number;
+  /** Default `expect` deadline in milliseconds; default 5000. */
+  assertionTimeout?: number;
+  /** Budget of each `afterEach` hook, fixture teardown, and engine cleanup in milliseconds; default 30000. */
+  cleanupTimeout?: number;
+  /** Retries per test, 0 through 10; default 1 in CI, else 0. */
+  retries?: number;
+  /** Parallel workers, 1 through 1024; default 1 in CI, else half the cores. An engine may cap it lower. */
+  workers?: number;
+  /** Artifact kinds, or `{ kinds, store, video }` to also hand every artifact to a host store. */
+  artifacts?: readonly ConfiguredArtifactKind[] | ArtifactsConfig;
+  /**
+   * Output renderers and reporter objects. `junit` writes `.e2e/junit.xml`,
+   * `markdown` writes `.e2e/summary.md`, `json` prints the report and
+   * excludes `list`; a `Reporter` object runs
+   * beside them and `--reporter` never removes it.
+   */
+  reporters?: readonly (BuiltinReporter | Reporter)[];
+  /**
+   * The agents by name. Each is either an options block or the agent itself:
+   * `createAgent(...)` from `e2e/agent`, or any hand-rolled
+   * `StepExecutor`. `default` is the one tests run with; `e2e run --agent
+   * <name>` runs them with another. With an agent value, the model is the
+   * one it brought and every other option keeps its default. Agents never
+   * cross a process boundary: workers re-resolve the config module and
+   * construct their own, exactly like model instances.
+   */
+  agents?: Readonly<Record<string, AgentConfig | StepExecutor>>;
+  /**
+   * The adaptive trace cache. Opt-out: unset means
+   * `read-write`, and `'off'` disables it, as does the `--no-cache` flag,
+   * which wins over the config. A string is shorthand for `{ mode }`. In CI an
+   * unset mode is demoted to `read-only`: a committed cache is untrusted
+   * input. An explicit `read-write` is honored as the project's own statement
+   * of trust in the cache it restores.
+   */
+  cache?: CacheMode | CacheConfig;
+  /**
+   * Enforced resource ceilings only. A limit exists here exactly when the
+   * runner has an enforcement site for it; aspirational knobs are not
+   * accepted, so a configured limit is never a silent no-op.
+   */
+  limits?: {
+    /** Trusted agent context, 1024 through 65536; default 16384. */
+    maxAgentContextBytes?: number;
+    /** Prior-step ledger, 1024 through 65536; default 8192. */
+    maxLedgerBytes?: number;
+    /** Events recorded per step, 1 through 10000; default 1000. */
+    maxEventsPerStep?: number;
+    /** Tokens per model request, 1 through 1000000; default 64000. */
+    maxModelTokensPerCall?: number;
+  };
+  /**
+   * Named accounts. A credential's password is registered as a secret under
+   * the credential's name, so the name may not also appear under `secrets`.
+   */
+  credentials?: Readonly<Record<string, CredentialConfig>>;
+  /**
+   * Named values the model must never see: API keys, tokens, anything sourced
+   * from the environment. `secrets.get(name)` hands a test the opaque handle;
+   * the value is filled by the runner, masked in every observation, and
+   * redacted from logs, traces, and the report.
+   */
+  secrets?: Readonly<Record<string, SecretConfig>>;
+}
+```
 
-Every numeric value must be a safe integer.
+Every numeric value must be a safe integer. `projectId` falls back to
+`unportable-<sha256 of the project root, 32 hex>` when there is no
+`package.json`. `workers` never exceeds what a target's engine declares. A
+targeted agent action is bounded by the smaller of `actionTimeout` and 15 s.
 
 ## targets
 
 ```ts
+/**
+ * One target: a named surface on one platform, served by an engine.
+ * What the target can do is graded from the engine's declared capabilities;
+ * with no `engine` the target is agent-tools-only and everything runs opaque.
+ * The app under test is the engine's to declare (its URL, identity, or the
+ * command that starts it); a target carries no app config of its own.
+ */
 export interface Target {
-  name?: string;         // defaults to platform
-  platform?: Platform;   // defaults to the engine's
-  engine?: EngineHandle; // defineEngine(...) from 'e2e/engine'
+  /** Label in reports and for `--target`; defaults to the platform. */
+  name?: string;
+  /**
+   * Platform label, inherited from the engine when omitted. Required for a
+   * target without an engine; when both name one, they must agree.
+   */
+  platform?: Platform;
+  /** The engine driving the surface: `playwright(...)`, `agentDevice(...)`, or any `defineEngine` handle. */
+  engine?: EngineHandle;
 }
 ```
 
-| Key | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `name` | `string` | `platform` | Stable ID used by `--target`, reports, sessions, and artifact paths; unique across targets. ASCII letters, digits, `_`, `-`, `.` |
-| `platform` | `Platform` | the engine's | The label `platforms: [...]` on a test filters against. Set it for a target without an engine; a value that disagrees with the engine's is `INVALID_CONFIG` |
-| `engine` | `EngineHandle` | none | [`playwright(...)`](/reference/playwright) for a browser, [`agentDevice(...)`](/reference/agent-device) for a device, any [`defineEngine`](/writing-an-engine) handle otherwise |
+`name` is the id `--target`, reports, sessions, and artifact paths use:
+ASCII letters, digits, `_`, `-`, `.`, unique across targets.
 
 `{ engine: playwright({ url }) }` is a complete target. Two targets on one
 platform need names. A target without an engine runs through agent tools
@@ -90,24 +164,68 @@ The engine declares the app it drives: the browser engine as options of
 resolves it at config load.
 
 ```ts
+/**
+ * What an engine declares about the app it drives. The app
+ * under test is the engine's to describe: a browser engine names a URL, a
+ * device engine a bundle id. The harness resolves the declaration once per
+ * target and owns everything built on it - navigation and origin policy,
+ * cache and session identity, the report's target record, and the app
+ * process it starts before the run.
+ */
 export interface EngineAppDeclaration {
-  url?: string;
-  command?: CommandConfig;
-  readyUrl?: string;
-  services?: readonly ServiceConfig[];
-  environment?: 'test' | 'staging' | 'production';
-  identity?: string;
+  /**
+   * Base URL of an addressable app: `app.open()` opens it and relative
+   * navigation resolves against it. WHATWG-normalized; no userinfo, query, or
+   * fragment; a missing scheme becomes `https://`, or `http://` for a
+   * loopback host. Plain HTTP is accepted for loopback hosts only. A URL on
+   * `127.0.0.1` or `[::1]` with port 0 asks the run for a free port,
+   * substituted wherever the declaration used it and handed to `command` and
+   * `services` as `{port}`.
+   */
+  readonly url?: string;
+  /**
+   * Labels the target in the report and joins the cache and session identity
+   * digest; never gates a run. Defaults to `test` for loopback, `.localhost`,
+   * and `.test` hosts and for a surface without a URL, `production` otherwise.
+   */
+  readonly environment?: 'test' | 'staging' | 'production';
+  /**
+   * Stable logical identity of the app under test, keying trace cache and
+   * session entries. Defaults to the URL's origin and base path, so an
+   * ephemeral per-deploy origin (a PR preview) cold-starts every entry; an
+   * explicit identity keys them by what the app *is* instead of where it is
+   * served this run. A surface without a URL has no default: declare one
+   * (a bundle id, say) or entries key on the target alone. Never share one
+   * identity across genuinely different apps: recorded traces would replay
+   * across them.
+   */
+  readonly identity?: string;
+  /**
+   * Process the runner starts before the first test and stops on every exit
+   * path (a dev server). Structured, never shell-interpreted; the child
+   * inherits only `PATH`, `HOME`, the temp-directory variables, and
+   * `command.env`. Targets declaring the same command share one process,
+   * probed at the first declaring target's `readyUrl`.
+   */
+  readonly command?: CommandConfig;
+  /** URL polled until `command` is ready (a 200-499 status); defaults to `url`. */
+  readonly readyUrl?: string;
+  /**
+   * Dependency processes the app needs before it can boot (a database
+   * container, a migration step), started in declaration order before any
+   * app command and torn down in reverse after it. Valid without `command`:
+   * the app may already be running, or be one of the services itself.
+   * Services declared identically by several targets start once; shared
+   * services must be declared in one order, and an explicit `name` must mean
+   * one process across the run.
+   */
+  readonly services?: readonly ServiceConfig[];
 }
 ```
 
-| Key | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `url` | `string` | unset | Required once a test calls `app.open()` or navigates relatively, else `APP_URL_REQUIRED` at that call. A missing scheme becomes `https://`, or `http://` for a loopback host. No userinfo, query, or fragment; plain HTTP only for loopback. Port `0` on `127.0.0.1` or `[::1]` asks the run for a [free port](#free-ports); on any other host, `localhost` included, it is `INVALID_APP_URL` |
-| `command` | `CommandConfig` | unset | The app process. `{port}` in `args` entries and `env` values expands to the port of the resolved `url`. Targets declaring the same command share one process |
-| `readyUrl` | `string` | the resolved `url` | Absolute http(s) readiness probe; a status of 200-499 counts as ready. `{port}` expands to the port of `url`. A `command` with neither is `APP_URL_REQUIRED` at config load |
-| `services` | `readonly ServiceConfig[]` | `[]` | Dependency processes started in order before the app command and torn down in reverse |
-| `environment` | `'test' \| 'staging' \| 'production'` | `'test'` for loopback, `.localhost`, and `.test` hosts and without a URL, otherwise `'production'` | A label for the report and the cache/session identity; it never gates a run |
-| `identity` | `string` | the URL's origin and base path, else none | Stable logical app identity for cache and session keying. Set it when the origin is ephemeral (a per-PR preview URL) so entries survive redeploys; never share one across different apps. A `url` with port `0` derives it from the declared `:0`, not from the port a run was given |
+Port `0` on any host other than `127.0.0.1` or `[::1]`, `localhost`
+included, is `INVALID_APP_URL`. A `command` with neither `url` nor `readyUrl`
+is `APP_URL_REQUIRED` at config load.
 
 ### The app's site
 
@@ -147,27 +265,35 @@ with the port. Tests read the allocated URL from
 
 ```ts
 export interface CommandConfig {
+  /** Resolved with `PATH`; never shell-interpreted. */
   executable: string;
+  /** Passed verbatim; `{port}` expands to the app's port. */
   args?: readonly string[];
+  /** Working directory, resolved from the project root. */
   cwd?: string;
+  /** Added to the inherited set; `{port}` expands in values. */
   env?: Readonly<Record<string, string>>;
+  /** Ready-probe budget in milliseconds; default 60000. Expiry is `APP_UNREACHABLE`. */
   startupTimeout?: number;
+  /** Grace period before force-kill in milliseconds; default 10000. */
   shutdownTimeout?: number;
+  /** File that receives the process's stdout and stderr, appended, resolved from the project root. Omitted discards output. */
   log?: string;
+  /**
+   * When the readiness URL already answers before the command starts, use that
+   * process instead of spawning: nothing is started and nothing is stopped.
+   * Off by default; CI ignores it and always starts the command.
+   */
   reuseExisting?: boolean;
 }
 ```
 
-| Key | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `executable` | `string` | | Required, non-empty, resolved with the process `PATH`. Never shell-interpreted |
-| `args` | `readonly string[]` | `[]` | Passed verbatim, except that `{port}` expands to the port of the target's `url` |
-| `cwd` | `string` | project root | Resolved from the project root |
-| `env` | `Record<string, string>` | `{}` | Adds to the inherited set; `{port}` in a value expands like in `args`. On a target without a `url` the token is `INVALID_CONFIG` |
-| `startupTimeout` | `number` | `60000` | Ready-probe budget; expiry is `APP_UNREACHABLE`. One `still starting` notice at half the budget, once that half is at least 5 s |
-| `shutdownTimeout` | `number` | `10000` | Grace period before force-kill |
-| `log` | `string` | unset (output discarded) | File that receives stdout and stderr, appended; resolved from the project root and must stay inside it. The raw, unredacted output; keep it in an ignored directory. A startup failure quotes the last 20 lines appended since the command started, `env` values replaced by `<secret:NAME>` markers |
-| `reuseExisting` | `boolean` | `false` | If `readyUrl` already answers before the spawn, attach to that process and leave it alone on teardown. Without it, an already-answering URL is `APP_ALREADY_RUNNING`. Ignored in CI, with a notice |
+`log` must stay inside the project root and holds the raw, unredacted
+output, so keep it in an ignored directory. A startup failure quotes the last
+20 lines appended since the command started, with `command.env` values
+replaced by `<secret:NAME>` markers. Without `reuseExisting`, a `readyUrl`
+that already answers is `APP_ALREADY_RUNNING`. `{port}` on a target without a
+`url` is `INVALID_CONFIG`.
 
 The child inherits only `PATH`, `HOME`, `TMPDIR`, `TMP`, `TEMP`,
 `SystemRoot`, and `COMSPEC`, plus everything in `command.env`. The runner
@@ -176,20 +302,37 @@ never terminates a process it did not start.
 ### services
 
 ```ts
+/**
+ * One dependency process of the app under test (a database container, a
+ * cache, an auth emulator, a migration step). Services start sequentially in
+ * declaration order before `app.command`, and each must be ready before the
+ * next starts. Exactly one of `readyUrl` or `waitForExit` declares how a
+ * service becomes ready; a service with neither has no readiness contract and
+ * is rejected as `INVALID_CONFIG`.
+ */
 export interface ServiceConfig extends CommandConfig {
+  /** Label used in errors, reporter output, and the report; defaults to the executable name. */
   name?: string;
+  /** Optional HTTP readiness probe; a status of 200 through 499 counts as ready. */
   readyUrl?: string;
+  /**
+   * Wait for the process to exit with code 0 instead of probing a URL
+   * (migrations, `docker compose up --wait`). A non-zero exit or the
+   * `startupTimeout` expiring is `APP_UNREACHABLE`.
+   */
   waitForExit?: boolean;
+  /**
+   * Optional command run during teardown after the service itself has been
+   * stopped (`docker compose down`). Runs on every exit path, is waited on
+   * until exit within its own `startupTimeout`, and a failure is recorded as a
+   * cleanup-phase run error rather than a crash.
+   */
   teardown?: CommandConfig;
 }
 ```
 
-| Key | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `name` | `string` | executable base name | Label in errors, reporter output, and the report. Non-empty, at most 64 characters, unique across named services |
-| `readyUrl` | `string` | unset | HTTP readiness probe, polled like the app's. `{port}` expands to the app's port |
-| `waitForExit` | `boolean` | `false` | The process is the step: ready when it exits 0. A non-zero exit is `APP_UNREACHABLE` |
-| `teardown` | `CommandConfig` | unset | Run during teardown after the service is stopped, waited on within its own `startupTimeout`. `{port}` expands in its `args` and `env` too |
+`name` is at most 64 characters and unique across named services. `{port}`
+in a service's `args`, `env`, `readyUrl`, and `teardown` is the app's port.
 
 Exactly one of `readyUrl` or `waitForExit` is required per service.
 `reuseExisting` works on a `readyUrl` service and skips its `teardown`; on a
@@ -249,17 +392,36 @@ Turning video on or off never invalidates cached replays.
 ## agents
 
 ```ts
-agents?: Record<string, StepExecutor | {
+/** Agent options for the built-in agent; `agent` also accepts a StepExecutor. */
+export interface AgentConfig {
+  /**
+   * The step executor `agent.act()` dispatches to, alongside the options: a
+   * custom brain keeps `model`, budgets, and `context`. Omitted selects the
+   * built-in agent.
+   */
   executor?: StepExecutor;
+  /** An AI SDK model instance; no implicit default. */
   model?: ModelInstance;
+  /**
+   * The model that judges `assert`, `waitFor`, and `extract`; defaults to
+   * `model`. A judge of its own separates the model that grades a flow from
+   * the one that drove it. Must agree with `createAgent({ judge })` when both
+   * are set.
+   */
   judge?: ModelInstance;
+  /** Committed actions per agent call, 1 through 100; default 25. */
   maxSteps?: number;
+  /** Model requests per agent call, 1 through 100; default 25. */
   maxModelCalls?: number;
+  /** Observation payload ceiling for act turns and judgments, 1024 through 16777216; default 262144. */
   maxObservationBytes?: number;
+  /** Trusted project context prepended to agent prompts, at most `limits.maxAgentContextBytes`. */
   context?: string;
-  vision?: boolean | 'only';
-  providerOptions?: Record<string, Record<string, unknown>>;
-}>;
+  /** Project-wide default for the per-call `vision` option. */
+  vision?: VisionMode;
+  /** Provider options every model call carries, e.g. a reasoning effort. */
+  providerOptions?: ProviderOptions;
+}
 ```
 
 Agents by name. `default` is the one tests run with and exists even when the
@@ -286,20 +448,11 @@ export default {
 } satisfies E2EConfig;
 ```
 
-An agent is an options object, an options object with an `executor`, or a
-bare executor, which is shorthand for `{ executor }`.
-
-| Key | Type | Default | Valid range | Notes |
-| --- | --- | --- | --- | --- |
-| `executor` | `StepExecutor` | the built-in agent | `createAgent(...)` or any `{ name, runStep(context) }` | The brain `agent.act()` dispatches to. Never crosses a process boundary; workers rebuild it from the config module. See [Custom executors](/executors) |
-| `model` | `ModelInstance` | unset | an AI SDK model instance | Unset means acquiring `agent` fails with `MODEL_UNAVAILABLE`; a string is `INVALID_CONFIG` naming the constructor to write. Naming a model that differs from `createAgent({ model })` is `INVALID_CONFIG` |
-| `judge` | `ModelInstance` | `model` | an AI SDK model instance | The model that judges `assert`, `waitFor`, and `extract`. Unset means judgments use `model`. Naming a model that differs from `createAgent({ judge })` is `INVALID_CONFIG`. See [A judge of its own](/models#a-judge-of-its-own) |
-| `maxSteps` | `number` | `25` | integer 1-100 | Committed actions per agent call |
-| `maxModelCalls` | `number` | `25` | integer 1-100 | Model requests per agent call |
-| `maxObservationBytes` | `number` | `262144` | integer 1024-16777216 | Observation payload ceiling for `act` turns and judgment calls alike |
-| `context` | `string` | unset | at most `limits.maxAgentContextBytes` UTF-8 bytes | Trusted project context prepended to agent prompts |
-| `vision` | `boolean \| 'only'` | `false` | | Project-wide default for the per-call `vision` option; `'only'` sends pixels instead of the tree. See [Vision](/reference/agent#vision) |
-| `providerOptions` | `Record<string, Record<string, unknown>>` | unset | object keyed by provider name | AI SDK provider options sent with every model call, e.g. `{ openai: { reasoningEffort: 'low' } }`. `createAgent({ providerOptions })` overrides it for `act` |
+A bare `StepExecutor` is shorthand for `{ executor }`. A string in `model` is
+`INVALID_CONFIG` naming the constructor to write, and so is a `model` or
+`judge` that differs from the one passed to `createAgent(...)`. See
+[Custom executors](/executors) and
+[A judge of its own](/models#a-judge-of-its-own).
 
 Judgments (`assert`, `waitFor`, `extract`) allow 8192 output tokens per call
 and see the instruction and the current screen only.
@@ -307,9 +460,21 @@ and see the instruction and the current screen only.
 ### model
 
 ```ts
+/**
+ * A live AI SDK language model instance: `gateway('openai/gpt-5.6-luna')`
+ * from `ai`, `openrouter(...)` from `@openrouter/ai-sdk-provider`,
+ * `openai('gpt-4o')` from `@ai-sdk/openai`, or any other provider
+ * implementing the AI SDK `LanguageModelV2+` specification. The instance owns
+ * its own transport and credentials; the runner knows no gateway or provider
+ * of its own. Detection is structural, so any AI SDK provider package works
+ * without this runner depending on it.
+ */
 export interface ModelInstance {
+  /** The AI SDK specification the instance implements. */
   readonly specificationVersion: string;
+  /** Provider id, recorded per step in the report. */
   readonly provider: string;
+  /** Model id, recorded per step in the report. */
   readonly modelId: string;
 }
 ```
@@ -332,23 +497,18 @@ runner and a worker is `CONFIG_NOT_DETERMINISTIC`. See
 ## credentials
 
 ```ts
-credentials?: Readonly<
-  Record<
-    string,
-    {
-      username: string;
-      password: string | SecretProvider;
-    }
-  >
->;
+/** One `config.credentials` entry: an account whose password is the secret of the entry's name. */
+export interface CredentialConfig {
+  username: string;
+  password: string | SecretProvider;
+}
 
 type SecretProvider = () => string | Promise<string>;
 ```
 
-| Key | Type | Required | Notes |
-| --- | --- | --- | --- |
-| `username` | `string` | yes | Default username |
-| `password` | `string \| SecretProvider` | yes | A static value, or a provider called on every authorized fill (a vault lookup, a freshly computed TOTP). Recorded in the config digest by name only. An `E2E_USER_*` override wins over a provider |
+A `SecretProvider` is called on every authorized fill (a vault lookup, a
+freshly computed TOTP) and recorded in the config digest by name only. An
+`E2E_USER_*` override wins over it.
 
 `credentials.user(name)` resolves a configured entry into a `Credential`.
 The username is a plain string; the password is an opaque `Secret` that test
@@ -359,9 +519,13 @@ A credential's password is registered as the secret of the credential's name,
 so a name declared under both `credentials` and `secrets` is `INVALID_CONFIG`.
 
 ```ts
+/** Named test identity. The password remains an opaque Secret. */
 export interface Credential {
+  /** The entry's name in `credentials`. */
   readonly name: string;
+  /** Plain username. */
   readonly username: string;
+  /** Opaque; test code cannot read it. */
   readonly password: Secret;
   readonly [credentialBrand]: true;
 }
@@ -372,9 +536,8 @@ See [Signing in](/authentication).
 ## secrets
 
 ```ts
-secrets?: Readonly<Record<string, SecretConfig>>;
-
-type SecretConfig = string | SecretProvider;
+/** One `config.secrets` entry: the value itself, or a provider computing it at fill time. */
+export type SecretConfig = string | SecretProvider;
 ```
 
 An entry is a static value, or a provider called on every authorized fill (a
@@ -390,19 +553,24 @@ redacts it from logs, traces, and the report. An unconfigured name throws
 `SECRET_UNAVAILABLE`.
 
 ```ts
+/**
+ * What a secret is for, which decides where it may be filled: a `password`
+ * goes only into a password field; a `generic-secret` (an API key, a token,
+ * any value from the environment) goes into any editable input.
+ */
 export type SecretPurpose = 'password' | 'generic-secret';
 
+/** Opaque host-side value accepted only by sensitive input sinks. */
 export interface Secret {
+  /** The entry's name in `credentials` or `secrets`. */
   readonly name: string;
+  /** Where the value may be filled. */
   readonly purpose: SecretPurpose;
   readonly [secretBrand]: true;
 }
 ```
 
-The purpose decides where a secret may be filled. A credential's password
-(`'password'`) fills only a password field. A `secrets` entry
-(`'generic-secret'`) fills any editable input, since redaction covers a value
-the page shows. See [Secrets that are not passwords](/authentication#secrets-that-are-not-passwords).
+See [Secrets that are not passwords](/authentication#secrets-that-are-not-passwords).
 
 ## cache
 
@@ -411,11 +579,29 @@ later verification passes, such as a locator assertion or `agent.assert()`.
 `read-only` replays existing entries and writes none; `off` disables both.
 See [Caching agent steps](/cache).
 
-| Key | Type | Default | Description |
-| --- | --- | ---: | --- |
-| `mode` | `'off' \| 'read-only' \| 'read-write'` | `'read-write'` | A bare string is shorthand for `{ mode }`. In CI an unset mode becomes `read-only`; set `'read-write'` explicitly when CI restores the cache from its own cache service. `--no-cache` wins over both |
-| `store` | `TraceCacheStore` | file store | Custom entry store, for example a shared remote cache. Exempt from the CI demotion; states its own trust through `writable`. Never crosses a process boundary |
-| `dir` | `string` | `.e2e/cache` | File store directory, resolved against the project root |
+```ts
+/**
+ * Trace cache configuration. The store abstraction is the cloud seam: the
+ * default file store keeps entries under `.e2e/cache/`, and a custom
+ * `TraceCacheStore` (Redis, an API, anything implementing read/write over
+ * key digests) replaces it wholesale. Like agents and model instances, a
+ * store never crosses a process boundary: workers re-resolve the config
+ * module and construct their own.
+ */
+export interface CacheConfig {
+  /** Default `read-write`; `read-only` in CI when unset. */
+  mode?: CacheMode;
+  /** Custom entry store; undefined selects the file store at `dir`. */
+  store?: TraceCacheStore;
+  /** File store directory, resolved against the project root. */
+  dir?: string;
+}
+```
+
+A bare string is shorthand for `{ mode }`. Set `'read-write'` explicitly when
+CI restores the cache from its own cache service; `--no-cache` wins over
+both. A custom `store` is exempt from the CI demotion and states its own
+trust through `writable`.
 
 ### Commit your traces
 
@@ -427,13 +613,6 @@ opt-in. Remove that line to share replays with CI and teammates; CI stays
 ## limits
 
 Per-call options may only lower these.
-
-| Key | Type | Default | Range | Description |
-| --- | --- | ---: | --- | --- |
-| `maxAgentContextBytes` | `number` | `16384` | 1024-65536 | Trusted agent context |
-| `maxLedgerBytes` | `number` | `8192` | 1024-65536 | Prior-step ledger |
-| `maxEventsPerStep` | `number` | `1000` | 1-10000 | Events recorded per step |
-| `maxModelTokensPerCall` | `number` | `64000` | 1-1000000 | Tokens per model request |
 
 ## Environment variables
 

@@ -22,6 +22,7 @@ export type DevicePermission =
   | 'siri'
   | 'media-library';
 
+/** Orientations `setOrientation` accepts. */
 export type DeviceOrientation = 'portrait' | 'portrait-upside-down' | 'landscape-left' | 'landscape-right';
 
 export type BiometricSensor = 'faceid' | 'touchid' | 'fingerprint';

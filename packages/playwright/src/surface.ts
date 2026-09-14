@@ -148,7 +148,7 @@ export interface PlaywrightBasicAuth {
 export interface PlaywrightOptions extends EngineAppDeclaration {
   /** Browser to launch; defaults to chromium. */
   readonly browser?: BrowserName;
-  /** Initial viewport of every attempt's page. */
+  /** Initial viewport of every attempt's page; default 1280 by 720. */
   readonly viewport?: { readonly width: number; readonly height: number };
   /**
    * Attach to a remote browser over CDP instead of launching locally. Requires

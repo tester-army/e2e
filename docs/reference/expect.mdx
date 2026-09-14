@@ -7,10 +7,12 @@ description: "Locator assertions, fixture assertions, and plain value matchers."
 matcher holds.
 
 ```ts
+/** The `expect` entry: dispatch on the argument, plus `expect.poll`. */
 export interface Expect {
   (actual: Locator): AsyncExpectation;
   <E extends object>(actual: Expectable<E>): E;
   <T>(actual: T): ValueExpectation<T>;
+  /** Re-reads a value until the chosen matcher holds or `timeout` passes. */
   poll<T>(read: () => T | Promise<T>, options?: PollOptions): PollExpectation<T>;
 }
 ```
@@ -27,9 +29,6 @@ await the value first.
 | Negation grace window | A negated matcher passes after 1000 ms of continuous truth, or after the whole budget when `{ timeout }` is shorter than that |
 | Failure code | `ASSERTION_FAILED`, exit code 1 |
 
-`.not` is a getter that returns a new expectation with inverted polarity, on all
-three kinds.
-
 Locator strictness: except for `toHaveCount`, a positive matcher requires
 exactly one match; zero matches keep polling until the timeout, and multiple
 matches fail immediately with `LOCATOR_AMBIGUOUS`. `toBeHidden` and negated
@@ -43,45 +42,43 @@ exactly; a `RegExp` uses its own source and flags.
 
 ```ts
 export interface AsyncExpectation {
+  /** Inverts the matcher. A negated matcher passes after 1000 ms of continuous truth. */
   readonly not: AsyncExpectation;
+  /** Waits for visibility. */
   toBeVisible(options?: { timeout?: number }): Promise<void>;
+  /** Waits for hidden or absent state. */
   toBeHidden(options?: { timeout?: number }): Promise<void>;
+  /** Waits for enabled state. */
   toBeEnabled(options?: { timeout?: number }): Promise<void>;
+  /** Waits for disabled state. */
   toBeDisabled(options?: { timeout?: number }): Promise<void>;
+  /** Waits for checked state. */
   toBeChecked(options?: { timeout?: number }): Promise<void>;
+  /** Waits for selected state. */
   toBeSelected(options?: { timeout?: number }): Promise<void>;
+  /** Waits for expanded state. */
   toBeExpanded(options?: { timeout?: number }): Promise<void>;
+  /** Waits for focused state. */
   toBeFocused(options?: { timeout?: number }): Promise<void>;
+  /** Waits for exact normalized text. */
   toHaveText(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
+  /** Waits for contained normalized text. */
   toContainText(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
+  /** Waits for an input value. */
   toHaveValue(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
+  /** Waits for the attribute to be present; with `value`, for it to match. */
   toHaveAttribute(name: string, options?: { timeout?: number }): Promise<void>;
   toHaveAttribute(name: string, value: TextMatch, options?: { timeout?: number }): Promise<void>;
+  /** Waits for an exact match count. */
   toHaveCount(expected: number, options?: { timeout?: number }): Promise<void>;
-  toHaveAccessibleName(
-    expected: TextMatch,
-    options?: { timeout?: number },
-  ): Promise<void>;
+  /** Waits for an accessible name. */
+  toHaveAccessibleName(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
 }
 ```
 
-| Matcher | Waits for | Notes |
-| --- | --- | --- |
-| `toBeVisible()` | One node, visible | Zero matches keep polling |
-| `toBeHidden()` | Hidden or absent | Zero matches satisfy it |
-| `toBeEnabled()` | Enabled | Enabled unless the node reports disabled |
-| `toBeDisabled()` | Disabled | - |
-| `toBeChecked()` | Checked | Missing state is `false` |
-| `toBeSelected()` | Selected | Missing state is `false` |
-| `toBeExpanded()` | Expanded | Missing state is `false` |
-| `toBeFocused()` | Focused | Single-node matcher |
-| `toHaveText(expected)` | Full normalized text equals `expected` | - |
-| `toContainText(expected)` | Normalized text contains `expected` | Substring or regexp |
-| `toHaveValue(expected)` | Exposed input value | - |
-| `toHaveAttribute(name)` | Attribute is present | Single-node matcher |
-| `toHaveAttribute(name, value)` | Attribute matches `value` | Normalized text comparison, like `toHaveText` |
-| `toHaveCount(expected)` | Exact match count | The only matcher that tolerates zero or many matches |
-| `toHaveAccessibleName(expected)` | Accessible name | - |
+A missing `checked`, `selected`, or `expanded` state counts as `false`; a node
+is enabled unless it reports `disabled`. `toHaveAttribute(name, value)`
+compares like `toHaveText`, after normalization.
 
 ```ts
 await expect(screen.getByRole('status')).toHaveText('Saved');
@@ -96,18 +93,19 @@ Every matcher call is a recorded `expect.<matcher>` assertion step.
 
 ```ts
 export interface WebExpectation {
+  /** Inverts the matcher. */
   readonly not: WebExpectation;
+  /** Waits for the current URL to match. */
   toHaveURL(expected: string | RegExp, options?: { timeout?: number }): Promise<void>;
+  /** Waits for the current title to match. */
   toHaveTitle(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
+  /** Waits for the target's `class` attribute to match: a string is the whole normalized class list, a RegExp is tested against it. */
   toHaveClass(target: Locator, expected: TextMatch, options?: { timeout?: number }): Promise<void>;
 }
 ```
 
-| Matcher | Waits for | Notes |
-| --- | --- | --- |
-| `toHaveURL(expected)` | Current URL matches | A relative string resolves against the base URL and matches exactly after normalization. A `RegExp` tests the full URL. |
-| `toHaveTitle(expected)` | Document title matches | Normalized text comparison |
-| `toHaveClass(target, expected)` | Target's class attribute matches | String comparison normalizes class-list whitespace |
+A relative `toHaveURL` string resolves against the base URL and matches
+exactly after normalization; a `RegExp` tests the full URL.
 
 ```ts
 await expect(web).toHaveURL('/dashboard');
@@ -119,37 +117,35 @@ await expect(web).toHaveClass(web.locator('.card'), 'card active');
 
 ```ts
 export interface ValueExpectation<T> {
+  /** Inverts the matcher. */
   readonly not: ValueExpectation<T>;
+  /** Compares with Object.is. */
   toBe(expected: T): void;
+  /** Performs recursive structural equality. */
   toEqual(expected: unknown): void;
+  /** Requires a truthy value. */
   toBeTruthy(): void;
+  /** Requires a falsy value. */
   toBeFalsy(): void;
+  /** Requires null. */
   toBeNull(): void;
+  /** Requires undefined. */
   toBeUndefined(): void;
+  /** Requires a non-nullish value. */
   toBeDefined(): void;
+  /** Requires string or collection containment. */
   toContain(expected: unknown): void;
+  /** Requires a string or regexp match. */
   toMatch(expected: string | RegExp): void;
+  /** Requires a numeric lower bound. */
   toBeGreaterThan(expected: number): void;
+  /** Requires a numeric upper bound. */
   toBeLessThan(expected: number): void;
 }
 ```
 
 Synchronous, no options, no timeout. For a value the app is still writing,
 see [Polling a value](#polling-a-value).
-
-| Matcher | Requires |
-| --- | --- |
-| `toBe(expected)` | `Object.is(actual, expected)` |
-| `toEqual(expected)` | Recursive structural equality |
-| `toBeTruthy()` | Truthy value |
-| `toBeFalsy()` | Falsy value |
-| `toBeNull()` | Exactly `null` |
-| `toBeUndefined()` | Exactly `undefined` |
-| `toBeDefined()` | Non-nullish value |
-| `toContain(expected)` | String or collection containment |
-| `toMatch(expected)` | String or regexp match |
-| `toBeGreaterThan(expected)` | Numeric lower bound, exclusive |
-| `toBeLessThan(expected)` | Numeric upper bound, exclusive |
 
 ```ts
 const total = await screen.getByTestId('total').textContent();
@@ -166,11 +162,19 @@ proves the write instead of sleeping.
 
 ```ts
 export interface PollOptions {
+  /** Deadline in milliseconds. Default 5000. */
   timeout?: number;
+  /** Pause between reads in milliseconds. Default 100. */
   interval?: number;
+  /** Extra line in the timeout error, after the matcher line. */
   message?: string;
 }
 
+/**
+ * The asynchronous form of every `ValueExpectation<T>` matcher: the same
+ * names and parameters, each resolving once the re-read value passes.
+ * Derived from `ValueExpectation<T>` so the two cannot drift.
+ */
 export type PollExpectation<T> = {
   readonly not: PollExpectation<T>;
 } & {
@@ -184,11 +188,8 @@ Every value matcher is available, returning a promise. Each sample calls
 `read` and runs the matcher. A matcher failure or a `read` that throws is one
 failing sample; a `read` that hangs is cut at the deadline.
 
-| Option | Default | Meaning |
-| --- | --- | --- |
-| `timeout` | `config.assertionTimeout`, 5000 ms | Deadline for the whole poll, in milliseconds. Capped by the attempt's own deadline: the test `timeout` in the body, `cleanupTimeout` in an `afterEach` hook. In a standalone script, outside any attempt, 5000 ms. |
-| `interval` | 100 ms | Pause between samples. |
-| `message` | none | Extra line in the timeout error. |
+The deadline is capped by the attempt's own: the test `timeout` in the body,
+`cleanupTimeout` in an `afterEach` hook. Outside any attempt it is 5000 ms.
 
 When the attempt is cancelled or times out, the loop and any read in flight
 stop with `CANCELLED`. `timeout` must be a finite number 0 or more and

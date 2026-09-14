@@ -8,30 +8,45 @@ runner owns the timeouts.
 
 ```ts
 export interface App {
+  /**
+   * The resolved base URL of the target's app, with the port the run
+   * allocated when the engine declared port 0; undefined for a surface whose
+   * engine declares no `url`.
+   */
   readonly baseUrl: string | undefined;
+  /** Opens the app: the declared URL, a path relative to it, or any absolute http(s) URL. */
   open(path?: string): Promise<void>;
+  /**
+   * Recreates the execution context while preserving persisted state, then
+   * reopens the app at its base URL when the engine declares one.
+   */
   restart(): Promise<void>;
+  /**
+   * Clears persisted client state, recreates the execution context, then
+   * reopens the app at its base URL when the engine declares one.
+   */
   clearState(): Promise<void>;
+  /** Navigates back once. */
   back(): Promise<void>;
+  /** Captures a redacted evidence screenshot. */
   screenshot(label?: string): Promise<string>;
 }
 ```
 
-`baseUrl` is the URL `open()` resolves paths against, with the port the run
-allocated when the URL was declared with port `0` (see
-[free ports](/reference/config#free-ports)). It is `undefined` on a target
-whose engine declares no `url`.
-
 No `App` method takes a `timeout` option. Each budget is additionally capped
 by the remaining test timeout.
 
-| Method | Timeout | Behavior | Throws |
-| --- | --- | --- | --- |
-| `open(path?)` | `config.timeout`, 120000 ms | Opens the base URL, or an absolute URL or path relative to it. | `APP_URL_REQUIRED` when the engine declares no `url`, `POLICY_DENIED` for a `file:`, `data:`, or `javascript:` URL, `APP_UNREACHABLE`, `ACTION_FAILED`, `UNSUPPORTED_CAPABILITY` without `session.open` |
-| `restart()` | `config.timeout`, 120000 ms | Recreates the context, keeps persisted state including a restored session, and reopens the app when the target has a URL. | `ACTION_FAILED`, `ENGINE_FAILURE`, `UNSUPPORTED_CAPABILITY` without `session.restart` |
-| `clearState()` | `config.timeout`, 120000 ms | Clears cookies, storage, and other persisted state, discards a restored session, then reopens the app. | `ACTION_FAILED`, `ENGINE_FAILURE`, `UNSUPPORTED_CAPABILITY` without `session.reset` |
-| `back()` | `config.actionTimeout`, 30000 ms | Navigates back once. | `APP_NOT_OPEN`, `ACTION_FAILED`, `UNSUPPORTED_CAPABILITY` without `session.back` |
-| `screenshot(label?)` | `config.actionTimeout`, 30000 ms | Captures a screenshot as an attempt artifact and returns its path relative to the artifact root. `label` names the step and joins the file name. | `POLICY_DENIED` after a secret fill, `UNSUPPORTED_CAPABILITY`, `ENGINE_FAILURE` |
+| Method | Timeout | Throws |
+| --- | --- | --- |
+| `open(path?)` | `config.timeout`, 120000 ms | `APP_URL_REQUIRED` when the engine declares no `url`, `POLICY_DENIED` for a `file:`, `data:`, or `javascript:` URL, `APP_UNREACHABLE`, `ACTION_FAILED`, `UNSUPPORTED_CAPABILITY` without `session.open` |
+| `restart()` | `config.timeout`, 120000 ms | `ACTION_FAILED`, `ENGINE_FAILURE`, `UNSUPPORTED_CAPABILITY` without `session.restart` |
+| `clearState()` | `config.timeout`, 120000 ms | `ACTION_FAILED`, `ENGINE_FAILURE`, `UNSUPPORTED_CAPABILITY` without `session.reset` |
+| `back()` | `config.actionTimeout`, 30000 ms | `APP_NOT_OPEN`, `ACTION_FAILED`, `UNSUPPORTED_CAPABILITY` without `session.back` |
+| `screenshot(label?)` | `config.actionTimeout`, 30000 ms | `POLICY_DENIED` after a secret fill, `UNSUPPORTED_CAPABILITY`, `ENGINE_FAILURE` |
+
+`screenshot` registers the file as an attempt artifact and returns its path
+relative to the artifact root; `label` names the step and joins the file
+name.
 
 ```ts
 await app.open('/settings/billing');

@@ -17,10 +17,15 @@ identifies the cause. A model never selects either.
 ## AgentError
 
 ```ts
+/** Runner-classified agent failure. */
 export class AgentError extends Error {
+  /** Closed union, assigned by the runner, never taken from model text. */
   readonly code: AgentErrorCode;
+  /** Sanitized, bounded prose; the same value as `message`. */
   readonly explanation: string;
+  /** Artifact path, present only when evidence was captured and permitted. */
   readonly screenshot?: string;
+  /** True when this failure reports a blocked step, not a product failure. */
   readonly blocked: boolean;
 }
 ```

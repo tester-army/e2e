@@ -9,13 +9,21 @@ method is also available on a locator, scoped to its subtree.
 
 ```ts
 export interface Screen {
+  /** Creates a lazy role query. */
   getByRole(role: Role, options?: RoleOptions): Locator;
+  /** Creates a lazy accessible-label query. */
   getByLabel(text: TextMatch, options?: TextMatchOptions): Locator;
+  /** Creates a lazy placeholder query. */
   getByPlaceholder(text: TextMatch, options?: TextMatchOptions): Locator;
+  /** Creates a lazy visible-text query. */
   getByText(text: TextMatch, options?: TextMatchOptions): Locator;
+  /** Creates a lazy displayed-value query. */
   getByDisplayValue(value: TextMatch, options?: TextMatchOptions): Locator;
+  /** Creates a lazy test-id query. */
   getByTestId(id: string, options?: { visible?: boolean }): Locator;
+  /** Performs a viewport-level swipe. */
   swipe(options: SwipeOptions): Promise<void>;
+  /** Scrolls until a locator resolves visibly or times out. */
   scrollUntilVisible(
     target: Locator,
     options?: { direction?: ScrollDirection; timeout?: number },
@@ -38,14 +46,9 @@ and read once; use [`expect`](/reference/expect) to wait for a value.
 
 Every query returns a `Locator` synchronously and performs no work.
 
-| Method | Matches |
-| --- | --- |
-| `getByRole(role, options?)` | Nodes with that semantic role, optionally filtered by name and state |
-| `getByLabel(text, options?)` | Nodes by accessible label |
-| `getByPlaceholder(text, options?)` | Inputs by placeholder |
-| `getByText(text, options?)` | Nodes by visible text |
-| `getByDisplayValue(value, options?)` | Inputs by currently displayed value |
-| `getByTestId(id, options?)` | Nodes whose `testId` matches: on the web the value of the engine's test-id attribute (`playwright({ testIdAttribute })`, default `data-testid`), on a device the accessibility identifier or resource id |
+`getByTestId` matches the node's `testId`: on the web the value of the
+engine's test-id attribute (`playwright({ testIdAttribute })`, default
+`data-testid`), on a device the accessibility identifier or resource id.
 
 ```ts
 screen.getByRole('button', { name: 'Save' });
@@ -85,13 +88,6 @@ Prefer it over `web.locator('p:visible')`, which ties the test to CSS.
 ## Refinement
 
 Synchronous, returns a new locator, performs no work.
-
-| Method | Signature | Behavior |
-| --- | --- | --- |
-| `filter` | `filter(options: { hasText?: TextMatch; has?: Locator }): Locator` | Narrows to matches containing text and/or a descendant match |
-| `first` | `first(): Locator` | The first current match |
-| `last` | `last(): Locator` | The last current match |
-| `nth` | `nth(index: number): Locator` | One zero-based current match |
 
 Throws `INVALID_LOCATOR` when `filter` gets neither `hasText` nor `has`, when
 `has` is not a runner locator, or when `nth` gets a negative or non-integer
@@ -147,30 +143,72 @@ Each action resolves one node, waits for actionability, and performs one
 operation. Default timeout `config.actionTimeout`, 30000 ms, overridable
 with `{ timeout }`.
 
-| Method | Signature |
-| --- | --- |
-| `tap` | `tap(options?: ActionOptions): Promise<void>` |
-| `click` | `click(options?: ActionOptions): Promise<void>` |
-| `doubleTap` | `doubleTap(options?: ActionOptions): Promise<void>` |
-| `longPress` | `longPress(options?: LongPressOptions): Promise<void>` |
-| `fill` | `fill(value: string \| Secret, options?: ActionOptions): Promise<void>` |
-| `clear` | `clear(options?: ActionOptions): Promise<void>` |
-| `press` | `press(key: string, options?: ActionOptions): Promise<void>` |
-| `check` | `check(options?: ActionOptions): Promise<void>` |
-| `uncheck` | `uncheck(options?: ActionOptions): Promise<void>` |
-| `selectOption` | `selectOption(value: SelectOption, options?: ActionOptions): Promise<void>` |
-| `focus` | `focus(options?: ActionOptions): Promise<void>` |
-| `hover` | `hover(options?: ActionOptions): Promise<void>` |
-| `setInputFiles` | `setInputFiles(paths: string \| readonly string[], options?: ActionOptions): Promise<void>` |
-| `dragTo` | `dragTo(target: Locator, options?: ActionOptions): Promise<void>` |
-| `scrollIntoView` | `scrollIntoView(options?: ActionOptions): Promise<void>` |
-| `swipe` | `swipe(options: SwipeOptions & ActionOptions): Promise<void>` |
+```ts
+export interface Locator extends Screen {
+  /** Taps exactly one matching actionable node. */
+  tap(options?: ActionOptions): Promise<void>;
+  /** Alias of tap. */
+  click(options?: ActionOptions): Promise<void>;
+  /** Double-taps exactly one matching actionable node. */
+  doubleTap(options?: ActionOptions): Promise<void>;
+  /** Long-presses exactly one matching actionable node. */
+  longPress(options?: LongPressOptions): Promise<void>;
+  /** Fills exactly one input. Secret values are never logged. */
+  fill(value: string | Secret, options?: ActionOptions): Promise<void>;
+  /** Clears exactly one input. */
+  clear(options?: ActionOptions): Promise<void>;
+  /** Sends one key to exactly one node. */
+  press(key: string, options?: ActionOptions): Promise<void>;
+  /** Checks exactly one node. */
+  check(options?: ActionOptions): Promise<void>;
+  /** Unchecks exactly one node. */
+  uncheck(options?: ActionOptions): Promise<void>;
+  /** Selects one option from exactly one control. */
+  selectOption(value: SelectOption, options?: ActionOptions): Promise<void>;
+  /** Focuses exactly one node. */
+  focus(options?: ActionOptions): Promise<void>;
+  /** Hovers over exactly one matching actionable node. */
+  hover(options?: ActionOptions): Promise<void>;
+  /** Sets the files of exactly one file input; paths resolve from the project root. */
+  setInputFiles(paths: string | readonly string[], options?: ActionOptions): Promise<void>;
+  /** Drags exactly one node to exactly one target. */
+  dragTo(target: Locator, options?: ActionOptions): Promise<void>;
+  /** Scrolls exactly one node into view. */
+  scrollIntoView(options?: ActionOptions): Promise<void>;
+  /** Performs a swipe scoped to exactly one node. */
+  swipe(options: SwipeOptions & ActionOptions): Promise<void>;
+  /** Reads normalized text without retrying for a particular value. */
+  textContent(): Promise<string | null>;
+  /** Reads the current input value. */
+  inputValue(): Promise<string>;
+  /** Reads one attribute. */
+  getAttribute(name: string): Promise<string | null>;
+  /** Reads current visibility. */
+  isVisible(): Promise<boolean>;
+  /** Reads current enabled state. */
+  isEnabled(): Promise<boolean>;
+  /** Reads current checked state. */
+  isChecked(): Promise<boolean>;
+  /** Reads the current viewport-relative rectangle. */
+  boundingBox(): Promise<{ x: number; y: number; width: number; height: number } | null>;
+  /** Counts current matches without auto-waiting. */
+  count(): Promise<number>;
+  /** Waits for the requested locator state. */
+  waitFor(options?: { state?: 'visible' | 'hidden'; timeout?: number }): Promise<void>;
+  /** Adds deterministic locator filters. */
+  filter(options: { hasText?: TextMatch; has?: Locator }): Locator;
+  /** Selects the first current match. */
+  first(): Locator;
+  /** Selects the last current match. */
+  last(): Locator;
+  /** Selects one zero-based current match. */
+  nth(index: number): Locator;
+}
+```
 
 - An action whose kind the engine does not list in `actions` throws
   `UNSUPPORTED_CAPABILITY` before reaching the engine.
 - `click` is an alias of `tap`.
-- `longPress` `duration` is milliseconds, default 500, integer 100 through
-  10000.
 - `press` takes zero or more modifiers (`Shift`, `Control`, `Alt`, `Meta`,
   `ControlOrMeta`) and one key, joined with `+`: a named key (`Enter`,
   `Escape`, `Tab`, `Backspace`, `Delete`, `Insert`, `Space`, the arrows,
@@ -197,18 +235,6 @@ await screen.getByRole('textbox', { name: 'Notes' }).press('ControlOrMeta+a');
 
 ## Locator reads
 
-| Method | Signature | Returns |
-| --- | --- | --- |
-| `textContent` | `textContent(): Promise<string \| null>` | Normalized text, or `null` |
-| `inputValue` | `inputValue(): Promise<string>` | Current input value, `''` when unset |
-| `getAttribute` | `getAttribute(name: string): Promise<string \| null>` | Any attribute present on the element, or `null` |
-| `isVisible` | `isVisible(): Promise<boolean>` | Current visibility, `false` when nothing matches |
-| `isEnabled` | `isEnabled(): Promise<boolean>` | `true` unless the node reports disabled |
-| `isChecked` | `isChecked(): Promise<boolean>` | `true` only when the node reports checked |
-| `boundingBox` | `boundingBox(): Promise<{ x: number; y: number; width: number; height: number } \| null>` | Viewport-relative rectangle, or `null` |
-| `count` | `count(): Promise<number>` | Current match count, no auto-wait |
-| `waitFor` | `waitFor(options?: { state?: 'visible' \| 'hidden'; timeout?: number }): Promise<void>` | Resolves when the state holds |
-
 `waitFor` defaults `state` to `'visible'` and `timeout` to
 `config.actionTimeout`, and throws `LOCATOR_NOT_FOUND` on timeout.
 
@@ -225,6 +251,7 @@ await screen.getByTestId('spinner').waitFor({ state: 'hidden' });
 ## Types
 
 ```ts
+/** The closed role vocabulary; an unsupported role is a type error. */
 export type Role =
   | 'button'
   | 'link'
@@ -258,63 +285,75 @@ export type Role =
   | 'complementary'
   | 'region';
 
+/** A string matches exactly; a RegExp uses its own source and flags. */
 export type TextMatch = string | RegExp;
 
 export interface TextMatchOptions {
+  /** Exact match, the default. `false` is case-insensitive substring matching; a RegExp ignores it. */
   exact?: boolean;
+  /**
+   * When true, nodes the platform reports as hidden are excluded before the
+   * exactly-one rule is applied, so a visible node with a hidden twin (a
+   * prerendered copy kept after navigation, a closed drawer) still resolves.
+   * Omitted or false keeps every match, hidden ones included.
+   */
   visible?: boolean;
 }
 
+/**
+ * Role query options. A role query never matches a node hidden from the
+ * accessibility tree, on every engine; `visible` (inherited) is the one knob
+ * that narrows the other query kinds the same way.
+ */
 export interface RoleOptions extends TextMatchOptions {
+  /** Accessible name filter. */
   name?: TextMatch;
+  /** Requires the checked state. */
   checked?: boolean;
+  /** Requires the disabled state. */
   disabled?: boolean;
+  /** Requires the selected state. */
   selected?: boolean;
+  /** Requires the expanded state. */
   expanded?: boolean;
 }
 
 export interface ActionOptions {
+  /** Deadline in milliseconds; defaults to `config.actionTimeout`. */
   timeout?: number;
 }
 
+/** `longPress` options: the hold time in milliseconds, 100 through 10000, default 500. */
 export interface LongPressOptions extends ActionOptions {
+  /** Hold time in milliseconds, 100 through 10000; default 500. */
   duration?: number;
 }
 
 export interface SwipeOptions {
+  /** Swipe direction. */
   direction: ScrollDirection;
+  /** Fling strength; default `none`. */
   momentum?: Momentum;
 }
 
+/** One option of a select: its label (a bare string too), its `value` attribute, or its zero-based index. */
 export type SelectOption =
   | string
   | { label: string; value?: never; index?: never }
   | { value: string; label?: never; index?: never }
   | { index: number; label?: never; value?: never };
 
+/** A swipe or scroll direction. */
 export type ScrollDirection = 'up' | 'down' | 'left' | 'right';
+
+/** Fling strength of a swipe. */
 export type Momentum = 'none' | 'slow' | 'fast';
 ```
-
-`Role` is closed; an unsupported role is a type error.
-
-| `RoleOptions` key | Meaning |
-| --- | --- |
-| `name` | Accessible name filter |
-| `checked` | Require the checked state |
-| `disabled` | Require the disabled state |
-| `selected` | Require the selected state |
-| `expanded` | Require the expanded state |
-| `exact` | Inherited; applies to `name` |
-| `visible` | Inherited; keep only nodes the platform reports as shown |
-
-String matching is exact by default. `exact: false` is case-insensitive
-substring matching. A `RegExp` ignores `exact`.
 
 A role query never matches a node hidden from the accessibility tree.
 `visible` applies the same rule to the other query kinds. See
 [Hidden duplicates](#hidden-duplicates).
 
-`SelectOption`: a bare string is the option label. The object form names one of
+
 `label`, `value` (the option's `value` attribute, what the form submits), or
 `index`, never two.

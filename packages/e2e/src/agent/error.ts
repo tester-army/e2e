@@ -69,8 +69,11 @@ const AGENT_ERROR_MARKER = Symbol.for('e2e.agent-error.v1');
  * serialization stay consistent with every other runner error.
  */
 export class AgentError extends E2EError {
+  /** Closed union, assigned by the runner, never taken from model text. */
   readonly code: AgentErrorCode;
+  /** Sanitized, bounded prose; the same value as `message`. */
   readonly explanation: string;
+  /** Artifact path, present only when evidence was captured and permitted. */
   readonly screenshot?: string;
   /** True when this failure reports a blocked step, not a product failure. */
   readonly blocked: boolean;
