@@ -234,8 +234,11 @@ then act on pixels.
 needs a model that accepts images. On the judgments it controls what the
 judge is shown; on `act`, what the executor sees (see the pixel tools above).
 
-Set `vision` on the agent in config to make a mode the project default for
-every one of those calls; a per-call value wins. Pixels go to the agent's
+The default is `true`: every act turn and every judgment carries a masked
+screenshot next to the tree, so a chart, a layout, or a drawn control is
+seen without the model asking. Set `vision: false` on the agent in config to
+opt out project-wide and pay for pixels only when the model calls
+`screenshot`, or `'only'` to drop the tree; a per-call value wins. Pixels go to the agent's
 `model`, judgment pixels to its `judge`.
 
 The screenshot is the viewport, never the full page, so `'only'` cannot see
@@ -302,7 +305,7 @@ export interface ExtractOptions<Schema extends StandardSchemaV1> extends VisionO
 }
 
 export interface VisionOption {
-  /** What the judge is shown; defaults to the agent's `vision`, `false`. */
+  /** What the model is shown; defaults to the agent's `vision`, `true`. */
   vision?: VisionMode;
 }
 

@@ -135,7 +135,7 @@ export type VisionMode = boolean | 'only';
 
 export interface VisionOption {
   /**
-   * What the model is shown; defaults to the agent's `vision`, `false`. On a
+   * What the model is shown; defaults to the agent's `vision`, `true`. On a
    * judgment: the tree, the tree with a masked screenshot, or the screenshot
    * alone. On `act`: the tree with pixel tools on demand, pixel mode from the
    * first turn, or pixels alone with a point-addressed vocabulary.
@@ -916,7 +916,7 @@ export interface AgentConfig {
   maxObservationBytes?: number;
   /** Trusted project context prepended to agent prompts, at most `limits.maxAgentContextBytes`. */
   context?: string;
-  /** Project-wide default for the per-call `vision` option. */
+  /** Project-wide default for the per-call `vision` option; `true` unless set. `false` opts out of pixels, `'only'` drops the tree. */
   vision?: VisionMode;
   /** Provider options every model call carries, e.g. a reasoning effort. */
   providerOptions?: ProviderOptions;

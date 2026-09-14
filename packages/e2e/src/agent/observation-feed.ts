@@ -18,6 +18,7 @@ import { AgentError } from './error.ts';
 import type { ExecutorObservation, ExecutorObserveOptions, ExecutorTarget } from './executor.ts';
 import type { AgentContext } from './invocation.ts';
 import {
+  changeShape,
   isTransitionalObservation,
   observationShape,
   pixelsForModel,
@@ -205,7 +206,7 @@ export class ObservationFeed {
    */
   armChange(waitMs?: number): void {
     if (this.newest === undefined) return;
-    this.pendingChange = observationShape(this.newest);
+    this.pendingChange = changeShape(this.newest);
     this.pendingChangeWaitMs = waitMs;
   }
 
@@ -296,7 +297,7 @@ export class ObservationFeed {
                 // by one poll interval.
                 signal: this.accounting.signal,
               },
-              { changedFrom, changeWaitMs, transitional: isTransitionalObservation },
+              { changedFrom, changeWaitMs, changeShapeOf: changeShape, transitional: isTransitionalObservation },
             )
           : this.capture(capturePixels),
       (prepared) => ({ count: prepared.nodes.size, bytes: prepared.bytes }),

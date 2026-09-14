@@ -303,6 +303,19 @@ function digest(bytes: Uint8Array): string {
 /** `12:05`, `0:59`, `23:59:59`: a value that changes on its own once a second or minute. */
 const CLOCK_PATTERN = /\b\d{1,2}:\d{2}(?::\d{2})?\b/g;
 
+/**
+ * The shape an action's effect is waited for against. On a screen the tree
+ * describes (any interactive node listed), the tree alone: a screenshot moves
+ * on a focus ring or a hover the moment a control is tapped, and a change
+ * wait that read that as the effect would return the old page as if the tap
+ * had already landed. On a screen the tree cannot describe (a canvas, a
+ * game) the pixels are the only place an effect can show, so they count.
+ */
+export function changeShape(observation: AgentObservation): string {
+  if (interactiveNodeCount(observation) > 0) return observationShape({ ...observation, pixels: undefined });
+  return observationShape(observation);
+}
+
 /** Poll interval and ceiling for shape-stability settling. */
 const SETTLE_POLL_MS = 75;
 const SETTLE_TIMEOUT_MS = 1_000;
@@ -333,6 +346,8 @@ export interface SettleOptions<T> {
    * action's result is read after its effect rather than before.
    */
   readonly changedFrom?: string | undefined;
+  /** The shape `changedFrom` is compared against; defaults to `shapeOf`. */
+  readonly changeShapeOf?: ((value: T) => string) | undefined;
   /**
    * Whether a capture is a screen in transition rather than a screen: an
    * empty document between two pages, say. Such a capture never satisfies
@@ -374,16 +389,17 @@ export async function settleObservation<T>(
   let value = await capture();
   let shape = shapeOf(value);
   if (options.changedFrom !== undefined) {
+    const changeShapeOf = options.changeShapeOf ?? shapeOf;
     const changeDeadlineMs = Date.now() + changeWaitMs;
     while (
-      (shape === options.changedFrom || transitional(value)) &&
+      (changeShapeOf(value) === options.changedFrom || transitional(value)) &&
       Date.now() < changeDeadlineMs &&
       clock.remainingMs() > pollMs
     ) {
       await sleep(pollMs, clock.signal);
       value = await capture();
-      shape = shapeOf(value);
     }
+    shape = shapeOf(value);
   }
   const deadlineMs = Date.now() + stableWaitMs;
   while (Date.now() < deadlineMs && clock.remainingMs() > pollMs) {

@@ -125,9 +125,12 @@ describe('--ai-trace on the in-process transport', () => {
     };
     expect(input.prompt[0]!.role).toBe('system');
     expect(String(input.prompt[0]!.content)).toContain('autonomous end-to-end testing agent');
-    expect(String(input.prompt.find((message) => message.role === 'user')!.content)).toContain(
-      'increment the counter once',
-    );
+    const user = input.prompt.find((message) => message.role === 'user')!.content;
+    // A pixel-mode opening prompt is content parts: the text part carries the instruction.
+    const userText = Array.isArray(user)
+      ? (user as { type: string; text?: string }[]).filter((part) => part.type === 'text').map((part) => part.text).join('\n')
+      : String(user);
+    expect(userText).toContain('increment the counter once');
     const names = input.tools.map((tool) => tool.name);
     expect(names).toContain('tap');
     expect(names).toContain('complete_step');

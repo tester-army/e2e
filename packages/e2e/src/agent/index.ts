@@ -284,8 +284,9 @@ export function createAgentFixture(runtime: AgentContext): Agent {
  * interval, so a screen that changes continuously — a spinner, a countdown —
  * cannot spend the budget in a second.
  *
- * A vision call waits on the interval alone. An animation the tree cannot see is
- * still a real change, so there is nothing to compare and nothing to gain.
+ * A vision call compares the pixels too: the observation shape digests the
+ * screenshot, so an animation the tree cannot see still counts as a change
+ * and a static screen still costs no second judgment.
  *
  * Throws rather than returning on exhaustion, and checks before every
  * observation, so a timeout reports the caller's last judgment instead of a bare
@@ -300,7 +301,6 @@ async function waitForNextJudgment(
     readonly signal: AbortSignal;
   },
 ): Promise<AgentObservation> {
-  const watchTree = !invocation.pixelTier;
   const tickMs = Math.min(options.intervalMs, CHANGE_POLL_MS);
   const judgedAt = Date.now();
   const judgedShape = observationShape(options.since);
@@ -334,7 +334,7 @@ async function waitForNextJudgment(
       throw cause;
     });
     if (Date.now() - judgedAt < options.intervalMs) continue;
-    if (!watchTree || observationShape(observation) !== judgedShape) return observation;
+    if (observationShape(observation) !== judgedShape) return observation;
   }
 }
 

@@ -36,7 +36,12 @@ test('opens a bare canvas with a screenshot already attached', async ({ app, age
 
 test('asks for a screenshot before tapping a point', async ({ app, agent }) => {
   await app.open();
-  await agent.act('tap blind');
+  await agent.act('tap blind', { vision: false });
+});
+
+test('opens with a screenshot by default', async ({ app, agent }) => {
+  await app.open();
+  await agent.act('note the counter');
 });
 
 test('offers no pixel verbs after a secret fill', async ({ app, agent, screen }) => {
@@ -149,9 +154,17 @@ describe('agent.act pixel verbs', () => {
     expect(step.visionInput).toBe(true);
     const [first] = turnsOf('pick the blue pin on the bare map');
     expect(first!.prompt).toContain('Screenshot attached: 768 by 432 pixels (0.6 per CSS pixel)');
-    // An ordinary page opens tree-only: one listed control is enough to act by id.
+    // Opted out of pixels, an ordinary page opens tree-only: one listed control is enough to act by id.
     const [home] = turnsOf('tap blind');
     expect(home!.prompt).not.toContain('Screenshot attached');
+  });
+
+  it('opens an ordinary page with the tree and a screenshot when vision is left at its default', () => {
+    expect(resultByTitle(outcome, 'opens with a screenshot by default').status).toBe('passed');
+    const [first] = turnsOf('note the counter');
+    expect(first!.prompt).toMatch(/#n\d+ button "Increment"/);
+    expect(first!.prompt).toContain('Screenshot attached: 768 by 432 pixels');
+    expect(stepOf('opens with a screenshot by default').visionInput).toBe(true);
   });
 
   it('refuses a point tap before any screenshot, without spending an action', () => {

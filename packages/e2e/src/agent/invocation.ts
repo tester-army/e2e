@@ -159,12 +159,8 @@ export class Invocation {
   private explanation: string | undefined;
   private visionInput = false;
   private visionDegraded: VisionDegradation | undefined;
-  /**
-   * Whether this invocation asks for pixel evidence. Readable so a caller can
-   * tell that comparing successive observation trees is meaningless here: an
-   * animation the tree cannot see is still a change a vision call must judge.
-   */
-  readonly pixelTier: boolean;
+  /** Whether this invocation asks for pixel evidence. */
+  private readonly pixelTier: boolean;
   /** Byte size of the invariant system message, measured once. */
   private readonly systemBytes: number;
   /** The agent this invocation runs with. */

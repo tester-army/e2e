@@ -18,6 +18,7 @@
  */
 
 import type { ExecutorObservation, ExecutorPixels } from './executor.ts';
+import { interactiveNodeCount } from './observation.ts';
 import type { VisionDegradation } from '../run/steps.ts';
 
 /** A diff past this many lines goes out as the full screen instead. */
@@ -146,16 +147,18 @@ export class ScreenPresenter {
 
   /**
    * A later screen as the model reads it: the changes since the screen it
-   * holds and, once the step is showing pixels, the screenshot too. In pixel
-   * mode an unchanged tree is not a failed action: what the action did may be
-   * drawn, not listed, so the screenshot is the evidence and no action is
-   * blamed for leaving the tree alone.
+   * holds and, once the step is showing pixels, the screenshot too. On a
+   * screen the tree cannot describe (nothing interactive listed) an unchanged
+   * tree is not a failed action: what the action did may be drawn, not
+   * listed, so the screenshot is the evidence and no action is blamed. On a
+   * screen the tree does describe, an unchanged tree after an action still
+   * means the control had no visible effect, pixels or not.
    */
   present(observation: ExecutorObservation, options: ScreenUpdateOptions = {}): ScreenOutput {
     this.attach(observation);
     const text = this.update(observation, {
       lead: options.lead,
-      expectChange: this.showingPixels ? false : options.expectChange,
+      expectChange: this.showingPixels && interactiveNodeCount(observation) === 0 ? false : options.expectChange,
     });
     return this.withScreenshot(observation, text);
   }

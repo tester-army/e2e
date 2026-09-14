@@ -45,10 +45,11 @@ Judgments (`assert`, `waitFor`, `extract`) see less on purpose: the
 instruction and the current screen, never the ledger or the acting agent's
 summaries. A verdict rests on what is on screen, not on what the actor said
 it did, and a `judge` model of its own keeps the two apart entirely; see
-[A judge of its own](/models#a-judge-of-its-own). Judgments can add a masked
-screenshot with `vision: true`, or judge the screenshot alone with
-`vision: 'only'`. Pixels are withheld once a secret has been filled in the
-attempt. The [agent reference](/reference/agent#vision) lists every mode.
+[A judge of its own](/models#a-judge-of-its-own). By default a judgment sees
+the tree and a masked screenshot (`vision: true`); `vision: false` judges the
+tree alone, and `vision: 'only'` the screenshot alone. Pixels are withheld
+once a secret has been filled in the attempt. The
+[agent reference](/reference/agent#vision) lists every mode.
 
 ## What the model may do
 
@@ -110,9 +111,8 @@ These defaults describe the built-in agent and judgment tier:
 | `waitFor` | up to `maxModelCalls`, default 25 | the agent's `timeout`, 30 s |
 
 `assert` and `extract` spend one judgment and one repair round at most.
-With `vision: false`, `waitFor` skips judgments while
-the observed tree shape is unchanged. With `vision: true` or `vision: 'only'`,
-it judges every interval even when the tree is unchanged.
+`waitFor` skips judgments while the observed screen is unchanged: the tree
+shape, and the screenshot too when pixels are sent.
 Exceeding a budget raises `STEP_BUDGET_EXHAUSTED`; running out of time,
 `STEP_TIMEOUT`. By default pixels reach `act` through its `screenshot` and
 `tap_at` tools, and while pixels stay available every action result after the

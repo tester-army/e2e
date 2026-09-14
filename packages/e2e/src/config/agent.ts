@@ -60,7 +60,7 @@ export interface ResolvedAgentConfig {
   readonly timeout: number;
   readonly maxObservationBytes: number;
   readonly context: string | undefined;
-  /** Default for the per-call `vision` option; a per-call value always wins. */
+  /** Default for the per-call `vision` option, `true` unless configured; a per-call value always wins. */
   readonly vision: VisionMode;
   /**
    * Provider options sent with every model call, judgments included. This is
@@ -171,7 +171,7 @@ export function resolveAgentConfig(
 
 
   const context = resolveContext(agent?.context, limits.maxAgentContextBytes, label);
-  const vision = agent?.vision ?? false;
+  const vision = agent?.vision ?? true;
   if (!isVisionMode(vision)) {
     throw new ConfigurationError(
       'INVALID_CONFIG',

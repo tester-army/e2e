@@ -639,7 +639,7 @@ describe('loop guards and transcripts', () => {
       { 'tests/loop-guard.e2e.ts': LOOP_GUARD_SUITE },
       {
         appUrl: app.url,
-        config: { tests: 'tests/**/*.e2e.ts', agents: { default: { model } } },
+        config: { tests: 'tests/**/*.e2e.ts', agents: { default: { model, vision: false } } },
         runOptions: { debug: true },
       },
     );
@@ -705,7 +705,7 @@ describe('agent.act with the default ToolLoopAgent executor', () => {
         appUrl: app.url,
         config: {
           tests: 'tests/**/*.e2e.ts',
-          agents: { default: { model, context: 'This is the e2e fixture application.' } },
+          agents: { default: { model, vision: false, context: 'This is the e2e fixture application.' } },
         },
       },
     );
@@ -830,7 +830,7 @@ describe('the default agent reads action results after their effect', () => {
     });
     const { outcome, project } = await runProject(
       { 'tests/delayed.e2e.ts': DELAYED_SUITE },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: { model } } } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: { model, vision: false } } } },
     );
     try {
       expect(resultByTitle(outcome, 'default agent reads the second view').status).toBe('passed');
@@ -861,7 +861,7 @@ describe('the default agent reads action results after their effect', () => {
     });
     const { outcome, project } = await runProject(
       { 'tests/dead-end.e2e.ts': DEAD_END_SUITE },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: { model } } } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: { model, vision: false } } } },
     );
     try {
       expect(resultByTitle(outcome, 'default agent taps a control with no effect').status).toBe('passed');
@@ -891,7 +891,7 @@ describe('the default agent reads action results after their effect', () => {
     });
     const { outcome, project } = await runProject(
       { 'tests/batch.e2e.ts': BATCH_SUITE },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: { model } } } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: { model, vision: false } } } },
     );
     try {
       const result = resultByTitle(outcome, 'default agent fills two fields in one turn');
@@ -940,7 +940,7 @@ describe('a targeted action re-finds a node that went stale', () => {
     });
     const { outcome, project } = await runProject(
       { 'tests/churn.e2e.ts': CHURN_SUITE },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: { model } } } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: { model, vision: false } } } },
     );
     try {
       const result = resultByTitle(outcome, 'default agent taps a control that remounts under it');
@@ -977,7 +977,7 @@ describe('a targeted action re-finds a node that went stale', () => {
     });
     const { outcome, project } = await runProject(
       { 'tests/churn.e2e.ts': CHURN_SUITE },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: { model } } } },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: { model, vision: false } } } },
     );
     try {
       const result = resultByTitle(outcome, 'default agent taps a control that remounts under it');

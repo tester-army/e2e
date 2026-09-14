@@ -133,9 +133,9 @@ expect(data.titles).toContain('Buy milk');
   gets one repair round, then `MODEL_OUTPUT_INVALID`.
 - Judgments are never cached and always read a fresh observation.
 
-`vision` on a judgment controls the evidence: `false` (default) the semantic
-tree; `true` the tree plus a masked screenshot; `'only'` the screenshot
-alone. Use `'only'` for a question about what the screen presents (an
+`vision` on a judgment controls the evidence: `true` (the default) the tree
+plus a masked screenshot; `false` the semantic tree alone, cheaper; `'only'`
+the screenshot alone. Use `'only'` for a question about what the screen presents (an
 overlay, a broken layout, a chart), because the tree would otherwise answer
 first. Pixels show the viewport only and are withheld once a secret was
 filled in the attempt.
