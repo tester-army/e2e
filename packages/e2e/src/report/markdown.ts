@@ -341,7 +341,9 @@ function allTests(groups: readonly FileGroup[], total: number, manyTargets: bool
     blocks.push([fileHeading(group, manyTargets), ...shown.map((entry) => listedTest(entry, manyTargets))].join('\n'));
   }
   if (total > MAX_LISTED_TESTS) blocks.push(`- and ${total - MAX_LISTED_TESTS} more`);
-  const summary = `All ${plural(total, 'test')} in ${plural(groups.length, 'file')}`;
+  // A file that ran on several targets is one file, however many groups it has.
+  const files = new Set(groups.map((group) => group.file)).size;
+  const summary = `All ${plural(total, 'test')} in ${plural(files, 'file')}`;
   return [['<details>', `<summary>${summary}</summary>`, '', blocks.join('\n\n'), '</details>'].join('\n')];
 }
 

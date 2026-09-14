@@ -8,6 +8,7 @@
  * page. Both read the facts from here, so the two never disagree.
  */
 
+import { isLoopbackHost } from '../internal/urls.ts';
 import type { StepTurn } from '../run/steps.ts';
 import type { Report1Document, ReportError, ReportResult, ReportSource, ReportStep } from './build.ts';
 import { cell, code, formatDuration, link, MAX_CELL_CHARS, MAX_ID_CHARS, MAX_LABEL_CHARS, MAX_PATH_CHARS, MAX_TITLE_CHARS, plural } from './markdown-text.ts';
@@ -77,8 +78,7 @@ export function stepLabel(step: ReportStep, max = MAX_LABEL_CHARS): string {
 function screenUrl(url: string): string {
   try {
     const parsed = new URL(url);
-    const loopback = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1' || parsed.hostname === '[::1]';
-    return loopback ? `${parsed.pathname}${parsed.search}${parsed.hash}` : url;
+    return isLoopbackHost(parsed.hostname) ? `${parsed.pathname}${parsed.search}${parsed.hash}` : url;
   } catch {
     return url;
   }

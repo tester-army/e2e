@@ -362,6 +362,9 @@ describe('renderMarkdownReport', () => {
     const body = renderMarkdownReport(page({ status: 'failed', results: [failing, passing], targets: [reportTarget(), reportTarget({ id: 'mobile', index: 1 })] }));
     expect(body).toContain('**🔴 members › an email invitation is accepted by the invited account only (web)**');
     expect(body).toContain('**tests/smoke.e2e.ts (web)** · 1 passed · 850ms\n- 🟢 opens the app (web) (850ms)');
+    // One file on two targets is two groups and one file.
+    const twice = renderMarkdownReport(page({ results: [passing, { ...passing, targetId: 'mobile' }], targets: [reportTarget(), reportTarget({ id: 'mobile', index: 1 })] }));
+    expect(twice).toContain('<summary>All 2 tests in 1 file</summary>');
     expect(body).toContain('2 targets (web, mobile)');
     const many = renderMarkdownReport(page({ results: [passing], targets: Array.from({ length: 12 }, (_, index) => reportTarget({ id: `t${index}`, index })) }));
     expect(many).toContain('12 targets (t0, t1, t2, t3, t4, t5, t6, t7, and 4 more)</sub>');

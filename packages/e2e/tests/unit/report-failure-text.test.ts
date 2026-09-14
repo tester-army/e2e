@@ -95,6 +95,10 @@ describe('lastTurnLines and screenLines', () => {
     expect(screenLines(told)).toEqual(['Screen: `http://app.test/todos`', 'Closest to the locator: `#n1 button "Add"`, `#n2 button "Add all"`, `#n3 link "Todos"`, and 1 more']);
     const local = toldAttempt(result(), outcome(result({ attempts: [failed({ failure: { url: 'http://localhost:3000/todos?filter=open#top' } })] }), NO_GROUPS));
     expect(screenLines(local)).toEqual(['Screen: `/todos?filter=open#top`']);
+    for (const host of ['127.1.2.3:3000', 'app.localhost', '[::1]:8080']) {
+      const loopback = toldAttempt(result(), outcome(result({ attempts: [failed({ failure: { url: `http://${host}/cart` } })] }), NO_GROUPS));
+      expect(screenLines(loopback)).toEqual(['Screen: `/cart`']);
+    }
     expect(screenLines(toldAttempt(result(), outcome(result(), NO_GROUPS)))).toEqual([]);
   });
 });
