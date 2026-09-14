@@ -100,4 +100,43 @@ describe('truncated flag', () => {
     expect(cut.truncated).toBe(true);
     expect(flatten(cut.tree).some((node) => node.name === 'Inside')).toBe(false);
   });
+
+  it('does not count an off-site frame it leaves out by design, even with no budget left', async () => {
+    // With no site every non-blank URL is off-site; a data: document is never entered.
+    await page.setContent(`
+      <button>One</button>
+      <iframe src="data:text/html,<button>Ad</button>"></iframe>
+    `);
+    await page.frames()[1]?.waitForLoadState('domcontentloaded');
+    const cut = await capture(3);
+    expect(cut.nodeCount).toBe(3);
+    expect(cut.truncated).toBe(false);
+  });
+
+  it('reports an on-site frame past the depth limit as truncation', async () => {
+    await page.setContent('<button>Top</button>');
+    // Nest same-origin srcdoc frames one deeper than the capture follows.
+    const nest = async (depth: number): Promise<void> => {
+      await page.evaluate(async (levels) => {
+        let doc = document;
+        for (let level = 0; level < levels; level += 1) {
+          const iframe = doc.createElement('iframe');
+          iframe.srcdoc = `<button>Level ${String(level + 1)}</button>`;
+          doc.body.appendChild(iframe);
+          await new Promise<void>((resolve) => { iframe.addEventListener('load', () => resolve(), { once: true }); });
+          doc = iframe.contentDocument!;
+        }
+      }, depth);
+    };
+    await nest(4);
+    const within = await capture(1_000);
+    expect(within.truncated).toBe(false);
+    expect(flatten(within.tree).some((node) => node.name === 'Level 4')).toBe(true);
+
+    await page.setContent('<button>Top</button>');
+    await nest(5);
+    const beyond = await capture(1_000);
+    expect(beyond.truncated).toBe(true);
+    expect(flatten(beyond.tree).some((node) => node.name === 'Level 5')).toBe(false);
+  });
 });

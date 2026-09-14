@@ -79,9 +79,11 @@ export interface CapturedDocument {
   /** Nodes captured across this document and every child document stitched in. */
   readonly nodeCount: number;
   /**
-   * True when the node budget cut the walk short in this document or a child,
-   * or left no budget for a child frame's document: nodes on screen are
-   * missing from `tree`, and the snapshot must say so.
+   * True when nodes on screen are missing from `tree`: the node budget cut
+   * the walk short in this document or a child, or an on-site child frame's
+   * document was not read (no budget or time left, past the depth limit, or
+   * its capture failed). Off-site frames are left out by design and never
+   * count.
    */
   readonly truncated: boolean;
 }
@@ -179,34 +181,42 @@ async function captureInto(
     let nodeCount = nodes.length;
     let truncated = walkTruncated === true;
     const frameChildren = new Map<number, SemanticNode>();
-    if (framePath.length < MAX_FRAME_DEPTH) {
-      for (let index = 0; index < nodes.length; index += 1) {
-        const selector = nodes[index]!.frameSelector;
-        if (selector === undefined) continue;
-        const remaining = budget - nodeCount;
-        // A frame the budget cannot enter is content the model is not shown.
-        if (remaining <= 0) {
-          truncated = true;
-          break;
-        }
-        if (Date.now() >= deadline) break;
-        const frame = await elements[index]!.contentFrame().catch(() => null);
-        if (frame === null) continue;
-        // Only frames on the app's site enter observations. Third-party
-        // frames (ads, trackers, embeds) are not the agent's to read or act
-        // on - and a stalled ad frame must not tax the capture. They stay
-        // boundary nodes, exactly like frames past the depth limit.
-        if (!isOnSiteFrame(frame.url(), deps.site)) continue;
-        const child = await captureDocument(deps, frame, {
-          framePath: [...framePath, selector],
-          budget: remaining,
-          deadline,
-        }).catch(() => undefined);
-        if (child === undefined) continue;
-        frameChildren.set(index, child.tree);
-        nodeCount += child.nodeCount;
-        truncated ||= child.truncated;
+    for (let index = 0; index < nodes.length; index += 1) {
+      const selector = nodes[index]!.frameSelector;
+      if (selector === undefined) continue;
+      // A frame with no document (detached, never loaded) shows nothing, so
+      // nothing is missing from the tree.
+      const frame = await elements[index]!.contentFrame().catch(() => null);
+      if (frame === null) continue;
+      // Only frames on the app's site enter observations. Third-party
+      // frames (ads, trackers, embeds) are not the agent's to read or act
+      // on - and a stalled ad frame must not tax the capture. They stay
+      // boundary nodes by design, so leaving them out is not truncation.
+      if (!isOnSiteFrame(frame.url(), deps.site)) continue;
+      // From here the frame's document is content the model should see: any
+      // reason it is not read (depth, budget, deadline, a failed or timed-out
+      // capture) leaves the tree incomplete, and the snapshot must say so.
+      if (framePath.length >= MAX_FRAME_DEPTH) {
+        truncated = true;
+        continue;
       }
+      const remaining = budget - nodeCount;
+      if (remaining <= 0 || Date.now() >= deadline) {
+        truncated = true;
+        continue;
+      }
+      const child = await captureDocument(deps, frame, {
+        framePath: [...framePath, selector],
+        budget: remaining,
+        deadline,
+      }).catch(() => undefined);
+      if (child === undefined) {
+        truncated = true;
+        continue;
+      }
+      frameChildren.set(index, child.tree);
+      nodeCount += child.nodeCount;
+      truncated ||= child.truncated;
     }
     return { tree: assembleTree(nodes, ids, framePath, frameChildren), nodeCount, truncated };
   } finally {
