@@ -237,6 +237,40 @@ describe('e2e explore', () => {
     ]);
   }, 120_000);
 
+  it.each([
+    { firstStatus: 'blocked', expectedStatus: 'blocked', exitCode: 3 },
+    { firstStatus: 'passed', expectedStatus: 'passed', exitCode: 0 },
+  ] as const)('reports $expectedStatus when the first charter $firstStatus and the second was blocked', async ({ firstStatus, expectedStatus, exitCode }) => {
+    let plans = 0;
+    const model = installExploreModel({
+      plan: () => {
+        plans += 1;
+        if (plans === 1) return { decision: 'step', title: 'Catalog', instruction: 'Explore the catalog' };
+        if (plans === 2) return { decision: 'step', title: 'Account', instruction: 'Explore the account' };
+        return { decision: 'finish', summary: 'Account was unavailable; no product issues were confirmed.' };
+      },
+      loop: () => [{
+        toolName: 'complete_step',
+        input: plans === 1 && firstStatus === 'passed'
+          ? { status: 'passed', summary: 'Catalog is reachable' }
+          : { status: 'blocked', summary: 'Required service is unavailable', errorCode: 'ENVIRONMENT_UNAVAILABLE' },
+      }],
+    });
+    const outcome = await runExplore(project, app, model);
+    expect(outcome.status).toBe(expectedStatus);
+    expect(outcome.exitCode).toBe(exitCode);
+    expect(outcome.explore.steps.map((step) => step.status)).toEqual([firstStatus, 'blocked']);
+    expect(outcome.explore.findings).toEqual([]);
+    const attempt = outcome.report.run.results[0]!.attempts[0]!;
+    expect(attempt.steps.filter((step) => step.api === 'agent.act').map((step) => step.status)).toEqual([firstStatus, 'blocked']);
+    if (expectedStatus === 'blocked') {
+      expect(attempt.error).toMatchObject({ code: 'ENVIRONMENT_UNAVAILABLE', message: expect.stringContaining('Required service is unavailable') });
+    } else {
+      expect(attempt.error).toBeUndefined();
+    }
+    assertValidReport(outcome.report);
+  }, 120_000);
+
   it('explores the first of several targets, opening its app first, and rejects a config that does not resolve before anything starts', async () => {
     const model = installExploreModel({
       plan: () => ({ decision: 'finish', summary: 'Looked around.' }),

@@ -6,13 +6,15 @@
  * charter and not a failure; a failed step is a finding and the run goes on;
  * three failed or blocked steps in a row, the step cap, or the clock end the
  * run with a closing assessment; findings of kind `issue` fail the run; a run
- * that explored nothing and found nothing is blocked, never a pass.
+ * that explored nothing and found nothing, or whose charters were all blocked,
+ * stays blocked.
  */
 
 import { AgentError, isAgentError } from '../agent/error.ts';
+import { BLOCKABLE_CODES } from '../agent/executor.ts';
 import { credentials } from '../secrets.ts';
 import type { ReportExplore, ReportExploreStep } from '../report/build.ts';
-import type { Agent, AgentParams, TestFn } from '../types.ts';
+import type { Agent, AgentErrorCode, AgentParams, TestFn } from '../types.ts';
 import { planNext, type PlanAccount, type PlanDecision } from './plan.ts';
 import type { ExploreState } from './state.ts';
 
@@ -214,5 +216,14 @@ function conclude(state: ExploreState): void {
   if (issues.length > 0) {
     const titles = issues.map((finding) => `[severity ${finding.severity}] ${finding.title}`).join('; ');
     throw new AgentError('ASSERTION_FAILED', `exploration found ${issues.length} issue(s): ${titles}`);
+  }
+  const first = state.steps[0];
+  if (first !== undefined && state.steps.every((step) => step.status === 'blocked')) {
+    const code = first.errorCode as AgentErrorCode | undefined;
+    throw new AgentError(
+      code !== undefined && BLOCKABLE_CODES.has(code) ? code : 'AUTOMATION_UNSUPPORTED',
+      `exploration could not complete a charter: ${first.summary ?? first.title}`,
+      { blocked: true },
+    );
   }
 }

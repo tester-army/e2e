@@ -288,6 +288,68 @@ describe('the exploration body', () => {
     expect(state.ended).toBe('finished');
   });
 
+  it.each([false, true])('keeps the first blocker when every charter was blocked, with warnings: %s', async (warning) => {
+    const state = new ExploreState('goal', budgets);
+    const harness = fixtures(
+      {
+        plans: [
+          { decision: 'step', title: 'Account', instruction: 'Open the account' },
+          { decision: 'step', title: 'Orders', instruction: 'Open the orders' },
+          { decision: 'finish', summary: 'Neither area was reachable.' },
+        ],
+        acts: [
+          { throws: new AgentError('AUTH_CREDENTIAL_UNAVAILABLE', 'Account needs a configured login', { blocked: true }) },
+          { throws: new AgentError('ENVIRONMENT_UNAVAILABLE', 'Orders service is down', { blocked: true }) },
+        ],
+      },
+      state,
+    );
+    if (warning) {
+      state.addFinding({ title: 'Icon misaligned', kind: 'warning', severity: 2, expected: 'aligned', actual: 'off by 2px', reproduction: ['look'] });
+    }
+    await expect(harness.run()).rejects.toMatchObject({
+      code: 'AUTH_CREDENTIAL_UNAVAILABLE',
+      blocked: true,
+      message: expect.stringContaining('Account needs a configured login'),
+    });
+    expect(state.steps.map((step) => step.status)).toEqual(['blocked', 'blocked']);
+    expect(state.ended).toBe('finished');
+  });
+
+  it.each([
+    { status: 'passed', outcome: { summary: 'Search works' } },
+    { status: 'failed', outcome: { throws: new AgentError('ACTION_FAILED', 'Search could not complete') } },
+    { status: 'exhausted', outcome: { throws: new AgentError('STEP_BUDGET_EXHAUSTED', 'Search reached its budget', { blocked: true }) } },
+  ])('keeps the issues-only verdict after a $status charter and a blocked charter', async ({ status, outcome }) => {
+    const state = new ExploreState('goal', budgets);
+    const harness = fixtures(
+      {
+        plans: [
+          { decision: 'step', title: 'Search', instruction: 'Search the catalog' },
+          { decision: 'step', title: 'Account', instruction: 'Open the account' },
+          { decision: 'finish', summary: 'Search was explored; account needs a login.' },
+        ],
+        acts: [outcome, { throws: new AgentError('AUTH_CREDENTIAL_UNAVAILABLE', 'No login configured', { blocked: true }) }],
+      },
+      state,
+    );
+    await harness.run();
+    expect(state.steps.map((step) => step.status)).toEqual([status, 'blocked']);
+  });
+
+  it('fails for a reported issue even when every charter was blocked', async () => {
+    const state = new ExploreState('goal', budgets);
+    const harness = fixtures(
+      {
+        plans: [{ decision: 'step', title: 'Account', instruction: 'Open the account' }, { decision: 'finish', summary: 'Account was blocked.' }],
+        acts: [{ throws: new AgentError('AUTH_CREDENTIAL_UNAVAILABLE', 'No login configured', { blocked: true }) }],
+      },
+      state,
+    );
+    state.addFinding({ title: 'Total shows $0.00', kind: 'issue', severity: 4, expected: 'a total', actual: '$0.00', reproduction: ['open the cart'] });
+    await expect(harness.run()).rejects.toMatchObject({ code: 'ASSERTION_FAILED', blocked: false });
+  });
+
   it('falls back to a survey when the first plan is not in the grammar, and stops on a later one', async () => {
     const invalid = () => new AgentError('MODEL_OUTPUT_INVALID', 'extracted data failed schema validation');
     const app = { open: async () => undefined } as unknown as App;

@@ -56,15 +56,19 @@ in twelve.
 
 | Outcome | Run status | Exit code |
 | --- | --- | --- |
-| Steps ran, no `issue` finding (warnings allowed) | passed | 0 |
+| Steps ran, no `issue` finding, and not every step was blocked | passed | 0 |
 | At least one `issue` finding | failed | 1 |
 | No step ran and nothing was found | blocked | 1 |
+| Every step was blocked, with no `issue` finding | blocked | 1, 2, or 3, from the first blocker |
 | Config, engine, or model provider error | error | 2 or 3 |
 
 An `issue` is a defect a user would hit. A `warning` is cosmetic and never
-fails the run. A run that explored nothing is blocked rather than passed,
-because a zero-coverage pass would say the app is fine when nothing was
-checked.
+fails the run. If every charter was blocked, the run stays blocked even when
+it recorded warnings. The report keeps the first blocker's code and
+explanation. Its exit code is `1` for an automation limit, `2` for missing
+credentials or test setup, or `3` for an unavailable environment. When a
+charter passes, fails, or exhausts its budget, reported issues decide the
+final verdict.
 
 ## What you get
 

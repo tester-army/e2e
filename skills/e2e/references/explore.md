@@ -26,9 +26,10 @@ npx e2e explore 'Hunt for broken forms' --video
 4. Repeats until the planner finishes, the step limit, the clock, or three
    failed or blocked steps in a row that reported nothing; then asks for a closing assessment.
 
-A failed step does not end the run: it is recorded, and only findings the
-agent reported count toward the verdict. A step that hits its action or time
-budget ended at its limit and counts as neither. Configured `credentials`
+A failed step does not end the run: it is recorded, and only reported issues
+fail the product verdict. A run whose charters were all blocked stays blocked.
+A step that hits its action or time budget ended at its limit and counts as
+neither. Configured `credentials`
 reach the explorer as step secrets: the planner knows the account names and
 usernames, and the agent fills passwords with `type_secret` by name.
 
@@ -49,9 +50,14 @@ and retries are zero for the run.
 
 ## Reading the result
 
-Exit code `0`: steps ran and no `issue` was reported (warnings allowed). Exit
-code `1`: at least one `issue`, or no step ran and nothing was found (the run
-is `blocked`). `2` and `3` as for `run`.
+Exit code `0`: steps ran, no `issue` was reported, and not every charter was
+blocked. Warnings are allowed. Exit code `1`: at least one `issue`, or no
+step ran and nothing was found. If every charter was blocked and no `issue`
+was reported, the run is `blocked` even with warnings. It keeps the first
+blocker's code and explanation, with exit code `1` for automation limits,
+`2` for missing credentials or test setup, or `3` for an unavailable
+environment. When a charter passes, fails, or exhausts its budget, reported
+issues decide the final verdict. Other errors use `2` and `3` as for `run`.
 
 The terminal shows the exploration step by step: each step by its title with
 its duration, actions, and findings, and each finding the moment it is
