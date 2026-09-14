@@ -41,6 +41,8 @@ export interface Observation {
   readonly capturedAt: string;
   readonly pixels?: ObservationPixels;
   readonly tree: SemanticNode;
+  /** True when the engine reported `tree` as incomplete (its node cap or a frame it could not enter). */
+  readonly truncated?: boolean;
   readonly viewport: {
     readonly width: number;
     readonly height: number;

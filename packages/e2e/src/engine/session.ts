@@ -214,6 +214,7 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
         ...(snapshot.location === undefined ? {} : { location: snapshot.location }),
         ...(snapshot.pixels === undefined ? {} : { pixels: snapshot.pixels }),
         tree,
+        ...(snapshot.truncated === true ? { truncated: true } : {}),
         viewport: snapshot.viewport,
         redaction: {
           secureNodeCount: countSecure(snapshot.root),

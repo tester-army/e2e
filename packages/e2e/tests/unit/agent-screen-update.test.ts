@@ -117,7 +117,7 @@ describe('ScreenPresenter', () => {
     presenter.initial(screen('b1', HOME));
     const next = [...HOME, ' #n8 button "More"'];
     const text = presenter.update(screen('b2', next, { truncated: true }));
-    expect(text).toContain('1 added. The screen was truncated at the observation byte limit');
+    expect(text).toContain('1 added. The screen listing is truncated');
   });
 
   it('reports no removals against a truncated screen, whose missing nodes were cut, not gone', () => {
@@ -127,7 +127,7 @@ describe('ScreenPresenter', () => {
     const text = presenter.update(screen('b2', HOME.slice(0, 4), { truncated: true }));
     expect(text).not.toMatch(/^removed /m);
     expect(text).not.toContain('Screen unchanged');
-    expect(text).toContain('no listed node changed. The screen was truncated at the observation byte limit');
+    expect(text).toContain('no listed node changed. The screen listing is truncated');
   });
 
   it('does not call a node changed when only its depth moved', () => {

@@ -501,6 +501,14 @@ export interface EngineSnapshot {
   readonly root: SemanticNode;
   /** The viewport `SemanticNode.rect` and `ViewportPoint` are measured in. */
   readonly viewport: { readonly width: number; readonly height: number; readonly scale: number };
+  /**
+   * True when `root` leaves out nodes that are on the surface: the engine
+   * stopped reading at a node cap or a depth limit, or could not enter a
+   * child document. The harness tells the model the listing is incomplete
+   * and never calls such a screen unchanged. Omit or set false for a tree
+   * read whole.
+   */
+  readonly truncated?: boolean;
   /** Masked pixels, when requested and producible; omitted otherwise. */
   readonly pixels?: ObservationPixels;
   /** Regions masked in `pixels`; the harness checks it covers every secure node. */

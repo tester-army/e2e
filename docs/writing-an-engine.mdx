@@ -196,6 +196,15 @@ revisions onto them and enforces the staleness rule, so you never implement
 it. `perform` receives `{ id, revision }`; look the id up and throw
 `NODE_STALE` when it no longer binds.
 
+Cap what one observation reads if the platform can hand you an unbounded
+tree, and set `truncated` on the snapshot when the cap stops the read: the
+harness tells the model the listing is partial and never calls a truncated
+screen unchanged. Name nodes the way the platform's accessibility layer does.
+On the web that is the accessible name computation: `aria-label`,
+`aria-labelledby`, the associated label, then `title`, then a text control's
+`placeholder`, so an unlabeled search box observes as `textbox "Search"`
+rather than an anonymous field.
+
 Put a node's test id in `testId`, wherever the platform keeps it: the
 project's test-id attribute in a document, an accessibility identifier on
 iOS, a resource id on Android, an automation id on a desktop. The `testId`

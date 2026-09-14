@@ -9,6 +9,8 @@ import { sizeForModel } from './pixels.ts';
 
 /** Appended when the node walk stopped at the observation byte budget. */
 const TRUNCATION_MARKER = '[observation truncated at the resolved observation byte limit]';
+/** Appended when the engine reported its tree incomplete and the byte budget did not cut it further. */
+const ENGINE_TRUNCATION_MARKER = '[observation truncated: the engine stopped listing nodes at its limit]';
 
 /** Why pixels the caller asked for are not part of this observation. */
 type PixelsWithheld = 'MASKING_UNPROVEN';
@@ -26,6 +28,12 @@ export interface AgentObservation {
   /** The raw tree as the engine reported it; redacted only on the way out. */
   readonly tree: SemanticNode;
   readonly viewport: { readonly width: number; readonly height: number; readonly scale: number };
+  /**
+   * True when `text` lists less than the surface holds: the byte budget cut
+   * the serialization, or the engine reported its own tree incomplete. Either
+   * way nodes past the cut are unknown, so a truncated screen is never called
+   * unchanged and the model is told the listing is partial.
+   */
   readonly truncated: boolean;
   /** Present only when the engine captured pixels and masking checks out. */
   readonly pixels?: ExecutorPixels | undefined;
@@ -57,17 +65,21 @@ export function prepareObservation(
   const encoder = new TextEncoder();
   // The marker is reserved up front so a truncated observation still fits the
   // budget; the budget is what keeps the request under the token ceiling.
-  const markerBytes = encoder.encode(`${TRUNCATION_MARKER}\n`).byteLength;
+  const markerFor = (cutByBudget: boolean): string | undefined => {
+    if (cutByBudget) return TRUNCATION_MARKER;
+    return observation.truncated === true ? ENGINE_TRUNCATION_MARKER : undefined;
+  };
+  const markerBytes = encoder.encode(`${markerFor(observation.truncated !== true)!}\n`).byteLength;
   const budget = Math.max(0, options.maxBytes - markerBytes);
   let bytes = 0;
-  let truncated = false;
+  let cutByBudget = false;
 
   const emit = (node: SemanticNode, depth: number): void => {
-    if (truncated) return;
+    if (cutByBudget) return;
     const line = formatNode(node, depth, redact);
     const size = encoder.encode(`${line}\n`).byteLength;
     if (lines.length > 0 && bytes + size > budget) {
-      truncated = true;
+      cutByBudget = true;
       return;
     }
     bytes += size;
@@ -75,13 +87,15 @@ export function prepareObservation(
     for (const child of node.children ?? []) emit(child, depth + 1);
   };
   emit(observation.tree, 0);
-  if (truncated) lines.push(TRUNCATION_MARKER);
+  const marker = markerFor(cutByBudget);
+  if (marker !== undefined) lines.push(marker);
+  const truncated = marker !== undefined;
 
   const text = lines.join('\n');
   // Every emitted line was measured with its newline; the join has one fewer
   // and the marker was measured up front, so the size is known without a
   // second pass over the whole tree text.
-  const textBytes = Math.max(0, bytes + (truncated ? markerBytes : 0) - 1);
+  const textBytes = Math.max(0, bytes + (marker === undefined ? 0 : encoder.encode(`${marker}\n`).byteLength) - 1);
   const pixels = clearPixels(observation);
   return {
     revision: observation.revision,

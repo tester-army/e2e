@@ -104,7 +104,7 @@ function screenText(observation: AgentObservation, url: string | undefined): str
     ...(url === undefined ? [] : [`url: ${url}`]),
     `revision: ${observation.revision}`,
     `viewport: ${observation.viewport.width}x${observation.viewport.height} @${observation.viewport.scale}`,
-    `nodes: ${observation.nodes.size}${observation.truncated ? ' (listing truncated at the observation byte limit)' : ''}`,
+    `nodes: ${observation.nodes.size}${observation.truncated ? ' (listing truncated)' : ''}`,
   ];
   return `${header.join('\n')}\n\n${observation.text}\n`;
 }

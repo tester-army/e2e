@@ -36,7 +36,7 @@ interface ShownScreen {
   readonly order: readonly string[];
   readonly byId: ReadonlyMap<string, string>;
   readonly nodes: number;
-  /** The walk stopped at the byte limit: nodes beyond it exist but are not listed. */
+  /** The listing is cut short (byte limit or engine cap): nodes beyond it exist but are not listed. */
   readonly truncated: boolean;
 }
 
@@ -112,7 +112,7 @@ export class ScreenPresenter {
       return `${lead}The screen changed substantially since revision ${previous.revision}. ${renderFull(observation)}`;
     }
     const assurance = observation.truncated
-      ? 'The screen was truncated at the observation byte limit: nodes past it are not listed and none is reported removed; every listed node keeps the id you have.'
+      ? 'The screen listing is truncated: nodes past the cut are not listed and none is reported removed; every listed node keeps the id you have.'
       : 'Every node not listed as removed is still on screen under the id you have.';
     return [
       `${lead}Screen changes since revision ${previous.revision} (now revision ${observation.revision}${describeLocation(observation)}, ${String(next.nodes)} nodes): ${describeCounts(diff)}. ${assurance}`,
@@ -261,7 +261,7 @@ function diffScreens(previous: ShownScreen, next: ShownScreen): string[] {
       lines.push(`changed ${line} (was: ${before})`);
     }
   }
-  // A truncated screen stopped listing nodes at the byte limit; the ones it
+  // A truncated screen stopped listing nodes before the end; the ones it
   // left out may well still exist, so nothing is called removed on its word.
   if (next.truncated) return lines;
   for (const line of previous.order) {

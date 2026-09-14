@@ -73,6 +73,19 @@ export interface CaptureOptions {
   readonly deadline: number;
 }
 
+/** One document's tree with what the capture knows about its completeness. */
+export interface CapturedDocument {
+  readonly tree: SemanticNode;
+  /** Nodes captured across this document and every child document stitched in. */
+  readonly nodeCount: number;
+  /**
+   * True when the node budget cut the walk short in this document or a child,
+   * or left no budget for a child frame's document: nodes on screen are
+   * missing from `tree`, and the snapshot must say so.
+   */
+  readonly truncated: boolean;
+}
+
 /** One stored handle awaiting publication once its document captured successfully. */
 type StagedRef = readonly [id: string, element: ElementHandle<Element>];
 
@@ -87,7 +100,7 @@ export async function captureDocument(
   deps: CaptureDeps,
   host: DocumentHost,
   options: CaptureOptions,
-): Promise<{ tree: SemanticNode; nodeCount: number }> {
+): Promise<CapturedDocument> {
   const { framePath, budget, deadline } = options;
   // A child document's handles are published only once it captured whole; a
   // frame that fails midway leaves no reachable ids behind.
@@ -112,7 +125,7 @@ async function captureInto(
   framePath: readonly string[],
   budget: number,
   deadline: number,
-): Promise<{ tree: SemanticNode; nodeCount: number }> {
+): Promise<CapturedDocument> {
   const cap = framePath.length === 0 ? DOCUMENT_CAPTURE_TIMEOUT_MS : FRAME_CAPTURE_TIMEOUT_MS;
   const timeoutMs = Math.max(1, Math.min(cap, deadline - Date.now()));
   const evaluation = host.evaluateHandle(readDocumentSemanticsFunction, {
@@ -141,10 +154,11 @@ async function captureInto(
   let elementsHandle: JSHandle | undefined;
   try {
     // Property handles would keep earlier captures alive after their parent is disposed.
-    const { nodes, ids, nextId } = await captured.evaluate((observation) => ({
+    const { nodes, ids, nextId, truncated: walkTruncated } = await captured.evaluate((observation) => ({
       nodes: observation.nodes,
       ids: observation.ids,
       nextId: observation.nextId,
+      truncated: observation.truncated,
     }));
     if (!Array.isArray(ids) || ids.length !== nodes.length || typeof nextId !== 'number') {
       throw new EngineError('ENGINE_FAILURE', 'observation ids do not align with its nodes', {
@@ -163,13 +177,19 @@ async function captureInto(
     const elements = await collectElementHandles(elementsHandle, nodes.length);
     elements.forEach((element, index) => stage(ids[index] as string, element));
     let nodeCount = nodes.length;
+    let truncated = walkTruncated === true;
     const frameChildren = new Map<number, SemanticNode>();
     if (framePath.length < MAX_FRAME_DEPTH) {
       for (let index = 0; index < nodes.length; index += 1) {
         const selector = nodes[index]!.frameSelector;
         if (selector === undefined) continue;
         const remaining = budget - nodeCount;
-        if (remaining <= 0 || Date.now() >= deadline) break;
+        // A frame the budget cannot enter is content the model is not shown.
+        if (remaining <= 0) {
+          truncated = true;
+          break;
+        }
+        if (Date.now() >= deadline) break;
         const frame = await elements[index]!.contentFrame().catch(() => null);
         if (frame === null) continue;
         // Only frames on the app's site enter observations. Third-party
@@ -185,9 +205,10 @@ async function captureInto(
         if (child === undefined) continue;
         frameChildren.set(index, child.tree);
         nodeCount += child.nodeCount;
+        truncated ||= child.truncated;
       }
     }
-    return { tree: assembleTree(nodes, ids, framePath, frameChildren), nodeCount };
+    return { tree: assembleTree(nodes, ids, framePath, frameChildren), nodeCount, truncated };
   } finally {
     await elementsHandle?.dispose().catch(() => undefined);
     await captured.dispose().catch(() => undefined);

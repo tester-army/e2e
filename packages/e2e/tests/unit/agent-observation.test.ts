@@ -106,6 +106,36 @@ describe('prepareObservation', () => {
     expect(prepared.nodes.size).toBe(201);
   });
 
+  it('carries an engine-reported cut through as truncated, with its own marker', () => {
+    const tree = node('n1', { role: 'document', children: [node('n2', { role: 'button', name: 'One' })] });
+    const prepared = prepareObservation(
+      { ...observation(tree), truncated: true },
+      { redact: NO_REDACT, maxBytes: 4_096 },
+    );
+    expect(prepared.truncated).toBe(true);
+    expect(prepared.text.split('\n')).toEqual([
+      '#n1 document',
+      ' #n2 button "One"',
+      '[observation truncated: the engine stopped listing nodes at its limit]',
+    ]);
+    expect(prepared.bytes).toBe(new TextEncoder().encode(prepared.text).byteLength);
+    expect(prepared.nodes.size).toBe(2);
+  });
+
+  it('reports the byte cut, not the engine cut, when both apply', () => {
+    const children = Array.from({ length: 200 }, (_, index) =>
+      node(`c${index}`, { role: 'button', name: `Button ${index}` }),
+    );
+    const prepared = prepareObservation(
+      { ...observation(node('n1', { role: 'document', children })), truncated: true },
+      { redact: NO_REDACT, maxBytes: 256 },
+    );
+    expect(prepared.truncated).toBe(true);
+    expect(prepared.bytes).toBeLessThanOrEqual(256);
+    expect(prepared.text.endsWith('[observation truncated at the resolved observation byte limit]')).toBe(true);
+    expect(prepared.text).not.toContain('engine stopped');
+  });
+
   it('keeps the root even when it alone exceeds the limit', () => {
     const prepared = prepareObservation(
       observation(node('n1', { role: 'document', name: 'x'.repeat(500) })),

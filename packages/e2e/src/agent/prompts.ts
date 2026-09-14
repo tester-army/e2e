@@ -75,7 +75,7 @@ export function buildPrompt(input: PromptInput): string {
         '</observation>',
       );
       if (observation.truncated) {
-        sections.push('The observation above was truncated at the resolved byte limit.');
+        sections.push('The observation above is incomplete: nodes past its cut are on screen but not listed.');
       }
     }
     const pixels = observation.pixels;

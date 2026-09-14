@@ -125,14 +125,11 @@ export interface RawObservedNode extends RawNodeData {
   frameSelector?: string;
 }
 
-/**
- * One walked document. The contract has no way to report a truncated tree, so the
- * node budget is a safety valve, not a signal: when it stops the walk early
- * the result simply ends, and the runner's visible observation byte budget is
- * the effective limit.
- */
+/** One walked document. */
 interface RawObservation {
   nodes: RawObservedNode[];
+  /** True when the node budget stopped the walk before the document was read whole. */
+  truncated: boolean;
   /** Live element handles positionally aligned with `nodes`. */
   elements: Element[];
   /**
@@ -207,6 +204,8 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
   const OPAQUE_TAGS = ['svg', 'math', 'canvas', 'video', 'audio'];
   /** Options listed under one select; a country picker's tail is not worth the tokens. */
   const MAX_SELECT_OPTIONS = 60;
+  /** Input types whose accessible name falls back to the placeholder (HTML-AAM 4.1.1). */
+  const PLACEHOLDER_NAMED_INPUT_TYPES = ['text', 'password', 'number', 'search', 'tel', 'email', 'url'];
 
   /**
    * How the active mode projects one node, expressed as data so `describe`
@@ -224,7 +223,7 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
   } =
     options.mode.kind === 'tree'
       ? {
-          attributes: ['type', 'autocomplete', 'href', 'role'],
+          attributes: ['type', 'autocomplete', 'href', 'role', 'placeholder'],
           textLimit: options.mode.textLimit,
           nameLimit: options.mode.nameLimit,
           redactHref: true,
@@ -447,8 +446,23 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
     }
     const title = el.getAttribute('title');
     if (title !== null && title.trim() !== '') return title.trim();
+    // HTML-AAM names an unlabeled text control by its placeholder, after the
+    // title: a bare search box is `textbox "Search…"`, not an anonymous field.
+    if (isPlaceholderNamed(el)) {
+      const placeholder = el.getAttribute('placeholder');
+      if (placeholder !== null && placeholder.trim() !== '') return placeholder.trim();
+      const ariaPlaceholder = el.getAttribute('aria-placeholder');
+      if (ariaPlaceholder !== null && ariaPlaceholder.trim() !== '') return ariaPlaceholder.trim();
+    }
     return null;
   });
+
+  /** The controls HTML-AAM lets a placeholder name: text-like inputs and textareas. */
+  const isPlaceholderNamed = (el: Element): boolean => {
+    if (el instanceof HTMLTextAreaElement) return true;
+    if (!(el instanceof HTMLInputElement)) return false;
+    return PLACEHOLDER_NAMED_INPUT_TYPES.indexOf(el.type) !== -1;
+  };
 
   /** Computed style, or undefined for a node the view cannot style. */
   const styleOf = (el: Element): CSSStyleDeclaration | undefined =>
@@ -838,7 +852,7 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
   include(element, -1);
   for (const child of Array.from(element.children)) walk(child, 0);
 
-  return { nodes, elements, ids, nextId } as SemanticResult<Mode>;
+  return { nodes, elements, ids, nextId, truncated } as SemanticResult<Mode>;
 };
 
 /** Options for a single-node read, shared by `evaluate` and `evaluateAll` callers. */

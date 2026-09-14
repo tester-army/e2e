@@ -63,10 +63,10 @@ import {
 import { VideoRecorder } from './video.ts';
 
 /**
- * Safety valve on nodes in one observation. The contract has no way to report
- * a truncated tree, so this must stay well above real documents and let the
- * runner's observation byte budget - visible in the prompt and the report -
- * be the effective limit.
+ * Cap on nodes in one observation, shared by every document it stitches. It
+ * stays well above real documents so the runner's observation byte budget is
+ * the effective limit; when a document does cross it, the snapshot says so
+ * through `truncated` instead of ending quietly.
  */
 const MAX_OBSERVED_NODES = 3_000;
 
@@ -965,6 +965,7 @@ export class PlaywrightSurface {
       location: page.url(),
       root: captured.tree,
       viewport: { width: viewport.width, height: viewport.height, scale: 1 },
+      ...(captured.truncated ? { truncated: true } : {}),
       ...(capturedPixels === undefined
         ? {}
         : { pixels: capturedPixels.pixels, maskedRegionCount: capturedPixels.maskedRegionCount }),
