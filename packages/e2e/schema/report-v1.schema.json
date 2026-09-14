@@ -290,7 +290,23 @@
           }
         },
         {
-          "if": { "properties": { "api": { "const": "agent.assert" } } },
+          "if": {
+            "properties": {
+              "api": { "const": "agent.assert" }
+            },
+            "anyOf": [
+              { "properties": { "status": { "const": "passed" } } },
+              {
+                "properties": {
+                  "metrics": {
+                    "properties": { "modelCalls": { "minimum": 1 } },
+                    "required": ["modelCalls"]
+                  }
+                },
+                "required": ["metrics"]
+              }
+            ]
+          },
           "then": {
             "properties": {
               "observationRevision": { "type": "string", "minLength": 1, "maxLength": 256 },

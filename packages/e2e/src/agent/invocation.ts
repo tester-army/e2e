@@ -43,7 +43,7 @@ import {
   type ModelAdapter,
   type ModelImage,
 } from './model/adapter.ts';
-import { pixelsForModel, prepareObservation, type AgentObservation } from './observation.ts';
+import { pixelsForModel, prepareObservation, requireObservationEvidence, type AgentObservation } from './observation.ts';
 import { observationByteBudget } from './observation-budget.ts';
 import type { ProtocolValidation } from './protocol.ts';
 import { POLICY_VERSION, buildPrompt, buildSystem, type PromptInput } from './prompts.ts';
@@ -156,6 +156,7 @@ export class Invocation {
 
   private readonly usage = new ModelUsage();
   private observationRevision: string | undefined;
+  /** Absent when capture failed before the judge received evidence. */
   private explanation: string | undefined;
   private visionInput = false;
   private visionDegraded: VisionDegradation | undefined;
@@ -214,10 +215,12 @@ export class Invocation {
       { kind: 'observation', phase: 'agent.observe' },
       async () => {
         const raw = await this.captureObservation(pixels);
-        return prepareObservation(raw, {
+        const prepared = prepareObservation(raw, {
           redact: this.runtime.redact,
           maxBytes: this.observationByteBudget(),
         });
+        requireObservationEvidence(prepared, this.options.vision !== false && !this.runtime.taint.value);
+        return prepared;
       },
       (prepared) => ({ count: prepared.nodes.size, bytes: prepared.bytes }),
     );
@@ -226,14 +229,17 @@ export class Invocation {
       this.metrics.observationBytes = Math.max(this.metrics.observationBytes, observation.bytes);
     }
     this.observationRevision = observation.revision;
-    if (pixels) this.recordPixels(observation);
+    if (pixels || observation.treeUnavailable === true) this.recordPixels(observation);
     return observation;
   }
 
   /** Captures one raw observation through the shared race-hardened path. */
   private captureObservation(pixels: boolean): Promise<Observation> {
     return retryingObserve({
-      observe: (operation) => this.session.observe(operation, { pixels }),
+      observe: (operation) => this.session.observe(operation, {
+        pixels,
+        pixelFallback: this.options.vision !== false && !this.runtime.taint.value,
+      }),
       operation: () => this.operation(),
       guard: (cause) => this.checkDeadline(cause),
       signal: this.runtime.engine.signal,
@@ -478,4 +484,3 @@ function imagesFor(observation: AgentObservation | undefined): readonly ModelIma
     },
   ];
 }
-

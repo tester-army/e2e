@@ -141,6 +141,15 @@ overlay, a broken layout, a chart), because the tree would otherwise answer
 first. Pixels show the viewport only and are withheld once a secret was
 filled in the attempt.
 
+When semantic capture fails, an engine with independent screenshot masking
+may return fresh pixels and an explicit unavailable-tree warning. `act`
+receives that image on its first observation; judgments require `vision:
+true` or `'only'`. No fallback is allowed after a secret fill. Do not infer
+that a control is absent from an unavailable tree, or reuse old node ids.
+Such a step cannot record or finish from a trace cache entry. The Playwright
+engine supports timeout recovery; the device engine fails closed because its
+masks depend on the accessibility capture.
+
 ## Write instructions the model can execute
 
 - One goal per `act`. The order of goals is the test's; the path inside a

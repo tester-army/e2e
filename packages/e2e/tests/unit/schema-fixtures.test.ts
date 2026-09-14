@@ -31,6 +31,29 @@ describe.each(schemas)('%s schema', (name) => {
   it('rejects the invalid fixture', () => {
     expect(validate(readJson('fixtures', `${name}.invalid.json`))).toBe(false);
   });
+
+  if (name === 'report-v1') {
+    it('requires judgment evidence after a model call, while allowing capture failures before one', () => {
+      const report = readJson('fixtures', 'report-v1.valid.json') as {
+        run: { results: { attempts: { steps: { api: string; status: string; metrics: { modelCalls: number }; observationRevision?: string; explanation?: string }[] }[] }[] };
+      };
+      const judgment = report.run.results[0]!.attempts[0]!.steps.find((step) => step.api === 'agent.assert')!;
+      expect(judgment.metrics.modelCalls).toBe(0);
+      expect(validate(report)).toBe(true);
+      judgment.status = 'passed';
+      expect(validate(report)).toBe(false);
+      judgment.status = 'failed';
+      judgment.metrics.modelCalls = 1;
+      expect(validate(report)).toBe(false);
+      expect(validate.errors).toEqual(expect.arrayContaining([
+        expect.objectContaining({ keyword: 'required', params: { missingProperty: 'observationRevision' } }),
+        expect.objectContaining({ keyword: 'required', params: { missingProperty: 'explanation' } }),
+      ]));
+      judgment.observationRevision = 'b1';
+      judgment.explanation = 'visible in the screenshot';
+      expect(validate(report)).toBe(true);
+    });
+  }
 });
 
 it('ships a schema for every fixture pair', () => {

@@ -18,6 +18,7 @@ import {
   E2EError,
   errorMessage,
   isForeignE2EError,
+  TestError,
 } from '../internal/errors.ts';
 import { requireKey } from '../internal/keys.ts';
 import type { EngineHandle } from './index.ts';
@@ -207,8 +208,20 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
     async observe(operation, observeOptions) {
       const snapshot = await observeRaw(
         operation,
-        observeOptions?.pixels === true ? { pixels: true } : {},
+        {
+          ...(observeOptions?.pixels === true ? { pixels: true } : {}),
+          ...(observeOptions?.pixelFallback === true ? { pixelFallback: true } : {}),
+        },
       );
+      if (snapshot.treeUnavailable === true) {
+        if (observeOptions?.pixelFallback !== true || snapshot.pixels === undefined) {
+          throw new TestError('UNSUPPORTED_CAPABILITY', 'unavailable semantics require permitted fallback pixels');
+        }
+        if (Object.keys(snapshot.root).some((key) => key !== 'ref')) {
+          throw new EngineError('INVALID_STATE', 'an unavailable semantic tree must contain only the stable root reference', { retryable: false });
+        }
+        located.clear();
+      }
       revision += 1;
       const minted = `${OBSERVE_REVISION_PREFIX}${revision}`;
       const tree = stampRevision(snapshot.root, minted);
@@ -220,6 +233,7 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
         ...(snapshot.pixels === undefined ? {} : { pixels: snapshot.pixels }),
         tree,
         ...(snapshot.truncated === true ? { truncated: true } : {}),
+        ...(snapshot.treeUnavailable === true ? { treeUnavailable: true } : {}),
         viewport: snapshot.viewport,
         redaction: {
           secureNodeCount: countSecure(snapshot.root),

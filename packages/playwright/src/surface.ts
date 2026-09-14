@@ -72,6 +72,8 @@ const MAX_OBSERVED_NODES = 3_000;
 
 /** Bounded settle before an observation so a committing navigation is not raced. */
 const SETTLE_TIMEOUT_MS = 5_000;
+/** Leave time for a fresh screenshot when a permitted semantic capture times out. */
+const PIXEL_FALLBACK_RESERVE_MS = 2_000;
 
 /** Browser launch budget when the harness init budget is not otherwise expressed. */
 const BROWSER_LAUNCH_TIMEOUT_MS = 60_000;
@@ -978,6 +980,9 @@ export class PlaywrightSurface {
       })
       .catch(() => undefined);
     const viewport = page.viewportSize() ?? DEFAULT_VIEWPORT;
+    const semanticDeadline = options?.pixelFallback === true
+      ? deadline - Math.min(PIXEL_FALLBACK_RESERVE_MS, Math.max(0, deadline - Date.now()) / 4)
+      : deadline;
     const generation = new Map<string, ActionTarget>();
     // The screenshot masks by sweeping the page's frames, so it needs nothing
     // from the tree walk and runs with it instead of after it. Pixels never
@@ -985,7 +990,7 @@ export class PlaywrightSurface {
     // a tree-only observation, exactly like an engine that has no pixels.
     const pixelCapture =
       options?.pixels === true
-        ? capturePixels(page, operation, viewport).catch(() => undefined)
+        ? capturePixels(page, { ...operation, timeoutMs: Math.max(1, semanticDeadline - Date.now()) }, viewport).catch(() => undefined)
         : Promise.resolve(undefined);
     let captured: Awaited<ReturnType<typeof captureDocument>>;
     let capturedPixels: PixelCapture | undefined;
@@ -1005,12 +1010,16 @@ export class PlaywrightSurface {
             },
           },
           page,
-          { framePath: [], budget: MAX_OBSERVED_NODES, deadline },
+          { framePath: [], budget: MAX_OBSERVED_NODES, deadline: semanticDeadline },
         ),
         pixelCapture,
       ]);
     } catch (cause) {
       RefRegistry.dispose(generation);
+      if (options?.pixelFallback === true && cause instanceof EngineError && cause.code === 'OPERATION_TIMEOUT') {
+        await pixelCapture;
+        return this.captureWithoutTree(page, operation, deadline, cause);
+      }
       throw cause;
     }
     // `guard` already rejected the caller on abort; the capture kept running.
@@ -1029,6 +1038,33 @@ export class PlaywrightSurface {
       ...(capturedPixels === undefined
         ? {}
         : { pixels: capturedPixels.pixels, maskedRegionCount: capturedPixels.maskedRegionCount }),
+    };
+  }
+
+  /** Recovers a semantic timeout only with a fresh, independently proven mask sweep and screenshot. */
+  private async captureWithoutTree(
+    page: Page,
+    operation: OperationContext,
+    deadline: number,
+    cause: EngineError,
+  ): Promise<EngineSnapshot> {
+    if (operation.signal.aborted) throw cancelled('observe cancelled');
+    const timeoutMs = deadline - Date.now();
+    if (timeoutMs <= 0) throw cause;
+    const viewport = page.viewportSize() ?? DEFAULT_VIEWPORT;
+    const capture = await capturePixels(page, { ...operation, timeoutMs }, viewport);
+    if (operation.signal.aborted) throw cancelled('observe cancelled');
+    if (!capture.maskingProven) throw cause;
+    this.requirePage();
+    this.refs.clear();
+    return {
+      location: page.url(),
+      root: { ref: { id: ROOT_NODE_ID, revision: '' } },
+      viewport: { ...viewport, scale: 1 },
+      truncated: true,
+      treeUnavailable: true,
+      pixels: capture.pixels,
+      maskedRegionCount: capture.maskedRegionCount,
     };
   }
 }

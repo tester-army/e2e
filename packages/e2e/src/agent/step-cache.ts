@@ -88,6 +88,7 @@ const END_PATH_DELAYS_MS = [100, 300, 600, 1_000, 3_000] as const;
 const END_PATH_TIMEOUT_MS = 15_000;
 
 export class StepTraceSession {
+  private disabled = false;
   private readonly host: StepCacheHost;
   private readonly cache: AgentCacheContext;
   private readonly keyHash: string;
@@ -151,6 +152,11 @@ export class StepTraceSession {
   /** Records one mutating project-tool call as a replay-ending gap. */
   recordGap(toolName: string): void {
     this.recorder?.recordGap(toolName);
+  }
+
+  /** Missing semantic evidence prevents this step from replaying or staging a trace. */
+  disable(): void {
+    this.disabled = true;
   }
 
   /**
@@ -258,12 +264,16 @@ export class StepTraceSession {
   private async replayEntry(entry: TraceEntry): Promise<StepVerdict | undefined> {
     await this.captureStart();
     const trace = entry.payload;
+    if (this.disabled) {
+      this.info = this.missed('truncated', trace.actions.length);
+      return undefined;
+    }
     const decision = decideTraceReplay(entry, this.startPath);
     if (decision.action === 'miss') {
       this.info = this.missed(decision.reason, trace.actions.length);
       return undefined;
     }
-    const outcome = await replayTrace(this.host, trace);
+    const outcome = await replayTrace(this.host, trace, () => !this.disabled);
     this.consumedReplay = true;
     const stopReason: HandOffReason | undefined = outcome.completed
       ? (await this.endStateMatches(trace))
@@ -287,8 +297,9 @@ export class StepTraceSession {
    * app mints per record) and every recorded end anchor present again.
    */
   private async endStateMatches(trace: ActionTrace): Promise<boolean> {
+    if (this.disabled) return false;
     if (trace.endPath !== undefined && !(await this.pathSettles(trace.endPath))) return false;
-    return verifyAnchors(this.host, trace.endAnchors ?? [], trace.endWaitMs);
+    return (await verifyAnchors(this.host, trace.endAnchors ?? [], trace.endWaitMs)) && !this.disabled;
   }
 
   /** Whether the current path becomes `endPath`, up to minted ids, within the settling backoff. */
@@ -354,9 +365,9 @@ export class StepTraceSession {
    * replay on mechanics alone.
    */
   private async stage(recorder: TraceRecorder, verdictSummary: string | undefined): Promise<void> {
-    if (this.startNodes === undefined || recorder.recordedCount === 0) return;
+    if (this.disabled || this.startNodes === undefined || recorder.recordedCount === 0) return;
     const endNodes = (await probeScreen(this.host))?.nodes;
-    if (endNodes === undefined) return;
+    if (this.disabled || endNodes === undefined) return;
     const endPath = await this.host.currentPath(endNodes);
     const endAnchors = describeAnchors(this.startNodes, endNodes, this.options);
     const trace = recorder.finalize({

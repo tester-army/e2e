@@ -501,6 +501,8 @@ export interface EngineCleanupContext {
 export interface EngineObserveOptions {
   /** Requests masked viewport pixels for the same revision as the tree. */
   readonly pixels?: boolean;
+  /** Allows independently masked pixels to replace a failed semantic capture. Never granted after a secret fill. */
+  readonly pixelFallback?: boolean;
 }
 
 /**
@@ -538,6 +540,13 @@ export interface EngineSnapshot {
    * read whole.
    */
   readonly truncated?: boolean;
+  /**
+   * Semantic capture timed out. Return only the stable root reference, with no other fields,
+   * and fresh pixels whose masking was proven independently of the failed
+   * capture. Requires `pixelFallback`; callers must use the pixels as evidence
+   * and must not replay or record a trace from this observation.
+   */
+  readonly treeUnavailable?: true;
   /** Masked pixels, when requested and producible; omitted otherwise. */
   readonly pixels?: ObservationPixels;
   /** Regions masked in `pixels`; the harness checks it covers every secure node. */

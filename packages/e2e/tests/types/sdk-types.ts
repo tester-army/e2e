@@ -23,7 +23,7 @@ import {
   type TraceCacheStore,
   type ValueExpectation,
 } from '../../src/index.ts';
-import type { EngineHandle } from '../../src/engine/index.ts';
+import type { EngineHandle, EngineObserveOptions, EngineSnapshot } from '../../src/engine/index.ts';
 import { createAgent, defineTool, type DefaultAgent } from '../../src/agent/public.ts';
 import type { Report } from '../../src/index.ts';
 
@@ -34,6 +34,12 @@ declare const artifactStore: ArtifactStore;
 declare const asyncExpectation: AsyncExpectation;
 declare const screen: Screen;
 declare const engine: EngineHandle;
+
+({ pixels: false, pixelFallback: true }) satisfies EngineObserveOptions;
+declare const engineSnapshot: EngineSnapshot;
+engineSnapshot.treeUnavailable satisfies true | undefined;
+// @ts-expect-error unavailable semantics are explicitly true or absent, never a separate false state.
+({ ...engineSnapshot, treeUnavailable: false }) satisfies EngineSnapshot;
 
 ({ cache: 'read-write' }) satisfies E2EConfig;
 ({ cache: { mode: 'read-only', store: remoteStore, dir: 'shared-cache' } }) satisfies E2EConfig;

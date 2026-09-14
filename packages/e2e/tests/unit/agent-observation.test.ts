@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Observation, SemanticNode } from '../../src/engine/surface.ts';
-import { interactiveNodeCount, observationShape, prepareObservation, settleObservation } from '../../src/agent/observation.ts';
+import { interactiveNodeCount, observationShape, prepareObservation, requireObservationEvidence, settleObservation } from '../../src/agent/observation.ts';
 import { createRedactor } from '../../src/internal/redact.ts';
 
 function node(id: string, extra: Partial<SemanticNode> = {}): SemanticNode {
@@ -21,6 +21,35 @@ function observation(tree: SemanticNode, pixels?: Observation['pixels']): Observ
 const NO_REDACT = (text: string): string => text;
 
 describe('prepareObservation', () => {
+  it('distinguishes unavailable semantics from an empty tree and requires permitted masked evidence', () => {
+    const pixels = { data: new Uint8Array(4), mediaType: 'image/png' as const, width: 2, height: 2, scale: 1 };
+    const unavailable = { ...observation(node('root'), pixels), treeUnavailable: true as const };
+    const prepare = (raw: Observation) => prepareObservation(raw, { redact: NO_REDACT, maxBytes: 4_096 });
+    const unproven = prepare(unavailable);
+    expect(unproven.text).toContain('semantic capture unavailable');
+    expect(unproven.text).toContain('never infer absence');
+    expect(unproven.truncated).toBe(true);
+    expect(() => requireObservationEvidence(unproven, true)).toThrow(/proven-masked screenshot/);
+    const proven = prepare({ ...unavailable, redaction: { secureNodeCount: 1, maskedRegionCount: 1 } });
+    expect(() => requireObservationEvidence(proven, true)).not.toThrow();
+    expect(() => requireObservationEvidence(proven, false)).toThrow(/permitted/);
+    const empty = prepare(observation(node('root')));
+    expect(empty.treeUnavailable).toBeUndefined();
+    expect(empty.text).not.toContain('unavailable');
+    expect(() => requireObservationEvidence(empty, false)).not.toThrow();
+  });
+
+  it('returns unavailable evidence without repeating a semantic timeout to settle it', async () => {
+    let captures = 0;
+    const result = await settleObservation(
+      async () => { captures += 1; return { unavailable: true }; },
+      () => 'root',
+      { remainingMs: () => 10_000, signal: new AbortController().signal },
+      { stopWhen: (value) => value.unavailable },
+    );
+    expect(result.unavailable).toBe(true);
+    expect(captures).toBe(1);
+  });
   it('withholds pixels whose masking the engine cannot prove and keeps the tree', () => {
     const pixels = { data: new Uint8Array(4), mediaType: 'image/png' as const, width: 2, height: 2, scale: 1 };
     const prepared = prepareObservation(observation(node('root'), pixels), {

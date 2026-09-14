@@ -106,6 +106,51 @@ describe('recordedVerdictOf', () => {
 });
 
 describe('StepTraceSession', () => {
+  it('does not replay or stage after an observation loses semantic evidence', async () => {
+    const cache = entryContext({});
+    let session!: StepTraceSession;
+    let actions = 0;
+    const host = makeHost(['/pricing']);
+    session = makeSession(cache, {
+      ...host,
+      observeSettled: async () => { session.disable(); return host.observeSettled(); },
+      actions: { navigate: async () => { actions += 1; } } as unknown as ExecutorActions,
+    });
+    expect(await session.begin()).toBeUndefined();
+    expect(session.cacheInfo?.mode).toBe('missed');
+    expect(actions).toBe(0);
+    session.record({ name: 'navigate', url: '/customers' });
+    await session.conclude('passed', 'read screenshot');
+    expect(cache.staged).toHaveLength(0);
+  });
+
+  it('never stages a passing step after missing semantics, even when the final tree recovers', async () => {
+    const cache = fakeContext(async () => ({ status: 'miss' }));
+    const session = makeSession(cache, makeHost(['/start', '/end']));
+    await session.begin();
+    session.record({ name: 'navigate', url: '/end' });
+    session.disable();
+    await session.conclude('passed', 'finished from pixels');
+    expect(cache.staged).toHaveLength(0);
+  });
+
+  it('hands off before another cached action when an action loses semantic evidence', async () => {
+    const cache = entryContext({ actions: [
+      { name: 'navigate', url: '/first', summary: 'opened first' },
+      { name: 'navigate', url: '/second', summary: 'opened second' },
+    ] });
+    let session!: StepTraceSession;
+    const visited: string[] = [];
+    session = makeSession(cache, {
+      ...makeHost(['/start']),
+      actions: { navigate: async (url: string) => { visited.push(url); session.disable(); } } as unknown as ExecutorActions,
+    });
+    expect(await session.begin()).toBeUndefined();
+    expect(visited).toEqual(['/first']);
+    expect(session.replayedPrefix?.replayedActions).toEqual(['opened first']);
+    await session.conclude('passed', 'finished from pixels');
+    expect(cache.staged).toHaveLength(0);
+  });
   it('turns a rejecting store read into a miss instead of failing the step', async () => {
     const session = makeSession(
       fakeContext(async () => {

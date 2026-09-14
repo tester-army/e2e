@@ -22,6 +22,7 @@ import {
   observationShape,
   pixelsForModel,
   prepareObservation,
+  requireObservationEvidence,
   projectTree,
   settleObservation,
   type AgentObservation,
@@ -43,6 +44,8 @@ const MAX_RECENT_OBSERVATIONS = 8;
 export interface ObservationFeedOptions {
   /** The agent's observation byte ceiling, clamped per capture by the token limit. */
   readonly maxObservationBytes: number;
+  /** Prevents trace replay and recording once any capture lacks semantics. */
+  readonly onUnavailableTree?: () => void;
 }
 
 export class ObservationFeed {
@@ -123,11 +126,12 @@ export class ObservationFeed {
     const redact = this.runtime.redact;
     // Prefer location from this capture; only engines without it need a separate probe.
     const path = await this.currentPath(observation);
-    const pixels = this.wantsPixels(options) ? this.pixelsFor(observation) : {};
+    const pixels = this.wantsPixels(options) || observation.treeUnavailable === true ? this.pixelsFor(observation) : {};
     return {
       revision: observation.revision,
       text: observation.text,
       truncated: observation.truncated,
+      ...(observation.treeUnavailable === true ? { treeUnavailable: true } : {}),
       viewport: observation.viewport,
       ...(path === undefined ? {} : { path: redact(path) }),
       ...(options.tree === true ? { tree: projectTree(observation.tree, redact) } : {}),
@@ -253,7 +257,13 @@ export class ObservationFeed {
                 // by one poll interval.
                 signal: this.accounting.signal,
               },
-              { changedFrom, changeWaitMs, changeShapeOf: changeShape, transitional: isTransitionalObservation },
+              {
+                changedFrom,
+                changeWaitMs,
+                changeShapeOf: changeShape,
+                transitional: isTransitionalObservation,
+                stopWhen: (capture) => capture.treeUnavailable === true,
+              },
             )
           : this.capture(capturePixels),
       (prepared) => ({ count: prepared.nodes.size, bytes: prepared.bytes }),
@@ -265,6 +275,7 @@ export class ObservationFeed {
   /** Makes an observation the newest, remembers it among the recent ones, and books its size. */
   private publish(observation: AgentObservation): void {
     this.newest = observation;
+    if (observation.treeUnavailable === true) this.recent.length = 0;
     this.recent.push(observation);
     if (this.recent.length > MAX_RECENT_OBSERVATIONS) this.recent.shift();
     const metrics = this.accounting.metrics;
@@ -274,16 +285,22 @@ export class ObservationFeed {
   /** One raw observation capture: retried at the engine, then redacted and bounded. */
   private async capture(pixels: boolean): Promise<AgentObservation> {
     const raw = await retryingObserve({
-      observe: (operation) => this.runtime.engine.session.observe(operation, { pixels }),
+      observe: (operation) => this.runtime.engine.session.observe(operation, {
+        pixels,
+        pixelFallback: !this.runtime.taint.value,
+      }),
       operation: () => this.accounting.operation(),
       guard: (cause) => this.accounting.checkpoint(cause),
       signal: this.runtime.engine.signal,
       api: this.accounting.api,
     });
-    return prepareObservation(raw, {
+    const prepared = prepareObservation(raw, {
       redact: this.runtime.redact,
-      maxBytes: this.byteBudget(pixels),
+      maxBytes: this.byteBudget(pixels || raw.treeUnavailable === true),
     });
+    if (prepared.treeUnavailable === true) this.options.onUnavailableTree?.();
+    requireObservationEvidence(prepared, !this.runtime.taint.value);
+    return prepared;
   }
 
   /**

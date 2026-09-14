@@ -116,7 +116,9 @@ export interface StepAgentDetails {
   metrics?: StepMetrics;
   model?: StepModelInfo;
   cache?: StepCacheInfo;
+  /** Absent when the step failed before capturing an observation. */
   observationRevision?: string;
+  /** Absent when capture failed before a judgment could be requested. */
   explanation?: string;
   /** True when masked pixel evidence was model input, not just an artifact. */
   visionInput?: boolean;

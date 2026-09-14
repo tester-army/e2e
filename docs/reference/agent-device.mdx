@@ -301,3 +301,7 @@ taps the bare point. `type_secret` is not offered on a device.
 After a secret fill the agent offers neither `screenshot` nor `tap_at`,
 including in later members of the same serial group. Pixels whose masking the
 engine cannot prove are withheld as `MASKING_UNPROVEN`.
+
+An accessibility capture failure still stops the observation. Device
+screenshot masks depend on secure-field bounds from that capture, so the
+engine cannot prove a fallback screenshot safe when those bounds are missing.

@@ -83,8 +83,9 @@ export interface ExecutorObserveOptions {
   /**
    * Include masked viewport pixels as `pixels`. Granted only when the engine
    * captures pixels, its masking is proven, and no secret has been filled in
-   * this attempt; otherwise `pixelsWithheld` names the reason. Off unless
-   * asked: the executor decides when its model needs to see the screen.
+   * this attempt; otherwise `pixelsWithheld` names the reason. Normally off
+   * unless asked. If semantic capture fails, the observation carries its
+   * permitted screenshot because no semantic evidence is available.
    */
   readonly pixels?: boolean;
 }
@@ -114,6 +115,8 @@ export interface ExecutorPixels extends ObservationPixels {
 
 /** Redacted, size-bounded observation an executor may show its model. */
 export interface ExecutorObservation {
+  /** Semantic capture failed; use the accompanying pixels, never this listing as absence evidence. */
+  readonly treeUnavailable?: true;
   readonly revision: string;
   /** One node per line as `#id role "name" ...`; already secret-redacted. */
   readonly text: string;

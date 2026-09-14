@@ -43,6 +43,8 @@ export function attempt(
 ): ReportAttempt {
   return {
     ...BASE_ATTEMPT,
+    // The caller supplies the failure; extra schema examples must not override its source.
+    steps: BASE_ATTEMPT.steps.filter((step) => step.status === 'passed'),
     status: input.status ?? 'passed',
     durationMs: input.durationMs ?? 1200,
     artifacts: (input.artifacts ?? []).map((kind, index) => ({

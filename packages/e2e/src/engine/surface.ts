@@ -55,6 +55,8 @@ export interface Observation {
   readonly tree: SemanticNode;
   /** True when the engine reported `tree` as incomplete (its node cap or a frame it could not enter). */
   readonly truncated?: boolean;
+  /** Semantic capture failed; the independently masked pixels are the only evidence. */
+  readonly treeUnavailable?: true;
   readonly viewport: {
     readonly width: number;
     readonly height: number;

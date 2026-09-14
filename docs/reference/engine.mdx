@@ -451,6 +451,8 @@ export interface EngineSnapshot {
    * read whole.
    */
   readonly truncated?: boolean;
+  /** Semantic capture failed; only fresh, independently masked pixels are evidence. */
+  readonly treeUnavailable?: true;
   /** Masked pixels, when requested and producible; omitted otherwise. */
   readonly pixels?: ObservationPixels;
   /** Regions masked in `pixels`; the harness checks it covers every secure node. */
@@ -460,6 +462,8 @@ export interface EngineSnapshot {
 export interface EngineObserveOptions {
   /** Requests masked viewport pixels for the same revision as the tree. */
   readonly pixels?: boolean;
+  /** Permits independently masked pixels to replace a failed semantic capture. */
+  readonly pixelFallback?: boolean;
 }
 ```
 
@@ -475,6 +479,21 @@ not listed, and refuses to report such a screen as unchanged between two
 observations, since what was left out is unknown. A tree read whole omits it.
 
 A pixels-only snapshot (a childless root plus `pixels`) is valid.
+
+If semantic capture times out, an engine may recover only when `pixelFallback`
+is true and it can prove screenshot masking without that capture. Return
+`treeUnavailable: true`, fresh `pixels`, and a `root` containing only its
+stable `ref`. Retire earlier node references. The flag distinguishes missing
+semantic evidence from a valid empty tree; never infer absence from it.
+Without permission, pixels, or independent masking proof, propagate the
+capture failure. Cancellation, policy denial, and hard engine failures must
+also propagate.
+
+The runner permits fallback for `act` and for judgments with `vision: true`
+or `'only'`, before any secret fill. It includes the screenshot even if the
+initial observation requested only a tree. A step that loses semantic
+evidence cannot record or finish by replaying a trace. Engines whose masks
+depend on their semantic capture cannot provide this fallback.
 
 ## Actions
 

@@ -130,6 +130,36 @@
                     "outcome": "Tapped #n19.\nScreen changes: 4 added."
                   }
                 ]
+              },
+              {
+                "id": "018f0f5c-7b2a-7abc-8abc-0123456789ab:1",
+                "index": 1,
+                "kind": "agent",
+                "api": "agent.assert",
+                "label": "the result is visible",
+                "source": {
+                  "file": "tests/example.e2e.ts",
+                  "line": 3,
+                  "column": 1
+                },
+                "status": "failed",
+                "startedAt": "2026-07-24T12:00:00.000Z",
+                "durationMs": 1000,
+                "events": [],
+                "metrics": {
+                  "modelCalls": 0,
+                  "actionSteps": 0,
+                  "observationBytes": 0,
+                  "contextBytes": 0,
+                  "ledgerBytes": 0
+                },
+                "artifacts": [],
+                "error": {
+                  "category": "test",
+                  "code": "OPERATION_TIMEOUT",
+                  "message": "semantic capture timed out",
+                  "retryable": false
+                }
               }
             ],
             "artifacts": [

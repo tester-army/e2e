@@ -141,7 +141,11 @@ function planCall(action: RecordedAction, actions: ExecutorActions): PlannedCall
 }
 
 /** Replays one trace until it completes or diverges. */
-export async function replayTrace(host: ReplayHost, trace: ActionTrace): Promise<ReplayOutcome> {
+export async function replayTrace(
+  host: ReplayHost,
+  trace: ActionTrace,
+  canReplay: () => boolean = () => true,
+): Promise<ReplayOutcome> {
   const summaries: string[] = [];
   const total = trace.actions.length;
   const stop = (stopReason: ReplayHandOffReason): ReplayOutcome => ({
@@ -153,6 +157,7 @@ export async function replayTrace(host: ReplayHost, trace: ActionTrace): Promise
   });
 
   for (const action of trace.actions) {
+    if (!canReplay()) return stop('action-failed');
     const planned = planCall(action, host.actions);
     if (planned.kind === 'gap') return stop('gap');
     try {

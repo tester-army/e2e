@@ -27,6 +27,30 @@
                 "durationMs": 10,
                 "status": "passed",
                 "reasoning": 42
+              },
+              {
+                "id": "018f0f5c-7b2a-7abc-8abc-0123456789ab:1",
+                "index": 1,
+                "kind": "agent",
+                "api": "agent.assert",
+                "label": "the result is visible",
+                "source": {
+                  "file": "tests/example.e2e.ts",
+                  "line": 3,
+                  "column": 1
+                },
+                "status": "passed",
+                "startedAt": "2026-07-24T12:00:00.000Z",
+                "durationMs": 1000,
+                "events": [],
+                "metrics": {
+                  "modelCalls": 1,
+                  "actionSteps": 0,
+                  "observationBytes": 0,
+                  "contextBytes": 0,
+                  "ledgerBytes": 0
+                },
+                "artifacts": []
               }
             ]
           }

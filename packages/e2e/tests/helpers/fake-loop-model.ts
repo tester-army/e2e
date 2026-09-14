@@ -16,6 +16,8 @@ export interface LoopCall {
   readonly toolNames: readonly string[];
   /** Text of the first user message: instruction, params, initial screen. */
   readonly prompt: string;
+  /** Image or file parts attached to user messages, excluding text captions. */
+  readonly imageParts: number;
   /**
    * Text of the last user message. Equals `prompt` unless the executor opened
    * the step with a carried-over history, where it is the current step's request.
@@ -79,6 +81,11 @@ export function installFakeLoopModel(respond: LoopResponder): ModelInstance {
       turn,
       toolNames: (options.tools ?? []).map((tool) => tool.name).toSorted(),
       prompt: firstUserText(options.prompt),
+      imageParts: options.prompt.reduce((count, message) => count + (
+        message.role === 'user' && typeof message.content !== 'string'
+          ? message.content.filter((part) => part.type === 'image' || part.type === 'file').length
+          : 0
+      ), 0),
       lastPrompt: lastUserText(options.prompt),
       userMessages: options.prompt.filter((message) => message.role === 'user').length,
       toolResults,

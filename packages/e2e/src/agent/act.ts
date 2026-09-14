@@ -20,7 +20,7 @@ import type { StepTurn } from '../run/steps.ts';
 import { writeFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { ConfigurationError } from '../internal/errors.ts';
+import { ConfigurationError, TestError } from '../internal/errors.ts';
 import type { ActOptions, ActResult, AgentErrorCode, JsonValue, ModelInstance, Secret } from '../types.ts';
 import { AgentError, CATEGORY_BY_CODE, isAgentError, toAgentError } from './error.ts';
 import { validateActOptions, validateInstruction, validateParams, validateVerdict } from './act-validation.ts';
@@ -189,6 +189,7 @@ class ActDispatch {
     const queue = new OperationQueue();
     this.feed = new ObservationFeed(runtime, this.accounting, queue, {
       maxObservationBytes: agent.config.maxObservationBytes,
+      onUnavailableTree: () => this.stepCache?.disable(),
     });
     this.dispatcher = new ActionDispatcher(runtime, this.accounting, this.feed, queue, {
       instruction: spec.instruction,
@@ -476,5 +477,8 @@ class ActDispatch {
 
 /** The replay engine's view of a capture: the nodes, and the viewport a recorded point is checked against. */
 function screenOf(observation: AgentObservation): ObservedScreen {
+  if (observation.treeUnavailable === true) {
+    throw new TestError('UNSUPPORTED_CAPABILITY', 'trace replay requires a semantic observation');
+  }
   return { nodes: observation.nodes, viewport: { width: observation.viewport.width, height: observation.viewport.height } };
 }

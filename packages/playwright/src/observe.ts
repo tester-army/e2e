@@ -1,7 +1,7 @@
 /** Masked pixel capture for an observation. */
 
 import type { Locator, Page } from 'playwright';
-import type { ObservationPixels, OperationContext } from 'e2e/engine';
+import { EngineError, withTimeout, type ObservationPixels, type OperationContext } from 'e2e/engine';
 import { CLOSED_SHADOW_SELECTOR_ENGINE, SECURE_FIELD_SELECTOR } from './read-node.ts';
 
 /**
@@ -41,6 +41,8 @@ export function maskOptions(masks: readonly Locator[]): Partial<{ mask: Locator[
 export interface PixelCapture {
   readonly pixels: ObservationPixels;
   readonly maskedRegionCount: number;
+  /** Every secure-field probe completed, independently of semantic capture. */
+  readonly maskingProven: boolean;
 }
 
 /**
@@ -60,16 +62,21 @@ export async function capturePixels(
   operation: OperationContext,
   viewport: { readonly width: number; readonly height: number },
 ): Promise<PixelCapture> {
+  const deadline = Date.now() + operation.timeoutMs;
   const masks = secureFieldMasks(page);
   // A frame that detaches mid-sweep contributes nothing to the count, which can
   // only push the observation toward withholding the image.
-  const counts = await Promise.all(masks.map((mask) => mask.count().catch(() => 0)));
+  const counts = await withTimeout(
+    Promise.allSettled(masks.map((mask) => mask.count())),
+    operation.timeoutMs,
+    () => new EngineError('OPERATION_TIMEOUT', 'secure-field mask capture timed out', { retryable: false }),
+  );
   const image = await page.screenshot({
     type: 'png',
     scale: 'css',
     animations: 'disabled',
     caret: 'hide',
-    timeout: Math.max(1, Math.min(operation.timeoutMs, PIXEL_CAPTURE_TIMEOUT_MS)),
+    timeout: Math.max(1, Math.min(deadline - Date.now(), PIXEL_CAPTURE_TIMEOUT_MS)),
     ...maskOptions(masks),
   });
   const data = new Uint8Array(image);
@@ -86,7 +93,8 @@ export async function capturePixels(
       height: size.height,
       scale: viewport.width > 0 ? size.width / viewport.width : 1,
     },
-    maskedRegionCount: counts.reduce((total, count) => total + count, 0),
+    maskedRegionCount: counts.reduce((total, count) => total + (count.status === 'fulfilled' ? count.value : 0), 0),
+    maskingProven: masks.length > 0 && counts.every((count) => count.status === 'fulfilled'),
   };
 }
 

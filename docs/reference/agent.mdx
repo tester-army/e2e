@@ -81,10 +81,11 @@ caching is off).
 
 ### Pixel tools: screenshot and the point verbs
 
-The act model works from the tree and asks for pixels when it needs them;
-nothing is attached unasked, and no option turns pixels on or off. While no
-secret has been filled, the built-in agent offers five tools for that. The
-act model receives the image itself; no second model is involved.
+The act model works from the tree and can request pixels. The opening
+observation also includes a screenshot when no interactive node is listed,
+or when supported semantic-capture fallback succeeds. There is no act vision
+option. While no secret has been filled, the built-in agent offers five pixel
+tools. The act model receives the image itself; no second model is involved.
 
 | Tool | What it does |
 | --- | --- |
@@ -116,6 +117,13 @@ its text: `tap_at` it to give it focus, `type` without a target,
 `replace: true` clears the field first. The browser engine refuses focused
 typing when nothing editable has focus, so keystrokes never vanish into the
 page. A device engine offers `dismiss_keyboard` too.
+
+If semantic capture times out, an engine that proves masking independently
+can return a fresh screenshot with an explicit unavailable-tree warning.
+The initial `act` observation includes that image automatically. No old node
+ids survive the fallback, and the step cannot record or finish from a trace
+cache entry. The screenshot shows the current viewport; an unavailable tree
+does not prove that a control or message is absent.
 
 A secret filled during the step withholds every later screenshot
 (`PIXEL_TAINTED`), and a step that opens on a tainted viewport offers none of
@@ -219,6 +227,16 @@ the viewport (`visionDegraded: "PIXEL_TAINTED"` on the step), when the engine
 masked fewer regions than the secure fields it observed (`MASKING_UNPROVEN`),
 or when the engine cannot capture pixels (`UNSUPPORTED_CAPABILITY`). In
 `'only'` mode those cases fail with `POLICY_DENIED` instead.
+
+With `vision: true` or `'only'`, a recoverable semantic-capture failure can
+use a fresh screenshot when the engine proves masking independently. With
+`vision: false`, or after a secret fill, the capture failure stops the
+judgment before any model call. A missing tree cannot support a judgment
+about an empty screen.
+
+If capture fails before a judgment, the report records zero model calls and
+omits `observationRevision` and `explanation`. There was no observed revision
+or model verdict to report; the step error describes the capture failure.
 
 ## Types
 

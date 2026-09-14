@@ -6,11 +6,14 @@ import { sleep } from '../internal/time.ts';
 import type { VisionDegradation } from '../run/steps.ts';
 import type { ExecutorNode, ExecutorObservation, ExecutorPixels } from './executor.ts';
 import { sizeForModel } from './pixels.ts';
+import { TestError } from '../internal/errors.ts';
 
 /** Appended when the node walk stopped at the observation byte budget. */
 const TRUNCATION_MARKER = '[observation truncated at the resolved observation byte limit]';
 /** Appended when the engine reported its tree incomplete and the byte budget did not cut it further. */
 const ENGINE_TRUNCATION_MARKER = '[observation truncated: the engine stopped listing nodes at its limit]';
+/** Missing semantics are unknown, including on a surface that appears empty. */
+const UNAVAILABLE_TREE_MARKER = '[semantic capture unavailable: no nodes were read; use the screenshot, never infer absence from this listing]';
 
 /** Why pixels the caller asked for are not part of this observation. */
 type PixelsWithheld = 'MASKING_UNPROVEN';
@@ -35,6 +38,8 @@ export interface AgentObservation {
    * unchanged and the model is told the listing is partial.
    */
   readonly truncated: boolean;
+  /** The listing carries no semantic evidence; only the independently masked pixels may be used. */
+  readonly treeUnavailable?: true;
   /** Present only when the engine captured pixels and masking checks out. */
   readonly pixels?: ExecutorPixels | undefined;
   /** Set when captured pixels were dropped instead of being sent. */
@@ -67,9 +72,10 @@ export function prepareObservation(
   // budget; the budget is what keeps the request under the token ceiling.
   const markerFor = (cutByBudget: boolean): string | undefined => {
     if (cutByBudget) return TRUNCATION_MARKER;
+    if (observation.treeUnavailable === true) return UNAVAILABLE_TREE_MARKER;
     return observation.truncated === true ? ENGINE_TRUNCATION_MARKER : undefined;
   };
-  const markerBytes = encoder.encode(`${markerFor(observation.truncated !== true)!}\n`).byteLength;
+  const markerBytes = encoder.encode(`${markerFor(false) ?? TRUNCATION_MARKER}\n`).byteLength;
   const budget = Math.max(0, options.maxBytes - markerBytes);
   let bytes = 0;
   let cutByBudget = false;
@@ -107,9 +113,18 @@ export function prepareObservation(
     tree: observation.tree,
     viewport: observation.viewport,
     truncated,
+    ...(observation.treeUnavailable === true ? { treeUnavailable: true } : {}),
     ...(pixels.cleared === undefined ? {} : { pixels: pixels.cleared }),
     ...(pixels.withheld === undefined ? {} : { pixelsWithheld: pixels.withheld }),
   };
+}
+
+/** Refuses an unavailable semantic tree unless independently masked pixels can reach the model. */
+export function requireObservationEvidence(observation: AgentObservation, pixelsAllowed: boolean): void {
+  if (observation.treeUnavailable !== true) return;
+  if (!pixelsAllowed || observation.pixels === undefined) {
+    throw new TestError('UNSUPPORTED_CAPABILITY', 'semantic capture is unavailable and no permitted, proven-masked screenshot can replace it');
+  }
 }
 
 /**
@@ -340,6 +355,8 @@ interface SettleClock {
 
 /** Tunables of one settle; production callers take the defaults. */
 export interface SettleOptions<T> {
+  /** Returns a capture immediately when repeating it cannot establish semantic stability. */
+  readonly stopWhen?: ((value: T) => boolean) | undefined;
   /**
    * The shape the screen had when the preceding action was resolved. The
    * settle first waits, bounded, for the shape to differ from it, so an
@@ -387,6 +404,7 @@ export async function settleObservation<T>(
   const changeWaitMs = options.changeWaitMs ?? CHANGE_WAIT_MS;
   const transitional = options.transitional ?? (() => false);
   let value = await capture();
+  if (options.stopWhen?.(value)) return value;
   let shape = shapeOf(value);
   if (options.changedFrom !== undefined) {
     const changeShapeOf = options.changeShapeOf ?? shapeOf;
@@ -398,6 +416,7 @@ export async function settleObservation<T>(
     ) {
       await sleep(pollMs, clock.signal);
       value = await capture();
+      if (options.stopWhen?.(value)) return value;
     }
     shape = shapeOf(value);
   }
@@ -405,6 +424,7 @@ export async function settleObservation<T>(
   while (Date.now() < deadlineMs && clock.remainingMs() > pollMs) {
     await sleep(pollMs, clock.signal);
     value = await capture();
+    if (options.stopWhen?.(value)) return value;
     const next = shapeOf(value);
     const stable = next === shape;
     shape = next;

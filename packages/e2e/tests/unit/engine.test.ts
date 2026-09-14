@@ -399,6 +399,29 @@ describe('createEngineSession', () => {
 });
 
 describe('createEngineSession pixels-only observation', () => {
+  it('requires explicit fallback permission and discards stale semantic content', async () => {
+    let raw: EngineSnapshot = {
+      root: { ref: { id: 'root', revision: '' } },
+      viewport: { width: 2, height: 2, scale: 1 },
+      treeUnavailable: true,
+      pixels: { data: new Uint8Array(8), mediaType: 'image/png', width: 2, height: 2, scale: 1 },
+    };
+    const received: unknown[] = [];
+    const session = createEngineSession({
+      engine: defineEngine(observingEngine({ observe: async (_operation, options) => { received.push(options); return raw; } })),
+      targetName: 'toy',
+    });
+    await expect(session.observe(OP)).rejects.toMatchObject({ code: 'UNSUPPORTED_CAPABILITY' });
+    const captured = await session.observe(OP, { pixelFallback: true });
+    expect(received.at(-1)).toEqual({ pixelFallback: true });
+    expect(captured.treeUnavailable).toBe(true);
+    expect(captured.tree.ref.revision).toBe(captured.revision);
+    raw = { ...raw, root: { ...raw.root, children: [node('stale', 'Old control')] } };
+    await expect(session.observe(OP, { pixelFallback: true })).rejects.toMatchObject({ code: 'INVALID_STATE' });
+    raw = { root: raw.root, viewport: raw.viewport, treeUnavailable: true };
+    await expect(session.observe(OP, { pixelFallback: true })).rejects.toMatchObject({ code: 'UNSUPPORTED_CAPABILITY' });
+  });
+
   it('accepts a snapshot with no nodes and pixels: a vision-only body is observable', async () => {
     const pixels = { data: new Uint8Array(8), mediaType: 'image/png' as const, width: 4, height: 2, scale: 1 };
     const session = createEngineSession({

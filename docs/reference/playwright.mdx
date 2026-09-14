@@ -366,6 +366,22 @@ export type JsonValue =
   | readonly JsonValue[];
 ```
 
+## Semantic capture recovery
+
+When the semantic reader times out, agent observations can recover using a
+fresh viewport screenshot. Playwright runs a new secure-field mask sweep
+across every reachable frame, including open and closed shadow roots. Every
+mask probe must succeed. The observation explicitly reports unavailable
+semantics and clears earlier node references.
+
+Recovery requires time left in the operation budget and permission from the
+runner. `act` permits it before a secret fill; judgments also require
+`vision: true` or `'only'`. Failed masking, cancellation, and hard engine
+errors still stop the observation.
+
+When fallback is permitted, the reader reserves one quarter of the remaining
+observation budget, capped at two seconds, for the screenshot.
+
 ## Exported types
 
 `PlaywrightOptions`, `PlaywrightConnectOptions`, `PlaywrightBasicAuth`,
