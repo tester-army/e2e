@@ -63,9 +63,7 @@ naming the file. `markdown` does the same with `summary.md` through
 `renderMarkdownReport(report, options)`, also exported, so your own reporter
 can post the same page elsewhere; `failurePages` links each block to a page
 by result id. The built-in reporter also writes one page per failed or flaky
-test under `failures/`, with the screen at failure inline, through
-`renderFailurePage(report, result, outcome(result, groups), options)`, where
-`readArtifact` supplies the screen text by report path. [`@e2edev/github`](/github) is that
+test under `failures/`, with the screen at failure inline. [`@e2edev/github`](/github) is that
 reporter for GitHub Actions.
 
 A name and at least one handler are required; anything else is

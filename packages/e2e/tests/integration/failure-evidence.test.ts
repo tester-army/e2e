@@ -66,7 +66,7 @@ describe('failure evidence', () => {
         const attempt = result.attempts.at(-1)!;
         expect(attempt.error).toMatchObject({
           code: 'LOCATOR_NOT_FOUND',
-          details: { locator: 'getByRole("button", name: "Submit now")', role: 'button', name: 'Submit now', waitedMs: '300' },
+          details: { locator: 'getByRole("button", name: "Submit now")', role: 'button', name: 'Submit now', waitedMs: 300 },
         });
         // The error and the failing step both resolve to the line in the test file that made the call.
         expect(attempt.error?.source?.file).toBe('tests/missing.e2e.ts');
@@ -76,7 +76,6 @@ describe('failure evidence', () => {
         expect(attempt.steps[0]?.source.file).toBe('tests/missing.e2e.ts');
 
         const failure = attempt.failure!;
-        expect(failure.stepIndex).toBe(failedStep.index);
         expect(failure.url).toContain('127.0.0.1:4599');
         // The Submit button is the button on screen; the locator asked for one named differently.
         expect(failure.candidates).toEqual([expect.stringContaining('button "Submit"')]);
@@ -111,9 +110,9 @@ describe('failure evidence', () => {
         const attempt = reported(outcome, 'expects the wrong count').attempts.at(-1)!;
         expect(attempt.error).toMatchObject({
           code: 'ASSERTION_FAILED',
-          details: { locator: 'getByRole("button")', expected: 'count 2', matches: '1' },
+          details: { locator: 'getByRole("button")', expected: 'count 2', matches: 1 },
         });
-        expect(attempt.error?.details?.['observed']).toBeDefined();
+        expect(attempt.error?.details?.observed).toBeDefined();
         expect(attempt.failure?.screen).toBeDefined();
         expect(attempt.failure?.screenshot).toBeUndefined();
         expect(attempt.failure?.candidates).toBeUndefined();

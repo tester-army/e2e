@@ -1,16 +1,14 @@
 /**
- * One failed test as a page of its own: everything the run page says about
- * it, then what the run page has no room for: every step with its timing,
- * the last model turns of a failed agent step, and the screen as the runner
- * saw it when the failure landed, inline. The `markdown` reporter writes one
- * per failed or flaky test under `failures/` beside the report; the run page
- * links each block to its page.
- *
- * The facts the run page and the page share (what the error said in
- * structured form, whether the attempts failed alike, the line to look at)
- * are computed here once, so the two never disagree.
+ * A failed test as text: the facts the run page's failure block states (what
+ * the error said in structured form, whether the attempts failed alike, the
+ * line to look at, the last turns, the screen), and the page that tells the
+ * whole story, with every step, every kept turn, and the screen at failure
+ * inline. The `markdown` reporter writes one page per failed or flaky test
+ * under `failures/` beside the report; the run page links each block to its
+ * page. Both read the facts from here, so the two never disagree.
  */
 
+import type { StepTurn } from '../run/steps.ts';
 import type { Report1Document, ReportError, ReportResult, ReportSource, ReportStep } from './build.ts';
 import { cell, code, formatDuration, link, MAX_CELL_CHARS, MAX_ID_CHARS, MAX_LABEL_CHARS, MAX_PATH_CHARS, MAX_TITLE_CHARS, plural } from './markdown-text.ts';
 import type { AttemptView, Outcome } from './outcome.ts';
@@ -41,53 +39,35 @@ export interface FailurePageOptions {
 
 /**
  * The structured facts of an error as lines: an assertion's expected and
- * observed, what a locator asked for and how long it waited. Anything else
- * a detail carries is listed by name.
+ * observed with the match count, then what a locator asked for and how long
+ * it waited. The locator as written is the step's label already.
  */
 export function detailLines(error: ReportError | undefined): string[] {
   const details = error?.details;
   if (details === undefined) return [];
   const lines: string[] = [];
-  const used = new Set<string>(['locator']);
-  const take = (key: string): string | undefined => {
-    used.add(key);
-    return details[key];
-  };
-  const expected = take('expected');
-  const observed = take('observed');
-  const matches = take('matches');
+  const { expected, observed, matches, role, name, testId, waitedMs } = details;
+  const matched = matches === undefined ? undefined : `${matches} ${matches === 1 ? 'match' : 'matches'}`;
   if (expected !== undefined || observed !== undefined) {
-    const parts = [
-      ...(expected === undefined ? [] : [`Expected: ${cell(expected, MAX_DETAIL_CHARS)}`]),
-      ...(observed === undefined ? [] : [`Observed: ${cell(observed, MAX_DETAIL_CHARS)}${matches === undefined ? '' : ` (${matchText(matches)})`}`]),
-    ];
-    lines.push(parts.join(' · '));
-  } else if (matches !== undefined) {
-    lines.push(`Matched: ${matchText(matches)}`);
+    lines.push(
+      [
+        ...(expected === undefined ? [] : [`Expected: ${cell(expected, MAX_DETAIL_CHARS)}`]),
+        ...(observed === undefined ? [] : [`Observed: ${cell(observed, MAX_DETAIL_CHARS)}${matched === undefined ? '' : ` (${matched})`}`]),
+      ].join(' · '),
+    );
+  } else if (matched !== undefined) {
+    lines.push(`Matched: ${matched}`);
   }
-  const role = take('role');
-  const name = take('name');
-  const testId = take('testId');
   const asked = [
     ...(role === undefined ? [] : [cell(role, MAX_ID_CHARS)]),
     ...(name === undefined ? [] : [`"${cell(name, MAX_LABEL_CHARS)}"`]),
     ...(testId === undefined ? [] : [`test id "${cell(testId, MAX_LABEL_CHARS)}"`]),
   ];
-  const waitedMs = Number(take('waitedMs'));
-  const waited = Number.isFinite(waitedMs) && waitedMs > 0 ? `waited ${formatDuration(waitedMs)}` : undefined;
+  const waited = waitedMs === undefined || waitedMs <= 0 ? undefined : `waited ${formatDuration(waitedMs)}`;
   if (asked.length > 0 || waited !== undefined) {
     lines.push([...(asked.length === 0 ? [] : [`Asked for: ${asked.join(' ')}`]), ...(waited === undefined ? [] : [waited])].join(' · '));
   }
-  for (const [key, value] of Object.entries(details)) {
-    if (used.has(key)) continue;
-    lines.push(`${cell(key, MAX_ID_CHARS)}: ${cell(value, MAX_DETAIL_CHARS)}`);
-  }
   return lines;
-}
-
-function matchText(matches: string): string {
-  const count = Number(matches);
-  return Number.isInteger(count) ? `${count} ${count === 1 ? 'match' : 'matches'}` : `${cell(matches, MAX_ID_CHARS)} matches`;
 }
 
 /** The attempt whose story a block tells: a flaky test's last failure, otherwise the final one. */
@@ -95,11 +75,14 @@ export function toldAttempt(result: ReportResult, final: Outcome): AttemptView {
   return result.status === 'flaky' ? (final.lastFailed ?? final.final) : final.final;
 }
 
-/** The step a failure happened at: the first that did not pass, or the first that did not run. */
-export function failedStepOf(steps: readonly ReportStep[]): { index: number; step: ReportStep } | undefined {
+/** A step that did not pass. */
+export type FailedStep = ReportStep & { readonly status: Exclude<ReportStep['status'], 'passed'> };
+
+/** The step a failure happened at: the first that did not pass, with its position. */
+export function failedStepOf(steps: readonly ReportStep[]): { index: number; step: FailedStep } | undefined {
   const index = steps.findIndex((step) => step.status !== 'passed');
   const step = steps[index];
-  return step === undefined ? undefined : { index, step };
+  return step === undefined || step.status === 'passed' ? undefined : { index, step: step as FailedStep };
 }
 
 /**
@@ -111,22 +94,20 @@ export function failedStepOf(steps: readonly ReportStep[]): { index: number; ste
 export function attemptsLine(result: ReportResult, final: Outcome): string | undefined {
   // An attempt that recorded nothing for this test (a serial group that never
   // reached the member) says nothing about how the test fails.
-  const failed = final.attempts.filter(
-    (attempt) => attempt.status !== 'passed' && attempt.status !== 'skipped' && (attempt.error !== undefined || attempt.steps.length > 0),
-  );
-  if (final.attempts.length < 2 || failed.length < 2) return undefined;
-  const signature = (attempt: AttemptView): string =>
-    `${attempt.error?.code ?? attempt.status}@${failedStepOf(attempt.steps)?.index ?? -1}`;
-  const first = failed[0]!;
-  const alike = failed.every((attempt) => signature(attempt) === signature(first));
+  const failed = final.attempts
+    .filter((attempt) => attempt.status !== 'passed' && attempt.status !== 'skipped' && (attempt.error !== undefined || attempt.steps.length > 0))
+    .map((attempt) => ({
+      code: cell(attempt.error?.code ?? attempt.status, 128),
+      step: failedStepOf(attempt.steps)?.index,
+    }));
+  const [first] = failed;
+  if (first === undefined || final.attempts.length < 2 || failed.length < 2) return undefined;
+  const where = (step: number | undefined): string => (step === undefined ? '' : ` at step ${step + 1}`);
   const count = failed.length === final.attempts.length ? (failed.length === 2 ? 'both attempts' : `all ${failed.length} attempts`) : plural(failed.length, 'attempt');
-  if (alike) {
-    const at = failedStepOf(first.steps);
-    const where = at === undefined ? '' : ` at step ${at.index + 1}`;
-    return `Failed the same way on ${count}: **${cell(first.error?.code ?? first.status, 128)}**${where}.${result.status === 'flaky' ? ' The retry that passed is the exception.' : ''}`;
+  if (failed.every((attempt) => attempt.code === first.code && attempt.step === first.step)) {
+    return `Failed the same way on ${count}: **${first.code}**${where(first.step)}.${result.status === 'flaky' ? ' The retry that passed is the exception.' : ''}`;
   }
-  const codes = failed.map((attempt) => `**${cell(attempt.error?.code ?? attempt.status, 128)}**${failedStepOf(attempt.steps) === undefined ? '' : ` at step ${failedStepOf(attempt.steps)!.index + 1}`}`);
-  return `Failed differently on ${count}: ${codes.join(', then ')}.`;
+  return `Failed differently on ${count}: ${failed.map((attempt) => `**${attempt.code}**${where(attempt.step)}`).join(', then ')}.`;
 }
 
 /**
@@ -148,7 +129,7 @@ export function sourceText(source: ReportSource, sourceUrl: FailurePageOptions['
 }
 
 /** One turn on one line: its calls, then the first line of what came back. */
-function turnLine(turn: ReportStep['turns'] extends readonly (infer T)[] | undefined ? T : never, max = MAX_DETAIL_CHARS): string {
+function turnLine(turn: StepTurn, max = MAX_DETAIL_CHARS): string {
   const calls = turn.calls.length === 0 ? 'no tool call' : turn.calls.map((call) => code(call, MAX_LABEL_CHARS * 2)).join(', ');
   const outcome = turn.outcome.split('\n').find((line) => line.trim() !== '') ?? '';
   return `${turn.index}. ${calls}${outcome === '' ? '' : ` → ${cell(outcome, max)}`}`;

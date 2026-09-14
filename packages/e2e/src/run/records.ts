@@ -45,8 +45,6 @@ export interface ArtifactRecord {
  * closest to what it asked for. Best-effort: any field may be absent.
  */
 export interface FailureEvidence {
-  /** Timeline index of the step that failed, when the failure landed in one. */
-  stepIndex?: number;
   url?: string;
   /** The `log` artifact holding the redacted screen at failure, by id. */
   screen?: string;
@@ -79,6 +77,8 @@ export interface SerialMemberRecord {
   durationMs: number;
   steps: StepRecord[];
   error?: SerializedError;
+  /** What the runner saw when this member's failure landed; see `FailureEvidence`. */
+  failure?: FailureEvidence;
   skip?: SkipInfo;
   secondaryErrors: SerializedError[];
 }
@@ -92,7 +92,6 @@ export interface SerialAttemptRecord {
   members: SerialMemberRecord[];
   artifacts: ArtifactRecord[];
   error?: SerializedError;
-  failure?: FailureEvidence;
   secondaryErrors: SerializedError[];
   cleanup: 'complete' | 'failed' | 'forced';
 }

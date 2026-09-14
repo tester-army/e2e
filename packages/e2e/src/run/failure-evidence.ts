@@ -16,22 +16,22 @@ import { formatNode, prepareObservation, type AgentObservation } from '../agent/
 import type { ResolvedConfig } from '../config/resolve.ts';
 import type { OperationContext, TargetSession } from '../engine/surface.ts';
 import type { SemanticNode } from '../engine/contract.ts';
-import type { E2EError } from '../internal/errors.ts';
+import { truncateUtf8, type E2EError } from '../internal/errors.ts';
 import type { ArtifactSink } from './fixtures.ts';
 import type { FailureEvidence } from './records.ts';
 import type { SessionSecrecy } from './secrecy.ts';
-import type { StepRecord } from './steps.ts';
 
 /** The whole capture, observation and screenshot together, gets this long. */
 const EVIDENCE_TIMEOUT_MS = 5_000;
-/** Screen lines a locator failure lists as its nearest nodes. */
+/** Screen lines a locator failure lists as its nearest nodes, and the bytes each keeps; the wire schema caps both. */
 const MAX_CANDIDATES = 5;
+const MAX_CANDIDATE_BYTES = 1024;
+const MAX_URL_BYTES = 2048;
 /** Report-relative path of the screen text under the attempt's artifact directory. */
 const SCREEN_FILE = 'failure/screen.txt';
 
 export interface FailureEvidenceOptions {
   readonly session: TargetSession;
-  readonly steps: readonly StepRecord[];
   readonly error: E2EError;
   readonly secrecy: SessionSecrecy;
   readonly config: ResolvedConfig;
@@ -48,9 +48,6 @@ export interface FailureEvidenceOptions {
  */
 export async function captureFailureEvidence(options: FailureEvidenceOptions): Promise<FailureEvidence | undefined> {
   const evidence: FailureEvidence = {};
-  const failedStep = options.steps.find((step) => step.status !== 'passed');
-  if (failedStep !== undefined) evidence.stepIndex = failedStep.index;
-
   const timeout = AbortSignal.timeout(EVIDENCE_TIMEOUT_MS);
   const signal = AbortSignal.any([options.interrupt, timeout]);
   if (signal.aborted) return finish(evidence);
@@ -66,7 +63,7 @@ export async function captureFailureEvidence(options: FailureEvidenceOptions): P
   }
 
   // The location rides on the observation when the platform has one.
-  if (observation?.location !== undefined) evidence.url = observation.location;
+  if (observation?.location !== undefined) evidence.url = truncateUtf8(observation.location, MAX_URL_BYTES);
 
   if (observation !== undefined) {
     try {
@@ -120,36 +117,33 @@ function screenText(observation: AgentObservation, url: string | undefined): str
  */
 function locatorCandidates(error: E2EError, observation: AgentObservation, redact: (text: string) => string): string[] {
   if (error.code !== 'LOCATOR_NOT_FOUND' && error.code !== 'LOCATOR_AMBIGUOUS') return [];
-  const hints = error.details ?? {};
-  const role = hints['role']?.toLowerCase();
-  const testId = hints['testId'];
-  const words = tokens(hints['name'] ?? '');
+  const { role, testId, name } = error.details ?? {};
+  const words = tokens(name ?? '');
   if (role === undefined && testId === undefined && words.length === 0) return [];
 
   const scored: { score: number; node: SemanticNode }[] = [];
   for (const node of observation.nodes.values()) {
-    let score = 0;
-    if (role !== undefined && node.role?.toLowerCase() === role) score += 3;
-    if (testId !== undefined) {
-      const own = node.testId;
-      if (own === testId) score += 6;
-      else if (own !== undefined && (own.includes(testId) || testId.includes(own))) score += 3;
-    }
-    if (words.length > 0) {
-      const own = new Set(tokens(`${node.name ?? ''} ${node.text ?? ''} ${node.attributes?.['placeholder'] ?? ''}`));
-      const shared = words.filter((word) => own.has(word)).length;
-      // A name sharing every word outranks one sharing one; a role match alone
-      // on a name-less node stays below any word match.
-      score += shared * 2 + (shared === words.length ? 2 : 0);
-    }
-    // A role query names a role; a node of that role with no words in common
-    // is still a candidate, but only when the request carried no name.
-    if (score > 0 && (words.length === 0 || score > 3 || role === undefined)) scored.push({ score, node });
+    const roleMatched = role !== undefined && node.role?.toLowerCase() === role.toLowerCase();
+    const testIdMatched = testId !== undefined && node.testId !== undefined && (node.testId === testId || node.testId.includes(testId) || testId.includes(node.testId));
+    const own = new Set(tokens(`${node.name ?? ''} ${node.text ?? ''} ${node.attributes?.['placeholder'] ?? ''}`));
+    const shared = words.filter((word) => own.has(word)).length;
+    // A request that named the node is answered by nodes of the asked role
+    // (any role, when none was asked) sharing a word with the name; a role
+    // alone is enough only when no name was asked for; a test id stands on
+    // its own either way.
+    const nameMatched = shared > 0 && (role === undefined || roleMatched);
+    if (!(nameMatched || testIdMatched || (roleMatched && words.length === 0))) continue;
+    const score =
+      (roleMatched ? 3 : 0) +
+      (testIdMatched ? (node.testId === testId ? 6 : 3) : 0) +
+      shared * 2 +
+      (words.length > 0 && shared === words.length ? 2 : 0);
+    scored.push({ score, node });
   }
   return scored
     .toSorted((a, b) => b.score - a.score)
     .slice(0, MAX_CANDIDATES)
-    .map(({ node }) => formatNode(node, 0, redact));
+    .map(({ node }) => truncateUtf8(formatNode(node, 0, redact), MAX_CANDIDATE_BYTES));
 }
 
 function tokens(text: string): string[] {

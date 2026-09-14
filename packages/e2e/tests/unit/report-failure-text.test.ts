@@ -7,12 +7,13 @@
 
 import { describe, expect, it } from 'vitest';
 import type { ReportAttempt, ReportResult, ReportStep } from '../../src/report/build.ts';
-import { attemptsLine, detailLines, evidenceOf, failureSource, lastTurnsLine, renderFailurePage, screenLine, toldAttempt } from '../../src/report/failure-page.ts';
+import type { ReportSerialGroup } from '../../src/report/build.ts';
+import { attemptsLine, detailLines, evidenceOf, failureSource, lastTurnsLine, renderFailurePage, screenLine, toldAttempt } from '../../src/report/failure-text.ts';
 import { outcome } from '../../src/report/outcome.ts';
 import { reportAttempt, reportDocument, reportError, reportResult, reportStep, reportTarget } from '../helpers/report.ts';
 
 const UNKNOWN = { file: 'unknown', line: 1, column: 1 };
-const NO_GROUPS = new Map();
+const NO_GROUPS = new Map<string, ReportSerialGroup>();
 
 function step(overrides: Partial<ReportStep> & Pick<ReportStep, 'index'>): ReportStep {
   return reportStep({ id: `s${overrides.index}`, label: `step ${overrides.index}`, source: UNKNOWN, ...overrides });
@@ -28,15 +29,16 @@ function result(overrides: Partial<ReportResult> = {}): ReportResult {
 
 describe('detailLines', () => {
   it("lays an assertion's expected and observed on one line with the match count, and says what a locator asked for and how long it waited", () => {
-    expect(detailLines(reportError({ details: { locator: 'getByRole("status")', expected: 'text "2 remaining"', observed: 'text "1 remaining"', matches: '1' } }))).toEqual([
+    expect(detailLines(reportError({ details: { locator: 'getByRole("status")', expected: 'text "2 remaining"', observed: 'text "1 remaining"', matches: 1 } }))).toEqual([
       'Expected: text "2 remaining" · Observed: text "1 remaining" (1 match)',
     ]);
-    expect(detailLines(reportError({ details: { locator: 'x', role: 'button', name: 'Add todo item', waitedMs: '3000' } }))).toEqual(['Asked for: button "Add todo item" · waited 3.0s']);
+    expect(detailLines(reportError({ details: { locator: 'x', role: 'button', name: 'Add todo item', waitedMs: 3000 } }))).toEqual(['Asked for: button "Add todo item" · waited 3.0s']);
     expect(detailLines(reportError({ details: { testId: 'todo' } }))).toEqual(['Asked for: test id "todo"']);
   });
 
-  it('lists a detail it has no wording for by name, escaped, and says nothing for an error without details', () => {
-    expect(detailLines(reportError({ details: { matches: '3', reason: 'two <b>labels</b>' } }))).toEqual(['Matched: 3 matches', 'reason: two &lt;b&gt;labels&lt;/b&gt;']);
+  it('states a bare match count, escapes what a test wrote, and says nothing for an error without details', () => {
+    expect(detailLines(reportError({ details: { matches: 3 } }))).toEqual(['Matched: 3 matches']);
+    expect(detailLines(reportError({ details: { expected: 'two <b>labels</b>' } }))).toEqual(['Expected: two &lt;b&gt;labels&lt;/b&gt;']);
     expect(detailLines(reportError())).toEqual([]);
     expect(detailLines(undefined)).toEqual([]);
   });
@@ -148,7 +150,7 @@ describe('renderFailurePage', () => {
             }),
           ],
           artifacts: [screen, shot],
-          failure: { stepIndex: 1, url: 'http://app.test/todos', screen: 'a:0', screenshot: 'a:1' },
+          failure: { url: 'http://app.test/todos', screen: 'a:0', screenshot: 'a:1' },
         }),
       ],
       (reportPath) => (reportPath === 't/failure/screen.txt' ? '# Screen at failure\n\n#n1 document "Todos"\n #n19 button "Add"\n' : undefined),

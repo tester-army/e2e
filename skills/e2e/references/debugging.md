@@ -27,7 +27,7 @@ jq '.run.results[] | select(.status != "passed") | .attempts[-1]
    `url`, the `screen` and `screenshot` artifact ids, and the `candidates`;
    a failed agent step has `turns`.
 4. Artifacts named there live under `.e2e/artifacts/`: `failure/screen.txt`
-   and `screenshots/*-failure.png` per failed attempt, a Playwright
+   and the engine's failure screenshot per failed attempt, a Playwright
    `trace.zip` per attempt (`npx playwright show-trace <file>`), downloads,
    with `--video` a `video/video.webm` per attempt, and with `--debug` the
    full transcript of every agent step.

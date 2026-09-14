@@ -357,7 +357,7 @@ describe('renderMarkdownReport', () => {
     expect(body).not.toContain('**tests/f449.e2e.ts**');
   });
 
-  it('reads a serial member from its group: error, steps, and the evidence of the attempt that failed', () => {
+  it('reads a serial member from its group: error, steps, failure evidence, and the artifacts of the attempt that failed', () => {
     const member = named({ title: 'step two', status: 'failed', serialGroupId: 'g1' });
     const group: ReportSerialGroup = {
       id: 'g1',
@@ -385,6 +385,7 @@ describe('renderMarkdownReport', () => {
               durationMs: 40,
               steps: [step({ index: 0, label: 'tap Next', status: 'failed' })],
               error: { category: 'test', code: 'ASSERTION_FAILED', message: 'nope', retryable: false },
+              failure: { url: 'http://app.test/wizard', candidates: ['#n3 button "Next step"'] },
               secondaryErrors: [],
             },
           ],
@@ -393,7 +394,9 @@ describe('renderMarkdownReport', () => {
     };
     const body = renderMarkdownReport(page({ status: 'failed', results: [member], serialGroups: [group] }));
     // The evidence is the failing group attempt's own, not an earlier attempt's trace.
-    expect(body).toContain('**ASSERTION_FAILED** nope  \nStep 1 of 1, `screen.tap` "tap Next", failed in 900ms  \nEvidence: screenshot · `tests/example.e2e.ts:3`');
+    expect(body).toContain(
+      '**ASSERTION_FAILED** nope  \nStep 1 of 1, `screen.tap` "tap Next", failed in 900ms  \nScreen: http://app.test/wizard · closest to the locator: `#n3 button "Next step"`  \nEvidence: screenshot · `tests/example.e2e.ts:3`',
+    );
     // A member whose group is missing renders what it has rather than an inspection of nothing.
     expect(renderMarkdownReport(page({ status: 'failed', results: [member] }))).toContain('**🔴 tests/example.e2e.ts › step two**  \n`tests/example.e2e.ts:3`');
   });
@@ -510,7 +513,7 @@ describe('renderMarkdownReport for an exploration', () => {
           '   Expected: The total reflects the cart',
           '   Actual: Total: $0.00',
           '   Steps: 1. Add two items 2. Open the cart',
-          '   Evidence: `.e2e/artifacts/web/explore/attempt-0/finding-0.png`',
+          '   Evidence: screenshot `.e2e/artifacts/web/explore/attempt-0/finding-0.png`',
         ].join('  \n'),
         ['2. **trivial warning** Newsletter label misspells Receive · `/checkout` · step 2', '   Expected: The total reflects the cart', '   Actual: Total: $0.00'].join('  \n'),
         '',
@@ -592,10 +595,10 @@ describe('markdownReporter', () => {
     expect(rows).toEqual([{ label: 'Markdown', text: path.join('.e2e', 'summary.md') }]);
     const text = readFileSync(path.join(root, '.e2e', 'summary.md'), 'utf8');
     expect(text.startsWith('### 🔴 e2e explore: 1 issue\n')).toBe(true);
-    expect(text).toContain('   Evidence: `.e2e/artifacts/web/explore/attempt-0/finding-0.png`');
+    expect(text).toContain('   Evidence: screenshot `.e2e/artifacts/web/explore/attempt-0/finding-0.png`');
     // Artifacts at the project root itself list from `.`.
     await markdownReporter.onRunFinished!(finished(explored(), root, root), new AbortController().signal);
-    expect(readFileSync(path.join(root, '.e2e', 'summary.md'), 'utf8')).toContain('   Evidence: `web/explore/attempt-0/finding-0.png`');
+    expect(readFileSync(path.join(root, '.e2e', 'summary.md'), 'utf8')).toContain('   Evidence: screenshot `web/explore/attempt-0/finding-0.png`');
   });
 
   it('writes one page per failed test under failures/, links each block to its page, and clears what an earlier run left there', async () => {
@@ -613,8 +616,8 @@ describe('markdownReporter', () => {
     const pages = readdirSync(path.join(root, '.e2e', 'failures'));
     expect(pages).toHaveLength(1);
     const [name] = pages;
-    // The file and title, readable and cut to length, then the result id's first characters.
-    expect(name).toMatch(/^tests-members\.e2e\.ts-members-an-email-invitation-is-accepted-by-the-invited-a[a-z-]*-[A-Za-z0-9-]{1,8}\.md$/);
+    // The file and title as one path segment, cut to length, then the result id's first characters.
+    expect(name).toMatch(/^tests_members\.e2e\.ts-members-an_email_invitation_is_accepted_by_the_invited_account_only-[A-Za-z0-9-]{1,8}\.md$/);
     const summary = readFileSync(path.join(root, '.e2e', 'summary.md'), 'utf8');
     expect(summary).toContain(`Details: \`.e2e/failures/${name}\``);
     const text = readFileSync(path.join(root, '.e2e', 'failures', name!), 'utf8');

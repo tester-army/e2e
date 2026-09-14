@@ -115,6 +115,7 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
   });
   const steps = new StepRecorder(attemptId, {
     maxEventsPerStep: config.limits.maxEventsPerStep,
+    projectRoot: config.projectRoot,
     ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
   });
   const artifacts = createAttemptArtifacts({

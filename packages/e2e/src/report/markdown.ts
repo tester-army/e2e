@@ -32,9 +32,10 @@ import {
   screenLine,
   sourceText,
   toldAttempt,
-} from './failure-page.ts';
+} from './failure-text.ts';
 import { cell, code, formatDuration, link, MAX_ID_CHARS, MAX_LABEL_CHARS, MAX_PATH_CHARS, MAX_TITLE_CHARS, plural } from './markdown-text.ts';
 import { outcome, type Outcome } from './outcome.ts';
+import { sanitizePathSegment } from '../run/artifacts.ts';
 import { toPosixPath, writeTextReport } from './write.ts';
 import type { Reporter, ReporterSummary } from '../types.ts';
 import { readFileSync, rmSync } from 'node:fs';
@@ -149,17 +150,12 @@ function spendLine(run: ReportRun, entries: readonly Entry[]): string | undefine
   return parts.join(' · ');
 }
 
-function errorText(error: ReportError): string {
-  const phase = error.phase === undefined ? '' : ` (${collapseText(error.phase)})`;
-  return `**${cell(error.code, 128)}**${phase} ${cell(error.message)}`.trim();
-}
-
 /**
  * Where the evidence is: linked to the run page when there is one, listed as
  * paths under `artifactsDir` when the reader has the files, and named by
  * kind otherwise. Paths are POSIX, as the report keeps them.
  */
-function evidence(artifacts: readonly ReportArtifact[], options: MarkdownReportOptions, labelKinds = true): string {
+function evidence(artifacts: readonly ReportArtifact[], options: MarkdownReportOptions): string {
   if (artifacts.length === 0) return '';
   const sorted = artifacts.toSorted((a, b) => KIND_RANK[a.kind] - KIND_RANK[b.kind]);
   const named = [...new Set(sorted.map((artifact) => artifact.kind))].join(', ');
@@ -167,7 +163,7 @@ function evidence(artifacts: readonly ReportArtifact[], options: MarkdownReportO
   const dir = options.artifactsDir;
   const files = dir === undefined ? [] : sorted.flatMap((artifact) => (artifact.path === undefined ? [] : [{ kind: artifact.kind, file: path.posix.join(dir, artifact.path) }]));
   if (files.length === 0) return named;
-  const shown = files.slice(0, MAX_EVIDENCE_PATHS).map(({ kind, file }) => (labelKinds ? `${kind} ${code(file)}` : code(file)));
+  const shown = files.slice(0, MAX_EVIDENCE_PATHS).map(({ kind, file }) => `${kind} ${code(file)}`);
   if (files.length > shown.length) shown.push(`and ${files.length - shown.length} more`);
   return shown.join(', ');
 }
@@ -190,8 +186,7 @@ const STEP_VERB: Record<Exclude<ReportStep['status'], 'passed'>, string> = {
 function failedStepLine(steps: readonly ReportStep[], error: ReportError | undefined): string | undefined {
   const at = failedStepOf(steps);
   if (at === undefined) return undefined;
-  const { index } = at;
-  const step = at.step as ReportStep & { status: Exclude<ReportStep['status'], 'passed'> };
+  const { index, step } = at;
   const calls = modelCalls(step);
   const spent = calls === 0 ? '' : ` after ${plural(calls, 'model call')}`;
   // An act that failed puts its explanation in the error message; quoting it again says nothing new.
@@ -231,13 +226,12 @@ function testName(result: ReportResult, manyTargets: boolean): string {
 }
 
 /**
- * The error in one line. When the details carry the facts (an assertion's
- * expected and observed), the message's first line is enough: the rest of
- * it repeats them.
+ * The error in one line: code, the phase when it was not the test body, and
+ * the message. When the details carry the facts (an assertion's expected and
+ * observed), the message's first line is enough: the rest repeats them.
  */
 function errorLine(error: ReportError): string {
-  const structured = detailLines(error).length > 0;
-  const message = structured ? (error.message.split('\n')[0] ?? '') : error.message;
+  const message = detailLines(error).length > 0 ? (error.message.split('\n')[0] ?? '') : error.message;
   const phase = error.phase === undefined || error.phase === 'body' ? '' : ` (${collapseText(error.phase)})`;
   return `**${cell(error.code, 128)}**${phase} ${cell(message)}`.trim();
 }
@@ -382,7 +376,7 @@ function findingBlock(finding: ReportExploreFinding, position: number, artifacts
     lines.push(`   Steps: ${finding.reproduction.map((action, index) => `${index + 1}. ${cell(action, MAX_PATH_CHARS)}`).join(' ')}`);
   }
   const screenshot = finding.artifactId === undefined ? undefined : artifacts.get(finding.artifactId);
-  if (screenshot !== undefined) lines.push(`   Evidence: ${evidence([screenshot], options, false)}`);
+  if (screenshot !== undefined) lines.push(`   Evidence: ${evidence([screenshot], options)}`);
   return lines.join('  \n');
 }
 
@@ -434,7 +428,7 @@ export function renderMarkdownReport(report: Report1Document, options: MarkdownR
   const entries: Entry[] = run.results.map((result) => ({ result, final: outcome(result, serialGroups) }));
   const manyTargets = run.targets.length > 1;
 
-  const errors = run.errors.slice(0, MAX_RUN_ERRORS).map((error) => `> ${errorText(error)}`);
+  const errors = run.errors.slice(0, MAX_RUN_ERRORS).map((error) => `> ${errorLine(error)}`);
   if (run.errors.length > errors.length) errors.push(`> and ${run.errors.length - errors.length} more`);
   // An exploration is the run's one test and its failure is the verdict the
   // findings express, so that block gives way to them; any other failure stays.
@@ -460,13 +454,9 @@ export function renderMarkdownReport(report: Report1Document, options: MarkdownR
   return fit(head, [...joinSections(sections), ''], footer(run, options));
 }
 
-/** Where a result's page goes under `failures/`: the file and title, readable, made unique by the result id. */
+/** Where a result's page goes under `failures/`: the file and title, made a path segment, made unique by the result id. */
 function failurePageName(result: ReportResult): string {
-  const slug = `${result.file}-${result.titlePath.join('-')}`
-    .replaceAll(/[^A-Za-z0-9._-]+/g, '-')
-    .replaceAll(/^-+|-+$/g, '')
-    .slice(0, 80);
-  return `${slug}-${result.id.slice(0, 8)}.md`;
+  return `${sanitizePathSegment(`${result.file}-${result.titlePath.join('-')}`)}-${result.id.slice(0, 8)}.md`;
 }
 
 /**

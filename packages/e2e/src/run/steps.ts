@@ -7,6 +7,7 @@ import type { TraceReplayMissReason } from '../cache/decide.ts';
 import { withAiTraceStep } from '../internal/ai-trace.ts';
 import { classifyError, serializeError, type SerializedError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
+import { sourceLocation, type SourceLocation } from '../internal/source.ts';
 
 /** The closed step kind set; the type is derived from it, so the two cannot drift. */
 export const STEP_KINDS = ['agent', 'locator', 'assertion', 'screen', 'app', 'session', 'resource'] as const;
@@ -150,12 +151,8 @@ export interface StepRecord {
   kind: StepKind;
   api: string;
   label: string;
-  /**
-   * The stack at the step's start, so the report can name the test line the
-   * step was called from. Never serialized as is: `report/build.ts` resolves
-   * it to a `source` and drops it.
-   */
-  stack?: string;
+  /** The test line the step was called from; absent when no project line was on the stack. */
+  source?: SourceLocation;
   status: 'passed' | 'failed' | 'blocked' | 'timed-out' | 'cancelled';
   startedAt: string;
   durationMs: number;
@@ -224,22 +221,24 @@ export interface StepRecorderOptions {
   readonly maxEventsPerStep?: number;
   /** Live progress sink; omitted in contexts with no reporter to feed. */
   readonly onProgress?: (progress: StepProgress) => void;
+  /** The project root; with it, every step and step error names the test line it came from. */
+  readonly projectRoot?: string;
 }
 
 /** Frames kept when a step captures where it was called from; the user's line is a few frames up. */
 const STEP_STACK_FRAMES = 20;
 
 /**
- * The stack at a step's start, as `{ stack }` or nothing. Captured in every
- * step, since the failing one is not known until it fails; a report that can
- * name the test line a step ran from is worth the capture.
+ * The test line a step was called from, or nothing. Read from a stack taken
+ * at the step's start: every step pays it, since the failing one is not known
+ * until it fails, and a report that names the line is worth the capture.
  */
-function stackOf(): { stack?: string } {
+function stepSource(projectRoot: string | undefined): SourceLocation | undefined {
+  if (projectRoot === undefined) return undefined;
   const limit = Error.stackTraceLimit;
   Error.stackTraceLimit = STEP_STACK_FRAMES;
   try {
-    const stack = new Error().stack;
-    return stack === undefined ? {} : { stack };
+    return sourceLocation(new Error().stack, projectRoot);
   } finally {
     Error.stackTraceLimit = limit;
   }
@@ -254,6 +253,7 @@ export class StepRecorder {
   private lastVerified = -1;
   private readonly maxEventsPerStep: number;
   private readonly onProgress: ((progress: StepProgress) => void) | undefined;
+  private readonly projectRoot: string | undefined;
 
   constructor(
     private readonly attemptId: string,
@@ -261,6 +261,7 @@ export class StepRecorder {
   ) {
     this.maxEventsPerStep = options.maxEventsPerStep ?? 1_000;
     this.onProgress = options.onProgress;
+    this.projectRoot = options.projectRoot;
   }
 
   /** The step currently executing, when inside StepRecorder.run. */
@@ -289,13 +290,14 @@ export class StepRecorder {
     const index = this.steps.length;
     const startedAt = timestamp();
     const startedMs = Date.now();
+    const source = stepSource(this.projectRoot);
     const record: StepRecord = {
       id: `${this.attemptId}:${index}`,
       index,
       kind,
       api,
       label,
-      ...stackOf(),
+      ...(source === undefined ? {} : { source }),
       status: 'passed',
       startedAt,
       durationMs: 0,
@@ -323,7 +325,7 @@ export class StepRecorder {
           : isAgentError(cause) && cause.blocked
             ? 'blocked'
             : 'failed';
-      record.error = serializeError(error);
+      record.error = serializeError(error, { projectRoot: this.projectRoot });
       throw cause;
     } finally {
       this.running.delete(record.id);

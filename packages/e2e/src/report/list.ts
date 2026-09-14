@@ -157,8 +157,7 @@ function serialMemberDetails(group: SerialGroupRecord, testId: string): ResultDe
     error: own?.error ?? (neverRan ? last?.attempt.error : undefined),
     // The group's recording covers every member, so a failed member points at it.
     videos: videoPaths(group.attempts),
-    // The group attempt's capture is this member's only when the member is what failed.
-    ...(own !== undefined && own.status !== 'passed' && own.status !== 'skipped' ? failureOf(last?.attempt) : { failure: undefined, screenPath: undefined }),
+    ...failureOf(own === undefined ? undefined : { failure: own.failure, artifacts: last?.attempt.artifacts ?? [] }),
   };
 }
 

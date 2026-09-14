@@ -1,6 +1,7 @@
 /** Runner-owned error taxonomy and exit-code mapping. */
 
 import { stripVTControlCharacters } from 'node:util';
+import { sourceLocation, type SourceLocation } from './source.ts';
 import {
   ENGINE_ERROR_CODES,
   EngineError,
@@ -78,11 +79,21 @@ export type ErrorPhase =
   | 'report';
 
 /**
- * Structured facts of one failure, beside its prose message: what an
- * assertion expected and observed, the locator that matched nothing. Each
- * value is bounded text; a reporter renders the ones it knows by name.
+ * Structured facts of one failure, beside its prose message. An assertion
+ * carries what it expected and observed and how many nodes matched; a
+ * locator failure carries the locator as written, what it asked for, and
+ * how long it waited. Text fields are bounded when serialized.
  */
-export type ErrorDetails = Readonly<Record<string, string>>;
+export interface ErrorDetails {
+  readonly locator?: string;
+  readonly expected?: string;
+  readonly observed?: string;
+  readonly matches?: number;
+  readonly role?: string;
+  readonly name?: string;
+  readonly testId?: string;
+  readonly waitedMs?: number;
+}
 
 export interface SerializedError {
   category: ErrorCategory;
@@ -92,6 +103,8 @@ export interface SerializedError {
   phase?: ErrorPhase;
   scopeId?: string;
   details?: ErrorDetails;
+  /** The line in the test file the failure unwound through, when the stack named one. */
+  source?: SourceLocation;
   stack?: string;
 }
 
@@ -310,7 +323,7 @@ const MAX_MESSAGE_BYTES = 8192;
 /** Serializes an error into the bounded report-1 error shape. */
 export function serializeError(
   error: E2EError,
-  extras: { phase?: ErrorPhase; scopeId?: string } = {},
+  extras: { phase?: ErrorPhase; scopeId?: string; projectRoot?: string | undefined } = {},
 ): SerializedError {
   const serialized: SerializedError = {
     category: error.category,
@@ -326,28 +339,39 @@ export function serializeError(
   }
   const stack = (error.cause instanceof Error ? error.cause.stack : undefined) ?? error.stack;
   if (stack !== undefined) serialized.stack = truncateUtf8(sanitizeText(stack), 65536);
+  const source = sourceLocation(stack, extras.projectRoot);
+  if (source !== undefined) serialized.source = source;
   return serialized;
 }
 
-/** Detail entries past this count, and bytes past this size per value, are dropped. */
-const MAX_DETAIL_ENTRIES = 16;
+/** Bytes one detail text keeps. */
 const MAX_DETAIL_BYTES = 2048;
+const DETAIL_TEXT_KEYS = ['locator', 'expected', 'observed', 'role', 'name', 'testId'] as const;
+const DETAIL_NUMBER_KEYS = ['matches', 'waitedMs'] as const;
 
+/** Structural check for details on an error from another module copy: the known keys, of the known types. */
 function isDetails(value: unknown): value is ErrorDetails {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    Object.values(value).every((entry) => typeof entry === 'string')
+  if (typeof value !== 'object' || value === null) return false;
+  const record = value as Record<string, unknown>;
+  return Object.entries(record).every(
+    ([key, entry]) =>
+      ((DETAIL_TEXT_KEYS as readonly string[]).includes(key) && typeof entry === 'string') ||
+      ((DETAIL_NUMBER_KEYS as readonly string[]).includes(key) && typeof entry === 'number'),
   );
 }
 
-/** Details as the report carries them: a bounded number of sanitized, bounded values. */
+/** Details as the report carries them: text sanitized and bounded, empty text dropped, nothing when nothing is left. */
 function boundedDetails(details: ErrorDetails): ErrorDetails | undefined {
-  const entries = Object.entries(details)
-    .filter(([key, value]) => key !== '' && value !== '')
-    .slice(0, MAX_DETAIL_ENTRIES)
-    .map(([key, value]) => [key, truncateUtf8(sanitizeText(value), MAX_DETAIL_BYTES)] as const);
-  return entries.length === 0 ? undefined : Object.fromEntries(entries);
+  const bounded: Record<string, string | number> = {};
+  for (const key of DETAIL_TEXT_KEYS) {
+    const text = details[key];
+    if (text !== undefined && text !== '') bounded[key] = truncateUtf8(sanitizeText(text), MAX_DETAIL_BYTES);
+  }
+  for (const key of DETAIL_NUMBER_KEYS) {
+    const count = details[key];
+    if (count !== undefined && Number.isFinite(count)) bounded[key] = count;
+  }
+  return Object.keys(bounded).length === 0 ? undefined : (bounded as ErrorDetails);
 }
 
 /** C0/C1 control characters except tab and newline. */

@@ -5,51 +5,15 @@
  */
 
 import { readFileSync } from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { userFrame, type StackFrame } from '../internal/source.ts';
 import { bounded, terminalColumns, type Colors } from './format.ts';
+
+export { userFrame, type StackFrame };
 
 /** Lines of context on each side of the failing line. */
 const FRAME_RANGE = 2;
 /** A source line longer than this is minified output; the frame would be noise. */
 const MAX_FRAME_LINE_CHARS = 200;
-
-export interface StackFrame {
-  readonly file: string;
-  readonly line: number;
-  readonly column: number;
-}
-
-const FRAME_PATTERN = /((?:file:\/\/)?\/[^):]+):(\d+):(\d+)\)?\s*$/;
-
-/**
- * First stack frame inside the project and outside node_modules: the line in
- * the user's test file that the failure unwound through. Runner frames never
- * match because the runner lives in node_modules (or outside the project root
- * in a workspace).
- */
-export function userFrame(
-  stack: string | undefined,
-  projectRoot: string | undefined,
-): StackFrame | undefined {
-  if (stack === undefined || projectRoot === undefined) return undefined;
-  for (const raw of stack.split('\n')) {
-    const match = FRAME_PATTERN.exec(raw);
-    if (match === null) continue;
-    const [, location, line, column] = match as unknown as [string, string, string, string];
-    const withoutQuery = location.split('?')[0]!;
-    let file: string;
-    try {
-      file = withoutQuery.startsWith('file://') ? fileURLToPath(withoutQuery) : withoutQuery;
-    } catch {
-      continue;
-    }
-    if (!file.startsWith(`${projectRoot}${path.sep}`)) continue;
-    if (file.includes(`${path.sep}node_modules${path.sep}`)) continue;
-    return { file, line: Number(line), column: Number(column) };
-  }
-  return undefined;
-}
 
 /**
  * Renders the failing line with two lines of context on each side and a

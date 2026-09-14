@@ -14,6 +14,7 @@ import {
   E2EError,
   TestError,
   translateEngineError,
+  type ErrorDetails,
 } from '../internal/errors.ts';
 import { requireKey } from '../internal/keys.ts';
 import { describeExpression, expressionHints } from './expression.ts';
@@ -233,7 +234,7 @@ function assertSingle(refs: readonly NodeRef[], expression: LocatorExpression): 
     throw new TestError(
       'LOCATOR_AMBIGUOUS',
       `locator matched ${refs.length} nodes, expected exactly one: ${describeExpression(expression)}`,
-      { details: { ...locatorDetails(expression), matches: String(refs.length) } },
+      { details: { ...locatorDetails(expression), matches: refs.length } },
     );
   }
   return refs[0] ?? null;
@@ -243,11 +244,11 @@ function assertSingle(refs: readonly NodeRef[], expression: LocatorExpression): 
  * The facts of a locator failure the report keeps beside the message: the
  * locator as written, what it asked for, and how long it waited, in ms.
  */
-function locatorDetails(expression: LocatorExpression, waitedMs?: number): Record<string, string> {
+function locatorDetails(expression: LocatorExpression, waitedMs?: number): ErrorDetails {
   return {
     locator: describeExpression(expression),
     ...expressionHints(expression),
-    ...(waitedMs === undefined ? {} : { waitedMs: String(waitedMs) }),
+    ...(waitedMs === undefined ? {} : { waitedMs }),
   };
 }
 

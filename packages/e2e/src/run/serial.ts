@@ -303,6 +303,7 @@ async function runSerialAttempt(
       durationMs: memberAttempt.durationMs,
       steps: memberAttempt.steps,
       ...(memberAttempt.error !== undefined ? { error: memberAttempt.error } : {}),
+      ...(memberAttempt.failure !== undefined ? { failure: memberAttempt.failure } : {}),
       secondaryErrors: memberAttempt.secondaryErrors,
     });
     record.artifacts.push(...memberAttempt.artifacts);

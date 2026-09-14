@@ -348,7 +348,7 @@ export interface StepExecutorContext {
    * back, clipped. The report shows the last turns under a failed step, so
    * a reader sees what the model did and saw without the transcript.
    */
-  attachTurns?(turns: readonly StepTurn[]): void;
+  attachTurns(turns: readonly StepTurn[]): void;
   /**
    * Keeps pixels the executor or one of its tools observed as a `screenshot`
    * artifact of the step in progress, and resolves with the artifact's report

@@ -119,7 +119,7 @@ class AsyncExpectationImpl implements AsyncExpectation {
             ].join('\n'),
             {
               // The same facts, one per field, for a reporter that lays them out.
-              details: { locator: this.label, expected, observed, matches: String(lastSample.count) },
+              details: { locator: this.label, expected, observed, matches: lastSample.count },
             },
           );
         },

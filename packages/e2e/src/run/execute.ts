@@ -685,6 +685,7 @@ export class TargetExecutor implements SerialHost {
     const onProgress = this.options.events?.onProgress;
     const steps = new StepRecorder(attemptId, {
       maxEventsPerStep: this.config.limits.maxEventsPerStep,
+      projectRoot: this.config.projectRoot,
       ...(onProgress === undefined
         ? {}
         : { onProgress: (progress: StepProgress) => onProgress(pair, progress) }),
@@ -902,14 +903,13 @@ export class TargetExecutor implements SerialHost {
         record.status = 'passed';
       } else {
         record.status = classifyAttemptStatus(failure, timedOut, this.interruptSignal.aborted);
-        record.error = serializeError(failure, { phase: failurePhase ?? phase });
+        record.error = serializeError(failure, { phase: failurePhase ?? phase, projectRoot: this.config.projectRoot });
         // One more look at the app before the session closes: what the screen
         // held when the failure landed is the evidence the message lacks.
         if (openSession !== null && record.status !== 'interrupted') {
           const session = openSession;
           const evidence = await captureFailureEvidence({
             session,
-            steps: steps.all(),
             error: failure,
             secrecy: sessionSecrecy(session, this.config.secrets),
             config: this.config,

@@ -90,8 +90,8 @@ jq '.run.results[] | select(.status != "passed") | .attempts[-1]
 Read `run.errors` first: a run-level error such as `APP_UNREACHABLE` means no
 test result is meaningful. Then the last attempt of each failed result:
 `error` has the code, the message, the `source` line it unwound through, and
-`details` (an assertion's `expected` and `observed`, a locator's `role`,
-`name`, and `waitedMs`); `failure` has the `url`, the `screen` and
+`details` (an assertion's `expected`, `observed`, and `matches`, a locator's
+`role`, `name` or `testId`, and `waitedMs`); `failure` has the `url`, the `screen` and
 `screenshot` artifact ids, and the `candidates` closest to a failed locator;
 each step has the `source` it was called from, and a failed agent step its
 last `turns`. The `artifacts` beside them hold the files.

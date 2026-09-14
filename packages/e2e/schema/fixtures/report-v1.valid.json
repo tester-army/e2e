@@ -150,7 +150,6 @@
             "secondaryErrors": [],
             "cleanup": "complete",
             "failure": {
-              "stepIndex": 0,
               "url": "http://127.0.0.1:3000/todos",
               "screen": "018f0f5c-7b2a-7abc-8abc-1123456789ab:artifact:0",
               "candidates": [
@@ -167,7 +166,7 @@
                 "locator": "getByRole(\"status\")",
                 "expected": "text \"2 remaining\"",
                 "observed": "text \"1 remaining\"",
-                "matches": "1"
+                "matches": 1
               },
               "source": {
                 "file": "tests/example.e2e.ts",

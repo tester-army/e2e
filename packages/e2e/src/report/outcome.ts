@@ -6,7 +6,8 @@
  * (JUnit, markdown) share this one reading.
  */
 
-import type { ReportError, ReportFailureEvidence, ReportResult, ReportSerialGroup, ReportStep } from './build.ts';
+import type { FailureEvidence } from '../run/records.ts';
+import type { ReportError, ReportResult, ReportSerialGroup, ReportStep } from './build.ts';
 
 type ReportArtifact = ReportResult['attempts'][number]['artifacts'][number];
 
@@ -16,7 +17,7 @@ export interface AttemptView {
   readonly error: ReportError | undefined;
   readonly steps: readonly ReportStep[];
   /** What the runner saw when the failure landed, when it captured anything. */
-  readonly failure: ReportFailureEvidence | undefined;
+  readonly failure: FailureEvidence | undefined;
   /** The attempt's own artifacts; for a serial member, the group attempt's. */
   readonly artifacts: readonly ReportArtifact[];
 }
@@ -32,21 +33,20 @@ export interface Outcome {
   readonly attempts: readonly AttemptView[];
   /** Attempts that did not pass before the final one; what a flaky pass cost. */
   readonly failedAttempts: number;
-  /** The evidence over every attempt: a flaky test's failure screenshot belongs to the attempt that failed. */
-  readonly artifacts: readonly ReportArtifact[];
 }
+
+/** What a result that never ran an attempt reads as. */
+const NO_ATTEMPT: AttemptView = { status: 'skipped', error: undefined, steps: [], failure: undefined, artifacts: [] };
 
 export function outcome(result: ReportResult, groups: ReadonlyMap<string, ReportSerialGroup>): Outcome {
   const views = attemptViews(result, groups);
   const earlier = views.slice(0, -1);
-  const final = views.at(-1) ?? { status: 'skipped', error: undefined, steps: [], failure: undefined, artifacts: [] };
   return {
     durationMs: durationOf(result, groups),
-    final,
+    final: views.at(-1) ?? NO_ATTEMPT,
     lastFailed: earlier.toReversed().find((attempt) => attempt.status !== 'passed'),
     attempts: views,
     failedAttempts: earlier.filter((attempt) => attempt.status !== 'passed').length,
-    artifacts: views.flatMap((attempt) => attempt.artifacts),
   };
 }
 
@@ -68,8 +68,7 @@ function attemptViews(result: ReportResult, groups: ReadonlyMap<string, ReportSe
       status: member?.status ?? attempt.status,
       error: member?.error ?? attempt.error,
       steps: member?.steps ?? [],
-      // A member that failed is what the group's capture saw; another member's failure is not its own.
-      failure: member !== undefined && member.status !== 'passed' && member.status !== 'skipped' ? attempt.failure : undefined,
+      failure: member?.failure,
       artifacts: attempt.artifacts,
     };
   });

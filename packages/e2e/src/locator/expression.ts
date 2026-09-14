@@ -2,7 +2,7 @@
 
 import type { LocatorExpression, SemanticQuery } from '../engine/surface.ts';
 import { toTextPattern, type TextPattern } from '../internal/text.ts';
-import { TestError } from '../internal/errors.ts';
+import { TestError, type ErrorDetails } from '../internal/errors.ts';
 import type { Role, RoleOptions, TextMatch, TextMatchOptions } from '../types.ts';
 
 /** Builds a role query expression. */
@@ -114,7 +114,7 @@ export function indexExpression(
  * index answers for the query under it; a native selector or frame has no
  * semantic hint to give.
  */
-export function expressionHints(expression: LocatorExpression): Record<string, string> {
+export function expressionHints(expression: LocatorExpression): Pick<ErrorDetails, 'role' | 'name' | 'testId'> {
   switch (expression.kind) {
     case 'query': {
       const { query } = expression;

@@ -192,18 +192,28 @@ describe('E2EError', () => {
 describe('error details', () => {
   it('carries structured details onto the serialized error, bounded and sanitized, and drops empty ones', () => {
     const error = new TestError('ASSERTION_FAILED', 'nope', {
-      details: { expected: 'a', observed: 'b\u0007 red', empty: '', long: 'x'.repeat(5000) },
+      details: { expected: 'a', observed: 'b\u0007 red', name: '', locator: 'x'.repeat(5000), matches: 3 },
     });
     const serialized = serializeError(error);
-    expect(serialized.details).toEqual({ expected: 'a', observed: 'b\uFFFD red', long: 'x'.repeat(2048) });
-    expect(serializeError(new TestError('ASSERTION_FAILED', 'nope', { details: { empty: '' } })).details).toBeUndefined();
+    expect(serialized.details).toEqual({ expected: 'a', observed: 'b\uFFFD red', locator: 'x'.repeat(2048), matches: 3 });
+    expect(serializeError(new TestError('ASSERTION_FAILED', 'nope', { details: { name: '' } })).details).toBeUndefined();
     expect(serializeError(new TestError('ASSERTION_FAILED', 'nope')).details).toBeUndefined();
   });
 
-  it('keeps the details of an error classified from another module copy', () => {
-    const foreign = new TestError('LOCATOR_NOT_FOUND', 'gone', { details: { role: 'button' } });
+  it('keeps the details of an error classified from another module copy, and drops a shape it does not know', () => {
+    const foreign = new TestError('LOCATOR_NOT_FOUND', 'gone', { details: { role: 'button', waitedMs: 300 } });
     Object.setPrototypeOf(foreign, Error.prototype);
     expect(foreign instanceof E2EError).toBe(false);
-    expect(classifyError(foreign).details).toEqual({ role: 'button' });
+    expect(classifyError(foreign).details).toEqual({ role: 'button', waitedMs: 300 });
+    const odd = new TestError('LOCATOR_NOT_FOUND', 'gone', { details: { waitedMs: 'soon' } as never });
+    Object.setPrototypeOf(odd, Error.prototype);
+    expect(classifyError(odd).details).toBeUndefined();
+  });
+
+  it('names the test line a failure unwound through when given the project root', () => {
+    const projectRoot = process.cwd();
+    const serialized = serializeError(new TestError('ASSERTION_FAILED', 'nope'), { projectRoot });
+    expect(serialized.source?.file).toBe('tests/unit/errors.test.ts');
+    expect(serializeError(new TestError('ASSERTION_FAILED', 'nope')).source).toBeUndefined();
   });
 });
