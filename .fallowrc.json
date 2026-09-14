@@ -14,7 +14,8 @@
     "packages/mobile-benchmark/e2e.*.config.ts",
     "packages/mobile-benchmark/tests*/**/*.ts",
     "packages/mobile-benchmark/index.ts",
-    "packages/e2e/tests/types/sdk-types.ts"
+    "packages/e2e/tests/types/sdk-types.ts",
+    "packages/playwright/tests/types/connection.ts"
   ],
   "ignorePatterns": [
     "docs/**",

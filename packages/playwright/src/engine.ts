@@ -58,6 +58,16 @@ export function playwright(options: PlaywrightOptions = {}): EngineHandle {
   if (options.headers !== undefined) validateHeaders(options.headers);
   if (options.basicAuth !== undefined) validateBasicAuth(options.basicAuth);
   if (options.testIdAttribute !== undefined) validateTestIdAttribute(options.testIdAttribute);
+  const recoverable = options.connect?.reconnectEndpoint !== undefined;
+  if (recoverable && typeof options.connect?.reconnectEndpoint !== 'function') {
+    throw new ConfigurationError('INVALID_CONFIG', 'connect.reconnectEndpoint must be a function');
+  }
+  if (recoverable && (options.headers !== undefined || options.basicAuth !== undefined)) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      'connect.reconnectEndpoint uses a persistent context; headers and basicAuth require a newly created context',
+    );
+  }
   const surface = new PlaywrightSurface(options);
   const handle = defineEngine({
     name: 'playwright',
@@ -84,7 +94,7 @@ export function playwright(options: PlaywrightOptions = {}): EngineHandle {
       open: (url, operation) => surface.open(url, operation),
       back: (operation) => surface.back(operation),
       restart: (operation) => surface.restart(operation),
-      reset: (operation) => surface.reset(operation),
+      ...(recoverable ? {} : { reset: (operation) => surface.reset(operation) }),
     },
     artifacts: {
       screenshot: (label, operation) => surface.screenshot(label, operation),
@@ -93,10 +103,14 @@ export function playwright(options: PlaywrightOptions = {}): EngineHandle {
       startVideo: (operation) => surface.startVideo(operation),
       stopVideo: (operation) => surface.stopVideo(operation),
     },
-    state: {
-      capture: (operation) => surface.captureState(operation),
-      restore: (state, operation) => surface.restoreState(state, operation),
-    },
+    ...(recoverable
+      ? {}
+      : {
+          state: {
+            capture: (operation) => surface.captureState(operation),
+            restore: (state, operation) => surface.restoreState(state, operation),
+          },
+        }),
     fixtures: {
       web: (context) => createWebFixture(surface, context),
     },

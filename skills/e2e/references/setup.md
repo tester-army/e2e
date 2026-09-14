@@ -121,9 +121,16 @@ process, and identity. `playwright()` accepts:
 | `identity` | Stable app identity for cache and session keys when the origin changes per deploy (preview URLs). |
 | `browser` | `'chromium'` (default), `'firefox'`, `'webkit'`. |
 | `viewport` | `{ width, height }`, default 1280x720. |
-| `connect` | `{ cdpEndpoint }` to attach to a remote Chromium over CDP instead of launching. |
+| `connect` | `{ cdpEndpoint }` attaches to a remote Chromium over CDP. Adding `reconnectEndpoint` uses a dedicated persistent default context, provisions a fresh browser per attempt, and reconnects only to the original browser and page. |
 | `headers` | Request headers sent to the app's site only (a Vercel `x-vercel-protection-bypass`, ngrok's `ngrok-skip-browser-warning`). Reaches every path onto the page, `agent.act` included; turns the browser HTTP cache off and blocks service workers. |
 | `basicAuth` | `{ username, password }` answering a `401` challenge. |
+
+CDP recovery never repeats a dispatched operation. The host owns remote browser
+cleanup. Persistent recovery requires the default context's CDP identity and a
+new observation before coordinate or root actions after reconnect. It does not
+support `headers`, `basicAuth`, context reset, or session state capture and
+restore. Without `reconnectEndpoint`, contexts remain isolated and a dropped
+connection is reacquired only at the next attempt start.
 
 Two browsers are two targets sharing one app declaration:
 

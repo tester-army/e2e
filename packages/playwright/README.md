@@ -59,6 +59,20 @@ engine: playwright({
 });
 ```
 
+For transport recovery, add `connect.reconnectEndpoint(signal)`. This opts
+into the remote browser's persistent default context. `cdpEndpoint` then
+provisions a fresh, dedicated browser for every attempt, including retries;
+`reconnectEndpoint` must return that same browser after a disconnect. The
+engine verifies the default context ID and active page target ID, clears stale
+references, and never repeats a dispatched operation. A missing target fails
+the attempt. The host owns deleting the remote browser after cleanup.
+
+This mode does not support `headers`, `basicAuth`, context reset, or session
+state capture and restore. Recording resumes after reconnect, but a segment
+lost during the disconnect remains unavailable. See the
+[Playwright reference](../../docs/reference/playwright.mdx#recovering-a-cdp-transport)
+for the lifecycle and ownership contract.
+
 ## The `web` fixture
 
 The engine contributes `web`: navigation, routes, cookies, dialogs, frames,

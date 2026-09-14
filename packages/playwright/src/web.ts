@@ -31,7 +31,7 @@ import {
   type TextPattern,
 } from 'e2e/engine';
 import type { DialogHandler } from './dialogs.ts';
-import { message as causeMessage } from './support.ts';
+import { message as causeMessage, translatePwError } from './support.ts';
 import { compileEvaluation } from './evaluation.ts';
 import { routePatternMatches, routePatternsEqual, toRoutePattern } from './route-pattern.ts';
 import type { PlaywrightSurface } from './surface.ts';
@@ -432,24 +432,28 @@ export function createWebFixture(surface: PlaywrightSurface, context: EngineFixt
     },
     async waitForDownload(trigger, options) {
       const operation = context.operation(options?.timeout);
-      // The waiter is armed synchronously, before the trigger, and never
-      // awaited through an async wrapper: an `async` guard would flatten the
-      // returned promise and wait for the download before the trigger ran.
-      const waiter: Promise<Download> = surface
-        .requirePage()
-        .waitForEvent('download', { timeout: operation.timeoutMs });
-      // A rejected waiter nobody awaits (the trigger failed first) must not
-      // become an unhandled rejection.
-      waiter.catch(() => undefined);
-      // The trigger is test code: its own errors keep their own classification.
-      await trigger();
-      return surface.guard(operation, 'download', async () => {
+      let triggerFailure: { cause: unknown } | undefined;
+      return surface.guard(operation, 'download', async (currentOperation) => {
+        const waiter: Promise<Download> = surface.requirePage()
+          .waitForEvent('download', { timeout: currentOperation.timeoutMs });
+        // The trigger may fail before the waiter settles; absorb its later rejection.
+        waiter.catch(() => undefined);
+        try {
+          await trigger();
+        } catch (cause) {
+          triggerFailure = { cause };
+          throw cause;
+        }
         const download = await waiter;
         const suggestedFilename = download.suggestedFilename();
         const { relative, absolute } = surface.artifactPath('downloads', suggestedFilename, '');
         await download.saveAs(absolute);
         context.attachArtifact('download', relative);
         return { path: relative, suggestedFilename };
+      }, (cause, label) => {
+        // The trigger is test code, so its errors keep their original classification.
+        if (triggerFailure !== undefined && Object.is(cause, triggerFailure.cause)) throw cause;
+        return translatePwError(cause, label);
       });
     },
     keyboard: {

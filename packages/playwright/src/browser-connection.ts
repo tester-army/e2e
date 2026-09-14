@@ -73,7 +73,8 @@ export function browserType(name: BrowserName): typeof chromium {
  * the endpoint itself and hands it here. `browser.close()` on the result
  * detaches the CDP session without killing the remote process the host owns.
  */
-export function connectCdp(endpoint: string, timeoutMs: number): Promise<Browser> {
+export async function connectCdp(endpoint: string, timeoutMs: number): Promise<Browser> {
+  await registerSelectorEngines();
   return chromium.connectOverCDP(endpoint, { timeout: timeoutMs });
 }
 

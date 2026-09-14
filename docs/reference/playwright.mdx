@@ -71,10 +71,49 @@ export interface PlaywrightOptions extends EngineAppDeclaration {
 The app declaration fields (`url`, `command`, `readyUrl`, `services`,
 `environment`, `identity`) are documented under
 [the app under test](/reference/config#the-app-under-test). `connect` needs
-chromium; `cdpEndpoint(signal)` is called once per worker and again when a
-session drops. `:` is not allowed in the `basicAuth` user name.
+chromium; `cdpEndpoint(signal)` is called once per worker and again at an
+attempt start after a disconnect. `:` is not allowed in the `basicAuth` user name.
 
 `headers` and `basicAuth` are how a test reaches a [protected preview](/starting-your-app#protected-previews).
+
+### Recovering a CDP transport
+
+`connect.reconnectEndpoint(signal)` opts into recovery of the same remote
+browser after its CDP transport disconnects. This mode uses the browser's
+persistent default context because Chrome deletes ordinary Playwright contexts
+when their transport detaches.
+
+```ts
+interface PlaywrightConnectOptions {
+  cdpEndpoint(signal: AbortSignal): string | Promise<string>;
+  reconnectEndpoint?(signal: AbortSignal): string | Promise<string>;
+}
+```
+
+In this mode, `cdpEndpoint` provisions a fresh, dedicated browser at every
+attempt start, including retries. The engine rejects a browser reused by a
+previous attempt. The remote must have only its default context, and the host
+must delete the browser when the attempt ends. Engine cleanup detaches its
+connection; it does not terminate the host's browser.
+
+After a disconnect, the next operation calls `reconnectEndpoint` once, bounded
+by that operation's timeout and abort signal. This resolver must return the
+existing browser's endpoint. The engine verifies the persistent default context
+ID and the original page's target ID. It refuses browsers that do not expose
+the default context ID. A missing page or a different context fails the attempt.
+A URL match is insufficient to select a replacement tab.
+
+Recovery clears old node references and requires a new observation before
+coordinate or root actions. It preserves the page's unsaved state, storage,
+the attempt's secret taint, and the agent ledger. Operations already dispatched
+are never retried. Dialog and route handlers are reattached. Video and trace
+recording resume, but a segment lost during the disconnect cannot be recovered.
+Code using `surfaceOf(engine)` must read its accessors again after recovery;
+previously retained Playwright objects belong to the disconnected transport.
+
+Persistent recovery does not support `headers`, `basicAuth`, `app.clearState`,
+or session state capture and restore. `app.restart` remains available. Omit
+`reconnectEndpoint` to keep ordinary isolated contexts and the existing behavior.
 
 ## Web
 

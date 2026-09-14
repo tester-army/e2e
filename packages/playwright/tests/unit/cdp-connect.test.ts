@@ -23,6 +23,19 @@ function initInfo(signal = new AbortController().signal): EngineInitInfo {
 }
 
 describe('playwright({ connect })', () => {
+  it('declares persistent recovery without context replacement capabilities', () => {
+    const engine = playwright({ connect: { cdpEndpoint: () => 'ws://localhost:0', reconnectEndpoint: () => 'ws://localhost:0' } });
+    expect(engine.state).toBeUndefined();
+    expect(engine.session?.reset).toBeUndefined();
+    expect(engine.session?.restart).toBeTypeOf('function');
+  });
+
+  it('rejects creation-time credentials and headers with persistent recovery', () => {
+    const connect = { cdpEndpoint: () => 'ws://localhost:0', reconnectEndpoint: () => 'ws://localhost:0' };
+    expect(() => playwright({ connect, headers: { 'x-preview': 'synthetic' } })).toThrow(/persistent context/);
+    expect(() => playwright({ connect, basicAuth: { username: 'user', password: 'synthetic' } })).toThrow(/persistent context/);
+  });
+
   it('accepts a connect option with the default chromium browser', () => {
     expect(() => playwright({ connect: { cdpEndpoint: () => 'ws://localhost:0' } })).not.toThrow();
     expect(() =>

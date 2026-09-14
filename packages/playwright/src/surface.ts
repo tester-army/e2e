@@ -34,6 +34,7 @@ import {
 import { matchesText } from 'e2e/engine';
 import { classifyActionError, dispatchLocatorAction } from './actions.ts';
 import { BrowserConnection, connectCdp, type BrowserName } from './browser-connection.ts';
+import { RecoverableCdpSession } from './cdp-recovery.ts';
 import { DialogRouter } from './dialogs.ts';
 import { ensureBrowsersInstalled } from './install.ts';
 import { applyPostSteps, frameSelectors, projectExpression } from './locators.ts';
@@ -106,8 +107,9 @@ function isStorageState(data: unknown): data is StorageState {
  * Attach to a remote browser over CDP instead of launching a local one. The
  * seam a hosted-browser engine plugs into: a per-run cloud session (its
  * endpoint provisioned only once the run starts) resolves through
- * `cdpEndpoint` at `init`, and again on any reconnect. CDP attach is
- * chromium-only.
+ * `cdpEndpoint` at `init`, and again at an attempt start after a disconnect.
+ * Supplying `reconnectEndpoint` opts into a persistent context instead.
+ * CDP attach is chromium-only.
  */
 export interface PlaywrightConnectOptions {
   /**
@@ -115,11 +117,22 @@ export interface PlaywrightConnectOptions {
    * to attach to. Async because a hosted endpoint is not known at config load;
    * called once per worker in `init`, and again at the start of any attempt
    * that finds the session dropped, so a fresh per-run URL reconnects cleanly.
+   * With `reconnectEndpoint`, init defers provisioning and every attempt
+   * calls this resolver for a fresh, dedicated browser instead.
    * `signal` aborts when the init or attempt that needs the browser is
    * cancelled or exceeds its budget: a resolver that provisions a session
    * should stop and release it, since a browser that arrives late is detached.
    */
   readonly cdpEndpoint: (signal: AbortSignal) => string | Promise<string>;
+  /**
+   * Opts into a dedicated persistent remote context. `cdpEndpoint` provisions
+   * a fresh browser at each attempt start; this resolver reconnects to that
+   * same browser after a transport drop. Called once before the next
+   * operation, within its budget. The original browser and page must survive.
+   * Dispatched operations are never retried. The host owns browser cleanup.
+   * Context replacement, headers, and basicAuth are unavailable in this mode.
+   */
+  readonly reconnectEndpoint?: (signal: AbortSignal) => string | Promise<string>;
 }
 
 /** HTTP basic authentication the browser answers a `401` challenge with. */
@@ -187,6 +200,11 @@ export class PlaywrightSurface {
   private readonly browserName: BrowserName;
   private readonly connection = new BrowserConnection();
   private readonly connect: PlaywrightConnectOptions | undefined;
+  private readonly recoverable: RecoverableCdpSession | undefined;
+  private recovering: Promise<void> | undefined;
+  private recoveryController: AbortController | undefined;
+  private recoveryFailure: Error | undefined;
+  private needsObservation = false;
   private readonly viewport: { readonly width: number; readonly height: number };
   /** Injected request headers, names lowercased so they replace the browser's own of the same name. */
   private readonly headers: Readonly<Record<string, string>> | undefined;
@@ -221,6 +239,9 @@ export class PlaywrightSurface {
   constructor(options: PlaywrightOptions) {
     this.browserName = options.browser ?? 'chromium';
     this.connect = options.connect;
+    this.recoverable = options.connect?.reconnectEndpoint === undefined
+      ? undefined
+      : new RecoverableCdpSession(options.connect.cdpEndpoint, options.connect.reconnectEndpoint);
     this.viewport = options.viewport ?? DEFAULT_VIEWPORT;
     this.headers = options.headers === undefined ? undefined : lowercaseNames(options.headers);
     this.basicAuth = options.basicAuth;
@@ -248,7 +269,7 @@ export class PlaywrightSurface {
     // The browser was installed in `prepare`; a launch or attach is the one
     // boot step left that can outlive a launch budget, and it honours the
     // init signal.
-    this.browser = await this.acquireBrowser(info.signal);
+    if (this.recoverable === undefined) this.browser = await this.acquireBrowser(info.signal);
     this.booted = true;
   }
 
@@ -334,7 +355,16 @@ export class PlaywrightSurface {
     this.video.reset(context.artifactsDir);
     this.routes.length = 0;
     this.dialogs.reset();
-    await this.openContext(undefined, context.signal);
+    this.needsObservation = false;
+    this.recoveryFailure = undefined;
+    if (this.recoverable === undefined) {
+      await this.openContext(undefined, context.signal);
+    } else {
+      const connected = await this.recoverable.start(context.signal);
+      this.browser = connected.browser;
+      this.context = connected.context;
+      await this.configureContext(connected.context);
+    }
   }
 
   /**
@@ -344,8 +374,14 @@ export class PlaywrightSurface {
    * `startAttempt`.
    */
   async endAttempt(context: EngineCleanupContext): Promise<void> {
+    this.recoveryController?.abort();
+    if (this.recovering !== undefined) await withinCleanupBudget(this.recovering, context);
     await this.closeContext(context);
     this.refs.clear();
+    if (this.recoverable !== undefined) {
+      await withinCleanupBudget(this.recoverable.dispose(), context);
+      this.browser = null;
+    }
   }
 
   /** Closes the shared browser process within the cleanup budget. Idempotent, and safe cold. */
@@ -403,19 +439,7 @@ export class PlaywrightSurface {
         // injected headers a worker would carry the page past the gate bare.
         ...(this.headers === undefined ? {} : { serviceWorkers: 'block' as const }),
       });
-      // Before any page of the context loads, so every closed shadow root a
-      // page attaches is on record by the time the reader walks it.
-      await this.context.addInitScript(CLOSED_SHADOW_ROOTS_INIT_SCRIPT);
-      this.context.setDefaultTimeout(CONTEXT_DEFAULT_TIMEOUT_MS);
-      this.context.on('dialog', (dialog) => {
-        void this.dialogs.dispatch(dialog);
-      });
-      // Registered before any attempt route: Playwright runs handlers newest
-      // first, so the header route is the last stop before the network and a
-      // `web.route` handler that continues still sends the headers, while one
-      // that fulfills or aborts never reaches it.
-      await installSiteHeaders(this.context, this.app.site, this.headers);
-      for (const stored of this.routes) await this.context.route(stored.predicate, stored.handler);
+      await this.configureContext(this.context);
     } catch (cause) {
       await this.context?.close().catch(() => undefined);
       this.context = null;
@@ -426,6 +450,18 @@ export class PlaywrightSurface {
         cause,
       });
     }
+  }
+
+  /** Installs the attempt's scripts and handlers on a newly attached context wrapper. */
+  private async configureContext(context: BrowserContext): Promise<void> {
+    await context.addInitScript(CLOSED_SHADOW_ROOTS_INIT_SCRIPT);
+    context.setDefaultTimeout(CONTEXT_DEFAULT_TIMEOUT_MS);
+    context.on('dialog', (dialog) => {
+      void this.dialogs.dispatch(dialog);
+    });
+    // Attempt routes run first; the header route remains the last stop before the network.
+    await installSiteHeaders(context, this.app.site, this.headers);
+    for (const stored of this.routes) await context.route(stored.predicate, stored.handler);
   }
 
   // --- network routes shared with the web fixture ---
@@ -467,6 +503,10 @@ export class PlaywrightSurface {
     const context = this.requireContext();
     if (this.page === null || this.page.isClosed()) {
       this.page = await context.newPage();
+      if (this.recoverable !== undefined) {
+        await this.page.setViewportSize(this.viewport);
+        await this.recoverable.rememberPage(this.page);
+      }
       await this.video.pageOpened(this.page);
     }
     return this.page;
@@ -543,16 +583,75 @@ export class PlaywrightSurface {
   async guard<T>(
     operation: OperationContext,
     label: string,
-    fn: () => Promise<T>,
+    fn: (operation: OperationContext) => Promise<T>,
     translate: (cause: unknown, label: string) => Error = translatePwError,
   ): Promise<T> {
     this.latch.throwPending();
+    if (this.recoveryFailure !== undefined) throw this.recoveryFailure;
     if (operation.signal.aborted) throw cancelled(`${label} cancelled`);
+    const recovering = this.recovering !== undefined || (
+      this.recoverable !== undefined && this.context !== null && this.browser?.isConnected() === false
+    );
+    const deadline = Date.now() + operation.timeoutMs;
+    const controller = new AbortController();
+    const signal = recovering ? AbortSignal.any([operation.signal, controller.signal]) : operation.signal;
+    const timer = recovering ? setTimeout(() => controller.abort(), Math.max(0, operation.timeoutMs)) : undefined;
     try {
-      return await raceAbort(fn, operation.signal, label);
+      if (recovering) await this.recoverTransport({ ...operation, signal });
+      const remaining = recovering ? Math.max(1, deadline - Date.now()) : operation.timeoutMs;
+      return await raceAbort(() => fn({ ...operation, signal, timeoutMs: remaining }), signal, label);
     } catch (cause) {
       throw translate(cause, label);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
     }
+  }
+
+  /** Rebinds once before dispatch. A failure during dispatch is left for the attempt to report. */
+  private async recoverTransport(operation: OperationContext): Promise<void> {
+    if (this.recovering !== undefined) {
+      return raceAbort(this.recovering, operation.signal, 'CDP recovery');
+    }
+    const controller = new AbortController();
+    this.recoveryController = controller;
+    const signal = AbortSignal.any([operation.signal, controller.signal]);
+    const reconnect = async (): Promise<void> => {
+      const recoverable = this.recoverable;
+      if (recoverable === undefined) return;
+      const viewport = this.page?.viewportSize();
+      this.refs.clear();
+      this.needsObservation = true;
+      const trace = this.tracing;
+      this.tracing = false;
+      await this.video.pageClosing();
+      const connected = await recoverable.recover(signal, operation.timeoutMs);
+      try {
+        await this.configureContext(connected.context);
+        if (signal.aborted) throw cancelled('CDP recovery cancelled');
+        if (connected.page !== null && viewport != null) await connected.page.setViewportSize(viewport);
+        if (connected.page !== null) await this.video.pageOpened(connected.page);
+        if (signal.aborted) throw cancelled('CDP recovery cancelled');
+        if (trace) await connected.context.tracing.start(TRACE_OPTIONS);
+        if (signal.aborted) throw cancelled('CDP recovery cancelled');
+        this.browser = connected.browser;
+        this.context = connected.context;
+        this.page = connected.page;
+        this.tracing = trace;
+      } catch (cause) {
+        await connected.browser.close().catch(() => undefined);
+        throw cause;
+      }
+    };
+    const pending = raceAbort(reconnect, signal, 'CDP recovery').catch((cause: unknown) => {
+      this.recoveryFailure = translatePwError(cause, 'CDP recovery');
+      controller.abort();
+      throw cause;
+    }).finally(() => {
+      if (this.recovering === pending) this.recovering = undefined;
+      if (this.recoveryController === controller) this.recoveryController = undefined;
+    });
+    this.recovering = pending;
+    await pending;
   }
 
   // --- steering: the session hooks ---
@@ -622,7 +721,7 @@ export class PlaywrightSurface {
     return this.guard(
       operation,
       'locate',
-      async () => {
+      async (currentOperation) => {
         const page = this.requirePage();
         await this.validateFrames(expression);
         const projected = projectExpression(page, expression, this.testIdAttribute);
@@ -672,6 +771,10 @@ export class PlaywrightSurface {
                 async ({ index }, options) =>
                   (await projected.locator.nth(index).filter(options).count()) > 0,
               );
+        if (currentOperation.signal.aborted) {
+          for (const handle of handles ?? []) void handle.dispose().catch(() => undefined);
+          throw cancelled('locate cancelled');
+        }
         if (handles !== null) {
           // Only the matches keep their handles; the rest would otherwise live until the page goes.
           const kept = new Set(matches.map(({ index }) => index));
@@ -705,12 +808,13 @@ export class PlaywrightSurface {
     return this.guard(
       operation,
       action.kind,
-      () => {
+      (currentOperation) => {
         const page = this.requirePage();
         if (action.kind === 'swipe' && ref.id === ROOT_NODE_ID) {
+          this.requireObservation();
           return performViewportSwipe(page, action.direction, action.momentum ?? 'none');
         }
-        return dispatchLocatorAction(this.refs.lookup(ref), action, operation.timeoutMs, (other) =>
+        return dispatchLocatorAction(this.refs.lookup(ref), action, currentOperation.timeoutMs, (other) =>
           this.refs.lookup(other),
         );
       },
@@ -724,7 +828,17 @@ export class PlaywrightSurface {
    * page decides what the click lands on, as it does for a person.
    */
   tapAt(point: ViewportPoint, operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'tapAt', () => this.requirePage().mouse.click(point.x, point.y));
+    return this.guard(operation, 'tapAt', () => {
+      this.requireObservation();
+      return this.requirePage().mouse.click(point.x, point.y);
+    });
+  }
+
+  /** Coordinate and root actions must not use the screen captured before a transport drop. */
+  private requireObservation(): void {
+    if (this.needsObservation) {
+      throw new EngineError('NODE_STALE', 'observe the screen again after CDP recovery before acting', { retryable: true });
+    }
   }
 
   /**
@@ -945,7 +1059,11 @@ export class PlaywrightSurface {
     return this.guard(
       operation,
       'observe',
-      () => this.captureObservation(operation, options),
+      async (currentOperation) => {
+        const snapshot = await this.captureObservation(currentOperation, options);
+        this.needsObservation = false;
+        return snapshot;
+      },
       navigationStaleOr,
     );
   }

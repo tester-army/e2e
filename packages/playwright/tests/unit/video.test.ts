@@ -16,21 +16,31 @@ import { VideoRecorder } from '../../src/video.ts';
 const VIEWPORT = { width: 320, height: 200 };
 
 /** A page whose screencast writes its file on start unless told not to, and fails to stop when told to. */
-function fakePage(options: { writes?: boolean; stopError?: Error; startError?: Error } = {}) {
+function fakePage(options: {
+  writes?: boolean;
+  stopError?: Error;
+  startError?: Error;
+  startWait?: Promise<void>;
+  stopWait?: Promise<void>;
+} = {}) {
   const started: string[] = [];
+  const stopped: true[] = [];
   const page = {
     screencast: {
       start: async ({ path: file }: { path: string }) => {
         if (options.startError !== undefined) throw options.startError;
         started.push(file);
         if (options.writes !== false) writeFileSync(file, 'webm');
+        await options.startWait;
       },
       stop: async () => {
+        stopped.push(true);
+        await options.stopWait;
         if (options.stopError !== undefined) throw options.stopError;
       },
     },
   } as unknown as Page;
-  return { page, started };
+  return { page, started, stopped };
 }
 
 describe('VideoRecorder', () => {
@@ -107,5 +117,40 @@ describe('VideoRecorder', () => {
     expect(idle.started).toEqual([]);
     await video.pageClosing();
     expect(await video.stop()).toEqual([]);
+  });
+
+  it('releases a recovery recording that starts after the next attempt reset', async () => {
+    const video = recorder();
+    await video.arm(fakePage().page);
+    await video.pageClosing();
+    let settle!: () => void;
+    const delayed = fakePage({ startWait: new Promise<void>((resolve) => { settle = resolve; }) });
+    const starting = video.pageOpened(delayed.page);
+    await expect.poll(() => delayed.started.length).toBe(1);
+    video.reset(path.join(dir, 'next'));
+    const next = fakePage();
+    await video.arm(next.page);
+    settle();
+    await starting;
+    expect(delayed.stopped).toHaveLength(1);
+    expect((await video.stop()).map((segment) => segment.path)).toEqual(['video/video.webm']);
+    expect(next.stopped).toHaveLength(1);
+  });
+
+  it.each(['saved', 'lost'])('ignores a %s recording that stops after the next attempt reset', async (status) => {
+    const video = recorder();
+    let settle!: () => void;
+    const delayed = fakePage({
+      stopWait: new Promise<void>((resolve) => { settle = resolve; }),
+      ...(status === 'lost' ? { writes: false, stopError: new Error('transport lost') } : {}),
+    });
+    await video.arm(delayed.page);
+    const stopping = video.stop();
+    video.reset(path.join(dir, 'next'));
+    await video.arm(fakePage().page);
+    settle();
+    expect(await stopping).toEqual([]);
+    expect(video.isArmed).toBe(true);
+    expect((await video.stop()).map((segment) => segment.path)).toEqual(['video/video.webm']);
   });
 });
