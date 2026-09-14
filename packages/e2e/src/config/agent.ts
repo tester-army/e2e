@@ -102,11 +102,9 @@ const AGENT_KEYS = new Set([
 export const DEFAULT_OBSERVATION_BYTES = 262_144;
 
 /**
- * Default judgment budget. A judgment is one observation and one or two model
- * calls; 30 s covers a loaded provider without hiding a stuck screen. It is
- * the agent's own knob, not `actionTimeout`: an engine operation and a model
- * round trip have nothing in common, and coupling them made projects inflate
- * the engine budget to buy the judge time.
+ * Default judgment budget: one observation and one or two model calls. The
+ * agent's own knob, deliberately apart from `actionTimeout`, so a slow judge
+ * never inflates the engine's per-operation budget.
  */
 const DEFAULT_JUDGMENT_TIMEOUT_MS = 30_000;
 

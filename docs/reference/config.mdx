@@ -413,11 +413,7 @@ export interface AgentConfig {
   maxSteps?: number;
   /** Model requests per agent call, 1 through 100; default 25. */
   maxModelCalls?: number;
-  /**
-   * Deadline of one `assert`, `waitFor`, or `extract` call in milliseconds;
-   * default 30000. This is the judgment tier's model-latency headroom: raise
-   * it for a slow judge. Engine operations keep their own `actionTimeout`.
-   */
+  /** Deadline of one `assert`, `waitFor`, or `extract` call in milliseconds; default 30000. Raise it for a slow judge; engine operations keep `actionTimeout`. */
   timeout?: number;
   /** Observation payload ceiling for act turns and judgments, 1024 through 16777216; default 262144. */
   maxObservationBytes?: number;
