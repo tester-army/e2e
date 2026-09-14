@@ -683,9 +683,15 @@ export class TargetExecutor implements SerialHost {
     // directory, and prior-step context; every other attempt owns its own.
     const shared = context.kind === 'serial' ? context.shared : undefined;
     const onProgress = this.options.events?.onProgress;
+    let openSession: TargetSession | null = null;
+    // Secret values the session has seen never enter an error record; the
+    // ledger is live, so a value resolved mid-attempt is covered too.
+    const redact = (text: string): string =>
+      openSession === null ? text : sessionSecrecy(openSession, this.config.secrets).ledger.redact(text);
     const steps = new StepRecorder(attemptId, {
       maxEventsPerStep: this.config.limits.maxEventsPerStep,
       projectRoot: this.config.projectRoot,
+      redact,
       ...(onProgress === undefined
         ? {}
         : { onProgress: (progress: StepProgress) => onProgress(pair, progress) }),
@@ -743,7 +749,6 @@ export class TargetExecutor implements SerialHost {
       cleanup: 'complete',
     };
 
-    let openSession: TargetSession | null = null;
     let failure: E2EError | undefined;
     let failurePhase: AttemptPhase | undefined;
     let phase: AttemptPhase = 'launch';
@@ -756,6 +761,22 @@ export class TargetExecutor implements SerialHost {
       if (failure === undefined) lastVerifiedAtFailure = steps.lastVerifiedStepIndex;
       failure = classifyError(cause);
       failurePhase = atPhase;
+    };
+    // One more look at the app the moment the failure lands: what the screen
+    // held then is the evidence the message lacks. Taken before teardown, so
+    // an `afterEach` that navigates away or resets state cannot replace it.
+    const captureEvidence = async (): Promise<void> => {
+      if (failure === undefined || record.failure !== undefined || openSession === null || this.interruptSignal.aborted) return;
+      const evidence = await captureFailureEvidence({
+        session: openSession,
+        error: failure,
+        secrecy: sessionSecrecy(openSession, this.config.secrets),
+        config: this.config,
+        artifacts: artifacts.sink,
+        operation: (signal, timeoutMs) => this.op(attemptId, timeoutMs, signal),
+        interrupt: this.interruptSignal,
+      }).catch(() => undefined);
+      if (evidence !== undefined) record.failure = evidence;
     };
     const cache = createAgentCacheContext({
       cache: this.config.cache,
@@ -862,6 +883,7 @@ export class TargetExecutor implements SerialHost {
         );
       } catch (cause) {
         recordFailure(cause, phase);
+        await captureEvidence();
       }
 
       phase = 'afterEach';
@@ -903,22 +925,9 @@ export class TargetExecutor implements SerialHost {
         record.status = 'passed';
       } else {
         record.status = classifyAttemptStatus(failure, timedOut, this.interruptSignal.aborted);
-        record.error = serializeError(failure, { phase: failurePhase ?? phase, projectRoot: this.config.projectRoot });
-        // One more look at the app before the session closes: what the screen
-        // held when the failure landed is the evidence the message lacks.
-        if (openSession !== null && record.status !== 'interrupted') {
-          const session = openSession;
-          const evidence = await captureFailureEvidence({
-            session,
-            error: failure,
-            secrecy: sessionSecrecy(session, this.config.secrets),
-            config: this.config,
-            artifacts: artifacts.sink,
-            operation: (signal, timeoutMs) => this.op(attemptId, timeoutMs, signal),
-            interrupt: this.interruptSignal,
-          }).catch(() => undefined);
-          if (evidence !== undefined) record.failure = evidence;
-        }
+        record.error = serializeError(failure, { phase: failurePhase ?? phase, projectRoot: this.config.projectRoot, redact });
+        // A failure that first landed in teardown has had no look yet.
+        await captureEvidence();
       }
       if (openSession !== null && shared === undefined) {
         await this.closeSession(openSession, attemptId, record, artifacts.sink, secondaryErrors);

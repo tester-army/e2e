@@ -223,6 +223,8 @@ export interface StepRecorderOptions {
   readonly onProgress?: (progress: StepProgress) => void;
   /** The project root; with it, every step and step error names the test line it came from. */
   readonly projectRoot?: string;
+  /** Replaces secret values in a step error's message and details before the record keeps them. */
+  readonly redact?: (text: string) => string;
 }
 
 /** Frames kept when a step captures where it was called from; the user's line is a few frames up. */
@@ -254,6 +256,7 @@ export class StepRecorder {
   private readonly maxEventsPerStep: number;
   private readonly onProgress: ((progress: StepProgress) => void) | undefined;
   private readonly projectRoot: string | undefined;
+  private readonly redact: ((text: string) => string) | undefined;
 
   constructor(
     private readonly attemptId: string,
@@ -262,6 +265,7 @@ export class StepRecorder {
     this.maxEventsPerStep = options.maxEventsPerStep ?? 1_000;
     this.onProgress = options.onProgress;
     this.projectRoot = options.projectRoot;
+    this.redact = options.redact;
   }
 
   /** The step currently executing, when inside StepRecorder.run. */
@@ -325,7 +329,7 @@ export class StepRecorder {
           : isAgentError(cause) && cause.blocked
             ? 'blocked'
             : 'failed';
-      record.error = serializeError(error, { projectRoot: this.projectRoot });
+      record.error = serializeError(error, { projectRoot: this.projectRoot, redact: this.redact });
       throw cause;
     } finally {
       this.running.delete(record.id);

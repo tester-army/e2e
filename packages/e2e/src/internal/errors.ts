@@ -323,22 +323,33 @@ const MAX_MESSAGE_BYTES = 8192;
 /** Serializes an error into the bounded report-1 error shape. */
 export function serializeError(
   error: E2EError,
-  extras: { phase?: ErrorPhase; scopeId?: string; projectRoot?: string | undefined } = {},
+  extras: {
+    phase?: ErrorPhase;
+    scopeId?: string;
+    projectRoot?: string | undefined;
+    /**
+     * Replaces secret values in the message, the details, and the stack: an
+     * assertion that observed a secret on screen, or a message that quoted
+     * one, must not carry it into the report. Identity when omitted.
+     */
+    redact?: ((text: string) => string) | undefined;
+  } = {},
 ): SerializedError {
+  const redact = extras.redact ?? ((text: string): string => text);
   const serialized: SerializedError = {
     category: error.category,
     code: error.code,
-    message: truncateUtf8(sanitizeText(error.message), MAX_MESSAGE_BYTES),
+    message: truncateUtf8(sanitizeText(redact(error.message)), MAX_MESSAGE_BYTES),
     retryable: error.retryable,
   };
   if (extras.phase !== undefined) serialized.phase = extras.phase;
   if (extras.scopeId !== undefined) serialized.scopeId = extras.scopeId;
   if (error.details !== undefined) {
-    const details = boundedDetails(error.details);
+    const details = boundedDetails(error.details, redact);
     if (details !== undefined) serialized.details = details;
   }
   const stack = (error.cause instanceof Error ? error.cause.stack : undefined) ?? error.stack;
-  if (stack !== undefined) serialized.stack = truncateUtf8(sanitizeText(stack), 65536);
+  if (stack !== undefined) serialized.stack = truncateUtf8(sanitizeText(redact(stack)), 65536);
   const source = sourceLocation(stack, extras.projectRoot);
   if (source !== undefined) serialized.source = source;
   return serialized;
@@ -360,12 +371,12 @@ function isDetails(value: unknown): value is ErrorDetails {
   );
 }
 
-/** Details as the report carries them: text sanitized and bounded, empty text dropped, nothing when nothing is left. */
-function boundedDetails(details: ErrorDetails): ErrorDetails | undefined {
+/** Details as the report carries them: text redacted, sanitized, and bounded, empty text dropped, nothing when nothing is left. */
+function boundedDetails(details: ErrorDetails, redact: (text: string) => string): ErrorDetails | undefined {
   const bounded: Record<string, string | number> = {};
   for (const key of DETAIL_TEXT_KEYS) {
     const text = details[key];
-    if (text !== undefined && text !== '') bounded[key] = truncateUtf8(sanitizeText(text), MAX_DETAIL_BYTES);
+    if (text !== undefined && text !== '') bounded[key] = truncateUtf8(sanitizeText(redact(text)), MAX_DETAIL_BYTES);
   }
   for (const key of DETAIL_NUMBER_KEYS) {
     const count = details[key];

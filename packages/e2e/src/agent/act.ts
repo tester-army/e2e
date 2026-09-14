@@ -271,7 +271,13 @@ class ActDispatch {
         }
       },
       attachTurns: (turns) => {
-        this.turns = [...turns];
+        // Model prose and tool output are not model input, but they are a
+        // record: the redactor that guards the tree guards the turns.
+        this.turns = turns.map((turn) => ({
+          index: turn.index,
+          calls: turn.calls.map((call) => this.runtime.redact(call)),
+          outcome: this.runtime.redact(turn.outcome),
+        }));
       },
       attachScreenshot: (pixels, label) => this.attachScreenshot(pixels, label),
       actions: this.dispatcher.actions,

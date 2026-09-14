@@ -210,6 +210,16 @@ describe('error details', () => {
     expect(classifyError(odd).details).toBeUndefined();
   });
 
+  it('redacts secret values from the message, the details, and the stack when given a redactor', () => {
+    const redact = (text: string): string => text.replaceAll('hunter2', '<secret:password>');
+    const error = new TestError('ASSERTION_FAILED', 'expected hunter2', { details: { observed: 'value "hunter2"', matches: 1 } });
+    const serialized = serializeError(error, { redact });
+    expect(serialized.message).toBe('expected <secret:password>');
+    expect(serialized.details).toEqual({ observed: 'value "<secret:password>"', matches: 1 });
+    expect(serialized.stack).toContain('expected <secret:password>');
+    expect(serialized.stack).not.toContain('hunter2');
+  });
+
   it('names the test line a failure unwound through when given the project root', () => {
     const projectRoot = process.cwd();
     const serialized = serializeError(new TestError('ASSERTION_FAILED', 'nope'), { projectRoot });

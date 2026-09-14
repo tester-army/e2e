@@ -117,14 +117,17 @@ export class LocatorEngine {
    * multiple matches fail immediately with LOCATOR_AMBIGUOUS.
    */
   async resolveExactlyOne(expression: LocatorExpression, deadline: Deadline): Promise<NodeRef> {
+    const startedMs = Date.now();
     for (;;) {
       const ref = assertSingle(await this.resolveOnce(expression, deadline), expression);
       if (ref !== null) return ref;
       if (deadline.expired()) {
+        // The wait as it happened: a deadline capped by the test's remaining
+        // budget waited less than the action timeout, and the report says so.
         throw new TestError(
           'LOCATOR_NOT_FOUND',
           `locator matched no nodes within ${describeExpression(expression)}`,
-          { details: locatorDetails(expression, deadline.totalMs) },
+          { details: locatorDetails(expression, Date.now() - startedMs) },
         );
       }
       await sleep(POLL_INTERVAL_MS, this.signal);
@@ -242,7 +245,7 @@ function assertSingle(refs: readonly NodeRef[], expression: LocatorExpression): 
 
 /**
  * The facts of a locator failure the report keeps beside the message: the
- * locator as written, what it asked for, and how long it waited, in ms.
+ * locator as written, what it asked for, and how long it actually waited, in ms.
  */
 function locatorDetails(expression: LocatorExpression, waitedMs?: number): ErrorDetails {
   return {

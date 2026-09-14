@@ -41,6 +41,18 @@ test('taps a button that is not there', async ({ app, screen }) => {
 });
 `;
 
+const TEARDOWN_TEST = `import { test } from 'e2e';
+
+test.afterEach(async ({ app }) => {
+  await app.open('/after');
+});
+
+test('fails, then tears down', async ({ app, screen }) => {
+  await app.open('/');
+  await screen.getByRole('button', { name: 'Submit now' }).tap();
+});
+`;
+
 const WRONG_EXPECTATION_TEST = `import { test, expect } from 'e2e';
 
 test('expects the wrong count', async ({ app, screen }) => {
@@ -66,8 +78,11 @@ describe('failure evidence', () => {
         const attempt = result.attempts.at(-1)!;
         expect(attempt.error).toMatchObject({
           code: 'LOCATOR_NOT_FOUND',
-          details: { locator: 'getByRole("button", name: "Submit now")', role: 'button', name: 'Submit now', waitedMs: 300 },
+          details: { locator: 'getByRole("button", name: "Submit now")', role: 'button', name: 'Submit now' },
         });
+        // What the locator actually waited: the action timeout, give or take a poll.
+        expect(attempt.error?.details?.waitedMs).toBeGreaterThanOrEqual(300);
+        expect(attempt.error?.details?.waitedMs).toBeLessThan(3_000);
         // The error and the failing step both resolve to the line in the test file that made the call.
         expect(attempt.error?.source?.file).toBe('tests/missing.e2e.ts');
         const failedStep = attempt.steps.find((step) => step.status !== 'passed')!;
@@ -90,6 +105,25 @@ describe('failure evidence', () => {
         const shot = attempt.artifacts.find((artifact) => artifact.id === failure.screenshot)!;
         expect(shot.kind).toBe('screenshot');
         expect(fake.operations.some((operation) => operation.method === 'artifacts.screenshot(failure)')).toBe(true);
+      } finally {
+        project.cleanup();
+      }
+    },
+    30_000,
+  );
+
+  it(
+    'looks at the screen before teardown runs, so an afterEach that navigates away cannot replace the evidence',
+    async () => {
+      const fake = createFakeEngine({ artifacts: true, locate: () => [] });
+      const { outcome, project } = await runProject({ 'tests/teardown.e2e.ts': TEARDOWN_TEST }, { appUrl: FAKE_APP_URL, config: fakeConfig(fake) });
+      try {
+        expect(reported(outcome, 'fails, then tears down').attempts.at(-1)?.failure?.screen).toBeDefined();
+        const methods = fake.operations.map((operation) => operation.method);
+        const evidenceObserve = methods.indexOf('observe');
+        const teardownNavigate = methods.findIndex((method) => method.startsWith('session.open(') && method.includes('/after'));
+        expect(evidenceObserve).toBeGreaterThan(-1);
+        expect(teardownNavigate).toBeGreaterThan(evidenceObserve);
       } finally {
         project.cleanup();
       }
