@@ -1,5 +1,8 @@
 # Security
 
+The user-facing version of this document, with every rule and limit as the
+code enforces it, is [e2e.mintlify.app/security](https://e2e.mintlify.app/security).
+
 ## Reporting a vulnerability
 
 Report privately through
@@ -98,8 +101,9 @@ outbound connections a run can make:
 
 - one telemetry request per CLI invocation to `eu.i.posthog.com`, unless
   opted out
-- the model endpoint named by `E2E_MODEL` (agent steps only; deterministic
-  suites make no model calls, and cached steps replay without one)
+- the model endpoint owned by the AI SDK instance in your config (agent steps
+  only; deterministic suites make no model calls, and cached steps replay
+  without one)
 - `readyUrl` probes against the app the runner starts
 - Playwright browser downloads, once, when Chromium is missing
 - the app under test, and whatever that app itself loads

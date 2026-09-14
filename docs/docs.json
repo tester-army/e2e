@@ -75,6 +75,7 @@
             "pages": [
               "models",
               "authentication",
+              "security",
               "agents",
               "cache",
               "debugging",

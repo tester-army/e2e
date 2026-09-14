@@ -56,7 +56,7 @@ try {
 | `TEST_SETUP_FAILED` | Test prerequisites outside the product failed to arrange (blocked: test_setup). Also a `test.extend()` fixture that broke its contract: returned without calling `use()`, called it twice, or redefined a fixture the target's engine contributes | configuration | 2 |
 | `AUTOMATION_UNSUPPORTED` | The step needs an interaction the available toolset cannot perform, e.g. drag-and-drop (blocked: automation) | test | 1 |
 | `MODEL_UNAVAILABLE` | No model configured: neither `createAgent({ model })` nor `agents.<name>.model` holds an AI SDK model instance. Checked once per run when the `agent` fixture is first acquired; recorded as one run-level error that stops the run. | configuration | 2 |
-| `POLICY_DENIED` | Origin, sink, or purpose denied before dispatch. Also reading a value from a secure field. | configuration | 2 |
+| `POLICY_DENIED` | Scheme, sink, or purpose denied before dispatch. Also reading a value from a secure field. | configuration | 2 |
 | `APP_UNREACHABLE` | The app process or URL did not respond, including a navigation the network refused (connection refused, name not resolved, timed out) because nothing listens at the engine's `url`. After a `command` or service is spawned, an early exit or a spent `startupTimeout` ends the message with the last lines appended to its `log` (`command.env` values replaced by `<secret:NAME>` markers), reports `no output` when nothing was appended, or says to set a `log` when none is configured | infrastructure | 3 |
 | `APP_ALREADY_RUNNING` | `readyUrl` already answered before the engine's `command` (or a `readyUrl` service) was spawned and `reuseExisting` was not in effect; stop that process or set `reuseExisting: true` locally | infrastructure | 3 |
 | `MODEL_PROVIDER_FAILED` | Provider transport failure (network error, 5xx, rate limit) after the adapter's transport retries (up to 5 per model call, honoring `retry-after`, bounded by the remaining step timeout) | infrastructure | 3 |
@@ -99,7 +99,7 @@ These appear in terminal output and in the report as plain string codes.
 | `NO_TESTS` | Zero runnable ordinary test-target pairs. The message names the cause: no file matched the `tests` globs (with look-alike files), a positional matched nothing, a file registered no tests, or filters excluded everything. Suppress with `--pass-with-no-tests`. | configuration | 2 |
 | `ONLY_IN_CI` | A focused test reached a CI run | configuration | 2 |
 | `COLLECTION_ERROR` | Registration outside collection, an invalid title, a non-function body, an async `describe` body, nested serial groups, an option forbidden inside a serial group, a setup test inside `describe`, an invalid session name, or a positional path outside the project root | configuration | 2 |
-| `POLICY_DENIED` | Origin, cookie, scheme, secret-sink, or route policy denial; `app.screenshot()` after a secret has tainted the attempt | configuration | 2 |
+| `POLICY_DENIED` | Scheme, secret-sink, purpose, or tool policy denial; `app.screenshot()` after a secret has tainted the attempt; see the [security model](/security) | configuration | 2 |
 | `SESSION_MISMATCH` | A stored session does not match the current run, target, engine, platform, or app identity | configuration | 2 |
 | `SESSION_EXPIRED` | A stored session is past its expiry at restore time (configuration, exit 2), or a setup test saved state whose expiry is not after its creation (test, exit 1) | configuration or test | 2 or 1 |
 | `SESSION_INVALID` | A stored session failed authentication. Tampered or corrupt. | configuration | 2 |
