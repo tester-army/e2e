@@ -30,9 +30,14 @@ const ENGINE_VERSIONS = readJson(import.meta.url, './engine-versions.json') as R
  * range to the registry's `latest` tag whenever it satisfies, and `latest`
  * can trail the tag the runner came from by several minors, so a bare `0.x`
  * installed engines whose peer range rejected the runner.
+ *
+ * A canary runner pins the exact engine build it shipped with. Every canary
+ * engine names one runner build in its peer range, and a caret on a prerelease
+ * resolves to the newest prerelease of that tuple, which names a different one.
  */
 export function engineRange(version: string | undefined): string {
-  return version === undefined ? '0.x' : `^${version}`;
+  if (version === undefined) return '0.x';
+  return version.includes('-') ? version : `^${version}`;
 }
 
 function engineDependency(name: string): Readonly<Record<string, string>> {

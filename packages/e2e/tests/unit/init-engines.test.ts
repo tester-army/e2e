@@ -6,6 +6,10 @@ describe('engineRange', () => {
     expect(engineRange('0.7.0')).toBe('^0.7.0');
   });
 
+  it('pins a canary engine to the exact build recorded next to the runner', () => {
+    expect(engineRange('0.8.0-canary-20260910135247')).toBe('0.8.0-canary-20260910135247');
+  });
+
   it('accepts any 0.x when running from source, where nothing was recorded', () => {
     expect(engineRange(undefined)).toBe('0.x');
   });
