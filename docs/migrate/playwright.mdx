@@ -5,8 +5,8 @@ description: Keep your Playwright install, move tests file by file, and turn the
 
 e2e's browser engine is Playwright. `@e2edev/playwright` declares it as a
 peer dependency and keeps the version you have, so both suites run in the
-same project while you migrate. `e2e init` adds the config next to your
-`playwright.config.ts`; e2e picks up `tests/**/*.e2e.ts` and Playwright
+same project while you migrate. `e2e init` writes its config next to your
+`playwright.config.ts`. e2e picks up `tests/**/*.e2e.ts` and Playwright
 keeps its own files.
 
 ## Config
@@ -21,21 +21,6 @@ keeps its own files.
 | `retries`, `workers`, `timeout` | The same names at the top level |
 | `storageState` | `test.setup` and `{ session }`, see [Signing in](/authentication) |
 | `reporter` | `reporters: ['list', 'junit']` |
-
-```ts title="e2e.config.ts"
-import type { E2EConfig } from 'e2e';
-import { playwright } from '@e2edev/playwright';
-
-export default {
-  targets: [{
-    engine: playwright({
-      url: 'http://localhost:3000',
-      command: { executable: 'npm', args: ['run', 'dev'] },
-    }),
-  }],
-  retries: 1,
-} satisfies E2EConfig;
-```
 
 ## A test, before and after
 
@@ -64,8 +49,8 @@ test('checkout', async ({ app, agent, screen }) => {
 });
 ```
 
-The first line and the last line survive. The clicks in between become a
-goal, and the test stops breaking when the form is redesigned.
+The first and last lines survive. The clicks in between become a goal, and
+a redesign of the form no longer breaks the test.
 
 ## API map
 
@@ -87,23 +72,22 @@ goal, and the test stops breaking when the form is redesigned.
 | `page.waitForTimeout` | Nothing. Queries poll, actions wait, assertions retry |
 | `test.extend` | `test.extend`, same shape |
 
-Three behaviours differ:
+Where the behaviour differs from Playwright's:
 
-- **`getByText` matches exactly** by default. Pass `{ exact: false }` for
-  the substring match Playwright uses.
-- **Two matches are an error** on reads and assertions too, not only on
-  actions. Narrow with `.filter()`, `.first()`, or `{ visible: true }`.
-- **A `Secret` never reaches a test as a string.** Passwords come from
-  `credentials.user('admin').password` and go straight into `fill` or an
-  `act` param.
+- `getByText` matches exactly by default. Pass `{ exact: false }` for
+  Playwright's substring match.
+- Two matches fail reads and assertions too, not only actions. Narrow with
+  `.filter()`, `.first()`, or `{ visible: true }`.
+- A password is a `Secret` with no string value. It comes from
+  `credentials.user('admin').password` and goes into `fill` or an `act`
+  param.
 
 ## What to migrate first
 
-Move the tests that break most often. A flow that walks a wizard, a form
-whose labels change, a modal that sometimes needs dismissing: each becomes
-one `agent.act` with the outcome pinned by `expect`. Leave a test that
-already never fails as it is; a stable Playwright test has no reason to move
-until you want it in the same report.
+Move the tests that break most often. A wizard, a form whose labels change,
+a modal that sometimes needs dismissing: each becomes one `agent.act` with
+`expect` pinning the result. A Playwright test that never fails can stay
+where it is until you want it in the same report.
 
 <CardGroup cols={2}>
   <Card title="Writing tests" icon="pen-to-square" href="/writing-tests">

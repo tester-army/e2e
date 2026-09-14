@@ -3,11 +3,11 @@ title: From Selenium
 description: Replace explicit waits and XPath with semantic queries, and page objects with goals.
 ---
 
-A Selenium suite spends most of its lines on waiting and locating. e2e
-removes both: every query polls, every action waits for its node, and the
-queries name what a user sees rather than where it is in the DOM. Tests are
-TypeScript; a Java or Python suite is rewritten, not transpiled. Run both
-side by side and retire Selenium tests as their e2e twins pass.
+A Selenium suite spends most of its lines waiting and locating. e2e removes
+both. Every query polls, every action waits for its node, and the queries
+name what a user sees rather than where it sits in the DOM. Tests are
+TypeScript, so a Java or Python suite is rewritten rather than transpiled.
+Run both side by side and retire each Selenium test as its e2e twin passes.
 
 ## Config
 
@@ -18,20 +18,8 @@ side by side and retire Selenium tests as their e2e twins pass.
 | One driver per browser | One target per browser, `playwright({ browser: 'firefox' })` |
 | Selenium Grid | `workers` for parallelism; `connect` attaches to a remote Chromium over CDP |
 | `manage().window().setSize` | `playwright({ viewport })` |
-| Implicit waits | Nothing to configure; `actionTimeout` and `assertionTimeout` are the deadlines |
+| Implicit waits | Nothing to configure. `actionTimeout` and `assertionTimeout` are the deadlines |
 | A page object for sign-in | `test.setup` and `{ session }`, see [Signing in](/authentication) |
-
-```ts title="e2e.config.ts"
-import type { E2EConfig } from 'e2e';
-import { playwright } from '@e2edev/playwright';
-
-export default {
-  targets: [
-    { name: 'chromium', engine: playwright({ url: 'http://localhost:3000' }) },
-    { name: 'firefox', engine: playwright({ url: 'http://localhost:3000', browser: 'firefox' }) },
-  ],
-} satisfies E2EConfig;
-```
 
 ## A test, before and after
 
@@ -62,7 +50,7 @@ test('signs in', async ({ app, screen, web }) => {
 ```
 
 No wait objects, no XPath, and the password never appears in the test. A
-flow with more variation than a login form becomes one line:
+flow with more variation than a login form is one line:
 `await agent.act('sign in as {username}', { params: { username, password } })`.
 
 ## API map
@@ -90,27 +78,26 @@ flow with more variation than a login form becomes one line:
 | `Actions.keyDown(CONTROL).sendKeys('a')` | `.press('ControlOrMeta+a')` |
 | `switchTo().frame()` | `web.frameLocator('#frame')` |
 | `switchTo().alert().accept()` | `web.onDialog('accept')` before the action |
-| `switchTo().window()` | No equivalent; popups are unsupported |
+| `switchTo().window()` | No equivalent. Popups are unsupported |
 | `executeScript` | `web.evaluate` |
 | `manage().addCookie` | `web.setCookies` |
 | `getScreenshotAs` | `app.screenshot('label')`, redacted |
 | `Thread.sleep` | Nothing. Queries poll, actions wait, assertions retry |
 | Page objects | A fixture from `test.extend`, or a goal for `agent.act` |
 
-Two rules the WebDriver model does not have:
+Where the behaviour differs from WebDriver's:
 
-- **Two matches are an error.** `findElement` returns the first match; e2e
-  fails with `LOCATOR_AMBIGUOUS`. Narrow with `.filter()`, `.first()`, or
-  `{ visible: true }`.
-- **Assert with `expect`, not with a read.** `textContent()` reads once and
-  does not retry. `toHaveText()` polls until the deadline.
+- `findElement` returns the first match. e2e fails with `LOCATOR_AMBIGUOUS`.
+  Narrow with `.filter()`, `.first()`, or `{ visible: true }`.
+- `textContent()` reads once and does not retry. Assert with `toHaveText()`,
+  which polls until the deadline.
 
 ## What to migrate first
 
-Page objects are the natural unit. A page object that wraps a multi-step
-flow becomes one `agent.act` goal; one that wraps a single form becomes a
-handful of `screen` calls or a fixture. Move the flows first, since they are
-where the explicit waits live.
+Page objects are the unit. One that wraps a multi-step flow becomes an
+`agent.act` goal. One that wraps a single form becomes a few `screen` calls
+or a fixture. Move the flows first, since that is where the explicit waits
+live.
 
 <CardGroup cols={2}>
   <Card title="Writing tests" icon="pen-to-square" href="/writing-tests">

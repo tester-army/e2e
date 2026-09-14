@@ -3,11 +3,11 @@ title: From Cypress
 description: Map cy commands to screen and web, drop the chain, and keep your data-cy attributes.
 ---
 
-A Cypress test runs inside the browser and talks to Node through tasks. An
-e2e test is plain Node code: `await` replaces the command chain, and
-anything you did in `cy.task` is a function call. `e2e init` adds the
-config and a `tests/` folder; the Cypress suite keeps running until the last
-spec has moved.
+A Cypress test runs inside the browser and reaches Node through tasks. An
+e2e test is Node code. `await` replaces the command chain, and anything you
+did in `cy.task` is a function call. `e2e init` writes its config and a
+`tests/` folder, and the Cypress suite keeps running until the last spec has
+moved.
 
 ## Config
 
@@ -96,25 +96,25 @@ test.describe('todos', () => {
 | `cy.setCookie` | `web.setCookies` |
 | `cy.viewport` | `web.setViewport` |
 | `cy.session` | `test.setup` and `{ session }` |
-| `cy.task`, `cy.exec`, `cy.request` | Plain Node code: `fetch`, `fs`, your database client |
+| `cy.task`, `cy.exec`, `cy.request` | Node code: `fetch`, `fs`, your database client |
 | `cy.fixture` | `import data from './fixture.json'` |
 | `Cypress.Commands.add` | A function, or a fixture from `test.extend` |
 | `cy.wait(ms)` | Nothing. Queries poll, actions wait, assertions retry |
 | `cypress open` | `npx e2e run --headed`, plus `--debug` for the step table |
 
-Two habits to unlearn:
+Where the behaviour differs from Cypress's:
 
-- **No chain.** Each command is awaited on its own line and returns a real
+- There is no chain. Each command is awaited on its own line and returns a
   value, so `const text = await locator.textContent()` works.
-- **Two matches are an error.** Cypress acts on the first match; e2e fails
-  with `LOCATOR_AMBIGUOUS` and asks you to narrow.
+- Cypress acts on the first match. e2e fails with `LOCATOR_AMBIGUOUS` and
+  makes you narrow the query.
 
 ## What to migrate first
 
-Start with the specs that carry the most `cy.wait(ms)` and the longest
-custom commands. Each long command chain becomes a goal for `agent.act`,
-with the checks that were `should()` calls kept as `expect`. Then move the
-sign-in `cy.session` into one `test.setup` that every test reuses.
+Start with the specs that carry the most `cy.wait(ms)` calls and the longest
+custom commands. A long chain becomes a goal for `agent.act`, and the
+`should()` calls stay as `expect`. Then move the sign-in `cy.session` into
+one `test.setup` that every test reuses.
 
 <CardGroup cols={2}>
   <Card title="Writing tests" icon="pen-to-square" href="/writing-tests">

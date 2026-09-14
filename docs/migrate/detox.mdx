@@ -6,9 +6,9 @@ description: Keep your testIDs, drop the Detox build, and move matchers to scree
 Detox tests a React Native app through a build with the Detox framework
 linked in. e2e drives the simulator or emulator through
 `@e2edev/agent-device`, so a normal debug or release build is enough and
-there is no synchronization layer to disable. Your `testID` props are the
-`getByTestId` query on both platforms. Detox and e2e can run on the same
-simulator in turn, so migrate one spec at a time.
+there is no synchronization to disable. Your `testID` props answer the
+`getByTestId` query on both platforms. Detox and e2e take turns on the same
+simulator, so migrate one spec at a time.
 
 ## Config
 
@@ -19,7 +19,7 @@ simulator in turn, so migrate one spec at a time.
 | `devices.<name>.device.type` | `agentDevice({ device: 'iPhone 17' })` |
 | `configurations` | `targets`, one engine per platform |
 | Jest config, `maxWorkers` | `workers`, one per device |
-| `detox build` | Your normal build; no Detox framework or `detox build` step |
+| `detox build` | Your normal build. No Detox framework, no `detox build` step |
 | `device.launchApp({ permissions })` | `device.setPermission(...)` inside the test |
 
 ```ts title="e2e.config.ts"
@@ -91,33 +91,33 @@ password lives in `credentials`, not in the spec.
 | `expect(el).toHaveValue(v)` | `.toHaveValue(v)` |
 | `device.launchApp({ newInstance: true })` | `app.restart()` |
 | `device.launchApp({ delete: true })` | `app.clearState()` |
-| `device.reloadReactNative()` | No equivalent; `app.restart()` is the nearest |
+| `device.reloadReactNative()` | No equivalent. `app.restart()` is the nearest |
 | `device.sendToHome()`, `device.pressBack()` | `device.home()`, `device.back()` |
 | `device.setLocation(lat, lon)` | `device.setLocation({ latitude, longitude })` |
 | `device.setOrientation('landscape')` | `device.setOrientation('landscape-left')` |
 | `device.setBiometricEnrollment(true)` | `device.enrollBiometrics('faceid', true)` |
 | `device.matchFace()`, `device.unmatchFace()` | `device.setBiometrics('faceid', 'match' \| 'nonmatch')` |
 | `device.setStatusBar`, `device.setURLBlacklist` | No equivalent |
-| `device.disableSynchronization()` | Not needed; nothing synchronizes, everything polls |
+| `device.disableSynchronization()` | Not needed. Nothing synchronizes, everything polls |
 | `device.takeScreenshot()` | `app.screenshot('label')`, secure fields painted black |
 | `:ios:` / `:android:` in a test name | `{ platforms: ['ios'] }` on the test |
 
-Three differences to plan for:
+Where the behaviour differs from Detox's:
 
-- **Text matches exactly** by default. `by.text` in Detox is exact too, so
-  this is a match; `{ exact: false }` gives a substring match.
-- **Two matches are an error**, as in Detox, but on reads and assertions as
-  well as actions. Narrow with `.filter()` or `.nth()`.
-- **No setup sessions on a device.** `test.setup` and `{ session }` are
-  web-only. Sign in per test with a goal, or seed the app's state.
+- Detox fails on two matches for actions. e2e also fails reads and
+  assertions with `LOCATOR_AMBIGUOUS`. Narrow with `.filter()` or `.nth()`.
+- `test.setup` and `{ session }` are web-only. Sign in per test with a goal,
+  or seed the app's state.
+
+`by.text` is an exact match in Detox and `getByText` is exact here too.
 
 ## What to migrate first
 
-Detox specs that fight animations or call `disableSynchronization` are the
-first to move: their `waitFor` chains disappear. Then the flows that break
-on every redesign, as one `agent.act` each with the outcome pinned by
-`expect`. The [agent-device engine](/reference/agent-device#engine) has
-`settle` and `transition` knobs for an app whose screens arrive in stages.
+Specs that fight animations or call `disableSynchronization` move first,
+since their `waitFor` chains disappear. Then the flows that break on every
+redesign, as one `agent.act` each with `expect` pinning the result. The
+[agent-device engine](/reference/agent-device#engine) has `settle` and
+`transition` options for an app whose screens arrive in stages.
 
 <CardGroup cols={2}>
   <Card title="Testing iOS and Android" icon="mobile-screen" href="/mobile">
