@@ -1,5 +1,70 @@
 # e2e
 
+## 0.15.0
+
+### Minor Changes
+
+- [#291](https://github.com/tester-army/e2e/pull/291) [`abf1958`](https://github.com/tester-army/e2e/commit/abf19588677070fb86234f735614c40b7677e755) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Breaking: the engine contract (`e2e/engine`) is reshaped as the locked, UI-only, cross-platform SPI for 1.0. What breaks and what replaces it:
+  
+  - `EngineSnapshot.nodes` is `root`, one engine-minted node with an id that stays stable across observations; `url` is `location`, an opaque address (a URL on the web, the foreground screen on a device) the harness treats as a URL only when it parses as one; `viewport` is required.
+  - `Engine.url()` is gone; read `location` off an observation. `Engine.swipe` is gone; the viewport swipe is `perform(root, { kind: 'swipe' })`.
+  - `Engine.actions` lists the action kinds `perform` honors and is required with it. The agent's tools and the `screen` methods derive from it, so a surface is never offered a verb it cannot do.
+  - `Engine.app` is data only. The hooks move to `Engine.session: { open, back, restart, reset }` (were `app.navigate`, `back`, `restart`, `clearState`). `restart` and `reset` open nothing on an addressable surface; the harness reopens the app through `open`.
+  - `EngineInitInfo.testIdAttribute` and `EngineInitInfo.app.baseUrl` are gone. `SemanticNode.testId` carries the node's test id and the `testId` query resolves against it. The root config key `screen.testIdAttribute` is rejected; set `playwright({ testIdAttribute })` instead.
+  - `press` keys follow one grammar in Playwright spelling (`Control+a`, `Shift+Tab`, `Enter`, one printable character); `parseKey`, `KEY_NAMES`, `KEY_MODIFIERS`, and `LOCATOR_ACTION_KINDS` are exported for engines. An invalid key fails with `INVALID_ARGUMENT` before it reaches an engine.
+  - `OperationContext.origin` is required. `EnginePrepareInfo.env` is a plain readonly record, and `EnginePrepareResult.env` is the typed channel from a runner-side `prepare` to each worker's `init`, which reads it as `EngineInitInfo.env` (the run's environment plus that target's additions; other targets never see them).
+  - Report: the target record no longer carries `testIdAttribute`; artifact kinds and usage counters are unchanged.
+  
+  `spiVersion` stays `1`.
+
+- [#288](https://github.com/tester-army/e2e/pull/288) [`aa3b05b`](https://github.com/tester-army/e2e/commit/aa3b05bbbdd4534ef111e51b950002513998076f) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Judgments are independent of the act loop. `agent.assert`, `agent.waitFor`,
+  and `agent.extract` are shown the instruction and the current screen only:
+  the prior-step ledger and the acting agent's summaries no longer reach a
+  judgment call, so a verdict rests on what is on screen rather than on the
+  actor's account of what it did. A new `judge` slot, `agents.<name>.judge` or
+  `createAgent({ judge })`, names a separate model for the judgment tier;
+  unset, judgments use `model`, and a config `judge` that differs from the
+  executor's is `INVALID_CONFIG`. Each judgment step's `model` in the report
+  names the model that produced the verdict. `createAgent(...)` counts as the
+  built-in agent here, not a custom executor: its `agent.assert` calls now go
+  to the judgment tier (one judgment call, `vision` and `screenshot` allowed)
+  instead of through its own `runStep`, so the judge judges them. A hand-rolled
+  executor still judges its own assertions through `runStep`.
+  
+  The judgment protocol is `agent-judgment-2`: the model answers `holds`,
+  `fails`, or `inconclusive` instead of a boolean. An inconclusive
+  `agent.assert`, one where the screen did not show enough to decide either
+  way, fails with the new `ASSERTION_INCONCLUSIVE` code (category test, exit 1)
+  and the model's account of what was missing; it is never a pass. In
+  `agent.waitFor` an inconclusive round keeps polling until the deadline. The
+  `agent-judgment-1` schema and its fixtures stay in the package, marked
+  deprecated, for the stability window; the runner requests `agent-judgment-2`
+  only.
+  
+  The report records the checkout under `run.vcs`: `commit`, `branch` when
+  HEAD is on one, and `dirty` when git could say. Outside git the GitHub
+  Actions variables stand in; with neither, the field is absent. It is what
+  joins a run's verdicts to the pull request that produced the code.
+
+- [#292](https://github.com/tester-army/e2e/pull/292) [`d486e40`](https://github.com/tester-army/e2e/commit/d486e40e73bfe23ac70a99f7938f05db0ba4e30c) Thanks [@okwasniewski](https://github.com/okwasniewski)! - A finished model turn in the live window now appends an excerpt of the
+  model's reasoning when the model produced one: `• Thinking (2.84s) (↑7.5k
+  ↓18) · The modal blocks checkout; closing it first`. Runs and explorations
+  alike show why the agent acted, not just that it did. The excerpt collapses
+  to one line and clips to the terminal; the full reasoning stays in the AI
+  trace (`--ai-trace`). The same bounded excerpt lands on the report's `model`
+  step events as `reasoning` (report-1 schema), and custom executors report
+  their own through `recordModelCall({ reasoning })`.
+
+- [#290](https://github.com/tester-army/e2e/pull/290) [`799b29f`](https://github.com/tester-army/e2e/commit/799b29fbfa0444589b66bc0e59ab0b83ededf50c) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Origin allowlists are gone, everywhere. `playwright({ allowedOrigins })` gated typed navigation only; a click, a redirect, or a popup reached any origin regardless, so the list guarded nothing and had to be spelled out for every subdomain a sign-in flow touched. `allowedOrigins` on a credential or a secret gated where a password could be typed; a secret is only ever typed into a field the step was handed, a password only into a password field, so that gate guarded against a model mistake at the cost of configuring every flow that leaves the app's domain, a third-party sign-in included. `app.open()`, the agent's `navigate`, and `web.goto` open any http(s) URL, `file:`, `data:`, and `javascript:` stay `POLICY_DENIED`, and a secret fills wherever the test or the step directs it. `credentials` entries are `{ username, password }`; `secrets` entries are a string or a provider, the `{ value }` object form is gone. `type_secret` now works on a device target too. What still keys on the site of `url` (its registrable domain) is invisible to config: the browser engine's `headers` reach the site and no other host, and child frames off the site stay out of observations. `basicAuth` answers a challenge from any origin, as Playwright's own `httpCredentials` does. Engine contract: `EngineAppInfo.allowedOrigins` became `site?: string`, `EngineAppDeclaration` lost `allowedOrigins`, and `sameSite`/`siteOf` are exported from `e2e/engine`. `playwright({ allowedOrigins })` fails at config load. If a threat model ever calls for an allowlist again, it comes back as an opt-in.
+
+- [#294](https://github.com/tester-army/e2e/pull/294) [`c2c5df7`](https://github.com/tester-army/e2e/commit/c2c5df7df94b25a8284b69dd6bc00a459b770a59) Thanks [@okwasniewski](https://github.com/okwasniewski)! - The runner is published as `e2e`. `@e2edev/e2e` is retired and deprecated on npm; every import, config, and peer range now names `e2e` (`e2e`, `e2e/agent`, `e2e/engine`). The engines and the GitHub reporter declare their peer dependency on `e2e`, so a project on `@e2edev/e2e` must switch the runner to `e2e` when it takes these versions. The CLI keeps its `e2e` bin name.
+
+### Patch Changes
+
+- [#296](https://github.com/tester-army/e2e/pull/296) [`f2f2e6f`](https://github.com/tester-army/e2e/commit/f2f2e6fb1024ffb4cd481f7ea571c2d29be6d6d8) Thanks [@okwasniewski](https://github.com/okwasniewski)! - The CLI starts without the optional `ai` peer dependency. The MCP bridge imported `asSchema` from `ai` statically and every command loads that module, so `npx e2e --help`, and `e2e init` in a project that has not installed `ai` yet, crashed with `ERR_MODULE_NOT_FOUND` before reading a flag. The bridge now reaches the SDK through the same lazy loader as the agent, and an MCP session opened in a project without `ai` reports `MODEL_UNAVAILABLE` instead.
+
+- [#293](https://github.com/tester-army/e2e/pull/293) [`e301105`](https://github.com/tester-army/e2e/commit/e3011054080237f6141419f738a680574308765b) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `init` pins an engine exactly when the runner it ships in is a prerelease. A canary engine names one runner build in its peer range, and the caret `init` wrote resolved to the newest canary of that engine, whose peer range named a different runner and failed the install.
+
 ## 0.14.0
 
 ### Minor Changes
