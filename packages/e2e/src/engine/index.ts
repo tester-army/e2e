@@ -87,9 +87,38 @@ export type EngineCapability =
   | 'actions'
   | 'location'
   | 'pointer'
+  | 'keyboard'
   | 'state'
   | 'artifacts'
   | (string & {});
+
+/**
+ * capability: keyboard - requires observation. Input to whatever holds focus,
+ * with no node behind it: the agent's `type` and `press` without a target, and
+ * the fallback of its point-addressed `type_at` and `press_at` when the point
+ * lands on nothing the tree lists (a field drawn on a canvas, an input a
+ * platform flattens out of its accessibility tree). Focus is the app's: the
+ * harness tapped first, or the model said the field already has it.
+ */
+export interface EngineKeyboard {
+  /**
+   * Types `text` into the focused field, through the platform's keyboard or
+   * text-input path. With `replace`, clears the field first (select-all and
+   * delete on a keyboard surface; the platform's clear on a device). Throw
+   * `NOT_ACTIONABLE` when nothing that accepts text has focus, so the
+   * keystrokes are never silently discarded into the document body.
+   */
+  type(text: string, options: { readonly replace: boolean }, context: OperationContext): Promise<void>;
+  /**
+   * Sends one key of the contract grammar (`Enter`, `Escape`, `Tab`,
+   * `Shift+Tab`, a character) to whatever holds focus. The harness has
+   * already validated the key's shape; refuse with `UNSUPPORTED_CAPABILITY`
+   * a key the surface cannot deliver.
+   */
+  press(key: string, context: OperationContext): Promise<void>;
+  /** Hides an on-screen keyboard. Platforms without one leave it undefined. */
+  dismiss?(context: OperationContext): Promise<void>;
+}
 
 /**
  * What an engine declares about the app it drives. The app
@@ -590,6 +619,8 @@ export interface Engine {
    * given; the harness has already clamped it to the viewport.
    */
   tapAt?(point: ViewportPoint, context: OperationContext): Promise<void>;
+  /** capability: keyboard - requires observation. Input to whatever holds focus; see `EngineKeyboard`. */
+  readonly keyboard?: EngineKeyboard;
   /**
    * Named deterministic surfaces this engine contributes to TestFixtures
    * (a device fixture, a document fixture - anything). Keys become fixture and

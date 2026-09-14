@@ -27,6 +27,7 @@ import type {
   ProviderOptions,
   ScrollDirection,
   Secret,
+  VisionMode,
 } from '../types.ts';
 import { AGENT_CODE_TABLE, isAgentError, type AgentError } from './error.ts';
 
@@ -78,12 +79,13 @@ export interface ExecutorAttempt {
 
 /** What an executor asks `observe()` to include beyond the text serialization. */
 export interface ExecutorObserveOptions {
-  /** Include the redacted node tree as `tree`. */
+  /** Include the redacted node tree as `tree`; never included under `vision: 'only'`. */
   readonly tree?: boolean;
   /**
    * Include masked viewport pixels as `pixels`. Granted only when the engine
    * captures pixels, its masking is proven, and no secret has been filled in
-   * this attempt; otherwise `pixelsWithheld` names the reason.
+   * this attempt; otherwise `pixelsWithheld` names the reason. Defaults to
+   * the step's `vision`: off at `false`, on at `true`, forced at `'only'`.
    */
   readonly pixels?: boolean;
 }
@@ -175,6 +177,41 @@ export interface ExecutorActions {
    * Fails when the point is on nothing listed and the engine taps nodes only.
    */
   tapAt(point: ViewportPoint): Promise<PointTapResult>;
+  /**
+   * Types into whatever holds focus, with no node resolved: the path for a
+   * field the tree does not list (drawn on a canvas, flattened out of a
+   * platform's accessibility tree) after a `tapAt` gave it focus. Inserts at
+   * the caret; `replace` clears the field first. Fails with `ACTION_FAILED`
+   * when nothing that accepts text has focus, never typing into the void.
+   * Needs the engine's `keyboard` capability (`typeText` in `target.verbs`).
+   */
+  typeText(value: string, options?: { readonly replace?: boolean }): Promise<void>;
+  /** Sends one key to whatever holds focus (`pressKey` in `target.verbs`). */
+  pressKey(key: string): Promise<void>;
+  /** Hides an on-screen keyboard (`dismissKeyboard` in `target.verbs`). */
+  dismissKeyboard(): Promise<void>;
+  /**
+   * What the newest observation lists at one viewport point, in the same CSS
+   * pixels `tapAt` takes: the innermost enabled control whose box contains
+   * the point, and the innermost listed node of any role. What a
+   * point-addressed verb resolves its target through before calling `type`,
+   * `press`, `select`, or `scroll` by id, so the action is policed, recorded,
+   * and replayed exactly like one the model addressed by id. Resolved in
+   * queue order, like every target.
+   */
+  hitTest(point: ViewportPoint): Promise<PointHit>;
+}
+
+/** What one `hitTest` found, for the executor to act on or relay. */
+export interface PointHit {
+  /** Where the point landed after clamping to the viewport, in CSS pixels. */
+  readonly point: ViewportPoint;
+  /** The innermost enabled control containing the point, if any is listed. */
+  readonly control?: ExecutorTarget;
+  /** The innermost listed node of any role containing the point, if any. */
+  readonly under?: ExecutorTarget;
+  /** Prose for a model: the control's own line, or that nothing listed is there. */
+  readonly summary: string;
 }
 
 /** What one `tapAt` did, for the executor to relay to its model. */
@@ -336,6 +373,15 @@ export interface StepExecutorContext {
    * that can only decline.
    */
   readonly pixelsTainted: boolean;
+  /**
+   * What the step asked to see. `false`: the tree, with pixels on request.
+   * `true`: pixels wanted from the first turn; `observe()` captures them
+   * unless asked not to. `'only'`: the harness withholds the tree from every
+   * observation (`text` is empty, no `tree`), always captures pixels, and
+   * fails the observation with `POLICY_DENIED` when pixels cannot leave the
+   * runner, because the executor has nothing else to act on.
+   */
+  readonly vision: VisionMode;
   /**
    * Attaches the executor's model transcript to the step. Persisted as a
    * `log` artifact when the run collects debug detail (`--debug`); a no-op

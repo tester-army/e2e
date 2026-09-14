@@ -178,6 +178,26 @@ export interface TapAtAction extends ActionBase {
 }
 
 /**
+ * Keyboard input to whatever held focus, replayed as given: the focus it
+ * relies on is the effect of the recorded actions before it (a bare-point tap
+ * on a drawn field), and the end anchors decide whether it landed.
+ */
+export interface TypeTextAction extends ActionBase {
+  readonly name: 'typeText';
+  readonly value: string;
+  readonly replace: boolean;
+}
+
+export interface PressKeyAction extends ActionBase {
+  readonly name: 'pressKey';
+  readonly key: string;
+}
+
+export interface DismissKeyboardAction extends ActionBase {
+  readonly name: 'dismissKeyboard';
+}
+
+/**
  * A project-tool mutation the grammar cannot reproduce — a gap that ends any
  * replay rather than silently skipping a state change.
  */
@@ -194,6 +214,9 @@ export type RecordedAction =
   | ScrollAction
   | NavigateAction
   | TapAtAction
+  | TypeTextAction
+  | PressKeyAction
+  | DismissKeyboardAction
   | ToolGapAction;
 
 export interface ActionTrace {
@@ -410,6 +433,17 @@ function readRecordedAction(document: unknown): RecordedAction | undefined {
       if (raw['within'] !== undefined && within === undefined) return undefined;
       return { name: 'tapAt', summary, point, viewport, ...(within === undefined ? {} : { within }) };
     }
+    case 'typeText': {
+      const value = readInputText(raw['value']);
+      if (value === undefined || typeof raw['replace'] !== 'boolean') return undefined;
+      return { name: 'typeText', summary, value, replace: raw['replace'] };
+    }
+    case 'pressKey': {
+      const key = readBoundedText(raw['key'], 64);
+      return key === undefined ? undefined : { name: 'pressKey', summary, key };
+    }
+    case 'dismissKeyboard':
+      return { name: 'dismissKeyboard', summary };
     case 'tool':
       return { name: 'tool', summary };
     default:

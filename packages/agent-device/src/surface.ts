@@ -808,6 +808,55 @@ export class AgentDeviceSurface {
     this.markAction(before);
   }
 
+  /**
+   * Types into whatever holds focus through the device's text-input path;
+   * agent-device's `type` lands on the focused field. `replace` is not a
+   * device primitive without a target, so it is refused rather than faked:
+   * the model clears a listed field by filling it by id.
+   */
+  async typeText(text: string, options: { readonly replace: boolean }, operation: OperationContext): Promise<void> {
+    if (options.replace) {
+      throw unsupported('agent-device cannot clear the focused field without a node; type into a listed field by id to replace its value');
+    }
+    const before = this.latestIndex;
+    await this.command('keyboard.type', (client) => client.interactions.type({ text }), operation.signal);
+    this.markAction(before);
+  }
+
+  /**
+   * One key to the focused field, with the same reach as a node press: Enter
+   * submits through the soft keyboard, Space and single characters are typed.
+   * Modifiers and the other named keys have no event bus to land on.
+   */
+  async pressFocusedKey(key: string, operation: OperationContext): Promise<void> {
+    const parsed = parseKey(key);
+    if (parsed === undefined) {
+      throw unsupported(
+        `"${key}" is not a key: press takes one key in the form [Modifier+]...Key, a named key (${KEY_NAMES.join(', ')}) or one character`,
+      );
+    }
+    if (parsed.modifiers.length > 0) {
+      throw unsupported(`agent-device cannot hold ${parsed.modifiers.join('+')} on a device surface; press the key alone`);
+    }
+    const before = this.latestIndex;
+    if (parsed.key.kind === 'named' && parsed.key.name === 'Enter') {
+      await this.command('keyboard.press', (client) => client.command.keyboard({ action: 'enter' }), operation.signal);
+    } else if (parsed.key.kind === 'char' || parsed.key.name === 'Space') {
+      const text = parsed.key.kind === 'char' ? parsed.key.char : ' ';
+      await this.command('keyboard.press', (client) => client.interactions.type({ text }), operation.signal);
+    } else {
+      throw unsupported(`agent-device cannot press ${parsed.key.name} on a device surface; only Enter, Space, and single characters reach the soft keyboard`);
+    }
+    this.markAction(before);
+  }
+
+  /** Hides the soft keyboard, so a control it covered can be reached. */
+  async dismissKeyboard(operation: OperationContext): Promise<void> {
+    const before = this.latestIndex;
+    await this.command('keyboard.dismiss', (client) => client.command.keyboard({ action: 'dismiss' }), operation.signal);
+    this.markAction(before);
+  }
+
   async back(operation: OperationContext): Promise<void> {
     const settle = operation.origin === 'test' ? {} : this.settleOptions;
     const before = this.latestIndex;

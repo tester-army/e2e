@@ -34,6 +34,11 @@ export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
     perform: (ref, action, operation) => surface.perform(ref, action, operation),
     actions: DEVICE_ACTIONS,
     tapAt: (point, operation) => surface.tapAt(point, operation),
+    keyboard: {
+      type: (text, keyboardOptions, operation) => surface.typeText(text, keyboardOptions, operation),
+      press: (key, operation) => surface.pressFocusedKey(key, operation),
+      dismiss: (operation) => surface.dismissKeyboard(operation),
+    },
     app: declaredApp(surface.options),
     // No `open`: a device app has no URL to open. Relaunching the pinned app
     // is the device's "recreate the context", so restart and reset need one.

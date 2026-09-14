@@ -80,15 +80,25 @@ verdict.
 Options: `params` (the values the instruction refers to; a `Secret` is filled
 by the runner), `timeout` (default the test timeout), `maxSteps` (default 25
 actions), `maxModelCalls` (default 25). Per-call budgets can only lower the
-configured limits. `act` takes no `schema` and no `vision` option: structured
-output is `extract({ schema })`, and pixels reach an `act` step through the
+configured limits. `act` takes no `schema`: structured output is
+`extract({ schema })`. By default pixels reach an `act` step through the
 `screenshot` and `tap_at` tools the agent offers while no secret has been
 filled. `screenshot` attaches the viewport's pixels to the result and turns
 on pixel mode, where every action result carries a fresh screenshot; `tap_at`
 taps a point in the latest screenshot (a canvas shape, a map pin, an image
 region, a control in a system sheet), hit-tested against the tree first so a
 listed control is tapped by id. A screen with nothing to tap by id opens with
-a screenshot already attached.
+a screenshot already attached. `vision: true` opens every step in pixel mode.
+On an engine with a keyboard (browser and device), `type` and `press` also
+take no target and reach whatever has focus: `tap_at` a field the tree does
+not list, then `type` without a target; a device adds `dismiss_keyboard`.
+`vision: 'only'` withholds the tree: the model sees screenshots alone and
+acts through `tap_at`, `type_at`, `press_at`, `select_at`, and `scroll` at
+points, each resolved onto the listed control underneath, and `type_at` on
+a point with nothing listed taps it and types through the keyboard. Use it for a
+canvas, a game, or a native screen without accessibility exposure; a step
+with a `Secret` in its params or on a viewport an earlier fill tainted fails
+with `POLICY_DENIED`, so sign in with the tree first.
 
 ## assert, waitFor, extract: one question
 

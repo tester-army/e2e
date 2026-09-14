@@ -31,6 +31,7 @@ const layout = (title, body) => `<!doctype html>
     <a href="/canvas">Canvas</a>
     <a href="/canvas-flow">Keypad</a>
     <a href="/canvas-wizard">Canvas wizard</a>
+    <a href="/canvas-form">Canvas form</a>
     <a href="/downloads">Downloads</a>
   </nav>
   ${body}
@@ -457,6 +458,88 @@ const pages = {
   // asking for one of four drawn shapes by colour and kind, with a drawn Next.
   // The model must read each new screen's instruction from pixels and track
   // which screen it is on; the DOM shows the picks only at the end.
+  // A drawn form: two text fields and a submit button painted on a canvas.
+  // Clicking a field focuses the canvas and makes that field active; keystrokes
+  // go to the active field through the canvas's own keydown handler. Nothing
+  // is marked up, so text can only arrive through a focused-field keyboard path.
+  '/canvas-form': () =>
+    layout(
+      'Drawn form',
+      `<h1>Drawn form</h1>
+       <p>Two fields and a button, all painted; nothing below is marked up.</p>
+       <canvas id="form" width="480" height="300" tabindex="0" style="outline:none"></canvas>
+       <output id="form-result" role="status" aria-label="Form result">unsubmitted</output>
+       <script>
+         const canvas = document.getElementById('form');
+         const context = canvas.getContext('2d');
+         const fields = [
+           { label: 'Name', value: '', x: 40, y: 60, w: 400, h: 44 },
+           { label: 'City', value: '', x: 40, y: 140, w: 400, h: 44 },
+         ];
+         const submit = { x: 40, y: 220, w: 160, h: 48 };
+         let active = -1;
+         function draw() {
+           context.fillStyle = '#f4f4f5';
+           context.fillRect(0, 0, 480, 300);
+           context.textBaseline = 'middle';
+           fields.forEach((field, index) => {
+             context.fillStyle = '#111827';
+             context.font = '16px sans-serif';
+             context.textAlign = 'left';
+             context.fillText(field.label, field.x, field.y - 14);
+             context.fillStyle = '#ffffff';
+             context.fillRect(field.x, field.y, field.w, field.h);
+             context.lineWidth = index === active ? 3 : 1;
+             context.strokeStyle = index === active ? '#2563eb' : '#9ca3af';
+             context.strokeRect(field.x, field.y, field.w, field.h);
+             context.fillStyle = '#111827';
+             context.font = '20px monospace';
+             context.fillText(field.value + (index === active ? '|' : ''), field.x + 10, field.y + field.h / 2);
+           });
+           context.fillStyle = '#15803d';
+           context.fillRect(submit.x, submit.y, submit.w, submit.h);
+           context.fillStyle = '#ffffff';
+           context.font = 'bold 18px sans-serif';
+           context.textAlign = 'center';
+           context.fillText('Submit', submit.x + submit.w / 2, submit.y + submit.h / 2);
+         }
+         function inside(box, x, y) { return x >= box.x && x <= box.x + box.w && y >= box.y && y <= box.y + box.h; }
+         function submitForm() {
+           document.getElementById('form-result').textContent =
+             'submitted: name=' + fields[0].value + ' city=' + fields[1].value;
+         }
+         draw();
+         canvas.addEventListener('click', (event) => {
+           const box = canvas.getBoundingClientRect();
+           const x = event.clientX - box.left;
+           const y = event.clientY - box.top;
+           const index = fields.findIndex((field) => inside(field, x, y));
+           if (index >= 0) { active = index; canvas.focus(); }
+           else if (inside(submit, x, y)) submitForm();
+           draw();
+         });
+         let selected = false;
+         canvas.addEventListener('keydown', (event) => {
+           if (active < 0) return;
+           event.preventDefault();
+           const field = fields[active];
+           if (event.key === 'Enter') submitForm();
+           else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a') selected = field.value !== '';
+           else if (event.metaKey || event.ctrlKey || event.altKey) return;
+           else if (event.key === 'Backspace' || event.key === 'Delete') {
+             field.value = selected ? '' : field.value.slice(0, -1);
+             selected = false;
+           } else if (event.key === 'Tab') { active = (active + 1) % fields.length; selected = false; }
+           else if (event.key.length === 1) {
+             field.value = selected ? event.key : field.value + event.key;
+             selected = false;
+           }
+           draw();
+         });
+         canvas.addEventListener('blur', () => { active = -1; draw(); });
+       </script>`,
+    ),
+
   '/canvas-wizard': () =>
     layout(
       'Drawn wizard',

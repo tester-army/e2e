@@ -137,3 +137,29 @@ describe('ScreenPresenter', () => {
     expect(presenter.update(screen('b2', next))).toContain('Screen unchanged since revision b1');
   });
 });
+
+describe('ScreenPresenter with the tree withheld', () => {
+  const pixels = { data: new Uint8Array([1, 2, 3]), mediaType: 'image/png' as const, width: 768, height: 432, scale: 0.6, maskedRegionCount: 0 };
+
+  it('opens with the location and the screenshot note, never a node listing', () => {
+    const presenter = new ScreenPresenter({ treeWithheld: true });
+    const opened = presenter.open(screen('b1', [], { path: '/canvas', pixels }));
+    expect(typeof opened).toBe('object');
+    const { text } = opened as { text: string };
+    expect(text).toBe(
+      'Current screen (revision b1, path /canvas).\n\nScreenshot attached: 768 by 432 pixels (0.6 per CSS pixel). Point coordinates (tap_at and the other _at verbs) are pixels of this image: x from the left edge, y from the top edge.',
+    );
+    expect(text).not.toContain('nodes');
+    expect(presenter.showingPixels).toBe(true);
+  });
+
+  it('renders every later screen as the lead, the revision, and a fresh screenshot, with no diff and no blame', () => {
+    const presenter = new ScreenPresenter({ treeWithheld: true });
+    presenter.open(screen('b1', [], { pixels }));
+    const next = presenter.present(screen('b2', [], { path: '/canvas', pixels }), { lead: 'tap_at (180, 36)', expectChange: true });
+    const { text } = next as { text: string };
+    expect(text.startsWith('tap_at (180, 36)\n\nScreen now (revision b2, path /canvas).')).toBe(true);
+    expect(text).not.toContain('did not change');
+    expect(text).not.toContain('unchanged');
+  });
+});

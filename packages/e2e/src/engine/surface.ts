@@ -32,7 +32,19 @@ export type { EngineObserveOptions, EngineState, VideoSegment } from './index.ts
  * verb of its own: it rides `tap` when the located point sits on a node the
  * tree lists, and `tapAt` when it does not.
  */
-export type GrammarVerb = 'tap' | 'type' | 'typeSecret' | 'press' | 'select' | 'scroll' | 'navigate' | 'tapAt';
+export type GrammarVerb =
+  | 'tap'
+  | 'type'
+  | 'typeSecret'
+  | 'press'
+  | 'select'
+  | 'scroll'
+  | 'navigate'
+  | 'tapAt'
+  /** Keyboard input to whatever holds focus: `type` and `press` without a target. */
+  | 'typeText'
+  | 'pressKey'
+  | 'dismissKeyboard';
 
 export interface Observation {
   /** Where the surface was when captured, when the platform has a location. */
@@ -107,6 +119,12 @@ export interface TargetSession {
   ): Promise<void>;
   /** Taps one viewport point, in CSS pixels, with no node behind it. */
   tapAt(point: ViewportPoint, operation: OperationContext): Promise<void>;
+  /** Input to whatever holds focus; each member fails with UNSUPPORTED_CAPABILITY when the engine lacks it. */
+  readonly keyboard: {
+    type(text: string, options: { readonly replace: boolean }, operation: OperationContext): Promise<void>;
+    press(key: string, operation: OperationContext): Promise<void>;
+    dismiss(operation: OperationContext): Promise<void>;
+  };
   readonly app: SessionApp;
   readonly artifacts: SessionArtifacts;
   /** Captures immutable app state for a session envelope. */

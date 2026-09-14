@@ -96,6 +96,11 @@ function declaredVerbs(engine: EngineHandle | undefined): ReadonlySet<GrammarVer
     for (const verb of VERBS_BY_ACTION[kind] ?? []) verbs.add(verb);
   }
   if (engine?.tapAt !== undefined) verbs.add('tapAt');
+  if (engine?.keyboard !== undefined) {
+    verbs.add('typeText');
+    verbs.add('pressKey');
+    if (engine.keyboard.dismiss !== undefined) verbs.add('dismissKeyboard');
+  }
   if (engine?.session?.open !== undefined) verbs.add('navigate');
   return verbs;
 }
@@ -265,6 +270,14 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
       await performRaw(target, { kind: 'swipe', direction, ...(momentum === undefined ? {} : { momentum }) }, operation);
     },
     tapAt: guard('point taps', engine?.tapAt),
+    keyboard: {
+      type: guard('keyboard input', engine?.keyboard?.type),
+      press: (key, operation) => {
+        requireKey(key);
+        return guard('keyboard input', engine?.keyboard?.press)(key, operation);
+      },
+      dismiss: guard('keyboard dismissal', engine?.keyboard?.dismiss),
+    },
     // The engine outlives the attempt; only the per-attempt isolation ends
     // here, exactly once. dispose() belongs to the worker.
     close: guard('attempt end', async (operation) => {

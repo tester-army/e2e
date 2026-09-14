@@ -23,6 +23,7 @@ const KNOWN_KEYS = [
   'perform',
   'actions',
   'tapAt',
+  'keyboard',
   'fixtures',
   'state',
   'artifacts',
@@ -37,6 +38,7 @@ const KNOWN_KEYS = [
 
 /** Hooks of the nested manifests, closed like the top level. */
 const NESTED_HOOKS = {
+  keyboard: ['type', 'press', 'dismiss'],
   state: ['capture', 'restore'],
   artifacts: ['screenshot', 'startTrace', 'stopTrace', 'startVideo', 'stopVideo'],
   session: ['open', 'back', 'restart', 'reset'],
@@ -216,6 +218,9 @@ export function defineEngine(spec: Engine): EngineHandle {
     }
     capabilities.add('pointer');
   }
+  if (spec.keyboard !== undefined && !capabilities.has('observation')) {
+    throw invalid(name, 'declares keyboard without observe: the focused field is read off the observation');
+  }
 
   const handle: Record<string, unknown> = obj({
     name,
@@ -253,6 +258,10 @@ export function defineEngine(spec: Engine): EngineHandle {
         ]),
       ),
     );
+  }
+  if (spec.keyboard !== undefined) {
+    handle['keyboard'] = hookManifest(name, 'keyboard', spec.keyboard, ['type', 'press']);
+    capabilities.add('keyboard');
   }
   if (spec.state !== undefined) {
     handle['state'] = hookManifest(name, 'state', spec.state, ['capture', 'restore']);

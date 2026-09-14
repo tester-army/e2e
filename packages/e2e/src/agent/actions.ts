@@ -30,6 +30,10 @@ export type RecordableAction =
   | ({ readonly name: 'select'; readonly node: SemanticNode; readonly value: string } & Placement)
   | ({ readonly name: 'scroll'; readonly direction: ScrollDirection; readonly node?: SemanticNode } & Placement)
   | { readonly name: 'navigate'; readonly url: string }
+  /** Keyboard input to whatever held focus, with no node resolved. */
+  | { readonly name: 'typeText'; readonly value: string; readonly replace: boolean }
+  | { readonly name: 'pressKey'; readonly key: string }
+  | { readonly name: 'dismissKeyboard' }
   /**
    * A tap on a bare viewport point that no listed control contained, with
    * the viewport it was placed in and, when one is listed, the node whose
@@ -158,6 +162,12 @@ export function describeAction(
         return target === undefined ? `scroll ${action.direction}` : `scroll ${action.direction} on ${where}`;
       case 'navigate':
         return `navigate to ${safe(action.url)}`;
+      case 'typeText':
+        return `type ${safe(action.value)} into the focused field${action.replace ? ', replacing its value' : ''}`;
+      case 'pressKey':
+        return `press ${safe(action.key)} on the focused field`;
+      case 'dismissKeyboard':
+        return 'dismiss the keyboard';
       case 'tapAt': {
         const at = `tap the point (${String(action.point.x)}, ${String(action.point.y)})`;
         return target === undefined ? at : `${at} on ${where}`;

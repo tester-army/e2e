@@ -33,10 +33,19 @@ describe('validateActOptions', () => {
     }
   });
 
-  it('keeps naming schema and vision as capabilities act does not have', () => {
+  it('keeps naming schema as a capability act does not have', () => {
     expect(() => validateActOptions({ schema: {} } as never, 0)).toThrow(
       expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY', message: expect.stringMatching(/options\.schema/) }),
     );
-    expect(() => validateActOptions({ vision: true } as never, 0)).toThrow(ConfigurationError);
+    expect(() => validateActOptions({ schema: {} } as never, 0)).toThrow(ConfigurationError);
+  });
+
+  it('accepts every vision mode and rejects a value outside the closed set', () => {
+    for (const vision of [true, false, 'only'] as const) {
+      expect(() => validateActOptions({ vision }, 0)).not.toThrow();
+    }
+    expect(() => validateActOptions({ vision: 'always' } as never, 0)).toThrow(
+      expect.objectContaining({ code: 'INVALID_ARGUMENT', message: "vision must be true, false, or 'only'" }),
+    );
   });
 });

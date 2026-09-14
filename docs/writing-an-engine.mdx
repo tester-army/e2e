@@ -124,6 +124,7 @@ never silently.
 | `perform(ref, action, context)` + `actions` | `actions` (needs `observe`) | Node-targeted actions: `tap`, `type`, `press`, `select`, `scroll`, and the `Locator` action set, each for a kind listed in `actions`; `type_secret` when the step declares credentials; `screen.swipe` and `scrollUntilVisible` when `swipe` is listed |
 | `locate(expression, context)` | `location` (needs `observe`) | `screen`, `Locator`, `expect(locator)` |
 | `tapAt(point, context)` | `pointer` (needs `observe`) | the agent's `tap_at` verb when the point lands on nothing the tree lists |
+| `keyboard.{type,press,dismiss?}` | `keyboard` (needs `observe`) | `type` and `press` without a target, the keyboard fallback of `type_at` and `press_at`, and `dismiss_keyboard`: input to whatever holds focus, for a field the tree does not list |
 | `state.{capture,restore}` | `state` | `test.setup` and the `session` option |
 | `artifacts.{screenshot,startTrace?,stopTrace?,startVideo?,stopVideo?}` | `artifacts` | Screenshots while pixels are allowed (`app.screenshot()` raises `POLICY_DENIED` after a secret fill); traces when the trace hooks exist; video and `--video` when both `startVideo` and `stopVideo` exist |
 | `app.{url?,environment?,identity?,command?,readyUrl?,services?}` | | data only: declares the app under test, its site, cache and session identity, the app process ([reference](/reference/config#the-app-under-test)) |
@@ -221,6 +222,12 @@ model names a point in it with `tap_at`, and the harness hands the point to
 out still gets tapped through the grammar. Bare points replay as recorded on a
 viewport of the same size, and the recorded end state decides whether the
 replay passes on its own; nothing else in the harness changes.
+
+Add `keyboard` and a drawn field takes text too: the agent taps it to give it
+focus, then types without a target. Make `keyboard.type` refuse with
+`NOT_ACTIONABLE` when nothing editable has focus, so keystrokes are never
+lost into the document body, and leave `dismiss` undefined on a platform with
+no on-screen keyboard.
 
 ### State is a credential
 

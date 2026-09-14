@@ -127,6 +127,12 @@ function planCall(action: RecordedAction, actions: ExecutorActions): PlannedCall
           };
     case 'navigate':
       return { kind: 'free', invoke: () => actions.navigate(action.url) };
+    case 'typeText':
+      return { kind: 'free', invoke: () => actions.typeText(action.value, { replace: action.replace }) };
+    case 'pressKey':
+      return { kind: 'free', invoke: () => actions.pressKey(action.key) };
+    case 'dismissKeyboard':
+      return { kind: 'free', invoke: () => actions.dismissKeyboard() };
     case 'tapAt':
       return action.within === undefined
         ? { kind: 'point', point: action.point, viewport: action.viewport }

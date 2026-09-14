@@ -20,12 +20,13 @@ import { containerKey, describeAction, type RecordableAction } from './actions.t
 import { describePosition } from '../cache/relocate.ts';
 import { isDerivedValue } from './derived.ts';
 import { AgentError } from './error.ts';
-import type { ExecutorActions, ExecutorTarget, PointTapResult } from './executor.ts';
+import type { ExecutorActions, ExecutorTarget, PointHit, PointTapResult } from './executor.ts';
 import type { AgentContext } from './invocation.ts';
 import type { ObservationFeed } from './observation-feed.ts';
 import type { OperationQueue } from './operation-queue.ts';
 import { instrumentPhase, recordPolicyEvent } from './phases.ts';
-import { describePointTap, hitTest } from './point-tap.ts';
+import { describePointHit, describePointTap, hitTest, type PointProse } from './point-tap.ts';
+import type { AgentObservation } from './observation.ts';
 import { authorizeSecretFill } from './secrets.ts';
 import type { StepAccounting } from './step-accounting.ts';
 import type { StepTraceSession } from './step-cache.ts';
@@ -91,7 +92,65 @@ export class ActionDispatcher {
       scroll: (direction, target) => this.scroll(direction, target),
       navigate: (url) => this.navigate(url),
       tapAt: (point) => this.tapAt(point),
+      hitTest: (point) => this.hitTest(point),
+      typeText: (value, typing) => this.typeText(value, typing?.replace === true),
+      pressKey: (key) => this.pressKey(key),
+      dismissKeyboard: () => this.dismissKeyboard(),
     };
+  }
+
+  /**
+   * Keyboard input to whatever holds focus. No node is resolved, so no
+   * descriptor is recorded: the trace keeps the value and replays it as
+   * given after the actions that gave the field focus. An engine that finds
+   * nothing editable focused refuses (`NOT_ACTIONABLE`), which reaches the
+   * executor as an ordinary failed action to read and work around.
+   */
+  private typeText(value: string, replace: boolean): Promise<void> {
+    if (typeof value !== 'string') {
+      throw new TestError('INVALID_ARGUMENT', 'typeText value must be a string');
+    }
+    return this.runAction('typeText', async () => {
+      await this.session.keyboard.type(value, { replace }, this.accounting.actionOperation());
+      return { name: 'typeText', value, replace };
+    });
+  }
+
+  private pressKey(key: string): Promise<void> {
+    requireKey(key);
+    return this.runAction('pressKey', async () => {
+      await this.session.keyboard.press(key, this.accounting.actionOperation());
+      return { name: 'pressKey', key };
+    });
+  }
+
+  private dismissKeyboard(): Promise<void> {
+    return this.runAction('dismissKeyboard', async () => {
+      await this.session.keyboard.dismiss(this.accounting.actionOperation());
+      return { name: 'dismissKeyboard' };
+    });
+  }
+
+  /**
+   * What the newest observation lists at a point, resolved in queue order so
+   * a batched turn reads each point against the screen its earlier actions
+   * left. Costs no action: the verb the executor calls with the result does.
+   */
+  hitTest(point: ViewportPoint): Promise<PointHit> {
+    requirePoint(point, 'hitTest');
+    return this.queue.run(() => {
+      const observation = this.feed.requireLatest();
+      const clamped = clampToViewport(point, observation.viewport);
+      const hit = hitTest(observation, clamped);
+      // Only an engine that acts on nodes can act on the control; the point stays for tapAt.
+      const control = this.verbs.has('tap') ? hit.control : undefined;
+      return Promise.resolve({
+        point: clamped,
+        ...(control === undefined ? {} : { control: { id: control.ref.id } }),
+        ...(hit.under === undefined ? {} : { under: { id: hit.under.ref.id } }),
+        summary: describePointHit({ point: clamped, control, under: hit.under, ...this.prose(observation) }),
+      });
+    });
   }
 
   /** The tap verb: one committed tap on a resolved node. */
@@ -109,16 +168,14 @@ export class ActionDispatcher {
    * lands on the edge rather than failing the engine.
    */
   tapAt(point: ViewportPoint): Promise<PointTapResult> {
-    if (!Number.isFinite(point?.x) || !Number.isFinite(point.y)) {
-      throw new TestError('INVALID_ARGUMENT', 'tapAt requires a point { x, y } of finite numbers');
-    }
+    requirePoint(point, 'tapAt');
     return this.queue.run(async () => {
       const observation = this.feed.requireLatest();
       const clamped = clampToViewport(point, observation.viewport);
       const hit = hitTest(observation, clamped);
       // An engine without node taps gets the bare point even under a listed control.
       const control = this.verbs.has('tap') ? hit.control : undefined;
-      const summary = describePointTap({ point: clamped, control, under: hit.under, observation });
+      const summary = describePointTap({ point: clamped, control, under: hit.under, ...this.prose(observation) });
       if (control !== undefined) {
         const target = { id: control.ref.id };
         await this.runActionNow('tap', this.targeted(target, (node) => this.performTap(node)));
@@ -170,6 +227,11 @@ export class ActionDispatcher {
 
   private get session() {
     return this.runtime.engine.session;
+  }
+
+  /** How point results name nodes: never by a line or id the model was not shown. */
+  private prose(observation: AgentObservation): PointProse {
+    return { observation, treeWithheld: this.feed.treeWithheld, redact: this.runtime.redact };
   }
 
   private get verbs() {
@@ -314,7 +376,10 @@ export class ActionDispatcher {
     // A typed value the step derived at run time is this run's data, not the
     // flow's: it is recorded as a gap so replay hands over before it rather
     // than typing a value the app may not issue again.
-    if (action.name === 'type' && isDerivedValue(action.value, this.options.instruction, this.options.params)) {
+    if (
+      (action.name === 'type' || action.name === 'typeText') &&
+      isDerivedValue(action.value, this.options.instruction, this.options.params)
+    ) {
       trace.recordGap('type (run-time value)');
       return;
     }
@@ -372,5 +437,11 @@ export class ActionDispatcher {
         }
       }
     };
+  }
+}
+
+function requirePoint(point: ViewportPoint, verb: string): void {
+  if (!Number.isFinite(point?.x) || !Number.isFinite(point.y)) {
+    throw new TestError('INVALID_ARGUMENT', `${verb} requires a point { x, y } of finite numbers`);
   }
 }

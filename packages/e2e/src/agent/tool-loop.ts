@@ -108,9 +108,11 @@ export interface ToolLoopExecutorOptions {
   readonly model?: SdkLanguageModel;
   /**
    * Executor-specific system guidance (what the tools are, how to address
-   * targets). The chassis appends the project context and the verdict rules.
+   * targets), fixed or built per step from its context (a vocabulary that
+   * differs by `vision`). The chassis appends the project context and the
+   * verdict rules.
    */
-  readonly system?: string;
+  readonly system?: string | ((context: StepExecutorContext) => string);
   /** Builds the step's tool vocabulary; `complete_step` is added by the chassis. */
   readonly tools: (context: StepExecutorContext, helpers: ToolLoopHelpers) => ToolSet;
   /**
@@ -547,8 +549,10 @@ class LoopRun {
 
   private instructions(): string {
     const parts: string[] = [];
-    if (this.options.system !== undefined && this.options.system.trim() !== '') {
-      parts.push(this.options.system);
+    const system =
+      typeof this.options.system === 'function' ? this.options.system(this.context) : this.options.system;
+    if (system !== undefined && system.trim() !== '') {
+      parts.push(system);
     }
     const project = this.context.agentContext;
     if (project !== undefined && project.trim() !== '') {

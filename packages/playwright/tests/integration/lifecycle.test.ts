@@ -150,6 +150,7 @@ describe('playwright engine lifecycle', () => {
     expect([...engine.capabilities].toSorted()).toEqual([
       'actions',
       'artifacts',
+      'keyboard',
       'location',
       'observation',
       'pointer',

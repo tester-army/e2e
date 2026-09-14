@@ -164,6 +164,12 @@ export class TraceRecorder {
         };
       case 'navigate':
         return { name: 'navigate', summary, url: this.verbatim(action.url) };
+      case 'typeText':
+        return { name: 'typeText', summary, value: this.verbatim(action.value), replace: action.replace };
+      case 'pressKey':
+        return { name: 'pressKey', summary, key: this.verbatim(action.key) };
+      case 'dismissKeyboard':
+        return { name: 'dismissKeyboard', summary };
       case 'tapAt': {
         // The point replays as given on a same-sized viewport. When a listed
         // node with a durable descriptor contained it, its place inside that

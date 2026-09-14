@@ -45,6 +45,10 @@ function makeHost(options: {
       await act('tapAt', point);
       return { point, summary: 'scripted' };
     },
+    hitTest: (point) => Promise.resolve({ point, summary: 'scripted' }),
+    typeText: (value, typing) => act('typeText', { value, replace: typing?.replace === true }),
+    pressKey: (key) => act('pressKey', key),
+    dismissKeyboard: () => act('dismissKeyboard'),
   };
   const host = {
     calls,

@@ -91,6 +91,19 @@ describe('defineEngine', () => {
     expect([...handle.capabilities].toSorted()).toEqual(['observation', 'pointer']);
   });
 
+  it('computes the keyboard capability from the keyboard hooks, which need observe and both type and press', () => {
+    const keyboard = { type: async () => undefined, press: async () => undefined };
+    const handle = defineEngine(observingEngine({ keyboard }));
+    expect([...handle.capabilities].toSorted()).toEqual(['keyboard', 'observation']);
+    expect(handle.keyboard?.dismiss).toBeUndefined();
+    const bare = { name: 'toy', version: '1', spiVersion: 1 as const };
+    expect(() => defineEngine({ ...bare, keyboard })).toThrow(/keyboard without observe/);
+    expect(() => defineEngine(observingEngine({ keyboard: { type: keyboard.type } as never }))).toThrow(/keyboard\.press/);
+    expect(() => defineEngine(observingEngine({ keyboard: { ...keyboard, hide: keyboard.press } as never }))).toThrow(
+      /keyboard has unknown key "hide"/,
+    );
+  });
+
   it('rejects unknown keys, pointing tools at the agent', () => {
     expect(() =>
       defineEngine({ ...observingEngine(), tools: [] } as unknown as Engine),
@@ -331,6 +344,9 @@ describe('createEngineSession', () => {
     // Kinds without a grammar verb unlock nothing for the agent.
     expect(verbs({ actions: ['check', 'hover', 'dragTo'], perform })).toEqual([]);
     expect(verbs({ tapAt: async () => undefined })).toEqual(['tapAt']);
+    const keyboard = { type: async () => undefined, press: async () => undefined };
+    expect(verbs({ keyboard })).toEqual(['pressKey', 'typeText']);
+    expect(verbs({ keyboard: { ...keyboard, dismiss: async () => undefined } })).toEqual(['dismissKeyboard', 'pressKey', 'typeText']);
     expect(verbs({ session: { open: async () => undefined } })).toEqual(['navigate']);
     expect(verbs({ session: { back: async () => undefined, restart: async () => undefined } })).toEqual([]);
   });

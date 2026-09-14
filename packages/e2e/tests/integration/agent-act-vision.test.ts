@@ -124,7 +124,7 @@ describe('agent.act pixel verbs', () => {
     // The screenshot result is content: the screen text plus an image file part.
     expect(second!.lastToolResult).toContain('"type":"file"');
     expect(second!.lastToolResult).toContain('"mediaType":"image/png"');
-    expect(second!.lastToolResult).toContain('tap_at takes coordinates in this image');
+    expect(second!.lastToolResult).toContain('Point coordinates (tap_at and the other _at verbs) are pixels of this image');
     // In pixel mode the tap result carries the changes and a fresh screenshot.
     expect(third!.lastToolResult).toContain('Tapped the point (300, 60); no listed control is there');
     expect(third!.lastToolResult).toMatch(/changed #\S+ status \\"Hit\\" text=\\"red\\"/);

@@ -125,7 +125,7 @@ async function screenRootOf(h: Harness): Promise<SemanticNode> {
 describe('manifest', () => {
   it('declares observation, actions, location, artifacts, the device fixture, and session hooks by option', () => {
     const pinned = harness().engine;
-    expect([...pinned.capabilities].toSorted()).toEqual(['actions', 'artifacts', 'device', 'location', 'observation', 'pointer']);
+    expect([...pinned.capabilities].toSorted()).toEqual(['actions', 'artifacts', 'device', 'keyboard', 'location', 'observation', 'pointer']);
     expect(pinned.name).toBe('agent-device');
     expect(pinned.version).not.toBe('unknown');
     expect(Object.keys(pinned.app!)).toEqual(['identity']);

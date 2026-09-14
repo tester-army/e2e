@@ -25,7 +25,7 @@ Validation fails with `INVALID_CONFIG` for:
 - a missing or empty `version`, or a `spiVersion` other than `1`;
 - an unknown top-level key on an object literal (a class instance's own
   fields are not checked);
-- `perform`, `locate`, or `tapAt` without `observe`;
+- `perform`, `locate`, `tapAt`, or `keyboard` without `observe`;
 - `perform` without `actions` or the reverse; an `actions` list that is
   empty, repeats a kind, or names one outside `LOCATOR_ACTION_KINDS`;
 - a `state`, `artifacts`, or `session` manifest with an unknown key or a
@@ -117,6 +117,8 @@ export interface Engine {
    * given; the harness has already clamped it to the viewport.
    */
   tapAt?(point: ViewportPoint, context: OperationContext): Promise<void>;
+  /** capability: keyboard - requires observation. Input to whatever holds focus; see `EngineKeyboard`. */
+  readonly keyboard?: EngineKeyboard;
   /**
    * Named deterministic surfaces this engine contributes to TestFixtures
    * (a device fixture, a document fixture - anything). Keys become fixture and
@@ -195,6 +197,7 @@ export interface OperationContext {
 | `perform` + `actions` | `actions` | `observe` | the agent's grammar verbs (`tap`, `type`, `press`, `select`, `type_secret`, `scroll`, and `tap_at` when the point lands on a listed node) and the `screen`/`Locator` action set with platform actionability checks, each only for a kind listed in `actions` |
 | `locate` | `location` | `observe` | `screen`, `Locator`, `expect(locator)` |
 | `tapAt` | `pointer` | `observe` | the agent's `tap_at` verb when the point lands on nothing the tree lists: a tap at one viewport point in the CSS pixels of `SemanticNode.rect`, with no node behind it |
+| `keyboard.{type,press,dismiss?}` | `keyboard` | `observe` | the agent's `type` and `press` without a target, the keyboard fallback of `type_at` and `press_at` on a point the tree lists nothing at, and `dismiss_keyboard` when `dismiss` exists: input to whatever holds focus, for a field drawn on a canvas or flattened out of a platform's tree |
 | `fixtures.<name>` | `<name>` | - | a contributed fixture; `requires: ['<name>']` gates at selection |
 | `state` | `state` | - | `test.setup` sessions and the `session:` option |
 | `artifacts` | `artifacts` | - | `app.screenshot()`, assertion evidence, `artifacts: ['trace']`, `artifacts: ['video']` and `--video` |
@@ -224,9 +227,38 @@ export type EngineCapability =
   | 'actions'
   | 'location'
   | 'pointer'
+  | 'keyboard'
   | 'state'
   | 'artifacts'
   | (string & {});
+
+/**
+ * capability: keyboard - requires observation. Input to whatever holds focus,
+ * with no node behind it: the agent's `type` and `press` without a target, and
+ * the fallback of its point-addressed `type_at` and `press_at` when the point
+ * lands on nothing the tree lists (a field drawn on a canvas, an input a
+ * platform flattens out of its accessibility tree). Focus is the app's: the
+ * harness tapped first, or the model said the field already has it.
+ */
+export interface EngineKeyboard {
+  /**
+   * Types `text` into the focused field, through the platform's keyboard or
+   * text-input path. With `replace`, clears the field first (select-all and
+   * delete on a keyboard surface; the platform's clear on a device). Throw
+   * `NOT_ACTIONABLE` when nothing that accepts text has focus, so the
+   * keystrokes are never silently discarded into the document body.
+   */
+  type(text: string, options: { readonly replace: boolean }, context: OperationContext): Promise<void>;
+  /**
+   * Sends one key of the contract grammar (`Enter`, `Escape`, `Tab`,
+   * `Shift+Tab`, a character) to whatever holds focus. The harness has
+   * already validated the key's shape; refuse with `UNSUPPORTED_CAPABILITY`
+   * a key the surface cannot deliver.
+   */
+  press(key: string, context: OperationContext): Promise<void>;
+  /** Hides an on-screen keyboard. Platforms without one leave it undefined. */
+  dismiss?(context: OperationContext): Promise<void>;
+}
 ```
 
 ## Lifecycle

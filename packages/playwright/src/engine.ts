@@ -75,6 +75,10 @@ export function playwright(options: PlaywrightOptions = {}): EngineHandle {
     // A browser honors every action kind of the contract; `actions.ts` dispatches each.
     actions: LOCATOR_ACTION_KINDS,
     tapAt: (point, operation) => surface.tapAt(point, operation),
+    keyboard: {
+      type: (text, keyboardOptions, operation) => surface.typeText(text, keyboardOptions, operation),
+      press: (key, operation) => surface.pressKey(key, operation),
+    },
     app: declaredApp(options),
     session: {
       open: (url, operation) => surface.open(url, operation),

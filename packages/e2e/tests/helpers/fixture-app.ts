@@ -7,9 +7,40 @@ import type { AddressInfo } from 'node:net';
 function canvasMap(options: { readonly reset: boolean }): string {
   const button = options.reset
     ? `  <button id="reset" style="position:fixed;left:0;top:260px;width:100px;height:30px">Reset</button>
+  <input id="note" aria-label="Note" style="position:fixed;left:0;top:300px;width:200px;height:30px;margin:0;padding:0;border:1px solid #000">
+  <div id="pad" role="application" aria-label="Pad" tabindex="0" style="position:fixed;left:0;top:380px;width:200px;height:30px;border:1px solid #000"></div>
+  <select id="tint" aria-label="Tint" style="position:fixed;left:0;top:340px;width:200px;height:30px;margin:0">
+    <option>plain</option><option>warm</option><option>cool</option>
+  </select>
   <script>
     document.getElementById('reset').addEventListener('click', () => {
       document.getElementById('hit').textContent = 'reset';
+    });
+    document.getElementById('note').addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') document.getElementById('hit').textContent = 'note: ' + event.target.value;
+    });
+    document.getElementById('tint').addEventListener('change', (event) => {
+      document.getElementById('hit').textContent = 'tint: ' + event.target.value;
+    });
+    // A listed but unfillable widget: focusable, with its own key handling.
+    let padText = '';
+    document.getElementById('pad').addEventListener('keydown', (event) => {
+      event.preventDefault();
+      if (event.key === 'Enter') document.getElementById('hit').textContent = 'pad: ' + padText;
+      else if (event.key.length === 1) padText += event.key;
+    });
+    // A drawn field: the canvas takes focus on click and collects keystrokes
+    // itself, the way a canvas-rendered text input does. Nothing in the tree
+    // is editable, so only the keyboard path can reach it.
+    const map = document.getElementById('map');
+    map.tabIndex = 0;
+    map.contentEditable = 'true';
+    map.style.outline = 'none';
+    let drawn = '';
+    map.addEventListener('keydown', (event) => {
+      event.preventDefault();
+      if (event.key === 'Enter') document.getElementById('hit').textContent = 'drawn: ' + drawn;
+      else if (event.key.length === 1) drawn += event.key;
     });
   </script>
 `

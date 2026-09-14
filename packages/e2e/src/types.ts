@@ -123,11 +123,23 @@ export type AgentParams = Readonly<Record<string, AgentParam>>;
  * away rather than failing the call when it cannot be proven redacted. `'only'`
  * has nothing to degrade to, so it fails with `POLICY_DENIED` instead of
  * answering the wrong question from the tree.
+ *
+ * On `act` the same three values shape the executor's view. `true` opens the
+ * step in pixel mode: the first screen and every action result carry a
+ * screenshot next to the tree. `'only'` withholds the tree from the executor
+ * for the whole step and gives the model a point-addressed vocabulary
+ * (`tap_at`, `type_at`, `press_at`, `select_at`, `scroll`); it refuses a step
+ * that declares a secret, because a fill would taint the only evidence.
  */
 export type VisionMode = boolean | 'only';
 
 export interface VisionOption {
-  /** What the judge is shown; defaults to the agent's `vision`, `false`. */
+  /**
+   * What the model is shown; defaults to the agent's `vision`, `false`. On a
+   * judgment: the tree, the tree with a masked screenshot, or the screenshot
+   * alone. On `act`: the tree with pixel tools on demand, pixel mode from the
+   * first turn, or pixels alone with a point-addressed vocabulary.
+   */
   vision?: VisionMode;
 }
 
@@ -163,11 +175,11 @@ export interface ExtractOptions<Schema extends StandardSchemaV1> extends VisionO
 }
 
 /**
- * One `act` call: the values the instruction refers to and the step's
- * budgets. Structured output and vision are judgment-tier options:
- * `extract` takes `schema`; `assert`, `waitFor`, and `extract` take `vision`.
+ * One `act` call: the values the instruction refers to, the step's budgets,
+ * and what the executor sees. Structured output is a judgment-tier option:
+ * `extract` takes `schema`.
  */
-export interface ActOptions extends AgentOption {
+export interface ActOptions extends VisionOption, AgentOption {
   /**
    * JSON-safe values the instruction refers to, at most 64 KiB and 32 levels
    * deep. A `Secret` reaches the model by name only; the runner fills it.

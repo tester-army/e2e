@@ -12,6 +12,7 @@
 import type { StepResult, Tool, ToolSet } from 'ai';
 import { z } from 'zod';
 import type { AgentErrorCode } from '../types.ts';
+import { AgentError } from './error.ts';
 import { isRuntimeHardStop, BLOCKABLE_CODES, type StepExecutorContext, type StepVerdict } from './executor.ts';
 import { cacheTokenFields, readCost } from './model/sdk.ts';
 import { OperationQueue } from './operation-queue.ts';
@@ -211,6 +212,10 @@ export const GRAMMAR_TOOL_NAMES: ReadonlySet<string> = new Set([
   'navigate',
   'screenshot',
   'tap_at',
+  'type_at',
+  'press_at',
+  'select_at',
+  'dismiss_keyboard',
 ]);
 
 /**
@@ -227,6 +232,7 @@ export function createGrammarTools(
   context: StepExecutorContext,
   options: GrammarToolOptions = {},
 ): ToolSet {
+  if (context.vision === 'only') return createPixelTools(context, options);
   const guard = options.guard ?? ((body) => body());
   const screen: ScreenPresenter = options.screen ?? new ScreenPresenter();
   const { verbs } = context.target;
@@ -292,20 +298,52 @@ export function createGrammarTools(
       execute: ({ target: id }) => acting(`Tapped #${id}.`, () => context.actions.tap({ id })),
     });
   }
-  if (verbs.has('type')) {
+  // Keyboard input to the focused field is offered next to the node-targeted
+  // verbs when the engine has a keyboard: it is how a field the tree does not
+  // list (drawn, or flattened out of a platform's tree) gets its text after a
+  // tap_at gave it focus, and how a key reaches a screen with no node to aim at.
+  const focused = verbs.has('typeText');
+  if (verbs.has('type') || focused) {
     tools['type'] = screenTool({
-      description: 'Type a plain-text value into one input node, replacing its current value. Several fields can be typed in one turn.',
-      inputSchema: z.object({ target, value: z.string() }),
-      execute: ({ target: id, value }) =>
-        acting(`Typed into #${id}.`, () => context.actions.type({ id }, value)),
+      description: focused
+        ? 'Type a plain-text value into one input node, or into whatever has focus when target is omitted. With target the value replaces the node\'s value. After tap_at on a field the screen does not list, call type with NO target (not the document or a container id): the value is inserted at the caret of the focused field; set replace to clear it first. Several fields can be typed in one turn.'
+        : 'Type a plain-text value into one input node, replacing its current value. Several fields can be typed in one turn.',
+      inputSchema: z.object({
+        target: verbs.has('type') && focused ? target.optional() : verbs.has('type') ? target : z.undefined().optional(),
+        value: z.string(),
+        ...(focused ? { replace: z.boolean().optional().describe('Without target: select all and delete before typing, for a field that visibly holds text you must remove; default false. Leave it off for an empty field.') } : {}),
+      }),
+      execute: ({ target: id, value, ...rest }) =>
+        id === undefined
+          ? acting('Typed into the focused field.', () =>
+              context.actions.typeText(value, { replace: (rest as { replace?: boolean }).replace === true }),
+            )
+          : acting(`Typed into #${id}.`, () => typeIntoNode(context, { id }, value, `#${id}`)),
     });
   }
-  if (verbs.has('press')) {
+  if (verbs.has('press') || verbs.has('pressKey')) {
+    const both = verbs.has('press') && verbs.has('pressKey');
     tools['press'] = screenTool({
-      description: 'Send one key (e.g. "Enter", "Escape", "Tab") to one node.',
-      inputSchema: z.object({ target, key: z.string().min(1).max(64) }),
+      description: both
+        ? 'Send one key (e.g. "Enter", "Escape", "Tab") to one node, or to whatever has focus when target is omitted.'
+        : verbs.has('press')
+          ? 'Send one key (e.g. "Enter", "Escape", "Tab") to one node.'
+          : 'Send one key (e.g. "Enter", "Escape", "Tab") to whatever has focus.',
+      inputSchema: z.object({
+        target: both ? target.optional() : verbs.has('press') ? target : z.undefined().optional(),
+        key: z.string().min(1).max(64),
+      }),
       execute: ({ target: id, key }) =>
-        acting(`Pressed ${key} on #${id}.`, () => context.actions.press({ id }, key), !movesFocusOnly(key)),
+        id === undefined
+          ? acting(`Pressed ${key} on the focused field.`, () => context.actions.pressKey(key), !movesFocusOnly(key))
+          : acting(`Pressed ${key} on #${id}.`, () => context.actions.press({ id }, key), !movesFocusOnly(key)),
+    });
+  }
+  if (verbs.has('dismissKeyboard')) {
+    tools['dismiss_keyboard'] = screenTool({
+      description: 'Hide the on-screen keyboard when it covers what you need to reach.',
+      inputSchema: z.object({}),
+      execute: () => acting('Dismissed the keyboard.', () => context.actions.dismissKeyboard(), false),
     });
   }
   if (verbs.has('select')) {
@@ -408,6 +446,266 @@ export function createGrammarTools(
     });
   }
   return tools;
+}
+
+/**
+ * The pixels-only vocabulary of a `vision: 'only'` step: every verb is
+ * addressed by a point in the latest screenshot, because the model holds no
+ * tree and no ids. A point is hit-tested against the tree the harness still
+ * holds, so a control the tree lists is acted on by id underneath: policed,
+ * recorded with a durable descriptor, and replayed like any other action. A
+ * point on nothing listed taps as a bare point and cannot be typed into.
+ * No `screenshot` verb: every look carries one. No `type_secret`: the
+ * dispatch refused a secret before the step opened.
+ */
+function createPixelTools(context: StepExecutorContext, options: GrammarToolOptions): ToolSet {
+  const guard = options.guard ?? ((body) => body());
+  const screen: ScreenPresenter = options.screen ?? new ScreenPresenter({ treeWithheld: true });
+  const { verbs } = context.target;
+  const queue = new OperationQueue();
+  const inOrder = <T>(body: () => Promise<T>): Promise<T> => queue.run(body);
+
+  const present = async (lead: string): Promise<ScreenOutput> =>
+    screen.present(await context.observe(), { lead, expectChange: false });
+
+  /** Scales a point the model read off the latest screenshot into viewport pixels. */
+  const viewportPoint = (x: number, y: number) => {
+    const shot = screen.latestScreenshot;
+    if (shot === undefined) {
+      throw new AgentError('LOCATOR_NOT_FOUND', 'no screenshot has been shown in this step yet; observe first');
+    }
+    return imagePointToViewport({ x, y }, shot.pixels, shot.viewport);
+  };
+
+  /** Performs one action and reads its result; a failure returns the screen so the model can react at once. */
+  const acting = (description: string, action: () => Promise<string | void>): Promise<ScreenOutput> =>
+    inOrder(() =>
+      guard(async () => {
+        let lead = description;
+        try {
+          lead = (await action()) ?? description;
+        } catch (cause) {
+          if (isRuntimeHardStop(cause)) throw cause;
+          const message = cause instanceof Error ? cause.message : String(cause);
+          return present(`${description} failed: ${message}`);
+        }
+        return present(lead);
+      }),
+    );
+
+  /**
+   * The listed control at a point, for a verb that needs one (`type`,
+   * `press`, `select` act on a node). Nothing listed there is an ordinary
+   * action failure the model reads and works around, not a step failure.
+   */
+  const controlAt = async (x: number, y: number, verb: string) => {
+    const hit = await context.actions.hitTest(viewportPoint(x, y));
+    if (hit.control === undefined) {
+      throw new Error(`${hit.summary}; ${verb} needs a control the screen lists. Tap the target first, or aim at the control itself.`);
+    }
+    return hit;
+  };
+
+  const x = z.number().describe('x in the latest screenshot, pixels from the left edge');
+  const y = z.number().describe('y in the latest screenshot, pixels from the top edge');
+  const at = (px: number, py: number) => `(${String(px)}, ${String(py)})`;
+  const keyboard = verbs.has('typeText');
+
+  /**
+   * The control at a point for a verb that needs one, or, with a keyboard,
+   * focus given to the point by a tap so the keyboard can reach whatever the
+   * app put there: a field drawn on a canvas, an input flattened out of the
+   * tree. Without a point the focused field is the target.
+   */
+  const focusAt = async (px: number | undefined, py: number | undefined, verb: string) => {
+    if (px === undefined || py === undefined) {
+      if (!verbs.has(verb === 'press_at' ? 'pressKey' : 'typeText')) {
+        throw new Error(`${verb} needs a point on this engine: it has no keyboard for the focused field.`);
+      }
+      return { kind: 'focused' as const, summary: 'the focused field' };
+    }
+    const hit = await context.actions.hitTest(viewportPoint(px, py));
+    if (hit.control !== undefined) return { kind: 'control' as const, control: hit.control, summary: hit.summary };
+    if (!keyboard) {
+      throw new Error(`${hit.summary}; ${verb} needs a control the screen lists. Tap the target first, or aim at the control itself.`);
+    }
+    await context.actions.tapAt(viewportPoint(px, py));
+    return { kind: 'focused' as const, summary: `the field at ${at(px, py)} (tapped to focus it; ${hit.summary})` };
+  };
+
+  const tools: ToolSet = {
+    observe: screenTool({
+      description:
+        'Take a fresh screenshot of the screen. Action results already carry one, so call this only after waiting for something the last screenshot showed in progress.',
+      inputSchema: z.object({}),
+      execute: () => inOrder(() => guard(() => present('Observed.'))),
+    }),
+  };
+  if (verbs.has('tap') || verbs.has('tapAt')) {
+    tools['tap_at'] = screenTool({
+      description:
+        'Tap or click the point. Aim for the center of the target. The result waits for the effect and carries a fresh screenshot.',
+      inputSchema: z.object({ x, y }),
+      execute: ({ x: px, y: py }) =>
+        acting(`tap_at ${at(px, py)}`, async () => (await context.actions.tapAt(viewportPoint(px, py))).summary),
+    });
+  }
+  if (verbs.has('type') || keyboard) {
+    tools['type_at'] = screenTool({
+      description: keyboard
+        ? 'Type a plain-text value into the field at the point: a listed input is filled (replacing its value); anything else is tapped to focus it and typed into through the keyboard, inserting at the caret unless replace is set. Omit x and y to type into whatever already has focus.'
+        : 'Type a plain-text value into the input at the point, replacing its current value. Aim at the field itself.',
+      inputSchema: z.object({
+        x: keyboard ? x.optional() : x,
+        y: keyboard ? y.optional() : y,
+        value: z.string(),
+        ...(keyboard ? { replace: z.boolean().optional().describe('Select all and delete before typing, for a field that visibly holds text you must remove; default false. Leave it off for an empty field.') } : {}),
+      }),
+      execute: ({ x: px, y: py, value, ...rest }) =>
+        acting(px === undefined || py === undefined ? 'type_at (focused)' : `type_at ${at(px, py)}`, async () => {
+          const found = await focusAt(px, py, 'type_at');
+          if (found.kind === 'control') {
+            const note = await typeIntoNode(context, found.control, value, found.summary);
+            if (note !== undefined) return note;
+          } else {
+            await context.actions.typeText(value, { replace: (rest as { replace?: boolean }).replace === true });
+          }
+          return `Typed into ${found.summary}.`;
+        }),
+    });
+  }
+  if (verbs.has('press') || verbs.has('pressKey')) {
+    tools['press_at'] = screenTool({
+      description: verbs.has('pressKey')
+        ? 'Send one key (e.g. "Enter", "Escape", "Tab") to the control at the point, or to whatever has focus when x and y are omitted.'
+        : 'Send one key (e.g. "Enter", "Escape", "Tab") to the control at the point.',
+      inputSchema: z.object({
+        x: verbs.has('pressKey') ? x.optional() : x,
+        y: verbs.has('pressKey') ? y.optional() : y,
+        key: z.string().min(1).max(64),
+      }),
+      execute: ({ x: px, y: py, key }) =>
+        acting(px === undefined || py === undefined ? 'press_at (focused)' : `press_at ${at(px, py)}`, async () => {
+          const found = await focusAt(px, py, 'press_at');
+          if (found.kind === 'control') await context.actions.press(found.control, key);
+          else await context.actions.pressKey(key);
+          return `Pressed ${key} on ${found.summary}.`;
+        }),
+    });
+  }
+  if (verbs.has('dismissKeyboard')) {
+    tools['dismiss_keyboard'] = screenTool({
+      description: 'Hide the on-screen keyboard when it covers what you need to reach.',
+      inputSchema: z.object({}),
+      execute: () => acting('Dismissed the keyboard.', () => context.actions.dismissKeyboard()),
+    });
+  }
+  if (verbs.has('select')) {
+    tools['select_at'] = screenTool({
+      description: 'Pick one option, by its visible label, from the select-like control at the point.',
+      inputSchema: z.object({ x, y, value: z.string().min(1) }),
+      execute: ({ x: px, y: py, value }) =>
+        acting(`select_at ${at(px, py)}`, async () => {
+          const hit = await controlAt(px, py, 'select_at');
+          await context.actions.select(hit.control!, value);
+          return `Selected "${value}" in ${hit.summary}.`;
+        }),
+    });
+  }
+  if (verbs.has('scroll')) {
+    const direction = z.enum(['up', 'down', 'left', 'right']).describe('Where to reveal content: down shows what is below.');
+    const times = z
+      .number()
+      .int()
+      .min(1)
+      .max(MAX_SCROLL_TIMES)
+      .optional()
+      .describe(`How many screens to move in this one call, 1 to ${String(MAX_SCROLL_TIMES)}; default 1.`);
+    tools['scroll'] = screenTool({
+      description:
+        'Scroll or swipe the screen in a direction: the whole viewport, or the scrollable region under a point when x and y are given (a carousel, a list, a map). Each result carries a fresh screenshot.',
+      inputSchema: z.object({ direction, x: x.optional(), y: y.optional(), times }),
+      execute: ({ direction: way, x: px, y: py, times: count }) =>
+        acting(`scroll ${way}${px === undefined || py === undefined ? '' : ` at ${at(px, py)}`}`, async () => {
+          const repeats = count ?? 1;
+          // A point names the region the tree lists under it; nothing listed there scrolls the viewport.
+          const target =
+            px === undefined || py === undefined || !verbs.has('tap')
+              ? undefined
+              : (await context.actions.hitTest(viewportPoint(px, py))).under;
+          for (let repeat = 0; repeat < repeats; repeat += 1) {
+            await context.actions.scroll(way, target);
+            if (repeat < repeats - 1) await context.observe();
+          }
+          return repeats === 1 ? `Scrolled ${way}.` : `Scrolled ${way} ${String(repeats)} screens.`;
+        }),
+    });
+  }
+  if (verbs.has('navigate')) {
+    tools['navigate'] = screenTool({
+      description: 'Navigate to a URL or an app-relative path.',
+      inputSchema: z.object({ url: z.string().min(1) }),
+      execute: ({ url }) => acting(`Navigated to ${url}.`, () => context.actions.navigate(url)),
+    });
+  }
+  return tools;
+}
+
+/**
+ * Types into one listed node. A node the engine cannot fill (a focusable
+ * canvas, a custom widget with its own key handling, or a container the
+ * model named after a tap_at) still takes keystrokes when the engine has a
+ * keyboard: the value goes to whatever has focus first, since the model's
+ * own tap_at usually put it on the drawn field, and only when nothing has
+ * focus is the node tapped to give it focus and the typing tried once more.
+ * Tapping first would move focus off a field a container merely surrounds.
+ * Returns a lead when it took that path.
+ */
+async function typeIntoNode(
+  context: StepExecutorContext,
+  target: { readonly id: string },
+  value: string,
+  label: string,
+): Promise<string | undefined> {
+  try {
+    await context.actions.type(target, value);
+    return undefined;
+  } catch (cause) {
+    if (isRuntimeHardStop(cause) || !context.target.verbs.has('typeText') || !isNotFillable(cause)) throw cause;
+  }
+  try {
+    await context.actions.typeText(value, { replace: false });
+    return `${label} is not an input; typed into the focused field through the keyboard instead.`;
+  } catch (cause) {
+    if (isRuntimeHardStop(cause) || !isNoFocus(cause)) throw cause;
+  }
+  await context.actions.tap(target);
+  await context.actions.typeText(value, { replace: false });
+  return `${label} is not an input; tapped it to focus it and typed through the keyboard.`;
+}
+
+/** The engine's refusal to type when nothing that takes keystrokes has focus. */
+function isNoFocus(cause: unknown): boolean {
+  for (let error: unknown = cause; typeof error === 'object' && error !== null; error = (error as { cause?: unknown }).cause) {
+    const { code, message } = error as { code?: unknown; message?: unknown };
+    if (code === 'NOT_ACTIONABLE' && typeof message === 'string' && /has focus/i.test(message)) return true;
+  }
+  return false;
+}
+
+/**
+ * An engine's refusal to fill a node that is not a text input. The engine
+ * codes it `NOT_ACTIONABLE`; the harness hands the executor an `ACTION_FAILED`
+ * wrapping it, so the chain is walked for the code and the message.
+ */
+function isNotFillable(cause: unknown): boolean {
+  for (let error: unknown = cause; typeof error === 'object' && error !== null; error = (error as { cause?: unknown }).cause) {
+    const { code, message } = error as { code?: unknown; message?: unknown };
+    if (code === 'NOT_ACTIONABLE' && typeof message === 'string' && /not an? <?(input|textarea)|not editable/i.test(message)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** Step handlers that report every model round trip to the harness budgets. */

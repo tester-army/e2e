@@ -129,8 +129,8 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     expect(catalogLines(opened.text)).toEqual([
       expect.stringMatching(/^- observe: Look at the whole current screen.* \[read-only\]$/),
       expect.stringMatching(/^- tap \{target\}: Tap or click one node\.$/),
-      expect.stringMatching(/^- type \{target, value\}: /),
-      expect.stringMatching(/^- press \{target, key\}: /),
+      expect.stringMatching(/^- type \{target\?, value, replace\?\}: Type a plain-text value into one input node, or into whatever has focus when target is omitted\.$/),
+      expect.stringMatching(/^- press \{target\?, key\}: /),
       expect.stringMatching(/^- select \{target, value\}: /),
       expect.stringMatching(/^- scroll \{direction, target\?, times\?\}: /),
       expect.stringMatching(/^- navigate \{url\}: /),

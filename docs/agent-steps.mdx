@@ -55,6 +55,8 @@ attempt. The [agent reference](/reference/agent#vision) lists every mode.
 The model gets exactly the verbs the target's engine declares: `tap`, `type`,
 `press`, `select`, `scroll`, `navigate`, and `type_secret` for a credential it
 was handed by name. An engine that cannot navigate has no `navigate` verb.
+On an engine with a keyboard, `type` and `press` also work without a target,
+reaching whatever has focus, and a device engine adds `dismiss_keyboard`.
 While no secret has been filled, `screenshot` and `tap_at` join them: the
 model can attach the viewport's masked pixels to a result and tap a point in
 that image, for a canvas, a map, or a screen the tree cannot describe
@@ -112,9 +114,11 @@ With `vision: false`, `waitFor` skips judgments while
 the observed tree shape is unchanged. With `vision: true` or `vision: 'only'`,
 it judges every interval even when the tree is unchanged.
 Exceeding a budget raises `STEP_BUDGET_EXHAUSTED`; running out of time,
-`STEP_TIMEOUT`. `act` takes no `vision`: pixels reach it through its
-`screenshot` and `tap_at` tools, and while pixels stay available every action
-result after the first screenshot carries a fresh one.
+`STEP_TIMEOUT`. By default pixels reach `act` through its `screenshot` and
+`tap_at` tools, and while pixels stay available every action result after the
+first screenshot carries a fresh one. `vision: true` opens the step in that
+mode; `vision: 'only'` withholds the tree and gives the model a
+point-addressed vocabulary. See [pixels only](/reference/agent#pixels-only-vision-only-on-act).
 
 With a custom executor, one that is not `createAgent(...)`, `agent.assert` runs through `runStep` under the same
 action and model-call budgets as `act`, with `config.timeout` as its default

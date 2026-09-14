@@ -4,6 +4,7 @@
  * executor's verdict must satisfy before the harness trusts them.
  */
 
+import { isVisionMode } from '../config/agent.ts';
 import { ConfigurationError, TestError } from '../internal/errors.ts';
 import { validateJsonValue } from '../internal/json-value.ts';
 import { isSecret } from '../locator/screen.ts';
@@ -36,14 +37,14 @@ export function validateInstruction(instruction: string, api: string): string {
   return normalized;
 }
 
-const ACT_OPTION_KEYS: ReadonlySet<string> = new Set(['params', 'timeout', 'maxSteps', 'maxModelCalls', 'agent']);
+const ACT_OPTION_KEYS: ReadonlySet<string> = new Set(['params', 'timeout', 'maxSteps', 'maxModelCalls', 'vision', 'agent']);
 
 /**
- * The `act` type has no `schema` or `vision`, and no key outside
- * `ActOptions`; a caller outside the type checker who passes one still fails
- * loudly instead of being silently ignored. The pre-0.8 shapes land here too:
- * `act(instruction, params)` arrives as an options bag of the caller's own
- * keys, and `act(instruction, params, options)` as a third argument.
+ * The `act` type has no `schema`, and no key outside `ActOptions`; a caller
+ * outside the type checker who passes one still fails loudly instead of being
+ * silently ignored. The pre-0.8 shapes land here too: `act(instruction,
+ * params)` arrives as an options bag of the caller's own keys, and
+ * `act(instruction, params, options)` as a third argument.
  */
 export function validateActOptions(options: ActOptions | undefined, extraArguments: number): void {
   if (extraArguments > 0) {
@@ -57,14 +58,15 @@ export function validateActOptions(options: ActOptions | undefined, extraArgumen
     throw new TestError('INVALID_ARGUMENT', 'agent.act options must be a plain object');
   }
   const loose = options as { readonly schema?: unknown; readonly vision?: unknown };
-  const unsupported = (name: string): never => {
+  if (loose.schema !== undefined) {
     throw new ConfigurationError(
       'UNSUPPORTED_CAPABILITY',
-      `agent.act ${name} is not part of this milestone`,
+      'agent.act structured output (options.schema) is not part of this milestone',
     );
-  };
-  if (loose.schema !== undefined) unsupported('structured output (options.schema)');
-  if (loose.vision !== undefined) unsupported('vision evidence (options.vision)');
+  }
+  if (loose.vision !== undefined && !isVisionMode(loose.vision)) {
+    throw new TestError('INVALID_ARGUMENT', "vision must be true, false, or 'only'");
+  }
   const unknown = Object.keys(options).filter((key) => !ACT_OPTION_KEYS.has(key));
   if (unknown.length > 0) {
     const listed = unknown.map((key) => JSON.stringify(key)).join(', ');

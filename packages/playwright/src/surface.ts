@@ -738,6 +738,66 @@ export class PlaywrightSurface {
     return this.guard(operation, 'tapAt', () => this.requirePage().mouse.click(point.x, point.y));
   }
 
+  /**
+   * Types into whatever holds focus. Keystrokes into a document body are
+   * accepted by the browser and lost, so the focused element is checked for
+   * editability first and the call refuses rather than "typing" into nothing.
+   * `replace` clears with select-all and delete: the only locator-free clear,
+   * scoped by the browser to the whole editing host, so it is opt-in.
+   */
+  typeText(text: string, options: { readonly replace: boolean }, operation: OperationContext): Promise<void> {
+    return this.guard(operation, 'keyboard.type', async () => {
+      const page = this.requirePage();
+      await this.requireEditableFocus(page);
+      if (options.replace) {
+        await page.keyboard.press('ControlOrMeta+A');
+        await page.keyboard.press('Delete');
+      }
+      await page.keyboard.type(text);
+    });
+  }
+
+  /** Sends one key to whatever holds focus, in the contract's key grammar Playwright shares. */
+  pressKey(key: string, operation: OperationContext): Promise<void> {
+    return this.guard(operation, 'keyboard.press', () => this.requirePage().keyboard.press(key));
+  }
+
+  /**
+   * Refuses focused typing when nothing that takes keystrokes has focus, in
+   * any frame of the page. Text fields and contenteditable hosts take them;
+   * so does any other focusable element the app made focusable (a canvas, a
+   * widget with a tabindex and its own key handling), because focusing it is
+   * how the app opted into keys. Focus on the body, a button, a link, a
+   * select, or a non-text input means the keystrokes would be discarded.
+   */
+  private async requireEditableFocus(page: Page): Promise<void> {
+    const editable = await Promise.all(
+      page.frames().map((frame) =>
+        frame
+          .evaluate(() => {
+            const active = document.activeElement;
+            if (active === null || active === document.body || active === document.documentElement) return false;
+            if (active instanceof HTMLInputElement) {
+              return !active.disabled && !active.readOnly && !['button', 'submit', 'reset', 'checkbox', 'radio', 'file', 'image', 'range', 'color'].includes(active.type);
+            }
+            if (active instanceof HTMLTextAreaElement) return !active.disabled && !active.readOnly;
+            if (active instanceof HTMLSelectElement || active instanceof HTMLButtonElement || active instanceof HTMLAnchorElement) {
+              return false;
+            }
+            return true;
+          })
+          .catch(() => false),
+      ),
+    );
+    if (!editable.some(Boolean)) {
+      throw new EngineError(
+        'NOT_ACTIONABLE',
+        'nothing that takes keystrokes has focus: the typed text would reach no field. Tap the field first, or type into a listed input by id.',
+        { retryable: false },
+      );
+    }
+  }
+
   private async validateFrames(expression: LocatorExpression): Promise<void> {
     const page = this.requirePage();
     for (const selector of frameSelectors(expression)) {

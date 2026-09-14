@@ -93,17 +93,54 @@ export function nodeLine(observation: Pick<AgentObservation, 'text'>, id: string
   return `#${id}`;
 }
 
-/** What one point tap did, for the model that named the point. */
-export function describePointTap(input: {
-  readonly point: ViewportPoint;
-  readonly control: SemanticNode | undefined;
-  readonly under: SemanticNode | undefined;
+/** How a point result names what it found: the observation's own lines, or role and name when the model holds no tree. */
+export interface PointProse {
   readonly observation: Pick<AgentObservation, 'text'>;
-}): string {
+  /** True under `vision: 'only'`: the model never saw a line or an id to quote. */
+  readonly treeWithheld?: boolean | undefined;
+  /** The attempt's redactor, for a name quoted without its already-redacted line. */
+  readonly redact?: ((text: string) => string) | undefined;
+}
+
+/** What one point tap did, for the model that named the point. */
+export function describePointTap(
+  input: PointProse & {
+    readonly point: ViewportPoint;
+    readonly control: SemanticNode | undefined;
+    readonly under: SemanticNode | undefined;
+  },
+): string {
   const at = `(${String(input.point.x)}, ${String(input.point.y)})`;
   if (input.control !== undefined) {
-    return `Tapped ${nodeLine(input.observation, input.control.ref.id)}, the control at ${at}.`;
+    return `Tapped ${describeNode(input, input.control)}, the control at ${at}.`;
   }
-  const under = input.under === undefined ? '' : ` (under it: ${nodeLine(input.observation, input.under.ref.id)})`;
+  const under = input.under === undefined ? '' : ` (under it: ${describeNode(input, input.under)})`;
   return `Tapped the point ${at}; no listed control is there${under}.`;
+}
+
+/** What one hit test found, for the model that named the point. */
+export function describePointHit(
+  input: PointProse & {
+    readonly point: ViewportPoint;
+    readonly control: SemanticNode | undefined;
+    readonly under: SemanticNode | undefined;
+  },
+): string {
+  const at = `(${String(input.point.x)}, ${String(input.point.y)})`;
+  if (input.control !== undefined) return `${describeNode(input, input.control)}, the control at ${at}`;
+  if (input.under !== undefined) return `no control is listed at ${at}; under it: ${describeNode(input, input.under)}`;
+  return `nothing the screen lists is at ${at}`;
+}
+
+/**
+ * A node as prose: its observation line, which the model holds, or its role
+ * and redacted name when the tree was withheld and there is no line to quote.
+ * The redaction the line grammar applies is applied here too.
+ */
+function describeNode(prose: PointProse, node: SemanticNode): string {
+  if (prose.treeWithheld !== true) return nodeLine(prose.observation, node.ref.id);
+  const role = node.role === undefined || node.role === '' ? 'node' : node.role;
+  const label = node.name ?? node.text;
+  if (label === undefined || label === '') return role;
+  return `${role} ${JSON.stringify((prose.redact ?? ((text: string) => text))(label))}`;
 }
