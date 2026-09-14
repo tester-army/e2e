@@ -14,3 +14,4 @@
 .e2e/explore-*/
 # Side-by-side measurement runs (`--artifacts .e2e-<label>/artifacts`).
 .e2e-*/
+.e2e/appstore/

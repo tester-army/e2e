@@ -96,6 +96,11 @@ want to keep or compare.
 - `fill` on a rich-text host resolves successfully and changes nothing (the
   editor reverts it): a silent no-op only a paired deterministic assertion
   catches.
+
+`test:appstore` is an App Store readiness audit of a third-party app on the
+iOS simulator, opt-in and never in CI: `E2E_APP=<bundle id>` or
+`E2E_APP_PATH=<build.app>`, report in `.e2e/appstore/report.md`. See
+`tests-appstore/README.md`.
 - `instanceof` across a frame boundary is always false: an element inside an
   iframe belongs to that frame's realm, so `field instanceof HTMLInputElement`
   in a `web.evaluate` silently takes the else branch.

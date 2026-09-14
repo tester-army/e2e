@@ -12,6 +12,7 @@
     "test:agent": "node node_modules/e2e/dist/cli/bin.js run --config e2e.agent.config.ts",
     "test:dogfood": "node node_modules/e2e/dist/cli/bin.js run --config e2e.dogfood.config.ts",
     "test:stress": "node node_modules/e2e/dist/cli/bin.js run --config e2e.stress.config.ts",
+    "test:appstore": "rm -rf .e2e/appstore .e2e/report.json && node node_modules/e2e/dist/cli/bin.js run --config e2e.appstore.config.ts; node scripts/appstore-report.mjs",
     "explore": "node node_modules/e2e/dist/cli/bin.js explore --config e2e.agent.config.ts",
     "explore:garden": "node node_modules/e2e/dist/cli/bin.js explore --config e2e.explore.config.ts",
     "explore:bench": "node scripts/explore-bench.mjs"

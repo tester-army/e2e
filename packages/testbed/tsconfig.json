@@ -9,8 +9,7 @@
     "noEmit": true
   },
   "include": [
-    "e2e.config.ts",
-    "fixtures/**/*.ts",
+    "e2e.appstore.config.ts",
     "tests/**/*.ts"
   ]
 }
