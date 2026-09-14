@@ -24,7 +24,7 @@
   "homepage": "https://github.com/tester-army/e2e#readme",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
-    "access": "restricted",
+    "access": "public",
     "provenance": false,
     "tag": "beta"
   },

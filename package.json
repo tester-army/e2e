@@ -20,6 +20,7 @@
     "changeset": "changeset",
     "version-packages": "changeset version && pnpm install --lockfile-only",
     "release": "pnpm run build && changeset publish --tag beta",
+    "canary": "node scripts/canary-changeset.ts && changeset version --snapshot canary && pnpm run build && changeset publish --tag canary --no-git-tag",
     "typecheck": "pnpm run build && pnpm -r run typecheck",
     "test": "pnpm run build && pnpm --filter @e2edev/e2e run test && pnpm --filter @e2edev/playwright run test && pnpm --filter @e2edev/agent-device run test && pnpm --filter @e2edev/github run test",
     "test:testbed": "pnpm run build && pnpm --filter @e2edev/testbed test",

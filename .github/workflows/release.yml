@@ -57,6 +57,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Granular npm access token with read/write on the @e2edev scope.
-          # The packages publish as restricted (private phase), so there is no
-          # provenance attestation: npm only attests public packages.
+          # Provenance stays off until the repository is public: npm only
+          # attests builds whose source it can link to.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

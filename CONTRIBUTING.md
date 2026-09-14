@@ -132,18 +132,31 @@ else can claim the bin name.
   This is the build we ask reporters to confirm a fix against. Install with
   `@next`.
 
-While the packages are `0.x`, everything ships to the `beta` dist-tag instead
-and `latest` is not moved. The root `release` script passes `--tag beta`, and
-each publishable package carries `publishConfig.tag: "beta"` as a backstop for
-a hand-run `npm publish`. Switching to `latest` plus `next` is a two-line change
-in that script and those manifests, and happens with `1.0`.
+While the packages are `0.x`, versioned releases ship to the `beta` dist-tag
+instead and `latest` is not moved. The root `release` script passes
+`--tag beta`, and each publishable package carries `publishConfig.tag: "beta"`
+as a backstop for a hand-run `npm publish`. Switching to `latest` plus `next`
+is a two-line change in that script and those manifests, and happens with `1.0`.
 
-Versions stay plain `0.x` until then. Changesets pre mode is deliberately
-unused: a prerelease version falls outside the engines' `@e2edev/e2e` peer
-range, forcing a major bump of every engine on every runner minor. Widening the
-range does not help; node-semver only lets a prerelease satisfy a comparator
-set when a comparator with the same `major.minor.patch` also carries a
-prerelease.
+- `canary`: a build of `main` cut by hand ahead of the next versioned release.
+  This is the channel for beta testers before `1.0`, and the one the quickstart
+  installs. Install with `@canary`.
+
+A canary is a changesets snapshot release, published from a maintainer's
+machine, never from CI:
+
+```sh
+GITHUB_TOKEN=<token> pnpm run canary
+git checkout -- packages .changeset
+```
+
+The script writes a changeset that bumps every public package, versions them
+as `<next version>-canary-<datetime>`, builds, and publishes with
+`--tag canary`. Bumping all of them together is what keeps the engines
+installable: their peer ranges are rewritten to the runner's exact canary
+version, and `init` pins the engine build it shipped with. The build has to
+run after versioning for that pin to hold. Nothing the script writes is
+committed.
 
 ## Stability policy
 

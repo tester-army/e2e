@@ -16,3 +16,5 @@ packages/e2e/tests/tmp-projects/
 packages/e2e/skills/
 .vercel
 .env*
+# `pnpm run canary` writes this changeset and consumes it in the same run.
+.changeset/canary.md

@@ -1,14 +1,18 @@
 {
-  "$schema": "https://unpkg.com/@changesets/config@3.1.4/schema.json",
+  "$schema": "https://unpkg.com/@changesets/config@4.0.0/schema.json",
   "changelog": ["@changesets/changelog-github", { "repo": "tester-army/e2e" }],
   "commit": false,
-  "access": "restricted",
+  "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
   "fixed": [],
   "linked": [],
   "ignore": [],
   "privatePackages": false,
+  "snapshot": {
+    "useCalculatedVersion": true,
+    "prereleaseTemplate": "{tag}-{datetime}"
+  },
   "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {
     "onlyUpdatePeerDependentsWhenOutOfRange": true
   }
