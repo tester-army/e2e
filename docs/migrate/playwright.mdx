@@ -4,10 +4,11 @@ description: Keep your Playwright install, move tests file by file, and turn the
 ---
 
 e2e's browser engine is Playwright. `@e2edev/playwright` declares it as a
-peer dependency and keeps the version you have, so both suites run in the
-same project while you migrate. `e2e init` writes its config next to your
-`playwright.config.ts`. e2e picks up `tests/**/*.e2e.ts` and Playwright
-keeps its own files.
+peer dependency in the range `>=1.63.0 <2` and keeps the version you have
+when it falls inside that range, so both suites run in the same project
+while you migrate. On an older Playwright, upgrade it first. `e2e init`
+writes its config next to your `playwright.config.ts`. e2e picks up
+`tests/**/*.e2e.ts` and Playwright keeps its own files.
 
 ## Config
 

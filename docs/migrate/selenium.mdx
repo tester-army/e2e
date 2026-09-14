@@ -59,7 +59,8 @@ flow with more variation than a login form is one line:
 | --- | --- |
 | `driver.get(url)` | `app.open(path)` |
 | `driver.navigate().back()`, `.refresh()` | `app.back()`, `web.reload()` |
-| `By.id`, `By.name` | `screen.getByTestId`, `screen.getByLabel` |
+| `By.id('x')` | `web.locator('#x')`; or `playwright({ testIdAttribute: 'id' })` and `screen.getByTestId('x')` |
+| `By.name('x')` | `web.locator('[name="x"]')`, not portable; prefer a role or label |
 | `By.linkText`, `By.partialLinkText` | `screen.getByRole('link', { name })`, `name: /part/` |
 | `By.cssSelector`, `By.xpath` | `web.locator('css or xpath')`, not portable |
 | `findElements(...).size()` | `await locator.count()` |

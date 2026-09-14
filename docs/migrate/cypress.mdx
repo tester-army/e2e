@@ -86,10 +86,10 @@ test.describe('todos', () => {
 | `.should('have.text', t)`, `.should('contain', t)` | `.toHaveText(t)`, `.toContainText(t)` |
 | `.should('have.length', n)` | `.toHaveCount(n)` |
 | `.should('have.value', v)` | `.toHaveValue(v)` |
-| `.should('not.exist')` | `.toBeHidden()` |
+| `.should('not.exist')` | `.toHaveCount(0)`; `toBeHidden()` also accepts a node that is still in the DOM |
 | `cy.url().should('include', p)` | `expect(web).toHaveURL(/p/)` |
 | `cy.title()` | `expect(web).toHaveTitle()` |
-| `cy.intercept(url, body)` | `web.route(url, route => route.fulfill({ json }))` |
+| `cy.intercept(url, body)` | `web.route(url, route => route.fulfill({ json: body }))` |
 | `cy.wait('@alias')` | `web.waitForResponse(url)` |
 | `cy.on('window:confirm')` | `web.onDialog('accept')` |
 | `cy.window()`, `cy.document()` | `web.evaluate(() => ...)` |
