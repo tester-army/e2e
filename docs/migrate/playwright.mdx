@@ -1,0 +1,115 @@
+---
+title: From Playwright
+description: Keep your Playwright install, move tests file by file, and turn the brittle flows into goals.
+---
+
+e2e's browser engine is Playwright. `@e2edev/playwright` declares it as a
+peer dependency and keeps the version you have, so both suites run in the
+same project while you migrate. `e2e init` adds the config next to your
+`playwright.config.ts`; e2e picks up `tests/**/*.e2e.ts` and Playwright
+keeps its own files.
+
+## Config
+
+| Playwright | e2e |
+| --- | --- |
+| `use.baseURL` | `playwright({ url })` |
+| `webServer` | `playwright({ url, command })`, see [Starting your app](/starting-your-app) |
+| `projects` | `targets`, one engine instance each |
+| `use.viewport`, `use.browserName` | `playwright({ viewport, browser })` |
+| `testIdAttribute` | `playwright({ testIdAttribute })` |
+| `retries`, `workers`, `timeout` | The same names at the top level |
+| `storageState` | `test.setup` and `{ session }`, see [Signing in](/authentication) |
+| `reporter` | `reporters: ['list', 'junit']` |
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { playwright } from '@e2edev/playwright';
+
+export default {
+  targets: [{
+    engine: playwright({
+      url: 'http://localhost:3000',
+      command: { executable: 'npm', args: ['run', 'dev'] },
+    }),
+  }],
+  retries: 1,
+} satisfies E2EConfig;
+```
+
+## A test, before and after
+
+```ts title="Playwright"
+import { test, expect } from '@playwright/test';
+
+test('checkout', async ({ page }) => {
+  await page.goto('/cart');
+  await page.getByRole('button', { name: 'Checkout' }).click();
+  await page.getByLabel('Card number').fill('4242424242424242');
+  await page.getByLabel('Expiry').fill('12/30');
+  await page.getByLabel('CVC').fill('123');
+  await page.getByRole('button', { name: 'Pay' }).click();
+  await expect(page.getByRole('heading')).toHaveText('Order confirmed');
+});
+```
+
+```ts title="e2e"
+import { test } from '@e2edev/playwright';
+import { expect } from 'e2e';
+
+test('checkout', async ({ app, agent, screen }) => {
+  await app.open('/cart');
+  await agent.act('pay with the test card 4242 4242 4242 4242, expiry 12/30, CVC 123');
+  await expect(screen.getByRole('heading')).toHaveText('Order confirmed');
+});
+```
+
+The first line and the last line survive. The clicks in between become a
+goal, and the test stops breaking when the form is redesigned.
+
+## API map
+
+| Playwright | e2e |
+| --- | --- |
+| `page.goto(path)` | `app.open(path)` |
+| `page.getByRole`, `getByLabel`, `getByText`, `getByTestId`, `getByPlaceholder` | The same on `screen` |
+| `locator.click()` | `locator.tap()`; `click()` is an alias |
+| `page.locator('css')` | `web.locator('css')`, not portable |
+| `page.frameLocator` | `web.frameLocator` |
+| `page.route`, `page.waitForResponse` | `web.route`, `web.waitForResponse` |
+| `page.on('dialog')` | `web.onDialog('accept')` |
+| `page.waitForEvent('download')` | `web.waitForDownload(() => ...)` |
+| `page.evaluate` | `web.evaluate` |
+| `context.addCookies` | `web.setCookies` |
+| `page.setViewportSize` | `web.setViewport` |
+| `expect(page).toHaveURL` | `expect(web).toHaveURL` |
+| `expect(locator).toHaveScreenshot()` | `agent.assert('...', { vision: true })` |
+| `page.waitForTimeout` | Nothing. Queries poll, actions wait, assertions retry |
+| `test.extend` | `test.extend`, same shape |
+
+Three behaviours differ:
+
+- **`getByText` matches exactly** by default. Pass `{ exact: false }` for
+  the substring match Playwright uses.
+- **Two matches are an error** on reads and assertions too, not only on
+  actions. Narrow with `.filter()`, `.first()`, or `{ visible: true }`.
+- **A `Secret` never reaches a test as a string.** Passwords come from
+  `credentials.user('admin').password` and go straight into `fill` or an
+  `act` param.
+
+## What to migrate first
+
+Move the tests that break most often. A flow that walks a wizard, a form
+whose labels change, a modal that sometimes needs dismissing: each becomes
+one `agent.act` with the outcome pinned by `expect`. Leave a test that
+already never fails as it is; a stable Playwright test has no reason to move
+until you want it in the same report.
+
+<CardGroup cols={2}>
+  <Card title="Writing tests" icon="pen-to-square" href="/writing-tests">
+    Goals, checks, extraction, and where a deterministic call still belongs.
+  </Card>
+  <Card title="Playwright reference" icon="masks-theater" href="/reference/playwright">
+    Every option and every `web` method.
+  </Card>
+</CardGroup>

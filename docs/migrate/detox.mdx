@@ -1,0 +1,129 @@
+---
+title: From Detox
+description: Keep your testIDs, drop the Detox build, and move matchers to screen and expect.
+---
+
+Detox tests a React Native app through a build with the Detox framework
+linked in. e2e drives the simulator or emulator through
+`@e2edev/agent-device`, so a normal debug or release build is enough and
+there is no synchronization layer to disable. Your `testID` props are the
+`getByTestId` query on both platforms. Detox and e2e can run on the same
+simulator in turn, so migrate one spec at a time.
+
+## Config
+
+| Detox (`.detoxrc.js`) | e2e |
+| --- | --- |
+| `apps.<name>.binaryPath` | `agentDevice({ appPath })`, installed once per worker |
+| `apps.<name>.bundleId` | `agentDevice({ app: 'com.example.app' })`, opened fresh per attempt |
+| `devices.<name>.device.type` | `agentDevice({ device: 'iPhone 17' })` |
+| `configurations` | `targets`, one engine per platform |
+| Jest config, `maxWorkers` | `workers`, one per device |
+| `detox build` | Your normal build; no Detox framework or `detox build` step |
+| `device.launchApp({ permissions })` | `device.setPermission(...)` inside the test |
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { agentDevice } from '@e2edev/agent-device';
+
+export default {
+  targets: [
+    { name: 'ios', engine: agentDevice({ platform: 'ios', app: 'com.example.app', appPath: 'ios/build/MyApp.app' }) },
+    { name: 'android', engine: agentDevice({ platform: 'android', app: 'com.example.app', appPath: 'android/app/build/outputs/apk/debug/app-debug.apk' }) },
+  ],
+  workers: 1,
+} satisfies E2EConfig;
+```
+
+## A test, before and after
+
+```js title="Detox"
+describe('login', () => {
+  beforeAll(async () => { await device.launchApp({ newInstance: true }); });
+
+  it('shows the home screen', async () => {
+    await element(by.id('email')).typeText('ada@example.test');
+    await element(by.id('password')).typeText('hunter2');
+    await element(by.text('Sign in')).tap();
+    await waitFor(element(by.id('home'))).toBeVisible().withTimeout(10000);
+    await expect(element(by.text('Welcome, Ada'))).toBeVisible();
+  });
+});
+```
+
+```ts title="e2e"
+import { test } from '@e2edev/agent-device';
+import { expect, credentials } from 'e2e';
+
+test('shows the home screen', async ({ agent, screen }) => {
+  const ada = credentials.user('ada');
+  await agent.act('sign in as {username}', { params: { username: ada.username, password: ada.password } });
+  await expect(screen.getByTestId('home')).toBeVisible({ timeout: 10_000 });
+  await expect(screen.getByText('Welcome, Ada')).toBeVisible();
+});
+```
+
+The attempt starts in the pinned app, so there is no `launchApp`. The
+password lives in `credentials`, not in the spec.
+
+## API map
+
+| Detox | e2e |
+| --- | --- |
+| `by.id('x')` | `screen.getByTestId('x')` |
+| `by.text('t')` | `screen.getByText('t')` |
+| `by.label('l')` | `screen.getByLabel('l')` |
+| `by.type('RCTImageView')` | `device.locator('role=Image')`, agent-device's selector syntax |
+| `by.id('x').withAncestor(by.id('row'))` | `screen.getByTestId('row').getByTestId('x')` |
+| `.atIndex(n)` | `.nth(n)` |
+| `.tap()`, `.multiTap(2)`, `.longPress()` | `.tap()`, `.doubleTap()`, `.longPress()` |
+| `.typeText(t)`, `.replaceText(t)` | `.fill(t)` replaces the content |
+| `.clearText()` | `.clear()` |
+| `.tapReturnKey()` | `.press('Enter')` |
+| `.swipe('up', 'fast')` | `.swipe({ direction: 'up', momentum: 'fast' })` |
+| `.scroll(200, 'down')` | `screen.swipe({ direction: 'up' })` |
+| `waitFor(el).toBeVisible().whileElement(list).scroll(...)` | `screen.scrollUntilVisible(el)` |
+| `waitFor(el).toBeVisible().withTimeout(ms)` | `await expect(el).toBeVisible({ timeout: ms })` |
+| `expect(el).toBeVisible()`, `.toExist()` | `.toBeVisible()`; `toExist` has no equivalent, use `count()` |
+| `expect(el).not.toBeVisible()` | `.toBeHidden()` |
+| `expect(el).toHaveText(t)` | `.toHaveText(t)` |
+| `expect(el).toHaveToggleValue(true)` | `.toBeChecked()` |
+| `expect(el).toHaveValue(v)` | `.toHaveValue(v)` |
+| `device.launchApp({ newInstance: true })` | `app.restart()` |
+| `device.launchApp({ delete: true })` | `app.clearState()` |
+| `device.reloadReactNative()` | No equivalent; `app.restart()` is the nearest |
+| `device.sendToHome()`, `device.pressBack()` | `device.home()`, `device.back()` |
+| `device.setLocation(lat, lon)` | `device.setLocation({ latitude, longitude })` |
+| `device.setOrientation('landscape')` | `device.setOrientation('landscape-left')` |
+| `device.setBiometricEnrollment(true)` | `device.enrollBiometrics('faceid', true)` |
+| `device.matchFace()`, `device.unmatchFace()` | `device.setBiometrics('faceid', 'match' \| 'nonmatch')` |
+| `device.setStatusBar`, `device.setURLBlacklist` | No equivalent |
+| `device.disableSynchronization()` | Not needed; nothing synchronizes, everything polls |
+| `device.takeScreenshot()` | `app.screenshot('label')`, secure fields painted black |
+| `:ios:` / `:android:` in a test name | `{ platforms: ['ios'] }` on the test |
+
+Three differences to plan for:
+
+- **Text matches exactly** by default. `by.text` in Detox is exact too, so
+  this is a match; `{ exact: false }` gives a substring match.
+- **Two matches are an error**, as in Detox, but on reads and assertions as
+  well as actions. Narrow with `.filter()` or `.nth()`.
+- **No setup sessions on a device.** `test.setup` and `{ session }` are
+  web-only. Sign in per test with a goal, or seed the app's state.
+
+## What to migrate first
+
+Detox specs that fight animations or call `disableSynchronization` are the
+first to move: their `waitFor` chains disappear. Then the flows that break
+on every redesign, as one `agent.act` each with the outcome pinned by
+`expect`. The [agent-device engine](/reference/agent-device#engine) has
+`settle` and `transition` knobs for an app whose screens arrive in stages.
+
+<CardGroup cols={2}>
+  <Card title="Testing iOS and Android" icon="mobile-screen" href="/mobile">
+    Point the target at your app, several devices, the `device` fixture.
+  </Card>
+  <Card title="agent-device reference" icon="book" href="/reference/agent-device">
+    Every option, the `device` fixture, and the tool pack.
+  </Card>
+</CardGroup>

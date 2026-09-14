@@ -70,6 +70,17 @@
             ]
           },
           {
+            "group": "Migrate",
+            "icon": "arrow-right-arrow-left",
+            "pages": [
+              "migrate/playwright",
+              "migrate/cypress",
+              "migrate/selenium",
+              "migrate/detox",
+              "migrate/maestro"
+            ]
+          },
+          {
             "group": "Guides",
             "icon": "compass",
             "pages": [
@@ -177,7 +188,7 @@
     },
     {
       "source": "/from-playwright",
-      "destination": "/writing-tests"
+      "destination": "/migrate/playwright"
     },
     {
       "source": "/troubleshooting",

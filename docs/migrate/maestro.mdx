@@ -1,0 +1,129 @@
+---
+title: From Maestro
+description: Turn YAML flows into TypeScript tests, one command per line, and let the agent own the flows that drift.
+---
+
+A Maestro flow is a YAML list of commands. An e2e test is the same list in
+TypeScript, with `await` in front of each line, plus two things YAML cannot
+give you: a goal the agent carries out, and a value you can branch on. The
+same simulator or emulator serves both, so move one flow at a time.
+
+## Config
+
+| Maestro | e2e |
+| --- | --- |
+| `appId` at the top of every flow | `agentDevice({ app: 'com.example.app' })`, opened fresh per attempt |
+| `--device` | `agentDevice({ device: 'iPhone 17' })` |
+| `.maestro/config.yaml` `flows` | `include`, default every `*.e2e.ts` under `tests/` |
+| `tags` and `--include-tags` | `{ tags: [...] }` on a test, `--tag` on the CLI |
+| `env` and `${VAR}` | `process.env` in the config, `params` in a goal |
+| `--format junit` | `--reporter list,junit` |
+| `maestro record` | `npx e2e run --video` |
+| Maestro Cloud | Your CI; see [Continuous integration](/ci) |
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { agentDevice } from '@e2edev/agent-device';
+
+export default {
+  targets: [{ name: 'ios', engine: agentDevice({ platform: 'ios', app: 'com.example.app' }) }],
+  workers: 1,
+} satisfies E2EConfig;
+```
+
+## A flow, before and after
+
+```yaml title="Maestro"
+appId: com.example.app
+---
+- launchApp:
+    clearState: true
+- tapOn: "Get started"
+- tapOn:
+    id: "email"
+- inputText: "ada@example.test"
+- tapOn: "Continue"
+- assertVisible: "Check your inbox"
+- scrollUntilVisible:
+    element: "Resend"
+- assertVisible:
+    id: "resend"
+```
+
+```ts title="e2e"
+import { test } from '@e2edev/agent-device';
+import { expect } from 'e2e';
+
+test('asks for the email', async ({ app, agent, screen }) => {
+  await app.clearState();
+  await agent.act('get started with the email {email}', { params: { email: 'ada@example.test' } });
+  await expect(screen.getByText('Check your inbox')).toBeVisible();
+  await screen.scrollUntilVisible(screen.getByTestId('resend'));
+  await expect(screen.getByTestId('resend')).toBeVisible();
+});
+```
+
+Keep a command as a `screen` call when its exact target matters. Fold a run
+of taps into one `agent.act` when it is a flow the app is free to redesign.
+
+## Command map
+
+| Maestro | e2e |
+| --- | --- |
+| `launchApp` | Nothing; the attempt starts in the pinned `app` |
+| `launchApp: { clearState: true }` | `app.clearState()` |
+| `stopApp`, then `launchApp` | `app.restart()` |
+| `tapOn: "Text"` | `screen.getByText('Text').tap()` |
+| `tapOn: { id: x }` | `screen.getByTestId('x').tap()` |
+| `tapOn: { point: ... }` | No deterministic equivalent; the agent has `tap_at` |
+| `doubleTapOn`, `longPressOn` | `.doubleTap()`, `.longPress()` |
+| `inputText` | `screen.getByTestId('field').fill('text')`; for an editor that hides its field, the agent's `type_text` tool |
+| `eraseText` | `.clear()` |
+| `hideKeyboard` | `device.dismissKeyboard()` |
+| `pressKey: Enter` | `.press('Enter')` on the field |
+| `pressKey: Home`, `back` | `device.home()`, `device.back()` |
+| `swipe: { direction: UP }` | `screen.swipe({ direction: 'up' })` |
+| `scroll`, `scrollUntilVisible` | `screen.swipe(...)`, `screen.scrollUntilVisible(locator)` |
+| `assertVisible`, `assertNotVisible` | `await expect(locator).toBeVisible()`, `.toBeHidden()` |
+| `assertVisible: { text, enabled: true }` | `.toBeEnabled()` |
+| `extendedWaitUntil: { visible, timeout }` | `.toBeVisible({ timeout })` |
+| `waitForAnimationToEnd` | Not needed; queries poll and actions wait |
+| `copyTextFrom`, `pasteText` | `await locator.textContent()`, then `.fill(text)` |
+| `setLocation` | `device.setLocation({ latitude, longitude })` |
+| `setAirplaneMode`, `toggleAirplaneMode` | `device.setAirplaneMode(true)` |
+| `setOrientation` | `device.setOrientation('landscape-left')` |
+| `openLink` | No equivalent on a device |
+| `takeScreenshot` | `app.screenshot('label')`, secure fields painted black |
+| `assertWithAI`, `assertNoDefectsWithAI` | `agent.assert('...')`, `agent.assert('...', { vision: true })` |
+| `extractTextWithAI` | `agent.extract('...', { schema })` |
+| `runFlow` | A function, or a fixture from `test.extend` |
+| `runFlow: { when: { visible } }` | `if (await locator.isVisible()) { ... }` |
+| `optional: true` on a command | The same `isVisible()` check |
+| `repeat: { times: n }` | A `for` loop |
+| `runScript`, `evalScript` | Plain TypeScript in the test |
+
+Three differences to plan for:
+
+- **`tapOn: "Text"` matches partially and as a regex.** `getByText` matches
+  exactly; pass a `RegExp` or `{ exact: false }` for Maestro's behaviour.
+- **Two matches are an error.** Maestro taps the first; e2e fails with
+  `LOCATOR_AMBIGUOUS`. Narrow with `.filter()`, `.first()`, or `.nth()`.
+- **No `launchApp` inside a flow to switch apps.** `device.openApp(id)`
+  brings another app forward between steps; give the agent the device tool
+  pack for switching inside a goal. See [Agent tools](/mobile#agent-tools).
+
+## What to migrate first
+
+The flows you rewrite most often. A flow full of `optional: true` and
+`runFlow: { when }` branches is the agent's job: state the goal, pin the
+result. Flows that check one exact label after one tap stay as `screen`
+calls and gain retries, a report, and a place in the same suite.
+
+<CardGroup cols={2}>
+  <Card title="Testing iOS and Android" icon="mobile-screen" href="/mobile">
+    Point the target at your app, several devices, the `device` fixture.
+  </Card>
+  <Card title="Writing tests" icon="pen-to-square" href="/writing-tests">
+    Goals, checks, extraction, and the deterministic APIs.
+  </Card>
+</CardGroup>

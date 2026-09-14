@@ -1,0 +1,126 @@
+---
+title: From Cypress
+description: Map cy commands to screen and web, drop the chain, and keep your data-cy attributes.
+---
+
+A Cypress test runs inside the browser and talks to Node through tasks. An
+e2e test is plain Node code: `await` replaces the command chain, and
+anything you did in `cy.task` is a function call. `e2e init` adds the
+config and a `tests/` folder; the Cypress suite keeps running until the last
+spec has moved.
+
+## Config
+
+| Cypress | e2e |
+| --- | --- |
+| `baseUrl` | `playwright({ url })` |
+| `start-server-and-test` | `playwright({ url, command })`, see [Starting your app](/starting-your-app) |
+| `viewportWidth`, `viewportHeight` | `playwright({ viewport })` |
+| `data-cy` selectors | `playwright({ testIdAttribute: 'data-cy' })`, then `screen.getByTestId` |
+| `retries` | `retries` |
+| `env`, `Cypress.env()` | `process.env` |
+| `cypress.env.json` secrets | `credentials` and `secrets`, see [Signing in](/authentication) |
+| `cypress run --browser firefox` | A second target with `browser: 'firefox'` |
+| Component testing | No equivalent |
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { playwright } from '@e2edev/playwright';
+
+export default {
+  targets: [{
+    engine: playwright({
+      url: 'http://localhost:3000',
+      testIdAttribute: 'data-cy',
+    }),
+  }],
+} satisfies E2EConfig;
+```
+
+## A test, before and after
+
+```js title="Cypress"
+describe('todos', () => {
+  it('completes one', () => {
+    cy.visit('/todos');
+    cy.get('[data-cy=new-todo]').type('Buy milk{enter}');
+    cy.get('[data-cy=new-todo]').type('Walk the dog{enter}');
+    cy.contains('li', 'Buy milk').find('[data-cy=toggle]').click();
+    cy.get('[data-cy=todo]').should('have.length', 2);
+    cy.contains('1 item left').should('be.visible');
+  });
+});
+```
+
+```ts title="e2e"
+import { test } from '@e2edev/playwright';
+import { expect } from 'e2e';
+
+test.describe('todos', () => {
+  test('completes one', async ({ app, agent, screen }) => {
+    await app.open('/todos');
+    await agent.act('add todos "Buy milk" and "Walk the dog", then complete "Buy milk"');
+    await expect(screen.getByTestId('todo')).toHaveCount(2);
+    await expect(screen.getByText('1 item left')).toBeVisible();
+  });
+});
+```
+
+## API map
+
+| Cypress | e2e |
+| --- | --- |
+| `cy.visit(path)` | `app.open(path)` |
+| `cy.get('[data-cy=x]')` | `screen.getByTestId('x')` |
+| `cy.get('css')` | `web.locator('css')`, not portable; prefer a role or label |
+| `cy.contains('text')` | `screen.getByText('text', { exact: false })` |
+| `cy.contains('li', 'text')` | `screen.getByRole('listitem').filter({ hasText: 'text' })` |
+| `.find()`, `.within()` | Chain a query off the locator: `row.getByRole(...)` |
+| `.first()`, `.eq(n)` | `.first()`, `.nth(n)` |
+| `.click()`, `.dblclick()`, `.rightclick()` | `.tap()`, `.doubleTap()`; no right click |
+| `.type('text')` | `.fill('text')` replaces the content |
+| `.type('{enter}')` | `.press('Enter')` |
+| `.clear()`, `.check()`, `.select()` | `.clear()`, `.check()`, `.selectOption()` |
+| `.selectFile()` | `.setInputFiles()` |
+| `.should('be.visible')` | `await expect(locator).toBeVisible()` |
+| `.should('have.text', t)`, `.should('contain', t)` | `.toHaveText(t)`, `.toContainText(t)` |
+| `.should('have.length', n)` | `.toHaveCount(n)` |
+| `.should('have.value', v)` | `.toHaveValue(v)` |
+| `.should('not.exist')` | `.toBeHidden()` |
+| `cy.url().should('include', p)` | `expect(web).toHaveURL(/p/)` |
+| `cy.title()` | `expect(web).toHaveTitle()` |
+| `cy.intercept(url, body)` | `web.route(url, route => route.fulfill({ json }))` |
+| `cy.wait('@alias')` | `web.waitForResponse(url)` |
+| `cy.on('window:confirm')` | `web.onDialog('accept')` |
+| `cy.window()`, `cy.document()` | `web.evaluate(() => ...)` |
+| `cy.setCookie` | `web.setCookies` |
+| `cy.viewport` | `web.setViewport` |
+| `cy.session` | `test.setup` and `{ session }` |
+| `cy.task`, `cy.exec`, `cy.request` | Plain Node code: `fetch`, `fs`, your database client |
+| `cy.fixture` | `import data from './fixture.json'` |
+| `Cypress.Commands.add` | A function, or a fixture from `test.extend` |
+| `cy.wait(ms)` | Nothing. Queries poll, actions wait, assertions retry |
+| `cypress open` | `npx e2e run --headed`, plus `--debug` for the step table |
+
+Two habits to unlearn:
+
+- **No chain.** Each command is awaited on its own line and returns a real
+  value, so `const text = await locator.textContent()` works.
+- **Two matches are an error.** Cypress acts on the first match; e2e fails
+  with `LOCATOR_AMBIGUOUS` and asks you to narrow.
+
+## What to migrate first
+
+Start with the specs that carry the most `cy.wait(ms)` and the longest
+custom commands. Each long command chain becomes a goal for `agent.act`,
+with the checks that were `should()` calls kept as `expect`. Then move the
+sign-in `cy.session` into one `test.setup` that every test reuses.
+
+<CardGroup cols={2}>
+  <Card title="Writing tests" icon="pen-to-square" href="/writing-tests">
+    Goals, checks, extraction, and the deterministic APIs.
+  </Card>
+  <Card title="Working with the browser" icon="globe" href="/browser">
+    Routes, dialogs, downloads, iframes, and page evaluation.
+  </Card>
+</CardGroup>

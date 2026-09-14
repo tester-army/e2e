@@ -1,0 +1,122 @@
+---
+title: From Selenium
+description: Replace explicit waits and XPath with semantic queries, and page objects with goals.
+---
+
+A Selenium suite spends most of its lines on waiting and locating. e2e
+removes both: every query polls, every action waits for its node, and the
+queries name what a user sees rather than where it is in the DOM. Tests are
+TypeScript; a Java or Python suite is rewritten, not transpiled. Run both
+side by side and retire Selenium tests as their e2e twins pass.
+
+## Config
+
+| Selenium | e2e |
+| --- | --- |
+| The URL in every `driver.get` | `playwright({ url })`, then relative paths |
+| Starting the app in a script | `playwright({ url, command })`, see [Starting your app](/starting-your-app) |
+| One driver per browser | One target per browser, `playwright({ browser: 'firefox' })` |
+| Selenium Grid | `workers` for parallelism; `connect` attaches to a remote Chromium over CDP |
+| `manage().window().setSize` | `playwright({ viewport })` |
+| Implicit waits | Nothing to configure; `actionTimeout` and `assertionTimeout` are the deadlines |
+| A page object for sign-in | `test.setup` and `{ session }`, see [Signing in](/authentication) |
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { playwright } from '@e2edev/playwright';
+
+export default {
+  targets: [
+    { name: 'chromium', engine: playwright({ url: 'http://localhost:3000' }) },
+    { name: 'firefox', engine: playwright({ url: 'http://localhost:3000', browser: 'firefox' }) },
+  ],
+} satisfies E2EConfig;
+```
+
+## A test, before and after
+
+```java title="Selenium"
+driver.get("http://localhost:3000/login");
+WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+wait.until(visibilityOfElementLocated(By.id("username"))).sendKeys("admin@example.test");
+driver.findElement(By.id("password")).sendKeys(System.getenv("ADMIN_PASSWORD"));
+driver.findElement(By.xpath("//button[contains(., 'Sign in')]")).click();
+wait.until(urlContains("/dashboard"));
+assertEquals("Welcome back, admin!",
+    driver.findElement(By.cssSelector(".greeting")).getText());
+```
+
+```ts title="e2e"
+import { test } from '@e2edev/playwright';
+import { expect, credentials } from 'e2e';
+
+test('signs in', async ({ app, screen, web }) => {
+  const admin = credentials.user('admin');
+  await app.open('/login');
+  await screen.getByLabel('Username').fill(admin.username);
+  await screen.getByLabel('Password').fill(admin.password);
+  await screen.getByRole('button', { name: 'Sign in' }).tap();
+  await expect(web).toHaveURL('/dashboard');
+  await expect(screen.getByRole('status')).toHaveText('Welcome back, admin!');
+});
+```
+
+No wait objects, no XPath, and the password never appears in the test. A
+flow with more variation than a login form becomes one line:
+`await agent.act('sign in as {username}', { params: { username, password } })`.
+
+## API map
+
+| Selenium | e2e |
+| --- | --- |
+| `driver.get(url)` | `app.open(path)` |
+| `driver.navigate().back()`, `.refresh()` | `app.back()`, `web.reload()` |
+| `By.id`, `By.name` | `screen.getByTestId`, `screen.getByLabel` |
+| `By.linkText`, `By.partialLinkText` | `screen.getByRole('link', { name })`, `name: /part/` |
+| `By.cssSelector`, `By.xpath` | `web.locator('css or xpath')`, not portable |
+| `findElements(...).size()` | `await locator.count()` |
+| `findElements(...).get(n)` | `locator.nth(n)` |
+| `.click()` | `.tap()` |
+| `.sendKeys('text')` | `.fill('text')` replaces the content |
+| `.sendKeys(Keys.ENTER)` | `.press('Enter')` |
+| `.clear()` | `.clear()` |
+| `new Select(el).selectByVisibleText` | `.selectOption({ label })` |
+| `.getText()`, `.getAttribute()`, `.isDisplayed()` | `.textContent()`, `.getAttribute()`, `.isVisible()`, no retry |
+| `wait.until(visibilityOf(...))` | `await expect(locator).toBeVisible()` |
+| `wait.until(textToBe(...))` | `await expect(locator).toHaveText(...)` |
+| `wait.until(urlContains(...))` | `await expect(web).toHaveURL(/.../)` |
+| `Actions.moveToElement` | `.hover()` |
+| `Actions.dragAndDrop` | `.dragTo(target)` |
+| `Actions.keyDown(CONTROL).sendKeys('a')` | `.press('ControlOrMeta+a')` |
+| `switchTo().frame()` | `web.frameLocator('#frame')` |
+| `switchTo().alert().accept()` | `web.onDialog('accept')` before the action |
+| `switchTo().window()` | No equivalent; popups are unsupported |
+| `executeScript` | `web.evaluate` |
+| `manage().addCookie` | `web.setCookies` |
+| `getScreenshotAs` | `app.screenshot('label')`, redacted |
+| `Thread.sleep` | Nothing. Queries poll, actions wait, assertions retry |
+| Page objects | A fixture from `test.extend`, or a goal for `agent.act` |
+
+Two rules the WebDriver model does not have:
+
+- **Two matches are an error.** `findElement` returns the first match; e2e
+  fails with `LOCATOR_AMBIGUOUS`. Narrow with `.filter()`, `.first()`, or
+  `{ visible: true }`.
+- **Assert with `expect`, not with a read.** `textContent()` reads once and
+  does not retry. `toHaveText()` polls until the deadline.
+
+## What to migrate first
+
+Page objects are the natural unit. A page object that wraps a multi-step
+flow becomes one `agent.act` goal; one that wraps a single form becomes a
+handful of `screen` calls or a fixture. Move the flows first, since they are
+where the explicit waits live.
+
+<CardGroup cols={2}>
+  <Card title="Writing tests" icon="pen-to-square" href="/writing-tests">
+    Goals, checks, extraction, and the deterministic APIs.
+  </Card>
+  <Card title="screen reference" icon="crosshairs" href="/reference/screen">
+    Every query, refinement, action, and read.
+  </Card>
+</CardGroup>
