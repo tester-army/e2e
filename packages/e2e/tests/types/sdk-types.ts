@@ -122,6 +122,14 @@ void expect.poll('x').toBe('x');
 // @ts-expect-error the synchronous matchers take no options; a value that is still settling goes through expect.poll
 expect('x').toBe('x', { timeout: 1000 });
 screen.getByRole('button', { name: 'Save', visible: true });
+screen.getByRole('heading', { name: 'Dashboard', level: 1 });
+// A message names a value check; the synchronous matchers still take no options.
+expect(1, 'why this holds').toBe(1);
+expect(1, 'why this holds').not.toBeCloseTo(2, 0);
+// Inside a body, skip takes a condition and a reason, or a reason alone; registration keeps its title and body.
+test.skip(true, 'not today');
+test.skip('not today');
+test.skip('later', async () => {});
 void screen.getByLabel('Plan').selectOption({ value: 'pro' });
 // @ts-expect-error one of label, value, or index, never two
 void screen.getByLabel('Plan').selectOption({ value: 'pro', index: 1 });

@@ -69,7 +69,7 @@ export interface SemanticQuery {
   /**
    * The heading level a role query requires (`aria-level`, or an `h1`..`h6`
    * element's rank on a document platform). Only meaningful with the
-   * `heading` role; an engine matches nothing for a level on another role.
+   * `heading` role. An engine whose tree carries no level ignores it.
    */
   readonly level?: number;
   /**
