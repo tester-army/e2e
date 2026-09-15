@@ -8,8 +8,8 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import type { Page } from 'playwright';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { BrowserContext, Page } from 'playwright';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type {
   EngineCleanupContext,
   EngineHandle,
@@ -827,12 +827,56 @@ describe('playwright engine lifecycle', () => {
     const engine = playwright();
     const videoDir = mkdtempSync(path.join(tmpdir(), 'e2e-video-'));
     const nodesOf = (snapshot: { root: SemanticNode }) => [...walk(snapshot.root)];
-    // Frames reach the recorder asynchronously: a page must live a moment
-    // past its last paint for that paint to be in its segment.
-    const settle = () => surfaceOf(engine)!.page().waitForTimeout(400);
+    const painted = new WeakSet<Page>();
+    const restores: (() => void)[] = [];
+    /** Observe the same delivered frames the recorder writes, including on replacement pages. */
+    const watchPage = (page: Page): void => {
+      const start = page.screencast.start.bind(page.screencast);
+      const spy = vi.spyOn(page.screencast, 'start').mockImplementation((options) => start({
+        ...options,
+        onFrame: async (frame) => {
+          const hasPaint = await page.evaluate(async (bytes) => {
+            const bitmap = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: 'image/jpeg' }));
+            const canvas = document.createElement('canvas');
+            canvas.width = bitmap.width;
+            canvas.height = bitmap.height;
+            const context = canvas.getContext('2d')!;
+            context.drawImage(bitmap, 0, 0);
+            bitmap.close();
+            const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+            for (let index = 0; index < data.length; index += 4) {
+              if (data[index]! < 200 || data[index + 1]! < 200 || data[index + 2]! < 200) return true;
+            }
+            return false;
+          }, [...frame.data]).catch(() => false);
+          if (hasPaint) painted.add(page);
+          await options?.onFrame?.(frame);
+        },
+      }));
+      restores.push(() => spy.mockRestore());
+    };
+    /** Install the frame observer before a newly created page starts its recording. */
+    const watchContext = (context: BrowserContext): void => {
+      context.on('page', watchPage);
+      for (const page of context.pages()) watchPage(page);
+    };
+    const settle = async (): Promise<void> => {
+      const page = surfaceOf(engine)!.page();
+      await expect.poll(() => painted.has(page), { timeout: 5_000, message: 'the recorder received a painted frame' }).toBe(true);
+    };
     try {
       await withAttempt(engine, app, videoDir, 'v1', async () => {
         await engine.session!.open!(`${app.url}/form`, operation('v1'));
+        const context = surfaceOf(engine)!.context();
+        watchContext(context);
+        const browser = context.browser()!;
+        const newContext = browser.newContext.bind(browser);
+        const contextSpy = vi.spyOn(browser, 'newContext').mockImplementation(async (options) => {
+          const next = await newContext(options);
+          watchContext(next);
+          return next;
+        });
+        restores.push(() => contextSpy.mockRestore());
         // Video before trace, as the harness orders them: a page's first
         // screencast client sizes it, and the trace's would cap it at 800px.
         await engine.artifacts!.startVideo!(operation('v1'));
@@ -887,6 +931,7 @@ describe('playwright engine lifecycle', () => {
         }
       });
     } finally {
+      for (const restore of restores) restore();
       rmSync(videoDir, { recursive: true, force: true });
     }
   });
