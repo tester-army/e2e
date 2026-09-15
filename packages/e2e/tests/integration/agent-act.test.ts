@@ -155,10 +155,10 @@ describe('agent.act with a hand-rolled step executor', () => {
     // time than the engine event, later in the list.
     expect(step!.events.indexOf(modelEvents[0]!)).toBeGreaterThan(step!.events.indexOf(engineEvents[0]!));
     expect(Date.parse(modelEvents[0]!.startedAt)).toBeLessThanOrEqual(Date.parse(engineEvents[0]!.startedAt));
-    // The executor's two looks, plus the trace cache's two (on by default):
-    // the settled baseline before any action and the passing observation,
-    // whose delta becomes the staged trace's end anchors.
-    expect(observations).toHaveLength(4);
+    // The cache baseline also supplies the executor's first look. The other
+    // captures are its post-action look and the cache's passing observation,
+    // whose delta from the baseline becomes the staged trace's end anchors.
+    expect(observations).toHaveLength(3);
   });
 
   it('emits a schema-valid report for executor-driven steps', () => {
@@ -802,6 +802,8 @@ const BATCH_SUITE = `import { test, expect } from 'e2e';
 
 test('default agent fills two fields in one turn', async ({ app, agent, screen }) => {
   await app.open();
+  // Finish the fixture's unrelated timer before testing an unchanged screen.
+  await expect(screen.getByRole('button', { name: 'Late arrival' })).toBeVisible();
   await agent.act('fill the email and the focus target fields');
   await expect(screen.getByLabel('Email')).toHaveValue('ada@example.test');
   await expect(screen.getByLabel('Focus target')).toHaveValue('hello');
