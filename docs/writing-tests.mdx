@@ -121,16 +121,16 @@ await agent.assert('the chart trends upward', { vision: true });
 await agent.assert('the search form is not covered by a banner', { vision: 'only' });
 ```
 
-`act` takes the same option. With `vision: 'only'` the model drives the flow
-from screenshots alone, tapping and typing at points, for a canvas, a game,
-or a check that the render itself works:
+`act` takes no such option. The act model works from the tree and asks for
+a screenshot itself when the tree lacks what it needs, then taps and types at
+points in it, for a canvas, a game, or a control inside a system sheet:
 
 ```ts
-await agent.act('enter the code 3141 on the drawn keypad and press OK', { vision: 'only' });
+await agent.act('enter the code 3141 on the drawn keypad and press OK');
 ```
 
 Images cost input tokens on every call. The [agent reference](/reference/agent#vision)
-lists every mode.
+lists the judgment modes.
 
 ## Deterministic APIs: `screen` and `expect`
 

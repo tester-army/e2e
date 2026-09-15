@@ -129,10 +129,14 @@ actResult.data;
 await agent.act('open billing', { plan: 'pro' }, {});
 // @ts-expect-error act takes no schema; structured output is extract({ schema })
 await agent.act('read total', { schema: z.object({ total: z.number() }) });
+// @ts-expect-error act takes no vision; the model asks for a screenshot itself
 await agent.act('open billing', { vision: true });
+// @ts-expect-error act takes no vision; the model asks for a screenshot itself
 await agent.act('pick the red pin', { vision: 'only' });
-// @ts-expect-error vision is a closed set: true, false, or 'only'
-await agent.act('open billing', { vision: 'always' });
+await agent.assert('the chart trends upward', { vision: true });
+await agent.assert('the form is not covered', { vision: 'only' });
+// @ts-expect-error a judgment's vision is a closed set: true, false, or 'only'
+await agent.assert('the chart trends upward', { vision: 'always' });
 await agent.waitFor('the page settles', { interval: 500, maxModelCalls: 3 });
 // @ts-expect-error the wait interval is `interval`, in milliseconds
 await agent.waitFor('the page settles', { intervalMs: 500 });

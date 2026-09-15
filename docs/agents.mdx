@@ -28,9 +28,9 @@ export default {
 
 An entry takes one of three shapes:
 
-- **An options block.** `model`, `judge`, `context`, `vision`,
-  `maxSteps`, `maxModelCalls`, `timeout`, `providerOptions`. This runs the built-in
-  agent with those settings.
+- **An options block.** `model`, `judge`, `context`, `maxSteps`,
+  `maxModelCalls`, `timeout`, `providerOptions`. This runs the built-in agent
+  with those settings.
 - **`createAgent(...)`.** The built-in agent with a `system` prompt and your
   own [tools](/tools).
 - **An options block with `executor`.** Any [custom executor](/executors),

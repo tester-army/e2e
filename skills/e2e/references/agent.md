@@ -88,18 +88,18 @@ on pixel mode, where every action result carries a fresh screenshot; `tap_at`
 taps a point in the latest screenshot (a canvas shape, a map pin, an image
 region, a control in a system sheet), hit-tested against the tree first so a
 listed control is tapped by id. A screen with nothing to tap by id opens with
-a screenshot already attached. `vision: true` attaches a screenshot from the
-first turn instead of waiting for the model to ask.
+a screenshot already attached. `type_at`, `press_at`, and `select_at` act at
+a point the same way, for a field or control the tree does not list, each
+resolved onto the listed control underneath; `type_at` on a point with
+nothing listed taps it and types through the keyboard. `act` takes no
+`vision` option: the model decides when it needs pixels.
 On an engine with a keyboard (browser and device), `type` and `press` also
 take no target and reach whatever has focus: `tap_at` a field the tree does
 not list, then `type` without a target; a device adds `dismiss_keyboard`.
-`vision: 'only'` withholds the tree: the model sees screenshots alone and
-acts through `tap_at`, `type_at`, `press_at`, `select_at`, and `scroll` at
-points, each resolved onto the listed control underneath, and `type_at` on
-a point with nothing listed taps it and types through the keyboard. Use it for a
-canvas, a game, or a native screen without accessibility exposure; a step
-with a `Secret` in its params or on a viewport an earlier fill tainted fails
-with `POLICY_DENIED`, so sign in with the tree first.
+Use the point tools for a canvas, a game, or a native screen without
+accessibility exposure. Once a secret has been filled in the attempt no
+screenshot leaves the runner and the pixel tools leave the vocabulary, so
+act on pixels before signing in, or in a test of its own.
 
 ## assert, waitFor, extract: one question
 

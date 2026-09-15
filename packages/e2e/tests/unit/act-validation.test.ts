@@ -40,12 +40,12 @@ describe('validateActOptions', () => {
     expect(() => validateActOptions({ schema: {} } as never, 0)).toThrow(ConfigurationError);
   });
 
-  it('accepts every vision mode and rejects a value outside the closed set', () => {
+  it('names vision as a judgment option act does not take, whatever its value', () => {
     for (const vision of [true, false, 'only'] as const) {
-      expect(() => validateActOptions({ vision }, 0)).not.toThrow();
+      expect(() => validateActOptions({ vision } as never, 0)).toThrow(
+        expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY', message: expect.stringMatching(/takes no vision option/) }),
+      );
     }
-    expect(() => validateActOptions({ vision: 'always' } as never, 0)).toThrow(
-      expect.objectContaining({ code: 'INVALID_ARGUMENT', message: "vision must be true, false, or 'only'" }),
-    );
+    expect(() => validateActOptions({ vision: true } as never, 0)).toThrow(ConfigurationError);
   });
 });

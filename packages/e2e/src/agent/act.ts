@@ -20,9 +20,8 @@ import type { StepTurn } from '../run/steps.ts';
 import { writeFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { isVisionMode } from '../config/agent.ts';
-import { ConfigurationError, TestError } from '../internal/errors.ts';
-import type { ActOptions, ActResult, AgentErrorCode, JsonValue, ModelInstance, Secret, VisionMode } from '../types.ts';
+import { ConfigurationError } from '../internal/errors.ts';
+import type { ActOptions, ActResult, AgentErrorCode, JsonValue, ModelInstance, Secret } from '../types.ts';
 import { AgentError, CATEGORY_BY_CODE, isAgentError, toAgentError } from './error.ts';
 import { validateActOptions, validateInstruction, validateParams, validateVerdict } from './act-validation.ts';
 import { ActionDispatcher } from './action-dispatcher.ts';
@@ -35,7 +34,6 @@ import type { AgentObservation } from './observation.ts';
 import { ObservationFeed } from './observation-feed.ts';
 import type { ObservedScreen } from './replay.ts';
 import { OperationQueue } from './operation-queue.ts';
-import { recordPolicyEvent } from './phases.ts';
 import { StepAccounting } from './step-accounting.ts';
 import { StepTraceSession, type StepCacheHost, type StepOutcome } from './step-cache.ts';
 
@@ -58,8 +56,6 @@ export interface DispatchSpec {
   readonly maxModelCalls: number | undefined;
   /** The configured agent the call named, if any. */
   readonly agent: string | undefined;
-  /** What the executor sees; the agent's `vision` when the call named none. */
-  readonly vision?: VisionMode | undefined;
 }
 
 /** Runs one `agent.act()` call as a harness-dispatched executor step. */
@@ -83,7 +79,6 @@ export async function runActStep(
     maxSteps: options?.maxSteps,
     maxModelCalls: options?.maxModelCalls,
     agent: options?.agent,
-    vision: options?.vision,
   });
 }
 
@@ -105,8 +100,11 @@ export async function runAssertStep(
       'agent.assert screenshot evidence (options.screenshot) is not supported with a custom executor',
     );
   }
-  if (options?.vision !== undefined && !isVisionMode(options.vision)) {
-    throw new TestError('INVALID_ARGUMENT', "vision must be true, false, or 'only'");
+  if (options?.vision !== undefined) {
+    throw new ConfigurationError(
+      'UNSUPPORTED_CAPABILITY',
+      'agent.assert vision (options.vision) is not supported with a custom executor: the executor decides what its model sees',
+    );
   }
   await dispatchAgentStep(runtime, {
     api: 'agent.assert',
@@ -119,7 +117,6 @@ export async function runAssertStep(
     maxSteps: undefined,
     maxModelCalls: undefined,
     agent: options?.agent,
-    vision: options?.vision,
   });
 }
 
@@ -164,8 +161,6 @@ class ActDispatch {
   private readonly accounting: StepAccounting;
   private readonly feed: ObservationFeed;
   private readonly dispatcher: ActionDispatcher;
-  /** What the executor sees: the call's `vision`, else the agent's. */
-  private readonly vision: VisionMode;
   /** The step's trace-cache session; undefined when caching is off or the kind is not cacheable. */
   private readonly stepCache: StepTraceSession | undefined;
   /** Timeline index of the step being dispatched. */
@@ -192,10 +187,8 @@ class ActDispatch {
     // One queue for observations and actions alike: call order is what keeps
     // a batched turn from resolving two targets against one stale screen.
     const queue = new OperationQueue();
-    this.vision = spec.vision ?? agent.config.vision;
     this.feed = new ObservationFeed(runtime, this.accounting, queue, {
       maxObservationBytes: agent.config.maxObservationBytes,
-      vision: this.vision,
     });
     this.dispatcher = new ActionDispatcher(runtime, this.accounting, this.feed, queue, {
       instruction: spec.instruction,
@@ -275,7 +268,6 @@ class ActDispatch {
       get pixelsTainted() {
         return dispatch.runtime.taint.value;
       },
-      vision: this.vision,
       attachTranscript: (text) => {
         // Debug detail only: transcripts are model prose and can be large.
         if (this.runtime.debug?.enabled === true && typeof text === 'string' && text !== '') {
@@ -410,36 +402,9 @@ class ActDispatch {
   }
 
   private async dispatchStep(): Promise<StepVerdict> {
-    this.requirePixelEvidence();
     const replayed = await this.stepCache?.begin();
     if (replayed !== undefined) return replayed;
     return this.agent.executor.runStep(this.context());
-  }
-
-  /**
-   * A pixels-only step needs pixels that can leave the runner for its whole
-   * length. A viewport already tainted by an earlier secret fill cannot give
-   * them, and a step that declares a secret would taint it itself with the
-   * first fill; both are refused before anything runs, so the failure names
-   * the policy rather than surfacing as a dead first look or a dead fill.
-   */
-  private requirePixelEvidence(): void {
-    if (this.vision !== 'only') return;
-    if (this.runtime.taint.value) {
-      recordPolicyEvent(this.runtime.steps, 'vision.pixels', 'denied', 'PIXEL_TAINTED');
-      throw new AgentError(
-        'POLICY_DENIED',
-        `${this.spec.api} was called with vision: 'only', so the screenshot is its only view of the screen, ` +
-          'but a secret was filled earlier in this attempt and no pixels leave the runner until it ends (PIXEL_TAINTED)',
-      );
-    }
-    if (this.spec.secrets.size > 0) {
-      throw new AgentError(
-        'POLICY_DENIED',
-        `${this.spec.api} was called with vision: 'only' and a secret in its params; filling a secret taints the ` +
-          'viewport and withholds every later screenshot, so fill it in a step that sees the tree',
-      );
-    }
   }
 
   /** The cache session's narrow view of this step. */

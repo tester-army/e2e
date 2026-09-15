@@ -108,9 +108,8 @@ export interface ToolLoopExecutorOptions {
   readonly model?: SdkLanguageModel;
   /**
    * Executor-specific system guidance (what the tools are, how to address
-   * targets), fixed or built per step from its context (a vocabulary that
-   * differs by `vision`). The chassis appends the project context and the
-   * verdict rules.
+   * targets), fixed or built per step from its context. The chassis appends
+   * the project context and the verdict rules.
    */
   readonly system?: string | ((context: StepExecutorContext) => string);
   /** Builds the step's tool vocabulary; `complete_step` is added by the chassis. */

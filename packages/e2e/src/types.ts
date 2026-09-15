@@ -105,8 +105,8 @@ export type AgentParam =
 export type AgentParams = Readonly<Record<string, AgentParam>>;
 
 /**
- * What evidence the model is given: the semantic tree, a masked screenshot of
- * the current observation, or both.
+ * What evidence a judgment (`assert`, `waitFor`, `extract`) is given: the
+ * semantic tree, a masked screenshot of the current observation, or both.
  *
  * - `false`: the tree.
  * - `true`: the tree and a screenshot, on every call.
@@ -124,23 +124,16 @@ export type AgentParams = Readonly<Record<string, AgentParam>>;
  * has nothing to degrade to, so it fails with `POLICY_DENIED` instead of
  * answering the wrong question from the tree.
  *
- * On `act` the same three values say how much pixel evidence is pushed to
- * the model. At `false`, the default, the model pulls pixels itself with
- * `screenshot` when the tree lacks what it needs, and every verb takes a
- * point in that screenshot in place of a node id. `true` attaches a
- * screenshot to every turn. `'only'` does that and withholds the tree, so
- * every verb is addressed by point; it refuses a step that declares a
- * secret, because a fill would taint the only evidence.
+ * `act` takes no `vision`: the act model works from the tree and pulls
+ * pixels itself with `screenshot` when the tree lacks what it needs, then
+ * acts at points in that screenshot where the tree lists nothing.
  */
 export type VisionMode = boolean | 'only';
 
 export interface VisionOption {
   /**
-   * How much pixel evidence is pushed to the model; defaults to the agent's
-   * `vision`, `false`. On a judgment: the tree, the tree with a masked
-   * screenshot, or the screenshot alone. On `act`: pixels when the model asks
-   * with `screenshot`, a screenshot on every turn, or pixels alone with the
-   * tree withheld.
+   * What the judge is shown; `false` by default. The tree, the tree with a
+   * masked screenshot, or the screenshot alone.
    */
   vision?: VisionMode;
 }
@@ -177,11 +170,11 @@ export interface ExtractOptions<Schema extends StandardSchemaV1> extends VisionO
 }
 
 /**
- * One `act` call: the values the instruction refers to, the step's budgets,
- * and what the executor sees. Structured output is a judgment-tier option:
- * `extract` takes `schema`.
+ * One `act` call: the values the instruction refers to and the step's
+ * budgets. Structured output is a judgment-tier option: `extract` takes
+ * `schema`. Pixels are the model's to ask for, not an option.
  */
-export interface ActOptions extends VisionOption, AgentOption {
+export interface ActOptions extends AgentOption {
   /**
    * JSON-safe values the instruction refers to, at most 64 KiB and 32 levels
    * deep. A `Secret` reaches the model by name only; the runner fills it.
@@ -918,8 +911,6 @@ export interface AgentConfig {
   maxObservationBytes?: number;
   /** Trusted project context prepended to agent prompts, at most `limits.maxAgentContextBytes`. */
   context?: string;
-  /** Project-wide default for the per-call `vision` option; `false` unless set. */
-  vision?: VisionMode;
   /** Provider options every model call carries, e.g. a reasoning effort. */
   providerOptions?: ProviderOptions;
 }

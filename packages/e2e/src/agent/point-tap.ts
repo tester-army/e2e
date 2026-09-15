@@ -93,13 +93,9 @@ export function nodeLine(observation: Pick<AgentObservation, 'text'>, id: string
   return `#${id}`;
 }
 
-/** How a point result names what it found: the observation's own lines, or role and name when the model holds no tree. */
+/** How a point result names what it found: by the observation's own line, which the model holds. */
 export interface PointProse {
   readonly observation: Pick<AgentObservation, 'text'>;
-  /** True under `vision: 'only'`: the model never saw a line or an id to quote. */
-  readonly treeWithheld?: boolean | undefined;
-  /** The attempt's redactor, for a name quoted without its already-redacted line. */
-  readonly redact?: ((text: string) => string) | undefined;
 }
 
 /** What one point tap did, for the model that named the point. */
@@ -132,15 +128,7 @@ export function describePointHit(
   return `nothing the screen lists is at ${at}`;
 }
 
-/**
- * A node as prose: its observation line, which the model holds, or its role
- * and redacted name when the tree was withheld and there is no line to quote.
- * The redaction the line grammar applies is applied here too.
- */
+/** A node as prose: its observation line, which the model holds. */
 function describeNode(prose: PointProse, node: SemanticNode): string {
-  if (prose.treeWithheld !== true) return nodeLine(prose.observation, node.ref.id);
-  const role = node.role === undefined || node.role === '' ? 'node' : node.role;
-  const label = node.name ?? node.text;
-  if (label === undefined || label === '') return role;
-  return `${role} ${JSON.stringify((prose.redact ?? ((text: string) => text))(label))}`;
+  return nodeLine(prose.observation, node.ref.id);
 }

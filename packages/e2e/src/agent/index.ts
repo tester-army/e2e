@@ -51,9 +51,9 @@ const ASSERT_KEYS = ['timeout', 'screenshot', 'vision', 'agent'] as const;
 
 /** Builds the agent fixture for one attempt. */
 export function createAgentFixture(runtime: AgentContext): Agent {
-  /** A per-call `vision` value always wins over the agent's default. */
-  const resolveVision = (requested: VisionMode | undefined, fallback: VisionMode): VisionMode => {
-    if (requested === undefined) return fallback;
+  /** A judgment's `vision`: the tree unless the call asks for pixels. */
+  const resolveVision = (requested: VisionMode | undefined): VisionMode => {
+    if (requested === undefined) return false;
     if (!isVisionMode(requested)) {
       throw new TestError('INVALID_ARGUMENT', "vision must be true, false, or 'only'");
     }
@@ -117,7 +117,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           task: 'judge whether a condition holds',
           timeoutMs: resolveTimeout(options?.timeout, config.timeout),
           maxModelCalls: resolveBoundedBudget(options?.maxModelCalls, config.maxModelCalls, 'maxModelCalls'),
-          vision: resolveVision(options?.vision, config.vision),
+          vision: resolveVision(options?.vision),
         },
         condition,
         async (invocation) => {
@@ -153,7 +153,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           task: 'extract structured data from the observation',
           timeoutMs: resolveTimeout(options.timeout, config.timeout),
           maxModelCalls: EXTRACT_MODEL_CALLS,
-          vision: resolveVision(options.vision, config.vision),
+          vision: resolveVision(options.vision),
         },
         instruction,
         async (invocation) => {
@@ -211,7 +211,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           task: 'judge whether an assertion holds',
           timeoutMs: resolveTimeout(options?.timeout, config.timeout),
           maxModelCalls: ASSERT_MODEL_CALLS,
-          vision: resolveVision(options?.vision, config.vision),
+          vision: resolveVision(options?.vision),
         },
         assertion,
         async (invocation) => {

@@ -729,12 +729,15 @@ describe('agent.act with the default ToolLoopAgent executor', () => {
       'navigate',
       'observe',
       'press',
+      'press_at',
       'screenshot',
       'scroll',
       'select',
+      'select_at',
       'tap',
       'tap_at',
       'type',
+      'type_at',
     ]);
     expect(loopCalls[0]!.prompt).toContain('increment the counter once');
     expect(loopCalls[0]!.prompt).toMatch(/Current screen \(revision b\d+, path \/, \d+ nodes\):/);

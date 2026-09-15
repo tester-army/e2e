@@ -151,6 +151,9 @@ describe('e2e mcp with project tools and a custom engine', { timeout: 120_000 },
       'navigate',
       'screenshot',
       'tap_at',
+      'type_at',
+      'press_at',
+      'select_at',
       'locate',
       'seed_data',
       'count_nodes',
@@ -214,7 +217,7 @@ describe('e2e mcp with project tools and a custom engine', { timeout: 120_000 },
     expect(opened.text).toContain('open on target "kiosk-only"');
     expect(opened.text).toContain('config ');
     expect(opened.text).toContain('kiosk.config.ts');
-    expect(catalogNames(opened.text)).toEqual(['observe', 'tap', 'type', 'press', 'select', 'navigate', 'screenshot', 'tap_at', 'locate']);
+    expect(catalogNames(opened.text)).toEqual(['observe', 'tap', 'type', 'press', 'select', 'navigate', 'screenshot', 'tap_at', 'type_at', 'press_at', 'select_at', 'locate']);
     const closed = await invoke('close_session');
     expect(closed.isError, closed.text).toBe(false);
   });

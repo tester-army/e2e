@@ -60,8 +60,6 @@ export interface ResolvedAgentConfig {
   readonly timeout: number;
   readonly maxObservationBytes: number;
   readonly context: string | undefined;
-  /** Default for the per-call `vision` option, `false` unless configured; a per-call value always wins. */
-  readonly vision: VisionMode;
   /**
    * Provider options sent with every model call, judgments included. This is
    * how a reasoning model's effort is lowered project-wide; an executor that
@@ -90,7 +88,6 @@ const AGENT_KEYS = new Set([
   'timeout',
   'maxObservationBytes',
   'context',
-  'vision',
   'providerOptions',
 ]);
 
@@ -171,13 +168,6 @@ export function resolveAgentConfig(
 
 
   const context = resolveContext(agent?.context, limits.maxAgentContextBytes, label);
-  const vision = agent?.vision ?? false;
-  if (!isVisionMode(vision)) {
-    throw new ConfigurationError(
-      'INVALID_CONFIG',
-      `${label}.vision must be true, false, or 'only'`,
-    );
-  }
 
   const model = resolveCanonicalModel(agent?.model, executor?.model, label, 'model');
   return {
@@ -189,7 +179,6 @@ export function resolveAgentConfig(
     timeout,
     maxObservationBytes,
     context,
-    vision,
     providerOptions: resolveProviderOptions(agent?.providerOptions, label),
   };
 }
@@ -248,7 +237,7 @@ export function resolveLimits(raw: E2EConfig): ResolvedBaseLimits {
   return resolved as unknown as ResolvedBaseLimits;
 }
 
-/** True for the closed `vision` value set, wherever it is supplied. */
+/** True for the closed judgment `vision` value set, wherever it is supplied. */
 export function isVisionMode(value: unknown): value is VisionMode {
   return typeof value === 'boolean' || value === 'only';
 }

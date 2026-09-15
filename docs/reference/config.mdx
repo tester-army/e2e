@@ -419,8 +419,6 @@ export interface AgentConfig {
   maxObservationBytes?: number;
   /** Trusted project context prepended to agent prompts, at most `limits.maxAgentContextBytes`. */
   context?: string;
-  /** Project-wide default for the per-call `vision` option. */
-  vision?: VisionMode;
   /** Provider options every model call carries, e.g. a reasoning effort. */
   providerOptions?: ProviderOptions;
 }

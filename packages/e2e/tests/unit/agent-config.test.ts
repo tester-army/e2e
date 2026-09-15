@@ -40,16 +40,12 @@ describe('agent config defaults', () => {
     expect(config.agent.maxObservationBytes).toBe(262_144);
     expect(config.agent.model).toBeUndefined();
     expect(config.agent.context).toBeUndefined();
-    expect(config.agent.vision).toBe(false);
   });
 
-  it('accepts every vision mode as a project default and rejects anything else', () => {
-    expect(resolve({ agents: { default: { vision: true } } }).agent.vision).toBe(true);
-    expect(resolve({ agents: { default: { vision: false } } }).agent.vision).toBe(false);
-    expect(resolve({ agents: { default: { vision: 'only' } } }).agent.vision).toBe('only');
-    expect(() => resolve({ agents: { default: { vision: 'fallback' } } } as never)).toThrow(/agents\.default\.vision/);
-    expect(() => resolve({ agents: { default: { vision: 'yes' } } } as never)).toThrow(/agents\.default\.vision/);
-    expect(() => resolve({ agents: { default: { vision: 1 } } } as never)).toThrow(/agents\.default\.vision/);
+  it('rejects vision, the removed project-wide pixel default', () => {
+    expect(() => resolve({ agents: { default: { vision: true } } } as never)).toThrow(
+      /unknown agents\.default key "vision"/,
+    );
   });
 
   it('rejects visionModel, the key the removed judgment model tier used', () => {
@@ -447,7 +443,7 @@ describe('named agents', () => {
   });
 
   it('names the agent in every diagnostic', () => {
-    expect(() => resolve({ agents: { ux: { vision: 'yes' } } } as never)).toThrow(/agents\.ux\.vision/);
+    expect(() => resolve({ agents: { ux: { maxSteps: 'many' } } } as never)).toThrow(/agents\.ux\.maxSteps/);
     expect(() => resolve({ agents: { ux: { retries: 1 } } } as never)).toThrow(/unknown agents\.ux key/);
     expect(() => resolve({ agents: { ux: 'gpt' } } as never)).toThrow(/agents\.ux must be an options object or the agent itself/);
   });

@@ -4,7 +4,6 @@
  * executor's verdict must satisfy before the harness trusts them.
  */
 
-import { isVisionMode } from '../config/agent.ts';
 import { ConfigurationError, TestError } from '../internal/errors.ts';
 import { validateJsonValue } from '../internal/json-value.ts';
 import { isSecret } from '../locator/screen.ts';
@@ -37,12 +36,12 @@ export function validateInstruction(instruction: string, api: string): string {
   return normalized;
 }
 
-const ACT_OPTION_KEYS: ReadonlySet<string> = new Set(['params', 'timeout', 'maxSteps', 'maxModelCalls', 'vision', 'agent']);
+const ACT_OPTION_KEYS: ReadonlySet<string> = new Set(['params', 'timeout', 'maxSteps', 'maxModelCalls', 'agent']);
 
 /**
- * The `act` type has no `schema`, and no key outside `ActOptions`; a caller
- * outside the type checker who passes one still fails loudly instead of being
- * silently ignored. The pre-0.8 shapes land here too: `act(instruction,
+ * The `act` type has no `schema` and no `vision`, and no key outside
+ * `ActOptions`; a caller outside the type checker who passes one still fails
+ * loudly instead of being silently ignored. The pre-0.8 shapes land here too: `act(instruction,
  * params)` arrives as an options bag of the caller's own keys, and
  * `act(instruction, params, options)` as a third argument.
  */
@@ -64,8 +63,11 @@ export function validateActOptions(options: ActOptions | undefined, extraArgumen
       'agent.act structured output (options.schema) is not part of this milestone',
     );
   }
-  if (loose.vision !== undefined && !isVisionMode(loose.vision)) {
-    throw new TestError('INVALID_ARGUMENT', "vision must be true, false, or 'only'");
+  if (loose.vision !== undefined) {
+    throw new ConfigurationError(
+      'UNSUPPORTED_CAPABILITY',
+      'agent.act takes no vision option: the model works from the tree and asks for a screenshot itself when the tree lacks what it needs; vision is a judgment option (assert, waitFor, extract)',
+    );
   }
   const unknown = Object.keys(options).filter((key) => !ACT_OPTION_KEYS.has(key));
   if (unknown.length > 0) {

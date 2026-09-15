@@ -11,7 +11,6 @@
 import type { SemanticNode } from '../engine/surface.ts';
 import { TestError } from '../internal/errors.ts';
 import type { StepAgentDetails, VisionDegradation } from '../run/steps.ts';
-import type { VisionMode } from '../types.ts';
 import { describeTarget } from './actions.ts';
 import { relocateDescriptor } from '../cache/relocate.ts';
 import { AgentError } from './error.ts';
@@ -44,13 +43,6 @@ const MAX_RECENT_OBSERVATIONS = 8;
 export interface ObservationFeedOptions {
   /** The agent's observation byte ceiling, clamped per capture by the token limit. */
   readonly maxObservationBytes: number;
-  /**
-   * What the step asked to see. `'only'` withholds the tree from every
-   * executor view, captures pixels on every look, and fails a look whose
-   * pixels cannot leave the runner; `true` captures them on every look unless
-   * it declines; `false` captures them when a look asks.
-   */
-  readonly vision: VisionMode;
 }
 
 export class ObservationFeed {
@@ -87,11 +79,6 @@ export class ObservationFeed {
     return this.newest;
   }
 
-  /** True under `vision: 'only'`: no line of the tree reaches the executor. */
-  get treeWithheld(): boolean {
-    return this.options.vision === 'only';
-  }
-
   /** The newest observation, which an action addresses; before the first look there is nothing to address. */
   requireLatest(): AgentObservation {
     if (this.newest === undefined) {
@@ -126,48 +113,17 @@ export class ObservationFeed {
     return this.view(await this.observeSettled(this.wantsPixels(options)), options);
   }
 
-  /**
-   * Whether one executor look captures pixels: what it asked for, else what
-   * the step's `vision` pushes. `true` captures on every look unless the look
-   * declines; `'only'` always does, because the screenshot is the executor's
-   * whole view of the screen.
-   */
+  /** Whether one executor look captures pixels: only when it asks. The executor decides what its model needs to see. */
   private wantsPixels(options: ExecutorObserveOptions): boolean {
-    if (this.treeWithheld) return true;
-    return options.pixels ?? this.options.vision === true;
+    return options.pixels === true;
   }
 
-  /**
-   * The executor's view of one capture: redacted text, and the tree and
-   * pixels it asked for. Under `vision: 'only'` the text is empty and no tree
-   * is projected, whatever was asked: the harness still holds the tree and
-   * hit-tests points against it, but the model must answer from pixels. Such
-   * a look without pixels is a look at nothing, so it fails rather than
-   * handing the executor an empty screen to act on.
-   */
+  /** The executor's view of one capture: redacted text, and the tree and pixels it asked for. */
   private async view(observation: AgentObservation, options: ExecutorObserveOptions): Promise<ExecutorObservation> {
     const redact = this.runtime.redact;
     // Prefer location from this capture; only engines without it need a separate probe.
     const path = await this.currentPath(observation);
     const pixels = this.wantsPixels(options) ? this.pixelsFor(observation) : {};
-    if (this.treeWithheld) {
-      if (pixels.pixels === undefined) {
-        throw new AgentError(
-          'POLICY_DENIED',
-          `${this.accounting.api} runs with vision: 'only', so the screenshot is its only view of the screen, ` +
-            `but pixel evidence is unavailable (${pixels.pixelsWithheld ?? 'UNSUPPORTED_CAPABILITY'}); ` +
-            'it will not act from the semantic tree instead',
-        );
-      }
-      return {
-        revision: observation.revision,
-        text: '',
-        truncated: false,
-        viewport: observation.viewport,
-        ...(path === undefined ? {} : { path: redact(path) }),
-        pixels: pixels.pixels,
-      };
-    }
     return {
       revision: observation.revision,
       text: observation.text,
@@ -261,10 +217,9 @@ export class ObservationFeed {
   }
 
   /** The step's pixel record for the report. */
-  visionReport(): Pick<StepAgentDetails, 'visionInput' | 'visionDegraded' | 'visionOnly'> {
+  visionReport(): Pick<StepAgentDetails, 'visionInput' | 'visionDegraded'> {
     return {
       ...(this.pixelsSent ? { visionInput: true } : {}),
-      ...(this.treeWithheld ? { visionOnly: true } : {}),
       ...(this.visionDegraded === undefined ? {} : { visionDegraded: this.visionDegraded }),
     };
   }
@@ -312,8 +267,6 @@ export class ObservationFeed {
     this.newest = observation;
     this.recent.push(observation);
     if (this.recent.length > MAX_RECENT_OBSERVATIONS) this.recent.shift();
-    // Bytes the model may read: a withheld tree contributes the zero it is.
-    if (this.treeWithheld) return;
     const metrics = this.accounting.metrics;
     metrics.observationBytes = Math.max(metrics.observationBytes, observation.bytes);
   }

@@ -27,7 +27,6 @@ import type {
   ProviderOptions,
   ScrollDirection,
   Secret,
-  VisionMode,
 } from '../types.ts';
 import { AGENT_CODE_TABLE, isAgentError, type AgentError } from './error.ts';
 
@@ -79,13 +78,13 @@ export interface ExecutorAttempt {
 
 /** What an executor asks `observe()` to include beyond the text serialization. */
 export interface ExecutorObserveOptions {
-  /** Include the redacted node tree as `tree`; never included under `vision: 'only'`. */
+  /** Include the redacted node tree as `tree`. */
   readonly tree?: boolean;
   /**
    * Include masked viewport pixels as `pixels`. Granted only when the engine
    * captures pixels, its masking is proven, and no secret has been filled in
-   * this attempt; otherwise `pixelsWithheld` names the reason. Defaults to
-   * the step's `vision`: on request at `false`, on at `true`, forced at `'only'`.
+   * this attempt; otherwise `pixelsWithheld` names the reason. Off unless
+   * asked: the executor decides when its model needs to see the screen.
    */
   readonly pixels?: boolean;
 }
@@ -373,15 +372,6 @@ export interface StepExecutorContext {
    * that can only decline.
    */
   readonly pixelsTainted: boolean;
-  /**
-   * How much pixel evidence the step pushes. `false` (the default): the
-   * tree; pixels when a look asks for them. `true`: pixels on every look
-   * unless it declines. `'only'`: the harness withholds the tree from every
-   * observation (`text` is empty, no `tree`), always captures pixels, and
-   * fails the observation with `POLICY_DENIED` when pixels cannot leave the
-   * runner, because the executor has nothing else to act on.
-   */
-  readonly vision: VisionMode;
   /**
    * Attaches the executor's model transcript to the step. Persisted as a
    * `log` artifact when the run collects debug detail (`--debug`); a no-op

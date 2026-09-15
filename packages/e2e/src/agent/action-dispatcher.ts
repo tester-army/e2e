@@ -230,9 +230,9 @@ export class ActionDispatcher {
     return this.runtime.engine.session;
   }
 
-  /** How point results name nodes: never by a line or id the model was not shown. */
+  /** How point results name nodes: by the line of the observation the model holds. */
   private prose(observation: AgentObservation): PointProse {
-    return { observation, treeWithheld: this.feed.treeWithheld, redact: this.runtime.redact };
+    return { observation };
   }
 
   private get verbs() {

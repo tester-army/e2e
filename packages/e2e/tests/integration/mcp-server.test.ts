@@ -136,6 +136,9 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
       expect.stringMatching(/^- navigate \{url\}: /),
       expect.stringMatching(/^- screenshot: Attach a screenshot of the current viewport.* \[read-only\]$/),
       expect.stringMatching(/^- tap_at \{x, y\}: Tap a point in the latest screenshot/),
+      expect.stringMatching(/^- type_at \{x, y, value, replace\?\}: Type a plain-text value into the field at a point/),
+      expect.stringMatching(/^- press_at \{x, y, key\}: Send one key/),
+      expect.stringMatching(/^- select_at \{x, y, value\}: Pick one option/),
       expect.stringMatching(/^- type_secret \{target, name\}: /),
       expect.stringMatching(/^- locate \{role\?, name\?, text\?, label\?, placeholder\?, testId\?, exact\?\}: .* \[read-only\]$/),
     ]);
@@ -145,7 +148,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
 
     const listed = await invoke('tools');
     expect(listed.isError, listed.text).toBe(false);
-    expect(listed.text).toContain(`Session ${sessionId} on target "web": 11 tools.`);
+    expect(listed.text).toContain(`Session ${sessionId} on target "web": 14 tools.`);
     expect(catalogLines(listed.text)).toEqual(catalogLines(opened.text));
     const detail = await invoke('tools', { tool: 'type_secret' });
     expect(detail.text).toContain('"admin" (password)');
