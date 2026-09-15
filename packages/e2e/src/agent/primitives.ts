@@ -446,6 +446,14 @@ function createPixelTools(context: StepExecutorContext, options: GrammarToolOpti
   const y = z.number().describe('y in the latest screenshot, pixels from the top edge');
   const at = (px: number, py: number) => `(${String(px)}, ${String(py)})`;
   const keyboard = verbs.has('typeText');
+  /**
+   * A point is both coordinates or neither: one alone would validate and then
+   * fall through to the focused field as if no point were given, so a half
+   * point is rejected before any action runs.
+   */
+  const wholePoint = { message: 'x and y go together: give both to name a point, or neither', path: ['x'] };
+  const isWholePoint = (value: { readonly x?: number | undefined; readonly y?: number | undefined }) =>
+    (value.x === undefined) === (value.y === undefined);
 
   /**
    * The control at a point for a verb that needs one, or, with a keyboard,
@@ -491,12 +499,14 @@ function createPixelTools(context: StepExecutorContext, options: GrammarToolOpti
       description: keyboard
         ? 'Type a plain-text value into the field at the point: a listed input is filled (replacing its value); anything else is tapped to focus it and typed into through the keyboard, inserting at the caret unless replace is set. Omit x and y to type into whatever already has focus.'
         : 'Type a plain-text value into the input at the point, replacing its current value. Aim at the field itself.',
-      inputSchema: z.object({
-        x: keyboard ? x.optional() : x,
-        y: keyboard ? y.optional() : y,
-        value: z.string(),
-        ...(keyboard ? { replace: z.boolean().optional().describe('Select all and delete before typing, for a field that visibly holds text you must remove; default false. Leave it off for an empty field.') } : {}),
-      }),
+      inputSchema: z
+        .object({
+          x: keyboard ? x.optional() : x,
+          y: keyboard ? y.optional() : y,
+          value: z.string(),
+          ...(keyboard ? { replace: z.boolean().optional().describe('Select all and delete before typing, for a field that visibly holds text you must remove; default false. Leave it off for an empty field.') } : {}),
+        })
+        .refine(isWholePoint, wholePoint),
       execute: ({ x: px, y: py, value, ...rest }) =>
         acting(px === undefined || py === undefined ? 'type_at (focused)' : `type_at ${at(px, py)}`, async () => {
           const found = await focusAt(px, py, 'type_at');
@@ -515,11 +525,13 @@ function createPixelTools(context: StepExecutorContext, options: GrammarToolOpti
       description: verbs.has('pressKey')
         ? 'Send one key (e.g. "Enter", "Escape", "Tab") to the control at the point, or to whatever has focus when x and y are omitted.'
         : 'Send one key (e.g. "Enter", "Escape", "Tab") to the control at the point.',
-      inputSchema: z.object({
-        x: verbs.has('pressKey') ? x.optional() : x,
-        y: verbs.has('pressKey') ? y.optional() : y,
-        key: z.string().min(1).max(64),
-      }),
+      inputSchema: z
+        .object({
+          x: verbs.has('pressKey') ? x.optional() : x,
+          y: verbs.has('pressKey') ? y.optional() : y,
+          key: z.string().min(1).max(64),
+        })
+        .refine(isWholePoint, wholePoint),
       execute: ({ x: px, y: py, key }) =>
         acting(px === undefined || py === undefined ? 'press_at (focused)' : `press_at ${at(px, py)}`, async () => {
           const found = await focusAt(px, py, 'press_at');
@@ -560,15 +572,13 @@ function createPixelTools(context: StepExecutorContext, options: GrammarToolOpti
     tools['scroll'] = screenTool({
       description:
         'Scroll or swipe the screen in a direction: the whole viewport, or the scrollable region under a point when x and y are given (a carousel, a list, a map). Each result carries a fresh screenshot.',
-      inputSchema: z.object({ direction, x: x.optional(), y: y.optional(), times }),
+      inputSchema: z.object({ direction, x: x.optional(), y: y.optional(), times }).refine(isWholePoint, wholePoint),
       execute: ({ direction: way, x: px, y: py, times: count }) =>
         acting(`scroll ${way}${px === undefined || py === undefined ? '' : ` at ${at(px, py)}`}`, async () => {
           const repeats = count ?? 1;
           // A point names the region the tree lists under it; nothing listed there scrolls the viewport.
           const target =
-            px === undefined || py === undefined || !verbs.has('tap')
-              ? undefined
-              : (await context.actions.hitTest(viewportPoint(px, py))).under;
+            px === undefined || py === undefined ? undefined : (await context.actions.hitTest(viewportPoint(px, py))).under;
           for (let repeat = 0; repeat < repeats; repeat += 1) {
             await context.actions.scroll(way, target);
             if (repeat < repeats - 1) await context.observe();
@@ -591,11 +601,11 @@ function createPixelTools(context: StepExecutorContext, options: GrammarToolOpti
  * Types into one listed node. A node the engine cannot fill (a focusable
  * canvas, a custom widget with its own key handling, or a container the
  * model named after a tap_at) still takes keystrokes when the engine has a
- * keyboard: the value goes to whatever has focus first, since the model's
- * own tap_at usually put it on the drawn field, and only when nothing has
- * focus is the node tapped to give it focus and the typing tried once more.
- * Tapping first would move focus off a field a container merely surrounds.
- * Returns a lead when it took that path.
+ * keyboard: the node is tapped so it holds focus, then the value goes to the
+ * focused field. The tap comes first because whatever had focus before may be
+ * an unrelated field an earlier action left focused, and typing into it
+ * would corrupt that field while reporting success on this node. Returns a
+ * lead when it took that path.
  */
 async function typeIntoNode(
   context: StepExecutorContext,
@@ -609,24 +619,9 @@ async function typeIntoNode(
   } catch (cause) {
     if (isRuntimeHardStop(cause) || !context.target.verbs.has('typeText') || !isNotFillable(cause)) throw cause;
   }
-  try {
-    await context.actions.typeText(value, { replace: false });
-    return `${label} is not an input; typed into the focused field through the keyboard instead.`;
-  } catch (cause) {
-    if (isRuntimeHardStop(cause) || !isNoFocus(cause)) throw cause;
-  }
   await context.actions.tap(target);
   await context.actions.typeText(value, { replace: false });
   return `${label} is not an input; tapped it to focus it and typed through the keyboard.`;
-}
-
-/** The engine's refusal to type when nothing that takes keystrokes has focus. */
-function isNoFocus(cause: unknown): boolean {
-  for (let error: unknown = cause; typeof error === 'object' && error !== null; error = (error as { cause?: unknown }).cause) {
-    const { code, message } = error as { code?: unknown; message?: unknown };
-    if (code === 'NOT_ACTIONABLE' && typeof message === 'string' && /has focus/i.test(message)) return true;
-  }
-  return false;
 }
 
 /**

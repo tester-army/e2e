@@ -268,8 +268,8 @@ describe('agent.act with vision only', () => {
     expect(resultByTitle(outcome, 'types into a listed widget the engine cannot fill').status).toBe('passed');
     const step = stepOf('types into a listed widget the engine cannot fill');
     const actions = step.events.filter((event) => event.kind === 'engine');
-    // Nothing had focus, so the focused attempt was refused before the node was tapped and typed into.
-    expect(actions.map((event) => `${event.name}:${event.status}`)).toEqual(['type:failed', 'typeText:failed', 'tap:passed', 'typeText:passed', 'press:passed']);
+    // The fill was refused, so the node was tapped to hold focus and typed into through the keyboard.
+    expect(actions.map((event) => `${event.name}:${event.status}`)).toEqual(['type:failed', 'tap:passed', 'typeText:passed', 'press:passed']);
     const [, second] = turnsOf('type yo into the pad');
     expect(second!.lastToolResult).toMatch(/#\S+ is not an input; tapped it to focus it and typed through the keyboard\./);
   });

@@ -141,14 +141,15 @@ export class ActionDispatcher {
     return this.queue.run(() => {
       const observation = this.feed.requireLatest();
       const clamped = clampToViewport(point, observation.viewport);
+      // The control is reported whatever the engine can do with it: the verb
+      // the executor calls next is gated on its own action kind, and only
+      // `tapAt` needs to ignore a listed control when node taps are missing.
       const hit = hitTest(observation, clamped);
-      // Only an engine that acts on nodes can act on the control; the point stays for tapAt.
-      const control = this.verbs.has('tap') ? hit.control : undefined;
       return Promise.resolve({
         point: clamped,
-        ...(control === undefined ? {} : { control: { id: control.ref.id } }),
+        ...(hit.control === undefined ? {} : { control: { id: hit.control.ref.id } }),
         ...(hit.under === undefined ? {} : { under: { id: hit.under.ref.id } }),
-        summary: describePointHit({ point: clamped, control, under: hit.under, ...this.prose(observation) }),
+        summary: describePointHit({ point: clamped, control: hit.control, under: hit.under, ...this.prose(observation) }),
       });
     });
   }
