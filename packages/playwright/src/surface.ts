@@ -27,6 +27,7 @@ import {
   type LocatorExpression,
   type NodeRef,
   type OperationContext,
+  type PointerAction,
   type SemanticNode,
   type VideoSegment,
   type ViewportPoint,
@@ -57,6 +58,8 @@ import {
   invalidState,
   message,
   navigationStaleOr,
+  performPointDrag,
+  performPointSwipe,
   performViewportSwipe,
   sanitizeFilename,
   staleOr,
@@ -560,14 +563,32 @@ export class PlaywrightSurface {
   }
 
   /**
-   * A click at one viewport point in CSS pixels, with nothing resolved behind
-   * it: no actionability wait, because there is no element to wait on, and the
-   * page decides what the click lands on, as it does for a person.
+   * One pointer action at a viewport point in CSS pixels, with nothing
+   * resolved behind it: no actionability wait, because there is no element to
+   * wait on, and the page decides what the gesture lands on, as it does for a
+   * person.
    */
-  tapAt(point: ViewportPoint, operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'tapAt', () => {
+  performAt(point: ViewportPoint, action: PointerAction, operation: OperationContext): Promise<void> {
+    return this.guard(operation, `${action.kind} at point`, async () => {
       this.requireSession().requireObservation();
-      return this.requirePage().mouse.click(point.x, point.y);
+      const page = this.requirePage();
+      const { mouse } = page;
+      switch (action.kind) {
+        case 'tap':
+          return mouse.click(point.x, point.y);
+        case 'doubleTap':
+          return mouse.dblclick(point.x, point.y);
+        case 'secondaryTap':
+          return mouse.click(point.x, point.y, { button: 'right' });
+        case 'longPress':
+          return mouse.click(point.x, point.y, { delay: action.durationMs ?? 500 });
+        case 'hover':
+          return mouse.move(point.x, point.y);
+        case 'dragTo':
+          return performPointDrag(mouse, point, action.target);
+        case 'swipe':
+          return performPointSwipe(page, point, action.direction, action.momentum ?? 'none');
+      }
     });
   }
 

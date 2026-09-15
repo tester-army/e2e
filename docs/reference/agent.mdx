@@ -90,7 +90,7 @@ tools. The act model receives the image itself; no second model is involved.
 | Tool | What it does |
 | --- | --- |
 | `screenshot()` | Attaches a masked viewport screenshot to the tool result. From then on the step is in pixel mode: every action result carries a fresh screenshot. |
-| `tap_at({ x, y })` | Taps a point in the latest screenshot's pixel coordinates. The runner hit-tests the point against the tree. A listed control under it is tapped by id, exactly like `tap`. A point on nothing listed goes to the engine's `tapAt` as a bare point. |
+| `tap_at({ x, y })` | Taps a point in the latest screenshot's pixel coordinates. The runner hit-tests the point against the tree. A listed control under it is tapped by id, exactly like `tap`. A point on nothing listed goes to the engine's `performAt` as a bare-point tap. |
 | `type_at({ x, y, value, replace? })` | Types into the field at the point. A listed input underneath is filled by id, replacing its value. On an engine with a keyboard, a point on nothing listed is tapped to focus it and typed into through the keyboard (a field drawn on a canvas), inserting at the caret unless `replace` is set. Without a keyboard, a point on nothing typeable fails the action and the model reads why. |
 | `press_at({ x, y, key })` | Sends one key to the control at the point; with a keyboard, a point on nothing listed is tapped to focus it and the key goes to whatever holds focus. |
 | `select_at({ x, y, value })` | Picks an option by visible label in the select at the point. |
@@ -134,8 +134,9 @@ including a failed capture, invalidates that reuse.
 
 A secret filled during the step withholds every later screenshot
 (`PIXEL_TAINTED`), and a step that opens on a tainted viewport offers none of
-the five pixel tools. `tap_at` needs an engine with `perform` or `tapAt`;
-without `tapAt` the point must land on a listed control. A bare-point tap
+the five pixel tools. `tap_at` needs an engine whose `actions` or
+`pointerActions` include `tap`; without the pointer kind the point must land
+on a listed control. A bare-point tap
 replays from the [trace cache](/cache) only on a viewport of the recorded
 size, or at the same place inside the listed node that contained it. A step
 that sent pixels records `visionInput: true` and `metrics.pixelBytes`.

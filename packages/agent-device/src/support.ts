@@ -106,7 +106,7 @@ export interface RawScreenshotResult {
  */
 export function logicalScreenSize(
   result: RawScreenshotResult,
-): { readonly width: number; readonly height: number; readonly scale: number } | undefined {
+): { readonly width: number; readonly height: number } | undefined {
   const logical =
     result.logicalWidth !== undefined && result.logicalHeight !== undefined
       ? { width: result.logicalWidth, height: result.logicalHeight }
@@ -114,5 +114,5 @@ export function logicalScreenSize(
         ? { width: result.width / result.pixelDensity, height: result.height / result.pixelDensity }
         : undefined;
   if (logical === undefined || logical.width <= 0 || logical.height <= 0) return undefined;
-  return { ...logical, scale: 1 };
+  return logical;
 }

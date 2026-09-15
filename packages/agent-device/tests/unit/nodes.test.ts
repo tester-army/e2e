@@ -98,11 +98,10 @@ describe('snapshot projection', () => {
   });
 
   it('reads the viewport off the application node, else off the rect extent', () => {
-    expect(viewportOf(SETTINGS_NODES)).toEqual({ width: 390, height: 844, scale: 1 });
+    expect(viewportOf(SETTINGS_NODES)).toEqual({ width: 390, height: 844 });
     expect(viewportOf([{ type: 'button', rect: { x: 10, y: 20, width: 100, height: 50 } }])).toEqual({
       width: 110,
       height: 70,
-      scale: 1,
     });
     expect(viewportOf([{ type: 'button' }])).toBeUndefined();
   });
@@ -136,7 +135,7 @@ describe('snapshot projection', () => {
       'textbox',
     ]);
     expect(projected.index[6]?.node.states).toEqual({ secure: true });
-    expect(projected.viewport).toEqual({ width: 390, height: 844, scale: 1 });
+    expect(projected.viewport).toEqual({ width: 390, height: 844 });
     expect(screenTitle(projected)).toBe('Settings');
   });
 

@@ -204,7 +204,7 @@ describe('playwright engine lifecycle', () => {
       expect(snapshot.root.role).toBe('document');
       expect(snapshot.root.children?.length ?? 0).toBeGreaterThan(0);
       expect(snapshot.location).toBe(`${app.url}/form`);
-      expect(snapshot.viewport).toEqual({ width: 1280, height: 720, scale: 1 });
+      expect(snapshot.viewport).toEqual({ width: 1280, height: 720 });
 
       // displayValue is filtered from the values the batch read returned:
       // two inputs hold "alpha", one holds "beta".
@@ -225,6 +225,71 @@ describe('playwright engine lifecycle', () => {
         operation('d1'),
       );
       expect(gammas.map((node) => node.name)).toEqual(['Second']);
+    } finally {
+      await engine.endAttempt!(cleanup());
+      await engine.dispose!(cleanup());
+    }
+  });
+
+  it('reports pressed and heading level, queries by them, and performs pointer actions on nodes and at points', async () => {
+    const engine = playwright();
+    try {
+      await boot(engine, app);
+      await engine.startAttempt!({ attemptId: 'pointer1', artifactsDir, signal: new AbortController().signal });
+      const op = () => operation('pointer1');
+      await engine.session!.open!(`${app.url}/pointer`, op());
+
+      const snapshot = await engine.observe!(op());
+      const nodes = [...walk(snapshot.root)];
+      const heading = nodes.find((node) => node.role === 'heading');
+      expect(heading).toMatchObject({ name: 'Pointer', level: 2 });
+      expect(nodes.find((node) => node.name === 'Mute')?.states).toMatchObject({ pressed: false });
+      expect(nodes.filter((node) => node.role !== 'heading').every((node) => node.level === undefined)).toBe(true);
+
+      const heading2: LocatorExpression = {
+        kind: 'query',
+        query: { kind: 'role', value: { kind: 'string', value: 'heading', exact: true }, level: 2 },
+      };
+      const heading1: LocatorExpression = {
+        kind: 'query',
+        query: { kind: 'role', value: { kind: 'string', value: 'heading', exact: true }, level: 1 },
+      };
+      expect((await engine.locate!(heading2, op())).map((node) => node.name)).toEqual(['Pointer']);
+      expect(await engine.locate!(heading1, op())).toEqual([]);
+
+      const pressed = (value: boolean): LocatorExpression => ({
+        kind: 'query',
+        query: { kind: 'role', value: { kind: 'string', value: 'button', exact: true }, states: { pressed: value } },
+      });
+      expect(await engine.locate!(pressed(true), op())).toEqual([]);
+      const [mute] = await engine.locate!(pressed(false), op());
+      await engine.perform!(mute!.ref, { kind: 'tap' }, op());
+      expect((await engine.locate!(pressed(true), op())).map((node) => node.name)).toEqual(['Mute']);
+
+      const [menuTarget] = await engine.locate!({ kind: 'selector', selector: '#menu-target' }, op());
+      await engine.perform!(menuTarget!.ref, { kind: 'secondaryTap' }, op());
+      const [afterMenu] = await engine.locate!({ kind: 'selector', selector: '#menu-target' }, op());
+      expect(afterMenu?.text).toBe('context menu');
+
+      // Every pointer kind at a bare point, read back from the page's event log.
+      expect(engine.pointerActions).toEqual(['tap', 'doubleTap', 'secondaryTap', 'longPress', 'hover', 'dragTo', 'swipe']);
+      await engine.performAt!({ x: 150, y: 350 }, { kind: 'tap' }, op());
+      await engine.performAt!({ x: 160, y: 360 }, { kind: 'doubleTap' }, op());
+      await engine.performAt!({ x: 170, y: 370 }, { kind: 'secondaryTap' }, op());
+      await engine.performAt!({ x: 180, y: 380 }, { kind: 'longPress', durationMs: 120 }, op());
+      await engine.performAt!({ x: 190, y: 390 }, { kind: 'hover' }, op());
+      await engine.performAt!({ x: 200, y: 400 }, { kind: 'dragTo', target: { x: 300, y: 450 } }, op());
+      await engine.performAt!({ x: 210, y: 410 }, { kind: 'swipe', direction: 'down' }, op());
+      const [log] = await engine.locate!({ kind: 'selector', selector: '#log' }, op());
+      const lines = (log?.text ?? '').split('\n').filter((line) => line !== '');
+      expect(lines).toContain('click:150,350');
+      expect(lines.filter((line) => line.startsWith('dblclick:'))).toEqual(['dblclick:160,360']);
+      expect(lines).toContain('contextmenu:170,370');
+      expect(lines).toContain('mousedown:180,380');
+      expect(lines).toContain('mouseup:180,380');
+      expect(lines).toContain('mousedown:200,400');
+      expect(lines).toContain('mouseup:300,450');
+      expect(lines.some((line) => line.startsWith('wheel:210,410:') && Number(line.split(':')[2]) > 0)).toBe(true);
     } finally {
       await engine.endAttempt!(cleanup());
       await engine.dispose!(cleanup());

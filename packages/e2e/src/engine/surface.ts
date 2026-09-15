@@ -8,14 +8,17 @@
  * Re-exports the contract vocabulary so internal modules import one path.
  */
 
-import type { Momentum, ScrollDirection } from '../types.ts';
 import type {
   LocatorAction,
   LocatorActionKind,
   LocatorExpression,
+  Momentum,
   NodeRef,
   ObservationPixels,
   OperationContext,
+  PointerAction,
+  PointerActionKind,
+  ScrollDirection,
   SemanticNode,
   ViewportPoint,
 } from './contract.ts';
@@ -30,7 +33,7 @@ export type { EngineObserveOptions, EngineState, VideoSegment } from './index.ts
  * engine can honor from the action kinds the engine declared, so the agent
  * offers the model exactly that vocabulary. The vision-located tap is not a
  * verb of its own: it rides `tap` when the located point sits on a node the
- * tree lists, and `tapAt` when it does not.
+ * tree lists, and `performAt` when it does not.
  */
 export type GrammarVerb =
   | 'tap'
@@ -70,7 +73,6 @@ interface ObservationMetadata {
   readonly viewport: {
     readonly width: number;
     readonly height: number;
-    readonly scale: number;
   };
   /**
    * What the engine masked against what it saw. Pixel completeness is judged
@@ -112,6 +114,8 @@ export interface TargetSession {
   readonly verbs: ReadonlySet<GrammarVerb>;
   /** Action kinds the engine declared for `perform`; empty without the actions capability. */
   readonly actions: ReadonlySet<LocatorActionKind>;
+  /** Pointer action kinds the engine declared for `performAt`; empty without the pointer capability. */
+  readonly pointerActions: ReadonlySet<PointerActionKind>;
   /** Captures one atomic agent observation; the harness redacts it downstream. */
   observe(operation: OperationContext, options?: EngineObserveOptions): Promise<Observation>;
   /** Resolves immediately; the runner owns query polling and strictness. */
@@ -129,8 +133,8 @@ export interface TargetSession {
     momentum: Momentum | undefined,
     operation: OperationContext,
   ): Promise<void>;
-  /** Taps one viewport point, in CSS pixels, with no node behind it. */
-  tapAt(point: ViewportPoint, operation: OperationContext): Promise<void>;
+  /** Performs one pointer action at a viewport point, in CSS pixels, with no node behind it. */
+  performAt(point: ViewportPoint, action: PointerAction, operation: OperationContext): Promise<void>;
   /** Input to whatever holds focus; each member fails with UNSUPPORTED_CAPABILITY when the engine lacks it. */
   readonly keyboard: {
     type(text: string, options: { readonly replace: boolean }, operation: OperationContext): Promise<void>;

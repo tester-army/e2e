@@ -45,7 +45,7 @@ export default {
     async startAttempt() { log('startAttempt'); },
     async endAttempt() { log('endAttempt'); },
     async dispose() { log('dispose'); },
-    async observe() { return { location: 'app://fake/Home', root: node, viewport: { width: 1280, height: 720, scale: 1 } }; },
+    async observe() { return { location: 'app://fake/Home', root: node, viewport: { width: 1280, height: 720 } }; },
     async locate() { return [node]; },
   }) }],
   timeout: 60_000,

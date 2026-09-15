@@ -45,7 +45,7 @@ describe('agent semantic fallback through the engine contract', () => {
         return {
           root: { ref: { id: 'root', revision: '' } },
           location: 'fixture:result',
-          viewport: { width: 2, height: 2, scale: 1 },
+          viewport: { width: 2, height: 2 },
           treeUnavailable: true,
           pixels: { data: new Uint8Array([1, 2, 3]), mediaType: 'image/png', width: 2, height: 2, scale: 1 },
           maskedRegionCount: 0,

@@ -74,7 +74,7 @@ function subtreeHasText(
   );
 }
 
-const STATE_KEYS = ['checked', 'disabled', 'selected', 'expanded'] as const;
+const STATE_KEYS = ['checked', 'disabled', 'selected', 'expanded', 'pressed'] as const;
 
 /**
  * One node against one semantic query. Role queries skip hidden nodes, as a
@@ -98,6 +98,8 @@ function matchesQuery(entry: ProjectedNode, query: SemanticQuery): boolean {
         const expected = wanted[key];
         if (expected !== undefined && (node.states?.[key] ?? false) !== expected) return false;
       }
+      // A device tree reports no heading levels, so a level query matches nothing rather than everything.
+      if (query.level !== undefined && node.level !== query.level) return false;
       return true;
     }
     case 'label':

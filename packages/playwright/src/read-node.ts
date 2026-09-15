@@ -108,10 +108,13 @@ export interface RawNodeData {
     disabled: boolean;
     selected: boolean | null;
     expanded: boolean | null;
+    pressed: boolean | null;
     focused: boolean;
     hidden: boolean;
     secure: boolean;
   };
+  /** Heading level of a heading: `aria-level`, else the digit of `h1` through `h6`; null for anything else. */
+  level: number | null;
   attributes: Record<string, string>;
   /** Value of the project's test-id attribute, when the element carries one. */
   testId: string | null;
@@ -667,6 +670,7 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
       el.getAttribute('aria-disabled') === 'true';
 
     const ariaExpanded = el.getAttribute('aria-expanded');
+    const ariaPressed = el.getAttribute('aria-pressed');
     // Matched against the shared selector rather than re-derived from tag and
     // type, so this node's `secure` flag and the screenshot mask agree by
     // construction.
@@ -711,9 +715,17 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
     if (isDocumentRoot) name = el.ownerDocument.title;
 
     const rect = el.getBoundingClientRect();
+    const role = isDocumentRoot ? 'document' : roleOf(el, tag);
+    let level: number | null = null;
+    if (role === 'heading') {
+      const ariaLevel = Number.parseInt(el.getAttribute('aria-level') ?? '', 10);
+      if (Number.isInteger(ariaLevel) && ariaLevel > 0) level = ariaLevel;
+      else if (/^h[1-6]$/.test(tag)) level = Number(tag.slice(1));
+      else level = 2;
+    }
 
     return {
-      role: isDocumentRoot ? 'document' : roleOf(el, tag),
+      role,
       name,
       labels,
       text,
@@ -724,10 +736,12 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
         disabled,
         selected: selectedState,
         expanded: ariaExpanded === null ? null : ariaExpanded === 'true',
+        pressed: ariaPressed === null ? null : ariaPressed === 'true',
         focused: el.ownerDocument.activeElement === el,
         hidden: isHidden(el, style),
         secure,
       },
+      level,
       attributes,
       testId: el.getAttribute(options.testIdAttribute),
       rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },

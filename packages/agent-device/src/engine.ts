@@ -11,7 +11,7 @@ import { createAgentDeviceClient } from 'agent-device';
 import { defineEngine, obj, type EngineAppDeclaration, type EngineHandle } from 'e2e/engine';
 import { createDeviceFixture } from './device.ts';
 import type { AgentDeviceOptions, ClientFactory } from './options.ts';
-import { DEVICE_ACTIONS } from './actions.ts';
+import { DEVICE_ACTIONS, DEVICE_POINTER_ACTIONS } from './actions.ts';
 import { AgentDeviceSurface } from './surface.ts';
 
 const surfaces = new WeakMap<EngineHandle, AgentDeviceSurface>();
@@ -33,7 +33,8 @@ export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
     locate: (expression, operation) => surface.locate(expression, operation),
     perform: (ref, action, operation) => surface.perform(ref, action, operation),
     actions: DEVICE_ACTIONS,
-    tapAt: (point, operation) => surface.tapAt(point, operation),
+    performAt: (point, action, operation) => surface.performAt(point, action, operation),
+    pointerActions: DEVICE_POINTER_ACTIONS,
     keyboard: {
       type: (text, keyboardOptions, operation) => surface.typeText(text, keyboardOptions, operation),
       press: (key, operation) => surface.pressFocusedKey(key, operation),

@@ -27,6 +27,7 @@ import {
   type GrammarVerb,
   type LocatorActionKind,
   type NodeRef,
+  type PointerActionKind,
   type SemanticNode,
   type SessionApp,
   type SessionArtifacts,
@@ -96,7 +97,7 @@ function declaredVerbs(engine: EngineHandle | undefined): ReadonlySet<GrammarVer
   for (const kind of engine?.actions ?? []) {
     for (const verb of VERBS_BY_ACTION[kind] ?? []) verbs.add(verb);
   }
-  if (engine?.tapAt !== undefined) verbs.add('tapAt');
+  if (engine?.pointerActions?.includes('tap') === true) verbs.add('tapAt');
   if (engine?.keyboard !== undefined) {
     verbs.add('typeText');
     verbs.add('pressKey');
@@ -168,6 +169,8 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
   const observeRaw = guard('observation', engine?.observe);
   const performRaw = guard('actions', engine?.perform);
   const actions: ReadonlySet<LocatorActionKind> = new Set(engine?.actions ?? []);
+  const performAtRaw = guard('point actions', engine?.performAt);
+  const pointerActions: ReadonlySet<PointerActionKind> = new Set(engine?.pointerActions ?? []);
 
   const app: SessionApp = {
     open: guard('navigation', engine?.session?.open),
@@ -197,6 +200,7 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
   const session: TargetSession = {
     verbs: declaredVerbs(engine),
     actions,
+    pointerActions,
     app,
     artifacts,
     ...(engine?.state === undefined
@@ -289,7 +293,10 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
       const target = root ?? (await session.observe(operation)).root;
       await performRaw(target, { kind: 'swipe', direction, ...(momentum === undefined ? {} : { momentum }) }, operation);
     },
-    tapAt: guard('point taps', engine?.tapAt),
+    async performAt(point, action, operation) {
+      if (!pointerActions.has(action.kind)) unsupported(`the "${action.kind}" action at a point`);
+      await performAtRaw(point, action, operation);
+    },
     keyboard: {
       type: guard('keyboard input', engine?.keyboard?.type),
       press: (key, operation) => {

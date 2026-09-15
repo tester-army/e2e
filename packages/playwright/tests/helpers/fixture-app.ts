@@ -199,8 +199,36 @@ const PROTECTED_AUTHORIZATION = `Basic ${Buffer.from(
   `${PROTECTED_CREDENTIAL.username}:${PROTECTED_CREDENTIAL.password}`,
 ).toString('base64')}`;
 
+/**
+ * A heading with a level, a toggle button that reports `aria-pressed`, a
+ * target that records a right click, and a plain area that records where
+ * pointer events landed, for the pointer half of the contract.
+ */
+const POINTER = `<!doctype html>
+<html>
+<head><title>Fixture Pointer</title></head>
+<body style="margin:0">
+<h2>Pointer</h2>
+<button id="toggle" aria-pressed="false" onclick="this.setAttribute('aria-pressed', this.getAttribute('aria-pressed') === 'true' ? 'false' : 'true')">Mute</button>
+<div id="menu-target" oncontextmenu="event.preventDefault(); this.textContent = 'context menu'">Right click me</div>
+<div id="pad" style="position:absolute;left:100px;top:300px;width:400px;height:300px;background:#eee"></div>
+<pre id="log"></pre>
+<script>
+  const log = document.getElementById('log');
+  const pad = document.getElementById('pad');
+  for (const type of ['click', 'dblclick', 'contextmenu', 'mousedown', 'mouseup', 'wheel']) {
+    pad.addEventListener(type, (event) => {
+      if (type === 'contextmenu') event.preventDefault();
+      log.textContent += type + ':' + event.clientX + ',' + event.clientY + (type === 'wheel' ? ':' + event.deltaY : '') + String.fromCharCode(10);
+    });
+  }
+</script>
+</body>
+</html>`;
+
 const PAGES: Readonly<Record<string, string>> = {
   '/': HOME,
+  '/pointer': POINTER,
   '/closed-shadow': CLOSED_SHADOW,
   '/contents': CONTENTS,
   '/closed-login': CLOSED_LOGIN,

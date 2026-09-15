@@ -7,7 +7,7 @@ function screen(revision: string, lines: readonly string[], extra: Partial<Execu
     revision,
     text: lines.join('\n'),
     truncated: false,
-    viewport: { width: 1280, height: 720, scale: 1 },
+    viewport: { width: 1280, height: 720 },
     ...extra,
   };
 }

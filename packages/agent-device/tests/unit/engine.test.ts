@@ -472,7 +472,7 @@ describe('observation', () => {
     const h = harness();
     await openAttempt(h);
     const first = await h.engine.observe!(operation());
-    expect(first.viewport).toEqual({ width: 390, height: 844, scale: 1 });
+    expect(first.viewport).toEqual({ width: 390, height: 844 });
     expect(first.location).toBe('com.apple.Preferences / General');
     // The device's application node sits under a root the engine mints: same id every time, the viewport as its box.
     expect(first.root).toMatchObject({ ref: { id: 'root' }, role: 'screen', rect: { x: 0, y: 0, width: 390, height: 844 } });
@@ -522,7 +522,7 @@ describe('observation', () => {
     const empty = await free.engine.observe!(operation());
     expect(empty).toEqual({
       root: { ref: { id: 'root', revision: '' }, role: 'screen', rect: { x: 0, y: 0, width: 390, height: 844 } },
-      viewport: { width: 390, height: 844, scale: 1 },
+      viewport: { width: 390, height: 844 },
     });
     await free.engine.observe!(operation());
     expect(free.fake.methods().filter((method) => method === 'capture.screenshot')).toHaveLength(1);
@@ -572,7 +572,7 @@ describe('observation', () => {
     expect(unmaskable.pixels).toBeUndefined();
     expect(unmaskable.root.children).toHaveLength(1);
     // A snapshot without geometry keeps the viewport the session last learned.
-    expect(unmaskable.viewport).toEqual({ width: 390, height: 844, scale: 1 });
+    expect(unmaskable.viewport).toEqual({ width: 390, height: 844 });
 
     h.fake.respond('capture.snapshot', () => SETTINGS_SNAPSHOT);
     h.fake.respond('capture.screenshot', () => {
@@ -1265,8 +1265,13 @@ describe('deterministic actions', () => {
     expect(h.fake.lastArgs('interactions.fill')).toEqual({ ref: '@e7', text: 'blue' });
     await h.engine.session!.back!(test());
     expect(h.fake.lastArgs('command.back')).toEqual({});
-    await h.engine.tapAt!({ x: 10, y: 20 }, test());
+    await h.engine.performAt!({ x: 10, y: 20 }, { kind: 'tap' }, test());
     expect(h.fake.lastArgs('interactions.press')).toEqual({ x: 10, y: 20 });
+    await h.engine.performAt!({ x: 10, y: 20 }, { kind: 'doubleTap' }, test());
+    expect(h.fake.lastArgs('interactions.press')).toEqual({ x: 10, y: 20, doubleTap: true });
+    await h.engine.performAt!({ x: 10, y: 20 }, { kind: 'longPress', durationMs: 700 }, test());
+    expect(h.fake.lastArgs('interactions.longPress')).toEqual({ x: 10, y: 20, durationMs: 700 });
+    expect(h.engine.pointerActions).toEqual(['tap', 'doubleTap', 'longPress']);
 
     const about = await observed(h, 'About');
     await h.engine.perform!(about.ref, { kind: 'tap' }, { ...operation(), origin: 'agent' });

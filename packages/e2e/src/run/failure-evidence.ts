@@ -103,7 +103,7 @@ function screenText(observation: AgentObservation, url: string | undefined): str
     `# Screen at failure`,
     ...(url === undefined ? [] : [`url: ${url}`]),
     `revision: ${observation.revision}`,
-    `viewport: ${observation.viewport.width}x${observation.viewport.height} @${observation.viewport.scale}`,
+    `viewport: ${observation.viewport.width}x${observation.viewport.height}`,
     observation.kind === 'semantic'
       ? `nodes: ${observation.nodes.size}${observation.truncated ? ' (listing truncated)' : ''}`
       : 'nodes: unavailable',

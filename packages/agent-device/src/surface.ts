@@ -31,6 +31,7 @@ import {
   type NodeRef,
   type ObservationPixels,
   type OperationContext,
+  type PointerAction,
   type VideoSegment,
   type SemanticNode,
   type ViewportPoint,
@@ -793,16 +794,36 @@ export class AgentDeviceSurface {
   }
 
   /**
-   * A tap at one screen point in logical pixels, the space every node's
-   * bounds are in, with no element resolved behind it. `settle` waits for the
-   * UI to go quiet, as the node taps do.
+   * One pointer action at a screen point in logical pixels, the space every
+   * node's bounds are in, with no element resolved behind it. `settle` waits
+   * for the UI to go quiet, as the node taps do.
    */
-  async tapAt(point: ViewportPoint, operation: OperationContext): Promise<void> {
+  async performAt(point: ViewportPoint, action: PointerAction, operation: OperationContext): Promise<void> {
     const settle = operation.origin === 'test' ? {} : this.settleOptions;
+    const at = { x: point.x, y: point.y };
     const before = this.latestIndex;
     await this.command(
-      'tapAt',
-      (client) => client.interactions.press({ x: point.x, y: point.y, ...settle }),
+      `${action.kind} at point`,
+      (client): Promise<unknown> => {
+        switch (action.kind) {
+          case 'tap':
+            return client.interactions.press({ ...at, ...settle });
+          case 'doubleTap':
+            return client.interactions.press({ ...at, doubleTap: true, ...settle });
+          case 'longPress':
+            return client.interactions.longPress({
+              ...at,
+              ...settle,
+              ...(action.durationMs === undefined ? {} : { durationMs: action.durationMs }),
+            });
+          case 'secondaryTap':
+          case 'hover':
+          case 'dragTo':
+          case 'swipe':
+            // Not in DEVICE_POINTER_ACTIONS (actions.ts), so the harness never sends them; kept exhaustive.
+            throw unsupported(`agent-device cannot perform "${action.kind}" at a bare point`);
+        }
+      },
       operation.signal,
     );
     this.markAction(before);

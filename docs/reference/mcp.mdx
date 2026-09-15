@@ -74,7 +74,7 @@ What `call` can run depends on the session's target:
 | `tap`, `type`, `press`, `select`, `scroll`, `navigate`, `type_secret` | A node id from the newest observation, plus the value, key, direction, URL, or secret name | The action's summary and what changed on screen. A verb the engine does not declare is not in the catalog. `type_secret` is listed when the config declares `credentials` or `secrets`; the plaintext never reaches the agent. |
 | `locate` | Exactly one of `role` (with optional `name`), `text`, `label`, `placeholder`, `testId`; `exact` | How many nodes match, which, and the `screen.*` call to write. Zero or several matches name the error a test would get. |
 | `screenshot` | none | The masked viewport as an image. From then on every action result carries a fresh screenshot. Listed while no secret has been filled. |
-| `tap_at` | `x`, `y` in the latest screenshot's pixels | Taps that point: a listed control under it by id, otherwise the bare point through the engine's `tapAt`. |
+| `tap_at` | `x`, `y` in the latest screenshot's pixels | Taps that point: a listed control under it by id, otherwise the bare point through the engine's `performAt`. |
 
 Project tools passed to `createAgent({ tools })` follow in the catalog under
 their own names, scoped to the target's platform. A mobile project that

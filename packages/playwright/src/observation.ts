@@ -322,6 +322,7 @@ export function toSemanticNode(
   if (raw.states.disabled) states['disabled'] = true;
   if (raw.states.selected !== null) states['selected'] = raw.states.selected;
   if (raw.states.expanded !== null) states['expanded'] = raw.states.expanded;
+  if (raw.states.pressed !== null) states['pressed'] = raw.states.pressed;
   if (raw.states.focused) states['focused'] = true;
   if (raw.states.hidden) states['hidden'] = true;
   if (raw.states.secure) states['secure'] = true;
@@ -334,6 +335,7 @@ export function toSemanticNode(
     ...(raw.testId !== null ? { testId: raw.testId } : {}),
     inputPurpose: raw.inputPurpose,
     states,
+    ...(raw.level !== null ? { level: raw.level } : {}),
     attributes: raw.attributes,
     rect: raw.rect,
     ...(framePath.length > 0 ? { framePath } : {}),

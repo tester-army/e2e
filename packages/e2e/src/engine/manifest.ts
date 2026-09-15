@@ -8,7 +8,7 @@
 import { engineBrand } from '../internal/brands.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import { obj } from '../internal/objects.ts';
-import { ENGINE_SPI_VERSION, LOCATOR_ACTION_KINDS, type LocatorActionKind } from './contract.ts';
+import { ENGINE_SPI_VERSION, LOCATOR_ACTION_KINDS, POINTER_ACTION_KINDS } from './contract.ts';
 import type { Engine, EngineAppDeclaration, EngineCapability, EngineHandle } from './index.ts';
 
 /** Every key an engine may declare; anything else is rejected at config load. */
@@ -22,7 +22,8 @@ const KNOWN_KEYS = [
   'locate',
   'perform',
   'actions',
-  'tapAt',
+  'performAt',
+  'pointerActions',
   'keyboard',
   'fixtures',
   'state',
@@ -62,7 +63,7 @@ const FUNCTION_MEMBERS = [
   'observe',
   'locate',
   'perform',
-  'tapAt',
+  'performAt',
   'prepare',
   'init',
   'startAttempt',
@@ -75,7 +76,6 @@ const RESERVED_FIXTURES = new Set(['agent', 'app', 'screen', 'platform', 'sessio
 
 const FIXTURE_NAME_PATTERN = /^[a-z][A-Za-z0-9]*$/;
 
-const ACTION_KIND_SET: ReadonlySet<string> = new Set(LOCATOR_ACTION_KINDS);
 
 function invalid(name: string, detail: string): ConfigurationError {
   return new ConfigurationError('INVALID_CONFIG', `engine "${name}": ${detail}`);
@@ -131,20 +131,25 @@ function appDeclaration(name: string, value: unknown): Record<string, unknown> {
   return declaration;
 }
 
-/** Validates the declared action kinds: a non-empty list of known kinds, each once. */
-function actionKinds(name: string, value: unknown): readonly LocatorActionKind[] {
+/** Validates a declared kind list (`actions`, `pointerActions`): a non-empty list of known kinds, each once. */
+function declaredKinds<Kind extends string>(
+  name: string,
+  member: string,
+  value: unknown,
+  known: readonly Kind[],
+): readonly Kind[] {
   if (!Array.isArray(value) || value.length === 0) {
-    throw invalid(name, `actions must be a non-empty array of action kinds (${LOCATOR_ACTION_KINDS.join(', ')})`);
+    throw invalid(name, `${member} must be a non-empty array of action kinds (${known.join(', ')})`);
   }
   const seen = new Set<string>();
   for (const kind of value) {
-    if (typeof kind !== 'string' || !ACTION_KIND_SET.has(kind)) {
-      throw invalid(name, `actions names unknown kind ${JSON.stringify(kind)}; expected one of ${LOCATOR_ACTION_KINDS.join(', ')}`);
+    if (typeof kind !== 'string' || !(known as readonly string[]).includes(kind)) {
+      throw invalid(name, `${member} names unknown kind ${JSON.stringify(kind)}; expected one of ${known.join(', ')}`);
     }
-    if (seen.has(kind)) throw invalid(name, `actions lists "${kind}" twice`);
+    if (seen.has(kind)) throw invalid(name, `${member} lists "${kind}" twice`);
     seen.add(kind);
   }
-  return Object.freeze([...(value as LocatorActionKind[])]);
+  return Object.freeze([...(value as Kind[])]);
 }
 
 /**
@@ -212,11 +217,16 @@ export function defineEngine(spec: Engine): EngineHandle {
     }
     capabilities.add('location');
   }
-  if (spec.tapAt !== undefined) {
+  if (spec.performAt !== undefined) {
     if (!capabilities.has('observation')) {
-      throw invalid(name, 'declares tapAt without observe: a tapped point is read off the observation pixels');
+      throw invalid(name, 'declares performAt without observe: a point is read off the observation pixels');
+    }
+    if (spec.pointerActions === undefined) {
+      throw invalid(name, 'declares performAt without pointerActions: list the pointer action kinds the surface honors');
     }
     capabilities.add('pointer');
+  } else if (spec.pointerActions !== undefined) {
+    throw invalid(name, 'declares pointerActions without performAt');
   }
   if (spec.keyboard !== undefined && !capabilities.has('observation')) {
     throw invalid(name, 'declares keyboard without observe: the focused field is read off the observation');
@@ -233,7 +243,10 @@ export function defineEngine(spec: Engine): EngineHandle {
     const fn = spec[member];
     if (fn !== undefined) handle[member] = fn.bind(spec);
   }
-  if (spec.actions !== undefined) handle['actions'] = actionKinds(name, spec.actions);
+  if (spec.actions !== undefined) handle['actions'] = declaredKinds(name, 'actions', spec.actions, LOCATOR_ACTION_KINDS);
+  if (spec.pointerActions !== undefined) {
+    handle['pointerActions'] = declaredKinds(name, 'pointerActions', spec.pointerActions, POINTER_ACTION_KINDS);
+  }
   if (spec.fixtures !== undefined) {
     if (!isRecord(spec.fixtures)) throw invalid(name, 'fixtures must be an object');
     for (const [fixture, factory] of Object.entries(spec.fixtures)) {

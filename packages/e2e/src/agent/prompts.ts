@@ -70,7 +70,7 @@ export function buildPrompt(input: PromptInput): string {
     if (input.withholdTree !== true) {
       sections.push(
         '',
-        `<observation revision="${observation.revision}" viewport="${observation.viewport.width}x${observation.viewport.height}@${observation.viewport.scale}">`,
+        `<observation revision="${observation.revision}" viewport="${observation.viewport.width}x${observation.viewport.height}">`,
         observation.text,
         '</observation>',
       );

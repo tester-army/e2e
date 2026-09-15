@@ -10,7 +10,7 @@ import { assertValidReport } from '../helpers/report-schema.ts';
 
 const SUITE = `import { test } from 'e2e';
 test('fallback', async ({ agent }) => { await agent.act('inspect the current result', { timeout: 1500 }); });`;
-const VIEWPORT = { width: 2, height: 2, scale: 1 };
+const VIEWPORT = { width: 2, height: 2 };
 
 /** The engine keeps a viewport reference while exposing no semantic nodes. */
 function pixelSnapshot(value = 1): EngineSnapshot {
@@ -19,7 +19,7 @@ function pixelSnapshot(value = 1): EngineSnapshot {
     location: 'fixture:result',
     viewport: VIEWPORT,
     treeUnavailable: true,
-    pixels: { data: new Uint8Array([value, 2, 3]), mediaType: 'image/png', ...VIEWPORT },
+    pixels: { data: new Uint8Array([value, 2, 3]), mediaType: 'image/png', ...VIEWPORT, scale: 1 },
     maskedRegionCount: 0,
   };
 }
@@ -72,7 +72,8 @@ describe('semantic fallback handoff', () => {
       actions: ['fill', 'press'],
       perform: async () => { throw new Error('fallback must use pointer and keyboard input'); },
       observe: async () => { captures += 1; return pixelSnapshot(captures); },
-      tapAt: async (point) => { dispatched.push(['tap', point]); },
+      performAt: async (point, action) => { dispatched.push([action.kind, point]); },
+      pointerActions: ['tap'],
       keyboard: {
         type: async (value, options) => { dispatched.push(['type', value, options]); },
         press: async () => undefined,

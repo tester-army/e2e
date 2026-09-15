@@ -12,7 +12,7 @@ export function roleQuery(
   scope: LocatorExpression | undefined,
 ): LocatorExpression {
   const states: Record<string, boolean> = {};
-  for (const key of ['checked', 'disabled', 'selected', 'expanded'] as const) {
+  for (const key of ['checked', 'disabled', 'selected', 'expanded', 'pressed'] as const) {
     const value = options?.[key];
     if (value !== undefined) states[key] = value;
   }
@@ -23,6 +23,7 @@ export function roleQuery(
       ? { name: toTextPattern(options.name, { exact: options.exact ?? true }) }
       : {}),
     ...(Object.keys(states).length > 0 ? { states } : {}),
+    ...(options?.level === undefined ? {} : { level: options.level }),
     ...visibility(options),
   };
   return scoped({ kind: 'query', query }, scope);

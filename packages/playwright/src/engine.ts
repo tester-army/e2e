@@ -11,6 +11,7 @@ import {
   ConfigurationError,
   defineEngine,
   LOCATOR_ACTION_KINDS,
+  POINTER_ACTION_KINDS,
   obj,
   type EngineAppDeclaration,
   type EngineHandle,
@@ -84,7 +85,9 @@ export function playwright(options: PlaywrightOptions = {}): EngineHandle {
     perform: (ref, action, operation) => surface.perform(ref, action, operation),
     // A browser honors every action kind of the contract; `actions.ts` dispatches each.
     actions: LOCATOR_ACTION_KINDS,
-    tapAt: (point, operation) => surface.tapAt(point, operation),
+    // A page takes every pointer action of the contract at a bare point too.
+    performAt: (point, action, operation) => surface.performAt(point, action, operation),
+    pointerActions: POINTER_ACTION_KINDS,
     keyboard: {
       type: (text, keyboardOptions, operation) => surface.typeText(text, keyboardOptions, operation),
       press: (key, operation) => surface.pressKey(key, operation),

@@ -47,7 +47,7 @@ interface AgentObservationMetadata {
   /** Redacted, size-bounded serialization sent to the model. */
   readonly text: string;
   readonly bytes: number;
-  readonly viewport: { readonly width: number; readonly height: number; readonly scale: number };
+  readonly viewport: { readonly width: number; readonly height: number };
 }
 
 /**

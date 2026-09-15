@@ -22,8 +22,8 @@ function document(stalled?: ReadStage) {
   const checkpoint = async (stage: ReadStage) => { if (stalled === stage) await gate.promise; };
   const raw: RawObservedNode = {
     role: 'button', name: 'Button', labels: null, text: null, value: null,
-    inputPurpose: 'none', attributes: {}, testId: 'button', parent: -1,
-    states: { checked: null, disabled: false, selected: null, expanded: null, focused: false, hidden: false, secure: false },
+    inputPurpose: 'none', attributes: {}, testId: 'button', parent: -1, level: null,
+    states: { checked: null, disabled: false, selected: null, expanded: null, pressed: null, focused: false, hidden: false, secure: false },
     rect: { x: 0, y: 0, width: 100, height: 80 },
   };
   const element = {

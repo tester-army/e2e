@@ -180,7 +180,7 @@ export function createFakeEngine(behavior: FakeEngineBehavior = {}): FakeEngineH
     async observe(operation) {
       record('observe', operation);
       await behavior.observe?.(operation, current);
-      return { location: `${FAKE_APP_URL}/`, root: tree, viewport: { width: 1280, height: 720, scale: 1 } };
+      return { location: `${FAKE_APP_URL}/`, root: tree, viewport: { width: 1280, height: 720 } };
     },
     actions: LOCATOR_ACTION_KINDS.filter((kind) => kind !== 'swipe' || behavior.swipe === true),
     app: behavior.app ?? { url: FAKE_APP_URL },

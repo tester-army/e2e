@@ -295,8 +295,8 @@ pack dispatches each call to the engine whose attempt is running:
 | `alert` | gap | Accept or dismiss a system alert. |
 
 The grammar verbs (`tap`, `type`, `scroll`) come from the engine and need no
-tool. The engine declares `tapAt`, so a `tap_at` on nothing the tree lists
-taps the bare point. `type_secret` is not offered on a device.
+tool. The engine declares `tap`, `doubleTap`, and `longPress` as pointer
+actions, so a `tap_at` on nothing the tree lists taps the bare point. `type_secret` is not offered on a device.
 
 After a secret fill the agent offers neither `screenshot` nor `tap_at`,
 including in later members of the same serial group. Pixels whose masking the

@@ -151,6 +151,8 @@ export interface Locator extends Screen {
   click(options?: ActionOptions): Promise<void>;
   /** Double-taps exactly one matching actionable node. */
   doubleTap(options?: ActionOptions): Promise<void>;
+  /** Secondary-taps exactly one matching actionable node: a right click, a two-finger tap. */
+  secondaryTap(options?: ActionOptions): Promise<void>;
   /** Long-presses exactly one matching actionable node. */
   longPress(options?: LongPressOptions): Promise<void>;
   /** Fills exactly one input. Secret values are never logged. */
@@ -316,6 +318,10 @@ export interface RoleOptions extends TextMatchOptions {
   selected?: boolean;
   /** Requires the expanded state. */
   expanded?: boolean;
+  /** Requires the pressed state of a toggle button. */
+  pressed?: boolean;
+  /** Requires a heading level, 1 through 6. */
+  level?: number;
 }
 
 export interface ActionOptions {

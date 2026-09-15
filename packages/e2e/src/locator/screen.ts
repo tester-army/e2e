@@ -214,6 +214,12 @@ class LocatorImpl extends ScreenImpl implements Locator {
     );
   }
 
+  secondaryTap(options?: ActionOptions): Promise<void> {
+    return this.action('locator.secondaryTap', () =>
+      this.context.engine.perform(this.expression, { kind: 'secondaryTap' }, options?.timeout),
+    );
+  }
+
   longPress(options?: LongPressOptions): Promise<void> {
     rejectUnknownOptions('longPress', options, ['timeout', 'duration']);
     const durationMs = validateLongPress(options?.duration);

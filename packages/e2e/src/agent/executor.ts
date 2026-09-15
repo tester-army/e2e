@@ -121,7 +121,7 @@ export interface ExecutorObservation {
   /** One node per line as `#id role "name" ...`; already secret-redacted. */
   readonly text: string;
   readonly truncated: boolean;
-  readonly viewport: { readonly width: number; readonly height: number; readonly scale: number };
+  readonly viewport: { readonly width: number; readonly height: number };
   /**
    * The current location as path and query, redacted, when the engine
    * reports one. Absent on engines without a location (a device screen).

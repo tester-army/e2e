@@ -46,11 +46,11 @@ describe('defineEngine', () => {
     expect(isEngineHandle(handle)).toBe(true);
   });
 
-  it('rejects perform, locate, and tapAt without observe: their refs are observation refs', () => {
+  it('rejects perform, locate, and performAt without observe: their refs are observation refs', () => {
     const bare = { name: 'toy', version: '1', spiVersion: 1 as const };
     expect(() => defineEngine({ ...bare, actions: LOCATOR_ACTION_KINDS, perform: async () => undefined })).toThrow(/perform without observe/);
     expect(() => defineEngine({ ...bare, locate: async () => [] })).toThrow(/locate without observe/);
-    expect(() => defineEngine({ ...bare, tapAt: async () => undefined })).toThrow(/tapAt without observe/);
+    expect(() => defineEngine({ ...bare, pointerActions: ['tap'], performAt: async () => undefined })).toThrow(/performAt without observe/);
   });
 
   it('requires the action list with perform, and perform with the action list', () => {
@@ -86,9 +86,18 @@ describe('defineEngine', () => {
     expect(() => defineEngine(observingEngine({ session: [] as never }))).toThrow(/session must be an object/);
   });
 
-  it('computes the pointer capability from tapAt', () => {
-    const handle = defineEngine(observingEngine({ tapAt: async () => undefined }));
+  it('computes the pointer capability from performAt, which needs its pointerActions list', () => {
+    const performAt = async () => undefined;
+    const handle = defineEngine(observingEngine({ performAt, pointerActions: ['tap', 'longPress'] }));
     expect([...handle.capabilities].toSorted()).toEqual(['observation', 'pointer']);
+    expect(handle.pointerActions).toEqual(['tap', 'longPress']);
+    expect(Object.isFrozen(handle.pointerActions)).toBe(true);
+    expect(() => defineEngine(observingEngine({ performAt }))).toThrow(/performAt without pointerActions/);
+    expect(() => defineEngine(observingEngine({ pointerActions: ['tap'] }))).toThrow(/pointerActions without performAt/);
+    expect(() => defineEngine(observingEngine({ performAt, pointerActions: ['fill' as never] }))).toThrow(
+      /pointerActions names unknown kind "fill"/,
+    );
+    expect(() => defineEngine(observingEngine({ performAt, pointerActions: [] }))).toThrow(/pointerActions must be a non-empty array/);
   });
 
   it('computes the keyboard capability from the keyboard hooks, which need observe and both type and press', () => {
@@ -294,6 +303,29 @@ describe('createEngineSession', () => {
     expect(calls).toEqual([]);
   });
 
+  it('routes a point action through performAt only for a declared pointer kind', async () => {
+    const performed: string[] = [];
+    const session = createEngineSession({
+      engine: defineEngine(
+        observingEngine({
+          performAt: async (point, action) => void performed.push(`${action.kind}@${point.x},${point.y}`),
+          pointerActions: ['tap', 'longPress'],
+        }),
+      ),
+      targetName: 'toy-target',
+    });
+    expect(session.pointerActions).toEqual(new Set(['tap', 'longPress']));
+    await session.performAt({ x: 3, y: 4 }, { kind: 'tap' }, OP);
+    await session.performAt({ x: 5, y: 6 }, { kind: 'longPress', durationMs: 800 }, OP);
+    await expect(session.performAt({ x: 1, y: 1 }, { kind: 'secondaryTap' }, OP)).rejects.toThrow(
+      /the "secondaryTap" action at a point/,
+    );
+    expect(performed).toEqual(['tap@3,4', 'longPress@5,6']);
+    const none = createEngineSession({ engine: defineEngine(observingEngine()), targetName: 'toy-target' });
+    expect(none.pointerActions.size).toBe(0);
+    await expect(none.performAt({ x: 1, y: 1 }, { kind: 'tap' }, OP)).rejects.toThrow(/point/);
+  });
+
   it('swipes the viewport as perform(root, swipe), observing first when nothing named the root yet', async () => {
     const performed: { id: string; revision: string; kind: string; direction?: string; momentum?: string }[] = [];
     let observes = 0;
@@ -302,7 +334,7 @@ describe('createEngineSession', () => {
         observingEngine({
           observe: async () => {
             observes += 1;
-            return { root: { ref: { id: 'screen', revision: '' }, role: 'root', children: [node('n1', 'Save')] }, viewport: { width: 10, height: 10, scale: 1 } };
+            return { root: { ref: { id: 'screen', revision: '' }, role: 'root', children: [node('n1', 'Save')] }, viewport: { width: 10, height: 10 } };
           },
           actions: ['swipe'],
           perform: async (ref, action) =>
@@ -328,7 +360,7 @@ describe('createEngineSession', () => {
     });
     const observation = await session.observe(OP);
     expect(observation.location).toBe('app://device/Home');
-    expect(observation.viewport).toEqual({ width: 1280, height: 720, scale: 1 });
+    expect(observation.viewport).toEqual({ width: 1280, height: 720 });
   });
 
   it('derives the grammar verbs from the declared action kinds and hooks', () => {
@@ -344,7 +376,9 @@ describe('createEngineSession', () => {
     expect(verbs({ actions: ['swipe'], perform })).toEqual(['scroll']);
     // Kinds without a grammar verb unlock nothing for the agent.
     expect(verbs({ actions: ['check', 'hover', 'dragTo'], perform })).toEqual([]);
-    expect(verbs({ tapAt: async () => undefined })).toEqual(['tapAt']);
+    // The point tap verb needs the pointer `tap` kind; other pointer kinds alone offer nothing.
+    expect(verbs({ performAt: async () => undefined, pointerActions: ['tap', 'hover'] })).toEqual(['tapAt']);
+    expect(verbs({ performAt: async () => undefined, pointerActions: ['hover'] })).toEqual([]);
     const keyboard = { type: async () => undefined, press: async () => undefined };
     expect(verbs({ keyboard })).toEqual(['pressKey', 'typeText']);
     expect(verbs({ keyboard: { ...keyboard, dismiss: async () => undefined } })).toEqual(['dismissKeyboard', 'pressKey', 'typeText']);
@@ -403,7 +437,7 @@ describe('createEngineSession pixels-only observation', () => {
   it('requires explicit fallback permission and discards stale semantic content', async () => {
     let raw: EngineSnapshot = {
       root: { ref: { id: 'root', revision: '' } },
-      viewport: { width: 2, height: 2, scale: 1 },
+      viewport: { width: 2, height: 2 },
       treeUnavailable: true,
       pixels: { data: new Uint8Array(8), mediaType: 'image/png', width: 2, height: 2, scale: 1 },
     };

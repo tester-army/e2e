@@ -64,7 +64,7 @@ export async function captureObservation(
       snapshot = {
         location: page.url(),
         root: captured.tree,
-        viewport: { ...viewport, scale: 1 },
+        viewport: { width: viewport.width, height: viewport.height },
         ...(captured.truncated ? { truncated: true } : {}),
         ...(pixels === undefined ? {} : { pixels: pixels.pixels, maskedRegionCount: pixels.maskedRegionCount }),
       };
@@ -81,7 +81,7 @@ export async function captureObservation(
       snapshot = {
         location: page.url(),
         root: { ref: { id: ROOT_NODE_ID, revision: '' } },
-        viewport: { ...fallbackViewport, scale: 1 },
+        viewport: { width: fallbackViewport.width, height: fallbackViewport.height },
         truncated: true,
         treeUnavailable: true,
         pixels: pixels.pixels,

@@ -6,7 +6,7 @@
 
 import type { EngineSnapshot, SemanticNode } from '../../src/engine/index.ts';
 
-const SNAPSHOT_VIEWPORT = { width: 1280, height: 720, scale: 1 } as const;
+const SNAPSHOT_VIEWPORT = { width: 1280, height: 720 } as const;
 
 export function snapshot(
   nodes: readonly SemanticNode[],

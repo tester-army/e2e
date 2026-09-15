@@ -8,6 +8,9 @@ import type { CredentialConfig, Secret, SecretConfig } from './config/secrets.ts
 import type { StepExecutor } from './agent/executor.ts';
 import type { StepCacheInfo } from './run/steps.ts';
 import type { EngineHandle } from './engine/index.ts';
+import type { Momentum, Platform, ScrollDirection, SelectOption } from './engine/contract.ts';
+
+export type { Momentum, Platform, ScrollDirection, SelectOption } from './engine/contract.ts';
 import type { TraceCacheStore } from './cache/store.ts';
 import type { RunEvent, RunExitCode, RunStatus } from './run/events.ts';
 import type { Report1Document } from './report/build.ts';
@@ -39,12 +42,7 @@ export type JsonValue =
   | { readonly [key: string]: JsonValue }
   | readonly JsonValue[];
 
-export type Platform = 'web' | 'ios' | 'android' | (string & {});
 export type Capability = string;
-/** A swipe or scroll direction. */
-export type ScrollDirection = 'up' | 'down' | 'left' | 'right';
-/** Fling strength of a swipe. */
-export type Momentum = 'none' | 'slow' | 'fast';
 
 export interface StandardSchemaV1<Input = unknown, Output = Input> {
   readonly '~standard': StandardSchemaV1.Props<Input, Output>;
@@ -305,6 +303,10 @@ export interface RoleOptions extends TextMatchOptions {
   selected?: boolean;
   /** Requires the expanded state. */
   expanded?: boolean;
+  /** Requires the pressed state of a toggle button. */
+  pressed?: boolean;
+  /** Requires a heading level, 1 through 6. */
+  level?: number;
 }
 
 export interface ActionOptions {
@@ -324,13 +326,6 @@ export interface SwipeOptions {
   /** Fling strength; default `none`. */
   momentum?: Momentum;
 }
-
-/** One option of a select: its label (a bare string too), its `value` attribute, or its zero-based index. */
-export type SelectOption =
-  | string
-  | { label: string; value?: never; index?: never }
-  | { value: string; label?: never; index?: never }
-  | { index: number; label?: never; value?: never };
 
 export interface Screen {
   /** Creates a lazy role query. */
@@ -361,6 +356,8 @@ export interface Locator extends Screen {
   click(options?: ActionOptions): Promise<void>;
   /** Double-taps exactly one matching actionable node. */
   doubleTap(options?: ActionOptions): Promise<void>;
+  /** Secondary-taps exactly one matching actionable node: a right click, a two-finger tap. */
+  secondaryTap(options?: ActionOptions): Promise<void>;
   /** Long-presses exactly one matching actionable node. */
   longPress(options?: LongPressOptions): Promise<void>;
   /** Fills exactly one input. Secret values are never logged. */

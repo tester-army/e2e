@@ -10,7 +10,22 @@
  * on all of them.
  */
 
-import type { Momentum, ScrollDirection, SelectOption } from '../types.ts';
+/**
+ * Platform label an engine declares and its target inherits. The harness
+ * recognizes `web`, `ios`, and `android` for platform-scoped tool packs and
+ * reporting; any other label is the engine's own.
+ */
+export type Platform = 'web' | 'ios' | 'android' | (string & {});
+/** A swipe or scroll direction. */
+export type ScrollDirection = 'up' | 'down' | 'left' | 'right';
+/** Fling strength of a swipe. */
+export type Momentum = 'none' | 'slow' | 'fast';
+/** One option of a select: its label (a bare string too), its `value` attribute, or its zero-based index. */
+export type SelectOption =
+  | string
+  | { label: string; value?: never; index?: never }
+  | { value: string; label?: never; index?: never }
+  | { index: number; label?: never; value?: never };
 
 /** The engine contract version this runner speaks. */
 export const ENGINE_SPI_VERSION = 1;
@@ -53,8 +68,10 @@ export interface SemanticQuery {
    * no state that widens it to hidden nodes.
    */
   readonly states?: Readonly<
-    Partial<Record<'checked' | 'disabled' | 'selected' | 'expanded', boolean>>
+    Partial<Record<'checked' | 'disabled' | 'selected' | 'expanded' | 'pressed', boolean>>
   >;
+  /** Heading level a role query requires; matches `SemanticNode.level` exactly. */
+  readonly level?: number;
   /**
    * When true, an engine MUST exclude every match whose `states.hidden` would
    * be true, using the same predicate its `SemanticNode` reports, so that the
@@ -133,15 +150,20 @@ export interface SemanticNode {
   readonly testId?: string;
   /** What a field takes, deciding which secrets may fill it. */
   readonly inputPurpose?: 'username' | 'password' | 'one-time-code' | 'generic-secret' | 'none';
-  /** Boolean states the platform reports. */
+  /**
+   * Boolean states the platform reports. `pressed` is a toggle button's
+   * pressed state; `secure` marks a field whose value is never observed.
+   */
   readonly states?: Readonly<
     Partial<
       Record<
-        'checked' | 'disabled' | 'selected' | 'expanded' | 'focused' | 'hidden' | 'secure',
+        'checked' | 'disabled' | 'selected' | 'expanded' | 'pressed' | 'focused' | 'hidden' | 'secure',
         boolean
       >
     >
   >;
+  /** Heading level of a heading node (`1` through `6` on a document platform); absent elsewhere. */
+  readonly level?: number;
   /** Platform attributes, what `getAttribute` reads. */
   readonly attributes?: Readonly<Record<string, string>>;
   /**
@@ -180,7 +202,7 @@ export interface SemanticNode {
 
 /**
  * Viewport point in CSS pixels, origin at the top-left of the viewport: the
- * space `SemanticNode.rect` is in, and the space `Engine.tapAt` dispatches in.
+ * space `SemanticNode.rect` is in, and the space `Engine.performAt` dispatches in.
  * A point read off `ObservationPixels` is divided by its `scale` to get here.
  */
 export interface ViewportPoint {
@@ -218,6 +240,7 @@ export type LocatorAction =
       readonly kind:
         | 'tap'
         | 'doubleTap'
+        | 'secondaryTap'
         | 'check'
         | 'uncheck'
         | 'clear'
@@ -244,6 +267,7 @@ export type LocatorActionKind = LocatorAction['kind'];
 export const LOCATOR_ACTION_KINDS = [
   'tap',
   'doubleTap',
+  'secondaryTap',
   'longPress',
   'fill',
   'clear',
@@ -258,6 +282,38 @@ export const LOCATOR_ACTION_KINDS = [
   'dragTo',
   'swipe',
 ] as const satisfies readonly LocatorActionKind[];
+
+/**
+ * One action `performAt` carries out at a viewport point, with no node
+ * behind it: the pointer half of the action vocabulary, for a surface that
+ * has pixels and coordinates where the tree lists nothing (a canvas, a map, a
+ * desktop shell, a game). The kinds are the pointer subset of `LocatorAction`
+ * with the same meanings; `dragTo` ends at a second point, and `swipe` is a
+ * scroll gesture started at the point.
+ */
+export type PointerAction =
+  | { readonly kind: 'tap' | 'doubleTap' | 'secondaryTap' | 'hover' }
+  | { readonly kind: 'longPress'; readonly durationMs?: number }
+  | { readonly kind: 'dragTo'; readonly target: ViewportPoint }
+  | {
+      readonly kind: 'swipe';
+      readonly direction: ScrollDirection;
+      readonly momentum?: Momentum;
+    };
+
+/** Every pointer action kind; what an engine declares in `pointerActions`. */
+export type PointerActionKind = PointerAction['kind'];
+
+/** The closed list of pointer action kinds, in contract order; the type is derived from it. */
+export const POINTER_ACTION_KINDS = [
+  'tap',
+  'doubleTap',
+  'secondaryTap',
+  'longPress',
+  'hover',
+  'dragTo',
+  'swipe',
+] as const satisfies readonly PointerActionKind[];
 
 /**
  * The key grammar of `press`, shared by every engine so a test's key names are

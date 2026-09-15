@@ -123,7 +123,7 @@ never silently.
 | `observe(context, options?)` | `observation` | `agent.act`, `waitFor`, `extract`, `assert`; prompt snapshots; trace replay; the root a viewport swipe is addressed to |
 | `perform(ref, action, context)` + `actions` | `actions` (needs `observe`) | Node-targeted actions: `tap`, `type`, `press`, `select`, `scroll`, and the `Locator` action set, each for a kind listed in `actions`; `type_secret` when the step declares credentials; `screen.swipe` and `scrollUntilVisible` when `swipe` is listed |
 | `locate(expression, context)` | `location` (needs `observe`) | `screen`, `Locator`, `expect(locator)` |
-| `tapAt(point, context)` | `pointer` (needs `observe`) | the agent's `tap_at` verb when the point lands on nothing the tree lists |
+| `performAt(point, action, context)` + `pointerActions` | `pointer` (needs `observe`) | pointer actions at a bare viewport point, each for a kind listed in `pointerActions`; the agent's `tap_at` verb when the point lands on nothing the tree lists needs the `tap` kind |
 | `keyboard.{type,press,dismiss?}` | `keyboard` (needs `observe`) | `type` and `press` without a target, the keyboard fallback of `type_at` and `press_at`, and `dismiss_keyboard`: input to whatever holds focus, for a field the tree does not list |
 | `state.{capture,restore}` | `state` | `test.setup` and the `session` option |
 | `artifacts.{screenshot,startTrace?,stopTrace?,startVideo?,stopVideo?}` | `artifacts` | Screenshots while pixels are allowed (`app.screenshot()` raises `POLICY_DENIED` after a secret fill); traces when the trace hooks exist; video and `--video` when both `startVideo` and `stopVideo` exist |
@@ -215,11 +215,14 @@ query resolves against that field and nothing else.
 
 A surface that offers screenshots and coordinates but no semantic tree (a
 desktop shell, a canvas app, a computer-use agent) declares `observe`
-returning a pixels-only snapshot (a childless `root` plus `pixels`) and `tapAt` for
-the taps: a screen that lists nothing opens with its screenshot attached, the
-model names a point in it with `tap_at`, and the harness hands the point to
-`tapAt` when the tree lists nothing there, so a surface with no refs to hand
-out still gets tapped through the grammar. Bare points replay as recorded on a
+returning a pixels-only snapshot (a childless `root` plus `pixels`) and
+`performAt` with a `pointerActions` list for the gestures: a screen that lists
+nothing opens with its screenshot attached, the model names a point in it with
+`tap_at`, and the harness hands the point to `performAt` as a `tap` when the
+tree lists nothing there, so a surface with no refs to hand out still gets
+tapped through the grammar. Declare the other pointer kinds the surface can
+deliver at a point (`doubleTap`, `secondaryTap`, `longPress`, `hover`,
+`dragTo`, `swipe`) the same way; a kind left out is never sent. Bare points replay as recorded on a
 viewport of the same size, and the recorded end state decides whether the
 replay passes on its own; nothing else in the harness changes.
 

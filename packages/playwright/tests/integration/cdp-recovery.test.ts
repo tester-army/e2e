@@ -120,9 +120,9 @@ describe('CDP session recovery', () => {
       await expect(engine.perform!(stale.ref, { kind: 'tap' }, operation())).rejects.toMatchObject({ code: 'NODE_STALE' });
       await expect(engine.perform!(observation.root.ref, { kind: 'swipe', direction: 'down' }, operation()))
         .rejects.toMatchObject({ code: 'NODE_STALE' });
-      await expect(engine.tapAt!({ x: 1, y: 1 }, operation())).rejects.toMatchObject({ code: 'NODE_STALE' });
+      await expect(engine.performAt!({ x: 1, y: 1 }, { kind: 'tap' }, operation())).rejects.toMatchObject({ code: 'NODE_STALE' });
       await engine.observe!(operation());
-      await engine.tapAt!({ x: 1, y: 1 }, operation());
+      await engine.performAt!({ x: 1, y: 1 }, { kind: 'tap' }, operation());
       expect(provisioned).toBe(1);
       expect(reconnected).toBe(1);
     } finally {
@@ -385,9 +385,9 @@ describe('CDP session recovery', () => {
     await expect.poll(() => web.evaluate(() => document.body.dataset['wheel'] ?? null)).toBe('25');
     expect(await web.evaluate(() => document.body.dataset['clicks'] ?? null)).toBe('1');
 
-    await expect(engine.tapAt!(point, operation())).rejects.toMatchObject({ code: 'NODE_STALE' });
+    await expect(engine.performAt!(point, { kind: 'tap' }, operation())).rejects.toMatchObject({ code: 'NODE_STALE' });
     await engine.observe!(operation());
-    await engine.tapAt!(point, operation());
+    await engine.performAt!(point, { kind: 'tap' }, operation());
     expect(await web.evaluate(() => document.body.dataset['clicks'] ?? null)).toBe('2');
   });
 
@@ -471,9 +471,9 @@ describe('CDP session recovery', () => {
       expect(await oldObservation).toMatchObject({ code: 'NODE_STALE' });
       resolveEndpoint(remote.endpoint);
       await recovery;
-      await expect(engine.tapAt!({ x: 20, y: 20 }, operation())).rejects.toMatchObject({ code: 'NODE_STALE' });
+      await expect(engine.performAt!({ x: 20, y: 20 }, { kind: 'tap' }, operation())).rejects.toMatchObject({ code: 'NODE_STALE' });
       await engine.observe!(operation());
-      await engine.tapAt!({ x: 20, y: 20 }, operation());
+      await engine.performAt!({ x: 20, y: 20 }, { kind: 'tap' }, operation());
     } finally {
       resumePixels();
       resolveEndpoint(remote.endpoint);

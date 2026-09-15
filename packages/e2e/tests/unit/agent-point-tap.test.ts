@@ -22,7 +22,7 @@ function observationOf(tree: SemanticNode) {
     revision: 'b3',
     capturedAt: '2026-01-01T00:00:00.000Z',
     tree,
-    viewport: { width: 1280, height: 720, scale: 1 },
+    viewport: { width: 1280, height: 720 },
     redaction: { secureNodeCount: 0, maskedRegionCount: 0 },
   };
   const result = prepareObservation(raw, { redact: (text) => text, maxBytes: 65_536 });

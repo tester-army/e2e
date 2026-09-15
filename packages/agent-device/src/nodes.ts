@@ -303,7 +303,7 @@ function quoteTerm(value: string): string {
 export function viewportOf(raw: readonly RawNode[]): Viewport | undefined {
   const screen = raw.find((node) => SCREEN_KINDS.has(kindOf(node)) && node.rect !== undefined);
   if (screen?.rect !== undefined && screen.rect.width > 0 && screen.rect.height > 0) {
-    return { width: screen.rect.width, height: screen.rect.height, scale: 1 };
+    return { width: screen.rect.width, height: screen.rect.height };
   }
   let width = 0;
   let height = 0;
@@ -312,7 +312,7 @@ export function viewportOf(raw: readonly RawNode[]): Viewport | undefined {
     width = Math.max(width, node.rect.x + node.rect.width);
     height = Math.max(height, node.rect.y + node.rect.height);
   }
-  return width > 0 && height > 0 ? { width, height, scale: 1 } : undefined;
+  return width > 0 && height > 0 ? { width, height } : undefined;
 }
 
 /**
@@ -322,7 +322,7 @@ export function viewportOf(raw: readonly RawNode[]): Viewport | undefined {
  */
 export const ROOT_ID = 'root';
 
-export type Viewport = { readonly width: number; readonly height: number; readonly scale: number };
+export type Viewport = { readonly width: number; readonly height: number };
 
 /**
  * The one root the contract wants over a device's several top-level

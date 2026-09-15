@@ -31,6 +31,9 @@ export async function dispatchLocatorAction(
     case 'doubleTap':
       await locator.dblclick({ timeout });
       return;
+    case 'secondaryTap':
+      await locator.click({ button: 'right', timeout });
+      return;
     case 'longPress':
       await locator.click({ timeout, delay: action.durationMs ?? 500 });
       return;

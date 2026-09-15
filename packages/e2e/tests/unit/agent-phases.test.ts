@@ -22,7 +22,7 @@ const OBSERVATION: Observation = {
   revision: 'b1',
   capturedAt: '2026-01-01T00:00:00.000Z',
   tree: { ref: { id: 'n1', revision: 'b1' }, role: 'document' },
-  viewport: { width: 1280, height: 720, scale: 1 },
+  viewport: { width: 1280, height: 720 },
   redaction: { secureNodeCount: 0, maskedRegionCount: 0 },
 };
 

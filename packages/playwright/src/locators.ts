@@ -56,6 +56,8 @@ function queryToPw(scope: PwScope, query: SemanticQuery, testIdAttribute: string
       if (states.disabled !== undefined) options.disabled = states.disabled;
       if (states.selected !== undefined) options.selected = states.selected;
       if (states.expanded !== undefined) options.expanded = states.expanded;
+      if (states.pressed !== undefined) options.pressed = states.pressed;
+      if (query.level !== undefined) options.level = query.level;
       return scope.getByRole(query.value.value as Parameters<Page['getByRole']>[0], options);
     }
     case 'label':

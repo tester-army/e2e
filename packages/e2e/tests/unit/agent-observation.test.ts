@@ -15,7 +15,7 @@ function observation(tree: SemanticNode, pixels?: Observation['pixels']): Extrac
     revision: 'r1',
     capturedAt: '2026-01-01T00:00:00.000Z',
     tree,
-    viewport: { width: 1280, height: 720, scale: 1 },
+    viewport: { width: 1280, height: 720 },
     redaction: { secureNodeCount: 1, maskedRegionCount: 0 },
     ...(pixels === undefined ? {} : { pixels }),
   };
@@ -28,7 +28,7 @@ describe('prepareObservation', () => {
     const pixels = { data: new Uint8Array(4), mediaType: 'image/png' as const, width: 2, height: 2, scale: 1 };
     const unavailable: Observation = {
       kind: 'pixels', root: node('root').ref, revision: 'r1', capturedAt: '',
-      viewport: { width: 2, height: 2, scale: 1 }, pixels,
+      viewport: { width: 2, height: 2 }, pixels,
       redaction: { secureNodeCount: 1, maskedRegionCount: 0 },
     };
     const prepare = (raw: Observation, pixelsAllowed = true) => prepareObservation(raw, { redact: NO_REDACT, maxBytes: 4_096, pixelsAllowed });
