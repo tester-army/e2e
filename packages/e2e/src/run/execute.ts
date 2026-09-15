@@ -6,6 +6,7 @@ import type { TargetSession, OperationContext } from '../engine/surface.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import {
   classifyError,
+  TestError,
   ConfigurationError,
   E2EError,
   InfrastructureError,
@@ -14,6 +15,7 @@ import {
   translateEngineError,
   type SerializedError,
 } from '../internal/errors.ts';
+import { isRuntimeSkip, type RuntimeSkip } from '../internal/skip.ts';
 import type { ExecutorAttempt } from '../agent/executor.ts';
 import { withAiTraceScope } from '../internal/ai-trace.ts';
 import { DebugTrace } from '../internal/debug.ts';
@@ -399,7 +401,15 @@ export class TargetExecutor implements SerialHost {
       );
       return realm;
     }
-    this.emit(pairResult(pair, { status: finalStatus, selected: true, attempts }));
+    this.emit(
+      pairResult(pair, {
+        status: finalStatus,
+        selected: true,
+        attempts,
+        // A body that skipped itself carries the reason on its attempt.
+        ...(finalStatus === 'skipped' ? { skip: attempts.at(-1)?.skip } : {}),
+      }),
+    );
     return realm;
   }
 
@@ -471,7 +481,15 @@ export class TargetExecutor implements SerialHost {
       );
       return;
     }
-    this.emit(pairResult(pair, { status: finalStatus, selected: true, attempts }));
+    this.emit(
+      pairResult(pair, {
+        status: finalStatus,
+        selected: true,
+        attempts,
+        // A body that skipped itself carries the reason on its attempt.
+        ...(finalStatus === 'skipped' ? { skip: attempts.at(-1)?.skip } : {}),
+      }),
+    );
   }
 
   // --- attempt core ---
@@ -570,7 +588,7 @@ export class TargetExecutor implements SerialHost {
     if (stopVideo !== undefined) {
       await this.stopRecording('video', attemptId, record, secondaryErrors, async (operation) => {
         const segments = await stopVideo(operation);
-        if (this.config.videoRetain === 'on-failure' && record.status === 'passed') {
+        if (this.config.videoRetain === 'on-failure' && (record.status === 'passed' || record.status === 'skipped')) {
           // Recorded so a failure could be watched; a pass has nothing to show.
           await Promise.all(
             segments.map((segment) => rm(path.join(artifactSink.dir, segment.path), { force: true })),
@@ -752,6 +770,8 @@ export class TargetExecutor implements SerialHost {
 
     let failure: E2EError | undefined;
     let failurePhase: AttemptPhase | undefined;
+    /** Set when the body (or a beforeEach) skipped the test with `test.skip(...)`. */
+    let skipped: RuntimeSkip | undefined;
     let phase: AttemptPhase = 'launch';
     let timedOut = false;
     // Captured the moment the primary failure lands: steps that pass later —
@@ -883,8 +903,21 @@ export class TargetExecutor implements SerialHost {
           ),
         );
       } catch (cause) {
-        recordFailure(cause, phase);
-        await captureEvidence();
+        if (isRuntimeSkip(cause)) {
+          // A setup test owes its sessions to every consumer; skipping it
+          // would silently skip them all, so the call is the failure instead.
+          if (pair.test.kind === 'setup') {
+            recordFailure(
+              new TestError('INVALID_ARGUMENT', 'test.skip() cannot skip a setup test: the sessions it declares are owed to their consumers'),
+              phase,
+            );
+          } else {
+            skipped = cause;
+          }
+        } else {
+          recordFailure(cause, phase);
+          await captureEvidence();
+        }
       }
 
       phase = 'afterEach';
@@ -922,7 +955,10 @@ export class TargetExecutor implements SerialHost {
       // The verdict is reached before the session closes: nothing after this
       // point changes it, and the close reads it to decide what the attempt's
       // recording is worth.
-      if (failure === undefined) {
+      if (failure === undefined && skipped !== undefined) {
+        record.status = 'skipped';
+        record.skip = { cause: 'explicit', reason: skipped.reason };
+      } else if (failure === undefined) {
         record.status = 'passed';
       } else {
         record.status = classifyAttemptStatus(failure, timedOut, this.interruptSignal.aborted);

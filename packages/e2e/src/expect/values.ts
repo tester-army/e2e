@@ -27,19 +27,25 @@ class ValueExpectationImpl<T> implements ValueExpectation<T> {
   constructor(
     private readonly actual: T,
     private readonly negated: boolean,
+    /** The caller's label for this check, opening every failure message. */
+    private readonly message: string | undefined,
   ) {}
 
   get not(): ValueExpectation<T> {
-    return new ValueExpectationImpl(this.actual, !this.negated);
+    return new ValueExpectationImpl(this.actual, !this.negated, this.message);
   }
 
   /** Messages are thunks: formatting large values is paid only on failure. */
   private check(condition: boolean, positive: () => string, negative: () => string): void {
     if (this.negated) {
-      if (condition) fail(negative());
+      if (condition) this.fail(negative());
       return;
     }
-    if (!condition) fail(positive());
+    if (!condition) this.fail(positive());
+  }
+
+  private fail(detail: string): never {
+    fail(this.message === undefined ? detail : `${this.message}: ${detail}`);
   }
 
   toBe(expected: T): void {
@@ -157,8 +163,49 @@ class ValueExpectationImpl<T> implements ValueExpectation<T> {
       () => `expected ${actual} not to be less than ${expected}`,
     );
   }
+
+  toBeGreaterThanOrEqual(expected: number): void {
+    const actual = this.actual as unknown;
+    if (typeof actual !== 'number') fail(`toBeGreaterThanOrEqual requires a number, got ${format(actual)}`);
+    this.check(
+      actual >= expected,
+      () => `expected ${actual} to be greater than or equal to ${expected}`,
+      () => `expected ${actual} not to be greater than or equal to ${expected}`,
+    );
+  }
+
+  toBeLessThanOrEqual(expected: number): void {
+    const actual = this.actual as unknown;
+    if (typeof actual !== 'number') fail(`toBeLessThanOrEqual requires a number, got ${format(actual)}`);
+    this.check(
+      actual <= expected,
+      () => `expected ${actual} to be less than or equal to ${expected}`,
+      () => `expected ${actual} not to be less than or equal to ${expected}`,
+    );
+  }
+
+  /**
+   * Jest's rule: the difference must be under half a unit of the last kept
+   * digit, so `toBeCloseTo(60)` accepts 59.996 and rejects 59.99. Infinite
+   * values pass only when they are the same infinity.
+   */
+  toBeCloseTo(expected: number, digits = 2): void {
+    const actual = this.actual as unknown;
+    if (typeof actual !== 'number') fail(`toBeCloseTo requires a number, got ${format(actual)}`);
+    if (!Number.isInteger(digits) || digits < 0) {
+      fail(`toBeCloseTo digits must be a non-negative integer, got ${format(digits)}`);
+    }
+    const close =
+      actual === expected ||
+      (Number.isFinite(actual) && Number.isFinite(expected) && Math.abs(actual - expected) < 10 ** -digits / 2);
+    this.check(
+      close,
+      () => `expected ${actual} to be close to ${expected} (${digits} digits)`,
+      () => `expected ${actual} not to be close to ${expected} (${digits} digits)`,
+    );
+  }
 }
 
-export function createValueExpectation<T>(actual: T): ValueExpectation<T> {
-  return new ValueExpectationImpl(actual, false);
+export function createValueExpectation<T>(actual: T, message?: string): ValueExpectation<T> {
+  return new ValueExpectationImpl(actual, false, message);
 }

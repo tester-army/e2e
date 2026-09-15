@@ -18,7 +18,11 @@ function fakeLocator(chain: readonly string[]): PwLocator {
   const self = {
     chain,
     locator: (selector: string) => fakeLocator([...chain, `locator(${selector})`]),
-    getByRole: (role: string) => fakeLocator([...chain, `role(${role})`]),
+    getByRole: (role: string, options?: Record<string, unknown>) =>
+      fakeLocator([
+        ...chain,
+        `role(${role}${options === undefined || Object.keys(options).length === 0 ? '' : `,${JSON.stringify(options)}`})`,
+      ]),
     getByLabel: (text: string | RegExp, options?: { exact?: boolean }) =>
       fakeLocator([...chain, `label(${String(text)}${options?.exact ? ',exact' : ''})`]),
     filter: (options: { hasText?: string | RegExp; has?: PwLocator }) =>
@@ -98,6 +102,24 @@ describe('projectExpression', () => {
     // An attribute with a comma is quoted, as Playwright quotes it.
     const quoted = projectWith(page, testId({ kind: 'string', value: 'x', exact: true }), 'a,b');
     expect(chainOf(quoted.locator)).toEqual(['locator(internal:testid=["a,b"="x"s])']);
+  });
+
+  it('passes role states and the heading level through to getByRole', () => {
+    const heading: LocatorExpression = {
+      kind: 'query',
+      query: {
+        kind: 'role',
+        value: { kind: 'string', value: 'heading', exact: true },
+        name: { kind: 'string', value: 'Dashboard', exact: true },
+        level: 1,
+      },
+    };
+    expect(chainOf(projectExpression(page, heading).locator)).toEqual(['role(heading,{"name":"Dashboard","exact":true,"level":1})']);
+    const checkbox: LocatorExpression = {
+      kind: 'query',
+      query: { kind: 'role', value: { kind: 'string', value: 'checkbox', exact: true }, states: { checked: true, disabled: false } },
+    };
+    expect(chainOf(projectExpression(page, checkbox).locator)).toEqual(['role(checkbox,{"checked":true,"disabled":false})']);
   });
 
   it('composes positions natively for every query but displayValue', () => {

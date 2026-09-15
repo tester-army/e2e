@@ -13,6 +13,16 @@ export interface TestAPI<Fixtures = TestFixtures> {
   (title: string, options: TestOptions, fn: TestFn<Fixtures>): TestCase;
   /** Registers one skipped test. */
   skip(title: string, fn: TestFn<Fixtures>): TestCase;
+  /**
+   * Inside a running test: skips it when `condition` is true (or always,
+   * with no condition), ending the body there. The attempt is reported
+   * `skipped` with `reason`; steps that already ran stay in the report, and
+   * teardown still runs. A setup test cannot skip: its sessions are owed.
+   * Outside a test body this form is `COLLECTION_ERROR`; use the `skip`
+   * option to skip at collection.
+   */
+  skip(condition: boolean, reason?: string): void;
+  skip(reason?: string): void;
   /** Registers one focused local test. CI rejects focused tests. */
   only(title: string, fn: TestFn<Fixtures>): TestCase;
   /** Registers one setup test with statically declared session outputs. */
@@ -69,6 +79,25 @@ throws `COLLECTION_ERROR`.
 
 A skipped test never affects the exit code. With `test.only`, other tests
 are reported as `filtered`, and a CI run fails with `ONLY_IN_CI`.
+
+`test.skip(condition, reason)` inside a body skips the running test when the
+condition holds, for a fact only the running app can tell: a tenant with one
+organization, a feature flag that is off. The body ends there; the steps
+that already ran stay in the report, `afterEach` hooks and fixture
+teardowns still run, and the result is `skipped` with the reason. A retry is
+never spent on it. A setup test cannot skip, because its sessions are owed
+to their consumers: the call fails it with `INVALID_ARGUMENT`. Outside a
+body the conditional form is `COLLECTION_ERROR`; the `skip` option is the
+collection-time way.
+
+```ts
+test('switches organizations', { session: 'admin' }, async ({ app, agent }) => {
+  const organizations = await listOrganizations();
+  test.skip(organizations.length < 2, 'the demo tenant has a single organization');
+  await app.open('/backend');
+  await agent.act(`switch to the organization "${organizations[1].name}"`);
+});
+```
 `test.setup` must be top-level, not inside `test.describe`. An `async`
 `describe` body is a type error and a `COLLECTION_ERROR`.
 

@@ -22,6 +22,7 @@ import {
 } from '../cache/decide.ts';
 import { instructionDigest } from '../cache/identity.ts';
 import { TraceRecorder } from '../cache/recorder.ts';
+import { expandTrace, templateTrace } from '../cache/template.ts';
 import { readTraceEntry, type ActionTrace, type TraceEntry } from '../cache/trace.ts';
 import { sleep } from '../internal/time.ts';
 import type { StepCacheInfo } from '../run/steps.ts';
@@ -233,7 +234,13 @@ export class StepTraceSession {
     if (read.status === 'miss') return { status: 'miss', reason: 'no-entry' };
     if (read.status === 'invalid') return { status: 'miss', reason: 'invalid-entry' };
     const entry = readTraceEntry(read.entry);
-    return entry === undefined ? { status: 'miss', reason: 'invalid-entry' } : { status: 'hit', entry };
+    if (entry === undefined) return { status: 'miss', reason: 'invalid-entry' };
+    // The stored recording is a template over the step's string params; this
+    // call's values fill it. A placeholder this call cannot fill is an entry
+    // recorded for another shape, which the key should have kept apart.
+    const payload = expandTrace(entry.payload, this.options.params);
+    if (payload === undefined) return { status: 'miss', reason: 'invalid-entry' };
+    return { status: 'hit', entry: { ...entry, payload } };
   }
 
   /**
@@ -388,7 +395,9 @@ export class StepTraceSession {
     // and no opening navigate — could never replay: `wrong-context` forever.
     // Writing it would be pure store traffic, so it is not written at all.
     if (trace.startPath === undefined && !opensWithNavigate(trace)) return;
-    this.cache.staged.push({ keyHash: this.keyHash, trace, stepIndex: this.options.stepIndex });
+    // Stored as a template over this call's string params, so the next run's
+    // values — a fresh timestamped name — replay the same flow.
+    this.cache.staged.push({ keyHash: this.keyHash, trace: templateTrace(trace, this.options.params), stepIndex: this.options.stepIndex });
   }
 
   /**

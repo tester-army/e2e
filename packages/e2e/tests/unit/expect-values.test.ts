@@ -70,6 +70,35 @@ describe('value matchers', () => {
     failsWith(() => e2eExpect('x' as unknown as number).toBeGreaterThan(2), /requires a number/);
   });
 
+  it('inclusive comparisons accept the bound itself', () => {
+    e2eExpect(4).toBeGreaterThanOrEqual(4);
+    e2eExpect(5).toBeGreaterThanOrEqual(4);
+    e2eExpect(4).toBeLessThanOrEqual(4);
+    e2eExpect(3).toBeLessThanOrEqual(4);
+    failsWith(() => e2eExpect(3).toBeGreaterThanOrEqual(4), /greater than or equal/);
+    failsWith(() => e2eExpect(5).toBeLessThanOrEqual(4), /less than or equal/);
+    failsWith(() => e2eExpect(4).not.toBeLessThanOrEqual(4), /not to be less than or equal/);
+  });
+
+  it('toBeCloseTo follows the half-unit rule of the last kept digit', () => {
+    e2eExpect(59.996).toBeCloseTo(60);
+    e2eExpect(0.1 + 0.2).toBeCloseTo(0.3);
+    e2eExpect(60).toBeCloseTo(60, 10);
+    e2eExpect(Number.POSITIVE_INFINITY).toBeCloseTo(Number.POSITIVE_INFINITY);
+    e2eExpect(59.9).toBeCloseTo(60, 0);
+    failsWith(() => e2eExpect(59.99).toBeCloseTo(60), /close to 60 \(2 digits\)/);
+    failsWith(() => e2eExpect(59.4).toBeCloseTo(60, 0), /close to/);
+    failsWith(() => e2eExpect(60).not.toBeCloseTo(60), /not to be close/);
+    failsWith(() => e2eExpect(60).toBeCloseTo(60, -1), /non-negative integer/);
+    failsWith(() => e2eExpect('60' as unknown as number).toBeCloseTo(60), /requires a number/);
+  });
+
+  it('a message opens the failure text, and survives negation', () => {
+    e2eExpect(true, 'the user exists through the API').toBe(true);
+    failsWith(() => e2eExpect(false, 'the user exists through the API').toBe(true), /^the user exists through the API: expected false to be true$/);
+    failsWith(() => e2eExpect(1, 'count').not.toBe(1), /^count: expected 1 not to be 1$/);
+  });
+
   it('negation via .not', () => {
     e2eExpect(1).not.toBe(2);
     e2eExpect({ a: 1 }).not.toEqual({ a: 2 });

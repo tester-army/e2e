@@ -183,6 +183,11 @@ test.describe('billing', { tags: ['billing'] }, () => {
 
 test.skip('not ready yet', async () => {});
 test.only('just this one while I work', async () => {}); // rejected in CI
+
+test('needs two organizations', async ({ app }) => {
+  test.skip((await countOrganizations()) < 2, 'one organization: nothing to switch to');
+  await app.open('/organizations');
+});
 ```
 
 Common options: `timeout` (default 120 s), `retries`, `tags` (filter with

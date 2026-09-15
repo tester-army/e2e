@@ -15,14 +15,35 @@ async function collection(
 ): Promise<Collection> {
   const registration = await collectModule(async () => body());
   const collected = collectFromRegistration('/root', `/root/${file}`, registration);
-  // Positionals that matched nothing leave the discovered file unselected.
-  const files = unmatchedPositionals.length === 0 ? [collected] : [];
-  return { files, tests: files.flatMap((entry) => entry.tests), discovered: [file], nearMisses: [], unmatchedPositionals };
+  // Positionals that matched nothing leave the discovered file collected but unselected.
+  const selectedFiles = new Set(unmatchedPositionals.length === 0 ? [file] : []);
+  return { files: [collected], tests: collected.tests, discovered: [file], selectedFiles, nearMisses: [], unmatchedPositionals };
+}
+
+/** Several files collected together, with `selected` naming the ones positionals chose (all by default). */
+async function collectionOf(
+  modules: readonly { readonly file: string; readonly body: () => void }[],
+  selected?: readonly string[],
+): Promise<Collection> {
+  const files = [];
+  for (const module of modules) {
+    const registration = await collectModule(async () => module.body());
+    files.push(collectFromRegistration('/root', `/root/${module.file}`, registration));
+  }
+  const discovered = modules.map((module) => module.file);
+  return {
+    files,
+    tests: files.flatMap((entry) => entry.tests),
+    discovered,
+    selectedFiles: new Set(selected ?? discovered),
+    nearMisses: [],
+    unmatchedPositionals: [],
+  };
 }
 
 /** A collection whose globs matched nothing, with optional look-alike files. */
 function emptyCollection(nearMisses: readonly string[] = []): Collection {
-  return { files: [], tests: [], discovered: [], nearMisses, unmatchedPositionals: [] };
+  return { files: [], tests: [], discovered: [], selectedFiles: new Set(), nearMisses, unmatchedPositionals: [] };
 }
 
 function config(raw: Parameters<typeof resolveConfig>[0] = {}, env: NodeJS.ProcessEnv = ENV) {
@@ -366,5 +387,46 @@ describe('select', () => {
     expect(() => select(col, config(), { targetIds: ['wbe'] })).toThrow(
       'unknown target ID "wbe"; the config declares "web"; did you mean "web"?',
     );
+  });
+});
+
+describe('positional file selection', () => {
+  it('runs the setup a selected test needs from a file no positional named, and leaves that file\'s tests unselected', async () => {
+    const col = await collectionOf(
+      [
+        {
+          file: 'tests/auth.setup.e2e.ts',
+          body: () => {
+            test.setup('sign in', { sessions: ['admin'] }, async () => {});
+            test('an ordinary neighbour of the setup', noop);
+          },
+        },
+        {
+          file: 'tests/dashboard.e2e.ts',
+          body: () => {
+            test('opens the dashboard', { session: 'admin' }, noop);
+          },
+        },
+      ],
+      ['tests/dashboard.e2e.ts'],
+    );
+    const selection = select(col, config());
+    const byTitle = (title: string) => selection.pairs.find((pair) => pair.test.title === title)!;
+    expect(byTitle('opens the dashboard').disposition).toBe('run');
+    expect(byTitle('sign in').disposition).toBe('run');
+    const neighbour = byTitle('an ordinary neighbour of the setup');
+    expect(neighbour.disposition).toBe('filtered');
+    expect(neighbour.skip).toEqual({ cause: 'filtered', reason: 'file not selected by a positional argument' });
+  });
+
+  it('reports NO_TESTS when the only selected file holds nothing runnable', async () => {
+    const col = await collectionOf(
+      [
+        { file: 'tests/a.e2e.ts', body: () => { test('a', noop); } },
+        { file: 'tests/b.e2e.ts', body: () => { test.skip('b', noop); } },
+      ],
+      ['tests/b.e2e.ts'],
+    );
+    expect(() => select(col, config())).toThrow(/none is runnable: 1 file not selected by a positional argument, 1 skipped with test.skip/);
   });
 });

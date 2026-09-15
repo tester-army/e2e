@@ -324,17 +324,25 @@
       "properties": {
         "id": { "$ref": "#/$defs/uuidV7" },
         "index": { "type": "integer", "minimum": 0 },
-        "status": { "enum": ["passed", "failed", "timed-out", "interrupted"] },
+        "status": { "enum": ["passed", "failed", "timed-out", "interrupted", "skipped"] },
         "startedAt": { "$ref": "#/$defs/timestamp" },
         "durationMs": { "type": "integer", "minimum": 0 },
         "steps": { "type": "array", "items": { "$ref": "#/$defs/step" } },
         "artifacts": { "type": "array", "items": { "$ref": "#/$defs/artifact" } },
         "error": { "$ref": "#/$defs/error" },
         "failure": { "$ref": "#/$defs/failureEvidence" },
+        "skip": { "$ref": "#/$defs/skip" },
         "secondaryErrors": { "type": "array", "items": { "$ref": "#/$defs/error" } },
         "cleanup": { "enum": ["complete", "failed", "forced"] },
         "extensions": { "$ref": "#/$defs/extensions" }
-      }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "skipped" } } },
+          "then": { "required": ["skip"] },
+          "else": { "properties": { "skip": false } }
+        }
+      ]
     },
     "skip": {
       "type": "object",
@@ -372,8 +380,7 @@
           "then": {
             "required": ["skip"],
             "properties": {
-              "skip": { "$ref": "#/$defs/skip" },
-              "steps": { "type": "array", "maxItems": 0, "items": { "$ref": "#/$defs/step" } }
+              "skip": { "$ref": "#/$defs/skip" }
             }
           }
         },
@@ -484,7 +491,6 @@
                 "skip": { "$ref": "#/$defs/skip" },
                 "attempts": {
                   "type": "array",
-                  "maxItems": 0,
                   "items": { "$ref": "#/$defs/attempt" }
                 }
               }

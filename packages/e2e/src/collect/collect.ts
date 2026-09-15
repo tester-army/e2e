@@ -64,10 +64,19 @@ export interface CollectedFile {
 }
 
 export interface Collection {
+  /** Every discovered file, collected; positionals narrow `selectedFiles`, not this list. */
   readonly files: readonly CollectedFile[];
   readonly tests: readonly CollectedTest[];
   /** Every file the config globs matched, before positionals narrowed it. */
   readonly discovered: readonly string[];
+  /**
+   * Root-relative files the positionals selected (every discovered file when
+   * there are none). Tests in other files are reported as unselected, but
+   * their files are still collected: a setup test that produces a session a
+   * selected test consumes runs wherever it lives, so `e2e run login.e2e.ts`
+   * works without also naming `auth.setup.e2e.ts`.
+   */
+  readonly selectedFiles: ReadonlySet<string>;
   /**
    * Files that look like tests but match no config glob, gathered only when
    * the globs matched nothing: a `login.test.ts` beside an empty `tests/**`
@@ -305,6 +314,7 @@ export function collectInMemory(
   const collected = collectFromRegistration(projectRoot, path.join(projectRoot, file), registration);
   return {
     files: [collected],
+    selectedFiles: new Set([collected.file]),
     tests: collected.tests,
     discovered: [collected.file],
     nearMisses: [],
@@ -313,18 +323,22 @@ export function collectInMemory(
 }
 
 /**
- * Runs collection: resolves globs, sorts matched files by code point, narrows
- * them by any positional arguments, and imports each module once in the
- * collection realm.
+ * Runs collection: resolves globs, sorts matched files by code point, imports
+ * each module once in the collection realm, and records which files any
+ * positional arguments selected. Every discovered file is imported even when
+ * positionals name a few, because selection needs the whole picture: the
+ * setup test a selected test's session depends on may live in a file no
+ * positional named. A collection error anywhere in the suite is therefore an
+ * error for every run, as it is for a runner that loads the suite whole.
  */
 export async function collect(
   config: ResolvedConfig,
   positionals: readonly string[] = [],
 ): Promise<Collection> {
   const discovered = discoverFiles(config.projectRoot, config.tests);
-  const { files: matched, unmatched } = selectPositionals(config.projectRoot, discovered, positionals);
+  const { files: selected, unmatched } = selectPositionals(config.projectRoot, discovered, positionals);
   const files: CollectedFile[] = [];
-  for (const file of matched) {
+  for (const file of discovered) {
     const absolutePath = path.join(config.projectRoot, file);
     let registration: ModuleRegistration;
     try {
@@ -342,6 +356,7 @@ export async function collect(
     files,
     tests: files.flatMap((file) => file.tests),
     discovered,
+    selectedFiles: new Set(selected),
     nearMisses: discovered.length === 0 ? findNearMissTestFiles(config.projectRoot, config.tests) : [],
     unmatchedPositionals: unmatched,
   };

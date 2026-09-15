@@ -7,6 +7,8 @@ import { testCaseBrand } from '../internal/brands.ts';
 import { CollectionError } from '../internal/errors.ts';
 import { validateTitle } from '../internal/ids.ts';
 import { realmSlot } from '../internal/realm-slot.ts';
+import { RuntimeSkip } from '../internal/skip.ts';
+import { currentAttempt } from '../expect/attempt.ts';
 import type {
   DescribeOptions,
   FixtureFn,
@@ -469,8 +471,22 @@ function createTestAPI(chain: readonly FixtureDefinition[]): TestAPI {
   };
 
   const api: TestAPI = Object.assign(testFunction, {
-    skip(title: string, fn: TestFn): TestCase {
-      return requireCollector('test.skip()').registerTest('test', 'skip', title, { skip: true }, [], fn, chain);
+    skip(titleOrCondition?: string | boolean, fnOrReason?: TestFn | string): TestCase | undefined {
+      // `test.skip(title, fn)` registers a skipped test at collection; the
+      // other shapes skip the running test. A body is the only place a
+      // condition can be known, so outside one they are a collection error.
+      if (typeof titleOrCondition === 'string' && typeof fnOrReason === 'function') {
+        return requireCollector('test.skip()').registerTest('test', 'skip', titleOrCondition, { skip: true }, [], fnOrReason, chain);
+      }
+      const condition = typeof titleOrCondition === 'boolean' ? titleOrCondition : true;
+      const reason = typeof titleOrCondition === 'string' ? titleOrCondition : typeof fnOrReason === 'string' ? fnOrReason : undefined;
+      if (currentAttempt() === undefined) {
+        throw new CollectionError(
+          'test.skip(condition, reason) skips the running test and must be called inside a test body; to skip at collection, pass { skip: true } or a reason string as the test option',
+        );
+      }
+      if (!condition) return undefined;
+      throw new RuntimeSkip(reason);
     },
     only(title: string, fn: TestFn): TestCase {
       return requireCollector('test.only()').registerTest('test', 'only', title, { only: true }, [], fn, chain);

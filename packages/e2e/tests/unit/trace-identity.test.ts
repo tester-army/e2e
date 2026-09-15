@@ -36,6 +36,12 @@ describe('params identity', () => {
     expect(paramsDigest({ a: 1, b: 2 })).toBe(paramsDigest({ b: 2, a: 1 }));
     expect(paramsDigest({ a: 1 })).not.toBe(paramsDigest({ a: 2 }));
   });
+
+  it('digests the shape of string params, so a run-unique value keeps the key', () => {
+    expect(paramsDigest({ name: 'E2E abc Company' })).toBe(paramsDigest({ name: 'E2E xyz Company' }));
+    expect(paramsDigest({ name: 'E2E abc Company' })).not.toBe(paramsDigest({ title: 'E2E abc Company' }));
+    expect(paramsDigest({ code: 'ab' })).not.toBe(paramsDigest({ code: 'cd' }));
+  });
 });
 
 describe('engineCompatibilityVersion', () => {

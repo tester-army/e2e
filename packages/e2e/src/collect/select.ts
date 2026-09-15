@@ -242,7 +242,7 @@ export function select(
     for (const test of collection.tests) {
       const options = optionsByTest.get(test.id)!;
       for (const agent of options.agents) {
-        pairs.push(classifyPair(test, target, agent, options, focused, filters, tagMode));
+        pairs.push(classifyPair(test, target, agent, options, focused, filters, tagMode, collection.selectedFiles));
       }
     }
   }
@@ -290,7 +290,7 @@ function describeNoTests(
   filters: SelectionFilters,
   pairs: readonly TestTargetPair[],
 ): string {
-  const { discovered, nearMisses, unmatchedPositionals, files, tests } = collection;
+  const { discovered, nearMisses, unmatchedPositionals, selectedFiles, tests } = collection;
   if (discovered.length === 0) {
     const globs = config.tests.map((glob) => `"${glob}"`).join(', ');
     const where = `no test file matched ${globs} under ${config.projectRoot}`;
@@ -299,7 +299,7 @@ function describeNoTests(
     }
     return `${where}; create tests/example.e2e.ts (e2e init writes one), or set tests in the config`;
   }
-  if (files.length === 0 && unmatchedPositionals.length > 0) {
+  if (selectedFiles.size === 0 && unmatchedPositionals.length > 0) {
     // A positional may be a whole path or just a file name, so a near miss is looked for as either.
     const baseNames = discovered.map((file) => file.slice(file.lastIndexOf('/') + 1));
     const named = unmatchedPositionals
@@ -311,7 +311,7 @@ function describeNoTests(
     return `no test file matched ${named}; the config globs discovered ${nameFiles(discovered)}`;
   }
   if (tests.length === 0) {
-    const named = nameFiles(files.map((file) => file.file));
+    const named = nameFiles(collection.files.map((file) => file.file));
     return `${named} registered no tests; import { test } from 'e2e' (or from the engine package) and call test() at the top level of the module`;
   }
   const reasons = new Map<string, Set<string>>();
@@ -380,10 +380,20 @@ function classifyPair(
   focused: readonly CollectedTest[],
   filters: SelectionFilters,
   tagMode: 'any' | 'all',
+  selectedFiles: ReadonlySet<string>,
 ): TestTargetPair {
   const base = { test, target, agent, options };
 
   if (test.kind === 'test') {
+    // A file no positional named is collected for its setup tests only; its
+    // ordinary tests are unselected, exactly as a tag filter leaves them.
+    if (!selectedFiles.has(test.file)) {
+      return {
+        ...base,
+        disposition: 'filtered',
+        skip: { cause: 'filtered', reason: 'file not selected by a positional argument' },
+      };
+    }
     if (focused.length > 0 && test.mode !== 'only') {
       return {
         ...base,

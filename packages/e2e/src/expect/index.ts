@@ -18,13 +18,13 @@ const expectationSlot = realmSlot<object>(expectationBrand);
 
 function dispatch(actual: Locator): AsyncExpectation;
 function dispatch<E extends object>(actual: Expectable<E>): E;
-function dispatch<T>(actual: T): ValueExpectation<T>;
-function dispatch(actual: unknown): AsyncExpectation | object | ValueExpectation<unknown> {
+function dispatch<T>(actual: T, message?: string): ValueExpectation<T>;
+function dispatch(actual: unknown, message?: string): AsyncExpectation | object | ValueExpectation<unknown> {
   const internals = locatorInternals(actual);
   if (internals !== undefined) return createAsyncExpectation(internals);
   const attached = expectationSlot.get(actual);
   if (attached !== undefined) return attached;
-  return createValueExpectation(actual);
+  return createValueExpectation(actual, message);
 }
 
 /**

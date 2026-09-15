@@ -57,13 +57,15 @@ export interface FailureEvidence {
 export interface AttemptRecord {
   id: string;
   index: number;
-  status: 'passed' | 'failed' | 'timed-out' | 'interrupted';
+  status: 'passed' | 'failed' | 'timed-out' | 'interrupted' | 'skipped';
   startedAt: string;
   durationMs: number;
   steps: StepRecord[];
   artifacts: ArtifactRecord[];
   error?: SerializedError;
   failure?: FailureEvidence;
+  /** Why the body skipped itself (`test.skip(condition, reason)`); set exactly when `status` is `skipped`. */
+  skip?: SkipInfo;
   secondaryErrors: SerializedError[];
   cleanup: 'complete' | 'failed' | 'forced';
 }

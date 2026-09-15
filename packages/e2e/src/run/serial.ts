@@ -304,10 +304,12 @@ async function runSerialAttempt(
       steps: memberAttempt.steps,
       ...(memberAttempt.error !== undefined ? { error: memberAttempt.error } : {}),
       ...(memberAttempt.failure !== undefined ? { failure: memberAttempt.failure } : {}),
+      ...(memberAttempt.skip !== undefined ? { skip: memberAttempt.skip } : {}),
       secondaryErrors: memberAttempt.secondaryErrors,
     });
     record.artifacts.push(...memberAttempt.artifacts);
-    if (memberAttempt.status !== 'passed') skipRemaining = predecessorFailed(memberIndex);
+    // A member that skipped itself decided nothing about the shared state; the rest run on.
+    if (memberAttempt.status !== 'passed' && memberAttempt.status !== 'skipped') skipRemaining = predecessorFailed(memberIndex);
     // Nested scopes close when their last member is done, as for ordinary
     // tests. A failed afterAll discards the suite instance, and the group
     // attempt is that instance: remaining members skip, as after a failed

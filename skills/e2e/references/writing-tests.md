@@ -55,6 +55,7 @@ test.beforeAll(async ({ platform }) => {}); // per suite realm, no app fixtures
 test.afterAll(async () => {});
 test.skip('later', async () => {});
 test.only('focus', async () => {});         // local only: CI fails with ONLY_IN_CI
+test('conditional', async () => { test.skip(await onlyOneOrg(), 'nothing to switch to'); }); // skips from the body; steps so far stay in the report
 test.setup('sign in', { sessions: ['admin'] }, async ({ app, screen, session }) => {}); // see Sign-in sessions
 const wsTest = test.extend<{ ws: Ws }>({ ws: async ({ web }, use) => { await use(await seed()); await drop(); } });
 wsTest('uses the workspace', async ({ ws }) => {}); // code after use() is teardown, runs after failures too
@@ -188,7 +189,7 @@ await expect.poll(() => db.orders.count(), { timeout: 15_000 }).toBe(1);   // re
 
 | Locator matchers | Web matchers | Value matchers |
 | --- | --- | --- |
-| `toBeVisible`, `toBeHidden`, `toBeEnabled`, `toBeDisabled`, `toBeChecked`, `toBeSelected`, `toBeExpanded`, `toHaveText`, `toContainText`, `toHaveValue`, `toHaveCount`, `toHaveAccessibleName` | `toHaveURL`, `toHaveTitle` | `toBe`, `toEqual`, `toBeTruthy`, `toBeFalsy`, `toBeNull`, `toBeUndefined`, `toBeDefined`, `toContain`, `toMatch`, `toBeGreaterThan`, `toBeLessThan` |
+| `toBeVisible`, `toBeHidden`, `toBeEnabled`, `toBeDisabled`, `toBeChecked`, `toBeSelected`, `toBeExpanded`, `toHaveText`, `toContainText`, `toHaveValue`, `toHaveCount`, `toHaveAccessibleName` | `toHaveURL`, `toHaveTitle` | `toBe`, `toEqual`, `toBeTruthy`, `toBeFalsy`, `toBeNull`, `toBeUndefined`, `toBeDefined`, `toContain`, `toMatch`, `toBeGreaterThan`, `toBeGreaterThanOrEqual`, `toBeLessThan`, `toBeLessThanOrEqual`, `toBeCloseTo` |
 
 `toHaveText` compares the whole normalized text; `toContainText` a
 substring or a RegExp. A failed matcher is `ASSERTION_FAILED`, exit code 1.

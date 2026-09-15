@@ -23,7 +23,10 @@ const MATCHERS = {
   toContain: true,
   toMatch: true,
   toBeGreaterThan: true,
+  toBeGreaterThanOrEqual: true,
   toBeLessThan: true,
+  toBeLessThanOrEqual: true,
+  toBeCloseTo: true,
 } satisfies Record<MatcherName, true>;
 
 type Matcher = (this: ValueExpectation<unknown>, ...args: unknown[]) => void;

@@ -139,8 +139,14 @@ export interface ValueExpectation<T> {
   toMatch(expected: string | RegExp): void;
   /** Requires a numeric lower bound. */
   toBeGreaterThan(expected: number): void;
+  /** Requires a numeric lower bound, inclusive. */
+  toBeGreaterThanOrEqual(expected: number): void;
   /** Requires a numeric upper bound. */
   toBeLessThan(expected: number): void;
+  /** Requires a numeric upper bound, inclusive. */
+  toBeLessThanOrEqual(expected: number): void;
+  /** Requires a number within `10 ** -digits / 2` of `expected`; `digits` defaults to 2. */
+  toBeCloseTo(expected: number, digits?: number): void;
 }
 ```
 
@@ -152,7 +158,19 @@ const total = await screen.getByTestId('total').textContent();
 expect(total).toContain('$');
 expect(items.length).toBeGreaterThan(0);
 expect(payload).toEqual({ ok: true });
+expect(totals.lineTotal).toBeCloseTo(60);
 ```
+
+A second argument names the check. It opens the failure message, so a
+`false to be true` in the report says which fact was false:
+
+```ts
+expect(created, 'the company exists through the API').toBeTruthy();
+// ASSERTION_FAILED: the company exists through the API: expected undefined to be truthy
+```
+
+Only value expectations take a message; a locator or `web` expectation
+already names its locator and matcher in the failure.
 
 ## Polling a value
 

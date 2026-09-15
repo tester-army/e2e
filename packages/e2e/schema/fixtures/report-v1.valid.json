@@ -206,17 +206,125 @@
             }
           }
         ]
+      },
+      {
+        "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "testId": "tests/example.e2e.ts::switches%20organizations",
+        "kind": "test",
+        "declarationIndex": 0,
+        "titlePath": [
+          "switches organizations"
+        ],
+        "file": "tests/example.e2e.ts",
+        "source": {
+          "file": "tests/example.e2e.ts",
+          "line": 3,
+          "column": 1
+        },
+        "targetId": "web",
+        "platform": "web",
+        "agent": "default",
+        "status": "skipped",
+        "attempts": [
+          {
+            "id": "018f0f5c-7b2a-7abc-8abc-2123456789ab",
+            "index": 0,
+            "status": "skipped",
+            "startedAt": "2026-07-24T12:00:00.000Z",
+            "durationMs": 1000,
+            "steps": [
+              {
+                "id": "018f0f5c-7b2a-7abc-8abc-0123456789ab:0",
+                "index": 0,
+                "kind": "agent",
+                "api": "agent.act",
+                "label": "adds shoes to the cart",
+                "source": {
+                  "file": "tests/example.e2e.ts",
+                  "line": 3,
+                  "column": 1
+                },
+                "status": "passed",
+                "startedAt": "2026-07-24T12:00:00.000Z",
+                "durationMs": 4200,
+                "events": [
+                  {
+                    "kind": "model",
+                    "startedAt": "2026-07-24T12:00:00.100Z",
+                    "durationMs": 2840,
+                    "status": "passed",
+                    "name": "executor",
+                    "count": 120,
+                    "inputTokens": 100,
+                    "outputTokens": 20,
+                    "reasoning": "A modal blocks the checkout button; closing it before continuing."
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-07-24T12:00:03.000Z",
+                    "durationMs": 27,
+                    "status": "passed",
+                    "name": "tap",
+                    "detail": "tap button \"Close\""
+                  }
+                ],
+                "metrics": {
+                  "modelCalls": 1,
+                  "actionSteps": 1,
+                  "observationBytes": 512,
+                  "contextBytes": 0,
+                  "ledgerBytes": 0
+                },
+                "artifacts": [],
+                "turns": [
+                  {
+                    "index": 1,
+                    "calls": [
+                      "tap({\"target\":\"n19\"})"
+                    ],
+                    "outcome": "Tapped #n19.\nScreen changes: 4 added."
+                  }
+                ]
+              }
+            ],
+            "artifacts": [
+              {
+                "id": "018f0f5c-7b2a-7abc-8abc-1123456789ab:artifact:0",
+                "kind": "video",
+                "mediaType": "video/webm",
+                "path": "web/tests_example.e2e.ts__opens_app/attempt-0/video/video.webm",
+                "size": 8,
+                "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+                "startedAt": "2026-07-24T12:00:00.000Z",
+                "redaction": "incomplete",
+                "producer": {
+                  "kind": "attempt"
+                }
+              }
+            ],
+            "secondaryErrors": [],
+            "cleanup": "complete",
+            "skip": {
+              "cause": "explicit",
+              "reason": "the demo tenant has a single organization"
+            }
+          }
+        ],
+        "skip": {
+          "cause": "explicit",
+          "reason": "the demo tenant has a single organization"
+        }
       }
     ],
     "errors": [],
     "summary": {
-      "discovered": 1,
-      "selected": 1,
-      "executed": 1,
+      "discovered": 2,
+      "selected": 2,
+      "executed": 2,
       "passed": 1,
       "failed": 0,
       "flaky": 0,
-      "skipped": 0
+      "skipped": 1
     },
     "limits": {
       "maxAgentContextBytes": 16384,
