@@ -6,8 +6,9 @@
 
 Recover semantic-capture timeouts with fresh, independently masked screenshots.
 The engine contract distinguishes unavailable semantics from a valid empty
-tree. The runner respects vision settings and secret taint, retires stale
-references, and disables trace reuse for affected steps. Playwright supports
+tree. Judgments obey their vision options, and every capture respects secret
+taint. The runner retires stale references and disables trace reuse for
+affected steps. Playwright supports
 the fallback; device captures still fail closed when accessibility data
 cannot establish screenshot masks.
 

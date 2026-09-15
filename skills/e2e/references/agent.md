@@ -194,8 +194,8 @@ stay stable while an element exists, or the whole screen again when most of
 it changed, and is read after the action's effect landed. Never raw HTML,
 cookies, headers, environment
 values, or a `Secret`'s value; password fields arrive masked. Pixels reach a
-model only through `vision` on a judgment or the act loop's `screenshot` and
-pixel mode, masked, and only while no secret has been filled. Nothing the model
+model through `vision` on a judgment or the act loop's observations and
+screenshot tools. They are masked and withheld after a secret has been filled. Nothing the model
 returns runs as code or selectors: the runner validates and authorizes every
 tool call before it executes.
 
