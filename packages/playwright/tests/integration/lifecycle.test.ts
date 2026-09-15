@@ -862,6 +862,8 @@ describe('playwright engine lifecycle', () => {
     };
     const settle = async (): Promise<void> => {
       const page = surfaceOf(engine)!.page();
+      // A static page may not repaint after navigation overtakes its first screencast frame.
+      await page.screenshot();
       await expect.poll(() => painted.has(page), { timeout: 5_000, message: 'the recorder received a painted frame' }).toBe(true);
     };
     try {
