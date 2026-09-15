@@ -198,7 +198,7 @@ export function cancelled(text: string): EngineError {
 export class ErrorLatch {
   private pending: Error | null = null;
 
-  /** Latches an error; the first one wins until it is thrown or reset. */
+  /** Latches an error; the first one wins until it is thrown. */
   latch(error: Error): void {
     this.pending ??= error;
   }
@@ -210,10 +210,6 @@ export class ErrorLatch {
       this.pending = null;
       throw error;
     }
-  }
-
-  reset(): void {
-    this.pending = null;
   }
 }
 

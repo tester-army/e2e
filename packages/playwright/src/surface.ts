@@ -3,8 +3,8 @@
  * attempt, and the page every engine member delegates to. This is the closure
  * state behind `playwright()`; the engine hooks in `engine.ts` and the `web`
  * fixture in `web.ts` are thin delegates onto it. Action dispatch lives in
- * `actions.ts`, tree capture in `observation.ts`, and the recording in
- * `video.ts`; this file owns lifecycle, location, steering, artifacts, and state.
+ * `actions.ts` and tree capture in `observation.ts`. `AttemptSession` owns
+ * the attempt's live binding, recovery, references, and recordings.
  */
 
 import { mkdirSync } from 'node:fs';
@@ -34,13 +34,14 @@ import {
 import { matchesText } from 'e2e/engine';
 import { classifyActionError, dispatchLocatorAction } from './actions.ts';
 import { BrowserConnection, connectCdp, type BrowserName } from './browser-connection.ts';
-import { RecoverableCdpSession } from './cdp-recovery.ts';
+import { AttemptSession, type StorageState } from './attempt-session.ts';
 import { DialogRouter } from './dialogs.ts';
 import { ensureBrowsersInstalled } from './install.ts';
 import { applyPostSteps, frameSelectors, projectExpression } from './locators.ts';
 import { ROOT_NODE_ID, toSemanticNode } from './observation.ts';
 import { captureObservation } from './observation-capture.ts';
 import { maskOptions, secureFieldMasks } from './observe.ts';
+import { connectionAbort } from './operation-budget.ts';
 import {
   CLOSED_SHADOW_ROOTS_INIT_SCRIPT,
   readHandlesSemanticsFunction,
@@ -61,7 +62,6 @@ import {
   staleOr,
   translatePwError,
 } from './support.ts';
-import { VideoRecorder } from './video.ts';
 
 /** Browser launch budget when the harness init budget is not otherwise expressed. */
 const BROWSER_LAUNCH_TIMEOUT_MS = 60_000;
@@ -70,20 +70,6 @@ const STATE_FORMAT = 'playwright-storage-state';
 
 /** Default budget Playwright applies to context operations that carry no explicit timeout. */
 const CONTEXT_DEFAULT_TIMEOUT_MS = 30_000;
-
-/** What a Playwright trace records; one setting for every context a trace spans. */
-const TRACE_OPTIONS = { screenshots: true, snapshots: true } as const;
-
-/**
- * The object shape Playwright accepts as a context's seeded storage. The
- * string alternative is a file path, which a session envelope must never be
- * able to point the browser at, so it is excluded from the type as well as
- * checked at runtime.
- */
-type StorageState = Exclude<
-  NonNullable<NonNullable<Parameters<Browser['newContext']>[0]>['storageState']>,
-  string
->;
 
 type RoutePredicate = (url: URL) => boolean;
 type RouteHandler = (route: Route) => Promise<void>;
@@ -194,59 +180,38 @@ export class PlaywrightSurface {
    * Errors raised where nobody awaits them (dialog routing, route handlers)
    * wait here and fail the next step that enters the surface.
    */
-  readonly latch = new ErrorLatch();
-  readonly dialogs = new DialogRouter(this.latch);
+  latch = new ErrorLatch();
+  dialogs = new DialogRouter(this.latch);
 
   private readonly browserName: BrowserName;
   private readonly connection = new BrowserConnection();
   private readonly connect: PlaywrightConnectOptions | undefined;
-  private readonly recoverable: RecoverableCdpSession | undefined;
-  private recovering: Promise<void> | undefined;
-  private recoveryController: AbortController | undefined;
-  private recoveryFailure: Error | undefined;
-  private needsObservation = false;
+  private session: AttemptSession | undefined;
+  private readonly usedContexts = new Set<string>();
   private readonly viewport: { readonly width: number; readonly height: number };
   /** Injected request headers, names lowercased so they replace the browser's own of the same name. */
   private readonly headers: Readonly<Record<string, string>> | undefined;
   private readonly basicAuth: PlaywrightBasicAuth | undefined;
-  private browser: Browser | null = null;
-  /** True once init provisioned a browser; a later disconnect may then reconnect. */
-  private booted = false;
-  private context: BrowserContext | null = null;
-  private page: Page | null = null;
   private readonly testIdAttribute: string;
   private app: EngineAppInfo = {};
   private headed = false;
   private artifactsDir = '';
   private artifactCounter = 0;
-  private tracing = false;
-  /** Trace segments already written for this attempt; a trace cannot span two contexts. */
-  private traceSegments = 0;
-  /** Relative paths of the trace segments closed so far this attempt, in order. */
-  private traceParts: string[] = [];
-  /** The attempt's recording; every hook is a no-op without one. */
-  private readonly video: VideoRecorder;
   /**
    * Attempt-scoped network routes. Registered on the
    * context, not a page, so they cover every page the attempt opens - the
    * first navigation included - and re-applied to each context the attempt
    * replaces on `reset` or session restore.
    */
-  private readonly routes: StoredRoute[] = [];
-  /** Located and observed node refs; see `RefRegistry` for the two lifetimes. */
-  private readonly refs = new RefRegistry();
+  private routes: StoredRoute[] = [];
 
   constructor(options: PlaywrightOptions) {
     this.browserName = options.browser ?? 'chromium';
     this.connect = options.connect;
-    this.recoverable = options.connect?.reconnectEndpoint === undefined
-      ? undefined
-      : new RecoverableCdpSession(options.connect.cdpEndpoint, options.connect.reconnectEndpoint);
     this.viewport = options.viewport ?? DEFAULT_VIEWPORT;
     this.headers = options.headers === undefined ? undefined : lowercaseNames(options.headers);
     this.basicAuth = options.basicAuth;
     this.testIdAttribute = options.testIdAttribute ?? DEFAULT_TEST_ID_ATTRIBUTE;
-    this.video = new VideoRecorder(this.viewport);
   }
 
   // --- lifecycle ---
@@ -269,8 +234,7 @@ export class PlaywrightSurface {
     // The browser was installed in `prepare`; a launch or attach is the one
     // boot step left that can outlive a launch budget, and it honours the
     // init signal.
-    if (this.recoverable === undefined) this.browser = await this.acquireBrowser(info.signal);
-    this.booted = true;
+    if (this.connect?.reconnectEndpoint === undefined) await this.acquireBrowser(info.signal);
   }
 
   /**
@@ -324,144 +288,60 @@ export class PlaywrightSurface {
     };
   }
 
-  /**
-   * The browser an attempt starts on. A booted surface whose browser has since
-   * disconnected — a dropped remote session, a crashed process — reacquires
-   * through the shared connection, which evicts the dead browser and, for a CDP attach,
-   * runs the endpoint resolver again for a fresh session. Reconnection is an
-   * attempt-start decision only: mid-attempt the browser must stay the one the
-   * test began on, so `requireBrowser` stays strict there.
-   */
-  private async ensureBrowser(signal: AbortSignal): Promise<Browser> {
-    if (this.browser !== null && this.browser.isConnected()) return this.browser;
-    if (!this.booted) return this.requireBrowser();
-    this.browser = await this.acquireBrowser(signal);
-    return this.browser;
-  }
-
-  /**
-   * Opens one fresh browser context for the attempt. A second call while a
-   * context is open is a harness bug, not a relaunch: honouring it would leak
-   * the first context and leave the dialog router listening to both.
-   */
+  /** Opens one attempt owner before setup starts, so cleanup can cancel pending attachment. */
   async startAttempt(context: EngineAttemptContext): Promise<void> {
-    if (this.context !== null) {
-      throw new EngineError('INVALID_STATE', 'an attempt is already running', { retryable: false });
-    }
+    if (this.session !== undefined) throw invalidState('an attempt is already running');
     this.artifactsDir = context.artifactsDir;
     this.artifactCounter = 0;
-    this.traceSegments = 0;
-    this.traceParts = [];
-    this.video.reset(context.artifactsDir);
-    this.routes.length = 0;
-    this.dialogs.reset();
-    this.needsObservation = false;
-    this.recoveryFailure = undefined;
-    if (this.recoverable === undefined) {
-      await this.openContext(undefined, context.signal);
-    } else {
-      const connected = await this.recoverable.start(context.signal);
-      this.browser = connected.browser;
-      this.context = connected.context;
-      await this.configureContext(connected.context);
-    }
+    const routes: StoredRoute[] = [];
+    this.latch = new ErrorLatch();
+    const dialogs = new DialogRouter(this.latch);
+    this.routes = routes;
+    this.dialogs = dialogs;
+    const credentials = httpCredentials(this.basicAuth);
+    const connect = this.connect;
+    const session = new AttemptSession({
+      artifactsDir: context.artifactsDir,
+      viewport: this.viewport,
+      acquire: (signal) => this.acquireBrowser(signal),
+      contextOptions: {
+        viewport: this.viewport,
+        acceptDownloads: true,
+        ...(credentials === undefined ? {} : { httpCredentials: credentials }),
+        ...(this.headers === undefined ? {} : { serviceWorkers: 'block' as const }),
+      },
+      configure: async (target) => {
+        await target.addInitScript(CLOSED_SHADOW_ROOTS_INIT_SCRIPT);
+        target.setDefaultTimeout(CONTEXT_DEFAULT_TIMEOUT_MS);
+        target.on('dialog', (dialog) => { void dialogs.dispatch(dialog); });
+        await installSiteHeaders(target, this.app.site, this.headers);
+        for (const stored of routes) await target.route(stored.predicate, stored.handler);
+      },
+      ...(connect?.reconnectEndpoint === undefined ? {} : { persistent: {
+        provision: connect.cdpEndpoint, reconnect: connect.reconnectEndpoint, usedContexts: this.usedContexts,
+      } }),
+    });
+    this.session = session;
+    await session.start(context.signal);
   }
 
-  /**
-   * Closes the attempt's context and releases every ref it minted, within the
-   * cleanup budget: once `context.signal` aborts, the surface stops waiting on
-   * Playwright and abandons the close. Idempotent, and a no-op before
-   * `startAttempt`.
-   */
+  /** Retires the owner before awaiting cleanup; late work cannot reach the next attempt. */
   async endAttempt(context: EngineCleanupContext): Promise<void> {
-    this.recoveryController?.abort();
-    if (this.recovering !== undefined) await withinCleanupBudget(this.recovering, context);
-    await this.closeContext(context);
-    this.refs.clear();
-    if (this.recoverable !== undefined) {
-      await withinCleanupBudget(this.recoverable.dispose(), context);
-      this.browser = null;
-    }
+    const session = this.session;
+    this.session = undefined;
+    if (session !== undefined) await session.close(context);
   }
 
-  /** Closes the shared browser process within the cleanup budget. Idempotent, and safe cold. */
+  /** Releases attempt resources and the worker's shared browser process. */
   async dispose(context: EngineCleanupContext): Promise<void> {
     await this.endAttempt(context);
-    this.browser = null;
-    this.booted = false;
     await withinCleanupBudget(this.connection.dispose(), context);
   }
 
-  /** Stops any trace and closes the current context, best-effort, within the budget. */
-  private async closeContext(budget: EngineCleanupContext): Promise<void> {
-    const context = this.context;
-    this.context = null;
-    this.page = null;
-    if (context === null) return;
-    // The harness stops the video before the attempt ends; a segment still
-    // recording here belongs to an attempt cut short, and is kept as far as it got.
-    if (this.video.isRecording) await withinCleanupBudget(this.video.pageClosing(), budget);
-    if (this.tracing) {
-      this.tracing = false;
-      await withinCleanupBudget(context.tracing.stop(), budget);
-    }
-    await withinCleanupBudget(context.close(), budget);
-  }
-
-  private requireBrowser(): Browser {
-    if (this.browser === null || !this.browser.isConnected()) {
-      throw new EngineError('ENGINE_FAILURE', 'the browser is not running; init did not complete', {
-        retryable: false,
-      });
-    }
-    return this.browser;
-  }
-
-  /**
-   * Creates the attempt's context, rolling back to no context on failure. With
-   * `reacquire`, a disconnected browser is reacquired first (attempt start);
-   * without it the browser must already be connected (mid-attempt replace).
-   */
-  private async openContext(
-    storageState: StorageState | undefined,
-    reacquire?: AbortSignal,
-  ): Promise<void> {
-    try {
-      const browser =
-        reacquire === undefined ? this.requireBrowser() : await this.ensureBrowser(reacquire);
-      const credentials = httpCredentials(this.basicAuth);
-      this.context = await browser.newContext({
-        viewport: this.viewport,
-        acceptDownloads: true,
-        ...(storageState === undefined ? {} : { storageState }),
-        ...(credentials === undefined ? {} : { httpCredentials: credentials }),
-        // Routing never sees a request a service worker made, so under
-        // injected headers a worker would carry the page past the gate bare.
-        ...(this.headers === undefined ? {} : { serviceWorkers: 'block' as const }),
-      });
-      await this.configureContext(this.context);
-    } catch (cause) {
-      await this.context?.close().catch(() => undefined);
-      this.context = null;
-      this.page = null;
-      if (cause instanceof EngineError) throw cause;
-      throw new EngineError('ENGINE_FAILURE', `browser context launch failed: ${message(cause)}`, {
-        retryable: false,
-        cause,
-      });
-    }
-  }
-
-  /** Installs the attempt's scripts and handlers on a newly attached context wrapper. */
-  private async configureContext(context: BrowserContext): Promise<void> {
-    await context.addInitScript(CLOSED_SHADOW_ROOTS_INIT_SCRIPT);
-    context.setDefaultTimeout(CONTEXT_DEFAULT_TIMEOUT_MS);
-    context.on('dialog', (dialog) => {
-      void this.dialogs.dispatch(dialog);
-    });
-    // Attempt routes run first; the header route remains the last stop before the network.
-    await installSiteHeaders(context, this.app.site, this.headers);
-    for (const stored of this.routes) await context.route(stored.predicate, stored.handler);
+  /** Returns the active attempt, including its connection generation and references. */
+  private requireSession(): AttemptSession {
+    if (this.session === undefined) throw invalidState('no attempt is running');
+    return this.session;
   }
 
   // --- network routes shared with the web fixture ---
@@ -487,89 +367,19 @@ export class PlaywrightSurface {
 
   requirePage(): Page {
     this.latch.throwPending();
-    if (this.page === null || this.page.isClosed()) {
-      throw invalidState('no app page is open; call app.open() or web.goto() first');
-    }
-    return this.page;
+    const page = this.requireSession().current().page;
+    if (page === null || page.isClosed()) throw invalidState('no app page is open; call app.open() or web.goto() first');
+    return page;
   }
 
   requireContext(): BrowserContext {
     this.latch.throwPending();
-    if (this.context === null) throw invalidState('no attempt is running');
-    return this.context;
+    return this.requireSession().current().context;
   }
 
-  async ensurePage(): Promise<Page> {
-    const context = this.requireContext();
-    if (this.page === null || this.page.isClosed()) {
-      this.page = await context.newPage();
-      if (this.recoverable !== undefined) {
-        await this.page.setViewportSize(this.viewport);
-        await this.recoverable.rememberPage(this.page);
-      }
-      await this.video.pageOpened(this.page);
-    }
-    return this.page;
-  }
-
-  /**
-   * Closes the current context and opens a fresh one, seeded or clean. Every
-   * ref minted so far pointed into the closed context, so all of them are
-   * released: a later `perform` on one reads as stale, never as a dead target.
-   *
-   * A Playwright trace is bound to one context, so an active trace is closed
-   * as its own segment (`trace/trace-part<n>.zip`, alongside the final
-   * `trace/trace.zip`) and recording resumes on the new context. `tracing`
-   * stays truthful throughout: false while no context exists, true again only
-   * once the new context records.
-   */
-  private async replaceContext(storageState: StorageState | undefined): Promise<void> {
-    const context = this.requireContext();
-    // The old context is released from the surface before anything awaits, so
-    // a trace segment or close that fails cannot leave the surface pointing at
-    // a context it meant to replace.
-    this.context = null;
-    this.page = null;
-    this.refs.clear();
-    const resumeTrace = await this.closeTraceSegment(context);
-    // A screencast is the old page's: its segment closes here, while the page
-    // can still flush it, and the next page the new context opens starts the
-    // following one.
-    await this.video.pageClosing();
-    await context.close();
-    await this.openContext(storageState);
-    // The recording's next segment opens the new context's page before the
-    // trace resumes, for the same reason `startVideo` opens the first one.
-    if (this.video.isArmed) await this.ensurePage();
-    if (resumeTrace) await this.resumeTrace();
-  }
-
-  /**
-   * Closes the active trace as its own segment (`trace/trace-part<n>.zip`)
-   * and reports whether one was active. `tracing` is cleared before anything
-   * awaits, so a segment that fails to write cannot leave the surface
-   * believing a trace still records; the segment itself is best-effort, the
-   * final trace still records from where tracing resumes. A segment that was
-   * written is returned from `stopTrace` ahead of the final archive.
-   */
-  private async closeTraceSegment(context: BrowserContext): Promise<boolean> {
-    if (!this.tracing) return false;
-    this.tracing = false;
-    this.traceSegments += 1;
-    const { relative, absolute } = this.tracePath(`trace-part${String(this.traceSegments)}`);
-    await context.tracing.stop({ path: absolute }).then(
-      () => {
-        this.traceParts.push(relative);
-      },
-      () => undefined,
-    );
-    return true;
-  }
-
-  /** Resumes tracing on the current context after `closeTraceSegment`. */
-  private async resumeTrace(): Promise<void> {
-    await this.requireContext().tracing.start(TRACE_OPTIONS);
-    this.tracing = true;
+  /** Creates the active page through the attempt's sole binding owner. */
+  ensurePage(): Promise<Page> {
+    return this.requireSession().ensurePage();
   }
 
   /**
@@ -587,122 +397,42 @@ export class PlaywrightSurface {
     translate: (cause: unknown, label: string) => Error = translatePwError,
   ): Promise<T> {
     this.latch.throwPending();
-    if (this.recoveryFailure !== undefined) throw this.recoveryFailure;
-    if (operation.signal.aborted) throw cancelled(`${label} cancelled`);
-    const recovering = this.recovering !== undefined || (
-      this.recoverable !== undefined && this.context !== null && this.browser?.isConnected() === false
-    );
-    const deadline = Date.now() + operation.timeoutMs;
-    const controller = new AbortController();
-    const signal = recovering ? AbortSignal.any([operation.signal, controller.signal]) : operation.signal;
-    const timer = recovering ? setTimeout(() => controller.abort(), Math.max(0, operation.timeoutMs)) : undefined;
     try {
-      if (recovering) await this.recoverTransport({ ...operation, signal });
-      const remaining = recovering ? Math.max(1, deadline - Date.now()) : operation.timeoutMs;
-      return await raceAbort(() => fn({ ...operation, signal, timeoutMs: remaining }), signal, label);
+      return this.session === undefined
+        ? await raceAbort(() => fn(operation), operation.signal, label)
+        : await this.session.run(operation, label, fn);
     } catch (cause) {
       throw translate(cause, label);
-    } finally {
-      if (timer !== undefined) clearTimeout(timer);
     }
-  }
-
-  /** Rebinds once before dispatch. A failure during dispatch is left for the attempt to report. */
-  private async recoverTransport(operation: OperationContext): Promise<void> {
-    if (this.recovering !== undefined) {
-      return raceAbort(this.recovering, operation.signal, 'CDP recovery');
-    }
-    const controller = new AbortController();
-    this.recoveryController = controller;
-    const signal = AbortSignal.any([operation.signal, controller.signal]);
-    const reconnect = async (): Promise<void> => {
-      const recoverable = this.recoverable;
-      if (recoverable === undefined) return;
-      const viewport = this.page?.viewportSize();
-      this.refs.clear();
-      this.needsObservation = true;
-      const trace = this.tracing;
-      this.tracing = false;
-      await this.video.pageClosing();
-      const connected = await recoverable.recover(signal, operation.timeoutMs);
-      try {
-        await this.configureContext(connected.context);
-        if (signal.aborted) throw cancelled('CDP recovery cancelled');
-        if (connected.page !== null && viewport != null) await connected.page.setViewportSize(viewport);
-        if (connected.page !== null) await this.video.pageOpened(connected.page);
-        if (signal.aborted) throw cancelled('CDP recovery cancelled');
-        if (trace) await connected.context.tracing.start(TRACE_OPTIONS);
-        if (signal.aborted) throw cancelled('CDP recovery cancelled');
-        this.browser = connected.browser;
-        this.context = connected.context;
-        this.page = connected.page;
-        this.tracing = trace;
-      } catch (cause) {
-        await connected.browser.close().catch(() => undefined);
-        throw cause;
-      }
-    };
-    const pending = raceAbort(reconnect, signal, 'CDP recovery').catch((cause: unknown) => {
-      this.recoveryFailure = translatePwError(cause, 'CDP recovery');
-      controller.abort();
-      throw cause;
-    }).finally(() => {
-      if (this.recovering === pending) this.recovering = undefined;
-      if (this.recoveryController === controller) this.recoveryController = undefined;
-    });
-    this.recovering = pending;
-    await pending;
   }
 
   // --- steering: the session hooks ---
 
   /** Opens one URL the harness resolved; the attempt's page is created on first use. */
   open(url: string, operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'navigation', async () => {
+    return this.guard(operation, 'navigation', async (currentOperation) => {
       const page = await this.ensurePage();
-      await page.goto(url, { waitUntil: 'load', timeout: operation.timeoutMs });
+      await page.goto(url, { waitUntil: 'load', timeout: currentOperation.timeoutMs });
     });
   }
 
   back(operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'navigation', async () => {
-      await this.requirePage().goBack({ waitUntil: 'load', timeout: operation.timeoutMs });
+    return this.guard(operation, 'navigation', async (currentOperation) => {
+      await this.requirePage().goBack({ waitUntil: 'load', timeout: currentOperation.timeoutMs });
     });
   }
 
-  /**
-   * Closes every page of the context and opens one fresh, blank page in it:
-   * persisted state (cookies, storage) stays, the document and every ref into
-   * it go. Nothing is navigated; the harness reopens the app through `open`.
-   */
+  /** Restarts the document while retaining this attempt's context and storage. */
   restart(operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'restart', async () => {
-      const context = this.requireContext();
-      // The recording's segment ends before its page closes: Playwright writes
-      // nothing for a screencast whose page went away first. Under a recording
-      // the trace closes as a segment too: a trace attaches its own 800-pixel
-      // screencast to every page the moment it opens, and a page's first
-      // client sizes its screencast, so the recording must be that client on
-      // the new page, as it is at `startVideo`.
-      await this.video.pageClosing();
-      const resumeTrace = this.video.isArmed ? await this.closeTraceSegment(context) : false;
-      for (const page of context.pages()) await page.close();
-      this.page = null;
-      this.refs.clear();
-      await this.ensurePage();
-      if (resumeTrace) await this.resumeTrace();
-    });
+    return this.guard(operation, 'restart', () => this.requireSession().restart());
   }
 
-  /**
-   * Replaces the context with a clean one and opens its blank page, so the
-   * surface ends where `restart` does, without the persisted state. Nothing
-   * is navigated; the harness reopens the app through `open`.
-   */
+  /** Replaces the context with a clean one and opens its blank page. */
   reset(operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'state reset', async () => {
-      await this.replaceContext(undefined);
-      await this.ensurePage();
+    return this.guard(operation, 'state reset', async (currentOperation) => {
+      const session = this.requireSession();
+      await session.replace(undefined, currentOperation);
+      await session.ensurePage();
     });
   }
 
@@ -722,6 +452,9 @@ export class PlaywrightSurface {
       operation,
       'locate',
       async (currentOperation) => {
+        const session = this.requireSession();
+        const token = session.token();
+        const refs = session.refs;
         const page = this.requirePage();
         await this.validateFrames(expression);
         const projected = projectExpression(page, expression, this.testIdAttribute);
@@ -775,6 +508,10 @@ export class PlaywrightSurface {
           for (const handle of handles ?? []) void handle.dispose().catch(() => undefined);
           throw cancelled('locate cancelled');
         }
+        try { session.check(token); } catch (cause) {
+          for (const handle of handles ?? []) void handle.dispose().catch(() => undefined);
+          throw cause;
+        }
         if (handles !== null) {
           // Only the matches keep their handles; the rest would otherwise live until the page goes.
           const kept = new Set(matches.map(({ index }) => index));
@@ -788,7 +525,7 @@ export class PlaywrightSurface {
           // ambiguous between locate and perform fails loud instead of acting
           // on whichever element is first.
           const locator = raws.length === 1 ? projected.locator : projected.locator.nth(index);
-          const id = this.refs.storeLocated(
+          const id = refs.storeLocated(
             pinned === undefined ? { kind: 'locator', locator } : { kind: 'element', element: pinned },
           );
           return toSemanticNode({ id, revision: '' }, raw);
@@ -811,11 +548,11 @@ export class PlaywrightSurface {
       (currentOperation) => {
         const page = this.requirePage();
         if (action.kind === 'swipe' && ref.id === ROOT_NODE_ID) {
-          this.requireObservation();
+          this.requireSession().requireObservation();
           return performViewportSwipe(page, action.direction, action.momentum ?? 'none');
         }
-        return dispatchLocatorAction(this.refs.lookup(ref), action, currentOperation.timeoutMs, (other) =>
-          this.refs.lookup(other),
+        return dispatchLocatorAction(this.requireSession().refs.lookup(ref), action, currentOperation.timeoutMs, (other) =>
+          this.requireSession().refs.lookup(other),
         );
       },
       (cause) => classifyActionError(cause, action),
@@ -829,16 +566,9 @@ export class PlaywrightSurface {
    */
   tapAt(point: ViewportPoint, operation: OperationContext): Promise<void> {
     return this.guard(operation, 'tapAt', () => {
-      this.requireObservation();
+      this.requireSession().requireObservation();
       return this.requirePage().mouse.click(point.x, point.y);
     });
-  }
-
-  /** Observation-derived actions must not use the screen captured before a transport drop. */
-  private requireObservation(): void {
-    if (this.needsObservation) {
-      throw new EngineError('NODE_STALE', 'observe the screen again after CDP recovery before acting', { retryable: true });
-    }
   }
 
   /**
@@ -849,12 +579,23 @@ export class PlaywrightSurface {
    * scoped by the browser to the whole editing host, so it is opt-in.
    */
   typeText(text: string, options: { readonly replace: boolean }, operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'keyboard.type', async () => {
+    return this.guard(operation, 'keyboard.type', async (currentOperation) => {
+      const session = this.requireSession();
+      session.requireObservation();
+      const token = session.token();
       const page = this.requirePage();
+      /** A delayed focus read or key must not continue input into a retired connection. */
+      const checkpoint = (): void => {
+        if (currentOperation.signal.aborted) throw connectionAbort(currentOperation.signal, 'keyboard.type');
+        session.check(token);
+      };
       await this.requireEditableFocus(page);
+      checkpoint();
       if (options.replace) {
         await page.keyboard.press('ControlOrMeta+A');
+        checkpoint();
         await page.keyboard.press('Delete');
+        checkpoint();
       }
       await page.keyboard.type(text);
     });
@@ -862,7 +603,10 @@ export class PlaywrightSurface {
 
   /** Sends one key to whatever holds focus, in the contract's key grammar Playwright shares. */
   pressKey(key: string, operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'keyboard.press', () => this.requirePage().keyboard.press(key));
+    return this.guard(operation, 'keyboard.press', () => {
+      this.requireSession().requireObservation();
+      return this.requirePage().keyboard.press(key);
+    });
   }
 
   /**
@@ -942,73 +686,36 @@ export class PlaywrightSurface {
 
   /** Redacted at the source: secure fields in every frame are masked, as in observation pixels. */
   screenshot(label: string | undefined, operation: OperationContext): Promise<string> {
-    return this.guard(operation, 'screenshot', async () => {
+    return this.guard(operation, 'screenshot', async (currentOperation) => {
       const page = this.requirePage();
       const { relative, absolute } = this.artifactPath('screenshots', label, '.png');
       await page.screenshot({
         path: absolute,
-        timeout: operation.timeoutMs,
+        timeout: currentOperation.timeoutMs,
         ...maskOptions(secureFieldMasks(page)),
       });
       return relative;
     });
   }
 
-  /** Reserves one trace file under the attempt directory. */
-  private tracePath(name: string): { relative: string; absolute: string } {
-    const relative = path.posix.join('trace', `${name}.zip`);
-    const absolute = path.join(this.artifactsDir, relative);
-    mkdirSync(path.dirname(absolute), { recursive: true });
-    return { relative, absolute };
-  }
-
+  /** Starts tracing the current attempt. */
   startTrace(operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'trace', async () => {
-      await this.requireContext().tracing.start(TRACE_OPTIONS);
-      this.tracing = true;
-    });
+    return this.guard(operation, 'trace', () => this.requireSession().startTrace());
   }
 
-  /**
-   * Every segment closed this attempt, in order, then the final archive; one
-   * path when the trace was never cut. A context replacement that wrote its
-   * segment and then failed leaves segments but no running trace: what was
-   * written is still returned, so the harness redacts and registers it rather
-   * than leaving it on disk unaccounted for.
-   */
+  /** Returns every trace segment finalized by the current attempt. */
   stopTrace(operation: OperationContext): Promise<string | readonly string[]> {
-    return this.guard(operation, 'trace', async () => {
-      const parts = this.traceParts;
-      this.traceParts = [];
-      if (parts.length > 0 && (this.context === null || !this.tracing)) return parts;
-      const context = this.requireContext();
-      const { relative, absolute } = this.tracePath('trace');
-      await context.tracing.stop({ path: absolute });
-      this.tracing = false;
-      return parts.length === 0 ? relative : [...parts, relative];
-    });
+    return this.requireSession().collectTrace(operation);
   }
 
-  // --- video ---
-
-  /**
-   * Arms the attempt's recording, opening the attempt's page if it has none
-   * yet. Eager on purpose: a page has one screencast, sized by its first
-   * client, and a trace started afterwards (the harness starts the video
-   * first) then records its frames at the recording's size rather than the
-   * recording inheriting the trace's 800-pixel cap. Pages a replaced context
-   * opens later resume in `ensurePage`.
-   */
+  /** Starts the attempt's video before a trace chooses its screencast dimensions. */
   startVideo(operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'video', async () => {
-      const page = await this.ensurePage();
-      await this.video.arm(page);
-    });
+    return this.guard(operation, 'video', () => this.requireSession().startVideo());
   }
 
-  /** Finishes the recording and returns every segment this attempt wrote, in order. */
+  /** Finishes the attempt's recording and returns its finalized segments. */
   stopVideo(operation: OperationContext): Promise<readonly VideoSegment[]> {
-    return this.guard(operation, 'video', () => this.video.stop());
+    return this.requireSession().collectVideo(operation);
   }
 
   // --- state ---
@@ -1022,7 +729,7 @@ export class PlaywrightSurface {
 
   /** Replaces the attempt's context with one seeded from the snapshot. */
   restoreState(state: EngineState, operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'state restore', async () => {
+    return this.guard(operation, 'state restore', async (currentOperation) => {
       if (state.format !== STATE_FORMAT || state.version !== 1) {
         throw new EngineError(
           'INVALID_STATE',
@@ -1037,7 +744,7 @@ export class PlaywrightSurface {
           retryable: false,
         });
       }
-      await this.replaceContext(state.data);
+      await this.requireSession().replace(state.data, currentOperation);
     });
   }
 
@@ -1059,11 +766,7 @@ export class PlaywrightSurface {
     return this.guard(
       operation,
       'observe',
-      async (currentOperation) => {
-        const snapshot = await this.captureObservation(currentOperation, options);
-        this.needsObservation = false;
-        return snapshot;
-      },
+      (currentOperation) => this.captureObservation(currentOperation, options),
       navigationStaleOr,
     );
   }
@@ -1073,18 +776,23 @@ export class PlaywrightSurface {
     operation: OperationContext,
     options: EngineObserveOptions | undefined,
   ): Promise<EngineSnapshot> {
+    const session = this.requireSession();
+    const token = session.token();
+    const refs = session.refs;
     const page = this.requirePage();
-    const capture = this.refs.beginCapture();
-    const captured = await captureObservation(page, this.refs, {
+    const capture = refs.beginCapture();
+    const captured = await captureObservation(page, refs, {
       testIdAttribute: this.testIdAttribute, site: this.app.site,
     }, operation, options);
     const { snapshot, generation } = captured;
     try {
       if (operation.signal.aborted) throw cancelled('observe cancelled');
+      session.check(token);
       if (this.requirePage() !== page) {
         throw new EngineError('NODE_STALE', 'observation page was replaced', { retryable: true });
       }
-      this.refs.publish(capture, captured);
+      refs.publish(capture, captured);
+      session.observedGeneration(token);
       return snapshot;
     } catch (cause) {
       RefRegistry.dispose(generation);

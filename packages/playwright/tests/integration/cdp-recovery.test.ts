@@ -3,11 +3,13 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { chromium } from 'playwright';
 import type { EngineFixtureContext, EngineHandle, OperationContext } from 'e2e/engine';
 import { playwright, surfaceOf, type PlaywrightConnectOptions, type Web } from '../../src/index.ts';
 import { closeRemoteChrome, launchRemoteChrome, type RemoteChrome } from '../helpers/cdp-host.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
+import { decodePng } from '../helpers/png.ts';
 
 /** One operation's budget, independent of model calls or the runner's test timeout. */
 function operation(timeoutMs = 10_000, signal = new AbortController().signal): OperationContext {
@@ -215,7 +217,7 @@ describe('CDP session recovery', () => {
     });
     try {
       await surfaceOf(engine)!.context().browser()!.close();
-      await expect(engine.observe!(operation(50))).rejects.toMatchObject({ code: 'CANCELLED' });
+      await expect(engine.observe!(operation(50))).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT' });
       expect(signal?.aborted).toBe(true);
     } finally {
       await engine.dispose!(cleanup());
@@ -294,7 +296,7 @@ describe('CDP session recovery', () => {
       document.body.dataset['started'] = 'true';
       await new Promise((resolve) => setTimeout(resolve, 350));
       return 'too late';
-    })).rejects.toMatchObject({ code: 'CANCELLED' });
+    })).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT' });
     expect(await surfaceOf(engine)!.page().getAttribute('body', 'data-started')).toBe('true');
   });
 
@@ -388,4 +390,149 @@ describe('CDP session recovery', () => {
     await engine.tapAt!(point, operation());
     expect(await web.evaluate(() => document.body.dataset['clicks'] ?? null)).toBe('2');
   });
+
+  it('requires new evidence for focused engine keyboard input after recovery while direct test input remains available', async () => {
+    const remote = await host();
+    const engine = await start({ cdpEndpoint: () => remote.endpoint, reconnectEndpoint: () => remote.endpoint });
+    const page = surfaceOf(engine)!.page();
+    await page.evaluate(() => {
+      const field = document.createElement('input');
+      field.id = 'keyboard-target';
+      field.value = 'original';
+      field.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') document.body.dataset['enters'] = String(Number(document.body.dataset['enters'] ?? 0) + 1);
+      });
+      document.body.append(field);
+      field.focus();
+      field.setSelectionRange(field.value.length, field.value.length);
+    });
+    await engine.observe!(operation());
+    await page.context().browser()!.close();
+    await expect(engine.keyboard!.type('replacement', { replace: true }, operation())).rejects.toMatchObject({ code: 'NODE_STALE' });
+    await expect(engine.keyboard!.press('Enter', operation())).rejects.toMatchObject({ code: 'NODE_STALE' });
+    const web = webOf(engine);
+    const value = () => web.evaluate(() => (document.querySelector('#keyboard-target') as HTMLInputElement).value);
+    expect(await value()).toBe('original');
+    expect(await web.evaluate(() => document.body.dataset['enters'] ?? '0')).toBe('0');
+    await web.keyboard.type(' direct');
+    await web.keyboard.press('Enter');
+    expect(await value()).toBe('original direct');
+    expect(await web.evaluate(() => document.body.dataset['enters'] ?? '0')).toBe('1');
+    await expect(engine.keyboard!.press('Enter', operation())).rejects.toMatchObject({ code: 'NODE_STALE' });
+    await engine.observe!(operation());
+    await engine.keyboard!.type('replacement', { replace: true }, operation());
+    await engine.keyboard!.press('Enter', operation());
+    expect(await value()).toBe('replacement');
+    expect(await web.evaluate(() => document.body.dataset['enters'] ?? '0')).toBe('2');
+  });
+
+  it('rejects an observation that finishes during recovery and still requires new evidence', async () => {
+    const remote = await host();
+    let resumePixels!: () => void;
+    let cleanupStarted!: () => void;
+    let pixelsStarted!: () => void;
+    let pixelsFailed!: (cause: unknown) => void;
+    let resolveEndpoint!: (endpoint: string) => void;
+    let requested!: () => void;
+    const pixelsPaused = new Promise<void>((resolve) => { resumePixels = resolve; });
+    const cleanupReached = new Promise<void>((resolve) => { cleanupStarted = resolve; });
+    const pixelsReached = new Promise<void>((resolve, reject) => { pixelsStarted = resolve; pixelsFailed = reject; });
+    const endpoint = new Promise<string>((resolve) => { resolveEndpoint = resolve; });
+    const reconnectRequested = new Promise<void>((resolve) => { requested = resolve; });
+    const engine = await start({
+      cdpEndpoint: () => remote.endpoint,
+      reconnectEndpoint: () => { requested(); return endpoint; },
+    });
+    const page = surfaceOf(engine)!.page();
+    const evaluateHandle = page.evaluateHandle.bind(page);
+    const spy = vi.spyOn(page, 'evaluateHandle').mockImplementation(async (...args) => {
+      const handle = await evaluateHandle(...args);
+      const dispose = handle.dispose.bind(handle);
+      vi.spyOn(handle, 'dispose').mockImplementation(async () => {
+        await dispose();
+        cleanupStarted();
+      });
+      return handle;
+    });
+    const screenshot = page.screenshot.bind(page);
+    const pixelSpy = vi.spyOn(page, 'screenshot').mockImplementation(async (...args) => {
+      const pixels = await screenshot(...args).catch((cause: unknown) => { pixelsFailed(cause); throw cause; });
+      pixelsStarted();
+      await pixelsPaused;
+      return pixels;
+    });
+    try {
+      const oldObservation = engine.observe!(operation(), { pixels: true }).catch((cause: unknown) => cause);
+      await Promise.all([cleanupReached, pixelsReached]);
+      await page.context().browser()!.close();
+      const recovery = engine.locate!(heading, operation());
+      await reconnectRequested;
+      resumePixels();
+      expect(await oldObservation).toMatchObject({ code: 'NODE_STALE' });
+      resolveEndpoint(remote.endpoint);
+      await recovery;
+      await expect(engine.tapAt!({ x: 20, y: 20 }, operation())).rejects.toMatchObject({ code: 'NODE_STALE' });
+      await engine.observe!(operation());
+      await engine.tapAt!({ x: 20, y: 20 }, operation());
+    } finally {
+      resumePixels();
+      resolveEndpoint(remote.endpoint);
+      spy.mockRestore();
+      pixelSpy.mockRestore();
+    }
+  });
+
+  it('masks password fields in light and closed shadow DOM before and after reconnect', async () => {
+    const remote = await host();
+    const engine = await start({ cdpEndpoint: () => remote.endpoint, reconnectEndpoint: () => remote.endpoint });
+    await surfaceOf(engine)!.page().evaluate(() => {
+      document.body.innerHTML = '';
+      document.body.style.background = 'blue';
+      const field = document.createElement('input');
+      field.type = 'password';
+      field.value = 'private';
+      field.style.cssText = 'position:fixed;left:20px;top:20px;width:180px;height:40px';
+      document.body.append(field);
+      const shadowHost = document.createElement('div');
+      document.body.append(shadowHost);
+      const root = shadowHost.attachShadow({ mode: 'closed' });
+      const hiddenField = field.cloneNode(true) as HTMLInputElement;
+      hiddenField.style.top = '80px';
+      root.append(hiddenField);
+    });
+    for (const reconnect of [false, true]) {
+      if (reconnect) await surfaceOf(engine)!.context().browser()!.close();
+      const snapshot = await engine.observe!(operation(), { pixels: true });
+      expect(snapshot.maskedRegionCount).toBe(2);
+      expect(snapshot.pixels).toBeDefined();
+      const image = decodePng(snapshot.pixels!.data);
+      expect(image.pixelAt(40, 40)).toEqual([0, 0, 0, 255]);
+      expect(image.pixelAt(40, 100)).toEqual([0, 0, 0, 255]);
+      expect(image.pixelAt(300, 160)).toEqual([0, 0, 255, 255]);
+    }
+  });
+
+  it('refuses recovery when disconnected navigation lost the closed-root tracking hook', async () => {
+    const remote = await host();
+    const engine = await start({ cdpEndpoint: () => remote.endpoint, reconnectEndpoint: () => remote.endpoint });
+    await surfaceOf(engine)!.context().browser()!.close();
+    const hostControl = await chromium.connectOverCDP(remote.endpoint);
+    try {
+      const page = hostControl.contexts()[0]!.pages().find((candidate) => candidate.url().endsWith('/login'))!;
+      await page.goto(`${app.url}/form`);
+      const tracked = await page.evaluate(() => {
+        const shadowHost = document.createElement('div');
+        document.body.append(shadowHost);
+        const root = shadowHost.attachShadow({ mode: 'closed' });
+        root.innerHTML = '<input type="password" value="private">';
+        return Object.prototype.hasOwnProperty.call(globalThis, Symbol.for('e2e.closedShadowRoots'));
+      });
+      expect(tracked).toBe(false);
+      expect(await page.locator('body').count()).toBe(1);
+    } finally {
+      await hostControl.close();
+    }
+    await expect(engine.observe!(operation(), { pixels: true })).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
+  });
+
 });

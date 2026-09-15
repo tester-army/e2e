@@ -96,7 +96,7 @@ describe('DialogRouter', () => {
     expect(() => router.throwPending()).not.toThrow();
   });
 
-  it('latches a failing handler as ENGINE_FAILURE and clears it on reset', async () => {
+  it('latches a failing handler as ENGINE_FAILURE, thrown once', async () => {
     const router = new DialogRouter();
     router.add(() => {
       throw new Error('handler exploded');
@@ -106,13 +106,7 @@ describe('DialogRouter', () => {
       expect.objectContaining({ code: 'ENGINE_FAILURE', message: expect.stringContaining('handler exploded') }),
     );
 
-    await router.dispatch(fakeDialog().dialog);
-    router.reset();
     expect(() => router.throwPending()).not.toThrow();
-    // reset also forgot the failing handler: the next dialog is unhandled.
-    const { dialog, dismiss } = fakeDialog();
-    await router.dispatch(dialog);
-    expect(dismiss).toHaveBeenCalledTimes(1);
   });
 
   it('shares one latch with its owner, so either side observes the failure', async () => {

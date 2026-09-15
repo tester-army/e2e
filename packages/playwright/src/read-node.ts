@@ -23,7 +23,7 @@ export const SECURE_FIELD_SELECTOR = 'input[type="password" i]';
  * page and cannot import this constant, so the literal is repeated inside it;
  * the two must agree, like `SECURE_FIELD_SELECTOR` on both sides of masking.
  */
-const CLOSED_SHADOW_ROOTS_KEY = 'e2e.closedShadowRoots';
+export const CLOSED_SHADOW_ROOTS_KEY = 'e2e.closedShadowRoots';
 
 /**
  * Context init script that keeps every closed shadow root reachable for the
@@ -66,7 +66,7 @@ export const CLOSED_SHADOW_SELECTOR_ENGINE_SOURCE = `() => {
   const roots = globalThis[Symbol.for(${JSON.stringify(CLOSED_SHADOW_ROOTS_KEY)})];
   const closedRootsUnder = (root, out) => {
     for (const el of root.querySelectorAll('*')) {
-      const closed = roots === undefined ? undefined : roots.get(el);
+      const closed = roots.get(el);
       if (closed !== undefined) out.push(closed);
       if (el.shadowRoot !== null) closedRootsUnder(el.shadowRoot, out);
     }
@@ -75,12 +75,13 @@ export const CLOSED_SHADOW_SELECTOR_ENGINE_SOURCE = `() => {
   const matchesIn = (root, selector, out) => {
     for (const el of root.querySelectorAll(selector)) out.push(el);
     for (const el of root.querySelectorAll('*')) {
-      const nested = el.shadowRoot !== null ? el.shadowRoot : roots === undefined ? undefined : roots.get(el);
+      const nested = el.shadowRoot !== null ? el.shadowRoot : roots.get(el);
       if (nested !== undefined && nested !== null) matchesIn(nested, selector, out);
     }
     return out;
   };
   const queryAll = (root, selector) => {
+    if (!(roots instanceof WeakMap)) throw new Error('closed-shadow root tracking is unavailable for this document');
     const out = [];
     for (const closed of closedRootsUnder(root, [])) matchesIn(closed, selector, out);
     return out;

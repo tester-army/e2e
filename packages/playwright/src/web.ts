@@ -211,6 +211,7 @@ interface StoredRoute {
 
 /** Builds the `web` fixture for one attempt over the shared surface. */
 export function createWebFixture(surface: PlaywrightSurface, context: EngineFixtureContext): Web {
+  const latch = surface.latch;
   const routes: StoredRoute[] = [];
 
   /**
@@ -230,7 +231,7 @@ export function createWebFixture(surface: PlaywrightSurface, context: EngineFixt
     run: (operation: OperationContext) => Promise<void>,
   ): Promise<void> => {
     const operation = context.operation(options?.timeout ?? context.timeouts.test);
-    return surface.guard(operation, 'navigation', () => run(operation));
+    return surface.guard(operation, 'navigation', run);
   };
 
   /** An assertion-style budget: the given timeout or the assertion timeout, clamped to the test. */
@@ -339,7 +340,7 @@ export function createWebFixture(surface: PlaywrightSurface, context: EngineFixt
             );
           }
         } catch (cause) {
-          surface.latch.latch(
+          latch.latch(
             cause instanceof Error
               ? cause
               : new TestError('ACTION_FAILED', `route handler failed: ${causeMessage(cause)}`),
@@ -367,10 +368,10 @@ export function createWebFixture(surface: PlaywrightSurface, context: EngineFixt
     waitForResponse(pattern, options) {
       const wirePattern = toRoutePattern(pattern);
       const operation = context.operation(options?.timeout);
-      return surface.guard(operation, 'waitForResponse', async () => {
+      return surface.guard(operation, 'waitForResponse', async (currentOperation) => {
         const response = await surface.requirePage().waitForResponse(
           (candidate) => routePatternMatches(wirePattern, candidate.url()),
-          { timeout: operation.timeoutMs },
+          { timeout: currentOperation.timeoutMs },
         );
         const body = await response.body().catch(() => Buffer.alloc(0));
         const decoder = new TextDecoder();

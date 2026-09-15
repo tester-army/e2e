@@ -28,8 +28,6 @@ interface Segment {
 
 export class VideoRecorder {
   private readonly viewport: { readonly width: number; readonly height: number };
-  private artifactsDir = '';
-  private generation = 0;
   /** Set by `arm`, cleared by `stop`; pages the attempt opens in between start segments. */
   private armed = false;
   private current: Segment | null = null;
@@ -40,19 +38,11 @@ export class VideoRecorder {
   /** The first segment whose stop failed and left no file; `stop` reports it. */
   private lost: { readonly relative: string; readonly cause: unknown } | undefined;
 
-  constructor(viewport: { readonly width: number; readonly height: number }) {
+  constructor(
+    viewport: { readonly width: number; readonly height: number },
+    private readonly artifactsDir: string,
+  ) {
     this.viewport = viewport;
-  }
-
-  /** Forgets the previous attempt's recording; this attempt's files land under `artifactsDir`. */
-  reset(artifactsDir: string): void {
-    this.generation += 1;
-    this.artifactsDir = artifactsDir;
-    this.armed = false;
-    this.current = null;
-    this.finished = [];
-    this.count = 0;
-    this.lost = undefined;
   }
 
   /** True between `arm` and `stop`: a page the attempt opens then starts a segment. */
@@ -67,9 +57,8 @@ export class VideoRecorder {
 
   /** Starts the recording on `page`, unless a segment already records, and arms it. */
   async arm(page: Page): Promise<void> {
-    const generation = this.generation;
     if (this.current === null) await this.begin(page);
-    if (generation === this.generation) this.armed = true;
+    this.armed = true;
   }
 
   /** A page the attempt opened: the next segment, when armed. */
@@ -89,9 +78,7 @@ export class VideoRecorder {
    * segments that did finalize stay on disk.
    */
   async stop(): Promise<readonly VideoSegment[]> {
-    const generation = this.generation;
     await this.end();
-    if (generation !== this.generation) return [];
     this.armed = false;
     const lost = this.lost;
     this.lost = undefined;
@@ -110,9 +97,7 @@ export class VideoRecorder {
    * A segment still recording (a page the app closed on its own) ends first.
    */
   private async begin(page: Page): Promise<void> {
-    const generation = this.generation;
     await this.end();
-    if (generation !== this.generation) return;
     this.count += 1;
     const name = this.count === 1 ? 'video' : `video-part${String(this.count)}`;
     const relative = path.posix.join('video', `${name}.webm`);
@@ -122,11 +107,6 @@ export class VideoRecorder {
       path: absolute,
       size: { width: this.viewport.width, height: this.viewport.height },
     });
-    // A cancelled recovery can finish starting after the next attempt reset the recorder.
-    if (generation !== this.generation) {
-      await page.screencast.stop().catch(() => undefined);
-      return;
-    }
     this.current = { page, relative, absolute, startedAt: new Date().toISOString() };
   }
 
@@ -137,20 +117,17 @@ export class VideoRecorder {
    * segment that wrote nothing is not a segment.
    */
   private async end(): Promise<void> {
-    const generation = this.generation;
     const segment = this.current;
     if (segment === null) return;
     this.current = null;
     try {
       await segment.page.screencast.stop();
     } catch (cause) {
-      if (generation !== this.generation) return;
       if (!existsSync(segment.absolute)) {
         this.lost ??= { relative: segment.relative, cause };
         return;
       }
     }
-    if (generation !== this.generation) return;
     if (existsSync(segment.absolute)) {
       this.finished.push({ path: segment.relative, startedAt: segment.startedAt });
     }

@@ -102,12 +102,27 @@ existing browser's endpoint. The engine verifies the persistent default context
 ID and the original page's target ID. It refuses browsers that do not expose
 the default context ID. A missing page or a different context fails the attempt.
 A URL match is insufficient to select a replacement tab.
+The engine installs secure-field masking before publishing each CDP binding;
+an incompatible Playwright version fails the connection instead of exposing pixels.
+Recovery also requires the original page's frames to retain their closed shadow
+DOM tracking hooks. If a document loaded without that hook while disconnected,
+recovery fails with `ENGINE_FAILURE`: existing closed roots cannot be recovered
+without reloading the application. Mask queries reject any untracked document.
 
-Recovery clears old node references. Observation-derived `tapAt` calls and
-observation-root swipes require a fresh engine observation before they resume.
-The deterministic `web.mouse` fixture remains available without an agent
-observation. Test code owns its coordinates and can read current geometry with
-`web.evaluate` before starting a pointer sequence.
+Endpoint resolution, CDP attachment, setup, and dispatch share one timeout.
+Exhausting it raises `OPERATION_TIMEOUT`; caller or attempt cancellation raises
+`CANCELLED`. Cancelling a concurrent waiter does not cancel the operation that
+started recovery. Cancelling that recovery owner fails the shared recovery.
+
+Recovery clears old node references. Observation-derived `tapAt` calls,
+observation-root swipes, and focused engine keyboard input require a fresh
+engine observation before they resume.
+An observation or locator read started before recovery cannot publish references
+after the connection changes. Each attempt owns its binding and recordings, so
+late cleanup cannot change a later attempt.
+The deterministic `web.mouse` and `web.keyboard` fixtures remain available
+without an agent observation. Test code owns its input and can read current
+geometry and focus with `web.evaluate` before acting.
 
 Recovery preserves the page's unsaved state, storage, the attempt's secret
 taint, and the agent ledger. Operations already dispatched

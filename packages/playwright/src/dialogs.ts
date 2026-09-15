@@ -33,12 +33,6 @@ export class DialogRouter {
    */
   constructor(private readonly latch: ErrorLatch = new ErrorLatch()) {}
 
-  /** Forgets every handler and any latched error; called per attempt. */
-  reset(): void {
-    this.registrations = [];
-    this.latch.reset();
-  }
-
   /**
    * Registers a handler (the newest wins) and returns its idempotent
    * unsubscribe. Registrations are tracked by identity, so registering the

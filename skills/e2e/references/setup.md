@@ -125,12 +125,18 @@ process, and identity. `playwright()` accepts:
 | `headers` | Request headers sent to the app's site only (a Vercel `x-vercel-protection-bypass`, ngrok's `ngrok-skip-browser-warning`). Reaches every path onto the page, `agent.act` included; turns the browser HTTP cache off and blocks service workers. |
 | `basicAuth` | `{ username, password }` answering a `401` challenge. |
 
-CDP recovery never repeats a dispatched operation. The host owns remote browser
+CDP recovery never repeats a dispatched operation. Endpoint resolution, attachment,
+and dispatch spend one operation budget. Exhaustion raises `OPERATION_TIMEOUT`;
+caller cancellation raises `CANCELLED`. A read started before recovery cannot
+satisfy its requirement for a fresh observation. The host owns remote browser
 cleanup. Persistent recovery requires the default context's CDP identity.
-Observation-derived `tapAt` calls and observation-root swipes need a fresh
-engine observation after reconnect. Deterministic `web.mouse` calls use
-test-supplied coordinates without an agent observation; test code can read
-current geometry with `web.evaluate` before starting a pointer sequence.
+If navigation while disconnected loses a frame's closed shadow DOM tracking
+hook, recovery fails with `ENGINE_FAILURE`; the engine cannot prove pixel
+masking for existing closed roots in that document.
+Observation-derived `tapAt` calls, observation-root swipes, and focused engine
+keyboard input need a fresh engine observation after reconnect. Deterministic
+`web.mouse` and `web.keyboard` calls use test-supplied input without an agent
+observation; test code can read current geometry and focus with `web.evaluate`.
 Persistent recovery does not support `headers`, `basicAuth`, context reset,
 or session state capture and restore. Without `reconnectEndpoint`, contexts
 remain isolated and a dropped connection is reacquired only at the next attempt
