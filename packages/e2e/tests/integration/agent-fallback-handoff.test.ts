@@ -25,6 +25,83 @@ function pixelSnapshot(value = 1): EngineSnapshot {
 }
 
 describe('semantic fallback handoff', () => {
+  it.each([true, false, undefined])('requests pixels=%s after a semantic cache probe', async (pixels) => {
+    const captures: boolean[] = [];
+    const engine = defineEngine({
+      name: 'requested-pixels-fixture', version: '1', spiVersion: 1, platform: 'fixture',
+      observe: async (_operation, options) => {
+        captures.push(options?.pixels === true);
+        return {
+          root: { ref: { id: 'root', revision: '' }, children: [{ ref: { id: 'save', revision: '' }, role: 'button', name: 'Save' }] },
+          viewport: VIEWPORT,
+          ...(options?.pixels === true ? { pixels: pixelSnapshot().pixels! } : {}),
+        };
+      },
+    });
+    const executor: StepExecutor = {
+      name: 'requested-pixels-executor',
+      async runStep(context) {
+        expect(captures).toEqual([false, false]);
+        const observation = await context.observe(pixels === undefined ? {} : { pixels });
+        expect(observation.text).toContain('Save');
+        expect(observation.treeUnavailable).toBeUndefined();
+        expect(captures).toEqual(pixels === true ? [false, false, true, true] : [false, false]);
+        expect(observation.pixels).toEqual(pixels === true ? { ...pixelSnapshot().pixels, maskedRegionCount: 0 } : undefined);
+        return { status: 'passed', summary: 'read the requested evidence' };
+      },
+    };
+    const { project, outcome } = await runProject({ 'tests/fallback.e2e.ts': SUITE }, {
+      appUrl: 'https://fixture.test',
+      config: { tests: 'tests/**/*.e2e.ts', cache: 'read-write', targets: [{ name: 'fixture', engine }], agents: { default: executor } },
+    });
+    try {
+      expect(outcome.report.run.errors).toEqual([]);
+      expect(outcome.report.run.results[0]?.attempts[0]?.error).toBeUndefined();
+      expect(outcome.report.run.results[0]?.status).toBe('passed');
+      assertValidReport(outcome.report);
+    } finally {
+      project.cleanup();
+    }
+  });
+
+  it('types at a point from the opening fallback screenshot', async () => {
+    let captures = 0;
+    const dispatched: unknown[] = [];
+    const engine = defineEngine({
+      name: 'fallback-keyboard-fixture', version: '1', spiVersion: 1, platform: 'fixture',
+      actions: ['fill', 'press'],
+      perform: async () => { throw new Error('fallback must use pointer and keyboard input'); },
+      observe: async () => { captures += 1; return pixelSnapshot(captures); },
+      tapAt: async (point) => { dispatched.push(['tap', point]); },
+      keyboard: {
+        type: async (value, options) => { dispatched.push(['type', value, options]); },
+        press: async () => undefined,
+      },
+    });
+    const model = installFakeLoopModel((call) => call.turn === 1
+      ? [{ toolName: 'type_at', input: { x: 1, y: 1, value: 'hello', replace: true } }]
+      : [{ toolName: 'complete_step', input: { status: 'passed', summary: 'typed into the drawn field' } }]);
+    const { project, outcome } = await runProject({ 'tests/fallback.e2e.ts': SUITE }, {
+      appUrl: 'https://fixture.test',
+      config: { tests: 'tests/**/*.e2e.ts', cache: 'read-write', targets: [{ name: 'fixture', engine }], agents: { default: { model } } },
+    });
+    try {
+      expect(outcome.report.run.errors).toEqual([]);
+      expect(outcome.report.run.results[0]?.attempts[0]?.error).toBeUndefined();
+      expect(outcome.report.run.results[0]?.status).toBe('passed');
+      expect(dispatched).toEqual([['tap', { x: 1, y: 1 }], ['type', 'hello', { replace: true }]]);
+      expect(captures).toBe(2);
+      expect(loopCalls).toHaveLength(2);
+      expect(loopCalls[0]?.imageParts).toBe(1);
+      expect(loopCalls[0]?.toolNames).toContain('type_at');
+      expect(loopCalls[0]?.prompt).toContain('semantic capture unavailable');
+      expect(loopCalls[1]?.lastToolResult).toContain('semantic capture unavailable');
+      assertValidReport(outcome.report);
+    } finally {
+      project.cleanup();
+    }
+  });
+
   it('uses a completed fallback directly with the default read-write cache', async () => {
     const captures: boolean[] = [];
     const engine = defineEngine({
