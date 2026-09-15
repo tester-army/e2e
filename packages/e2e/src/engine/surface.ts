@@ -17,10 +17,10 @@ import type {
   ObservationPixels,
   OperationContext,
   PointerAction,
-  PointerActionKind,
   ScrollDirection,
   SemanticNode,
   ViewportPoint,
+  ViewportSize,
 } from './contract.ts';
 import type { EngineObserveOptions, EngineState, VideoSegment } from './index.ts';
 
@@ -70,10 +70,7 @@ interface ObservationMetadata {
   readonly location?: string;
   readonly revision: string;
   readonly capturedAt: string;
-  readonly viewport: {
-    readonly width: number;
-    readonly height: number;
-  };
+  readonly viewport: ViewportSize;
   /**
    * What the engine masked against what it saw. Pixel completeness is judged
    * downstream from these counts: fewer masked regions than secure nodes
@@ -114,8 +111,6 @@ export interface TargetSession {
   readonly verbs: ReadonlySet<GrammarVerb>;
   /** Action kinds the engine declared for `perform`; empty without the actions capability. */
   readonly actions: ReadonlySet<LocatorActionKind>;
-  /** Pointer action kinds the engine declared for `performAt`; empty without the pointer capability. */
-  readonly pointerActions: ReadonlySet<PointerActionKind>;
   /** Captures one atomic agent observation; the harness redacts it downstream. */
   observe(operation: OperationContext, options?: EngineObserveOptions): Promise<Observation>;
   /** Resolves immediately; the runner owns query polling and strictness. */

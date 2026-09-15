@@ -45,11 +45,11 @@ import type {
   NodeRef,
   ObservationPixels,
   OperationContext,
-  Platform,
   PointerAction,
   PointerActionKind,
   SemanticNode,
   ViewportPoint,
+  ViewportSize,
 } from './contract.ts';
 
 export type * from './contract.ts';
@@ -524,8 +524,8 @@ export interface EngineSnapshot {
    * in a root of its own.
    */
   readonly root: SemanticNode;
-  /** The viewport `SemanticNode.rect` and `ViewportPoint` are measured in, in CSS pixels. */
-  readonly viewport: { readonly width: number; readonly height: number };
+  /** The viewport `SemanticNode.rect` and `ViewportPoint` are measured in. */
+  readonly viewport: ViewportSize;
   /**
    * True when `root` leaves out nodes that are on the surface: the engine
    * stopped reading at a node cap or a depth limit, or could not enter a
@@ -563,12 +563,12 @@ export interface Engine {
    */
   readonly spiVersion: EngineSpiVersion;
   /**
-   * Platform this engine drives. The harness recognizes `web`, `ios`, and
-   * `android` for platform-scoped tool packs and reporting; any other label
-   * is the engine's own and treated as unknown. A target inherits it; a
-   * target that names a platform of its own must agree with it.
+   * Platform label this engine drives (`web`, `ios`, `android`, or a label of
+   * the engine's own). Tests filter on it through `platforms` and tool packs
+   * are scoped by it; the harness attaches no meaning to any value. A target
+   * inherits it; a target that names a platform of its own must agree with it.
    */
-  readonly platform?: Platform;
+  readonly platform?: string;
   /**
    * The most workers this engine can serve at once for one target: one per
    * surface it drives concurrently (a device pool's size; 1 for a single

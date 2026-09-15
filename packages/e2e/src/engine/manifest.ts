@@ -76,7 +76,6 @@ const RESERVED_FIXTURES = new Set(['agent', 'app', 'screen', 'platform', 'sessio
 
 const FIXTURE_NAME_PATTERN = /^[a-z][A-Za-z0-9]*$/;
 
-
 function invalid(name: string, detail: string): ConfigurationError {
   return new ConfigurationError('INVALID_CONFIG', `engine "${name}": ${detail}`);
 }

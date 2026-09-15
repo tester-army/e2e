@@ -7,7 +7,7 @@
  * screenshot are scaled into the observation's CSS pixels first.
  */
 
-import type { SemanticNode, ViewportPoint } from '../engine/surface.ts';
+import type { SemanticNode, ViewportPoint, ViewportSize } from '../engine/surface.ts';
 import { clamp, clampToViewport } from '../internal/geometry.ts';
 import type { ExecutorPixels } from './executor.ts';
 import { INTERACTIVE_ROLES, type AgentObservation } from './observation.ts';
@@ -22,7 +22,7 @@ import { INTERACTIVE_ROLES, type AgentObservation } from './observation.ts';
 export function imagePointToViewport(
   point: { readonly x: number; readonly y: number },
   pixels: Pick<ExecutorPixels, 'width' | 'height' | 'scale'>,
-  viewport: { readonly width: number; readonly height: number },
+  viewport: ViewportSize,
 ): ViewportPoint {
   const scale = pixels.scale > 0 ? pixels.scale : 1;
   return clampToViewport(

@@ -18,7 +18,6 @@ import type {
   ConfiguredArtifactKind,
   E2EConfig,
   ModelInstance,
-  Platform,
   Reporter,
   SecretProvider,
   SecretPurpose,
@@ -44,7 +43,7 @@ export type { ResolvedApp } from './app.ts';
 export interface ResolvedTarget {
   readonly name: string;
   readonly index: number;
-  readonly platform: Platform;
+  readonly platform: string;
   /** Validated engine; undefined for an agent-tools-only target. */
   readonly engine: EngineHandle | undefined;
   /** The app under test, resolved from the engine's declaration. */
@@ -657,7 +656,7 @@ function resolveTargets(raw: E2EConfig, projectRoot: string, ports: PortAssignme
  * target's, so a target that names one while its engine declares another is a
  * mistake, not an override.
  */
-function resolvePlatform(target: Target, where: string): Platform {
+function resolvePlatform(target: Target, where: string): string {
   const declared = target.platform;
   if (declared !== undefined && (typeof declared !== 'string' || declared.trim() === '')) {
     throw new ConfigurationError('INVALID_CONFIG', `${where} platform must be a non-empty string`);

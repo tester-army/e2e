@@ -3,7 +3,6 @@
 import type { Tool, ToolExecutionOptions } from 'ai';
 import type { StepExecutorContext } from './executor.ts';
 import { TestError } from '../internal/errors.ts';
-import type { Platform } from '../types.ts';
 
 /** Cross-realm identity marker for defined tools. */
 const DEFINED_TOOL_MARKER = Symbol.for('e2e.defined-tool.v1');
@@ -20,7 +19,7 @@ export interface ToolAnnotations {
    * platforms that cannot honor it by declaring this, not by splitting
    * configs.
    */
-  readonly platforms?: readonly Platform[];
+  readonly platforms?: readonly string[];
 }
 
 export interface DefinedTool {
@@ -62,7 +61,7 @@ export function defineTool(tool: Tool, annotations: ToolAnnotations): DefinedToo
 }
 
 /** True when a defined tool is offered on the given platform. */
-export function toolAppliesTo(defined: DefinedTool, platform: Platform): boolean {
+export function toolAppliesTo(defined: DefinedTool, platform: string): boolean {
   return defined.annotations.platforms === undefined || defined.annotations.platforms.includes(platform);
 }
 

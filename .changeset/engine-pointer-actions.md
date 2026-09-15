@@ -8,6 +8,7 @@ Breaking: the engine contract's pointer side is a vocabulary, not one verb, and 
 - `secondaryTap` joins the action kinds and `Locator.secondaryTap()` performs it: a right click, a two-finger tap.
 - `SemanticNode.states` gains `pressed` and `SemanticNode` gains `level`; `getByRole` takes `pressed` and `level`, so a toggle button and a heading level are queries on every engine.
 - `EngineSnapshot.viewport` is `{ width, height }`: the `scale` it carried meant nothing (every engine reported 1 and nothing read it); `ObservationPixels.scale` remains the image-to-CSS ratio.
-- `Platform`, `ScrollDirection`, `Momentum`, and `SelectOption` are defined by the contract (`e2e/engine`) and re-exported by `e2e`, so the SPI owns its own vocabulary.
+- `ScrollDirection`, `Momentum`, and `SelectOption` are defined by the contract (`e2e/engine`) and re-exported by `e2e`, so the SPI owns its own vocabulary.
+- The `Platform` type is gone: a platform is a `string` label (`web`, `ios`, `android`, or an engine's own) on `Engine.platform`, `Target.platform`, the `platform` fixture, and `platforms`. Nothing in the harness branched on the three names, so the type only pretended to.
 
 `spiVersion` stays `1`.

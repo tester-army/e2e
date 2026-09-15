@@ -2,7 +2,7 @@
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { Browser, BrowserContext, BrowserContextOptions, Page } from 'playwright';
-import { EngineError, raceAbort, withinCleanupBudget, type EngineCleanupContext, type OperationContext, type VideoSegment } from 'e2e/engine';
+import { EngineError, raceAbort, withinCleanupBudget, type EngineCleanupContext, type OperationContext, type VideoSegment, type ViewportSize } from 'e2e/engine';
 import { attachPersistent, recoveryFailed, targetIdentity, type CdpEndpointResolver, type SessionBinding } from './cdp-recovery.ts';
 import { connectionAbort, withConnectionBudget, type ConnectionBudget } from './operation-budget.ts';
 import { RefRegistry } from './refs.ts';
@@ -13,7 +13,7 @@ export type StorageState = Exclude<NonNullable<BrowserContextOptions['storageSta
 
 interface SessionOptions {
   readonly artifactsDir: string;
-  readonly viewport: { readonly width: number; readonly height: number };
+  readonly viewport: ViewportSize;
   readonly contextOptions: BrowserContextOptions;
   readonly acquire: (signal: AbortSignal) => Promise<Browser>;
   readonly configure: (context: BrowserContext) => Promise<void>;

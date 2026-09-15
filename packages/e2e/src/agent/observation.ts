@@ -1,6 +1,6 @@
 /** Observation capture, redaction, and model serialization. */
 
-import type { Observation, SemanticNode } from '../engine/surface.ts';
+import type { Observation, SemanticNode, ViewportSize } from '../engine/surface.ts';
 import { collapseText } from '../internal/text.ts';
 import { sleep } from '../internal/time.ts';
 import type { VisionDegradation } from '../run/steps.ts';
@@ -47,7 +47,7 @@ interface AgentObservationMetadata {
   /** Redacted, size-bounded serialization sent to the model. */
   readonly text: string;
   readonly bytes: number;
-  readonly viewport: { readonly width: number; readonly height: number };
+  readonly viewport: ViewportSize;
 }
 
 /**

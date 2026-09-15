@@ -8,13 +8,12 @@ import type { CredentialConfig, Secret, SecretConfig } from './config/secrets.ts
 import type { StepExecutor } from './agent/executor.ts';
 import type { StepCacheInfo } from './run/steps.ts';
 import type { EngineHandle } from './engine/index.ts';
-import type { Momentum, Platform, ScrollDirection, SelectOption } from './engine/contract.ts';
-
-export type { Momentum, Platform, ScrollDirection, SelectOption } from './engine/contract.ts';
+import type { Momentum, ScrollDirection, SelectOption } from './engine/contract.ts';
 import type { TraceCacheStore } from './cache/store.ts';
 import type { RunEvent, RunExitCode, RunStatus } from './run/events.ts';
 import type { Report1Document } from './report/build.ts';
 
+export type { Momentum, ScrollDirection, SelectOption } from './engine/contract.ts';
 export type { CacheReadResult, TraceCacheStore } from './cache/store.ts';
 export type { StepCacheInfo } from './run/steps.ts';
 export type {
@@ -449,8 +448,8 @@ export interface TestFixtures {
   readonly app: App;
   /** Semantic queries and the actions on their matches. */
   readonly screen: Screen;
-  /** The target's label: `web`, `ios`, `android`, or an engine's own string. */
-  readonly platform: Platform;
+  /** The target's platform label: `web`, `ios`, `android`, or an engine's own string. */
+  readonly platform: string;
 }
 
 export interface SetupFixtures extends TestFixtures {
@@ -459,8 +458,8 @@ export interface SetupFixtures extends TestFixtures {
 }
 
 export interface SuiteFixtures {
-  /** The target's label: `web`, `ios`, `android`, or an engine's own string. */
-  readonly platform: Platform;
+  /** The target's platform label: `web`, `ios`, `android`, or an engine's own string. */
+  readonly platform: string;
 }
 
 export interface TestOptions {
@@ -475,7 +474,7 @@ export interface TestOptions {
   /** Focuses the test locally. CI rejects it with `ONLY_IN_CI`. */
   only?: boolean;
   /** Platforms the test runs on; other targets skip it. Innermost wins. */
-  platforms?: readonly Platform[];
+  platforms?: readonly string[];
   /** Capabilities the target must have; otherwise the test is skipped at selection. Innermost wins. */
   requires?: readonly Capability[];
   /** Session a setup test saved, restored before the body runs. */
@@ -763,7 +762,7 @@ export interface Target {
    * Platform label, inherited from the engine when omitted. Required for a
    * target without an engine; when both name one, they must agree.
    */
-  platform?: Platform;
+  platform?: string;
   /** The engine driving the surface: `playwright(...)`, `agentDevice(...)`, or any `defineEngine` handle. */
   engine?: EngineHandle;
 }

@@ -1,7 +1,7 @@
 /** Masked pixel capture for an observation. */
 
 import type { Locator, Page } from 'playwright';
-import type { ObservationPixels, OperationContext } from 'e2e/engine';
+import type { ObservationPixels, OperationContext, ViewportSize } from 'e2e/engine';
 import { CaptureScope } from './capture-scope.ts';
 import { CLOSED_SHADOW_SELECTOR_ENGINE, SECURE_FIELD_SELECTOR } from './read-node.ts';
 
@@ -61,7 +61,7 @@ export interface PixelCapture {
 export async function capturePixels(
   page: Page,
   operation: OperationContext,
-  viewport: { readonly width: number; readonly height: number },
+  viewport: ViewportSize,
 ): Promise<PixelCapture> {
   const deadline = Date.now() + operation.timeoutMs;
   const scope = new CaptureScope(deadline, operation.signal);

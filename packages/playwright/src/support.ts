@@ -326,26 +326,6 @@ export function performViewportSwipe(
   return page.mouse.wheel(deltaX, deltaY);
 }
 
-/**
- * A wheel gesture started at one viewport point, sized by the viewport: the
- * pointer moves there first so the scrollable under it receives the wheel.
- */
-export async function performPointSwipe(
-  page: Page,
-  point: ViewportPoint,
-  direction: ScrollDirection,
-  momentum: Momentum,
-): Promise<void> {
-  const viewport = page.viewportSize() ?? DEFAULT_VIEWPORT;
-  const distance = swipeDistance(
-    direction === 'up' || direction === 'down' ? viewport.height : viewport.width,
-    momentum,
-  );
-  const [deltaX, deltaY] = wheelDelta(direction, distance);
-  await page.mouse.move(point.x, point.y);
-  await page.mouse.wheel(deltaX, deltaY);
-}
-
 /** A pointer drag from one viewport point to another, with an intermediate move so drag handlers see motion. */
 export async function performPointDrag(mouse: Mouse, from: ViewportPoint, to: ViewportPoint): Promise<void> {
   await mouse.move(from.x, from.y);

@@ -10,12 +10,6 @@
  * on all of them.
  */
 
-/**
- * Platform label an engine declares and its target inherits. The harness
- * recognizes `web`, `ios`, and `android` for platform-scoped tool packs and
- * reporting; any other label is the engine's own.
- */
-export type Platform = 'web' | 'ios' | 'android' | (string & {});
 /** A swipe or scroll direction. */
 export type ScrollDirection = 'up' | 'down' | 'left' | 'right';
 /** Fling strength of a swipe. */
@@ -208,6 +202,12 @@ export interface SemanticNode {
 export interface ViewportPoint {
   readonly x: number;
   readonly y: number;
+}
+
+/** Viewport size in CSS pixels: the box `SemanticNode.rect` and `ViewportPoint` are measured in. */
+export interface ViewportSize {
+  readonly width: number;
+  readonly height: number;
 }
 
 /**

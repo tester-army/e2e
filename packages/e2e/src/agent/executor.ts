@@ -17,13 +17,12 @@
  * matter whose brain runs the step.
  */
 
-import type { ObservationPixels, SemanticNode, ViewportPoint } from '../engine/surface.ts';
+import type { ObservationPixels, SemanticNode, ViewportPoint, ViewportSize } from '../engine/surface.ts';
 import type { VisionDegradation, StepTurn } from '../run/steps.ts';
 import type {
   AgentErrorCode,
   JsonValue,
   ModelInstance,
-  Platform,
   ProviderOptions,
   ScrollDirection,
   Secret,
@@ -121,7 +120,7 @@ export interface ExecutorObservation {
   /** One node per line as `#id role "name" ...`; already secret-redacted. */
   readonly text: string;
   readonly truncated: boolean;
-  readonly viewport: { readonly width: number; readonly height: number };
+  readonly viewport: ViewportSize;
   /**
    * The current location as path and query, redacted, when the engine
    * reports one. Absent on engines without a location (a device screen).
@@ -326,7 +325,7 @@ export interface StepExecutorContext {
    */
   readonly target: {
     readonly name: string;
-    readonly platform: Platform;
+    readonly platform: string;
     readonly verbs: ReadonlySet<ExecutorVerb>;
   };
   /**

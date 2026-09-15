@@ -1,16 +1,22 @@
 /** Locator action dispatch for the Playwright engine. */
 
-import { EngineError, type LocatorAction, type NodeRef } from 'e2e/engine';
+import type { Page } from 'playwright';
+import { EngineError, type LocatorAction, type NodeRef, type PointerAction, type ViewportPoint } from 'e2e/engine';
 import {
   asActionable,
   isClassified,
   isPwTimeout,
   message,
   performElementSwipe,
+  performPointDrag,
   performPointerDrag,
+  performViewportSwipe,
   POST_DISPATCH_PATTERN,
   type ActionTarget,
 } from './support.ts';
+
+/** How long a long press holds the button when the action names no duration. */
+const DEFAULT_LONG_PRESS_MS = 500;
 
 /**
  * Dispatches one deterministic locator action onto a Playwright target with the
@@ -35,7 +41,7 @@ export async function dispatchLocatorAction(
       await locator.click({ button: 'right', timeout });
       return;
     case 'longPress':
-      await locator.click({ timeout, delay: action.durationMs ?? 500 });
+      await locator.click({ timeout, delay: action.durationMs ?? DEFAULT_LONG_PRESS_MS });
       return;
     case 'fill':
       await locator.fill(action.value, { timeout });
@@ -98,6 +104,40 @@ export async function dispatchLocatorAction(
       // The agent's node scroll and `screen` swipes both arrive here: a wheel
       // gesture over the node, sized by its own box.
       await performElementSwipe(target, action.direction, action.momentum ?? 'none', timeout);
+      return;
+  }
+}
+
+/**
+ * Dispatches one pointer action at a viewport point with nothing resolved
+ * behind it: no actionability wait, because there is no element to wait on,
+ * and the page decides what the gesture lands on, as it does for a person.
+ */
+export async function dispatchPointerAction(page: Page, point: ViewportPoint, action: PointerAction): Promise<void> {
+  const { mouse } = page;
+  switch (action.kind) {
+    case 'tap':
+      await mouse.click(point.x, point.y);
+      return;
+    case 'doubleTap':
+      await mouse.dblclick(point.x, point.y);
+      return;
+    case 'secondaryTap':
+      await mouse.click(point.x, point.y, { button: 'right' });
+      return;
+    case 'longPress':
+      await mouse.click(point.x, point.y, { delay: action.durationMs ?? DEFAULT_LONG_PRESS_MS });
+      return;
+    case 'hover':
+      await mouse.move(point.x, point.y);
+      return;
+    case 'dragTo':
+      await performPointDrag(mouse, point, action.target);
+      return;
+    case 'swipe':
+      // The pointer moves to the point first so the scrollable under it receives the wheel.
+      await mouse.move(point.x, point.y);
+      await performViewportSwipe(page, action.direction, action.momentum ?? 'none');
       return;
   }
 }

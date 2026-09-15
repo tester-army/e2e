@@ -3,7 +3,7 @@
 import { ConfigurationError, CollectionError } from '../internal/errors.ts';
 import { didYouMean, suggest } from '../internal/suggest.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
-import type { Capability, Platform } from '../types.ts';
+import type { Capability } from '../types.ts';
 import type { Collection, CollectedTest } from './collect.ts';
 import { groupChain } from './registry.ts';
 
@@ -11,7 +11,7 @@ export interface ResolvedTestOptions {
   readonly timeout: number;
   readonly retries: number;
   readonly tags: readonly string[];
-  readonly platforms: readonly Platform[] | undefined;
+  readonly platforms: readonly string[] | undefined;
   readonly requires: readonly Capability[];
   readonly session: string | undefined;
   readonly agentContext: string | undefined;
@@ -77,7 +77,7 @@ export function resolveOptions(test: CollectedTest, config: ResolvedConfig): Res
 
   let timeout = config.timeout;
   let retries = config.retries;
-  let platforms: readonly Platform[] | undefined;
+  let platforms: readonly string[] | undefined;
   let requires: readonly Capability[] = [];
   let session: string | undefined;
   let pin: readonly string[] | undefined;

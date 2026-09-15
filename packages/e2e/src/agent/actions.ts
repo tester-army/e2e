@@ -9,7 +9,7 @@
  * summary, a live event line, and a relocation candidate can never drift.
  */
 
-import type { SemanticNode, ViewportPoint } from '../engine/surface.ts';
+import type { SemanticNode, ViewportPoint, ViewportSize } from '../engine/surface.ts';
 import {
   bound,
   MAX_TRACE_DESCRIPTOR_CHARS,
@@ -43,7 +43,7 @@ export type RecordableAction =
   | {
       readonly name: 'tapAt';
       readonly point: ViewportPoint;
-      readonly viewport: { readonly width: number; readonly height: number };
+      readonly viewport: ViewportSize;
       readonly under?: SemanticNode;
     };
 

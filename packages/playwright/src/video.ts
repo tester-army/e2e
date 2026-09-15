@@ -15,7 +15,7 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { Page } from 'playwright';
-import { EngineError, type VideoSegment } from 'e2e/engine';
+import { EngineError, type VideoSegment, type ViewportSize } from 'e2e/engine';
 import { message } from './support.ts';
 
 /** One segment in progress: the page it records and where its file lands. */
@@ -27,7 +27,7 @@ interface Segment {
 }
 
 export class VideoRecorder {
-  private readonly viewport: { readonly width: number; readonly height: number };
+  private readonly viewport: ViewportSize;
   /** Set by `arm`, cleared by `stop`; pages the attempt opens in between start segments. */
   private armed = false;
   private current: Segment | null = null;
@@ -39,7 +39,7 @@ export class VideoRecorder {
   private lost: { readonly relative: string; readonly cause: unknown } | undefined;
 
   constructor(
-    viewport: { readonly width: number; readonly height: number },
+    viewport: ViewportSize,
     private readonly artifactsDir: string,
   ) {
     this.viewport = viewport;

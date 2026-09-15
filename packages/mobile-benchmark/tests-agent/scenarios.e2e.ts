@@ -6,7 +6,7 @@
  * reason, so the gap stays visible in every run.
  */
 
-import type { Agent, Platform, Screen } from 'e2e';
+import type { Agent, Screen } from 'e2e';
 import { expect, openScenario, test } from '../tests/fixtures.ts';
 
 interface Scenario {
@@ -20,7 +20,7 @@ interface Scenario {
    */
   readonly gap?: string;
   /** The platforms whose fixture the scenario depends on; both by default. */
-  readonly platforms?: readonly Platform[];
+  readonly platforms?: readonly ('ios' | 'android')[];
   /** A step budget above the default, for a flow that legitimately needs more actions. */
   readonly maxSteps?: number;
 }

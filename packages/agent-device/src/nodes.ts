@@ -7,7 +7,7 @@
  * ids the surface owns.
  */
 
-import type { SemanticNode } from 'e2e/engine';
+import type { SemanticNode, ViewportSize } from 'e2e/engine';
 import type { Rect } from './support.ts';
 
 /** The subset of an agent-device snapshot node this engine reads. */
@@ -48,7 +48,7 @@ export interface ProjectedSnapshot {
   readonly roots: readonly SemanticNode[];
   /** Every node in document order, parents before children. */
   readonly index: readonly ProjectedNode[];
-  readonly viewport: Viewport | undefined;
+  readonly viewport: ViewportSize | undefined;
 }
 
 /**
@@ -300,7 +300,7 @@ function quoteTerm(value: string): string {
  * the platform emits one, else the extent of every rect; undefined for a
  * snapshot with no geometry at all.
  */
-export function viewportOf(raw: readonly RawNode[]): Viewport | undefined {
+export function viewportOf(raw: readonly RawNode[]): ViewportSize | undefined {
   const screen = raw.find((node) => SCREEN_KINDS.has(kindOf(node)) && node.rect !== undefined);
   if (screen?.rect !== undefined && screen.rect.width > 0 && screen.rect.height > 0) {
     return { width: screen.rect.width, height: screen.rect.height };
@@ -322,14 +322,12 @@ export function viewportOf(raw: readonly RawNode[]): Viewport | undefined {
  */
 export const ROOT_ID = 'root';
 
-export type Viewport = { readonly width: number; readonly height: number };
-
 /**
  * The one root the contract wants over a device's several top-level
  * elements. Its box is the viewport; it carries no name of its own, the
  * foreground app being reported as the snapshot's location.
  */
-export function screenRoot(roots: readonly SemanticNode[], viewport: Viewport): SemanticNode {
+export function screenRoot(roots: readonly SemanticNode[], viewport: ViewportSize): SemanticNode {
   return {
     ref: { id: ROOT_ID, revision: '' },
     role: 'screen',

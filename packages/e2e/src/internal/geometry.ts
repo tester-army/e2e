@@ -1,6 +1,6 @@
 /** Point arithmetic shared by the pixel tier and the point tap. */
 
-import type { ViewportPoint } from '../engine/contract.ts';
+import type { ViewportPoint, ViewportSize } from '../engine/contract.ts';
 
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -13,7 +13,7 @@ export function clamp(value: number, min: number, max: number): number {
  */
 export function clampToViewport(
   point: ViewportPoint,
-  viewport: { readonly width: number; readonly height: number },
+  viewport: ViewportSize,
 ): ViewportPoint {
   return {
     x: clamp(Math.round(point.x), 0, Math.max(0, viewport.width - 1)),

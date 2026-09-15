@@ -24,7 +24,7 @@ import {
   type TestHook,
 } from '../collect/registry.ts';
 import type { TestTargetPair } from '../collect/select.ts';
-import type { Platform, SuiteFixtures } from '../types.ts';
+import type { SuiteFixtures } from '../types.ts';
 import type { RunError } from './records.ts';
 
 /**
@@ -74,7 +74,7 @@ export function runHook(
 
 export interface RealmManagerOptions {
   readonly targetName: string;
-  readonly platform: Platform;
+  readonly platform: string;
   readonly timeout: number;
   readonly cleanupTimeout: number;
   /** Run-level error sink for hook failures. */

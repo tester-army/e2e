@@ -721,6 +721,7 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
       const ariaLevel = Number.parseInt(el.getAttribute('aria-level') ?? '', 10);
       if (Number.isInteger(ariaLevel) && ariaLevel > 0) level = ariaLevel;
       else if (/^h[1-6]$/.test(tag)) level = Number(tag.slice(1));
+      // HTML-AAM: a role="heading" element with no aria-level is level 2.
       else level = 2;
     }
 

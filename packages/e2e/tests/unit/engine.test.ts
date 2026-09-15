@@ -314,7 +314,6 @@ describe('createEngineSession', () => {
       ),
       targetName: 'toy-target',
     });
-    expect(session.pointerActions).toEqual(new Set(['tap', 'longPress']));
     await session.performAt({ x: 3, y: 4 }, { kind: 'tap' }, OP);
     await session.performAt({ x: 5, y: 6 }, { kind: 'longPress', durationMs: 800 }, OP);
     await expect(session.performAt({ x: 1, y: 1 }, { kind: 'secondaryTap' }, OP)).rejects.toThrow(
@@ -322,7 +321,6 @@ describe('createEngineSession', () => {
     );
     expect(performed).toEqual(['tap@3,4', 'longPress@5,6']);
     const none = createEngineSession({ engine: defineEngine(observingEngine()), targetName: 'toy-target' });
-    expect(none.pointerActions.size).toBe(0);
     await expect(none.performAt({ x: 1, y: 1 }, { kind: 'tap' }, OP)).rejects.toThrow(/point/);
   });
 

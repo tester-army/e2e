@@ -142,7 +142,7 @@ export interface Target {
    * Platform label, inherited from the engine when omitted. Required for a
    * target without an engine; when both name one, they must agree.
    */
-  platform?: Platform;
+  platform?: string;
   /** The engine driving the surface: `playwright(...)`, `agentDevice(...)`, or any `defineEngine` handle. */
   engine?: EngineHandle;
 }
