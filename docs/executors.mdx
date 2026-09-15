@@ -128,6 +128,12 @@ The context tells the executor where it is and what it may do:
 | `ctx.attempt` | Test id, attempt id, retry index, a signal that fires when the attempt ends, and `memory`, a per-attempt map the harness never reports |
 | `ctx.budgets` | `runTool` for actions of your own, and model-call accounting |
 
+When `treeUnavailable` is true, `observe({ tree: true })` omits `tree` and
+includes the permitted screenshot. Its text warns that earlier node ids
+are invalid. Use the current pixels to act; an unavailable tree cannot
+prove a control is absent. Once semantic evidence returns, use the new
+observation's ids. `ExecutorObservation` remains an extendable interface.
+
 Secrets in params arrive as name-only placeholders. `actions.typeSecret(target, name)`
 performs the authorized fill without the plaintext passing through your code.
 A custom executor can run both `agent.act` and `agent.assert` without a

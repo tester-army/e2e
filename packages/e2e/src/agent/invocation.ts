@@ -43,7 +43,7 @@ import {
   type ModelAdapter,
   type ModelImage,
 } from './model/adapter.ts';
-import { pixelsForModel, prepareObservation, requireObservationEvidence, type AgentObservation } from './observation.ts';
+import { observationDetail, pixelsForModel, prepareObservation, type AgentObservation } from './observation.ts';
 import { observationByteBudget } from './observation-budget.ts';
 import type { ProtocolValidation } from './protocol.ts';
 import { POLICY_VERSION, buildPrompt, buildSystem, type PromptInput } from './prompts.ts';
@@ -218,18 +218,18 @@ export class Invocation {
         const prepared = prepareObservation(raw, {
           redact: this.runtime.redact,
           maxBytes: this.observationByteBudget(),
+          pixelsAllowed: this.options.vision !== false && !this.runtime.taint.value,
         });
-        requireObservationEvidence(prepared, this.options.vision !== false && !this.runtime.taint.value);
         return prepared;
       },
-      (prepared) => ({ count: prepared.nodes.size, bytes: prepared.bytes }),
+      observationDetail,
     );
     // Bytes the request carried, so a withheld tree reads as the zero it is.
     if (!this.treeWithheld) {
       this.metrics.observationBytes = Math.max(this.metrics.observationBytes, observation.bytes);
     }
     this.observationRevision = observation.revision;
-    if (pixels || observation.treeUnavailable === true) this.recordPixels(observation);
+    if (pixels || observation.kind === 'pixels') this.recordPixels(observation);
     return observation;
   }
 

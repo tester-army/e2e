@@ -37,8 +37,9 @@ import { BrowserConnection, connectCdp, type BrowserName } from './browser-conne
 import { DialogRouter } from './dialogs.ts';
 import { ensureBrowsersInstalled } from './install.ts';
 import { applyPostSteps, frameSelectors, projectExpression } from './locators.ts';
-import { captureDocument, ROOT_NODE_ID, toSemanticNode } from './observation.ts';
-import { capturePixels, maskOptions, secureFieldMasks, type PixelCapture } from './observe.ts';
+import { ROOT_NODE_ID, toSemanticNode } from './observation.ts';
+import { captureObservation } from './observation-capture.ts';
+import { maskOptions, secureFieldMasks } from './observe.ts';
 import {
   CLOSED_SHADOW_ROOTS_INIT_SCRIPT,
   readHandlesSemanticsFunction,
@@ -58,22 +59,8 @@ import {
   sanitizeFilename,
   staleOr,
   translatePwError,
-  type ActionTarget,
 } from './support.ts';
 import { VideoRecorder } from './video.ts';
-
-/**
- * Cap on nodes in one observation, shared by every document it stitches. It
- * stays well above real documents so the runner's observation byte budget is
- * the effective limit; when a document does cross it, the snapshot says so
- * through `truncated` instead of ending quietly.
- */
-const MAX_OBSERVED_NODES = 3_000;
-
-/** Bounded settle before an observation so a committing navigation is not raced. */
-const SETTLE_TIMEOUT_MS = 5_000;
-/** Leave time for a fresh screenshot when a permitted semantic capture times out. */
-const PIXEL_FALLBACK_RESERVE_MS = 2_000;
 
 /** Browser launch budget when the harness init budget is not otherwise expressed. */
 const BROWSER_LAUNCH_TIMEOUT_MS = 60_000;
@@ -963,108 +950,27 @@ export class PlaywrightSurface {
     );
   }
 
-  /** One observation capture attempt, unclassified. */
+  /** Captures privately, then publishes only into the page and ref generation that requested it. */
   private async captureObservation(
     operation: OperationContext,
     options: EngineObserveOptions | undefined,
   ): Promise<EngineSnapshot> {
     const page = this.requirePage();
-    // One deadline for the whole observation: settle, every document, and the
-    // pixels each spend from what remains of it, never from the full budget.
-    const deadline = Date.now() + operation.timeoutMs;
-    // A preceding action may still be committing a navigation. Settling is
-    // bounded and best-effort: a slow document never fails the observation.
-    await page
-      .waitForLoadState('domcontentloaded', {
-        timeout: Math.max(1, Math.min(operation.timeoutMs, SETTLE_TIMEOUT_MS)),
-      })
-      .catch(() => undefined);
-    const viewport = page.viewportSize() ?? DEFAULT_VIEWPORT;
-    const semanticDeadline = options?.pixelFallback === true
-      ? deadline - Math.min(PIXEL_FALLBACK_RESERVE_MS, Math.max(0, deadline - Date.now()) / 4)
-      : deadline;
-    const generation = new Map<string, ActionTarget>();
-    // The screenshot masks by sweeping the page's frames, so it needs nothing
-    // from the tree walk and runs with it instead of after it. Pixels never
-    // fail an observation: an image the page could not produce in time gives
-    // a tree-only observation, exactly like an engine that has no pixels.
-    const pixelCapture =
-      options?.pixels === true
-        ? capturePixels(page, { ...operation, timeoutMs: Math.max(1, semanticDeadline - Date.now()) }, viewport).catch(() => undefined)
-        : Promise.resolve(undefined);
-    let captured: Awaited<ReturnType<typeof captureDocument>>;
-    let capturedPixels: PixelCapture | undefined;
+    const capture = this.refs.beginCapture();
+    const captured = await captureObservation(page, this.refs, {
+      testIdAttribute: this.testIdAttribute, site: this.app.site,
+    }, operation, options);
+    const { snapshot, generation } = captured;
     try {
-      // Both halves are awaited before the generation swap, so a failed
-      // observation leaves the surface on its previous generation instead of
-      // publishing handles for a revision no caller ever received.
-      [captured, capturedPixels] = await Promise.all([
-        captureDocument(
-          {
-            testIdAttribute: this.testIdAttribute,
-            site: this.app.site,
-            idSeed: () => this.refs.idSeed(),
-            advanceIds: (nextId) => this.refs.advanceIds(nextId),
-            commit: (id: string, element: ElementHandle<Element>) => {
-              generation.set(id, { kind: 'element', element });
-            },
-          },
-          page,
-          { framePath: [], budget: MAX_OBSERVED_NODES, deadline: semanticDeadline },
-        ),
-        pixelCapture,
-      ]);
+      if (operation.signal.aborted) throw cancelled('observe cancelled');
+      if (this.requirePage() !== page) {
+        throw new EngineError('NODE_STALE', 'observation page was replaced', { retryable: true });
+      }
+      this.refs.publish(capture, captured);
+      return snapshot;
     } catch (cause) {
       RefRegistry.dispose(generation);
-      if (options?.pixelFallback === true && cause instanceof EngineError && cause.code === 'OPERATION_TIMEOUT') {
-        await pixelCapture;
-        return this.captureWithoutTree(page, operation, deadline, cause);
-      }
       throw cause;
     }
-    // `guard` already rejected the caller on abort; the capture kept running.
-    // Its generation must not be published over the one the caller still
-    // holds refs into, nor destroy that one.
-    if (operation.signal.aborted) {
-      RefRegistry.dispose(generation);
-      throw cancelled('observe cancelled');
-    }
-    this.refs.publish(generation);
-    return {
-      location: page.url(),
-      root: captured.tree,
-      viewport: { width: viewport.width, height: viewport.height, scale: 1 },
-      ...(captured.truncated ? { truncated: true } : {}),
-      ...(capturedPixels === undefined
-        ? {}
-        : { pixels: capturedPixels.pixels, maskedRegionCount: capturedPixels.maskedRegionCount }),
-    };
-  }
-
-  /** Recovers a semantic timeout only with a fresh, independently proven mask sweep and screenshot. */
-  private async captureWithoutTree(
-    page: Page,
-    operation: OperationContext,
-    deadline: number,
-    cause: EngineError,
-  ): Promise<EngineSnapshot> {
-    if (operation.signal.aborted) throw cancelled('observe cancelled');
-    const timeoutMs = deadline - Date.now();
-    if (timeoutMs <= 0) throw cause;
-    const viewport = page.viewportSize() ?? DEFAULT_VIEWPORT;
-    const capture = await capturePixels(page, { ...operation, timeoutMs }, viewport);
-    if (operation.signal.aborted) throw cancelled('observe cancelled');
-    if (!capture.maskingProven) throw cause;
-    this.requirePage();
-    this.refs.clear();
-    return {
-      location: page.url(),
-      root: { ref: { id: ROOT_NODE_ID, revision: '' } },
-      viewport: { ...viewport, scale: 1 },
-      truncated: true,
-      treeUnavailable: true,
-      pixels: capture.pixels,
-      maskedRegionCount: capture.maskedRegionCount,
-    };
   }
 }

@@ -74,7 +74,7 @@ export function buildPrompt(input: PromptInput): string {
         observation.text,
         '</observation>',
       );
-      if (observation.truncated) {
+      if (observation.kind === 'semantic' && observation.truncated) {
         sections.push('The observation above is incomplete: nodes past its cut are on screen but not listed.');
       }
     }

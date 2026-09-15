@@ -3,7 +3,7 @@
  * observation, and what the model is told about it.
  */
 
-import { describe, expect, it } from 'vitest';
+import { assert, describe, expect, it } from 'vitest';
 import type { Observation, SemanticNode } from '../../src/engine/surface.ts';
 import { prepareObservation } from '../../src/agent/observation.ts';
 import { describePointTap, hitTest, imagePointToViewport, nodeLine } from '../../src/agent/point-tap.ts';
@@ -16,13 +16,18 @@ const rect = (x: number, y: number, width: number, height: number) => ({ x, y, w
 
 function observationOf(tree: SemanticNode) {
   const raw: Observation = {
+    kind: 'semantic',
+    root: tree.ref,
+    truncated: false,
     revision: 'b3',
     capturedAt: '2026-01-01T00:00:00.000Z',
     tree,
     viewport: { width: 1280, height: 720, scale: 1 },
     redaction: { secureNodeCount: 0, maskedRegionCount: 0 },
   };
-  return prepareObservation(raw, { redact: (text) => text, maxBytes: 65_536 });
+  const result = prepareObservation(raw, { redact: (text) => text, maxBytes: 65_536 });
+  assert(result.kind === 'semantic');
+  return result;
 }
 
 const screen = observationOf(

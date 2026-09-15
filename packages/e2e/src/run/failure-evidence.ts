@@ -104,7 +104,9 @@ function screenText(observation: AgentObservation, url: string | undefined): str
     ...(url === undefined ? [] : [`url: ${url}`]),
     `revision: ${observation.revision}`,
     `viewport: ${observation.viewport.width}x${observation.viewport.height} @${observation.viewport.scale}`,
-    `nodes: ${observation.nodes.size}${observation.truncated ? ' (listing truncated)' : ''}`,
+    observation.kind === 'semantic'
+      ? `nodes: ${observation.nodes.size}${observation.truncated ? ' (listing truncated)' : ''}`
+      : 'nodes: unavailable',
   ];
   return `${header.join('\n')}\n\n${observation.text}\n`;
 }
@@ -116,6 +118,7 @@ function screenText(observation: AgentObservation, url: string | undefined): str
  * can rewrite the locator from what is there.
  */
 function locatorCandidates(error: E2EError, observation: AgentObservation, redact: (text: string) => string): string[] {
+  if (observation.kind === 'pixels') return [];
   if (error.code !== 'LOCATOR_NOT_FOUND' && error.code !== 'LOCATOR_AMBIGUOUS') return [];
   const { role, testId, name } = error.details ?? {};
   const words = tokens(name ?? '');

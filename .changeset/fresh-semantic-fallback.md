@@ -11,5 +11,10 @@ references, and disables trace reuse for affected steps. Playwright supports
 the fallback; device captures still fail closed when accessibility data
 cannot establish screenshot masks.
 
+Playwright bounds the complete semantic capture and reserves node IDs before
+the reader starts. An abandoned capture cannot reuse IDs or publish late
+references. Pixel-only evidence resets the agent's semantic screen comparison
+and stops cache probes without discarding the recovered screenshot.
+
 Reports accept judgment steps that fail before a model call without inventing
 an observation revision or verdict explanation.

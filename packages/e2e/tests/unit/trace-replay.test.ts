@@ -52,6 +52,7 @@ function makeHost(options: {
   };
   const host = {
     calls,
+    traceEligible: true,
     observations: 0,
     observe: async () => {
       host.observations += 1;
@@ -70,7 +71,7 @@ function makeHost(options: {
 
 /** One observed screen over the given nodes. */
 function screen(nodes: readonly SemanticNode[], viewport = VIEWPORT) {
-  return { nodes: new Map(nodes.map((n) => [n.ref.id, n])), viewport };
+  return { kind: 'semantic' as const, nodes: new Map(nodes.map((n) => [n.ref.id, n])), viewport };
 }
 
 describe('verifyAnchors', () => {

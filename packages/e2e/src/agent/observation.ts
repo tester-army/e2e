@@ -13,37 +13,41 @@ const TRUNCATION_MARKER = '[observation truncated at the resolved observation by
 /** Appended when the engine reported its tree incomplete and the byte budget did not cut it further. */
 const ENGINE_TRUNCATION_MARKER = '[observation truncated: the engine stopped listing nodes at its limit]';
 /** Missing semantics are unknown, including on a surface that appears empty. */
-const UNAVAILABLE_TREE_MARKER = '[semantic capture unavailable: no nodes were read; use the screenshot, never infer absence from this listing]';
+const UNAVAILABLE_TREE_MARKER = '[semantic capture unavailable: no nodes were read; previous node ids are no longer valid. Use the screenshot, never infer absence from this listing]';
 
 /** Why pixels the caller asked for are not part of this observation. */
 type PixelsWithheld = 'MASKING_UNPROVEN';
 
-export interface AgentObservation {
+export type AgentObservation = AgentObservationMetadata & (
+  | {
+      readonly kind: 'semantic';
+      readonly nodes: ReadonlyMap<string, SemanticNode>;
+      readonly parents: ReadonlyMap<string, string>;
+      readonly tree: SemanticNode;
+      readonly truncated: boolean;
+      readonly pixels?: ExecutorPixels | undefined;
+      readonly pixelsWithheld?: PixelsWithheld | undefined;
+    }
+  | {
+      readonly kind: 'pixels';
+      readonly pixels: ExecutorPixels;
+    }
+);
+
+/** An observation whose node references can be resolved or described. */
+export type SemanticAgentObservation = Extract<AgentObservation, { kind: 'semantic' }>;
+
+/** Identity, geometry, and redacted prose shared by both evidence variants. */
+interface AgentObservationMetadata {
   /** Where the surface was when captured, when the platform has a location. */
   readonly location?: string;
+  /** Location projected to path and query when it is a URL, otherwise kept opaque. */
+  readonly path?: string;
   readonly revision: string;
   /** Redacted, size-bounded serialization sent to the model. */
   readonly text: string;
   readonly bytes: number;
-  readonly nodes: ReadonlyMap<string, SemanticNode>;
-  /** Parent id of every non-root node, for the container a target sits in. */
-  readonly parents: ReadonlyMap<string, string>;
-  /** The raw tree as the engine reported it; redacted only on the way out. */
-  readonly tree: SemanticNode;
   readonly viewport: { readonly width: number; readonly height: number; readonly scale: number };
-  /**
-   * True when `text` lists less than the surface holds: the byte budget cut
-   * the serialization, or the engine reported its own tree incomplete. Either
-   * way nodes past the cut are unknown, so a truncated screen is never called
-   * unchanged and the model is told the listing is partial.
-   */
-  readonly truncated: boolean;
-  /** The listing carries no semantic evidence; only the independently masked pixels may be used. */
-  readonly treeUnavailable?: true;
-  /** Present only when the engine captured pixels and masking checks out. */
-  readonly pixels?: ExecutorPixels | undefined;
-  /** Set when captured pixels were dropped instead of being sent. */
-  readonly pixelsWithheld?: PixelsWithheld | undefined;
 }
 
 /**
@@ -59,8 +63,31 @@ export function prepareObservation(
   options: {
     redact: (text: string) => string;
     maxBytes: number;
+    /** Grants pixel-only evidence; omit when this consumer cannot use it. */
+    pixelsAllowed?: boolean;
   },
 ): AgentObservation {
+  const location = observation.location === undefined ? undefined : options.redact(observation.location);
+  const path = location === undefined ? undefined : observationPath(location);
+  const metadata = {
+    revision: observation.revision,
+    ...(location === undefined ? {} : { location }),
+    ...(path === undefined ? {} : { path }),
+    viewport: observation.viewport,
+  };
+  const pixels = clearPixels(observation);
+  if (observation.kind === 'pixels') {
+    if (options.pixelsAllowed !== true || pixels.cleared === undefined) {
+      throw new TestError('UNSUPPORTED_CAPABILITY', 'semantic capture is unavailable and no permitted, proven-masked screenshot can replace it');
+    }
+    return {
+      ...metadata,
+      kind: 'pixels',
+      text: UNAVAILABLE_TREE_MARKER,
+      bytes: new TextEncoder().encode(UNAVAILABLE_TREE_MARKER).byteLength,
+      pixels: pixels.cleared,
+    };
+  }
   const nodes = new Map<string, SemanticNode>();
   const parents = new Map<string, string>();
   indexNodes(observation.tree, nodes, parents);
@@ -72,7 +99,6 @@ export function prepareObservation(
   // budget; the budget is what keeps the request under the token ceiling.
   const markerFor = (cutByBudget: boolean): string | undefined => {
     if (cutByBudget) return TRUNCATION_MARKER;
-    if (observation.treeUnavailable === true) return UNAVAILABLE_TREE_MARKER;
     return observation.truncated === true ? ENGINE_TRUNCATION_MARKER : undefined;
   };
   const markerBytes = encoder.encode(`${markerFor(false) ?? TRUNCATION_MARKER}\n`).byteLength;
@@ -102,29 +128,30 @@ export function prepareObservation(
   // and the marker was measured up front, so the size is known without a
   // second pass over the whole tree text.
   const textBytes = Math.max(0, bytes + (marker === undefined ? 0 : encoder.encode(`${marker}\n`).byteLength) - 1);
-  const pixels = clearPixels(observation);
   return {
-    revision: observation.revision,
-    ...(observation.location === undefined ? {} : { location: options.redact(observation.location) }),
+    ...metadata,
+    kind: 'semantic',
     text,
     bytes: textBytes,
     nodes,
     parents,
     tree: observation.tree,
-    viewport: observation.viewport,
     truncated,
-    ...(observation.treeUnavailable === true ? { treeUnavailable: true } : {}),
     ...(pixels.cleared === undefined ? {} : { pixels: pixels.cleared }),
     ...(pixels.withheld === undefined ? {} : { pixelsWithheld: pixels.withheld }),
   };
 }
 
-/** Refuses an unavailable semantic tree unless independently masked pixels can reach the model. */
-export function requireObservationEvidence(observation: AgentObservation, pixelsAllowed: boolean): void {
-  if (observation.treeUnavailable !== true) return;
-  if (!pixelsAllowed || observation.pixels === undefined) {
-    throw new TestError('UNSUPPORTED_CAPABILITY', 'semantic capture is unavailable and no permitted, proven-masked screenshot can replace it');
-  }
+/** Trace and executor locations use the same capture, without a second engine call. */
+function observationPath(location: string): string {
+  if (!URL.canParse(location)) return location;
+  const url = new URL(location);
+  return `${url.pathname}${url.search}`;
+}
+
+/** Phase metrics describe a node count only when the capture actually read nodes. */
+export function observationDetail(observation: AgentObservation): { count?: number; bytes: number } {
+  return { bytes: observation.bytes, ...(observation.kind === 'semantic' ? { count: observation.nodes.size } : {}) };
 }
 
 /**
@@ -158,7 +185,7 @@ export function pixelsForModel(
 ): { readonly pixels: ExecutorPixels } | { readonly withheld: VisionDegradation } {
   if (tainted) return { withheld: 'PIXEL_TAINTED' };
   if (observation.pixels === undefined) {
-    return { withheld: observation.pixelsWithheld ?? 'UNSUPPORTED_CAPABILITY' };
+    return { withheld: observation.kind === 'semantic' ? observation.pixelsWithheld ?? 'UNSUPPORTED_CAPABILITY' : 'UNSUPPORTED_CAPABILITY' };
   }
   // Sized here, once per observation a model receives, not per capture: the
   // settle loop captures several times per action and only digests the bytes.
@@ -289,7 +316,8 @@ export function formatNode(
  *
  * Lives next to `formatNode` so the line grammar keeps one owner.
  */
-export function observationShape(observation: AgentObservation): string {
+export function observationShape(observation: AgentObservation): string | undefined {
+  if (observation.kind === 'pixels') return undefined;
   const text = observation.text
     .replaceAll(/(^|\n)(\s*)#\S+/g, '$1$2')
     .replaceAll(/ \[([^\]]*)\]/g, (_match, states: string) => {
@@ -326,7 +354,8 @@ const CLOCK_PATTERN = /\b\d{1,2}:\d{2}(?::\d{2})?\b/g;
  * had already landed. On a screen the tree cannot describe (a canvas, a
  * game) the pixels are the only place an effect can show, so they count.
  */
-export function changeShape(observation: AgentObservation): string {
+export function changeShape(observation: AgentObservation): string | undefined {
+  if (observation.kind === 'pixels') return undefined;
   if (interactiveNodeCount(observation) > 0) return observationShape({ ...observation, pixels: undefined });
   return observationShape(observation);
 }
@@ -355,8 +384,6 @@ interface SettleClock {
 
 /** Tunables of one settle; production callers take the defaults. */
 export interface SettleOptions<T> {
-  /** Returns a capture immediately when repeating it cannot establish semantic stability. */
-  readonly stopWhen?: ((value: T) => boolean) | undefined;
   /**
    * The shape the screen had when the preceding action was resolved. The
    * settle first waits, bounded, for the shape to differ from it, so an
@@ -364,7 +391,7 @@ export interface SettleOptions<T> {
    */
   readonly changedFrom?: string | undefined;
   /** The shape `changedFrom` is compared against; defaults to `shapeOf`. */
-  readonly changeShapeOf?: ((value: T) => string) | undefined;
+  readonly changeShapeOf?: ((value: T) => string | undefined) | undefined;
   /**
    * Whether a capture is a screen in transition rather than a screen: an
    * empty document between two pages, say. Such a capture never satisfies
@@ -391,11 +418,12 @@ export interface SettleOptions<T> {
  * body, a submit rendering), then it waits for the new shape to hold still.
  * A screen that never leaves the pre-action shape is returned as it is once
  * the change wait runs out: the caller reports it unchanged rather than
- * guessing.
+ * guessing. Evidence with no comparable shape returns immediately; another
+ * capture cannot establish semantic stability while semantics are unavailable.
  */
 export async function settleObservation<T>(
   capture: () => Promise<T>,
-  shapeOf: (value: T) => string,
+  shapeOf: (value: T) => string | undefined,
   clock: SettleClock,
   options: SettleOptions<T> = {},
 ): Promise<T> {
@@ -404,8 +432,8 @@ export async function settleObservation<T>(
   const changeWaitMs = options.changeWaitMs ?? CHANGE_WAIT_MS;
   const transitional = options.transitional ?? (() => false);
   let value = await capture();
-  if (options.stopWhen?.(value)) return value;
   let shape = shapeOf(value);
+  if (shape === undefined) return value;
   if (options.changedFrom !== undefined) {
     const changeShapeOf = options.changeShapeOf ?? shapeOf;
     const changeDeadlineMs = Date.now() + changeWaitMs;
@@ -416,16 +444,16 @@ export async function settleObservation<T>(
     ) {
       await sleep(pollMs, clock.signal);
       value = await capture();
-      if (options.stopWhen?.(value)) return value;
+      shape = shapeOf(value);
+      if (shape === undefined) return value;
     }
-    shape = shapeOf(value);
   }
   const deadlineMs = Date.now() + stableWaitMs;
   while (Date.now() < deadlineMs && clock.remainingMs() > pollMs) {
     await sleep(pollMs, clock.signal);
     value = await capture();
-    if (options.stopWhen?.(value)) return value;
     const next = shapeOf(value);
+    if (next === undefined) return value;
     const stable = next === shape;
     shape = next;
     if (stable) break;
@@ -439,7 +467,7 @@ export async function settleObservation<T>(
  * the new one arriving. Acting or judging on it would be acting on nothing.
  */
 export function isTransitionalObservation(observation: AgentObservation): boolean {
-  return observation.nodes.size <= 1;
+  return observation.kind === 'semantic' && observation.nodes.size <= 1;
 }
 
 function indexNodes(

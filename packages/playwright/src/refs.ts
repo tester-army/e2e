@@ -10,14 +10,21 @@
  * an in-flight observation still references.
  */
 
-import { EngineError, type NodeRef } from 'e2e/engine';
+import { EngineError, type EngineSnapshot, type NodeRef } from 'e2e/engine';
 import type { ActionTarget } from './support.ts';
 
 /** Located refs are pruned oldest-first past this bound so the map cannot grow unboundedly. */
 const MAX_STORED_REFS = 2048;
 
+/** A complete observation and the private handles that back its semantic refs. */
+export interface CapturedObservation {
+  readonly snapshot: EngineSnapshot;
+  readonly generation: Map<string, ActionTarget>;
+}
+
 export class RefRegistry {
   private counter = 0;
+  private capture = 0;
   private readonly located = new Map<string, ActionTarget>();
   private observation = new Map<string, ActionTarget>();
 
@@ -26,14 +33,11 @@ export class RefRegistry {
     return `n${this.counter}`;
   }
 
-  /** First id a captured document may stamp on a node it sees for the first time. */
-  idSeed(): number {
-    return this.counter + 1;
-  }
-
-  /** Records the first id a captured document left unused, so minting never reuses a stamped one. */
-  advanceIds(nextId: number): void {
-    this.counter = Math.max(this.counter, nextId - 1);
+  /** Reserves ids before a document can stamp them, even if its response never arrives. */
+  reserveIds(count: number): number {
+    const first = this.counter + 1;
+    this.counter += count;
+    return first;
   }
 
   /** Stores one located target under a fresh id, pruning the oldest past the bound. */
@@ -60,14 +64,25 @@ export class RefRegistry {
     return target;
   }
 
-  /** Publishes a captured generation, disposing the one it supersedes. */
-  publish(generation: Map<string, ActionTarget>): void {
+  /** Starts a capture, preventing older in-flight observations from publishing afterward. */
+  beginCapture(): number {
+    this.capture += 1;
+    return this.capture;
+  }
+
+  /** Publishes only the current capture; pixel-only recovery also retires located refs. */
+  publish(capture: number, { snapshot, generation }: CapturedObservation): void {
+    if (capture !== this.capture) {
+      throw new EngineError('NODE_STALE', 'observation capture was superseded', { retryable: true });
+    }
+    if (snapshot.treeUnavailable === true) this.clear();
     RefRegistry.dispose(this.observation);
     this.observation = generation;
   }
 
   /** Releases every ref of the attempt: located and observed alike. */
   clear(): void {
+    this.capture += 1;
     RefRegistry.dispose(this.observation);
     this.observation = new Map();
     RefRegistry.dispose(this.located);

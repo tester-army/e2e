@@ -20,7 +20,7 @@ import type { StepTurn } from '../run/steps.ts';
 import { writeFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { ConfigurationError, TestError } from '../internal/errors.ts';
+import { ConfigurationError } from '../internal/errors.ts';
 import type { ActOptions, ActResult, AgentErrorCode, JsonValue, ModelInstance, Secret } from '../types.ts';
 import { AgentError, CATEGORY_BY_CODE, isAgentError, toAgentError } from './error.ts';
 import { validateActOptions, validateInstruction, validateParams, validateVerdict } from './act-validation.ts';
@@ -189,7 +189,6 @@ class ActDispatch {
     const queue = new OperationQueue();
     this.feed = new ObservationFeed(runtime, this.accounting, queue, {
       maxObservationBytes: agent.config.maxObservationBytes,
-      onUnavailableTree: () => this.stepCache?.disable(),
     });
     this.dispatcher = new ActionDispatcher(runtime, this.accounting, this.feed, queue, {
       instruction: spec.instruction,
@@ -410,17 +409,15 @@ class ActDispatch {
 
   /** The cache session's narrow view of this step. */
   private cacheHost(): StepCacheHost {
+    const feed = this.feed;
     return {
-      observe: async () => screenOf(await this.feed.observeLatest()),
-      observeSettled: async () => screenOf(await this.feed.observeSettled()),
+      get traceEligible() { return feed.traceEligible; },
+      observe: async () => screenOf(await this.feed.probe(false)),
+      observeSettled: async () => screenOf(await this.feed.probe(true)),
       actions: this.dispatcher.actions,
       signal: this.accounting.signal,
       remainingMs: () => this.accounting.remainingMs(),
       redact: this.runtime.redact,
-      currentPath: (nodes) => {
-        const latest = this.feed.latest;
-        return this.feed.currentPath(nodes !== undefined && nodes === latest?.nodes ? latest : undefined);
-      },
       replaying: (active) => {
         this.runtime.steps.replaying(active);
         this.accounting.replaying(active);
@@ -477,8 +474,11 @@ class ActDispatch {
 
 /** The replay engine's view of a capture: the nodes, and the viewport a recorded point is checked against. */
 function screenOf(observation: AgentObservation): ObservedScreen {
-  if (observation.treeUnavailable === true) {
-    throw new TestError('UNSUPPORTED_CAPABILITY', 'trace replay requires a semantic observation');
-  }
-  return { nodes: observation.nodes, viewport: { width: observation.viewport.width, height: observation.viewport.height } };
+  const metadata = {
+    viewport: { width: observation.viewport.width, height: observation.viewport.height },
+    ...(observation.path === undefined ? {} : { path: observation.path }),
+  };
+  return observation.kind === 'semantic'
+    ? { ...metadata, kind: 'semantic', nodes: observation.nodes }
+    : { ...metadata, kind: 'pixels' };
 }

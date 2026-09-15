@@ -32,12 +32,11 @@ it('collects captured metadata while published element handles stay actionable',
         {
           testIdAttribute: 'data-testid',
           site: undefined,
-          idSeed: () => nextId,
-          advanceIds: (value) => { nextId = value; },
+          reserveIds: (count) => { const first = nextId; nextId += count; return first; },
           commit: (id, element) => { published.set(id, element); },
         },
         host,
-        { framePath: [], budget: 100, deadline: Date.now() + 10_000 },
+        { framePath: [], budget: 100, deadline: Date.now() + 10_000, signal: new AbortController().signal },
       );
       await Promise.all([...previous.values()].map((element) => element.dispose()));
       expect(snapshot.nodeCount).toBe(2);

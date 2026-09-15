@@ -21,6 +21,7 @@ import {
   type Screen,
   type Secret,
   type TraceCacheStore,
+  type ExecutorObservation,
   type ValueExpectation,
 } from '../../src/index.ts';
 import type { EngineHandle, EngineObserveOptions, EngineSnapshot } from '../../src/engine/index.ts';
@@ -36,6 +37,12 @@ declare const screen: Screen;
 declare const engine: EngineHandle;
 
 ({ pixels: false, pixelFallback: true }) satisfies EngineObserveOptions;
+interface CustomSnapshot extends EngineSnapshot { readonly projectMetadata?: string }
+interface CustomExecutorObservation extends ExecutorObservation { readonly projectMetadata?: string }
+declare const customSnapshot: CustomSnapshot;
+declare const customExecutorObservation: CustomExecutorObservation;
+customSnapshot satisfies EngineSnapshot;
+customExecutorObservation satisfies ExecutorObservation;
 declare const engineSnapshot: EngineSnapshot;
 engineSnapshot.treeUnavailable satisfies true | undefined;
 // @ts-expect-error unavailable semantics are explicitly true or absent, never a separate false state.

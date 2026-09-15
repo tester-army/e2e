@@ -1,7 +1,8 @@
 /** Masked pixel capture for an observation. */
 
 import type { Locator, Page } from 'playwright';
-import { EngineError, withTimeout, type ObservationPixels, type OperationContext } from 'e2e/engine';
+import type { ObservationPixels, OperationContext } from 'e2e/engine';
+import { CaptureScope } from './capture-scope.ts';
 import { CLOSED_SHADOW_SELECTOR_ENGINE, SECURE_FIELD_SELECTOR } from './read-node.ts';
 
 /**
@@ -63,39 +64,38 @@ export async function capturePixels(
   viewport: { readonly width: number; readonly height: number },
 ): Promise<PixelCapture> {
   const deadline = Date.now() + operation.timeoutMs;
-  const masks = secureFieldMasks(page);
-  // A frame that detaches mid-sweep contributes nothing to the count, which can
-  // only push the observation toward withholding the image.
-  const counts = await withTimeout(
-    Promise.allSettled(masks.map((mask) => mask.count())),
-    operation.timeoutMs,
-    () => new EngineError('OPERATION_TIMEOUT', 'secure-field mask capture timed out', { retryable: false }),
-  );
-  const image = await page.screenshot({
-    type: 'png',
-    scale: 'css',
-    animations: 'disabled',
-    caret: 'hide',
-    timeout: Math.max(1, Math.min(deadline - Date.now(), PIXEL_CAPTURE_TIMEOUT_MS)),
-    ...maskOptions(masks),
+  const scope = new CaptureScope(deadline, operation.signal);
+  return scope.run(async () => {
+    const masks = secureFieldMasks(page);
+    // A frame that detaches mid-sweep contributes nothing to the count, which can
+    // only push the observation toward withholding the image.
+    const counts = await scope.read(() => Promise.allSettled(masks.map((mask) => mask.count())));
+    const image = await scope.read(() => page.screenshot({
+      type: 'png',
+      scale: 'css',
+      animations: 'disabled',
+      caret: 'hide',
+      timeout: Math.max(1, Math.min(deadline - Date.now(), PIXEL_CAPTURE_TIMEOUT_MS)),
+      ...maskOptions(masks),
+    }));
+    const data = new Uint8Array(image);
+    // The bytes are the authority on their own size. `scale: 'css'` is asked for
+    // precisely so one image pixel is one CSS pixel, but the ratio is measured
+    // rather than assumed: if a capture ever comes back at device scale, reporting
+    // the viewport instead would displace every coordinate the model reads off it.
+    const size = readPngSize(data) ?? { width: viewport.width, height: viewport.height };
+    return {
+      pixels: {
+        data,
+        mediaType: 'image/png',
+        width: size.width,
+        height: size.height,
+        scale: viewport.width > 0 ? size.width / viewport.width : 1,
+      },
+      maskedRegionCount: counts.reduce((total, count) => total + (count.status === 'fulfilled' ? count.value : 0), 0),
+      maskingProven: masks.length > 0 && counts.every((count) => count.status === 'fulfilled'),
+    };
   });
-  const data = new Uint8Array(image);
-  // The bytes are the authority on their own size. `scale: 'css'` is asked for
-  // precisely so one image pixel is one CSS pixel, but the ratio is measured
-  // rather than assumed: if a capture ever comes back at device scale, reporting
-  // the viewport instead would displace every coordinate the model reads off it.
-  const size = readPngSize(data) ?? { width: viewport.width, height: viewport.height };
-  return {
-    pixels: {
-      data,
-      mediaType: 'image/png',
-      width: size.width,
-      height: size.height,
-      scale: viewport.width > 0 ? size.width / viewport.width : 1,
-    },
-    maskedRegionCount: counts.reduce((total, count) => total + (count.status === 'fulfilled' ? count.value : 0), 0),
-    maskingProven: masks.length > 0 && counts.every((count) => count.status === 'fulfilled'),
-  };
 }
 
 /**

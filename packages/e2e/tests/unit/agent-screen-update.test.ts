@@ -22,6 +22,28 @@ const HOME = [
 ];
 
 describe('ScreenPresenter', () => {
+  it('retires semantic history through repeated unavailable captures and shows recovery whole', () => {
+    const presenter = new ScreenPresenter();
+    presenter.initial(screen('b1', ['#root', ' #save button "Save"']));
+    const pixels = { data: new Uint8Array([1]), mediaType: 'image/png' as const, width: 1, height: 1, scale: 1, maskedRegionCount: 0 };
+    for (const revision of ['b2', 'b3']) {
+      const output = presenter.present(screen(revision, [
+        '[semantic capture unavailable: no nodes were read; previous node ids are no longer valid. Use the screenshot, never infer absence from this listing]',
+      ], { treeUnavailable: true, truncated: true, pixels }));
+      expect(output).toMatchObject({ pixels });
+      const text = typeof output === 'string' ? output : output.text;
+      expect(text).toContain('semantic capture unavailable');
+      expect(text).toContain('previous node ids are no longer valid');
+      expect(text).not.toContain('keeps the id');
+      expect(text).not.toContain('no listed node changed');
+      expect(text).not.toContain('removed');
+    }
+    const recovered = presenter.update(screen('b4', ['#root', ' #save button "Save"']));
+    expect(recovered).toContain('Current screen (revision b4');
+    expect(recovered).toContain('#save button "Save"');
+    expect(recovered).not.toContain('Screen changes');
+  });
+
   it('sends the first screen whole, with its revision, path, and size', () => {
     const presenter = new ScreenPresenter();
     const text = presenter.initial(screen('b1', HOME, { path: '/' }));

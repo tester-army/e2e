@@ -22,10 +22,11 @@ import {
   observationShape,
   pixelsForModel,
   prepareObservation,
-  requireObservationEvidence,
+  observationDetail,
   projectTree,
   settleObservation,
   type AgentObservation,
+  type SemanticAgentObservation,
 } from './observation.ts';
 import { observationByteBudget } from './observation-budget.ts';
 import type { OperationQueue } from './operation-queue.ts';
@@ -44,14 +45,15 @@ const MAX_RECENT_OBSERVATIONS = 8;
 export interface ObservationFeedOptions {
   /** The agent's observation byte ceiling, clamped per capture by the token limit. */
   readonly maxObservationBytes: number;
-  /** Prevents trace replay and recording once any capture lacks semantics. */
-  readonly onUnavailableTree?: () => void;
 }
 
 export class ObservationFeed {
   private newest: AgentObservation | undefined;
+  /** A cache probe may supply the executor's first look, once, before any action. */
+  private opening: AgentObservation | undefined;
+  private semanticHistory = true;
   /** The newest observations of the step, oldest first; see MAX_RECENT_OBSERVATIONS. */
-  private readonly recent: AgentObservation[] = [];
+  private readonly recent: SemanticAgentObservation[] = [];
   /**
    * The screen shape the newest committed action was resolved against, kept
    * until the next settled observation has waited for the screen to leave it.
@@ -82,6 +84,11 @@ export class ObservationFeed {
     return this.newest;
   }
 
+  /** A trace may only describe a step observed with semantic evidence throughout. */
+  get traceEligible(): boolean {
+    return this.semanticHistory;
+  }
+
   /** The newest observation, which an action addresses; before the first look there is nothing to address. */
   requireLatest(): AgentObservation {
     if (this.newest === undefined) {
@@ -90,22 +97,17 @@ export class ObservationFeed {
     return this.newest;
   }
 
-  /** One raw capture in queue order, for replay's looks between retries. */
-  observeLatest(): Promise<AgentObservation> {
-    return this.queue.run(() => this.observeNow(false, false));
-  }
-
   /**
-   * One settled capture in queue order: the executor-facing observe. An
-   * executor observation is followed by a model call measured in seconds, so
-   * the bounded settle wait is noise there — and it guarantees the model never
-   * reads a snapshot the app is still reacting to, which a fast model turns
-   * into a repeated action (double-committing a toggle) and a verdict judged
-   * on pre-render state. Replay's pre-action looks and the cache session's
-   * probes settle through this same path.
+   * Captures cache evidence in queue order. Before any action, its completed
+   * capture can serve the executor's first look once. Every later capture
+   * clears that handoff before starting, even when the later capture fails.
    */
-  observeSettled(pixels = false): Promise<AgentObservation> {
-    return this.queue.run(() => this.observeNow(true, pixels));
+  probe(settle: boolean): Promise<AgentObservation> {
+    return this.queue.run(async () => {
+      const observation = await this.observeNow(settle, false);
+      if (this.accounting.metrics.actionSteps === 0) this.opening = observation;
+      return observation;
+    });
   }
 
   /** The executor-facing observe: the options checked before anything is captured, then one settled look, viewed. */
@@ -113,51 +115,35 @@ export class ObservationFeed {
     if (options === null || typeof options !== 'object') {
       throw new TestError('INVALID_ARGUMENT', 'observe options must be an object');
     }
-    return this.view(await this.observeSettled(this.wantsPixels(options)), options);
+    return this.queue.run(async () => {
+      this.accounting.checkpoint();
+      const pixels = options.pixels === true;
+      const opening = this.opening;
+      this.opening = undefined;
+      const reusable = opening !== undefined && opening === this.newest && this.accounting.metrics.actionSteps === 0 &&
+        (!pixels || opening.pixels !== undefined);
+      return this.view(reusable ? opening : await this.observeNow(true, pixels), options);
+    });
   }
 
-  /** Whether one executor look captures pixels: only when it asks. The executor decides what its model needs to see. */
-  private wantsPixels(options: ExecutorObserveOptions): boolean {
-    return options.pixels === true;
-  }
-
-  /** The executor's view of one capture: redacted text, and the tree and pixels it asked for. */
-  private async view(observation: AgentObservation, options: ExecutorObserveOptions): Promise<ExecutorObservation> {
-    const redact = this.runtime.redact;
-    // Prefer location from this capture; only engines without it need a separate probe.
-    const path = await this.currentPath(observation);
-    const pixels = this.wantsPixels(options) || observation.treeUnavailable === true ? this.pixelsFor(observation) : {};
-    return {
+  /** Projects one capture, including its permitted screenshot whenever semantic evidence is unavailable. */
+  private view(observation: AgentObservation, options: ExecutorObserveOptions): ExecutorObservation {
+    const metadata = {
       revision: observation.revision,
+      viewport: observation.viewport,
+      ...(observation.path === undefined ? {} : { path: observation.path }),
+    };
+    const pixels = options.pixels === true || observation.kind === 'pixels' ? this.pixelsFor(observation) : {};
+    if (observation.kind === 'pixels') {
+      return { ...metadata, text: observation.text, treeUnavailable: true, truncated: true, ...pixels };
+    }
+    return {
+      ...metadata,
       text: observation.text,
       truncated: observation.truncated,
-      ...(observation.treeUnavailable === true ? { treeUnavailable: true } : {}),
-      viewport: observation.viewport,
-      ...(path === undefined ? {} : { path: redact(path) }),
-      ...(options.tree === true ? { tree: projectTree(observation.tree, redact) } : {}),
+      ...(options.tree === true ? { tree: projectTree(observation.tree, this.runtime.redact) } : {}),
       ...pixels,
     };
-  }
-
-  /**
-   * Best-effort current location, for trace anchors. An observation at hand
-   * answers from its own location; without one the session observes afresh,
-   * which is why callers holding a recent observation pass it.
-   * A URL anchors on its path and query, so the origin a preview deploys
-   * under never enters an entry; any other location (a device's screen, a
-   * window) anchors as the opaque string it is. A surface that reports no
-   * location, or cannot be observed yet (no app opened), has no anchor.
-   */
-  async currentPath(observation?: AgentObservation): Promise<string | undefined> {
-    try {
-      const location = (observation ?? (await this.runtime.engine.session.observe(this.accounting.operation()))).location;
-      if (location === undefined) return undefined;
-      if (!URL.canParse(location)) return location;
-      const url = new URL(location);
-      return `${url.pathname}${url.search}`;
-    } catch {
-      return undefined;
-    }
   }
 
   /**
@@ -179,12 +165,15 @@ export class ObservationFeed {
    * and an engine that mints ids per observation renumbers the tree between
    * them. Exactly one match, or the id counts as gone.
    */
-  resolve(target: ExecutorTarget): { node: SemanticNode; observation: AgentObservation } {
+  resolve(target: ExecutorTarget): { node: SemanticNode; observation: SemanticAgentObservation } {
     if (typeof target?.id !== 'string' || target.id === '') {
       throw new TestError('INVALID_ARGUMENT', 'action target must be { id: string }');
     }
     const id = target.id.replace(/^#/, '');
     const latest = this.requireLatest();
+    if (latest.kind === 'pixels') {
+      throw new AgentError('LOCATOR_NOT_FOUND', 'semantic capture is unavailable; previous node ids are no longer valid, so use the current screenshot');
+    }
     const node = latest.nodes.get(id) ?? this.refound(id, latest);
     if (node === undefined) {
       throw new AgentError(
@@ -202,7 +191,7 @@ export class ObservationFeed {
    * through the queued observe: this runs inside a queued action body, and a
    * queued observation would wait on its own caller.
    */
-  async relocate(stale: SemanticNode): Promise<{ node: SemanticNode; observation: AgentObservation } | undefined> {
+  async relocate(stale: SemanticNode): Promise<{ node: SemanticNode; observation: SemanticAgentObservation } | undefined> {
     const options = { redact: this.runtime.redact };
     const descriptor = describeTarget(stale, options.redact);
     if (descriptor === undefined) return undefined;
@@ -211,9 +200,10 @@ export class ObservationFeed {
       this.runtime,
       { api: this.accounting.api, kind: 'observation', phase: 'agent.observe', name: 'relocate' },
       () => this.capture(false),
-      (prepared) => ({ count: prepared.nodes.size, bytes: prepared.bytes }),
+      observationDetail,
     );
     this.publish(observation);
+    if (observation.kind === 'pixels') return undefined;
     const relocated = relocateDescriptor(descriptor, observation.nodes, options);
     if (relocated.kind !== 'found') return undefined;
     const node = observation.nodes.get(relocated.id);
@@ -230,6 +220,7 @@ export class ObservationFeed {
 
   /** One recorded observation; when `settle`, the captures loop inside it. */
   private async observeNow(settle: boolean, pixels: boolean): Promise<AgentObservation> {
+    this.opening = undefined;
     this.accounting.checkpoint();
     // A tainted viewport never captures pixels: the engine would mask what it
     // knows about, and the secret may be anywhere on screen by now.
@@ -262,11 +253,10 @@ export class ObservationFeed {
                 changeWaitMs,
                 changeShapeOf: changeShape,
                 transitional: isTransitionalObservation,
-                stopWhen: (capture) => capture.treeUnavailable === true,
               },
             )
           : this.capture(capturePixels),
-      (prepared) => ({ count: prepared.nodes.size, bytes: prepared.bytes }),
+      observationDetail,
     );
     this.publish(observation);
     return observation;
@@ -275,8 +265,8 @@ export class ObservationFeed {
   /** Makes an observation the newest, remembers it among the recent ones, and books its size. */
   private publish(observation: AgentObservation): void {
     this.newest = observation;
-    if (observation.treeUnavailable === true) this.recent.length = 0;
-    this.recent.push(observation);
+    if (observation.kind === 'pixels') this.recent.length = 0;
+    else this.recent.push(observation);
     if (this.recent.length > MAX_RECENT_OBSERVATIONS) this.recent.shift();
     const metrics = this.accounting.metrics;
     metrics.observationBytes = Math.max(metrics.observationBytes, observation.bytes);
@@ -284,6 +274,7 @@ export class ObservationFeed {
 
   /** One raw observation capture: retried at the engine, then redacted and bounded. */
   private async capture(pixels: boolean): Promise<AgentObservation> {
+    this.opening = undefined;
     const raw = await retryingObserve({
       observe: (operation) => this.runtime.engine.session.observe(operation, {
         pixels,
@@ -294,12 +285,16 @@ export class ObservationFeed {
       signal: this.runtime.engine.signal,
       api: this.accounting.api,
     });
+    if (raw.kind === 'pixels') {
+      this.semanticHistory = false;
+      this.newest = undefined;
+      this.recent.length = 0;
+    }
     const prepared = prepareObservation(raw, {
       redact: this.runtime.redact,
-      maxBytes: this.byteBudget(pixels || raw.treeUnavailable === true),
+      maxBytes: this.byteBudget(pixels || raw.kind === 'pixels'),
+      pixelsAllowed: !this.runtime.taint.value,
     });
-    if (prepared.treeUnavailable === true) this.options.onUnavailableTree?.();
-    requireObservationEvidence(prepared, !this.runtime.taint.value);
     return prepared;
   }
 
@@ -330,6 +325,9 @@ export class ObservationFeed {
     if ('withheld' in outcome) {
       this.recordPixelDecision('denied', outcome.withheld);
       this.visionDegraded = outcome.withheld;
+      if (observation.kind === 'pixels') {
+        throw new TestError('UNSUPPORTED_CAPABILITY', 'semantic capture is unavailable and its screenshot is no longer permitted');
+      }
       return { pixelsWithheld: outcome.withheld };
     }
     this.recordPixelDecision('allowed');
@@ -347,7 +345,7 @@ export class ObservationFeed {
   }
 
   /** The newest node matching the descriptor of what `id` named in a recent observation, if exactly one. */
-  private refound(id: string, latest: AgentObservation): SemanticNode | undefined {
+  private refound(id: string, latest: SemanticAgentObservation): SemanticNode | undefined {
     let earlier: SemanticNode | undefined;
     for (let index = this.recent.length - 1; index >= 0 && earlier === undefined; index -= 1) {
       earlier = this.recent[index]!.nodes.get(id);

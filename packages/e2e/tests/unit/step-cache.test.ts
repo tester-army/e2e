@@ -45,10 +45,15 @@ function makeHost(
   paths: (string | undefined)[],
   screens: (readonly SemanticNode[])[] = [[]],
 ): StepCacheHost {
-  const nextScreen = async () => ({
-    nodes: nodeMap((screens.length > 1 ? screens.shift() : screens[0]) ?? []),
-    viewport: { width: 1280, height: 720 },
-  });
+  const nextScreen = async () => {
+    const path = paths.shift();
+    return {
+      kind: 'semantic' as const,
+      nodes: nodeMap((screens.length > 1 ? screens.shift() : screens[0]) ?? []),
+      viewport: { width: 1280, height: 720 },
+      ...(path === undefined ? {} : { path }),
+    };
+  };
   return {
     observe: nextScreen,
     observeSettled: nextScreen,
@@ -57,7 +62,7 @@ function makeHost(
     // Short enough that a missing anchor is not waited for across the backoff.
     remainingMs: () => 50,
     redact: (text) => text,
-    currentPath: async () => paths.shift(),
+    traceEligible: true,
     replaying: () => undefined,
   };
 }
@@ -108,17 +113,20 @@ describe('recordedVerdictOf', () => {
 describe('StepTraceSession', () => {
   it('does not replay or stage after an observation loses semantic evidence', async () => {
     const cache = entryContext({});
-    let session!: StepTraceSession;
+    let eligible = true;
+    let captures = 0;
     let actions = 0;
     const host = makeHost(['/pricing']);
-    session = makeSession(cache, {
+    const session = makeSession(cache, {
       ...host,
-      observeSettled: async () => { session.disable(); return host.observeSettled(); },
+      get traceEligible() { return eligible; },
+      observeSettled: async () => { captures += 1; eligible = false; return { kind: 'pixels', path: '/pricing', viewport: { width: 1280, height: 720 } }; },
       actions: { navigate: async () => { actions += 1; } } as unknown as ExecutorActions,
     });
     expect(await session.begin()).toBeUndefined();
     expect(session.cacheInfo?.mode).toBe('missed');
     expect(actions).toBe(0);
+    expect(captures).toBe(1);
     session.record({ name: 'navigate', url: '/customers' });
     await session.conclude('passed', 'read screenshot');
     expect(cache.staged).toHaveLength(0);
@@ -126,10 +134,11 @@ describe('StepTraceSession', () => {
 
   it('never stages a passing step after missing semantics, even when the final tree recovers', async () => {
     const cache = fakeContext(async () => ({ status: 'miss' }));
-    const session = makeSession(cache, makeHost(['/start', '/end']));
+    let eligible = true;
+    const session = makeSession(cache, { ...makeHost(['/start', '/end']), get traceEligible() { return eligible; } });
     await session.begin();
     session.record({ name: 'navigate', url: '/end' });
-    session.disable();
+    eligible = false;
     await session.conclude('passed', 'finished from pixels');
     expect(cache.staged).toHaveLength(0);
   });
@@ -139,11 +148,12 @@ describe('StepTraceSession', () => {
       { name: 'navigate', url: '/first', summary: 'opened first' },
       { name: 'navigate', url: '/second', summary: 'opened second' },
     ] });
-    let session!: StepTraceSession;
+    let eligible = true;
     const visited: string[] = [];
-    session = makeSession(cache, {
+    const session = makeSession(cache, {
       ...makeHost(['/start']),
-      actions: { navigate: async (url: string) => { visited.push(url); session.disable(); } } as unknown as ExecutorActions,
+      get traceEligible() { return eligible; },
+      actions: { navigate: async (url: string) => { visited.push(url); eligible = false; } } as unknown as ExecutorActions,
     });
     expect(await session.begin()).toBeUndefined();
     expect(visited).toEqual(['/first']);
@@ -394,7 +404,7 @@ describe('StepTraceSession', () => {
       observeSettled: async () => {
         looks += 1;
         if (looks > 1) throw new Error('surface went away');
-        return { nodes: nodeMap([]), viewport: { width: 1280, height: 720 } };
+        return { kind: 'semantic', nodes: nodeMap([]), viewport: { width: 1280, height: 720 } };
       },
     };
     const session = makeSession(context, host);
@@ -414,7 +424,7 @@ describe('StepTraceSession', () => {
         observeSettled: async () => {
           looks += 1;
           if (when === 'baseline' || looks > 1) throw new AgentError('CANCELLED', 'the attempt was cancelled');
-          return { nodes: nodeMap([]), viewport: { width: 1280, height: 720 } };
+          return { kind: 'semantic', nodes: nodeMap([]), viewport: { width: 1280, height: 720 } };
         },
       };
       const session = makeSession(context, host);
@@ -460,12 +470,15 @@ describe('StepTraceSession', () => {
   it('takes the step for the live progress on a hit, before the start-path probe, and hands it over only when the model must finish it', async () => {
     const log: string[] = [];
     const paths: (string | undefined)[] = [];
+    const capture: StepCacheHost['observe'] = async () => {
+      log.push('capture');
+      const path = paths.shift();
+      return { kind: 'semantic', nodes: nodeMap([]), viewport: { width: 1280, height: 720 }, ...(path === undefined ? {} : { path }) };
+    };
     const host: StepCacheHost = {
       ...makeHost([]),
-      currentPath: async () => {
-        log.push('path');
-        return paths.shift();
-      },
+      observe: capture,
+      observeSettled: capture,
       replaying: (active) => log.push(active ? 'cache' : 'model'),
     };
     const begin = async (context: AgentCacheContext, ...nextPaths: string[]) => {
@@ -479,21 +492,21 @@ describe('StepTraceSession', () => {
     // A replay that finishes the step keeps it: the step ends as the cache's.
     const finished = await begin(entryContext({ endPath: '/customers' }), '/pricing', '/customers');
     expect(finished.verdict?.status).toBe('passed');
-    expect(log).toEqual(['cache', 'path', 'path']);
+    expect(log).toEqual(['cache', 'capture', 'capture']);
 
     // A hit the decision refuses hands over without replaying.
     const refused = await begin(entryContext({ truncated: true }), '/pricing');
     expect(refused.session.cacheInfo).toMatchObject({ mode: 'missed', reason: 'truncated' });
-    expect(log).toEqual(['cache', 'path', 'model']);
+    expect(log).toEqual(['cache', 'capture', 'model']);
 
     // A replay that diverges hands over after its actions ran.
     const diverged = await begin(entryContext({ endPath: '/customers' }), '/pricing', '/moved-away');
     expect(diverged.session.replayedPrefix?.stopReason).toBe('end-mismatch');
-    expect(log).toEqual(['cache', 'path', 'path', 'model']);
+    expect(log).toEqual(['cache', 'capture', 'capture', 'model']);
 
     // A miss from the store never takes it.
     await begin(noEntry, '/pricing');
-    expect(log).toEqual(['path']);
+    expect(log).toEqual(['capture']);
   });
 });
 

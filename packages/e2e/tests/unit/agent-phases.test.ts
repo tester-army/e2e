@@ -16,6 +16,9 @@ function foreignEngineError(code: string, retryable: boolean): Error {
 }
 
 const OBSERVATION: Observation = {
+  kind: 'semantic',
+  root: { id: 'root', revision: 'r1' },
+  truncated: false,
   revision: 'b1',
   capturedAt: '2026-01-01T00:00:00.000Z',
   tree: { ref: { id: 'n1', revision: 'b1' }, role: 'document' },

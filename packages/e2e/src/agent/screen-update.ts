@@ -89,7 +89,7 @@ export class ScreenPresenter {
 
   /** The step's first screen, whole. */
   initial(observation: ExecutorObservation): string {
-    this.shown = indexScreen(observation);
+    this.shown = observation.treeUnavailable === true ? undefined : indexScreen(observation);
     return renderFull(observation);
   }
 
@@ -98,10 +98,13 @@ export class ScreenPresenter {
    * the changed lines, or the whole screen when most of it changed.
    */
   update(observation: ExecutorObservation, options: ScreenUpdateOptions = {}): string {
+    const lead = options.lead === undefined ? '' : `${options.lead}\n\n`;
+    if (observation.treeUnavailable === true) {
+      return `${lead}${this.initial(observation)}`;
+    }
     const previous = this.shown;
     const next = indexScreen(observation);
     this.shown = next;
-    const lead = options.lead === undefined ? '' : `${options.lead}\n\n`;
     if (previous === undefined) return `${lead}${renderFull(observation)}`;
     const diff = diffScreens(previous, next);
     const changes = diff.length;
@@ -196,6 +199,9 @@ function describeCounts(diff: readonly string[]): string {
 
 /** One full screen, headed so the elision can find it later. */
 function renderFull(observation: ExecutorObservation): string {
+  if (observation.treeUnavailable === true) {
+    return `Current screen (revision ${observation.revision}${describeLocation(observation)}, semantic capture unavailable):\n${observation.text}`;
+  }
   const nodes = indexScreen(observation).nodes;
   return `Current screen (revision ${observation.revision}${describeLocation(observation)}, ${String(nodes)} nodes):\n${observation.text}`;
 }

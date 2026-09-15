@@ -120,10 +120,17 @@ page. A device engine offers `dismiss_keyboard` too.
 
 If semantic capture times out, an engine that proves masking independently
 can return a fresh screenshot with an explicit unavailable-tree warning.
-The initial `act` observation includes that image automatically. No old node
-ids survive the fallback, and the step cannot record or finish from a trace
-cache entry. The screenshot shows the current viewport; an unavailable tree
-does not prove that a control or message is absent.
+Every `act` observation with unavailable semantics includes that image and
+warning automatically. Earlier node ids are invalid, and the next successful
+semantic capture presents the whole tree again. The screenshot shows the
+current viewport; an unavailable tree does not prove that a control or
+message is absent.
+
+The trace cache stops as soon as semantic evidence is unavailable, and the
+step cannot record or finish from a trace entry even if the tree recovers.
+When replay performed no action, the completed cache capture can serve the
+executor's first observation once. Any intervening action or capture,
+including a failed capture, invalidates that reuse.
 
 A secret filled during the step withholds every later screenshot
 (`PIXEL_TAINTED`), and a step that opens on a tainted viewport offers none of

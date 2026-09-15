@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { assert, describe, expect, it } from 'vitest';
 import {
   defineEngine,
   isEngineHandle,
@@ -249,6 +249,7 @@ describe('createEngineSession', () => {
     const first = await session.observe(OP);
     const second = await session.observe(OP);
     expect(first.revision).not.toBe(second.revision);
+    assert(second.kind === 'semantic');
     expect(second.tree.children?.[0]?.ref.revision).toBe(second.revision);
     expect(second.redaction).toEqual({ secureNodeCount: 0, maskedRegionCount: 0 });
   });
@@ -414,8 +415,9 @@ describe('createEngineSession pixels-only observation', () => {
     await expect(session.observe(OP)).rejects.toMatchObject({ code: 'UNSUPPORTED_CAPABILITY' });
     const captured = await session.observe(OP, { pixelFallback: true });
     expect(received.at(-1)).toEqual({ pixelFallback: true });
-    expect(captured.treeUnavailable).toBe(true);
-    expect(captured.tree.ref.revision).toBe(captured.revision);
+    expect(captured.kind).toBe('pixels');
+    expect(captured).not.toHaveProperty('tree');
+    expect(captured.root.revision).toBe(captured.revision);
     raw = { ...raw, root: { ...raw.root, children: [node('stale', 'Old control')] } };
     await expect(session.observe(OP, { pixelFallback: true })).rejects.toMatchObject({ code: 'INVALID_STATE' });
     raw = { root: raw.root, viewport: raw.viewport, treeUnavailable: true };
@@ -434,6 +436,7 @@ describe('createEngineSession pixels-only observation', () => {
       targetName: 'desktop',
     });
     const observation = await session.observe(OP, { pixels: true });
+    assert(observation.kind === 'semantic');
     expect(observation.tree.role).toBe('root');
     expect(observation.tree.children ?? []).toHaveLength(0);
     expect(observation.pixels).toBe(pixels);

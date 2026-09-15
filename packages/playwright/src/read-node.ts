@@ -141,8 +141,6 @@ interface RawObservation {
    * re-mount, a new document) is a new node and gets a fresh id.
    */
   ids: string[];
-  /** The first id not yet handed out; the caller seeds the next document with it. */
-  nextId: number;
 }
 
 type SemanticMode =
@@ -152,8 +150,8 @@ type SemanticMode =
       maxNodes: number;
       /**
        * First numeric id available to nodes seen for the first time. The caller
-       * owns the id space across documents and frames, so ids never collide
-       * with those minted for another document or for locator resolution.
+       * reserves maxNodes ids before execution, so an abandoned reader cannot
+       * collide with later captures or locator resolution.
        */
       idSeed: number;
       /** Cuts each node's name at this length; the caller owns the contract value. */
@@ -852,7 +850,7 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
   include(element, -1);
   for (const child of Array.from(element.children)) walk(child, 0);
 
-  return { nodes, elements, ids, nextId, truncated } as SemanticResult<Mode>;
+  return { nodes, elements, ids, truncated } as SemanticResult<Mode>;
 };
 
 /** Options for a single-node read, shared by `evaluate` and `evaluateAll` callers. */

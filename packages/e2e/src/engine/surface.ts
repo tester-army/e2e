@@ -46,17 +46,27 @@ export type GrammarVerb =
   | 'pressKey'
   | 'dismissKeyboard';
 
-export interface Observation {
+export type Observation = ObservationMetadata & (
+  | {
+      readonly kind: 'semantic';
+      readonly tree: SemanticNode;
+      readonly truncated: boolean;
+      readonly pixels?: ObservationPixels;
+    }
+  | {
+      readonly kind: 'pixels';
+      readonly pixels: ObservationPixels;
+    }
+);
+
+/** Capture identity and geometry, independent of whether semantic evidence exists. */
+interface ObservationMetadata {
+  /** Stable viewport action reference; it is not evidence that semantic nodes were captured. */
+  readonly root: NodeRef;
   /** Where the surface was when captured, when the platform has a location. */
   readonly location?: string;
   readonly revision: string;
   readonly capturedAt: string;
-  readonly pixels?: ObservationPixels;
-  readonly tree: SemanticNode;
-  /** True when the engine reported `tree` as incomplete (its node cap or a frame it could not enter). */
-  readonly truncated?: boolean;
-  /** Semantic capture failed; the independently masked pixels are the only evidence. */
-  readonly treeUnavailable?: true;
   readonly viewport: {
     readonly width: number;
     readonly height: number;

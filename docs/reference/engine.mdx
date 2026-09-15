@@ -478,13 +478,19 @@ to the listing the model reads, tells it nodes past the cut are on screen but
 not listed, and refuses to report such a screen as unchanged between two
 observations, since what was left out is unknown. A tree read whole omits it.
 
-A pixels-only snapshot (a childless root plus `pixels`) is valid.
+A valid empty tree may have a childless root and include `pixels`.
 
 If semantic capture times out, an engine may recover only when `pixelFallback`
 is true and it can prove screenshot masking without that capture. Return
 `treeUnavailable: true`, fresh `pixels`, and a `root` containing only its
-stable `ref`. Retire earlier node references. The flag distinguishes missing
-semantic evidence from a valid empty tree; never infer absence from it.
+stable `ref`. That reference supports viewport actions; it supplies no
+semantic node evidence. Retire earlier node references. The flag distinguishes
+missing semantic evidence from a valid empty tree; never infer absence from
+it. The runner validates this shape at the engine boundary and rejects a
+fallback without permitted pixels as `UNSUPPORTED_CAPABILITY`, or one with
+semantic root fields as `INVALID_STATE`. `EngineSnapshot` remains an
+extendable interface; these dependent requirements are checked at runtime.
+
 Without permission, pixels, or independent masking proof, propagate the
 capture failure. Cancellation, policy denial, and hard engine failures must
 also propagate.

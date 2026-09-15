@@ -6,10 +6,10 @@
  * it. The dispatch owns budgets, the grammar, and the verdict; this class owns
  * nothing but the cache.
  *
- * Cost: in read-write mode the session takes two settled looks at the screen
- * the executor never asked for — one before any action, one after the passing
- * verdict — because the trace's end anchors are the delta between them. A
- * read-only run pays neither.
+ * In read-write mode, settled captures before and after the step provide the
+ * baseline and end anchors. Read-only mode needs only a raw starting capture
+ * for the path precondition. The initial capture can also serve the executor
+ * when replay performed no action.
  */
 
 import { describeAnchors } from '../cache/anchors.ts';
@@ -38,12 +38,10 @@ import {
 } from './replay.ts';
 
 /**
- * The replay host plus what replay itself never needs: the current location
- * path, read at both ends of the step for the trace's start-path precondition
- * and end-path postcondition, and the step's live progress.
+ * The replay host plus the step's live progress. Each capture carries its
+ * location and evidence kind, so path checks need no separate observation.
  */
 export interface StepCacheHost extends ReplayHost {
-  currentPath(observation?: ObservedNodes): Promise<string | undefined>;
   /**
    * Tells the step's live progress the cache has the step (`true`) or has
    * handed it to the model (`false`), so a reporter can show the cache at
@@ -88,7 +86,6 @@ const END_PATH_DELAYS_MS = [100, 300, 600, 1_000, 3_000] as const;
 const END_PATH_TIMEOUT_MS = 15_000;
 
 export class StepTraceSession {
-  private disabled = false;
   private readonly host: StepCacheHost;
   private readonly cache: AgentCacheContext;
   private readonly keyHash: string;
@@ -152,11 +149,6 @@ export class StepTraceSession {
   /** Records one mutating project-tool call as a replay-ending gap. */
   recordGap(toolName: string): void {
     this.recorder?.recordGap(toolName);
-  }
-
-  /** Missing semantic evidence prevents this step from replaying or staging a trace. */
-  disable(): void {
-    this.disabled = true;
   }
 
   /**
@@ -250,8 +242,9 @@ export class StepTraceSession {
    * when this step may write.
    */
   private async captureStart(): Promise<void> {
-    if (this.recorder !== undefined) this.startNodes = (await probeScreen(this.host))?.nodes;
-    this.startPath = await this.host.currentPath(this.startNodes);
+    const observation = await probeScreen(this.host, this.recorder !== undefined);
+    this.startPath = observation?.path;
+    if (this.recorder !== undefined && observation?.kind === 'semantic') this.startNodes = observation.nodes;
   }
 
   /**
@@ -264,7 +257,7 @@ export class StepTraceSession {
   private async replayEntry(entry: TraceEntry): Promise<StepVerdict | undefined> {
     await this.captureStart();
     const trace = entry.payload;
-    if (this.disabled) {
+    if (!this.host.traceEligible) {
       this.info = this.missed('truncated', trace.actions.length);
       return undefined;
     }
@@ -273,7 +266,7 @@ export class StepTraceSession {
       this.info = this.missed(decision.reason, trace.actions.length);
       return undefined;
     }
-    const outcome = await replayTrace(this.host, trace, () => !this.disabled);
+    const outcome = await replayTrace(this.host, trace);
     this.consumedReplay = true;
     const stopReason: HandOffReason | undefined = outcome.completed
       ? (await this.endStateMatches(trace))
@@ -297,17 +290,22 @@ export class StepTraceSession {
    * app mints per record) and every recorded end anchor present again.
    */
   private async endStateMatches(trace: ActionTrace): Promise<boolean> {
-    if (this.disabled) return false;
-    if (trace.endPath !== undefined && !(await this.pathSettles(trace.endPath))) return false;
-    return (await verifyAnchors(this.host, trace.endAnchors ?? [], trace.endWaitMs)) && !this.disabled;
+    if (!this.host.traceEligible) return false;
+    const initial = await this.endScreen(trace.endPath);
+    if (initial === undefined) return false;
+    return (await verifyAnchors(this.host, trace.endAnchors ?? [], {
+      initial,
+      ...(trace.endWaitMs === undefined ? {} : { waitMs: trace.endWaitMs }),
+    })) && this.host.traceEligible;
   }
 
-  /** Whether the current path becomes `endPath`, up to minted ids, within the settling backoff. */
-  private async pathSettles(endPath: string): Promise<boolean> {
+  /** Captures the semantic end state once its path matches, retaining it for anchor verification. */
+  private async endScreen(endPath: string | undefined): Promise<Extract<ObservedScreen, { kind: 'semantic' }> | undefined> {
     const startedMs = Date.now();
     for (let attempt = 0; ; attempt += 1) {
-      const current = await this.host.currentPath();
-      if (current === undefined || samePathShape(endPath, current)) return true;
+      const observation = await probeScreen(this.host, false);
+      if (observation?.kind !== 'semantic' || !this.host.traceEligible) return undefined;
+      if (endPath === undefined || observation.path === undefined || samePathShape(endPath, observation.path)) return observation;
       const delay = END_PATH_DELAYS_MS[attempt];
       if (
         delay === undefined ||
@@ -315,7 +313,7 @@ export class StepTraceSession {
         this.host.remainingMs() <= delay ||
         this.host.signal.aborted
       ) {
-        return false;
+        return undefined;
       }
       await sleep(delay, this.host.signal);
     }
@@ -365,10 +363,10 @@ export class StepTraceSession {
    * replay on mechanics alone.
    */
   private async stage(recorder: TraceRecorder, verdictSummary: string | undefined): Promise<void> {
-    if (this.disabled || this.startNodes === undefined || recorder.recordedCount === 0) return;
-    const endNodes = (await probeScreen(this.host))?.nodes;
-    if (this.disabled || endNodes === undefined) return;
-    const endPath = await this.host.currentPath(endNodes);
+    if (!this.host.traceEligible || this.startNodes === undefined || recorder.recordedCount === 0) return;
+    const observation = await probeScreen(this.host);
+    if (!this.host.traceEligible || observation?.kind !== 'semantic') return;
+    const { nodes: endNodes, path: endPath } = observation;
     const endAnchors = describeAnchors(this.startNodes, endNodes, this.options);
     const trace = recorder.finalize({
       executor: this.replayed?.executor ?? this.options.executor,
@@ -412,14 +410,14 @@ export class StepTraceSession {
 }
 
 /**
- * One settled look at the screen, or undefined when the surface cannot be
+ * One cache capture, or undefined when the surface cannot be
  * observed right now — the executor's business, not the cache's. Runtime hard
  * stops (timeout, cancellation) are the step's truth even when they land
  * during cache bookkeeping, and propagate.
  */
-async function probeScreen(host: StepCacheHost): Promise<ObservedScreen | undefined> {
+async function probeScreen(host: StepCacheHost, settle = true): Promise<ObservedScreen | undefined> {
   try {
-    return await host.observeSettled();
+    return await (settle ? host.observeSettled() : host.observe());
   } catch (cause) {
     if (isRuntimeHardStop(cause)) throw cause;
     return undefined;

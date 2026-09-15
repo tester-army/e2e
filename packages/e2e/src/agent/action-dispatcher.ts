@@ -190,7 +190,7 @@ export class ActionDispatcher {
       }
       // The node whose box contained the point is the trace's handle on it;
       // the tree's root is the page itself and follows no layout shift.
-      const under = hit.under === undefined || hit.under.ref.id === observation.tree.ref.id ? undefined : hit.under;
+      const under = hit.under === undefined || (observation.kind === 'semantic' && hit.under.ref.id === observation.tree.ref.id) ? undefined : hit.under;
       await this.runActionNow('tapAt', async () => {
         await this.session.tapAt(clamped, this.accounting.actionOperation());
         return {

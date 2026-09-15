@@ -52,6 +52,7 @@ export interface HitTest {
  * paragraph or region that happens to contain the point.
  */
 export function hitTest(observation: AgentObservation, point: ViewportPoint): HitTest {
+  if (observation.kind === 'pixels') return { control: undefined, under: undefined };
   let control: { node: SemanticNode; depth: number; area: number } | undefined;
   let under: { node: SemanticNode; depth: number; area: number } | undefined;
   for (const node of observation.nodes.values()) {

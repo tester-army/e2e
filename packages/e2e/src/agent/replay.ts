@@ -33,14 +33,22 @@ const RETRY_TIMEOUT_MS = 15_000;
 /** The nodes of one observation, keyed by their per-observation ids. */
 export type ObservedNodes = ReadonlyMap<string, SemanticNode>;
 
-/** One look at the screen: its nodes, and the viewport they were laid out in. */
-export interface ObservedScreen {
-  readonly nodes: ObservedNodes;
+/** One capture's location and viewport, with nodes only when semantic evidence is available. */
+export type ObservedScreen = {
   readonly viewport: TraceViewport;
-}
+  readonly path?: string;
+} & (
+  | { readonly kind: 'semantic'; readonly nodes: ObservedNodes }
+  | { readonly kind: 'pixels' }
+);
+
+/** The only capture variant that can establish trace targets or anchors. */
+type SemanticScreen = Extract<ObservedScreen, { kind: 'semantic' }>;
 
 /** What the replay engine needs from the dispatch, and nothing more. */
 export interface ReplayHost {
+  /** False once any capture in this step loses semantic evidence. */
+  readonly traceEligible: boolean;
   /** One raw capture, for the looks between retries. */
   observe(): Promise<ObservedScreen>;
   /**
@@ -144,7 +152,6 @@ function planCall(action: RecordedAction, actions: ExecutorActions): PlannedCall
 export async function replayTrace(
   host: ReplayHost,
   trace: ActionTrace,
-  canReplay: () => boolean = () => true,
 ): Promise<ReplayOutcome> {
   const summaries: string[] = [];
   const total = trace.actions.length;
@@ -157,7 +164,7 @@ export async function replayTrace(
   });
 
   for (const action of trace.actions) {
-    if (!canReplay()) return stop('action-failed');
+    if (!host.traceEligible) return stop('action-failed');
     const planned = planCall(action, host.actions);
     if (planned.kind === 'gap') return stop('gap');
     try {
@@ -172,7 +179,9 @@ export async function replayTrace(
           await planned.invoke();
           break;
         case 'point': {
-          const { viewport } = await host.observeSettled();
+          const screen = await host.observeSettled();
+          if (screen.kind === 'pixels') return stop('action-failed');
+          const { viewport } = screen;
           if (viewport.width !== planned.viewport.width || viewport.height !== planned.viewport.height) {
             return stop('viewport-changed');
           }
@@ -217,23 +226,26 @@ export async function replayTrace(
 export async function verifyAnchors(
   host: ReplayHost,
   anchors: readonly TraceTargetDescriptor[],
-  waitMs = 0,
+  options: { readonly waitMs?: number; readonly initial?: SemanticScreen } = {},
 ): Promise<boolean> {
   if (anchors.length === 0) return true;
   const startedMs = Date.now();
   try {
     const present = await pollSettled(host, ({ nodes }) =>
       anchorsPresent(anchors, nodes, host) ? true : undefined,
+      options.initial,
     );
     if (present === true) return true;
     // The settling backoff covers a slow re-render; the recorded run may have
     // waited far longer than that for its effect — a report that takes half a
     // minute — and so does the replay, up to what the recording needed, while
     // the step clock leaves room for a hand-off to act.
-    const deadline = startedMs + Math.min(waitMs, Math.max(0, host.remainingMs() - END_WAIT_RESERVE_MS));
+    const deadline = startedMs + Math.min(options.waitMs ?? 0, Math.max(0, host.remainingMs() - END_WAIT_RESERVE_MS));
     while (Date.now() < deadline && !host.signal.aborted) {
       await sleep(Math.min(END_WAIT_POLL_MS, deadline - Date.now()), host.signal);
-      if (anchorsPresent(anchors, (await host.observe()).nodes, host)) return true;
+      const screen = await host.observe();
+      if (screen.kind === 'pixels' || !host.traceEligible) return false;
+      if (anchorsPresent(anchors, screen.nodes, host)) return true;
     }
     return false;
   } catch (cause) {
@@ -282,11 +294,13 @@ type Relocated =
  */
 async function pollSettled<T>(
   host: ReplayHost,
-  probe: (screen: ObservedScreen) => T | undefined,
+  probe: (screen: SemanticScreen) => T | undefined,
+  initial?: SemanticScreen,
 ): Promise<T | undefined> {
   const startedMs = Date.now();
-  let screen = await host.observeSettled();
+  let screen = initial ?? await host.observeSettled();
   for (let attempt = 0; ; attempt += 1) {
+    if (screen.kind === 'pixels' || !host.traceEligible) return undefined;
     const answer = probe(screen);
     if (answer !== undefined) return answer;
     const delay = RETRY_DELAYS_MS[attempt];

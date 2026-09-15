@@ -7,7 +7,6 @@ import type { ElementHandle, Frame, JSHandle } from 'playwright';
 import {
   EngineError,
   sameSite,
-  withTimeout,
   OBSERVED_NAME_LIMIT,
   OBSERVED_TEXT_LIMIT,
   type NodeRef,
@@ -19,6 +18,7 @@ import {
   type RawNodeData,
   type RawObservedNode,
 } from './read-node.ts';
+import { CaptureScope } from './capture-scope.ts';
 
 /**
  * The id of every observation's root: the main document's element under one
@@ -48,14 +48,8 @@ export interface CaptureDeps {
   readonly testIdAttribute: string;
   /** The app's site; a child frame off it stays a boundary node. Undefined admits no child frame. */
   readonly site: string | undefined;
-  /**
-   * First numeric id the next document may stamp on a node it sees for the
-   * first time. The surface owns one id space for the whole session: stamped
-   * observation ids and minted locator ids never collide.
-   */
-  idSeed(): number;
-  /** Records the first id a captured document left unused. */
-  advanceIds(nextId: number): void;
+  /** Reserves a disjoint range before the reader can stamp any element, including on timeout. */
+  reserveIds(count: number): number;
   /** Publishes one element handle under its id in the generation being built. */
   commit(id: string, element: ElementHandle<Element>): void;
 }
@@ -71,6 +65,7 @@ export interface CaptureOptions {
    * documents of one observation can never sum past the operation's budget.
    */
   readonly deadline: number;
+  readonly signal: AbortSignal;
 }
 
 /** One document's tree with what the capture knows about its completeness. */
@@ -103,126 +98,108 @@ export async function captureDocument(
   host: DocumentHost,
   options: CaptureOptions,
 ): Promise<CapturedDocument> {
-  const { framePath, budget, deadline } = options;
+  const { framePath, budget, signal } = options;
+  const cap = framePath.length === 0 ? DOCUMENT_CAPTURE_TIMEOUT_MS : FRAME_CAPTURE_TIMEOUT_MS;
+  const deadline = Math.min(options.deadline, Date.now() + cap);
+  const scope = new CaptureScope(deadline, signal);
   // A child document's handles are published only once it captured whole; a
   // frame that fails midway leaves no reachable ids behind.
   const staged: StagedRef[] = [];
   const stage = (id: string, element: ElementHandle<Element>): void => {
-    staged.push([id, element]);
+    if (scope.own(element)) staged.push([id, element]);
   };
-  try {
-    const captured = await captureInto(deps, stage, host, framePath, budget, deadline);
-    for (const [id, element] of staged) deps.commit(id, element);
+  return scope.run(async () => {
+    const captured = await captureInto(deps, scope, stage, host, framePath, budget, signal);
+    scope.check();
+    for (const [id, element] of staged) {
+      deps.commit(id, element);
+      scope.release(element);
+    }
     return captured;
-  } catch (cause) {
-    for (const [, element] of staged) void element.dispose().catch(() => undefined);
-    throw cause;
-  }
+  });
 }
 
+/** Reads one document and stages its child documents under the same capture owner. */
 async function captureInto(
   deps: CaptureDeps,
+  scope: CaptureScope,
   stage: (id: string, element: ElementHandle<Element>) => void,
   host: DocumentHost,
   framePath: readonly string[],
   budget: number,
-  deadline: number,
+  signal: AbortSignal,
 ): Promise<CapturedDocument> {
-  const cap = framePath.length === 0 ? DOCUMENT_CAPTURE_TIMEOUT_MS : FRAME_CAPTURE_TIMEOUT_MS;
-  const timeoutMs = Math.max(1, Math.min(cap, deadline - Date.now()));
-  const evaluation = host.evaluateHandle(readDocumentSemanticsFunction, {
+  const captured = await scope.read(() => host.evaluateHandle(readDocumentSemanticsFunction, {
     testIdAttribute: deps.testIdAttribute,
     secureFieldSelector: SECURE_FIELD_SELECTOR,
     mode: {
       kind: 'tree' as const,
       maxNodes: budget,
-      idSeed: deps.idSeed(),
+      idSeed: deps.reserveIds(budget),
       nameLimit: OBSERVED_NAME_LIMIT,
       textLimit: OBSERVED_TEXT_LIMIT,
     },
-  });
-  const captured = await withTimeout(evaluation, timeoutMs, () => {
-    // The losing evaluation may still settle later; a late handle must be
-    // released and a late failure must not become an unhandled rejection.
-    void evaluation.then((handle) => handle.dispose()).catch(() => undefined);
-    // Retryability is closed to NODE_STALE and FRAME_NOT_FOUND, so asking
-    // for a retryable timeout here would silently downgrade the code to
-    // ENGINE_FAILURE - reporting a broken engine for a capture that
-    // merely outlived the budget it was handed.
-    return new EngineError('OPERATION_TIMEOUT', 'observation capture timed out', {
+  }), (handle) => scope.own(handle));
+  // Property handles would keep earlier captures alive after their parent is disposed.
+  const { nodes, ids, truncated: walkTruncated } = await scope.read(() => captured.evaluate((observation) => ({
+    nodes: observation.nodes,
+    ids: observation.ids,
+    truncated: observation.truncated,
+  })));
+  if (!Array.isArray(ids) || ids.length !== nodes.length) {
+    throw new EngineError('ENGINE_FAILURE', 'observation ids do not align with its nodes', {
       retryable: false,
     });
-  });
-  let elementsHandle: JSHandle | undefined;
-  try {
-    // Property handles would keep earlier captures alive after their parent is disposed.
-    const { nodes, ids, nextId, truncated: walkTruncated } = await captured.evaluate((observation) => ({
-      nodes: observation.nodes,
-      ids: observation.ids,
-      nextId: observation.nextId,
-      truncated: observation.truncated,
-    }));
-    if (!Array.isArray(ids) || ids.length !== nodes.length || typeof nextId !== 'number') {
-      throw new EngineError('ENGINE_FAILURE', 'observation ids do not align with its nodes', {
-        retryable: false,
-      });
-    }
-    // Advanced before anything else can fail: a stamped element keeps its id
-    // even when this capture is abandoned, and a later document must not
-    // hand the same number to a different node.
-    deps.advanceIds(nextId);
-    // The main document's element is the observation root, under the minted
-    // id rather than the one stamped on it: a new document stamps a new
-    // number, the root's id must not change with it.
-    if (framePath.length === 0 && ids.length > 0) ids[0] = ROOT_NODE_ID;
-    elementsHandle = await captured.getProperty('elements');
-    const elements = await collectElementHandles(elementsHandle, nodes.length);
-    elements.forEach((element, index) => stage(ids[index] as string, element));
-    let nodeCount = nodes.length;
-    let truncated = walkTruncated === true;
-    const frameChildren = new Map<number, SemanticNode>();
-    for (let index = 0; index < nodes.length; index += 1) {
-      const selector = nodes[index]!.frameSelector;
-      if (selector === undefined) continue;
-      // A frame with no document (detached, never loaded) shows nothing, so
-      // nothing is missing from the tree.
-      const frame = await elements[index]!.contentFrame().catch(() => null);
-      if (frame === null) continue;
-      // Only frames on the app's site enter observations. Third-party
-      // frames (ads, trackers, embeds) are not the agent's to read or act
-      // on - and a stalled ad frame must not tax the capture. They stay
-      // boundary nodes by design, so leaving them out is not truncation.
-      if (!isOnSiteFrame(frame.url(), deps.site)) continue;
-      // From here the frame's document is content the model should see: any
-      // reason it is not read (depth, budget, deadline, a failed or timed-out
-      // capture) leaves the tree incomplete, and the snapshot must say so.
-      if (framePath.length >= MAX_FRAME_DEPTH) {
-        truncated = true;
-        continue;
-      }
-      const remaining = budget - nodeCount;
-      if (remaining <= 0 || Date.now() >= deadline) {
-        truncated = true;
-        continue;
-      }
-      const child = await captureDocument(deps, frame, {
-        framePath: [...framePath, selector],
-        budget: remaining,
-        deadline,
-      }).catch(() => undefined);
-      if (child === undefined) {
-        truncated = true;
-        continue;
-      }
-      frameChildren.set(index, child.tree);
-      nodeCount += child.nodeCount;
-      truncated ||= child.truncated;
-    }
-    return { tree: assembleTree(nodes, ids, framePath, frameChildren), nodeCount, truncated };
-  } finally {
-    await elementsHandle?.dispose().catch(() => undefined);
-    await captured.dispose().catch(() => undefined);
   }
+  // The main document's element is the observation root, under the minted
+  // id rather than the one stamped on it: a new document stamps a new
+  // number, the root's id must not change with it.
+  if (framePath.length === 0 && ids.length > 0) ids[0] = ROOT_NODE_ID;
+  const elementsHandle = await scope.read(() => captured.getProperty('elements'), (handle) => scope.own(handle));
+  const elements = await collectElementHandles(scope, elementsHandle, nodes.length);
+  elements.forEach((element, index) => stage(ids[index] as string, element));
+  let nodeCount = nodes.length;
+  let truncated = walkTruncated === true;
+  const frameChildren = new Map<number, SemanticNode>();
+  for (let index = 0; index < nodes.length; index += 1) {
+    const selector = nodes[index]!.frameSelector;
+    if (selector === undefined) continue;
+    // A frame with no document (detached, never loaded) shows nothing, so
+    // nothing is missing from the tree.
+    const frame = await scope.read(() => elements[index]!.contentFrame().catch(() => null));
+    if (frame === null) continue;
+    // Only frames on the app's site enter observations. Third-party
+    // frames (ads, trackers, embeds) are not the agent's to read or act
+    // on - and a stalled ad frame must not tax the capture. They stay
+    // boundary nodes by design, so leaving them out is not truncation.
+    if (!isOnSiteFrame(frame.url(), deps.site)) continue;
+    // From here the frame's document is content the model should see: any
+    // reason it is not read (depth, budget, deadline, a failed or timed-out
+    // capture) leaves the tree incomplete, and the snapshot must say so.
+    if (framePath.length >= MAX_FRAME_DEPTH) {
+      truncated = true;
+      continue;
+    }
+    const remaining = budget - nodeCount;
+    if (remaining <= 0 || Date.now() >= scope.deadline) {
+      truncated = true;
+      continue;
+    }
+    const child = await scope.read(() => captureDocument({ ...deps, commit: stage }, frame, {
+      framePath: [...framePath, selector],
+      budget: remaining,
+      deadline: scope.deadline,
+      signal,
+    }).catch(() => undefined));
+    if (child === undefined) {
+      truncated = true;
+      continue;
+    }
+    frameChildren.set(index, child.tree);
+    nodeCount += child.nodeCount;
+    truncated ||= child.truncated;
+  }
+  return { tree: assembleTree(nodes, ids, framePath, frameChildren), nodeCount, truncated };
 }
 
 /**
@@ -249,10 +226,13 @@ function isOnSiteFrame(url: string, site: string | undefined): boolean {
  * records `Element` nodes only, so the narrowing is safe by construction.
  */
 async function collectElementHandles(
+  scope: CaptureScope,
   elementsHandle: JSHandle,
   count: number,
 ): Promise<ElementHandle<Element>[]> {
-  const properties = await elementsHandle.getProperties();
+  const properties = await scope.read(() => elementsHandle.getProperties(), (handles) => {
+    for (const handle of handles.values()) scope.own(handle);
+  });
   const elements: ElementHandle<Element>[] = [];
   for (let index = 0; index < count; index += 1) {
     const property = properties.get(String(index));
@@ -265,9 +245,6 @@ async function collectElementHandles(
       });
     }
     elements.push(element);
-  }
-  for (const [key, handle] of properties) {
-    if (Number(key) >= count) void handle.dispose().catch(() => undefined);
   }
   return elements;
 }

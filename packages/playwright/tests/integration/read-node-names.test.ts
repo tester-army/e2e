@@ -25,12 +25,11 @@ async function capture(budget = 100) {
     {
       testIdAttribute: 'data-testid',
       site: undefined,
-      idSeed: () => nextId,
-      advanceIds: (value) => { nextId = value; },
+      reserveIds: (count) => { const first = nextId; nextId += count; return first; },
       commit: (id, element) => { published.set(id, element); },
     },
     page,
-    { framePath: [], budget, deadline: Date.now() + 10_000 },
+    { framePath: [], budget, deadline: Date.now() + 10_000, signal: new AbortController().signal },
   );
   await Promise.all([...published.values()].map((element) => element.dispose()));
   return captured;

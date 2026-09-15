@@ -143,10 +143,13 @@ filled in the attempt.
 
 When semantic capture fails, an engine with independent screenshot masking
 may return fresh pixels and an explicit unavailable-tree warning. `act`
-receives that image on its first observation; judgments require `vision:
-true` or `'only'`. No fallback is allowed after a secret fill. Do not infer
-that a control is absent from an unavailable tree, or reuse old node ids.
-Such a step cannot record or finish from a trace cache entry. The Playwright
+receives the image and warning on every such observation; judgments require
+`vision: true` or `'only'`. No fallback is allowed after a secret fill. Do not
+infer that a control is absent from an unavailable tree, or reuse old node ids.
+When the tree recovers, its next presentation includes the whole tree.
+Such a step cannot record or finish from a trace cache entry, even after
+recovery. A completed cache capture may supply the executor's first look
+once, provided no action or later capture intervened. The Playwright
 engine supports timeout recovery; the device engine fails closed because its
 masks depend on the accessibility capture.
 
