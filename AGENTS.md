@@ -68,6 +68,15 @@ descriptions and commit bodies; `git log` and `gh pr view` are the archive.
   `tests-agent/` both gate PRs; the agentic one spends real model calls).
   Scenario files are copies: keep diffs against
   the source minimal so scenarios port both ways, and never fix a planted bug.
+- `packages/mobile-benchmark` (`@e2edev/mobile-benchmark`, private) — an Expo
+  app of hard mobile surfaces (merged or hidden accessibility trees, native
+  alerts over modals, keyboard-covered submits, virtualized lists, a WebView,
+  OS permission and payment sheets), copied from the tester-army mobile
+  benchmark, plus the e2e suites on the `@e2edev/agent-device` engine
+  (`tests/` locators only, `tests-agent/` one `agent.act` per scenario).
+  Neither runs in CI: no simulator there. Scenario files are copies: keep
+  diffs against the source minimal, and name no company a scenario was
+  distilled from.
 - `docs/` (the Mintlify docs site; pages are the `.mdx` files under `docs/`,
   navigation, theme, and redirects in `docs/docs.json`, extra CSS in
   `docs/style.css`; `docs/examples/` is typechecked and shown verbatim in the

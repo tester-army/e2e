@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // The package stays CommonJS for Expo's tooling, so NodeNext would read
+    // these files as CommonJS; the runner loads project .ts as ESM regardless.
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true
+  },
+  "include": ["e2e.config.ts", "e2e.agent.config.ts", "tests/**/*.ts", "tests-agent/**/*.ts"]
+}

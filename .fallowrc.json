@@ -10,6 +10,10 @@
     "packages/web-benchmark/e2e.*.config.ts",
     "packages/web-benchmark/tests*/**/*.ts",
     "packages/web-benchmark/app/src/app/**/*.{ts,tsx}",
+    "packages/mobile-benchmark/e2e.config.ts",
+    "packages/mobile-benchmark/e2e.*.config.ts",
+    "packages/mobile-benchmark/tests*/**/*.ts",
+    "packages/mobile-benchmark/index.ts",
     "packages/e2e/tests/types/sdk-types.ts"
   ],
   "ignorePatterns": [

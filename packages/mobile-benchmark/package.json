@@ -1,0 +1,40 @@
+{
+  "name": "@e2edev/mobile-benchmark",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Benchmark Expo app of hard mobile surfaces, with the e2e suites written against them",
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start",
+    "ios": "expo run:ios",
+    "android": "expo run:android",
+    "prebuild": "expo prebuild",
+    "build:benchmark": "eas build --profile benchmark --platform all",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.tests.json",
+    "test": "node node_modules/e2e/dist/cli/bin.js run",
+    "test:agent": "node node_modules/e2e/dist/cli/bin.js run --config e2e.agent.config.ts"
+  },
+  "dependencies": {
+    "@react-navigation/bottom-tabs": "7.18.16",
+    "@react-navigation/native": "7.3.16",
+    "@react-navigation/native-stack": "7.18.8",
+    "@stripe/stripe-react-native": "0.64.0",
+    "expo": "57.0.12",
+    "expo-audio": "57.0.3",
+    "expo-image-picker": "57.0.11",
+    "expo-modules-core": "57.0.10",
+    "react": "19.2.3",
+    "react-native": "0.86.2",
+    "react-native-safe-area-context": "5.7.0",
+    "react-native-screens": "4.26.2",
+    "react-native-webview": "13.16.1"
+  },
+  "devDependencies": {
+    "@e2edev/agent-device": "workspace:*",
+    "@types/node": "26.4.1",
+    "@types/react": "19.1.4",
+    "ai": "7.0.97",
+    "e2e": "workspace:*",
+    "typescript": "7.0.2"
+  }
+}

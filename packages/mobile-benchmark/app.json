@@ -1,0 +1,48 @@
+{
+  "expo": {
+    "name": "e2e Benchmark",
+    "slug": "e2e-benchmark",
+    "scheme": "e2e-benchmark",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "dev.e2e.benchmark",
+      "entitlements": {
+        "com.apple.developer.in-app-payments": ["merchant.dev.e2e.benchmark"]
+      }
+    },
+    "android": {
+      "package": "dev.e2e.benchmark",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "The benchmark attaches a receipt photo from the photo library."
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "The benchmark records voice notes to gate permission handling."
+        }
+      ],
+      [
+        "@stripe/stripe-react-native",
+        {
+          "enableGooglePay": false
+        }
+      ]
+    ]
+  }
+}

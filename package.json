@@ -26,6 +26,7 @@
     "test": "pnpm run build && pnpm --filter e2e run test && pnpm --filter @e2edev/playwright run test && pnpm --filter @e2edev/agent-device run test && pnpm --filter @e2edev/github run test",
     "test:testbed": "pnpm run build && pnpm --filter @e2edev/testbed test",
     "test:web-benchmark": "pnpm run build && pnpm --filter @e2edev/web-benchmark test",
+    "test:mobile-benchmark": "pnpm run build && pnpm --filter @e2edev/mobile-benchmark test",
     "test:agent": "pnpm run build && pnpm --filter @e2edev/testbed test:agent"
   },
   "contributors": [
