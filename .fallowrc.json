@@ -6,7 +6,6 @@
     "packages/testbed/tests*/**/*.ts",
     "packages/testbed/dogfood/server.mjs",
     "packages/testbed/app/bug-garden.mjs",
-    "packages/testbed/bench/app/**/*.{ts,tsx}",
     "packages/web-benchmark/e2e.config.ts",
     "packages/web-benchmark/e2e.*.config.ts",
     "packages/web-benchmark/tests*/**/*.ts",

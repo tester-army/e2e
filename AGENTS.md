@@ -56,7 +56,11 @@ descriptions and commit bodies; `git log` and `gh pr view` are the archive.
   (error taxonomy, text and URL matching, assertion polling, JSON-value rules)
   are exported there, and there is no `e2e/internal` subpath.
 - `packages/testbed` (`@e2edev/testbed`, private) — dogfood project that
-  consumes the **built** packages like a real user would.
+  consumes the **built** packages like a real user would: the playground app
+  where every runner feature (sessions, routes, downloads, frames, uploads,
+  serial groups, the executor seams, verdict edge cases, the reporter under
+  stress, `explore`) has a deterministic test. Hard UI surfaces belong to the
+  benchmarks, not here.
 - `packages/web-benchmark` (`@e2edev/web-benchmark`, private) — a Next.js app of
   self-contained hard-surface scenarios (shadow DOM, canvas, iframes, native
   dialogs, planted bugs) at `/e/<slug>`, copied from the tester-army web
@@ -137,8 +141,7 @@ pnpm --filter @e2edev/testbed run test:headed
   `packages/e2e/tests/tmp-projects/` (gitignored) and import the runner from
   `dist/` via a non-literal specifier so the fixture's `e2e` self-reference
   shares one registry. Stale `dist` means confusing failures — rebuild.
-- Testbed suites beyond the default one never gate a PR: `test:public` and
-  `test:selenium` (real websites) run in no workflow, and `test:agent` /
+- Testbed suites beyond the default one never gate a PR: `test:agent` /
   `test:dogfood` (real model calls, need `AI_GATEWAY_API_KEY`, optional
   `E2E_MODEL=provider/model-id`, the testbed's own override) run only on the weekly
   `.github/workflows/agent.yml` schedule or by manual dispatch. Both run

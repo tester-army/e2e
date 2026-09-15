@@ -1,61 +1,63 @@
 # @e2edev/testbed
 
 Dogfood workspace for the [`e2e`](../e2e) runner: a real project consuming the
-`e2e` package exactly like a user would, with a growing suite of deterministic
-tests.
+built `e2e` package exactly like a user would, against playground apps we
+control. This is where every runner feature has a deterministic test. Hard UI
+surfaces live in the benchmarks (`web-benchmark`, `mobile-benchmark`), not
+here.
 
 ## Layout
 
 - `app/server.mjs` — dependency-free playground app (todos, login/session,
   forms, wizard, network, dialogs, iframes, downloads). The runner starts and
   stops it via the playwright engine's `command` option.
-- `e2e.config.ts` — local config used by `pnpm test`.
-- `tests/` — the local suite: queries, actions, polling assertions, sessions
-  (`test.setup` + `session:`), serial groups, routes, dialogs, frames,
-  downloads, keyboard input, credentials/secrets.
-- `e2e.public.config.ts` + `tests-public/` — opt-in suite against real public
-  websites (example.com, iana.org, playwright.dev), dogfooding the production
-  opt-in and multi-origin policy.
-- `e2e.agent.config.ts` + `tests-agent/` — opt-in agentic suite against the same
+- `app/bug-garden.mjs` — a bookshop with planted defects, for `e2e explore`.
+- `dogfood/server.mjs` — an expense-claims app with a test API, for the
+  executor dogfoods.
+- `e2e.config.ts` + `tests/` — the local suite, gating every PR: queries,
+  actions, polling assertions, sessions (`test.setup` + `session:`), serial
+  groups, routes, dialogs, frames, downloads, uploads, keyboard input,
+  credentials and secrets.
+- `e2e.agent.config.ts` + `tests-agent/` — opt-in agentic suite against the
   playground: `agent.act` flows, assisted polling, judgments, and
-  schema-validated extraction with zod.
-- `e2e.device.config.ts` + `tests-device/` — opt-in mobile suite on the
-  `@e2edev/agent-device` engine, two targets: an iOS simulator and an Android
-  emulator, each with its Settings app. Portable files (`about`, `device`) run
-  on both unchanged; `ios` and `android` hold the label-bound deterministic
-  checks. Needs a booted simulator, one AVD, and a model credential; steps
-  replay from the trace cache on a second run. See "Device suite" below.
-- `e2e.reminders.config.ts` + `tests-reminders/` — opt-in iOS stress suite:
-  long agentic sessions in the Reminders app (batch entry through the focused
-  field, completion, swipe-to-delete, list management, an interruption), each
-  claim paired with a deterministic tree check. See "Device suite" below.
-- `e2e.selenium.config.ts` + `tests-selenium/` — opt-in suite against
-  seleniumbase.io, the community practice site. Deliberately adversarial
-  surfaces: shadow roots, frames written into `about:blank`, nested frames,
-  HTML5 drag-and-drop, canvas, native dialogs, TinyMCE, an anti-bot page, and
-  pages whose controls have no accessible name. See "Known gaps" below.
+  schema-validated extraction with zod. `e2e.mixed.config.ts` adds the local
+  suite to it for watching the list reporter interleave the two.
+- `e2e.dogfood.config.ts` + `tests-dogfood/` — the built-in agent extended
+  with project tools (seed and reset over the expense app's test API).
+- `e2e.dogfood-brain.config.ts` + `tests-dogfood-brain/` — a hand-rolled
+  `StepExecutor` with its own tools and transport; the engine is never touched.
+- `e2e.dogfood-edge.config.ts` + `tests-dogfood-edge/` — steps expected to
+  conclude blocked or failed; the report, not the exit code, is the output.
+- `e2e.stress.config.ts` + `tests-stress/` — failures, timeouts, skips,
+  flakes, and hostile titles for the reporters.
+- `e2e.explore.config.ts` + `scripts/explore-bench.mjs` — `e2e explore`
+  against the bug garden, and a scorer that runs it across models.
+- `e2e.scratch.config.ts` + `tests-scratch/` — a scratch agent config for
+  one-off investigations with the AI SDK devtools recorder.
 
 ## Commands
 
 ```bash
-pnpm --filter e2e build            # the testbed runs the built runner
+pnpm --filter e2e build               # the testbed runs the built runner
 pnpm --filter @e2edev/testbed test    # typecheck + local suite (starts the app itself)
 pnpm --filter @e2edev/testbed test:headed
-pnpm --filter @e2edev/testbed test:public   # real websites, not in CI
-AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed test:agent   # real model calls, weekly schedule only
 pnpm --filter @e2edev/testbed app     # run the playground manually
+AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed test:agent     # real model calls
+AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed test:dogfood
+AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed explore:garden
+pnpm --filter @e2edev/testbed test:stress                            # reporters only
 ```
 
 The local suite runs in CI on every push. Reports land in `.e2e/report.json`;
 artifacts under `.e2e/artifacts/`.
 
-## Agentic suite
+## Agentic suites
 
-`test:agent` spends real model calls, so it never gates a PR: it runs on the
-weekly `.github/workflows/agent.yml` schedule, by manual dispatch, or by hand. It
-builds its model with the AI SDK's `gateway()`, pins `openai/gpt-5.6-luna-fast`, and
-honours the testbed's own `E2E_MODEL` variable so the same suite can be replayed
-across providers:
+`test:agent` and `test:dogfood` spend real model calls, so they never gate a
+PR: they run on the weekly `.github/workflows/agent.yml` schedule, by manual
+dispatch, or by hand. Each config builds its model with the AI SDK's
+`gateway()`, pins `openai/gpt-5.6-luna-fast`, and honours the testbed's own
+`E2E_MODEL` variable so the same suite can be replayed across providers:
 
 ```bash
 AI_GATEWAY_API_KEY=...  pnpm --filter @e2edev/testbed test:agent
@@ -89,72 +91,15 @@ database per process, hence `--workers 1`; the `--ai-trace` file names runs
 after the test and step and merges every worker, so use it for anything you
 want to keep or compare.
 
-## Device suite
+## Hazards worth knowing
 
-`test:device` runs against a real iOS simulator with real model calls, so it is
-opt-in and never runs in CI. It needs Xcode with a booted simulator (check with
-`npx agent-device doctor`) and pins `openai/gpt-5.6-luna-fast`; `E2E_MODEL`
-overrides it. Run one device suite at a time: workers share the pinned
-agent-device session.
-
-```bash
-AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed test:device      # Settings: grammar, screen tier, device fixture
-AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed test:reminders   # Reminders: long agentic stress sessions
-```
-
-Each engine opens its platform's Settings app fresh before every test, so no
-step needs an agent-side tool to get started and every `agent.act` step stays
-inside the grammar. The portable tests describe goals, not labels ("open the
-screen that describes this device"), and read the result back with judgments
-or `agent.extract`; that is what lets one file run on both targets. The first run records a trace per passing step; the second run
-replays them with zero model calls (`step.cache.mode` is `self-finalized` in
-`.e2e/report.json`). Judgments still spend a call each.
-
-## Known gaps (seleniumbase.io suite)
-
-The suite is opt-in and never runs in CI:
-
-```bash
-pnpm --filter @e2edev/testbed test:selenium    # 55 pass, 4 skip
-```
-
-Every remaining `skip` is a pinned finding, not a flake, and names its cause at
-the call site.
-
-### Open gaps
-
-1. **`Screen` has no `locator`.** `web.frameLocator` returns a `Screen`, which
-   exposes only the six `getBy*` queries, so inside a frame a control with no
-   accessible name is unaddressable and a second frame boundary is
-   inexpressible. Costs three deterministic tests (`skip`) and forces
-   `web.evaluate` for the nested document. The locator AST already supports
-   `frame` + `web-selector`; only the public surface is missing.
-2. **No secondary pointer button.** The coffee cart's right-click `<dialog>`
-   cannot be opened at all (`skip`).
-3. **No page-level response/console feed.** "loaded with no 404s and no JS
-   errors" is reconstructed from `web.route` on the request side.
-4. **`Role` is a closed 15-member union.** No `radio`, `combobox`, `option`,
-   `tabpanel`, so radio groups and selects need `web.locator`.
-5. **The reference engine is detected by anti-bot.** `/hobbit/login` redirects to
-   a block page on load; the aspirational test is `skip`ped and the block pinned.
-
-### Closed
-
-- **Open shadow roots are observed.** The walk descends into `shadowRoot`, so a
-  control that exists only in a shadow tree is selectable.
-- **Empty painted rectangles are observed** with the role `box`, so a drop zone
-  or a swatch can be named at all. An unpainted spacer of the same size stays
-  out: a person cannot see it either.
-
-### Hazards worth knowing, neither an SDK defect
-
-- `fill` on a rich-text host resolves successfully and changes nothing (TinyMCE
-  reverts it) — a silent no-op only a paired deterministic assertion catches.
+- `fill` on a rich-text host resolves successfully and changes nothing (the
+  editor reverts it): a silent no-op only a paired deterministic assertion
+  catches.
 - `instanceof` across a frame boundary is always false: an element inside an
   iframe belongs to that frame's realm, so `field instanceof HTMLInputElement`
   in a `web.evaluate` silently takes the else branch.
-- Agentic assertions must be answerable from one observation. "the canvas asks
-  whether you are hungry *again*" is correctly refused: a screenshot cannot show
-  recurrence. Assert state, not history.
+- Agentic assertions must be answerable from one observation. A screenshot
+  cannot show recurrence, so assert state, not history.
 - String text matching is **exact by default**, inverting the Playwright and
   Testing-Library default.
