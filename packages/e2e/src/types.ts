@@ -549,6 +549,16 @@ export interface TestAPI<Fixtures = TestFixtures> {
   (title: string, options: TestOptions, fn: TestFn<Fixtures>): TestCase;
   /** Registers one skipped test. */
   skip(title: string, fn: TestFn<Fixtures>): TestCase;
+  /**
+   * Inside a running test: skips it when `condition` is true (or always,
+   * with no condition), ending the body there. The attempt is reported
+   * `skipped` with `reason`; steps that already ran stay in the report, and
+   * teardown still runs. A setup test cannot skip: its sessions are owed.
+   * Outside a test body this form is `COLLECTION_ERROR`; use the `skip`
+   * option to skip at collection.
+   */
+  skip(condition: boolean, reason?: string): void;
+  skip(reason?: string): void;
   /** Registers one focused local test. CI rejects focused tests. */
   only(title: string, fn: TestFn<Fixtures>): TestCase;
   /** Registers one setup test with statically declared session outputs. */
@@ -662,8 +672,14 @@ export interface ValueExpectation<T> {
   toMatch(expected: string | RegExp): void;
   /** Requires a numeric lower bound. */
   toBeGreaterThan(expected: number): void;
+  /** Requires a numeric lower bound, inclusive. */
+  toBeGreaterThanOrEqual(expected: number): void;
   /** Requires a numeric upper bound. */
   toBeLessThan(expected: number): void;
+  /** Requires a numeric upper bound, inclusive. */
+  toBeLessThanOrEqual(expected: number): void;
+  /** Requires a number within `10 ** -digits / 2` of `expected`; `digits` defaults to 2. */
+  toBeCloseTo(expected: number, digits?: number): void;
 }
 
 export interface PollOptions {
@@ -692,7 +708,8 @@ export type PollExpectation<T> = {
 export interface Expect {
   (actual: Locator): AsyncExpectation;
   <E extends object>(actual: Expectable<E>): E;
-  <T>(actual: T): ValueExpectation<T>;
+  /** `message` opens the failure text, so a bare `expected false to be true` says which check it was. */
+  <T>(actual: T, message?: string): ValueExpectation<T>;
   /** Re-reads a value until the chosen matcher holds or `timeout` passes. */
   poll<T>(read: () => T | Promise<T>, options?: PollOptions): PollExpectation<T>;
 }
