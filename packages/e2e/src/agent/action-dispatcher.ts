@@ -291,7 +291,8 @@ export class ActionDispatcher {
         { kind: 'swipe', direction, momentum: SCROLL_MOMENTUM },
         this.accounting.actionOperation(),
       );
-      return { name: 'scroll', direction, node };
+      const { width, height } = this.feed.requireLatest().viewport;
+      return { name: 'scroll', direction, node, viewport: { width, height } };
     });
   }
 
@@ -374,12 +375,12 @@ export class ActionDispatcher {
     if (name !== 'typeSecret') this.feed.armChange(name === 'scroll' ? BRIEF_CHANGE_WAIT_MS : undefined);
     const trace = this.options.trace();
     if (trace === undefined) return;
-    // A typed value the step derived at run time is this run's data, not the
-    // flow's: it is recorded as a gap so replay hands over before it rather
-    // than typing a value the app may not issue again.
+    // A typed value the step read off the screen or reckoned from the date is
+    // this run's data, not the flow's: it is recorded as a gap so replay hands
+    // over before it rather than typing a value the app may not issue again.
     if (
       (action.name === 'type' || action.name === 'typeText') &&
-      isDerivedValue(action.value, this.options.instruction, this.options.params)
+      isDerivedValue(action.value, this.options.instruction, this.options.params, this.feed.seenScreenText())
     ) {
       trace.recordGap('type (run-time value)');
       return;

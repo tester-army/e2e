@@ -102,6 +102,17 @@ describe('TraceRecorder', () => {
     expect(oversized.finalize(conclusion)?.truncated).toBe(true);
   });
 
+  it('folds consecutive identical scrolls into one action with a repeat count', () => {
+    const recorder = makeRecorder({ maxActions: 3 });
+    for (let i = 0; i < 5; i += 1) recorder.record({ name: 'scroll', direction: 'down' });
+    recorder.record({ name: 'scroll', direction: 'up' });
+    const trace = recorder.finalize(conclusion);
+    expect(trace?.actions.map((a) => (a.name === 'scroll' ? [a.direction, a.times] : a.name))).toEqual([['down', 5], ['up', undefined]]);
+    expect(trace?.truncated).toBeUndefined();
+    const read = readTraceEntry(JSON.parse(JSON.stringify(buildTraceEntry(trace!))));
+    expect(read?.payload.actions[0]).toMatchObject({ name: 'scroll', direction: 'down', times: 5 });
+  });
+
   it('marks a gap that ends replay for a mutating project tool', () => {
     const recorder = makeRecorder();
     recorder.record({ name: 'tap', node: upgradeButton });

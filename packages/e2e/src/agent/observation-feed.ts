@@ -41,6 +41,8 @@ import type { StepAccounting } from './step-accounting.ts';
  * turn can reach.
  */
 const MAX_RECENT_OBSERVATIONS = 8;
+/** Screens whose text the step keeps for telling a screen-derived typed value from a composed one. */
+const MAX_SEEN_SCREENS = 64;
 
 export interface ObservationFeedOptions {
   /** The agent's observation byte ceiling, clamped per capture by the token limit. */
@@ -52,6 +54,8 @@ export class ObservationFeed {
   /** A cache probe may supply the executor's first look, once, before any action. */
   private opening: AgentObservation | undefined;
   private semanticHistory = true;
+  /** The text of every distinct screen the step has looked at, oldest first, bounded. */
+  private readonly seen: string[] = [];
   /** The newest observations of the step, oldest first; see MAX_RECENT_OBSERVATIONS. */
   private readonly recent: SemanticAgentObservation[] = [];
   /**
@@ -87,6 +91,11 @@ export class ObservationFeed {
   /** A trace may only describe a step observed with semantic evidence throughout. */
   get traceEligible(): boolean {
     return this.semanticHistory;
+  }
+
+  /** The text of the screens this step has seen so far, oldest first; what a typed value is checked against. */
+  seenScreenText(): readonly string[] {
+    return this.seen;
   }
 
   /** The newest observation, which an action addresses; before the first look there is nothing to address. */
@@ -268,6 +277,10 @@ export class ObservationFeed {
     if (observation.kind === 'pixels') this.recent.length = 0;
     else this.recent.push(observation);
     if (this.recent.length > MAX_RECENT_OBSERVATIONS) this.recent.shift();
+    if (this.seen[this.seen.length - 1] !== observation.text) {
+      this.seen.push(observation.text);
+      if (this.seen.length > MAX_SEEN_SCREENS) this.seen.shift();
+    }
     const metrics = this.accounting.metrics;
     metrics.observationBytes = Math.max(metrics.observationBytes, observation.bytes);
   }

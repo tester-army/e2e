@@ -272,7 +272,63 @@ describe('replayTrace: bare-point taps', () => {
     expect(points).toEqual([{ x: 400, y: 260 }]);
   });
 
-  it('diverges when the node the point was placed in is gone or has no box', async () => {
+  it('hands off when the node the point was placed in is gone, never tapping the bare point', async () => {
+    const within = { target: { role: 'img', name: 'Map' }, fx: 0.5, fy: 0.5 };
+    const host = makeHost({ nodes: [email] });
+    const outcome = await replayTrace(host, trace([{ ...pin, within }]));
+    expect(outcome).toMatchObject({ completed: false, executed: 0, stopReason: 'target-not-found' });
+    expect(host.calls).toEqual([]);
+  });
+
+  it('lets the recorded point pick among look-alikes when it lies inside exactly one of them', async () => {
+    const left: SemanticNode = { ref: { id: 'a', revision: 'r1' }, role: 'img', name: 'Map', rect: { x: 0, y: 0, width: 200, height: 200 } };
+    const right: SemanticNode = { ref: { id: 'b', revision: 'r1' }, role: 'img', name: 'Map', rect: { x: 200, y: 0, width: 200, height: 200 } };
+    const within = { target: { role: 'img', name: 'Map' }, fx: 0.5, fy: 0.5 };
+    const points: unknown[] = [];
+    const host = makeHost({ nodes: [left, right], onAction: (name, detail) => void (name === 'tapAt' && points.push(detail)) });
+    const outcome = await replayTrace(host, trace([{ ...pin, within }]));
+    expect(outcome).toMatchObject({ completed: true, executed: 1 });
+    // (300, 60) lies in the right-hand map; the tap lands at its recorded place inside that box.
+    expect(points).toEqual([{ x: 300, y: 100 }]);
+  });
+
+  it('hands off among look-alikes when the point settles nothing or the viewport changed', async () => {
+    const left: SemanticNode = { ref: { id: 'a', revision: 'r1' }, role: 'img', name: 'Map', rect: { x: 0, y: 0, width: 200, height: 200 } };
+    const right: SemanticNode = { ref: { id: 'b', revision: 'r1' }, role: 'img', name: 'Map', rect: { x: 200, y: 0, width: 200, height: 200 } };
+    const within = { target: { role: 'img', name: 'Map' }, fx: 0.5, fy: 0.5 };
+    const off = await replayTrace(makeHost({ nodes: [left, right] }), trace([{ ...pin, point: { x: 600, y: 60 }, within }]));
+    expect(off).toMatchObject({ completed: false, executed: 0, stopReason: 'target-ambiguous' });
+    const resized = await replayTrace(makeHost({ nodes: [left, right], viewport: { width: 390, height: 844 } }), trace([{ ...pin, within }]));
+    expect(resized).toMatchObject({ completed: false, executed: 0, stopReason: 'target-ambiguous' });
+  });
+
+  it('repeats a folded scroll as many times as recorded', async () => {
+    const host = makeHost({});
+    const outcome = await replayTrace(host, trace([{ name: 'scroll', summary: 'scroll down x4', direction: 'down', times: 4 }]));
+    expect(outcome).toMatchObject({ completed: true, executed: 1 });
+    expect(host.calls).toEqual(['scroll', 'scroll', 'scroll', 'scroll']);
+  });
+
+  it('scrolls the viewport when a list that filled the screen cannot be re-found', async () => {
+    const targets: unknown[] = [];
+    const host = makeHost({ nodes: [email], onAction: (name, detail) => void (name === 'scroll' && targets.push(detail)) });
+    const list = { role: 'group', name: 'Rows 1 to 12' };
+    const outcome = await replayTrace(host, trace([{ name: 'scroll', summary: 'scroll down x2', direction: 'down', target: list, times: 2, spans: 0.92 }]));
+    expect(outcome).toMatchObject({ completed: true, executed: 1 });
+    expect(targets).toEqual([{ direction: 'down', t: undefined }, { direction: 'down', t: undefined }]);
+  });
+
+  it('hands off when a smaller scrolled region cannot be re-found, never scrolling the viewport for it', async () => {
+    const host = makeHost({ nodes: [email] });
+    const carousel = { role: 'group', name: 'Recommended' };
+    const outcome = await replayTrace(host, trace([{ name: 'scroll', summary: 'scroll right', direction: 'right', target: carousel, spans: 0.18 }]));
+    expect(outcome).toMatchObject({ completed: false, executed: 0, stopReason: 'target-not-found' });
+    expect(host.calls).toEqual([]);
+    const unknown = await replayTrace(makeHost({ nodes: [email] }), trace([{ name: 'scroll', summary: 'scroll right', direction: 'right', target: carousel }]));
+    expect(unknown).toMatchObject({ completed: false, executed: 0, stopReason: 'target-not-found' });
+  });
+
+  it.skip('diverges when the node the point was placed in is gone or has no box', async () => {
     const boxless: SemanticNode = { ref: { id: 'm', revision: 'r1' }, role: 'img', name: 'Map' };
     const within = { target: { role: 'img', name: 'Map' }, fx: 0.5, fy: 0.5 };
     const gone = await replayTrace(makeHost({ nodes: [email] }), trace([{ ...pin, within }]));

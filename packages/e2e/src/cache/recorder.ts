@@ -26,6 +26,7 @@ import {
   MAX_TRACE_SUMMARY_CHARS,
   type ActionTrace,
   type RecordedAction,
+  type ScrollAction,
   type TraceProvenance,
   type TraceTargetDescriptor,
 } from './trace.ts';
@@ -155,13 +156,16 @@ export class TraceRecorder {
         return { name: 'press', summary, target: requireTarget(), key: this.verbatim(action.key) };
       case 'select':
         return { name: 'select', summary, target: requireTarget(), value: this.verbatim(action.value) };
-      case 'scroll':
+      case 'scroll': {
+        const spans = viewportShare(action.node?.rect, action.viewport);
         return {
           name: 'scroll',
           summary,
           direction: action.direction,
           ...(target === undefined ? {} : { target }),
+          ...(spans === undefined ? {} : { spans }),
         };
+      }
       case 'navigate':
         return { name: 'navigate', summary, url: this.verbatim(action.url) };
       case 'typeText':
@@ -204,6 +208,14 @@ export class TraceRecorder {
   }
 
   private push(action: RecordedAction): void {
+    // A scroll repeated in the same direction on the same target is one
+    // action that ran several times, not several actions: a long list paged
+    // to its end fits the trace, and replays with the same repeats.
+    const last = this.actions[this.actions.length - 1];
+    if (action.name === 'scroll' && last?.name === 'scroll' && sameScroll(last, action)) {
+      this.actions[this.actions.length - 1] = { ...last, times: (last.times ?? 1) + 1 };
+      return;
+    }
     if (this.actions.length >= this.maxActions) {
       this.truncated = true;
       return;
@@ -215,4 +227,18 @@ export class TraceRecorder {
 /** A place inside a box as a fraction of its side, clamped to the box and rounded so the entry stays small. */
 function fraction(value: number): number {
   return Math.round(Math.min(1, Math.max(0, value)) * 10_000) / 10_000;
+}
+
+/** True when two recorded scrolls move the same way on the same target. */
+function sameScroll(a: ScrollAction, b: ScrollAction): boolean {
+  return a.direction === b.direction && JSON.stringify(a.target ?? null) === JSON.stringify(b.target ?? null);
+}
+
+/** How much of the viewport a box covers, 0 to 1 at two decimals; undefined without both. */
+function viewportShare(
+  rect: { readonly width: number; readonly height: number } | undefined,
+  viewport: { readonly width: number; readonly height: number } | undefined,
+): number | undefined {
+  if (rect === undefined || viewport === undefined || viewport.width <= 0 || viewport.height <= 0) return undefined;
+  return Math.round(Math.min(1, Math.max(0, (rect.width * rect.height) / (viewport.width * viewport.height))) * 100) / 100;
 }

@@ -28,7 +28,13 @@ export type RecordableAction =
   | ({ readonly name: 'typeSecret'; readonly node: SemanticNode; readonly secret: string } & Placement)
   | ({ readonly name: 'press'; readonly node: SemanticNode; readonly key: string } & Placement)
   | ({ readonly name: 'select'; readonly node: SemanticNode; readonly value: string } & Placement)
-  | ({ readonly name: 'scroll'; readonly direction: ScrollDirection; readonly node?: SemanticNode } & Placement)
+  | ({
+      readonly name: 'scroll';
+      readonly direction: ScrollDirection;
+      readonly node?: SemanticNode;
+      /** The viewport the node was scrolled in, so the recorder can note how much of it the node covered. */
+      readonly viewport?: { readonly width: number; readonly height: number };
+    } & Placement)
   | { readonly name: 'navigate'; readonly url: string }
   /** Keyboard input to whatever held focus, with no node resolved. */
   | { readonly name: 'typeText'; readonly value: string; readonly replace: boolean }

@@ -13,10 +13,11 @@
  */
 
 import { anchorsPresent } from '../cache/anchors.ts';
-import { relocateDescriptor, type RelocationResult } from '../cache/relocate.ts';
+import { describeNodes, descriptorTiers, fieldsEqual, relocateDescriptor, type DescriptorField, type RelocationFailure, type RelocationResult } from '../cache/relocate.ts';
 import type { ActionTrace, RecordedAction, TraceTargetDescriptor, TraceViewport } from '../cache/trace.ts';
 import type { SemanticNode, ViewportPoint } from '../engine/surface.ts';
 import { sleep } from '../internal/time.ts';
+import type { ScrollDirection } from '../types.ts';
 import {
   isRuntimeHardStop,
   type ExecutorActions,
@@ -88,12 +89,36 @@ type PlannedCall =
       readonly kind: 'targeted';
       readonly descriptor: TraceTargetDescriptor;
       readonly invoke: (target: ExecutorTarget) => Promise<void>;
+      /** Repeats of one folded action, with a settled look between them as the live loop took. */
+      readonly times?: number;
     }
-  | { readonly kind: 'free'; readonly invoke: () => Promise<void> }
+  | { readonly kind: 'free'; readonly invoke: () => Promise<void>; readonly times?: number }
+  /**
+   * A scroll, folded from its repeats. The list is re-found before every
+   * repeat, because a device renumbers its tree on each look and names a
+   * scroll view after its first visible row. A list that filled the screen
+   * when recorded (`spans`) and cannot be re-found scrolls as the viewport,
+   * which is what scrolling the main list does; a smaller region hands off.
+   */
+  | {
+      readonly kind: 'scroll';
+      readonly direction: ScrollDirection;
+      readonly descriptor?: TraceTargetDescriptor;
+      readonly spans?: number;
+      readonly times: number;
+    }
   /** A bare point, replayed as given once the viewport is the recorded size. */
   | { readonly kind: 'point'; readonly point: ViewportPoint; readonly viewport: TraceViewport }
   /** A bare point placed inside a re-found node's live box. */
-  | { readonly kind: 'within'; readonly descriptor: TraceTargetDescriptor; readonly fx: number; readonly fy: number };
+  | {
+      readonly kind: 'within';
+      readonly descriptor: TraceTargetDescriptor;
+      readonly fx: number;
+      readonly fy: number;
+      /** The recorded point and its viewport, the fallback when the node cannot be re-found. */
+      readonly point: ViewportPoint;
+      readonly viewport: { readonly width: number; readonly height: number };
+    };
 
 function planCall(action: RecordedAction, actions: ExecutorActions): PlannedCall {
   switch (action.name) {
@@ -126,13 +151,13 @@ function planCall(action: RecordedAction, actions: ExecutorActions): PlannedCall
         invoke: (t) => actions.select(t, action.value),
       };
     case 'scroll':
-      return action.target === undefined
-        ? { kind: 'free', invoke: () => actions.scroll(action.direction) }
-        : {
-            kind: 'targeted',
-            descriptor: action.target,
-            invoke: (t) => actions.scroll(action.direction, t),
-          };
+      return {
+        kind: 'scroll',
+        direction: action.direction,
+        ...(action.target === undefined ? {} : { descriptor: action.target }),
+        ...(action.spans === undefined ? {} : { spans: action.spans }),
+        times: action.times ?? 1,
+      };
     case 'navigate':
       return { kind: 'free', invoke: () => actions.navigate(action.url) };
     case 'typeText':
@@ -144,7 +169,14 @@ function planCall(action: RecordedAction, actions: ExecutorActions): PlannedCall
     case 'tapAt':
       return action.within === undefined
         ? { kind: 'point', point: action.point, viewport: action.viewport }
-        : { kind: 'within', descriptor: action.within.target, fx: action.within.fx, fy: action.within.fy };
+        : {
+            kind: 'within',
+            descriptor: action.within.target,
+            fx: action.within.fx,
+            fy: action.within.fy,
+            point: action.point,
+            viewport: action.viewport,
+          };
   }
 }
 
@@ -172,12 +204,30 @@ export async function replayTrace(
         case 'targeted': {
           const relocated = await relocate(host, planned.descriptor);
           if (relocated.kind === 'failed') return stop(relocated.failure);
-          await planned.invoke({ id: relocated.id });
+          await repeat(host, planned.times, () => planned.invoke({ id: relocated.id }));
           break;
         }
         case 'free':
-          await planned.invoke();
+          await repeat(host, planned.times, () => planned.invoke());
           break;
+        case 'scroll': {
+          const { direction, descriptor } = planned;
+          let lost: RelocationFailure | undefined;
+          await repeat(host, planned.times, async () => {
+            const relocated = descriptor === undefined ? undefined : await relocate(host, descriptor);
+            if (relocated === undefined || relocated.kind !== 'failed') {
+              await host.actions.scroll(direction, relocated === undefined ? undefined : { id: relocated.id });
+              return;
+            }
+            if ((planned.spans ?? 0) < MAIN_LIST_SHARE) {
+              lost = relocated.failure;
+              return;
+            }
+            await host.actions.scroll(direction);
+          });
+          if (lost !== undefined) return stop(lost);
+          break;
+        }
         case 'point': {
           const screen = await host.observeSettled();
           if (screen.kind === 'pixels') return stop('action-failed');
@@ -190,10 +240,17 @@ export async function replayTrace(
         }
         case 'within': {
           const relocated = await relocate(host, planned.descriptor);
-          if (relocated.kind === 'failed') return stop(relocated.failure);
-          const box = relocated.node.rect;
-          // A re-found node without a box gives the point nowhere to land.
-          if (box === undefined || box.width <= 0 || box.height <= 0) return stop('target-not-found');
+          let box = relocated.kind === 'failed' ? undefined : relocated.node.rect;
+          if (relocated.kind === 'failed' && relocated.failure === 'target-ambiguous') {
+            // Several look-alikes: the recorded point says which one, when it
+            // lies inside exactly one of them on a viewport of the recorded size.
+            box = await boxAmongLookAlikes(host, planned.descriptor, planned.point, planned.viewport);
+          }
+          // A node that is gone, or a point that settles nothing, hands off:
+          // tapping the bare point could press whatever now sits there.
+          if (box === undefined || box.width <= 0 || box.height <= 0) {
+            return stop(relocated.kind === 'failed' ? relocated.failure : 'target-not-found');
+          }
           await host.actions.tapAt({ x: box.x + planned.fx * box.width, y: box.y + planned.fy * box.height });
           break;
         }
@@ -332,4 +389,57 @@ function isUncertainCommit(cause: unknown): boolean {
  */
 function isReplayFatal(cause: unknown, signal: AbortSignal): boolean {
   return signal.aborted || isRuntimeHardStop(cause);
+}
+
+/** The share of the viewport a scrolled list must have covered when recorded to scroll as the viewport when lost. */
+const MAIN_LIST_SHARE = 0.5;
+
+/**
+ * Among the nodes a descriptor matches, the box of the one that contains the
+ * recorded point, on a viewport of the recorded size. Undefined when none or
+ * several do, or the viewport differs: the point then decides nothing.
+ */
+async function boxAmongLookAlikes(
+  host: ReplayHost,
+  descriptor: TraceTargetDescriptor,
+  point: ViewportPoint,
+  recorded: { readonly width: number; readonly height: number },
+): Promise<SemanticNode['rect'] | undefined> {
+  const screen = await host.observeSettled();
+  // Only a semantic capture lists nodes; pixels alone settle nothing.
+  if (screen.kind !== 'semantic') return undefined;
+  if (screen.viewport.width !== recorded.width || screen.viewport.height !== recorded.height) return undefined;
+  const described = describeNodes(screen.nodes, { redact: host.redact });
+  for (const tier of descriptorTiers(descriptor)) {
+    const fields = (Object.keys(tier) as DescriptorField[]).filter((field) => field !== 'position');
+    const matches = described.filter((node) => fieldsEqual(tier, node.descriptor, fields));
+    if (matches.length === 0) continue;
+    const containing = matches.filter((match) => {
+      const rect = screen.nodes.get(match.id)?.rect;
+      return (
+        rect !== undefined &&
+        rect.width > 0 &&
+        rect.height > 0 &&
+        point.x >= rect.x &&
+        point.x < rect.x + rect.width &&
+        point.y >= rect.y &&
+        point.y < rect.y + rect.height
+      );
+    });
+    return containing.length === 1 ? screen.nodes.get(containing[0]!.id)?.rect : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Runs one planned action its recorded number of times. A folded scroll was
+ * recorded as separate calls with a look between them, which is what gave a
+ * lazy or paginated list time to render; replay keeps that pace.
+ */
+async function repeat(host: ReplayHost, times: number | undefined, invoke: () => Promise<void>): Promise<void> {
+  const count = times ?? 1;
+  for (let index = 0; index < count; index += 1) {
+    await invoke();
+    if (index < count - 1) await host.observeSettled();
+  }
 }

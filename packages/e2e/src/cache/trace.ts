@@ -144,6 +144,14 @@ export interface ScrollAction extends ActionBase {
   readonly name: 'scroll';
   readonly direction: ScrollDirection;
   readonly target?: TraceTargetDescriptor;
+  /** Consecutive identical scrolls folded into one action; absent means one. */
+  readonly times?: number;
+  /**
+   * The share of the viewport the target covered when recorded, 0 to 1. A
+   * list that filled the screen scrolls as the viewport does when replay
+   * cannot re-find it; a smaller region never does.
+   */
+  readonly spans?: number;
 }
 
 export interface NavigateAction extends ActionBase {
@@ -414,11 +422,17 @@ function readRecordedAction(document: unknown): RecordedAction | undefined {
       if (typeof direction !== 'string' || !SCROLL_DIRECTIONS.has(direction)) return undefined;
       const target = raw['target'] === undefined ? undefined : readDescriptor(raw['target']);
       if (raw['target'] !== undefined && target === undefined) return undefined;
+      const times = raw['times'];
+      if (times !== undefined && (typeof times !== 'number' || !Number.isInteger(times) || times < 2)) return undefined;
+      const spans = raw['spans'];
+      if (spans !== undefined && (typeof spans !== 'number' || !(spans >= 0 && spans <= 1))) return undefined;
       return {
         name: 'scroll',
         summary,
         direction: direction as ScrollDirection,
         ...(target === undefined ? {} : { target }),
+        ...(times === undefined ? {} : { times }),
+        ...(spans === undefined ? {} : { spans }),
       };
     }
     case 'navigate': {
