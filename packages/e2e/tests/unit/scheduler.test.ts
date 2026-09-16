@@ -74,6 +74,7 @@ function makeTest(file: string, title: string, overrides: Partial<CollectedTest>
     id: `${file}::${title}`,
     serialRoot: undefined,
     serialId: undefined,
+    selected: true,
     ...overrides,
   };
 }
@@ -92,12 +93,11 @@ function makeCollection(files: readonly string[], pairs: readonly TestTargetPair
     absolutePath: `/project/${file}`,
     registration: { tests: [], hooks: [] },
     tests: pairs.filter((pair) => pair.test.file === file).map((pair) => pair.test),
+    selected: true,
   }));
   return {
     files: collected,
     tests: collected.flatMap((file) => file.tests),
-    discovered: files,
-    selectedFiles: new Set(files),
     nearMisses: [],
     unmatchedPositionals: [],
   };

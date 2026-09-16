@@ -253,10 +253,11 @@ export interface ActionTrace {
   readonly endWaitMs?: number;
   /**
    * Templatable string params (`cache/template.ts`) whose value never
-   * appeared in the recorded text, by path. The key digests only the params'
-   * shape, so such a value may still have steered the recorded flow without
-   * leaving a placeholder to fill; a replay therefore requires these exact
-   * values again and misses on any other.
+   * appeared in the recorded text, by JSON Pointer. The key digests the
+   * params with those strings removed, so such a value may still have
+   * steered the recorded flow without leaving a placeholder to fill; a
+   * replay therefore requires these exact values again and misses on any
+   * other.
    */
   readonly literalParams?: Readonly<Record<string, string>>;
   /** Set when recording overflowed a cap; the trace documents, never replays. */
@@ -512,6 +513,111 @@ const DESCRIPTOR_FIELDS = [
   'inputPurpose',
   'within',
 ] as const;
+
+/**
+ * The descriptor fields that carry text read off the screen, where a value
+ * a test supplied can reappear. `role`, `selector`, and `inputPurpose` are
+ * vocabulary, never screen text.
+ */
+const DESCRIPTOR_TEXT_FIELDS = ['name', 'text', 'testId', 'placeholder', 'within'] as const;
+
+/** A string rewrite; `undefined` means the text cannot be rewritten and the whole trace is unusable. */
+export type TraceTextMap = (text: string) => string | undefined;
+
+function mapDescriptorText(descriptor: TraceTargetDescriptor, map: TraceTextMap): TraceTargetDescriptor | undefined {
+  const changes: Partial<Record<(typeof DESCRIPTOR_TEXT_FIELDS)[number], string>> = {};
+  for (const field of DESCRIPTOR_TEXT_FIELDS) {
+    const value = descriptor[field];
+    if (value === undefined) continue;
+    const mapped = map(value);
+    if (mapped === undefined) return undefined;
+    if (mapped !== value) changes[field] = mapped;
+  }
+  return Object.keys(changes).length === 0 ? descriptor : { ...descriptor, ...changes };
+}
+
+function mapActionText(action: RecordedAction, map: TraceTextMap): RecordedAction | undefined {
+  const summary = map(action.summary);
+  if (summary === undefined) return undefined;
+  const withSummary = <A extends RecordedAction>(next: A): A => (summary === next.summary ? next : { ...next, summary });
+  const target = (descriptor: TraceTargetDescriptor) => mapDescriptorText(descriptor, map);
+  switch (action.name) {
+    case 'tap':
+    case 'typeSecret':
+    case 'press': {
+      const mapped = target(action.target);
+      return mapped === undefined ? undefined : withSummary({ ...action, target: mapped });
+    }
+    case 'type':
+    case 'select': {
+      const mapped = target(action.target);
+      const value = map(action.value);
+      return mapped === undefined || value === undefined ? undefined : withSummary({ ...action, target: mapped, value });
+    }
+    case 'scroll': {
+      if (action.target === undefined) return withSummary(action);
+      const mapped = target(action.target);
+      return mapped === undefined ? undefined : withSummary({ ...action, target: mapped });
+    }
+    case 'navigate': {
+      const url = map(action.url);
+      return url === undefined ? undefined : withSummary({ ...action, url });
+    }
+    case 'typeText': {
+      const value = map(action.value);
+      return value === undefined ? undefined : withSummary({ ...action, value });
+    }
+    case 'tapAt': {
+      if (action.within === undefined) return withSummary(action);
+      const mapped = target(action.within.target);
+      return mapped === undefined ? undefined : withSummary({ ...action, within: { ...action.within, target: mapped } });
+    }
+    case 'pressKey':
+    case 'dismissKeyboard':
+    case 'tool':
+      return withSummary(action);
+  }
+}
+
+/**
+ * Applies `map` to every recorded string a screen value can appear in: typed
+ * and selected values, navigated URLs, both location paths, target and
+ * anchor text, and the prose summaries. Keys (`press`), secret names,
+ * executor identity, and provenance are vocabulary and are left alone. The
+ * one list of text-bearing fields lives here, beside the union it walks;
+ * `undefined` from `map` makes the whole result `undefined`.
+ */
+export function mapTraceText(trace: ActionTrace, map: TraceTextMap): ActionTrace | undefined {
+  const actions: RecordedAction[] = [];
+  for (const action of trace.actions) {
+    const mapped = mapActionText(action, map);
+    if (mapped === undefined) return undefined;
+    actions.push(mapped);
+  }
+  const summary = map(trace.summary);
+  const startPath = trace.startPath === undefined ? undefined : map(trace.startPath);
+  const endPath = trace.endPath === undefined ? undefined : map(trace.endPath);
+  if (summary === undefined || (trace.startPath !== undefined && startPath === undefined) || (trace.endPath !== undefined && endPath === undefined)) {
+    return undefined;
+  }
+  let endAnchors: TraceTargetDescriptor[] | undefined;
+  if (trace.endAnchors !== undefined) {
+    endAnchors = [];
+    for (const anchor of trace.endAnchors) {
+      const mapped = mapDescriptorText(anchor, map);
+      if (mapped === undefined) return undefined;
+      endAnchors.push(mapped);
+    }
+  }
+  return {
+    ...trace,
+    actions,
+    summary,
+    ...(startPath === undefined ? {} : { startPath }),
+    ...(endPath === undefined ? {} : { endPath }),
+    ...(endAnchors === undefined ? {} : { endAnchors }),
+  };
+}
 
 function readDescriptor(document: unknown): TraceTargetDescriptor | undefined {
   if (typeof document !== 'object' || document === null || Array.isArray(document)) {

@@ -93,6 +93,9 @@ function matchesQuery(entry: ProjectedNode, query: SemanticQuery): boolean {
       if ((node.role ?? '') !== query.value.value) return false;
       if (query.name !== undefined && !matchesText(node.name ?? '', query.name)) return false;
       if (node.states?.hidden === true) return false;
+      // Device trees report no heading level, so a query that requires one can
+      // match nothing: failing closed keeps a level assertion honest here.
+      if (query.level !== undefined) return false;
       const wanted = query.states ?? {};
       for (const key of STATE_KEYS) {
         const expected = wanted[key];

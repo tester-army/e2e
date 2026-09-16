@@ -50,6 +50,7 @@ function makeTest(
     id: `test::${file}::${title}`,
     serialRoot: undefined,
     serialId: undefined,
+    selected: true,
     ...overrides,
   };
 }
@@ -77,6 +78,7 @@ function makeFile(file: string, tests: CollectedTest[]): CollectedFile {
     absolutePath: `/project/${file}`,
     registration: { tests: [], hooks: [] },
     tests,
+    selected: true,
   };
 }
 
@@ -109,8 +111,6 @@ describe('buildWorkPlans', () => {
         makeFile('tests/b.e2e.ts', [b1, skipped]),
       ],
       tests: [a1, a2, setup, b1, skipped],
-      discovered: ['tests/a.e2e.ts', 'tests/auth.setup.e2e.ts', 'tests/b.e2e.ts'],
-      selectedFiles: new Set(['tests/a.e2e.ts', 'tests/auth.setup.e2e.ts', 'tests/b.e2e.ts']),
       nearMisses: [],
       unmatchedPositionals: [],
     };
@@ -136,8 +136,6 @@ describe('buildWorkPlans', () => {
     const collection: Collection = {
       files: [makeFile('tests/a.e2e.ts', [only])],
       tests: [only],
-      discovered: ['tests/a.e2e.ts'],
-      selectedFiles: new Set(['tests/a.e2e.ts']),
       nearMisses: [],
       unmatchedPositionals: [],
     };

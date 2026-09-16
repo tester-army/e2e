@@ -145,43 +145,19 @@ class ValueExpectationImpl<T> implements ValueExpectation<T> {
   }
 
   toBeGreaterThan(expected: number): void {
-    const actual = this.actual as unknown;
-    if (typeof actual !== 'number') fail(`toBeGreaterThan requires a number, got ${format(actual)}`);
-    this.check(
-      actual > expected,
-      () => `expected ${actual} to be greater than ${expected}`,
-      () => `expected ${actual} not to be greater than ${expected}`,
-    );
-  }
-
-  toBeLessThan(expected: number): void {
-    const actual = this.actual as unknown;
-    if (typeof actual !== 'number') fail(`toBeLessThan requires a number, got ${format(actual)}`);
-    this.check(
-      actual < expected,
-      () => `expected ${actual} to be less than ${expected}`,
-      () => `expected ${actual} not to be less than ${expected}`,
-    );
+    this.compareNumber('toBeGreaterThan', expected, (actual) => actual > expected, 'greater than');
   }
 
   toBeGreaterThanOrEqual(expected: number): void {
-    const actual = this.actual as unknown;
-    if (typeof actual !== 'number') fail(`toBeGreaterThanOrEqual requires a number, got ${format(actual)}`);
-    this.check(
-      actual >= expected,
-      () => `expected ${actual} to be greater than or equal to ${expected}`,
-      () => `expected ${actual} not to be greater than or equal to ${expected}`,
-    );
+    this.compareNumber('toBeGreaterThanOrEqual', expected, (actual) => actual >= expected, 'greater than or equal to');
+  }
+
+  toBeLessThan(expected: number): void {
+    this.compareNumber('toBeLessThan', expected, (actual) => actual < expected, 'less than');
   }
 
   toBeLessThanOrEqual(expected: number): void {
-    const actual = this.actual as unknown;
-    if (typeof actual !== 'number') fail(`toBeLessThanOrEqual requires a number, got ${format(actual)}`);
-    this.check(
-      actual <= expected,
-      () => `expected ${actual} to be less than or equal to ${expected}`,
-      () => `expected ${actual} not to be less than or equal to ${expected}`,
-    );
+    this.compareNumber('toBeLessThanOrEqual', expected, (actual) => actual <= expected, 'less than or equal to');
   }
 
   /**
@@ -202,6 +178,17 @@ class ValueExpectationImpl<T> implements ValueExpectation<T> {
       close,
       () => `expected ${actual} to be close to ${expected} (${digits} digits)`,
       () => `expected ${actual} not to be close to ${expected} (${digits} digits)`,
+    );
+  }
+
+  /** The one body of the four ordering matchers: a number on the left, a phrase for the message. */
+  private compareNumber(name: string, expected: number, holds: (actual: number) => boolean, phrase: string): void {
+    const actual = this.actual as unknown;
+    if (typeof actual !== 'number') fail(`${name} requires a number, got ${format(actual)}`);
+    this.check(
+      holds(actual),
+      () => `expected ${actual} to be ${phrase} ${expected}`,
+      () => `expected ${actual} not to be ${phrase} ${expected}`,
     );
   }
 }

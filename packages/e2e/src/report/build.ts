@@ -395,7 +395,7 @@ function serializeAttempt(attempt: AttemptRecord): ReportAttempt {
   return {
     ...serializeAttemptBase(attempt),
     ...(attempt.failure === undefined ? {} : { failure: attempt.failure }),
-    ...(attempt.status === 'skipped' && attempt.skip !== undefined ? { skip: attempt.skip } : {}),
+    ...(attempt.skip === undefined ? {} : { skip: attempt.skip }),
     steps: attempt.steps.map(serializeStep),
   };
 }

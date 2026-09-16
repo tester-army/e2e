@@ -396,8 +396,11 @@ export class StepTraceSession {
     // Writing it would be pure store traffic, so it is not written at all.
     if (trace.startPath === undefined && !opensWithNavigate(trace)) return;
     // Stored as a template over this call's string params, so the next run's
-    // values — a fresh timestamped name — replay the same flow.
-    this.cache.staged.push({ keyHash: this.keyHash, trace: templateTrace(trace, this.options.params), stepIndex: this.options.stepIndex });
+    // values — a fresh timestamped name — replay the same flow. A recording
+    // that cannot be templated safely is not written at all.
+    const templated = templateTrace(trace, this.options.params);
+    if (templated === undefined) return;
+    this.cache.staged.push({ keyHash: this.keyHash, trace: templated, stepIndex: this.options.stepIndex });
   }
 
   /**

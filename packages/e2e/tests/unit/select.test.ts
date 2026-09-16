@@ -14,10 +14,9 @@ async function collection(
   unmatchedPositionals: readonly string[] = [],
 ): Promise<Collection> {
   const registration = await collectModule(async () => body());
-  const collected = collectFromRegistration('/root', `/root/${file}`, registration);
   // Positionals that matched nothing leave the discovered file collected but unselected.
-  const selectedFiles = new Set(unmatchedPositionals.length === 0 ? [file] : []);
-  return { files: [collected], tests: collected.tests, discovered: [file], selectedFiles, nearMisses: [], unmatchedPositionals };
+  const collected = collectFromRegistration('/root', `/root/${file}`, registration, unmatchedPositionals.length === 0);
+  return { files: [collected], tests: collected.tests, nearMisses: [], unmatchedPositionals };
 }
 
 /** Several files collected together, with `selected` naming the ones positionals chose (all by default). */
@@ -28,22 +27,14 @@ async function collectionOf(
   const files = [];
   for (const module of modules) {
     const registration = await collectModule(async () => module.body());
-    files.push(collectFromRegistration('/root', `/root/${module.file}`, registration));
+    files.push(collectFromRegistration('/root', `/root/${module.file}`, registration, selected === undefined || selected.includes(module.file)));
   }
-  const discovered = modules.map((module) => module.file);
-  return {
-    files,
-    tests: files.flatMap((entry) => entry.tests),
-    discovered,
-    selectedFiles: new Set(selected ?? discovered),
-    nearMisses: [],
-    unmatchedPositionals: [],
-  };
+  return { files, tests: files.flatMap((entry) => entry.tests), nearMisses: [], unmatchedPositionals: [] };
 }
 
 /** A collection whose globs matched nothing, with optional look-alike files. */
 function emptyCollection(nearMisses: readonly string[] = []): Collection {
-  return { files: [], tests: [], discovered: [], selectedFiles: new Set(), nearMisses, unmatchedPositionals: [] };
+  return { files: [], tests: [], nearMisses, unmatchedPositionals: [] };
 }
 
 function config(raw: Parameters<typeof resolveConfig>[0] = {}, env: NodeJS.ProcessEnv = ENV) {

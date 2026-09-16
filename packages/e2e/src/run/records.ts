@@ -57,7 +57,7 @@ export interface FailureEvidence {
 export interface AttemptRecord {
   id: string;
   index: number;
-  status: 'passed' | 'failed' | 'timed-out' | 'interrupted' | 'skipped';
+  status: AttemptStatus;
   startedAt: string;
   durationMs: number;
   steps: StepRecord[];
@@ -74,7 +74,7 @@ export interface SerialMemberRecord {
   id: string;
   index: number;
   testId: string;
-  status: 'passed' | 'failed' | 'timed-out' | 'interrupted' | 'skipped';
+  status: AttemptStatus;
   startedAt: string;
   durationMs: number;
   steps: StepRecord[];
@@ -115,6 +115,21 @@ export interface SerialGroupRecord {
 }
 
 export type ResultStatus = 'passed' | 'flaky' | 'failed' | 'timed-out' | 'interrupted' | 'skipped';
+
+/** How one attempt of a test or serial member ended. */
+export type AttemptStatus = 'passed' | 'failed' | 'timed-out' | 'interrupted' | 'skipped';
+
+/** The statuses that mean something went wrong; a pass and a self-skip are both verdicts. */
+export type FailedStatus = Exclude<AttemptStatus, 'passed' | 'skipped'>;
+
+/**
+ * Whether a status is a failure: the one question the runner asks of a
+ * verdict before discarding a suite realm, ending a serial group, spending a
+ * retry, or keeping a recording. A body that skipped itself is not one.
+ */
+export function isFailedStatus(status: AttemptStatus | ResultStatus): status is FailedStatus {
+  return status !== 'passed' && status !== 'skipped' && status !== 'flaky';
+}
 
 export interface ResultRecord {
   test: TestIdentity;

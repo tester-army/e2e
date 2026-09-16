@@ -6,7 +6,6 @@ import type { TargetSession, OperationContext } from '../engine/surface.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import {
   classifyError,
-  TestError,
   ConfigurationError,
   E2EError,
   InfrastructureError,
@@ -39,9 +38,11 @@ import { findRegistered, RealmManager, runHook, type Realm } from './realm.ts';
 import type {
   AttemptRecord,
   ResultRecord,
+  ResultStatus,
   RunError,
   SerialGroupRecord,
 } from './records.ts';
+import { isFailedStatus } from './records.ts';
 import { runWithRetries } from './retry.ts';
 import { runSerialUnit, type SerialHost, type SharedSerialSession } from './serial.ts';
 import { INTERRUPTED_BEFORE_START, pairKey, pairResult, unstartedResult } from './units.ts';
@@ -377,7 +378,7 @@ export class TargetExecutor implements SerialHost {
           kind: 'ordinary',
         });
         attempts.push(attempt);
-        if (attempt.status !== 'passed' && attempt.status !== 'skipped') {
+        if (isFailedStatus(attempt.status)) {
           // A failed realm is never reused, but afterAll still runs for every
           // scope whose beforeAll started in it. A body that skipped itself
           // left the suite instance as it found it, so the next test keeps it.
@@ -388,9 +389,24 @@ export class TargetExecutor implements SerialHost {
       },
     );
 
-    // A beforeAll failure before any attempt ran skips the test. On a retry
-    // the recorded attempts stand: the hook failure is already a run error,
-    // and a failing test must not be reported as skipped.
+    this.emitUnitResult(pair, finalStatus, attempts, hookFailure);
+    return realm;
+  }
+
+  /**
+   * The result of a test or setup unit. A beforeAll failure before any
+   * attempt ran skips the unit; on a retry the recorded attempts stand, since
+   * the hook failure is already a run error and a failing test must not be
+   * reported as skipped. A unit whose body skipped itself ends on its first
+   * skipped attempt (`runWithRetries`), so that attempt's reason is the
+   * result's.
+   */
+  private emitUnitResult(
+    pair: TestTargetPair,
+    finalStatus: ResultStatus,
+    attempts: AttemptRecord[],
+    hookFailure: SerializedError | undefined,
+  ): void {
     if (hookFailure !== undefined && attempts.length === 0) {
       this.emit(
         pairResult(pair, {
@@ -400,18 +416,17 @@ export class TargetExecutor implements SerialHost {
           attempts: [],
         }),
       );
-      return realm;
+      return;
     }
+    const last = attempts.at(-1);
     this.emit(
       pairResult(pair, {
         status: finalStatus,
         selected: true,
         attempts,
-        // A body that skipped itself carries the reason on its attempt.
-        ...(finalStatus === 'skipped' ? { skip: attempts.at(-1)?.skip } : {}),
+        ...(last?.status === 'skipped' ? { skip: last.skip } : {}),
       }),
     );
-    return realm;
   }
 
   // --- setup tests ---
@@ -471,26 +486,7 @@ export class TargetExecutor implements SerialHost {
       },
     );
 
-    if (hookFailure !== undefined && attempts.length === 0) {
-      this.emit(
-        pairResult(pair, {
-          status: 'skipped',
-          selected: true,
-          skip: { cause: 'hook-failed', reason: hookFailure.message },
-          attempts: [],
-        }),
-      );
-      return;
-    }
-    this.emit(
-      pairResult(pair, {
-        status: finalStatus,
-        selected: true,
-        attempts,
-        // A body that skipped itself carries the reason on its attempt.
-        ...(finalStatus === 'skipped' ? { skip: attempts.at(-1)?.skip } : {}),
-      }),
-    );
+    this.emitUnitResult(pair, finalStatus, attempts, hookFailure);
   }
 
   // --- attempt core ---
@@ -589,7 +585,7 @@ export class TargetExecutor implements SerialHost {
     if (stopVideo !== undefined) {
       await this.stopRecording('video', attemptId, record, secondaryErrors, async (operation) => {
         const segments = await stopVideo(operation);
-        if (this.config.videoRetain === 'on-failure' && (record.status === 'passed' || record.status === 'skipped')) {
+        if (this.config.videoRetain === 'on-failure' && !isFailedStatus(record.status)) {
           // Recorded so a failure could be watched; a pass has nothing to show.
           await Promise.all(
             segments.map((segment) => rm(path.join(artifactSink.dir, segment.path), { force: true })),
@@ -852,7 +848,7 @@ export class TargetExecutor implements SerialHost {
       // `expect.poll` takes no fixture, so the attempt it runs on is
       // published here and cleared when `attemptEnd` fires in `finally`.
       publishAttempt(
-        { attemptId, assertionTimeout: this.config.assertionTimeout, budget },
+        { attemptId, testKind: pair.test.kind, assertionTimeout: this.config.assertionTimeout, budget },
         attemptEnd.signal,
       );
 
@@ -904,18 +900,9 @@ export class TargetExecutor implements SerialHost {
           ),
         );
       } catch (cause) {
-        if (isRuntimeSkip(cause)) {
-          // A setup test owes its sessions to every consumer; skipping it
-          // would silently skip them all, so the call is the failure instead.
-          if (pair.test.kind === 'setup') {
-            recordFailure(
-              new TestError('INVALID_ARGUMENT', 'test.skip() cannot skip a setup test: the sessions it declares are owed to their consumers'),
-              phase,
-            );
-          } else {
-            skipped = cause;
-          }
-        } else {
+        // `skipRunningTest` has already refused the cases that may not skip.
+        if (isRuntimeSkip(cause)) skipped = cause;
+        else {
           recordFailure(cause, phase);
           await captureEvidence();
         }
