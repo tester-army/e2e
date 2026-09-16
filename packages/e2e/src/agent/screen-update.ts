@@ -39,7 +39,21 @@ interface ShownScreen {
   readonly nodes: number;
   /** The listing is cut short (byte limit or engine cap): nodes beyond it exist but are not listed. */
   readonly truncated: boolean;
+  /** An on-screen keyboard is among the nodes. */
+  readonly keyboard: boolean;
 }
+
+/** A node line whose role is the on-screen keyboard, as device trees list it. */
+const KEYBOARD_LINE = /^#\S+ keyboard\b/;
+
+/**
+ * What the model needs to hear when an action closed the keyboard: on a
+ * touch screen the tap that closes it is often spent on closing it, so the
+ * control under the finger may not have reacted. Left out after an explicit
+ * dismissal, where closing was the point.
+ */
+const KEYBOARD_CLOSED_NOTE =
+  'The on-screen keyboard closed with this action. On a touch screen a tap made while the keyboard is up can be spent on closing it: if the control you acted on shows no effect above, act on it again now that the keyboard is down.';
 
 /** How a screen update reads: the lead line names the action it follows. */
 export interface ScreenUpdateOptions {
@@ -106,14 +120,15 @@ export class ScreenPresenter {
     const next = indexScreen(observation);
     this.shown = next;
     if (previous === undefined) return `${lead}${renderFull(observation)}`;
+    const closed = keyboardClosedNote(previous, next, options.lead);
     const diff = diffScreens(previous, next);
     const changes = diff.length;
     // A truncated screen is never called unchanged: what it left out is unknown.
     if (changes === 0 && !observation.truncated) {
-      return `${lead}${renderUnchanged(previous.revision, observation, options.expectChange === true)}`;
+      return `${lead}${renderUnchanged(previous.revision, observation, options.expectChange === true)}${closed}`;
     }
     if (changes >= MAX_DIFF_LINES || changes > MAX_DIFF_SHARE * next.order.length) {
-      return `${lead}The screen changed substantially since revision ${previous.revision}. ${renderFull(observation)}`;
+      return `${lead}The screen changed substantially since revision ${previous.revision}. ${renderFull(observation)}${closed}`;
     }
     const assurance = observation.truncated
       ? 'The screen listing is truncated: nodes past the cut are not listed and none is reported removed; every listed node keeps the id you have.'
@@ -121,7 +136,7 @@ export class ScreenPresenter {
     return [
       `${lead}Screen changes since revision ${previous.revision} (now revision ${observation.revision}${describeLocation(observation)}, ${String(next.nodes)} nodes): ${describeCounts(diff)}. ${assurance}`,
       ...diff,
-    ].join('\n');
+    ].join('\n') + closed;
   }
 
   /** The step's first screen, whole, with its screenshot when the observation carries one. */
@@ -213,6 +228,14 @@ function renderUnchanged(since: string, observation: ExecutorObservation, expect
     : `Screen unchanged since revision ${since} (${looked}); the ids you have stay valid.`;
 }
 
+/** The keyboard note when an action other than a dismissal took the keyboard off the screen. */
+function keyboardClosedNote(previous: ShownScreen, next: ShownScreen, lead: string | undefined): string {
+  // A truncated listing may have cut the keyboard off, not closed it.
+  if (lead === undefined || !previous.keyboard || next.keyboard || next.truncated) return '';
+  if (lead.startsWith('Dismissed the keyboard')) return '';
+  return `\n\n${KEYBOARD_CLOSED_NOTE}`;
+}
+
 function describeLocation(observation: ExecutorObservation): string {
   return observation.path === undefined ? '' : `, path ${observation.path}`;
 }
@@ -247,7 +270,14 @@ function indexScreen(observation: ExecutorObservation): ShownScreen {
     order.push(line);
     byId.set(id, line);
   }
-  return { revision: observation.revision, order, byId, nodes: byId.size, truncated: observation.truncated };
+  return {
+    revision: observation.revision,
+    order,
+    byId,
+    nodes: byId.size,
+    truncated: observation.truncated,
+    keyboard: order.some((line) => KEYBOARD_LINE.test(line)),
+  };
 }
 
 /**

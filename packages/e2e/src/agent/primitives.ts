@@ -13,10 +13,11 @@ import type { StepResult, Tool, ToolSet } from 'ai';
 import { z } from 'zod';
 import type { ViewportPoint } from '../engine/surface.ts';
 import type { AgentErrorCode } from '../types.ts';
-import { isRuntimeHardStop, BLOCKABLE_CODES, type StepExecutorContext, type StepVerdict } from './executor.ts';
+import { isRuntimeHardStop, BLOCKABLE_CODES, type ExecutorNode, type StepExecutorContext, type StepVerdict } from './executor.ts';
 import { cacheTokenFields, readCost } from './model/sdk.ts';
 import { OperationQueue } from './operation-queue.ts';
 import { imagePointToViewport } from './point-tap.ts';
+import { suggestKeyboardEscape, type KeyboardEscape } from './keyboard-escape.ts';
 import { ScreenPresenter, type ScreenOutput } from './screen-update.ts';
 
 /** Codes the model may pick when concluding; runtime codes are runtime-assigned. */
@@ -45,7 +46,77 @@ const MODEL_ERROR_CODES = [
 const MAX_VERDICT_SUMMARY_CHARS = 2_000;
 
 /** Screens one scroll call may move; a windowed list of thousands of rows still needs a better verb. */
-const MAX_SCROLL_TIMES = 5;
+const MAX_SCROLL_TIMES = 20;
+
+/** What to do instead when the engine cannot hide the keyboard on its own. */
+const KEYBOARD_WITHOUT_DISMISS_KEY =
+  'The keyboard is still up: this device has no dismiss key and the runner does not tap around to close it. Close it yourself: press Enter in the focused field (a single-line field gives up focus), or tap_at a blank area of the scroll view that holds the field.';
+
+/**
+ * The guidance above with the blank point the tree offers, in the pixels of
+ * the screenshot attached alongside, which is the space `tap_at` reads.
+ */
+function keyboardEscapeAdvice(escape: KeyboardEscape | undefined, scale: number | undefined): string {
+  if (escape === undefined) return `${KEYBOARD_WITHOUT_DISMISS_KEY} (No tree was available to pick a point from.)`;
+  if (escape.kind === 'none') return `${KEYBOARD_WITHOUT_DISMISS_KEY} (No blank point could be named from the tree: ${escape.reason}.)`;
+  const factor = scale === undefined || scale <= 0 ? 1 : scale;
+  const at = `(${String(Math.round(escape.point.x * factor))}, ${String(Math.round(escape.point.y * factor))})`;
+  return (
+    'The keyboard is still up: this device has no dismiss key and the runner does not tap around to close it. ' +
+    `Blank space inside #${escape.containerId}, the scroll view holding the field, is at ${at} in the attached screenshot: ` +
+    `tap_at ${at} closes the keyboard there; then act on your target in the same turn. ` +
+    'Or press Enter in the focused field when it is single-line.'
+  );
+}
+
+/** What a scroll target looked like when the scrolling began. */
+interface ScrolleeAnchor {
+  readonly role: string | undefined;
+  readonly centre: { readonly x: number; readonly y: number };
+  /** The share of the viewport its box covered, 0 to 1. */
+  readonly share: number;
+}
+
+/** A scrolled node that covered at least this much of the viewport scrolls as the viewport does when it cannot be re-found. */
+const MAIN_LIST_SHARE = 0.5;
+
+/** Depth-first search over a projected tree; `test` may also just visit. */
+function findNode(tree: ExecutorNode | undefined, test: (node: ExecutorNode) => boolean): ExecutorNode | undefined {
+  if (tree === undefined) return undefined;
+  if (test(tree)) return tree;
+  for (const child of tree.children ?? []) {
+    const hit = findNode(child, test);
+    if (hit !== undefined) return hit;
+  }
+  return undefined;
+}
+
+/** A targeted action refused because its node is no longer addressable on the current screen. */
+function isGoneFromScreen(cause: unknown): boolean {
+  for (let cursor: unknown = cause; typeof cursor === 'object' && cursor !== null; cursor = (cursor as { cause?: unknown }).cause) {
+    const { code, message } = cursor as { code?: unknown; message?: unknown };
+    if (code === 'NODE_STALE' || code === 'LOCATOR_NOT_FOUND') return true;
+    if (typeof message === 'string' && /not on the current screen|stale|no longer/i.test(message)) return true;
+  }
+  return false;
+}
+
+/** The phrases a device uses to say it has no way to hide its keyboard. */
+const NO_DISMISS_KEY = /no dismiss key|cannot dismiss|unable to dismiss/i;
+
+/**
+ * True for an engine refusal of an action kind rather than a failed attempt
+ * at it: `UNSUPPORTED_CAPABILITY` anywhere on the cause chain, or a device's
+ * own words for a keyboard it cannot hide.
+ */
+function isUnsupported(cause: unknown): boolean {
+  for (let cursor: unknown = cause; typeof cursor === 'object' && cursor !== null; cursor = (cursor as { cause?: unknown }).cause) {
+    const { code, message } = cursor as { code?: unknown; message?: unknown };
+    if (code === 'UNSUPPORTED_CAPABILITY') return true;
+    if (typeof message === 'string' && NO_DISMISS_KEY.test(message)) return true;
+  }
+  return false;
+}
 
 /**
  * Keys whose whole effect is where the focus or the caret sits, which the
@@ -300,7 +371,28 @@ export function createGrammarTools(
     tools['dismiss_keyboard'] = screenTool({
       description: 'Hide the on-screen keyboard when it covers what you need to reach.',
       inputSchema: z.object({}),
-      execute: () => acting('Dismissed the keyboard.', () => context.actions.dismissKeyboard(), false),
+      execute: () =>
+        inOrder(() =>
+          guard(async () => {
+            try {
+              await context.actions.dismissKeyboard();
+              return present('Dismissed the keyboard.', false);
+            } catch (cause) {
+              if (isRuntimeHardStop(cause)) throw cause;
+              // A phone keyboard has no dismiss key and the engine refuses to
+              // guess a safe spot to tap. The tree names the blank point that
+              // closes it, and the screenshot that comes with the answer is the
+              // image tap_at reads, so the point is quoted in its pixels.
+              if (!isUnsupported(cause)) {
+                const message = cause instanceof Error ? cause.message : String(cause);
+                return present(`Dismissed the keyboard. failed: ${message}`);
+              }
+              const observation = await context.observe({ tree: true, pixels: true });
+              const escape = observation.tree === undefined ? undefined : suggestKeyboardEscape(observation.tree);
+              return screen.present(observation, { lead: keyboardEscapeAdvice(escape, observation.pixels?.scale), expectChange: false });
+            }
+          }),
+        ),
     });
   }
   if (verbs.has('select')) {
@@ -320,16 +412,62 @@ export function createGrammarTools(
       .max(MAX_SCROLL_TIMES)
       .optional()
       .describe(`How many screens to scroll in this one call, 1 to ${String(MAX_SCROLL_TIMES)}; default 1. Use more to move far down a long list or feed.`);
-    // Each repeat is one recorded action against the budget, paced like a
-    // separate call, so a lazy list gets to render between screens.
-    const scrolling = async (way: 'up' | 'down' | 'left' | 'right', id: string | undefined, count: number) => {
-      for (let repeat = 0; repeat < count; repeat += 1) {
-        await context.actions.scroll(way, id === undefined ? undefined : { id });
-        if (repeat < count - 1) await context.observe();
-      }
-    };
     const scrolled = (way: string, count: number) =>
       count === 1 ? `Scrolled ${way}.` : `Scrolled ${way} ${String(count)} screens.`;
+    // Each repeat is one recorded action against the budget, paced like a
+    // separate call, so a lazy list gets to render between screens. A device
+    // renumbers its tree on every look and names a scroll view after its
+    // first visible row, so a list scrolled once may not be addressable for
+    // the next repeat; the remaining repeats then move the viewport, which is
+    // what scrolling the main list does, and the lead says so.
+    const scrolling = async (way: 'up' | 'down' | 'left' | 'right', id: string | undefined, count: number): Promise<string> => {
+      let scrollee = id;
+      // Where the list sits and what it is, so it can be found again once the
+      // device has renumbered it or renamed it after its first visible row.
+      const anchor = scrollee === undefined ? undefined : await describeScrollee(scrollee);
+      let refound = 0;
+      for (let repeat = 0; repeat < count; repeat += 1) {
+        try {
+          await context.actions.scroll(way, scrollee === undefined ? undefined : { id: scrollee });
+        } catch (cause) {
+          if (scrollee === undefined || repeat === 0 || !isGoneFromScreen(cause)) throw cause;
+          const again = anchor === undefined ? undefined : await refindScrollee(anchor);
+          // Only a list that filled the screen scrolls as the viewport does;
+          // a smaller region that vanished is the model's to look for.
+          if (again === undefined && (anchor?.share ?? 0) < MAIN_LIST_SHARE) throw cause;
+          if (again !== undefined) refound += 1;
+          scrollee = again;
+          await context.actions.scroll(way, scrollee === undefined ? undefined : { id: scrollee });
+        }
+        if (repeat < count - 1) await context.observe();
+      }
+      if (scrollee === undefined && id !== undefined) {
+        return `${scrolled(way, count)} The list left the tree part way, so the viewport was scrolled for the rest; keep scrolling the viewport.`;
+      }
+      return refound > 0 ? `${scrolled(way, count)} The list was re-found under a new id as it scrolled; target it by the id the screen lists now.` : scrolled(way, count);
+    };
+    /** The role and box of the node a scroll targets, from a fresh tree. */
+    const describeScrollee = async (nodeId: string): Promise<ScrolleeAnchor | undefined> => {
+      const observation = await context.observe({ tree: true });
+      const found = findNode(observation.tree, (node) => node.id === nodeId);
+      if (found?.rect === undefined) return undefined;
+      const { width, height } = observation.viewport;
+      const share = width > 0 && height > 0 ? (found.rect.width * found.rect.height) / (width * height) : 0;
+      return { role: found.role, centre: { x: found.rect.x + found.rect.width / 2, y: found.rect.y + found.rect.height / 2 }, share };
+    };
+    /** The innermost node of the anchor's role whose box holds the anchor's centre, on a fresh tree. */
+    const refindScrollee = async (anchor: ScrolleeAnchor): Promise<string | undefined> => {
+      let best: { id: string; area: number } | undefined;
+      findNode((await context.observe({ tree: true })).tree, (node) => {
+        const rect = node.rect;
+        if (node.role !== anchor.role || rect === undefined || rect.width <= 0 || rect.height <= 0) return false;
+        const inside =
+          anchor.centre.x >= rect.x && anchor.centre.x < rect.x + rect.width && anchor.centre.y >= rect.y && anchor.centre.y < rect.y + rect.height;
+        if (inside && (best === undefined || rect.width * rect.height < best.area)) best = { id: node.id, area: rect.width * rect.height };
+        return false;
+      });
+      return best?.id;
+    };
     // Node-targeted scrolling rides `perform`; without it only the viewport scrolls.
     tools['scroll'] = verbs.has('tap')
       ? screenTool({

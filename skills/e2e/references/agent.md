@@ -102,6 +102,11 @@ Use the point tools for a canvas, a game, or a native screen without
 accessibility exposure. Once a secret has been filled in the attempt no
 screenshot leaves the runner and the pixel tools leave the vocabulary, so
 act on pixels before signing in, or in a test of its own.
+A phone keyboard has no dismiss key, so there `dismiss_keyboard` names the
+blank point in the field's scroll view that closes it, in viewport
+coordinates, and `tap_at` takes such a point before any screenshot. When an
+action closes the keyboard, the result says so: on a touch screen that tap
+was often spent on closing it, and the model acts on the control again.
 
 ## assert, waitFor, extract: one question
 
