@@ -18,6 +18,11 @@ export const ios = agentDevice({
   appPath: process.env.E2E_MOBILE_BENCHMARK_IOS_APP,
   identity: `${APP_ID}-ios`,
   session: 'e2e-mobile-benchmark-ios',
+  // iOS reports a row's final frame from the first frame of a scroll, so a
+  // tap right after a swipe lands on whatever is still passing under that
+  // frame. The home list and the pull-to-refresh bounce settle in about a
+  // second; the default budget is half that.
+  transition: 1_500,
 });
 
 export const android = agentDevice({
