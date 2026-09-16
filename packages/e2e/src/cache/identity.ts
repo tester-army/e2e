@@ -15,6 +15,7 @@
 
 import { canonicalDigest, sha256Hex } from '../internal/ids.ts';
 import type { JsonValue } from '../types.ts';
+import { paramsShape } from './template.ts';
 import { TRACE_SCHEMA_VERSION } from './trace.ts';
 
 /**
@@ -81,12 +82,15 @@ export function instructionDigest(instruction: string): string {
 }
 
 /**
- * SHA-256/JCS of the projected (secret-free) call parameters. A missing params
- * object digests as the empty object, so `act(x)` and `act(x, {})` share one
- * entry.
+ * SHA-256/JCS of the shape of the projected (secret-free) call parameters:
+ * every string long enough to be templated (`cache/template.ts`) counts as
+ * one marker, so a run-unique name or email does not change the key, while
+ * numbers, booleans, short strings, and secret names are digested as given.
+ * A missing params object digests as the empty object, so `act(x)` and
+ * `act(x, {})` share one entry.
  */
 export function paramsDigest(params: Readonly<Record<string, JsonValue>> | undefined): string {
-  return canonicalDigest(params ?? {});
+  return canonicalDigest(paramsShape(params));
 }
 
 /** SHA-256 of the resolved project identity. */
