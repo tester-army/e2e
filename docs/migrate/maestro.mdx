@@ -69,7 +69,7 @@ confirmation and the Resend control.
 | `tapOn: { id: x }` | `screen.getByTestId('x').tap()` |
 | `tapOn: { point: ... }` | No deterministic equivalent. The agent has `tap_at` |
 | `doubleTapOn`, `longPressOn` | `.doubleTap()`, `.longPress()` |
-| `inputText` | `screen.getByTestId('field').fill('text')` |
+| `inputText` | `screen.getByTestId('field').fill('text')`; for an editor that hides its field, the agent's `type` verb without a target |
 | `eraseText` | `.clear()` |
 | `hideKeyboard` | `device.dismissKeyboard()` |
 | `pressKey: Enter` | `.press('Enter')` on the field |

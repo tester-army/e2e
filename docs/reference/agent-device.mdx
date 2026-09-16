@@ -281,8 +281,7 @@ device engines in one call; the tools use the current attempt's engine.
 | --- | --- | --- |
 | `open_app` | gap | Bring an app to the foreground, optionally relaunched. |
 | `swipe` | gap | Free-form swipe between two points in logical pixels. |
-| `type_text` | gap | Type into the focused field, optionally pressing Return; for editors that hide the focused field from the tree. |
-| `alert` | gap | Accept or dismiss a system alert. |
+| `alert` | gap | Accept or dismiss a system alert; prefer a listed button, whose tap replays. |
 
 Basic actions such as `tap`, `type`, and `scroll` need no tool pack. Point
 actions can tap controls absent from the accessibility tree. `type_secret`

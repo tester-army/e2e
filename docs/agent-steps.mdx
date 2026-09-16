@@ -45,6 +45,10 @@ The [agent reference](/reference/agent#vision) lists the modes.
 The agent receives tools supported by the target's engine, such as `tap`,
 `type`, `press`, `select`, `scroll`, and `navigate`. A step with declared
 credentials can also receive `type_secret`.
+On a device the agent also gets `dismiss_keyboard`. A phone keyboard has no
+dismiss key, so there the tool answers with a screenshot and the point to
+`tap_at` that closes it. When an action closes the keyboard, the result says
+so, and the model acts on the control again.
 
 Keyboard-capable engines support typing and key presses into the focused
 control. Pixel tools let the agent request a screenshot and act at a point
