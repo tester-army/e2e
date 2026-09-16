@@ -71,21 +71,8 @@ A recording replays only for the exact step it was made for. The key holds:
   and the app identity, which is `identity` when set, else the URL's origin
   and base path, plus `environment`
 - the instruction text, trimmed and normalized. Rewording it is a new key
-- the shape of `params`: the names, and the values of numbers, booleans,
-  and strings shorter than three characters, with a `Secret` reduced to its
-  name and purpose. A longer string's value is not in the key
+- the `params` values, with a `Secret` reduced to its name and purpose
 - which repeat of the same instruction it is within the test
-
-String params of three characters or more are templates. A run-unique
-company name or email in `params` is recorded as a placeholder wherever it
-appeared, in the typed text, in the names of the controls that were tapped,
-and in the end anchors, and the next run fills the placeholder with its own
-value. So `act('create a company named {name}', { params: { name } })`
-replays with a fresh name every run, and the anchors check that this run's
-company appeared. A placeholder the current params cannot fill is a miss.
-A string param the recorded text never contained may still have steered
-the flow, so the recording pins its value: a replay with another value for
-it is a miss, and the model runs the step again.
 
 Everything else can change without touching the key: the model, the agent,
 the rest of the config, the code around the step. An e2e release that

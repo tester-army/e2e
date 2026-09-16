@@ -113,24 +113,11 @@ export function validateParams(params: AgentParams | undefined): {
   };
 }
 
-/** What a `Secret` becomes in projected params: its stable name and purpose, never the value. */
-export interface ProjectedSecret {
-  readonly kind: 'secret';
-  readonly name: string;
-  readonly purpose: string;
-}
-
-/** Whether a projected params leaf is a `ProjectedSecret`, as `projectSecrets` writes it. */
-export function isProjectedSecret(value: Readonly<Record<string, JsonValue>>): value is ProjectedSecret & Readonly<Record<string, JsonValue>> {
-  return value['kind'] === 'secret' && typeof value['name'] === 'string' && typeof value['purpose'] === 'string';
-}
-
 /** Replaces every Secret leaf with its placeholder, collecting the originals. */
 function projectSecrets(value: unknown, secrets: Map<string, Secret>, seen: Set<unknown>): unknown {
   if (isSecret(value)) {
     secrets.set(value.name, value);
-    const projected: ProjectedSecret = { kind: 'secret', name: value.name, purpose: value.purpose };
-    return projected;
+    return { kind: 'secret', name: value.name, purpose: value.purpose };
   }
   if (typeof value !== 'object' || value === null) return value;
   if (seen.has(value)) {
