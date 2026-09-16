@@ -124,6 +124,58 @@ test('consumer', { session: 'admin' }, async () => {});
   );
 
   it(
+    'keeps the suite realm across a runtime skip and keeps a skipped serial member skipped',
+    async () => {
+      const file = `import { appendFileSync } from 'node:fs';
+import { test } from 'e2e';
+
+const log = (entry: string) => appendFileSync(process.env.HOOK_LOG!, entry + '\\n');
+
+test.beforeAll(() => log('beforeAll:file'));
+test.afterAll(() => log('afterAll:file'));
+
+test('skips first', async () => {
+  test.skip(true, 'not applicable here');
+});
+
+test('runs second', async () => {
+  log('body:second');
+});
+
+test.describe('wizard', { serial: true }, () => {
+  test('step 1 skips', async () => {
+    test.skip('nothing to set up');
+  });
+  test('step 2 runs', async () => {
+    log('body:step2');
+  });
+});
+`;
+      const logPath = path.join('/tmp', `e2e-skiprealm-${Date.now()}.log`);
+      process.env['HOOK_LOG'] = logPath;
+      const { outcome, project } = await runProject({ 'tests/skip-realm.e2e.ts': file }, { appUrl: app.url });
+      expect(resultByTitle(outcome, 'skips first').status).toBe('skipped');
+      expect(resultByTitle(outcome, 'runs second').status).toBe('passed');
+      const step1 = resultByTitle(outcome, 'step 1 skips');
+      expect(step1.status).toBe('skipped');
+      expect(step1.skip).toEqual({ cause: 'explicit', reason: 'nothing to set up' });
+      expect(resultByTitle(outcome, 'step 2 runs').status).toBe('passed');
+      expect(outcome.exitCode).toBe(0);
+      // One realm for the ordinary tests, one for the group: the skip closed neither early.
+      expect(readFileSync(logPath, 'utf8').trim().split('\n')).toEqual([
+        'beforeAll:file',
+        'body:second',
+        'afterAll:file',
+        'beforeAll:file',
+        'body:step2',
+        'afterAll:file',
+      ]);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
     'rejects test.skip(condition) outside a test body at collection',
     async () => {
       const file = `import { test } from 'e2e';

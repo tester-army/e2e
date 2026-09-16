@@ -147,14 +147,16 @@ export async function runSerialUnit(
     const memberRecord = memberFinalStatus.get(member.test.id);
     let status: ResultStatus;
     let skip: SkipInfo | undefined;
-    if (group.status === 'passed' || group.status === 'flaky') {
+    // A member that skipped itself stays skipped whatever the group did: a
+    // passing group says the rest of the flow held, not that this member ran.
+    if (memberRecord?.status === 'skipped') {
+      status = 'skipped';
+      skip = memberRecord.skip;
+    } else if (group.status === 'passed' || group.status === 'flaky') {
       status = group.status;
     } else if (memberRecord === undefined) {
       status = 'skipped';
       skip = { cause: 'serial-predecessor-failed', reason: 'group attempt did not reach this member' };
-    } else if (memberRecord.status === 'skipped') {
-      status = 'skipped';
-      skip = memberRecord.skip;
     } else {
       status = memberRecord.status;
     }

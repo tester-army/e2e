@@ -419,6 +419,23 @@ describe('positional file selection', () => {
     expect(neighbour.skip).toEqual({ cause: 'filtered', reason: 'file not selected by a positional argument' });
   });
 
+  it('ignores a .only in a file no positional named, locally and in CI', async () => {
+    const modules = [
+      { file: 'tests/a.e2e.ts', body: () => { test('a', noop); } },
+      { file: 'tests/b.e2e.ts', body: () => { test.only('debug', noop); } },
+    ];
+    const local = select(await collectionOf(modules, ['tests/a.e2e.ts']), config());
+    const byTitle = (title: string) => local.pairs.find((pair) => pair.test.title === title)!;
+    expect(byTitle('a').disposition).toBe('run');
+    expect(byTitle('debug').disposition).toBe('filtered');
+    // CI rejects a focused test only when the run would have honoured it.
+    const ci = config({}, { ...ENV, CI: '1' });
+    const narrowed = await collectionOf(modules, ['tests/a.e2e.ts']);
+    const whole = await collectionOf(modules);
+    expect(() => select(narrowed, ci)).not.toThrow();
+    expect(() => select(whole, ci)).toThrow(/\.only is rejected in CI/);
+  });
+
   it('reports NO_TESTS when the only selected file holds nothing runnable', async () => {
     const col = await collectionOf(
       [

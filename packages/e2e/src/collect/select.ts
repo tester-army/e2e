@@ -219,7 +219,9 @@ export function select(
   const tagMode = filters.tagMode ?? 'any';
   const targets = selectTargets(config.targets, filters.targetIds);
 
-  const focused = collection.tests.filter((test) => test.mode === 'only');
+  // Focus is decided among the tests positionals selected: a `.only` left in
+  // a file the run did not name neither runs nor silences the named files.
+  const focused = collection.tests.filter((test) => test.mode === 'only' && collection.selectedFiles.has(test.file));
   if (focused.length > 0 && config.ci) {
     throw new ConfigurationError(
       'ONLY_IN_CI',

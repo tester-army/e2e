@@ -104,9 +104,21 @@ describe('templateTrace and expandTrace', () => {
     expect(expandTrace(recorded, { title: 'E2E xyz Company' })).toBeUndefined();
   });
 
+  it('pins a templatable param the recording never spelled out, so a different value misses', () => {
+    // The plan name steered the flow (a tap on "Pro") without appearing in it.
+    const recorded = templateTrace(trace('Pro'), { plan: 'business', name: 'Pro' });
+    expect(recorded.literalParams).toEqual({ plan: 'business' });
+    expect(recorded.actions[3]).toMatchObject({ target: { name: '{{param:name}}' } });
+    // Expansion fills the placeholders and keeps the pin, so a re-stage carries it forward.
+    expect(expandTrace(recorded, { plan: 'business', name: 'Pro' })).toEqual({ ...trace('Pro'), literalParams: { plan: 'business' } });
+    expect(expandTrace(recorded, { plan: 'starter', name: 'Pro' })).toBeUndefined();
+    expect(expandTrace(recorded, { name: 'Pro' })).toBeUndefined();
+  });
+
   it('leaves a trace without templatable params untouched and expands it as a no-op', () => {
     const plain = trace('Acme');
     expect(templateTrace(plain, { qty: 2 })).toEqual(plain);
+    expect(templateTrace(plain, undefined)).toEqual(plain);
     expect(expandTrace(plain, undefined)).toEqual(plain);
   });
 

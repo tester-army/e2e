@@ -83,6 +83,9 @@ and in the end anchors, and the next run fills the placeholder with its own
 value. So `act('create a company named {name}', { params: { name } })`
 replays with a fresh name every run, and the anchors check that this run's
 company appeared. A placeholder the current params cannot fill is a miss.
+A string param the recorded text never contained may still have steered
+the flow, so the recording pins its value: a replay with another value for
+it is a miss, and the model runs the step again.
 
 Everything else can change without touching the key: the model, the agent,
 the rest of the config, the code around the step. An e2e release that

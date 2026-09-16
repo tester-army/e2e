@@ -251,9 +251,20 @@ export interface ActionTrace {
    * half a minute), and the click alone proves nothing.
    */
   readonly endWaitMs?: number;
+  /**
+   * Templatable string params (`cache/template.ts`) whose value never
+   * appeared in the recorded text, by path. The key digests only the params'
+   * shape, so such a value may still have steered the recorded flow without
+   * leaving a placeholder to fill; a replay therefore requires these exact
+   * values again and misses on any other.
+   */
+  readonly literalParams?: Readonly<Record<string, string>>;
   /** Set when recording overflowed a cap; the trace documents, never replays. */
   readonly truncated?: boolean;
 }
+
+/** Most literal params an entry carries; params are capped at 64 KiB, so this is generous. */
+const MAX_TRACE_LITERAL_PARAMS = 256;
 
 export interface TraceEntry {
   readonly schemaVersion: typeof TRACE_SCHEMA_VERSION;
@@ -345,6 +356,9 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
     }
   }
 
+  const literalParams = readLiteralParams(raw['literalParams']);
+  if (raw['literalParams'] !== undefined && literalParams === undefined) return undefined;
+
   const actionsRaw = raw['actions'];
   if (!Array.isArray(actionsRaw) || actionsRaw.length === 0 || actionsRaw.length > MAX_TRACE_ACTIONS) {
     return undefined;
@@ -368,6 +382,7 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
     ...(endPath === undefined ? {} : { endPath }),
     ...(endAnchors === undefined || endAnchors.length === 0 ? {} : { endAnchors }),
     ...(endWaitMs === undefined ? {} : { endWaitMs }),
+    ...(literalParams === undefined || Object.keys(literalParams).length === 0 ? {} : { literalParams }),
     ...(truncated === undefined ? {} : { truncated }),
   };
 }
@@ -540,6 +555,20 @@ function readProvenance(document: unknown): TraceProvenance | undefined {
   if (testId === undefined || targetId === undefined) return undefined;
   if (typeof instructionDigest !== 'string' || !SHA256_HEX.test(instructionDigest)) return undefined;
   return { testId, targetId, instructionDigest };
+}
+
+/** `literalParams`: a flat object of param paths to their exact string values, each within the input cap. */
+function readLiteralParams(value: unknown): Readonly<Record<string, string>> | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.length > MAX_TRACE_LITERAL_PARAMS) return undefined;
+  const out: Record<string, string> = {};
+  for (const [path, literal] of entries) {
+    if (path === '' || typeof literal !== 'string' || literal.length > MAX_TRACE_INPUT_CHARS) return undefined;
+    out[path] = literal;
+  }
+  return out;
 }
 
 function readBoundedText(value: unknown, maxChars: number): string | undefined {

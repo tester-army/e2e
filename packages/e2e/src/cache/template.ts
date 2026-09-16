@@ -234,26 +234,52 @@ function mapTrace(trace: ActionTrace, map: StringMap): ActionTrace | undefined {
   };
 }
 
+/** The placeholder a template writes. */
+function placeholderOf(path: string): string {
+  return `${PLACEHOLDER_OPEN}${path}${PLACEHOLDER_CLOSE}`;
+}
+
 /**
- * The recording as stored: parameter values replaced by placeholders. Text
- * that already spelled a placeholder cannot be told from a recorded one, so
- * such a trace is marked non-replayable rather than expanded wrongly later.
+ * The recording as stored: parameter values replaced by placeholders. A
+ * templatable value the recorded text never contained gets no placeholder,
+ * yet may have steered the flow (a plan name the model turned into a tap on
+ * another label), so it is kept in `literalParams` and a replay requires it
+ * unchanged. Text that already spelled a placeholder cannot be told from a
+ * recorded one, so such a trace is marked non-replayable rather than expanded
+ * wrongly later.
  */
 export function templateTrace(trace: ActionTrace, params: Readonly<Record<string, JsonValue>> | undefined): ActionTrace {
   const templates = paramTemplates(params);
   let poisoned = false;
-  const mapped = mapTrace(trace, (text) => {
-    if (containsPlaceholder(text)) poisoned = true;
-    return templateText(text, templates);
+  const mapped =
+    mapTrace(trace, (text) => {
+      if (containsPlaceholder(text)) poisoned = true;
+      return templateText(text, templates);
+    }) ?? trace;
+  const bound = new Set<string>();
+  mapTrace(mapped, (text) => {
+    for (const template of templates) if (text.includes(placeholderOf(template.path))) bound.add(template.path);
+    return text;
   });
-  const result = mapped ?? trace;
-  return poisoned ? { ...result, truncated: true } : result;
+  const literalParams = Object.fromEntries(
+    templates.filter((template) => !bound.has(template.path)).map((template) => [template.path, template.value]),
+  );
+  return {
+    ...mapped,
+    ...(Object.keys(literalParams).length === 0 ? {} : { literalParams }),
+    ...(poisoned ? { truncated: true } : {}),
+  };
 }
 
 /**
  * The recording as replayed: placeholders filled from this call's params, or
- * undefined when the entry names a parameter this call does not carry.
+ * undefined when the entry names a parameter this call does not carry, or a
+ * literal param's value differs from the one recorded.
  */
 export function expandTrace(trace: ActionTrace, params: Readonly<Record<string, JsonValue>> | undefined): ActionTrace | undefined {
+  const values = new Map(paramTemplates(params).map((template) => [template.path, template.value]));
+  for (const [path, literal] of Object.entries(trace.literalParams ?? {})) {
+    if (values.get(path) !== literal) return undefined;
+  }
   return mapTrace(trace, (text) => expandText(text, params));
 }

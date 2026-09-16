@@ -377,9 +377,10 @@ export class TargetExecutor implements SerialHost {
           kind: 'ordinary',
         });
         attempts.push(attempt);
-        if (attempt.status !== 'passed') {
-          // A failed realm is never reused, but afterAll
-          // still runs for every scope whose beforeAll started in it.
+        if (attempt.status !== 'passed' && attempt.status !== 'skipped') {
+          // A failed realm is never reused, but afterAll still runs for every
+          // scope whose beforeAll started in it. A body that skipped itself
+          // left the suite instance as it found it, so the next test keeps it.
           await this.realms.leave(realm);
           realm = null;
         }
