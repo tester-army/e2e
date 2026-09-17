@@ -1,5 +1,5 @@
 /**
- * Parameter templating for recorded traces.
+ * Slots for `unique()` values in recorded traces.
  *
  * A goal like `act('create a company named {name}', { params: { name } })`
  * usually carries a run-unique value — a timestamped name, a fresh email —
@@ -8,43 +8,43 @@
  * change with the value, and the recorded inputs and target descriptors
  * ("tap option 'E2E 4f3 Company'") would never re-find their nodes.
  *
- * So the recording is a template. Every string parameter long enough to be
- * distinctive is replaced, wherever it appears in recorded text, by a
- * placeholder naming the parameter, and the key digests the params with
- * those strings removed plus the list of their paths. At replay the
- * placeholders are filled from the current params, so the same flow replays
- * with this run's values and the end anchors still check this run's outcome.
- * Short strings, numbers, and booleans stay literal: `'2'` or `'ok'` occur
- * everywhere on a screen, and templating them would rewrite text the
- * parameter never produced.
+ * So a value the test marked with `unique()` is a slot. The key digests the
+ * params with a placeholder naming the parameter where the value was, the
+ * recording carries the same placeholder wherever the value appeared in its
+ * text, and at replay the placeholders are filled from the current call, so
+ * the same flow replays with this run's values and the end anchors check
+ * this run's outcome. Everything not marked is literal, in the key and in
+ * the recording alike.
  *
  * Templating is fail-closed like the rest of replay: a placeholder that names
- * a parameter the current call lacks, a pinned parameter whose value changed,
- * or text that already spelled a placeholder makes the entry unusable, which
- * the caller reports as a miss.
+ * a parameter the current call did not mark, or recorded text that already
+ * spelled a placeholder, makes the entry unusable, which the caller reports
+ * as a miss.
  */
 
-import { isProjectedSecret } from '../agent/act-validation.ts';
 import type { JsonValue } from '../types.ts';
 import { mapTraceText, type ActionTrace } from './trace.ts';
 
-/** Shortest string parameter that is templated; below this a value is not distinctive. */
-const MIN_TEMPLATE_CHARS = 3;
-
-/**
- * Placeholder grammar: `{{param:<pointer>}}`, where the pointer is the
- * parameter's JSON Pointer (RFC 6901: `/name`, `/address/city`, `/tags/0`,
- * with `~` and `/` in a key escaped as `~0` and `~1`). One codec owns both
- * directions; a pointer never contains `}`, so the closing brace is unambiguous.
- */
-const PLACEHOLDER = /\{\{param:([^}]*)\}\}/gu;
-
-function encodePlaceholder(pointer: string): string {
-  return `{{param:${pointer}}}`;
+/** One `unique()` param: its JSON Pointer in the params and this call's value. */
+export interface ParamTemplate {
+  readonly pointer: string;
+  readonly value: string;
 }
 
-function pointerSegment(key: string): string {
-  return key.replaceAll('~', '~0').replaceAll('/', '~1');
+/** Extends a JSON Pointer (RFC 6901) by one key; `~` and `/` in a key become `~0` and `~1`. */
+export function paramPointer(parent: string, key: string | number): string {
+  return `${parent}/${typeof key === 'number' ? key : key.replaceAll('~', '~0').replaceAll('/', '~1')}`;
+}
+
+/**
+ * Placeholder grammar: `{{param:<pointer>}}`. A pointer never contains `}`,
+ * so the closing braces are unambiguous; one codec owns both directions.
+ */
+const PLACEHOLDER_PREFIX = '{{param:';
+const PLACEHOLDER = /\{\{param:([^}]*)\}\}/gu;
+
+function placeholder(pointer: string): string {
+  return `${PLACEHOLDER_PREFIX}${pointer}}}`;
 }
 
 /** `Array.isArray` does not narrow a readonly array away; this does. */
@@ -52,85 +52,51 @@ function isJsonArray(value: JsonValue): value is readonly JsonValue[] {
   return Array.isArray(value);
 }
 
-/** A parameter's JSON Pointer and its value. */
-export interface ParamTemplate {
-  readonly pointer: string;
-  readonly value: string;
-}
-
-function isTemplatable(value: string): boolean {
-  return value.length >= MIN_TEMPLATE_CHARS && !value.includes('}');
-}
-
 /**
- * Walks the projected params once, handing every templatable string to `f`
- * with its pointer and keeping everything else — numbers, booleans, short
- * strings, and secret placeholders (a name and a purpose, never screen text).
+ * The params as the key digests them: each template's leaf replaced by its
+ * placeholder. Two calls whose params differ only in `unique()` values share
+ * a key, and therefore a recording. A missing params object is the empty
+ * object, so `act(x)` and `act(x, {})` share one entry.
  */
-function mapParamStrings(
+export function templateParams(
   params: Readonly<Record<string, JsonValue>> | undefined,
-  f: (pointer: string, value: string) => JsonValue,
+  templates: readonly ParamTemplate[],
 ): Readonly<Record<string, JsonValue>> {
+  const pointers = new Set(templates.map((template) => template.pointer));
   const walk = (value: JsonValue, pointer: string): JsonValue => {
-    if (typeof value === 'string') return isTemplatable(value) ? f(pointer, value) : value;
+    if (pointers.has(pointer)) return placeholder(pointer);
     if (value === null || typeof value !== 'object') return value;
-    if (isJsonArray(value)) return value.map((item, index) => walk(item, `${pointer}/${index}`));
-    if (isProjectedSecret(value)) return value;
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, walk(item, `${pointer}/${pointerSegment(key)}`)]));
+    if (isJsonArray(value)) return value.map((item, index) => walk(item, paramPointer(pointer, index)));
+    return walkObject(value, pointer);
   };
-  return walk(params ?? {}, '') as Readonly<Record<string, JsonValue>>;
-}
-
-/**
- * Every templatable string parameter, longest value first so a value that
- * contains another (`"Ada Lovelace"` and `"Ada"`) is claimed whole before the
- * shorter one is looked for; equal lengths order by pointer, so the order is
- * stable.
- */
-export function paramTemplates(params: Readonly<Record<string, JsonValue>> | undefined): readonly ParamTemplate[] {
-  const templates: ParamTemplate[] = [];
-  mapParamStrings(params, (pointer, value) => {
-    templates.push({ pointer, value });
-    return value;
-  });
-  return templates.toSorted((a, b) => b.value.length - a.value.length || a.pointer.localeCompare(b.pointer));
-}
-
-/**
- * The params as the key sees them: the literal values with every templatable
- * string removed, and the pointers of the strings that were. Two calls whose
- * params differ only in such strings share a key, and therefore a recording.
- */
-export function paramsShape(params: Readonly<Record<string, JsonValue>> | undefined): JsonValue {
-  const templated: string[] = [];
-  const literal = mapParamStrings(params, (pointer) => {
-    templated.push(pointer);
-    return null;
-  });
-  return { literal, templated: templated.toSorted() };
+  const walkObject = (value: Readonly<Record<string, JsonValue>>, pointer: string): Readonly<Record<string, JsonValue>> =>
+    Object.fromEntries(Object.entries(value).map(([key, item]) => [key, walk(item, paramPointer(pointer, key))]));
+  return walkObject(params ?? {}, '');
 }
 
 /**
  * Replaces every occurrence of each template's value in `text` with its
- * placeholder, noting each pointer it wrote into `bound`. Literal segments
- * are tracked so a value never matches inside a placeholder written a moment
- * earlier (a parameter named `name` whose value is `name`).
+ * placeholder. Longer values are claimed first, so a value that contains
+ * another (`"Ada Lovelace"` and `"Ada"`) is replaced whole; equal lengths
+ * order by pointer, so the result is stable. Literal segments are tracked so
+ * a value never matches inside a placeholder written a moment earlier (a
+ * parameter named `name` whose value is `name`).
  */
-export function templateText(text: string, templates: readonly ParamTemplate[], bound?: Set<string>): string {
+export function templateText(text: string, templates: readonly ParamTemplate[]): string {
   type Segment = { readonly literal: boolean; readonly text: string };
+  const byLength = templates.toSorted((a, b) => b.value.length - a.value.length || a.pointer.localeCompare(b.pointer));
   let segments: Segment[] = [{ literal: true, text }];
-  for (const template of templates) {
+  for (const template of byLength) {
     const next: Segment[] = [];
     for (const segment of segments) {
       if (!segment.literal || !segment.text.includes(template.value)) {
         next.push(segment);
         continue;
       }
-      bound?.add(template.pointer);
       const parts = segment.text.split(template.value);
       parts.forEach((part, index) => {
         if (part !== '') next.push({ literal: true, text: part });
-        if (index < parts.length - 1) next.push({ literal: false, text: encodePlaceholder(template.pointer) });
+        if (index < parts.length - 1) next.push({ literal: false, text: placeholder(template.pointer) });
       });
     }
     segments = next;
@@ -140,8 +106,7 @@ export function templateText(text: string, templates: readonly ParamTemplate[], 
 
 /**
  * Fills every placeholder in `text` from `values` (pointer to value), or
- * returns undefined when one names a parameter the call does not carry as a
- * templatable string.
+ * returns undefined when one names a parameter the call did not mark.
  */
 export function expandText(text: string, values: ReadonlyMap<string, string>): string | undefined {
   let missing = false;
@@ -154,41 +119,24 @@ export function expandText(text: string, values: ReadonlyMap<string, string>): s
 }
 
 /**
- * The recording as stored: parameter values replaced by placeholders, or
- * undefined when the recorded text already spelled a placeholder, which
- * could not be told from a recorded one at replay.
- *
- * A templatable value the recorded text never contained gets no placeholder,
- * yet may have steered the flow (a plan name the model turned into a tap on
- * another label), so it is pinned in `literalParams` and a replay requires it
- * unchanged. Two calls alternating such a value therefore take turns missing
- * and re-recording the one entry their shared key names; the cache does not
- * keep a variant per value.
+ * The recording as stored: each template's value replaced by its placeholder
+ * wherever the recorded text spelled it, or undefined when the text already
+ * spelled a placeholder, which could not be told from a written one at replay.
  */
-export function templateTrace(trace: ActionTrace, params: Readonly<Record<string, JsonValue>> | undefined): ActionTrace | undefined {
-  const templates = paramTemplates(params);
-  const bound = new Set<string>();
+export function templateTrace(trace: ActionTrace, templates: readonly ParamTemplate[]): ActionTrace | undefined {
   let literalPlaceholder = false;
   const templated = mapTraceText(trace, (text) => {
-    if (text.includes('{{param:')) literalPlaceholder = true;
-    return templateText(text, templates, bound);
+    if (text.includes(PLACEHOLDER_PREFIX)) literalPlaceholder = true;
+    return templateText(text, templates);
   });
-  if (templated === undefined || literalPlaceholder) return undefined;
-  const literalParams = Object.fromEntries(
-    templates.filter((template) => !bound.has(template.pointer)).map((template) => [template.pointer, template.value]),
-  );
-  return Object.keys(literalParams).length === 0 ? templated : { ...templated, literalParams };
+  return literalPlaceholder ? undefined : templated;
 }
 
 /**
- * The recording as replayed: placeholders filled from this call's params, or
- * undefined when the entry names a parameter this call does not carry, or a
- * pinned parameter's value differs from the one recorded.
+ * The recording as replayed: placeholders filled from this call's templates,
+ * or undefined when the entry names a parameter this call did not mark.
  */
-export function expandTrace(trace: ActionTrace, params: Readonly<Record<string, JsonValue>> | undefined): ActionTrace | undefined {
-  const values = new Map(paramTemplates(params).map((template) => [template.pointer, template.value]));
-  for (const [pointer, literal] of Object.entries(trace.literalParams ?? {})) {
-    if (values.get(pointer) !== literal) return undefined;
-  }
+export function expandTrace(trace: ActionTrace, templates: readonly ParamTemplate[]): ActionTrace | undefined {
+  const values = new Map(templates.map((template) => [template.pointer, template.value]));
   return mapTraceText(trace, (text) => expandText(text, values));
 }

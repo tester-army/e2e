@@ -32,7 +32,9 @@ await agent.act('invite {email} as an editor', { params: { email: 'ada@example.t
 
 Real values travel through `params`, never from the model's imagination. A
 `Secret` param stays host-side: the model sees only its name, and the runner
-fills the field itself. See [Signing in](/authentication).
+fills the field itself. See [Signing in](/authentication). A value that is
+different on every run goes in as `unique(value)`, so the
+[trace cache](/cache#what-must-match) replays the step with each run's value.
 
 ```ts
 const member = credentials.user('member');

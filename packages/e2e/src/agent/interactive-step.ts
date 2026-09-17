@@ -44,7 +44,7 @@ export interface InteractiveStep {
  * never resolved and the budgets a model loop needs do not apply.
  */
 export async function openInteractiveStep(runtime: AgentContext, options: InteractiveStepOptions): Promise<InteractiveStep> {
-  const { projected, secrets } = validateParams(options.params);
+  const { projected, secrets, templates } = validateParams(options.params);
   const executor = new HostExecutor();
   const config: ResolvedAgentConfig = { ...runtime.config.agent, maxSteps: UNBOUNDED, maxModelCalls: UNBOUNDED };
   const agent: DispatchAgent = { name: executor.name, config, executor, agentContext: undefined };
@@ -56,6 +56,7 @@ export async function openInteractiveStep(runtime: AgentContext, options: Intera
       instruction: options.instruction,
       params: projected,
       secrets,
+      templates,
       defaultFailureCode: 'ACTION_FAILED',
       timeout: options.timeout,
       maxSteps: undefined,

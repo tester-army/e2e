@@ -5,6 +5,7 @@
 
 import type { expectationBrand, testCaseBrand } from './internal/brands.ts';
 import type { CredentialConfig, Secret, SecretConfig } from './config/secrets.ts';
+import type { Unique } from './params.ts';
 import type { StepExecutor } from './agent/executor.ts';
 import type { StepCacheInfo } from './run/steps.ts';
 import type { EngineHandle } from './engine/index.ts';
@@ -26,6 +27,7 @@ export type {
   SecretPurpose,
   Secrets,
 } from './config/secrets.ts';
+export type { Unique } from './params.ts';
 export type {
   ActionTrace,
   RecordedAction,
@@ -92,10 +94,11 @@ export namespace StandardSchemaV1 {
   >['output'];
 }
 
-/** A JSON-safe value or a `Secret`. */
+/** A JSON-safe value, a `Secret`, or a `Unique` string. */
 export type AgentParam =
   | JsonPrimitive
   | Secret
+  | Unique
   | readonly AgentParam[]
   | { readonly [key: string]: AgentParam };
 /** Values an `act` instruction refers to. */
@@ -174,7 +177,9 @@ export interface ExtractOptions<Schema extends StandardSchemaV1> extends VisionO
 export interface ActOptions extends AgentOption {
   /**
    * JSON-safe values the instruction refers to, at most 64 KiB and 32 levels
-   * deep. A `Secret` reaches the model by name only; the runner fills it.
+   * deep. A `Secret` reaches the model by name only; the runner fills it. A
+   * value wrapped in `unique()` is different on every run, and the trace
+   * cache records a slot for it instead of the value.
    */
   params?: AgentParams;
   /** Step deadline in milliseconds; defaults to the test timeout. */

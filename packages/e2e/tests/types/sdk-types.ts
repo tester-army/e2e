@@ -9,6 +9,7 @@ import {
   credentials,
   expect,
   secrets,
+  unique,
   test,
   type Agent,
   type App,
@@ -20,6 +21,7 @@ import {
   type RunEvent,
   type Screen,
   type Secret,
+  type Unique,
   type TraceCacheStore,
   type ExecutorObservation,
   type ValueExpectation,
@@ -65,6 +67,11 @@ credentials.user('admin').password satisfies Secret;
 secrets.get('key').value;
 void screen.getByLabel('Key').fill(secrets.get('key'));
 void agent.act('use the key', { params: { apiKey: secrets.get('key') } });
+// A run-unique value is marked, not inferred; the model still sees the string.
+unique('E2E Company') satisfies Unique;
+void agent.act('create {name}', { params: { name: unique(`E2E ${Date.now()}`), owner: { email: unique('a@b.test') } } });
+// @ts-expect-error unique() marks a string.
+unique(7);
 ({ agents: { default: { model }, ux: { context: 'Review the UX.' } } }) satisfies E2EConfig;
 // @ts-expect-error a model is an AI SDK instance the config constructs; the runner implies no gateway for a string
 ({ agents: { default: { model: 'openai/gpt-5.6-luna-fast' } } }) satisfies E2EConfig;

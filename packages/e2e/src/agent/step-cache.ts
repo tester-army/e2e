@@ -22,7 +22,7 @@ import {
 } from '../cache/decide.ts';
 import { instructionDigest } from '../cache/identity.ts';
 import { TraceRecorder } from '../cache/recorder.ts';
-import { expandTrace, templateTrace } from '../cache/template.ts';
+import { expandTrace, templateParams, templateTrace, type ParamTemplate } from '../cache/template.ts';
 import { readTraceEntry, type ActionTrace, type TraceEntry } from '../cache/trace.ts';
 import { sleep } from '../internal/time.ts';
 import type { StepCacheInfo } from '../run/steps.ts';
@@ -56,6 +56,8 @@ export interface StepCacheOptions {
   readonly cache: AgentCacheContext;
   readonly instruction: string;
   readonly params: Readonly<Record<string, JsonValue>> | undefined;
+  /** The `unique()` values in the params: slots in the key and the recording, filled from each call. */
+  readonly templates: readonly ParamTemplate[];
   readonly executor: { readonly name: string; readonly version?: string };
   readonly redact: (text: string) => string;
   readonly maxActions: number;
@@ -123,7 +125,9 @@ export class StepTraceSession {
     this.host = host;
     this.options = options;
     this.cache = options.cache;
-    this.keyHash = options.cache.claimKeyHash('act', options.instruction, options.params);
+    // The key digests the params as the recording spells them, a placeholder
+    // where each `unique()` value was, so every run's value finds one entry.
+    this.keyHash = options.cache.claimKeyHash('act', options.instruction, templateParams(options.params, options.templates));
     if (options.cache.mode === 'read-write') {
       this.recorder = new TraceRecorder({
         redact: options.redact,
@@ -235,10 +239,10 @@ export class StepTraceSession {
     if (read.status === 'invalid') return { status: 'miss', reason: 'invalid-entry' };
     const entry = readTraceEntry(read.entry);
     if (entry === undefined) return { status: 'miss', reason: 'invalid-entry' };
-    // The stored recording is a template over the step's string params; this
-    // call's values fill it. A placeholder this call cannot fill is an entry
-    // recorded for another shape, which the key should have kept apart.
-    const payload = expandTrace(entry.payload, this.options.params);
+    // The stored recording has a slot for each `unique()` value; this call's
+    // values fill it. A slot this call cannot fill is an entry recorded for
+    // another shape, which the key should have kept apart.
+    const payload = expandTrace(entry.payload, this.options.templates);
     if (payload === undefined) return { status: 'miss', reason: 'invalid-entry' };
     return { status: 'hit', entry: { ...entry, payload } };
   }
@@ -395,10 +399,10 @@ export class StepTraceSession {
     // and no opening navigate — could never replay: `wrong-context` forever.
     // Writing it would be pure store traffic, so it is not written at all.
     if (trace.startPath === undefined && !opensWithNavigate(trace)) return;
-    // Stored as a template over this call's string params, so the next run's
-    // values — a fresh timestamped name — replay the same flow. A recording
-    // that cannot be templated safely is not written at all.
-    const templated = templateTrace(trace, this.options.params);
+    // Stored with a slot where each `unique()` value appeared, so the next
+    // run's values — a fresh timestamped name — replay the same flow. A
+    // recording that cannot be templated safely is not written at all.
+    const templated = templateTrace(trace, this.options.templates);
     if (templated === undefined) return;
     this.cache.staged.push({ keyHash: this.keyHash, trace: templated, stepIndex: this.options.stepIndex });
   }

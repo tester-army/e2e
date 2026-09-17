@@ -36,6 +36,7 @@ import type { ObservedScreen } from './replay.ts';
 import { OperationQueue } from './operation-queue.ts';
 import { StepAccounting } from './step-accounting.ts';
 import { StepTraceSession, type StepCacheHost, type StepOutcome } from './step-cache.ts';
+import type { ParamTemplate } from '../cache/template.ts';
 
 /** What a dispatch needs of the agent a step runs with; an interactive step supplies its own. */
 export type DispatchAgent = Pick<AgentSelection, 'name' | 'config' | 'executor' | 'agentContext'>;
@@ -49,6 +50,8 @@ export interface DispatchSpec {
   readonly params: Readonly<Record<string, JsonValue>> | undefined;
   /** Secrets declared in the params, by stable name. */
   readonly secrets: ReadonlyMap<string, Secret>;
+  /** The `unique()` values in the params, by JSON Pointer; the trace cache templates them. */
+  readonly templates: readonly ParamTemplate[];
   /** The code a code-less non-passing verdict maps to. */
   readonly defaultFailureCode: AgentErrorCode;
   readonly timeout: number | undefined;
@@ -67,13 +70,14 @@ export async function runActStep(
 ): Promise<ActResult> {
   const normalized = validateInstruction(instruction, 'agent.act');
   validateActOptions(options, extraArguments);
-  const { projected, secrets } = validateParams(options?.params);
+  const { projected, secrets, templates } = validateParams(options?.params);
   return dispatchAgentStep(runtime, {
     api: 'agent.act',
     kind: 'act',
     instruction: normalized,
     params: projected,
     secrets,
+    templates,
     defaultFailureCode: 'ACTION_FAILED',
     timeout: options?.timeout,
     maxSteps: options?.maxSteps,
@@ -112,6 +116,7 @@ export async function runAssertStep(
     instruction: normalized,
     params: undefined,
     secrets: new Map(),
+    templates: [],
     defaultFailureCode: 'ASSERTION_FAILED',
     timeout: options?.timeout,
     maxSteps: undefined,
@@ -212,6 +217,7 @@ class ActDispatch {
             cache,
             instruction: spec.instruction,
             params: spec.params,
+            templates: spec.templates,
             executor: {
               name: agent.executor.name,
               ...(agent.executor.version === undefined ? {} : { version: agent.executor.version }),

@@ -6,7 +6,9 @@
 
 import { ConfigurationError, TestError } from '../internal/errors.ts';
 import { validateJsonValue } from '../internal/json-value.ts';
+import { paramPointer, type ParamTemplate } from '../cache/template.ts';
 import { isSecret } from '../locator/screen.ts';
+import { isUnique } from '../params.ts';
 import type { ActOptions, AgentErrorCode, AgentParams, JsonValue, Secret } from '../types.ts';
 import { AgentError, CATEGORY_BY_CODE } from './error.ts';
 import { BLOCKABLE_CODES, type StepVerdict } from './executor.ts';
@@ -80,24 +82,28 @@ export function validateActOptions(options: ActOptions | undefined, extraArgumen
 }
 
 /**
- * Validates parameters and returns an inert, secret-free snapshot plus the
- * declared secrets. A `Secret` value is projected to
- * `{ kind: 'secret', name, purpose }` — its plaintext never enters the
- * snapshot, the prompt, or any log — and is fillable only through
- * `actions.typeSecret`. The JSON round-trip is deliberate: it bounds the
- * canonical size (spec 02) and freezes what the executor sees, so a getter
- * or proxy cannot change values — or run code — during later serialization.
+ * Validates parameters and returns an inert, secret-free snapshot plus what
+ * the walk found in it: the declared secrets and the `unique()` values. A
+ * `Secret` is projected to `{ kind: 'secret', name, purpose }` — its
+ * plaintext never enters the snapshot, the prompt, or any log — and is
+ * fillable only through `actions.typeSecret`. A `Unique` is projected to its
+ * string, so the model and the executor see a plain value, and is listed by
+ * JSON Pointer for the trace cache to template. The JSON round-trip is
+ * deliberate: it bounds the canonical size (spec 02) and freezes what the
+ * executor sees, so a getter or proxy cannot change values — or run code —
+ * during later serialization.
  */
 export function validateParams(params: AgentParams | undefined): {
   projected: Readonly<Record<string, JsonValue>> | undefined;
   secrets: ReadonlyMap<string, Secret>;
+  templates: readonly ParamTemplate[];
 } {
-  if (params === undefined) return { projected: undefined, secrets: new Map() };
+  if (params === undefined) return { projected: undefined, secrets: new Map(), templates: [] };
   if (typeof params !== 'object' || params === null || Array.isArray(params)) {
     throw new TestError('INVALID_ARGUMENT', 'agent.act params must be a plain object');
   }
-  const secrets = new Map<string, Secret>();
-  const projectedRaw = projectSecrets(params, secrets, new Set());
+  const found: FoundParams = { secrets: new Map(), templates: [] };
+  const projectedRaw = projectParams(params, '', found, new Set());
   validateJsonValue(projectedRaw, 'agent.act params', { maxDepth: MAX_PARAMS_DEPTH });
   const canonical = JSON.stringify(projectedRaw);
   const bytes = new TextEncoder().encode(canonical).byteLength;
@@ -109,28 +115,26 @@ export function validateParams(params: AgentParams | undefined): {
   }
   return {
     projected: JSON.parse(canonical) as Readonly<Record<string, JsonValue>>,
-    secrets,
+    secrets: found.secrets,
+    templates: found.templates,
   };
 }
 
-/** What a `Secret` becomes in projected params: its stable name and purpose, never the value. */
-export interface ProjectedSecret {
-  readonly kind: 'secret';
-  readonly name: string;
-  readonly purpose: string;
+/** The marked leaves one walk of the params found. */
+interface FoundParams {
+  readonly secrets: Map<string, Secret>;
+  readonly templates: ParamTemplate[];
 }
 
-/** Whether a projected params leaf is a `ProjectedSecret`, as `projectSecrets` writes it. */
-export function isProjectedSecret(value: Readonly<Record<string, JsonValue>>): value is ProjectedSecret & Readonly<Record<string, JsonValue>> {
-  return value['kind'] === 'secret' && typeof value['name'] === 'string' && typeof value['purpose'] === 'string';
-}
-
-/** Replaces every Secret leaf with its placeholder, collecting the originals. */
-function projectSecrets(value: unknown, secrets: Map<string, Secret>, seen: Set<unknown>): unknown {
+/** Replaces every Secret leaf with its placeholder and every Unique leaf with its value, collecting both. */
+function projectParams(value: unknown, pointer: string, found: FoundParams, seen: Set<unknown>): unknown {
   if (isSecret(value)) {
-    secrets.set(value.name, value);
-    const projected: ProjectedSecret = { kind: 'secret', name: value.name, purpose: value.purpose };
-    return projected;
+    found.secrets.set(value.name, value);
+    return { kind: 'secret', name: value.name, purpose: value.purpose };
+  }
+  if (isUnique(value)) {
+    found.templates.push({ pointer, value: value.value });
+    return value.value;
   }
   if (typeof value !== 'object' || value === null) return value;
   if (seen.has(value)) {
@@ -138,10 +142,10 @@ function projectSecrets(value: unknown, secrets: Map<string, Secret>, seen: Set<
   }
   seen.add(value);
   if (Array.isArray(value)) {
-    return value.map((entry) => projectSecrets(entry, secrets, seen));
+    return value.map((entry, index) => projectParams(entry, paramPointer(pointer, index), found, seen));
   }
   return Object.fromEntries(
-    Object.entries(value).map(([key, entry]) => [key, projectSecrets(entry, secrets, seen)]),
+    Object.entries(value).map(([key, entry]) => [key, projectParams(entry, paramPointer(pointer, key), found, seen)]),
   );
 }
 

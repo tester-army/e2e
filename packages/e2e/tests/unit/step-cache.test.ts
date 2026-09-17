@@ -3,10 +3,11 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentCacheContext } from '../../src/cache/context.ts';
 import { buildTraceEntry, type ActionTrace, type TraceEntry } from '../../src/cache/trace.ts';
-import { recordedVerdictOf, StepTraceSession, type StepCacheHost } from '../../src/agent/step-cache.ts';
+import { recordedVerdictOf, StepTraceSession, type StepCacheHost, type StepCacheOptions } from '../../src/agent/step-cache.ts';
 import { AgentError } from '../../src/agent/error.ts';
 import type { ExecutorActions } from '../../src/agent/executor.ts';
 import type { SemanticNode } from '../../src/engine/surface.ts';
+import type { JsonValue } from '../../src/types.ts';
 
 const savedMarker: SemanticNode = {
   ref: { id: 'm1', revision: 'r1' },
@@ -67,15 +68,17 @@ function makeHost(
   };
 }
 
-function makeSession(cache: AgentCacheContext, host: StepCacheHost): StepTraceSession {
+function makeSession(cache: AgentCacheContext, host: StepCacheHost, overrides: Partial<StepCacheOptions> = {}): StepTraceSession {
   return new StepTraceSession(host, {
     cache,
     instruction: 'open billing',
     params: undefined,
+    templates: [],
     executor: { name: 'test' },
     redact: (text) => text,
     maxActions: 25,
     stepIndex: 1,
+    ...overrides,
   });
 }
 
@@ -259,6 +262,42 @@ describe('StepTraceSession', () => {
     await session.conclude('passed', 'saved the marker');
     expect(context.staged[0]?.trace.endAnchors).toEqual([savedAnchor]);
     expect(context.staged[0]?.trace.endPath).toBe('/storage');
+  });
+
+  it('keys on the params with each unique() value as a placeholder, stages the recording with the slot, and fills it from the next call', async () => {
+    const keyed: JsonValue[] = [];
+    const recording: AgentCacheContext = {
+      ...fakeContext(noEntry.store.read),
+      claimKeyHash: (_kind, _instruction, params) => {
+        keyed.push(params ?? null);
+        return 'a'.repeat(64);
+      },
+    };
+    const first = makeSession(recording, makeHost(['/companies', '/companies/E2E-abc']), {
+      params: { name: 'E2E-abc', plan: 'pro' },
+      templates: [{ pointer: '/name', value: 'E2E-abc' }],
+    });
+    await first.begin();
+    first.record({ name: 'navigate', url: '/companies/new?name=E2E-abc' });
+    await first.conclude('passed', 'created E2E-abc on the pro plan');
+    expect(keyed).toEqual([{ name: '{{param:/name}}', plan: 'pro' }]);
+    const staged = recording.staged[0]!.trace;
+    expect(staged.actions[0]).toMatchObject({ url: '/companies/new?name={{param:/name}}' });
+    expect(staged.summary).toBe('created {{param:/name}} on the pro plan');
+
+    // The next run reads the same entry and replays it with its own value.
+    const replayed = entryContext(staged);
+    const second = makeSession(replayed, makeHost(['/companies', '/companies/E2E-xyz']), {
+      params: { name: 'E2E-xyz', plan: 'pro' },
+      templates: [{ pointer: '/name', value: 'E2E-xyz' }],
+    });
+    const verdict = await second.begin();
+    expect(verdict?.summary).toContain('created E2E-xyz on the pro plan');
+
+    // A call that did not mark the param cannot fill the slot: a miss, never a literal placeholder on screen.
+    const unmarked = makeSession(entryContext(staged), makeHost(['/companies']), { params: { name: 'E2E-xyz', plan: 'pro' } });
+    expect(await unmarked.begin()).toBeUndefined();
+    expect(unmarked.cacheInfo).toMatchObject({ mode: 'missed' });
   });
 
   it('records the new screen as anchors for a step that moved to another pathname', async () => {

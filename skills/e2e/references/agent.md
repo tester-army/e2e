@@ -78,7 +78,8 @@ clock ran out, and a blocked code (`AUTH_CREDENTIAL_UNAVAILABLE`,
 verdict.
 
 Options: `params` (the values the instruction refers to; a `Secret` is filled
-by the runner), `timeout` (default the test timeout), `maxSteps` (default 25
+by the runner; a run-unique value such as `unique(\`E2E ${Date.now()}\`)` keeps
+the trace cache replaying across runs), `timeout` (default the test timeout), `maxSteps` (default 25
 actions), `maxModelCalls` (default 25). Per-call budgets can only lower the
 configured limits. `act` takes no `schema`: structured output is
 `extract({ schema })`. By default pixels reach an `act` step through the

@@ -1,23 +1,24 @@
-/** Parameter templating: run-unique string params become placeholders in a recording and are filled at replay. */
+/** `unique()` params: slots in the key and the recording, filled from each call. */
 
 import { describe, expect, it } from 'vitest';
+import { validateParams } from '../../src/agent/act-validation.ts';
 import { paramsDigest } from '../../src/cache/identity.ts';
 import {
   expandText,
   expandTrace,
-  paramTemplates,
-  paramsShape,
+  paramPointer,
+  templateParams,
   templateText,
   templateTrace,
+  type ParamTemplate,
 } from '../../src/cache/template.ts';
 import type { ActionTrace } from '../../src/cache/trace.ts';
-import type { JsonValue } from '../../src/types.ts';
+import { unique } from '../../src/params.ts';
 
-const secret = { kind: 'secret', name: 'admin', purpose: 'password' } as const;
+const admin = { kind: 'secret', name: 'admin', purpose: 'password' } as const;
 
-/** Pointer-to-value map of a call's templatable params, as `expandTrace` builds it. */
-function values(params: Record<string, JsonValue> | undefined): ReadonlyMap<string, string> {
-  return new Map(paramTemplates(params).map((template) => [template.pointer, template.value]));
+function values(templates: readonly ParamTemplate[]): ReadonlyMap<string, string> {
+  return new Map(templates.map((template) => [template.pointer, template.value]));
 }
 
 function trace(name: string): ActionTrace {
@@ -37,73 +38,87 @@ function trace(name: string): ActionTrace {
   };
 }
 
-describe('paramTemplates', () => {
-  it('collects templatable strings at any depth, longest first, and skips secrets, numbers, and short strings', () => {
-    const templates = paramTemplates({
-      name: 'Ada Lovelace',
-      first: 'Ada',
+describe('unique() through validateParams', () => {
+  it('projects the value for the model and lists the pointer for the cache, at any depth', () => {
+    const { projected, templates } = validateParams({
+      name: unique('E2E abc Company'),
+      plan: 'pro',
       qty: 2,
-      ok: 'ok',
-      password: secret,
-      address: { city: 'London', tags: ['vip', 'new-customer'] },
+      owner: { email: unique('a@b.test'), tags: ['vip', unique('new-customer')] },
+      'a/b': unique('slash'),
     });
-    // Equal lengths fall back to the path, so the order is stable across runs.
+    expect(projected).toEqual({
+      name: 'E2E abc Company',
+      plan: 'pro',
+      qty: 2,
+      owner: { email: 'a@b.test', tags: ['vip', 'new-customer'] },
+      'a/b': 'slash',
+    });
     expect(templates).toEqual([
-      { pointer: '/address/tags/1', value: 'new-customer' },
-      { pointer: '/name', value: 'Ada Lovelace' },
-      { pointer: '/address/city', value: 'London' },
-      { pointer: '/address/tags/0', value: 'vip' },
-      { pointer: '/first', value: 'Ada' },
-    ]);
-    // Keys with `/` or `~` are escaped the JSON Pointer way, so two shapes never share a pointer.
-    expect(paramTemplates({ 'a/b': 'slash', 'a~b': 'tilde' })).toEqual([
-      { pointer: '/a~0b', value: 'tilde' },
+      { pointer: '/name', value: 'E2E abc Company' },
+      { pointer: '/owner/email', value: 'a@b.test' },
+      { pointer: '/owner/tags/1', value: 'new-customer' },
       { pointer: '/a~1b', value: 'slash' },
     ]);
   });
+
+  it('refuses an empty value', () => {
+    expect(() => unique('')).toThrow(/non-empty string/);
+    expect(() => unique(7 as never)).toThrow(/non-empty string/);
+  });
+
+  it('escapes keys the JSON Pointer way, so two shapes never share a pointer', () => {
+    expect(paramPointer('', 'a/b')).toBe('/a~1b');
+    expect(paramPointer('/x', 'a~b')).toBe('/x/a~0b');
+    expect(paramPointer('/tags', 0)).toBe('/tags/0');
+  });
 });
 
-describe('paramsShape and the key', () => {
-  it('keys on the shape: templatable strings are one marker, everything else stays', () => {
-    expect(paramsDigest({ name: 'E2E abc Company', website: 'https://a.example' })).toBe(
-      paramsDigest({ name: 'E2E xyz Company', website: 'https://b.example' }),
-    );
-    expect(paramsDigest({ quantity: 2 })).not.toBe(paramsDigest({ quantity: 3 }));
-    expect(paramsDigest({ code: 'ab' })).not.toBe(paramsDigest({ code: 'cd' }));
-    expect(paramsDigest({ password: secret })).not.toBe(paramsDigest({ password: { ...secret, name: 'member' } }));
-    expect(paramsDigest({ name: 'Ada Lovelace' })).not.toBe(paramsDigest({ title: 'Ada Lovelace' }));
-    expect(paramsShape({ a: 'long enough', b: 1, c: null, d: [true, 'xyz'], s: secret })).toEqual({
-      literal: { a: null, b: 1, c: null, d: [true, null], s: secret },
-      templated: ['/a', '/d/1'],
+describe('templateParams and the key', () => {
+  it('puts a placeholder where each unique value was and leaves everything else literal', () => {
+    const templates = [{ pointer: '/name', value: 'E2E abc' }, { pointer: '/owner/tags/1', value: 'new' }];
+    expect(templateParams({ name: 'E2E abc', qty: 2, s: admin, owner: { tags: ['vip', 'new'] } }, templates)).toEqual({
+      name: '{{param:/name}}',
+      qty: 2,
+      s: admin,
+      owner: { tags: ['vip', '{{param:/owner/tags/1}}'] },
     });
-    // A dotted key and a nested key are different shapes.
-    expect(paramsDigest({ 'a.b': 'x'.repeat(3) })).not.toBe(paramsDigest({ a: { b: 'x'.repeat(3) } }));
+    expect(templateParams(undefined, [])).toEqual({});
+  });
+
+  it('keys two calls apart only by what they did not mark', () => {
+    const key = (name: string, plan: string) =>
+      paramsDigest(templateParams({ name, plan }, [{ pointer: '/name', value: name }]));
+    expect(key('E2E abc', 'pro')).toBe(key('E2E xyz', 'pro'));
+    expect(key('E2E abc', 'pro')).not.toBe(key('E2E abc', 'starter'));
+    // Marking is part of the shape: the same values, marked and unmarked, are two entries.
+    expect(key('E2E abc', 'pro')).not.toBe(paramsDigest(templateParams({ name: 'E2E abc', plan: 'pro' }, [])));
   });
 });
 
 describe('templateText and expandText', () => {
   it('round-trips, claims the longer value first, and never templates inside a placeholder', () => {
-    const params = { name: 'name', full: 'Ada name' };
-    const templates = paramTemplates(params);
-    const bound = new Set<string>();
-    const templated = templateText('tap "Ada name" then "name" in the name column', templates, bound);
+    const templates = [{ pointer: '/name', value: 'name' }, { pointer: '/full', value: 'Ada name' }];
+    const templated = templateText('tap "Ada name" then "name" in the name column', templates);
     expect(templated).toBe('tap "{{param:/full}}" then "{{param:/name}}" in the {{param:/name}} column');
-    expect([...bound].toSorted()).toEqual(['/full', '/name']);
-    expect(expandText(templated, values(params))).toBe('tap "Ada name" then "name" in the name column');
-    expect(expandText(templated, values({ name: 'Grace', full: 'Grace Hopper' }))).toBe('tap "Grace Hopper" then "Grace" in the Grace column');
+    expect(expandText(templated, values(templates))).toBe('tap "Ada name" then "name" in the name column');
+    expect(expandText(templated, values([{ pointer: '/name', value: 'Grace' }, { pointer: '/full', value: 'Grace Hopper' }]))).toBe(
+      'tap "Grace Hopper" then "Grace" in the Grace column',
+    );
   });
 
-  it('refuses to expand a placeholder the current params cannot fill', () => {
-    expect(expandText('tap "{{param:/name}}"', values({}))).toBeUndefined();
-    expect(expandText('tap "{{param:/name}}"', values({ name: 'ab' }))).toBeUndefined();
-    expect(expandText('tap "{{param:/name}}"', values({ name: 7 }))).toBeUndefined();
-    expect(expandText('no placeholders', values(undefined))).toBe('no placeholders');
+  it('refuses to expand a placeholder the current call did not mark', () => {
+    expect(expandText('tap "{{param:/name}}"', values([]))).toBeUndefined();
+    expect(expandText('tap "{{param:/name}}"', values([{ pointer: '/title', value: 'x' }]))).toBeUndefined();
+    expect(expandText('no placeholders', values([]))).toBe('no placeholders');
   });
 });
 
 describe('templateTrace and expandTrace', () => {
+  const name = (value: string): ParamTemplate[] => [{ pointer: '/name', value }];
+
   it('templates inputs, descriptors, anchors, and summaries, and expands them with another run\'s value', () => {
-    const recorded = templateTrace(trace('E2E abc Company'), { name: 'E2E abc Company' })!;
+    const recorded = templateTrace(trace('E2E abc Company'), name('E2E abc Company'))!;
     expect(recorded.actions[1]).toMatchObject({ value: '{{param:/name}}', summary: 'type "{{param:/name}}" into textbox "Name"' });
     expect(recorded.actions[3]).toMatchObject({ target: { role: 'option', name: '{{param:/name}}', within: '{{param:/name}}' } });
     expect(recorded.endAnchors).toEqual([{ role: 'heading', name: '{{param:/name}}' }]);
@@ -111,38 +126,29 @@ describe('templateTrace and expandTrace', () => {
     // Secrets and keys are never text a parameter produced.
     expect(recorded.actions[2]).toEqual(trace('E2E abc Company').actions[2]);
     expect(recorded.actions[4]).toEqual(trace('E2E abc Company').actions[4]);
-    expect(recorded.literalParams).toBeUndefined();
 
-    expect(expandTrace(recorded, { name: 'E2E xyz Company' })).toEqual(trace('E2E xyz Company'));
-    expect(expandTrace(recorded, { title: 'E2E xyz Company' })).toBeUndefined();
+    expect(expandTrace(recorded, name('E2E xyz Company'))).toEqual(trace('E2E xyz Company'));
+    expect(expandTrace(recorded, [{ pointer: '/title', value: 'E2E xyz Company' }])).toBeUndefined();
+    expect(expandTrace(recorded, [])).toBeUndefined();
   });
 
-  it('pins a templatable param the recording never spelled out, so a different value misses', () => {
-    // The plan name steered the flow (a tap on "Pro") without appearing in it.
-    const recorded = templateTrace(trace('Pro'), { plan: 'business', name: 'Pro' })!;
-    expect(recorded.literalParams).toEqual({ '/plan': 'business' });
-    expect(recorded.actions[3]).toMatchObject({ target: { name: '{{param:/name}}' } });
-    // Expansion fills the placeholders and keeps the pin, so a re-stage carries it forward.
-    expect(expandTrace(recorded, { plan: 'business', name: 'Pro' })).toEqual({ ...trace('Pro'), literalParams: { '/plan': 'business' } });
-    expect(expandTrace(recorded, { plan: 'starter', name: 'Pro' })).toBeUndefined();
-    expect(expandTrace(recorded, { name: 'Pro' })).toBeUndefined();
-  });
-
-  it('leaves a trace without templatable params untouched and expands it as a no-op', () => {
+  it('leaves a trace without templates untouched and expands it as a no-op', () => {
     const plain = trace('Acme');
-    expect(templateTrace(plain, { qty: 2 })).toEqual(plain);
-    expect(templateTrace(plain, undefined)).toEqual(plain);
-    expect(expandTrace(plain, undefined)).toEqual(plain);
+    expect(templateTrace(plain, [])).toEqual(plain);
+    expect(expandTrace(plain, [])).toEqual(plain);
+    // A marked value the text never spelled leaves no slot; the recording is literal.
+    expect(templateTrace(plain, name('Globex'))).toEqual(plain);
   });
 
   it('refuses to template a recording whose text already spells a placeholder', () => {
     const odd: ActionTrace = { ...trace('Acme Corp'), summary: 'typed {{param:/name}} literally' };
-    expect(templateTrace(odd, { name: 'Acme Corp' })).toBeUndefined();
+    expect(templateTrace(odd, name('Acme Corp'))).toBeUndefined();
+    expect(templateTrace(odd, [])).toBeUndefined();
   });
 
   it('templates the location paths too, so a value in the URL follows the run', () => {
     const moved: ActionTrace = { ...trace('Acme Corp'), endPath: '/companies?q=Acme%20Corp&name=Acme Corp' };
-    const recorded = templateTrace(moved, { name: 'Acme Corp' })!;
+    const recorded = templateTrace(moved, name('Acme Corp'))!;
     expect(recorded.endPath).toBe('/companies?q=Acme%20Corp&name={{param:/name}}');
   });
 });
