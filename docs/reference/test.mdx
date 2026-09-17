@@ -173,7 +173,7 @@ export interface TestOptions {
   timeout?: number;
   /** Retries, 0 through 10; defaults to `config.retries`. Inside a serial group the group's value applies. */
   retries?: number;
-  /** Tags for `--tag`, each a non-empty name without spaces or commas; every layer's tags are unioned. */
+  /** Tags for `--tag`: distinct names, none blank, with no comma and no leading or trailing whitespace; every layer's tags are unioned. */
   tags?: readonly string[];
   /** Skips the test; a string is the reason. Any truthy layer skips. */
   skip?: boolean | string;

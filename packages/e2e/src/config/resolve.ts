@@ -682,13 +682,14 @@ function resolvePlatform(target: Target, where: string): string {
 }
 
 /**
- * The `tests` globs, each compiled here so a malformed one is a configuration
- * error wherever the config loads (`e2e list`, `e2e cache`, a worker), not a
- * collection failure of one run. A wrong type would otherwise reach the glob
- * compiler as a plain TypeError and be reported as a test failure.
+ * The `tests` globs, checked and compiled when the config resolves. A wrong
+ * type used to be a raw TypeError reported as a test failure (at config load
+ * for `tests: 5`, at collection for `tests: [1]`), and a malformed glob was
+ * `INVALID_GLOB` only once a run or `e2e list` collected, so `explore`,
+ * `mcp`, and `cache` accepted a config no run could use.
  */
-function normalizeTests(tests: E2EConfig['tests']): readonly string[] {
-  const list: unknown = tests === undefined ? ['tests/**/*.e2e.ts'] : typeof tests === 'string' ? [tests] : tests;
+function normalizeTests(tests: unknown): readonly string[] {
+  const list = tests === undefined ? ['tests/**/*.e2e.ts'] : typeof tests === 'string' ? [tests] : tests;
   if (!Array.isArray(list)) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
@@ -698,18 +699,16 @@ function normalizeTests(tests: E2EConfig['tests']): readonly string[] {
   if (list.length === 0) {
     throw new ConfigurationError('INVALID_CONFIG', 'tests must not be empty');
   }
-  const globs: string[] = [];
-  for (const glob of list as readonly unknown[]) {
-    if (typeof glob !== 'string') {
+  for (const glob of list) {
+    if (typeof glob !== 'string' || glob === '') {
       throw new ConfigurationError(
         'INVALID_CONFIG',
         `tests must be a glob or a list of globs relative to the project root, got ${describeValue(glob)} in the list`,
       );
     }
     compileGlob(glob);
-    globs.push(glob);
   }
-  return [...new Set(globs)];
+  return [...new Set(list)];
 }
 
 function resolveProjectId(explicit: string | undefined, projectRoot: string): string {

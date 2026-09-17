@@ -51,15 +51,26 @@ describe('resolveConfig', () => {
   });
 
   it('validates tests as globs at resolution, not at collection', () => {
-    expect(() => resolve({ tests: 5 } as never)).toThrow(
-      'tests must be a glob or a list of globs relative to the project root, got 5',
-    );
-    expect(() => resolve({ tests: [1] } as never)).toThrow(
-      'tests must be a glob or a list of globs relative to the project root, got 1 in the list',
-    );
-    expect(() => resolve({ tests: [] })).toThrow('tests must not be empty');
-    expect(() => resolve({ tests: '' })).toThrow('empty glob pattern');
-    expect(() => resolve({ tests: ['tests/**foo/*.ts'] })).toThrow(/complete path segment/);
+    /** The code and message of the error `resolve` throws for `raw`. */
+    const failure = (raw: Parameters<typeof resolveConfig>[0]): { code: string; message: string } => {
+      try {
+        resolve(raw);
+      } catch (error) {
+        return error as { code: string; message: string };
+      }
+      throw new Error('resolved');
+    };
+    const shape = 'tests must be a glob or a list of globs relative to the project root';
+    expect(failure({ tests: 5 } as never)).toMatchObject({ code: 'INVALID_CONFIG', message: `${shape}, got 5` });
+    expect(failure({ tests: {} } as never)).toMatchObject({ code: 'INVALID_CONFIG', message: `${shape}, got an object` });
+    expect(failure({ tests: [1] } as never)).toMatchObject({ code: 'INVALID_CONFIG', message: `${shape}, got 1 in the list` });
+    expect(failure({ tests: '' })).toMatchObject({ code: 'INVALID_CONFIG', message: `${shape}, got "" in the list` });
+    expect(failure({ tests: [] })).toMatchObject({ code: 'INVALID_CONFIG', message: 'tests must not be empty' });
+    expect(failure({ tests: ['tests/**foo/*.ts'] })).toMatchObject({
+      code: 'INVALID_GLOB',
+      message: "'**' must be a complete path segment: tests/**foo/*.ts",
+    });
+    expect(resolve({ tests: 'e2e/*.e2e.ts' }).tests).toEqual(['e2e/*.e2e.ts']);
     expect(resolve({ tests: ['tests/**/*.e2e.ts', 'tests/**/*.e2e.ts', 'e2e/*.e2e.ts'] }).tests).toEqual([
       'tests/**/*.e2e.ts',
       'e2e/*.e2e.ts',

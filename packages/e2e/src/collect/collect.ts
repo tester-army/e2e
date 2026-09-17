@@ -350,7 +350,8 @@ export async function collect(
     try {
       registration = await collectModule(() => importModule(absolutePath, 'collect'), absolutePath);
     } catch (cause) {
-      if (cause instanceof CollectionError) throw cause;
+      // A registration error names the option but not the module it came from.
+      if (cause instanceof CollectionError) throw new CollectionError(`${file}: ${cause.message}`, { cause });
       throw new CollectionError(
         `failed to collect ${file}: ${explainModuleError(cause, absolutePath)}`,
         { cause },
