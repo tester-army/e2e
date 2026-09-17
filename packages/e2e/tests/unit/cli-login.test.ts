@@ -45,7 +45,6 @@ function installFakeOAuth(): string {
 const record = (call) => { writeFileSync(${JSON.stringify(log)}, JSON.stringify(call)); return 0; };
 export const runLogin = async (provider, options) => record({ runLogin: [provider, options] });
 export const runLogout = async (provider) => record({ runLogout: [provider] });
-export const runStatus = async () => record({ runStatus: [] });
 `,
   );
   return log;
@@ -58,7 +57,7 @@ describe('e2e login / logout', () => {
     expect(await logout(dir, 'xai')).toBe(1);
   });
 
-  it('forwards the sign-in with typed options, lists without a provider, and forgets one', async () => {
+  it('forwards the sign-in with typed options, leaves the pick to the package without a provider, and forgets one', async () => {
     const log = installFakeOAuth();
     const calls = () => JSON.parse(readFileSync(log, 'utf8'));
     expect(await login(dir, 'github-copilot', { device: true, clientId: 'Iv23', fromGh: true, enterpriseUrl: 'gh.acme.com' })).toBe(0);
@@ -66,8 +65,10 @@ describe('e2e login / logout', () => {
     expect(await login(dir, 'xai', {})).toBe(0);
     expect(calls()).toEqual({ runLogin: ['xai', {}] });
     expect(await login(dir, undefined, {})).toBe(0);
-    expect(calls()).toEqual({ runStatus: [] });
+    expect(calls()).toEqual({ runLogin: [null, {}] });
     expect(await logout(dir, 'openai')).toBe(0);
     expect(calls()).toEqual({ runLogout: ['openai'] });
+    expect(await logout(dir, undefined)).toBe(0);
+    expect(calls()).toEqual({ runLogout: [null] });
   });
 });

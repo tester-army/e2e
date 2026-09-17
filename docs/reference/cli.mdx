@@ -94,7 +94,7 @@ npx e2e login openai --device        # a code to enter on another device
 npx e2e login github-copilot --from-gh     # reuse the GitHub CLI's login
 npx e2e login github-copilot --client-id <id> [--enterprise-url <host>]
 npx e2e login xai                          # SuperGrok / X Premium+, device code
-npx e2e login                              # list the stored logins
+npx e2e login                              # pick one; signed-in ones are marked
 ```
 
 Signs in to a personal subscription and stores the login in
@@ -106,7 +106,8 @@ with the install line. See [Subscriptions](/subscriptions).
 ## e2e logout
 
 ```bash
-npx e2e logout openai    # forget one stored login
+npx e2e logout           # pick one of the stored logins
+npx e2e logout openai    # forget one
 ```
 
 ## e2e guide

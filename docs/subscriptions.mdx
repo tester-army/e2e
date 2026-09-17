@@ -72,8 +72,9 @@ Requests go to the ordinary xAI API with your plan's shared weekly usage pool.
 
 `~/.config/e2e/oauth.json` (or under `$XDG_CONFIG_HOME`), mode 0600, one
 entry per provider. Tokens refresh themselves ahead of expiry, and one refresh
-serves every concurrent call of a run. `e2e login` without a provider lists
-the entries; `e2e logout <provider>` removes one.
+serves every concurrent call of a run. `e2e login` without a provider shows
+a picker that marks the signed-in ones; `e2e logout` without a provider
+picks among the stored logins.
 
 `E2E_OAUTH_CREDENTIALS` holding the same JSON replaces the file for a
 machine you cannot sign in on. It is read-only: `e2e login` and `e2e logout`

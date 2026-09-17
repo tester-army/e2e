@@ -23,9 +23,8 @@ export interface LoginOptions {
 
 /** What `@e2edev/oauth/cli` exports; typed here because the runner cannot import the package. */
 interface OAuthCli {
-  runLogin(providerId: string, options: { method?: 'device'; clientId?: string; fromGitHubCli?: boolean; enterpriseUrl?: string }): Promise<number>;
-  runLogout(providerId: string): Promise<number>;
-  runStatus(): Promise<number>;
+  runLogin(providerId: string | undefined, options: { method?: 'device'; clientId?: string; fromGitHubCli?: boolean; enterpriseUrl?: string }): Promise<number>;
+  runLogout(providerId: string | undefined): Promise<number>;
 }
 
 /** Loads `@e2edev/oauth/cli` from the project, or explains how to add it. */
@@ -43,11 +42,10 @@ async function loadOAuthCli(cwd: string): Promise<OAuthCli | undefined> {
   return (await import(pathToFileURL(resolved).href)) as OAuthCli;
 }
 
-/** Signs in to `provider`, or without one lists the stored logins. */
+/** Signs in to `provider`, or without one lets the user pick. */
 export async function login(cwd: string, provider: string | undefined, options: LoginOptions): Promise<number> {
   const cli = await loadOAuthCli(cwd);
   if (cli === undefined) return 1;
-  if (provider === undefined) return cli.runStatus();
   return cli.runLogin(provider, {
     ...(options.device === true ? { method: 'device' } : {}),
     ...(options.clientId === undefined ? {} : { clientId: options.clientId }),
@@ -56,7 +54,8 @@ export async function login(cwd: string, provider: string | undefined, options: 
   });
 }
 
-export async function logout(cwd: string, provider: string): Promise<number> {
+/** Forgets the login of `provider`, or without one lets the user pick among the stored ones. */
+export async function logout(cwd: string, provider: string | undefined): Promise<number> {
   const cli = await loadOAuthCli(cwd);
   if (cli === undefined) return 1;
   return cli.runLogout(provider);

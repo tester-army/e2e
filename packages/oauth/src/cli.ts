@@ -30,9 +30,11 @@ export interface LoginFlags {
 }
 
 const USAGE = `Usage:
-  e2e-oauth login <provider> [--device] [--client-id <id>] [--from-gh] [--enterprise-url <host>]
-  e2e-oauth logout <provider>
+  e2e-oauth login [provider] [--device] [--client-id <id>] [--from-gh] [--enterprise-url <host>]
+  e2e-oauth logout [provider]
   e2e-oauth status
+
+Without a provider, login and logout show a picker.
 
 Providers: ${PROVIDER_IDS.join(', ')}
   openai          ChatGPT Plus/Pro (the Codex sign-in); --device for a machine without a browser
@@ -40,9 +42,10 @@ Providers: ${PROVIDER_IDS.join(', ')}
   xai             SuperGrok / X Premium+ (device code)
 `;
 
-export async function runLogin(providerId: string, flags: LoginFlags, io: CliIo = defaultIo()): Promise<number> {
+/** Signs in to `providerId`; without one, a picker over the providers, marking those already signed in. */
+export async function runLogin(providerId: string | undefined, flags: LoginFlags, io: CliIo = defaultIo()): Promise<number> {
   return report(io, async () => {
-    const id = requireProvider(providerId);
+    const id = providerId === undefined || providerId === '' ? await pickProvider(io, 'Which subscription do you want to sign in to?', await signedIn()) : requireProvider(providerId);
     const provider = getProvider(id);
     const controller = new AbortController();
     const onSigint = () => controller.abort();
@@ -60,12 +63,51 @@ export async function runLogin(providerId: string, flags: LoginFlags, io: CliIo 
   });
 }
 
-export async function runLogout(providerId: string, io: CliIo = defaultIo()): Promise<number> {
+/** Forgets the login of `providerId`; without one, a picker over the stored logins. */
+export async function runLogout(providerId: string | undefined, io: CliIo = defaultIo()): Promise<number> {
   return report(io, async () => {
-    const id = requireProvider(providerId);
+    let id: ProviderId;
+    if (providerId === undefined || providerId === '') {
+      const stored = await signedIn();
+      if (stored.size === 0) {
+        io.stdout.write('No logins stored.\n');
+        return;
+      }
+      id = await pickProvider(io, 'Which login do you want to forget?', stored, [...stored.keys()]);
+    } else {
+      id = requireProvider(providerId);
+    }
     const had = await logout(id);
     io.stdout.write(had ? `Signed out of ${id}.\n` : `No ${id} login was stored.\n`);
   });
+}
+
+/** The providers with a stored login, and how each one stands. */
+async function signedIn(): Promise<Map<ProviderId, string>> {
+  const store = defaultCredentialStore();
+  const out = new Map<ProviderId, string>();
+  for (const id of await store.list()) {
+    if (!isProviderId(id)) continue;
+    out.set(id, describeExpiry((await store.get(id))?.expires));
+  }
+  return out;
+}
+
+const PROVIDER_HINTS: Record<ProviderId, string> = {
+  openai: 'ChatGPT Plus/Pro, the Codex sign-in',
+  'github-copilot': 'GitHub Copilot: OpenAI, Anthropic, Google, and xAI models',
+  xai: 'SuperGrok or X Premium+',
+};
+
+/** A terminal picker over providers; without a terminal the provider has to be named. */
+async function pickProvider(io: CliIo, message: string, stored: Map<ProviderId, string>, ids: readonly ProviderId[] = PROVIDER_IDS): Promise<ProviderId> {
+  if (!io.isTTY) throw new OAuthError('MISCONFIGURED', `name a provider: ${ids.join(', ')}`);
+  const choice = await clack.select<ProviderId>({
+    message,
+    options: ids.map((id) => ({ value: id, label: getProvider(id).name, hint: stored.has(id) ? `${stored.get(id)}; ${PROVIDER_HINTS[id]}` : PROVIDER_HINTS[id] })),
+  });
+  if (clack.isCancel(choice)) throw new OAuthError('CANCELLED', 'the login was cancelled');
+  return choice as ProviderId;
 }
 
 export async function runStatus(io: CliIo = defaultIo()): Promise<number> {
@@ -98,7 +140,7 @@ export async function runOAuthCli(argv: readonly string[], io: CliIo = defaultIo
         help: { type: 'boolean', short: 'h' },
       },
     });
-    const [command, providerId = ''] = positionals;
+    const [command, providerId] = positionals;
     if (values.help === true || command === undefined) {
       io.stdout.write(USAGE);
       return command === undefined ? 1 : 0;
