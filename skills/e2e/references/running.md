@@ -20,7 +20,7 @@ npx e2e telemetry [disable|enable] # anonymous usage telemetry: status, or the s
 | `[files...]` | Files, directories, or quoted globs relative to the project root, or a bare file name (`signup.e2e.ts`, `signup`, `agent/signup.e2e.ts` all select `tests/agent/signup.e2e.ts`). They narrow the config `tests` glob, never bypass it. |
 | `--config <path>` | Explicit config file. Default: `e2e.config.ts` or `.mts` found upward from the working directory. |
 | `--target <ids>` | Comma-separated target names. Only selected targets start app commands and services; unknown names fail before startup. |
-| `--tag <tag>` | Repeatable tag filter; `--tag-mode all` requires every tag. |
+| `--tag <tags>` | Tag filter, comma-separated or repeated; `--tag-mode all` requires every tag. |
 | `--headed` | Visible browser or simulator when the engine supports it. |
 | `--agent <names>` | Run unpinned tests as other configured agents (`agents.<name>`), comma-separated or repeated; several names run each such test once per agent. Default is `agents.default`. |
 | `--workers <n>`, `--retries <n>` | Override the resolved values. |

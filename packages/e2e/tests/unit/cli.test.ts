@@ -128,9 +128,18 @@ describe('e2e run argument parsing', () => {
     expect(lastRunOptions().targetIds).toEqual(['chromium', 'firefox', 'webkit']);
   });
 
-  it('accumulates repeated --tag flags', async () => {
-    await invoke('run', '--tag', 'smoke', '--tag', 'auth');
-    expect(lastRunOptions().tags).toEqual(['smoke', 'auth']);
+  it('accumulates repeated --tag flags and splits comma-separated tags', async () => {
+    await invoke('run', '--tag', 'smoke', '--tag', 'auth, billing');
+    expect(lastRunOptions().tags).toEqual(['smoke', 'auth', 'billing']);
+  });
+
+  it('rejects an empty --tag with exit code 2 and never runs', async () => {
+    await invoke('run', '--tag', ' , ');
+    expect(runMock).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+    expect(written(stderrSpy)).toBe(
+      "error: option '--tag <tags>' argument ' , ' is invalid. must name at least one tag\n(add --help for usage)\n",
+    );
   });
 
   it('accepts --tag-mode all', async () => {

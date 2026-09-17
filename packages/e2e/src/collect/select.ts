@@ -335,7 +335,7 @@ function describeNoTests(
       case 'filtered':
         count(
           filters.tags !== undefined && filters.tags.length > 0
-            ? `carry none of the tags ${filters.tags.join(', ')}`
+            ? describeTagFilter(filters.tags, filters.tagMode ?? 'any', pairs)
             : pair.skip.reason,
           pair.test,
         );
@@ -346,6 +346,28 @@ function describeNoTests(
   }
   const summary = [...reasons].map(([reason, ids]) => `${ids.size} ${reason}`).join(', ');
   return `${tests.length} tests were collected but none is runnable: ${summary}`;
+}
+
+/**
+ * The tag filter that left nothing runnable, told against the tags the suite
+ * declares: `carry none of the tags a, b`, or under `all` mode `do not carry
+ * all of the tags a, b`. A filter tag no test declares is marked, with the
+ * nearest declared tag when one is close: `smok (did you mean smoke?)`.
+ */
+function describeTagFilter(
+  tags: readonly string[],
+  tagMode: 'any' | 'all',
+  pairs: readonly TestTargetPair[],
+): string {
+  const declared = [...new Set(pairs.flatMap((pair) => pair.options.tags))];
+  const named = tags
+    .map((tag) => {
+      if (declared.includes(tag)) return tag;
+      const match = suggest(tag, declared);
+      return match === undefined ? `${tag} (no test declares it)` : `${tag} (did you mean ${match}?)`;
+    })
+    .join(', ');
+  return tagMode === 'all' ? `do not carry all of the tags ${named}` : `carry none of the tags ${named}`;
 }
 
 /** Maps each session name to its unique producer setup test. */

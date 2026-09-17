@@ -46,6 +46,13 @@ function parseList(value: string): string[] {
     .filter((item) => item !== '');
 }
 
+/** Tag names, comma-separated or repeated. An empty value is a usage error, not a run with the filter dropped. */
+function parseTags(value: string, previous: string[] = []): string[] {
+  const tags = parseList(value);
+  if (tags.length === 0) throw new InvalidArgumentError('must name at least one tag');
+  return [...previous, ...tags];
+}
+
 /** An integer inside a closed range, for the explore budgets. */
 function parseBoundedInt(bounds: { readonly min: number; readonly max: number }): (value: string) => number {
   return (value) => {
@@ -310,11 +317,8 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .optionsGroup('Selection:')
     .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
     .option('--target <ids>', 'comma-separated target names (default: all targets)', parseList)
-    .option('--tag <tag>', 'only tests with this tag; repeat to combine', (value: string, previous: string[] = []) => [
-      ...previous,
-      value,
-    ])
-    .addOption(new Option('--tag-mode <mode>', 'how repeated tags combine').choices(TAG_MODES).default('any'))
+    .option('--tag <tags>', 'only tests carrying one of these tags, comma-separated or repeated', parseTags)
+    .addOption(new Option('--tag-mode <mode>', 'how several tags combine').choices(TAG_MODES).default('any'))
     .option('--pass-with-no-tests', 'exit 0 on an empty selection instead of NO_TESTS')
     .optionsGroup('Execution:')
     .option('--headed', 'show the UI while tests run, when the engine supports it')
@@ -340,6 +344,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           'e2e run',
           'e2e run tests/signup.e2e.ts --headed',
           "e2e run 'tests/**/*.smoke.e2e.ts' --target web --tag smoke",
+          'e2e run --tag smoke,billing --tag-mode all',
           'e2e run --reporter list,junit --workers 4 --retries 2',
           'e2e run --agent ux tests/onboarding.e2e.ts',
           'e2e run --agent buyer,admin tests/checkout.e2e.ts',
@@ -497,11 +502,8 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .optionsGroup('Selection:')
     .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
     .option('--target <ids>', 'comma-separated target names (default: all targets)', parseList)
-    .option('--tag <tag>', 'only tests with this tag; repeat to combine', (value: string, previous: string[] = []) => [
-      ...previous,
-      value,
-    ])
-    .addOption(new Option('--tag-mode <mode>', 'how repeated tags combine').choices(TAG_MODES).default('any'))
+    .option('--tag <tags>', 'only tests carrying one of these tags, comma-separated or repeated', parseTags)
+    .addOption(new Option('--tag-mode <mode>', 'how several tags combine').choices(TAG_MODES).default('any'))
     .option('--pass-with-no-tests', 'exit 0 on an empty selection instead of NO_TESTS')
     .optionsGroup('Output:')
     .addOption(

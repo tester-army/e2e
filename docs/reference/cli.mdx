@@ -153,8 +153,8 @@ or every test was filtered out.
 | --- | --- | --- | --- |
 | `--config <path>` | string | discovered | Explicit config path. A missing file is `CONFIG_NOT_FOUND`. |
 | `--target <ids>` | comma-separated list | every configured target | Selects targets by name. Only selected targets start app commands and services. An unknown ID is `UNKNOWN_TARGET`. |
-| `--tag <tag>` | string, repeatable | none | Tag filter. Repeat to accumulate. |
-| `--tag-mode <mode>` | `any` or `all` | `any` | Tag composition. |
+| `--tag <tags>` | comma-separated or repeated | none | Only tests carrying one of the tags. An empty value is a usage error, exit 2. When the filter leaves nothing to run, `NO_TESTS` marks each tag no test declares and names the nearest declared one. |
+| `--tag-mode <mode>` | `any` or `all` | `any` | How several tags combine: one of them, or every one. |
 | `--headed` | boolean | `false` | Visible UI when the engine supports it. |
 | `--agent <names>` | comma-separated or repeated | `default` | The configured agents unpinned tests run as, one result per name. A test pinned with `{ agent }` runs as the pinned names the flag also gives, or as its whole pin when the flag names none of them. An unknown name is `INVALID_CONFIG`. |
 | `--retries <n>` | integer 0-10 | config | Replaces `config.retries`. |
@@ -206,7 +206,7 @@ npx e2e run
 npx e2e run tests/signup.e2e.ts --tag smoke
 npx e2e run tests/agent
 npx e2e run 'tests/**/*.smoke.e2e.ts'
-npx e2e run --target web,webkit --tag smoke --tag billing --tag-mode all
+npx e2e run --target web,webkit --tag smoke,billing --tag-mode all
 npx e2e run --reporter json --workers 4 --retries 2
 npx e2e run --reporter list,junit
 ```
