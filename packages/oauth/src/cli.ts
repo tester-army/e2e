@@ -78,7 +78,7 @@ export async function runLogout(providerId: string | undefined, io: CliIo = defa
       id = requireProvider(providerId);
     }
     const had = await logout(id);
-    io.stdout.write(had ? `Signed out of ${id}.\n` : `No ${id} login was stored.\n`);
+    say(io, had ? 'success' : 'info', had ? `Signed out of ${getProvider(id).name}.` : `No ${getProvider(id).name} login was stored.`);
   });
 }
 
@@ -110,20 +110,33 @@ async function pickProvider(io: CliIo, message: string, stored: Map<ProviderId, 
   return choice as ProviderId;
 }
 
+/** Every provider and how it stands: signed in with its token state, or how to sign in. */
 export async function runStatus(io: CliIo = defaultIo()): Promise<number> {
   return report(io, async () => {
-    const store = defaultCredentialStore();
-    const ids = await store.list();
-    if (ids.length === 0) {
-      io.stdout.write(`No logins stored. Sign in with one of: ${PROVIDER_IDS.map((id) => `e2e login ${id}`).join(', ')}.\n`);
+    const stored = await signedIn();
+    if (!io.isTTY) {
+      for (const id of PROVIDER_IDS) io.stdout.write(`${id.padEnd(16)} ${getProvider(id).name.padEnd(16)} ${stored.get(id) ?? `not signed in; e2e login ${id}`}\n`);
       return;
     }
-    for (const id of ids) {
-      const credentials = await store.get(id);
-      const name = isProviderId(id) ? getProvider(id).name : id;
-      io.stdout.write(`${id.padEnd(16)} ${name.padEnd(16)} ${describeExpiry(credentials?.expires)}\n`);
+    clack.intro('Subscriptions');
+    for (const id of PROVIDER_IDS) {
+      const state = stored.get(id);
+      const line = `${getProvider(id).name} (${id}): ${state ?? 'not signed in'}`;
+      if (state === undefined) clack.log.info(line);
+      else clack.log.success(line);
     }
+    const missing = PROVIDER_IDS.filter((id) => !stored.has(id));
+    clack.outro(missing.length === 0 ? 'Every subscription is signed in.' : `Sign in with ${missing.map((id) => `e2e login ${id}`).join(' or ')}.`);
   });
+}
+
+/** One line to the user, styled when there is a terminal. */
+function say(io: CliIo, kind: 'success' | 'info' | 'error', message: string): void {
+  if (!io.isTTY) {
+    (kind === 'error' ? io.stderr : io.stdout).write(`${message}\n`);
+    return;
+  }
+  clack.log[kind](message);
 }
 
 /** The `e2e-oauth` bin: argv in, exit code out. */
@@ -173,8 +186,14 @@ async function report(io: CliIo, run: () => Promise<number | undefined>): Promis
   try {
     return (await run()) ?? 0;
   } catch (cause) {
-    io.stderr.write(`${cause instanceof Error ? cause.message : String(cause)}\n`);
-    return cause instanceof OAuthError && cause.code === 'CANCELLED' ? 130 : 1;
+    const message = cause instanceof Error ? cause.message : String(cause);
+    if (cause instanceof OAuthError && cause.code === 'CANCELLED') {
+      if (io.isTTY) clack.cancel(message);
+      else io.stderr.write(`${message}\n`);
+      return 130;
+    }
+    say(io, 'error', message);
+    return 1;
   }
 }
 
