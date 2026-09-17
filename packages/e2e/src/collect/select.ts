@@ -1,7 +1,7 @@
 /** Option resolution and test-target selection. */
 
 import { ConfigurationError, CollectionError } from '../internal/errors.ts';
-import { didYouMean, suggest } from '../internal/suggest.ts';
+import { didYouMean, suggestionNote } from '../internal/suggest.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import type { Capability } from '../types.ts';
 import type { Collection, CollectedTest } from './collect.ts';
@@ -63,11 +63,26 @@ export interface Selection {
   readonly perTarget: readonly TargetSelection[];
 }
 
+/** How several `--tag` values combine: a test carries any of them, or every one. */
+export type TagMode = 'any' | 'all';
+
 export interface SelectionFilters {
   readonly tags?: readonly string[];
-  readonly tagMode?: 'any' | 'all';
+  readonly tagMode?: TagMode;
   readonly targetIds?: readonly string[];
 }
+
+/**
+ * The reasons a `filtered` pair carries. `classifyPair` writes them and
+ * `describeNoTests` reads them back, so they are shared constants; the
+ * strings also reach the report on unselected results, which is why they
+ * are prose rather than codes.
+ */
+const FILTERED_REASON = {
+  file: 'file not selected by a positional argument',
+  focus: 'not focused by .only',
+  tags: 'tag filter did not match',
+} as const;
 
 /** Resolves effective options: test > nearest group > outer groups > config > default. */
 export function resolveOptions(test: CollectedTest, config: ResolvedConfig): ResolvedTestOptions {
@@ -173,7 +188,7 @@ function assertSerialAgentsAgree(
 }
 
 /** Whether a test's declared tags satisfy the filter: any of the filter's tags, or every one under `all`. */
-function matchesTags(declared: readonly string[], tags: readonly string[] | undefined, tagMode: 'any' | 'all'): boolean {
+function matchesTags(declared: readonly string[], tags: readonly string[] | undefined, tagMode: TagMode): boolean {
   if (tags === undefined || tags.length === 0) return true;
   const has = (tag: string): boolean => declared.includes(tag);
   return tagMode === 'all' ? tags.every(has) : tags.some(has);
@@ -299,10 +314,7 @@ function describeNoTests(
     // A positional may be a whole path or just a file name, so a near miss is looked for as either.
     const baseNames = discovered.map((file) => file.slice(file.lastIndexOf('/') + 1));
     const named = unmatchedPositionals
-      .map((positional) => {
-        const match = suggest(positional, discovered) ?? suggest(positional, baseNames);
-        return match === undefined ? positional : `${positional} (did you mean ${match}?)`;
-      })
+      .map((positional) => `${positional}${suggestionNote(positional, discovered) || suggestionNote(positional, baseNames)}`)
       .join(', ');
     return `no test file matched ${named}; the config globs discovered ${nameFiles(discovered)}`;
   }
@@ -316,6 +328,13 @@ function describeNoTests(
     ids.add(test.id);
     reasons.set(reason, ids);
   };
+  // Told once for the run, against every tag the suite declares, and applied
+  // only to the pairs the tag filter itself left out: a test a positional or
+  // a `.only` excluded is not a tag mismatch.
+  const tagFilter =
+    filters.tags === undefined || filters.tags.length === 0
+      ? undefined
+      : describeTagFilter(filters.tags, filters.tagMode ?? 'any', [...new Set(pairs.flatMap((pair) => pair.test.tags))]);
   for (const pair of pairs) {
     if (pair.disposition === 'run' && pair.test.kind === 'test') continue;
     if (pair.test.kind === 'setup') {
@@ -333,12 +352,7 @@ function describeNoTests(
         count('require capabilities the engine lacks', pair.test);
         break;
       case 'filtered':
-        count(
-          filters.tags !== undefined && filters.tags.length > 0
-            ? describeTagFilter(filters.tags, filters.tagMode ?? 'any', pairs)
-            : pair.skip.reason,
-          pair.test,
-        );
+        count(pair.skip.reason === FILTERED_REASON.tags && tagFilter !== undefined ? tagFilter : pair.skip.reason, pair.test);
         break;
       default:
         count('unselected', pair.test);
@@ -354,18 +368,9 @@ function describeNoTests(
  * all of the tags a, b`. A filter tag no test declares is marked, with the
  * nearest declared tag when one is close: `smok (did you mean smoke?)`.
  */
-function describeTagFilter(
-  tags: readonly string[],
-  tagMode: 'any' | 'all',
-  pairs: readonly TestTargetPair[],
-): string {
-  const declared = [...new Set(pairs.flatMap((pair) => pair.options.tags))];
+function describeTagFilter(tags: readonly string[], tagMode: TagMode, declared: readonly string[]): string {
   const named = tags
-    .map((tag) => {
-      if (declared.includes(tag)) return tag;
-      const match = suggest(tag, declared);
-      return match === undefined ? `${tag} (no test declares it)` : `${tag} (did you mean ${match}?)`;
-    })
+    .map((tag) => (declared.includes(tag) ? tag : `${tag}${suggestionNote(tag, declared) || ' (no test declares it)'}`))
     .join(', ');
   return tagMode === 'all' ? `do not carry all of the tags ${named}` : `carry none of the tags ${named}`;
 }
@@ -397,7 +402,7 @@ function classifyPair(
   options: ResolvedTestOptions,
   focused: readonly CollectedTest[],
   filters: SelectionFilters,
-  tagMode: 'any' | 'all',
+  tagMode: TagMode,
 ): TestTargetPair {
   const base = { test, target, agent, options };
 
@@ -408,21 +413,21 @@ function classifyPair(
       return {
         ...base,
         disposition: 'filtered',
-        skip: { cause: 'filtered', reason: 'file not selected by a positional argument' },
+        skip: { cause: 'filtered', reason: FILTERED_REASON.file },
       };
     }
     if (focused.length > 0 && test.mode !== 'only') {
       return {
         ...base,
         disposition: 'filtered',
-        skip: { cause: 'filtered', reason: 'not focused by .only' },
+        skip: { cause: 'filtered', reason: FILTERED_REASON.focus },
       };
     }
     if (!matchesTags(test.tags, filters.tags, tagMode)) {
       return {
         ...base,
         disposition: 'filtered',
-        skip: { cause: 'filtered', reason: 'tag filter did not match' },
+        skip: { cause: 'filtered', reason: FILTERED_REASON.tags },
       };
     }
   }

@@ -152,9 +152,9 @@ or every test was filtered out.
 | Flag | Type | Default | Behavior |
 | --- | --- | --- | --- |
 | `--config <path>` | string | discovered | Explicit config path. A missing file is `CONFIG_NOT_FOUND`. |
-| `--target <ids>` | comma-separated list | every configured target | Selects targets by name. Only selected targets start app commands and services. An unknown ID is `UNKNOWN_TARGET`. |
-| `--tag <tags>` | comma-separated or repeated | none | Only tests carrying one of the tags. An empty value is a usage error, exit 2. When the filter leaves nothing to run, `NO_TESTS` marks each tag no test declares and names the nearest declared one. |
-| `--tag-mode <mode>` | `any` or `all` | `any` | How several tags combine: one of them, or every one. |
+| `--target <ids>` | comma-separated or repeated | every configured target | Selects targets by name. Only selected targets start app commands and services. An unknown ID is `UNKNOWN_TARGET`. |
+| `--tag <tags>` | comma-separated or repeated | none | Only tests carrying the tags: any of them, or every one with `--tag-mode all`. When the filter leaves nothing to run, `NO_TESTS` counts the tests it filtered, marks each tag no test declares, and names the nearest declared one. |
+| `--tag-mode <mode>` | `any` or `all` | `any` | How several tags combine: any of them, or every one. |
 | `--headed` | boolean | `false` | Visible UI when the engine supports it. |
 | `--agent <names>` | comma-separated or repeated | `default` | The configured agents unpinned tests run as, one result per name. A test pinned with `{ agent }` runs as the pinned names the flag also gives, or as its whole pin when the flag names none of them. An unknown name is `INVALID_CONFIG`. |
 | `--retries <n>` | integer 0-10 | config | Replaces `config.retries`. |
@@ -168,7 +168,9 @@ or every test was filtered out.
 | `--video` | boolean | `false` | Records every attempt (WebM on a browser engine, MP4 on a device engine). Adds the `video` kind to `config.artifacts` for this run; an engine that cannot record fails with `UNSUPPORTED_ARTIFACT`. See [video](/reference/config#video). |
 
 Out-of-range `--retries` and `--workers` fail with `INVALID_CONFIG` before
-anything starts, the same as the config value would.
+anything starts, the same as the config value would. `--target`, `--tag`, and
+`--agent` take each name once; an empty value (`--tag ''`, or `--tag "$TAGS"`
+with the variable unset) is a usage error, exit 2, never a wider selection.
 
 `--debug` appends two tables to stderr. Phase timings are summed across the
 runner and every worker. The agent step table lists every agent step in

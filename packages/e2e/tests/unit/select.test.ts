@@ -249,6 +249,32 @@ describe('select', () => {
     );
   });
 
+  it('blames the tag filter only for the tests it filtered', async () => {
+    const narrowed = await collectionOf(
+      [
+        { file: 'tests/a.e2e.ts', body: () => { test('a', { tags: ['smoke'] }, noop); } },
+        { file: 'tests/b.e2e.ts', body: () => { test('b', noop); } },
+      ],
+      ['tests/b.e2e.ts'],
+    );
+    expect(() => select(narrowed, config(), { tags: ['smoke'] })).toThrow(
+      '2 tests were collected but none is runnable: 1 file not selected by a positional argument, 1 carry none of the tags smoke; pass --pass-with-no-tests to allow this',
+    );
+    const focused = await collection(() => {
+      test.only('debug', noop);
+      test('pays', { tags: ['billing'] }, noop);
+    });
+    expect(() => select(focused, config(), { tags: ['billing'] })).toThrow(
+      '2 tests were collected but none is runnable: 1 carry none of the tags billing, 1 not focused by .only; pass --pass-with-no-tests to allow this',
+    );
+    const untagged = await collection(() => {
+      test('plain', noop);
+    });
+    expect(() => select(untagged, config(), { tags: ['smoke'] })).toThrow(
+      '1 tests were collected but none is runnable: 1 carry none of the tags smoke (no test declares it); pass --pass-with-no-tests to allow this',
+    );
+  });
+
   it('filters targets by platforms option', async () => {
     const col = await collection(() => {
       test('mobile only', { platforms: ['ios'] }, noop);

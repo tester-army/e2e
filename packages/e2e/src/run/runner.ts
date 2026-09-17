@@ -11,7 +11,7 @@ import {
 } from '../config/resolve.ts';
 import { collect, collectInMemory, type Collection } from '../collect/collect.ts';
 import type { ModuleRegistration } from '../collect/registry.ts';
-import { select, selectTargets, type Selection, type SelectionFilters } from '../collect/select.ts';
+import { select, selectTargets, type Selection, type SelectionFilters, type TagMode } from '../collect/select.ts';
 import {
   classifyError,
   combineExitCodes,
@@ -53,7 +53,7 @@ export interface RunOptions {
   configPath?: string | undefined;
   files?: readonly string[] | undefined;
   tags?: readonly string[] | undefined;
-  tagMode?: 'any' | 'all' | undefined;
+  tagMode?: TagMode | undefined;
   targetIds?: readonly string[] | undefined;
   headed?: boolean | undefined;
   retries?: number | undefined;

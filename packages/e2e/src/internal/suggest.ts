@@ -31,6 +31,12 @@ export function didYouMean(word: string, candidates: readonly string[]): string 
   return match === undefined ? '' : `; did you mean "${match}"?`;
 }
 
+/** ` (did you mean x?)` for a note right after the word in a list, or the empty string. */
+export function suggestionNote(word: string, candidates: readonly string[]): string {
+  const match = suggest(word, candidates);
+  return match === undefined ? '' : ` (did you mean ${match}?)`;
+}
+
 /** Damerau-Levenshtein distance with adjacent transpositions, the edits typos are made of. */
 function editDistance(a: string, b: string): number {
   if (a === b) return 0;
