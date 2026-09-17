@@ -8,7 +8,7 @@ import { createOpenAI } from '@ai-sdk/openai';
 import type { LanguageModelV4 } from '@ai-sdk/provider';
 import { createOAuthFetch } from './fetch.ts';
 import { USER_AGENT, loginHint } from './providers.ts';
-import { createCodexProvider, type CodexProviderOptions } from './providers/openai-codex.ts';
+import { createCodexProvider, type CodexProviderOptions } from './providers/openai.ts';
 import { defaultCredentialStore } from './store.ts';
 import type { CredentialStore } from './types.ts';
 
@@ -24,7 +24,7 @@ export function chatgpt(modelId: string, options: ChatGptOptions = {}): Language
   const fetch = createOAuthFetch(createCodexProvider(options), {
     store: options.store ?? defaultCredentialStore(),
     userAgent: options.userAgent ?? USER_AGENT,
-    loginHint: loginHint('openai-codex'),
+    loginHint: loginHint('openai'),
   });
   // The key header is removed per request; the value only satisfies the constructor.
   return createOpenAI({ apiKey: 'oauth', fetch, name: 'chatgpt' }).responses(modelId);

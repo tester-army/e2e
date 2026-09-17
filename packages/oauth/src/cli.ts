@@ -35,7 +35,7 @@ const USAGE = `Usage:
   e2e-oauth status
 
 Providers: ${PROVIDER_IDS.join(', ')}
-  openai-codex    ChatGPT Plus/Pro (the Codex sign-in); --device for a machine without a browser
+  openai          ChatGPT Plus/Pro (the Codex sign-in); --device for a machine without a browser
   github-copilot  GitHub Copilot: the GitHub CLI's token when gh is signed in, or a device flow with --client-id
   xai             SuperGrok / X Premium+ (device code)
 `;
@@ -143,7 +143,7 @@ function requireProvider(id: string): ProviderId {
 /** The provider's own login options from the shared flags; flags meant for another provider are ignored. */
 function toLoginOptions<Id extends ProviderId>(id: Id, flags: LoginFlags): LoginOptionsById[Id] {
   switch (id) {
-    case 'openai-codex':
+    case 'openai':
       return (flags.method === undefined ? {} : { method: flags.method }) as LoginOptionsById[Id];
     case 'github-copilot':
       return {

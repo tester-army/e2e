@@ -63,8 +63,8 @@ export const GATEWAYS: readonly GatewayPreset[] = [
     hint: 'your ChatGPT plan through the Codex sign-in',
     dependencies: { ...siblingDependency('@e2edev/oauth'), '@ai-sdk/openai': '^4.0.0' },
     import: "import { chatgpt } from '@e2edev/oauth/chatgpt';",
-    comment: 'Your ChatGPT subscription serves the model; sign in once with `e2e login openai-codex`.',
-    login: 'openai-codex',
+    comment: 'Your ChatGPT subscription serves the model; sign in once with `e2e login openai`.',
+    login: 'openai',
     model: () => "chatgpt('gpt-5.5')",
   },
   {

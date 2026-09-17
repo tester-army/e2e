@@ -1,23 +1,23 @@
 /** The built-in providers by id, and the login options each one takes. */
 
-import { createCodexProvider, type CodexLoginOptions } from './providers/openai-codex.ts';
+import { createCodexProvider, type CodexLoginOptions } from './providers/openai.ts';
 import { createCopilotProvider, type CopilotLoginOptions } from './providers/github-copilot.ts';
 import { createXaiProvider } from './providers/xai.ts';
 import type { OAuthProvider } from './types.ts';
 
 export interface LoginOptionsById {
-  readonly 'openai-codex': CodexLoginOptions;
+  readonly openai: CodexLoginOptions;
   readonly 'github-copilot': CopilotLoginOptions;
   readonly xai: Record<string, never>;
 }
 
 export type ProviderId = keyof LoginOptionsById;
 
-export const PROVIDER_IDS = ['openai-codex', 'github-copilot', 'xai'] as const satisfies readonly ProviderId[];
+export const PROVIDER_IDS = ['openai', 'github-copilot', 'xai'] as const satisfies readonly ProviderId[];
 
 // Method shorthand is bivariant, so each specialised provider fits the base interface without a cast.
 const PROVIDERS: Record<ProviderId, OAuthProvider> = {
-  'openai-codex': createCodexProvider(),
+  openai: createCodexProvider(),
   'github-copilot': createCopilotProvider(),
   xai: createXaiProvider(),
 };

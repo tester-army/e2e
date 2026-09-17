@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MemoryCredentialStore, createCodexProvider, type CodexCredentials } from '../../src/index.ts';
 import { chatgpt } from '../../src/chatgpt.ts';
-import { extractAccountId, parseAuthorizationInput, sendCodexRequest } from '../../src/providers/openai-codex.ts';
+import { extractAccountId, parseAuthorizationInput, sendCodexRequest } from '../../src/providers/openai.ts';
 import { echoUpstream, fakeJwt, json, startServer, useServers, type Echo, type Received } from './helpers/server.ts';
 
 const serve = useServers(afterEach);
@@ -184,7 +184,7 @@ describe('Codex requests', () => {
       response.end();
     });
     const login: CodexCredentials = { access: 'tok', refresh: 'r', expires: 0, accountId: 'acct_9' };
-    const store = new MemoryCredentialStore({ 'openai-codex': login });
+    const store = new MemoryCredentialStore({ 'openai': login });
     const model = chatgpt('gpt-5.5', { store, apiUrl: `${backend.url}/codex/responses` });
     expect(model).toMatchObject({ provider: 'chatgpt.responses', modelId: 'gpt-5.5' });
     const result = await generateText({

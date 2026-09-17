@@ -57,7 +57,7 @@ export function createCodexProvider(options: CodexProviderOptions = {}): OAuthPr
   const callbackPort = options.callbackPort ?? CALLBACK_PORT;
   const timeoutMs = options.loginTimeoutMs ?? LOGIN_TIMEOUT_MS;
   return {
-    id: 'openai-codex',
+    id: 'openai',
     name: 'ChatGPT',
     async login(callbacks, loginOptions = {}) {
       const tokens =

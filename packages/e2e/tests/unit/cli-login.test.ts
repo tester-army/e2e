@@ -67,7 +67,7 @@ describe('e2e login / logout', () => {
     expect(calls()).toEqual({ runLogin: ['xai', {}] });
     expect(await login(dir, undefined, {})).toBe(0);
     expect(calls()).toEqual({ runStatus: [] });
-    expect(await logout(dir, 'openai-codex')).toBe(0);
-    expect(calls()).toEqual({ runLogout: ['openai-codex'] });
+    expect(await logout(dir, 'openai')).toBe(0);
+    expect(calls()).toEqual({ runLogout: ['openai'] });
   });
 });

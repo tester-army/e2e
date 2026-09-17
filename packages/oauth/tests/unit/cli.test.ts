@@ -13,7 +13,7 @@ describe('@e2edev/oauth/cli', () => {
     const out: string[] = [];
     const io = { stdout: { write: (chunk: string) => (out.push(chunk), true) } as unknown as NodeJS.WritableStream, stderr: { write: (chunk: string) => (out.push(chunk), true) } as unknown as NodeJS.WritableStream, isTTY: false };
     expect(await cli.runLogout('nope', io)).toBe(1);
-    expect(out.join('')).toContain('name a provider: openai-codex, github-copilot, xai');
+    expect(out.join('')).toContain('name a provider: openai, github-copilot, xai');
     out.length = 0;
     expect(await cli.runOAuthCli(['login', 'xai', '--bogus'], io)).toBe(1);
     expect(out.join('')).toMatch(/bogus/);

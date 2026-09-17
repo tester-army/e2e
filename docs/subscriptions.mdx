@@ -10,7 +10,7 @@ line in `e2e.config.ts` that constructs the model.
 
 | Plan | Sign in | Constructor | Provider package it needs |
 | --- | --- | --- | --- |
-| ChatGPT Plus/Pro | `e2e login openai-codex` | `chatgpt('gpt-5.5')` | `@ai-sdk/openai` |
+| ChatGPT Plus/Pro | `e2e login openai` | `chatgpt('gpt-5.5')` | `@ai-sdk/openai` |
 | GitHub Copilot | `e2e login github-copilot` | `copilot('claude-sonnet-5')` | `@ai-sdk/openai-compatible` |
 | SuperGrok / X Premium+ | `e2e login xai` | `grok('grok-4')` | `@ai-sdk/xai` |
 
@@ -26,7 +26,7 @@ and dependencies. By hand:
 
 ```bash
 npm i -D @e2edev/oauth @ai-sdk/openai   # or @ai-sdk/openai-compatible, @ai-sdk/xai
-npx e2e login openai-codex
+npx e2e login openai
 ```
 
 ```ts title="e2e.config.ts"
