@@ -1,9 +1,10 @@
 /**
  * Folds a server-sent-event response into the single JSON body a
  * non-streaming client expects. The OpenAI Responses stream ends in a
- * `response.completed` event whose `response` is exactly the object the
- * non-streaming endpoint returns, so that event becomes the body; a
- * `response.failed` or `error` event becomes an error body.
+ * `response.completed` (or `response.incomplete`, when the output was cut
+ * short) event whose `response` is exactly the object the non-streaming
+ * endpoint returns, so that event becomes the body; a `response.failed` or
+ * `error` event becomes an error body.
  */
 
 export interface SseEvent {

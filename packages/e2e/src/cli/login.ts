@@ -2,14 +2,17 @@
  * `e2e login` and `e2e logout`: sign in to a personal subscription
  * (ChatGPT Plus/Pro, GitHub Copilot, SuperGrok) so a config can construct
  * its model from `@e2edev/oauth`. The flows live in that package; the CLI
- * only forwards to it, resolved from the project so the runner itself never
- * depends on any provider.
+ * calls its typed entry points, resolved from the project so the runner
+ * itself never depends on any provider.
  */
 
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import pc from 'picocolors';
+
+/** The providers `@e2edev/oauth` signs in to; commander rejects anything else as a usage error. */
+export const LOGIN_PROVIDERS = ['openai-codex', 'github-copilot', 'xai'] as const;
 
 export interface LoginOptions {
   readonly device?: boolean;
@@ -18,10 +21,15 @@ export interface LoginOptions {
   readonly enterpriseUrl?: string;
 }
 
-type OAuthCliModule = { runOAuthCli(argv: readonly string[]): Promise<number> };
+/** What `@e2edev/oauth/cli` exports; typed here because the runner cannot import the package. */
+interface OAuthCli {
+  runLogin(providerId: string, options: { method?: 'device'; clientId?: string; fromGitHubCli?: boolean; enterpriseUrl?: string }): Promise<number>;
+  runLogout(providerId: string): Promise<number>;
+  runStatus(): Promise<number>;
+}
 
 /** Loads `@e2edev/oauth/cli` from the project, or explains how to add it. */
-async function loadOAuthCli(cwd: string): Promise<OAuthCliModule | undefined> {
+async function loadOAuthCli(cwd: string): Promise<OAuthCli | undefined> {
   const require = createRequire(path.join(cwd, 'package.json'));
   let resolved: string;
   try {
@@ -32,24 +40,24 @@ async function loadOAuthCli(cwd: string): Promise<OAuthCliModule | undefined> {
     );
     return undefined;
   }
-  return (await import(pathToFileURL(resolved).href)) as OAuthCliModule;
+  return (await import(pathToFileURL(resolved).href)) as OAuthCli;
 }
 
-export async function login(cwd: string, provider: string, options: LoginOptions): Promise<number> {
+/** Signs in to `provider`, or without one lists the stored logins. */
+export async function login(cwd: string, provider: string | undefined, options: LoginOptions): Promise<number> {
   const cli = await loadOAuthCli(cwd);
   if (cli === undefined) return 1;
-  return cli.runOAuthCli([
-    'login',
-    provider,
-    ...(options.device === true ? ['--device'] : []),
-    ...(options.clientId === undefined ? [] : ['--client-id', options.clientId]),
-    ...(options.fromGh === true ? ['--from-gh'] : []),
-    ...(options.enterpriseUrl === undefined ? [] : ['--enterprise-url', options.enterpriseUrl]),
-  ]);
+  if (provider === undefined) return cli.runStatus();
+  return cli.runLogin(provider, {
+    ...(options.device === true ? { method: 'device' } : {}),
+    ...(options.clientId === undefined ? {} : { clientId: options.clientId }),
+    ...(options.fromGh === true ? { fromGitHubCli: true } : {}),
+    ...(options.enterpriseUrl === undefined ? {} : { enterpriseUrl: options.enterpriseUrl }),
+  });
 }
 
-export async function logout(cwd: string, provider: string | undefined): Promise<number> {
+export async function logout(cwd: string, provider: string): Promise<number> {
   const cli = await loadOAuthCli(cwd);
   if (cli === undefined) return 1;
-  return cli.runOAuthCli(provider === undefined ? ['status'] : ['logout', provider]);
+  return cli.runLogout(provider);
 }

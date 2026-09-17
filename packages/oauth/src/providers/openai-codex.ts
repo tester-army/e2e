@@ -1,98 +1,98 @@
 /**
  * ChatGPT Plus/Pro through the Codex OAuth client. The login is the one the
  * Codex CLI runs: PKCE authorization code against auth.openai.com with a
- * local callback on port 1455, or a device code for a machine without a
- * browser. Requests then go to the Codex backend, which speaks the Responses
- * API, requires `store: false`, and answers only as a stream; the stream is
- * folded back into JSON when the SDK asked for a single response.
+ * local callback on port 1455, or OpenAI's own user-code flow for a machine
+ * without a browser. Requests then go to the Codex backend, which speaks the
+ * Responses API, requires `store: false`, and answers only as a stream; the
+ * stream is folded back into JSON when the SDK asked for a single response.
  */
 
 import { startCallbackServer } from '../callback-server.ts';
-import { abortableSleep, throwIfAborted } from '../device-code.ts';
+import { runDeviceFlow } from '../device-code.ts';
 import { OAuthError, describeResponse } from '../errors.ts';
-import { decodeJwtPayload, generatePkce, randomState } from '../pkce.ts';
+import { decodeJwtPayload } from '../jwt.ts';
+import { generatePkce, randomState } from '../pkce.ts';
 import { foldResponsesStream } from '../sse.ts';
-import type { OAuthCredentials, OAuthLoginCallbacks, OAuthProvider, PreparedRequest } from '../types.ts';
+import { expiryFrom, requestTokens, type TokenResponse } from '../token-endpoint.ts';
+import type { FetchFunction, OAuthCredentials, OAuthLoginCallbacks, OAuthProvider } from '../types.ts';
 
 /** The public OAuth client of the Codex CLI, which every third-party harness signs in through. */
-const CODEX_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
-const CODEX_ISSUER = 'https://auth.openai.com';
-const CODEX_API_URL = 'https://chatgpt.com/backend-api/codex/responses';
+const CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
+const ISSUER = 'https://auth.openai.com';
+const API_URL = 'https://chatgpt.com/backend-api/codex/responses';
 const CALLBACK_PORT = 1455;
 const CALLBACK_PATH = '/auth/callback';
 const SCOPE = 'openid profile email offline_access';
-const DEVICE_POLL_MARGIN_MS = 3_000;
+const DEVICE_POLL_MARGIN_S = 3;
 const LOGIN_TIMEOUT_MS = 10 * 60 * 1000;
+/** The backend rejects a request without instructions; this is the least it accepts when the SDK sent no system prompt. */
+const REQUIRED_INSTRUCTIONS = 'Follow the user request.';
 
 export interface CodexCredentials extends OAuthCredentials {
+  /** The ChatGPT account the requests bill to. */
   readonly accountId?: string;
+  /** The compute residency the token pins, sent back so the backend routes accordingly. */
+  readonly residency?: string;
 }
 
 export interface CodexLoginOptions {
   /** `browser` (default) opens the authorization page; `device` prints a code for another device. */
   readonly method?: 'browser' | 'device';
-  /** The `originator` the authorization page and requests carry: your product's name. */
-  readonly originator?: string;
-  readonly issuer?: string;
 }
 
 export interface CodexProviderOptions {
+  /** The `originator` the authorization page and requests carry: your product's name. */
   readonly originator?: string;
+  /** Test seams. */
   readonly issuer?: string;
   readonly apiUrl?: string;
+  readonly callbackPort?: number;
+  readonly loginTimeoutMs?: number;
 }
 
-interface TokenResponse {
-  access_token: string;
-  refresh_token: string;
-  id_token?: string;
-  expires_in?: number;
-}
-
-export function createCodexProvider(options: CodexProviderOptions = {}): OAuthProvider<CodexLoginOptions> {
+export function createCodexProvider(options: CodexProviderOptions = {}): OAuthProvider<CodexCredentials, CodexLoginOptions> {
   const originator = options.originator ?? 'e2e';
-  const issuer = options.issuer ?? CODEX_ISSUER;
-  const apiUrl = options.apiUrl ?? CODEX_API_URL;
+  const issuer = options.issuer ?? ISSUER;
+  const apiUrl = options.apiUrl ?? API_URL;
+  const callbackPort = options.callbackPort ?? CALLBACK_PORT;
+  const timeoutMs = options.loginTimeoutMs ?? LOGIN_TIMEOUT_MS;
   return {
     id: 'openai-codex',
     name: 'ChatGPT',
     async login(callbacks, loginOptions = {}) {
       const tokens =
         loginOptions.method === 'device'
-          ? await deviceLogin(callbacks, loginOptions.issuer ?? issuer)
-          : await browserLogin(callbacks, loginOptions.issuer ?? issuer, loginOptions.originator ?? originator);
+          ? await deviceLogin(callbacks, issuer, timeoutMs)
+          : await browserLogin(callbacks, { issuer, originator, callbackPort, timeoutMs });
       return toCredentials(tokens);
     },
     async refresh(credentials) {
-      const response = await fetch(`${issuer}/oauth/token`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: credentials.refresh, client_id: CODEX_CLIENT_ID }),
-      });
-      if (response.status === 400 || response.status === 401) {
-        throw new OAuthError('LOGIN_REQUIRED', `ChatGPT rejected the refresh token (${await describeResponse(response)}); sign in again`);
-      }
-      if (!response.ok) throw new OAuthError('FLOW_FAILED', `ChatGPT token refresh failed: ${await describeResponse(response)}`);
-      const tokens = (await response.json()) as TokenResponse;
-      const renewed = toCredentials(tokens);
-      return { ...renewed, accountId: renewed.accountId ?? (credentials as CodexCredentials).accountId };
+      const tokens = await requestTokens(
+        'ChatGPT',
+        `${issuer}/oauth/token`,
+        { grant_type: 'refresh_token', refresh_token: credentials.refresh, client_id: CLIENT_ID },
+        'LOGIN_REQUIRED',
+      );
+      return toCredentials(tokens, credentials);
     },
-    async prepareRequest(request, credentials) {
-      return prepareCodexRequest(request, credentials as CodexCredentials, { originator, apiUrl });
+    async send(request, credentials, upstream) {
+      return sendCodexRequest(request, credentials, upstream, { originator, apiUrl });
     },
   };
 }
 
-function toCredentials(tokens: TokenResponse): CodexCredentials {
-  if (typeof tokens.access_token !== 'string' || typeof tokens.refresh_token !== 'string') {
-    throw new OAuthError('FLOW_FAILED', 'the ChatGPT token response is missing access_token or refresh_token');
-  }
-  const accountId = extractAccountId(tokens);
+/** Credentials from a token response; a refresh that returns no new refresh token or account keeps the previous ones. */
+function toCredentials(tokens: TokenResponse, previous?: CodexCredentials): CodexCredentials {
+  const accountId = extractAccountId(tokens) ?? previous?.accountId;
+  const residency = extractResidency(tokens.access_token) ?? previous?.residency;
+  const refresh = tokens.refresh_token ?? previous?.refresh;
+  if (refresh === undefined) throw new OAuthError('FLOW_FAILED', 'the ChatGPT token response is missing refresh_token');
   return {
     access: tokens.access_token,
-    refresh: tokens.refresh_token,
-    expires: Date.now() + (tokens.expires_in ?? 3600) * 1000,
+    refresh,
+    expires: expiryFrom(tokens.expires_in),
     ...(accountId === undefined ? {} : { accountId }),
+    ...(residency === undefined ? {} : { residency }),
   };
 }
 
@@ -113,7 +113,6 @@ export function extractAccountId(tokens: { id_token?: string; access_token?: str
   return undefined;
 }
 
-/** The compute residency the token pins, when it pins one. */
 function extractResidency(accessToken: string): string | undefined {
   const claims = decodeJwtPayload(accessToken);
   const nested = claims?.[AUTH_CLAIM] as Record<string, unknown> | undefined;
@@ -121,27 +120,10 @@ function extractResidency(accessToken: string): string | undefined {
   return typeof residency === 'string' && residency !== '' && residency !== 'no_constraint' ? residency : undefined;
 }
 
-function buildAuthorizeUrl(input: { issuer: string; redirectUri: string; challenge: string; state: string; originator: string }): string {
-  const url = new URL(`${input.issuer}/oauth/authorize`);
-  url.search = new URLSearchParams({
-    response_type: 'code',
-    client_id: CODEX_CLIENT_ID,
-    redirect_uri: input.redirectUri,
-    scope: SCOPE,
-    code_challenge: input.challenge,
-    code_challenge_method: 'S256',
-    id_token_add_organizations: 'true',
-    codex_cli_simplified_flow: 'true',
-    state: input.state,
-    originator: input.originator,
-  }).toString();
-  return url.toString();
-}
-
 /** The code from what the user pasted: a full redirect URL, `code#state`, a query string, or the bare code. */
-export function parseAuthorizationInput(input: string): { code?: string | undefined; state?: string | undefined } {
+export function parseAuthorizationInput(input: string): { code: string | undefined; state: string | undefined } {
   const value = input.trim();
-  if (value === '') return {};
+  if (value === '') return { code: undefined, state: undefined };
   try {
     const url = new URL(value);
     return { code: url.searchParams.get('code') ?? undefined, state: url.searchParams.get('state') ?? undefined };
@@ -156,137 +138,151 @@ export function parseAuthorizationInput(input: string): { code?: string | undefi
     const params = new URLSearchParams(value);
     return { code: params.get('code') ?? undefined, state: params.get('state') ?? undefined };
   }
-  return { code: value };
+  return { code: value, state: undefined };
 }
 
-async function exchangeCode(issuer: string, code: string, redirectUri: string, verifier: string): Promise<TokenResponse> {
-  const response = await fetch(`${issuer}/oauth/token`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: redirectUri, client_id: CODEX_CLIENT_ID, code_verifier: verifier }),
+function exchangeCode(issuer: string, code: string, redirectUri: string, verifier: string): Promise<TokenResponse> {
+  return requestTokens('ChatGPT', `${issuer}/oauth/token`, {
+    grant_type: 'authorization_code',
+    code,
+    redirect_uri: redirectUri,
+    client_id: CLIENT_ID,
+    code_verifier: verifier,
   });
-  if (!response.ok) throw new OAuthError('FLOW_FAILED', `ChatGPT token exchange failed: ${await describeResponse(response)}`);
-  return (await response.json()) as TokenResponse;
 }
 
-async function browserLogin(callbacks: OAuthLoginCallbacks, issuer: string, originator: string): Promise<TokenResponse> {
+interface BrowserLogin {
+  readonly issuer: string;
+  readonly originator: string;
+  readonly callbackPort: number;
+  readonly timeoutMs: number;
+}
+
+async function browserLogin(callbacks: OAuthLoginCallbacks, flow: BrowserLogin): Promise<TokenResponse> {
   const { verifier, challenge } = await generatePkce();
   const state = randomState();
-  const redirectUri = `http://localhost:${CALLBACK_PORT}${CALLBACK_PATH}`;
-  const server = await startCallbackServer({ port: CALLBACK_PORT, path: CALLBACK_PATH, state, productName: 'ChatGPT login' });
-  const url = buildAuthorizeUrl({ issuer, redirectUri, challenge, state, originator });
+  const redirectUri = `http://localhost:${flow.callbackPort}${CALLBACK_PATH}`;
+  const server = await startCallbackServer({ port: flow.callbackPort, path: CALLBACK_PATH, state, productName: 'ChatGPT login' });
+  const url = new URL(`${flow.issuer}/oauth/authorize`);
+  url.search = new URLSearchParams({
+    response_type: 'code',
+    client_id: CLIENT_ID,
+    redirect_uri: redirectUri,
+    scope: SCOPE,
+    code_challenge: challenge,
+    code_challenge_method: 'S256',
+    id_token_add_organizations: 'true',
+    codex_cli_simplified_flow: 'true',
+    state,
+    originator: flow.originator,
+  }).toString();
   callbacks.onAuth({
-    url,
+    url: url.toString(),
     instructions:
       server === undefined
-        ? `Port ${CALLBACK_PORT} is in use, so the browser cannot return here: sign in, then paste the URL the browser lands on.`
+        ? `Port ${flow.callbackPort} is in use, so the browser cannot return here: sign in, then paste the URL the browser lands on.`
         : 'Sign in in the browser; this terminal continues when the browser returns.',
   });
-  const abort = () => server?.cancel();
-  callbacks.signal?.addEventListener('abort', abort, { once: true });
-  const timer = setTimeout(abort, LOGIN_TIMEOUT_MS);
   try {
     let code: string | undefined;
     if (server !== undefined) {
-      const manual = callbacks.onManualCodeInput?.().then((text) => ({ manual: text }));
-      const raced = await Promise.race([server.waitForCode(), ...(manual === undefined ? [] : [manual])]);
-      if (raced !== null && 'code' in raced) code = raced.code;
-      else if (raced !== null && 'manual' in raced) code = checkState(parseAuthorizationInput(raced.manual), state);
-    }
-    throwIfAborted(callbacks.signal);
-    if (code === undefined) {
-      const pasted = await callbacks.onPrompt({ message: 'Paste the URL the browser landed on (or the code it shows)' });
-      code = checkState(parseAuthorizationInput(pasted), state);
+      const answer = await server.waitForAnswer(callbacks.signal, flow.timeoutMs);
+      if ('error' in answer) {
+        throw answer.error === 'access_denied'
+          ? new OAuthError('CANCELLED', 'the sign-in was declined in the browser')
+          : new OAuthError('FLOW_FAILED', `ChatGPT refused the sign-in: ${answer.error}`);
+      }
+      code = answer.code;
+    } else {
+      const pasted = parseAuthorizationInput(await callbacks.onPrompt({ message: 'Paste the URL the browser landed on (or the code it shows)' }));
+      if (pasted.state !== undefined && pasted.state !== state) {
+        throw new OAuthError('FLOW_FAILED', 'the pasted code belongs to a different login attempt; start over');
+      }
+      code = pasted.code;
     }
     if (code === undefined) throw new OAuthError('FLOW_FAILED', 'no authorization code was received');
     callbacks.onProgress?.('Exchanging the code for tokens');
-    return await exchangeCode(issuer, code, redirectUri, verifier);
+    return await exchangeCode(flow.issuer, code, redirectUri, verifier);
   } finally {
-    clearTimeout(timer);
-    callbacks.signal?.removeEventListener('abort', abort);
     server?.close();
   }
 }
 
-function checkState(parsed: { code?: string | undefined; state?: string | undefined }, expected: string): string | undefined {
-  if (parsed.state !== undefined && parsed.state !== expected) {
-    throw new OAuthError('FLOW_FAILED', 'the pasted code belongs to a different login attempt; start over');
-  }
-  return parsed.code;
+/** The Codex CLI's device login: OpenAI's own user-code endpoints, pending until the user enters the code. */
+function deviceLogin(callbacks: OAuthLoginCallbacks, issuer: string, timeoutMs: number): Promise<TokenResponse> {
+  const json = (url: string, body: unknown) => fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  return runDeviceFlow<TokenResponse>({
+    callbacks,
+    async start() {
+      const response = await json(`${issuer}/api/accounts/deviceauth/usercode`, { client_id: CLIENT_ID });
+      if (!response.ok) throw new OAuthError('FLOW_FAILED', `ChatGPT device login could not start: ${await describeResponse(response)}`);
+      const device = (await response.json()) as { device_auth_id: string; user_code: string; interval?: string | number };
+      return {
+        deviceCode: device.device_auth_id,
+        userCode: device.user_code,
+        verificationUri: `${issuer}/codex/device`,
+        expiresIn: timeoutMs / 1000,
+        interval: Number(device.interval) + DEVICE_POLL_MARGIN_S,
+      };
+    },
+    async poll(authorization) {
+      const response = await json(`${issuer}/api/accounts/deviceauth/token`, { device_auth_id: authorization.deviceCode, user_code: authorization.userCode });
+      if (response.ok) {
+        const grant = (await response.json()) as { authorization_code: string; code_verifier: string };
+        return { status: 'granted', value: await exchangeCode(issuer, grant.authorization_code, `${issuer}/deviceauth/callback`, grant.code_verifier) };
+      }
+      // Pending shows as 403 or 404 until the user enters the code.
+      if (response.status === 403 || response.status === 404) {
+        await response.body?.cancel();
+        return { status: 'pending' };
+      }
+      throw new OAuthError('FLOW_FAILED', `ChatGPT device login failed: ${await describeResponse(response)}`);
+    },
+  });
 }
 
-/** The Codex CLI's device login: not RFC 8628, but OpenAI's own user-code endpoints. */
-async function deviceLogin(callbacks: OAuthLoginCallbacks, issuer: string): Promise<TokenResponse> {
-  const started = await fetch(`${issuer}/api/accounts/deviceauth/usercode`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ client_id: CODEX_CLIENT_ID }),
-  });
-  if (!started.ok) throw new OAuthError('FLOW_FAILED', `ChatGPT device login could not start: ${await describeResponse(started)}`);
-  const device = (await started.json()) as { device_auth_id: string; user_code: string; interval?: string | number };
-  const intervalMs = Math.max(Number(device.interval) || 5, 1) * 1000;
-  callbacks.onAuth({
-    url: `${issuer}/codex/device`,
-    userCode: device.user_code,
-    instructions: `Open ${issuer}/codex/device on any device and enter the code ${device.user_code}.`,
-  });
-  const deadline = Date.now() + LOGIN_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    throwIfAborted(callbacks.signal);
-    const response = await fetch(`${issuer}/api/accounts/deviceauth/token`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ device_auth_id: device.device_auth_id, user_code: device.user_code }),
-    });
-    if (response.ok) {
-      const grant = (await response.json()) as { authorization_code: string; code_verifier: string };
-      return exchangeCode(issuer, grant.authorization_code, `${issuer}/deviceauth/callback`, grant.code_verifier);
-    }
-    // Pending shows as 403 or 404 until the user enters the code.
-    if (response.status !== 403 && response.status !== 404) {
-      throw new OAuthError('FLOW_FAILED', `ChatGPT device login failed: ${await describeResponse(response)}`);
-    }
-    await response.body?.cancel();
-    await abortableSleep(intervalMs + DEVICE_POLL_MARGIN_MS, callbacks.signal);
-  }
-  throw new OAuthError('TIMEOUT', 'the ChatGPT device code expired before the login finished; run the login again');
+/** The Responses API body as the Codex backend wants it. */
+interface CodexBody {
+  stream?: boolean;
+  store?: boolean;
+  instructions?: string;
+  include?: string[];
+  max_output_tokens?: number;
+  [key: string]: unknown;
 }
 
 /**
- * Routes a Responses API request at the Codex backend. The body is what the
+ * Routes a Responses API request at the Codex backend with the body the
  * Codex CLI sends: no server-side storage, encrypted reasoning carried
  * between turns, always streamed. A caller that did not ask for a stream gets
  * the completed response folded back into one JSON body.
  */
-export async function prepareCodexRequest(
+export async function sendCodexRequest(
   request: Request,
   credentials: CodexCredentials,
+  upstream: FetchFunction,
   options: { originator: string; apiUrl: string },
-): Promise<PreparedRequest> {
-  const url = new URL(request.url);
+): Promise<Response> {
   const headers = new Headers(request.headers);
   headers.set('originator', options.originator);
   if (credentials.accountId !== undefined) headers.set('chatgpt-account-id', credentials.accountId);
-  const routed = url.pathname.endsWith('/responses') || url.pathname.endsWith('/chat/completions');
-  if (!routed) return { request: new Request(request, { headers }) };
+  if (!new URL(request.url).pathname.endsWith('/responses')) return upstream(new Request(request, { headers }));
 
-  const residency = extractResidency(credentials.access);
-  if (residency !== undefined) headers.set('x-openai-internal-codex-residency', residency);
-  const text = await request.text();
-  let body: Record<string, unknown> = {};
+  if (credentials.residency !== undefined) headers.set('x-openai-internal-codex-residency', credentials.residency);
+  let body: CodexBody;
   try {
-    body = JSON.parse(text) as Record<string, unknown>;
-  } catch {
-    return { request: new Request(options.apiUrl, { method: request.method, headers, body: text, signal: request.signal }) };
+    body = (await request.json()) as CodexBody;
+  } catch (cause) {
+    throw new OAuthError('FLOW_FAILED', 'the Responses request body is not JSON', { cause });
   }
-  const wantedStream = body['stream'] === true;
-  body['stream'] = true;
-  body['store'] = false;
-  if (typeof body['instructions'] !== 'string' || body['instructions'] === '') body['instructions'] = 'You are a helpful assistant.';
-  const include = Array.isArray(body['include']) ? (body['include'] as unknown[]) : [];
-  if (!include.includes('reasoning.encrypted_content')) body['include'] = [...include, 'reasoning.encrypted_content'];
+  const wantedStream = body.stream === true;
+  body.stream = true;
+  body.store = false;
+  if (body.instructions === undefined || body.instructions === '') body.instructions = REQUIRED_INSTRUCTIONS;
+  const include = body.include ?? [];
+  if (!include.includes('reasoning.encrypted_content')) body.include = [...include, 'reasoning.encrypted_content'];
   // The Codex backend sizes output itself; the Codex CLI sends no cap and the backend rejects some.
-  delete body['max_output_tokens'];
-  const prepared = new Request(options.apiUrl, { method: request.method, headers, body: JSON.stringify(body), signal: request.signal });
-  return wantedStream ? { request: prepared } : { request: prepared, finalize: foldResponsesStream };
+  delete body.max_output_tokens;
+  const response = await upstream(new Request(options.apiUrl, { method: request.method, headers, body: JSON.stringify(body), signal: request.signal }));
+  return wantedStream ? response : foldResponsesStream(response);
 }

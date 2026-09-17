@@ -1,15 +1,16 @@
 /**
- * The terminal side of a login: `login <provider>`, `logout <provider>`,
- * `status`. The e2e CLI forwards its `login` and `logout` commands here; the
- * package's own `e2e-oauth` bin calls it directly.
+ * The terminal side of a login. `runLogin`, `runLogout`, and `runStatus` are
+ * what the e2e CLI calls; `runOAuthCli` parses argv for the package's own
+ * `e2e-oauth` bin and dispatches to them.
  */
 
 import { spawn } from 'node:child_process';
 import { parseArgs } from 'node:util';
 import * as clack from '@clack/prompts';
 import { OAuthError } from './errors.ts';
-import { login, logout, status } from './login.ts';
-import { PROVIDER_IDS, getProvider, isBuiltInProviderId } from './registry.ts';
+import { login, logout } from './login.ts';
+import { PROVIDER_IDS, getProvider, isProviderId, type LoginOptionsById, type ProviderId } from './providers.ts';
+import { defaultCredentialStore } from './store.ts';
 import type { OAuthLoginCallbacks } from './types.ts';
 
 export interface CliIo {
@@ -18,6 +19,14 @@ export interface CliIo {
   readonly isTTY: boolean;
   /** Opens a URL in the user's browser; the default spawns the platform opener. */
   readonly openUrl?: (url: string) => void;
+}
+
+/** The flags every login takes, as the e2e CLI and the bin hand them over. */
+export interface LoginFlags {
+  readonly method?: 'device';
+  readonly clientId?: string;
+  readonly fromGitHubCli?: boolean;
+  readonly enterpriseUrl?: string;
 }
 
 const USAGE = `Usage:
@@ -31,56 +40,120 @@ Providers: ${PROVIDER_IDS.join(', ')}
   xai             SuperGrok / X Premium+ (device code)
 `;
 
-export async function runOAuthCli(argv: readonly string[], io: CliIo = defaultIo()): Promise<number> {
-  const { values, positionals } = parseArgs({
-    args: [...argv],
-    allowPositionals: true,
-    options: {
-      device: { type: 'boolean' },
-      'client-id': { type: 'string' },
-      'from-gh': { type: 'boolean' },
-      'enterprise-url': { type: 'string' },
-      help: { type: 'boolean', short: 'h' },
-    },
+export async function runLogin(providerId: string, flags: LoginFlags, io: CliIo = defaultIo()): Promise<number> {
+  return report(io, async () => {
+    const id = requireProvider(providerId);
+    const provider = getProvider(id);
+    const controller = new AbortController();
+    const onSigint = () => controller.abort();
+    process.once('SIGINT', onSigint);
+    const ui = terminalCallbacks(provider.name, io, controller.signal);
+    try {
+      const credentials = await login(id, { callbacks: ui.callbacks, options: toLoginOptions(id, flags) });
+      ui.done(`${provider.name} login stored${credentials.expires === 0 ? '' : '; the token refreshes itself'}.`);
+    } catch (cause) {
+      ui.failed();
+      throw cause;
+    } finally {
+      process.removeListener('SIGINT', onSigint);
+    }
   });
-  const [command, providerId] = positionals;
-  if (values.help === true || command === undefined) {
-    io.stdout.write(USAGE);
-    return command === undefined ? 1 : 0;
-  }
-  try {
+}
+
+export async function runLogout(providerId: string, io: CliIo = defaultIo()): Promise<number> {
+  return report(io, async () => {
+    const id = requireProvider(providerId);
+    const had = await logout(id);
+    io.stdout.write(had ? `Signed out of ${id}.\n` : `No ${id} login was stored.\n`);
+  });
+}
+
+export async function runStatus(io: CliIo = defaultIo()): Promise<number> {
+  return report(io, async () => {
+    const store = defaultCredentialStore();
+    const ids = await store.list();
+    if (ids.length === 0) {
+      io.stdout.write(`No logins stored. Sign in with one of: ${PROVIDER_IDS.map((id) => `e2e login ${id}`).join(', ')}.\n`);
+      return;
+    }
+    for (const id of ids) {
+      const credentials = await store.get(id);
+      const name = isProviderId(id) ? getProvider(id).name : id;
+      io.stdout.write(`${id.padEnd(16)} ${name.padEnd(16)} ${describeExpiry(credentials?.expires)}\n`);
+    }
+  });
+}
+
+/** The `e2e-oauth` bin: argv in, exit code out. */
+export async function runOAuthCli(argv: readonly string[], io: CliIo = defaultIo()): Promise<number> {
+  return report(io, async () => {
+    const { values, positionals } = parseArgs({
+      args: [...argv],
+      allowPositionals: true,
+      options: {
+        device: { type: 'boolean' },
+        'client-id': { type: 'string' },
+        'from-gh': { type: 'boolean' },
+        'enterprise-url': { type: 'string' },
+        help: { type: 'boolean', short: 'h' },
+      },
+    });
+    const [command, providerId = ''] = positionals;
+    if (values.help === true || command === undefined) {
+      io.stdout.write(USAGE);
+      return command === undefined ? 1 : 0;
+    }
     switch (command) {
       case 'login':
-        return await runLogin(requireProvider(providerId), values, io);
-      case 'logout': {
-        const had = await logout(requireProvider(providerId));
-        io.stdout.write(had ? `Signed out of ${providerId}.\n` : `No ${providerId} login was stored.\n`);
-        return 0;
-      }
-      case 'status': {
-        const entries = await status();
-        if (entries.length === 0) {
-          io.stdout.write(`No logins stored. ${USAGE}`);
-          return 0;
-        }
-        for (const entry of entries) io.stdout.write(`${entry.id.padEnd(16)} ${entry.name.padEnd(16)} ${describeExpiry(entry.expires)}\n`);
-        return 0;
-      }
+        return runLogin(
+          providerId,
+          {
+            ...(values.device === true ? { method: 'device' as const } : {}),
+            ...(values['client-id'] === undefined ? {} : { clientId: values['client-id'] }),
+            ...(values['from-gh'] === true ? { fromGitHubCli: true } : {}),
+            ...(values['enterprise-url'] === undefined ? {} : { enterpriseUrl: values['enterprise-url'] }),
+          },
+          io,
+        );
+      case 'logout':
+        return runLogout(providerId, io);
+      case 'status':
+        return runStatus(io);
       default:
-        io.stderr.write(`Unknown command ${command}.\n${USAGE}`);
-        return 1;
+        throw new OAuthError('MISCONFIGURED', `Unknown command ${command}.\n${USAGE}`);
     }
+  });
+}
+
+/** Runs a command, printing a failure as one line; cancellation exits like an interrupt. */
+async function report(io: CliIo, run: () => Promise<number | undefined>): Promise<number> {
+  try {
+    return (await run()) ?? 0;
   } catch (cause) {
     io.stderr.write(`${cause instanceof Error ? cause.message : String(cause)}\n`);
     return cause instanceof OAuthError && cause.code === 'CANCELLED' ? 130 : 1;
   }
 }
 
-function requireProvider(id: string | undefined): string {
-  if (id === undefined || !isBuiltInProviderId(id)) {
-    throw new OAuthError('MISCONFIGURED', `name a provider: ${PROVIDER_IDS.join(', ')}`);
-  }
+function requireProvider(id: string): ProviderId {
+  if (!isProviderId(id)) throw new OAuthError('MISCONFIGURED', `name a provider: ${PROVIDER_IDS.join(', ')}`);
   return id;
+}
+
+/** The provider's own login options from the shared flags; flags meant for another provider are ignored. */
+function toLoginOptions<Id extends ProviderId>(id: Id, flags: LoginFlags): LoginOptionsById[Id] {
+  switch (id) {
+    case 'openai-codex':
+      return (flags.method === undefined ? {} : { method: flags.method }) as LoginOptionsById[Id];
+    case 'github-copilot':
+      return {
+        ...(flags.clientId === undefined ? {} : { clientId: flags.clientId }),
+        ...(flags.fromGitHubCli === true ? { fromGitHubCli: true } : {}),
+        ...(flags.enterpriseUrl === undefined ? {} : { enterpriseUrl: flags.enterpriseUrl }),
+      } as LoginOptionsById[Id];
+    default:
+      return {} as LoginOptionsById[Id];
+  }
 }
 
 function describeExpiry(expires: number | undefined): string {
@@ -89,22 +162,19 @@ function describeExpiry(expires: number | undefined): string {
   return expires <= Date.now() ? 'signed in, token expired (refreshes on the next call)' : `signed in, token valid until ${new Date(expires).toLocaleString()}`;
 }
 
-async function runLogin(
-  providerId: string,
-  values: { device?: boolean; 'client-id'?: string; 'from-gh'?: boolean; 'enterprise-url'?: string },
-  io: CliIo,
-): Promise<number> {
-  const provider = getProvider(providerId)!;
-  const controller = new AbortController();
-  const onSigint = () => controller.abort();
-  process.once('SIGINT', onSigint);
+/** Clack prompts around a login flow; plain lines when there is no terminal. */
+function terminalCallbacks(providerName: string, io: CliIo, signal: AbortSignal) {
   const spinner = io.isTTY ? clack.spinner() : undefined;
-  clack.intro(`Sign in to ${provider.name}`);
+  if (io.isTTY) clack.intro(`Sign in to ${providerName}`);
+  else io.stdout.write(`Sign in to ${providerName}\n`);
   const callbacks: OAuthLoginCallbacks = {
-    signal: controller.signal,
+    signal,
     onAuth(info) {
-      if (info.userCode !== undefined) clack.note(`${info.url}\n\nCode: ${info.userCode}`, 'Open this page and enter the code');
-      else clack.note(info.url, 'Open this page');
+      if (io.isTTY) {
+        clack.note(info.userCode === undefined ? info.url : `${info.url}\n\nCode: ${info.userCode}`, info.userCode === undefined ? 'Open this page' : 'Open this page and enter the code');
+      } else {
+        io.stdout.write(`${info.url}\n${info.userCode === undefined ? '' : `Code: ${info.userCode}\n`}`);
+      }
       io.stdout.write(`${info.instructions}\n`);
       (io.openUrl ?? openInBrowser)(info.url);
       spinner?.start('Waiting for the sign-in to finish');
@@ -122,23 +192,17 @@ async function runLogin(
       return answer as string;
     },
   };
-  try {
-    const options = {
-      ...(values.device === true ? { method: 'device' as const } : {}),
-      ...(values['client-id'] === undefined ? {} : { clientId: values['client-id'] }),
-      ...(values['from-gh'] === true ? { fromGitHubCli: true } : {}),
-      ...(values['enterprise-url'] === undefined ? {} : { enterpriseUrl: values['enterprise-url'] }),
-    };
-    const credentials = await login(providerId, { callbacks, options });
-    spinner?.stop('Signed in');
-    clack.outro(`${provider.name} login stored${credentials.expires === 0 ? '' : `; the token refreshes itself`}.`);
-    return 0;
-  } catch (cause) {
-    spinner?.stop('Sign-in failed');
-    throw cause;
-  } finally {
-    process.removeListener('SIGINT', onSigint);
-  }
+  return {
+    callbacks,
+    done(message: string) {
+      spinner?.stop('Signed in');
+      if (io.isTTY) clack.outro(message);
+      else io.stdout.write(`${message}\n`);
+    },
+    failed() {
+      spinner?.stop('Sign-in failed');
+    },
+  };
 }
 
 function defaultIo(): CliIo {
@@ -158,6 +222,6 @@ function openInBrowser(url: string): void {
     child.on('error', () => {});
     child.unref();
   } catch {
-    // Printed URL is the fallback.
+    // The printed URL is the fallback.
   }
 }

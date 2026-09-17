@@ -72,13 +72,13 @@ Requests go to the ordinary xAI API with your plan's shared weekly usage pool.
 
 `~/.config/e2e/oauth.json` (or under `$XDG_CONFIG_HOME`), mode 0600, one
 entry per provider. Tokens refresh themselves ahead of expiry, and one refresh
-serves every concurrent call of a run. `e2e logout` lists the entries;
-`e2e logout <provider>` removes one.
+serves every concurrent call of a run. `e2e login` without a provider lists
+the entries; `e2e logout <provider>` removes one.
 
-`E2E_OAUTH_CREDENTIALS` holding the same JSON overrides the file for a
-machine you cannot sign in on. It is read-only: refreshed tokens are not
-written back, so a ChatGPT or SuperGrok entry there goes stale when its
-access token expires. Subscriptions are for the machine you work on; CI
+`E2E_OAUTH_CREDENTIALS` holding the same JSON replaces the file for a
+machine you cannot sign in on. It is read-only: `e2e login` and `e2e logout`
+refuse to change it, and refreshed tokens are not written back, so a ChatGPT
+or SuperGrok entry there goes stale when its access token expires. Subscriptions are for the machine you work on; CI
 keeps an API key.
 
 ## Your own product
@@ -93,7 +93,7 @@ the vendors' public CLI clients, never another client's identity.
 import { createOpenAI } from '@ai-sdk/openai';
 import { createOAuthFetch, createCodexProvider, FileCredentialStore } from '@e2edev/oauth';
 
-const store = new FileCredentialStore({ path: '/path/of/your/choice.json' });
+const store = new FileCredentialStore('/path/of/your/choice.json');
 const fetch = createOAuthFetch(createCodexProvider({ originator: 'my-tool' }), { store, userAgent: 'my-tool/1.0' });
 const model = createOpenAI({ apiKey: 'oauth', fetch }).responses('gpt-5.5');
 ```

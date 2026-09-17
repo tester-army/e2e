@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { dependencyRange } from '../../src/cli/init/engines.ts';
+import { dependencyRange } from '../../src/cli/init/versions.ts';
 
 // Use the built modules, just as config and test imports use the installed packages.
 const loaderModule = '../../dist/config/load.js';
@@ -144,8 +144,8 @@ describe('initializing standalone projects', () => {
       const manifest = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'));
       const playwrightVersion = (JSON.parse(readFileSync(path.resolve(PACKAGE_ROOT, '..', 'playwright', 'package.json'), 'utf8')) as { version: string }).version;
       expect(manifest.devDependencies['@e2edev/playwright']).toBe(dependencyRange(playwrightVersion));
-      const recorded = JSON.parse(readFileSync(path.join(PACKAGE_ROOT, 'dist', 'cli', 'init', 'engine-versions.json'), 'utf8')) as Record<string, string>;
-      expect(Object.keys(recorded).toSorted()).toEqual(['@e2edev/agent-device', '@e2edev/playwright', 'playwright']);
+      const recorded = JSON.parse(readFileSync(path.join(PACKAGE_ROOT, 'dist', 'cli', 'init', 'sibling-versions.json'), 'utf8')) as Record<string, string>;
+      expect(Object.keys(recorded).toSorted()).toEqual(['@e2edev/agent-device', '@e2edev/oauth', '@e2edev/playwright', 'playwright']);
       expect(manifest.devDependencies.playwright).toBe(`^${recorded.playwright}`);
       expect(manifest.devDependencies.ai).toBe('^7.0.0');
       expect(manifest.scripts).toEqual({ 'test:e2e': 'e2e run' });

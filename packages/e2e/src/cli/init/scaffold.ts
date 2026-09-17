@@ -1,5 +1,6 @@
 import { packageVersion } from '../../internal/package-version.ts';
-import { dependencyRange, getEnginePreset, type EngineId } from './engines.ts';
+import { getEnginePreset, type EngineId } from './engines.ts';
+import { dependencyRange } from './versions.ts';
 import { getGatewayPreset, type GatewayId } from './gateways.ts';
 
 const AGENT_IMPORT = "import { createAgent } from 'e2e/agent';";

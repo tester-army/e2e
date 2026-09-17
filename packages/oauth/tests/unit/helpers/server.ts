@@ -48,3 +48,28 @@ export function fakeJwt(payload: Record<string, unknown>): string {
   const part = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
   return `${part({ alg: 'none' })}.${part(payload)}.sig`;
 }
+
+/** Closes every server a test started, so a failing assertion never leaks a listener into the next test. */
+export function useServers(afterEach: (fn: () => Promise<void>) => void) {
+  const servers: Array<{ close(): Promise<void> }> = [];
+  afterEach(async () => {
+    for (const server of servers.splice(0)) await server.close();
+  });
+  return async (handler: Handler) => {
+    const server = await startServer(handler);
+    servers.push(server);
+    return server;
+  };
+}
+
+/** A fake vendor that echoes what it was sent. */
+export async function echoUpstream(input: string | URL | Request): Promise<Response> {
+  const request = input instanceof Request ? input : new Request(input);
+  return new Response(JSON.stringify({ url: request.url, headers: Object.fromEntries(request.headers), body: await request.text() }));
+}
+
+export interface Echo {
+  readonly url: string;
+  readonly headers: Record<string, string>;
+  readonly body: string;
+}

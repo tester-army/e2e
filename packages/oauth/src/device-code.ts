@@ -1,11 +1,13 @@
 /**
  * RFC 8628 device authorization: the server hands out a user code, the user
  * enters it on any device, and the client polls the token endpoint until the
- * grant lands. Vendors differ in URLs, body shape, and how they say
- * "pending", so the flow takes those as functions and owns only the timing.
+ * grant lands. `runDeviceFlow` owns the timing for any vendor's shape;
+ * `rfc8628Flow` is the standard shape itself, which GitHub and xAI both
+ * speak apart from the status code they answer "pending" with.
  */
 
-import { OAuthError } from './errors.ts';
+import { OAuthError, describeResponse } from './errors.ts';
+import { positiveSeconds, postForm, type TokenResponse } from './token-endpoint.ts';
 import type { OAuthLoginCallbacks } from './types.ts';
 
 export interface DeviceAuthorization {
@@ -58,7 +60,6 @@ export async function runDeviceFlow<T>(options: DeviceFlowOptions<T>): Promise<T
   const deadline = now() + positiveSeconds(authorization.expiresIn, DEFAULT_EXPIRES_S) * 1000;
   let intervalMs = Math.max(positiveSeconds(authorization.interval, DEFAULT_INTERVAL_S) * 1000, MIN_INTERVAL_MS);
   while (now() < deadline) {
-    throwIfAborted(callbacks.signal);
     await sleep(Math.min(intervalMs, Math.max(0, deadline - now())), callbacks.signal);
     const result = await options.poll(authorization);
     switch (result.status) {
@@ -81,14 +82,61 @@ export async function runDeviceFlow<T>(options: DeviceFlowOptions<T>): Promise<T
   throw new OAuthError('TIMEOUT', 'the device code expired before the login finished; run the login again');
 }
 
-/** A seconds value from the server, or the default when it is missing or not a positive finite number. */
-function positiveSeconds(value: unknown, fallback: number): number {
-  const seconds = Number(value);
-  return Number.isFinite(seconds) && seconds > 0 ? seconds : fallback;
+export interface Rfc8628Options {
+  readonly vendor: string;
+  readonly deviceCodeUrl: string;
+  readonly tokenUrl: string;
+  readonly clientId: string;
+  /** The device request's body besides `client_id`: scope, and whatever the vendor adds. */
+  readonly request: Record<string, string>;
+  readonly callbacks: OAuthLoginCallbacks;
 }
 
-export function throwIfAborted(signal: AbortSignal | undefined): void {
-  if (signal?.aborted) throw new OAuthError('CANCELLED', 'the login was cancelled');
+/** The standard device flow; the poll reads the body before the status, since vendors disagree on the status for "pending". */
+export function rfc8628Flow(options: Rfc8628Options): Promise<TokenResponse> {
+  const { vendor, clientId, callbacks } = options;
+  return runDeviceFlow<TokenResponse>({
+    callbacks,
+    async start() {
+      const response = await postForm(options.deviceCodeUrl, { client_id: clientId, ...options.request });
+      if (!response.ok) throw new OAuthError('FLOW_FAILED', `${vendor} device login could not start: ${await describeResponse(response)}`);
+      const json = (await response.json()) as Record<string, unknown>;
+      const { device_code, user_code, verification_uri, verification_uri_complete } = json;
+      if (typeof device_code !== 'string' || typeof user_code !== 'string' || typeof verification_uri !== 'string') {
+        throw new OAuthError('FLOW_FAILED', `the ${vendor} device code response is missing fields`);
+      }
+      return {
+        deviceCode: device_code,
+        userCode: user_code,
+        verificationUri: verification_uri,
+        ...(typeof verification_uri_complete === 'string' ? { verificationUriComplete: verification_uri_complete } : {}),
+        expiresIn: Number(json['expires_in']),
+        interval: Number(json['interval']),
+      };
+    },
+    async poll(authorization) {
+      const response = await postForm(options.tokenUrl, {
+        grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+        client_id: clientId,
+        device_code: authorization.deviceCode,
+      });
+      const json = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+      if (typeof json['access_token'] === 'string') return { status: 'granted', value: json as unknown as TokenResponse };
+      switch (json['error']) {
+        case 'authorization_pending':
+          return { status: 'pending' };
+        case 'slow_down':
+          return typeof json['interval'] === 'number' ? { status: 'slow_down', intervalSeconds: json['interval'] } : { status: 'slow_down' };
+        case 'access_denied':
+        case 'authorization_denied':
+          return { status: 'denied' };
+        case 'expired_token':
+          return { status: 'expired' };
+        default:
+          throw new OAuthError('FLOW_FAILED', `${vendor} device login failed: ${String(json['error_description'] ?? json['error'] ?? response.status)}`);
+      }
+    },
+  });
 }
 
 export function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {

@@ -36,7 +36,7 @@ descriptions and commit bodies; `git log` and `gh pr view` are the archive.
   `src/` (grep for them; zero hits is the invariant). The one exception is the
   `e2e init` scaffold presets in `src/cli/init/engines.ts`, which write the
   user's config and so name engine packages as text; the package build records
-  the sibling engines' versions in `dist/cli/init/engine-versions.json` for the
+  the sibling packages' versions in `dist/cli/init/sibling-versions.json` for the
   ranges they write. Each preset owns its prompt label, dependencies, config,
   example, and run command; interactive choices derive from this list. These
   presets never import engine implementations.

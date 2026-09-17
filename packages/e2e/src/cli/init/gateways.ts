@@ -5,7 +5,7 @@
  * entry here.
  */
 
-import { siblingDependency } from './engines.ts';
+import { siblingDependency } from './versions.ts';
 
 export type GatewayId = 'vercel' | 'openrouter' | 'openai-compatible' | 'chatgpt' | 'copilot' | 'grok';
 
@@ -16,8 +16,10 @@ export interface GatewayPreset {
   /** Packages besides `ai` the generated config imports from. */
   readonly dependencies: Readonly<Record<string, string>>;
   readonly import: string;
-  /** The comment line above the model, naming who serves it and which variable it reads. */
+  /** The comment line above the model, naming who serves it and which variable it reads, or which sign-in it uses. */
   readonly comment: string;
+  /** For a subscription: the `e2e login` provider that signs in, which init names as the next step. */
+  readonly login?: string;
   /** The model expression, with the endpoint the user typed for an OpenAI-compatible one. */
   model(endpoint: string | undefined): string;
 }
@@ -58,45 +60,34 @@ export const GATEWAYS: readonly GatewayPreset[] = [
   {
     id: 'chatgpt',
     label: 'ChatGPT Plus/Pro subscription',
-    hint: 'your ChatGPT plan through the Codex sign-in; run e2e login openai-codex',
+    hint: 'your ChatGPT plan through the Codex sign-in',
     dependencies: { ...siblingDependency('@e2edev/oauth'), '@ai-sdk/openai': '^4.0.0' },
     import: "import { chatgpt } from '@e2edev/oauth/chatgpt';",
     comment: 'Your ChatGPT subscription serves the model; sign in once with `e2e login openai-codex`.',
+    login: 'openai-codex',
     model: () => "chatgpt('gpt-5.5')",
   },
   {
     id: 'copilot',
     label: 'GitHub Copilot subscription',
-    hint: 'your Copilot plan, OpenAI and Anthropic models; run e2e login github-copilot',
+    hint: 'your Copilot plan: OpenAI, Anthropic, Google, and xAI models',
     dependencies: { ...siblingDependency('@e2edev/oauth'), '@ai-sdk/openai-compatible': '^3.0.0' },
     import: "import { copilot } from '@e2edev/oauth/copilot';",
     comment: 'Your GitHub Copilot subscription serves the model; sign in once with `e2e login github-copilot`.',
-    model: () => "copilot('gpt-5.6-luna')",
+    login: 'github-copilot',
+    model: () => "copilot('claude-sonnet-5')",
   },
   {
     id: 'grok',
     label: 'SuperGrok subscription',
-    hint: 'your SuperGrok or X Premium+ plan; run e2e login xai',
+    hint: 'your SuperGrok or X Premium+ plan',
     dependencies: { ...siblingDependency('@e2edev/oauth'), '@ai-sdk/xai': '^5.0.0' },
     import: "import { grok } from '@e2edev/oauth/grok';",
     comment: 'Your SuperGrok subscription serves the model; sign in once with `e2e login xai`.',
+    login: 'xai',
     model: () => "grok('grok-4')",
   },
 ];
-
-/** The `e2e login` provider a subscription gateway signs in with, or undefined for a keyed gateway. */
-export function loginProvider(id: GatewayId): 'openai-codex' | 'github-copilot' | 'xai' | undefined {
-  switch (id) {
-    case 'chatgpt':
-      return 'openai-codex';
-    case 'copilot':
-      return 'github-copilot';
-    case 'grok':
-      return 'xai';
-    default:
-      return undefined;
-  }
-}
 
 export function getGatewayPreset(id: GatewayId): GatewayPreset {
   const preset = GATEWAYS.find((gateway) => gateway.id === id);

@@ -1,19 +1,18 @@
 /**
  * The contract between a subscription login and the AI SDK: a provider knows
- * how to sign the user in, refresh what the login returned, and shape one API
- * request so the vendor accepts it with a subscription token. Everything else
- * (the credential file, the fetch that swaps the token in, the model
+ * how to sign the user in, refresh what the login returned, and send one API
+ * request the vendor's way with a subscription token. Everything else (the
+ * credential file, the fetch that swaps the token in, the model
  * constructors) is shared.
  */
 
-/** What a login returns and a refresh renews. Providers may add fields (an account id). */
+/** What a login returns and a refresh renews; providers extend it with what their requests need. */
 export interface OAuthCredentials {
   readonly access: string;
   /** Empty when the vendor issues non-expiring tokens. */
   readonly refresh: string;
   /** Epoch milliseconds; `0` when the token does not expire. */
   readonly expires: number;
-  readonly [key: string]: unknown;
 }
 
 /** Where the user is sent and, for device flows, the code to enter there. */
@@ -35,38 +34,32 @@ export interface OAuthLoginCallbacks {
   /** Asks the user for text: the pasted code when the local callback never arrives. */
   onPrompt(prompt: OAuthPrompt): Promise<string>;
   onProgress?(message: string): void;
-  /**
-   * Browser flows only: a prompt shown at once, alongside the callback server.
-   * Whichever settles first, the pasted code or the callback, wins.
-   */
-  onManualCodeInput?(): Promise<string>;
   readonly signal?: AbortSignal;
 }
 
-/** A request the provider shaped, and how to read the vendor's answer to it. */
-export interface PreparedRequest {
-  readonly request: Request;
-  /** Post-processes the response, e.g. folds a stream the vendor forces into the JSON the SDK asked for. */
-  readonly finalize?: (response: Response) => Promise<Response>;
-}
+/** The fetch signature AI SDK providers accept. */
+export type FetchFunction = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
-export interface OAuthProvider<Options = Record<string, never>> {
+export interface OAuthProvider<Credentials extends OAuthCredentials = OAuthCredentials, LoginOptions = unknown> {
   readonly id: string;
   readonly name: string;
-  /** Milliseconds before `expires` at which the token is refreshed ahead of a call. */
-  readonly refreshSkewMs?: number;
-  login(callbacks: OAuthLoginCallbacks, options?: Options): Promise<OAuthCredentials>;
+  login(callbacks: OAuthLoginCallbacks, options?: LoginOptions): Promise<Credentials>;
   /** Renews the credentials, or throws an OAuthError when the user has to sign in again. */
-  refresh(credentials: OAuthCredentials): Promise<OAuthCredentials>;
+  refresh(credentials: Credentials): Promise<Credentials>;
   /**
-   * Shapes one outgoing API request. It arrives with the bearer token and the
-   * user agent already set and the SDK's own key header removed; the provider
-   * rewrites the URL, adds vendor headers, and adjusts the body as needed.
+   * Sends one API request. It arrives with the bearer token and the user
+   * agent set and the SDK's own key header removed; the provider rewrites the
+   * URL, adds vendor headers, adjusts the body, and reads the answer as the
+   * vendor gives it. Absent, the request goes out as is.
    */
-  prepareRequest?(request: Request, credentials: OAuthCredentials): Promise<PreparedRequest> | PreparedRequest;
+  send?(request: Request, credentials: Credentials, upstream: FetchFunction): Promise<Response>;
 }
 
-/** Where credentials live between runs, keyed by provider id. */
+/**
+ * Where credentials live between runs, keyed by provider id. A store holds
+ * whatever each provider's login returned, so a provider reads back its own
+ * shape.
+ */
 export interface CredentialStore {
   get(providerId: string): Promise<OAuthCredentials | undefined>;
   set(providerId: string, credentials: OAuthCredentials): Promise<void>;
@@ -74,6 +67,3 @@ export interface CredentialStore {
   /** Every provider id with stored credentials. */
   list(): Promise<string[]>;
 }
-
-/** The fetch signature AI SDK providers accept. */
-export type FetchFunction = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;

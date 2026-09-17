@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dependencyRange, playwrightRange } from '../../src/cli/init/engines.ts';
+import { dependencyRange, playwrightRange } from '../../src/cli/init/versions.ts';
 
 describe('dependencyRange', () => {
   it('asks for the minor of the engine version the build recorded', () => {

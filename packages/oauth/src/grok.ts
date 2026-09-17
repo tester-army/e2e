@@ -7,7 +7,9 @@
 import type { LanguageModelV4 } from '@ai-sdk/provider';
 import { createXai } from '@ai-sdk/xai';
 import { createOAuthFetch } from './fetch.ts';
-import { USER_AGENT, getDefaultStore, getProvider, loginHint } from './registry.ts';
+import { USER_AGENT, loginHint } from './providers.ts';
+import { createXaiProvider } from './providers/xai.ts';
+import { defaultCredentialStore } from './store.ts';
 import type { CredentialStore } from './types.ts';
 
 export interface GrokOptions {
@@ -18,9 +20,8 @@ export interface GrokOptions {
 }
 
 export function grok(modelId: string, options: GrokOptions = {}): LanguageModelV4 {
-  const provider = getProvider('xai')!;
-  const fetch = createOAuthFetch(provider, {
-    store: options.store ?? getDefaultStore(),
+  const fetch = createOAuthFetch(createXaiProvider(), {
+    store: options.store ?? defaultCredentialStore(),
     userAgent: options.userAgent ?? USER_AGENT,
     loginHint: loginHint('xai'),
   });

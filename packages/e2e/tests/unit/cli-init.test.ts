@@ -5,7 +5,7 @@ import path from 'node:path';
 import * as clack from '@clack/prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { init } from '../../src/cli/init.ts';
-import { dependencyRange } from '../../src/cli/init/engines.ts';
+import { dependencyRange } from '../../src/cli/init/versions.ts';
 import { readSkillFiles } from '../../src/cli/skill.ts';
 
 vi.mock('@clack/prompts', { spy: true });
@@ -189,7 +189,7 @@ describe('e2e init', () => {
 
   it.each([
     { gateway: 'chatgpt', provider: 'openai-codex', line: "import { chatgpt } from '@e2edev/oauth/chatgpt';", model: "model: chatgpt('gpt-5.5'),", sdk: '@ai-sdk/openai' },
-    { gateway: 'copilot', provider: 'github-copilot', line: "import { copilot } from '@e2edev/oauth/copilot';", model: "model: copilot('gpt-5.6-luna'),", sdk: '@ai-sdk/openai-compatible' },
+    { gateway: 'copilot', provider: 'github-copilot', line: "import { copilot } from '@e2edev/oauth/copilot';", model: "model: copilot('claude-sonnet-5'),", sdk: '@ai-sdk/openai-compatible' },
     { gateway: 'grok', provider: 'xai', line: "import { grok } from '@e2edev/oauth/grok';", model: "model: grok('grok-4'),", sdk: '@ai-sdk/xai' },
   ] as const)('writes a $gateway subscription model and names the sign-in as the next step', async ({ gateway, provider, line, model, sdk }) => {
     vi.mocked(clack.select).mockResolvedValueOnce('playwright').mockResolvedValueOnce(gateway);

@@ -1,68 +1,59 @@
 /**
  * The one-shot local HTTP server a browser login redirects back to. It
- * accepts exactly one authorization code for the expected state, answers the
- * browser with a page, and hands the code to the flow. When the port is taken
- * the flow falls back to the user pasting the code, so a failure to listen is
- * reported, not thrown.
+ * accepts exactly one answer for the expected state, a code or the vendor's
+ * refusal, replies to the browser with a page, and hands the answer to the
+ * flow. When the port is taken the flow falls back to the user pasting the
+ * code, so a failure to listen is reported, not thrown.
  */
 
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { OAuthError } from './errors.ts';
 
 export interface CallbackServerOptions {
   readonly port: number;
-  readonly host?: string;
   readonly path: string;
   readonly state: string;
   readonly productName: string;
 }
 
+export type CallbackAnswer = { readonly code: string } | { readonly error: string };
+
 export interface CallbackServer {
   readonly redirectUri: string;
-  /** Resolves with the code, or `null` once cancelled. */
-  waitForCode(): Promise<{ code: string } | null>;
-  cancel(): void;
+  /** The browser's answer; rejects with CANCELLED on the signal and TIMEOUT after `timeoutMs`. */
+  waitForAnswer(signal: AbortSignal | undefined, timeoutMs: number): Promise<CallbackAnswer>;
   close(): void;
 }
 
 export async function startCallbackServer(options: CallbackServerOptions): Promise<CallbackServer | undefined> {
-  const host = options.host ?? '127.0.0.1';
-  let settle: ((value: { code: string } | null) => void) | undefined;
-  const codePromise = new Promise<{ code: string } | null>((resolve) => {
-    let settled = false;
-    settle = (value) => {
-      if (settled) return;
-      settled = true;
-      resolve(value);
+  const host = '127.0.0.1';
+  let settle: ((answer: CallbackAnswer) => void) | undefined;
+  const answered = new Promise<CallbackAnswer>((resolve) => {
+    settle = (answer) => {
+      resolve(answer);
+      settle = undefined;
     };
   });
 
   const server: Server = createServer((request, response) => {
     const url = new URL(request.url ?? '/', `http://${host}:${options.port}`);
-    const reply = (status: number, html: string): void => {
+    const reply = (status: number, heading: string, message: string): void => {
       response.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-      response.end(html);
+      response.end(renderPage(options.productName, heading, message));
     };
-    if (url.pathname !== options.path) {
-      reply(404, renderPage(options.productName, 'Not found', 'This address is not part of the login.'));
-      return;
-    }
+    if (url.pathname !== options.path) return reply(404, 'Not found', 'This address is not part of the login.');
+    // The state binds the answer to this attempt; anything else on the port is ignored.
+    if (url.searchParams.get('state') !== options.state) return reply(400, 'Login failed', 'The state does not match this login attempt.');
     const error = url.searchParams.get('error');
     if (error !== null) {
-      reply(400, renderPage(options.productName, 'Login failed', url.searchParams.get('error_description') ?? error));
-      settle?.(null);
-      return;
-    }
-    if (url.searchParams.get('state') !== options.state) {
-      reply(400, renderPage(options.productName, 'Login failed', 'The state does not match this login attempt.'));
+      reply(400, 'Login failed', url.searchParams.get('error_description') ?? error);
+      settle?.({ error });
       return;
     }
     const code = url.searchParams.get('code');
-    if (code === null || code === '') {
-      reply(400, renderPage(options.productName, 'Login failed', 'The redirect carried no authorization code.'));
-      return;
-    }
-    reply(200, renderPage(options.productName, 'Signed in', 'You can close this window and return to the terminal.'));
+    if (code === null || code === '') return reply(400, 'Login failed', 'The redirect carried no authorization code.');
+    reply(200, 'Signed in', 'You can close this window and return to the terminal.');
     settle?.({ code });
   });
 
@@ -75,10 +66,18 @@ export async function startCallbackServer(options: CallbackServerOptions): Promi
   return {
     // Vendors register `localhost`, not the loopback address, as the redirect host.
     redirectUri: `http://localhost:${port}${options.path}`,
-    waitForCode: () => codePromise,
-    cancel: () => settle?.(null),
+    waitForAnswer: (signal, timeoutMs) =>
+      new Promise<CallbackAnswer>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new OAuthError('TIMEOUT', 'the browser did not return in time; run the login again')), timeoutMs);
+        const onAbort = () => reject(new OAuthError('CANCELLED', 'the login was cancelled'));
+        signal?.addEventListener('abort', onAbort, { once: true });
+        void answered.finally(() => {
+          clearTimeout(timer);
+          signal?.removeEventListener('abort', onAbort);
+        });
+        answered.then(resolve, reject);
+      }),
     close: () => {
-      settle?.(null);
       server.close();
       server.closeAllConnections();
     },
