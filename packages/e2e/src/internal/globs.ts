@@ -6,6 +6,8 @@ import { ConfigurationError } from './errors.ts';
 import { escapeRegexpChar } from './regexp.ts';
 
 interface CompiledGlob {
+  /** The pattern as matched: a leading `./`, `.` segments, and doubled `/` dropped. */
+  readonly pattern: string;
   readonly segments: readonly GlobSegment[];
 }
 
@@ -15,29 +17,42 @@ type GlobSegment =
 
 /**
  * Compiles one glob string. Supported: `*` (zero or more non-`/`), `?` (one
- * non-`/`), a complete `**` segment (zero or more path segments). Braces,
- * extglobs, and `!` exclusions are unsupported.
+ * non-`/`), a complete `**` segment (zero or more path segments). A leading
+ * `./`, a `.` segment, and a doubled `/` are dropped. Anything else the
+ * grammar lacks (braces, extglobs, `!` exclusions, `..`, a backslash, an
+ * absolute path, a trailing `/`) is `INVALID_GLOB`: taken literally, each of
+ * these matches nothing, and an empty selection is a poor way to learn that.
  */
 export function compileGlob(pattern: string): CompiledGlob {
-  if (pattern.length === 0) throw new ConfigurationError('INVALID_GLOB', 'empty glob pattern');
-  if (pattern.startsWith('!')) {
-    throw new ConfigurationError('INVALID_GLOB', `leading '!' exclusions are unsupported: ${pattern}`);
+  if (pattern.length === 0) throw invalidGlob('empty glob pattern');
+  if (pattern.startsWith('!')) throw invalidGlob(`leading '!' exclusions are unsupported: ${pattern}`);
+  if (pattern.includes('\\')) throw invalidGlob(`globs use "/" as the separator on every OS: ${pattern}`);
+  if (/[{}]/.test(pattern)) {
+    throw invalidGlob(`brace expansion is unsupported, list one glob per alternative: ${pattern}`);
   }
-  const segments = pattern.split('/').map((segment): GlobSegment => {
+  if (path.posix.isAbsolute(pattern) || path.win32.isAbsolute(pattern)) {
+    throw invalidGlob(`globs are relative to the project root, not absolute: ${pattern}`);
+  }
+  if (pattern.endsWith('/')) {
+    throw invalidGlob(`a glob names files, so it cannot end with "/": ${pattern}; add a file pattern such as *.e2e.ts`);
+  }
+  const parts = pattern.split('/').filter((segment) => segment !== '' && segment !== '.');
+  if (parts.includes('..')) throw invalidGlob(`".." is not allowed in a glob: ${pattern}`);
+  if (parts.length === 0) throw invalidGlob(`the glob names no file: ${pattern}`);
+  const segments = parts.map((segment): GlobSegment => {
     if (segment === '**') return { kind: 'globstar' };
-    if (segment.includes('**')) {
-      throw new ConfigurationError(
-        'INVALID_GLOB',
-        `'**' must be a complete path segment: ${pattern}`,
-      );
-    }
+    if (segment.includes('**')) throw invalidGlob(`'**' must be a complete path segment: ${pattern}`);
     return {
       kind: 'pattern',
       regexp: compileSegment(segment),
       allowsDot: segment.startsWith('.'),
     };
   });
-  return { segments };
+  return { pattern: parts.join('/'), segments };
+}
+
+function invalidGlob(message: string): ConfigurationError {
+  return new ConfigurationError('INVALID_GLOB', message);
 }
 
 function compileSegment(segment: string): RegExp {

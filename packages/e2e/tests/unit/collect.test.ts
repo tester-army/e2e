@@ -122,6 +122,7 @@ describe('selectPositionals', () => {
 
   it('rejects a malformed glob with INVALID_GLOB', () => {
     expect(() => selectPositionals(root, DISCOVERED, ['tests/**agent/*.ts'])).toThrow(/complete path segment/);
+    expect(() => selectPositionals(root, DISCOVERED, ['tests/{a,b}.e2e.ts'])).toThrow(/brace expansion/);
   });
 
   it('follows on-disk casing for existing files and directories on a case-insensitive filesystem', (ctx) => {

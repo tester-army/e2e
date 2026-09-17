@@ -92,7 +92,7 @@ export default {
 | Key | Default | Notes |
 | --- | --- | --- |
 | `targets` | required | Non-empty. Each target: `platform` (`web`, `ios`, `android`, or any label), `engine`, and an optional `name` (defaults to the platform; used by `--target` and in reports). |
-| `tests` | `'tests/**/*.e2e.ts'` | A glob or an array of globs, `/` separators. |
+| `tests` | `'tests/**/*.e2e.ts'` | A glob or an array of globs relative to the project root: `*`, `?`, and a whole `**` segment, `/` separators. Anything else is `INVALID_GLOB`. |
 | `timeout` | `120000` | Per test attempt, in ms. Also the default `agent.act` deadline. |
 | `actionTimeout` | `30000` | Every locator action and engine operation, including each observation inside an agent step. Raise it for slow model providers. |
 | `assertionTimeout` | `5000` | `expect` polling window. |

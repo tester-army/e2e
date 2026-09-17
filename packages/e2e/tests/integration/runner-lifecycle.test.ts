@@ -651,6 +651,14 @@ test('other', { tags: ['smoke'] }, async () => {});
       expect(existsSync(path.join(project.dir, '.e2e'))).toBe(false);
       project.cleanup();
 
+      // A config glob spelled with a leading `./` selects the same files.
+      const dotted = await listProject(files, {
+        appUrl: 'http://127.0.0.1:9',
+        config: { tests: './tests/**/*.e2e.ts' },
+      });
+      expect(dotted.pairs.map((pair) => pair.title)).toEqual(['plain', 'nested', 'left out', 'other']);
+      dotted.project.cleanup();
+
       const tagged = await listProject(files, {
         appUrl: 'http://127.0.0.1:9',
         listOptions: { tags: ['smoke'], files: ['tests/other.e2e.ts'] },

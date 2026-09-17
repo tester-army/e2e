@@ -120,14 +120,17 @@ const NEAR_MISS_SUFFIXES = [
 function findNearMissTestFiles(projectRoot: string, patterns: readonly string[]): string[] {
   const compiled = patterns.map(compileGlob);
   const prefixes = new Set(
-    patterns.map((pattern) => {
+    compiled.map((glob) => {
+      // The pattern as compiled, not as written: a leading `./` would
+      // otherwise root the whole scan in a directory that does not exist.
+      const segments = glob.pattern.split('/');
       const literal: string[] = [];
-      for (const segment of pattern.split('/')) {
+      for (const segment of segments) {
         if (/[*?]/.test(segment)) break;
         literal.push(segment);
       }
       // A pattern with no glob segment names one file; look beside it.
-      if (literal.length === pattern.split('/').length) literal.pop();
+      if (literal.length === segments.length) literal.pop();
       return literal.join('/');
     }),
   );
@@ -216,13 +219,14 @@ export interface PositionalSelection {
   readonly unmatched: readonly string[];
 }
 
-const GLOB_CHARACTERS = /[*?]/;
+/** What marks a positional as a glob: the grammar's wildcards, and braces so that `{a,b}` is rejected with a hint rather than taken for a name. */
+const GLOB_CHARACTERS = /[*?{}]/;
 
 /**
  * Narrows the files the config globs discovered by positional arguments. Each
- * positional resolves from the project root and is one of: a glob (any `*` or
- * `?`) in the test glob grammar matched against the discovered files, an
- * existing directory selecting every discovered file beneath it, an existing
+ * positional resolves from the project root and is one of: a glob (any `*`,
+ * `?`, or brace) in the test glob grammar matched against the discovered
+ * files, an existing directory selecting every discovered file beneath it, an existing
  * file matched exactly, or a name: a positional that exists nowhere selects
  * the discovered files whose root-relative path equals it or ends with it at a
  * segment boundary (`saved-tests.e2e.ts`, `regression/saved-tests.e2e.ts`),

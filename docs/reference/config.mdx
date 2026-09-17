@@ -46,7 +46,7 @@ export interface E2EConfig {
   projectId?: string;
   /** The surfaces tests run on; at least one. */
   targets?: readonly Target[];
-  /** Test file globs relative to the project root; default every `*.e2e.ts` under `tests/`. */
+  /** Test file globs relative to the project root (`*`, `?`, and a whole `**` segment); default every `*.e2e.ts` under `tests/`. */
   tests?: string | readonly string[];
   /** Test attempt deadline in milliseconds; default 120000. */
   timeout?: number;

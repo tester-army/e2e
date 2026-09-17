@@ -40,9 +40,22 @@ describe('glob grammar', () => {
     expect(() => compileGlob('!tests/**')).toThrow();
   });
 
-  it('treats braces as literal characters', () => {
-    expect(matches('a{b,c}.ts', 'a{b,c}.ts')).toBe(true);
-    expect(matches('a{b,c}.ts', 'ab.ts')).toBe(false);
+  it('drops a leading ./, a . segment, and a doubled /', () => {
+    expect(compileGlob('./tests/**/*.e2e.ts').pattern).toBe('tests/**/*.e2e.ts');
+    expect(matches('./tests/**/*.e2e.ts', 'tests/a.e2e.ts')).toBe(true);
+    expect(matches('tests//*.e2e.ts', 'tests/a.e2e.ts')).toBe(true);
+    expect(matches('tests/./*.e2e.ts', 'tests/a.e2e.ts')).toBe(true);
+  });
+
+  it('rejects what the grammar lacks instead of matching nothing', () => {
+    expect(() => compileGlob('/abs/tests/*.ts')).toThrow(/relative to the project root/);
+    expect(() => compileGlob('C:/tests/*.ts')).toThrow(/relative to the project root/);
+    expect(() => compileGlob('tests/**/')).toThrow(/cannot end with "\/"/);
+    expect(() => compileGlob('tests/{a,b}.ts')).toThrow(/brace expansion is unsupported/);
+    expect(() => compileGlob('tests\\**\\*.ts')).toThrow(/"\/" as the separator/);
+    expect(() => compileGlob('../tests/*.ts')).toThrow(/"\.\." is not allowed/);
+    expect(() => compileGlob('./')).toThrow(/cannot end with/);
+    expect(() => compileGlob('.')).toThrow(/names no file/);
   });
 
   it('is case-sensitive', () => {
@@ -65,9 +78,13 @@ describe('discoverFiles', () => {
     writeFileSync(path.join(root, 'tests', 'a.e2e.ts'), '');
     writeFileSync(path.join(root, 'tests', 'nested', 'c.e2e.ts'), '');
     writeFileSync(path.join(root, 'tests', 'skip.txt'), '');
+    mkdirSync(path.join(root, '.hidden'), { recursive: true });
+    writeFileSync(path.join(root, '.hidden', 'h.e2e.ts'), '');
 
     const files = discoverFiles(root, ['tests/**/*.e2e.ts', 'tests/*.e2e.ts']);
     expect(files).toEqual(['tests/a.e2e.ts', 'tests/b.e2e.ts', 'tests/nested/c.e2e.ts']);
+    // The `./` spelling selects the same files, and its `.` segment never reaches a dot directory.
+    expect(discoverFiles(root, ['./tests/**/*.e2e.ts'])).toEqual(files);
   });
 });
 
