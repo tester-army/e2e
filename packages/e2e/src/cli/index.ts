@@ -269,16 +269,16 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .command('login')
     .summary('sign in to a ChatGPT, GitHub Copilot, or SuperGrok subscription for agent steps')
     .description(
-      'Sign in once to a personal subscription and store the login for @e2edev/oauth models: openai (ChatGPT Plus/Pro, the Codex sign-in), github-copilot (GitHub Copilot; reuses the GitHub CLI login or runs a device flow for your OAuth App), xai (SuperGrok or X Premium+, device code). The config then constructs the model with chatgpt(), copilot(), or grok() from @e2edev/oauth. Requires @e2edev/oauth in the project.',
+      'Sign in once to a personal subscription and store the login for @e2edev/oauth models: openai (ChatGPT Plus/Pro, the Codex sign-in), github-copilot (GitHub Copilot; reuses the GitHub CLI login or runs a device flow for your OAuth App), spacexai (SuperGrok or X Premium+, device code). The config then constructs the model with chatgpt(), copilot(), or grok() from @e2edev/oauth. Requires @e2edev/oauth in the project.',
     )
-    .addArgument(new Argument('[provider]', 'openai, github-copilot, or xai; omitted, a picker').choices(LOGIN_PROVIDERS))
+    .addArgument(new Argument('[provider]', 'openai, github-copilot, or spacexai; omitted, a picker').choices(LOGIN_PROVIDERS))
     .option('--device', 'ChatGPT: show a code to enter on another device instead of opening a browser')
     .option('--client-id <id>', 'GitHub Copilot: the client id of your GitHub OAuth App with the device flow enabled')
     .option('--from-gh', 'GitHub Copilot: reuse the token of the signed-in GitHub CLI')
     .option('--enterprise-url <host>', 'GitHub Copilot: the GitHub Enterprise host')
     .addHelpText(
       'after',
-      ['', examples(['e2e login openai', 'e2e login github-copilot --from-gh', 'e2e login xai', 'e2e login']), '', docsLine('/subscriptions')].join('\n'),
+      ['', examples(['e2e login openai', 'e2e login github-copilot --from-gh', 'e2e login spacexai', 'e2e login']), '', docsLine('/subscriptions')].join('\n'),
     )
     .action(async (provider: string | undefined, options: LoginOptions) => {
       process.exitCode = await login(process.cwd(), provider, options);
@@ -287,8 +287,8 @@ function createProgram(version: string, telemetry: Telemetry): Command {
   program
     .command('logout')
     .summary('forget a stored subscription login')
-    .description('Remove the stored login of one provider (openai, github-copilot, xai). Without a provider, a picker over the stored logins.')
-    .addArgument(new Argument('[provider]', 'openai, github-copilot, or xai; omitted, a picker').choices(LOGIN_PROVIDERS))
+    .description('Remove the stored login of one provider (openai, github-copilot, spacexai). Without a provider, a picker over the stored logins.')
+    .addArgument(new Argument('[provider]', 'openai, github-copilot, or spacexai; omitted, a picker').choices(LOGIN_PROVIDERS))
     .addHelpText('after', ['', examples(['e2e logout', 'e2e logout openai']), '', docsLine('/subscriptions')].join('\n'))
     .action(async (provider: string | undefined) => {
       process.exitCode = await logout(process.cwd(), provider);

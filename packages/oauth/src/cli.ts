@@ -39,7 +39,7 @@ Without a provider, login and logout show a picker.
 Providers: ${PROVIDER_IDS.join(', ')}
   openai          ChatGPT Plus/Pro (the Codex sign-in); --device for a machine without a browser
   github-copilot  GitHub Copilot: the GitHub CLI's token when gh is signed in, or a device flow with --client-id
-  xai             SuperGrok / X Premium+ (device code)
+  spacexai        SuperGrok / X Premium+ (device code)
 `;
 
 /** Signs in to `providerId`; without one, a picker over the providers, marking those already signed in. */
@@ -96,7 +96,7 @@ async function signedIn(): Promise<Map<ProviderId, string>> {
 const PROVIDER_HINTS: Record<ProviderId, string> = {
   openai: 'ChatGPT Plus/Pro, the Codex sign-in',
   'github-copilot': 'GitHub Copilot: OpenAI, Anthropic, Google, and xAI models',
-  xai: 'SuperGrok or X Premium+',
+  spacexai: 'SuperGrok or X Premium+',
 };
 
 /** A terminal picker over providers; without a terminal the provider has to be named. */

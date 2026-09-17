@@ -26,7 +26,7 @@ export function createXaiProvider(options: XaiProviderOptions = {}): OAuthProvid
   const issuer = options.issuer ?? ISSUER;
   const referrer = options.referrer ?? 'e2e';
   return {
-    id: 'xai',
+    id: 'spacexai',
     name: 'xAI',
     async login(callbacks) {
       const tokens = await rfc8628Flow({

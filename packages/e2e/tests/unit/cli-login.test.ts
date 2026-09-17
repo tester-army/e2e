@@ -52,9 +52,9 @@ export const runLogout = async (provider) => record({ runLogout: [provider] });
 
 describe('e2e login / logout', () => {
   it('exits 1 with the install line when the project lacks @e2edev/oauth', async () => {
-    expect(await login(dir, 'xai', {})).toBe(1);
+    expect(await login(dir, 'spacexai', {})).toBe(1);
     expect(stderr.join('')).toContain('npm i -D @e2edev/oauth');
-    expect(await logout(dir, 'xai')).toBe(1);
+    expect(await logout(dir, 'spacexai')).toBe(1);
   });
 
   it('forwards the sign-in with typed options, leaves the pick to the package without a provider, and forgets one', async () => {
@@ -62,8 +62,8 @@ describe('e2e login / logout', () => {
     const calls = () => JSON.parse(readFileSync(log, 'utf8'));
     expect(await login(dir, 'github-copilot', { device: true, clientId: 'Iv23', fromGh: true, enterpriseUrl: 'gh.acme.com' })).toBe(0);
     expect(calls()).toEqual({ runLogin: ['github-copilot', { method: 'device', clientId: 'Iv23', fromGitHubCli: true, enterpriseUrl: 'gh.acme.com' }] });
-    expect(await login(dir, 'xai', {})).toBe(0);
-    expect(calls()).toEqual({ runLogin: ['xai', {}] });
+    expect(await login(dir, 'spacexai', {})).toBe(0);
+    expect(calls()).toEqual({ runLogin: ['spacexai', {}] });
     expect(await login(dir, undefined, {})).toBe(0);
     expect(calls()).toEqual({ runLogin: [null, {}] });
     expect(await logout(dir, 'openai')).toBe(0);

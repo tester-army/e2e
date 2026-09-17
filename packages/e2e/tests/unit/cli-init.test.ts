@@ -190,7 +190,7 @@ describe('e2e init', () => {
   it.each([
     { gateway: 'chatgpt', provider: 'openai', line: "import { chatgpt } from '@e2edev/oauth/chatgpt';", model: "model: chatgpt('gpt-5.5'),", sdk: '@ai-sdk/openai' },
     { gateway: 'copilot', provider: 'github-copilot', line: "import { copilot } from '@e2edev/oauth/copilot';", model: "model: copilot('claude-sonnet-5'),", sdk: '@ai-sdk/openai-compatible' },
-    { gateway: 'grok', provider: 'xai', line: "import { grok } from '@e2edev/oauth/grok';", model: "model: grok('grok-4'),", sdk: '@ai-sdk/xai' },
+    { gateway: 'grok', provider: 'spacexai', line: "import { grok } from '@e2edev/oauth/grok';", model: "model: grok('grok-4'),", sdk: '@ai-sdk/xai' },
   ] as const)('writes a $gateway subscription model and names the sign-in as the next step', async ({ gateway, provider, line, model, sdk }) => {
     vi.mocked(clack.select).mockResolvedValueOnce('playwright').mockResolvedValueOnce(gateway);
     vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);

@@ -83,8 +83,8 @@ export const GATEWAYS: readonly GatewayPreset[] = [
     hint: 'your SuperGrok or X Premium+ plan',
     dependencies: { ...siblingDependency('@e2edev/oauth'), '@ai-sdk/xai': '^5.0.0' },
     import: "import { grok } from '@e2edev/oauth/grok';",
-    comment: 'Your SuperGrok subscription serves the model; sign in once with `e2e login xai`.',
-    login: 'xai',
+    comment: 'Your SuperGrok subscription serves the model; sign in once with `e2e login spacexai`.',
+    login: 'spacexai',
     model: () => "grok('grok-4')",
   },
 ];

@@ -23,7 +23,7 @@ export function grok(modelId: string, options: GrokOptions = {}): LanguageModelV
   const fetch = createOAuthFetch(createXaiProvider(), {
     store: options.store ?? defaultCredentialStore(),
     userAgent: options.userAgent ?? USER_AGENT,
-    loginHint: loginHint('xai'),
+    loginHint: loginHint('spacexai'),
   });
   return createXai({ apiKey: 'oauth', fetch, ...(options.baseURL === undefined ? {} : { baseURL: options.baseURL }) })(modelId);
 }

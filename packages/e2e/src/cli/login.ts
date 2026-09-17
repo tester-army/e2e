@@ -12,7 +12,7 @@ import { pathToFileURL } from 'node:url';
 import pc from 'picocolors';
 
 /** The providers `@e2edev/oauth` signs in to; commander rejects anything else as a usage error. */
-export const LOGIN_PROVIDERS = ['openai', 'github-copilot', 'xai'] as const;
+export const LOGIN_PROVIDERS = ['openai', 'github-copilot', 'spacexai'] as const;
 
 export interface LoginOptions {
   readonly device?: boolean;

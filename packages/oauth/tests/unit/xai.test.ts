@@ -71,7 +71,7 @@ describe('xAI login', () => {
         usage: { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4 },
       });
     });
-    const store = new MemoryCredentialStore({ xai: { access: 'xai-tok', refresh: 'rt', expires: 0 } });
+    const store = new MemoryCredentialStore({ spacexai: { access: 'xai-tok', refresh: 'rt', expires: 0 } });
     const model = grok('grok-4', { store, baseURL: api.url });
     expect(model).toMatchObject({ modelId: 'grok-4' });
     expect(model.provider).toMatch(/^xai/);

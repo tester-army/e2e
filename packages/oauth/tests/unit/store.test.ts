@@ -20,13 +20,13 @@ describe('FileCredentialStore', () => {
   it('creates the file with owner-only permissions and round-trips entries', async () => {
     const file = tempFile();
     const store = new FileCredentialStore(file);
-    expect(await store.get('xai')).toBeUndefined();
-    await store.set('xai', creds);
+    expect(await store.get('spacexai')).toBeUndefined();
+    await store.set('spacexai', creds);
     expect(statSync(file).mode & 0o777).toBe(0o600);
     expect(statSync(path.dirname(file)).mode & 0o777).toBe(0o700);
-    expect(await store.get('xai')).toEqual(creds);
-    expect(await store.list()).toEqual(['xai']);
-    await store.remove('xai');
+    expect(await store.get('spacexai')).toEqual(creds);
+    expect(await store.list()).toEqual(['spacexai']);
+    await store.remove('spacexai');
     expect(await store.list()).toEqual([]);
     expect(readFileSync(file, 'utf8')).toBe('{}\n');
     expect(() => statSync(`${file}.lock`)).toThrow();
@@ -74,7 +74,7 @@ describe('EnvCredentialStore', () => {
     expect(store).toBeInstanceOf(EnvCredentialStore);
     expect(await store.get('github-copilot')).toEqual(creds);
     expect(await store.list()).toEqual(['github-copilot']);
-    await expect(store.set('xai', creds)).rejects.toMatchObject({ code: 'MISCONFIGURED', message: expect.stringContaining(CREDENTIALS_ENV) });
+    await expect(store.set('spacexai', creds)).rejects.toMatchObject({ code: 'MISCONFIGURED', message: expect.stringContaining(CREDENTIALS_ENV) });
     await expect(store.remove('github-copilot')).rejects.toMatchObject({ code: 'MISCONFIGURED' });
     expect(defaultCredentialStore({ [CREDENTIALS_ENV]: '' })).toBeInstanceOf(FileCredentialStore);
   });

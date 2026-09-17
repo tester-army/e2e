@@ -6,7 +6,7 @@ Sign in to a personal AI subscription once, then use it as a [Vercel AI SDK](htt
 | --- | --- | --- |
 | ChatGPT Plus/Pro (the Codex sign-in) | `npx e2e-oauth login openai` | `chatgpt('gpt-5.5')` from `@e2edev/oauth/chatgpt` |
 | GitHub Copilot | `npx e2e-oauth login github-copilot` | `copilot('claude-sonnet-5')` from `@e2edev/oauth/copilot` |
-| SuperGrok / X Premium+ | `npx e2e-oauth login xai` | `grok('grok-4')` from `@e2edev/oauth/grok` |
+| SuperGrok / X Premium+ | `npx e2e-oauth login spacexai` | `grok('grok-4')` from `@e2edev/oauth/grok` |
 
 Each subpath needs its provider package: `@ai-sdk/openai`, `@ai-sdk/openai-compatible`, or `@ai-sdk/xai`.
 
