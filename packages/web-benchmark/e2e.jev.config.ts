@@ -2,6 +2,7 @@ import type { E2EConfig } from 'e2e';
 import agentic from './e2e.agent.config.ts';
 import { gateway } from 'ai';
 import { jevAgent } from '@e2edev/jev';
+import { createAgent } from 'e2e/agent';
 
 /**
  * The agentic suite with Jev as the step executor: the same scenarios, the
@@ -20,6 +21,12 @@ export default {
       executor: jevAgent({
         fallback: gateway(process.env.E2E_FALLBACK ?? 'openai/gpt-5.6-luna-fast'),
         maxTurns: 40,
+        // Jev drives while it is sure; a step it gives up on, stalls in, or
+        // picks at without conviction goes to the default agent from where
+        // Jev left it. Set E2E_JEV_ESCALATE=0 for the pure Jev arm.
+        ...(process.env.E2E_JEV_ESCALATE === '0'
+          ? {}
+          : { escalateTo: createAgent({ model: gateway(process.env.E2E_FALLBACK ?? 'openai/gpt-5.6-luna-fast') }) }),
       }),
     },
   },

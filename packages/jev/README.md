@@ -62,6 +62,24 @@ passes, at or below one minus that it fails, in between it is inconclusive.
   compared across turns; an action that changed nothing is reported back in
   the history, and three in a row end the step.
 
+## Escalation: Jev first, a generative agent when Jev is unsure
+
+```ts
+executor: jevAgent({
+  fallback: gateway('openai/gpt-5.6-luna'),
+  escalateTo: createAgent({ model: gateway('openai/gpt-5.6-luna') }),
+}),
+```
+
+With `escalateTo`, a step Jev cannot finish is handed to that executor from
+the current screen, with Jev's actions presented as an already-performed
+prefix so nothing is redone. The hand-over fires when Jev gives up (`fail` at
+a majority), stalls (an action that changed nothing, repeatedly), picks its
+verb or target without conviction two turns in a row, or has used the step's
+model-call budget down to a reserve of six. This is TypeSafe's own
+"confidence routing" pattern applied to a test step: probabilities decide
+who drives.
+
 ## Measured
 
 Live on 2026-09-17, trace cache off. The e2e web benchmark is the agentic suite
@@ -69,15 +87,21 @@ under `packages/web-benchmark/tests-agent` (20 scenarios that the accessibility
 tree can carry, 3 skipped). The default agent ran `openai/gpt-5.6-luna-fast`;
 Jev ran with that model as the value fallback only.
 
-| e2e web benchmark, one run each | Jev executor | default agent (Luna fast) |
-| --- | --- | --- |
-| scenarios passed | 17 / 20 (16–17 over four runs) | 20 / 20 |
-| run wall time | 218 s | 232 s |
-| model calls | 152 | 91 |
-| run cost | $0.022 | $0.056 |
-| typical act step | 1–5 s | 5–23 s |
+| e2e web benchmark, one run each | Jev only | Jev + escalation | default agent (Luna fast) |
+| --- | --- | --- | --- |
+| scenarios passed | 17 / 20 (16–17 over four runs) | 20 / 20 | 20 / 20 |
+| run wall time | 218 s | 249 s | 232 s |
+| model calls | 152 | 149 | 91 |
+| run cost | $0.022 | $0.034 | $0.056 |
+| typical act step | 1–5 s | 1–5 s, 25–55 s when escalated | 5–23 s |
 
-The three misses are the same on every run: `lying-labels` (Jev fills the field
+With escalation, 5 of 21 agent steps were handed over: `lying-labels` (stall),
+`hover-menu` and `infinite-scroll` (budget reserve), `date-picker` (no
+conviction), and the wishlist bug-book step, where the generative agent
+confirmed Jev's honest `fail` as the planted bug. The other 16 steps never
+left Jev.
+
+Without escalation, the three misses are the same on every run: `lying-labels` (Jev fills the field
 whose accessible name matches, not the one visibly labelled), `hover-menu` (it
 follows the "back to examples" link the context forbids, then loops), and
 `filter-deep-link` (it keeps tapping the filled filter box instead of judging

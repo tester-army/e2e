@@ -38,6 +38,14 @@ export interface JevAgentOptions {
   readonly doneThreshold?: number;
   /** Probability of an assertion holding that passes it; one minus it fails it. Defaults to 0.7. */
   readonly assertThreshold?: number;
+  /**
+   * A generative executor (`createAgent(...)`) that takes over a step from the
+   * current screen when Jev is unsure: it gives up, stalls, or picks its verb
+   * without conviction twice in a row. Jev's actions so far are handed over as
+   * an already-performed prefix, so nothing is redone. Without it such a step
+   * fails.
+   */
+  readonly escalateTo?: StepExecutor;
 }
 
 /** Jev's list price on the gateway: input tokens only, output free. */
@@ -48,6 +56,12 @@ const MAX_OPTIONS = 255;
 
 /** Candidates per page when the screen needs a two-level pick. */
 const PAGE_SIZE = 200;
+
+/** Model calls kept back for the escalation executor when Jev has not concluded. */
+const ESCALATION_RESERVE_CALLS = 6;
+
+/** Deadline of one evaluate request; a stalled provider is retried once, then reported. */
+const CALL_TIMEOUT_MS = 20_000;
 
 /** How long one `wait` turn pauses before the next look. */
 const WAIT_MS = 1_500;
@@ -102,6 +116,8 @@ export function jevAgent(options: JevAgentOptions = {}): StepExecutor {
   const maxTurns = options.maxTurns ?? 15;
   const doneThreshold = options.doneThreshold ?? 0.6;
   const assertThreshold = options.assertThreshold ?? 0.7;
+  /** Evaluate calls made in the current step; reset by runStep. */
+  let calls = 0;
 
   async function ask(
     context: StepExecutorContext,
@@ -110,12 +126,21 @@ export function jevAgent(options: JevAgentOptions = {}): StepExecutor {
   ): Promise<EvaluateAnswers> {
     const startedAt = new Date().toISOString();
     const started = performance.now();
-    const result = await evaluate({
-      model: modelId,
-      state: state as string,
-      questions: questions as never,
-      abortSignal: context.signal,
-    });
+    // A request the provider never answers must not eat the step deadline:
+    // one bounded attempt, one retry, then the step reports the provider.
+    let result: Awaited<ReturnType<typeof evaluate>> | undefined;
+    for (let attempt = 1; result === undefined; attempt++) {
+      try {
+        result = await evaluate({
+          model: modelId,
+          state: state as string,
+          questions: questions as never,
+          abortSignal: AbortSignal.any([context.signal, AbortSignal.timeout(CALL_TIMEOUT_MS)]),
+        });
+      } catch (cause) {
+        if (context.signal.aborted || attempt >= 2) throw cause;
+      }
+    }
     const inputTokens = result.usage?.inputTokens;
     const call: ModelCall = {
       startedAt,
@@ -126,6 +151,7 @@ export function jevAgent(options: JevAgentOptions = {}): StepExecutor {
       ...(result.usage?.outputTokens === undefined ? {} : { outputTokens: result.usage.outputTokens }),
     };
     context.budgets.recordModelCall(call);
+    calls += 1;
     return result.answers as EvaluateAnswers;
   }
 
@@ -166,6 +192,32 @@ export function jevAgent(options: JevAgentOptions = {}): StepExecutor {
     };
   }
 
+  /**
+   * Hands the rest of the step to the escalation executor. The context is the
+   * same one (same observe, actions, budgets), with Jev's actions presented as
+   * a replayed prefix the generative agent must not redo.
+   */
+  async function escalate(
+    context: StepExecutorContext,
+    history: readonly string[],
+    turns: readonly Turn[],
+    reason: string,
+  ): Promise<StepVerdict> {
+    const handed: StepExecutorContext = Object.create(context, {
+      replayedPrefix: {
+        value: {
+          replayedActions: [...(context.replayedPrefix?.replayedActions ?? []), ...history],
+          totalActions: (context.replayedPrefix?.replayedActions.length ?? 0) + history.length,
+          stopReason: 'gap',
+        },
+        enumerable: true,
+      },
+    });
+    const verdict = await options.escalateTo!.runStep(handed);
+    context.attachTurns([...turns, { index: turns.length + 1, calls: [`escalate(${options.escalateTo!.name})`], outcome: reason }]);
+    return { ...verdict, summary: `escalated to ${options.escalateTo!.name} after ${turns.length} Jev turn(s) (${reason}): ${verdict.summary}` };
+  }
+
   async function runAct(context: StepExecutorContext): Promise<StepVerdict> {
     const { step, target } = context;
     const verbs: Verb[] = ['wait', 'fail'];
@@ -186,6 +238,7 @@ export function jevAgent(options: JevAgentOptions = {}): StepExecutor {
     let lastTarget: Candidate | undefined;
     let lastVerb: Verb | undefined;
     let repeats = 0;
+    let unsure = 0;
     let effect: ScreenDiff | 'no visible change' | undefined;
     /** The node the last no-effect tap hit; withheld from the next turn's choice so the step moves on. */
     let withheld: Candidate | undefined;
@@ -213,6 +266,7 @@ export function jevAgent(options: JevAgentOptions = {}): StepExecutor {
           repeats += 1;
           const tolerated = lastAction.startsWith('wait') ? 6 : lastAction.startsWith('scroll') ? 5 : 3;
           if (repeats >= tolerated) {
+            if (options.escalateTo !== undefined) return escalate(context, history, turns, `stalled on "${lastAction}"`);
             context.attachTurns(turns);
             return {
               status: 'failed',
@@ -340,12 +394,27 @@ export function jevAgent(options: JevAgentOptions = {}): StepExecutor {
       }
       if (action.choice === 'fail') {
         turns.push({ index: turn, calls: ['evaluate(fail)'], outcome: note });
+        if (options.escalateTo !== undefined) return escalate(context, history, turns, `Jev gave up (p=${action.p.toFixed(2)})`);
         context.attachTurns(turns);
         return {
           status: 'failed',
           summary: `Jev found no action that progresses the step (p=${action.p.toFixed(2)}); done=${done.toFixed(2)}`,
           errorCode: 'ACTION_FAILED',
         };
+      }
+
+      if (options.escalateTo !== undefined) {
+        // Leave the generative agent room to finish: hand over while the
+        // step's model-call budget still holds a few turns for it.
+        if (context.budgets.maxModelCalls - calls <= ESCALATION_RESERVE_CALLS) {
+          turns.push({ index: turn, calls: ['evaluate(budget)'], outcome: note });
+          return escalate(context, history, turns, `${calls} model calls used without a conclusion`);
+        }
+        unsure = action.p < 0.5 || (candidate !== undefined && (targetPick?.p ?? 0) < 0.5) ? unsure + 1 : 0;
+        if (unsure >= 2) {
+          turns.push({ index: turn, calls: ['evaluate(unsure)'], outcome: note });
+          return escalate(context, history, turns, `two turns without conviction (action ${action.p.toFixed(2)}, target ${(targetPick?.p ?? 0).toFixed(2)})`);
+        }
       }
 
       let performed: string;
@@ -365,6 +434,7 @@ export function jevAgent(options: JevAgentOptions = {}): StepExecutor {
       turns.push({ index: turn, calls: [performed], outcome: note });
     }
 
+    if (options.escalateTo !== undefined && !context.signal.aborted) return escalate(context, history, turns, `${maxTurns} Jev turns without a conclusion`);
     context.attachTurns(turns);
     if (context.signal.aborted) {
       return { status: 'blocked', summary: 'the step was stopped before Jev concluded', errorCode: 'STEP_TIMEOUT' };
@@ -457,6 +527,7 @@ export function jevAgent(options: JevAgentOptions = {}): StepExecutor {
     name: 'jev-agent',
     version: '1',
     async runStep(context) {
+      calls = 0;
       try {
         return context.step.kind === 'assert' ? await runAssert(context) : await runAct(context);
       } catch (cause) {
