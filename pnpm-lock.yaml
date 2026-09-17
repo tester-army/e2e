@@ -358,7 +358,7 @@ importers:
   packages/oauth:
     dependencies:
       '@ai-sdk/provider':
-        specifier: ^4.0.0
+        specifier: 4.0.17
         version: 4.0.17
       '@clack/prompts':
         specifier: 1.8.0

@@ -21,6 +21,7 @@ describe('@e2edev/oauth/cli', () => {
     const io = { stdout: { write: (chunk: string) => (out.push(chunk), true) } as unknown as NodeJS.WritableStream, stderr: { write: (chunk: string) => (out.push(chunk), true) } as unknown as NodeJS.WritableStream, isTTY: false };
     expect(await cli.runLogout('nope', io)).toBe(1);
     expect(out.join('')).toContain('name a provider: openai, github-copilot, spacexai');
+    expect(out.join('').split('\n').filter(Boolean)).toHaveLength(1);
     out.length = 0;
     expect(await cli.runOAuthCli(['login', 'spacexai', '--bogus'], io)).toBe(1);
     expect(out.join('')).toMatch(/bogus/);
