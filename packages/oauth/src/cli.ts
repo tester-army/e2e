@@ -95,7 +95,7 @@ async function signedIn(): Promise<Map<ProviderId, string>> {
 
 const PROVIDER_HINTS: Record<ProviderId, string> = {
   openai: 'ChatGPT Plus/Pro, the Codex sign-in',
-  'github-copilot': 'GitHub Copilot: OpenAI, Anthropic, Google, and xAI models',
+  'github-copilot': 'GitHub Copilot: OpenAI, Anthropic, Google, and SpaceXAI models',
   spacexai: 'SuperGrok or X Premium+',
 };
 

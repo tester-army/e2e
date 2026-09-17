@@ -1,7 +1,7 @@
 /**
  * `grok('grok-4')`: a SuperGrok or X Premium+ subscription as an AI SDK
  * model. The instance is `@ai-sdk/xai`'s model with a fetch that carries the
- * stored login; the API is the ordinary xAI API.
+ * stored login; the API is the ordinary SpaceXAI API.
  */
 
 import type { LanguageModelV4 } from '@ai-sdk/provider';
@@ -15,7 +15,7 @@ import type { CredentialStore } from './types.ts';
 export interface GrokOptions {
   readonly store?: CredentialStore;
   readonly userAgent?: string;
-  /** Where the xAI API is reached, for a proxy in front of it. */
+  /** Where the SpaceXAI API is reached, for a proxy in front of it. */
   readonly baseURL?: string;
 }
 

@@ -2,7 +2,7 @@
  * RFC 8628 device authorization: the server hands out a user code, the user
  * enters it on any device, and the client polls the token endpoint until the
  * grant lands. `runDeviceFlow` owns the timing for any vendor's shape;
- * `rfc8628Flow` is the standard shape itself, which GitHub and xAI both
+ * `rfc8628Flow` is the standard shape itself, which GitHub and SpaceXAI both
  * speak apart from the status code they answer "pending" with.
  */
 

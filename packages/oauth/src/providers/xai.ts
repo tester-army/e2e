@@ -1,7 +1,7 @@
 /**
- * SuperGrok and X Premium+ through xAI's OAuth server. xAI publishes RFC 8628
+ * SuperGrok and X Premium+ through SpaceXAI's OAuth server. SpaceXAI publishes RFC 8628
  * device authorization for the Grok CLI's public client; the token is a plain
- * bearer against the ordinary xAI API. Refresh tokens rotate, so a renewed
+ * bearer against the ordinary SpaceXAI API. Refresh tokens rotate, so a renewed
  * refresh token replaces the stored one at once.
  */
 
@@ -27,10 +27,10 @@ export function createXaiProvider(options: XaiProviderOptions = {}): OAuthProvid
   const referrer = options.referrer ?? 'e2e';
   return {
     id: 'spacexai',
-    name: 'xAI',
+    name: 'SpaceXAI',
     async login(callbacks) {
       const tokens = await rfc8628Flow({
-        vendor: 'xAI',
+        vendor: 'SpaceXAI',
         deviceCodeUrl: `${issuer}/oauth2/device/code`,
         tokenUrl: `${issuer}/oauth2/token`,
         clientId: CLIENT_ID,
@@ -41,7 +41,7 @@ export function createXaiProvider(options: XaiProviderOptions = {}): OAuthProvid
     },
     async refresh(credentials) {
       const tokens = await requestTokens(
-        'xAI',
+        'SpaceXAI',
         `${issuer}/oauth2/token`,
         { grant_type: 'refresh_token', refresh_token: credentials.refresh, client_id: CLIENT_ID },
         'LOGIN_REQUIRED',

@@ -1,6 +1,6 @@
 /**
  * `copilot('claude-sonnet-5')`: a GitHub Copilot subscription as an AI SDK
- * model. Copilot serves OpenAI, Anthropic, Google, and xAI models over the
+ * model. Copilot serves OpenAI, Anthropic, Google, and SpaceXAI models over the
  * OpenAI chat protocol; the instance is `@ai-sdk/openai-compatible`'s chat
  * model at the Copilot API with a fetch that carries the stored login. An
  * enterprise login stored by `e2e login` routes to its own host.

@@ -6,7 +6,7 @@ import { fakeJwt, json, useServers, type Received } from './helpers/server.ts';
 
 const serve = useServers(afterEach);
 
-describe('xAI login', () => {
+describe('SpaceXAI login', () => {
   it('runs the RFC 8628 device flow against auth.x.ai and reads expiry from the JWT', async () => {
     const exp = Math.floor(Date.now() / 1000) + 900;
     let polls = 0;
@@ -20,7 +20,7 @@ describe('xAI login', () => {
       }
       expect(form.get('grant_type')).toBe('urn:ietf:params:oauth:grant-type:device_code');
       polls += 1;
-      // xAI answers pending with 400 and an error field.
+      // SpaceXAI answers pending with 400 and an error field.
       if (polls === 1) json(response, 400, { error: 'authorization_pending', error_description: 'User has not yet authorized' });
       else if (polls === 2) json(response, 400, { error: 'slow_down' });
       else json(response, 200, { access_token: fakeJwt({ exp }), refresh_token: 'rt-1', expires_in: 900 });
@@ -47,7 +47,7 @@ describe('xAI login', () => {
     expect(await provider.refresh(second)).toMatchObject({ access: 'a3', refresh: 'rt-2' });
   });
 
-  it('serves generateText with the bearer token against the xAI API', async () => {
+  it('serves generateText with the bearer token against the SpaceXAI API', async () => {
     let seen: Received | undefined;
     const api = await serve((request, response) => {
       seen = request;

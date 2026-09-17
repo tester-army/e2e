@@ -70,7 +70,7 @@ export const GATEWAYS: readonly GatewayPreset[] = [
   {
     id: 'copilot',
     label: 'GitHub Copilot subscription',
-    hint: 'your Copilot plan: OpenAI, Anthropic, Google, and xAI models',
+    hint: 'your Copilot plan: OpenAI, Anthropic, Google, and SpaceXAI models',
     dependencies: { ...siblingDependency('@e2edev/oauth'), '@ai-sdk/openai-compatible': '^3.0.0' },
     import: "import { copilot } from '@e2edev/oauth/copilot';",
     comment: 'Your GitHub Copilot subscription serves the model; sign in once with `e2e login github-copilot`.',
