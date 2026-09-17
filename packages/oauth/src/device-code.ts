@@ -139,7 +139,7 @@ export function rfc8628Flow(options: Rfc8628Options): Promise<TokenResponse> {
   });
 }
 
-export function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
+function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
       reject(new OAuthError('CANCELLED', 'the login was cancelled'));
