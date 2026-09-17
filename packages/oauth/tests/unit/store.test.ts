@@ -41,6 +41,33 @@ describe('FileCredentialStore', () => {
     expect((await b.get('b'))?.access).toBe('b');
   });
 
+  it('defers a writer while another process holds the lock', async () => {
+    const file = tempFile();
+    const store = new FileCredentialStore(file);
+    await store.set('x', creds);
+    writeFileSync(`${file}.lock`, '');
+    let settled = false;
+    const pending = store.set('y', creds).then(() => {
+      settled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(settled).toBe(false);
+    rmSync(`${file}.lock`, { force: true });
+    await pending;
+    expect((await store.list()).toSorted()).toEqual(['x', 'y']);
+  });
+
+  it('tightens the permissions of a directory and file that already existed', async () => {
+    const file = tempFile();
+    const { mkdirSync, chmodSync } = await import('node:fs');
+    mkdirSync(path.dirname(file), { recursive: true, mode: 0o755 });
+    writeFileSync(file, '{}', { mode: 0o644 });
+    chmodSync(file, 0o644);
+    await new FileCredentialStore(file).set('x', creds);
+    expect(statSync(path.dirname(file)).mode & 0o777).toBe(0o700);
+    expect(statSync(file).mode & 0o777).toBe(0o600);
+  });
+
   it('takes over a stale lock left by a dead process', async () => {
     const file = tempFile();
     const store = new FileCredentialStore(file);

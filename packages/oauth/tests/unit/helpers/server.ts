@@ -23,7 +23,14 @@ export async function startServer(handler: Handler): Promise<{ url: string; requ
       body: Buffer.concat(chunks).toString('utf8'),
     };
     requests.push(received);
-    await handler(received, response);
+    try {
+      await handler(received, response);
+    } catch (error) {
+      // An assertion inside a handler must not hang the client; the rejection still fails the run.
+      if (!response.headersSent) response.writeHead(500, { 'content-type': 'application/json' });
+      response.end();
+      throw error;
+    }
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address() as AddressInfo;

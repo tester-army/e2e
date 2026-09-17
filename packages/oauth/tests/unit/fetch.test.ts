@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { MemoryCredentialStore, OAuthError, createOAuthFetch, type OAuthCredentials, type OAuthProvider } from '../../src/index.ts';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { EnvCredentialStore, FileCredentialStore, MemoryCredentialStore, OAuthError, createOAuthFetch, type OAuthCredentials, type OAuthProvider } from '../../src/index.ts';
 import { json, useServers } from './helpers/server.ts';
 
 const serve = useServers(afterEach);
@@ -58,20 +61,42 @@ describe('createOAuthFetch', () => {
     expect(await store.get('test')).toMatchObject({ access: 'fresh-1', refresh: 'rt-1' });
   });
 
+  it('shares one refresh between separate file stores over the same file', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'e2e-oauth-fetch-'));
+    try {
+      const file = path.join(dir, 'oauth.json');
+      await new FileCredentialStore(file).set('test', { access: 'stale', refresh: 'rt-0', expires: Date.now() + 1_000 });
+      const api = await serve((_request, response) => json(response, 200, {}));
+      const testProvider = provider();
+      const first = createOAuthFetch(testProvider, { store: new FileCredentialStore(file), userAgent: 'p' });
+      const second = createOAuthFetch(testProvider, { store: new FileCredentialStore(file), userAgent: 'p' });
+      await Promise.all([first(api.url), second(api.url)]);
+      expect(testProvider.refreshes).toEqual(['rt-0']);
+      expect(api.requests.map((request) => request.headers['authorization'])).toEqual(['Bearer fresh-1', 'Bearer fresh-1']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps credentials it renewed for a source that cannot store them', async () => {
+    const api = await serve((_request, response) => json(response, 200, {}));
+    const store = new EnvCredentialStore(JSON.stringify({ test: { access: 'stale', refresh: 'rt-0', expires: Date.now() + 1_000 } }));
+    const testProvider = provider();
+    const fetch = createOAuthFetch(testProvider, { store, userAgent: 'p' });
+    await fetch(api.url);
+    await fetch(api.url);
+    expect(testProvider.refreshes).toEqual(['rt-0']);
+    expect(api.requests.map((request) => request.headers['authorization'])).toEqual(['Bearer fresh-1', 'Bearer fresh-1']);
+  });
+
   it('uses the credentials another process stored when its own refresh token was already rotated', async () => {
     const api = await serve((_request, response) => json(response, 200, {}));
     const store = new MemoryCredentialStore({ test: { access: 'stale', refresh: 'rt-0', expires: Date.now() + 1_000 } });
     const testProvider = provider();
     testProvider.refreshes.push('rt-0');
     const fetch = createOAuthFetch(testProvider, { store, userAgent: 'p' });
-    // The other process rotated the token and wrote it while this one was deciding to refresh.
-    const originalGet = store.get.bind(store);
-    let reads = 0;
-    store.get = async (id) => {
-      reads += 1;
-      if (reads === 3) await store.set('test', { access: 'theirs', refresh: 'rt-1', expires: Date.now() + 3_600_000 });
-      return originalGet(id);
-    };
+    // The other process rotated the token and stores it a moment after this one was rejected.
+    setTimeout(() => void store.set('test', { access: 'theirs', refresh: 'rt-1', expires: Date.now() + 3_600_000 }), 300);
     await fetch(api.url);
     expect(api.requests[0]?.headers['authorization']).toBe('Bearer theirs');
   });

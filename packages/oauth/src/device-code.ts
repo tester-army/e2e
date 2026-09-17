@@ -31,7 +31,7 @@ export type DevicePoll<T> =
 
 export interface DeviceFlowOptions<T> {
   start(): Promise<DeviceAuthorization>;
-  poll(authorization: DeviceAuthorization): Promise<DevicePoll<T>>;
+  poll(authorization: DeviceAuthorization, signal: AbortSignal | undefined): Promise<DevicePoll<T>>;
   instructions?(authorization: DeviceAuthorization): string;
   readonly callbacks: OAuthLoginCallbacks;
   /** Test seam. */
@@ -61,7 +61,9 @@ export async function runDeviceFlow<T>(options: DeviceFlowOptions<T>): Promise<T
   let intervalMs = Math.max(positiveSeconds(authorization.interval, DEFAULT_INTERVAL_S) * 1000, MIN_INTERVAL_MS);
   while (now() < deadline) {
     await sleep(Math.min(intervalMs, Math.max(0, deadline - now())), callbacks.signal);
-    const result = await options.poll(authorization);
+    const result = await options.poll(authorization, callbacks.signal);
+    // A grant that lands after the user cancelled is not a login.
+    if (callbacks.signal?.aborted) throw new OAuthError('CANCELLED', 'the login was cancelled');
     switch (result.status) {
       case 'granted':
         return result.value;
@@ -114,14 +116,14 @@ export function rfc8628Flow(options: Rfc8628Options): Promise<TokenResponse> {
         interval: Number(json['interval']),
       };
     },
-    async poll(authorization) {
-      const response = await postForm(options.tokenUrl, {
-        grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-        client_id: clientId,
-        device_code: authorization.deviceCode,
-      });
+    async poll(authorization, signal) {
+      const response = await postForm(
+        options.tokenUrl,
+        { grant_type: 'urn:ietf:params:oauth:grant-type:device_code', client_id: clientId, device_code: authorization.deviceCode },
+        signal,
+      );
       const json = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-      if (typeof json['access_token'] === 'string') return { status: 'granted', value: json as unknown as TokenResponse };
+      if (typeof json['access_token'] === 'string' && json['access_token'] !== '') return { status: 'granted', value: json as unknown as TokenResponse };
       switch (json['error']) {
         case 'authorization_pending':
           return { status: 'pending' };

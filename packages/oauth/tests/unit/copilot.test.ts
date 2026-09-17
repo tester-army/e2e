@@ -1,7 +1,7 @@
 import { generateText, tool } from 'ai';
 import { z } from 'zod';
 import { afterEach, describe, expect, it } from 'vitest';
-import { MemoryCredentialStore, copilotBaseUrl, createCopilotProvider } from '../../src/index.ts';
+import { MemoryCredentialStore, copilotBaseUrl, createCopilotProvider, enterpriseHost } from '../../src/index.ts';
 import { copilot } from '../../src/copilot.ts';
 import { sendCopilotRequest } from '../../src/providers/github-copilot.ts';
 import { echoUpstream, json, useServers, type Echo, type Received } from './helpers/server.ts';
@@ -17,6 +17,11 @@ describe('Copilot login', () => {
         expect(new URLSearchParams(request.body).get('client_id')).toBe('Iv23_my_app');
         return json(response, 200, { device_code: 'dc', user_code: 'WXYZ-1234', verification_uri: 'https://github.com/login/device', expires_in: 900, interval: 0.001 });
       }
+      expect(request.url).toBe('/login/oauth/access_token');
+      const form = new URLSearchParams(request.body);
+      expect(form.get('grant_type')).toBe('urn:ietf:params:oauth:grant-type:device_code');
+      expect(form.get('client_id')).toBe('Iv23_my_app');
+      expect(form.get('device_code')).toBe('dc');
       polls += 1;
       // GitHub answers pending with 200 and an error field.
       json(response, 200, polls < 3 ? { error: 'authorization_pending' } : { access_token: 'gho_token', token_type: 'bearer', scope: 'read:user' });
@@ -40,9 +45,15 @@ describe('Copilot login', () => {
     await expect(createCopilotProvider().refresh({ access: 'x', refresh: '', expires: 0 })).rejects.toMatchObject({ code: 'LOGIN_REQUIRED' });
   });
 
-  it('derives the enterprise API host', () => {
+  it('derives the enterprise API host and refuses anything but a plain hostname', async () => {
     expect(copilotBaseUrl()).toBe('https://api.githubcopilot.com');
     expect(copilotBaseUrl('https://github.acme.com/')).toBe('https://copilot-api.github.acme.com');
+    expect(enterpriseHost('GitHub.Acme.com')).toBe('github.acme.com');
+    for (const bad of ['evil.com@github.acme.com', 'github.acme.com/path', 'github.acme.com?x=1', 'github.acme.com:8443', 'http://github.acme.com', 'not a host', 'localhost']) {
+      expect(() => enterpriseHost(bad), bad).toThrow(/not a GitHub Enterprise host/);
+    }
+    const provider = createCopilotProvider({ githubCliToken: async () => 'gho' });
+    await expect(provider.login({ onAuth() {}, onPrompt: async () => '' }, { enterpriseUrl: 'evil.com@github.acme.com' })).rejects.toMatchObject({ code: 'MISCONFIGURED' });
   });
 });
 

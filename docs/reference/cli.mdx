@@ -68,7 +68,7 @@ lockfile, then the invoking package manager, then npm.
 
 | Creates | Content |
 | --- | --- |
-| `package.json` | Created as a private ESM package when missing; otherwise only missing dependencies and scripts are added. Sibling packages (`@e2edev/playwright`, `@e2edev/agent-device`, `@e2edev/oauth`) get the caret range of the version released with the CLI. A `test:e2e` script runs `e2e run` unless one exists |
+| `package.json` | Created as a private ESM package when missing; otherwise only missing dependencies and scripts are added. Sibling packages (`@e2edev/playwright`, `@e2edev/agent-device`, `@e2edev/oauth`) get the caret range of the version released with the CLI, or that exact version when the CLI is a prerelease. A `test:e2e` script runs `e2e run` unless one exists |
 | `e2e.config.ts` | One target for the selected engine. Playwright reads `APP_URL` (default `http://localhost:3000`) and shows the `command` option in a comment. With a gateway, `agents.default` is `createAgent({ model, system })` |
 | `tests/example.e2e.ts` | An app-open test that passes against any page, plus a commented agent test. Device setup gets a Settings check instead |
 | `.gitignore` | Appends `node_modules/`, `.e2e/artifacts/`, `.e2e/cache/`, `.e2e/sessions/`, `.e2e/report.json`, `.e2e/ai-trace.json`, `.e2e/junit.xml`, `.e2e/summary.md`, `.e2e/failures/`, and `.e2e/logs/`. Committing the cache is opt-in; see [commit your traces](/reference/config#commit-your-traces) |

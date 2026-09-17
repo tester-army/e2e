@@ -50,9 +50,9 @@ with `MODEL_PROVIDER_FAILED` naming the `e2e login` command.
 
 **ChatGPT.** The same sign-in the Codex CLI uses: the browser opens
 `auth.openai.com`, and after you approve, it returns to a page served on
-`localhost:1455`. If that port is taken or the browser cannot come back, paste
-the URL it landed on. `--device` prints a code to enter on another device
-instead. Requests go to the Codex backend, which serves `gpt-5.5`,
+`localhost:1455`. If that port is taken, or the browser has not come back
+after ten minutes, the terminal asks you to paste the URL it landed on.
+`--device` prints a code to enter on another device instead. Requests go to the Codex backend, which serves `gpt-5.5`,
 `gpt-5.4`, `gpt-5.4-mini`, and `gpt-5.3-codex-spark` to subscription
 sign-ins and draws on your plan's usage limits.
 
@@ -78,8 +78,9 @@ picks among the stored logins.
 
 `E2E_OAUTH_CREDENTIALS` holding the same JSON replaces the file for a
 machine you cannot sign in on. It is read-only: `e2e login` and `e2e logout`
-refuse to change it, and refreshed tokens are not written back, so a ChatGPT
-or SuperGrok entry there goes stale when its access token expires. Subscriptions are for the machine you work on; CI
+refuse to change it. A ChatGPT or SuperGrok entry there is refreshed for the
+running process only, and since refresh tokens rotate, the value in the
+variable is spent after the first refresh. Subscriptions are for the machine you work on; CI
 keeps an API key.
 
 ## Your own product

@@ -3,8 +3,8 @@
  * stored credentials, refreshes them ahead of expiry, replaces the SDK's key
  * header with the bearer token, and hands the request to the provider; on a
  * 401 it refreshes once and retries. One refresh serves every model instance
- * and every concurrent call that shares a store, because vendors that rotate
- * refresh tokens reject the second concurrent refresh.
+ * and every concurrent call over the same credentials, because vendors that
+ * rotate refresh tokens reject the second concurrent refresh.
  */
 
 import { OAuthError } from './errors.ts';
@@ -21,9 +21,31 @@ export interface OAuthFetchOptions {
 
 /** Refresh this long before `expires`, so a call never starts on a token about to lapse. */
 const REFRESH_SKEW_MS = 120_000;
+/** After a rejected refresh token, how long to wait for another process to store the rotated one. */
+const ROTATION_WAIT_MS = 500;
+const ROTATION_ATTEMPTS = 4;
 
-/** In-flight refreshes by store and provider id, shared by every fetch built over that store. */
-const refreshing = new WeakMap<CredentialStore, Map<string, Promise<OAuthCredentials>>>();
+/**
+ * Per credentials source: the refresh in flight, and credentials renewed for
+ * this process when the source could not keep them (the environment store).
+ * Stores over the same file share one entry, so separate model instances
+ * never race each other's refresh.
+ */
+interface SharedState {
+  readonly refreshing: Map<string, Promise<OAuthCredentials>>;
+  readonly renewed: Map<string, OAuthCredentials>;
+}
+const byObject = new WeakMap<CredentialStore, SharedState>();
+const byPath = new Map<string, SharedState>();
+
+function sharedState(store: CredentialStore): SharedState {
+  const path = (store as { readonly path?: unknown }).path;
+  const map: { get(key: never): SharedState | undefined; set(key: never, value: SharedState): unknown } = typeof path === 'string' ? byPath : byObject;
+  const key = (typeof path === 'string' ? path : store) as never;
+  let state = map.get(key);
+  if (state === undefined) map.set(key, (state = { refreshing: new Map(), renewed: new Map() }));
+  return state;
+}
 
 export function createOAuthFetch<Credentials extends OAuthCredentials>(
   provider: OAuthProvider<Credentials, never>,
@@ -31,6 +53,7 @@ export function createOAuthFetch<Credentials extends OAuthCredentials>(
 ): FetchFunction {
   const upstream = options.fetch ?? globalThis.fetch;
   const { store } = options;
+  const shared = sharedState(store);
 
   async function current(): Promise<Credentials> {
     const stored = await store.get(provider.id);
@@ -40,14 +63,32 @@ export function createOAuthFetch<Credentials extends OAuthCredentials>(
         `no ${provider.name} login is stored${options.loginHint === undefined ? '' : `; ${options.loginHint}`}`,
       );
     }
-    // The store holds what this provider's own login returned.
-    return stored as Credentials;
+    // What this process renewed wins over a source that could not keep it; the store holds this provider's own shape.
+    return (shared.renewed.get(provider.id) ?? stored) as Credentials;
+  }
+
+  async function persist(renewed: Credentials): Promise<void> {
+    try {
+      await store.set(provider.id, renewed);
+      shared.renewed.delete(provider.id);
+    } catch (cause) {
+      if (!(cause instanceof OAuthError && cause.code === 'MISCONFIGURED')) throw cause;
+      shared.renewed.set(provider.id, renewed);
+    }
+  }
+
+  /** After a rejected refresh token: the credentials another process stored meanwhile, if any. */
+  async function rotatedElsewhere(rejected: Credentials): Promise<Credentials | undefined> {
+    for (let attempt = 0; attempt < ROTATION_ATTEMPTS; attempt += 1) {
+      const latest = await current();
+      if (latest.refresh !== rejected.refresh) return latest;
+      await new Promise((resolve) => setTimeout(resolve, ROTATION_WAIT_MS));
+    }
+    return undefined;
   }
 
   function refresh(stale: Credentials): Promise<Credentials> {
-    let inFlight = refreshing.get(store);
-    if (inFlight === undefined) refreshing.set(store, (inFlight = new Map()));
-    let pending = inFlight.get(provider.id) as Promise<Credentials> | undefined;
+    let pending = shared.refreshing.get(provider.id) as Promise<Credentials> | undefined;
     if (pending === undefined) {
       pending = (async () => {
         // Another process may have refreshed already: prefer what the store holds now.
@@ -55,18 +96,17 @@ export function createOAuthFetch<Credentials extends OAuthCredentials>(
         if (latest.access !== stale.access && !expiring(latest)) return latest;
         try {
           const renewed = await provider.refresh(latest);
-          await store.set(provider.id, renewed);
+          await persist(renewed);
           return renewed;
         } catch (cause) {
-          // A rejected refresh token that another process has since rotated is not a lost login.
           if (cause instanceof OAuthError && cause.code === 'LOGIN_REQUIRED') {
-            const rotated = await current();
-            if (rotated.refresh !== latest.refresh) return rotated;
+            const rotated = await rotatedElsewhere(latest);
+            if (rotated !== undefined) return rotated;
           }
           throw cause;
         }
-      })().finally(() => inFlight!.delete(provider.id));
-      inFlight.set(provider.id, pending);
+      })().finally(() => shared.refreshing.delete(provider.id));
+      shared.refreshing.set(provider.id, pending);
     }
     return pending;
   }

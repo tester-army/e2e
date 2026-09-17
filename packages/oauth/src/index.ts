@@ -15,7 +15,7 @@ export { rfc8628Flow, runDeviceFlow, type DeviceAuthorization, type DeviceFlowOp
 export { requestTokens, type TokenResponse } from './token-endpoint.ts';
 export { foldResponsesStream } from './sse.ts';
 export { createCodexProvider, type CodexCredentials, type CodexLoginOptions, type CodexProviderOptions } from './providers/openai.ts';
-export { copilotBaseUrl, createCopilotProvider, type CopilotCredentials, type CopilotLoginOptions, type CopilotProviderOptions } from './providers/github-copilot.ts';
+export { copilotBaseUrl, createCopilotProvider, enterpriseHost, type CopilotCredentials, type CopilotLoginOptions, type CopilotProviderOptions } from './providers/github-copilot.ts';
 export { createXaiProvider, type XaiProviderOptions } from './providers/xai.ts';
 export { PROVIDER_IDS, getProvider, isProviderId, type LoginOptionsById, type ProviderId } from './providers.ts';
 export { login, logout, type LoginInput } from './login.ts';

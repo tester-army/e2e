@@ -6,7 +6,7 @@
  * machine the user cannot sign in on; that store refuses to write.
  */
 
-import { closeSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, closeSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { OAuthError } from './errors.ts';
@@ -72,11 +72,15 @@ export class FileCredentialStore implements CredentialStore {
 
   /** Read-modify-write under the lock, then an atomic replace. */
   private async update(change: (all: CredentialsFile) => CredentialsFile): Promise<void> {
-    mkdirSync(path.dirname(this.path), { recursive: true, mode: 0o700 });
+    const dir = path.dirname(this.path);
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    // Creation modes only apply to new paths; a directory or file that already existed keeps what it had unless told otherwise.
+    chmodSync(dir, 0o700);
     const release = await this.lock();
     try {
       const temp = `${this.path}.${process.pid}.${Date.now()}.tmp`;
       writeFileSync(temp, `${JSON.stringify(change(this.read()), null, 2)}\n`, { mode: 0o600 });
+      chmodSync(temp, 0o600);
       try {
         renameSync(temp, this.path);
       } catch (cause) {
@@ -88,7 +92,12 @@ export class FileCredentialStore implements CredentialStore {
     }
   }
 
-  /** An advisory lock file created exclusively; a lock older than the stale bound is taken over. */
+  /**
+   * An advisory lock file created exclusively. A lock older than the stale
+   * bound was left by a dead process: it is claimed by renaming it, which
+   * only one waiter can win, so a lock a live process just created is never
+   * removed from under it.
+   */
   private async lock(): Promise<() => void> {
     const lockPath = `${this.path}.lock`;
     const deadline = Date.now() + LOCK_WAIT_MS;
@@ -98,9 +107,14 @@ export class FileCredentialStore implements CredentialStore {
         return () => rmSync(lockPath, { force: true });
       } catch (cause) {
         if ((cause as NodeJS.ErrnoException).code !== 'EEXIST') throw cause;
-        const age = Date.now() - lockAge(lockPath);
-        if (age > LOCK_STALE_MS) {
-          rmSync(lockPath, { force: true });
+        if (Date.now() - lockAge(lockPath) > LOCK_STALE_MS) {
+          const claimed = `${lockPath}.${process.pid}.${Date.now()}.stale`;
+          try {
+            renameSync(lockPath, claimed);
+            rmSync(claimed, { force: true });
+          } catch {
+            // Another waiter claimed it first; try the lock again.
+          }
           continue;
         }
         if (Date.now() > deadline) throw new Error(`${lockPath} is held by another process; remove it if that process is gone`, { cause });

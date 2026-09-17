@@ -19,7 +19,7 @@ export async function login<Id extends ProviderId>(providerId: Id, input: LoginI
 
 /** Forgets a stored login; true when there was one. */
 export async function logout(providerId: ProviderId, store: CredentialStore = defaultCredentialStore()): Promise<boolean> {
-  const had = (await store.get(providerId)) !== undefined;
+  if ((await store.get(providerId)) === undefined) return false;
   await store.remove(providerId);
-  return had;
+  return true;
 }

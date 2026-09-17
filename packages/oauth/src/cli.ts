@@ -140,11 +140,12 @@ export async function runOAuthCli(argv: readonly string[], io: CliIo = defaultIo
         help: { type: 'boolean', short: 'h' },
       },
     });
-    const [command, providerId] = positionals;
+    const [command, providerId, ...extra] = positionals;
     if (values.help === true || command === undefined) {
       io.stdout.write(USAGE);
       return command === undefined ? 1 : 0;
     }
+    if (extra.length > 0) throw new OAuthError('MISCONFIGURED', `unexpected argument ${extra[0]}.\n${USAGE}`);
     switch (command) {
       case 'login':
         return runLogin(

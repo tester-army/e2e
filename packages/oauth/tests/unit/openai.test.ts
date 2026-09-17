@@ -60,22 +60,27 @@ describe('Codex login', () => {
   it('ignores a callback with the wrong state and treats a declined sign-in as cancelled', async () => {
     const issuer = await serve((_request, response) => json(response, 200, tokenReply));
     const provider = createCodexProvider({ issuer: issuer.url, callbackPort: await freePort() });
-    const statuses: Promise<number>[] = [];
+    const statuses: number[] = [];
+    let browser: Promise<void> | undefined;
     await expect(
       provider.login({
         onAuth(info) {
-          statuses.push(browserReturns(info.url, { code: 'stolen', state: 'not-ours' }).then((r) => r.status));
-          statuses.push(browserReturns(info.url, { error: 'x', state: 'not-ours' }).then((r) => r.status));
-          statuses.push(browserReturns(info.url, { error: 'access_denied', state: '$state' }).then((r) => r.status));
+          // The bogus callbacks are answered before the decline, which closes the server behind them.
+          browser = (async () => {
+            statuses.push((await browserReturns(info.url, { code: 'stolen', state: 'not-ours' })).status);
+            statuses.push((await browserReturns(info.url, { error: 'x', state: 'not-ours' })).status);
+            statuses.push((await browserReturns(info.url, { error: 'access_denied', state: '$state' })).status);
+          })();
         },
         onPrompt: async () => '',
       }),
     ).rejects.toMatchObject({ code: 'CANCELLED' });
-    expect(await Promise.all(statuses)).toEqual([400, 400, 400]);
+    await browser;
+    expect(statuses).toEqual([400, 400, 400]);
     expect(issuer.requests).toHaveLength(0);
   });
 
-  it('asks for the pasted code when the callback port is taken, and times out when the browser never returns', async () => {
+  it('asks for the pasted code when the callback port is taken or the browser never returns', async () => {
     const issuer = await serve((_request, response) => json(response, 200, tokenReply));
     const port = await freePort();
     const squatter = await startServer(() => {});
@@ -87,8 +92,24 @@ describe('Codex login', () => {
     } finally {
       await squatter.close();
     }
+    // After the browser fails to return in time, the terminal asks for the URL instead of failing.
     const slow = createCodexProvider({ issuer: issuer.url, callbackPort: port, loginTimeoutMs: 50 });
-    await expect(slow.login({ onAuth() {}, onPrompt: async () => '' })).rejects.toMatchObject({ code: 'TIMEOUT' });
+    const pasted = await slow.login({ onAuth() {}, onPrompt: async () => 'late-code' });
+    expect(pasted.access).toBe(accessToken);
+    expect(new URLSearchParams(issuer.requests.at(-1)?.body).get('code')).toBe('late-code');
+  });
+
+  it('is cancelled at once by an already aborted signal and by a malformed callback', async () => {
+    const issuer = await serve((_request, response) => json(response, 200, tokenReply));
+    const provider = createCodexProvider({ issuer: issuer.url, callbackPort: await freePort(), loginTimeoutMs: 60_000 });
+    const aborted = AbortSignal.abort();
+    await expect(provider.login({ onAuth() {}, onPrompt: async () => '', signal: aborted })).rejects.toMatchObject({ code: 'CANCELLED' });
+    await expect(
+      provider.login({
+        onAuth: (info) => void browserReturns(info.url, { state: '$state' }),
+        onPrompt: async () => '',
+      }),
+    ).rejects.toMatchObject({ code: 'FLOW_FAILED', message: expect.stringContaining('invalid_callback') });
   });
 
   it('runs the device flow through OpenAI\'s user-code endpoints', async () => {

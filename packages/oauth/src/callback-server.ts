@@ -52,7 +52,11 @@ export async function startCallbackServer(options: CallbackServerOptions): Promi
       return;
     }
     const code = url.searchParams.get('code');
-    if (code === null || code === '') return reply(400, 'Login failed', 'The redirect carried no authorization code.');
+    if (code === null || code === '') {
+      reply(400, 'Login failed', 'The redirect carried no authorization code.');
+      settle?.({ error: 'invalid_callback' });
+      return;
+    }
     reply(200, 'Signed in', 'You can close this window and return to the terminal.');
     settle?.({ code });
   });
@@ -68,8 +72,13 @@ export async function startCallbackServer(options: CallbackServerOptions): Promi
     redirectUri: `http://localhost:${port}${options.path}`,
     waitForAnswer: (signal, timeoutMs) =>
       new Promise<CallbackAnswer>((resolve, reject) => {
-        const timer = setTimeout(() => reject(new OAuthError('TIMEOUT', 'the browser did not return in time; run the login again')), timeoutMs);
-        const onAbort = () => reject(new OAuthError('CANCELLED', 'the login was cancelled'));
+        const cancelled = () => new OAuthError('CANCELLED', 'the login was cancelled');
+        if (signal?.aborted) return reject(cancelled());
+        const timer = setTimeout(() => reject(new OAuthError('TIMEOUT', 'the browser did not return in time')), timeoutMs);
+        const onAbort = () => {
+          clearTimeout(timer);
+          reject(cancelled());
+        };
         signal?.addEventListener('abort', onAbort, { once: true });
         void answered.finally(() => {
           clearTimeout(timer);

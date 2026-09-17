@@ -37,13 +37,34 @@ export interface CopilotProviderOptions {
 
 export const COPILOT_API_URL = 'https://api.githubcopilot.com';
 
-function normalizeDomain(url: string): string {
-  return url.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+/**
+ * The bare host of a GitHub Enterprise URL. The bearer token goes to a host
+ * derived from it, so anything besides a plain hostname (credentials, a path,
+ * a query, a fragment, a port) is refused rather than guessed at.
+ */
+export function enterpriseHost(value: string): string {
+  let url: URL;
+  try {
+    url = new URL(value.includes('://') ? value : `https://${value}`);
+  } catch {
+    throw new OAuthError('MISCONFIGURED', `${value} is not a GitHub Enterprise host; pass the hostname, e.g. github.example.com`);
+  }
+  const plain =
+    url.protocol === 'https:' &&
+    url.username === '' &&
+    url.password === '' &&
+    url.port === '' &&
+    (url.pathname === '/' || url.pathname === '') &&
+    url.search === '' &&
+    url.hash === '' &&
+    /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(url.hostname);
+  if (!plain) throw new OAuthError('MISCONFIGURED', `${value} is not a GitHub Enterprise host; pass the hostname, e.g. github.example.com`);
+  return url.hostname.toLowerCase();
 }
 
 /** The Copilot API base for github.com or an enterprise host. */
 export function copilotBaseUrl(enterpriseUrl?: string): string {
-  return enterpriseUrl === undefined || enterpriseUrl === '' ? COPILOT_API_URL : `https://copilot-api.${normalizeDomain(enterpriseUrl)}`;
+  return enterpriseUrl === undefined || enterpriseUrl === '' ? COPILOT_API_URL : `https://copilot-api.${enterpriseHost(enterpriseUrl)}`;
 }
 
 export function createCopilotProvider(options: CopilotProviderOptions = {}): OAuthProvider<CopilotCredentials, CopilotLoginOptions> {
@@ -52,7 +73,7 @@ export function createCopilotProvider(options: CopilotProviderOptions = {}): OAu
     id: 'github-copilot',
     name: 'GitHub Copilot',
     async login(callbacks, loginOptions = {}) {
-      const enterprise = loginOptions.enterpriseUrl === undefined ? undefined : normalizeDomain(loginOptions.enterpriseUrl);
+      const enterprise = loginOptions.enterpriseUrl === undefined ? undefined : enterpriseHost(loginOptions.enterpriseUrl);
       const stored = enterprise === undefined ? {} : { enterpriseUrl: enterprise };
       if (loginOptions.clientId !== undefined && loginOptions.fromGitHubCli !== true) {
         const tokens = await rfc8628Flow({

@@ -24,5 +24,8 @@ describe('@e2edev/oauth/cli', () => {
     out.length = 0;
     expect(await cli.runOAuthCli(['login', 'spacexai', '--bogus'], io)).toBe(1);
     expect(out.join('')).toMatch(/bogus/);
+    out.length = 0;
+    expect(await cli.runOAuthCli(['logout', 'spacexai', 'extra'], io)).toBe(1);
+    expect(out.join('')).toContain('unexpected argument extra');
   });
 });

@@ -7,7 +7,7 @@
  * stream is folded back into JSON when the SDK asked for a single response.
  */
 
-import { startCallbackServer } from '../callback-server.ts';
+import { startCallbackServer, type CallbackAnswer, type CallbackServer } from '../callback-server.ts';
 import { runDeviceFlow } from '../device-code.ts';
 import { OAuthError, describeResponse } from '../errors.ts';
 import { decodeJwtPayload } from '../jwt.ts';
@@ -161,8 +161,8 @@ interface BrowserLogin {
 async function browserLogin(callbacks: OAuthLoginCallbacks, flow: BrowserLogin): Promise<TokenResponse> {
   const { verifier, challenge } = await generatePkce();
   const state = randomState();
-  const redirectUri = `http://localhost:${flow.callbackPort}${CALLBACK_PATH}`;
   const server = await startCallbackServer({ port: flow.callbackPort, path: CALLBACK_PATH, state, productName: 'ChatGPT login' });
+  const redirectUri = server?.redirectUri ?? `http://localhost:${flow.callbackPort}${CALLBACK_PATH}`;
   const url = new URL(`${flow.issuer}/oauth/authorize`);
   url.search = new URLSearchParams({
     response_type: 'code',
@@ -181,25 +181,10 @@ async function browserLogin(callbacks: OAuthLoginCallbacks, flow: BrowserLogin):
     instructions:
       server === undefined
         ? `Port ${flow.callbackPort} is in use, so the browser cannot return here: sign in, then paste the URL the browser lands on.`
-        : 'Sign in in the browser; this terminal continues when the browser returns.',
+        : 'Sign in in the browser; this terminal continues when the browser returns, or asks for the URL it landed on.',
   });
   try {
-    let code: string | undefined;
-    if (server !== undefined) {
-      const answer = await server.waitForAnswer(callbacks.signal, flow.timeoutMs);
-      if ('error' in answer) {
-        throw answer.error === 'access_denied'
-          ? new OAuthError('CANCELLED', 'the sign-in was declined in the browser')
-          : new OAuthError('FLOW_FAILED', `ChatGPT refused the sign-in: ${answer.error}`);
-      }
-      code = answer.code;
-    } else {
-      const pasted = parseAuthorizationInput(await callbacks.onPrompt({ message: 'Paste the URL the browser landed on (or the code it shows)' }));
-      if (pasted.state !== undefined && pasted.state !== state) {
-        throw new OAuthError('FLOW_FAILED', 'the pasted code belongs to a different login attempt; start over');
-      }
-      code = pasted.code;
-    }
+    const code = server === undefined ? await pasteCode(callbacks, state) : await answerOrPaste(server, callbacks, state, flow.timeoutMs);
     if (code === undefined) throw new OAuthError('FLOW_FAILED', 'no authorization code was received');
     callbacks.onProgress?.('Exchanging the code for tokens');
     return await exchangeCode(flow.issuer, code, redirectUri, verifier);
@@ -208,9 +193,35 @@ async function browserLogin(callbacks: OAuthLoginCallbacks, flow: BrowserLogin):
   }
 }
 
+/** The browser's answer; when it never comes back in time, the user pastes what it shows instead. */
+async function answerOrPaste(server: CallbackServer, callbacks: OAuthLoginCallbacks, state: string, timeoutMs: number): Promise<string | undefined> {
+  let answer: CallbackAnswer;
+  try {
+    answer = await server.waitForAnswer(callbacks.signal, timeoutMs);
+  } catch (cause) {
+    if (cause instanceof OAuthError && cause.code === 'TIMEOUT') return pasteCode(callbacks, state);
+    throw cause;
+  }
+  if ('error' in answer) {
+    throw answer.error === 'access_denied'
+      ? new OAuthError('CANCELLED', 'the sign-in was declined in the browser')
+      : new OAuthError('FLOW_FAILED', `ChatGPT refused the sign-in: ${answer.error}`);
+  }
+  return answer.code;
+}
+
+async function pasteCode(callbacks: OAuthLoginCallbacks, state: string): Promise<string | undefined> {
+  const pasted = parseAuthorizationInput(await callbacks.onPrompt({ message: 'Paste the URL the browser landed on (or the code it shows)' }));
+  if (pasted.state !== undefined && pasted.state !== state) {
+    throw new OAuthError('FLOW_FAILED', 'the pasted code belongs to a different login attempt; start over');
+  }
+  return pasted.code;
+}
+
 /** The Codex CLI's device login: OpenAI's own user-code endpoints, pending until the user enters the code. */
 function deviceLogin(callbacks: OAuthLoginCallbacks, issuer: string, timeoutMs: number): Promise<TokenResponse> {
-  const json = (url: string, body: unknown) => fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const json = (url: string, body: unknown, signal?: AbortSignal) =>
+    fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), ...(signal === undefined ? {} : { signal }) });
   return runDeviceFlow<TokenResponse>({
     callbacks,
     async start() {
@@ -225,8 +236,8 @@ function deviceLogin(callbacks: OAuthLoginCallbacks, issuer: string, timeoutMs: 
         interval: Number(device.interval) + DEVICE_POLL_MARGIN_S,
       };
     },
-    async poll(authorization) {
-      const response = await json(`${issuer}/api/accounts/deviceauth/token`, { device_auth_id: authorization.deviceCode, user_code: authorization.userCode });
+    async poll(authorization, signal) {
+      const response = await json(`${issuer}/api/accounts/deviceauth/token`, { device_auth_id: authorization.deviceCode, user_code: authorization.userCode }, signal);
       if (response.ok) {
         const grant = (await response.json()) as { authorization_code: string; code_verifier: string };
         return { status: 'granted', value: await exchangeCode(issuer, grant.authorization_code, `${issuer}/deviceauth/callback`, grant.code_verifier) };

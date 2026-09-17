@@ -14,11 +14,12 @@ export interface TokenResponse {
   readonly expires_in?: number;
 }
 
-export async function postForm(url: string, params: Record<string, string>, headers: Record<string, string> = {}): Promise<Response> {
+export async function postForm(url: string, params: Record<string, string>, signal?: AbortSignal): Promise<Response> {
   return fetch(url, {
     method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json', ...headers },
+    headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
     body: new URLSearchParams(params),
+    ...(signal === undefined ? {} : { signal }),
   });
 }
 
@@ -54,5 +55,6 @@ export function positiveSeconds(value: unknown, fallback: number): number {
 
 /** When a token expires, from `expires_in`; one hour when the server names nothing usable. */
 export function expiryFrom(expiresIn: unknown, now: number = Date.now()): number {
-  return now + positiveSeconds(expiresIn, 3600) * 1000;
+  const expiry = now + positiveSeconds(expiresIn, 3600) * 1000;
+  return Number.isFinite(expiry) ? expiry : now + 3600 * 1000;
 }
