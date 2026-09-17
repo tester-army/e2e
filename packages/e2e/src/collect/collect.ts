@@ -2,7 +2,7 @@
 
 import { realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { compileGlob, discoverFiles, matchesGlob } from '../internal/globs.ts';
+import { compileGlob, discoverFiles, GLOB_SYNTAX, literalPrefix, matchesGlob } from '../internal/globs.ts';
 import { CollectionError } from '../internal/errors.ts';
 import { setupTestId, testId } from '../internal/ids.ts';
 import { explainModuleError } from '../config/diagnose.ts';
@@ -121,16 +121,9 @@ function findNearMissTestFiles(projectRoot: string, patterns: readonly string[])
   const compiled = patterns.map(compileGlob);
   const prefixes = new Set(
     compiled.map((glob) => {
-      // The pattern as compiled, not as written: a leading `./` would
-      // otherwise root the whole scan in a directory that does not exist.
-      const segments = glob.pattern.split('/');
-      const literal: string[] = [];
-      for (const segment of segments) {
-        if (/[*?]/.test(segment)) break;
-        literal.push(segment);
-      }
-      // A pattern with no glob segment names one file; look beside it.
-      if (literal.length === segments.length) literal.pop();
+      const literal = literalPrefix(glob);
+      // A glob with no wildcard names one file; look beside it.
+      if (literal.length === glob.segments.length) literal.pop();
       return literal.join('/');
     }),
   );
@@ -219,15 +212,13 @@ export interface PositionalSelection {
   readonly unmatched: readonly string[];
 }
 
-/** What marks a positional as a glob: the grammar's wildcards, and braces so that `{a,b}` is rejected with a hint rather than taken for a name. */
-const GLOB_CHARACTERS = /[*?{}]/;
-
 /**
  * Narrows the files the config globs discovered by positional arguments. Each
- * positional resolves from the project root and is one of: a glob (any `*`,
- * `?`, or brace) in the test glob grammar matched against the discovered
- * files, an existing directory selecting every discovered file beneath it, an existing
- * file matched exactly, or a name: a positional that exists nowhere selects
+ * positional resolves from the project root and is one of: an existing
+ * directory selecting every discovered file beneath it, an existing file
+ * matched exactly (whatever its name is spelled with), a glob (any wildcard
+ * of the test glob grammar, or a form it rejects with a hint) matched against
+ * the discovered files, or a name: a positional that exists nowhere selects
  * the discovered files whose root-relative path equals it or ends with it at a
  * segment boundary (`saved-tests.e2e.ts`, `regression/saved-tests.e2e.ts`),
  * and one with no `/` and no `.` selects the files whose base name up to the
@@ -258,22 +249,25 @@ export function selectPositionals(
 
 function positionalMatcher(projectRoot: string, positional: string): (file: string) => boolean {
   const normalized = relativeToRoot(projectRoot, positional);
-  if (GLOB_CHARACTERS.test(normalized)) {
+  if (normalized === '.') return () => true;
+  // An existing entry is a path, whatever its name is spelled with, and
+  // follows the filesystem's own case rules.
+  const absolutePath = path.resolve(projectRoot, normalized);
+  const stats = statSync(absolutePath, { throwIfNoEntry: false });
+  if (stats !== undefined) {
+    const onDisk = onDiskRelativePath(projectRoot, absolutePath) ?? normalized;
+    if (stats.isDirectory()) {
+      const prefix = `${onDisk}/`;
+      return (file) => file.startsWith(prefix);
+    }
+    return (file) => file === onDisk;
+  }
+  if (GLOB_SYNTAX.test(normalized)) {
     // Globs keep the test glob grammar: case-sensitive on every OS.
     const glob = compileGlob(normalized);
     return (file) => matchesGlob(glob, file);
   }
-  if (normalized === '.') return () => true;
-  const absolutePath = path.resolve(projectRoot, normalized);
-  const stats = statSync(absolutePath, { throwIfNoEntry: false });
-  if (stats === undefined) return nameMatcher(normalized);
-  // An existing file or directory follows the filesystem's own case rules.
-  const onDisk = onDiskRelativePath(projectRoot, absolutePath) ?? normalized;
-  if (stats.isDirectory()) {
-    const prefix = `${onDisk}/`;
-    return (file) => file.startsWith(prefix);
-  }
-  return (file) => file === onDisk;
+  return nameMatcher(normalized);
 }
 
 /**

@@ -87,7 +87,7 @@ These appear in terminal output and in the report as plain string codes.
 | `CONFIG_NOT_DETERMINISTIC` | A worker re-resolved the config module and got a different digest than the runner | configuration | 2 |
 | `APP_URL_REQUIRED` | A navigation or relative URL on a target whose engine declares no `url`, or a declared `command` with no `url` or `readyUrl` to poll | configuration | 2 |
 | `INVALID_APP_URL` | Base URL with userinfo, a query, a fragment, a non-HTTP scheme, plain HTTP on a non-loopback host, port 0 on a host other than a literal loopback address (`127.0.0.1`, `[::1]`), a loopback address the run could not bind a free port on, or unparseable | configuration | 2 |
-| `INVALID_GLOB` | Empty pattern, a leading `!` exclusion, braces, `..`, a backslash, an absolute path, a trailing `/`, or a `**` that is not a whole segment | configuration | 2 |
+| `INVALID_GLOB` | Empty pattern, a leading `!` exclusion, braces, character classes, extglobs, a backslash separator, an absolute path, a `..` segment, a trailing `/` or `.`, a pattern that names only the project root, or a `**` that is not a whole segment | configuration | 2 |
 | `UNKNOWN_TARGET` | `--target` named an ID that is not configured | configuration | 2 |
 | `TARGET_REQUIRED` | `e2e mcp`: the config declares several targets and neither `--target` nor `open_session` named one | configuration | 2 |
 | `NO_SESSION` | `e2e mcp`: `call`, `tools`, or `close_session` before `open_session` or after the session ended (the message names why), or naming a `session` id that is not the open one | configuration | 2 |

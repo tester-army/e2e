@@ -123,10 +123,12 @@ Test files, directories, or globs relative to the project root:
   `tests/agent/signup.e2e.ts`. Without a `/` or `.` it matches the file name
   with extensions dropped, so `signup` selects it too;
 - a glob (`'tests/**/*.smoke.e2e.ts'`, quoted) uses the grammar of the config
-  `tests` globs: `*`, `?`, and a whole `**` segment, with a leading `./`
-  allowed. Anything else the grammar lacks is `INVALID_GLOB` rather than a
-  pattern that matches nothing: braces, `..`, a backslash, an absolute path,
-  or a trailing `/`.
+  `tests` globs: `*`, `?`, and a whole `**` segment. Braces, character
+  classes, and extglobs are `INVALID_GLOB` with a hint rather than a pattern
+  that matches nothing: there is no expansion, so name one glob per
+  alternative. `./`, `..`, a trailing `/`, and an absolute path inside the
+  project resolve as they do for any positional path, and an existing file or
+  directory is selected by its path whatever its name is spelled with.
 
 Positionals narrow the config globs and the tag, platform, and capability
 filters; they never bypass them. Names and globs are case-sensitive on every

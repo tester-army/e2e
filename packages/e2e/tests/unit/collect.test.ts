@@ -2,7 +2,8 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { relativeToRoot, selectPositionals } from '../../src/collect/collect.ts';
+import { collect, relativeToRoot, selectPositionals } from '../../src/collect/collect.ts';
+import { resolveConfig } from '../../src/config/resolve.ts';
 
 // What the config globs discovered, in discovery order. `tests/agent/notes.md`
 // exists on disk but is not in this list: positionals only narrow it.
@@ -10,6 +11,7 @@ const DISCOVERED = [
   'tests/a.e2e.ts',
   'tests/agent/b.e2e.ts',
   'tests/agent/nested/c.e2e.ts',
+  'tests/lit{x}.e2e.ts',
   'tests/other/d.e2e.ts',
 ];
 
@@ -95,7 +97,7 @@ describe('selectPositionals', () => {
   });
 
   it('matches a glob against the discovered files with the config grammar', () => {
-    expect(selectPositionals(root, DISCOVERED, ['tests/*.e2e.ts']).files).toEqual(['tests/a.e2e.ts']);
+    expect(selectPositionals(root, DISCOVERED, ['tests/*.e2e.ts']).files).toEqual(['tests/a.e2e.ts', 'tests/lit{x}.e2e.ts']);
     expect(selectPositionals(root, DISCOVERED, ['tests/**/c.e2e.ts']).files).toEqual([
       'tests/agent/nested/c.e2e.ts',
     ]);
@@ -123,6 +125,13 @@ describe('selectPositionals', () => {
   it('rejects a malformed glob with INVALID_GLOB', () => {
     expect(() => selectPositionals(root, DISCOVERED, ['tests/**agent/*.ts'])).toThrow(/complete path segment/);
     expect(() => selectPositionals(root, DISCOVERED, ['tests/{a,b}.e2e.ts'])).toThrow(/brace expansion/);
+    expect(() => selectPositionals(root, DISCOVERED, ['tests/*.e2e.[jt]s'])).toThrow(/character classes/);
+  });
+
+  it('selects an existing file by its path whatever its name is spelled with', () => {
+    expect(selectPositionals(root, DISCOVERED, ['tests/lit{x}.e2e.ts']).files).toEqual(['tests/lit{x}.e2e.ts']);
+    // The same spelling for a file that does not exist is read as a glob, and told why it cannot be one.
+    expect(() => selectPositionals(root, DISCOVERED, ['tests/lit{y}.e2e.ts'])).toThrow(/brace expansion/);
   });
 
   it('follows on-disk casing for existing files and directories on a case-insensitive filesystem', (ctx) => {
@@ -145,6 +154,25 @@ describe('selectPositionals', () => {
     const selection = selectPositionals(root, DISCOVERED, ['tests/Agent/*.e2e.ts']);
     expect(selection.files).toEqual([]);
     expect(selection.unmatched).toEqual(['tests/Agent/*.e2e.ts']);
+  });
+});
+
+describe('collect', () => {
+  it('names look-alike files under the directory a ./-prefixed glob starts in', async () => {
+    const projectRoot = mkdtempSync(path.join(tmpdir(), 'e2e-near-miss-'));
+    try {
+      mkdirSync(path.join(projectRoot, 'tests'));
+      writeFileSync(path.join(projectRoot, 'tests', 'login.test.ts'), '');
+      const config = resolveConfig(
+        { targets: [{ name: 'web', platform: 'web' }], tests: './tests/**/*.e2e.ts' },
+        { projectRoot, env: {} as NodeJS.ProcessEnv },
+      );
+      const collection = await collect(config);
+      expect(collection.files).toEqual([]);
+      expect(collection.nearMisses).toEqual(['tests/login.test.ts']);
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
   });
 });
 
