@@ -5,7 +5,9 @@
  * entry here.
  */
 
-export type GatewayId = 'vercel' | 'openrouter' | 'openai-compatible';
+import { siblingDependency } from './engines.ts';
+
+export type GatewayId = 'vercel' | 'openrouter' | 'openai-compatible' | 'chatgpt' | 'copilot' | 'grok';
 
 export interface GatewayPreset {
   readonly id: GatewayId;
@@ -53,7 +55,48 @@ export const GATEWAYS: readonly GatewayPreset[] = [
         // apiKey: process.env.LLM_API_KEY,
       }).chatModel('gpt-5.6-luna')`,
   },
+  {
+    id: 'chatgpt',
+    label: 'ChatGPT Plus/Pro subscription',
+    hint: 'your ChatGPT plan through the Codex sign-in; run e2e login openai-codex',
+    dependencies: { ...siblingDependency('@e2edev/oauth'), '@ai-sdk/openai': '^4.0.0' },
+    import: "import { chatgpt } from '@e2edev/oauth/chatgpt';",
+    comment: 'Your ChatGPT subscription serves the model; sign in once with `e2e login openai-codex`.',
+    model: () => "chatgpt('gpt-5.5')",
+  },
+  {
+    id: 'copilot',
+    label: 'GitHub Copilot subscription',
+    hint: 'your Copilot plan, OpenAI and Anthropic models; run e2e login github-copilot',
+    dependencies: { ...siblingDependency('@e2edev/oauth'), '@ai-sdk/openai-compatible': '^3.0.0' },
+    import: "import { copilot } from '@e2edev/oauth/copilot';",
+    comment: 'Your GitHub Copilot subscription serves the model; sign in once with `e2e login github-copilot`.',
+    model: () => "copilot('gpt-5.6-luna')",
+  },
+  {
+    id: 'grok',
+    label: 'SuperGrok subscription',
+    hint: 'your SuperGrok or X Premium+ plan; run e2e login xai',
+    dependencies: { ...siblingDependency('@e2edev/oauth'), '@ai-sdk/xai': '^5.0.0' },
+    import: "import { grok } from '@e2edev/oauth/grok';",
+    comment: 'Your SuperGrok subscription serves the model; sign in once with `e2e login xai`.',
+    model: () => "grok('grok-4')",
+  },
 ];
+
+/** The `e2e login` provider a subscription gateway signs in with, or undefined for a keyed gateway. */
+export function loginProvider(id: GatewayId): 'openai-codex' | 'github-copilot' | 'xai' | undefined {
+  switch (id) {
+    case 'chatgpt':
+      return 'openai-codex';
+    case 'copilot':
+      return 'github-copilot';
+    case 'grok':
+      return 'xai';
+    default:
+      return undefined;
+  }
+}
 
 export function getGatewayPreset(id: GatewayId): GatewayPreset {
   const preset = GATEWAYS.find((gateway) => gateway.id === id);

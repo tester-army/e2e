@@ -10,7 +10,7 @@ import { DOCS_URL } from './docs-url.ts';
 import { findInstalledSkillDirs, planSkillInstall, SKILL_LOCATIONS } from './init/agent-skill.ts';
 import { isLoopbackHost } from '../internal/urls.ts';
 import { getEnginePresets, DEFAULT_ENGINE_ID, type EngineId } from './init/engines.ts';
-import { GATEWAYS, type GatewayId } from './init/gateways.ts';
+import { GATEWAYS, loginProvider, type GatewayId } from './init/gateways.ts';
 import { findRegisteredMcpFiles, MCP_LOCATIONS, planMcpRegistration } from './init/mcp-config.ts';
 import { addDependencies, addScripts, describeManifestError, readPackage, serializePackage } from './init/package.ts';
 import { createScaffold, type ScaffoldModel } from './init/scaffold.ts';
@@ -253,9 +253,12 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
   const runCommand = /^e2e run(?:\s|$)/u.test(manifest.scripts?.[RUN_SCRIPT] ?? '')
     ? runScriptCommand(manager, RUN_SCRIPT)
     : execCommand(manager, 'e2e run');
+  // A subscription gateway has no key to set; the sign-in is the step before the first run.
+  const subscription = model === undefined ? undefined : loginProvider(model.gateway);
   const next = [
     options.directory === undefined ? undefined : `cd ${shellArgument(options.directory)}`,
     install ? undefined : `${manager} install`,
+    subscription === undefined ? undefined : execCommand(manager, `e2e login ${subscription}`),
     `${scaffold.needsAppUrl ? 'APP_URL=http://localhost:3000 ' : ''}${runCommand}`,
   ].filter((step) => step !== undefined);
   clack.outro(`next: ${next.join(', then ')}`);

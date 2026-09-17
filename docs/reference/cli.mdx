@@ -83,6 +83,29 @@ Cancellation leaves files untouched and exits 0. An invalid `package.json`
 exits 2 before any write. Without a terminal on stdin and stdout, `init`
 without `--yes` exits 2 and names the flag.
 
+## e2e login
+
+```bash
+npx e2e login openai-codex                 # ChatGPT Plus/Pro, opens the browser
+npx e2e login openai-codex --device        # a code to enter on another device
+npx e2e login github-copilot --from-gh     # reuse the GitHub CLI's login
+npx e2e login github-copilot --client-id <id> [--enterprise-url <host>]
+npx e2e login xai                          # SuperGrok / X Premium+, device code
+```
+
+Signs in to a personal subscription and stores the login in
+`~/.config/e2e/oauth.json` for the models `@e2edev/oauth` constructs
+(`chatgpt()`, `copilot()`, `grok()`). Needs `@e2edev/oauth` in the project;
+without it the command exits 1 with the install line. See
+[Subscriptions](/subscriptions).
+
+## e2e logout
+
+```bash
+npx e2e logout                 # list the stored logins
+npx e2e logout openai-codex    # forget one
+```
+
 ## e2e guide
 
 ```bash

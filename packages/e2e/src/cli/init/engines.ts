@@ -41,7 +41,8 @@ export function dependencyRange(version: string | undefined): string {
   return version.includes('-') ? version : `^${version}`;
 }
 
-function engineDependency(name: string): Readonly<Record<string, string>> {
+/** The range init writes for a sibling `@e2edev/*` package released alongside this runner. */
+export function siblingDependency(name: string): Readonly<Record<string, string>> {
   return { [name]: dependencyRange(ENGINE_VERSIONS?.[name]) };
 }
 
@@ -63,7 +64,7 @@ export function getEnginePresets() {
       id: 'playwright',
       label: 'Web',
       hint: 'Playwright',
-      dependencies: { ...engineDependency('@e2edev/playwright'), playwright: playwrightRange(ENGINE_VERSIONS?.['playwright']) },
+      dependencies: { ...siblingDependency('@e2edev/playwright'), playwright: playwrightRange(ENGINE_VERSIONS?.['playwright']) },
       imports: ["import { playwright } from '@e2edev/playwright';"],
       config: `  targets: [{
     engine: playwright({
@@ -94,7 +95,7 @@ test('app opens', async ({ app, web }) => {
       id: 'agent-device',
       label: 'Mobile (iOS/Android)',
       hint: 'agent-device',
-      dependencies: engineDependency('@e2edev/agent-device'),
+      dependencies: siblingDependency('@e2edev/agent-device'),
       imports: ["import { agentDevice } from '@e2edev/agent-device';"],
       config: ios
         ? `  // Replace Settings with your app's bundle id.

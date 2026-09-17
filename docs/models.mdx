@@ -101,6 +101,7 @@ Any AI SDK provider package works: `@ai-sdk/anthropic`, `@ai-sdk/google`,
 | One key for every vendor, billed by OpenRouter | `openrouter('vendor/model')` | `@openrouter/ai-sdk-provider` | `OPENROUTER_API_KEY` |
 | A local or self-hosted server | `createOpenAICompatible({ name, baseURL }).chatModel('model')` | `@ai-sdk/openai-compatible` | whatever you pass as `apiKey` |
 | One vendor, your own account | `openai('model')`, `anthropic('model')`, ... | `@ai-sdk/<vendor>` | the vendor's own |
+| Your ChatGPT, Copilot, or SuperGrok plan, no key | `chatgpt('model')`, `copilot('model')`, `grok('model')` | `@e2edev/oauth` | none; `e2e login` stores the sign-in. See [Subscriptions](/subscriptions). |
 
 The model id is whatever the package accepts. Gateways take `vendor/model`;
 a direct provider takes the vendor's bare id; a local server takes the name

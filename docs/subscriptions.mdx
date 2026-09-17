@@ -1,0 +1,108 @@
+---
+title: Subscriptions
+description: Use a personal ChatGPT, GitHub Copilot, or SuperGrok plan as the agent model, signed in once from the terminal.
+---
+
+An agent model does not need a pay-per-token API key. `@e2edev/oauth` signs
+in to a subscription you already pay for and hands the runner an ordinary AI
+SDK model instance. The runner does not know the difference: it is still the
+line in `e2e.config.ts` that constructs the model.
+
+| Plan | Sign in | Constructor | Provider package it needs |
+| --- | --- | --- | --- |
+| ChatGPT Plus/Pro | `e2e login openai-codex` | `chatgpt('gpt-5.5')` | `@ai-sdk/openai` |
+| GitHub Copilot | `e2e login github-copilot` | `copilot('claude-sonnet-5')` | `@ai-sdk/openai-compatible` |
+| SuperGrok / X Premium+ | `e2e login xai` | `grok('grok-4')` | `@ai-sdk/xai` |
+
+Claude Pro/Max is not offered. Anthropic's terms allow subscription sign-in
+only for Claude Code and its own applications, and the API rejects those
+tokens from other clients. Use an Anthropic API key, or reach Claude models
+through your Copilot plan.
+
+## Set up
+
+`e2e init` lists the three plans next to the gateways and writes the config
+and dependencies. By hand:
+
+```bash
+npm i -D @e2edev/oauth @ai-sdk/openai   # or @ai-sdk/openai-compatible, @ai-sdk/xai
+npx e2e login openai-codex
+```
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { playwright } from '@e2edev/playwright';
+import { createAgent } from 'e2e/agent';
+import { chatgpt } from '@e2edev/oauth/chatgpt';
+
+export default {
+  targets: [{ engine: playwright({ url: 'http://localhost:3000' }) }],
+  agents: { default: createAgent({ model: chatgpt('gpt-5.5') }) },
+} satisfies E2EConfig;
+```
+
+Each constructor lives on its own subpath so a project installs only the
+provider package it uses. Constructing the model reads nothing; the stored
+login is read on the first model call, and a missing login fails that call
+with `MODEL_PROVIDER_FAILED` naming the `e2e login` command.
+
+## How each sign-in works
+
+**ChatGPT.** The same sign-in the Codex CLI uses: the browser opens
+`auth.openai.com`, and after you approve, it returns to a page served on
+`localhost:1455`. If that port is taken or the browser cannot come back, paste
+the URL it landed on. `--device` prints a code to enter on another device
+instead. Requests go to the Codex backend, which serves `gpt-5.5`,
+`gpt-5.4`, `gpt-5.4-mini`, and `gpt-5.3-codex-spark` to subscription
+sign-ins and draws on your plan's usage limits.
+
+**GitHub Copilot.** The Copilot API accepts a GitHub sign-in as the bearer.
+When the GitHub CLI is signed in, `e2e login github-copilot` reuses its token
+and asks nothing. Otherwise pass `--client-id` with a
+[GitHub OAuth App](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app)
+of yours that has the device flow enabled, and enter the code GitHub shows.
+`--enterprise-url` points at a GitHub Enterprise host. Copilot serves OpenAI,
+Anthropic, Google, and xAI models; `curl -H "Authorization: Bearer $(gh auth token)" https://api.githubcopilot.com/models`
+lists what your plan has enabled.
+
+**SuperGrok.** xAI's device flow: open `accounts.x.ai`, enter the code, done.
+Requests go to the ordinary xAI API with your plan's shared weekly usage pool.
+
+## Where the login lives
+
+`~/.config/e2e/oauth.json` (or under `$XDG_CONFIG_HOME`), mode 0600, one
+entry per provider. Tokens refresh themselves ahead of expiry, and one refresh
+serves every concurrent call of a run. `e2e logout` lists the entries;
+`e2e logout <provider>` removes one.
+
+`E2E_OAUTH_CREDENTIALS` holding the same JSON overrides the file for a
+machine you cannot sign in on. It is read-only: refreshed tokens are not
+written back, so a ChatGPT or SuperGrok entry there goes stale when its
+access token expires. Subscriptions are for the machine you work on; CI
+keeps an API key.
+
+## Your own product
+
+The package is not tied to e2e. `createOAuthFetch(provider, { store, userAgent })`
+returns the `fetch` any AI SDK provider factory accepts, `login()` runs a
+flow with your own prompts, and `OAuthProvider` is the interface to add a
+vendor. The user agent and the `originator` name your product; the flows use
+the vendors' public CLI clients, never another client's identity.
+
+```ts
+import { createOpenAI } from '@ai-sdk/openai';
+import { createOAuthFetch, createCodexProvider, FileCredentialStore } from '@e2edev/oauth';
+
+const store = new FileCredentialStore({ path: '/path/of/your/choice.json' });
+const fetch = createOAuthFetch(createCodexProvider({ originator: 'my-tool' }), { store, userAgent: 'my-tool/1.0' });
+const model = createOpenAI({ apiKey: 'oauth', fetch }).responses('gpt-5.5');
+```
+
+<CardGroup cols={2}>
+  <Card title="Choosing a model" icon="robot" href="/models">
+    Gateways, providers, and where a key comes from.
+  </Card>
+  <Card title="CLI reference" icon="terminal" href="/reference/cli#e2e-login">
+    Every flag of `e2e login` and `e2e logout`.
+  </Card>
+</CardGroup>

@@ -18,6 +18,7 @@ import { DOCS_URL } from './docs-url.ts';
 import { guide } from './guide.ts';
 import { init } from './init.ts';
 import { mcp } from './mcp.ts';
+import { login, logout } from './login.ts';
 import { SignalLadder } from './signals.ts';
 import { skillTopics } from './skill.ts';
 import { telemetry as telemetryCommand, TELEMETRY_ACTIONS, type TelemetryAction } from './telemetry.ts';
@@ -262,6 +263,35 @@ function createProgram(version: string, telemetry: Telemetry): Command {
         // Prompts need a terminal on both ends; a pipe or a CI log has neither.
         interactive: process.stdin.isTTY === true && process.stdout.isTTY === true,
       });
+    });
+
+  program
+    .command('login')
+    .summary('sign in to a ChatGPT, GitHub Copilot, or SuperGrok subscription for agent steps')
+    .description(
+      'Sign in once to a personal subscription and store the login for @e2edev/oauth models: openai-codex (ChatGPT Plus/Pro, the Codex sign-in), github-copilot (GitHub Copilot; reuses the GitHub CLI login or runs a device flow for your OAuth App), xai (SuperGrok or X Premium+, device code). The config then constructs the model with chatgpt(), copilot(), or grok() from @e2edev/oauth. Requires @e2edev/oauth in the project.',
+    )
+    .argument('<provider>', 'openai-codex, github-copilot, or xai')
+    .option('--device', 'ChatGPT: show a code to enter on another device instead of opening a browser')
+    .option('--client-id <id>', 'GitHub Copilot: the client id of your GitHub OAuth App with the device flow enabled')
+    .option('--from-gh', 'GitHub Copilot: reuse the token of the signed-in GitHub CLI')
+    .option('--enterprise-url <host>', 'GitHub Copilot: the GitHub Enterprise host')
+    .addHelpText(
+      'after',
+      ['', examples(['e2e login openai-codex', 'e2e login github-copilot --from-gh', 'e2e login xai']), '', docsLine('/subscriptions')].join('\n'),
+    )
+    .action(async (provider: string, options: { device?: boolean; clientId?: string; fromGh?: boolean; enterpriseUrl?: string }) => {
+      process.exitCode = await login(process.cwd(), provider, options);
+    });
+
+  program
+    .command('logout')
+    .summary('forget a stored subscription login, or list them')
+    .description('Remove the stored login of one provider (openai-codex, github-copilot, xai). Without a provider, lists the stored logins.')
+    .argument('[provider]', 'openai-codex, github-copilot, or xai')
+    .addHelpText('after', ['', examples(['e2e logout', 'e2e logout openai-codex']), '', docsLine('/subscriptions')].join('\n'))
+    .action(async (provider: string | undefined) => {
+      process.exitCode = await logout(process.cwd(), provider);
     });
 
   program
