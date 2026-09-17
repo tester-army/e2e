@@ -9,7 +9,7 @@
   ],
   "type": "module",
   "scripts": {
-    "build": "pnpm --filter e2e run build && pnpm --filter @e2edev/web run build && pnpm --filter @e2edev/mobile run build && pnpm --filter @e2edev/github run build",
+    "build": "pnpm --filter e2e run build && pnpm --filter @e2edev/web run build && pnpm --filter @e2edev/mobile run build && pnpm --filter @e2edev/github run build && pnpm --filter @e2edev/jev run build",
     "check": "pnpm run lint && pnpm run check:dead-code && pnpm run typecheck && pnpm run docs:check-errors && pnpm run docs:check",
     "check:dead-code": "fallow dead-code",
     "docs:check-errors": "node scripts/check-error-codes.ts",

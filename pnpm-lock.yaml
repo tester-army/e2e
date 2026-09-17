@@ -272,6 +272,31 @@ importers:
         specifier: 5.0.0
         version: 5.0.0(@types/node@26.4.1)(vite@8.1.5(@types/node@26.4.1)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
 
+  packages/jev:
+    dependencies:
+      ai:
+        specifier: 7.0.105
+        version: 7.0.105(zod@4.6.1)
+    devDependencies:
+      '@e2edev/web':
+        specifier: workspace:*
+        version: link:../web
+      '@types/node':
+        specifier: 26.4.1
+        version: 26.4.1
+      e2e:
+        specifier: workspace:*
+        version: link:../e2e
+      playwright:
+        specifier: 1.63.0
+        version: 1.63.0
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@26.4.1)(vite@8.1.5(@types/node@26.4.1)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
+
   packages/mobile:
     dependencies:
       agent-device:
@@ -418,6 +443,9 @@ importers:
 
   packages/web-benchmark:
     dependencies:
+      '@e2edev/jev':
+        specifier: workspace:*
+        version: link:../jev
       '@e2edev/web':
         specifier: workspace:*
         version: link:../web

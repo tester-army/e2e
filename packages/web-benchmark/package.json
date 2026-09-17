@@ -11,14 +11,16 @@
     "typecheck": "tsc --noEmit",
     "test": "pnpm run build && node node_modules/e2e/dist/cli/bin.js run",
     "test:headed": "pnpm run build && node node_modules/e2e/dist/cli/bin.js run --headed",
-    "test:agent": "pnpm run build && node node_modules/e2e/dist/cli/bin.js run --config e2e.agent.config.ts"
+    "test:agent": "pnpm run build && node node_modules/e2e/dist/cli/bin.js run --config e2e.agent.config.ts",
+    "test:jev": "pnpm run build && node node_modules/e2e/dist/cli/bin.js run --config e2e.jev.config.ts"
   },
   "dependencies": {
     "e2e": "workspace:*",
     "@e2edev/web": "workspace:*",
     "next": "16.3.4",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "@e2edev/jev": "workspace:*"
   },
   "devDependencies": {
     "@e2edev/github": "workspace:*",

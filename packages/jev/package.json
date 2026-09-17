@@ -1,0 +1,42 @@
+{
+  "name": "@e2edev/jev",
+  "version": "0.0.0",
+  "private": true,
+  "description": "e2e step executor driven by TypeSafe AI's Jev evaluation model: sub-second act turns, one call per turn",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc --project tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit",
+    "demo": "node node_modules/e2e/dist/cli/bin.js run --config demo/e2e.config.ts --no-cache",
+    "demo:headed": "node node_modules/e2e/dist/cli/bin.js run --config demo/e2e.config.ts --no-cache --headed --video"
+  },
+  "dependencies": {
+    "ai": "7.0.105"
+  },
+  "peerDependencies": {
+    "e2e": "workspace:*"
+  },
+  "devDependencies": {
+    "e2e": "workspace:*",
+    "@e2edev/web": "workspace:*",
+    "@types/node": "26.4.1",
+    "playwright": "1.63.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.0"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}
