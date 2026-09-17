@@ -10,7 +10,6 @@ import { importModule } from '../config/load.ts';
 import type { ResolvedConfig } from '../config/resolve.ts';
 import {
   collectModule,
-  groupChain,
   groupTitles,
   outermostSerialGroup,
   type GroupNode,
@@ -30,7 +29,7 @@ export interface TestIdentity {
   readonly titlePath: readonly string[];
   readonly declarationIndex: number;
   readonly sessions: readonly string[];
-  /** The tags the test declares, its describe layers' first, each once; what `--tag` selects on. */
+  /** The tags the test declares, outermost describe first, each once; what `--tag` selects on. */
   readonly tags: readonly string[];
   readonly source: SourceLocation | undefined;
   /** Normalized project-root-relative file path with `/` separators. */
@@ -143,12 +142,6 @@ function findNearMissTestFiles(projectRoot: string, patterns: readonly string[])
   );
 }
 
-/** The tags a test carries: its describe layers' and its own, outermost first, each once. */
-function declaredTags(registered: RegisteredTest): string[] {
-  const layers = [...groupChain(registered.group).map((group) => group.options), registered.options];
-  return [...new Set(layers.flatMap((options) => options.tags ?? []))];
-}
-
 /** Derives the serial unit source ID. */
 function serialSourceId(file: string, group: GroupNode): string {
   return `serial::${testId(file, groupTitles(group))}`;
@@ -169,7 +162,6 @@ function toCollectedTests(file: string, registration: ModuleRegistration, select
       ...registered,
       file,
       id: registered.kind === 'setup' ? setupTestId(file, registered.titlePath) : encoded,
-      tags: declaredTags(registered),
       serialRoot,
       serialId: serialRoot === undefined ? undefined : serialSourceId(file, serialRoot),
       selected,

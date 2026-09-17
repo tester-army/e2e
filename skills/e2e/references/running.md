@@ -80,7 +80,7 @@ recorded flow is stale — `--no-cache` only skips the cache for one run.
 - `.e2e/report.json` is written on every run whatever the reporters:
   `run.status`, `run.exitCode`, `run.errors[]` (run-level failures such as
   `APP_UNREACHABLE`), and `run.results[]`, one per test and target, with
-  `titlePath`, `file`, `source`, `tags` (when the test declares any), `status`, and `attempts[]` holding `steps[]`,
+  `titlePath`, `file`, `source`, `tags` (`[]` when the test declares none), `status`, and `attempts[]` holding `steps[]`,
   `artifacts[]`, and `error`.
 - `junit`: `.e2e/junit.xml` beside the report, for CI test summaries.
   Combine it with the terminal output: `--reporter list,junit`.

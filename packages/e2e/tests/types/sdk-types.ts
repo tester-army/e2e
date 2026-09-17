@@ -237,6 +237,8 @@ projectAgent.options = {};
 
 // The report carries the exploration record only on an explore run; a finding's evidence is one of the attempt's artifacts.
 declare const report: Report;
+// Every result carries its tags, an empty list when the test declares none.
+report.run.results[0]!.tags satisfies readonly string[];
 report.run.explore satisfies { goal: string; findings: readonly { severity: 1 | 2 | 3 | 4 | 5; artifactId?: string | undefined }[] } | undefined;
 
 // An explore run's events narrow to the exploration's progress.

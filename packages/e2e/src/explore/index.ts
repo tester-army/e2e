@@ -229,6 +229,7 @@ function exploreRegistration(state: ExploreState, openApp: boolean, accounts: re
       agentContext: `Exploration goal: ${state.goal}`,
     },
     sessions: [],
+    tags: [],
     fn: createExploreBody({ state, stepTimeoutMs: STEP_TIMEOUT_MS, openApp, accounts }),
     fixtures: [],
     group: undefined,

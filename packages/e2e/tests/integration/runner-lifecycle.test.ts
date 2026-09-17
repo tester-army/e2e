@@ -586,7 +586,7 @@ test.describe('wizard', { serial: true }, () => {
     'writes junit.xml beside the report from the same document when the junit reporter is selected',
     async () => {
       const file = `import { test } from 'e2e';
-test('passes', async () => {});
+test('passes', { tags: ['smoke'] }, async () => {});
 test('fails', async () => {
   throw new Error('junit <sees> & "reports" this');
 });
@@ -596,6 +596,7 @@ test('fails', async () => {
         { appUrl: app.url, config: { reporters: ['junit'] } },
       );
       expect(outcome.exitCode).toBe(1);
+      expect(outcome.report.run.results.map((result) => result.tags)).toEqual([['smoke'], []]);
       expect(outcome.reportPath).toBe(path.join(project.dir, '.e2e', 'report.json'));
       const xml = readFileSync(path.join(project.dir, '.e2e', 'junit.xml'), 'utf8');
       expect(xml.startsWith('<?xml version="1.0" encoding="UTF-8"?>\n<testsuites ')).toBe(true);

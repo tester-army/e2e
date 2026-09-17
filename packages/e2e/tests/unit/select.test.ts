@@ -157,7 +157,7 @@ describe('resolveOptions', () => {
     const leaf = resolveOptions(col.tests[0]!, cfg);
     expect(leaf.timeout).toBe(30_000);
     expect(leaf.retries).toBe(2);
-    expect([...leaf.tags].toSorted()).toEqual(['inner', 'leaf', 'outer']);
+    expect([...col.tests[0]!.tags].toSorted()).toEqual(['inner', 'leaf', 'outer']);
 
     const inherits = resolveOptions(col.tests[1]!, cfg);
     expect(inherits.timeout).toBe(20_000);

@@ -250,7 +250,7 @@ describe('e2e list', () => {
       title: 'pays',
       titlePath: ['billing', 'pays'],
       kind: 'test',
-      tags: [],
+      tags: ['billing'],
       target: 'web',
       disposition: 'skip',
       skipReason: 'not today',
@@ -271,7 +271,7 @@ describe('e2e list', () => {
     expect(written(stdoutSpy)).toBe(
       [
         'tests/a.e2e.ts › signs in [web] #smoke #auth',
-        'tests/a.e2e.ts › billing › pays [web] (skipped: not today)',
+        'tests/a.e2e.ts › billing › pays [web] #billing (skipped: not today)',
         'tests/b.e2e.ts › browses [webkit]',
         '',
       ].join('\n'),

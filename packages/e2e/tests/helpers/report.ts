@@ -81,6 +81,7 @@ export function reportResult(overrides: Partial<ReportResult> = {}): ReportResul
     targetId: 'web',
     platform: 'web',
     agent: 'default',
+    tags: [],
     status: 'passed',
     attempts: [reportAttempt()],
     ...overrides,

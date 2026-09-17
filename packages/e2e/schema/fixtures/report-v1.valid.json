@@ -212,6 +212,7 @@
         "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         "testId": "tests/example.e2e.ts::switches%20organizations",
         "kind": "test",
+        "tags": [],
         "declarationIndex": 0,
         "titlePath": [
           "switches organizations"

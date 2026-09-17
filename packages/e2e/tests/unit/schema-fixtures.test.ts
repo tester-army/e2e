@@ -33,6 +33,19 @@ describe.each(schemas)('%s schema', (name) => {
   });
 
   if (name === 'report-v1') {
+    it('constrains result tags to distinct names --tag can spell back', () => {
+      const report = readJson('fixtures', 'report-v1.valid.json') as { run: { results: { tags?: string[] }[] } };
+      const result = report.run.results[0]!;
+      for (const tags of [[''], ['a', 'a'], [' a'], ['a,b']]) {
+        result.tags = tags;
+        expect(validate(report)).toBe(false);
+      }
+      for (const tags of [[], ['a'], ['Login Form', 'billing:refunds']]) {
+        result.tags = tags;
+        expect(validate(report)).toBe(true);
+      }
+    });
+
     it('requires judgment evidence after a model call, while allowing capture failures before one', () => {
       const report = readJson('fixtures', 'report-v1.valid.json') as {
         run: { results: { attempts: { steps: { api: string; status: string; metrics: { modelCalls: number }; observationRevision?: string; explanation?: string }[] }[] }[] };

@@ -10,6 +10,7 @@ import { classifyError, exitCodeForCategory } from '../internal/errors.ts';
 import { list, run, type ListedPair, type RunOutcome } from '../run/runner.ts';
 import { explore, STEP_BOUNDS, TIMEOUT_BOUNDS } from '../explore/index.ts';
 import { BUILTIN_REPORTERS, isBuiltinReporter } from '../report/builtin.ts';
+import { bounded } from '../report/format.ts';
 import type { BuiltinReporter } from '../types.ts';
 import { cliSessionEvent, runCompletedEvent } from '../telemetry/events.ts';
 import { Telemetry } from '../telemetry/telemetry.ts';
@@ -99,10 +100,10 @@ type TagMode = (typeof TAG_MODES)[number];
 const LIST_REPORTERS = ['list', 'json'] as const;
 type ListReporter = (typeof LIST_REPORTERS)[number];
 
-/** One `e2e list` line: `file › title [target] #tag`, with the skip reason when there is one. */
+/** One `e2e list` line: `file › title [target] #tag`, with the skip reason when there is one. Titles and tags are bounded like every untrusted field. */
 function formatListedPair(pair: ListedPair): string {
-  const tags = pair.tags.map((tag) => ` #${tag}`).join('');
-  const line = `${pair.file} › ${pair.titlePath.join(' › ')} [${pair.target}]${tags}`;
+  const tags = pair.tags.map((tag) => ` #${bounded(tag)}`).join('');
+  const line = `${pair.file} › ${pair.titlePath.map(bounded).join(' › ')} [${pair.target}]${tags}`;
   return pair.disposition === 'skip' ? `${line} (skipped: ${pair.skipReason ?? 'skipped'})` : line;
 }
 
@@ -490,7 +491,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .command('list')
     .summary('print the tests a run would select, without running them')
     .description(
-      'Collect and select tests exactly as run does, print one line per test and target (file › title [target]), and exit. Nothing starts: no app process, no engine, no worker. The same files, --tag, and --target flags narrow the selection.',
+      'Collect and select tests exactly as run does, print one line per test and target (file › title [target] #tag), and exit. Nothing starts: no app process, no engine, no worker. The same files, --tag, and --target flags narrow the selection.',
     )
     .argument('[files...]', FILES_DESCRIPTION)
     .optionsGroup('Selection:')

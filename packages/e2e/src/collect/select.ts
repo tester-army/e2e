@@ -10,8 +10,6 @@ import { groupChain } from './registry.ts';
 export interface ResolvedTestOptions {
   readonly timeout: number;
   readonly retries: number;
-  /** The tags the test declares (`TestIdentity.tags`), here for the wire and the filter. */
-  readonly tags: readonly string[];
   readonly platforms: readonly string[] | undefined;
   readonly requires: readonly Capability[];
   readonly session: string | undefined;
@@ -120,7 +118,6 @@ export function resolveOptions(test: CollectedTest, config: ResolvedConfig): Res
   return {
     timeout,
     retries,
-    tags: test.tags,
     platforms,
     requires,
     session,
@@ -175,14 +172,11 @@ function assertSerialAgentsAgree(
   }
 }
 
-function matchesTags(
-  options: ResolvedTestOptions,
-  tags: readonly string[] | undefined,
-  tagMode: 'any' | 'all',
-): boolean {
+/** Whether a test's declared tags satisfy the filter: any of the filter's tags, or every one under `all`. */
+function matchesTags(declared: readonly string[], tags: readonly string[] | undefined, tagMode: 'any' | 'all'): boolean {
   if (tags === undefined || tags.length === 0) return true;
-  if (tagMode === 'all') return tags.every((tag) => options.tags.includes(tag));
-  return tags.some((tag) => options.tags.includes(tag));
+  const has = (tag: string): boolean => declared.includes(tag);
+  return tagMode === 'all' ? tags.every(has) : tags.some(has);
 }
 
 /** Validates target IDs and selects targets once each, in config order. */
@@ -402,7 +396,7 @@ function classifyPair(
         skip: { cause: 'filtered', reason: 'not focused by .only' },
       };
     }
-    if (!matchesTags(options, filters.tags, tagMode)) {
+    if (!matchesTags(test.tags, filters.tags, tagMode)) {
       return {
         ...base,
         disposition: 'filtered',

@@ -22,7 +22,6 @@ import type { MainToWorker, RunUnitMessage } from '../../src/run/worker/protocol
 const defaultOptions: ResolvedTestOptions = {
   timeout: 30_000,
   retries: 0,
-  tags: [],
   platforms: undefined,
   requires: [],
   session: undefined,

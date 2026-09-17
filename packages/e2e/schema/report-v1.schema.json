@@ -462,7 +462,7 @@
         "targetId": { "type": "string", "minLength": 1 },
         "platform": { "type": "string", "minLength": 1 },
         "agent": { "type": "string", "minLength": 1 },
-        "tags": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "tags": { "type": "array", "items": { "type": "string", "pattern": "^[^\\s,](?:[^,]*[^\\s,])?$" }, "uniqueItems": true },
         "serialGroupId": { "type": "string", "minLength": 1 },
         "status": { "enum": ["passed", "flaky", "failed", "timed-out", "interrupted", "skipped"] },
         "skip": { "$ref": "#/$defs/skip" },

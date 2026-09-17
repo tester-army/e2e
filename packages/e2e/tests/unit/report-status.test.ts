@@ -95,15 +95,14 @@ function build(overrides: Partial<BuildReportOptions>): ReturnType<typeof buildR
 }
 
 describe('result tags', () => {
-  it('carries the tags a test declares and leaves the field out otherwise', () => {
+  it('carries the tags a test declares, an empty list when it declares none', () => {
     const plain = failedResult(productFailure);
     const tagged: ResultRecord = {
       ...plain,
       test: { ...plain.test, title: 'tagged', titlePath: ['suite', 'tagged'], id: 'tests/case.e2e.ts::suite::tagged', declarationIndex: 1, tags: ['smoke', 'billing'] },
     };
     const document = build({ results: [plain, tagged] });
-    expect(document.run.results.map((result) => result.tags)).toEqual([undefined, ['smoke', 'billing']]);
-    expect('tags' in document.run.results[0]!).toBe(false);
+    expect(document.run.results.map((result) => result.tags)).toEqual([[], ['smoke', 'billing']]);
   });
 });
 

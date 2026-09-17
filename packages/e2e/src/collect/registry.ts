@@ -50,6 +50,8 @@ export interface RegisteredTest {
   readonly declarationIndex: number;
   readonly options: TestOptions;
   readonly sessions: readonly string[];
+  /** The tags the test declares: its describe chain's, outermost first, then its own, each once. */
+  readonly tags: readonly string[];
   readonly fn: TestFn | SetupFn;
   /** The `test.extend()` chain the test was registered through, outermost definition first. */
   readonly fixtures: readonly FixtureDefinition[];
@@ -162,6 +164,7 @@ class Collector {
       declarationIndex: this.declarationCounter,
       options,
       sessions,
+      tags: declaredTags(this.currentGroup, options),
       fn,
       fixtures,
       group: this.currentGroup,
@@ -233,6 +236,12 @@ export function groupChain(group: GroupNode | undefined): GroupNode[] {
 /** Group titles along the chain, outermost first. */
 export function groupTitles(group: GroupNode | undefined): string[] {
   return groupChain(group).map((node) => node.title);
+}
+
+/** The tags along the describe chain and the test's own, outermost first, each once. */
+function declaredTags(group: GroupNode | undefined, options: TestOptions): string[] {
+  const layers = [...groupChain(group).map((node) => node.options), options];
+  return [...new Set(layers.flatMap((layer) => layer.tags ?? []))];
 }
 
 /** Finds the outermost serial group enclosing a node, if any. */
