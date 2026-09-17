@@ -251,6 +251,30 @@ function validateCommonOptions(options: TestOptions | DescribeOptions, label: st
     }
   }
   if (options.agent !== undefined) validateAgentOption(options.agent, label);
+  if (options.tags !== undefined) validateTagsOption(options.tags, label);
+}
+
+/** A tag name: non-empty, no whitespace, no comma, so `--tag` can always spell it. */
+const TAG_PATTERN = /^[^\s,]+$/u;
+
+/**
+ * `tags` lists distinct tag names. Checked at registration because the
+ * alternative is silent: a bare string is iterable, so `tags: 'smoke'` would
+ * register the tags `s`, `m`, `o`, `k`, `e` and `--tag smoke` would never
+ * select the test.
+ */
+function validateTagsOption(tags: unknown, label: string): void {
+  if (!Array.isArray(tags)) {
+    throw new CollectionError(`${label}: tags must be a list of tag names, e.g. tags: ['smoke']`);
+  }
+  for (const tag of tags) {
+    if (typeof tag !== 'string' || !TAG_PATTERN.test(tag)) {
+      throw new CollectionError(
+        `${label}: every tag must be a non-empty string without spaces or commas, got ${JSON.stringify(tag)}`,
+      );
+    }
+  }
+  if (new Set(tags).size !== tags.length) throw new CollectionError(`${label}: tags lists each name once`);
 }
 
 /** `agent` names one configured agent, or lists several distinct ones to run the test once each. */

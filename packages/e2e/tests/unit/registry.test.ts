@@ -25,6 +25,29 @@ describe('registration', () => {
     expect(registration.tests).toHaveLength(1);
   });
 
+  it('rejects tags that are not a list of distinct names without spaces or commas', async () => {
+    const register = (tags: unknown) => collectModule(async () => { test('x', { tags } as never, noop); });
+    await expect(register('smoke')).rejects.toThrow("test options: tags must be a list of tag names, e.g. tags: ['smoke']");
+    await expect(register({ smoke: true })).rejects.toThrow(/tags must be a list of tag names/);
+    for (const tag of [1, '', 'a b', 'a,b', undefined]) {
+      await expect(register([tag])).rejects.toThrow(
+        `test options: every tag must be a non-empty string without spaces or commas, got ${JSON.stringify(tag)}`,
+      );
+    }
+    await expect(register(['smoke', 'smoke'])).rejects.toThrow('test options: tags lists each name once');
+    await expect(
+      collectModule(async () => {
+        test.describe('group', { tags: ['a,b'] }, () => {
+          test('x', noop);
+        });
+      }),
+    ).rejects.toThrow(/describe options: every tag must be a non-empty string/);
+    const registration = await collectModule(async () => {
+      test('x', { tags: ['smoke', 'billing:refunds', 'v2.0'] }, noop);
+    });
+    expect(registration.tests[0]!.options.tags).toEqual(['smoke', 'billing:refunds', 'v2.0']);
+  });
+
   it('rejects registration outside collection', () => {
     expect(() => test('orphan', noop)).toThrow(/collected by the e2e runner/);
   });

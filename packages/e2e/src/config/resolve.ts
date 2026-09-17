@@ -9,7 +9,8 @@ import { canonicalDigest, sha256Hex } from '../internal/ids.ts';
 import { didYouMean } from '../internal/suggest.ts';
 import { BUILTIN_REPORTER_LIST, BUILTIN_REPORTERS, isBuiltinReporter } from '../report/builtin.ts';
 import { isStepExecutor } from '../agent/executor.ts';
-import { boundedInt, positiveInt } from './validate.ts';
+import { compileGlob } from '../internal/globs.ts';
+import { boundedInt, describeValue, positiveInt } from './validate.ts';
 import type {
   ArtifactStore,
   ArtifactsConfig,
@@ -680,12 +681,35 @@ function resolvePlatform(target: Target, where: string): string {
   return platform;
 }
 
+/**
+ * The `tests` globs, each compiled here so a malformed one is a configuration
+ * error wherever the config loads (`e2e list`, `e2e cache`, a worker), not a
+ * collection failure of one run. A wrong type would otherwise reach the glob
+ * compiler as a plain TypeError and be reported as a test failure.
+ */
 function normalizeTests(tests: E2EConfig['tests']): readonly string[] {
-  const list = tests === undefined ? ['tests/**/*.e2e.ts'] : typeof tests === 'string' ? [tests] : tests;
+  const list: unknown = tests === undefined ? ['tests/**/*.e2e.ts'] : typeof tests === 'string' ? [tests] : tests;
+  if (!Array.isArray(list)) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `tests must be a glob or a list of globs relative to the project root, got ${describeValue(list)}`,
+    );
+  }
   if (list.length === 0) {
     throw new ConfigurationError('INVALID_CONFIG', 'tests must not be empty');
   }
-  return [...new Set(list)];
+  const globs: string[] = [];
+  for (const glob of list as readonly unknown[]) {
+    if (typeof glob !== 'string') {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `tests must be a glob or a list of globs relative to the project root, got ${describeValue(glob)} in the list`,
+      );
+    }
+    compileGlob(glob);
+    globs.push(glob);
+  }
+  return [...new Set(globs)];
 }
 
 function resolveProjectId(explicit: string | undefined, projectRoot: string): string {

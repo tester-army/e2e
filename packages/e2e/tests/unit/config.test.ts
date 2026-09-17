@@ -50,6 +50,22 @@ describe('resolveConfig', () => {
     expect(config.reporters).toEqual(['list']);
   });
 
+  it('validates tests as globs at resolution, not at collection', () => {
+    expect(() => resolve({ tests: 5 } as never)).toThrow(
+      'tests must be a glob or a list of globs relative to the project root, got 5',
+    );
+    expect(() => resolve({ tests: [1] } as never)).toThrow(
+      'tests must be a glob or a list of globs relative to the project root, got 1 in the list',
+    );
+    expect(() => resolve({ tests: [] })).toThrow('tests must not be empty');
+    expect(() => resolve({ tests: '' })).toThrow('empty glob pattern');
+    expect(() => resolve({ tests: ['tests/**foo/*.ts'] })).toThrow(/complete path segment/);
+    expect(resolve({ tests: ['tests/**/*.e2e.ts', 'tests/**/*.e2e.ts', 'e2e/*.e2e.ts'] }).tests).toEqual([
+      'tests/**/*.e2e.ts',
+      'e2e/*.e2e.ts',
+    ]);
+  });
+
   it('applies the config bounds to CLI overrides too', () => {
     expect(() =>
       resolveConfig({ targets: TARGETS }, { projectRoot: ROOT, env: BASE_ENV, cli: { workers: 0 } }),

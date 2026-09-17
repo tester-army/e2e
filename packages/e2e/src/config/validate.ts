@@ -24,7 +24,7 @@ export function positiveInt(
 }
 
 /** A value as the author wrote it, for messages that quote the offending input. */
-function describeValue(value: unknown): string {
+export function describeValue(value: unknown): string {
   if (typeof value === 'string') return JSON.stringify(value);
   if (typeof value === 'number' || typeof value === 'boolean' || value === null) return String(value);
   if (Array.isArray(value)) return 'an array';

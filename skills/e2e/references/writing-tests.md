@@ -65,7 +65,7 @@ wsTest('uses the workspace', async ({ ws }) => {}); // code after use() is teard
 | --- | --- | --- |
 | `timeout` | `config.timeout`, 120 s | Covers `beforeEach` and the body. |
 | `retries` | `config.retries` | 0 to 10. On a serial group, the group's value applies. |
-| `tags` | `[]` | Union across layers. Select with `--tag smoke`; `--tag-mode all` requires every tag. |
+| `tags` | `[]` | A list of names without spaces or commas; union across layers. Select with `--tag smoke`; `--tag-mode all` requires every tag. |
 | `skip` | unset | `true` or a reason string. |
 | `platforms` | unset | Run only on targets with these platforms, e.g. `['ios']`. |
 | `requires` | `[]` | Capabilities the engine must contribute, e.g. `['web']`. Otherwise the test is skipped at selection instead of failing with `UNSUPPORTED_CAPABILITY`. |
