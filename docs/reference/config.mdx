@@ -32,6 +32,14 @@ working directory and each parent for `e2e.config.ts` or `e2e.config.mts`,
 stopping at the repository root. Both names in one directory is
 `CONFIG_AMBIGUOUS`. The selected file's directory is the project root.
 
+Test files are found from the project root by the `tests` globs. Discovery
+lists the root, then enters only the directories a glob can still match a
+file beneath: `tests/**/*.e2e.ts` reads `tests/` and its subdirectories and
+nothing else of the repository, `node_modules` is never read, and a dot
+directory is entered only when a glob segment written with a leading dot
+matches it. Symlinks are not followed, so a symlinked directory or test file
+is not discovered.
+
 Config and test files run as ESM whatever the nearest `package.json` `type`
 says. Packages imported by name keep their own format. A config or test
 written with `require` or `module.exports` fails to load.

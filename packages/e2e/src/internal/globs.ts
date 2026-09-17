@@ -92,12 +92,6 @@ function compileSegment(segment: string, pattern: string): GlobSegment {
   return { kind: 'wildcard', regexp: new RegExp(`${source}$`), allowsDot: segment.startsWith('.') };
 }
 
-/** Whether a segment can match a name that starts with a dot: only one spelled with the dot can. */
-function spellsDot(segment: GlobSegment): boolean {
-  if (segment.kind === 'literal') return segment.name.startsWith('.');
-  return segment.kind === 'wildcard' && segment.allowsDot;
-}
-
 /** The names a glob starts with before its first wildcard or `**`: the directory a scan for it can stay inside. */
 export function literalPrefix(glob: CompiledGlob): string[] {
   const names: string[] = [];
@@ -108,80 +102,108 @@ export function literalPrefix(glob: CompiledGlob): string[] {
   return names;
 }
 
-/** Matches one already-normalized relative path (with `/` separators). */
-export function matchesGlob(glob: CompiledGlob, relativePath: string): boolean {
-  const parts = relativePath.split('/');
-  return matchFrom(glob.segments, 0, parts, 0);
+/**
+ * Matching runs a glob as a small state machine over a path's segments. A
+ * state is the index of the segment to satisfy next, `segments.length` once
+ * the glob is fully matched. A `**` keeps its own index while it consumes
+ * parts and also lets the segment after it start, so one step function serves
+ * the matcher and the discovery walk alike: the walk carries each glob's
+ * states down the tree instead of matching every directory from the root.
+ */
+type States = ReadonlySet<number>;
+
+/** The states a glob starts in: its first segment, and past any leading `**`. */
+function initialStates(segments: readonly GlobSegment[]): States {
+  return pastGlobstars(segments, new Set([0]));
 }
 
-function matchFrom(
-  segments: readonly GlobSegment[],
-  segmentIndex: number,
-  parts: readonly string[],
-  partIndex: number,
-): boolean {
-  if (segmentIndex === segments.length) return partIndex === parts.length;
-  const segment = segments[segmentIndex]!;
-  if (segment.kind === 'globstar') {
-    for (let skip = 0; skip <= parts.length - partIndex; skip += 1) {
-      for (let i = 0; i < skip; i += 1) {
-        const part = parts[partIndex + i]!;
-        if (part.startsWith('.')) return false;
-      }
-      if (matchFrom(segments, segmentIndex + 1, parts, partIndex + skip)) return true;
+/** Adds, for every `**` state, the state after it: `**` matches zero parts too. Set iteration visits entries added during it. */
+function pastGlobstars(segments: readonly GlobSegment[], states: Set<number>): Set<number> {
+  for (const index of states) {
+    if (segments[index]?.kind === 'globstar') states.add(index + 1);
+  }
+  return states;
+}
+
+/** The states after one more path part. A part no state accepts empties the set; a dot name needs a segment spelled with the dot. */
+function advance(segments: readonly GlobSegment[], states: States, part: string): States {
+  const next = new Set<number>();
+  const dot = part.startsWith('.');
+  for (const index of states) {
+    const segment = segments[index];
+    // A fully matched glob names a file; nothing follows it.
+    if (segment === undefined) continue;
+    switch (segment.kind) {
+      case 'globstar':
+        if (!dot) next.add(index);
+        break;
+      case 'literal':
+        if (part === segment.name) next.add(index + 1);
+        break;
+      case 'wildcard':
+        if ((segment.allowsDot || !dot) && segment.regexp.test(part)) next.add(index + 1);
+        break;
     }
-    return false;
   }
-  if (partIndex >= parts.length) return false;
-  const part = parts[partIndex]!;
-  if (segment.kind === 'literal') {
-    return part === segment.name && matchFrom(segments, segmentIndex + 1, parts, partIndex + 1);
+  return pastGlobstars(segments, next);
+}
+
+/** Whether the parts consumed so far are a file the glob names. */
+function isMatch(glob: CompiledGlob, states: States): boolean {
+  return states.has(glob.segments.length);
+}
+
+/** Whether a file beneath the directory consumed so far could still match: a segment is left to satisfy. */
+function canMatchBeneath(glob: CompiledGlob, states: States): boolean {
+  for (const index of states) {
+    if (index < glob.segments.length) return true;
   }
-  if (part.startsWith('.') && !segment.allowsDot) return false;
-  if (!segment.regexp.test(part)) return false;
-  return matchFrom(segments, segmentIndex + 1, parts, partIndex + 1);
+  return false;
+}
+
+/** Matches one already-normalized relative path (with `/` separators). */
+export function matchesGlob(glob: CompiledGlob, relativePath: string): boolean {
+  let states = initialStates(glob.segments);
+  for (const part of relativePath.split('/')) states = advance(glob.segments, states, part);
+  return isMatch(glob, states);
 }
 
 /**
  * Discovers regular files under `root` matching any glob. Matching is
- * case-sensitive, does not follow directory symlinks, and results are sorted
- * by Unicode code point.
+ * case-sensitive and results are sorted by Unicode code point. The walk lists
+ * the project root and then enters a directory only while some glob has a
+ * segment left to satisfy beneath it, so `tests/**\/*.e2e.ts` reads `tests/`
+ * and its subdirectories and nothing else of a large repository; a dot
+ * directory is entered only when a segment written with a leading dot matches
+ * it, and `node_modules` never. Symlinks are not followed: a symlinked
+ * directory or test file is not discovered.
  */
 export function discoverFiles(root: string, patterns: readonly string[]): string[] {
-  const compiled = patterns.map(compileGlob);
-  // No segment can match a dot directory unless it was spelled with the dot,
-  // so `.git`, `.e2e`, and friends are pruned at the walk instead of being
-  // read and rejected file by file.
-  const visitDotDirectories = compiled.some((glob) => glob.segments.some(spellsDot));
-  const matched = new Set<string>();
-  walk(root, '', visitDotDirectories, (relative) => {
-    if (compiled.some((glob) => matchesGlob(glob, relative))) matched.add(relative);
-  });
-  return [...matched].toSorted(compareCodePoints);
-}
-
-function walk(
-  absoluteDir: string,
-  relativeDir: string,
-  visitDotDirectories: boolean,
-  onFile: (relative: string) => void,
-): void {
-  let entries;
-  try {
-    entries = readdirSync(absoluteDir, { withFileTypes: true });
-  } catch {
-    return;
-  }
-  for (const entry of entries) {
-    const relative = relativeDir === '' ? entry.name : `${relativeDir}/${entry.name}`;
-    if (entry.isDirectory()) {
-      if (entry.name === 'node_modules') continue;
-      if (!visitDotDirectories && entry.name.startsWith('.')) continue;
-      walk(path.join(absoluteDir, entry.name), relative, visitDotDirectories, onFile);
-    } else if (entry.isFile()) {
-      onFile(relative);
+  const globs = patterns.map(compileGlob);
+  const matched: string[] = [];
+  const visit = (dir: string, relativeDir: string, states: readonly States[]): void => {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
     }
-  }
+    for (const entry of entries) {
+      const next = globs.map((glob, i) => advance(glob.segments, states[i]!, entry.name));
+      const relative = relativeDir === '' ? entry.name : `${relativeDir}/${entry.name}`;
+      if (entry.isFile()) {
+        if (globs.some((glob, i) => isMatch(glob, next[i]!))) matched.push(relative);
+      } else if (
+        entry.isDirectory() &&
+        entry.name !== 'node_modules' &&
+        globs.some((glob, i) => canMatchBeneath(glob, next[i]!))
+      ) {
+        visit(path.join(dir, entry.name), relative, next);
+      }
+    }
+  };
+  visit(root, '', globs.map((glob) => initialStates(glob.segments)));
+  return matched.toSorted(compareCodePoints);
 }
 
 /** Sorts strings by Unicode code point, the order collection is defined in. */
