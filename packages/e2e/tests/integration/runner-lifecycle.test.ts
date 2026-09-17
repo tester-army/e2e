@@ -647,6 +647,7 @@ test('other', { tags: ['smoke'] }, async () => {});
         ['tests/list.e2e.ts', 'group > left out', 'web', 'skip'],
         ['tests/other.e2e.ts', 'other', 'web', 'run'],
       ]);
+      expect(pairs.map((pair) => pair.tags)).toEqual([[], ['smoke'], [], ['smoke']]);
       expect(pairs[2]?.skipReason).toBe('not today');
       expect(existsSync(path.join(project.dir, '.e2e'))).toBe(false);
       project.cleanup();

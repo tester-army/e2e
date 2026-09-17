@@ -56,6 +56,7 @@
         "id": "4bbfd0a6dbf44ac1018dd6ca1a6243d742b24607aa735b28d57541e1128507d3",
         "testId": "tests/example.e2e.ts::opens%20app",
         "kind": "test",
+        "tags": ["smoke"],
         "declarationIndex": 0,
         "titlePath": [
           "opens app"

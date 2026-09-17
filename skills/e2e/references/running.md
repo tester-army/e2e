@@ -42,7 +42,7 @@ CI=1 npx e2e run            # reproduce the CI defaults locally
 
 `list` takes the same files and the selection flags (`--config`, `--target`,
 `--tag`, `--tag-mode`, `--pass-with-no-tests`) and prints one line per
-test-target pair, `file › title [target]`, then exits without starting the
+test-target pair, `file › title [target] #tag`, then exits without starting the
 app, an engine, or a worker. `--reporter json` prints `{ "pairs": [...] }`.
 Use it to check a filter before a run.
 
@@ -80,7 +80,7 @@ recorded flow is stale — `--no-cache` only skips the cache for one run.
 - `.e2e/report.json` is written on every run whatever the reporters:
   `run.status`, `run.exitCode`, `run.errors[]` (run-level failures such as
   `APP_UNREACHABLE`), and `run.results[]`, one per test and target, with
-  `titlePath`, `file`, `source`, `status`, and `attempts[]` holding `steps[]`,
+  `titlePath`, `file`, `source`, `tags` (when the test declares any), `status`, and `attempts[]` holding `steps[]`,
   `artifacts[]`, and `error`.
 - `junit`: `.e2e/junit.xml` beside the report, for CI test summaries.
   Combine it with the terminal output: `--reporter list,junit`.

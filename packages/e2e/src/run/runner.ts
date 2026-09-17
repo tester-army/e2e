@@ -144,6 +144,8 @@ export interface ListedPair {
   readonly title: string;
   readonly titlePath: readonly string[];
   readonly kind: 'test' | 'setup';
+  /** The tags the test declares; `[]` when none. */
+  readonly tags: readonly string[];
   readonly target: string;
   readonly disposition: 'run' | 'skip';
   readonly skipReason?: string;
@@ -175,6 +177,7 @@ export async function list(options: ListOptions = {}): Promise<{ pairs: ListedPa
       title: pair.test.title,
       titlePath: pair.test.titlePath,
       kind: pair.test.kind,
+      tags: pair.test.tags,
       target: pair.target.name,
       disposition: pair.disposition,
       ...(pair.skip === undefined ? {} : { skipReason: pair.skip.reason }),

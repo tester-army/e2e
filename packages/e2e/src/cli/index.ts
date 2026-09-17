@@ -99,9 +99,10 @@ type TagMode = (typeof TAG_MODES)[number];
 const LIST_REPORTERS = ['list', 'json'] as const;
 type ListReporter = (typeof LIST_REPORTERS)[number];
 
-/** One `e2e list` line: `file › title [target]`, with the skip reason when there is one. */
+/** One `e2e list` line: `file › title [target] #tag`, with the skip reason when there is one. */
 function formatListedPair(pair: ListedPair): string {
-  const line = `${pair.file} › ${pair.titlePath.join(' › ')} [${pair.target}]`;
+  const tags = pair.tags.map((tag) => ` #${tag}`).join('');
+  const line = `${pair.file} › ${pair.titlePath.join(' › ')} [${pair.target}]${tags}`;
   return pair.disposition === 'skip' ? `${line} (skipped: ${pair.skipReason ?? 'skipped'})` : line;
 }
 

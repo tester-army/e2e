@@ -244,17 +244,18 @@ describe('e2e run argument parsing', () => {
 
 describe('e2e list', () => {
   const pairs: ListedPair[] = [
-    { file: 'tests/a.e2e.ts', title: 'signs in', titlePath: ['signs in'], kind: 'test', target: 'web', disposition: 'run' },
+    { file: 'tests/a.e2e.ts', title: 'signs in', titlePath: ['signs in'], kind: 'test', tags: ['smoke', 'auth'], target: 'web', disposition: 'run' },
     {
       file: 'tests/a.e2e.ts',
       title: 'pays',
       titlePath: ['billing', 'pays'],
       kind: 'test',
+      tags: [],
       target: 'web',
       disposition: 'skip',
       skipReason: 'not today',
     },
-    { file: 'tests/b.e2e.ts', title: 'browses', titlePath: ['browses'], kind: 'test', target: 'webkit', disposition: 'run' },
+    { file: 'tests/b.e2e.ts', title: 'browses', titlePath: ['browses'], kind: 'test', tags: [], target: 'webkit', disposition: 'run' },
   ];
 
   function lastListOptions(): ListOptions {
@@ -269,7 +270,7 @@ describe('e2e list', () => {
     expect(process.exitCode).toBe(0);
     expect(written(stdoutSpy)).toBe(
       [
-        'tests/a.e2e.ts › signs in [web]',
+        'tests/a.e2e.ts › signs in [web] #smoke #auth',
         'tests/a.e2e.ts › billing › pays [web] (skipped: not today)',
         'tests/b.e2e.ts › browses [webkit]',
         '',

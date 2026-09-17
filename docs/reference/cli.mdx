@@ -305,8 +305,8 @@ accepts `list` (the default) or `json`.
 
 | Reporter | Writes |
 | --- | --- |
-| `list` | One line per pair, `file › title [target]`, in selection order, with the describe path joined by ` › ` (`tests/billing.e2e.ts › checkout › pays [web]`). A skipped test keeps its line with `(skipped: <reason>)` appended. Setup tests are listed like any other. |
-| `json` | `{ "pairs": [...] }` to stdout. Each pair carries `file`, `title`, `titlePath`, `kind` (`test` or `setup`), `target`, `disposition` (`run` or `skip`), and `skipReason` when skipped. |
+| `list` | One line per pair, `file › title [target]`, in selection order, with the describe path joined by ` › ` (`tests/billing.e2e.ts › checkout › pays [web]`), then each tag the test declares as `#tag` (`tests/billing.e2e.ts › checkout › pays [web] #smoke #billing`). A skipped test keeps its line with `(skipped: <reason>)` appended. Setup tests are listed like any other. |
+| `json` | `{ "pairs": [...] }` to stdout. Each pair carries `file`, `title`, `titlePath`, `kind` (`test` or `setup`), `tags` (the tags the test declares, `[]` when none), `target`, `disposition` (`run` or `skip`), and `skipReason` when skipped. |
 
 Pairs a filter removed are not listed.
 

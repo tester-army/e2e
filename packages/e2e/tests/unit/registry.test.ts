@@ -233,6 +233,20 @@ describe('test.extend', () => {
 });
 
 describe('collectFromRegistration', () => {
+  it("derives each test's tags from its describe layers and its own, outermost first, each once", async () => {
+    const registration = await collectModule(async () => {
+      test.describe('outer', { tags: ['area', 'smoke'] }, () => {
+        test.describe('inner', { tags: ['inner'] }, () => {
+          test('leaf', { tags: ['smoke', 'leaf'] }, noop);
+        });
+        test('plain', noop);
+      });
+      test('untagged', noop);
+    });
+    const collected = collectFromRegistration('/root', '/root/tests/a.e2e.ts', registration);
+    expect(collected.tests.map((item) => item.tags)).toEqual([['area', 'smoke', 'inner', 'leaf'], ['area', 'smoke'], []]);
+  });
+
   it('derives stable IDs and detects duplicate title paths', async () => {
     const registration = await collectModule(async () => {
       test('one', noop);

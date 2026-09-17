@@ -41,6 +41,7 @@ function makeTest(
     declarationIndex,
     options: {},
     sessions: [],
+    tags: [],
     fn: () => undefined,
     fixtures: [],
     group: undefined,

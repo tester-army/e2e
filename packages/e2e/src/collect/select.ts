@@ -10,6 +10,7 @@ import { groupChain } from './registry.ts';
 export interface ResolvedTestOptions {
   readonly timeout: number;
   readonly retries: number;
+  /** The tags the test declares (`TestIdentity.tags`), here for the wire and the filter. */
   readonly tags: readonly string[];
   readonly platforms: readonly string[] | undefined;
   readonly requires: readonly Capability[];
@@ -82,7 +83,6 @@ export function resolveOptions(test: CollectedTest, config: ResolvedConfig): Res
   let session: string | undefined;
   let pin: readonly string[] | undefined;
   let skipReason: string | undefined;
-  const tags = new Set<string>();
   const agentContextParts: string[] = [];
 
   for (const layer of layers) {
@@ -92,7 +92,6 @@ export function resolveOptions(test: CollectedTest, config: ResolvedConfig): Res
     if (layer.requires !== undefined) requires = layer.requires;
     if (layer.session !== undefined) session = layer.session;
     if (layer.agent !== undefined) pin = typeof layer.agent === 'string' ? [layer.agent] : layer.agent;
-    if (layer.tags !== undefined) for (const tag of layer.tags) tags.add(tag);
     if (layer.agentContext !== undefined) agentContextParts.push(layer.agentContext);
     if (layer.skip !== undefined && layer.skip !== false) {
       skipReason = typeof layer.skip === 'string' ? layer.skip : 'skipped';
@@ -121,7 +120,7 @@ export function resolveOptions(test: CollectedTest, config: ResolvedConfig): Res
   return {
     timeout,
     retries,
-    tags: [...tags],
+    tags: test.tags,
     platforms,
     requires,
     session,
