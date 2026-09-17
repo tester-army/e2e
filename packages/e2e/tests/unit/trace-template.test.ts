@@ -62,15 +62,24 @@ describe('unique() through validateParams', () => {
     ]);
   });
 
-  it('refuses an empty value', () => {
+  it('refuses a blank value and one that spells a placeholder', () => {
     expect(() => unique('')).toThrow(/non-empty string/);
+    expect(() => unique('  ')).toThrow(/non-empty string/);
     expect(() => unique(7 as never)).toThrow(/non-empty string/);
+    expect(() => unique('x {{param:/y}}')).toThrow(/placeholder/);
   });
 
   it('escapes keys the JSON Pointer way, so two shapes never share a pointer', () => {
     expect(paramPointer('', 'a/b')).toBe('/a~1b');
     expect(paramPointer('/x', 'a~b')).toBe('/x/a~0b');
     expect(paramPointer('/tags', 0)).toBe('/tags/0');
+  });
+
+  it('round-trips a key that contains a closing brace', () => {
+    const templates = [{ pointer: paramPointer('', 'a}b'), value: 'Acme Corp' }];
+    const templated = templateText('tap "Acme Corp"', templates);
+    expect(templated).toBe('tap "{{param:/a}b}}"');
+    expect(expandText(templated, values([{ pointer: '/a}b', value: 'Globex' }]))).toBe('tap "Globex"');
   });
 });
 
@@ -144,6 +153,11 @@ describe('templateTrace and expandTrace', () => {
     const odd: ActionTrace = { ...trace('Acme Corp'), summary: 'typed {{param:/name}} literally' };
     expect(templateTrace(odd, name('Acme Corp'))).toBeUndefined();
     expect(templateTrace(odd, [])).toBeUndefined();
+  });
+
+  it('refuses to template when two marked params share a value, since the text cannot say which one it spelled', () => {
+    const shared = [...name('Acme Corp'), { pointer: '/slug', value: 'Acme Corp' }];
+    expect(templateTrace(trace('Acme Corp'), shared)).toBeUndefined();
   });
 
   it('templates the location paths too, so a value in the URL follows the run', () => {

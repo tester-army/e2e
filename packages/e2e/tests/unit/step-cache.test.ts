@@ -285,14 +285,21 @@ describe('StepTraceSession', () => {
     expect(staged.actions[0]).toMatchObject({ url: '/companies/new?name={{param:/name}}' });
     expect(staged.summary).toBe('created {{param:/name}} on the pro plan');
 
-    // The next run reads the same entry and replays it with its own value.
-    const replayed = entryContext(staged);
+    // The next run claims the same key and replays the entry with its own value.
+    const replayed: AgentCacheContext = {
+      ...entryContext(staged),
+      claimKeyHash: (_kind, _instruction, params) => {
+        keyed.push(params ?? null);
+        return 'a'.repeat(64);
+      },
+    };
     const second = makeSession(replayed, makeHost(['/companies', '/companies/E2E-xyz']), {
       params: { name: 'E2E-xyz', plan: 'pro' },
       templates: [{ pointer: '/name', value: 'E2E-xyz' }],
     });
     const verdict = await second.begin();
     expect(verdict?.summary).toContain('created E2E-xyz on the pro plan');
+    expect(keyed[1]).toEqual(keyed[0]);
 
     // A call that did not mark the param cannot fill the slot: a miss, never a literal placeholder on screen.
     const unmarked = makeSession(entryContext(staged), makeHost(['/companies']), { params: { name: 'E2E-xyz', plan: 'pro' } });

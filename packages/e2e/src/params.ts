@@ -22,8 +22,11 @@ export interface Unique {
  * differ replay the same recording.
  */
 export function unique(value: string): Unique {
-  if (typeof value !== 'string' || value === '') {
+  if (typeof value !== 'string' || value.trim() === '') {
     throw new TestError('INVALID_ARGUMENT', 'unique() takes a non-empty string');
+  }
+  if (value.includes('{{param:')) {
+    throw new TestError('INVALID_ARGUMENT', 'a unique() value cannot contain the placeholder text "{{param:"');
   }
   return Object.freeze({ value, [uniqueBrand]: true as const });
 }

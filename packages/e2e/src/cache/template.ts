@@ -37,11 +37,11 @@ export function paramPointer(parent: string, key: string | number): string {
 }
 
 /**
- * Placeholder grammar: `{{param:<pointer>}}`. A pointer never contains `}`,
- * so the closing braces are unambiguous; one codec owns both directions.
+ * Placeholder grammar: `{{param:<pointer>}}`, closed by the first `}}`. One
+ * codec owns both directions.
  */
 const PLACEHOLDER_PREFIX = '{{param:';
-const PLACEHOLDER = /\{\{param:([^}]*)\}\}/gu;
+const PLACEHOLDER = /\{\{param:(.*?)\}\}/gu;
 
 function placeholder(pointer: string): string {
   return `${PLACEHOLDER_PREFIX}${pointer}}}`;
@@ -120,10 +120,13 @@ export function expandText(text: string, values: ReadonlyMap<string, string>): s
 
 /**
  * The recording as stored: each template's value replaced by its placeholder
- * wherever the recorded text spelled it, or undefined when the text already
- * spelled a placeholder, which could not be told from a written one at replay.
+ * wherever the recorded text spelled it, or undefined when the recording
+ * cannot be templated safely: the text already spelled a placeholder, which
+ * could not be told from a written one at replay, or two marked params
+ * share a value, so the text cannot say which one it came from.
  */
 export function templateTrace(trace: ActionTrace, templates: readonly ParamTemplate[]): ActionTrace | undefined {
+  if (new Set(templates.map((template) => template.value)).size !== templates.length) return undefined;
   let literalPlaceholder = false;
   const templated = mapTraceText(trace, (text) => {
     if (text.includes(PLACEHOLDER_PREFIX)) literalPlaceholder = true;
