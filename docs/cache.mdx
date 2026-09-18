@@ -66,7 +66,8 @@ await expect(screen.getByRole('heading', { name })).toBeVisible();
 ```
 
 Use `unique()` for data the flow enters or checks. Keep choices that change
-the flow, such as a plan name, as ordinary params.
+the flow, such as a plan name, as ordinary params. The substitution covers
+the value as a URL spells it too, `%20` in a path or `+` in a search query.
 
 For preview URLs that change on each deploy, set
 [`identity`](/reference/config#the-app-under-test) to keep the same cache

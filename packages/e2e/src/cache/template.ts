@@ -37,14 +37,60 @@ export function paramPointer(parent: string, key: string | number): string {
 }
 
 /**
- * Placeholder grammar: `{{param:<pointer>}}`, closed by the first `}}`. One
- * codec owns both directions.
+ * Placeholder grammar: `{{param:<pointer>}}` for the value as given and
+ * `{{param:<pointer>|<encoding>}}` for the value as a URL spells it, closed
+ * by the first `}}`. One codec owns both directions.
+ *
+ * A value typed into a search box comes back in the address bar as
+ * `?search=E2E+abc` or `/companies/E2E%20abc`; a recorded path that kept
+ * either form literal would never match the next run's path. So each value
+ * is looked for in its encoded forms too, and the placeholder says which
+ * encoding to apply when it is filled.
  */
 const PLACEHOLDER_PREFIX = '{{param:';
 const PLACEHOLDER = /\{\{param:(.*?)\}\}/gu;
 
-function placeholder(pointer: string): string {
-  return `${PLACEHOLDER_PREFIX}${pointer}}}`;
+/** How a value may be spelled in recorded text: as given, percent-encoded, or form-encoded with `+` for spaces. */
+type Encoding = 'uri' | 'form';
+
+const ENCODERS: Readonly<Record<Encoding, (value: string) => string>> = {
+  uri: (value) => encodeURIComponent(value),
+  form: (value) => encodeURIComponent(value).replaceAll('%20', '+'),
+};
+
+function placeholder(pointer: string, encoding?: Encoding): string {
+  return `${PLACEHOLDER_PREFIX}${pointer}${encoding === undefined ? '' : `|${encoding}`}}}`;
+}
+
+/** The pointer and encoding a placeholder names; undefined for an encoding this codec does not know. */
+function parsePlaceholder(inner: string): { readonly pointer: string; readonly encoding: Encoding | undefined } | undefined {
+  const bar = inner.lastIndexOf('|');
+  if (bar === -1) return { pointer: inner, encoding: undefined };
+  const encoding = inner.slice(bar + 1);
+  return encoding in ENCODERS ? { pointer: inner.slice(0, bar), encoding: encoding as Encoding } : undefined;
+}
+
+/** One spelling of a template's value and the placeholder that stands for it. */
+interface Spelling {
+  readonly text: string;
+  readonly placeholder: string;
+  readonly pointer: string;
+}
+
+/** Every distinct spelling of every template, longest text first so a longer value, or a longer encoding of one, is claimed whole. */
+function spellings(templates: readonly ParamTemplate[]): readonly Spelling[] {
+  const out: Spelling[] = [];
+  for (const template of templates) {
+    const seen = new Set<string>([template.value]);
+    out.push({ text: template.value, placeholder: placeholder(template.pointer), pointer: template.pointer });
+    for (const encoding of Object.keys(ENCODERS) as Encoding[]) {
+      const text = ENCODERS[encoding](template.value);
+      if (seen.has(text)) continue;
+      seen.add(text);
+      out.push({ text, placeholder: placeholder(template.pointer, encoding), pointer: template.pointer });
+    }
+  }
+  return out.toSorted((a, b) => b.text.length - a.text.length || a.pointer.localeCompare(b.pointer) || a.placeholder.localeCompare(b.placeholder));
 }
 
 /** `Array.isArray` does not narrow a readonly array away; this does. */
@@ -75,28 +121,27 @@ export function templateParams(
 }
 
 /**
- * Replaces every occurrence of each template's value in `text` with its
- * placeholder. Longer values are claimed first, so a value that contains
- * another (`"Ada Lovelace"` and `"Ada"`) is replaced whole; equal lengths
- * order by pointer, so the result is stable. Literal segments are tracked so
- * a value never matches inside a placeholder written a moment earlier (a
- * parameter named `name` whose value is `name`).
+ * Replaces every occurrence of each template's value in `text`, in any of
+ * its spellings, with the matching placeholder. Longer texts are claimed
+ * first, so a value that contains another (`"Ada Lovelace"` and `"Ada"`) is
+ * replaced whole; equal lengths order by pointer, so the result is stable.
+ * Literal segments are tracked so a value never matches inside a placeholder
+ * written a moment earlier (a parameter named `name` whose value is `name`).
  */
 export function templateText(text: string, templates: readonly ParamTemplate[]): string {
   type Segment = { readonly literal: boolean; readonly text: string };
-  const byLength = templates.toSorted((a, b) => b.value.length - a.value.length || a.pointer.localeCompare(b.pointer));
   let segments: Segment[] = [{ literal: true, text }];
-  for (const template of byLength) {
+  for (const spelling of spellings(templates)) {
     const next: Segment[] = [];
     for (const segment of segments) {
-      if (!segment.literal || !segment.text.includes(template.value)) {
+      if (!segment.literal || !segment.text.includes(spelling.text)) {
         next.push(segment);
         continue;
       }
-      const parts = segment.text.split(template.value);
+      const parts = segment.text.split(spelling.text);
       parts.forEach((part, index) => {
         if (part !== '') next.push({ literal: true, text: part });
-        if (index < parts.length - 1) next.push({ literal: false, text: placeholder(template.pointer) });
+        if (index < parts.length - 1) next.push({ literal: false, text: spelling.placeholder });
       });
     }
     segments = next;
@@ -105,15 +150,20 @@ export function templateText(text: string, templates: readonly ParamTemplate[]):
 }
 
 /**
- * Fills every placeholder in `text` from `values` (pointer to value), or
- * returns undefined when one names a parameter the call did not mark.
+ * Fills every placeholder in `text` from `values` (pointer to value), in the
+ * encoding the placeholder names, or returns undefined when one names a
+ * parameter the call did not mark or an encoding this codec does not know.
  */
 export function expandText(text: string, values: ReadonlyMap<string, string>): string | undefined {
   let missing = false;
-  const expanded = text.replace(PLACEHOLDER, (_match, pointer: string) => {
-    const value = values.get(pointer);
-    if (value === undefined) missing = true;
-    return value ?? '';
+  const expanded = text.replace(PLACEHOLDER, (_match, inner: string) => {
+    const parsed = parsePlaceholder(inner);
+    const value = parsed === undefined ? undefined : values.get(parsed.pointer);
+    if (parsed === undefined || value === undefined) {
+      missing = true;
+      return '';
+    }
+    return parsed.encoding === undefined ? value : ENCODERS[parsed.encoding](value);
   });
   return missing ? undefined : expanded;
 }
