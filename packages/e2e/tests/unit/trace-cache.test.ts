@@ -137,7 +137,7 @@ function withPayload(overrides: Record<string, unknown>): unknown {
 
 /** The replay context of a step that sees `path` and no screen. */
 function at(path: string | undefined): ReplayContext {
-  return { path, nodes: undefined, knownValues: [], redact: createRedactor(new Map()) };
+  return { path, nodes: undefined, redact: createRedactor(new Map()) };
 }
 
 describe('decideTraceReplay', () => {

@@ -502,6 +502,24 @@ describe('StepTraceSession', () => {
     expect(session.cacheInfo?.mode).toBe('agent-concluded');
   });
 
+  it('lets the recorded anchors settle an end route the path leaves undecided, and never an empty anchor list', async () => {
+    // A slug the runner cannot recognize: one segment differs, the anchors are on screen.
+    const settled = entryContext({ endPath: '/products/summer-sneaker', endAnchors: [savedAnchor] });
+    const good = makeSession(settled, makeHost(['/products', '/products/winter-boot'], [[savedMarker]]));
+    expect((await good.begin())?.status).toBe('passed');
+    expect(good.cacheInfo?.mode).toBe('self-finalized');
+
+    // No anchors recorded: nothing can settle it, so it is another screen.
+    const bare = makeSession(entryContext({ endPath: '/products/summer-sneaker' }), makeHost(['/products', '/products/winter-boot']));
+    expect(await bare.begin()).toBeUndefined();
+    expect(bare.replayedPrefix?.stopReason).toBe('end-mismatch');
+
+    // Two unexplained segments: another screen even with the anchors on it.
+    const far = makeSession(entryContext({ endPath: '/shop/summer/sneaker', endAnchors: [savedAnchor] }), makeHost(['/shop', '/shop/winter/boot'], [[savedMarker]]));
+    expect(await far.begin()).toBeUndefined();
+    expect(far.replayedPrefix?.stopReason).toBe('end-mismatch');
+  });
+
   it('re-stages the original verdict prose, not the replay wrapper', async () => {
     const context = entryContext({ endPath: '/customers' });
     const session = makeSession(context, makeHost(['/pricing', '/customers?utm=x', '/customers']));

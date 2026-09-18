@@ -180,6 +180,14 @@ describe('templateTrace and expandTrace', () => {
     expect(templateText('/tags/vip?q=vip', [{ pointer: '/tag', value: 'vip' }])).toBe('/tags/{{param:/tag}}?q={{param:/tag}}');
   });
 
+  it('spells a value as the slug an app derives for a record path, and fills it back the same way', () => {
+    const templates = [{ pointer: '/name', value: 'E2E abc Company' }];
+    expect(templateText('/companies/e2e-abc-company?q=E2E%20abc%20Company', templates)).toBe('/companies/{{param:/name|slug}}?q={{param:/name|uri}}');
+    expect(expandText('/companies/{{param:/name|slug}}', values([{ pointer: '/name', value: "Ada's Shop & Co" }]))).toBe('/companies/ada-s-shop-co');
+    // A value whose slug is empty has no slug spelling.
+    expect(templateText('x -- y', [{ pointer: '/v', value: '--' }])).toBe('x {{param:/v}} y');
+  });
+
   it('refuses a placeholder whose encoding it does not know', () => {
     expect(expandText('/x/{{param:/name|base64}}', values(name('Acme')))).toBeUndefined();
   });

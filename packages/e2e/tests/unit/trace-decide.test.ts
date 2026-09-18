@@ -1,9 +1,9 @@
-/** The replay precondition: the screen the recording began on, as a route, with the screen itself as the arbiter. */
+/** The replay precondition: the screen the recording began on, as a route, with the screen itself settling what the route cannot. */
 
 import { describe, expect, it } from 'vitest';
+import { describeScreen } from '../../src/cache/anchors.ts';
 import { decideTraceReplay, type ReplayContext } from '../../src/cache/decide.ts';
-import { screenSignature } from '../../src/cache/route.ts';
-import { buildTraceEntry, type TraceEntry } from '../../src/cache/trace.ts';
+import { buildTraceEntry, type TraceEntry, type TraceTargetDescriptor } from '../../src/cache/trace.ts';
 import type { SemanticNode } from '../../src/engine/surface.ts';
 import { createRedactor } from '../../src/internal/redact.ts';
 
@@ -34,7 +34,7 @@ const companyPage = screen(
   node('l1', 'link', 'Companies'),
 );
 
-function entry(startPath: string, options: { first?: 'tap' | 'navigate'; startScreen?: readonly string[] } = {}): TraceEntry {
+function entry(startPath: string, options: { first?: 'tap' | 'navigate'; startAnchors?: readonly TraceTargetDescriptor[] } = {}): TraceEntry {
   return buildTraceEntry({
     actions:
       options.first === 'navigate'
@@ -43,12 +43,12 @@ function entry(startPath: string, options: { first?: 'tap' | 'navigate'; startSc
     executor: { name: 'test' },
     summary: 'saved',
     startPath,
-    ...(options.startScreen === undefined ? {} : { startScreen: options.startScreen }),
+    ...(options.startAnchors === undefined ? {} : { startAnchors: options.startAnchors }),
   });
 }
 
-function at(path: string | undefined, nodes?: ReadonlyMap<string, SemanticNode>, knownValues: readonly string[] = []): ReplayContext {
-  return { path, nodes, knownValues, redact };
+function at(path: string | undefined, nodes?: ReadonlyMap<string, SemanticNode>): ReplayContext {
+  return { path, nodes, redact };
 }
 
 describe('decideTraceReplay', () => {
@@ -62,30 +62,21 @@ describe('decideTraceReplay', () => {
   it('misses on another route, and without a location', () => {
     const recorded = entry('/backend/customers/companies-v2/ad3339e0-074f-45e0-b778-3dee8ab545eb');
     expect(decideTraceReplay(recorded, at('/backend/customers/people-v2/8374a7a7-a64a-422d-9183-4350756c7f07'))).toEqual({ action: 'miss', reason: 'wrong-context' });
-    expect(decideTraceReplay(entry('/settings/billing'), at('/settings/members'))).toEqual({ action: 'miss', reason: 'wrong-context' });
+    expect(decideTraceReplay(entry('/settings/billing/history'), at('/settings/members/list'))).toEqual({ action: 'miss', reason: 'wrong-context' });
     expect(decideTraceReplay(recorded, at(undefined))).toEqual({ action: 'miss', reason: 'wrong-context' });
   });
 
-  it('recognizes a record by the value this call marked, in any spelling a URL gives it', () => {
-    // The recorded path reaches the decision with this call's value already filled in (`expandTrace`),
-    // so both sides carry the same value, possibly spelled differently by the app and by the recording.
-    const known = ['E2E xyz Sneaker'];
-    expect(decideTraceReplay(entry('/products/e2e-xyz-sneaker'), at('/products/E2E%20xyz%20Sneaker', undefined, known))).toEqual({ action: 'replay' });
-    expect(decideTraceReplay(entry('/products/E2E xyz Sneaker'), at('/products/e2e-xyz-sneaker', undefined, known))).toEqual({ action: 'replay' });
-    // Without the value, a slug is a route word and two of them differ.
-    expect(decideTraceReplay(entry('/products/e2e-abc-sneaker'), at('/products/e2e-xyz-sneaker'))).toEqual({ action: 'miss', reason: 'wrong-context' });
-  });
-
-  it('lets the screen decide a slug it cannot recognize, and only the screen', () => {
-    const recordedOnProduct = entry('/products/summer-sneaker', { startScreen: screenSignature(productPage, { redact }) });
-    expect(decideTraceReplay(recordedOnProduct, at('/products/winter-boot', productPage))).toEqual({ action: 'replay' });
-    // Same slug shape, another screen: the signature does not match.
-    expect(decideTraceReplay(recordedOnProduct, at('/products/winter-boot', companyPage))).toEqual({ action: 'miss', reason: 'wrong-context' });
-    // No signature recorded, or no screen observed: a slug difference is another route.
+  it('lets the screen settle a slug it cannot recognize, and only the screen', () => {
+    const onProduct = entry('/products/summer-sneaker', { startAnchors: describeScreen(productPage, { redact }) });
+    expect(decideTraceReplay(onProduct, at('/products/winter-boot', productPage))).toEqual({ action: 'replay' });
+    // Same slug shape, another screen: too few of the recorded anchors are there.
+    expect(decideTraceReplay(onProduct, at('/products/winter-boot', companyPage))).toEqual({ action: 'miss', reason: 'wrong-context' });
+    // No anchors recorded, too few recorded, or no screen observed: a slug difference is another route.
     expect(decideTraceReplay(entry('/products/summer-sneaker'), at('/products/winter-boot', productPage))).toEqual({ action: 'miss', reason: 'wrong-context' });
-    expect(decideTraceReplay(recordedOnProduct, at('/products/winter-boot'))).toEqual({ action: 'miss', reason: 'wrong-context' });
+    expect(decideTraceReplay(entry('/products/summer-sneaker', { startAnchors: describeScreen(productPage, { redact }).slice(0, 3) }), at('/products/winter-boot', productPage))).toEqual({ action: 'miss', reason: 'wrong-context' });
+    expect(decideTraceReplay(onProduct, at('/products/winter-boot'))).toEqual({ action: 'miss', reason: 'wrong-context' });
     // Two unexplained differences are never the same screen, whatever it shows.
-    expect(decideTraceReplay(entry('/shop/summer/sneaker', { startScreen: screenSignature(productPage, { redact }) }), at('/shop/winter/boot', productPage))).toEqual({ action: 'miss', reason: 'wrong-context' });
+    expect(decideTraceReplay(entry('/shop/summer/sneaker', { startAnchors: describeScreen(productPage, { redact }) }), at('/shop/winter/boot', productPage))).toEqual({ action: 'miss', reason: 'wrong-context' });
   });
 
   it('needs no starting point when the recording opens with a navigate', () => {

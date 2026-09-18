@@ -50,14 +50,24 @@ export function paramPointer(parent: string, key: string | number): string {
 const PLACEHOLDER_PREFIX = '{{param:';
 const PLACEHOLDER = /\{\{param:(.*?)\}\}/gu;
 
-/** How a value may be spelled in recorded text: as given, percent-encoded, or form-encoded with `+` for spaces. */
-type Encoding = 'uri' | 'form';
+/**
+ * How a value may be spelled in recorded text: as given, percent-encoded,
+ * form-encoded with `+` for spaces, or as the slug an app derives for a
+ * record's path (`/companies/e2e-abc-company`).
+ */
+type Encoding = 'uri' | 'form' | 'slug';
 
 const ENCODERS: Readonly<Record<Encoding, (value: string) => string>> = {
   uri: (value) => encodeURIComponent(value),
   // What a form submission or `URLSearchParams` writes: `+` for a space, and
   // `!'()~` percent-encoded too, which `encodeURIComponent` leaves alone.
   form: (value) => new URLSearchParams([['v', value]]).toString().slice(2),
+  // Lowercase, letters and digits kept, every other run as one dash.
+  slug: (value) =>
+    value
+      .toLowerCase()
+      .replaceAll(/[^\p{L}\p{N}]+/gu, '-')
+      .replaceAll(/^-+|-+$/g, ''),
 };
 
 /** A value's encoded spelling, or undefined when it has none (an unpaired surrogate cannot be encoded). */
@@ -96,7 +106,7 @@ function spellings(templates: readonly ParamTemplate[]): readonly Spelling[] {
     out.push({ text: template.value, placeholder: placeholder(template.pointer), pointer: template.pointer });
     for (const encoding of Object.keys(ENCODERS) as Encoding[]) {
       const text = encode(encoding, template.value);
-      if (text === undefined || seen.has(text)) continue;
+      if (text === undefined || text === '' || seen.has(text)) continue;
       seen.add(text);
       out.push({ text, placeholder: placeholder(template.pointer, encoding), pointer: template.pointer });
     }

@@ -48,10 +48,8 @@ export function bound(text: string, maxChars: number): string {
  * the whole screen keeps the first few in document order.
  */
 export const MAX_TRACE_ANCHORS = 8;
-/** Most entries a start-screen signature keeps (`cache/route.ts`); the header and sidebar come first in document order, which is what identifies a screen. */
-export const MAX_SCREEN_SIGNATURE = 48;
-/** Longest signature entry; a control name longer than this is content, not chrome. */
-export const MAX_SCREEN_SIGNATURE_CHARS = 120;
+/** Most anchors a start screen keeps; the header and the sidebar come first in document order, which is what identifies a screen. */
+export const MAX_START_ANCHORS = 48;
 /** Longest a replay waits for the recorded end state to return. */
 export const MAX_TRACE_END_WAIT_MS = 120_000;
 
@@ -234,12 +232,13 @@ export interface ActionTrace {
   /** Location path when the step began; a precondition unless the trace opens with navigate. */
   readonly startPath?: string;
   /**
-   * The start screen's signature (`cache/route.ts`): the controls a user would
-   * name the screen by. Decides the precondition where the route alone cannot,
-   * when the recorded and live paths differ in one segment the runner could
-   * not recognize as a record, such as a slug.
+   * The controls and headings of the screen the step began on
+   * (`describeScreen`). They settle the precondition where the route alone
+   * cannot: when the recorded and live paths differ in one segment the runner
+   * could not recognize as a record, such as a slug, the step replays only
+   * if most of these are on screen again.
    */
-  readonly startScreen?: readonly string[];
+  readonly startAnchors?: readonly TraceTargetDescriptor[];
   /**
    * Location path when the step passed — the trace's deterministic postcondition.
    * A full replay self-finalizes only while the live pathname still matches;
@@ -334,8 +333,8 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
       return undefined;
     }
   }
-  const startScreen = readScreenSignature(raw['startScreen']);
-  if (raw['startScreen'] !== undefined && startScreen === undefined) return undefined;
+  const startAnchors = readAnchors(raw['startAnchors'], MAX_START_ANCHORS);
+  if (raw['startAnchors'] !== undefined && startAnchors === undefined) return undefined;
   const truncated = raw['truncated'];
   if (truncated !== undefined && typeof truncated !== 'boolean') return undefined;
 
@@ -378,7 +377,7 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
     ...(recordedFor === undefined ? {} : { recordedFor }),
     summary,
     ...(startPath === undefined ? {} : { startPath }),
-    ...(startScreen === undefined || startScreen.length === 0 ? {} : { startScreen }),
+    ...(startAnchors === undefined || startAnchors.length === 0 ? {} : { startAnchors }),
     ...(endPath === undefined ? {} : { endPath }),
     ...(endAnchors === undefined || endAnchors.length === 0 ? {} : { endAnchors }),
     ...(endWaitMs === undefined ? {} : { endWaitMs }),
@@ -386,14 +385,15 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
   };
 }
 
-/** `startScreen`: a bounded list of bounded, non-empty strings. */
-function readScreenSignature(value: unknown): readonly string[] | undefined {
+/** A bounded list of descriptors, each valid; undefined for anything else. */
+function readAnchors(value: unknown, max: number): readonly TraceTargetDescriptor[] | undefined {
   if (value === undefined) return undefined;
-  if (!Array.isArray(value) || value.length > MAX_SCREEN_SIGNATURE) return undefined;
-  const out: string[] = [];
+  if (!Array.isArray(value) || value.length > max) return undefined;
+  const out: TraceTargetDescriptor[] = [];
   for (const entry of value) {
-    if (typeof entry !== 'string' || entry === '' || entry.length > MAX_SCREEN_SIGNATURE_CHARS) return undefined;
-    out.push(entry);
+    const descriptor = readDescriptor(entry);
+    if (descriptor === undefined) return undefined;
+    out.push(descriptor);
   }
   return out;
 }
@@ -610,33 +610,29 @@ export function mapTraceText(trace: ActionTrace, map: TraceTextMap): ActionTrace
   if (summary === undefined || (trace.startPath !== undefined && startPath === undefined) || (trace.endPath !== undefined && endPath === undefined)) {
     return undefined;
   }
-  let startScreen: string[] | undefined;
-  if (trace.startScreen !== undefined) {
-    startScreen = [];
-    for (const entry of trace.startScreen) {
-      const mapped = map(entry);
-      if (mapped === undefined) return undefined;
-      startScreen.push(mapped);
-    }
-  }
-  let endAnchors: TraceTargetDescriptor[] | undefined;
-  if (trace.endAnchors !== undefined) {
-    endAnchors = [];
-    for (const anchor of trace.endAnchors) {
-      const mapped = mapDescriptorText(anchor, map);
-      if (mapped === undefined) return undefined;
-      endAnchors.push(mapped);
-    }
-  }
+  const startAnchors = trace.startAnchors === undefined ? undefined : mapDescriptors(trace.startAnchors, map);
+  if (trace.startAnchors !== undefined && startAnchors === undefined) return undefined;
+  const endAnchors = trace.endAnchors === undefined ? undefined : mapDescriptors(trace.endAnchors, map);
+  if (trace.endAnchors !== undefined && endAnchors === undefined) return undefined;
   return {
     ...trace,
     actions,
     summary,
     ...(startPath === undefined ? {} : { startPath }),
-    ...(startScreen === undefined ? {} : { startScreen }),
+    ...(startAnchors === undefined ? {} : { startAnchors }),
     ...(endPath === undefined ? {} : { endPath }),
     ...(endAnchors === undefined ? {} : { endAnchors }),
   };
+}
+
+function mapDescriptors(descriptors: readonly TraceTargetDescriptor[], map: TraceTextMap): TraceTargetDescriptor[] | undefined {
+  const out: TraceTargetDescriptor[] = [];
+  for (const descriptor of descriptors) {
+    const mapped = mapDescriptorText(descriptor, map);
+    if (mapped === undefined) return undefined;
+    out.push(mapped);
+  }
+  return out;
 }
 
 function readDescriptor(document: unknown): TraceTargetDescriptor | undefined {

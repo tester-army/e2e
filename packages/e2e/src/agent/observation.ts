@@ -144,14 +144,13 @@ export function prepareObservation(
 
 /**
  * Trace and executor locations use the same capture, without a second engine
- * call. The fragment is kept only when the app routes in it (`#/companies/1`);
- * a plain anchor (`#top`) is not part of where the page is.
+ * call: the address without its origin. What the fragment means, an anchor or
+ * the route of an app that routes in it, is `cache/route.ts`'s to decide.
  */
 function observationPath(location: string): string {
   if (!URL.canParse(location)) return location;
   const url = new URL(location);
-  const fragment = url.hash.startsWith('#/') ? url.hash : '';
-  return `${url.pathname}${url.search}${fragment}`;
+  return `${url.pathname}${url.search}${url.hash}`;
 }
 
 /** Phase metrics describe a node count only when the capture actually read nodes. */

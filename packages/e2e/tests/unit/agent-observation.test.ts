@@ -47,6 +47,13 @@ describe('prepareObservation', () => {
     expect(empty.text).not.toContain('unavailable');
   });
 
+  it('keeps the whole address after the origin as the path, fragment included, for the route check to read', () => {
+    const at = (location: string) => prepareObservation({ ...observation(node('root')), location }, { redact: NO_REDACT, maxBytes: 4_096, pixelsAllowed: true }).path;
+    expect(at('https://app.example.test/companies?search=a#/orders/42')).toBe('/companies?search=a#/orders/42');
+    expect(at('https://app.example.test/companies#top')).toBe('/companies#top');
+    expect(at('Settings')).toBe('Settings');
+  });
+
   it('returns evidence without a comparable shape without repeating capture', async () => {
     let captures = 0;
     const result = await settleObservation(

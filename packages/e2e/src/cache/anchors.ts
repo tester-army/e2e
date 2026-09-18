@@ -22,7 +22,7 @@ import {
   type DescriptorField,
   type DescriptorMatchOptions,
 } from './relocate.ts';
-import { MAX_TRACE_ANCHORS, type TraceTargetDescriptor } from './trace.ts';
+import { MAX_START_ANCHORS, MAX_TRACE_ANCHORS, type TraceTargetDescriptor } from './trace.ts';
 
 export type AnchorOptions = DescriptorMatchOptions;
 
@@ -102,11 +102,62 @@ function isBareNumber(anchor: TraceTargetDescriptor): boolean {
   return label !== undefined && /^\d+$/.test(label) && anchor.testId === undefined && (anchor.name === undefined || anchor.text === undefined || anchor.name === anchor.text);
 }
 
-export function isVolatileAnchor(anchor: TraceTargetDescriptor): boolean {
+function isVolatileAnchor(anchor: TraceTargetDescriptor): boolean {
   return (
     isBareNumber(anchor) ||
     [anchor.text, anchor.name].some((value) => value !== undefined && VOLATILE_TEXT.some((pattern) => pattern.test(value)))
   );
+}
+
+/** The roles a user names a screen by: its controls and headings, not its content. */
+const SCREEN_ROLES: ReadonlySet<string> = new Set([
+  'button',
+  'link',
+  'textbox',
+  'searchbox',
+  'combobox',
+  'checkbox',
+  'radio',
+  'switch',
+  'tab',
+  'menuitem',
+  'heading',
+]);
+
+/**
+ * What a screen is made of, as anchors: its controls and headings in document
+ * order, volatile text left out, deduplicated, capped. Two visits to the same
+ * screen share most of it, two screens rarely do, which is what lets the
+ * screen settle a route the path alone cannot (`compareRoutes`).
+ */
+export function describeScreen(nodes: ReadonlyMap<string, SemanticNode>, options: AnchorOptions): TraceTargetDescriptor[] {
+  const seen = new Set<string>();
+  const anchors: TraceTargetDescriptor[] = [];
+  for (const node of nodes.values()) {
+    if (node.role === undefined || !SCREEN_ROLES.has(node.role)) continue;
+    const descriptor = anchorDescriptor(node, options);
+    if (descriptor === undefined || isVolatileAnchor(descriptor)) continue;
+    const key = anchorKey(descriptor);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    anchors.push(descriptor);
+    if (anchors.length >= MAX_START_ANCHORS) break;
+  }
+  return anchors;
+}
+
+/** The share of `anchors` present in a fresh observation, 0 to 1; 0 for none recorded. */
+export function anchorsShare(
+  anchors: readonly TraceTargetDescriptor[],
+  nodes: ReadonlyMap<string, SemanticNode>,
+  options: AnchorOptions,
+): number {
+  if (anchors.length === 0) return 0;
+  const candidates = describeNodes(nodes, options).map((node) => node.descriptor);
+  const present = anchors.filter((anchor) =>
+    descriptorTiers(anchor).some((tier) => candidates.some((candidate) => fieldsEqual(tier, candidate, ANCHOR_FIELDS))),
+  ).length;
+  return present / anchors.length;
 }
 
 /**
