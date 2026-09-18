@@ -31,8 +31,13 @@ from the directory it runs in.
 - `e2e.agent.config.ts` + `tests-agent/`: the agentic suite, derived from the
   deterministic config. One `agent.act` per scenario with the catalog
   description as its goal and a deterministic check on the success message.
-  Scenarios the harness cannot finish yet are declared with a `gap` and skip
-  with that reason, so every run shows what is still missing.
+  A scenario whose tree is merged or hidden on purpose tells the model so
+  and is judged from a screenshot; one whose surface renders out of process
+  (PassKit, the photo picker) says the sheet is not in the tree, and the
+  model asks for the screenshot itself; the photo picker seeds its receipt
+  into every booted simulator first. Scenarios the
+  harness cannot finish yet are declared with a `gap` and skip with that
+  reason, so every run shows what is still missing.
 
 Neither suite runs in CI: the runners have no simulator, and every agentic
 step spends real model calls and real device time.
