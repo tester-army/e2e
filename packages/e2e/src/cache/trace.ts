@@ -16,7 +16,6 @@
  * `undefined`, never as a repaired or partially trusted entry.
  */
 
-import { MAX_SCREEN_SIGNATURE, MAX_SCREEN_SIGNATURE_CHARS } from './route.ts';
 import { timestamp } from '../internal/ids.ts';
 import type { ScrollDirection } from '../types.ts';
 
@@ -49,6 +48,10 @@ export function bound(text: string, maxChars: number): string {
  * the whole screen keeps the first few in document order.
  */
 export const MAX_TRACE_ANCHORS = 8;
+/** Most entries a start-screen signature keeps (`cache/route.ts`); the header and sidebar come first in document order, which is what identifies a screen. */
+export const MAX_SCREEN_SIGNATURE = 48;
+/** Longest signature entry; a control name longer than this is content, not chrome. */
+export const MAX_SCREEN_SIGNATURE_CHARS = 120;
 /** Longest a replay waits for the recorded end state to return. */
 export const MAX_TRACE_END_WAIT_MS = 120_000;
 

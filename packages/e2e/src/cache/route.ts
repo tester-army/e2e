@@ -28,6 +28,7 @@ import { describeTarget } from '../agent/actions.ts';
 import type { SemanticNode } from '../engine/surface.ts';
 import { isVolatileAnchor } from './anchors.ts';
 import type { DescriptorMatchOptions } from './relocate.ts';
+import { MAX_SCREEN_SIGNATURE, MAX_SCREEN_SIGNATURE_CHARS } from './trace.ts';
 
 /** One segment of a route: text the app's router owns, or a value it minted or was given. */
 export interface RouteSegment {
@@ -142,10 +143,6 @@ function segmentKey(segment: RouteSegment): string {
   return segment.kind === 'param' ? PARAM_PLACEHOLDER : segment.text;
 }
 
-/** Most entries a screen signature keeps; the header and the sidebar come first in document order, which is what identifies a screen. */
-export const MAX_SCREEN_SIGNATURE = 48;
-/** Longest signature entry; a control name longer than this is content, not chrome. */
-export const MAX_SCREEN_SIGNATURE_CHARS = 120;
 /** How much of a recorded signature must be on screen again for the screens to count as the same. */
 const SIGNATURE_MATCH_RATIO = 0.6;
 /** Fewer entries than this cannot tell one screen from another. */
