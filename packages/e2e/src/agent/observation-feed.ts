@@ -103,6 +103,11 @@ export class ObservationFeed {
     return this.shown;
   }
 
+  /** True once a screenshot went to the model in this step; text drawn in it is not in `shownText`. */
+  get pixelsShown(): boolean {
+    return this.pixelsSent;
+  }
+
   /** The newest observation, which an action addresses; before the first look there is nothing to address. */
   requireLatest(): AgentObservation {
     if (this.newest === undefined) {

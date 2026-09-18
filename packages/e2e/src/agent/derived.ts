@@ -16,25 +16,37 @@
 
 import type { JsonValue } from '../types.ts';
 
-/**
- * `shown` is what the screens of the step displayed, one string per node
- * (`ObservationFeed.shownText`): the fields that echo a typed value are
- * already left out of it.
- */
+/** What the step showed the model, which a typed value may have been read off. */
+export interface StepEvidence {
+  /**
+   * What the screens displayed, one string per node
+   * (`ObservationFeed.shownText`): the fields that echo a typed value are
+   * already left out of it.
+   */
+  readonly shown?: Iterable<string>;
+  /**
+   * Whether the model received a screenshot in this step. Text drawn in
+   * pixels is not in `shown`, so a value that is not literal may have been
+   * read off the image and counts as derived.
+   */
+  readonly pixels?: boolean;
+}
+
 export function isDerivedValue(
   value: string,
   instruction: string,
   params: Readonly<Record<string, JsonValue>> | undefined,
-  shown: Iterable<string> = [],
+  evidence: StepEvidence = {},
 ): boolean {
   const needle = normalize(value);
   if (needle === '') return false;
   if (normalize(instruction).includes(needle)) return false;
   if (paramStrings(params).some((text) => normalize(text).includes(needle))) return false;
+  if (evidence.pixels === true) return true;
   // Read off the screen (a code, a reference, a name the app minted) or
   // reckoned from the calendar: this run's data. Anything else the model
   // composed itself, and the next run's app takes it as readily.
-  for (const text of shown) {
+  for (const text of evidence.shown ?? []) {
     if (hasWord(normalize(text), needle)) return true;
   }
   return DATE_OR_TIME.test(value);
@@ -58,8 +70,24 @@ function hasWord(text: string, needle: string): boolean {
 
 const WORD_CHAR = /[\p{L}\p{N}]/u;
 
-/** An ISO or slashed date, or a clock time: the model reckons these from today, which moves. */
-const DATE_OR_TIME = /\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}[/.]\d{1,2}[/.]\d{2,4}\b|\b\d{1,2}:\d{2}(?::\d{2})?\b/;
+/** A month by name or abbreviation, with or without a trailing period. */
+const MONTH = String.raw`(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?`;
+const DAY = String.raw`\d{1,2}(?:st|nd|rd|th)?`;
+
+/**
+ * A date in ISO, numeric, or month-name form, or a clock time: the model
+ * reckons these from today, which moves.
+ */
+const DATE_OR_TIME = new RegExp(
+  [
+    String.raw`\b\d{4}-\d{2}-\d{2}\b`,
+    String.raw`\b\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\b`,
+    String.raw`\b\d{1,2}:\d{2}(?::\d{2})?\b`,
+    String.raw`\b${MONTH} ${DAY}(?:,? \d{4})?\b`,
+    String.raw`\b${DAY} ${MONTH}(?:,? \d{4})?\b`,
+  ].join('|'),
+  'i',
+);
 
 /** Every string and number a params object carries, at any depth. */
 function paramStrings(params: Readonly<Record<string, JsonValue>> | undefined): string[] {

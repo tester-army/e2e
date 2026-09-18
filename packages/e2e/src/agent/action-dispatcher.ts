@@ -374,12 +374,16 @@ export class ActionDispatcher {
     if (name !== 'typeSecret') this.feed.armChange(name === 'scroll' ? BRIEF_CHANGE_WAIT_MS : undefined);
     const trace = this.options.trace();
     if (trace === undefined) return;
-    // A typed value the step read off the screen or reckoned from the date is
-    // this run's data, not the flow's: it is recorded as a gap so replay hands
-    // over before it rather than typing a value the app may not issue again.
+    // A typed value the step read off the screen (its tree, or a screenshot
+    // it was shown) or reckoned from the date is this run's data, not the
+    // flow's: it is recorded as a gap so replay hands over before it rather
+    // than typing a value the app may not issue again.
     if (
       (action.name === 'type' || action.name === 'typeText') &&
-      isDerivedValue(action.value, this.options.instruction, this.options.params, this.feed.shownText())
+      isDerivedValue(action.value, this.options.instruction, this.options.params, {
+        shown: this.feed.shownText(),
+        pixels: this.feed.pixelsShown,
+      })
     ) {
       trace.recordGap('type (run-time value)');
       return;
