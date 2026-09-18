@@ -310,12 +310,10 @@ async function pollSettled<T>(
     if (screen.kind === 'pixels' || !host.traceEligible) return undefined;
     const answer = probe(screen);
     if (answer !== undefined) return answer;
-    const delay = RETRY_DELAYS_MS[attempt];
-    if (
-      delay === undefined ||
-      Date.now() - startedMs + delay > RETRY_TIMEOUT_MS ||
-      host.remainingMs() <= delay
-    ) {
+    // The backoff's last delay repeats until the wait runs out: the list
+    // shapes the first looks, the timeout bounds them, as the docs promise.
+    const delay = RETRY_DELAYS_MS[attempt] ?? RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1]!;
+    if (Date.now() - startedMs + delay > RETRY_TIMEOUT_MS || host.remainingMs() <= delay) {
       return undefined;
     }
     await sleep(delay, host.signal);
