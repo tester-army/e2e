@@ -56,13 +56,25 @@ const IDENTITY_FIELDS_WITH_TEXT: readonly DescriptorField[] = [...IDENTITY_FIELD
  * cannot: a wrong match acts on the wrong control, so such a descriptor is
  * not relocatable and, as an anchor, would prove nothing.
  */
-function isRelocatableDescriptor(descriptor: TraceTargetDescriptor): boolean {
+/**
+ * A descriptor with nothing to identify the control by: no test id, name,
+ * text, or placeholder, only a role. A form built without labels is made of
+ * these. Such a descriptor relocates by its place among the unnamed
+ * controls of its kind, so it is relocatable only once a position was
+ * recorded for it, and it is matched strictly (`fieldsIdentical`): an
+ * unnamed textbox must never stand in for a named one.
+ */
+function isAnonymous(descriptor: TraceTargetDescriptor): boolean {
   return (
-    descriptor.testId !== undefined ||
-    descriptor.name !== undefined ||
-    descriptor.text !== undefined ||
-    descriptor.placeholder !== undefined
+    descriptor.testId === undefined &&
+    descriptor.name === undefined &&
+    descriptor.text === undefined &&
+    descriptor.placeholder === undefined
   );
+}
+
+function isRelocatableDescriptor(descriptor: TraceTargetDescriptor): boolean {
+  return isAnonymous(descriptor) ? descriptor.role !== undefined && descriptor.position !== undefined : true;
 }
 
 /** The semantic tier of a descriptor: every identity field but the test id. */
@@ -98,6 +110,15 @@ export function fieldsEqual(
   fields: readonly DescriptorField[],
 ): boolean {
   return fields.every((field) => recorded[field] === undefined || candidate[field] === recorded[field]);
+}
+
+/** Like `fieldsEqual`, but a field the recording lacks must be absent on the candidate too. */
+function fieldsIdentical(
+  recorded: TraceTargetDescriptor,
+  candidate: TraceTargetDescriptor,
+  fields: readonly DescriptorField[],
+): boolean {
+  return fields.every((field) => candidate[field] === recorded[field]);
 }
 
 interface Projection extends DescriptorMatchOptions {
@@ -186,6 +207,11 @@ function matchingIds(
 }
 
 function tierMatches(tier: TraceTargetDescriptor, candidates: readonly DescribedNode[]): string[] {
+  if (isAnonymous(tier)) {
+    return candidates
+      .filter((candidate) => fieldsIdentical(tier, candidate.descriptor, IDENTITY_FIELDS_WITH_TEXT))
+      .map((candidate) => candidate.id);
+  }
   const fields = tier.testId === undefined && tier.name === undefined ? IDENTITY_FIELDS_WITH_TEXT : IDENTITY_FIELDS;
   return candidates
     .filter((candidate) => fieldsEqual(tier, candidate.descriptor, fields))
@@ -208,9 +234,14 @@ export function describePosition(
   options: DescriptorMatchOptions,
 ): TracePosition | undefined {
   const described = describeTarget(node, options.redact);
-  if (described === undefined) return undefined;
-  const ids = matchingIds(within === undefined ? described : { ...described, within }, nodes, options);
-  if (ids.length < 2 || ids.length > MAX_POSITIONED_TWINS) return undefined;
+  if (described === undefined || (described.role === undefined && isAnonymous(described))) return undefined;
+  // An anonymous target has no identity to match alone; its position is what
+  // makes it relocatable, so it is counted among its unnamed twins even when
+  // it is the only one, and described with a placeholder position to do so.
+  const anonymous = isAnonymous(described);
+  const probe = { ...described, ...(within === undefined ? {} : { within }), ...(anonymous ? { position: { index: 0, of: 1 } } : {}) };
+  const ids = matchingIds(probe, nodes, options);
+  if (ids.length < (anonymous ? 1 : 2) || ids.length > MAX_POSITIONED_TWINS) return undefined;
   const index = ids.indexOf(node.ref.id);
   return index === -1 ? undefined : { index, of: ids.length };
 }

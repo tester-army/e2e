@@ -38,7 +38,8 @@ npx e2e run --no-cache
 1. Check the starting page. Retries always run live.
 2. Find each recorded control and repeat its action. The runner matches
    controls by their role, name, test id, and surrounding context. It waits
-   for missing controls and stops if a match is ambiguous.
+   for missing controls and stops if a match is ambiguous. A control with no
+   name is found by its place among the unnamed controls of its kind.
 3. Check the final path and controls that appeared during the original step.
 4. Finish without a model call, or let the agent continue with a record of
    what ran and why replay stopped.
