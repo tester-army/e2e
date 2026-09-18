@@ -31,7 +31,6 @@
   },
   "devDependencies": {
     "@e2edev/agent-device": "workspace:*",
-    "@e2edev/github": "workspace:*",
     "@types/node": "26.4.1",
     "@types/react": "19.1.4",
     "ai": "7.0.97",

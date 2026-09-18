@@ -1,15 +1,12 @@
 import type { E2EConfig } from 'e2e';
 import { createAgent } from 'e2e/agent';
 import { agentDeviceTools } from '@e2edev/agent-device/tools';
-import { github } from '@e2edev/github';
 import { gateway } from 'ai';
 import base, { android, ios } from './e2e.config.ts';
 
 /**
  * Agentic suite against the same app and account as the deterministic one.
- * It gates every PR on the iOS target alongside that suite (`benchmark.yml`
- * passes the model key); each step spends real model calls and real device
- * time. By hand:
+ * Each step spends real model calls and real device time, so it runs by hand:
  *
  *   AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/mobile-benchmark test:agent
  *
@@ -23,7 +20,6 @@ export default {
   // Every agent step includes model round trips on top of device time, so
   // the deterministic budget is too tight for a loaded provider.
   timeout: 300_000,
-  reporters: ['list', github({ key: 'mobile agent' })],
   agents: {
     default: {
       executor: createAgent({ tools: agentDeviceTools(ios, android) }),

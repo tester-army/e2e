@@ -320,9 +320,6 @@ importers:
       '@e2edev/agent-device':
         specifier: workspace:*
         version: link:../agent-device
-      '@e2edev/github':
-        specifier: workspace:*
-        version: link:../github
       '@types/node':
         specifier: 26.4.1
         version: 26.4.1

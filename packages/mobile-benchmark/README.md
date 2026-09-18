@@ -39,13 +39,8 @@ from the directory it runs in.
   harness cannot finish yet are declared with a `gap` and skip with that
   reason, so every run shows what is still missing.
 
-Both suites gate every pull request on the iOS target (`benchmark.yml`).
-The workflow builds the simulator app once per change to the app itself
-(`src/`, `modules/`, `assets/`, `app.json`, `index.ts`, `package.json`,
-the lockfile) and restores it from the Actions cache otherwise, so a change
-to the tests alone never rebuilds. `@e2edev/github` posts each run as one
-pull request comment. Android does not run in CI: the runners have no
-emulator.
+Neither suite runs in CI: the runners have no simulator, and every agentic
+step spends real model calls and real device time.
 
 ## Running
 
