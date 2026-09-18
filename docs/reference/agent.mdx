@@ -5,9 +5,10 @@ description: Run agent actions, check conditions, and extract structured data.
 
 Use `act` to interact with the app, `assert` to check the current screen,
 `waitFor` to wait for a condition, and `extract` to read structured data.
-Each call starts with a fresh observation and has its own timeout and model-call
-budget. Acquiring the fixture without a configured model fails with
-`MODEL_UNAVAILABLE`.
+Each call has its own timeout and model-call budget. The built-in agent
+requires a configured model and otherwise raises `MODEL_UNAVAILABLE`.
+[Custom executors](/executors) can implement `act` and `assert` without one;
+`waitFor` and `extract` still need a model.
 
 ```ts
 export interface Agent {

@@ -598,13 +598,14 @@ secret, and `CI` switches the defaults below.
 | Setting | Order |
 | --- | --- |
 | Base URL | the engine's declared `url`, else `APP_URL_REQUIRED` at the first navigation. The runner reads no `APP_URL`; the scaffolded config reads it itself |
-| Model | the model passed to `createAgent({ model })`, then `agents.<name>.model`, then `MODEL_UNAVAILABLE` at `agent` acquisition |
+| Built-in agent model | the model passed to `createAgent({ model })`, then `agents.<name>.model`, then `MODEL_UNAVAILABLE` at `agent` acquisition |
 | Model credential | the provider package's own variable or the key passed at construction, read by the provider on the first model call |
 | Credential username and password | the `E2E_USER_*` variable, then the config value |
 
-A missing model is checked once per run, when the `agent` fixture is first
-acquired, and stops the run with exit 2. A custom executor without a model
-skips the check; its judgment methods still need one.
+The built-in agent checks for a missing model once per run, when the `agent`
+fixture is first acquired, and stops the run with exit 2. A custom executor
+can implement `act` and `assert` without a model. `waitFor` and `extract`
+still require one.
 
 ### CI
 

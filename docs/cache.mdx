@@ -17,12 +17,15 @@ The run summary reports the outcomes:
         Cache  4 replayed · 1 handed off · 1 missed
 ```
 
-- `replayed`: the recording completed without a model call.
-- `handed off`: replay started, then the agent took over.
-- `missed`: the agent ran the step from the beginning.
+| Run summary | `step.cache.mode` | Meaning |
+| --- | --- | --- |
+| `replayed` | `self-finalized` | The recording completed without a model call. |
+| `handed off` | `agent-concluded` | Replay started, then the agent took over. |
+| `missed` | `missed` | The agent ran the step from the beginning. |
 
-The report stores the outcome in `step.cache`, including a `reason` for
-misses and hand-offs. `agent.act()` returns the same object.
+Misses and hand-offs also include `step.cache.reason`. `agent.act()` returns
+the same cache object as `result.cache`. The cache object is absent when
+caching is off for the step.
 
 To rule the cache out of a failure, run once without it:
 

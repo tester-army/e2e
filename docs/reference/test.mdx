@@ -229,7 +229,7 @@ are collection errors. Set them on the group.
 
 ```ts
 export interface TestFixtures {
-  /** Agent steps. Acquiring it without a configured model is `MODEL_UNAVAILABLE`. */
+  /** Agent steps. The built-in agent requires a configured model. */
   readonly agent: Agent;
   /** App lifecycle: open, restart, clear state, back, screenshot. */
   readonly app: App;
