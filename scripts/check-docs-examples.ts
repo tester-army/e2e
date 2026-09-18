@@ -24,7 +24,7 @@ const EXAMPLES: Record<string, string> = {
   'docs/examples/quickstart/mobile/tests/example.e2e.ts': 'docs/quickstart.mdx',
   'docs/examples/quickstart/mobile/tests/agent.e2e.ts': 'docs/quickstart.mdx',
   'docs/examples/quickstart/e2e.command.config.ts': 'docs/starting-your-app.mdx',
-  'docs/examples/mobile/eas-simulator.ts': 'docs/mobile.mdx',
+  'docs/examples/mobile/device-provider.ts': 'docs/mobile.mdx',
 };
 
 function read(path: string): string {

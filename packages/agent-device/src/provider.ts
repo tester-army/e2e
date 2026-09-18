@@ -3,8 +3,8 @@
  * device per worker slot for the run and hands back the agent-device daemon
  * that drives it. The engine acquires in `prepare`, drives each lease from
  * its worker, and releases in `finish`, on every exit path. Nothing here
- * knows any vendor: an Expo EAS Simulator session, a LimRun instance, or a
- * daemon on a machine down the hall are each one small provider in user code.
+ * knows any vendor: a hosted simulator service, a device farm, or a daemon on
+ * a machine down the hall are each one small provider in user code.
  */
 
 import { ConfigurationError } from 'e2e/engine';
