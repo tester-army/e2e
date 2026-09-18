@@ -24,7 +24,7 @@ import { AttemptBudget } from './budget.ts';
 import { TargetExecutor, type ClosingRecord } from './execute.ts';
 import { createFixtures } from './fixtures.ts';
 import type { EnginePrepareResult } from '../engine/index.ts';
-import { finishEngine, prepareEngine, startDeclaredProcesses, validateEngine, type AppProcesses } from './provision.ts';
+import { PreparedEngines, startDeclaredProcesses, validateEngine, type AppProcesses } from './provision.ts';
 import { SessionStore } from './sessions.ts';
 import { StepRecorder, type StepProgress } from './steps.ts';
 import { WorkerModels } from './worker-models.ts';
@@ -88,29 +88,19 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
   setSecretRegistry(config);
   let processes: AppProcesses;
   let prepared: EnginePrepareResult | void;
-  /**
-   * Releases what `prepare` acquired; runs on every exit path once `prepare`
-   * was called. Under its own cleanup budget, never the attempt's signal: a
-   * cancelled attempt is exactly when a leased device must still be released.
-   */
-  const finishEngineOnce = async (onFailure: (cause: unknown) => void): Promise<void> => {
-    try {
-      await finishEngine(
-        target,
-        { runId, projectRoot: config.projectRoot, env: options.env, signal: new AbortController().signal, timeoutMs: config.cleanupTimeout },
-        (line) => notice(target.name, line),
-      );
-    } catch (cause) {
-      onFailure(cause);
-    }
-  };
+  const engines = new PreparedEngines();
+  const noticeFor = (name: string) => (message: string) => notice(name, message);
+  /** Releases what `prepare` acquired, under the cleanup budget; every failure goes to `onFailure`. */
+  const finishEngines = (onFailure: (cause: unknown) => void): Promise<void> =>
+    engines.finish({ runId, env: options.env, timeoutMs: config.cleanupTimeout }, noticeFor, onFailure);
   try {
     // One worker on one target: one slot to provision.
-    prepared = await prepareEngine(target, 1, { runId, projectRoot: config.projectRoot, env: options.env, signal }, (line) => notice(target.name, line));
+    prepared = await engines.prepare(target, 1, { runId, projectRoot: config.projectRoot, env: options.env, signal }, noticeFor(target.name));
     const hooks = { ci: config.ci, notice: (message: string) => notice('app', message) };
     processes = await startDeclaredProcesses([target], config.projectRoot, () => hooks, signal, debug);
   } catch (cause) {
-    await finishEngineOnce(() => undefined);
+    // The opening error is the one that surfaces; a release that fails on the way out is narrated.
+    await finishEngines((failure) => notice(target.name, classifyError(failure).message));
     releaseSecretRegistry(config);
     throw cause;
   }
@@ -149,7 +139,7 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
     cleanupErrors.push(serializeError(classifyError(cause), { phase: 'cleanup' }));
   };
   const teardownProcesses = async (): Promise<void> => {
-    await finishEngineOnce(recordCleanupFailure);
+    await finishEngines(recordCleanupFailure);
     await processes.stop(recordCleanupFailure);
     try {
       sessionStore.cleanup();
@@ -211,11 +201,15 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
       closing ??= (async () => {
         attemptEnd.abort();
         const record: ClosingRecord = { status: 'passed', cleanup: 'complete' };
-        await executor.closeSession(session, attemptId, record, artifacts.sink, cleanupErrors);
-        await executor.dispose();
-        cleanupErrors.push(...executor.collectedRunErrors().map((runError) => runError.error));
-        await artifacts.settle();
-        await teardownProcesses();
+        try {
+          await executor.closeSession(session, attemptId, record, artifacts.sink, cleanupErrors);
+          await executor.dispose();
+          cleanupErrors.push(...executor.collectedRunErrors().map((runError) => runError.error));
+          await artifacts.settle();
+        } finally {
+          // Whatever the attempt's own close did, the app processes and every leased device go.
+          await teardownProcesses();
+        }
         return cleanupErrors;
       })();
       return closing;

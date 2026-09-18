@@ -1,5 +1,6 @@
 /** Shared helpers for the agent-device engine: error constructors, filenames, PNG headers, gestures, the screen location and size. */
 
+import path from 'node:path';
 import { EngineError, type Momentum, type ScrollDirection, type ViewportSize } from 'e2e/engine';
 
 export interface Point {
@@ -31,6 +32,11 @@ export function unsupported(text: string): EngineError {
 }
 
 /** Constrains a caller-supplied artifact label to a safe filename. */
+/** Where a build named in the config lives: relative to the project root, never to the process's cwd. */
+export function resolveBuild(projectRoot: string, appPath: string): string {
+  return path.resolve(projectRoot, appPath);
+}
+
 export function sanitizeFilename(name: string): string {
   return name.replaceAll(/[^A-Za-z0-9._-]/g, '_').slice(0, 64) || 'artifact';
 }

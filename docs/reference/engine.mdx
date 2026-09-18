@@ -150,7 +150,8 @@ export interface Engine {
    * Once per run and target in the runner process, after every worker of the
    * target is gone, on every exit path, whenever `prepare` was called.
    * Release what `prepare` acquired for the run (a leased cloud device).
-   * Runs within the cleanup budget; a failure is a cleanup-phase run error.
+   * Runs within the cleanup budget, never cancelled by an interrupt; a
+   * failure is a cleanup-phase run error.
    */
   finish?(info: EngineFinishInfo): Promise<void>;
   /**
@@ -274,7 +275,7 @@ export interface EngineKeyboard {
 | Hook | Budget |
 | --- | --- |
 | `prepare(info)` | none; only `info.signal` (the run's interrupt) cuts it short. Failure ends the run before any test |
-| `finish(info)` | `cleanupTimeout`; runs whenever `prepare` was called, on every exit path; failure is a cleanup run error |
+| `finish(info)` | `cleanupTimeout`, shared by every prepared target, never cut short by an interrupt; failure is a cleanup run error |
 | `init(info)` | `launchTimeout`; failure is infrastructure |
 | `startAttempt(context)` | `launchTimeout`; on failure or timeout `context.signal` aborts and `endAttempt` runs |
 | `endAttempt(context)` | `cleanupTimeout`; failure marks cleanup failed, the test keeps its status |
@@ -340,18 +341,14 @@ export interface EnginePrepareInfo {
   readonly log: (line: string) => void;
 }
 
-/** Handed to `finish`, once per run and target after the last worker is gone. */
-export interface EngineFinishInfo {
+/** Handed to `finish`, once per run and target after the last worker is gone, with the cleanup budget of one hook. */
+export interface EngineFinishInfo extends EngineCleanupContext {
   /** The run id. */
   readonly runId: string;
   /** The target being finished. */
   readonly targetName: string;
   /** The run's environment, the same `prepare` saw. */
   readonly env: Readonly<Record<string, string | undefined>>;
-  /** Aborts when the cleanup budget is spent. */
-  readonly signal: AbortSignal;
-  /** Remaining cleanup budget when the call starts. */
-  readonly timeoutMs: number;
   /** Reports one line of progress, streamed as a `notice` run event like `prepare`'s. */
   readonly log: (line: string) => void;
 }

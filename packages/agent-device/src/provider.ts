@@ -8,6 +8,7 @@
  */
 
 import { ConfigurationError } from 'e2e/engine';
+import { isDaemon } from './bindings.ts';
 import type { AgentDevicePlatform } from './options.ts';
 
 /** What the engine asks a provider for: one device for one worker slot of a run. */
@@ -62,9 +63,10 @@ export interface DeviceLease {
   /** Device to select inside that daemon, by name or UDID, when it hosts more than one. */
   readonly device?: string | undefined;
   /**
-   * Bundle id or package of the app the provider already installed from
-   * `appPath`. With it the engine installs nothing and, without an `app`
-   * option, opens this app fresh per attempt.
+   * Bundle id or package of the app the provider installed from the
+   * request's `appPath`, and only then: with it the engine installs nothing
+   * and, without an `app` option, opens this app fresh per attempt. A lease
+   * reporting one for a request without `appPath` fails the run.
    */
   readonly installedApp?: string | undefined;
 }
@@ -93,35 +95,33 @@ export interface DeviceProvider {
   release(lease: DeviceLease, context: DeviceReleaseContext): Promise<void>;
 }
 
-/** True for a provider object; a string or list of strings is a local pool. */
-export function isDeviceProvider(device: unknown): device is DeviceProvider {
+/** True for an object in `device`: a string or list of strings is a local pool, anything else is meant as a provider. */
+export function isProviderShaped(device: unknown): boolean {
   return typeof device === 'object' && device !== null && !Array.isArray(device);
 }
 
-/** Rejects a provider missing its members with a message that names the option. */
-export function validateProvider(provider: DeviceProvider): void {
-  if (typeof provider.name !== 'string' || provider.name.trim() === '') {
+/** Narrows an intended provider, or names what it is missing. */
+export function asDeviceProvider(device: unknown): DeviceProvider {
+  const candidate = device as Partial<Record<keyof DeviceProvider, unknown>>;
+  if (typeof candidate.name !== 'string' || candidate.name.trim() === '') {
     throw new ConfigurationError('INVALID_CONFIG', 'agentDevice: a `device` provider needs a non-empty `name`');
   }
   for (const member of ['acquire', 'release'] as const) {
-    if (typeof provider[member] !== 'function') {
-      throw new ConfigurationError('INVALID_CONFIG', `agentDevice: device provider "${provider.name}" must implement ${member}()`);
+    if (typeof candidate[member] !== 'function') {
+      throw new ConfigurationError('INVALID_CONFIG', `agentDevice: device provider "${candidate.name}" must implement ${member}()`);
     }
   }
+  return device as DeviceProvider;
 }
 
-/** A lease as JSON parses it back, checked field by field: the worker trusts nothing it did not write. */
+/** A lease as a provider returned it, checked field by field: the engine trusts nothing it did not write. */
 export function isDeviceLease(value: unknown): value is DeviceLease {
   if (typeof value !== 'object' || value === null) return false;
-  const lease = value as Record<string, unknown>;
-  const daemon = lease['daemon'] as Record<string, unknown> | undefined;
+  const { id, daemon, device, installedApp } = value as Record<keyof DeviceLease, unknown>;
   return (
-    typeof lease['id'] === 'string' &&
-    typeof daemon === 'object' &&
-    daemon !== null &&
-    typeof daemon['baseUrl'] === 'string' &&
-    (daemon['authToken'] === undefined || typeof daemon['authToken'] === 'string') &&
-    (lease['device'] === undefined || typeof lease['device'] === 'string') &&
-    (lease['installedApp'] === undefined || typeof lease['installedApp'] === 'string')
+    typeof id === 'string' &&
+    isDaemon(daemon) &&
+    (device === undefined || typeof device === 'string') &&
+    (installedApp === undefined || typeof installedApp === 'string')
   );
 }

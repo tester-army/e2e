@@ -10,7 +10,7 @@ import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import type { EnginePrepareResult } from '../engine/index.ts';
 import type { DebugTrace } from '../internal/debug.ts';
 import { ConfigurationError, InfrastructureError, translateProvisioningError } from '../internal/errors.ts';
-import { withTimeout } from '../internal/time.ts';
+import { Deadline, NEVER_ABORTS, withScopedBudget } from '../internal/time.ts';
 import { describeTarget, type TargetProvenance } from '../report/build.ts';
 import { declaredProcesses } from './declared-processes.ts';
 import { ManagedProcess, ServiceStack, type ManagedProcessHooks } from './managed-process.ts';
@@ -43,66 +43,84 @@ export interface PrepareScope {
   readonly signal: AbortSignal;
 }
 
-/**
- * Runs one target's `prepare` hook for `slots` worker slots, streaming its
- * progress lines to `log`. Resolves to nothing when the engine declares no
- * hook. Callers run targets in turn: two engines provisioning the same
- * toolchain would race, and the notices of one download read better than
- * two interleaved.
- */
-export async function prepareEngine(
-  target: ResolvedTarget,
-  slots: number,
-  scope: PrepareScope,
-  log: (line: string) => void,
-): Promise<EnginePrepareResult | void> {
-  const engine = target.engine;
-  if (engine?.prepare === undefined) return;
-  try {
-    return await engine.prepare({
-      runId: scope.runId,
-      targetName: target.name,
-      projectRoot: scope.projectRoot,
-      slots,
-      env: scope.env,
-      signal: scope.signal,
-      log,
-    });
-  } catch (cause) {
-    throw translateProvisioningError(cause, ` while preparing engine ${engine.name} for target "${target.name}"`);
-  }
+export interface FinishScope {
+  readonly runId: string;
+  readonly env: NodeJS.ProcessEnv;
+  /** The cleanup budget every prepared target shares. */
+  readonly timeoutMs: number;
 }
 
 /**
- * Runs one target's `finish` hook within the cleanup budget, streaming its
- * progress lines to `log`. Called for every target whose `prepare` was
- * called, whether or not it succeeded, so what a hook acquired before it
- * failed is still released. The wait is bounded like engine disposal: a hook
- * that ignores its signal is abandoned at the budget with `CLEANUP_TIMEOUT`,
- * so teardown and the report never hang on it. `scope.signal` is a forced
- * stop, not the run's interrupt: an interrupted run still releases what it
- * leased. Resolves to nothing when the engine declares no hook; a failure is
- * the caller's to record as a cleanup error.
+ * The prepare/finish pairing of a run or a standalone attempt, in one place:
+ * every target whose `prepare` hook was called gets its `finish`, whatever
+ * happened in between, so what a hook acquired before it failed is still
+ * released. Both entry points hold one of these instead of re-deriving the
+ * protocol.
  */
-export async function finishEngine(
-  target: ResolvedTarget,
-  scope: PrepareScope & { readonly timeoutMs: number },
-  log: (line: string) => void,
-): Promise<void> {
-  const engine = target.engine;
-  if (engine?.finish === undefined) return;
-  const budget = new AbortController();
-  const signal = AbortSignal.any([scope.signal, budget.signal]);
-  const info = { runId: scope.runId, targetName: target.name, env: scope.env, signal, timeoutMs: scope.timeoutMs, log };
-  try {
-    await withTimeout(
-      Promise.resolve().then(() => engine.finish!(info)),
-      scope.timeoutMs,
-      () => new InfrastructureError('CLEANUP_TIMEOUT', `finishing engine ${engine.name} for target "${target.name}" timed out`),
+export class PreparedEngines {
+  private readonly targets: ResolvedTarget[] = [];
+
+  /**
+   * Runs one target's `prepare` hook for `slots` worker slots, streaming its
+   * progress lines to `log`. Resolves to nothing when the engine declares no
+   * hook. Callers run targets in turn: two engines provisioning the same
+   * toolchain would race, and the notices of one download read better than
+   * two interleaved.
+   */
+  async prepare(
+    target: ResolvedTarget,
+    slots: number,
+    scope: PrepareScope,
+    log: (line: string) => void,
+  ): Promise<EnginePrepareResult | void> {
+    const engine = target.engine;
+    if (engine?.prepare === undefined) return;
+    // Registered before the hook runs: a `prepare` that throws part-way still gets its `finish`.
+    this.targets.push(target);
+    try {
+      return await engine.prepare({
+        runId: scope.runId,
+        targetName: target.name,
+        projectRoot: scope.projectRoot,
+        slots,
+        env: scope.env,
+        signal: scope.signal,
+        log,
+      });
+    } catch (cause) {
+      throw translateProvisioningError(cause, ` while preparing engine ${engine.name} for target "${target.name}"`);
+    }
+  }
+
+  /**
+   * Runs the `finish` hook of every prepared target, all at once under one
+   * cleanup deadline: releases are independent, and a run should not wait
+   * one budget per target. Each hook is bounded like engine disposal: it is
+   * never cancelled by an interrupt, and one that ignores its signal is
+   * abandoned at the deadline with `CLEANUP_TIMEOUT`. Every failure goes to
+   * `onFailure`; none skips another target's release.
+   */
+  async finish(scope: FinishScope, log: (targetName: string) => (line: string) => void, onFailure: (cause: unknown) => void): Promise<void> {
+    const deadline = new Deadline(scope.timeoutMs);
+    await Promise.all(
+      this.targets.splice(0).map(async (target) => {
+        const engine = target.engine;
+        const finish = engine?.finish?.bind(engine);
+        if (engine === undefined || finish === undefined) return;
+        const timeoutMs = deadline.remaining();
+        const label = `finishing engine ${engine.name} for target "${target.name}"`;
+        try {
+          await withScopedBudget(
+            timeoutMs,
+            NEVER_ABORTS,
+            () => new InfrastructureError('CLEANUP_TIMEOUT', `${label} timed out`),
+            (signal) => finish({ runId: scope.runId, targetName: target.name, env: scope.env, signal, timeoutMs, log: log(target.name) }),
+          );
+        } catch (cause) {
+          onFailure(translateProvisioningError(cause, ` while ${label}`));
+        }
+      }),
     );
-  } catch (cause) {
-    budget.abort();
-    throw translateProvisioningError(cause, ` while finishing engine ${engine.name} for target "${target.name}"`);
   }
 }
 

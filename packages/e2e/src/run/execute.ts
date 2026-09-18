@@ -20,7 +20,7 @@ import { withAiTraceScope } from '../internal/ai-trace.ts';
 import { DebugTrace } from '../internal/debug.ts';
 import { canonicalDigest, timestamp, uuidv7 } from '../internal/ids.ts';
 import { obj } from '../internal/objects.ts';
-import { Deadline, withAbort, withTimeout } from '../internal/time.ts';
+import { Deadline, NEVER_ABORTS, withAbort, withScopedBudget, withTimeout } from '../internal/time.ts';
 import { createAgentCacheContext, flushStagedTraces } from '../cache/context.ts';
 import type { CollectedFile } from '../collect/collect.ts';
 import type { ModuleRegistration, RegisteredTest } from '../collect/registry.ts';
@@ -103,9 +103,6 @@ export interface ClosingRecord {
   readonly status: AttemptRecord['status'];
   cleanup: AttemptRecord['cleanup'];
 }
-
-/** Signal for operations that only end when they finish, such as cleanup. */
-const NEVER_ABORTS = new AbortController().signal;
 
 /** The file-path slice of a collected file that unit execution needs. */
 export type FileRef = Pick<CollectedFile, 'file' | 'absolutePath'>;
@@ -250,15 +247,9 @@ export class TargetExecutor implements SerialHost {
     parent: AbortSignal,
     run: (signal: AbortSignal) => Promise<T>,
   ): Promise<T> {
-    const scope = new AbortController();
     try {
-      return await withTimeout(
-        Promise.resolve().then(() => run(AbortSignal.any([parent, scope.signal]))),
-        timeoutMs,
-        () => new InfrastructureError(code, `${label} timed out`),
-      );
+      return await withScopedBudget(timeoutMs, parent, () => new InfrastructureError(code, `${label} timed out`), run);
     } catch (cause) {
-      scope.abort();
       throw translateEngineError(cause, ` while ${label}`);
     }
   }

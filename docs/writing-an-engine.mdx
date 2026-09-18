@@ -156,7 +156,8 @@ observation, and compatible editable field. The engine receives a
 - `finish` runs once per target in the runner process after the last worker
   is gone, on every exit path, whenever `prepare` was called. Release what
   `prepare` acquired for the run (a leased cloud device). It has the cleanup
-  budget; a failure is recorded as a cleanup error.
+  budget and is never cancelled by an interrupt; a failure is recorded as a
+  cleanup error.
 - `init` runs once per worker before its first attempt. Boot devices here.
   It receives the app's site, project root, worker slot, and headed setting.
 - `startAttempt` and `endAttempt` surround each attempt. Create and clean up

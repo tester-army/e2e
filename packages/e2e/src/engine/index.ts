@@ -429,18 +429,14 @@ export interface EnginePrepareInfo {
   readonly log: (line: string) => void;
 }
 
-/** Handed to `finish`, once per run and target after the last worker is gone. */
-export interface EngineFinishInfo {
+/** Handed to `finish`, once per run and target after the last worker is gone, with the cleanup budget of one hook. */
+export interface EngineFinishInfo extends EngineCleanupContext {
   /** The run id. */
   readonly runId: string;
   /** The target being finished. */
   readonly targetName: string;
   /** The run's environment, the same `prepare` saw. */
   readonly env: Readonly<Record<string, string | undefined>>;
-  /** Aborts when the cleanup budget is spent. */
-  readonly signal: AbortSignal;
-  /** Remaining cleanup budget when the call starts. */
-  readonly timeoutMs: number;
   /** Reports one line of progress, streamed as a `notice` run event like `prepare`'s. */
   readonly log: (line: string) => void;
 }
@@ -686,7 +682,9 @@ export interface Engine {
    * `prepare` acquired for the run here (a leased cloud device, a remote
    * session billed by the minute); per-worker resources belong in
    * `dispose`. Runs only when `prepare` was called, within the cleanup
-   * budget; a failure is a cleanup-phase run error, never a crash.
+   * budget and never cancelled by an interrupt: an interrupted run is exactly
+   * when a leased device must still be released. A failure is a
+   * cleanup-phase run error, never a crash.
    */
   finish?(info: EngineFinishInfo): Promise<void>;
   /**

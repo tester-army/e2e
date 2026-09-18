@@ -110,6 +110,34 @@ export async function withTimeout<T>(
   }
 }
 
+/** Signal for operations that only end when they finish, such as cleanup. */
+export const NEVER_ABORTS = new AbortController().signal;
+
+/**
+ * Runs one lifecycle hook under a budget: the signal handed to `run` follows
+ * `parent` and is aborted the moment the call fails, timeout included, so a
+ * hook that outlived its budget is told to stop instead of running on.
+ * Synchronous throws are caught. Callers translate the failure themselves.
+ */
+export async function withScopedBudget<T>(
+  timeoutMs: number,
+  parent: AbortSignal,
+  onTimeout: () => Error,
+  run: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const scope = new AbortController();
+  try {
+    return await withTimeout(
+      Promise.resolve().then(() => run(AbortSignal.any([parent, scope.signal]))),
+      timeoutMs,
+      onTimeout,
+    );
+  } catch (cause) {
+    scope.abort();
+    throw cause;
+  }
+}
+
 /**
  * Races a promise against an abort signal; on abort invokes onAbort to build
  * the error. The promise is left running: the caller is abandoning it.

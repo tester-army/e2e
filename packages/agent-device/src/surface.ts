@@ -59,6 +59,7 @@ import {
   notActionable,
   logicalScreenSize,
   readPngSize,
+  resolveBuild,
   sanitizeFilename,
   screenLocation,
   type RawScreenshotResult,
@@ -315,18 +316,16 @@ export class AgentDeviceSurface {
 
   async init(info: EngineInitInfo): Promise<void> {
     this.projectRoot = info.projectRoot;
-    // A leased device is driven through the daemon its lease names; the
-    // provider may also have installed the build, in which case the worker
-    // installs nothing and opens what the lease says is there.
-    const lease = this.pool.lease(info.targetName, info.workerSlot, info.env);
-    this.device = this.pool.device(info.targetName, info.workerSlot, info.env);
-    this.client ??= this.createClient(this.pool.session(info.targetName, info.workerSlot), lease?.daemon);
+    const binding = this.pool.binding(info.targetName, info.workerSlot, info.env);
+    this.device = binding?.device;
+    this.client ??= this.createClient(this.pool.session(info.targetName, info.workerSlot), binding?.daemon);
     await this.command('boot', (client) => client.devices.boot(this.selection()), info.signal);
-    if (lease?.installedApp !== undefined) {
-      if (this.options.app === undefined) this.installedApp = lease.installedApp;
+    if (this.options.appPath === undefined) return;
+    // A provider that installed the build itself says so on the binding; the worker then installs nothing.
+    if (binding?.installedApp !== undefined) {
+      if (this.options.app === undefined) this.installedApp = binding.installedApp;
       return;
     }
-    if (this.options.appPath === undefined) return;
     const installed = await this.installApp(
       this.options.appPath,
       this.options.app === undefined ? {} : { app: this.options.app },
@@ -453,7 +452,7 @@ export class AgentDeviceSurface {
    * with no data; a plain install replaces the binary and keeps its data.
    */
   async installApp(appPath: string, options: InstallAppOptions, signal: AbortSignal): Promise<InstalledApp> {
-    const resolved = path.resolve(this.projectRoot, appPath);
+    const resolved = resolveBuild(this.projectRoot, appPath);
     const selection = this.selection();
     const app = options.app ?? (options.reinstall === true ? this.pinnedApp : undefined);
     if (options.reinstall === true && app === undefined) {

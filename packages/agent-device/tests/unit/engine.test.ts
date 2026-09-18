@@ -12,16 +12,10 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AppError } from 'agent-device';
 import { decodePng, encodePng } from '../helpers/png.ts';
-import type { EngineFixtureContext, EngineHandle, OperationContext, SemanticNode } from 'e2e/engine';
-import { buildEngine } from '../../src/engine.ts';
+import type { EngineFixtureContext, OperationContext, SemanticNode } from 'e2e/engine';
 import type { Device } from '../../src/device.ts';
-import type { AgentDeviceOptions } from '../../src/options.ts';
-import type { DeviceLease, DeviceProvider, DeviceRequest } from '../../src/provider.ts';
-import { AgentDeviceSurface } from '../../src/surface.ts';
-import { createFakeClient, SETTINGS_NODES, SETTINGS_SNAPSHOT, type FakeClient } from '../helpers/fake-client.ts';
-
-/** Deliberately not `process.cwd()`: relative build paths must resolve here, not there. */
-const PROJECT_ROOT = '/project';
+import { SETTINGS_NODES, SETTINGS_SNAPSHOT } from '../helpers/fake-client.ts';
+import { boot, harness, poolVariableIn, PROJECT_ROOT, type Harness } from '../helpers/harness.ts';
 
 /** An agent's operation: the agent reads the screen right after acting, so its actions settle. */
 function operation(signal = new AbortController().signal): OperationContext {
@@ -32,60 +26,7 @@ function cleanup() {
   return { signal: new AbortController().signal, timeoutMs: 5_000 };
 }
 
-/** The pool variable `prepare` wrote for a target, found by its readable prefix (the suffix is a digest of the name). */
-function poolVariableIn(env: NodeJS.ProcessEnv, readable: string): string {
-  const key = Object.keys(env).find((candidate) => new RegExp(`^E2E_AGENT_DEVICE_POOL_${readable}_[0-9A-F]{8}$`).test(candidate));
-  if (key === undefined) throw new Error(`no pool variable for ${readable} in ${Object.keys(env).join(', ')}`);
-  return key;
-}
-
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
-
-async function boot(
-  engine: EngineHandle,
-  targetName = 'ios-simulator',
-  workerSlot = 0,
-  env: Readonly<Record<string, string | undefined>> = {},
-): Promise<void> {
-  await engine.init!({
-    runId: 'run-1',
-    targetName,
-    projectRoot: PROJECT_ROOT,
-    app: {},
-    env,
-    headed: false,
-    workerSlot,
-    signal: new AbortController().signal,
-  });
-}
-
-interface Harness {
-  readonly engine: EngineHandle;
-  readonly fake: FakeClient;
-  readonly sessions: string[];
-  /** The daemon each client was minted against; `undefined` is the local one. */
-  readonly daemons: (DeviceLease['daemon'] | undefined)[];
-  readonly surface: AgentDeviceSurface;
-}
-
-/** An engine over the scripted client; `pinned` false leaves the `app` option out. */
-function harness(options: Partial<AgentDeviceOptions> = {}, pinned = true): Harness {
-  const fake = createFakeClient({
-    'capture.snapshot': () => SETTINGS_SNAPSHOT,
-    'apps.open': () => ({ session: 's', appName: 'Settings', appBundleId: 'com.apple.Preferences', identifiers: {} }),
-    // The viewport probe's answer for a tree without geometry; tests that read pixels script a real file instead.
-    'capture.screenshot': () => ({ logicalWidth: 390, logicalHeight: 844 }),
-  });
-  const sessions: string[] = [];
-  const daemons: (DeviceLease['daemon'] | undefined)[] = [];
-  const base: AgentDeviceOptions = pinned ? { platform: 'ios', app: 'Settings' } : { platform: 'ios' };
-  const surface = new AgentDeviceSurface({ ...base, ...options }, (session, daemon) => {
-    sessions.push(session);
-    daemons.push(daemon);
-    return fake.client;
-  });
-  return { engine: buildEngine(surface), fake, sessions, daemons, surface };
-}
 
 let artifactsDir: string;
 
@@ -303,7 +244,7 @@ describe('lifecycle', () => {
     const handed = result?.env ?? {};
     const variable = poolVariableIn(handed, 'IOS');
     expect(handed[variable]).toBe(
-      JSON.stringify(['2BBF3F07-AF66-4F95-82AB-BF442506FC89', '8A2DC8D6-7B20-44FA-ADBB-47D3EAE6E8F3']),
+      JSON.stringify([{ device: '2BBF3F07-AF66-4F95-82AB-BF442506FC89' }, { device: '8A2DC8D6-7B20-44FA-ADBB-47D3EAE6E8F3' }]),
     );
     expect(env).toEqual({});
     // A worker reads the pool from the environment it was started with, never process.env.
@@ -326,13 +267,13 @@ describe('lifecycle', () => {
     expect(first?.workers).toBe(1);
     const firstEnv = first?.env ?? {};
     expect(h.fake.calls.filter((call) => call.method === 'devices.boot').map((call) => call.args)).toEqual([{ platform: 'ios', device: 'A' }]);
-    expect(firstEnv[poolVariableIn(firstEnv, 'IOS')]).toBe(JSON.stringify(['A']));
+    expect(firstEnv[poolVariableIn(firstEnv, 'IOS')]).toBe(JSON.stringify([{ device: 'A' }]));
     // The same handle prepared again, for another target, discovers afresh and hands back that target's own variable.
     h.fake.respond('devices.list', () => [{ platform: 'ios', id: 'C', name: 'C', booted: true }]);
     const second = await h.engine.prepare!({ ...info, targetName: 'ios.a', env });
     const secondEnv = second?.env ?? {};
     expect(h.fake.methods().filter((method) => method === 'devices.list')).toHaveLength(2);
-    expect(secondEnv[poolVariableIn(secondEnv, 'IOS_A')]).toBe(JSON.stringify(['C']));
+    expect(secondEnv[poolVariableIn(secondEnv, 'IOS_A')]).toBe(JSON.stringify([{ device: 'C' }]));
     // Names that sanitize alike keep distinct variables.
     const third = await h.engine.prepare!({ ...info, targetName: 'ios-a', env });
     expect(Object.keys(third?.env ?? {})[0]).not.toBe(Object.keys(secondEnv)[0]);
@@ -345,7 +286,8 @@ describe('lifecycle', () => {
     expect(coldResult).toMatchObject({ workers: 1 });
     expect(cold.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios' });
     const coldHanded = coldResult?.env ?? {};
-    expect(coldHanded[poolVariableIn(coldHanded, 'IOS')]).toBe('[]');
+    // One slot bound to no device in particular: the daemon picks.
+    expect(coldHanded[poolVariableIn(coldHanded, 'IOS')]).toBe('[{}]');
     expect(coldEnv).toEqual({});
   });
 
@@ -1334,201 +1276,3 @@ describe('deterministic actions', () => {
   });
 });
 
-describe('device provider', () => {
-  /** The lease variable `prepare` wrote for a target, found by its readable prefix. */
-  function leaseVariableIn(env: NodeJS.ProcessEnv, readable: string): string {
-    const key = Object.keys(env).find((candidate) => new RegExp(`^E2E_AGENT_DEVICE_LEASES_${readable}_[0-9A-F]{8}$`).test(candidate));
-    if (key === undefined) throw new Error(`no lease variable for ${readable} in ${Object.keys(env).join(', ')}`);
-    return key;
-  }
-
-  /** A scripted provider: leases `slot-n` against `https://n.example`, remembering every call. */
-  function provider(options: { failSlot?: number; installedApp?: string; failRelease?: boolean } = {}) {
-    const acquired: DeviceRequest[] = [];
-    const released: string[] = [];
-    const impl: DeviceProvider = {
-      name: 'toy-cloud',
-      async acquire(request) {
-        acquired.push(request);
-        if (request.slot === options.failSlot) throw new Error(`no capacity for slot ${request.slot}`);
-        request.log('starting');
-        return {
-          id: `lease-${request.slot}`,
-          daemon: { baseUrl: `https://${request.slot}.example`, authToken: `token-${request.slot}` },
-          device: `sim-${request.slot}`,
-          ...(options.installedApp === undefined ? {} : { installedApp: options.installedApp }),
-        };
-      },
-      async release(lease) {
-        released.push(lease.id);
-        if (options.failRelease === true) throw new Error('stop failed');
-      },
-    };
-    return { impl, acquired, released };
-  }
-
-  const prepareInfo = (env: NodeJS.ProcessEnv, slots: number, log: (line: string) => void = () => undefined) => ({
-    runId: 'run-1',
-    targetName: 'ios',
-    projectRoot: PROJECT_ROOT,
-    slots,
-    env,
-    signal: new AbortController().signal,
-    log,
-  });
-  const finishInfo = (log: (line: string) => void = () => undefined) => ({
-    runId: 'run-1',
-    targetName: 'ios',
-    env: {},
-    signal: new AbortController().signal,
-    timeoutMs: 5_000,
-    log,
-  });
-
-  it('rejects a provider without a name or the two methods', () => {
-    expect(() => harness({ device: { name: '' } as unknown as DeviceProvider })).toThrow(/non-empty `name`/);
-    expect(() => harness({ device: { name: 'x', acquire: async () => ({}) } as unknown as DeviceProvider })).toThrow(
-      /provider "x" must implement release\(\)/,
-    );
-  });
-
-  it('leases one device per slot at prepare, all at once, and hands the leases to the workers through the environment', async () => {
-    const cloud = provider();
-    const h = harness({ device: cloud.impl, appPath: 'build/App.app' });
-    // A provider serves as many workers as the run has slots; the cap is only known once leased.
-    expect(h.engine.workers).toBeUndefined();
-    const lines: string[] = [];
-    const result = await h.engine.prepare!(prepareInfo({ EXPO_TOKEN: 't' }, 2, (line) => lines.push(line)));
-    expect(result?.workers).toBe(2);
-    expect(cloud.acquired.map((request) => [request.slot, request.slots, request.platform, request.app, request.appPath])).toEqual([
-      [0, 2, 'ios', 'Settings', path.join(PROJECT_ROOT, 'build/App.app')],
-      [1, 2, 'ios', 'Settings', path.join(PROJECT_ROOT, 'build/App.app')],
-    ]);
-    expect(cloud.acquired[0]!.env).toEqual({ EXPO_TOKEN: 't' });
-    expect(lines).toEqual([
-      'leasing 2 ios device(s) from toy-cloud',
-      'toy-cloud (1 of 2): starting',
-      'toy-cloud (2 of 2): starting',
-      'toy-cloud: leased lease-0 (sim-0)',
-      'toy-cloud: leased lease-1 (sim-1)',
-    ]);
-    // No local boot in prepare: the device is the provider's to have ready.
-    expect(h.fake.methods()).toEqual([]);
-    const handed = result?.env ?? {};
-    const variable = leaseVariableIn(handed, 'IOS');
-    expect(JSON.parse(handed[variable]!)).toEqual([
-      { id: 'lease-0', daemon: { baseUrl: 'https://0.example', authToken: 'token-0' }, device: 'sim-0' },
-      { id: 'lease-1', daemon: { baseUrl: 'https://1.example', authToken: 'token-1' }, device: 'sim-1' },
-    ]);
-
-    // A child worker reads its lease from the environment and drives that daemon and device.
-    const worker = harness({ device: cloud.impl, appPath: 'build/App.app' });
-    await boot(worker.engine, 'ios', 1, { [variable]: handed[variable] });
-    expect(worker.daemons).toEqual([{ baseUrl: 'https://1.example', authToken: 'token-1' }]);
-    expect(worker.sessions).toEqual(['e2e-ios-1']);
-    expect(worker.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios', device: 'sim-1' });
-    // The build is still the worker's to install when the lease did not.
-    expect(worker.fake.lastArgs('apps.install')).toMatchObject({ device: 'sim-1', appPath: path.join(PROJECT_ROOT, 'build/App.app') });
-
-    // The runner-side handle reads its own leases and releases them at finish.
-    await boot(h.engine, 'ios', 0);
-    expect(h.daemons).toEqual([{ baseUrl: 'https://0.example', authToken: 'token-0' }]);
-    const finished: string[] = [];
-    await h.engine.finish!(finishInfo((line) => finished.push(line)));
-    expect(cloud.released).toEqual(['lease-0', 'lease-1']);
-    expect(finished).toEqual(['toy-cloud: released 2 device(s)']);
-    // Nothing left: a second finish releases nothing.
-    await h.engine.finish!(finishInfo());
-    expect(cloud.released).toHaveLength(2);
-  });
-
-  it('skips the build install when the lease says the provider installed it, and opens that app', async () => {
-    const cloud = provider({ installedApp: 'com.example.app' });
-    const h = harness({ device: cloud.impl, appPath: 'build/App.app' }, false);
-    await h.engine.prepare!(prepareInfo({}, 1));
-    await boot(h.engine, 'ios', 0);
-    expect(h.fake.methods()).toEqual(['devices.boot']);
-    await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal });
-    expect(h.fake.lastArgs('apps.open')).toMatchObject({ app: 'com.example.app', device: 'sim-0' });
-  });
-
-  it('releases the slots that leased when another fails, and fails the run before any test', async () => {
-    const cloud = provider({ failSlot: 1 });
-    const h = harness({ device: cloud.impl });
-    await expect(h.engine.prepare!(prepareInfo({}, 2))).rejects.toMatchObject({
-      code: 'ENGINE_FAILURE',
-      message: expect.stringContaining('device provider "toy-cloud" could not lease a device: no capacity for slot 1'),
-    });
-    // The run's finish still releases the lease slot 0 took.
-    await h.engine.finish!(finishInfo());
-    expect(cloud.released).toEqual(['lease-0']);
-  });
-
-  it('reports a release failure once every lease was tried, and a lease outside the pool as an engine defect', async () => {
-    const cloud = provider({ failRelease: true });
-    const h = harness({ device: cloud.impl });
-    await h.engine.prepare!(prepareInfo({}, 2));
-    await expect(h.engine.finish!(finishInfo())).rejects.toMatchObject({
-      message: expect.stringContaining('could not release a device: stop failed'),
-    });
-    expect(cloud.released).toEqual(['lease-0', 'lease-1']);
-
-    const again = harness({ device: cloud.impl });
-    await again.engine.prepare!(prepareInfo({}, 1));
-    await expect(boot(again.engine, 'ios', 1)).rejects.toMatchObject({
-      message: expect.stringContaining('worker slot 1 is outside the 1 device lease(s)'),
-    });
-  });
-
-  it('leases nothing for a target with no slots, hands the workers only the declared lease fields, and rejects leases too large for an environment', async () => {
-    const idle = provider();
-    const h = harness({ device: idle.impl });
-    expect(await h.engine.prepare!(prepareInfo({}, 0))).toEqual({});
-    expect(idle.acquired).toEqual([]);
-    await h.engine.finish!(finishInfo());
-    expect(idle.released).toEqual([]);
-
-    // A provider's own bookkeeping stays on its object: release gets it back, the worker never sees it.
-    const acquiredLeases: DeviceLease[] = [];
-    const releasedLeases: DeviceLease[] = [];
-    const bookkeeping: DeviceProvider = {
-      name: 'notes',
-      async acquire(request) {
-        const lease = { id: `l-${request.slot}`, daemon: { baseUrl: 'https://d.example' }, expoSession: { secret: 'x'.repeat(100) } };
-        acquiredLeases.push(lease);
-        return lease;
-      },
-      async release(lease) {
-        releasedLeases.push(lease);
-      },
-    };
-    const notes = harness({ device: bookkeeping });
-    const result = await notes.engine.prepare!(prepareInfo({}, 1));
-    const handed = result?.env ?? {};
-    expect(JSON.parse(handed[leaseVariableIn(handed, 'IOS')]!)).toEqual([{ id: 'l-0', daemon: { baseUrl: 'https://d.example' } }]);
-    await notes.engine.finish!(finishInfo());
-    expect(releasedLeases).toEqual(acquiredLeases);
-
-    const oversized: DeviceProvider = {
-      name: 'huge',
-      async acquire(request) {
-        return { id: `l-${request.slot}`, daemon: { baseUrl: 'https://d.example', authToken: 'x'.repeat(20_000) } };
-      },
-      async release() {},
-    };
-    const huge = harness({ device: oversized });
-    await expect(huge.engine.prepare!(prepareInfo({}, 1))).rejects.toMatchObject({
-      message: expect.stringContaining('the worker environment carries at most 16384'),
-    });
-  });
-
-  it('without a prepared lease a provider-backed worker falls back to the local daemon, and finish has nothing to release', async () => {
-    const cloud = provider();
-    const h = harness({ device: cloud.impl });
-    await boot(h.engine, 'ios', 0);
-    expect(h.daemons).toEqual([undefined]);
-    expect(h.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios' });
-    await h.engine.finish!(finishInfo());
-    expect(cloud.released).toEqual([]);
-  });
-});
