@@ -4,6 +4,14 @@ name: benchmark
 # its suites gate every pull request. Each suite posts one comment through
 # @e2edev/github (hence pull-requests: write) and edits it on rerun. The
 # mobile benchmark stays by hand: hosted macOS minutes are not in budget yet.
+#
+# A pull request from a fork runs with no secrets and a read-only token, as
+# GitHub grants on `pull_request`. The deterministic suite needs neither and
+# runs for everyone; its reporter then writes the job summary and says why it
+# did not comment. The agentic suite needs the model key, so it runs only for
+# branches of this repository, where only people with push access can put it
+# to work. Never switch this workflow to `pull_request_target` to get the key
+# onto fork branches: that hands the secret to untrusted code.
 on:
   pull_request:
   push:
@@ -26,19 +34,6 @@ jobs:
   web:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
-    strategy:
-      # One suite failing must not hide the other's result.
-      fail-fast: false
-      matrix:
-        include:
-          - suite: web
-            id: web
-            script: test
-          # The agentic suite spends real model calls, cents per run.
-          - suite: web agent
-            id: web-agent
-            script: test:agent
-    name: ${{ matrix.suite }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
@@ -51,12 +46,11 @@ jobs:
         run: pnpm --filter @e2edev/playwright exec playwright install chromium --with-deps
       - name: Build
         run: pnpm run build
-      - name: Run ${{ matrix.script }}
+      - name: Run test
         env:
-          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
           # The reporter posts the comment with the job's token.
           GITHUB_TOKEN: ${{ github.token }}
-        run: pnpm --filter @e2edev/web-benchmark run ${{ matrix.script }}
+        run: pnpm --filter @e2edev/web-benchmark run test
       # The comment is the result; the artifact is evidence for it. A storage
       # quota that refuses the upload must not turn a green suite red.
       - name: Upload report
@@ -64,10 +58,57 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: web-benchmark-${{ matrix.id }}
+          name: web-benchmark-web
           path: |
             packages/web-benchmark/.e2e/report.json
             packages/web-benchmark/.e2e/artifacts
           if-no-files-found: warn
           retention-days: 7
 
+  # The agentic suite spends real model calls, cents per run, and needs the
+  # key: a fork's pull request has none, so it is skipped rather than failed.
+  web-agent:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 30
+    name: web agent
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 26
+          cache: pnpm
+      # A missing credential fails every agent step with MODEL_UNAVAILABLE,
+      # which reads as a product defect. Say what is actually wrong instead.
+      - name: Require model credential
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+        run: |
+          if [ -z "$AI_GATEWAY_API_KEY" ]; then
+            echo "::error::AI_GATEWAY_API_KEY is not set for this repository." \
+              "The agentic suite needs a real provider credential."
+            exit 1
+          fi
+      - run: pnpm install --frozen-lockfile
+      - name: Install browsers
+        run: pnpm --filter @e2edev/playwright exec playwright install chromium --with-deps
+      - name: Build
+        run: pnpm run build
+      - name: Run test:agent
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+          # The reporter posts the comment with the job's token.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: pnpm --filter @e2edev/web-benchmark run test:agent
+      - name: Upload report
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: web-benchmark-web-agent
+          path: |
+            packages/web-benchmark/.e2e/report.json
+            packages/web-benchmark/.e2e/artifacts
+          if-no-files-found: warn
+          retention-days: 7
