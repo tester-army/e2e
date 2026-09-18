@@ -55,8 +55,19 @@ type Encoding = 'uri' | 'form';
 
 const ENCODERS: Readonly<Record<Encoding, (value: string) => string>> = {
   uri: (value) => encodeURIComponent(value),
-  form: (value) => encodeURIComponent(value).replaceAll('%20', '+'),
+  // What a form submission or `URLSearchParams` writes: `+` for a space, and
+  // `!'()~` percent-encoded too, which `encodeURIComponent` leaves alone.
+  form: (value) => new URLSearchParams([['v', value]]).toString().slice(2),
 };
+
+/** A value's encoded spelling, or undefined when it has none (an unpaired surrogate cannot be encoded). */
+function encode(encoding: Encoding, value: string): string | undefined {
+  try {
+    return ENCODERS[encoding](value);
+  } catch {
+    return undefined;
+  }
+}
 
 function placeholder(pointer: string, encoding?: Encoding): string {
   return `${PLACEHOLDER_PREFIX}${pointer}${encoding === undefined ? '' : `|${encoding}`}}}`;
@@ -84,8 +95,8 @@ function spellings(templates: readonly ParamTemplate[]): readonly Spelling[] {
     const seen = new Set<string>([template.value]);
     out.push({ text: template.value, placeholder: placeholder(template.pointer), pointer: template.pointer });
     for (const encoding of Object.keys(ENCODERS) as Encoding[]) {
-      const text = ENCODERS[encoding](template.value);
-      if (seen.has(text)) continue;
+      const text = encode(encoding, template.value);
+      if (text === undefined || seen.has(text)) continue;
       seen.add(text);
       out.push({ text, placeholder: placeholder(template.pointer, encoding), pointer: template.pointer });
     }
@@ -118,6 +129,21 @@ export function templateParams(
   const walkObject = (value: Readonly<Record<string, JsonValue>>, pointer: string): Readonly<Record<string, JsonValue>> =>
     Object.fromEntries(Object.entries(value).map(([key, item]) => [key, walk(item, paramPointer(pointer, key))]));
   return walkObject(params ?? {}, '');
+}
+
+/**
+ * Whether no two templates share a spelling: two marked params with one
+ * value, or one whose value is another's encoded form (`a b` and `a%20b`),
+ * would leave the text unable to say which param it spelled.
+ */
+function spellingsDistinct(templates: readonly ParamTemplate[]): boolean {
+  const owners = new Map<string, string>();
+  for (const spelling of spellings(templates)) {
+    const owner = owners.get(spelling.text);
+    if (owner !== undefined && owner !== spelling.pointer) return false;
+    owners.set(spelling.text, spelling.pointer);
+  }
+  return true;
 }
 
 /**
@@ -163,7 +189,12 @@ export function expandText(text: string, values: ReadonlyMap<string, string>): s
       missing = true;
       return '';
     }
-    return parsed.encoding === undefined ? value : ENCODERS[parsed.encoding](value);
+    const filled = parsed.encoding === undefined ? value : encode(parsed.encoding, value);
+    if (filled === undefined) {
+      missing = true;
+      return '';
+    }
+    return filled;
   });
   return missing ? undefined : expanded;
 }
@@ -173,10 +204,10 @@ export function expandText(text: string, values: ReadonlyMap<string, string>): s
  * wherever the recorded text spelled it, or undefined when the recording
  * cannot be templated safely: the text already spelled a placeholder, which
  * could not be told from a written one at replay, or two marked params
- * share a value, so the text cannot say which one it came from.
+ * share a spelling, so the text cannot say which one it came from.
  */
 export function templateTrace(trace: ActionTrace, templates: readonly ParamTemplate[]): ActionTrace | undefined {
-  if (new Set(templates.map((template) => template.value)).size !== templates.length) return undefined;
+  if (!spellingsDistinct(templates)) return undefined;
   let literalPlaceholder = false;
   const templated = mapTraceText(trace, (text) => {
     if (text.includes(PLACEHOLDER_PREFIX)) literalPlaceholder = true;

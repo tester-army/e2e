@@ -155,9 +155,20 @@ describe('templateTrace and expandTrace', () => {
     expect(templateTrace(odd, [])).toBeUndefined();
   });
 
-  it('refuses to template when two marked params share a value, since the text cannot say which one it spelled', () => {
+  it('refuses to template when two marked params share a spelling, since the text cannot say which one it spelled', () => {
     const shared = [...name('Acme Corp'), { pointer: '/slug', value: 'Acme Corp' }];
     expect(templateTrace(trace('Acme Corp'), shared)).toBeUndefined();
+    // One value is the other's encoded form.
+    const aliased = [...name('Acme Corp'), { pointer: '/slug', value: 'Acme%20Corp' }];
+    expect(templateTrace(trace('Acme Corp'), aliased)).toBeUndefined();
+  });
+
+  it('spells the form encoding as a form submission does, and skips the encodings of a value that has none', () => {
+    expect(templateText("?q=Ada%27s+%28new%29+shop%7E%21", [{ pointer: '/q', value: "Ada's (new) shop~!" }])).toBe('?q={{param:/q|form}}');
+    // An unpaired surrogate cannot be percent-encoded; the value itself still templates and staging does not throw.
+    const odd = 'bad \ud800 value';
+    expect(templateText(`typed ${odd}`, [{ pointer: '/v', value: odd }])).toBe('typed {{param:/v}}');
+    expect(expandText('{{param:/v|uri}}', values([{ pointer: '/v', value: odd }]))).toBeUndefined();
   });
 
   it('templates the location paths too, in every spelling a URL gives the value, so a value in the URL follows the run', () => {
