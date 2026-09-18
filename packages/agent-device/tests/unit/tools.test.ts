@@ -11,7 +11,7 @@ describe('agent tool pack', () => {
     const ios = buildEngine(new AgentDeviceSurface({ platform: 'ios' }, () => fake.client));
     const android = buildEngine(new AgentDeviceSurface({ platform: 'android' }, () => fake.client));
     const tools = agentDeviceTools(ios);
-    expect(Object.keys(tools).toSorted()).toEqual(['alert', 'open_app', 'swipe', 'type_text']);
+    expect(Object.keys(tools).toSorted()).toEqual(['alert', 'open_app', 'swipe']);
     for (const defined of Object.values(tools)) {
       expect(defined.annotations.platforms).toEqual(['ios']);
     }
@@ -54,13 +54,10 @@ describe('agent tool pack', () => {
     expect(await run('open_app', { app: 'Clock', relaunch: true })).toBe('Opened Clock.');
     expect(await run('swipe', { from: { x: 300, y: 200 }, to: { x: 20, y: 200 } })).toMatch(/Swiped/);
     expect(await run('alert', { action: 'dismiss' })).toBe('Alert dismissed.');
-    expect(await run('type_text', { text: 'Milk', submit: true })).toBe('Typed "Milk" and pressed Return.');
     expect(androidFake.methods().slice(1)).toEqual([
       'apps.open',
       'interactions.swipe',
       'command.alert',
-      'interactions.type',
-      'command.keyboard',
     ]);
     expect(androidFake.lastArgs('apps.open')).toEqual({ app: 'Clock', platform: 'android', relaunch: true });
     expect(iosFake.methods()).toEqual(['devices.boot']);

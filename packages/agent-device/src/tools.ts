@@ -98,25 +98,10 @@ export function agentDeviceTools(
       }),
       annotate(true),
     ),
-    type_text: defineTool(
-      deviceTool({
-        description:
-          'Type text into whatever field currently has keyboard focus, then optionally press Return. Use only when the focused field is missing from the observation (some editors hide it); otherwise use the type verb on a node.',
-        inputSchema: z.object({ text: z.string().min(1), submit: z.boolean().optional() }),
-        execute: async ({ text, submit }, options) => {
-          const surface = active();
-          await surface.command('type', (client) => client.interactions.type({ text }), abort(options));
-          if (submit === true) {
-            await surface.command('keyboard', (client) => client.command.keyboard({ action: 'enter' }), abort(options));
-          }
-          return submit === true ? `Typed ${JSON.stringify(text)} and pressed Return.` : `Typed ${JSON.stringify(text)}.`;
-        },
-      }),
-      annotate(true),
-    ),
     alert: defineTool(
       deviceTool({
-        description: 'Accept or dismiss a visible system alert or permission prompt.',
+        description:
+          'Accept or dismiss a visible system alert or permission prompt. Use it when the alert\'s buttons are not listed on screen; a listed button tapped by id is the same tap and replays from the trace cache, this tool does not.',
         inputSchema: z.object({ action: z.enum(['accept', 'dismiss']) }),
         execute: async ({ action }, options) => {
           await active().command('alert', (client) => client.command.alert({ action }), abort(options));
