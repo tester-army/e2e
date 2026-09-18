@@ -102,6 +102,9 @@ Use the point tools for a canvas, a game, or a native screen without
 accessibility exposure. Once a secret has been filled in the attempt no
 screenshot leaves the runner and the pixel tools leave the vocabulary, so
 act on pixels before signing in, or in a test of its own.
+When an action closes an on-screen keyboard, the result says so: on a touch
+screen that tap was often spent on closing it, so act on the control again
+before concluding.
 
 ## assert, waitFor, extract: one question
 

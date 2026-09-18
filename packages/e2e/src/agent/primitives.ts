@@ -18,7 +18,7 @@ import { isRuntimeHardStop, BLOCKABLE_CODES, type StepExecutorContext, type Step
 import { cacheTokenFields, readCost } from './model/sdk.ts';
 import { OperationQueue } from './operation-queue.ts';
 import { imagePointToViewport } from './point-tap.ts';
-import { ScreenPresenter, type ScreenOutput } from './screen-update.ts';
+import { ScreenPresenter, type ScreenOutput, type ScreenUpdateOptions } from './screen-update.ts';
 
 /** Codes the model may pick when concluding; runtime codes are runtime-assigned. */
 const MODEL_ERROR_CODES = [
@@ -46,7 +46,7 @@ const MODEL_ERROR_CODES = [
 const MAX_VERDICT_SUMMARY_CHARS = 2_000;
 
 /** Screens one scroll call may move; a windowed list of thousands of rows still needs a better verb. */
-const MAX_SCROLL_TIMES = 5;
+const MAX_SCROLL_TIMES = 20;
 
 /**
  * Keys whose whole effect is where the focus or the caret sits, which the
@@ -245,7 +245,7 @@ export function createGrammarTools(
       description:
         'Look at the screen again and get what changed since the screen you last received. Action results already include their changes, so call this only after waiting for something in progress, never right after an action.',
       inputSchema: z.object({}),
-      execute: () => inOrder(() => guard(() => present('Observed.', false))),
+      execute: () => inOrder(() => guard(() => present('Observed.', { expectChange: false }))),
     }),
   };
   if (verbs.has('tap')) {
@@ -293,15 +293,15 @@ export function createGrammarTools(
       }),
       execute: ({ target: id, key }) =>
         id === undefined
-          ? acting(`Pressed ${key} on the focused field.`, () => context.actions.pressKey(key), !movesFocusOnly(key))
-          : acting(`Pressed ${key} on #${id}.`, () => context.actions.press({ id }, key), !movesFocusOnly(key)),
+          ? acting(`Pressed ${key} on the focused field.`, () => context.actions.pressKey(key), { expectChange: !movesFocusOnly(key) })
+          : acting(`Pressed ${key} on #${id}.`, () => context.actions.press({ id }, key), { expectChange: !movesFocusOnly(key) }),
     });
   }
   if (verbs.has('dismissKeyboard')) {
     tools['dismiss_keyboard'] = screenTool({
       description: 'Hide the on-screen keyboard when it covers what you need to reach.',
       inputSchema: z.object({}),
-      execute: () => acting('Dismissed the keyboard.', () => context.actions.dismissKeyboard(), false),
+      execute: () => acting('Dismissed the keyboard.', () => context.actions.dismissKeyboard(), { expectChange: false, keyboardNote: false }),
     });
   }
   if (verbs.has('select')) {
@@ -321,16 +321,16 @@ export function createGrammarTools(
       .max(MAX_SCROLL_TIMES)
       .optional()
       .describe(`How many screens to scroll in this one call, 1 to ${String(MAX_SCROLL_TIMES)}; default 1. Use more to move far down a long list or feed.`);
-    // Each repeat is one recorded action against the budget, paced like a
-    // separate call, so a lazy list gets to render between screens.
-    const scrolling = async (way: 'up' | 'down' | 'left' | 'right', id: string | undefined, count: number) => {
-      for (let repeat = 0; repeat < count; repeat += 1) {
-        await context.actions.scroll(way, id === undefined ? undefined : { id });
-        if (repeat < count - 1) await context.observe();
-      }
-    };
     const scrolled = (way: string, count: number) =>
       count === 1 ? `Scrolled ${way}.` : `Scrolled ${way} ${String(count)} screens.`;
+    // Each repeat is one recorded action against the budget, paced like a
+    // separate call, so a lazy list gets to render between screens.
+    const scrolling = async (way: 'up' | 'down' | 'left' | 'right', id: string | undefined, count: number): Promise<void> => {
+      for (let repeat = 0; repeat < count; repeat += 1) {
+        if (repeat > 0) await context.observe();
+        await context.actions.scroll(way, id === undefined ? undefined : { id });
+      }
+    };
     // Node-targeted scrolling rides `perform`; without it only the viewport scrolls.
     tools['scroll'] = verbs.has('tap')
       ? screenTool({
@@ -338,13 +338,13 @@ export function createGrammarTools(
             'Scroll the viewport, or one scrollable node when target is given. The result reports the rows that came into or left the tree.',
           inputSchema: z.object({ direction, target: target.optional(), times }),
           execute: ({ direction: way, target: id, times: count }) =>
-            acting(scrolled(way, count ?? 1), () => scrolling(way, id, count ?? 1), false),
+            acting(scrolled(way, count ?? 1), () => scrolling(way, id, count ?? 1), { expectChange: false }),
         })
       : screenTool({
           description: 'Scroll the viewport. The result reports the rows that came into or left the tree.',
           inputSchema: z.object({ direction, times }),
           execute: ({ direction: way, times: count }) =>
-            acting(scrolled(way, count ?? 1), () => scrolling(way, undefined, count ?? 1), false),
+            acting(scrolled(way, count ?? 1), () => scrolling(way, undefined, count ?? 1), { expectChange: false }),
         });
   }
   if (verbs.has('navigate')) {
@@ -384,7 +384,7 @@ export function createGrammarTools(
         acting(
           `Filled secret "${name}" into #${id}; its value is masked in every observation.`,
           () => context.actions.typeSecret({ id }, name),
-          false,
+          { expectChange: false },
         ),
     });
   }
@@ -590,12 +590,12 @@ function verbKit(context: StepExecutorContext, options: GrammarToolOptions) {
   const queue = new OperationQueue();
   const inOrder = <T>(body: () => Promise<T>): Promise<T> => queue.run(body);
   /** The screen after an action: the changes since the one the model holds and, once the step shows pixels, a fresh screenshot. */
-  const present = async (lead: string, expectChange?: boolean): Promise<ScreenOutput> =>
-    screen.present(await context.observe({ pixels: screen.showingPixels }), { lead, expectChange });
+  const present = async (lead: string, update: ScreenUpdate = {}): Promise<ScreenOutput> =>
+    screen.present(await context.observe({ pixels: screen.showingPixels }), { lead, ...update });
   const acting = (
     description: string,
     action: () => Promise<string | void>,
-    expectChange = true,
+    { expectChange = true, ...update }: ScreenUpdate = {},
   ): Promise<ScreenOutput> =>
     inOrder(() =>
       guard(async () => {
@@ -607,11 +607,14 @@ function verbKit(context: StepExecutorContext, options: GrammarToolOptions) {
           const message = cause instanceof Error ? cause.message : String(cause);
           return present(`${description} failed: ${message}`);
         }
-        return present(lead, expectChange);
+        return present(lead, { expectChange, ...update });
       }),
     );
   return { guard, screen, verbs: context.target.verbs, inOrder, present, acting };
 }
+
+/** How the screen after an action reads (a change expected unless said otherwise); the lead is the action's own. */
+type ScreenUpdate = Omit<ScreenUpdateOptions, 'lead'>;
 
 /** Step handlers that report every model round trip to the harness budgets. */
 export interface ModelCallTracker {

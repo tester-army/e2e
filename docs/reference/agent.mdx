@@ -112,6 +112,9 @@ On engines with a keyboard, including the browser and device engines, `type`
 and `press` can omit `target` to act on the focused field. `type` inserts at
 the caret; `replace: true` clears first. The browser engine rejects typing
 when no editable field has focus. Device engines also offer `dismiss_keyboard`.
+When an action closes an on-screen keyboard, the result says so: on a touch
+screen that tap was often spent on closing it, and the model acts on the
+control again.
 
 If semantic capture times out, an engine that proves masking independently
 can return a fresh screenshot with an explicit unavailable-tree warning.

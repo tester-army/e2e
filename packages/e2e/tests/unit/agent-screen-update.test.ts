@@ -159,3 +159,55 @@ describe('ScreenPresenter', () => {
     expect(presenter.update(screen('b2', next))).toContain('Screen unchanged since revision b1');
   });
 });
+
+describe('ScreenPresenter and the on-screen keyboard', () => {
+  const KEYBOARD = [
+    ' #n20 keyboard "Padding-Left"',
+    '  #n21 key "q"',
+    '  #n22 key "w"',
+  ];
+  const FORM = [
+    '#n1 document "Sign in"',
+    ' #n2 heading "Welcome back"',
+    ' #n3 textbox "Email" value="a@b.c"',
+    ' #n4 textbox "Password" value=<secure>',
+    ' #n5 link "Forgot password"',
+    ' #n6 checkbox "Remember me"',
+    ' #n7 button "Log in"',
+    ' #n8 text "No account yet?"',
+  ];
+
+  it('tells the model when an action closed the keyboard, so a swallowed tap is retried', () => {
+    const presenter = new ScreenPresenter();
+    presenter.initial(screen('b1', [...FORM, ...KEYBOARD]));
+    const text = presenter.update(screen('b2', FORM), { lead: 'Tapped #n7.', expectChange: true });
+    expect(text).toContain('removed #n20 keyboard "Padding-Left"');
+    expect(text).toContain('The on-screen keyboard closed with this action.');
+    expect(text).toContain('act on it again now that the keyboard is down');
+  });
+
+  it('adds the note to a whole-screen update as well', () => {
+    const presenter = new ScreenPresenter();
+    const keys = Array.from({ length: 40 }, (_, i) => `  #k${String(i)} key "${String(i)}"`);
+    presenter.initial(screen('b1', [...FORM, ' #n20 keyboard "Padding-Left"', ...keys]));
+    const text = presenter.update(screen('b2', FORM), { lead: 'Tapped #n3.', expectChange: true });
+    expect(text).toContain('changed substantially');
+    expect(text).toContain('The on-screen keyboard closed with this action.');
+  });
+
+  it('stays quiet when the new listing is truncated, since the keyboard may only have been cut off', () => {
+    const presenter = new ScreenPresenter();
+    presenter.initial(screen('b1', [...FORM, ...KEYBOARD]));
+    const text = presenter.update(screen('b2', FORM, { truncated: true }), { lead: 'Tapped #n7.', expectChange: true });
+    expect(text).not.toContain('keyboard closed');
+  });
+
+  it('stays quiet after an explicit dismissal and when the keyboard stays or appears', () => {
+    const presenter = new ScreenPresenter();
+    presenter.initial(screen('b1', [...FORM, ...KEYBOARD]));
+    expect(presenter.update(screen('b2', FORM), { lead: 'Dismissed the keyboard.', keyboardNote: false })).not.toContain('keyboard closed');
+    presenter.initial(screen('b3', FORM));
+    expect(presenter.update(screen('b4', [...FORM, ...KEYBOARD]), { lead: 'Tapped #n2.' })).not.toContain('keyboard closed');
+    expect(presenter.update(screen('b5', [...FORM, ...KEYBOARD]), { lead: 'Tapped #n3.' })).not.toContain('keyboard closed');
+  });
+});
