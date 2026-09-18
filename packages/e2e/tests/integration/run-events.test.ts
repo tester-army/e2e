@@ -250,12 +250,15 @@ console.log('top level');
 test('talks', async () => {
   console.log('hello', { from: 'the test' });
   console.error('careful');
+  process.stdout.write('token sk_live_generic_4242 leaked');
+  process.stdout.write(' twice sk_live_generic_4242\\n');
 });
 `,
         },
         {
           appUrl: app.url,
-          configSource: workerConfigSource(1),
+          configSource: workerConfigSource(1, `
+  secrets: { 'stripe-key': 'sk_live_generic_4242' },`),
           runOptions: { onEvent: (event: RunEvent) => { events.push(event); } },
         },
       );
@@ -264,10 +267,14 @@ test('talks', async () => {
       const output = events.filter((event) => event.type === 'output');
       const started = events.find((event) => event.type === 'test-started')!;
       const inTest = output.filter((event) => event.pair?.testId === started.testId);
+      // Every write is one event, secret values redacted before it leaves the worker.
       expect(inTest.map((event) => [event.stream, event.text])).toEqual([
         ['stdout', "hello { from: 'the test' }\n"],
         ['stderr', 'careful\n'],
+        ['stdout', 'token <secret:stripe-key> leaked'],
+        ['stdout', ' twice <secret:stripe-key>\n'],
       ]);
+      expect(events.some((event) => event.type === 'output' && event.text.includes('sk_live'))).toBe(false);
       expect(inTest.every((event) => event.target === 'web' && event.pair?.agent === 'default')).toBe(true);
       // The module's top level runs while the file loads, outside any pair.
       expect(output.some((event) => event.pair === undefined && event.text === 'top level\n')).toBe(true);

@@ -249,6 +249,12 @@ export class ListReporter implements Reporter {
   private explore: ExploreView | undefined;
   /** The stream and source of the output line printed last, while nothing else printed since. */
   private lastOutput: string | undefined;
+  /**
+   * Output not yet ended by a newline, by stream and source: a line written
+   * in pieces prints once whole. Flushed when its test's result arrives and
+   * when the run ends.
+   */
+  private readonly pendingOutput = new Map<string, { readonly heading: string; readonly pair: string | undefined; fragment: string }>();
 
   constructor(
     private readonly output: ListReporterOutput = DEFAULT_OUTPUT,
@@ -325,27 +331,47 @@ export class ListReporter implements Reporter {
   }
 
   /**
-   * Text a test wrote to stdout or stderr, printed at once above the live
-   * window under a `stdout | file › title` heading, as vitest does. Writes
-   * that follow one another from the same source share one heading; any
-   * other line in between brings it back. A write that ends its line
-   * finishes there; the next write starts a new one, so a heading never
-   * lands mid-line.
+   * Text a test wrote to stdout or stderr, printed above the live window
+   * under a `stdout | file › title` heading, as vitest does. Writes that
+   * follow one another from the same source share one heading; any other
+   * line in between brings it back. A write carries any piece of a line, so
+   * only lines a newline has ended print; the rest waits for the next write,
+   * the test's result, or the end of the run.
    */
   private testOutput(event: RunEventOf<'output'>): void {
     const { pc } = this;
     if (event.text === '') return;
-    const running = event.pair === undefined ? undefined : this.pairs.get(pairKey(event.pair.testId, event.pair.agent, event.target));
+    const pair = event.pair === undefined ? undefined : pairKey(event.pair.testId, event.pair.agent, event.target);
+    const running = pair === undefined ? undefined : this.pairs.get(pair);
     const source = running === undefined ? this.badge(event.target) : `${this.badge(running.group.target)} ${bounded(running.group.file)}${this.separator}${running.title}`;
     const key = `${event.stream}\u0000${source}`;
-    if (this.lastOutput !== key) {
+    let entry = this.pendingOutput.get(key);
+    if (entry === undefined) {
       const label = event.stream === 'stderr' ? pc.yellow(event.stream) : pc.dim(event.stream);
-      this.print(`${label} ${pc.dim('|')} ${source}`);
+      entry = { heading: `${label} ${pc.dim('|')} ${source}`, pair, fragment: '' };
+      this.pendingOutput.set(key, entry);
     }
-    const lines = event.text.split('\n');
-    if (lines.at(-1) === '') lines.pop();
+    const lines = (entry.fragment + event.text).split('\n');
+    entry.fragment = lines.pop() ?? '';
+    if (entry.fragment === '') this.pendingOutput.delete(key);
+    this.printOutput(key, entry.heading, lines);
+  }
+
+  /** Prints finished output lines under their heading, unless the heading is the one printed last. */
+  private printOutput(key: string, heading: string, lines: readonly string[]): void {
+    if (lines.length === 0) return;
+    if (this.lastOutput !== key) this.print(heading);
     for (const line of lines) this.print(bounded(line));
     this.lastOutput = key;
+  }
+
+  /** Prints the unfinished output of `pair`, or of every source when undefined. */
+  private flushOutput(pair?: string): void {
+    for (const [key, entry] of this.pendingOutput) {
+      if (pair !== undefined && entry.pair !== pair) continue;
+      this.pendingOutput.delete(key);
+      this.printOutput(key, entry.heading, [entry.fragment]);
+    }
   }
 
   /**
@@ -590,6 +616,7 @@ export class ListReporter implements Reporter {
     // counted them.
     if (!result.selected) return;
     const key = pairKey(result.test.id, result.agent, result.target.name);
+    this.flushOutput(key);
     const steps = this.pairs.get(key)?.steps ?? [];
     this.pairs.delete(key);
     const group = this.group(result.test.file, result.target.name);
@@ -934,6 +961,7 @@ export class ListReporter implements Reporter {
     const { pc } = this;
     if (event.status === 'interrupted') this.interrupted = true;
     this.window.stop();
+    this.flushOutput();
     // An interrupted or crashed run leaves files without their full result
     // set; print what they have so nothing that ran goes unreported.
     for (const group of this.groups.values()) {

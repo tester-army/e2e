@@ -68,8 +68,9 @@ export class TargetWorker {
   private runErrorWatermark = 0;
   /**
    * The pair executing now, for attributing output the process writes: set
-   * when a pair starts, cleared when its unit is done. A serial group's
-   * members follow one another, so the latest start is the one running.
+   * when a pair starts, cleared at its result and when its unit is done. A
+   * serial group's members follow one another, so the latest start is the
+   * one running.
    */
   private inFlight: { readonly testId: string; readonly agent: string } | undefined;
 
@@ -105,7 +106,11 @@ export class TargetWorker {
         interruptSignal: this.interruptController.signal,
         ...(deps.debug !== undefined ? { debug: deps.debug } : {}),
         events: {
-          onResult: (result) => this.host.emit({ type: 'result', result: encodeResult(result) }),
+          onResult: (result) => {
+            // Teardown after the result (an afterAll) belongs to no pair.
+            if (this.inFlight?.testId === result.test.id && this.inFlight.agent === result.agent) this.inFlight = undefined;
+            this.host.emit({ type: 'result', result: encodeResult(result) });
+          },
           onSerialGroup: (group) => this.host.emit({ type: 'serial-group', group }),
           onPairStart: (pair) => {
             this.inFlight = { testId: pair.test.id, agent: pair.agent };

@@ -1615,6 +1615,24 @@ describe('ListReporter', () => {
       ]);
     });
 
+    it('joins a line written in pieces and prints an unfinished one when the test\u2019s result arrives', () => {
+      const { lines, output } = liveCapture();
+      const reporter = plainReporter(output, true);
+      reporter.handle(runStarted());
+      reporter.handle(plan([{ file: 'tests/case.e2e.ts', tests: 1 }]));
+      reporter.handle(testStarted('t1', 'signs in', 'chromium'));
+      const write = (text: string) =>
+        reporter.handle({ type: 'output', target: 'chromium', pair: { testId: 't1', agent: 'default' }, stream: 'stdout', text });
+      write('progress ');
+      write('50%\nnext');
+      expect(lines.filter((line) => line.startsWith('progress') || line.startsWith('next'))).toEqual(['progress 50%']);
+      reporter.handle(finished(result({ status: 'passed', title: ['signs in'], id: 't1' })));
+      const from = lines.indexOf('next');
+      expect(from).toBeGreaterThan(-1);
+      // The fragment prints before the test's own line does.
+      expect(lines.slice(from).some((line) => line.includes('signs in'))).toBe(true);
+    });
+
     it('brings the output heading back after another line printed in between', () => {
       const { lines, output } = liveCapture();
       const reporter = plainReporter(output, true);

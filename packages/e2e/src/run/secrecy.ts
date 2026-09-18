@@ -14,6 +14,21 @@ export interface SessionSecrecy {
   readonly taint: { value: boolean };
 }
 
+/**
+ * Every secret value any session in this process has seen, for text the
+ * process itself emits rather than a session: a test's console output leaves
+ * the worker through here. Seeded with the static values as each session
+ * learns them; provider-backed values join as they resolve.
+ */
+export const processSecrets = new SecretLedger();
+
+/** Seeds `processSecrets` with the static values of `secrets`, so output before any session opens is covered too. */
+export function registerStaticSecrets(secrets: ResolvedConfig['secrets']): void {
+  for (const [name, { value }] of secrets) {
+    if (typeof value === 'string') processSecrets.register(name, value);
+  }
+}
+
 /** Secrets survive every fixture graph that shares the same live isolation. */
 const secrecyBySession = new WeakMap<TargetSession, SessionSecrecy>();
 
@@ -29,6 +44,7 @@ export function sessionSecrecy(
 ): SessionSecrecy {
   let secrecy = secrecyBySession.get(session);
   if (secrecy === undefined) {
+    registerStaticSecrets(secrets);
     secrecy = {
       ledger: new SecretLedger(
         [...secrets].flatMap(([name, { value }]) =>

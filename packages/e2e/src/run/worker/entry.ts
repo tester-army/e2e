@@ -15,6 +15,7 @@ import { loadAiSdk } from '../../agent/ai-sdk.ts';
 import { AiTraceRecorder, registerAiTraceRecorder } from '../../internal/ai-trace.ts';
 import { DebugTrace } from '../../internal/debug.ts';
 import { classifyError, ConfigurationError, serializeError } from '../../internal/errors.ts';
+import { processSecrets, registerStaticSecrets } from '../secrecy.ts';
 import { SessionStore } from '../sessions.ts';
 import type {
   ChildProcessInbound,
@@ -36,7 +37,8 @@ let outbox: Promise<void> = Promise.resolve();
 /** How long an exit waits for the outbox: a channel whose runner is gone may never acknowledge. */
 const FLUSH_GRACE_MS = 2_000;
 
-function send(message: WorkerToMain): void {
+/** Queues one message; resolves once the channel has taken it (or is gone). */
+function send(message: WorkerToMain): Promise<void> {
   outbox = outbox.then(
     () =>
       new Promise<void>((resolve) => {
@@ -49,7 +51,15 @@ function send(message: WorkerToMain): void {
         }
       }),
   );
+  return outbox;
 }
+
+/**
+ * Output messages the channel has not taken yet before `write` answers
+ * false: a producer that honors backpressure then waits for `drain`, so a
+ * test streaming a large log cannot pile the whole of it into the outbox.
+ */
+const OUTPUT_HIGH_WATER = 64;
 
 function exitAfterFlush(code: 0 | 1): void {
   const exit = (): void => process.exit(code);
@@ -62,7 +72,10 @@ function exitAfterFlush(code: 0 | 1): void {
  * messages: the streams are inherited from the runner, whose terminal shows
  * the live window, so a test's `console.log` written straight through would
  * land inside it and be painted over. Each write becomes one message,
- * attributed to the pair in flight.
+ * attributed to the pair in flight, with every secret value this process
+ * has seen redacted. The stream's contract holds: the callback fires once
+ * the channel took the message, `write` answers false past the high-water
+ * mark, and `drain` follows when the backlog has cleared.
  */
 function captureOutput(pairInFlight: () => OutputMessage['pair']): void {
   for (const [stream, name] of [
@@ -70,13 +83,24 @@ function captureOutput(pairInFlight: () => OutputMessage['pair']): void {
     [process.stderr, 'stderr'],
   ] as const) {
     type Done = (error?: Error | null) => void;
+    let pending = 0;
+    let needsDrain = false;
     const write = (chunk: string | Uint8Array, encoding?: BufferEncoding | Done, callback?: Done): boolean => {
       const done = typeof encoding === 'function' ? encoding : callback;
       const text =
         typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString(typeof encoding === 'string' ? encoding : 'utf8');
-      send({ type: 'output', pair: pairInFlight(), stream: name, text });
-      if (done !== undefined) done();
-      return true;
+      pending += 1;
+      void send({ type: 'output', pair: pairInFlight(), stream: name, text: processSecrets.redact(text) }).then(() => {
+        pending -= 1;
+        if (done !== undefined) done();
+        if (needsDrain && pending < OUTPUT_HIGH_WATER) {
+          needsDrain = false;
+          stream.emit('drain');
+        }
+      });
+      if (pending < OUTPUT_HIGH_WATER) return true;
+      needsDrain = true;
+      return false;
     };
     stream.write = write as typeof stream.write;
   }
@@ -119,6 +143,7 @@ async function bootstrap(
     throw new ConfigurationError('UNKNOWN_TARGET', `unknown target "${message.targetName}"`);
   }
   setSecretRegistry(config);
+  registerStaticSecrets(config.secrets);
 
   let collectCounter = 0;
   const resolvePairs = async (unit: RunUnitMessage): Promise<ResolvedUnitPairs> => {

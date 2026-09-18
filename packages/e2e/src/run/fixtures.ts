@@ -13,7 +13,7 @@ import type { DebugTrace } from '../internal/debug.ts';
 import { ConfigurationError, errorMessage, InfrastructureError, TestError } from '../internal/errors.ts';
 import { Deadline } from '../internal/time.ts';
 import { didYouMean } from '../internal/suggest.ts';
-import { sessionSecrecy, type SessionSecrecy } from './secrecy.ts';
+import { processSecrets, sessionSecrecy, type SessionSecrecy } from './secrecy.ts';
 import { unavailableCode } from '../secrets.ts';
 import { obj } from '../internal/objects.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
@@ -120,6 +120,7 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
       taint.value = true;
       // A provider-resolved value joins redaction the moment it exists.
       ledger.register(secret.name, plaintext);
+      processSecrets.register(secret.name, plaintext);
       return plaintext;
     },
   };
