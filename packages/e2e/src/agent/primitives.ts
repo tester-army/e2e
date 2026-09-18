@@ -12,6 +12,7 @@
 import type { StepResult, Tool, ToolSet } from 'ai';
 import { z } from 'zod';
 import type { ViewportPoint } from '../engine/surface.ts';
+import { hasCause } from '../internal/errors.ts';
 import type { AgentErrorCode } from '../types.ts';
 import { isRuntimeHardStop, BLOCKABLE_CODES, type StepExecutorContext, type StepVerdict } from './executor.ts';
 import { cacheTokenFields, readCost } from './model/sdk.ts';
@@ -423,13 +424,10 @@ async function typeIntoNode(
  * wrapping it, so the chain is walked for the code and the message.
  */
 function isNotFillable(cause: unknown): boolean {
-  for (let error: unknown = cause; typeof error === 'object' && error !== null; error = (error as { cause?: unknown }).cause) {
-    const { code, message } = error as { code?: unknown; message?: unknown };
-    if (code === 'NOT_ACTIONABLE' && typeof message === 'string' && /not an? <?(input|textarea)|not editable/i.test(message)) {
-      return true;
-    }
-  }
-  return false;
+  return hasCause(
+    cause,
+    ({ code, message }) => code === 'NOT_ACTIONABLE' && typeof message === 'string' && /not an? <?(input|textarea)|not editable/i.test(message),
+  );
 }
 
 /**

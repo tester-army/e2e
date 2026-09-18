@@ -192,6 +192,14 @@ export function pixelsForModel(
   return { pixels: sizeForModel(observation.pixels) };
 }
 
+/** Roles that take typed text: what a secret may fill and what an on-screen keyboard serves. */
+const EDITABLE_ROLES: ReadonlySet<string> = new Set(['textbox', 'searchbox', 'combobox']);
+
+/** True for a node of an editable role. */
+export function isEditable(node: Pick<SemanticNode, 'role'>): boolean {
+  return EDITABLE_ROLES.has(node.role ?? '');
+}
+
 /**
  * Roles the model can act on by id: the controls a hit-tested point resolves
  * to, and the lines that mark a screen as one the tree can drive at all.

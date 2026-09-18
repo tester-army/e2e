@@ -5,6 +5,7 @@ import { unavailableCode } from '../secrets.ts';
 import type { Secret } from '../types.ts';
 import { AgentError, toAgentError } from './error.ts';
 import type { AgentContext } from './invocation.ts';
+import { isEditable } from './observation.ts';
 
 /**
  * The narrow surface a secret fill needs from its step machinery: the act
@@ -14,9 +15,6 @@ import type { AgentContext } from './invocation.ts';
 interface SecretFillHost {
   recordPolicy(name: string, decision: 'allowed' | 'denied', code?: string): void;
 }
-
-/** Roles that expose an editable input sink. */
-const EDITABLE_ROLES = new Set(['textbox', 'searchbox', 'combobox']);
 
 /**
  * Authorizes one secret fill and resolves the plaintext only after every check
@@ -40,7 +38,7 @@ export async function authorizeSecretFill(
     host.recordPolicy('secret.sink', 'denied', 'POLICY_DENIED');
     throw new AgentError('POLICY_DENIED', 'the target field is disabled');
   }
-  if (node.role === undefined || !EDITABLE_ROLES.has(node.role)) {
+  if (!isEditable(node)) {
     host.recordPolicy('secret.sink', 'denied', 'POLICY_DENIED');
     throw new AgentError(
       'POLICY_DENIED',

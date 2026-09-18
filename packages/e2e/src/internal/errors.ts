@@ -25,6 +25,27 @@ export function withHint(message: string, hint: string): string {
   return `${base}${base.includes('\n') ? '\n' : '; '}${hint}`;
 }
 
+/** How deep a `cause` chain is walked for a code or a message. */
+const MAX_CAUSE_CHAIN = 8;
+
+/**
+ * True when `cause`, or any error on its `cause` chain, satisfies `test`.
+ * The harness wraps what an engine throws in its own error (an
+ * `ACTION_FAILED` over a `NOT_ACTIONABLE`), so a code is looked for along
+ * the chain rather than on the outermost error alone.
+ */
+export function hasCause(
+  cause: unknown,
+  test: (error: { readonly code?: unknown; readonly message?: unknown }) => boolean,
+): boolean {
+  let current: unknown = cause;
+  for (let depth = 0; depth < MAX_CAUSE_CHAIN && typeof current === 'object' && current !== null; depth += 1) {
+    if (test(current as { code?: unknown; message?: unknown })) return true;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
 /** How deep a `cause` chain is followed when an error is described. */
 const MAX_CAUSE_DEPTH = 3;
 

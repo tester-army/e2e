@@ -16,6 +16,7 @@ import { anchorsPresent } from '../cache/anchors.ts';
 import { relocateDescriptor, type RelocationResult } from '../cache/relocate.ts';
 import type { ActionTrace, RecordedAction, TraceTargetDescriptor, TraceViewport } from '../cache/trace.ts';
 import type { SemanticNode, ViewportPoint } from '../engine/surface.ts';
+import { hasCause } from '../internal/errors.ts';
 import { sleep } from '../internal/time.ts';
 import {
   isRuntimeHardStop,
@@ -318,12 +319,7 @@ async function pollSettled<T>(
 
 /** True when any error in the cause chain reports an unknown commit state. */
 function isUncertainCommit(cause: unknown): boolean {
-  for (let error = cause, depth = 0; depth < 8; depth += 1) {
-    if (typeof error !== 'object' || error === null) return false;
-    if ((error as { code?: unknown }).code === 'ACTION_MAY_HAVE_COMMITTED') return true;
-    error = (error as { cause?: unknown }).cause;
-  }
-  return false;
+  return hasCause(cause, ({ code }) => code === 'ACTION_MAY_HAVE_COMMITTED');
 }
 
 /**
