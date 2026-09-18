@@ -24,6 +24,11 @@ export function clampToViewport(
   };
 }
 
+/** True when the point lies inside the box: on its top and left edges, short of its bottom and right ones. */
+export function containsPoint(box: Box, point: ViewportPoint): boolean {
+  return point.x >= box.x && point.x < box.x + box.width && point.y >= box.y && point.y < box.y + box.height;
+}
+
 /**
  * How much two boxes are the same box: the area they share over the area
  * either covers, 0 for boxes apart and 1 for the same box.

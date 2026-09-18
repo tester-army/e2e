@@ -46,7 +46,7 @@ describe('container keys', () => {
     void parents;
     const options = { redact: identity };
     expect(relocateDescriptor({ role: 'button', name: 'Delete', within: 'Vendor list' }, nodes, options)).toEqual({ kind: 'found', id: 'd2' });
-    expect(relocateDescriptor({ role: 'button', name: 'Delete' }, nodes, options)).toEqual({ kind: 'failed', failure: 'target-ambiguous' });
+    expect(relocateDescriptor({ role: 'button', name: 'Delete' }, nodes, options)).toMatchObject({ kind: 'failed', failure: 'target-ambiguous' });
     // The row is gone: not found, never the other row's button.
     expect(relocateDescriptor({ role: 'button', name: 'Delete', within: 'Offsite plan' }, nodes, options)).toEqual({ kind: 'failed', failure: 'target-not-found' });
   });

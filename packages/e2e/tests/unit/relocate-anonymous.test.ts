@@ -39,9 +39,9 @@ describe('an anonymous target', () => {
 
   it('diverges when the number of unnamed twins changed, one survivor included, or none is left', () => {
     const recorded = { role: 'textbox', position: { index: 1, of: 2 } };
-    expect(relocateDescriptor(recorded, screen(textbox('a'), textbox('b'), textbox('c')), options)).toEqual({ kind: 'failed', failure: 'target-ambiguous' });
+    expect(relocateDescriptor(recorded, screen(textbox('a'), textbox('b'), textbox('c')), options)).toEqual({ kind: 'failed', failure: 'target-ambiguous', candidates: ['a', 'b', 'c'] });
     // One unnamed twin where two were counted: it may be the other field.
-    expect(relocateDescriptor(recorded, screen(textbox('a', 'Email'), textbox('b')), options)).toEqual({ kind: 'failed', failure: 'target-ambiguous' });
+    expect(relocateDescriptor(recorded, screen(textbox('a', 'Email'), textbox('b')), options)).toEqual({ kind: 'failed', failure: 'target-ambiguous', candidates: ['b'] });
     expect(relocateDescriptor(recorded, screen(textbox('a', 'Email')), options)).toEqual({ kind: 'failed', failure: 'target-not-found' });
   });
 

@@ -17,6 +17,7 @@ import { MAIN_LIST_SHARE, relocateDescriptor, type RelocationFailure, type Reloc
 import type { ActionTrace, RecordedAction, TraceTargetDescriptor, TraceViewport } from '../cache/trace.ts';
 import type { SemanticNode, ViewportPoint } from '../engine/surface.ts';
 import { hasCause } from '../internal/errors.ts';
+import { containsPoint, type Box } from '../internal/geometry.ts';
 import { sleep } from '../internal/time.ts';
 import type { ScrollDirection } from '../types.ts';
 import {
@@ -110,7 +111,19 @@ type PlannedCall =
   /** A bare point, replayed as given once the viewport is the recorded size. */
   | { readonly kind: 'point'; readonly point: ViewportPoint; readonly viewport: TraceViewport }
   /** A bare point placed inside a re-found node's live box. */
-  | { readonly kind: 'within'; readonly descriptor: TraceTargetDescriptor; readonly fx: number; readonly fy: number };
+  | {
+      readonly kind: 'within';
+      readonly descriptor: TraceTargetDescriptor;
+      readonly fx: number;
+      readonly fy: number;
+      /**
+       * The recorded point and its viewport: among look-alikes of the node,
+       * the one the point lies in on a viewport of the same size is it. The
+       * bare point is never tapped on its own.
+       */
+      readonly point: ViewportPoint;
+      readonly viewport: TraceViewport;
+    };
 
 function planCall(action: RecordedAction, actions: ExecutorActions): PlannedCall {
   switch (action.name) {
@@ -161,7 +174,14 @@ function planCall(action: RecordedAction, actions: ExecutorActions): PlannedCall
     case 'tapAt':
       return action.within === undefined
         ? { kind: 'point', point: action.point, viewport: action.viewport }
-        : { kind: 'within', descriptor: action.within.target, fx: action.within.fx, fy: action.within.fy };
+        : {
+            kind: 'within',
+            descriptor: action.within.target,
+            fx: action.within.fx,
+            fy: action.within.fy,
+            point: action.point,
+            viewport: action.viewport,
+          };
   }
 }
 
@@ -219,10 +239,8 @@ export async function replayTrace(
         }
         case 'within': {
           const relocated = await relocate(host, planned.descriptor);
-          if (relocated.kind === 'failed') return stop(relocated.failure);
-          const box = relocated.node.rect;
-          // A re-found node without a box gives the point nowhere to land.
-          if (box === undefined || box.width <= 0 || box.height <= 0) return stop('target-not-found');
+          const box = boxWithin(relocated, planned);
+          if (box === undefined) return stop(relocated.kind === 'failed' ? relocated.failure : 'target-not-found');
           await host.actions.tapAt({ x: box.x + planned.fx * box.width, y: box.y + planned.fy * box.height });
           break;
         }
@@ -302,22 +320,44 @@ async function relocate(
 ): Promise<Relocated> {
   const options = { redact: host.redact };
   let last: Relocated = { kind: 'failed', failure: 'target-not-found' };
-  const settled = await pollSettled(host, ({ nodes }): Relocated | undefined => {
-    const result = relocateDescriptor(descriptor, nodes, options);
+  const settled = await pollSettled(host, (screen): Relocated | undefined => {
+    const result = relocateDescriptor(descriptor, screen.nodes, options);
     if (result.kind === 'failed') {
-      last = result;
-      return result.failure === 'target-not-found' || descriptor.position !== undefined ? undefined : result;
+      last = result.failure === 'target-not-found' ? result : { ...result, screen };
+      return result.failure === 'target-not-found' || descriptor.position !== undefined ? undefined : last;
     }
-    const node = nodes.get(result.id);
-    return node === undefined ? undefined : { kind: 'found', id: result.id, node };
+    const node = screen.nodes.get(result.id);
+    return node === undefined ? undefined : { ...result, node };
   });
   return settled ?? last;
 }
 
-/** A relocation with the node it found, for a replay that needs its box. */
+/** A relocation with the node it found, or with the screen its look-alikes are on, for a replay that needs boxes. */
 type Relocated =
-  | { readonly kind: 'found'; readonly id: string; readonly node: SemanticNode }
-  | Extract<RelocationResult, { kind: 'failed' }>;
+  | (Extract<RelocationResult, { kind: 'found' }> & { readonly node: SemanticNode })
+  | Extract<RelocationResult, { failure: 'target-not-found' }>
+  | (Extract<RelocationResult, { failure: 'target-ambiguous' }> & { readonly screen: SemanticScreen });
+
+/**
+ * The live box a recorded point is placed in: the re-found node's, or among
+ * look-alikes the one that contains the recorded point on a viewport of the
+ * recorded size. Undefined when the node is gone or has no box, or the point
+ * settles nothing: tapping the bare point could press whatever now sits there.
+ */
+function boxWithin(relocated: Relocated, planned: Extract<PlannedCall, { kind: 'within' }>): Box | undefined {
+  if (relocated.kind === 'found') return usableBox(relocated.node.rect);
+  if (relocated.failure !== 'target-ambiguous') return undefined;
+  const { viewport, nodes } = relocated.screen;
+  if (viewport.width !== planned.viewport.width || viewport.height !== planned.viewport.height) return undefined;
+  const containing = relocated.candidates
+    .map((id) => usableBox(nodes.get(id)?.rect))
+    .filter((box) => box !== undefined && containsPoint(box, planned.point));
+  return containing.length === 1 ? containing[0] : undefined;
+}
+
+function usableBox(rect: SemanticNode['rect']): Box | undefined {
+  return rect === undefined || rect.width <= 0 || rect.height <= 0 ? undefined : rect;
+}
 
 /**
  * One repeat of a folded scroll: on the re-found list, on the viewport for a

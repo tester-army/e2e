@@ -8,9 +8,9 @@
  */
 
 import type { SemanticNode, ViewportPoint, ViewportSize } from '../engine/surface.ts';
-import { clamp, clampToViewport } from '../internal/geometry.ts';
+import { clamp, clampToViewport, containsPoint } from '../internal/geometry.ts';
 import type { ExecutorPixels } from './executor.ts';
-import { INTERACTIVE_ROLES, type AgentObservation } from './observation.ts';
+import { INTERACTIVE_ROLES, type AgentObservation, type SemanticAgentObservation } from './observation.ts';
 
 /**
  * Scales a point read off a screenshot into the observation's CSS pixels and
@@ -42,32 +42,41 @@ export interface HitTest {
 }
 
 /**
- * Finds what the newest observation lists at a viewport point. Innermost
- * wins (deepest in the tree, then the smallest box); hidden nodes and nodes
- * without a box are skipped. Every box is in the top-level viewport's CSS
- * pixels, nested documents included (`SemanticNode.rect`), so a control
- * inside an iframe is found like any other. Only an enabled interactive
- * role counts as the control: tapping a node taps its center, which is what
- * the caller asked for only when the node is the control itself, not a
- * paragraph or region that happens to contain the point.
+ * Finds what the newest observation lists at a viewport point. Only an
+ * enabled interactive role counts as the control: tapping a node taps its
+ * center, which is what the caller asked for only when the node is the
+ * control itself, not a paragraph or region that happens to contain the
+ * point.
  */
 export function hitTest(observation: AgentObservation, point: ViewportPoint): HitTest {
   if (observation.kind === 'pixels') return { control: undefined, under: undefined };
-  let control: { node: SemanticNode; depth: number; area: number } | undefined;
-  let under: { node: SemanticNode; depth: number; area: number } | undefined;
+  return {
+    control: innermostAt(observation, point, (node) => INTERACTIVE_ROLES.has(node.role ?? '') && node.states?.disabled !== true),
+    under: innermostAt(observation, point),
+  };
+}
+
+/**
+ * The innermost listed node whose box contains the point, among those
+ * `accept` admits: deepest in the tree, then the smallest box. Hidden nodes
+ * and nodes without a box are skipped. Every box is in the top-level
+ * viewport's CSS pixels, nested documents included (`SemanticNode.rect`), so
+ * a node inside an iframe is found like any other.
+ */
+function innermostAt(
+  observation: SemanticAgentObservation,
+  point: ViewportPoint,
+  accept: (node: SemanticNode) => boolean = () => true,
+): SemanticNode | undefined {
+  let best: { node: SemanticNode; depth: number; area: number } | undefined;
   for (const node of observation.nodes.values()) {
     const rect = node.rect;
     if (rect === undefined || rect.width <= 0 || rect.height <= 0) continue;
-    if (node.states?.hidden === true) continue;
-    if (point.x < rect.x || point.x >= rect.x + rect.width) continue;
-    if (point.y < rect.y || point.y >= rect.y + rect.height) continue;
+    if (node.states?.hidden === true || !containsPoint(rect, point) || !accept(node)) continue;
     const candidate = { node, depth: depthOf(node.ref.id, observation.parents), area: rect.width * rect.height };
-    if (inner(candidate, under)) under = candidate;
-    if (INTERACTIVE_ROLES.has(node.role ?? '') && node.states?.disabled !== true && inner(candidate, control)) {
-      control = candidate;
-    }
+    if (inner(candidate, best)) best = candidate;
   }
-  return { control: control?.node, under: under?.node };
+  return best?.node;
 }
 
 function inner(

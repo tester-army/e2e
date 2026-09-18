@@ -47,6 +47,7 @@ describe('relocation by placeholder', () => {
     expect(relocateDescriptor(descriptor, twins, { redact: identity })).toEqual({
       kind: 'failed',
       failure: 'target-ambiguous',
+      candidates: ['m1', 'm2'],
     });
   });
 });

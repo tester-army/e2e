@@ -25,7 +25,7 @@ import type { TracePosition, TraceTargetDescriptor } from './trace.ts';
  * change, because an entry recorded under different rules could relocate to a
  * different node.
  */
-export const REPLAY_POLICY_VERSION = 'conservative/4';
+export const REPLAY_POLICY_VERSION = 'conservative/5';
 
 /**
  * The share of the viewport a scrolled node must have covered when it was
@@ -39,7 +39,9 @@ export type RelocationFailure = 'target-not-found' | 'target-ambiguous';
 
 export type RelocationResult =
   | { readonly kind: 'found'; readonly id: string }
-  | { readonly kind: 'failed'; readonly failure: RelocationFailure };
+  | { readonly kind: 'failed'; readonly failure: 'target-not-found' }
+  /** Several nodes share the matched identity; a caller with other evidence (a recorded point) may still tell them apart. */
+  | { readonly kind: 'failed'; readonly failure: 'target-ambiguous'; readonly candidates: readonly string[] };
 
 export type DescriptorField = keyof TraceTargetDescriptor;
 
@@ -185,7 +187,7 @@ export function relocateDescriptor(
   if (matches.length === 1 && (!isAnonymous(descriptor) || position?.of === 1)) return { kind: 'found', id: matches[0]! };
   const positioned = position !== undefined && position.of === matches.length ? matches[position.index] : undefined;
   return positioned === undefined
-    ? { kind: 'failed', failure: 'target-ambiguous' }
+    ? { kind: 'failed', failure: 'target-ambiguous', candidates: matches }
     : { kind: 'found', id: positioned };
 }
 

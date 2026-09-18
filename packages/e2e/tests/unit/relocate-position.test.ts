@@ -55,16 +55,18 @@ describe('relocation with a recorded position', () => {
     expect(relocateDescriptor(descriptor, screen(button('p'), button('q')), options)).toEqual({
       kind: 'failed',
       failure: 'target-ambiguous',
+      candidates: ['p', 'q'],
     });
     expect(
       relocateDescriptor(descriptor, screen(button('p'), button('q'), button('r'), button('s')), options),
-    ).toEqual({ kind: 'failed', failure: 'target-ambiguous' });
+    ).toEqual({ kind: 'failed', failure: 'target-ambiguous', candidates: ['p', 'q', 'r', 's'] });
   });
 
   it('still diverges without a recorded position', () => {
     expect(relocateDescriptor({ role: 'button', name: 'Set up' }, screen(button('p'), button('q')), options)).toEqual({
       kind: 'failed',
       failure: 'target-ambiguous',
+      candidates: ['p', 'q'],
     });
   });
 
