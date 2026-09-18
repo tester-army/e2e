@@ -1,10 +1,11 @@
 import type { E2EConfig } from 'e2e';
-import base from './e2e.config.ts';
+import { github } from '@e2edev/github';
 import { gateway } from 'ai';
+import base from './e2e.config.ts';
 
 /**
  * Agentic suite against the same app and account as the deterministic one.
- * It gates every PR alongside that suite (`spec.yml` passes the model key);
+ * It gates every PR alongside that suite (`benchmark.yml` passes the model key);
  * each step spends real model calls, cents per run. By hand:
  *
  *   AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/web-benchmark test:agent
@@ -20,6 +21,7 @@ export default {
   // budget is too tight for a loaded provider. Latency is not a scenario defect.
   timeout: 300_000,
   actionTimeout: 90_000,
+  reporters: ['list', github({ key: 'web agent' })],
   agents: {
     default: {
       model: gateway(process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast'),

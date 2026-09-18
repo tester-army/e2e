@@ -39,14 +39,6 @@ jobs:
         run: pnpm --filter @e2edev/playwright exec playwright install chromium --with-deps
       - name: Testbed
         run: pnpm --filter @e2edev/testbed test
-      - name: Web benchmark
-        run: pnpm --filter @e2edev/web-benchmark test
-      # The benchmark's agentic suite gates PRs too: it is the one place the
-      # agent meets deliberately hard surfaces, and each step costs cents.
-      - name: Web benchmark (agent)
-        env:
-          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
-        run: pnpm --filter @e2edev/web-benchmark test:agent
 
   test:
     runs-on: blacksmith-4vcpu-ubuntu-2404

@@ -18,7 +18,9 @@ planted bug.
   scenario's slug, name, description, and, for bug-book entries, the
   `plantedBug`. One component per scenario in `app/src/Examples/`, served at
   `/e/<slug>`; the home page lists them all.
-- `e2e.config.ts` + `tests/`: the deterministic suite. Gates every PR.
+- `e2e.config.ts` + `tests/`: the deterministic suite. Gates every PR
+  (`benchmark.yml`); `@e2edev/github` posts each run as one pull request
+  comment.
 - `e2e.agent.config.ts` + `tests-agent/`: the agentic suite, derived from the
   deterministic config. It gates every PR too. Each step spends real model
   calls (cents per run) and needs `AI_GATEWAY_API_KEY`. `scenarios.e2e.ts`

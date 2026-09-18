@@ -1,5 +1,6 @@
 import type { E2EConfig } from 'e2e';
 import { agentDevice } from '@e2edev/agent-device';
+import { github } from '@e2edev/github';
 
 /**
  * Deterministic suite against the benchmark app on an iOS simulator and an
@@ -8,7 +9,10 @@ import { agentDevice } from '@e2edev/agent-device';
  * device (`pnpm ios` / `pnpm android` build and install it), or point
  * `E2E_MOBILE_BENCHMARK_IOS_APP` / `E2E_MOBILE_BENCHMARK_ANDROID_APP` at a
  * simulator `.app` or an `.apk` and the engine installs it once per worker.
- * Not part of CI: the runners have no simulator.
+ *
+ * `benchmark.yml` runs the iOS target on every pull request from a cached
+ * simulator build; the GitHub reporter posts the run as one comment there.
+ * Android stays by hand: the runners have no emulator.
  */
 const APP_ID = 'dev.e2e.benchmark';
 
@@ -43,6 +47,8 @@ export default {
   ],
   // One device at a time: two workers would share the pinned sessions.
   workers: 1,
+  // The key names this suite's comment beside the agentic one's.
+  reporters: ['list', github({ key: 'mobile' })],
   credentials: {
     // The Login Form and Flattened Login scenarios' hardcoded account; the
     // Login Form screen prints it as a hint.
