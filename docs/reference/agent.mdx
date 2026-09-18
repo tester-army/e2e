@@ -111,7 +111,10 @@ older images are removed in batches, keeping the newest two.
 On engines with a keyboard, including the browser and device engines, `type`
 and `press` can omit `target` to act on the focused field. `type` inserts at
 the caret; `replace: true` clears first. The browser engine rejects typing
-when no editable field has focus. Device engines also offer `dismiss_keyboard`.
+when no editable field has focus. Device engines also offer `dismiss_keyboard`;
+on a phone keyboard with no dismiss key its result carries a screenshot and
+names the blank point in the field's scroll view that closes it, in that
+image's pixels, ready for `tap_at`.
 When an action closes an on-screen keyboard, the result says so: on a touch
 screen that tap was often spent on closing it, and the model acts on the
 control again.

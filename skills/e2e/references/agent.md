@@ -102,6 +102,9 @@ Use the point tools for a canvas, a game, or a native screen without
 accessibility exposure. Once a secret has been filled in the attempt no
 screenshot leaves the runner and the pixel tools leave the vocabulary, so
 act on pixels before signing in, or in a test of its own.
+A phone keyboard has no dismiss key, so there `dismiss_keyboard` answers with
+a screenshot and the blank point in the field's scroll view that closes it,
+in that image's pixels, ready for `tap_at`.
 When an action closes an on-screen keyboard, the result says so: on a touch
 screen that tap was often spent on closing it, so act on the control again
 before concluding.

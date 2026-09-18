@@ -18,6 +18,7 @@ import { isRuntimeHardStop, BLOCKABLE_CODES, type StepExecutorContext, type Step
 import { cacheTokenFields, readCost } from './model/sdk.ts';
 import { OperationQueue } from './operation-queue.ts';
 import { imagePointToViewport } from './point-tap.ts';
+import { suggestKeyboardEscape, type KeyboardEscape } from './keyboard-escape.ts';
 import { ScreenPresenter, type ScreenOutput, type ScreenUpdateOptions } from './screen-update.ts';
 
 /** Codes the model may pick when concluding; runtime codes are runtime-assigned. */
@@ -47,6 +48,33 @@ const MAX_VERDICT_SUMMARY_CHARS = 2_000;
 
 /** Screens one scroll call may move; a windowed list of thousands of rows still needs a better verb. */
 const MAX_SCROLL_TIMES = 20;
+
+const KEYBOARD_STILL_UP =
+  'The keyboard is still up: this device has no dismiss key and the runner does not tap around to close it.';
+
+/**
+ * What to do instead when the engine cannot hide the keyboard on its own:
+ * the blank point the tree offers, quoted in the pixels of the screenshot
+ * attached alongside, which is the space `tap_at` reads; or, without one,
+ * the ways a person closes it.
+ */
+function keyboardEscapeAdvice(escape: KeyboardEscape | undefined, scale: number | undefined): string {
+  if (escape?.kind !== 'point') {
+    const why = escape === undefined ? 'No tree was available to pick a point from.' : `No blank point could be named from the tree: ${escape.reason}.`;
+    return `${KEYBOARD_STILL_UP} Close it yourself: press Enter in the focused field (a single-line field gives up focus), or tap_at a blank area of the scroll view that holds the field. (${why})`;
+  }
+  const factor = scale === undefined || scale <= 0 ? 1 : scale;
+  const at = `(${String(Math.round(escape.point.x * factor))}, ${String(Math.round(escape.point.y * factor))})`;
+  return (
+    `${KEYBOARD_STILL_UP} Blank space inside #${escape.containerId}, the scroll view holding the field, is at ${at} in the attached screenshot: ` +
+    `tap_at ${at} closes the keyboard there; then act on your target in the same turn. Or press Enter in the focused field when it is single-line.`
+  );
+}
+
+/** An engine's refusal of an action kind, as opposed to a failed attempt at it. */
+function isUnsupported(cause: unknown): boolean {
+  return hasCause(cause, ({ code }) => code === 'UNSUPPORTED_CAPABILITY');
+}
 
 /**
  * Keys whose whole effect is where the focus or the caret sits, which the
@@ -301,7 +329,21 @@ export function createGrammarTools(
     tools['dismiss_keyboard'] = screenTool({
       description: 'Hide the on-screen keyboard when it covers what you need to reach.',
       inputSchema: z.object({}),
-      execute: () => acting('Dismissed the keyboard.', () => context.actions.dismissKeyboard(), { expectChange: false, keyboardNote: false }),
+      execute: () =>
+        acting('Dismissed the keyboard.', () => context.actions.dismissKeyboard(), {
+          expectChange: false,
+          keyboardNote: false,
+          // A phone keyboard has no dismiss key and the engine refuses to
+          // guess a safe spot to tap. The tree names the blank point that
+          // closes it, and the screenshot that comes with the answer is the
+          // image tap_at reads, so the point is quoted in its pixels.
+          recover: async (cause) => {
+            if (!isUnsupported(cause)) return undefined;
+            const observation = await context.observe({ tree: true, pixels: true });
+            const escape = observation.tree === undefined ? undefined : suggestKeyboardEscape(observation.tree);
+            return screen.present(observation, { lead: keyboardEscapeAdvice(escape, observation.pixels?.scale), expectChange: false });
+          },
+        }),
     });
   }
   if (verbs.has('select')) {
@@ -595,7 +637,7 @@ function verbKit(context: StepExecutorContext, options: GrammarToolOptions) {
   const acting = (
     description: string,
     action: () => Promise<string | void>,
-    { expectChange = true, ...update }: ScreenUpdate = {},
+    { recover, expectChange = true, ...update }: ActingOptions = {},
   ): Promise<ScreenOutput> =>
     inOrder(() =>
       guard(async () => {
@@ -604,6 +646,8 @@ function verbKit(context: StepExecutorContext, options: GrammarToolOptions) {
           lead = (await action()) ?? description;
         } catch (cause) {
           if (isRuntimeHardStop(cause)) throw cause;
+          const recovered = await recover?.(cause);
+          if (recovered !== undefined) return recovered;
           const message = cause instanceof Error ? cause.message : String(cause);
           return present(`${description} failed: ${message}`);
         }
@@ -615,6 +659,16 @@ function verbKit(context: StepExecutorContext, options: GrammarToolOptions) {
 
 /** How the screen after an action reads (a change expected unless said otherwise); the lead is the action's own. */
 type ScreenUpdate = Omit<ScreenUpdateOptions, 'lead'>;
+
+/** How one action's result reads, and what may answer its failure in its place. */
+interface ActingOptions extends ScreenUpdate {
+  /**
+   * Answers a failure with a result of its own, for a refusal the model can
+   * act on better than on the plain failure line; undefined leaves the
+   * failure to that line. Runs inside the guard, so a hard stop propagates.
+   */
+  readonly recover?: (cause: unknown) => Promise<ScreenOutput | undefined>;
+}
 
 /** Step handlers that report every model round trip to the harness budgets. */
 export interface ModelCallTracker {
