@@ -3,17 +3,17 @@ title: Environment variables
 description: Every variable the runner and the first-party engines read, and what each one does.
 ---
 
-The runner and the first-party packages read the variables below and no
-others. A **value** counts when it is set and not blank. A **flag** is on
-when it is set and not blank, `0`, or `false`, case-insensitive.
+These variables configure the runner and first-party packages. In the tables,
+`set` means the variable exists, `value` means it is not blank, and `flag`
+means it is not blank, `0`, or `false`. Flag values are case-insensitive.
 
 ## Model
 
-The runner reads no model variable. The provider package behind your model
-instance reads its own key: `gateway()` reads `AI_GATEWAY_API_KEY`,
-`openrouter()` reads `OPENROUTER_API_KEY`, `openai()` reads `OPENAI_API_KEY`.
-A missing key is the provider's own error on the first agent step. See
-[Choosing a model](/models).
+Configure a model in `e2e.config.ts`. Its provider reads the API key:
+`gateway()` uses `AI_GATEWAY_API_KEY`, `openrouter()` uses
+`OPENROUTER_API_KEY`, and `openai()` uses `OPENAI_API_KEY`. A missing key
+fails on the first model call. Subscription models use a stored login instead.
+See [Models](/models) and [Subscriptions](/subscriptions).
 
 ## Credentials and secrets
 

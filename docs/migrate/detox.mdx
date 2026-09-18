@@ -1,14 +1,15 @@
 ---
 title: From Detox
-description: Keep your testIDs, drop the Detox build, and move matchers to screen and expect.
+description: Use your existing app build and testIDs with screen, expect, and agent goals.
 ---
 
-Detox tests a React Native app through a build with the Detox framework
-linked in. e2e drives the simulator or emulator through
-`@e2edev/agent-device`, so a normal debug or release build is enough and
-there is no synchronization to disable. Your `testID` props answer the
-`getByTestId` query on both platforms. Detox and e2e take turns on the same
-simulator, so migrate one spec at a time.
+`@e2edev/agent-device` drives a simulator or emulator using your normal debug
+or release build. It does not need the Detox framework. React Native
+`testID` props work with `getByTestId` on both platforms.
+
+Set up a target with the [mobile guide](/mobile) and a model with the
+[quickstart](/quickstart). You can use the same simulator for each runner
+while migrating one spec at a time.
 
 ## Config
 
@@ -63,8 +64,8 @@ test('shows the home screen', async ({ agent, screen }) => {
 });
 ```
 
-The attempt starts in the pinned app, so there is no `launchApp`. The
-password lives in `credentials`, not in the spec.
+The engine opens the configured app before each attempt. The password comes
+from [configured credentials](/authentication).
 
 ## API map
 
@@ -84,7 +85,7 @@ password lives in `credentials`, not in the spec.
 | `.scroll(200, 'down')` | `screen.swipe({ direction: 'up' })` |
 | `waitFor(el).toBeVisible().whileElement(list).scroll(...)` | `screen.scrollUntilVisible(el)` |
 | `waitFor(el).toBeVisible().withTimeout(ms)` | `await expect(el).toBeVisible({ timeout: ms })` |
-| `expect(el).toBeVisible()`, `.toExist()` | `.toBeVisible()`; `toExist` has no equivalent, use `count()` |
+| `expect(el).toBeVisible()`, `.toExist()` | `.toBeVisible()` for visibility; `.toHaveCount(1)` for existence |
 | `expect(el).not.toBeVisible()` | `.toBeHidden()` |
 | `expect(el).toHaveText(t)` | `.toHaveText(t)` |
 | `expect(el).toHaveToggleValue(true)` | `.toBeChecked()` |
@@ -98,30 +99,29 @@ password lives in `credentials`, not in the spec.
 | `device.setBiometricEnrollment(true)` | `device.enrollBiometrics('faceid', true)` |
 | `device.matchFace()`, `device.unmatchFace()` | `device.setBiometrics('faceid', 'match' \| 'nonmatch')` |
 | `device.setStatusBar`, `device.setURLBlacklist` | No equivalent |
-| `device.disableSynchronization()` | Not needed. Nothing synchronizes, everything polls |
-| `device.takeScreenshot()` | `app.screenshot('label')`, secure fields painted black |
+| `device.disableSynchronization()` | No equivalent. e2e waits through actions and retrying assertions. |
+| `device.takeScreenshot()` | `app.screenshot('label')`, subject to the secret policy |
 | `:ios:` / `:android:` in a test name | `{ platforms: ['ios'] }` on the test |
 
 Where the behaviour differs from Detox's:
 
-- Detox fails on two matches for actions. e2e also fails reads and
-  assertions with `LOCATOR_AMBIGUOUS`. Narrow with `.filter()` or `.nth()`.
-- `test.setup` and `{ session }` are web-only. Sign in per test with a goal,
-  or seed the app's state.
+- Actions and single-node reads or assertions fail on multiple matches with
+  `LOCATOR_AMBIGUOUS`. Narrow with `.filter()` or `.nth()`.
+- The device engine does not support `test.setup` and `{ session }`.
+  Sign in per test or seed the app's state.
 
 `by.text` is an exact match in Detox and `getByText` is exact here too.
 
 ## What to migrate first
 
-Specs that fight animations or call `disableSynchronization` move first,
-since their `waitFor` chains disappear. Then the flows that break on every
-redesign, as one `agent.act` each with `expect` pinning the result. The
-[agent-device engine](/reference/agent-device#engine) has `settle` and
-`transition` options for an app whose screens arrive in stages.
+Start with one flow that needs frequent maintenance. Use `agent.act` for its
+goal and keep exact checks as `expect` assertions. If screens take time to
+settle, configure the engine's
+[`settle` and `transition` options](/reference/agent-device#engine).
 
 <CardGroup cols={2}>
   <Card title="Testing iOS and Android" icon="mobile-screen" href="/mobile">
-    Point the target at your app, several devices, the `device` fixture.
+    Configure your app and devices.
   </Card>
   <Card title="agent-device reference" icon="book" href="/reference/agent-device">
     Every option, the `device` fixture, and the tool pack.

@@ -3,52 +3,53 @@
 `agent` is a fixture like `screen` and the main way a test drives the app.
 Each call is one bounded invocation: a fresh redacted observation, a
 deadline, a model-call budget, and no shared transcript between calls. A
-test with no agent step never loads a model.
+test with no agent step makes no model calls.
 
 ## Configure a model
 
-Agents live under `agents` by name; `default` is the one tests use, `e2e run --agent <name>` re-points that default, a test or describe pins one with `{ agent: 'name' }` or several with `{ agent: ['buyer', 'admin'] }` (the test runs once per agent, one result each, tagged `[admin]` in the terminal and `agent` in the report), and any `agent.*` call can name one with `{ agent: 'name' }` (innermost wins). `--agent buyer,admin` runs every unpinned test once per agent; on a pinned list it narrows to the names both give and never overrides a pin it does not name. A signed-in persona pairs the pin with a `session`, one per describe block, so a loop over describe blocks sweeps signed-in personas. There is no default model. Pick one of three shapes for an entry:
+Configure an AI SDK model under `agents.default`. This example uses Vercel
+AI Gateway and reads `AI_GATEWAY_API_KEY`:
 
 ```ts
-// e2e.config.ts
+import type { E2EConfig } from 'e2e';
 import { createAgent } from 'e2e/agent';
+import { playwright } from '@e2edev/playwright';
 import { gateway } from 'ai';
 
 export default {
-  // 1. The built-in agent with an AI SDK model: gateway() from 'ai' is the Vercel AI Gateway and reads AI_GATEWAY_API_KEY.
-  agents: { default: createAgent({ model: gateway('openai/gpt-5.6-luna'), system: 'You are a thorough QA agent. Verify every outcome on screen.' }) },
-
-  // 2. An options block: a model plus project vocabulary. openrouter() from '@openrouter/ai-sdk-provider' reads OPENROUTER_API_KEY.
-  // agents: { default: { model: openrouter('anthropic/claude-sonnet-4.5'), context: 'A billing dashboard. Plans are Free, Team, and Pro.' } },
-
-  // 3. A live AI SDK model instance for a provider called directly.
-  // agents: { default: createAgent({ model: openai('gpt-5.6-luna') }) },
+  targets: [{ engine: playwright({ url: 'http://localhost:3000' }) }],
+  agents: { default: createAgent({ model: gateway('openai/gpt-5.6-luna') }) },
 } satisfies E2EConfig;
 ```
 
-```bash
-AI_GATEWAY_API_KEY=... npx e2e run
-```
+Agent steps can also use a saved subscription login or a local model. See
+[setup](setup.md#subscriptions-and-api-keys) for the choices and sign-in commands.
+Keep `ai@^7` installed when using agent steps with any provider.
 
-- The model is always an AI SDK instance the config constructs; the runner
-  implies no gateway and reads no model variable. `gateway()` from `ai` is the
-  Vercel AI Gateway, `openrouter()` from `@openrouter/ai-sdk-provider` is
-  OpenRouter, `createOpenAICompatible({ baseURL }).chatModel()` from
-  `@ai-sdk/openai-compatible` is any /v1 chat endpoint (Ollama, vLLM), and a
-  provider's own package (`openai()`) calls it directly. Each reads its own
-  key variable. A string in a model slot is `INVALID_CONFIG`.
-- With no model anywhere, acquiring `agent` is `MODEL_UNAVAILABLE`. Use
-  `createAgent` for the model, a `system` prompt, and tools.
-- `ai@^7` must be installed for any `agent.*` step; the runner loads it
-  lazily and fails without it.
+- Pass a model instance, not a string. A string produces `INVALID_CONFIG`.
+- The `model` drives `agent.act`. Judgments use `judge` when configured,
+  otherwise `model`. Conflicting values between `createAgent` and the
+  surrounding agent options produce `INVALID_CONFIG`.
+- A missing model for the built-in agent raises one run-level
+  `MODEL_UNAVAILABLE` when the first test acquires `agent`, then stops the
+  run with exit 2. Authentication failures occur on the first model call
+  and raise `MODEL_PROVIDER_FAILED`.
 - `context` in the config and `agentContext` on a test or group add trusted
-  project vocabulary to every prompt.
-- The model passed to `createAgent({ model })` is the one model for every
-  `agent.*` call, `act` and the judgments alike.
-  An agent `model` naming a different model is `INVALID_CONFIG`.
-- Missing model or key: checked once per run when the first test acquires
-  the `agent` fixture. One run-level `MODEL_UNAVAILABLE` (exit 2) stops the
-  run; the remaining tests are skipped, not failed one by one.
+  project vocabulary. Use `createAgent` for a `system` prompt and tools.
+
+### Choose an agent
+
+Tests use `agents.default` unless selected otherwise:
+
+- `e2e run --agent buyer` chooses another configured agent for the run.
+- `{ agent: 'buyer' }` on a test or group pins that agent. A list such as
+  `{ agent: ['buyer', 'admin'] }` runs each test once per agent.
+- `--agent buyer,admin` runs unpinned tests for both agents. It narrows a
+  pinned list to matching names and never replaces a pin it does not name.
+- `{ agent: 'name' }` on an `agent.*` call overrides the test's choice.
+
+To test signed-in personas, pair an agent with a `session` in a describe
+block, then repeat the block for each persona.
 
 ## act: one goal
 
@@ -161,7 +162,7 @@ masks depend on the accessibility capture.
 - Use the words on screen: `'open the Billing tab and choose the Pro plan'`,
   not `'upgrade'` when no control says so.
 - Values go in params, never in the sentence:
-  `act('rename the project to {name}', { name })`. The runner does not
+  `agent.act('rename the project to {name}', { params: { name } })`. The runner does not
   expand `{name}`; the model receives the instruction as written plus the
   params as a separate block and reads the value from there.
 - Give vocabulary once, in `agent.context` or `agentContext`, instead of
@@ -209,24 +210,20 @@ tool call before it executes.
 | `extract` | 2 | 30 s |
 | `waitFor` | up to `agent.maxModelCalls` (25) | 30 s |
 
-- With the cache on, a passing `act` costs model calls once and replays on
-  later runs until the app changes. Budget for the runs where the UI moved,
-  not for every run.
-- Slow providers: raise the test `timeout` and `actionTimeout` (each
-  observation and action inside a step is bounded by it) rather than reading
-  latency as a defect. `STEP_TIMEOUT` and `STEP_BUDGET_EXHAUSTED` are test
-  failures: scope the goal smaller or split it.
+- A verified `act` can replay without model calls. Cache misses and
+  hand-offs use the model, and judgments still run live.
+- For slow model calls, raise the step or test `timeout`. Raise
+  `actionTimeout` for slow UI operations. `STEP_TIMEOUT` and
+  `STEP_BUDGET_EXHAUSTED` count as test failures; smaller goals can help.
 - `--debug` prints a per-step table (duration, model calls, tokens, cost)
   after the run and saves each step's transcript as an artifact.
 
 ## The trace cache
 
-Each passing `agent.act` records the actions it performed. The next run
-replays them with zero model calls and hands back to the live agent the
-moment the app no longer matches the recording, or when the recorded end
-state is not on screen after the replay. Replayed actions run as a test's
-own steps do, without the agent's settle wait, so a replay is as fast as
-the deterministic equivalent.
+A passing `agent.act` can save its actions after a later check verifies the
+outcome. The next run replays them without model calls. If the app or final
+state no longer matches, the live agent continues from the current screen.
+`agent.assert`, `agent.waitFor`, and `agent.extract` still run live.
 
 - On by default (`read-write`), `read-only` in CI, `cache: 'off'` in the
   config or `--no-cache` on a run to disable. Entries live in `.e2e/cache/`;
@@ -311,8 +308,7 @@ Full reference: https://docs.e2e.army/agents
 
 One suite, one job, on every pull request, agent steps included. Pass the
 key the config's model reads (`env: { AI_GATEWAY_API_KEY }` for `gateway()`)
-from secrets. Commit `.e2e/cache/` so CI replays recorded steps with no
-model call and consults the model only where the app changed; keep every
-`act` followed by a check so the recording is trusted. CI retries once and
-reports a pass-on-retry as flaky, so the report keeps naming the goals that
-need tightening.
+from secrets. Sharing `.e2e/cache/` lets CI replay verified action steps
+without model calls. Cache misses, hand-offs, and agent judgments still use
+the model. Follow each `act` with a check of its outcome. CI retries once
+and reports a pass on retry as flaky.

@@ -1,11 +1,11 @@
 ---
 title: Continuous integration
-description: One workflow that gates every pull request, the defaults the runner changes in CI, and how agent steps hold up as a required check.
+description: Run tests on pull requests, upload reports, and configure model credentials in CI.
 ---
 
-One suite, one job, on every pull request. Deterministic and agent steps run
-together, and the job is a required check. With `command` in your config,
-the job is install, browser, run.
+Run deterministic and agent tests in the same CI job. This workflow assumes
+your config includes a [command](/starting-your-app) to start the app and
+uses AI Gateway for model calls:
 
 ```yaml title=".github/workflows/e2e.yml"
 name: e2e
@@ -34,11 +34,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
-      # Provision the browser as its own step, so its cost is visible in the log.
       - name: Install browsers
         run: npx playwright install chromium --with-deps
 
-      # list keeps the log readable; junit writes .e2e/junit.xml for the CI test summary.
       - name: Run e2e
         run: npx e2e run --reporter list,junit
         env:
@@ -47,7 +45,6 @@ jobs:
           E2E_USER_ADMIN_USERNAME: ${{ secrets.E2E_USER_ADMIN_USERNAME }}
           E2E_USER_ADMIN_PASSWORD: ${{ secrets.E2E_USER_ADMIN_PASSWORD }}
 
-      # The reports exist on every outcome, so upload them whenever the job ran.
       - name: Upload report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -58,7 +55,6 @@ jobs:
             .e2e/junit.xml
           if-no-files-found: warn
 
-      # Screenshots and traces are only interesting when something broke.
       - name: Upload artifacts
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -69,31 +65,28 @@ jobs:
           retention-days: 7
 ```
 
-Actions are pinned to commit SHAs. A tag is mutable, and a workflow with
-repository secrets is the wrong place to run code that can change under you.
-With `--frozen-lockfile`, the runner, the engine, and the browser all come
-from your lockfile, and `npx e2e` runs that installed copy.
+The workflow pins actions to commit SHAs and installs dependencies from the
+lockfile. `npx e2e` runs the installed version.
 
-Point your CI's test summary at `.e2e/junit.xml` and failures show up as test
-results instead of a red step. A startup failure such as `APP_UNREACHABLE`
-appears there too, as a `run` suite. For the failure itself on the pull
-request, add the [GitHub reporter](/github).
+Configure your CI's test-report integration to read `.e2e/junit.xml`. It
+includes startup failures such as `APP_UNREACHABLE` in a `run` suite. Add
+the [GitHub reporter](/github) to post results on the pull request. Make the
+e2e job a required check in your repository settings if it should block merges.
 
 ## What CI changes
 
-CI mode is on when the `CI` variable is set and is not empty, `0`, or `false`.
-That is the only signal, so `CI=1 npx e2e run` reproduces CI
-behavior locally.
+CI mode is on when `CI` is set to a value other than an empty string, `0`,
+or `false`. Use `CI=1 npx e2e run` to reproduce these defaults locally:
 
-| Setting | Local | CI | Why |
-| --- | --- | --- | --- |
-| `retries` | `0` | `1` | Locally a retry hides the bug you were about to inspect |
-| `workers` | half your cores | `1` | A shared runner is the noisiest place to add timing variance |
-| `cache` | `read-write` | `read-only` | A committed cache is untrusted input; see [Caching agent steps](/cache#commit-your-traces) |
-| `.only` | allowed | rejected with `ONLY_IN_CI` | A focused test that reaches CI silently disables the rest of the suite |
-| `command.reuseExisting` | honored | ignored, with a notice | A server already listening on a runner is a leftover, not your dev server |
+| Setting | Local | CI |
+| --- | --- | --- |
+| `retries` | `0` | `1` |
+| `workers` | half your cores | `1` |
+| `cache` when unset | `read-write` | `read-only` |
+| `.only` | allowed | rejected with `ONLY_IN_CI` |
+| `command.reuseExisting` | honored | ignored, with a notice |
 
-Override any of them when you mean it:
+Override worker and retry defaults with flags:
 
 ```bash
 npx e2e run --workers 4 --retries 0
@@ -105,66 +98,44 @@ machine and prints no notice. Add `E2E_TELEMETRY_DISABLED: '1'` to the job's
 
 ## Model credentials
 
-The job passes the key the provider package reads, `AI_GATEWAY_API_KEY` in
-the workflow above. The runner reads none of these variables, so the value
-never enters logs, reports, or the app process. Which variable each provider
-reads is on [Choosing a model](/models). A run whose tests never touch
-`agent` makes no model call, key or not.
+Pass the credential your configured provider needs, such as
+`AI_GATEWAY_API_KEY` in the workflow above. See [Choosing a model](/models)
+for provider setup. Tests that never use `agent` need no model credentials.
 
-Treat the key like the app credentials beside it: it reaches the job's
-code, so use a gateway key with a spending limit. On a public repository,
-GitHub withholds secrets from pull requests opened from forks. Replayed
-steps still pass there, since a cache hit makes no model call, but a step the
-cache cannot replay fails at its first model call. Put the secrets in a
-[deployment environment](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments)
-with required reviewers, so a maintainer approves a fork's run before it gets
-a key. Do not switch to `pull_request_target`; that runs the fork's code with
-your secrets unreviewed.
+Store keys in CI secrets and use spending limits where available. The code
+running in the job can read those keys, including test code and dependencies.
+GitHub withholds secrets from fork pull requests. Fully replayed action
+steps need no model call, but live actions and agent judgments still do.
+Run untrusted code without secrets or write tokens. See the
+[security model](/security).
 
 ## Gating pull requests on agent steps
 
-An agent step is a test like any other, and the suite is built so it can be
-a required check. Four things make that hold:
+A failed agent step fails the job like a failed `expect`. Keep the checks
+predictable by giving each `agent.act` one goal and checking its outcome
+with a locator assertion or `agent.assert`.
 
-<Steps>
-  <Step title="Commit the cache">
-  A passing `agent.act` records its actions. Commit `.e2e/cache/` and CI
-  replays those actions with no model call, so a pull request that leaves a
-  flow alone runs it exactly as it ran last time. The model is consulted
-  only when the app changed under a step. See
-  [Commit your traces](/cache#commit-your-traces).
-  </Step>
-  <Step title="Write small, explicit goals">
-  One goal per `act`, worded the way the screen is. Real values go through
-  `params`. A narrow goal has one reasonable path, and that is the path the
-  cache records. See [Goals](/writing-tests#goals-agent-act).
-  </Step>
-  <Step title="End every agent step in a recorded check">
-  Follow an `act` with an `agent.assert`, a `waitFor`, or a plain `expect`.
-  The check is what makes the recording trustworthy, and it is what a
-  reviewer reads when the step fails.
-  </Step>
-  <Step title="Let CI retry once">
-  `retries` is `1` in CI. A test that passes on the retry is reported as
-  flaky rather than passed, so the report keeps telling you which flows need
-  a tighter goal.
-  </Step>
-</Steps>
+To reuse verified actions in CI, [share the trace cache](/cache#commit-your-traces).
+A cache hit avoids a model call for that action step. Agent judgments still
+run live, and a cache miss or hand-off uses the model.
 
-A failed agent step fails the job the same way a failed `expect` does, with
-the step's explanation and screenshot in the uploaded artifacts.
+CI retries once by default. A test that passes only on retry is reported as
+flaky, so you can identify flows that need investigation.
 
 ## Exit codes
 
-A non-zero exit fails the step, which is usually all you want. When you react
-to the class of failure: 1 is a test failure, 2 is configuration or policy, 3
-is infrastructure, 130 is a cancellation.
+Any non-zero exit fails the job.
 
-<Warning>
-Do not retry the whole job on exit code 2. Configuration and collection
-errors are deterministic, so a re-run burns minutes and produces the same
-red. Exit 3 is the only code where a job-level retry is a reasonable reflex.
-</Warning>
+| Code | Meaning |
+| --- | --- |
+| `1` | Test failure |
+| `2` | Configuration, collection, or policy error |
+| `3` | Infrastructure failure |
+| `4` | Internal runner error |
+| `130` | Cancellation |
+
+Fix configuration and collection errors before retrying. For infrastructure
+failures, inspect the error to decide whether a retry could help.
 
 <CardGroup cols={2}>
   <Card title="Pull request comments" icon="code-pull-request" href="/github">

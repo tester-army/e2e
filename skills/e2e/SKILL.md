@@ -5,18 +5,17 @@ description: Set up and write agentic end-to-end tests with e2e, the e2e runner.
 
 # e2e: agentic end-to-end tests in TypeScript
 
-e2e is an agentic end-to-end test runner. A test drives the app the way a
-user would: `agent.act` takes one goal in natural language and a model works
-through the live UI to reach it; `agent.assert`, `agent.waitFor`, and
-`agent.extract` ask one question about the screen. Every call runs under a
-deadline and a model-call budget and ends in a verdict. Exact values and
-exact outcomes go through `screen`, `app`, `web`, and `expect` in the same
-test. A passing `act` is recorded in the trace cache and replays with no
-model call until the app changes, so a suite pays for thinking once per
-change, not once per run, and a renamed button does not break it. The
-runner knows no platform: every target names an engine,
-`@e2edev/playwright` for browsers or `@e2edev/agent-device` for iOS
-simulators and Android emulators.
+e2e runs UI tests with agent goals and exact assertions. `agent.act` drives
+one goal; `agent.assert`, `agent.waitFor`, and `agent.extract` judge the
+screen. Use `screen`, `app`, `web`, and `expect` for exact interactions and
+checks. The trace cache can replay verified actions and check their recorded
+end state without a model call. Agent judgments still run live.
+UI targets use `@e2edev/playwright` for browsers or
+`@e2edev/agent-device` for iOS simulators and Android emulators.
+
+Agent steps can use an existing ChatGPT, Copilot, or SuperGrok subscription,
+an API key, or a local model. `e2e init` offers these choices. See
+[setup](references/setup.md#subscriptions-and-api-keys) for sign-in commands.
 
 ```ts
 // e2e.config.ts
@@ -90,9 +89,9 @@ one. Without them, the installed CLI prints the same text:
    in a setup test, a field that must receive one specific string, a count
    that must be one specific number.
 4. Run one file: `npx e2e run tests/<feature>.e2e.ts`. Agent steps need a
-   model in the config and its provider's key in the environment
-   (`AI_GATEWAY_API_KEY` for `gateway()`). A test with no agent step needs
-   neither.
+   model in the config and authentication for its provider, such as a saved
+   subscription login or `AI_GATEWAY_API_KEY` for `gateway()`. A local
+   endpoint may need no key. Tests without agent steps need no model.
 5. Read the failure: the reporter prints the error code, the message, and a
    code frame; `.e2e/report.json` has every step and artifact path. Fix the
    locator, the expectation, or the app. Never add a sleep.
@@ -102,16 +101,16 @@ one. Without them, the installed CLI prints the same text:
 - Run the CLI as `npx e2e ...` (or `pnpm exec e2e ...`).
 - The config is `export default { ... } satisfies E2EConfig` with
   `import type { E2EConfig } from 'e2e'`. `targets` is required and
-  each target names its engine. The engine declares the app:
-  `playwright({ url, command })`. There is no top-level `app` key and no
-  `defineConfig`.
+  UI targets name an engine. The engine declares the app, for example
+  `playwright({ url, command })`. A tools-only target can omit the engine
+  and set `platform` explicitly. There is no top-level `app` key or `defineConfig`.
 - Import `test`, `expect`, `credentials`, and `secrets` from `e2e`. A test that
   uses the `web` fixture imports `test` from `@e2edev/playwright` instead: the
   same runtime `test`, typed with `web`.
 - Config and tests are ES modules and load as such whatever `package.json` sets as `type`.
-- Nothing waits explicitly: queries poll, actions wait, `expect` retries.
-  Reads such as `textContent()` and `count()` do not retry, so assert with a
-  matcher when a value has to settle.
+- Locators resolve when used. Actions wait for readiness and `expect`
+  retries assertions. Reads such as `textContent()` and `count()` do not
+  retry, so use a matcher when a value has to settle.
 - A locator that matches two nodes fails with `LOCATOR_AMBIGUOUS`. Narrow it
   with `{ name }`, `filter()`, `first()`, `nth()`, or `{ visible: true }`.
 - Secrets never appear in test code. Declare accounts under `credentials`
@@ -122,10 +121,9 @@ one. Without them, the installed CLI prints the same text:
 - Agent instructions: one goal per `act`, the wording on screen, real values
   in params. Judge meaning, not phrasing: `toContain('Pro')`, not an exact
   sentence a model produced.
-- Let the agent drive and pin the outcome. With the cache on, a passing
-  `act` costs model calls once and replays after that, so the cost of a step
-  is paid per UI change, not per run. Spend effort on the goal's wording,
-  not on avoiding agent steps.
+- Check each agent goal's outcome. A passing `act` with a recorded check
+  can be cached and replayed without model calls. If replay fails, the
+  runner can return to the live agent.
 - Shape the agent for this app and keep iterating on it: `context` for
   vocabulary the screens use, `system` on `createAgent` for how it works,
   tools for a test API, and named personas under `agents`. When a step

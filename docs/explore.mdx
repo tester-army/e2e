@@ -3,42 +3,29 @@ title: Exploring without a test
 description: Give the agent a goal instead of a test file. It plans its own steps, drives the app, and reports what it finds.
 ---
 
-`e2e explore` is a run with no test file. You give the agent a goal, it
-decides what to exercise one step at a time, and it reports every defect it
-has evidence of. The run ends with an assessment, a list of findings, and the
-same `.e2e/report.json` a test run writes.
+Use `e2e explore` to investigate a flow without writing a test. Give the
+agent a goal; it chooses the steps and records findings in
+`.e2e/report.json`.
 
 ```bash
 npx e2e explore 'Explore the checkout flow like a first-time buyer and report anything off'
 ```
 
-Use it before there are tests, to see what the agent can do with your app. Use
-it on a feature branch, to hunt for regressions a scripted suite would not
-know to look for. Use it to find out what is worth turning into a test. It
-runs the same agent `agent.act()` runs, with the same model, tools, and
-safety rules, so what it finds is what a test would find.
+Explore can help you investigate a feature or choose flows to turn into
+regression tests. It uses the same model, tools, and action rules as
+`agent.act()`. Review the findings against their evidence.
 
 ## What a run does
 
-1. **Opens the app** on the target's URL, as `app.open()` does. A device
-   target with no URL is already showing its app.
-2. **Plans a step.** One model call reads the goal, the steps so far, the
-   findings so far, and the current screen, and answers with the next
-   charter: a title and one concrete instruction. It prefers breadth over
-   depth and follows up on anything odd a previous step reported.
-3. **Runs the step** as an ordinary `agent.act()` step. The agent has the
-   whole action grammar, your project tools, and one more: `report_finding`.
-4. **Records findings** the moment the agent calls the tool: title, kind,
-   severity 1 to 5, what it expected, what it saw, and how to get there. The
-   current path is included when the engine exposes one. A redacted screenshot
-   is attached when pixels are allowed and the artifact can be saved.
-5. **Repeats** until the planner decides the goal is covered or a budget ends
-   the run, then asks the model for a closing assessment.
+The runner opens the target app, plans one step, and carries it out with
+`agent.act`. The agent records findings as it goes, including what it
+expected, what it saw, and how to reproduce it. A screenshot is attached
+when capture is allowed and succeeds.
 
-A step that finishes its charter passes. A step the app would not let it
-complete fails, and the run keeps going. A step that runs out of its own
-budget mid-charter is a time box, not a failure. Three failed or blocked steps
-in a row that reported nothing end the run.
+The process repeats until the planner considers the goal covered or a
+budget expires, then produces a closing assessment. A failed step does not
+stop exploration. Three consecutive failed or blocked steps with no new
+findings end the run.
 
 ## Budgets
 
@@ -48,9 +35,8 @@ in a row that reported nothing end the run.
 | Wall clock | 10 minutes | 3 to 15 minutes | `--timeout <ms>` |
 | Actions and model calls per step | 40 each | from the agent's `maxSteps` and `maxModelCalls` | config |
 
-Exploration hits diminishing returns fast, which is why the ceilings are low.
-A first look at an app fits in four steps; a thorough pass over one flow fits
-in twelve.
+Start with the defaults. Increase the step or time budget when the report
+shows that the run stopped before reaching the part of the flow you need.
 
 ## The verdict
 
@@ -62,13 +48,10 @@ in twelve.
 | Every step was blocked, with no `issue` finding | blocked | 1, 2, or 3, from the first blocker |
 | Config, engine, or model provider error | error | 2 or 3 |
 
-An `issue` is a defect a user would hit. A `warning` is cosmetic and never
-fails the run. If every charter was blocked, the run stays blocked even when
-it recorded warnings. The report keeps the first blocker's code and
-explanation. Its exit code is `1` for an automation limit, `2` for missing
-credentials or test setup, or `3` for an unavailable environment. When a
-charter passes, fails, or exhausts its budget, reported issues decide the
-final verdict.
+An `issue` is a functional defect and fails the run. A `warning` is cosmetic
+and does not. If every step was blocked, the run stays blocked and reports
+the first blocker's error. A step that reaches its action or time budget
+is recorded as time-boxed; findings still determine the verdict.
 
 ## What you get
 
@@ -86,87 +69,41 @@ the agent reports it, and each step as it finishes, by title.
    ended: the agent covered the goal
 ```
 
-Then a `Findings` section, issues before warnings and the most severe first,
-each with where it was seen, what was expected against what the screen
-showed, the steps that reach it, and the screenshot taken as evidence. The
-assessment and the summary close the run.
+The final report lists issues before warnings, with the most severe first.
+Each finding includes its location, expected and observed behavior,
+reproduction steps, and any screenshot evidence. Severity runs from
+`trivial` at 1 to `critical` at 5.
 
-```text
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯ Findings 7 ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+The JSON report stores these details under `run.explore`, along with the
+goal, budgets, steps, assessment, and reason the run ended. After a secret
+fill, screenshots are withheld for the rest of the attempt.
 
- 1. high issue       Cart total does not update when Hyperion quantity increases
-    /cart · step 2
-    expected  Increasing Hyperion from 1 to 2 should change the cart total from
-              $25.25 to $39.25, matching $28.00 plus Solaris at $11.25.
-    actual    The screen shows Hyperion quantity 2 and line total $28.00, but
-              the Cart total still reads "$25.25".
-    steps     1. Open the cart with Hyperion and Solaris each at quantity 1.
-              2. Click the "+" button labeled "Increase Hyperion quantity" once.
-    evidence  .e2e/artifacts/web/explore__Explore_20this_20bookshop.../attempt-0/finding-5.png
-
- 2. medium issue     Orders page says 3 orders but lists only 2
-    ...
-
- Assessment
-   The exploration goal was covered: the catalog, cart, checkout, Account,
-   Orders, and Sign in flows were exercised, including a successful order. The
-   non-first Orders entry did not open a detail view. The cart quantity and
-   removal flow is the highest-value flow to turn into a scripted test.
-
-   Findings  6 issues | 1 warning
-      Steps  3 of 8 · 3 passed · the agent covered the goal
-         AI  157.6k tokens · 26% cached · $0.12 · 30 model calls · gateway/google/gemini-3.6-flash
-   Start at  20:37:20
-   Duration  93.67s
-     Report  .e2e/report.json
-```
-
-Severity reads as a word: `critical` (5), `high` (4), `medium` (3), `low`
-(2), `trivial` (1). An `issue` fails the run; a `warning` never does. The
-exploration is the run's one test, so the usual file block and `Failed Tests`
-entry give way to this record; a failure that is not the verdict, such as a
-provider error or a run that explored nothing, still prints as one.
-
-`.e2e/report.json` carries the exploration under `run.explore`: the goal, the
-budgets, why the run ended, the assessment, every step, and every finding.
-A finding with a saved screenshot includes its artifact id. After a secret
-fill, screenshot evidence is withheld for the rest of the attempt.
-`--reporter`, `--video`, `--ai-trace`, and `--debug` work as they do for
-`e2e run`; `--reporter list,markdown` also writes the findings as a markdown
-page in `.e2e/summary.md`, ready to paste into a pull request or an issue.
-In both commands, `--video` requires a selected engine that records
-video; otherwise the run fails with `UNSUPPORTED_ARTIFACT`.
+`--reporter list,markdown` also writes the findings to `.e2e/summary.md`.
+`--debug`, `--ai-trace`, and `--video` work as they do for `e2e run`. Video
+requires an engine that supports recording.
 
 ## Your config applies
 
-Explore reads `e2e.config.ts`. The target's engine, app command, secrets,
-and the agent's `context` and provider options all apply. `--agent <name>` explores as another configured agent, so a UX-review
-agent and a functional one can explore the same app in turn. An agent built
-with `createAgent({ tools, system })` lends its tools and guidance to the
-explorer; a hand-rolled executor has no vocabulary to reuse and is replaced
-by the built-in agent for the run, with a notice.
+Explore reads `e2e.config.ts`, including the target, app command, model, and
+agent context. Use `--agent <name>` to select a configured agent.
+`createAgent` tools and system instructions also apply. Custom executors
+are replaced by the built-in agent for exploration, with a notice.
 
-Configured `credentials` reach the explorer as step secrets. The planner is
-told each account's name and username, never its password. The `type_secret`
-tool is offered when credentials are configured and the selected engine
-declares `perform`. Each fill still needs the runner's authorization and an
-engine that can handle a sensitive fill; unsupported fills can fail when
-called. There is no separate capability flag that hides the tool for those
-engines. Without configured credentials or `perform`, the tool is absent
-and the explorer is instructed to skip password sign-in. The password never
-enters a prompt, a transcript, or a finding.
+Every configured credential is available to the explorer. It receives
+account names and usernames; passwords remain secret handles and require
+an engine that supports sensitive fills. Configure only the accounts needed
+for the exploration. Without credentials, it skips password sign-in.
 
-With several targets, pass `--target`; otherwise the first configured target
-is explored and the CLI says so. The trace cache is off and retries are zero
-for the run.
+Use `--target <name>` to choose among several targets. Otherwise, explore
+uses the first and prints a notice. Exploration disables the trace cache
+and retries.
 
 ## Writing a good goal
 
-Name the area and the posture. "Explore the checkout flow like a first-time
-buyer and report anything off" beats "test checkout": it tells the planner
-where to start, how deep to go, and what counts. Say what not to touch when it
-matters ("do not place a real order"). The default goal, `Explore the app and
-find bugs`, is a fair first look at a small app.
+Name the flow and the user's goal, for example, "Explore checkout as a
+first-time buyer and check that totals match the cart." Include boundaries
+when needed, such as "stop before placing the order." Without a goal,
+explore uses `Explore the app and find bugs`.
 
 <CardGroup cols={2}>
   <Card title="CLI reference" icon="terminal" href="/reference/cli#e2e-explore">

@@ -1,26 +1,11 @@
 ---
 title: Introduction
-description: Agentic end-to-end testing framework for any app.
+description: Write end-to-end tests with AI goals, locators, and assertions for web and mobile apps.
 ---
 
-**e2e lets an agent test your app like a real user.** You write a goal
-or a question in natural language, and a model interacts with the app to
-reach it. Exact values and exact checks go in the same test as regular locator calls and assertions.
-
-**e2e tests applications through their user interface**: web, mobile,
-desktop, and anything else with a UI. It is not an agent-eval harness and not
-an API-only tool; what it drives is what a user sees and touches.
-
-**The runner is platform agnostic.** Browsers, iOS simulators, and Android
-emulators ship as engines, and the same test runs on each.
-
-The engine contract carries no platform noun, so a desktop shell or a TV app
-fits it as well as a browser does. You can write [your own engine](/writing-an-engine)
-for any surface with a user interface.
-
-**The agent thinks once.** With the [cache](/cache) on, a passing `agent.act`
-records its actions, and later runs **replay them with no model call** until
-the app changes. A suite costs tokens when the UI moves, not on every run. This substantially reduces the maintenance of tests.
+e2e is an end-to-end testing framework for web and mobile apps. Describe a
+goal in natural language and an agent interacts with the app to complete it.
+Use locators and assertions in the same test to check exact results.
 
 ```ts title="tests/checkout.e2e.ts"
 import { test, expect } from 'e2e';
@@ -35,9 +20,12 @@ test('a member upgrades to Pro', async ({ app, agent, screen }) => {
 });
 ```
 
-Agent steps stay under your control. The runner decides what the model
-sees, what it may do, how many calls it gets, and what ends up in the
-report; the [security model](/security) states every rule. You choose the model and can replace the agent outright.
+Use your own [subscription](/subscriptions), [API key, or local model](/models).
+Tests without agent steps run without a model.
+
+## How it works
+
+Configure an engine for your app and a model for the agent:
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -51,47 +39,32 @@ export default {
 } satisfies E2EConfig;
 ```
 
-## What you get
+The Playwright engine drives Chromium, Firefox, and WebKit. The agent-device
+engine drives iOS simulators and Android emulators. Both expose the same
+agent and screen APIs, with extra APIs for platform-specific operations.
+You can also [write an engine](/writing-an-engine) for another platform.
 
-- **Tests that survive UI changes.** An agent step names the outcome, not the
-  selector. Renamed buttons and rearranged forms do not break it.
-- **Replay instead of re-thinking.** In read-write cache mode, an `agent.act`
-  followed by a recorded verification can save its actions. Later runs replay
-  them with no model call until the app diverges.
-- **Bounded agent steps.** Every `agent.*` call has a deadline and a model-call
-  budget, and ends in a verdict: passed, failed, or blocked.
-- **Secrets the model never sees.** A password, an API key, any value from the
-  environment is an opaque handle. The model gets its name; the runner fills
-  the field and redacts the value everywhere.
-- **One contract, any surface.** Tests share the agent and locator APIs
-  across engines; only setup follows the platform. Engines today:
-  - `@e2edev/playwright` drives Chromium, Firefox, and WebKit.
-  - `@e2edev/agent-device` drives iOS simulators and Android emulators.
-  - [Your own](/writing-an-engine), for anything else.
-- **Every run is on the record.** Each agent step is written down: what it
-  saw, what it did, what it cost, and why it stopped. A person or a coding
-  agent reads one [report](/debugging) to find out what went wrong, with
-  screenshots, traces, and video beside it.
+Agent steps have time and model-call limits. The [trace cache](/cache)
+can replay verified actions and check their recorded end state without a
+model call. Agent judgments still run live. When replay no longer works,
+the agent can try the goal again.
 
-## Where to go
+The runner [redacts registered secrets](/security) from model input and
+records steps, failures, and artifacts in a [report](/debugging).
+
+## Get started
 
 <CardGroup cols={2}>
   <Card title="Quickstart" icon="rocket" href="/quickstart">
-    Scaffold a project, run a browser test, add an agent step.
+    Set up a project with your subscription or API key and run a test.
   </Card>
   <Card title="Writing tests" icon="pen-to-square" href="/writing-tests">
-    Goals, checks, extraction, and the deterministic APIs.
+    Write goals, check outcomes, and extract data.
   </Card>
   <Card title="Web" icon="globe" href="/starting-your-app">
-    Start your dev server from the config, mock APIs, reach protected previews.
+    Start your app and configure browser tests.
   </Card>
   <Card title="Mobile" icon="mobile-screen" href="/mobile">
-    iOS simulators and Android emulators, the `device` fixture, what differs.
+    Run tests on iOS simulators and Android emulators.
   </Card>
 </CardGroup>
-
-The **Guides** cover what every project needs after that: a model, signing
-in, agents and personas, caching, debugging, CI. **Extend** is for changing
-what the agent is or adding a new platform. The **Reference** tab has every
-function, option, flag, and error code.
-

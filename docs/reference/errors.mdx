@@ -57,18 +57,18 @@ try {
 | `AUTOMATION_UNSUPPORTED` | The step needs an interaction the available toolset cannot perform, e.g. drag-and-drop (blocked: automation) | test | 1 |
 | `MODEL_UNAVAILABLE` | No model configured: neither `createAgent({ model })` nor `agents.<name>.model` holds an AI SDK model instance. Checked once per run when the `agent` fixture is first acquired; recorded as one run-level error that stops the run. | configuration | 2 |
 | `POLICY_DENIED` | Scheme, sink, or purpose denied before dispatch. Also reading a value from a secure field. | configuration | 2 |
-| `APP_UNREACHABLE` | The app process or URL did not respond, including a navigation the network refused (connection refused, name not resolved, timed out) because nothing listens at the engine's `url`. After a `command` or service is spawned, an early exit or a spent `startupTimeout` ends the message with the last lines appended to its `log` (`command.env` values replaced by `<secret:NAME>` markers), reports `no output` when nothing was appended, or says to set a `log` when none is configured | infrastructure | 3 |
+| `APP_UNREACHABLE` | The app URL could not be reached, or an app command or service exited early or exceeded `startupTimeout`. Startup errors include recent log output with `command.env` values redacted. If no log is configured, the message suggests adding one | infrastructure | 3 |
 | `APP_ALREADY_RUNNING` | `readyUrl` already answered before the engine's `command` (or a `readyUrl` service) was spawned and `reuseExisting` was not in effect; stop that process or set `reuseExisting: true` locally | infrastructure | 3 |
 | `MODEL_PROVIDER_FAILED` | Provider transport failure (network error, 5xx, rate limit) after the adapter's transport retries (up to 5 per model call, honoring `retry-after`, bounded by the remaining step timeout) | infrastructure | 3 |
 | `CANCELLED` | The runner cancelled the operation, without a process signal | infrastructure | 3 |
 | `MODEL_OUTPUT_INVALID` | Structured output still failed validation after the repair budget was spent | test | 1 |
 | `APP_NOT_OPEN` | An operation needed an open app; `app.open()` had not run, or the engine reported invalid state | test | 1 |
-| `LOCATOR_NOT_FOUND` | Zero matches within the deadline, or the model declined to name a node | test | 1 |
+| `LOCATOR_NOT_FOUND` | No matching node within the deadline, or an agent action refers to a node that is no longer available | test | 1 |
 | `LOCATOR_AMBIGUOUS` | More than one match for a single-node operation. Fails immediately, no polling. | test | 1 |
 | `ACTION_FAILED` | Actionability failure, operation timeout, or an action that may already have committed | test | 1 |
 | `STEP_BUDGET_EXHAUSTED` | The model-call or action-step budget ran out before a conclusion | test | 1 |
 | `STEP_TIMEOUT` | The invocation deadline expired. Carries the last judgment where one exists. | test | 1 |
-| `CONTEXT_OVERFLOW` | A model request exceeded the model's context window. `agent.act` shrinks the step's history (superseded screens elided, long texts cut) and retries once when that changes the request; judgment calls (`assert`, `waitFor`, `extract`) report it directly. A smaller `agent.maxObservationBytes` or a shorter step is the fix (blocked: automation) | test | 1 |
+| `CONTEXT_OVERFLOW` | A request exceeded the model's context window. `act` shortens its history and retries once if that reduces the request; judgments fail directly. Lower `agents.<name>.maxObservationBytes` or split the instruction into shorter steps. Reported as blocked: automation | test | 1 |
 | `ASSERTION_FAILED` | `agent.assert` judged false, or a locator, `web`, or value matcher failed | test | 1 |
 | `ASSERTION_INCONCLUSIVE` | `agent.assert` could not judge: the screen did not show enough to decide either way (the relevant part is not on screen, still loading, or unreadable). A failure, never a pass; the explanation says what was missing | test | 1 |
 | `AUTHENTICATION_FAILED` | The executor concluded that signing in failed inside the app: a product verdict. `AUTH_CREDENTIAL_INVALID` is the blocked counterpart for a configured credential the app rejects | test | 1 |

@@ -3,12 +3,9 @@ title: Pull request comments
 description: The @e2edev/github reporter posts one comment per run from GitHub Actions and keeps it current.
 ---
 
-A run that fails in CI is a red check and a log to open. `@e2edev/github` is
-a [reporter](/reference/reporters) that turns it into one pull request
-comment: the counts, every test that did not pass with its error and
-evidence, and links to the source lines and to the workflow run holding the
-screenshots, traces, and recordings. A rerun edits the same comment. The same
-text goes to the job summary, so it is there on a push too.
+`@e2edev/github` posts test results as a pull request comment, including
+failures, source links, and links to workflow artifacts. Reruns update the
+same comment. The reporter also writes the results to the job summary.
 
 ## Setup
 
@@ -27,8 +24,8 @@ export default {
 } satisfies E2EConfig;
 ```
 
-Two lines in the workflow: the job may write pull request comments, and the
-step that runs `e2e` gets the token.
+Give the workflow permission to write pull request comments and pass
+`GITHUB_TOKEN` to the test step:
 
 ```yaml title=".github/workflows/e2e.yml"
 permissions:
@@ -51,9 +48,8 @@ jobs:
           path: .e2e/artifacts
 ```
 
-Upload the artifacts on every non-cancelled outcome. The comment links to
-the workflow run as the place to fetch them, and a flaky test that passed
-on its second attempt can still leave evidence worth inspecting.
+Upload artifacts even when a retry passes. The comment links to the
+workflow run, where you can download evidence from failed and flaky tests.
 
 ## The comment
 
@@ -96,44 +92,26 @@ on its second attempt can still leave evidence worth inspecting.
 <sub>e2e 0.13.0 · 2m 15s · web · [run artifacts](https://github.com/acme/shop/actions/runs/123)</sub>
 ```
 
-The headline carries the counts; the line under it what the run spent, when
-it used the agent: agent steps, how many the trace cache replayed, model
-calls, tokens with the share the provider served from its prompt cache, and
-the estimated cost. Each test that failed gets a block in short paragraphs:
-one lead naming the error and the step it went wrong at; what the error and
-the agent said, quoted; the facts as a list (expected and observed, whether
-every attempt failed alike, the last model turns, the screen at failure,
-where a loopback URL shows as its path since nobody reading the comment can
-open it); then a link to the line in the test file at the pull request's
-head commit (a test declared through a project helper that wraps `test()`
-links to the helper call, not into the helper) and the evidence. The steps
-before the failed one are not retold: the trace has them. A locator step's
-label reads as code, an agent step's as the sentence the author wrote.
-Flaky tests get the same block
-each, folded under one summary: the run is green and the headline counts
-them, so they are there for the reader who asks. Every test is folded away
-under that, grouped by file worst first, each file with its counts, its
-agent work, and its time. A green run is the headline, the folds, and one
-line of small print. A run-level error such as `APP_UNREACHABLE` appears
-above the blocks. Titles, labels, and messages are escaped and clipped, and
-the body stays under GitHub's size limit: past thirty blocks the page says
-how many more failed, and when room runs out the page is cut where it
-stands, the folded list first, and says so. The page is
-[`renderMarkdownReport`](/reference/reporters), the one the built-in
-`markdown` reporter writes to `.e2e/summary.md`.
+The comment shows test counts and agent usage, followed by each failure's
+error, source line, and evidence links. Flaky tests and the full test list
+are collapsed. Run-level errors appear above the test failures. Large
+reports are shortened to fit GitHub's comment limit.
 
-The comment carries a hidden marker naming the config's `projectId`, the
-workflow, and the job, so two configs or two jobs on one pull request each
-keep their own comment. Matrix replicas of one job share all three, so give
-each its own `key`, which also names the comment in its headline
-(`e2e chromium: 77 passed`) so the reader tells the comments apart:
+The built-in `markdown` reporter writes the same summary to
+`.e2e/summary.md`.
+
+## Matrix jobs
+
+The reporter identifies a comment by project, workflow, and job. Matrix
+jobs share those identifiers, so give each matrix entry a distinct `key`:
 
 ```ts
 reporters: ['list', github({ key: process.env.MATRIX_BROWSER })],
 ```
 
-with `MATRIX_BROWSER: ${{ matrix.browser }}` in the step's `env`. Never use
-the run id as the key: a rerun has a new one and would post a second comment.
+Set `MATRIX_BROWSER: ${{ matrix.browser }}` in the step's `env`. The key also
+appears in the headline, such as `e2e chromium: 77 passed`. Keep it stable
+across runs so reruns update the existing comment.
 
 ## When nothing is posted
 
@@ -151,10 +129,9 @@ post, it says why in one row under the summary:
 | Not on GitHub Actions | Nothing is written; the row says so. |
 | A `push`, `schedule`, or `workflow_dispatch` run | The job summary is written; there is no pull request to comment on. |
 | No `GITHUB_TOKEN` in the step's `env` | The job summary is written; the row shows the line to add. `GH_TOKEN` is read too. |
-| A `pull_request` event from a fork | Its token is read-only, so the comment fails and the run prints the reason. A `pull_request_target` workflow has a writable token, with the care that event demands around secrets. |
+| A `pull_request` event from a fork | Its token is read-only, so posting fails and the reporter explains why. |
 | An `issue_comment` event | On a pull request's thread, the comment is posted without source links, since the checked-out commit is the default branch. |
 | Missing `pull-requests: write` | The same failure, with the permission named. |
 
-The reporter reads the token and the event payload when the run finishes,
-never when the config loads, and the token never enters the report. GitHub
-Enterprise Server works through `GITHUB_SERVER_URL` and `GITHUB_API_URL`.
+The token is read when the run finishes and is excluded from the report.
+GitHub Enterprise Server uses `GITHUB_SERVER_URL` and `GITHUB_API_URL`.

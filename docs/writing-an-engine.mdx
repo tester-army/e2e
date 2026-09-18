@@ -1,22 +1,19 @@
 ---
 title: Writing an engine
-description: How the runner talks to a surface, and what it takes to add a new one.
+description: Implement the e2e engine contract for another UI platform.
 ---
 
-Everything above the engine is portable. `test`, `expect`, `screen`, `app`,
-and the agent never touch a browser or a device: they speak one narrow
-contract from `e2e/engine`, and an engine is the package that maps it
-onto a real surface.
+An engine connects `screen`, `app`, and agent calls to a UI platform through
+the `e2e/engine` contract. Use it to support a desktop app, a TV, or another
+platform.
 
-`@e2edev/playwright` and `@e2edev/agent-device` are two such packages, built
-with the same public `defineEngine` as anything you write. An engine for a
-desktop shell or a TV integrates against the same contract, and neither the
-runner nor a test can tell them apart. The agent-device package is the
-smaller of the two and a good model for a device-shaped engine.
+The existing `@e2edev/playwright` and `@e2edev/agent-device` packages use the
+same public `defineEngine` API. Read their implementations alongside this
+guide for complete examples.
 
 ## The ownership boundary
 
-Most engine bugs are an engine doing the runner's job.
+The runner manages tests and policy. The engine observes and controls the UI.
 
 | Concern | Owner |
 | --- | --- |
@@ -31,20 +28,20 @@ Most engine bugs are an engine doing the runner's job.
 | Source masking of secure observations | engine |
 | Defense-in-depth redaction | runner |
 
-Two rules follow from it and get broken most often. An engine **must not**
-add hidden query retries: `locate` answers with what is on screen right now
-and returns an empty array without complaint. An engine **must not** enforce
-single-match strictness: deciding that two matches is an error is the
-runner's call.
+`locate` must return the current matches immediately, including an empty
+array when nothing matches. Do not add query retries or reject multiple
+matches. The runner handles polling and single-match checks.
 
 ## The shape of an engine
 
-An engine is a factory returning a validated handle. `defineEngine` checks
-the manifest at config load, freezes it, computes its capability set, and
-stamps the brand that makes the handle acceptable in a target.
+Return a handle from `defineEngine`. It validates the manifest and determines
+the engine's capabilities when the config loads.
+
+This skeleton assumes a `createClient` adapter for your platform. Its nodes
+must follow the semantic tree contract described below.
 
 ```ts title="src/index.ts"
-import { EngineError, defineEngine, type EngineHandle } from 'e2e/engine';
+import { defineEngine, type EngineHandle } from 'e2e/engine';
 
 export function hyperdrive(options: { device: string; app: string }): EngineHandle {
   const client = createClient(options);
@@ -85,177 +82,143 @@ export function hyperdrive(options: { device: string; app: string }): EngineHand
 targets: [{ name: 'phone', engine: hyperdrive({ device: 'iPhone 16', app: 'com.example.app' }) }],
 ```
 
-`version` is required. It is recorded as provenance and keys the trace
-cache, so an engine that resolves nodes differently never replays another
-version's traces. `actions` is required with `perform` and lists exactly the
-kinds the switch handles: the agent's tools and the `screen`/`Locator`
-methods are derived from it, so a kind you leave out is never offered. `app`
-is data about the app under test; the hooks that steer it live on `session`.
+`version` is required and forms part of the trace cache key. Change it when
+engine behavior changes. With `perform`, also declare `actions` to list the
+supported action kinds. `app` describes the app under test; `session`
+provides methods to open or restart it.
 
 ## What an engine is not
 
-An engine drives a user interface. It observes what is on screen and acts on
-it, and that is the whole job: a browser page, a simulator, a desktop
-window, a TV. The world around the UI is not an engine's to model. An inbox
-the app sends mail to, an API the test seeds, a database it inspects, a clock
-it moves: these enter a test as fixtures through
-[`test.extend`](/reference/test#your-own-fixtures), never as engines. The
-contract has no member for them on purpose; the one platform noun it carries
-is the `platform` label, and no member's shape depends on it.
+Engines drive user interfaces. Use fixtures for supporting services such as
+an inbox, a database, or a test API. Add those through
+[`test.extend`](/reference/test#your-own-fixtures).
 
 <Note>
-Depend on `e2e/engine` only, and take `e2e` as a **peer**
-dependency: the engine and the runner must agree on one copy of the error
-classes. Everything an engine has to reproduce exactly is exported there:
-the error taxonomy, text-pattern matching, URL matching, assertion polling,
-the JSON-value rules, and the utilities `obj`, `raceAbort`, `withTimeout`,
-and `withinCleanupBudget`. There is no shared internal subpath.
+Import shared types and helpers from `e2e/engine`, and declare `e2e` as a
+peer dependency so the engine and runner share their error classes.
+The public exports include errors, text and URL matching, assertion polling,
+JSON validation, and cancellation helpers. There is no internal subpath.
 </Note>
 
 ## Capabilities
 
-Every member is optional. What you declare grades what a target can do; what
-you omit fails at the first honest moment with `UNSUPPORTED_CAPABILITY`,
-never silently.
+Implement the optional methods your platform supports. Their presence
+determines the available capabilities. Calls to unsupported capabilities
+fail with `UNSUPPORTED_CAPABILITY`.
 
 | Member | Capability | Unlocks |
 | --- | --- | --- |
-| `observe(context, options?)` | `observation` | `agent.act`, `waitFor`, `extract`, `assert`; prompt snapshots; trace replay; the root a viewport swipe is addressed to |
-| `perform(ref, action, context)` + `actions` | `actions` (needs `observe`) | Node-targeted actions: `tap`, `type`, `press`, `select`, `scroll`, and the `Locator` action set, each for a kind listed in `actions`; `type_secret` when the step declares credentials; `screen.swipe` and `scrollUntilVisible` when `swipe` is listed |
-| `locate(expression, context)` | `location` (needs `observe`) | `screen`, `Locator`, `expect(locator)` |
-| `performAt(point, action, context)` + `pointerActions` | `pointer` (needs `observe`) | pointer actions at a bare viewport point, each for a kind listed in `pointerActions`; the agent's `tap_at` verb when the point lands on nothing the tree lists needs the `tap` kind |
-| `keyboard.{type,press,dismiss?}` | `keyboard` (needs `observe`) | `type` and `press` without a target, the keyboard fallback of `type_at` and `press_at`, and `dismiss_keyboard`: input to whatever holds focus, for a field the tree does not list |
+| `observe(context, options?)` | `observation` | Agent observations and trace replay |
+| `perform(ref, action, context)` + `actions` | `actions` | Node actions supported by the declared kinds, including viewport scrolling through `swipe` |
+| `locate(expression, context)` | `location` | `screen`, `Locator`, and `expect(locator)` |
+| `performAt(point, action, context)` + `pointerActions` | `pointer` | Coordinate actions supported by the declared kinds |
+| `keyboard.{type,press,dismiss?}` | `keyboard` | Typing and key presses into the focused control; optional keyboard dismissal |
 | `state.{capture,restore}` | `state` | `test.setup` and the `session` option |
-| `artifacts.{screenshot,startTrace?,stopTrace?,startVideo?,stopVideo?}` | `artifacts` | Screenshots while pixels are allowed (`app.screenshot()` raises `POLICY_DENIED` after a secret fill); traces when the trace hooks exist; video and `--video` when both `startVideo` and `stopVideo` exist |
-| `app.{url?,environment?,identity?,command?,readyUrl?,services?}` | | data only: declares the app under test, its site, cache and session identity, the app process ([reference](/reference/config#the-app-under-test)) |
+| `artifacts.{screenshot,startTrace?,stopTrace?,startVideo?,stopVideo?}` | `artifacts` | Screenshots, plus traces and video when their start and stop hooks exist |
+| `app` | | App address, identity, environment, and process settings. [Reference](/reference/config#the-app-under-test). |
 | `session.{open?,back?,restart?,reset?}` | | `app.open()` and the agent's `navigate` verb, `app.back()`, `app.restart()`, `app.clearState()` |
 | `fixtures.<name>` | `<name>` | a contributed fixture, typed through `test.extend` |
 
-The agent derives its toolset from `actions`, `session`, and the step's
-declared credentials: a verb whose kind or hook is absent is never offered to
-the model, and a `screen`/`Locator` method for an undeclared kind fails with
-`UNSUPPORTED_CAPABILITY` before reaching you. Every node action, whether the
-agent or a `Locator` asked for it, arrives as one `LocatorAction` on
-`perform`. Implement each action once and throw `UNSUPPORTED_CAPABILITY` for a
-declared kind one particular node cannot take.
+`actions`, `location`, `pointer`, and `keyboard` require `observe`. The agent
+receives only tools supported by the engine and the step's declared
+credentials. Agent and locator actions both reach `perform` as a
+`LocatorAction`. Throw `UNSUPPORTED_CAPABILITY` if a particular node cannot
+support an otherwise declared action.
 
-There is no separate viewport-scroll member. The agent's `scroll` verb and
-`screen.swipe()` arrive as `perform(root, { kind: 'swipe' })` on the root of
-your observation, so the root's id must be stable across observations; the
-same action on any other node scrolls within it.
+The agent's `scroll` and `screen.swipe()` call
+`perform(root, { kind: 'swipe' })`. Keep the root id stable across observations.
+A swipe on another node scrolls within that node.
 
-`press` carries one key in the shared grammar: zero or more of `Shift`,
-`Control`, `Alt`, `Meta`, `ControlOrMeta`, then a named key from `KEY_NAMES`
-(`Enter`, `Escape`, `Tab`, `ArrowDown`, `F5`, ...) or one printable
-character, joined with `+`. The harness refuses a key outside the grammar
-with `INVALID_ARGUMENT` before it reaches you, so parse only to map: call the
-exported `parseKey` rather than parsing it yourself, map what the platform
-has, and throw `UNSUPPORTED_CAPABILITY` for what it lacks, never reinterpret
-the spelling. The full grammar is on the
-[engine reference](/reference/engine#keys).
+Use the exported `parseKey` to interpret `press` keys such as `Enter` or
+`ControlOrMeta+a`. The runner rejects invalid spellings with `INVALID_ARGUMENT`.
+Map valid keys to your platform and throw `UNSUPPORTED_CAPABILITY` for keys
+it cannot send. See the [key grammar](/reference/engine#keys).
 
-Your observation reports `location` as an opaque address (a URL, a screen
-title, a window name) or omits it; the harness anchors trace replay on it and
-applies the origin policy only when it parses as a URL. You never learn the
-app's URL: `session.open` receives one the harness already resolved, and
-`restart` and `reset` end at a blank surface that the harness reopens
-through `open` when the target has an address. Without `open`, relaunch the
-app inside them yourself. What `prepare` provisions in the runner process
-reaches each worker's `init` as `info.env`, through the `env` of the
-prepare result, never by writing to the run's environment or reading
-`process.env`.
+An observation may include `location`, such as a URL, screen title, or window
+name. The runner uses it for trace replay and applies origin checks when it
+parses as a URL.
+
+`session.open` receives a URL already resolved by the runner. After `restart`
+or `reset`, the runner reopens the configured address through `open`. If your
+engine has no `open` method, relaunch the app within those hooks.
 
 There is no separate secure-fill capability flag. Before dispatching a
 secret fill, the runner checks the declared credential, current
 observation, and compatible editable field. The engine receives a
 `fill` action with `sensitive: true` and must handle it securely or throw
-`UNSUPPORTED_CAPABILITY`; declaring `perform` does not hide the tool when
-that particular action is unsupported.
+`UNSUPPORTED_CAPABILITY`. Screenshots are withheld after a secret fill;
+`app.screenshot()` then raises `POLICY_DENIED`.
 
 ### Lifecycle
 
-`prepare` runs once per run and target in the runner process, after
-collection and before the run's clock starts: download runtimes there and
-narrate through `info.log`. Spawn against `info.env`, the run's environment,
-not `process.env`. `init` runs once per worker before the first attempt: boot
-devices there. It receives the app's site (`info.app.site`), the
-project root, the worker slot, and whether the run is headed; never the app's
-URL. A handle can outlive a worker, so `init` may run again after `dispose`
-on the same handle. `startAttempt` and `endAttempt`
-bracket one test attempt: give each test a fresh surface here. When
-`startAttempt` fails or exceeds `launchTimeout`, its signal aborts and
-`endAttempt` runs right behind it, so keep `endAttempt` idempotent. `dispose`
-runs at worker shutdown whether or not `init` ran.
+- `prepare` runs once per target in the runner process, before the run's
+  clock starts. Install runtimes here and report progress through `info.log`.
+- `init` runs once per worker before its first attempt. Boot devices here.
+  It receives the app's site, project root, worker slot, and headed setting.
+- `startAttempt` and `endAttempt` surround each attempt. Create and clean up
+  the test's UI here. If startup fails or exceeds `launchTimeout`, the runner
+  aborts its signal and calls `endAttempt`, so cleanup must be idempotent.
+- `dispose` runs at worker shutdown, even if `init` never ran. The same handle
+  can later receive another `init`.
+
+Use `info.env` for spawned processes. Return environment additions from
+`prepare` in its `env` field; each worker receives them in `init`.
 
 ### Nodes and refs
 
-`observe` returns one `SemanticNode` tree under a root you mint, `locate`
-returns the nodes an expression matches. Ids are yours and must be unique for
-the surface's lifetime; the root's id must also be stable across
-observations, because a viewport swipe is addressed to it. The harness stamps
-revisions onto them and enforces the staleness rule, so you never implement
-it. `perform` receives `{ id, revision }`; look the id up and throw
-`NODE_STALE` when it no longer binds.
+`observe` returns a `SemanticNode` tree. `locate` returns the nodes matching
+an expression. Assign ids that stay unique for the UI's lifetime and keep
+the root id stable. The runner assigns revisions and checks staleness.
+When `perform` receives `{ id, revision }`, look up the id and throw
+`NODE_STALE` if the node no longer exists.
 
-Cap what one observation reads if the platform can hand you an unbounded
-tree, and set `truncated` on the snapshot when the cap stops the read: the
-harness tells the model the listing is partial and never calls a truncated
-screen unchanged. Name nodes the way the platform's accessibility layer does.
-On the web that is the accessible name computation: `aria-label`,
-`aria-labelledby`, the associated label, then `title`, then a text control's
-`placeholder`, so an unlabeled search box observes as `textbox "Search"`
-rather than an anonymous field.
+Limit snapshot size if the platform can return an unbounded tree. Set
+`truncated` when the limit cuts off nodes so the runner knows the listing
+is incomplete. Use the platform's accessible names for nodes.
 
-Put a node's test id in `testId`, wherever the platform keeps it: the
-project's test-id attribute in a document, an accessibility identifier on
-iOS, a resource id on Android, an automation id on a desktop. The `testId`
-query resolves against that field and nothing else.
+Put test identifiers in `testId`, whether they come from a document attribute,
+an iOS accessibility identifier, an Android resource id, or a desktop
+automation id. The `testId` query matches only that field.
 
 ### Vision-only surfaces
 
-A surface that offers screenshots and coordinates but no semantic tree (a
-desktop shell, a canvas app, a computer-use agent) declares `observe`
-returning a pixels-only snapshot (a childless `root` plus `pixels`) and
-`performAt` with a `pointerActions` list for the gestures: a screen that lists
-nothing opens with its screenshot attached, the model names a point in it with
-`tap_at`, and the harness hands the point to `performAt` as a `tap` when the
-tree lists nothing there, so a surface with no refs to hand out still gets
-tapped through the grammar. Declare the other pointer kinds the surface can
-deliver at a point (`doubleTap`, `secondaryTap`, `longPress`, `hover`,
-`dragTo`, `swipe`) the same way; a kind left out is never sent. Bare points replay as recorded on a
-viewport of the same size, and the recorded end state decides whether the
-replay passes on its own; nothing else in the harness changes.
+For a UI without a semantic tree, return a childless `root` and `pixels`
+from `observe`. Implement `performAt` and declare the supported kinds in
+`pointerActions`.
 
-Add `keyboard` and a drawn field takes text too: the agent taps it to give it
-focus, then types without a target. Make `keyboard.type` refuse with
-`NOT_ACTIONABLE` when nothing editable has focus, so keystrokes are never
-lost into the document body, and leave `dismiss` undefined on a platform with
-no on-screen keyboard.
+The agent receives the screenshot and can act through tools such as `tap_at`.
+The runner passes points to `performAt` when no listed node occupies them.
+Coordinate actions replay only at the recorded viewport size, and the runner
+checks the recorded end state before accepting a replay.
+
+Implement `keyboard` to type into a control after the agent focuses it.
+`keyboard.type` must throw `NOT_ACTIONABLE` when no editable control has
+focus. Omit `dismiss` on platforms without an on-screen keyboard.
 
 ### State is a credential
 
-A `state` snapshot carries whatever authenticates the app: cookies, tokens,
-storage. The harness encrypts it at rest with a per-run key, binds it to the
-run, target, engine, and app identity, deletes it when the run ends, and
-never logs or reports it. Your side: never persist, cache, or log a
-snapshot; never echo its contents in an error; make `restore` replace the
-surface's whole persisted state rather than merge into it.
+A `state` snapshot can contain authentication data such as cookies and tokens.
+The runner encrypts it with a per-run key, binds it to the run, target,
+engine, and app identity, and deletes it after the run.
+
+Do not persist, cache, log, or include snapshots in errors. `restore` must
+replace the app's entire persisted state instead of merging into it.
 
 ### Errors
 
-Throw `EngineError` across the seam. Retryability is closed to `NODE_STALE`
-and `FRAME_NOT_FOUND`; asking for a retryable `ENGINE_FAILURE` is coerced to
-non-retryable, so an engine can never talk the runner into repeating an
-action that may have committed. `ACTION_MAY_HAVE_COMMITTED` says exactly
-that; `INVALID_STATE` maps to `APP_NOT_OPEN`; `UNSUPPORTED_CAPABILITY` is a
-configuration error; anything else is infrastructure.
+Throw `EngineError` with a code from the
+[engine reference](/reference/engine). Only `NODE_STALE` and `FRAME_NOT_FOUND`
+can be retryable. Use `ACTION_MAY_HAVE_COMMITTED` when an action may already
+have taken effect so the runner does not repeat it.
+
+`INVALID_STATE` maps to `APP_NOT_OPEN`, and `UNSUPPORTED_CAPABILITY` is a
+configuration error. Unknown errors become infrastructure failures.
 
 ## Contributed fixtures
 
-A platform-shaped surface, `web` for a browser or `device` for a simulator,
-is a fixture the engine contributes. The harness records the methods declared
-through `context.fixture` as steps named `<fixture>.<method>`, so artifacts
-and failures are attributed to the call that produced them.
+Engines can contribute fixtures such as `web` or `device`. Wrap their methods
+with `context.fixture` to record calls as `<fixture>.<method>` steps with
+their own artifacts and failures.
 
 ```ts
 fixtures: {
@@ -276,20 +239,15 @@ import type { Device } from 'e2e-engine-hyperdrive';
 export const test = base.extend<{ device: Device }>();
 ```
 
-The factory's `context` carries what a fixture legitimately needs from the
-harness: the origin policy and a `resolveUrl` that applies it, the configured timeouts,
-`operation()` budgets, `attachArtifact` and `attachViewport` for the current
-step, `locator(expression)` and `screen(scope)` to mint core locators from a
-platform selector or a nested document, and `expectable(target, factory)` to
-attach an expectation surface so `expect(fixture)` works. This is how
-`@e2edev/playwright` builds `web` and `expect(web).toHaveURL()` without
-touching a core file.
+The fixture context provides URL policy checks, timeouts, operation budgets,
+artifact attachment, and factories for locators and assertions. For example,
+`expectable(target, factory)` adds matchers for `expect(fixture)`. See the
+[engine reference](/reference/engine) for the full context.
 
 ## Scoping agent tools to a platform
 
-Agent tools are declared with `defineTool` on the agent, not on the engine.
-The `platforms` annotation scopes a tool pack, so a swipe tool never reaches
-a web target:
+Add [project tools](/tools) with `defineTool` on the agent. Use `platforms`
+to offer a tool only on compatible targets:
 
 ```ts
 const swipe = defineTool(swipeTool(client), {
@@ -300,11 +258,10 @@ const swipe = defineTool(swipeTool(client), {
 
 ## Verify it
 
-Run the runner against your engine with a real test file. The contract test
-`packages/e2e/tests/integration/engine-contract.test.ts` shows the
-guarantees the runner holds, lifecycle order, operation contexts, error
-mapping, capability gating, and is the reference for what your engine can
-rely on.
+Run a test file against your engine. Check lifecycle order, observations,
+actions, errors, and unsupported capabilities. The repository's
+`packages/e2e/tests/integration/engine-contract.test.ts` demonstrates the
+runner's contract and provides examples for these checks.
 
 <CardGroup cols={2}>
   <Card title="Engine contract" icon="gear" href="/reference/engine">

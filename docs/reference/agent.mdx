@@ -1,11 +1,13 @@
 ---
 title: agent
-description: Planned flows, judgments, extraction, and their budgets.
+description: Run agent actions, check conditions, and extract structured data.
 ---
 
-Every `agent` call starts from a fresh observation, has its own deadline and
-model-call budget, and shares no transcript with earlier calls. Acquiring the
-fixture without a configured model fails with `MODEL_UNAVAILABLE`.
+Use `act` to interact with the app, `assert` to check the current screen,
+`waitFor` to wait for a condition, and `extract` to read structured data.
+Each call starts with a fresh observation and has its own timeout and model-call
+budget. Acquiring the fixture without a configured model fails with
+`MODEL_UNAVAILABLE`.
 
 ```ts
 export interface Agent {
@@ -36,10 +38,9 @@ remaining test timeout.
 | `extract` | 2 | 0 | `agents.<name>.timeout`, 30000 ms |
 | `assert` | 2 | 0 | `agents.<name>.timeout`, 30000 ms |
 
-The judgment budget is `agents.<name>.timeout`, 30000 milliseconds by
-default; `actionTimeout` bounds engine operations only.
-Per-call budgets must be positive integers and can only lower the configured
-limits. Every duration option is milliseconds.
+`actionTimeout` limits engine operations, not model calls. Per-call budgets
+must be positive integers and can only lower the configured limits. All
+durations are in milliseconds.
 
 The `assert` row holds for the built-in agent. When the selected agent has a
 custom `executor`, `assert` is dispatched to it as a step: its budget is the
@@ -81,42 +82,35 @@ caching is off).
 
 ### Pixel tools: screenshot and the point verbs
 
-The act model works from the tree and can request pixels. The opening
-observation also includes a screenshot when no interactive node is listed,
-or when supported semantic-capture fallback succeeds. There is no act vision
-option. While no secret has been filled, the built-in agent offers five pixel
-tools. The act model receives the image itself; no second model is involved.
+`act` reads the semantic tree and requests screenshots when it needs them.
+A screen with no listed interactive nodes, such as a canvas, opens with a
+screenshot. The same model reads the tree and screenshots; there is no
+`vision` option for `act`.
+
+The built-in agent offers these tools while no secret has been filled:
 
 | Tool | What it does |
 | --- | --- |
-| `screenshot()` | Attaches a masked viewport screenshot to the tool result. From then on the step is in pixel mode: every action result carries a fresh screenshot. |
-| `tap_at({ x, y })` | Taps a point in the latest screenshot's pixel coordinates. The runner hit-tests the point against the tree. A listed control under it is tapped by id, exactly like `tap`. A point on nothing listed goes to the engine's `performAt` as a bare-point tap. |
-| `type_at({ x, y, value, replace? })` | Types into the field at the point. A listed input underneath is filled by id, replacing its value. On an engine with a keyboard, a point on nothing listed is tapped to focus it and typed into through the keyboard (a field drawn on a canvas), inserting at the caret unless `replace` is set. Without a keyboard, a point on nothing typeable fails the action and the model reads why. |
-| `press_at({ x, y, key })` | Sends one key to the control at the point; with a keyboard, a point on nothing listed is tapped to focus it and the key goes to whatever holds focus. |
-| `select_at({ x, y, value })` | Picks an option by visible label in the select at the point. |
+| `screenshot()` | Returns a masked viewport screenshot and includes a fresh screenshot after every later action in the step. |
+| `tap_at({ x, y })` | Taps the control at the point by node id, or taps the coordinates directly when no control is listed. |
+| `type_at({ x, y, value, replace? })` | Replaces a listed input's value. For an unlisted input, taps to focus and types at the caret unless `replace` is set. Unlisted inputs require keyboard support. |
+| `press_at({ x, y, key })` | Sends a key to the control at the point. If no control is listed, taps to focus and uses the engine's keyboard. |
+| `select_at({ x, y, value })` | Selects an option by visible label in the control at the point. |
 
-The point verbs are the fallback for a target the tree does not list. The
-rules tell the model to act by id whenever the screen lists the target, and
-to take a screenshot before naming a point; before any screenshot the point
-verbs answer with that reminder and spend nothing. Underneath, every point
-is hit-tested against the tree the runner holds, so a control the tree lists
-is acted on by id: policed, recorded with a durable descriptor, and replayed
-from the [trace cache](/cache) like any other action.
+Coordinates refer to the latest screenshot. The model must take a screenshot
+before using a point tool and should prefer node ids for listed controls.
+The runner checks each point against the tree. A point on a listed control
+uses the same policy checks and [trace cache](/cache) recording as an action
+by id.
 
-In pixel mode the wait after an action watches the pixels too, so a redraw on
-a canvas counts as a change. A screen that lists nothing to act on by id (a
-canvas, a game) opens with a screenshot already attached. Screenshots are
-resampled to a long side of 768 px, and older ones are dropped from the
-conversation in batches, keeping the newest two.
+Once screenshots are in use, the post-action wait also detects pixel changes,
+including canvas redraws. Screenshots have a maximum long side of 768 px;
+older images are removed in batches, keeping the newest two.
 
-On an engine with the `keyboard` capability (the browser and device engines
-both have it), `type` and `press` also accept no `target`: they reach
-whatever has focus. That is the other way a field the tree does not list gets
-its text: `tap_at` it to give it focus, `type` without a target,
-`press` Enter without a target. `type` without a target inserts at the caret;
-`replace: true` clears the field first. The browser engine refuses focused
-typing when nothing editable has focus, so keystrokes never vanish into the
-page. A device engine offers `dismiss_keyboard` too.
+On engines with a keyboard, including the browser and device engines, `type`
+and `press` can omit `target` to act on the focused field. `type` inserts at
+the caret; `replace: true` clears first. The browser engine rejects typing
+when no editable field has focus. Device engines also offer `dismiss_keyboard`.
 
 If semantic capture times out, an engine that proves masking independently
 can return a fresh screenshot with an explicit unavailable-tree warning.
@@ -126,11 +120,8 @@ semantic capture presents the whole tree again. The screenshot shows the
 current viewport; an unavailable tree does not prove that a control or
 message is absent.
 
-The trace cache stops as soon as semantic evidence is unavailable, and the
-step cannot record or finish from a trace entry even if the tree recovers.
-When replay performed no action, the completed cache capture can serve the
-executor's first observation once. Any intervening action or capture,
-including a failed capture, invalidates that reuse.
+If semantic capture fails, trace replay stops and the step cannot record a
+new trace entry, even if the tree later recovers.
 
 A secret filled during the step withholds every later screenshot
 (`PIXEL_TAINTED`), and a step that opens on a tainted viewport offers none of
@@ -140,9 +131,6 @@ on a listed control. A bare-point tap
 replays from the [trace cache](/cache) only on a viewport of the recorded
 size, or at the same place inside the listed node that contained it. A step
 that sent pixels records `visionInput: true` and `metrics.pixelBytes`.
-
-Models differ widely at grounding a point in an image. Pin an act model that
-does it well when your flows leave the tree.
 
 Throws `ACTION_FAILED` for a failed verdict with no more specific code; a
 blocked code (`AUTH_CREDENTIAL_UNAVAILABLE`, `ENVIRONMENT_UNAVAILABLE`,
@@ -158,9 +146,9 @@ a malformed instruction, oversized `params`, or an unknown option; and
 assert(assertion: string, options?: AssertOptions): Promise<void>;
 ```
 
-One fresh observation, exactly one judgment. It does not poll. The judge is
-shown the assertion and that observation only, never the prior steps or the
-act loop's summaries, and answers `holds`, `fails`, or `inconclusive`.
+Checks one fresh observation without polling. The judge sees only the
+assertion and current observation, never prior steps or `act` summaries.
+It answers `holds`, `fails`, or `inconclusive`.
 
 Throws `ASSERTION_FAILED` on a false judgment and `ASSERTION_INCONCLUSIVE`
 when the screen did not show enough to decide. Both carry the explanation
@@ -216,19 +204,19 @@ const summary = await agent.extract('the workspace name and plan', {
 
 ## Vision
 
-`assert`, `waitFor`, and `extract` accept `vision`; `act` does not. Sending
-pixels needs a judge model that accepts images.
+`assert`, `waitFor`, and `extract` accept `vision`. Screenshots require a
+judge model that accepts images.
 
-`vision` says what the judge is shown. `false`, the default, is the tree.
-`true` adds a masked screenshot. `'only'` sends the screenshot and withholds
-the tree, for a question about what the screen presents (an overlay, a
-layout, a chart) where the tree would be a distractor. Judgment pixels go to
-the agent's `judge`. On `act` the model asks for pixels itself with
-`screenshot` (see the pixel tools above), so there is nothing to configure.
+| `vision` | Evidence sent to the judge |
+| --- | --- |
+| `false`, the default | Semantic tree |
+| `true` | Semantic tree and a masked screenshot |
+| `'only'` | Masked screenshot only |
 
-The screenshot is the viewport, never the full page, so `'only'` cannot see
-below the fold. Write `'only'` conditions about what is on screen and let the
-flow scroll first.
+Use `'only'` for visual checks, such as whether an overlay covers a form or a
+chart looks correct. Screenshots show the current viewport, so scroll to the
+relevant content first. `act` requests its own screenshots and does not take
+this option.
 
 Pixels are withheld and the tree sent alone when a secret fill has tainted
 the viewport (`visionDegraded: "PIXEL_TAINTED"` on the step), when the engine
@@ -243,16 +231,14 @@ judgment before any model call. A missing tree cannot support a judgment
 about an empty screen.
 
 If capture fails before a judgment, the report records zero model calls and
-omits `observationRevision` and `explanation`. There was no observed revision
-or model verdict to report; the step error describes the capture failure.
+omits `observationRevision` and `explanation`. The step error describes the
+capture failure.
 
 ## Types
 
 ```ts
 /**
- * One `act` call: the values the instruction refers to and the step's
- * budgets. Structured output is a judgment-tier option: `extract` takes
- * `schema`. Pixels are the model's to ask for, not an option.
+ * Parameters and budgets for one `act` call.
  */
 export interface ActOptions extends AgentOption {
   /**
@@ -305,24 +291,14 @@ export interface VisionOption {
 }
 
 /**
- * What evidence a judgment (`assert`, `waitFor`, `extract`) is given: the
- * semantic tree, a masked screenshot of the current observation, or both.
+ * Evidence for `assert`, `waitFor`, and `extract`.
  *
  * - `false`: the tree.
  * - `true`: the tree and a screenshot, on every call.
  * - `'only'`: the screenshot, and not the tree.
  *
- * `'only'` exists because a tree sent alongside pixels is a cheaper path to an
- * answer, and a model will take it: asked whether a form is covered by an
- * overlay, it can read from the tree that the form is present and named and
- * answer yes, while the pixels show the overlay. For a judgment that is about
- * what the screen presents, the tree is a distractor, so the mode that means it
- * removes it. It also costs fewer input tokens than `true`, not more.
- *
- * In every mode that sends pixels but also the tree, pixel evidence degrades
- * away rather than failing the call when it cannot be proven redacted. `'only'`
- * has nothing to degrade to, so it fails with `POLICY_DENIED` instead of
- * answering the wrong question from the tree.
+ * When pixels cannot be safely captured, `true` falls back to the tree;
+ * `'only'` fails with `POLICY_DENIED`.
  */
 export type VisionMode = boolean | 'only';
 

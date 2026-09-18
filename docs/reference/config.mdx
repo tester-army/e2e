@@ -3,9 +3,9 @@ title: E2EConfig
 description: Every configuration key, its default, its valid range, and the environment variables.
 ---
 
-`E2EConfig` is the type of the object `e2e.config.ts` default-exports. End
-the literal with `satisfies E2EConfig` to keep its literal type. Every rule
-below is enforced when the runner resolves the config, not by the type.
+Export an object from `e2e.config.ts` and use `satisfies E2EConfig` to check
+its shape without widening its inferred types. The runner also validates the
+config when it loads, including ranges and rules TypeScript cannot check.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -32,13 +32,10 @@ working directory and each parent for `e2e.config.ts` or `e2e.config.mts`,
 stopping at the repository root. Both names in one directory is
 `CONFIG_AMBIGUOUS`. The selected file's directory is the project root.
 
-Test files are found from the project root by the `tests` globs. Discovery
-lists the root, then enters only the directories a glob can still match a
-file beneath: `tests/**/*.e2e.ts` reads `tests/` and its subdirectories and
-nothing else of the repository, `node_modules` is never read, and a dot
-directory is entered only when a glob segment written with a leading dot
-matches it. Symlinks are not followed, so a symlinked directory or test file
-is not discovered.
+The `tests` globs select files relative to the project root. Discovery visits
+only directories that could match, skips `node_modules`, and ignores
+symlinks. A dot directory is included only when a glob segment explicitly
+starts with a dot.
 
 Config and test files run as ESM whatever the nearest `package.json` `type`
 says. Packages imported by name keep their own format. A config or test
@@ -80,28 +77,19 @@ export interface E2EConfig {
    */
   reporters?: readonly (BuiltinReporter | Reporter)[];
   /**
-   * The agents by name. Each is either an options block or the agent itself:
-   * `createAgent(...)` from `e2e/agent`, or any hand-rolled
-   * `StepExecutor`. `default` is the one tests run with; `e2e run --agent
-   * <name>` runs them with another. With an agent value, the model is the
-   * one it brought and every other option keeps its default. Agents never
-   * cross a process boundary: workers re-resolve the config module and
-   * construct their own, exactly like model instances.
+   * Named agent configurations, `createAgent(...)` values, or custom
+   * `StepExecutor` values. Tests use `default` unless selected otherwise.
+   * Each worker constructs its own agents from this config module.
    */
   agents?: Readonly<Record<string, AgentConfig | StepExecutor>>;
   /**
-   * The adaptive trace cache. Opt-out: unset means
-   * `read-write`, and `'off'` disables it, as does the `--no-cache` flag,
-   * which wins over the config. A string is shorthand for `{ mode }`. In CI an
-   * unset mode is demoted to `read-only`: a committed cache is untrusted
-   * input. An explicit `read-write` is honored as the project's own statement
-   * of trust in the cache it restores.
+   * Trace cache mode or options. Defaults to `read-write` locally and
+   * `read-only` in CI. An explicit mode overrides the default;
+   * `--no-cache` disables caching for the run.
    */
   cache?: CacheMode | CacheConfig;
   /**
-   * Enforced resource ceilings only. A limit exists here exactly when the
-   * runner has an enforcement site for it; aspirational knobs are not
-   * accepted, so a configured limit is never a silent no-op.
+   * Maximum context size, ledger size, events, and tokens.
    */
   limits?: {
     /** Trusted agent context, 1024 through 65536; default 16384. */
@@ -137,11 +125,8 @@ targeted agent action is bounded by the smaller of `actionTimeout` and 15 s.
 
 ```ts
 /**
- * One target: a named surface on one platform, served by an engine.
- * What the target can do is graded from the engine's declared capabilities;
- * with no `engine` the target is agent-tools-only and everything runs opaque.
- * The app under test is the engine's to declare (its URL, identity, or the
- * command that starts it); a target carries no app config of its own.
+ * One named test target. The engine declares its app and capabilities.
+ * Without an engine, the target supports agent tools only.
  */
 export interface Target {
   /** Label in reports and for `--target`; defaults to the platform. */
@@ -173,12 +158,7 @@ resolves it at config load.
 
 ```ts
 /**
- * What an engine declares about the app it drives. The app
- * under test is the engine's to describe: a browser engine names a URL, a
- * device engine a bundle id. The harness resolves the declaration once per
- * target and owns everything built on it - navigation and origin policy,
- * cache and session identity, the report's target record, and the app
- * process it starts before the run.
+ * App details declared by an engine and resolved once per target.
  */
 export interface EngineAppDeclaration {
   /**
@@ -198,14 +178,10 @@ export interface EngineAppDeclaration {
    */
   readonly environment?: 'test' | 'staging' | 'production';
   /**
-   * Stable logical identity of the app under test, keying trace cache and
-   * session entries. Defaults to the URL's origin and base path, so an
-   * ephemeral per-deploy origin (a PR preview) cold-starts every entry; an
-   * explicit identity keys them by what the app *is* instead of where it is
-   * served this run. A surface without a URL has no default: declare one
-   * (a bundle id, say) or entries key on the target alone. Never share one
-   * identity across genuinely different apps: recorded traces would replay
-   * across them.
+   * App identity for trace cache and session entries. Defaults to the URL's
+   * origin and base path. Set a stable value to reuse entries across preview
+   * URLs. Without a URL or identity, entries use the target alone. Different
+   * apps must have different identities to prevent replay across them.
    */
   readonly identity?: string;
   /**
@@ -403,18 +379,14 @@ Turning video on or off never invalidates cached replays.
 /** Agent options for the built-in agent; `agent` also accepts a StepExecutor. */
 export interface AgentConfig {
   /**
-   * The step executor `agent.act()` dispatches to, alongside the options: a
-   * custom brain keeps `model`, budgets, and `context`. Omitted selects the
-   * built-in agent.
+   * Executor for `agent.act()`. Defaults to the built-in agent.
    */
   executor?: StepExecutor;
   /** An AI SDK model instance; no implicit default. */
   model?: ModelInstance;
   /**
-   * The model that judges `assert`, `waitFor`, and `extract`; defaults to
-   * `model`. A judge of its own separates the model that grades a flow from
-   * the one that drove it. Must agree with `createAgent({ judge })` when both
-   * are set.
+   * Model for `assert`, `waitFor`, and `extract`; defaults to `model`.
+   * Must agree with `createAgent({ judge })` when both are set.
    */
   judge?: ModelInstance;
   /** Committed actions per agent call, 1 through 100; default 25. */
@@ -432,13 +404,14 @@ export interface AgentConfig {
 }
 ```
 
-Agents by name. `default` is the one tests run with and exists even when the
-config names none. `e2e run --agent <name>` re-points it, a test or group
-pins one with `{ agent: 'name' }` or several with `{ agent: ['buyer',
-'admin'] }`, and any `agent.*` call can name one. An unknown name is
-`INVALID_CONFIG` on the flag, `COLLECTION_ERROR` on a pin, `INVALID_ARGUMENT`
-on a call. Names are ASCII letters, numbers, `_`, `-`, or `.`. See
-[Agents and personas](/agents).
+Tests use the `default` agent unless you select another with
+`e2e run --agent <name>`, a test or group option, or an individual `agent.*`
+call. A test with `{ agent: ['buyer', 'admin'] }` runs once for each agent.
+`default` exists even when the config declares no agents, but has no model.
+
+Names may contain ASCII letters, numbers, `_`, `-`, or `.`. An unknown name
+is `INVALID_CONFIG` on the CLI flag, `COLLECTION_ERROR` on a test or group,
+and `INVALID_ARGUMENT` on a call. See [Agents and personas](/agents).
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -469,13 +442,8 @@ and see the instruction and the current screen only.
 
 ```ts
 /**
- * A live AI SDK language model instance: `gateway('openai/gpt-5.6-luna')`
- * from `ai`, `openrouter(...)` from `@openrouter/ai-sdk-provider`,
- * `openai('gpt-4o')` from `@ai-sdk/openai`, or any other provider
- * implementing the AI SDK `LanguageModelV2+` specification. The instance owns
- * its own transport and credentials; the runner knows no gateway or provider
- * of its own. Detection is structural, so any AI SDK provider package works
- * without this runner depending on it.
+ * An AI SDK LanguageModelV2+ instance. Its provider handles transport
+ * and credentials.
  */
 export interface ModelInstance {
   /** The AI SDK specification the instance implements. */
@@ -487,8 +455,8 @@ export interface ModelInstance {
 }
 ```
 
-The model is an AI SDK model instance the config constructs. Detection is
-structural, so any provider package works.
+Construct the model in your config with an AI SDK provider. For subscription
+sign-in, use [`@e2edev/oauth`](/subscriptions).
 
 | Gateway | Constructor | Package | Reads |
 | --- | --- | --- | --- |
@@ -589,12 +557,8 @@ See [Caching agent steps](/cache).
 
 ```ts
 /**
- * Trace cache configuration. The store abstraction is the cloud seam: the
- * default file store keeps entries under `.e2e/cache/`, and a custom
- * `TraceCacheStore` (Redis, an API, anything implementing read/write over
- * key digests) replaces it wholesale. Like agents and model instances, a
- * store never crosses a process boundary: workers re-resolve the config
- * module and construct their own.
+ * Trace cache options. Defaults to files under `.e2e/cache/`.
+ * A custom store replaces file storage; each worker constructs its own.
  */
 export interface CacheConfig {
   /** Default `read-write`; `read-only` in CI when unset. */

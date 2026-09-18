@@ -1,14 +1,15 @@
 ---
 title: From Playwright
-description: Keep your Playwright install, move tests file by file, and turn the brittle flows into goals.
+description: Run e2e alongside Playwright and migrate tests one file at a time.
 ---
 
-e2e's browser engine is Playwright. `@e2edev/playwright` declares it as a
-peer dependency in the range `>=1.63.0 <2` and keeps the version you have
-when it falls inside that range, so both suites run in the same project
-while you migrate. On an older Playwright, upgrade it first. `e2e init`
-writes its config next to your `playwright.config.ts`. e2e picks up
-`tests/**/*.e2e.ts` and Playwright keeps its own files.
+`@e2edev/playwright` uses your installed Playwright when its version satisfies
+the engine's peer dependency. Both test runners can stay in the same project.
+e2e uses `e2e.config.ts` and finds `tests/**/*.e2e.ts` by default. Keep the two
+runners' file patterns separate.
+
+Follow the [quickstart](/quickstart) to install e2e and configure a model for
+agent calls.
 
 ## Config
 
@@ -50,8 +51,8 @@ test('checkout', async ({ app, agent, screen }) => {
 });
 ```
 
-The first and last lines survive. The clicks in between become a goal, and
-a redesign of the form no longer breaks the test.
+The navigation and final assertion stay explicit. The agent handles the
+checkout interactions and can adapt when the form changes.
 
 ## API map
 
@@ -69,15 +70,15 @@ a redesign of the form no longer breaks the test.
 | `context.addCookies` | `web.setCookies` |
 | `page.setViewportSize` | `web.setViewport` |
 | `expect(page).toHaveURL` | `expect(web).toHaveURL` |
-| `expect(locator).toHaveScreenshot()` | `agent.assert('...', { vision: true })` |
-| `page.waitForTimeout` | Nothing. Queries poll, actions wait, assertions retry |
+| `expect(locator).toHaveScreenshot()` | No pixel-diff equivalent. Use `agent.assert('...', { vision: true })` for a visual judgment. |
+| `page.waitForTimeout` | Use a locator assertion for the condition you need |
 | `test.extend` | `test.extend`, same shape |
 
 Where the behaviour differs from Playwright's:
 
 - `getByText` matches exactly by default. Pass `{ exact: false }` for
   Playwright's substring match.
-- Two matches fail reads and assertions too, not only actions. Narrow with
+- Single-node reads and assertions fail on multiple matches. Narrow with
   `.filter()`, `.first()`, or `{ visible: true }`.
 - A password is a `Secret` with no string value. It comes from
   `credentials.user('admin').password` and goes into `fill` or an `act`
@@ -85,10 +86,9 @@ Where the behaviour differs from Playwright's:
 
 ## What to migrate first
 
-Move the tests that break most often. A wizard, a form whose labels change,
-a modal that sometimes needs dismissing: each becomes one `agent.act` with
-`expect` pinning the result. A Playwright test that never fails can stay
-where it is until you want it in the same report.
+Start with a flow whose interaction sequence changes often, such as a wizard
+or checkout. Give `agent.act` the goal and verify the result with `expect`.
+Tests that already work well can remain in Playwright.
 
 <CardGroup cols={2}>
   <Card title="Writing tests" icon="pen-to-square" href="/writing-tests">

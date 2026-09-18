@@ -1,12 +1,11 @@
 ---
 title: Project tools
-description: Give the built-in agent your own tools, scoped to the platforms where they make sense.
+description: Add tools for test APIs, data setup, and device operations.
 ---
 
-`createAgent` builds the built-in agent extended with your tools: AI SDK
-tools with declared semantics. A test API that seeds data, an internal
-endpoint, a device toolkit. The model can call them mid-flow, and the runner
-still budgets, serializes, and records every call.
+Pass tools to `createAgent` so the agent can call your test API or perform
+other project-specific operations during a goal. Wrap each AI SDK tool with
+`defineTool` to declare whether it changes state and which platforms support it.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -38,31 +37,34 @@ export default {
 } satisfies E2EConfig;
 ```
 
-Now `agent.act('seed three items and check out')` can call your test API.
-`createAgent()` with no tools is exactly what runs by default; `system`
-appends guidance and `model` sets the model. Tool names are the model's
-vocabulary, and the agent's own names (`observe`, `tap`, `type`, `type_secret`,
-`press`, `select`, `scroll`, `navigate`, `screenshot`, `tap_at`,
-`complete_step`) are reserved: `createAgent` rejects a project tool that
-reuses one, since it would be shadowed on one engine and live on another.
+The agent can now seed a cart before checking out:
+
+```ts
+await agent.act('seed the cart with SKU {sku}, then check out', {
+  params: { sku: 'SHIRT-BLUE-M' },
+});
+```
+
+Built-in tool names are reserved. `createAgent` rejects a project tool with
+a name such as `tap`, `screenshot`, or `complete_step`.
 
 ## Declare what a tool does
 
-`defineTool` takes the AI SDK tool and its semantics:
+`defineTool` takes the AI SDK tool and these annotations:
 
 | Annotation | Meaning |
 | --- | --- |
-| `mutates: true` | The tool changes state. The runner reserves an action slot before running it and queues it with the grammar actions. A mutating call marks a replay gap in the [trace cache](/cache). |
+| `mutates: true` | Changes state. The runner reserves an action slot and runs the tool in the action queue. The call creates a replay gap in the [trace cache](/cache). |
 | `mutates: false` | Read-only. Runs without an action slot and may observe the screen. |
-| `platforms: ['ios', 'android']` | Offered only on targets of those platforms. A swipe tool never reaches a web target, and the model never sees a verb the surface cannot honor. |
+| `platforms: ['ios', 'android']` | Offers the tool only on those platforms. Omit this to offer it on every target. |
 
-A failed call still consumes its reserved slot and is recorded as a failure.
-Parallel tool calls cannot exceed the budget by checking it at the same time.
+A failed call still consumes its action slot. The runner checks the budget
+before dispatch, including when the model requests several calls at once.
 
 ## Observe from a tool
 
-A read-only tool can look at the screen through the same redacted view the
-executor uses. This tool saves the available pixels as report evidence:
+A read-only tool can observe the redacted screen. This example saves a
+masked screenshot as report evidence when pixels are available:
 
 ```ts
 import { randomUUID } from 'node:crypto';
@@ -89,17 +91,16 @@ const captureEvidence = defineTool(
 );
 ```
 
-`observe()` returns the redacted tree and, with `pixels: true`, the masked
-screenshot, under the same pixel-withholding policy as the executor. A
-mutating tool must request observations in a separate read-only call; its
-body already occupies the action queue.
+`observe()` returns a redacted text snapshot. Request `tree: true` for the
+node tree or `pixels: true` for a masked screenshot. The same restrictions
+apply as for the built-in agent, including withholding pixels after a secret fill.
 
-`attachScreenshot(pixels, label)` files the image as a `screenshot` artifact
-of the step. It lands in the attempt's artifact directory, in the report's
-artifact records, and in a configured artifact store, and the call resolves
-with the artifact's id.
-Use a unique label for each capture so later images do not overwrite earlier
-ones.
+Observe in a separate read-only tool. A mutating tool already occupies the
+action queue, so observing from inside it would wait on its own operation.
+
+`attachScreenshot(pixels, label)` adds the image to the step's artifacts and
+returns its artifact id. Use a unique label for each capture to avoid
+overwriting an earlier image.
 
 ## Device toolkits
 
@@ -125,12 +126,13 @@ export default {
 } satisfies E2EConfig;
 ```
 
-It adds `open_app`, `swipe`, `type_text`, `alert`, and `screenshot`, scoped
-to the device platforms. See the [agent-device reference](/reference/agent-device#agent-tools).
+It adds `open_app`, `swipe`, `type_text`, and `alert` on device targets.
+Screenshots and point actions come from the engine's built-in tools.
+See the [agent-device reference](/reference/agent-device#agent-tools).
 
 <CardGroup cols={2}>
   <Card title="Custom executors" icon="gears" href="/executors">
-    When tools are not enough: your own prompt or your own loop.
+    Replace the prompt or decision loop.
   </Card>
   <Card title="How agent steps work" icon="stairs" href="/agent-steps">
     What the model sees and what it may do.

@@ -3,8 +3,9 @@ title: app
 description: The portable app lifecycle fixture, available on every platform.
 ---
 
-Every `app` method exists on every platform. The engine implements each; the
-runner owns the timeouts.
+`app` controls the app's lifecycle and captures screenshots. Each method
+requires the corresponding engine capability; unsupported operations fail
+with `UNSUPPORTED_CAPABILITY`.
 
 ```ts
 export interface App {
@@ -33,8 +34,8 @@ export interface App {
 }
 ```
 
-No `App` method takes a `timeout` option. Each budget is additionally capped
-by the remaining test timeout.
+`app` methods use the configured timeouts below, capped by the remaining test
+timeout. They do not accept per-call timeout options.
 
 | Method | Timeout | Throws |
 | --- | --- | --- |

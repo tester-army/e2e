@@ -1,23 +1,18 @@
 ---
 title: MCP server (e2e mcp)
-description: Give a coding agent a live session on the app, with the testing agent's tools behind four fixed MCP tools.
+description: Let a coding agent inspect and interact with your app over MCP.
 ---
 
 ```bash
 npx e2e mcp [--config <path>] [--target <name>] [--headless]
 ```
 
-`e2e mcp` is an MCP server over stdio for a coding agent such as Claude Code
-or Cursor. It opens a live attempt on one target and gives the agent the
-tools the testing agent has on that engine, plus `locate` to try a semantic
-locator and a masked `screenshot`. The agent explores the real app, checks
-accessible names, then writes deterministic tests and runs them with
-`e2e run`.
+`e2e mcp` lets coding agents such as Claude Code and Cursor inspect your app,
+try locators, and take masked screenshots before writing tests. It runs over
+stdio and uses the project's configured engine.
 
-The server registers four MCP tools and never changes them. The engine's
-vocabulary is a catalog behind `call`, so one server serves every project the
-agent can reach, and a project tool added to the config appears on the next
-`open_session`.
+Four MCP tools manage the session and call its available app tools. The app
+tool catalog reloads from the config whenever a session opens.
 
 ## Setup
 
@@ -28,7 +23,7 @@ The server ships with `e2e`. `e2e init` offers to register it in
 claude mcp add e2e -- npx e2e mcp
 ```
 
-Every client that reads a project-level MCP config takes the same entry:
+For clients that use a `mcpServers` config, add:
 
 ```json
 {
@@ -38,10 +33,9 @@ Every client that reads a project-level MCP config takes the same entry:
 }
 ```
 
-The client starts the server in the project directory. `open_session` finds
-the config the way `e2e run` does. A config elsewhere is named per session
-with `open_session`'s `config` argument, or for every session with
-`--config`.
+Start the server in the project directory. Config discovery works like
+`e2e run`. Set `--config` for another location, or pass `config` to
+`open_session` for a single session.
 
 | Flag | Behavior |
 | --- | --- |
@@ -61,7 +55,8 @@ protocol; anything a config module writes to stdout is redirected.
 | `call` | `tool`, `args` (optional), `session` (optional) | Runs one catalog tool. Arguments are validated against the tool's schema first. |
 | `close_session` | `session` (optional) | Ends the attempt, disposes the engine, stops the app processes the session started. |
 
-One session is open at a time. A call naming another id fails with
+Only one session can be open at a time. The `session` argument is optional;
+when supplied, it must match the current session or the call fails with
 `NO_SESSION`.
 
 ### The catalog

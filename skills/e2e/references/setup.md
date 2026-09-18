@@ -28,23 +28,19 @@ pnpm dlx e2e@beta init  # pnpm
 When `e2e` is already installed, run `npx e2e init` instead, so the
 installed version scaffolds.
 
-The wizard asks for the engine (Web with Playwright by default; Mobile with
-agent-device and None are the alternatives), which model gateway agent steps
-use (adds AI SDK v7 and the provider package), which agent directories receive this skill
-(`.agents/skills/` and `.claude/skills/`), a confirmation of the files it
-will write, and whether to install. `--yes` skips every prompt (use it from
-scripts and from a shell without a TTY): Playwright, the Vercel AI Gateway,
-no installation, skill in both directories. The closing line prints the run
-command through the project's package manager,
-`APP_URL=http://localhost:3000 npm run test:e2e` for Playwright under npm, and
-suggests a `tsconfig.json` when the project has none.
+The wizard asks which engine and model provider to use. Agent steps can
+use a subscription, an API key, or a local endpoint. Choose None for tests
+without AI. It also offers to install this skill, register the MCP server
+for your coding agent, and install dependencies.
 
-Init writes `package.json` (a private ESM package when missing; otherwise
-only the missing dev dependencies and the `test:e2e` script are added),
-`e2e.config.ts`, `tests/example.e2e.ts`, `.gitignore` entries for the `.e2e/`
-output, and the skill. Existing config and test files are never touched. Re-run it after an
-upgrade to refresh the skill; it changes nothing else in an initialized
-project.
+`--yes` accepts Playwright and Vercel AI Gateway, installs the skill in
+`.agents/skills/` and `.claude/skills/`, and registers MCP in `.mcp.json` and
+`.cursor/mcp.json`. It skips dependency installation.
+
+Init adds dependencies and a `test:e2e` script to `package.json`, writes
+`e2e.config.ts` and `tests/example.e2e.ts`, and updates `.gitignore`.
+Existing configs and tests stay intact. Re-run it after upgrading to refresh
+the skill and registered MCP entries. The final message shows the run command.
 
 Without the wizard:
 
@@ -53,6 +49,26 @@ npm install --save-dev e2e@beta @e2edev/playwright@beta playwright ai@^7
 ```
 
 `ai` (the Vercel AI SDK, v7) is only needed for `agent.*` steps.
+
+## Subscriptions and API keys
+
+Agent steps can use a subscription, an API key, or a local endpoint.
+`e2e init` writes the model config and dependencies for the option you choose.
+After installing dependencies, authenticate that provider:
+
+| Choice | Setup |
+| --- | --- |
+| ChatGPT Plus or Pro | `npx e2e login openai` |
+| GitHub Copilot | `npx e2e login github-copilot`, with the GitHub CLI already signed in or your own `--client-id` |
+| SuperGrok or X Premium+ | `npx e2e login spacexai` |
+| Vercel AI Gateway | Set `AI_GATEWAY_API_KEY` |
+| OpenRouter | Set `OPENROUTER_API_KEY` |
+| Local or self-hosted endpoint | Set the endpoint URL and a model it serves; add a key if required |
+
+An existing config stays unchanged when you run `init`. To switch it to
+ChatGPT manually, install `ai`, `@e2edev/oauth`, and `@ai-sdk/openai`, import
+`chatgpt` from `@e2edev/oauth/chatgpt`, and use `chatgpt('gpt-5.5')` as the
+agent's `model`. Sign in with `npx e2e login openai`. Use API keys in CI.
 
 ## The config
 
@@ -91,10 +107,10 @@ export default {
 
 | Key | Default | Notes |
 | --- | --- | --- |
-| `targets` | required | Non-empty. Each target: `platform` (`web`, `ios`, `android`, or any label), `engine`, and an optional `name` (defaults to the platform; used by `--target` and in reports). |
+| `targets` | required | Non-empty. UI targets set `engine`; `platform` defaults to the engine's platform and `name` defaults to that platform. Tools-only targets may omit `engine` and must set `platform`. Use `name` with `--target`. |
 | `tests` | `'tests/**/*.e2e.ts'` | A glob or an array of globs relative to the project root: `*`, `?`, and a whole `**` segment, `/` separators; a leading `./` is fine. Braces, character classes, extglobs, `..`, and absolute paths are `INVALID_GLOB`. Discovery enters only the directories a glob can match beneath and does not follow symlinks. |
 | `timeout` | `120000` | Per test attempt, in ms. Also the default `agent.act` deadline. |
-| `actionTimeout` | `30000` | Every locator action and engine operation, including each observation inside an agent step. Raise it for slow model providers. |
+| `actionTimeout` | `30000` | Every locator action and engine operation, including each observation inside an agent step. Raise it for slow UI operations. |
 | `assertionTimeout` | `5000` | `expect` polling window. |
 | `retries` | `0`, `1` in CI | 0 to 10. |
 | `workers` | half the cores, `1` in CI | Test files run in parallel across workers, at most the `workers` the engine declares per target (a device target: one per device). |
@@ -108,8 +124,8 @@ export default {
 
 ## The app under test
 
-The engine declares the app; the runner owns navigation policy, the app
-process, and identity. `playwright()` accepts:
+The engine declares the app. The runner starts its processes and uses its
+identity for cache and session keys. `playwright()` accepts:
 
 | Option | Meaning |
 | --- | --- |
@@ -241,13 +257,19 @@ import type { E2EConfig } from 'e2e';
 import { createAgent } from 'e2e/agent';
 import { agentDevice } from '@e2edev/agent-device';
 import { agentDeviceTools } from '@e2edev/agent-device/tools';
+import { gateway } from 'ai';
 
 const iphone = agentDevice({ platform: 'ios', app: 'com.example.app' });
 
 export default {
   targets: [{ engine: iphone }],
   workers: 1,
-  agents: { default: createAgent({ tools: agentDeviceTools(iphone) }) },
+  agents: {
+    default: createAgent({
+      model: gateway('openai/gpt-5.6-luna'),
+      tools: agentDeviceTools(iphone),
+    }),
+  },
 } satisfies E2EConfig;
 ```
 
@@ -273,8 +295,8 @@ export default {
   `setNetwork`, `setPermission`, `installApp`, `locator('role=... id=...')`,
   and more). Portable suites declare `requires: ['device']`.
 - No `state` capability: `test.setup` and `session` are unavailable on a
-  device. Sign in with deterministic `screen` actions; `agent.act` cannot
-  fill a `Secret` on a device.
+  device. Sign in within each test using `screen` actions or `agent.act`.
+  Both can fill a `Secret`; screenshots are withheld afterward.
 - A deterministic check that names a platform label runs on one platform
   only: `test('...', { platforms: ['ios'] }, ...)`.
 - `selectOption`, `setInputFiles`, and `scrollIntoView` are

@@ -4,9 +4,9 @@ description: What the CLI sends, what it never sends, and how to turn it off.
 ---
 
 The `e2e` CLI sends anonymous usage data so we can see which commands,
-engines, and features are used and where runs fail. It is on by default and
-off with one command. Nothing about your tests, your app, or your credentials
-leaves the machine.
+engines, and features are used and where runs fail. It is on by default.
+Telemetry includes counts and version information, but no test content, app
+content, or credentials.
 
 ## Opt out
 
@@ -19,9 +19,9 @@ export DO_NOT_TRACK=1                    # the cross-tool convention
 ```
 
 `npx e2e telemetry` prints the status and, when it is off, why.
-`enable` reverses a saved `disable`; a variable set in the environment still
-wins. A `disable` takes effect at once, even for a command already running in
-another terminal: every command reads the file again before it sends.
+`enable` reverses a saved `disable`. Environment variables take precedence.
+Running commands check the saved setting again before sending, so disabling
+telemetry also applies to commands already running in another terminal.
 
 ## See what would be sent
 
@@ -29,21 +29,21 @@ another terminal: every command reads the file again before it sends.
 E2E_TELEMETRY_DEBUG=1 npx e2e run
 ```
 
-prints every event to stderr as `[telemetry] {...}` and sends nothing. What you
-see there is the exact payload.
+This prints the exact event payloads to stderr as `[telemetry] {...}` and
+sends nothing.
 
 ## What is sent
 
-Two events, sent together in one request when the command ends. Everything
-telemetry does after the command shares one two-second deadline, so it never
-holds a command up for longer.
+Each command sends a session event. `run` and `explore` also send a run event.
+Events go in one request when the command ends, with a two-second deadline
+for all telemetry work.
 
 Every event carries these properties:
 
 | Property | Value |
 | --- | --- |
-| `distinct_id` | A random id generated on this machine and kept in the preferences file. In CI, `ci:<vendor>` instead, so a fleet of runners does not count as a crowd of users |
-| `project_id` | SHA-256 of the repository's root commit, which every clone shares and no one can compute without the repository. A shallow clone, such as a CI checkout with `fetch-depth: 1`, has no root to offer and counts as outside git. Outside git, the project path hashed with a random local salt; in CI, where there is no salt, none |
+| `distinct_id` | A random id stored in the preferences file. CI uses `ci:<vendor>` instead |
+| `project_id` | A hash derived from the repository's root commit, shared across full clones. Outside git or in a shallow clone, a hash of the project path with a random local salt. `null` in CI when no root commit is available |
 | `session_id` | A random id for this one invocation |
 | `os`, `os_release`, `arch`, `cpu_count`, `memory_gb`, `docker`, `wsl`, `tty` | The machine class |
 | `ci`, `ci_name` | Whether `CI` is set, and the vendor when one announces itself (`github-actions`, `gitlab`, `circleci`, ...) |
@@ -75,11 +75,9 @@ Every event carries these properties:
 ## What is never sent
 
 Test titles, file paths, URLs, origins, instructions, observations, page
-content, screenshots, error messages, stack traces, environment variables,
-credentials, or the contents of any file. The event builders read counts,
-versions, and the short names your config declares for engines, platforms, and
-models out of the report and nothing else, and the unit tests assert that a
-report full of recognizable strings yields a payload with none of them.
+content, screenshots, error messages, stack traces, environment variable
+values, credentials, or file contents. Events include only the properties
+listed above.
 
 ## In CI
 
@@ -97,7 +95,6 @@ which also lists every other outbound connection a run can make.
 
 ## The notice
 
-The first command on a machine prints two lines on stderr, once, saying that
-telemetry is on and how to turn it off. The notice never goes to stdout, so
-`--reporter json` output stays parseable. When what is collected changes
-enough to matter, the notice shows again once.
+The first command prints a notice on stderr explaining how to opt out.
+It leaves `--reporter json` output intact. The notice appears again after a
+material change to the data collected.

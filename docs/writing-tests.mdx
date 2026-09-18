@@ -3,8 +3,8 @@ title: Writing tests
 description: Goals, checks, extraction, and the deterministic APIs.
 ---
 
-A test mixes two kinds of calls. Agent calls state a goal or ask a question.
-Deterministic calls pin down the parts that must not drift.
+Use agent calls for goals and questions about the screen. Use `screen` and
+`expect` when you know the exact action or value to check. A test can use both.
 
 ```ts title="tests/todos.e2e.ts"
 import { test, expect } from 'e2e';
@@ -15,28 +15,28 @@ test('todos survive a filter round-trip', async ({ app, agent, screen }) => {
   await agent.act('add todos "Buy milk" and "Walk the dog", complete the first');
   await agent.assert('only one todo remains open');
 
-  await screen.getByRole('tab', { name: 'Done' }).tap();      // pinned step
-  await expect(screen.getByTestId('todo')).toHaveCount(1);    // pinned check
+  await screen.getByRole('tab', { name: 'Done' }).tap();
+  await expect(screen.getByTestId('todo')).toHaveCount(1);
 });
 ```
 
 ## Goals: `agent.act`
 
-Hand the model one goal. It plans and executes the steps under a deadline and
-a model-call budget, then your next line runs.
+Give `act` one goal. The agent chooses and performs the actions, then returns
+when the goal passes or throws when it fails.
 
 ```ts
 await agent.act('complete checkout with the test card');
 await agent.act('invite {email} as an editor', { params: { email: 'ada@example.test' } });
 ```
 
-Real values travel through `params`, never from the model's imagination. A
-`Secret` param stays host-side: the model sees only its name, and the runner
-fills the field itself. See [Signing in](/authentication). A value that is
-different on every run goes in as `unique(value)`, so the
-[trace cache](/cache#what-must-match) replays the step with each run's value.
+Pass values through `params` so the agent uses your test data. For passwords,
+use a `Secret`. The model sees its name, and the runner fills its value.
+See [Signing in](/authentication).
 
 ```ts
+import { credentials } from 'e2e';
+
 const member = credentials.user('member');
 await agent.act('Sign in', {
   params: { username: member.username, password: member.password },
@@ -50,38 +50,33 @@ Name what is visible and prefer the exact wording on screen. One goal per
 call. The flow inside a goal is the model's job; the order of goals is yours.
 </Tip>
 
-<Tip>
-**When a goal fails, tighten it before you replace it**
+For a value that changes on every run, wrap it in `unique(value)` so the
+[trace cache](/cache#what-must-match) can replay with the new value.
 
-Reword the goal with the labels on screen. Then move shared vocabulary into
-`context` on the agent, and shape the agent itself with `system`, tools, or
-a persona. [Agents and personas](/agents) has the loop. A goal rewritten as
-hand-written clicks loses the self-healing that made it an agent step.
-</Tip>
+If a goal fails, check the report and make the instruction more specific.
+Use the labels on screen. Put vocabulary shared by several goals in the
+agent's `context`; see [Agents and personas](/agents).
 
-A step ends passed, failed, or blocked. A block means the step could not
-reach a product verdict. Configuration blocks such as missing credentials
-exit 2, and infrastructure blocks such as an unreachable environment exit 3.
-Budget exhaustion, timeouts, and unsupported automation still count as test
-failures and exit 1. [How agent steps work](/agent-steps) lists the codes.
+A step can pass, fail, or be blocked by something such as missing credentials.
+[How agent steps work](/agent-steps#how-a-step-ends) explains the verdicts and
+exit codes.
 
 ## Checks: `assert`, `waitFor`, `extract`
 
-`assert` asks one question about the current screen and gets one of three
-answers. A false answer is an `ASSERTION_FAILED` with the model's explanation
-and a screenshot in the report. An answer the screen did not show enough to
-decide is an `ASSERTION_INCONCLUSIVE`, also a failure: the judge does not
-guess. The judge sees the assertion and the screen, never the steps before,
-so a verdict rests on what is visible rather than on what the agent reported.
+`assert` checks a statement against the current screen. A false statement
+fails with `ASSERTION_FAILED`. If the screen does not provide enough evidence,
+it fails with `ASSERTION_INCONCLUSIVE`. The report includes the explanation
+and a screenshot when the security policy allows one.
+
+The judging model sees the statement and the current screen. It does not see
+earlier steps or the acting agent's summaries.
 
 ```ts
 await agent.assert('the dashboard shows a trial badge');
 ```
 
-`assert` looks once. To wait for something to become true, poll with
-`waitFor`. An unchanged observation skips the next judgment; with pixels
-sent, the screenshot counts too, so a redraw the tree cannot see is a
-change and a still screen costs nothing.
+`assert` checks the screen now. Use `waitFor` when the condition may become true
+later. It polls the screen and only calls the model when the observation changes.
 
 ```ts
 await agent.waitFor('the export finishes and a download link appears', {
@@ -90,10 +85,9 @@ await agent.waitFor('the export finishes and a download link appears', {
 });
 ```
 
-`extract` pulls structured data off the screen so you can branch in
-TypeScript. Any [Standard Schema](https://standardschema.dev) validator works,
-zod included. Invalid output gets one repair attempt, then
-`MODEL_OUTPUT_INVALID`.
+`extract` reads structured data from the screen. Provide a
+[Standard Schema](https://standardschema.dev) validator, such as Zod, to define
+the result. Invalid output gets one repair attempt before `MODEL_OUTPUT_INVALID`.
 
 ```ts
 import { z } from 'zod';
@@ -104,42 +98,37 @@ const data = await agent.extract('every todo title and how many remain', {
 expect(data.titles).toContain('Buy milk');
 ```
 
-<Warning>
-**Assert on meaning, not on wording**
-
-Different models phrase things differently. `expect(x.plan).toContain('Pro')`
-survives a model swap; `toBe('Pro plan')` does not.
-</Warning>
+<Tip>
+For model-generated descriptions, check the relevant meaning rather than the
+entire sentence. Use a locator assertion when the exact text matters.
+</Tip>
 
 ### Judging pixels
 
-The model reads a redacted text snapshot of the screen: roles, names, text,
-states. Add `vision: true` when the answer lives in pixels the snapshot cannot
-describe, such as a chart or a layout, or `vision: 'only'` to judge the
-screenshot alone.
+By default, judgments read a redacted text snapshot of the screen. Add
+`vision: true` for visual checks, such as charts or layout. Use
+`vision: 'only'` to judge the screenshot alone.
 
 ```ts
 await agent.assert('the chart trends upward', { vision: true });
 await agent.assert('the search form is not covered by a banner', { vision: 'only' });
 ```
 
-`act` takes no such option. The act model works from the tree and asks for
-a screenshot itself when the tree lacks what it needs, then taps and types at
-points in it, for a canvas, a game, or a control inside a system sheet:
+`act` requests screenshots itself when it needs them, so it has no `vision`
+option. On supported engines, it can tap and type at points in the image:
 
 ```ts
 await agent.act('enter the code 3141 on the drawn keypad and press OK');
 ```
 
-Images cost input tokens on every call. The [agent reference](/reference/agent#vision)
-lists the judgment modes.
+Images add input tokens. Screenshots are withheld for the rest of an attempt
+after a secret is filled. The [agent reference](/reference/agent#vision)
+lists the modes and restrictions.
 
 ## Deterministic APIs: `screen` and `expect`
 
-For exact values and exact checks: a field that must receive one specific
-string, a count that must be one specific number, a sign-in form in a setup
-test. These calls never vary, and the check after an `act` is what a
-[cache](/cache) replay is verified against.
+Use locators to interact with known controls and check exact values.
+An assertion after `act` also helps verify a [cache](/cache) replay.
 
 ```ts
 // Semantic queries: role and name first, label second, test ID last.
@@ -157,20 +146,19 @@ await expect(screen.getByRole('status')).toHaveText('2 remaining');
 await expect(web).toHaveURL('/dashboard');
 ```
 
-Two rules keep these honest. A query matching **two nodes is an error**, not
-a first-match guess; narrow with `.filter()`, `.first()`, or `.nth()`. Locator
-assertions **retry** while direct reads like `textContent()` do not, so
-assert with the matcher.
+Actions and single-node reads or assertions fail when a query matches more
+than one node. Narrow it with `.filter()`, `.first()`, or `.nth()`.
+Locator assertions retry until they pass or time out. Direct reads such as
+`textContent()` do not retry a mismatched value.
 
-Browser-only power lives on the `web` fixture: routes, cookies, dialogs,
-frames, downloads. Import `test` from `@e2edev/playwright` to have it typed.
+Use the `web` fixture for browser features such as routes, cookies, dialogs,
+frames, and downloads. Import `test` from `@e2edev/playwright` to use it.
 See the [Playwright reference](/reference/playwright) and the
 [screen reference](/reference/screen).
 
-A resource every test needs, a seeded workspace or a signed-in account, is a
-fixture of your own: `test.extend({ workspace: async ({ web }, use) => { ... } })`
-returns a `test` that sets it up before each body and tears it down after,
-failed or not. See [Your own fixtures](/reference/test#your-own-fixtures).
+Share setup and cleanup through `test.extend`. A fixture can create a test
+workspace before the test and delete it afterward, including when the test
+fails. See [Your own fixtures](/reference/test#your-own-fixtures).
 
 ## Structure
 
@@ -192,15 +180,15 @@ test('needs two organizations', async ({ app }) => {
 });
 ```
 
-Common options: `timeout` (default 120 s), `retries`, `tags` (filter with
-`--tag`), `session` (state from a setup test), `agentContext` (extra context
-for this test's agent calls), and `agent` (which configured
-[agent](/agents) runs the test). Group options apply to their tests. The
-[test reference](/reference/test) has every rule.
+Common options include `timeout`, `retries`, and `tags`. Use `session` for
+state from a setup test, `agentContext` for extra instructions, and `agent`
+to choose a configured [agent](/agents). Group options apply to their tests.
+The [test reference](/reference/test) lists all options and defaults.
 
-Tests are independent and start from clean state. When a flow must span
-several tests, mark the group `{ serial: true }`: members share one app
-state, run in order on one worker, and retry as a whole.
+Each test runs in its own attempt. Prepare the app data it needs through
+fixtures or hooks. When a flow must span several tests, mark the group
+`{ serial: true }`. Members share app state, run in order on one worker,
+and retry as a whole.
 
 ## Next
 

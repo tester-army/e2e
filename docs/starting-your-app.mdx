@@ -3,9 +3,9 @@ title: Starting your app
 description: Point the runner at a running app, or let it start the app and its dependencies.
 ---
 
-The engine declares the app it drives. For a browser that is a URL and,
-optionally, the command that serves it. The runner starts the process, waits
-until the URL answers, and stops it when the run ends.
+Set your app's URL in the engine config. If you also provide a start
+command, the runner starts the app, waits until it is ready, and stops it
+when the run ends.
 
 ## Point at a running app
 
@@ -18,10 +18,9 @@ targets: [{
 }],
 ```
 
-`app.open('/path')` and every relative navigation resolve against `url`. The
-runner reads no `APP_URL` of its own; the scaffolded config reads it so you
-can override the address per run. A missing scheme becomes `https://`, or
-`http://` for a loopback host.
+`app.open('/path')` resolves against `url`. This config reads `APP_URL`, so
+you can change the address for a run without editing the file. URLs without
+a scheme use HTTPS, or HTTP for loopback hosts.
 
 ## Let the runner start it
 
@@ -59,39 +58,28 @@ export default {
  ✓ target "web" command ready 1.20s
 ```
 
-Three options matter most:
+The main command options are:
 
-- **`reuseExisting: true`** attaches to a dev server you already have running
-  instead of failing with `APP_ALREADY_RUNNING`. CI ignores it, so a leftover
-  server on a shared runner is still an error there.
-- **`log`** keeps what the server printed. Without it the runner discards the
-  output, and a dev server that crashes on boot leaves nothing behind but
-  `APP_UNREACHABLE`. The file is unredacted; keep it in an ignored directory.
-  With `log` set, a startup failure (an exit before the URL answered, or
-  `startupTimeout` spent) ends its `APP_UNREACHABLE` message with the last 20
-  lines appended to the log since the command started, each `command.env`
-  value replaced by its `<secret:NAME>` marker, so the report alone shows
-  what the process was doing. A wait that
-  passes half of `startupTimeout` prints one notice, `target "web" command
-  still starting after 30s: waiting for http://localhost:3000/; log:
-  .e2e/logs/app.log`, once that half is at least 5 s.
-- **`env`** passes what the app needs. The child inherits only `PATH`, `HOME`,
-  the temp-directory variables, and on Windows `SystemRoot` and `COMSPEC`.
-  Model keys and CI tokens are not inherited automatically. Values you put
-  in `command.env` are forwarded to the child, including any keys or tokens.
+| Option | Purpose |
+| --- | --- |
+| `reuseExisting: true` | Use an already-running server locally. CI ignores this and reports `APP_ALREADY_RUNNING`. |
+| `log` | Save the app's stdout and stderr to a project-relative file. Startup errors include the last 20 lines, with `command.env` values redacted. The log file itself is unredacted. |
+| `env` | Pass environment variables to the app. Model keys and CI tokens are not inherited automatically. |
+| `startupTimeout` | How long to wait for readiness, 60 seconds by default. |
 
-The command is never shell-interpreted: `executable` is resolved on `PATH`
-and `args` are passed verbatim. `startupTimeout` (default 60 s) bounds the
-wait for `url`; set `readyUrl` when the health endpoint is not the base URL.
-Every option is in the [config reference](/reference/config#command).
+To probe a health endpoint instead of the base URL, set `readyUrl` on
+`playwright({ url, readyUrl, command })`, alongside `command`.
+
+The command runs without a shell. `executable` is resolved on `PATH` and
+`args` are passed as written. The child inherits only basic system variables
+such as `PATH`, `HOME`, and the temporary-directory variables. See the
+[command reference](/reference/config#command) for all options.
 
 ### Let the runner pick the port
 
-Two checkouts of one project cannot both start on port 3000. Declare the
-`url` with port `0` on the loopback address the command binds, and the runner
-picks a free port before anything spawns. The command must take it through
-`{port}` in `args` or `env`; a dev server left on its default port never
-answers where the runner probes.
+Use port `0` to run multiple checkouts without a port conflict. The runner
+chooses a free port and replaces `{port}` in the command's `args` and `env`.
+Your app command must use that value:
 
 ```ts
 engine: playwright({
@@ -100,19 +88,16 @@ engine: playwright({
 }),
 ```
 
-Tests read the allocated URL from `app.baseUrl`, and the trace cache keys on
-the declared `:0`, so entries survive the port changing. The port is free when
-chosen and handed to the command a moment later; another process grabbing it
-in between fails the start with `APP_UNREACHABLE`, which a rerun resolves.
-`localhost:0` is rejected, because the name may resolve to another address
-than the one the command binds: write `127.0.0.1` or `[::1]`. Details are in
-the [config reference](/reference/config#free-ports).
+Tests can read the allocated URL from `app.baseUrl`. Cache entries remain
+valid when the port changes. Use `127.0.0.1` or `[::1]`, matching the address
+the command binds; `localhost:0` is rejected. See
+[free ports](/reference/config#free-ports) for details.
 
 ## Start dependencies first
 
-A database, a migration, an auth emulator: declare them as `services`. They
-start in order before the app command, each ready before the next begins,
-and stop in reverse when the run ends.
+Declare databases, migrations, and other dependencies as `services`. They
+start in order before the app command and stop in reverse order when the
+run ends.
 
 ```ts title="Target fragment"
 engine: playwright({
@@ -144,17 +129,13 @@ engine: playwright({
 }),
 ```
 
-A service is ready when its `readyUrl` answers, or, with `waitForExit`, when
-the process exits 0. Each one takes the same `log`, `env`, and `cwd` options
-as `command`. The list reporter shows each service starting with a ticking
-clock and splits the startup time out of the run's duration. A service still
-not ready at half its `startupTimeout` prints one notice (`service "postgres"
-still starting after 90s: waiting for it to exit`), provided that half is at
-least 5 s; a service that exits non-zero or runs out of budget ends its
-`APP_UNREACHABLE` with the lines appended to its `log` since it started, so a
-`docker compose up --wait` that hangs on `Image postgres Pulling` says so in
-the report. Services that share one log file also share that tail: an
-earlier `readyUrl` service still running can add lines to it.
+A service is ready when its `readyUrl` responds, or, with `waitForExit`, when
+it exits successfully. Each service accepts the same `log`, `env`, and `cwd`
+options as `command`.
+
+The terminal shows startup progress. If a service fails to start, the error
+includes the recent lines from its log. Use separate log files when you
+need to distinguish output from services running at the same time.
 
 ## Several targets
 
@@ -183,10 +164,8 @@ One target per screen size is how a suite runs at several
 
 ## Protected previews
 
-The app under test is often not public: a Vercel preview behind deployment
-protection, a tunnel with an interstitial page, a staging host behind HTTP
-basic authentication. The engine declares how to get through, and every path
-onto the page goes through with it.
+Use `headers` to access protected previews or skip a tunnel's interstitial
+page. For example, a Vercel preview can use a protection bypass header:
 
 ```ts title="Target fragment"
 engine: playwright({
@@ -198,17 +177,16 @@ engine: playwright({
 }),
 ```
 
-`headers` go on every request the browser sends to the app's site, the
-registrable domain of `url`, and on no request to any other, so a bypass
-secret never reaches a CDN or an identity provider the page also talks to. The same option skips ngrok's
-interstitial with `'ngrok-skip-browser-warning': '1'`.
+`headers` apply to requests on the target's site, determined by its hostname.
+The check also includes subdomains and treats shared suffixes such as
+`vercel.app` as one site. See [header scope](/security#navigation-and-origins)
+before using a bypass secret. For ngrok, use
+`'ngrok-skip-browser-warning': '1'`.
 
-A preview origin changes with every deploy. `identity` keeps cache and
-session entries keyed by what the app is, so they survive a redeploy.
+`identity` gives the app a stable cache identity when its preview URL changes.
 
-A host behind HTTP basic authentication takes `basicAuth`. The browser
-answers a `401` challenge with the credentials, as Playwright's own
-`httpCredentials` does.
+Use `basicAuth` for HTTP basic authentication. The browser sends these
+credentials when any origin requests them with a `401` challenge:
 
 ```ts title="Target fragment"
 engine: playwright({
@@ -218,12 +196,9 @@ engine: playwright({
 ```
 
 <Note>
-**What `headers` costs**
-
-Injecting headers routes every request through the runner, which turns the
-browser's HTTP cache off and blocks service workers for that target. A
-Playwright trace records request headers, so the trace of a protected preview
-carries the bypass secret. Share it as you would the secret.
+Setting `headers` disables the browser's HTTP cache and blocks service
+workers. Playwright traces include request headers, so a protected-preview
+trace can contain your bypass secret. Restrict access to those traces.
 </Note>
 
 <CardGroup cols={2}>

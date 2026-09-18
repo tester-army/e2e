@@ -1,11 +1,10 @@
 ---
 title: Signing in
-description: Sign in once in a setup test, reuse the session everywhere, and keep passwords, API keys, and every other secret out of the model.
+description: Sign in once, reuse the session across tests, and pass secrets without exposing them to the model.
 ---
 
-Signing in through the UI in every test is slow and usually the flakiest code
-in a suite. e2e splits it in two: a setup test produces a named session, and
-ordinary tests declare which session they want.
+Sign in once in a setup test and save a named session. Other tests restore
+that session to start signed in.
 
 <Tabs>
   <Tab title="tests/auth.setup.e2e.ts">
@@ -49,9 +48,8 @@ test('the dashboard opens directly', { session: 'admin' }, async ({ app, screen,
   </Tab>
 </Tabs>
 
-The consumer names a session and the runner wires it up. Selecting
-`tests/dashboard.e2e.ts` on its own still runs the setup that produces
-`admin`.
+The runner runs the required setup even when you select only
+`tests/dashboard.e2e.ts`.
 
 ## Sessions
 
@@ -67,16 +65,13 @@ fails, its dependents are skipped with cause `setup-failed` and unrelated
 tests keep going.
 
 <Note>
-**Assert that you are actually signed in**
-
-`session.save()` captures whatever state exists. If the sign-in silently
-failed, every dependent test would fail somewhere confusing. Assert the
-post-login URL and a greeting first, as above.
+`session.save()` saves the current state without checking whether sign-in
+succeeded. Assert the post-login URL or a signed-in element before saving.
 </Note>
 
-A session holds cookies, local storage, and IndexedDB. It does not hold
-server or database state. Restoring replaces client state, and you start
-with no page open, so a consuming test calls `app.open()` first.
+On a browser target, a session holds cookies, local storage, and IndexedDB.
+It does not include server or database state. Restoring replaces the client
+state and leaves no page open, so each test calls `app.open()` first.
 
 Sessions last for one run. They are encrypted on disk with a key that lives
 only in runner memory, and deleted during cleanup. A session file is a bearer
@@ -84,8 +79,7 @@ credential, so it is never reused across runs.
 
 ## Credentials
 
-Never write a password in a test. Declare it in config and source the value
-from the environment:
+Declare credentials in config and read passwords from the environment:
 
 ```ts title="e2e.config.ts"
 export default {
@@ -142,34 +136,21 @@ await agent.act('Sign in', {
   </Tab>
 </Tabs>
 
-Anywhere else is a type error or a `POLICY_DENIED` failure. In the agentic
-form the model sees the secret's name and purpose, plans the flow, and the
-runner fills the field itself.
+In `agent.act`, the model sees the secret's name and purpose. The runner
+authorizes the fill and supplies the value. Secret values are redacted from
+model input and reports. Reading a secure field is denied, so check that
+sign-in succeeded instead.
 
-The value never reaches a model, a log, or the report. Password fields arrive
-at the model masked, and any configured credential value found on screen is
-replaced with a placeholder before the observation leaves the runner. Reading
-a secure field back out is denied, so assert the outcome (the dashboard
-rendered) rather than the secret. A Playwright trace that recorded a filled
-secret is rewritten before it is kept; see [Debugging a run](/debugging#artifacts).
-The [security model](/security) lists every rule and every limit.
-
-Two consequences worth planning for:
-
-- **Sign in with exact fills in a setup test.** A login form takes exact
-  values, so `screen.getByLabel().fill()` is the natural fit and keeps the
-  evidence rule below out of your real tests. Use `agent.act` when the
-  sign-in flow itself varies: an IdP redirect, a consent screen.
-- **Screenshots stop after a secret fill.** Once a secret is filled,
-  `agent.assert` attaches no screenshot evidence for the rest of the attempt,
-  because a page is free to mirror a typed value anywhere. Fill secrets in a
-  setup test and consume the session elsewhere to keep full evidence.
+After a secret fill, the runner withholds screenshots for the rest of the
+attempt because the app could display the value elsewhere. Keep sign-in in
+a setup test so later tests can still capture screenshots. Playwright trace
+images and video have separate limits; see
+[artifact redaction](/debugging#artifacts).
 
 ## Secrets that are not passwords
 
-An API key pasted into a settings form, a webhook token, a license code: any
-value the model must not see is a `secrets` entry. The value comes from the
-environment, like a password:
+Use `secrets` for API keys, webhook tokens, or other sensitive values a test
+needs to enter:
 
 ```ts title="e2e.config.ts"
 export default {
@@ -188,8 +169,7 @@ as credentials, so a CI job can supply the value without touching the config:
 E2E_SECRET_STRIPE_KEY=sk_test_... npx e2e run
 ```
 
-A test asks for the handle, never the value, and hands it to the same two
-sinks a password goes to:
+Get a handle with `secrets.get()` and use it in `fill` or `agent.act`:
 
 <Tabs>
   <Tab title="Deterministic">
@@ -214,45 +194,35 @@ await agent.act('Connect Stripe with the given key', {
   </Tab>
 </Tabs>
 
-The difference from a password is where it may land. A password fills only a
-password field, because the browser masks it there. A `secrets` entry fills
-any editable input. An unconfigured name throws `SECRET_UNAVAILABLE`.
+When the agent fills a password, the runner requires a password field. A
+`secrets` entry can fill any editable input. An unconfigured name throws
+`SECRET_UNAVAILABLE`.
 
 ### Where the value goes
 
-The agentic form is the one to trust least, so here is the whole path:
+The model receives a placeholder with the secret's name and purpose. If it
+requests a fill, the runner checks that the step declared the secret and
+that the field can accept it. Only then does the runner resolve the value
+and pass it to the engine.
 
-1. `agent.act` validates its params before anything is sent. Every `Secret`
-   is replaced with `{ kind: 'secret', name: 'stripe-key', purpose: 'generic-secret' }`.
-   The handle itself holds no value, so there is nothing else to serialize.
-2. The model plans with the placeholder and calls `type_secret` with a field
-   and the name. The runner refuses a name the step's params did not declare
-   and checks the field is an editable input.
-3. Only then is the plaintext resolved, on the host, and handed straight to
-   the engine's fill. The model and the executor never receive it.
-4. A plain input now shows the value. Every observation, action result,
-   transcript line, trace, and report string is rewritten before the model
-   or the disk sees it: the value, in its raw, JSON, HTML, and URL-encoded
-   forms, becomes `<secret:stripe-key>`. Screenshots and pixel tools are
-   withheld for the rest of the attempt, so nothing reads the field visually.
+The runner replaces known secret values in observations and reports with
+`<secret:name>`. Screenshots and pixel tools stay unavailable for the rest
+of the attempt.
 
 <Warning>
-**Redaction matches the exact value.** A page that shows a transformed form,
-such as the last four characters of a key, shows a fragment that is not the
-secret, and that fragment passes through. A password field never has this
-problem, because the browser masks it. Fill secrets in a setup test where
-the value is submitted and gone, and assert the outcome, never the value.
+Redaction matches full values and their encoded forms. A transformed value,
+such as the last four characters of a key, can still appear. Keep secret
+entry in setup tests and assert the result of submitting it. See the
+[security model](/security#secrets) for redaction limits.
 </Warning>
 
-A credential's password is itself the secret of the credential's name, so
-`secrets.get('admin')` and `credentials.user('admin').password` are the same
-handle, and one name cannot appear under both blocks.
+`secrets.get('admin')` also returns the password handle for the `admin`
+credential. A name cannot appear under both `credentials` and `secrets`.
 
 ## Several signed-in users
 
-The same flow as several users is one setup test that saves a session per
-persona, and a loop over describe blocks that consumes them. Each block pins
-the persona's [agent](/agents) and its session.
+Save one session per user, then run the same tests with each session and
+[agent](/agents):
 
 <Tabs>
   <Tab title="tests/personas.setup.e2e.ts">
@@ -297,10 +267,9 @@ for (const persona of ['buyer', 'admin'] as const) {
   </Tab>
 </Tabs>
 
-The flow is written once. The `agents` entry gives a persona its voice, the
-`credentials` entry its account, and the session its signed-in state. A
-persona that needs no sign-in skips the session and the loop: a list pin,
-`{ agent: ['buyer', 'admin'] }`, runs the block once per agent. See
+Each name refers to an `agents` entry, a `credentials` entry, and a saved
+session. If the personas do not need separate sessions, use
+`{ agent: ['buyer', 'admin'] }` to run a block once per agent. See
 [Agents and personas](/agents#one-flow-several-personas).
 
 <CardGroup cols={2}>

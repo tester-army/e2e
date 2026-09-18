@@ -39,24 +39,16 @@ export interface PlaywrightOptions extends EngineAppDeclaration {
    */
   readonly connect?: PlaywrightConnectOptions;
   /**
-   * HTTP headers added to every request the browser sends to an allowed
-   * origin: a preview-protection bypass token, a tunnel's interstitial skip.
-   * Requests to any other origin (a CDN, an analytics endpoint, an identity
-   * provider) never carry them, so a header that is a secret stays with the
-   * app it unlocks. Names are case-insensitive; a header the page already
-   * sends under the same name is replaced. Applies to every path onto the
-   * page, deterministic and agent-driven alike. Injecting headers routes
-   * every request of the attempt, which turns the browser's HTTP cache off
-   * and blocks service workers (a worker's requests bypass routing, so a
-   * page it controlled would reach the gate bare), and a Playwright trace
-   * records request headers.
+   * Headers added to requests within the app's site, including subdomains.
+   * Useful for preview-protection tokens. Other sites never receive them.
+   * Names are case-insensitive and replace existing headers of the same name.
+   * This enables request routing, disables the browser's HTTP cache, and
+   * blocks service workers. Playwright traces record request headers.
    */
   readonly headers?: Readonly<Record<string, string>>;
   /**
-   * HTTP basic authentication for a staging app behind a browser challenge.
-   * The browser answers a `401` with these credentials wherever one is
-   * issued, as Playwright's own `httpCredentials` does. Applies to every path
-   * onto the page.
+   * HTTP basic authentication. The browser answers a `401` challenge with
+   * these credentials on any origin, matching Playwright's `httpCredentials`.
    */
   readonly basicAuth?: PlaywrightBasicAuth;
   /**
@@ -273,9 +265,9 @@ shows when that applies.
 
 ### evaluate
 
-The function is serialized and run in the page, so it cannot close over
-test-scope variables; pass data through `arg`. Both `arg` and the return
-value must be `JsonValue`, else `INVALID_ARGUMENT`.
+The function runs in the page and cannot access variables from the test.
+Pass those values through `arg`. Both `arg` and the return value must be
+`JsonValue`, otherwise the call fails with `INVALID_ARGUMENT`.
 
 An exception in the evaluated code is `EVALUATE_FAILED` with its message. A
 Playwright timeout is `ACTION_FAILED`; a closed page or lost context is
@@ -471,8 +463,8 @@ live!.page();                     // the Page of the current attempt
 live!.context();                  // its BrowserContext
 ```
 
-`surfaceOf(handle)` returns the `PlaywrightLiveSurface` behind a handle this
-package created, or `undefined`. Both accessors throw `INVALID_STATE` before
-an attempt is running. It exists for a
-[custom executor](/executors#driving-the-page-yourself) that brings its own
-browser tooling; what it does there is not recorded as steps.
+Use `surfaceOf(handle)` in a [custom executor](/executors#driving-the-page-yourself)
+to access the current Playwright page and context directly. It returns
+`undefined` for a handle from another package. The accessors throw
+`INVALID_STATE` outside an active attempt. Direct Playwright calls are not
+recorded as steps.

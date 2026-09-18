@@ -1,13 +1,14 @@
 ---
 title: From Selenium
-description: Replace explicit waits and XPath with semantic queries, and page objects with goals.
+description: Rewrite Selenium flows in TypeScript with locators, retrying assertions, and agent goals.
 ---
 
-A Selenium suite spends most of its lines waiting and locating. e2e removes
-both. Every query polls, every action waits for its node, and the queries
-name what a user sees rather than where it sits in the DOM. Tests are
-TypeScript, so a Java or Python suite is rewritten rather than transpiled.
-Run both side by side and retire each Selenium test as its e2e twin passes.
+e2e tests use TypeScript, locators based on roles and labels, and assertions
+that retry until they pass or time out. A Java or Python suite needs to be
+rewritten. Run both suites while you move one flow at a time.
+
+Follow the [quickstart](/quickstart) to install e2e. A model is needed only for
+agent calls; the locator-based example below works without one.
 
 ## Config
 
@@ -18,7 +19,7 @@ Run both side by side and retire each Selenium test as its e2e twin passes.
 | One driver per browser | One target per browser, `playwright({ browser: 'firefox' })` |
 | Selenium Grid | `workers` for parallelism; `connect` attaches to a remote Chromium over CDP |
 | `manage().window().setSize` | `playwright({ viewport })` |
-| Implicit waits | Nothing to configure. `actionTimeout` and `assertionTimeout` are the deadlines |
+| Implicit waits | `actionTimeout` and `assertionTimeout` set action and assertion deadlines |
 | A page object for sign-in | `test.setup` and `{ session }`, see [Signing in](/authentication) |
 
 ## A test, before and after
@@ -49,9 +50,9 @@ test('signs in', async ({ app, screen, web }) => {
 });
 ```
 
-No wait objects, no XPath, and the password never appears in the test. A
-flow with more variation than a login form is one line:
-`await agent.act('sign in as {username}', { params: { username, password } })`.
+The locator actions wait for their targets and the assertions retry. The
+password comes from [configured credentials](/authentication). You can also
+use `agent.act` to perform sign-in from a goal.
 
 ## API map
 
@@ -83,7 +84,7 @@ flow with more variation than a login form is one line:
 | `executeScript` | `web.evaluate` |
 | `manage().addCookie` | `web.setCookies` |
 | `getScreenshotAs` | `app.screenshot('label')`, redacted |
-| `Thread.sleep` | Nothing. Queries poll, actions wait, assertions retry |
+| `Thread.sleep` | Use a locator assertion for the condition you need |
 | Page objects | A fixture from `test.extend`, or a goal for `agent.act` |
 
 Where the behaviour differs from WebDriver's:
@@ -95,10 +96,9 @@ Where the behaviour differs from WebDriver's:
 
 ## What to migrate first
 
-Page objects are the unit. One that wraps a multi-step flow becomes an
-`agent.act` goal. One that wraps a single form becomes a few `screen` calls
-or a fixture. Move the flows first, since that is where the explicit waits
-live.
+Start with one page object. Keep exact interactions as `screen` calls, or
+replace a changing sequence with an `agent.act` goal. Use `expect` to verify
+the result. Shared setup can become a fixture.
 
 <CardGroup cols={2}>
   <Card title="Writing tests" icon="pen-to-square" href="/writing-tests">

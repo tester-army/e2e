@@ -1,22 +1,21 @@
 ---
 title: Quickstart
-description: Scaffold a project, run the example test in a browser or on a device, then add an agent step.
+description: Run your first web or mobile test, then add AI with your own subscription or API key.
 ---
 
-Scaffold a project and run the example test. No model key is needed for
-that. Once it passes, add an agent step and give it a key. The steps are the
-same for web and mobile; the wizard's first question picks the engine.
+Set up a test, run it, then let an agent drive a flow. Agent steps can use
+your own ChatGPT, GitHub Copilot, or SuperGrok subscription, an API key, or a
+local model.
 
 <Note>
-Node.js 22.12 or newer. On Windows, run everything inside WSL. A mobile
-target also needs Xcode with an iOS simulator runtime, or the Android SDK
-with an emulator.
+Use Node.js 22.12 or newer. On Windows, run inside WSL. Mobile tests also
+need Xcode with an iOS simulator runtime, or the Android SDK with an emulator.
 </Note>
 
 ## Run your first test
 
 <Steps>
-  <Step title="Scaffold">
+  <Step title="Create the test project">
   In your app's directory:
 
   <CodeGroup>
@@ -33,105 +32,81 @@ with an emulator.
   ```
   </CodeGroup>
 
-  The wizard asks which platform to test, then offers defaults for the rest:
-  the Vercel AI Gateway for the model and the coding-agent skill. `init` adds
-  `e2e`, the engine packages, and `ai` to `devDependencies`, a
-  `test:e2e` script, and `.gitignore` entries, and writes the config, an
-  example test, and the skill files. It never overwrites a file that exists.
+  Choose **Web (Playwright)** or **Mobile (iOS/Android)**, then choose your
+  subscription or model provider. Choose **None** if you only want tests
+  without AI. The wizard writes a config and example test, adds dependencies,
+  and offers to set up your coding agent. Existing config and test files stay intact.
 
   <Tabs>
     <Tab title="Web">
-    Choose **Web (Playwright)**, with your dev server on `http://localhost:3000`.
+    Start your app's dev server at `http://localhost:3000`, or set its address
+    in `e2e.config.ts`. You can also [let e2e start it](/starting-your-app).
 
-  ```ts title="e2e.config.ts"
-  import type { E2EConfig } from 'e2e';
-  import { createAgent } from 'e2e/agent';
-  import { playwright } from '@e2edev/playwright';
-  import { gateway } from 'ai';
+    <Accordion title="Example web config and test">
+    This config uses Vercel AI Gateway. The wizard configures the provider you chose.
 
-  export default {
-    // The Vercel AI Gateway serves the model id and reads AI_GATEWAY_API_KEY.
-    agents: {
-      default: createAgent({
-        model: gateway('openai/gpt-5.6-luna'),
-        system: 'You are a thorough QA agent. Verify every outcome.',
-      }),
-    },
-    targets: [{
-      engine: playwright({
-        url: process.env.APP_URL ?? 'http://localhost:3000',
-        // Or let the runner start the dev server:
-        // command: { executable: 'npm', args: ['run', 'dev'] },
-      }),
-    }],
-  } satisfies E2EConfig;
-  ```
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { createAgent } from 'e2e/agent';
+import { playwright } from '@e2edev/playwright';
+import { gateway } from 'ai';
 
-  ```ts title="tests/example.e2e.ts"
-  import { test } from '@e2edev/playwright';
-  import { expect } from 'e2e';
+export default {
+  agents: { default: createAgent({ model: gateway('openai/gpt-5.6-luna') }) },
+  targets: [{ engine: playwright({ url: 'http://localhost:3000' }) }],
+} satisfies E2EConfig;
+```
 
-  test('app opens', async ({ app, web }) => {
-    await app.open('/');
-    await expect(web.locator('body')).toBeVisible();
-  });
-  
-  // With the model key in the environment, uncomment:
-  // test('the agent drives a flow', async ({ app, agent }) => {
-  //   await app.open('/');
-  //   await agent.act('one goal in natural language');
-  //   await agent.assert('one question about the screen');
-  // });
-  ```
+```ts title="tests/example.e2e.ts"
+import { test } from '@e2edev/playwright';
+import { expect } from 'e2e';
+
+test('app opens', async ({ app, web }) => {
+  await app.open('/');
+  await expect(web.locator('body')).toBeVisible();
+});
+```
+    </Accordion>
     </Tab>
     <Tab title="Mobile">
-    Choose **Mobile (iOS/Android)**. Check the toolchain first with
-    `npx agent-device doctor`. `init` picks iOS on macOS and Android
-    elsewhere, points the target at the Settings app so the first run works
-    before your own build exists, and sets one worker. On Android the target
-    is `platform: 'android'` with `app: 'com.android.settings'`.
+    Run `npx agent-device doctor` to check your setup. The example opens
+    Settings so you can try it before installing your own app. The wizard
+    chooses iOS on macOS and Android elsewhere.
 
-  ```ts title="e2e.config.ts"
-  import type { E2EConfig } from 'e2e';
-  import { createAgent } from 'e2e/agent';
-  import { agentDevice } from '@e2edev/agent-device';
-  import { gateway } from 'ai';
+    <Accordion title="Example iOS config and test">
+    This config uses Vercel AI Gateway. For Android, the wizard sets
+    `platform: 'android'` and `app: 'com.android.settings'`.
 
-  export default {
-    // The Vercel AI Gateway serves the model id and reads AI_GATEWAY_API_KEY.
-    agents: {
-      default: createAgent({
-        model: gateway('openai/gpt-5.6-luna'),
-        system: 'You are a thorough QA agent. Verify every outcome.',
-      }),
-    },
-    // Replace Settings with your app's bundle id.
-    targets: [{ name: 'ios', engine: agentDevice({ platform: 'ios', app: 'Settings' }) }],
-    workers: 1,
-  } satisfies E2EConfig;
-  ```
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { createAgent } from 'e2e/agent';
+import { agentDevice } from '@e2edev/agent-device';
+import { gateway } from 'ai';
 
-  ```ts title="tests/example.e2e.ts"
-  import { test } from '@e2edev/agent-device';
-  import { expect } from 'e2e';
+export default {
+  agents: { default: createAgent({ model: gateway('openai/gpt-5.6-luna') }) },
+  targets: [{ name: 'ios', engine: agentDevice({ platform: 'ios', app: 'Settings' }) }],
+  workers: 1,
+} satisfies E2EConfig;
+```
 
-  test('Settings opens', async ({ screen }) => {
-    await expect(screen.getByRole('button', { name: 'General' })).toBeVisible();
-  });
+```ts title="tests/example.e2e.ts"
+import { test } from '@e2edev/agent-device';
+import { expect } from 'e2e';
 
-  // With the model key in the environment, uncomment:
-  // test('the agent opens General', async ({ agent, device }) => {
-  //   await agent.act('open General settings');
-  //   await expect(device.locator('role=NavigationBar id=General')).toBeVisible();
-  // });
-  ```
+test('Settings opens', async ({ screen }) => {
+  await expect(screen.getByRole('button', { name: 'General' })).toBeVisible();
+});
+```
+    </Accordion>
+
+    See [Testing iOS and Android](/mobile) to use your own app.
     </Tab>
   </Tabs>
-
-  A target names the engine that drives it, and the engine declares the app:
-  a URL for a browser, a bundle id on a device.
   </Step>
-  <Step title="Install">
+  <Step title="Install dependencies">
+  If you skipped installation in the wizard:
+
   <CodeGroup>
   ```bash npm
   npm install
@@ -146,41 +121,53 @@ with an emulator.
   ```
   </CodeGroup>
   </Step>
-  <Step title="Run">
+  <Step title="Run the example">
   ```bash
   npx e2e run
   ```
 
-  A web target downloads a browser on the first run, once. A device target
-  boots the simulator or emulator first; that time is not charged to the run.
-  Then:
-
-  ```text
-   RUN  e2e v0.12.0 /home/ada/my-app
-        run 01a09565-2be0-733b-821e-47801132399b · targets: web
-
-   ✓ |web| tests/example.e2e.ts (1 test) 416ms
-     ✓ app opens 416ms
-
-   Test Files  1 passed (1)
-        Tests  1 passed (1)
-     Start at  13:33:50
-     Duration  720ms
-       Report  .e2e/report.json
-  ```
-
-  No model was called. The runner only checks the model when a test asks for
-  the `agent` fixture.
+  e2e downloads a browser if needed, or boots the configured simulator or
+  emulator. The example checks that the app opens and writes the result to
+  `.e2e/report.json`. It makes no model calls, so no sign-in or API key is needed yet.
   </Step>
 </Steps>
 
-Every run writes `.e2e/report.json`. The exit code says what went wrong: 1 is
-a test failure, 2 is configuration, 3 is infrastructure.
+## Use a subscription or API key
+
+Connect the option you chose in the wizard before running an agent step.
+
+<Tabs>
+  <Tab title="Subscription">
+  Sign in to your existing plan. You do not need a separate API key.
+
+  | Subscription | Command |
+  | --- | --- |
+  | ChatGPT Plus or Pro | `npx e2e login openai` |
+  | GitHub Copilot | `npx e2e login github-copilot` |
+  | SuperGrok or X Premium+ | `npx e2e login spacexai` |
+
+  Follow the terminal prompts. Copilot reuses your GitHub CLI login if
+  available; otherwise it needs an OAuth app client ID. See
+  [Subscriptions](/subscriptions) for manual setup and sign-in help.
+  </Tab>
+  <Tab title="API key">
+  Set the environment variable for your provider in the terminal where you
+  run e2e. For Vercel AI Gateway:
+
+  ```bash
+  export AI_GATEWAY_API_KEY="your-api-key"
+  ```
+
+  OpenRouter uses `OPENROUTER_API_KEY`. You can also configure a provider
+  directly with its own API key, or use a local model. See
+  [Models](/models) for config examples.
+  </Tab>
+</Tabs>
 
 ## Add an agent step
 
-The scaffold's example file ends with a commented-out agent test. Give it a
-goal your app can satisfy, or write a new file next to it:
+Create a test with one goal per `agent.act` call, then check the result.
+Adapt the web example to a flow your app supports:
 
 <Tabs>
   <Tab title="Web">
@@ -200,7 +187,7 @@ test('a visitor signs up for a trial', async ({ app, agent, screen }) => {
 });
 ```
   </Tab>
-  <Tab title="Mobile">
+  <Tab title="Mobile (iOS)">
 ```ts title="tests/agent.e2e.ts"
 import { test } from '@e2edev/agent-device';
 import { expect } from 'e2e';
@@ -213,52 +200,35 @@ test('the agent opens General', async ({ agent, device }) => {
 });
 ```
 
-  A device attempt starts inside the configured app, so there is no
-  `app.open`. `device.locator` takes the engine's own selector syntax; see
-  [Testing iOS and Android](/mobile#the-device-fixture).
+  The device starts in the configured app. `device.locator` uses
+  [agent-device selectors](/mobile#the-device-fixture).
   </Tab>
 </Tabs>
 
-One goal per `act`. Real values travel through `params`, not through the
-instruction. The final `expect` pins the outcome; it never varies, and it is
-what the [cache](/cache) verifies a replay against. There are no sleeps
-anywhere: queries poll, actions wait, assertions retry.
-
-This run needs a key. The scaffold's model is `gateway('openai/gpt-5.6-luna')`
-from the Vercel AI Gateway, which reads `AI_GATEWAY_API_KEY`:
+Use `params` for values the goal refers to. Use `agent.assert` for a
+judgment about the screen and `expect` for an exact check.
 
 ```bash
-AI_GATEWAY_API_KEY=... npx e2e run tests/agent.e2e.ts
+npx e2e run tests/agent.e2e.ts
 ```
 
-Any AI SDK model instance works in that slot. [Choosing a model](/models)
-covers OpenRouter, local servers, and calling a provider directly.
-
-Useful flags while you iterate:
-
-```bash
-npx e2e run tests/agent.e2e.ts   # one file, or just agent.e2e.ts
-npx e2e run --headed             # watch the browser
-npx e2e run --no-cache           # skip replay, run the agent live
-npx e2e list                     # what would run, without running it
-```
+If you chose **None** during setup, [add a model to your config](/models)
+first. To watch a web test, add `--headed`. To run the agent without replaying
+cached actions, add `--no-cache`.
 
 ## Next
 
 <CardGroup cols={2}>
   <Card title="Writing tests" icon="pen-to-square" href="/writing-tests">
-    Goals, checks, extraction, and the deterministic APIs.
-  </Card>
-  <Card title="Starting your app" icon="play" href="/starting-your-app">
-    Let the runner start the dev server and its dependencies.
-  </Card>
-  <Card title="Testing iOS and Android" icon="mobile-screen" href="/mobile">
-    Point the target at your app, several devices, the `device` fixture.
+    Write goals, check outcomes, and extract data.
   </Card>
   <Card title="Signing in" icon="key" href="/authentication">
-    Sign in once with a secret the model never sees.
+    Reuse an app login and keep passwords out of model input.
+  </Card>
+  <Card title="Debugging" icon="bug" href="/debugging">
+    Read failures, screenshots, and traces.
   </Card>
   <Card title="Continuous integration" icon="code-branch" href="/ci">
-    The one workflow you need.
+    Run your tests in CI.
   </Card>
 </CardGroup>

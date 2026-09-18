@@ -3,24 +3,24 @@ title: expect
 description: "Locator assertions, fixture assertions, and plain value matchers."
 ---
 
-`expect` dispatches on its argument; `expect.poll` re-reads a value until a
-matcher holds.
+Use `expect(locator)` to wait for an app condition and `expect(value)` to
+check a value immediately. `expect.poll` repeatedly reads a value until its
+matcher passes.
 
 ```ts
 /** The `expect` entry: dispatch on the argument, plus `expect.poll`. */
 export interface Expect {
   (actual: Locator): AsyncExpectation;
   <E extends object>(actual: Expectable<E>): E;
-  <T>(actual: T): ValueExpectation<T>;
+  <T>(actual: T, message?: string): ValueExpectation<T>;
   /** Re-reads a value until the chosen matcher holds or `timeout` passes. */
   poll<T>(read: () => T | Promise<T>, options?: PollOptions): PollExpectation<T>;
 }
 ```
 
-An engine fixture may carry its own expectations (`Expectable<E>`):
-`expect(web)` returns the `WebExpectation` the Playwright engine attaches.
-Anything else falls through to `ValueExpectation<T>`, including a promise, so
-await the value first.
+Engine fixtures can provide matchers too, such as `expect(web).toHaveURL()`.
+Other arguments use value matchers, including promises, so await a promise
+before passing its result to `expect`.
 
 | Property | Value |
 | --- | --- |
@@ -150,8 +150,8 @@ export interface ValueExpectation<T> {
 }
 ```
 
-Synchronous, no options, no timeout. For a value the app is still writing,
-see [Polling a value](#polling-a-value).
+Value matchers run synchronously without retrying. For a value that may still
+change, use [Polling a value](#polling-a-value).
 
 ```ts
 const total = await screen.getByTestId('total').textContent();
@@ -161,8 +161,7 @@ expect(payload).toEqual({ ok: true });
 expect(totals.lineTotal).toBeCloseTo(60);
 ```
 
-A second argument names the check. It opens the failure message, so a
-`false to be true` in the report says which fact was false:
+Pass a second argument to describe the check in its failure message:
 
 ```ts
 expect(created, 'the company exists through the API').toBeTruthy();
@@ -174,9 +173,8 @@ already names its locator and matcher in the failure.
 
 ## Polling a value
 
-`expect.poll(read)` re-reads a value until a value matcher passes. An agent
-step can return before the write it triggered has landed; poll the read that
-proves the write instead of sleeping.
+`expect.poll(read)` re-reads a value until a matcher passes. Use it to wait for
+an API response or saved data after an app action.
 
 ```ts
 export interface PollOptions {
@@ -206,8 +204,9 @@ Every value matcher is available, returning a promise. Each sample calls
 `read` and runs the matcher. A matcher failure or a `read` that throws is one
 failing sample; a `read` that hangs is cut at the deadline.
 
-The deadline is capped by the attempt's own: the test `timeout` in the body,
-`cleanupTimeout` in an `afterEach` hook. Outside any attempt it is 5000 ms.
+The timeout defaults to `config.assertionTimeout` during an attempt and
+5000 ms outside one. It is capped by the test deadline in the body, or the
+hook's `cleanupTimeout` during `afterEach`.
 
 When the attempt is cancelled or times out, the loop and any read in flight
 stop with `CANCELLED`. `timeout` must be a finite number 0 or more and

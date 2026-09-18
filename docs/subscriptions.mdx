@@ -1,111 +1,93 @@
 ---
 title: Subscriptions
-description: Use a personal ChatGPT, GitHub Copilot, or SuperGrok plan as the agent model, signed in once from the terminal.
+description: Use your ChatGPT, GitHub Copilot, or SuperGrok subscription for agent steps.
 ---
 
-An agent model does not need a pay-per-token API key. `@e2edev/oauth` signs
-in to a subscription you already pay for and hands the runner an ordinary AI
-SDK model instance. The runner does not know the difference: it is still the
-line in `e2e.config.ts` that constructs the model.
+Use an existing subscription without a separate API key. Choose your plan
+in `e2e init`, install dependencies, then sign in:
 
-| Plan | Sign in | Constructor | Provider package it needs |
-| --- | --- | --- | --- |
-| ChatGPT Plus/Pro | `e2e login openai` | `chatgpt('gpt-5.5')` | `@ai-sdk/openai` |
-| GitHub Copilot | `e2e login github-copilot` | `copilot('claude-sonnet-5')` | `@ai-sdk/openai-compatible` |
-| SuperGrok / X Premium+ | `e2e login spacexai` | `grok('grok-4')` | `@ai-sdk/xai` |
+| Subscription | Command |
+| --- | --- |
+| ChatGPT Plus or Pro | `npx e2e login openai` |
+| GitHub Copilot | `npx e2e login github-copilot` |
+| SuperGrok or X Premium+ | `npx e2e login spacexai` |
 
-Claude Pro/Max is not offered. Anthropic's terms allow subscription sign-in
-only for Claude Code and its own applications, and the API rejects those
-tokens from other clients. Use an Anthropic API key, or reach Claude models
-through your Copilot plan.
+Follow the terminal prompts, then run `npx e2e run`. Agent calls use your
+plan's usage limits. For a new project, start with the [quickstart](/quickstart).
 
-## Set up
+Claude subscriptions are not supported. To use Claude, configure an
+[API provider](/models) or a model available through your Copilot plan.
 
-When it creates a config, `e2e init` lists the three plans next to the
-gateways and writes the config and dependencies; an existing config is left
-as it is. By hand:
+## Set up an existing project
 
+`e2e init` leaves existing configs intact. To switch an existing project to
+a subscription, install its packages and replace the model in your config:
+
+<Tabs>
+  <Tab title="ChatGPT">
 ```bash
-npm i -D @e2edev/oauth @ai-sdk/openai   # or @ai-sdk/openai-compatible, @ai-sdk/xai
+npm install -D ai @e2edev/oauth @ai-sdk/openai
 npx e2e login openai
 ```
 
-```ts title="e2e.config.ts"
-import type { E2EConfig } from 'e2e';
-import { playwright } from '@e2edev/playwright';
+```ts title="Model setup"
 import { createAgent } from 'e2e/agent';
 import { chatgpt } from '@e2edev/oauth/chatgpt';
 
-export default {
-  targets: [{ engine: playwright({ url: 'http://localhost:3000' }) }],
-  agents: { default: createAgent({ model: chatgpt('gpt-5.5') }) },
-} satisfies E2EConfig;
+const agent = createAgent({ model: chatgpt('gpt-5.5') });
+```
+  </Tab>
+  <Tab title="GitHub Copilot">
+```bash
+npm install -D ai @e2edev/oauth @ai-sdk/openai-compatible
+npx e2e login github-copilot
 ```
 
-Each constructor lives on its own subpath so a project installs only the
-provider package it uses. Constructing the model reads nothing; the stored
-login is read on the first model call, and a missing login fails that call
-with `MODEL_PROVIDER_FAILED` naming the `e2e login` command.
+```ts title="Model setup"
+import { createAgent } from 'e2e/agent';
+import { copilot } from '@e2edev/oauth/copilot';
 
-## How each sign-in works
-
-**ChatGPT.** The same sign-in the Codex CLI uses: the browser opens
-`auth.openai.com`, and after you approve, it returns to a page served on
-`localhost:1455`. If that port is taken, or the browser has not come back
-after ten minutes, the terminal asks you to paste the URL it landed on.
-`--device` prints a code to enter on another device instead. Requests go to the Codex backend, which serves `gpt-5.5`,
-`gpt-5.4`, `gpt-5.4-mini`, and `gpt-5.3-codex-spark` to subscription
-sign-ins and draws on your plan's usage limits.
-
-**GitHub Copilot.** The Copilot API accepts a GitHub sign-in as the bearer.
-When the GitHub CLI is signed in, `e2e login github-copilot` reuses its token
-and asks nothing. Otherwise pass `--client-id` with a
-[GitHub OAuth App](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app)
-of yours that has the device flow enabled, and enter the code GitHub shows.
-`--enterprise-url` points at a GitHub Enterprise host. Copilot serves OpenAI,
-Anthropic, Google, and SpaceXAI models; `curl -H "Authorization: Bearer $(gh auth token)" https://api.githubcopilot.com/models`
-lists what your plan has enabled.
-
-**SuperGrok.** SpaceXAI's device flow: open `accounts.x.ai`, enter the code, done.
-Requests go to the ordinary SpaceXAI API with your plan's shared weekly usage pool.
-
-## Where the login lives
-
-`~/.config/e2e/oauth.json` (or under `$XDG_CONFIG_HOME`), mode 0600, one
-entry per provider. Tokens refresh themselves ahead of expiry, and one refresh
-serves every concurrent call of a run. `e2e login` without a provider shows
-a picker that marks the signed-in ones; `e2e logout` without a provider
-picks among the stored logins.
-
-`E2E_OAUTH_CREDENTIALS` holding the same JSON replaces the file for a
-machine you cannot sign in on. It is read-only: `e2e login` and `e2e logout`
-refuse to change it. A ChatGPT or SuperGrok entry there is refreshed for the
-running process only, and since refresh tokens rotate, the value in the
-variable is spent after the first refresh. Subscriptions are for the machine you work on; CI
-keeps an API key.
-
-## Your own product
-
-The package is not tied to e2e. `createOAuthFetch(provider, { store, userAgent })`
-returns the `fetch` any AI SDK provider factory accepts, `login()` runs a
-flow with your own prompts, and `OAuthProvider` is the interface to add a
-vendor. The user agent and the `originator` name your product; the flows use
-the vendors' public CLI clients, never another client's identity.
-
-```ts
-import { createOpenAI } from '@ai-sdk/openai';
-import { createOAuthFetch, createCodexProvider, FileCredentialStore } from '@e2edev/oauth';
-
-const store = new FileCredentialStore('/path/of/your/choice.json');
-const fetch = createOAuthFetch(createCodexProvider({ originator: 'my-tool' }), { store, userAgent: 'my-tool/1.0' });
-const model = createOpenAI({ apiKey: 'oauth', fetch }).responses('gpt-5.5');
+const agent = createAgent({ model: copilot('claude-sonnet-5') });
+```
+  </Tab>
+  <Tab title="SuperGrok">
+```bash
+npm install -D ai @e2edev/oauth @ai-sdk/xai
+npx e2e login spacexai
 ```
 
-<CardGroup cols={2}>
-  <Card title="Choosing a model" icon="robot" href="/models">
-    Gateways, providers, and where a key comes from.
-  </Card>
-  <Card title="CLI reference" icon="terminal" href="/reference/cli#e2e-login">
-    Every flag of `e2e login` and `e2e logout`.
-  </Card>
-</CardGroup>
+```ts title="Model setup"
+import { createAgent } from 'e2e/agent';
+import { grok } from '@e2edev/oauth/grok';
+
+const agent = createAgent({ model: grok('grok-4') });
+```
+  </Tab>
+</Tabs>
+
+Set `agents: { default: agent }` in `e2e.config.ts`. Choose a model
+available to your account.
+
+## Sign-in help
+
+- ChatGPT opens a browser to sign in. Use `npx e2e login openai --device`
+  to sign in with a device code instead.
+- Copilot reuses your GitHub CLI login. If you do not use `gh`, pass
+  `--client-id` for your own GitHub OAuth app with device flow enabled.
+  Use `--enterprise-url` for GitHub Enterprise.
+- SuperGrok prints a device code and the URL where you enter it.
+
+Run `npx e2e login` to choose a provider and see which accounts are signed
+in. Run `npx e2e logout` to remove a saved login.
+
+## Saved credentials and CI
+
+Logins are stored in `~/.config/e2e/oauth.json`, or under
+`$XDG_CONFIG_HOME`, with file permissions restricted to your user. Tokens
+refresh automatically.
+
+Use API keys in CI. `E2E_OAUTH_CREDENTIALS` can supply credential JSON
+instead of the local file, but refreshed tokens are not saved back to that
+variable. A value containing a rotating refresh token cannot be reused
+indefinitely. See [CLI reference](/reference/cli#e2e-login) for all sign-in
+options.

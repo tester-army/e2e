@@ -3,10 +3,9 @@ title: Working with the browser
 description: Mock an API, handle a dialog, download a file, reach into an iframe, and pick a browser and viewport.
 ---
 
-`screen`, `app`, and `expect` cover most of a browser test and stay portable.
-The `web` fixture holds what only a browser has: routes, cookies, dialogs,
-frames, downloads, page evaluation. Import `test` from `@e2edev/playwright`
-to have it typed.
+Use `screen`, `app`, and `expect` for navigation, interactions, and checks.
+For browser-specific operations such as request mocking, dialogs, and
+downloads, use `web`. Import `test` from `@e2edev/playwright` to access it:
 
 ```ts
 import { test } from '@e2edev/playwright';
@@ -20,8 +19,8 @@ test('the dashboard loads', async ({ app, screen, web }) => {
 });
 ```
 
-A suite that also runs on a device declares `requires: ['web']` so those
-tests are skipped there instead of failing.
+In a suite with device targets, add `{ requires: ['web'] }` to tests that
+use `web` so the runner skips them on devices.
 
 ## Mock an API
 
@@ -37,11 +36,14 @@ await app.open('/checkout');
 await expect(screen.getByText('$42.00')).toBeVisible();
 ```
 
-The handler decides exactly once: `fulfill`, `continue`, or `abort`. To
-observe a real response instead, wait for it:
+Each handler must call exactly one of `fulfill`, `continue`, or `abort`.
+To inspect a real response, start waiting before the action that sends it:
 
 ```ts
-const response = await web.waitForResponse('**/api/orders');
+const [response] = await Promise.all([
+  web.waitForResponse('**/api/orders'),
+  screen.getByRole('button', { name: 'Place order' }).tap(),
+]);
 expect(response.status).toBe(201);
 ```
 
@@ -67,30 +69,26 @@ const file = await web.waitForDownload(() =>
 );
 ```
 
-The file is registered as a `download` artifact. `file.path` is relative to
+The download is registered as a `download` artifact. `file.path` is relative to
 the attempt's artifact directory, not an absolute or project-relative file
 path.
 
 ## Reach into an iframe
 
-`web.frameLocator` scopes queries into one frame. You query inside it and act
-on what you find:
+`web.frameLocator` scopes queries to a frame:
 
 ```ts
 const payment = web.frameLocator('#payment-frame');
 await payment.getByLabel('Card number').fill('4242424242424242');
 ```
 
-The frame scope keeps the web-only escape hatches. `locator` takes a CSS or
-XPath selector for a control inside the frame that has no accessible name,
-and `frameLocator` steps into a frame nested in it. Prefer the role and label
-queries whenever the control has a name; they read as the user does and
-survive markup changes.
+Use role and label queries when possible. Within a frame, `locator` accepts
+CSS or XPath selectors and `frameLocator` enters a nested frame:
 
 ```ts
 const editor = web.frameLocator('#result');
 await editor.locator('#upload').setInputFiles('fixtures/photo.png');
-await editor.frameLocator('#preview').getByRole('heading', { name: 'Uploaded' });
+await expect(editor.frameLocator('#preview').getByRole('heading', { name: 'Uploaded' })).toBeVisible();
 ```
 
 ## Read from the page
@@ -103,9 +101,8 @@ const count = await web.evaluate(() => document.querySelectorAll('li').length);
 const flag = await web.evaluate((name: string) => window.localStorage.getItem(name), 'featureFlags');
 ```
 
-Reach for `screen` and `expect` first. `evaluate` reads DOM state the
-accessibility tree does not expose, and a test that leans on it is tied to
-the page's implementation.
+Use `evaluate` for state that `screen` cannot read. Prefer locators and
+assertions for visible UI so tests depend less on the DOM structure.
 
 ## Cookies and viewport
 
@@ -114,8 +111,8 @@ await web.setCookies([{ url: 'http://localhost:3000', name: 'tz', value: 'UTC' }
 await web.setViewport({ width: 390, height: 844 });
 ```
 
-A cookie's target must be an http(s) URL; nothing is set when any entry is
-rejected.
+Cookie URLs must use HTTP or HTTPS. If any entry is invalid, no cookies
+are set.
 
 ## Pick a browser and viewport
 
@@ -143,10 +140,9 @@ sizes and what the agent sees at each.
 
 ## Raw selectors
 
-`web.locator('css or xpath')` exists for the node `screen` cannot name. It is
-not portable and it ties the test to markup, so prefer a role, a label, or a
-test id, and use `{ visible: true }` to drop a hidden twin before reaching
-for a selector.
+Use `web.locator('css or xpath')` when role, label, and test-id queries
+cannot identify an element. If a hidden duplicate causes an ambiguous
+match, try `{ visible: true }` on the query first.
 
 <CardGroup cols={2}>
   <Card title="Playwright reference" icon="masks-theater" href="/reference/playwright">

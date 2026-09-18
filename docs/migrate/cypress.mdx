@@ -1,13 +1,14 @@
 ---
 title: From Cypress
-description: Map cy commands to screen and web, drop the chain, and keep your data-cy attributes.
+description: Replace Cypress command chains with async tests and keep your data-cy attributes.
 ---
 
-A Cypress test runs inside the browser and reaches Node through tasks. An
-e2e test is Node code. `await` replaces the command chain, and anything you
-did in `cy.task` is a function call. `e2e init` writes its config and a
-`tests/` folder, and the Cypress suite keeps running until the last spec has
-moved.
+e2e tests run in Node. Use `await` for UI actions and call Node functions
+directly for work previously handled by `cy.task`. Both suites can stay in
+the project while you migrate one spec at a time.
+
+Start with the [quickstart](/quickstart) to install e2e and configure a model
+for the agent calls shown below.
 
 ## Config
 
@@ -77,7 +78,7 @@ test.describe('todos', () => {
 | `cy.contains('li', 'text')` | `screen.getByRole('listitem').filter({ hasText: 'text' })` |
 | `.find()`, `.within()` | Chain a query off the locator: `row.getByRole(...)` |
 | `.first()`, `.eq(n)` | `.first()`, `.nth(n)` |
-| `.click()`, `.dblclick()`, `.rightclick()` | `.tap()`, `.doubleTap()`; no right click |
+| `.click()`, `.dblclick()`, `.rightclick()` | `.tap()`, `.doubleTap()`, `.secondaryTap()` |
 | `.type('text')` | `.fill('text')` replaces the content |
 | `.type('{enter}')` | `.press('Enter')` |
 | `.clear()`, `.check()`, `.select()` | `.clear()`, `.check()`, `.selectOption()` |
@@ -99,22 +100,22 @@ test.describe('todos', () => {
 | `cy.task`, `cy.exec`, `cy.request` | Node code: `fetch`, `fs`, your database client |
 | `cy.fixture` | `import data from './fixture.json'` |
 | `Cypress.Commands.add` | A function, or a fixture from `test.extend` |
-| `cy.wait(ms)` | Nothing. Queries poll, actions wait, assertions retry |
+| `cy.wait(ms)` | Use a locator assertion for the condition you need |
 | `cypress open` | `npx e2e run --headed`, plus `--debug` for the step table |
 
 Where the behaviour differs from Cypress's:
 
 - There is no chain. Each command is awaited on its own line and returns a
   value, so `const text = await locator.textContent()` works.
-- Cypress acts on the first match. e2e fails with `LOCATOR_AMBIGUOUS` and
-  makes you narrow the query.
+- e2e requires one match for actions and single-node reads or assertions.
+  Multiple matches raise `LOCATOR_AMBIGUOUS`; narrow with `.filter()` or `.nth()`.
 
 ## What to migrate first
 
-Start with the specs that carry the most `cy.wait(ms)` calls and the longest
-custom commands. A long chain becomes a goal for `agent.act`, and the
-`should()` calls stay as `expect`. Then move the sign-in `cy.session` into
-one `test.setup` that every test reuses.
+Start with a flow that often breaks. Replace a sequence of interactions
+with `agent.act` and keep exact checks as `expect` assertions. Replace fixed
+waits with assertions on the condition the test needs. Shared sign-in can
+move from `cy.session` to `test.setup` and `session`.
 
 <CardGroup cols={2}>
   <Card title="Writing tests" icon="pen-to-square" href="/writing-tests">

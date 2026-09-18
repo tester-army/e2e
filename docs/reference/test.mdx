@@ -3,7 +3,9 @@ title: test
 description: Tests, setup tests, groups, hooks, options, and fixtures.
 ---
 
-Every `test` member registers synchronously while the test file is imported.
+Declare tests, groups, and hooks synchronously while the test file is
+imported. Use `test.extend` to add fixtures and `test.skip` to skip a test at
+registration or during its body.
 
 ```ts
 export interface TestAPI<Fixtures = TestFixtures> {
@@ -72,23 +74,22 @@ export interface TestAPI<Fixtures = TestFixtures> {
 export const test: TestAPI;
 ```
 
-Calling any member outside collection, or after module evaluation finished,
-throws `COLLECTION_ERROR`.
+Registering a test, group, or hook outside module evaluation throws
+`COLLECTION_ERROR`.
 
 ## Members
 
 A skipped test never affects the exit code. With `test.only`, other tests
 are reported as `filtered`, and a CI run fails with `ONLY_IN_CI`.
 
-`test.skip(condition, reason)` inside a body skips the running test when the
-condition holds, for a fact only the running app can tell: a tenant with one
-organization, a feature flag that is off. The body ends there; the steps
-that already ran stay in the report, `afterEach` hooks and fixture
-teardowns still run, and the result is `skipped` with the reason. A retry is
-never spent on it. A setup test cannot skip, because its sessions are owed
-to their consumers: the call fails it with `INVALID_ARGUMENT`. Outside a
-body the conditional form is `COLLECTION_ERROR`; the `skip` option is the
-collection-time way.
+Call `test.skip(condition, reason)` inside a test for conditions you learn at
+runtime, such as a disabled feature flag. When the condition is true, the
+body ends with status `skipped` and no retry. Earlier steps remain in the
+report, and hooks and fixtures still run their teardown.
+
+A setup test cannot skip because other tests depend on its sessions; the
+call fails with `INVALID_ARGUMENT`. Outside a test body, the conditional
+form is `COLLECTION_ERROR`. Use the `skip` option when declaring the test.
 
 ```ts
 test('switches organizations', { session: 'admin' }, async ({ app, agent }) => {
@@ -123,6 +124,8 @@ test.describe('checkout', { tags: ['smoke'], serial: true }, () => {
 `test.setup` declares the sessions it saves, and must save each exactly once:
 
 ```ts
+import { credentials } from 'e2e';
+
 test.setup('authenticate', { sessions: ['member'] }, async ({ app, screen, session }) => {
   await app.open('/login');
   await screen.getByLabel('Email').fill(credentials.user('member').username);
@@ -210,9 +213,9 @@ export interface SetupOptions extends Omit<TestOptions, 'session' | 'only' | 'sk
 }
 ```
 
-Every numeric option is a positive safe integer. `only` is not accepted on a
-group. `sessions` is required on `test.setup`: a static, non-empty array of
-unique names.
+`timeout` must be a positive safe integer; `retries` must be an integer from
+0 through 10. Groups do not accept `only`. `test.setup` requires `sessions`
+to be a static, non-empty array of unique names.
 
 Resolution order: test, nearest group, outer groups, config, built-in default.
 
@@ -259,10 +262,10 @@ the body's first statement.
 
 ### Your own fixtures
 
-`test.extend(fixtures)` defines a resource set up before each test and
-cleaned up after, however the body ended. Each definition is one function in
-Playwright's shape: everything before `await use(value)` is setup, `value` is
-what the test receives, everything after is teardown.
+`test.extend(fixtures)` defines resources set up before each test and cleaned
+up afterward, including after a failure. In each fixture function, code before
+`await use(value)` sets up the resource. The test receives `value`, and code
+after `use` tears it down.
 
 ```ts
 import { test as base } from '@e2edev/playwright';

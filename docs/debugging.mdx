@@ -3,32 +3,29 @@ title: Debugging a run
 description: Read the report, open the evidence, watch the browser, and see what the model was sent.
 ---
 
-Every run writes `.e2e/report.json`. Attempt artifacts depend on the selected
-engine and what it captured: screenshots, Playwright traces, downloads, or
-recordings. The terminal tells you what failed; the report and the available
-artifacts tell you why.
+Start with the failure in the terminal. Every run also writes
+`.e2e/report.json`, with links to the screenshots, traces, downloads, and
+recordings captured by the selected engine.
 
 ## Read the failure
 
-The `list` reporter ends with a `Failed Tests` section: the error code, the
-message, the failing line with a code frame, and what the runner saw when
-the failure landed: the page's location, the nodes on screen closest to what
-a failed locator asked for, and the path of the screen text. The exit code
-says which side failed:
+The `list` reporter's `Failed Tests` section shows the error, failing line,
+and screen at failure. For a failed locator, it also lists nearby matches
+that may explain the problem. The exit code identifies the failure type:
 
 | Exit | Meaning | Retry the job? |
 | ---: | --- | --- |
 | 1 | A test failed | Only if the test is flaky |
-| 2 | Configuration, collection, or policy | No. It is deterministic. |
-| 3 | Infrastructure: the engine, the app process, the model provider, or an artifact | Yes |
+| 2 | Configuration, collection, or policy | Fix the reported problem first |
+| 3 | Engine, app process, model provider, or artifact failure | If the cause is temporary |
 | 4 | An internal runner error | Report it |
 | 130 | The run was interrupted | |
 
 ## The failure pages
 
-`--reporter list,markdown` writes `.e2e/summary.md` and, for every test that
-failed or was flaky, one page under `.e2e/failures/`. The page is the
-hand-off: open it before anything else.
+Use `--reporter list,markdown` to write `.e2e/summary.md` and a page for each
+failed or flaky test under `.e2e/failures/`. A failure page includes the
+source line, steps, recent model turns, and screen text:
 
 ````markdown
 # ✗ todos › archives a todo
@@ -64,21 +61,14 @@ URL: `http://127.0.0.1:3000/todos`
 ```
 ````
 
-The page has what the message cannot say. **Look at** is the line the
-failure unwound through, not the line that declared the test. For an
-`expect`, the block reads `Expected: … · Observed: …`; for a locator,
-`Asked for: button "Add todo item" · waited 3.0s` and, under the screen, the
-nodes closest to that request. **Failed the same way on both attempts** is
-the difference between a bug and a flake. **Agent turns** are the last model
-turns of a failed agent step: what the model called and what came back,
-whatever the debug setting. **Screen at failure** is the accessibility tree
-exactly as the agent reads it, one node per line, so the fix can be written
-from what was there.
+`Look at` points to the failing call. Assertion failures include expected
+and observed values; locator failures include the requested locator and
+nearby matches. Repeated failure details help you compare attempts.
 
 ## The report
 
-`.e2e/report.json` is the record the pages render from, and the one a host
-ingests. `--reporter json` prints the same document on stdout.
+Use `.e2e/report.json` for scripts and integrations. `--reporter json` prints
+the same document to stdout:
 
 ```bash
 jq '.run | {status, exitCode, errors}' .e2e/report.json
@@ -87,45 +77,42 @@ jq '.run.results[] | select(.status != "passed") | .attempts[-1]
     | {status, error, failure, steps: [.steps[] | select(.status != "passed") | {api, label, source, status, error}], artifacts}' .e2e/report.json
 ```
 
-Read `run.errors` first: a run-level error such as `APP_UNREACHABLE` means no
-test result is meaningful. Then the last attempt of each failed result:
-`error` has the code, the message, the `source` line it unwound through, and
-`details` (an assertion's `expected`, `observed`, and `matches`, a locator's
-`role`, `name` or `testId`, and `waitedMs`); `failure` has the `url`, the `screen` and
-`screenshot` artifact ids, and the `candidates` closest to a failed locator;
-each step has the `source` it was called from, and a failed agent step its
-last `turns`. The `artifacts` beside them hold the files.
+Check `run.errors` for run-level failures, then the last attempt of each
+failed result:
+
+- `error` contains the code, message, source line, and assertion details.
+- `failure` identifies the screen and screenshot artifacts and any locator
+  candidates.
+- `steps` shows the calls leading to the failure. Failed agent steps include
+  recent model turns.
+- `artifacts` lists the captured files.
 
 ## Artifacts
 
 Artifacts land under `.e2e/artifacts/`, one directory per attempt:
 
-- **Screenshots.** The built-in `agent.assert` tries to capture one after
+- **Screenshots.** Failed attempts capture one when screenshots are enabled
+  and pixels are allowed. The built-in `agent.assert` also captures one after
   either verdict unless `screenshot: false` disables it. Capture can fail or
-  be withheld. A failed `expect` does not capture one automatically;
-  `app.screenshot('label')` captures one explicitly when pixels are allowed.
+  be withheld. Use `app.screenshot('label')` to capture one explicitly.
 - **Playwright traces** when the `trace` artifact kind is enabled and capture
   succeeds. Open a trace with `npx playwright show-trace <file>`.
-- **Files** the app handed the test, such as a download saved through
-  `web.waitForDownload`; the report records them with kind `file`.
+- **Downloads** saved through `web.waitForDownload`, recorded with kind
+  `download`.
 - **Videos** and **agent transcripts** when you ask for them; see below.
 
-After a secret fill, the runner rewrites credential text in the attempt's
-trace before keeping it, replacing that text with `<secret:name>`. The
-report marks a successfully rewritten trace `redaction: "complete"`, but
-that does not mean its pixels were redacted. Trace image resources are kept
-unless they contain literal secret bytes; a secret rendered into a
-screenshot frame can remain visible.
+After a secret fill, the runner withholds screenshots from agent calls and
+`app.screenshot()` for the rest of the attempt.
 
-A trace inside the attempt's artifact directory that cannot be rewritten is
-deleted. If an engine returns a path outside that directory, the runner
-withholds the trace with `TRACE_WITHHELD` and leaves the file untouched.
+Playwright traces and videos need separate care. Trace redaction replaces
+secret text with `<secret:name>`, but it cannot remove a secret rendered as
+pixels. A trace marked `redaction: "complete"` can still contain those
+images. Videos mask nothing and are marked `redaction: "incomplete"`.
 
-Screenshots requested by agent calls and `app.screenshot()` are denied for
-the rest of the attempt after a secret fill. That restriction does not stop
-the screenshot frames captured inside a Playwright trace.
-Videos are recorded with `redaction: "incomplete"` because a screencast masks
-nothing.
+If trace rewriting fails, the runner deletes the trace from the attempt's
+artifact directory. For a path outside that directory, it withholds the
+artifact with `TRACE_WITHHELD` and leaves the file untouched. See the
+[security model](/security#where-redaction-stops) for all redaction limits.
 
 ## Watch it happen
 
@@ -134,18 +121,19 @@ npx e2e run --headed          # a visible browser
 npx e2e run --video           # requires an engine that records video
 ```
 
-`--video` requires recording support from every selected engine; an engine
-without it fails configuration with `UNSUPPORTED_ARTIFACT`. Playwright writes
-WebM segments under the attempt's directory, one per page it records. A
-restart or state reset can produce several segments. The agent-device engine
-writes an MP4 of the device screen. The failure recap names the files under
-each failed test. Set
-`artifacts: { kinds: ['video'], video: { retain: 'on-failure' } }`
-in the config to record attempts in CI and keep only recordings from failures.
+`--video` requires recording support from every selected engine. Unsupported
+engines fail configuration with `UNSUPPORTED_ARTIFACT`. Playwright records
+WebM files; agent-device records MP4. Restarts can produce multiple files.
+
+To keep recordings only for failed attempts, configure:
+
+```ts
+artifacts: { kinds: ['video'], video: { retain: 'on-failure' } },
+```
 
 ## Agent steps
 
-Three flags look inside an agent step:
+Use these flags to inspect agent behavior:
 
 ```bash
 npx e2e run --debug     # timings and a step table on stderr
@@ -155,8 +143,8 @@ npx e2e run --no-cache  # run the agent live instead of replaying
 
 `--debug` appends two tables after the reporter's output: phase timings for
 the run, and one row per agent step with its duration, model calls, tokens,
-prompt-cache share, and cost when the provider reports one. Every planned
-step also saves its full model transcript as an artifact.
+prompt-cache share, and cost when the provider reports one. Each planned
+step also saves its model transcript as an artifact.
 
 ```console
 [e2e debug] agent steps (execution order, model anthropic/claude-sonnet-4.5, total $0.0312)
@@ -165,25 +153,23 @@ step also saves its full model transcript as an artifact.
   assert "the list shows groceries"      1.2s    1.1s     88ms     0ms      1  3120/41        0% (0)       $0.0114
 ```
 
-`--ai-trace` writes `.e2e/ai-trace.json` next to the report, in the AI SDK
-devtools shape. Open it with [unbox-ai](https://github.com/tester-army/unbox-ai)
-to see which tokens went to the system prompt, the tool definitions, or a
-screen snapshot:
+`--ai-trace` writes model requests and responses to `.e2e/ai-trace.json`.
+Read it with [unbox-ai](https://github.com/tester-army/unbox-ai) to inspect
+prompts, tool calls, and token usage:
 
 ```bash
-npx unbox-ai .e2e/ai-trace.json
+npx unbox-ai runs .e2e/ai-trace.json
+npx unbox-ai summary .e2e/ai-trace.json --run 1
 ```
 
-Every agent step is one run in the trace and every model round trip one
-step, with the prompt as sent, the tool definitions, the response, and
-usage. Observations are redacted before the model sees them, so the trace
-holds no secret the model did not. Image bytes appear as byte counts. A step
-the cache replayed makes no model call and leaves no run, so pair `--ai-trace`
-with `--no-cache` for a complete picture.
+Each agent step appears as a run in the AI trace, with one entry per model
+call. It contains the redacted input sent to the model; image bytes are
+replaced with byte counts. Use unbox-ai to inspect it instead of reading the
+large raw JSON file.
 
-`--no-cache` is the first thing to try when a step that passed yesterday
-fails today. A recording made against one page state can replay against a
-changed one; see [Caching agent steps](/cache).
+Replayed steps make no model call and leave no AI trace. Add `--no-cache`
+when you need to inspect the whole flow or rule out a stale recording. See
+[Caching agent steps](/cache).
 
 ## Common errors
 

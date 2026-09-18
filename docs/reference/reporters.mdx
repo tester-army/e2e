@@ -1,14 +1,11 @@
 ---
 title: Reporters
-description: Reporter objects in `reporters`, what they receive, and what the runner guarantees them.
+description: Receive run events and publish results with a custom reporter.
 ---
 
-`reporters` takes the built-in ids (`list`, `json`, `junit`, `markdown`; see
-[CLI output](/reference/cli#output)) and reporter objects. Each id names a
-`Reporter` the runner ships on the contract below. A reporter sees every run
-event as it happens and receives the finished run, report and artifact paths
-included, after the summary has printed. It lives in `e2e.config.ts`, never
-on the command line.
+Add reporter objects to `reporters` in `e2e.config.ts`, alongside the
+[built-in reporters](/reference/cli#output). Use `onEvent` for live progress
+and `onRunFinished` to process the final report and artifacts.
 
 ```ts
 import type { E2EConfig, Reporter } from 'e2e';
@@ -71,9 +68,9 @@ A name and at least one handler are required; anything else is
 
 ## The event stream
 
-`onEvent` receives every lifecycle fact as plain JSON, the same records the
-report persists, streamed while the run is going. It is the feed the `list`
-reporter renders. Each event carries a `seq` and an ISO `at` timestamp.
+`onEvent` receives run progress as plain JSON. The `list` reporter uses the
+same events. Each event has a sequence number, `seq`, and an ISO timestamp,
+`at`.
 
 ```ts
 type RunEventFact =
@@ -92,11 +89,12 @@ type RunEventFact =
   | { type: 'run-finished'; status; exitCode; reportPath?; aiTracePath? };
 ```
 
-`step` progress has a `phase`: `start` and `end` bracket a step, `event`
-reports a model turn, tool call, or observation once it is done, `activity`
-says what the step waits on as it begins (`observe`, `action`, or `model`;
-on a device a snapshot or a tap takes seconds), and `replay` marks the trace
-cache taking or handing back the step.
+The `phase` field describes step progress:
+
+- `start` and `end` mark the step's boundaries.
+- `event` reports a completed model turn, tool call, or observation.
+- `activity` reports work starting: `observe`, `action`, or `model`.
+- `replay` reports when trace replay starts or returns control to the agent.
 
 Every step phase emitted by the runner includes `progress.identity`:
 
@@ -138,12 +136,12 @@ for the rest of the run. Slow work belongs in `onRunFinished`.
 
 ## The finished run
 
-`onRunFinished` runs after `report.json` is written and the `list` summary
-has printed. Every reporter's `onRunFinished` runs at once. Each is awaited
-for one minute; one that takes longer, throws, or resolves with anything
-other than rows is a line on stderr. A graceful interrupt (one Ctrl-C) still
-runs the reporters; a forced one (a second Ctrl-C) abandons them. Nothing a
-reporter does can change the run's status, exit code, or report.
+`onRunFinished` runs after the report is written and the terminal summary
+prints. All reporters run concurrently, each with a one-minute deadline.
+A timeout, exception, or invalid return value is reported on stderr without
+changing the run's status, exit code, or report.
+
+One Ctrl-C still lets reporters finish. A second Ctrl-C stops waiting for them.
 
 The second argument is an `AbortSignal` that aborts when the budget runs out
 or the run is forced to stop. Hand it to every request and timer, or an
@@ -170,13 +168,13 @@ appeared, or that a redaction withheld, is recorded without them. Check for
 
 ## What `--reporter` does to reporter objects
 
-Nothing. `--reporter` replaces the built-in ids only. A config whose
-`reporters` holds only objects prints nothing to the terminal.
+`--reporter` replaces only the built-in reporters; configured reporter
+objects still run. A config with only reporter objects has no built-in
+terminal output.
 
 ## Where a reporter runs
 
-In the runner's process only. Workers construct their own copy of every
-reporter object but never call it, so constructing one must have no side
-effects; read tokens inside the handlers. Reporters are no part of a
-[trace cache key](/cache#what-must-match), so adding one leaves every
-recording valid.
+Handlers run in the runner process. Workers also load the config, so reporter
+construction must have no side effects. Read tokens and start requests inside
+handlers. Adding a reporter leaves [cached traces](/cache#what-must-match)
+valid.

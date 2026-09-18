@@ -3,14 +3,11 @@ title: Agents and personas
 description: Configure several agents in one suite, pin tests to them, and run one flow as each persona.
 ---
 
-`agents` in your config is a record of agents by name. `default` is the one
-tests run with. Other entries are other brains for the same suite: a model
-that reads screens more carefully, a playbook for a UX review, a persona who
-has never seen the app.
+Define named agents in `agents` to give tests different models, instructions,
+or tools. Tests use `default` unless you select another agent.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
-import { createAgent } from 'e2e/agent';
 import { playwright } from '@e2edev/playwright';
 import { gateway } from 'ai';
 
@@ -19,66 +16,50 @@ export default {
   agents: {
     default: { model: gateway('openai/gpt-5.6-luna') },
     thorough: { model: gateway('anthropic/claude-opus-5'), context: 'Verify every claim on screen before concluding.' },
-    buyer: { model: gateway('openai/gpt-5.6-luna'), context: 'You are a first-time buyer who has never seen this site.' },
+    buyer: { model: gateway('openai/gpt-5.6-luna'), context: 'You are a first-time buyer.' },
     admin: { model: gateway('openai/gpt-5.6-luna'), context: 'You manage orders and approve refunds.' },
-    ux: createAgent({ model: gateway('openai/gpt-5.6-luna'), system: 'Check that each control has a clear label and each action gives visible feedback.' }),
   },
 } satisfies E2EConfig;
 ```
 
 An entry takes one of three shapes:
 
-- **An options block.** `model`, `judge`, `context`, `maxSteps`,
-  `maxModelCalls`, `timeout`, `providerOptions`. This runs the built-in agent
-  with those settings.
-- **`createAgent(...)`.** The built-in agent with a `system` prompt and your
-  own [tools](/tools).
-- **An options block with `executor`.** Any [custom executor](/executors),
-  composed with the model and budget options.
+- An options object to configure the built-in agent's model, context, and budgets.
+- `createAgent(...)` to add a `system` prompt or [tools](/tools).
+- A [custom executor](/executors), directly or in an options object with `executor`.
 
-`context` is a sentence or two of project vocabulary that reaches every
-`agent.*` call. `system` on `createAgent` shapes how the agent works. One
-`model` serves every call, screenshots included, so it has to accept images.
-The [config reference](/reference/config#agents) lists every key.
+Use `context` for project vocabulary and `system` on `createAgent` for
+instructions about how the acting agent should work. `model` handles acting
+and judgments unless you set a separate `judge`. Models that receive
+screenshots must accept images. See [Models](/models) and the
+[config reference](/reference/config#agents).
 
 ## Make the agent yours
 
-The agent in the scaffold is a starting point. The best agent for your app
-is the one that knows its screens, and it gets there by iteration. When a
-step fails or takes too many calls, work down this list and stop at the
-first level that fixes it:
+When a step fails or takes too many calls, inspect its report or run with
+`--debug` to see the transcript. Start with the instruction, then adjust the
+agent if the problem affects several tests:
 
-1. **The goal.** Reword it with the labels on screen. `--debug` saves the
-   step's transcript as an artifact, so you can see what the model saw and
-   tried.
-2. **`context`.** Vocabulary every step needs: what the plans are called,
-   which tab holds billing, what a "workspace" is. Set it once on the agent,
-   or per test with `agentContext`, instead of repeating it in goals.
-3. **`system` on `createAgent`.** How the agent works: how carefully it
-   verifies, what it never does, how it treats a modal. A UX reviewer, a
-   cautious QA persona, and a fast smoke agent are three `system` prompts on
-   one model.
-4. **[Tools](/tools).** A test API the agent may call mid-flow: seed a cart,
-   mint a coupon, reset a fixture.
-5. **The model and its options.** `providerOptions` for reasoning effort, or
-   a different model for one agent. `--agent <name>` runs the suite as any
-   entry, so two candidates can be compared on the same tests, and every
-   result records which agent ran it.
-6. **A [custom executor](/executors)**, when the loop itself should change.
+1. Use the labels on screen in the goal.
+2. Put shared vocabulary in `context`, or use `agentContext` for one test.
+3. Add a `system` prompt through `createAgent` for instructions such as
+   verifying a visible confirmation before completing a step.
+4. Add [tools](/tools) for operations such as seeding a cart through a test API.
+5. Compare models or `providerOptions` by running the same tests with
+   `--agent <name>`.
 
-Each level keeps the [cache](/cache): a specialised agent's passing steps
-replay the same way the default's do.
+Named agents can use the [trace cache](/cache). Custom tools and executors
+have their own replay constraints, described on their pages.
 
 ## Pick an agent per run
 
-Without a flag, tests run as `default`. `--agent` re-points them:
+Use `--agent` to choose the agent for tests that do not specify one:
 
 ```bash
 npx e2e run --agent thorough tests/checkout.e2e.ts
 ```
 
-Several names run every unpinned test once per agent, a whole-suite sweep
-without touching a file:
+Several names run each unpinned test once per agent:
 
 ```bash
 npx e2e run --agent buyer,admin
@@ -86,12 +67,10 @@ npx e2e run --agent buyer,admin
 
 ## Pin an agent in the suite
 
-A test, a describe block, or a single call can name its agent. Innermost
-wins: a call's `agent` beats the test's, which beats its groups, which beat
-the run.
+A test, describe block, or individual call can select an agent. The closest
+setting wins, in this order: call, test, enclosing groups, run.
 
-The test bodies below are abbreviated to show agent selection; replace
-the placeholder bodies with your app's checkout and refund steps.
+The abbreviated tests below show how to select an agent at each level.
 
 ```ts title="tests/checkout.e2e.ts"
 import { test } from 'e2e';
@@ -106,23 +85,20 @@ test.describe('checkout as a first-time buyer', { agent: 'buyer' }, () => {
   test('reorders, and the admin approves', async ({ app, agent }) => {
     await app.open('/orders');
     await agent.act('reorder the most recent order');
-    // One step under another brain; the ledger carries what the buyer did.
+    // The admin's act call receives the earlier steps in the ledger.
     await agent.act('approve the pending reorder', { agent: 'admin' });
     await agent.assert('the reorder shows as approved');
   });
 });
 ```
 
-`--agent` never overrides a pin it does not name. A persona stays itself
-while you benchmark a model across everything that has no opinion. A pin
-that names nothing in `agents` fails at collection; a call's unknown name is
-`INVALID_ARGUMENT`. Every agent step in the report records the agent it ran
-with.
+`--agent` does not replace an explicitly selected agent. An unknown agent
+on a test or group fails during collection. An unknown agent on a call raises
+`INVALID_ARGUMENT`. Reports record the agent for each step.
 
 ## One flow, several personas
 
-A pin can be a list. The test then runs once per agent named, as one result
-each, in one run:
+Select several agents to run the same test once with each:
 
 ```ts title="tests/checkout.e2e.ts"
 import { test } from 'e2e';
@@ -133,19 +109,19 @@ test.describe('checkout', { agent: ['buyer', 'admin'] }, () => {
 });
 ```
 
-Every result carries the agent it ran as: `agent` in the report, `[admin]`
-after the title in the terminal and in JUnit case names, its own result id,
-and its own artifact directory. With a list pin, `--agent admin` narrows the
-block to the admin alone, while `--agent thorough` leaves it running as both
-personas.
+Each agent gets a separate result and artifact directory. Terminal and JUnit
+test names include the agent, such as `[admin]`.
+
+For the list above, `--agent admin` selects only `admin`. A flag with no
+matching name, such as `--agent thorough`, leaves both selected agents in place.
 
 A serial group runs as one unit per agent, so its members share the group's
 pin. A setup test pins at most one agent.
 
-A persona that must be signed in pairs its pin with a `session`. A session is
-one name per block, so a sweep over signed-in personas is a loop over
-describe blocks; [Signing in](/authentication#several-signed-in-users) shows
-the setup test and the loop.
+Selecting an agent does not switch the signed-in user. For signed-in personas,
+pair each agent with a `session` in a separate describe block.
+[Signing in](/authentication#several-signed-in-users) shows how to create the
+sessions and run the tests.
 
 ## Next
 
@@ -154,6 +130,6 @@ the setup test and the loop.
     Give the agent a test API or a device toolkit.
   </Card>
   <Card title="Custom executors" icon="gears" href="/executors">
-    Keep the loop with your own prompt, or replace it.
+    Customize how the agent chooses and performs actions.
   </Card>
 </CardGroup>

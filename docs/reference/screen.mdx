@@ -3,9 +3,9 @@ title: screen and Locator
 description: Queries, refinement, actions, and reads.
 ---
 
-A `Locator` is a query expression, not a node; nothing resolves until an
-action, read, or assertion runs. `Locator extends Screen`, so every query
-method is also available on a locator, scoped to its subtree.
+A `Locator` stores a query and resolves it when an action, read, or assertion
+runs. Every `Screen` query method is also available on a locator, scoped to
+its subtree.
 
 ```ts
 export interface Screen {
@@ -31,8 +31,8 @@ export interface Screen {
 }
 ```
 
-An action, read, or assertion requires exactly one match. Reads resolve once
-and read once; use [`expect`](/reference/expect) to wait for a value.
+Most operations require exactly one match. Reads return the current value
+without waiting for it to change; use [`expect`](/reference/expect) to wait.
 
 | Operation | Zero matches | Multiple matches |
 | --- | --- | --- |
@@ -80,14 +80,14 @@ await screen.getByPlaceholder('Search memory...', { visible: true }).fill('launc
 await screen.getByTestId('memory-list', { visible: true }).getByRole('listitem').first().tap();
 ```
 
-The predicate is the one `toBeVisible()`, `isVisible()`, and `waitFor()`
-read. It composes with scopes, `filter`, `first`, `last`, and `nth`:
+`visible` uses the same visibility check as `toBeVisible()`, `isVisible()`,
+and `waitFor()`. It works with scopes, `filter`, `first`, `last`, and `nth`:
 `getByText('Save', { visible: true }).first()` is the first visible match.
 Prefer it over `web.locator('p:visible')`, which ties the test to CSS.
 
 ## Refinement
 
-Synchronous, returns a new locator, performs no work.
+Refinement returns a new locator without querying the app.
 
 Throws `INVALID_LOCATOR` when `filter` gets neither `hasText` nor `has`, when
 `has` is not a runner locator, or when `nth` gets a negative or non-integer
@@ -151,7 +151,7 @@ export interface Locator extends Screen {
   click(options?: ActionOptions): Promise<void>;
   /** Double-taps exactly one matching actionable node. */
   doubleTap(options?: ActionOptions): Promise<void>;
-  /** Secondary-taps exactly one matching actionable node: a right click, a two-finger tap. */
+  /** Performs a secondary tap, such as a right click or two-finger tap. */
   secondaryTap(options?: ActionOptions): Promise<void>;
   /** Long-presses exactly one matching actionable node. */
   longPress(options?: LongPressOptions): Promise<void>;
@@ -361,5 +361,5 @@ A role query never matches a node hidden from the accessibility tree.
 [Hidden duplicates](#hidden-duplicates).
 
 
-`label`, `value` (the option's `value` attribute, what the form submits), or
-`index`, never two.
+For `selectOption`, pass exactly one of `label`, `value`, or `index`. `value`
+matches the option's value attribute, which is what the form submits.

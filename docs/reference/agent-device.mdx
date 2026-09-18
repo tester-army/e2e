@@ -1,6 +1,6 @@
 ---
 title: agent-device
-description: The mobile engine for iOS simulators and Android emulators, its options, and the device fixture it contributes.
+description: Mobile engine options and the device fixture for iOS and Android.
 ---
 
 `@e2edev/agent-device` drives iOS simulators and Android emulators through
@@ -14,9 +14,8 @@ Choose **Mobile (iOS/Android)** in `e2e init` to add the package with a
 Settings example. iOS needs Xcode and a simulator; Android needs the Android
 SDK and an emulator.
 
-The package installs the `agent-device` it was built and tested against,
-pinned exactly: agent-device is 0.x and its minors break, so the pin moves
-with each engine release. There is nothing else to add to your project.
+The package includes a compatible version of `agent-device`; no separate
+installation is needed.
 
 ## Engine
 
@@ -45,9 +44,10 @@ export default {
 } satisfies E2EConfig;
 ```
 
-One engine per device family. Platform-specific labels or operations need
-`platforms: ['ios']` or `platforms: ['android']`. Device attempts open their
-configured app; `app.open()` is unavailable on these targets.
+Create an engine for each platform you test. Use `platforms: ['ios']` or
+`platforms: ['android']` on tests with platform-specific labels or operations.
+Each attempt opens the configured app automatically; `app.open()` is
+unavailable on device targets.
 
 ```ts
 /**
@@ -102,25 +102,16 @@ export interface AgentDeviceOptions {
    */
   readonly snapshot?: 'full' | 'interactive' | undefined;
   /**
-   * How long the UI must hold still after a tap, fill, or back before the
-   * action counts as landed, in milliseconds; `false` skips the wait. The
-   * wait keeps the observation that follows an action off a transition
-   * frame; the runner's own polling (`expect`, actions waiting for their
-   * node) covers the rest, so a short window suffices. Default 150. Every
-   * frame of a running animation changes the tree, so a 150 ms window still
-   * catches a transition in flight; raise it for slow devices or apps that
-   * settle in stages, or lower it to 0 to keep only the first re-observation.
+   * UI stability window after a tap, fill, or back, in milliseconds.
+   * Default 150. Raise it for slow transitions. `0` keeps only the first
+   * re-observation; `false` skips the wait.
    */
   readonly settle?: number | false | undefined;
   /**
-   * How long a control that appeared or moved with the last action is given
-   * to finish arriving before a test acts on it, in milliseconds. Default
-   * 500, the length of a modal or screen transition. Accessibility frames
-   * report a control's final position from the first frame of a transition,
-   * so this budget is the only thing that keeps a test from tapping a point
-   * the control has not reached; controls already on screen at the same
-   * place before the action are acted on at once. Raise it for slower
-   * transitions.
+   * Wait before acting on a control that just appeared or moved, in
+   * milliseconds. Default 500. Accessibility bounds can report the final
+   * position before an animation finishes. Unmoved controls are acted on
+   * immediately. Raise this for slower transitions.
    */
   readonly transition?: number | undefined;
 }
@@ -267,8 +258,8 @@ const { app } = await device.installApp('./build/MyApp.app', { reinstall: true }
 await device.openApp(app);
 ```
 
-`locator` mints a core `Locator` from an agent-device selector, for nodes the
-`screen` vocabulary cannot name.
+Use `device.locator` for platform-specific selectors that `screen` queries
+cannot express.
 
 ```ts
 await expect(device.locator('role=NavigationBar id=About')).toBeVisible();
@@ -283,9 +274,8 @@ type (`StaticText`) or the contract role (`text`).
 
 ## Agent tools
 
-`agentDeviceTools(...engines)` returns a `defineTool` pack for `createAgent`.
-Pass every device engine the config declares; two packs cannot be merged. The
-pack dispatches each call to the engine whose attempt is running:
+`agentDeviceTools(...engines)` adds device tools to `createAgent`. Pass all
+device engines in one call; the tools use the current attempt's engine.
 
 | Tool | Replay | Purpose |
 | --- | --- | --- |
@@ -294,9 +284,9 @@ pack dispatches each call to the engine whose attempt is running:
 | `type_text` | gap | Type into the focused field, optionally pressing Return; for editors that hide the focused field from the tree. |
 | `alert` | gap | Accept or dismiss a system alert. |
 
-The grammar verbs (`tap`, `type`, `scroll`) come from the engine and need no
-tool. The engine declares `tap`, `doubleTap`, and `longPress` as pointer
-actions, so a `tap_at` on nothing the tree lists taps the bare point. `type_secret` is not offered on a device.
+Basic actions such as `tap`, `type`, and `scroll` need no tool pack. Point
+actions can tap controls absent from the accessibility tree. `type_secret`
+is not offered on a device.
 
 After a secret fill the agent offers neither `screenshot` nor `tap_at`,
 including in later members of the same serial group. Pixels whose masking the

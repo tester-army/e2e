@@ -3,88 +3,74 @@ title: How agent steps work
 description: What the model sees, what it may do, how a step ends, and what it costs.
 ---
 
-An `agent.*` call is one bounded invocation. The runner takes a fresh
-observation, hands the model a goal or a question, polices every action the
-model asks for, and records a verdict. Nothing about the model's behavior
-changes what the runner enforces.
+Each `agent.*` call has a deadline and a model-call budget. The runner
+observes the screen, checks requested actions against its policy, and
+records the result.
 
 ## Two sides of the contract
 
-The runner owns the mechanics: redacted observations, every action, budgets,
-secrets, the report. The **step executor** owns the thinking:
-given a step, return a verdict. `createAgent()` is the built-in executor.
-Everything under `agents` in your config is one.
+The runner handles redaction, action authorization, budgets, secrets, and
+reporting. The executor decides which actions to request and returns a
+verdict. `createAgent()` provides the built-in executor.
 
-Customizing the executor changes how the agent decides, not what it is
-allowed to do. A hand-rolled executor gets the same policed action surface
-and the same redacted view as the built-in one.
+[Custom executors](/executors) get the same redacted observations and checked
+action methods. Their own code runs with the test process's OS permissions.
 
 ## What the model sees
 
-The opening prompt carries the instruction, the params, a ledger of the
-steps completed so far in the test, and the whole screen once: a redacted
-text snapshot of roles, names, text, and states. Never raw HTML, cookies,
-headers, or environment values. Password fields arrive masked, and any
-configured secret value found on screen, a password or a `secrets` entry,
-is replaced with `<secret:name>`.
+For `act`, the opening prompt includes the instruction, params, completed
+steps, and a redacted text snapshot of the screen's roles, names, text, and
+states. It excludes raw HTML, cookies, headers, and environment values.
+Password fields are masked. Configured secret values found on screen are
+replaced with `<secret:name>`.
 
-After that, every action result reports what changed since the screen the
-model last received: lines that appeared, lines that changed with their
-previous text, lines that went away. Node ids are stable for as long as an
-element exists, so a change update is a complete picture rather than a hint.
-A screen that changed mostly goes out whole again.
+After an action, the model receives the changes to the screen. If most of
+the screen changed, it receives a new full snapshot. Node ids remain stable
+while their elements exist.
 
-An action result is read after the action's effect. The runner waits, bounded
-to two seconds, for the screen to leave the shape the action was resolved
-against, so a tap on a link reports the page it opened rather than the page
-it left. Ticking clocks are ignored when comparing. A failed action returns
-the failure together with the current screen, so a stale id costs no extra
-turn.
+The runner waits up to two seconds for an action to change the screen before
+capturing the result. A failed action also returns the current screen so the
+model can choose what to do next.
 
-Judgments (`assert`, `waitFor`, `extract`) see less on purpose: the
-instruction and the current screen, never the ledger or the acting agent's
-summaries. A verdict rests on what is on screen, not on what the actor said
-it did, and a `judge` model of its own keeps the two apart entirely; see
-[A judge of its own](/models#a-judge-of-its-own). Judgments can add a masked
-screenshot with `vision: true`, or judge the screenshot alone with
-`vision: 'only'`. Pixels are withheld once a secret has been filled in the
-attempt. The [agent reference](/reference/agent#vision) lists the modes.
+Judgments from `assert`, `waitFor`, and `extract` see the instruction and
+current screen. They do not see completed steps or the acting agent's
+summaries. You can configure a separate [judge model](/models#a-judge-of-its-own).
+
+Use `vision: true` to include a masked screenshot or `vision: 'only'` to
+judge the screenshot alone. Pixels are withheld after a secret is filled.
+The [agent reference](/reference/agent#vision) lists the modes.
 
 ## What the model may do
 
-The model gets exactly the verbs the target's engine declares: `tap`, `type`,
-`press`, `select`, `scroll`, `navigate`, and `type_secret` for a credential it
-was handed by name. An engine that cannot navigate has no `navigate` verb.
-On an engine with a keyboard, `type` and `press` also work without a target,
-reaching whatever has focus, and a device engine adds `dismiss_keyboard`.
-While no secret has been filled, `screenshot` and `tap_at` join them: the
-model can attach the viewport's masked pixels to a result and tap a point in
-that image, for a canvas, a map, or a screen the tree cannot describe
-([reference](/reference/agent#pixel-tools-screenshot-and-tap_at)).
-[Project tools](/tools) add to that vocabulary; nothing removes the policing
-around it.
+The agent receives tools supported by the target's engine, such as `tap`,
+`type`, `press`, `select`, `scroll`, and `navigate`. A step with declared
+credentials can also receive `type_secret`.
 
-Every action goes through the runner: the action budget, and a 15 second
-bound on any single targeted action, so a tap blocked by a consent banner
-reports the element in the way instead of spending the whole
-`actionTimeout`. A secret fill is authorized against the step's declared
-secrets and the field's purpose before the runner types it.
+Keyboard-capable engines support typing and key presses into the focused
+control. Pixel tools let the agent request a screenshot and act at a point
+when the text snapshot cannot describe a control. These tools are unavailable
+after a secret fill. See the
+[tool reference](/reference/agent#pixel-tools-screenshot-and-the-point-verbs).
 
-The loop guards itself. Three failed actions in a row earn a notice to change
-approach; five force a conclusion. A model that repeats the same call or
-cycles is stopped, and a wind-down forces a verdict near the turn budget and
-the step clock.
+The runner checks each built-in action and counts it against the budget.
+A targeted action has a maximum timeout of 15 seconds. Secret fills also
+require a declared secret and a compatible field.
+[Project tools](/tools) add your own operations with declared budgets and
+platform support.
+
+The loop detects repeated calls and cycles. After three consecutive failed
+actions, it asks the model to change approach; after five, it asks for a
+verdict. It also requests a verdict as the budget or deadline approaches.
 
 ## How a step ends
 
-Every planned step ends in one of three verdicts:
+An agent step returns one of three verdicts:
 
-- **passed**: the app behaved as the step required, verified on screen.
-- **failed**: it did not. An ordinary test failure. A judgment that could
-  not decide because the screen showed too little is `ASSERTION_INCONCLUSIVE`,
-  a failure of this kind and never a pass.
-- **blocked**: something prevented a product verdict. The error code decides
-  the exit.
+- `passed`: the screen provides evidence that the step succeeded.
+- `failed`: the required condition is false or cannot be established.
+  Insufficient evidence produces `ASSERTION_INCONCLUSIVE`.
+- `blocked`: a prerequisite, environment problem, or execution limit
+  prevented a product verdict. The error code determines the exit code.
 
 | Blocked by | Codes | Exit |
 | --- | --- | ---: |
@@ -100,7 +86,7 @@ and exit 1, even though the agent could not reach a product verdict.
 
 ## Cost
 
-These defaults describe the built-in agent and judgment tier:
+Defaults for the built-in agent:
 
 | Call | Model calls | Default timeout |
 | --- | --- | --- |
@@ -109,38 +95,33 @@ These defaults describe the built-in agent and judgment tier:
 | `extract` | 2 | the agent's `timeout`, 30 s |
 | `waitFor` | up to `maxModelCalls`, default 25 | the agent's `timeout`, 30 s |
 
-`assert` and `extract` spend one judgment and one repair round at most.
-`waitFor` skips judgments while the observed screen is unchanged: the tree
-shape, and the screenshot too when pixels are sent.
-Exceeding a budget raises `STEP_BUDGET_EXHAUSTED`; running out of time,
-`STEP_TIMEOUT`. Pixels reach `act` only when the model asks: it works from
-the tree and calls `screenshot` when the tree lacks what it needs, and while
-pixels stay available every action result after the first screenshot carries
-a fresh one. `tap_at`, `type_at`, `press_at`, and `select_at` then act at a
-point in that screenshot for a target the tree does not list. `act` takes no
-`vision` option. See [pixel tools](/reference/agent#pixel-tools-screenshot-and-the-point-verbs).
+`assert` and `extract` make one judgment, with one repair call if needed.
+`waitFor` skips model calls while the observation is unchanged, including
+the screenshot when vision is enabled. Exceeding a budget raises
+`STEP_BUDGET_EXHAUSTED`; reaching the deadline raises `STEP_TIMEOUT`.
 
-With a custom executor, one that is not `createAgent(...)`, `agent.assert` runs through `runStep` under the same
-action and model-call budgets as `act`, with `config.timeout` as its default
-timeout. It does not use the built-in two-call judgment limit.
+`act` requests screenshots when needed. After the first screenshot, action
+results include fresh pixels while policy allows them. Images add input
+tokens on each call.
 
-Keep suites cheap: assert with `expect` when the check is mechanical, scope
-`act` to the step that varies, and give slow providers `timeout` room. The
-[trace cache](/cache) replays a passing `act` with no model call at all.
+With a [custom executor](/executors), `agent.assert` uses `runStep` with the
+same budgets as `act` and defaults to `config.timeout`.
 
-Requests reuse the provider's prompt cache. The conversation prefix stays
-stable across turns because superseded screens are elided from the transcript,
-and `--debug` shows the cached share per step.
+Use `expect` for exact checks and keep each `act` focused on one goal.
+The [trace cache](/cache) can replay passing `act` steps without model calls.
+
+When the provider supports prompt caching, `--debug` shows the cached share
+of input tokens per step.
 
 ## Where secrets go
 
-A `Secret` in `params` is projected before the model sees anything: the model
-receives the secret's name and purpose, and the runner fills the value itself
-through the same authorization as `locator.fill`. The value never enters a
-prompt, a transcript, the report, or the AI trace. Once a secret has been
-filled, the runner withholds screenshots from the model and from assertion
-evidence for the rest of the attempt, because a page is free to echo a typed
-value anywhere.
+For a `Secret` param, the model receives only its name and purpose. The
+runner authorizes and fills the value, as it does for `locator.fill`.
+The value never enters prompts, transcripts, reports, or AI traces.
+
+After a secret fill, screenshots are withheld from the model and assertion
+evidence for the rest of the attempt. The app could echo the value anywhere
+on screen.
 
 ## Next
 

@@ -3,25 +3,22 @@ title: Testing iOS and Android
 description: Set up a simulator or emulator target, write a device test, and know what differs from the web.
 ---
 
-`@e2edev/agent-device` drives iOS simulators and Android emulators. Devices
-share the `agent`, `screen`, and `expect` APIs with browser targets, but app
-setup follows the platform: a device attempt starts in its configured app
-instead of opening a URL. This page covers setup, the `device` fixture, and
-the operations that differ from a browser.
+`@e2edev/agent-device` runs tests on iOS simulators and Android emulators.
+Tests use the same `agent`, `screen`, and `expect` APIs as browser tests.
+Each attempt starts in the configured app.
 
 ## Set up
 
-You need Xcode with an iOS simulator runtime, or the Android SDK with an
-emulator. Run the doctor once before handing the target to the runner:
+Install Xcode with an iOS simulator runtime, or the Android SDK with an
+emulator. Check your setup with:
 
 ```bash
 npx agent-device doctor
 ```
 
-Then follow the [Quickstart](/quickstart) and choose **Mobile (iOS/Android)**
-in the wizard. `init` defaults to iOS on macOS and Android elsewhere, pins the
-Settings app so the first run works on any machine, and sets one worker.
-There is no `APP_URL`; a device target declares no URL.
+Follow the [Quickstart](/quickstart) and choose **Mobile (iOS/Android)**.
+The wizard selects iOS on macOS and Android elsewhere. It starts with the
+Settings app and one worker:
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -34,34 +31,33 @@ export default {
 } satisfies E2EConfig;
 ```
 
-The devices boot before the run's clock starts. On a CI runner, where a cold
-boot takes a minute or more, that time is not charged to `launchTimeout`.
+The runner boots the device before test timing starts. Boot time does not
+count toward `launchTimeout`.
 
 ## Point at your app
 
-Replace `Settings` with your app's bundle id or package name. `app` is opened
-fresh at the start of every attempt and unlocks `app.restart()` and
-`app.clearState()`. To install a build first, add `appPath`:
+Replace `Settings` with your app's bundle id or package name. Setting `app`
+opens it at the start of each attempt and enables `app.restart()` and
+`app.clearState()`. Add `appPath` to install a build first:
 
 ```ts
 agentDevice({
   platform: 'ios',
   app: 'com.example.app',
-  appPath: process.env.E2E_APP_PATH,   // an .app bundle or .apk, installed once per worker
+  appPath: process.env.E2E_APP_PATH, // path to the iOS .app bundle
 })
 ```
 
-Every optional value accepts `undefined`, so an environment variable passes
-straight through.
+The build is installed once per worker. Use an `.app` bundle for iOS or an
+`.apk` for Android. Optional values accept `undefined`, so environment
+variables can be passed directly.
 
-Without `app`, the engine observes whatever is in the foreground and the
-model opens apps with the `open_app` tool. Pin `app` whenever you can: it
-gives every attempt the same starting screen, which the
-[trace cache](/cache) needs to replay.
+Without `app`, the engine uses whichever app is in the foreground. Set it
+when possible so attempts start consistently and cached steps can replay.
 
 ## Several devices
 
-One engine per device family; a config declares as many as it has devices:
+Add a target for each platform:
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -79,30 +75,23 @@ export default {
 } satisfies E2EConfig;
 ```
 
-A deterministic check that names a platform label is scoped with
-`platforms: ['ios']` or `platforms: ['android']`; everything else runs on
-both.
+Tests run on both targets. Use `platforms: ['ios']` or
+`platforms: ['android']` for tests with platform-specific labels or behavior.
 
-To split a target's files across several simulators, pass a pool and let
-`workers` be at least its size. Each entry is one worker, and worker `n`
-drives the `n`th device. With no `device` at all, every booted device of the
-platform is eligible for the pool, up to the run's worker slots. Four booted
-simulators can run four files at a time when `workers` is at least four.
-With none booted, agent-device boots one and the target uses one worker.
+To run files in parallel, provide a device pool and set `workers` to at
+least the pool's size. Each device gets one worker:
 
 ```ts
 agentDevice({ platform: 'ios', app: 'com.example.app', device: ['iPhone 17', 'iPhone 17 Pro'] })
 ```
 
-The engine declares one worker per device, so a device target never has two
-workers driving one simulator, whatever `workers` allows.
+Without `device`, the engine uses booted devices up to the worker limit.
+If none are booted, it boots one. Two workers never drive the same device.
 
 ## Writing a device test
 
-`screen` queries work as on the web. iOS `Button` is `button`, `TextField` is
-`textbox`, `Cell` is `listitem`, `Switch` is `switch` with `checked`. Android
-`TextView` is `text`, `EditText` is `textbox`, `RecyclerView` is `list`.
-Element identifiers surface under `getByTestId`.
+`screen` maps native controls to common roles such as `button`, `textbox`,
+`listitem`, and `switch`. Use `getByTestId` for native element identifiers.
 
 ```ts
 import { test } from '@e2edev/agent-device';
@@ -117,28 +106,24 @@ test('shows the version offline in dark mode', async ({ agent, device, screen })
 });
 ```
 
-Text queries answer with the innermost match, so a host view that echoes its
-child's label counts once. A tap on a `switch` lands on its innermost control.
-`selectOption`, `setInputFiles`, and `scrollIntoView` are
-`UNSUPPORTED_CAPABILITY` on a device; swipe instead.
+`selectOption`, `setInputFiles`, and `scrollIntoView` are unsupported on
+devices. Use taps and swipes to interact with native controls.
 
 ### The `device` fixture
 
-`device` is deterministic device management, recorded as `device.<method>`
-steps and never involving a model: network and airplane mode, permissions,
-location, appearance, orientation, biometrics, install and open apps, home
-and back, system alerts, the keyboard, the clipboard.
+Use `device` to manage network state, permissions, appearance, app installs,
+and other device settings without a model call. Each call appears as a
+`device.<method>` step in the report.
 
-`device.locator('...')` mints a locator from an agent-device selector for
-nodes the closed `screen` vocabulary cannot name:
+`device.locator('...')` accepts an agent-device selector for controls that
+`screen` queries cannot identify:
 
 ```ts
 await expect(device.locator('role=NavigationBar id=About')).toBeVisible();
 await device.locator('id=SW_VERSION_SPECIFIER role=Button').tap();
 ```
 
-`device.installApp` puts a build on the device from inside a test, for
-upgrade and fresh-install paths:
+Use `device.installApp` within a test to check upgrades or fresh installs:
 
 ```ts
 const { app } = await device.installApp('./build/MyApp.app', { reinstall: true });
@@ -149,9 +134,8 @@ Every method is in the [agent-device reference](/reference/agent-device#device).
 
 ### Agent tools
 
-The grammar verbs (`tap`, `type`, `scroll`) come from the engine and need no
-tool. For app switching, free-form swipes, typing into editors that hide the
-focused field, and system alerts, hand the agent the device tool pack:
+The agent already has basic actions such as `tap`, `type`, and `scroll`.
+Add `agentDeviceTools` for app switching, device gestures, and system alerts:
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -178,10 +162,10 @@ export default {
 } satisfies E2EConfig;
 ```
 
-Pass every device engine the config declares. The pack is scoped to their
-platforms and dispatches each call to the engine whose attempt is running.
-A mutating tool call is a replay gap, so prefer the grammar inside a step.
-The read-only `screenshot` tool creates no gap.
+Pass each configured device engine to `agentDeviceTools`. Calls go to the
+engine running the current attempt. Tools that change device state require
+the agent to take over during cache replay; the read-only `screenshot` tool
+does not interrupt replay.
 
 ## What differs from the web
 
@@ -189,8 +173,8 @@ The read-only `screenshot` tool creates no gap.
 | --- | --- |
 | `app.open('/path')` and the agent's `navigate` verb | No URL. The attempt starts in the pinned `app`; there is no `navigate` |
 | `test.setup` saves a session, `session:` restores it | Not available. A simulator has no portable session snapshot; sign in per test or seed the app |
-| A `Secret` fills through `type_secret` | The same: `type_secret` fills a declared secret into a secure field, and `screen.getByLabel(...).fill(secret)` works in a deterministic step |
-| Playwright trace per attempt | Screenshots only, with every secure field painted black. No trace |
+| Secret input | `type_secret` and `screen.getByLabel(...).fill(secret)` fill declared secrets into secure fields |
+| Playwright trace per attempt | No Playwright trace; screenshots mask secure fields |
 | `--video` writes a WebM screencast | `--video` writes an MP4 of the device screen with taps shown |
 | The cache anchors on the page path | The cache anchors on the location `<bundle id> / <screen title>`, the title read off the navigation bar |
 

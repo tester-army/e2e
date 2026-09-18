@@ -1,12 +1,14 @@
 ---
 title: From Maestro
-description: Turn YAML flows into TypeScript tests, one command per line, and hand the branching flows to the agent.
+description: Move Maestro flows to TypeScript with locators, assertions, and agent goals.
 ---
 
-A Maestro flow is a YAML list of commands. An e2e test is the same list in
-TypeScript with `await` in front of each line, plus a goal the agent carries
-out and a value you can branch on. The same simulator or emulator serves
-both, so move one flow at a time.
+Translate Maestro commands into awaited TypeScript calls. Keep exact
+interactions as locator calls, or give the agent a goal that covers several
+interactions. Both runners can use the same simulator or emulator.
+
+Set up a target with the [mobile guide](/mobile) and a model with the
+[quickstart](/quickstart), then move one flow at a time.
 
 ## Config
 
@@ -14,7 +16,7 @@ both, so move one flow at a time.
 | --- | --- |
 | `appId` at the top of every flow | `agentDevice({ app: 'com.example.app' })`, opened fresh per attempt |
 | `--device` | `agentDevice({ device: 'iPhone 17' })` |
-| `.maestro/config.yaml` `flows` | `include`, default every `*.e2e.ts` under `tests/` |
+| `.maestro/config.yaml` `flows` | `tests`, default `tests/**/*.e2e.ts` |
 | `tags` and `--include-tags` | `{ tags: [...] }` on a test, `--tag` on the CLI |
 | `env` and `${VAR}` | `process.env` in the config, `params` in a goal |
 | `--format junit` | `--reporter list,junit` |
@@ -53,21 +55,21 @@ test('asks for the email', async ({ app, agent, screen }) => {
 });
 ```
 
-Keep a command as a `screen` call when its exact target matters. Fold a run
-of taps into one `agent.act` when the app is free to redesign that flow.
+Here the agent handles onboarding, while locator assertions check the
+confirmation and the Resend control.
 
 ## Command map
 
 | Maestro | e2e |
 | --- | --- |
-| `launchApp` | Nothing. The attempt starts in the pinned `app` |
+| `launchApp` | The engine opens the configured app before each attempt |
 | `launchApp: { clearState: true }` | `app.clearState()` |
 | `stopApp`, then `launchApp` | `app.restart()` |
 | `tapOn: "Text"` | `screen.getByText('Text').tap()` |
 | `tapOn: { id: x }` | `screen.getByTestId('x').tap()` |
 | `tapOn: { point: ... }` | No deterministic equivalent. The agent has `tap_at` |
 | `doubleTapOn`, `longPressOn` | `.doubleTap()`, `.longPress()` |
-| `inputText` | `screen.getByTestId('field').fill('text')`; for an editor that hides its field, the agent's `type_text` tool |
+| `inputText` | `screen.getByTestId('field').fill('text')` |
 | `eraseText` | `.clear()` |
 | `hideKeyboard` | `device.dismissKeyboard()` |
 | `pressKey: Enter` | `.press('Enter')` on the field |
@@ -75,15 +77,15 @@ of taps into one `agent.act` when the app is free to redesign that flow.
 | `swipe: { direction: UP }` | `screen.swipe({ direction: 'up' })` |
 | `scroll`, `scrollUntilVisible` | `screen.swipe(...)`, `screen.scrollUntilVisible(locator)` |
 | `assertVisible`, `assertNotVisible` | `await expect(locator).toBeVisible()`, `.toBeHidden()` |
-| `assertVisible: { text, enabled: true }` | `.toBeEnabled()` |
+| `assertVisible: { text, enabled: true }` | `.toBeVisible()` and `.toBeEnabled()` |
 | `extendedWaitUntil: { visible, timeout }` | `.toBeVisible({ timeout })` |
-| `waitForAnimationToEnd` | Not needed. Queries poll and actions wait |
+| `waitForAnimationToEnd` | Use an assertion on the expected state; the engine also supports settling options |
 | `copyTextFrom`, `pasteText` | `await locator.textContent()`, then `.fill(text)` |
 | `setLocation` | `device.setLocation({ latitude, longitude })` |
-| `setAirplaneMode`, `toggleAirplaneMode` | `device.setAirplaneMode(true)` |
+| `setAirplaneMode`, `toggleAirplaneMode` | `device.setAirplaneMode(true)` or `false` to set the desired state |
 | `setOrientation` | `device.setOrientation('landscape-left')` |
 | `openLink` | No equivalent on a device |
-| `takeScreenshot` | `app.screenshot('label')`, secure fields painted black |
+| `takeScreenshot` | `app.screenshot('label')`, subject to the secret policy |
 | `assertWithAI`, `assertNoDefectsWithAI` | `agent.assert('...')`, `agent.assert('...', { vision: true })` |
 | `extractTextWithAI` | `agent.extract('...', { schema })` |
 | `runFlow` | A function, or a fixture from `test.extend` |
@@ -94,24 +96,22 @@ of taps into one `agent.act` when the app is free to redesign that flow.
 
 Where the behaviour differs from Maestro's:
 
-- `tapOn: "Text"` matches partially and as a regex. `getByText` matches
-  exactly. Pass a `RegExp` or `{ exact: false }` for Maestro's behaviour.
-- Maestro taps the first match. e2e fails with `LOCATOR_AMBIGUOUS`. Narrow
-  with `.filter()`, `.first()`, or `.nth()`.
-- `launchApp` inside a flow switches apps. Here `device.openApp(id)` does
-  that between steps, and the device tool pack lets the agent do it inside a
-  goal. See [Agent tools](/mobile#agent-tools).
+- `getByText` matches exactly by default. Pass a `RegExp` for pattern matching
+  or `{ exact: false }` for substring matching.
+- e2e actions require one match. Multiple matches raise `LOCATOR_AMBIGUOUS`.
+  Narrow with `.filter()`, `.first()`, or `.nth()`.
+- Use `device.openApp(id)` to switch apps. The device tool pack lets the
+  agent do this inside a goal; see [Agent tools](/mobile#agent-tools).
 
 ## What to migrate first
 
-The flows you rewrite most often. A flow full of `optional: true` and
-`runFlow: { when }` branches is the agent's job. State the goal and pin the
-result. A flow that checks one label after one tap stays as `screen` calls
-and picks up retries and a place in the same report.
+Start with a flow whose optional steps and branches often need updating.
+Give the agent its goal and verify the result with `expect`. For a simple
+tap followed by a text check, locator calls may be clearer.
 
 <CardGroup cols={2}>
   <Card title="Testing iOS and Android" icon="mobile-screen" href="/mobile">
-    Point the target at your app, several devices, the `device` fixture.
+    Configure your app and devices.
   </Card>
   <Card title="Writing tests" icon="pen-to-square" href="/writing-tests">
     Goals, checks, extraction, and the deterministic APIs.

@@ -1,11 +1,11 @@
 ---
 title: Coding agents
-description: What e2e gives Claude Code, Codex, Cursor, and friends, and how they should use it.
+description: Give a coding agent the skill, a live app session, and reports it can use to write and debug tests.
 ---
 
-A coding agent uses the skill, the `e2e` CLI, and the JSON report.
-`e2e mcp` also gives it a live session on the app to inspect controls before
-writing a test. `e2e init` installs the skill and registers the MCP server.
+`e2e init` installs a skill for writing and running tests, plus MCP
+configuration for inspecting the app. Coding agents use the CLI to run
+tests and the reports to investigate failures.
 
 ## The skill
 
@@ -13,22 +13,20 @@ writing a test. `e2e init` installs the skill and registers the MCP server.
 npx e2e init
 ```
 
-| Path | Read by | Content |
-| --- | --- | --- |
-| `.agents/skills/e2e/` | Codex, Cursor, Copilot, Gemini CLI, OpenCode, Zed, and most other agents | `SKILL.md` plus `references/setup.md`, `writing-tests.md`, `agent.md`, `running.md`, `explore.md`, `debugging.md`, and `mcp.md` |
-| `.claude/skills/e2e/` | Claude Code | The same files |
+| Path | Used by |
+| --- | --- |
+| `.agents/skills/e2e/` | Agents that read `.agents/skills` |
+| `.claude/skills/e2e/` | Claude Code |
 
-`SKILL.md` is the entry point: the mental model, a sample test, the rules,
-and the list of topics. An agent reads a topic file only when it needs it.
-Re-running `init` after an upgrade refreshes the copies.
+Both directories contain `SKILL.md` and topic references. Run `init` again
+after upgrading e2e to refresh them.
 
 Without `init`, `npx skills add tester-army/e2e` installs the skill from the
 repository, and `npx e2e guide [topic]` prints it from the
 installed package.
 
-`init` does not touch `AGENTS.md`, `CLAUDE.md`, or Cursor rules. Agents that
-load skills on demand find this one by its frontmatter description. For an
-always-on pointer, one line in the project's instructions file is enough:
+For agents that need an explicit pointer, add this line to your project
+instructions. `init` leaves those files unchanged:
 
 ```md title="AGENTS.md"
 End-to-end tests use e2e; read .agents/skills/e2e/SKILL.md before writing or running one.
@@ -36,11 +34,9 @@ End-to-end tests use e2e; read .agents/skills/e2e/SKILL.md before writing or run
 
 ## How an agent looks at the app
 
-`e2e mcp` serves a live session on one target. Its catalog includes the
-engine's action tools and `locate`, which tries a `screen.*` locator and
-returns the call to write when exactly one node matches. The server exposes
-`open_session`, `tools`, `call`, and `close_session`; `call` dispatches to the
-session's catalog by name.
+`e2e mcp` lets the coding agent open and interact with one target. Its
+`locate` tool checks a `screen.*` locator against the current app and returns
+the test code when exactly one element matches.
 
 `init` registers the server in `.mcp.json` for Claude Code and
 `.cursor/mcp.json` for Cursor. To register it with Claude Code by hand:
@@ -54,11 +50,9 @@ and flags. Run tests and read reports through the CLI.
 
 ## How an agent writes a test
 
-The skill tells an agent to look before it writes: read `e2e.config.ts` for
-the `tests` glob, targets, and credentials, then an existing test for the
-project's conventions. Then it drives the flow with `agent.act`, one goal
-per call, and pins each outcome with `expect`. Exact values, a sign-in form
-or a field that must hold one specific string, go through `screen` directly.
+The skill tells the coding agent to read the config and an existing test
+first. It uses `agent.act` for one goal at a time and checks the outcome
+with `expect`. Known fields and exact values can use `screen` directly:
 
 ```ts title="tests/checkout.e2e.ts"
 import { test, expect, credentials } from 'e2e';
@@ -76,7 +70,7 @@ test('a signed-in user reaches checkout', async ({ screen, app, agent }) => {
 });
 ```
 
-The rules the skill states, and why each is there:
+The main rules are:
 
 - One `agent.act` per goal, followed by an `expect`. The assertion makes the
   step's cache entry eligible for replay, and it is what fails when the agent
@@ -92,82 +86,42 @@ The rules the skill states, and why each is there:
 npx e2e run tests/checkout.e2e.ts
 ```
 
-Run one file while iterating. With no executor configured, acquiring `agent`
-without a model raises `MODEL_UNAVAILABLE` after the engine attempt starts.
-A custom executor can implement `agent.act` and `agent.assert` without a
-model. `agent.waitFor` and `agent.extract` still need a configured model when
-they request a judgment. Provider credentials are needed only when a model
-request is made. Check model configuration when the error reports a missing
-model. For other exit-code-2 failures, follow the reported CLI, config, or
-collection error.
-
-The exit code says which side failed. 1 is a test. 2 is the CLI, config, or
-collection, and retrying it changes nothing. 3 is the engine, the app
-process, or the model provider.
+Run one file while iterating. For model configuration and credentials, see
+[Choosing a model](/models). Fix CLI, config, and collection errors before
+retrying a run.
 
 ## How an agent reads the result
 
-Every run writes `.e2e/report.json`. `--reporter json` prints the same
-document on stdout for an agent that would rather parse than open a file.
-`--reporter list,markdown` adds `.e2e/summary.md`, the same report as one
-markdown page with evidence listed as paths from the project root, and one
-page per failed test under `.e2e/failures/` with the line to look at, every
-step, the last model turns, and the screen at failure inline. An agent opens
-the failure page first and pastes the summary into a pull request description
-or a handoff instead of retelling the result in its own words.
+Every run writes `.e2e/report.json`. For a report that is easier to read,
+run:
 
-```json
-{
-  "run": {
-    "status": "failed",
-    "exitCode": 1,
-    "errors": [],
-    "results": [
-      {
-        "titlePath": ["a signed-in user reaches checkout"],
-        "file": "tests/checkout.e2e.ts",
-        "status": "failed",
-        "attempts": [
-          {
-            "status": "failed",
-            "steps": [{ "kind": "agent", "api": "agent.act", "label": "Add the cheapest item...", "status": "passed" }],
-            "error": { "code": "ASSERTION_FAILED", "message": "expected heading \"Your cart\" to be visible" },
-            "artifacts": [{ "kind": "screenshot", "path": ".e2e/artifacts/checkout/failure.png" }]
-          }
-        ]
-      }
-    ]
-  }
-}
+```bash
+npx e2e run tests/checkout.e2e.ts --reporter list,markdown
 ```
 
-The reading order the skill teaches: `run.errors[]` first, because a
-run-level failure means no test result is meaningful. Then the `error` of the
-last attempt of each failed result, and the `artifacts[]` beside it; the
-screenshot usually says more than the message. `steps[]` shows how far the
-test got. For an agent step that went wrong, `--debug` adds the transcript as
-an artifact and `--ai-trace` writes a trace the `unbox-ai` CLI summarizes.
-Nothing should read `.e2e/ai-trace.json` directly; it is megabytes of resent
-context.
+This writes `.e2e/summary.md` and a page for each failed or flaky test under
+`.e2e/failures/`. Start with the failure page. It includes the failing line,
+steps, recent model turns, and the screen at failure.
+
+When reading JSON, check `run.errors` for run-level failures, then the last
+attempt of each failed result. Its `error`, `steps`, and `artifacts` show
+what failed and how far the test got. `--reporter json` also prints the JSON
+report to stdout.
+
+For model-call details, use `--ai-trace` and read the trace with
+[unbox-ai](/debugging#agent-steps). Avoid opening the raw trace in an agent's
+context; it repeats prompts and can be several megabytes.
 
 ## How an agent treats the cache
 
-Each passing `agent.act` records its actions under `.e2e/cache/` and the next
-run replays them. For a coding agent this means three things:
+A verified `agent.act` can replay from `.e2e/cache/` on later runs. Use
+`--no-cache` to check the live agent behavior after changing a test or to
+investigate a replay failure. Pair it with `--ai-trace` to capture every
+model call in the flow.
 
-- A test is not proven until it passes with the cache off. Run `--no-cache`
-  once before declaring done, and whenever the failure might be the
-  recording rather than the app.
-- Never edit a cache entry. A failing run evicts the entries it implicates.
-- `--no-cache` also makes `--ai-trace` complete, since replayed steps make no
-  model calls to trace.
-
-## The bar the skill is written to
-
-An agent given only the skill, a project that `init` scaffolded, and a target
-it can reach should write a test that passes on its first run. If your agent
-needs a second attempt, the skill is missing something; the fix belongs in
-`skills/e2e/` in the e2e repository, not in your project's copy.
+Do not edit recordings by hand. A failed read-write run removes implicated
+entries so a later verified run can replace them. See
+[Caching agent steps](/cache).
 
 <CardGroup cols={2}>
   <Card title="CLI reference" icon="terminal" href="/reference/cli">

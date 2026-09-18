@@ -1,24 +1,24 @@
 ---
 title: Custom executors
-description: Keep the built-in loop with your own prompt and vocabulary, or replace the executor with any decision process.
+description: Customize the agent loop or implement your own step executor.
 ---
 
-The agent surface has two layers under `createAgent`:
+Use a custom executor when a `system` prompt and [project tools](/tools) are
+not enough. There are two options:
 
-1. **`createToolLoopExecutor`**: the same loop as the built-in agent, with
-   your prompt and your tool vocabulary. You keep the verdict tool, budget
-   hard stops, loop guards, wind-down near the clock, model accounting, and
-   `--debug` transcripts.
-2. **`StepExecutor`**: any object with `runStep(ctx)`. No AI SDK, no model,
-   any decision process you like.
+1. `createToolLoopExecutor` keeps the built-in loop with your prompt and
+   tools. It handles budgets, repeated-call detection, verdicts, usage
+   accounting, and debug transcripts.
+2. `StepExecutor` lets you implement `runStep(ctx)` yourself. A model and
+   the AI SDK are optional.
 
-Whichever you pick, the runner still bounds the step, redacts what you
-observe, polices what you do, and records the verdict.
+Both receive a deadline, redacted observations, and checked action methods.
+The runner records their verdicts.
 
 ## Keep the loop, change the vocabulary
 
-This example gives a browser agent two tools: read the screen and tap a
-button by its accessible name. The same loop can wrap a device SDK.
+This example gives the agent tools to read the screen and tap a button by
+its accessible name.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -64,18 +64,17 @@ export default {
 } satisfies E2EConfig;
 ```
 
-`buildPrompt` returns a string, or a message history to carry a conversation
-across steps. `prepareMessages` runs between turns for compaction and may
-return `{ messages, stop }` when your own history shows the step is not
-progressing.
+`buildPrompt` returns a string or message history. Use `prepareMessages`
+between turns to shorten the history or return `{ messages, stop }` when
+the step is not progressing.
 
-`guard()` stops a tool from running once the step is concluding and turns
-budget and timeout stops into a clean end of the loop. `runTool` reserves the
-action budget before the body runs, serializes mutations, and records their
-outcomes. A mutating body must call its engine directly; queuing another
-grammar operation from inside it would wait on itself. Keep tool bodies short
-and interruptible: the step deadline settles the verdict either way, but a
-device operation that ignores cancellation finishes on its own time.
+`guard()` stops new tool calls once the step is concluding. `runTool` reserves
+an action slot, serializes mutations, and records the outcome.
+
+A mutating tool must call its engine directly, as `tap` does above. Calling
+`ctx.actions` or `ctx.observe` from inside it would queue work behind its own
+operation and deadlock. Keep tool bodies short and support cancellation. The
+step deadline cannot cancel an underlying operation that ignores its signal.
 
 ## Replace the executor
 
@@ -115,46 +114,46 @@ export default {
 } satisfies E2EConfig;
 ```
 
-The context tells the executor where it is and what it may do:
+The executor receives this context:
 
 | Member | What it is |
 | --- | --- |
 | `ctx.step` | The instruction, params, and `index` in the attempt's timeline |
-| `ctx.observe({ tree, pixels })` | The only view of the app: redacted text, optionally the node tree and masked pixels. `treeUnavailable: true` means semantic capture failed; the accompanying screenshot is the only evidence, even if `pixels` was not requested. |
-| `ctx.actions` | `tap`, `type`, `typeSecret`, `press`, `select`, `scroll`, `navigate`, `tapAt`, `hitTest`, `typeText`, `pressKey`, `dismissKeyboard`, each policed and recorded. `typeText(value, { replace })`, `pressKey(key)`, and `dismissKeyboard()` reach whatever has focus, with no node resolved, when the engine has the `keyboard` capability. `tapAt(point)` routes a viewport point onto the tree: a listed control under it is tapped by id with a replayable descriptor, a point on nothing listed goes to the engine's `performAt` as a bare-point tap. `hitTest(point)` returns the listed control and node under a point without acting, so a point-addressed verb of your own can call `type` or `press` by id |
-| `ctx.target.verbs` | The subset of those verbs the target's engine declared. Offer a model exactly that vocabulary. |
-| `ctx.pixelsTainted` | True once a secret was filled in the attempt: `observe({ pixels: true })` withholds pixels from then on, so an executor can leave screenshot verbs out of its vocabulary |
-| `ctx.ledger` | The runner's serialization of every completed step in the test |
-| `ctx.attempt` | Test id, attempt id, retry index, a signal that fires when the attempt ends, and `memory`, a per-attempt map the harness never reports |
-| `ctx.budgets` | `runTool` for actions of your own, and model-call accounting |
+| `ctx.observe({ tree, pixels })` | Redacted screen text, with an optional node tree and masked screenshot |
+| `ctx.actions` | Checked and recorded actions, such as `tap`, `type`, `typeSecret`, and `navigate` |
+| `ctx.target.verbs` | The actions supported by the target's engine. Offer only these to the model. |
+| `ctx.pixelsTainted` | True after a secret fill. Screenshots are withheld for the rest of the attempt. |
+| `ctx.ledger` | Completed steps in the test |
+| `ctx.attempt` | Test and attempt ids, retry index, abort signal, and a `memory` map that is never reported |
+| `ctx.budgets` | Accounting for custom tools and model calls |
 
-When `treeUnavailable` is true, `observe({ tree: true })` omits `tree` and
-includes the permitted screenshot. Its text warns that earlier node ids
-are invalid. Use the current pixels to act; an unavailable tree cannot
-prove a control is absent. Once semantic evidence returns, use the new
-observation's ids. `ExecutorObservation` remains an extendable interface.
+`tapAt(point)` uses a node id when a listed control occupies the point and
+otherwise calls the engine's coordinate action. `hitTest(point)` finds the
+listed control without acting. Keyboard-capable engines also provide
+`typeText`, `pressKey`, and `dismissKeyboard` for the focused control.
 
-Secrets in params arrive as name-only placeholders. `actions.typeSecret(target, name)`
-performs the authorized fill without the plaintext passing through your code.
-A custom executor can run both `agent.act` and `agent.assert` without a
-model. Its `agent.assert` dispatches to `runStep` under the act budgets and
-`config.timeout`; `vision` and `screenshot` are `UNSUPPORTED_CAPABILITY`
-there, since the executor decides what its model sees.
+If semantic capture fails, an observation sets `treeUnavailable: true` and
+omits `tree`. It includes a screenshot when policy allows one, even if pixels
+were not requested. Earlier node ids are invalid, and a missing tree does
+not prove a control is absent. Use fresh ids once the tree returns.
 
-Without a configured executor, the runner checks for a model when `agent`
-is first acquired, after the engine attempt starts. A missing model raises
-`MODEL_UNAVAILABLE` then. A custom executor with no model passes that check.
-Its `agent.waitFor` and `agent.extract` calls still use the built-in judgment
-tier and raise `MODEL_UNAVAILABLE` when they need a model and none is
-configured.
+Secrets in params arrive as name-only placeholders.
+`ctx.actions.typeSecret(target, name)` fills an authorized field without
+passing the plaintext through your executor.
+
+A custom executor handles `act` and `assert` through `runStep`. Both use the
+act budgets and default to `config.timeout`. The `assert` options `vision`
+and `screenshot` raise `UNSUPPORTED_CAPABILITY` because your executor chooses
+its observations.
+
+`waitFor` and `extract` still use the built-in judgments. They require a
+configured model and raise `MODEL_UNAVAILABLE` without one.
 
 ### Driving the page yourself
 
-An executor that brings its own browser tooling needs the page e2e opened,
-not a second one. `@e2edev/playwright` exports `surfaceOf(handle)`: the live
-`Page` and `BrowserContext` of the current attempt behind the handle you
-passed to the target. Both accessors throw `INVALID_STATE` before an attempt
-is running.
+Use `surfaceOf(handle)` from `@e2edev/playwright` to access the current
+attempt's `Page` and `BrowserContext`. Both accessors throw `INVALID_STATE`
+outside an active attempt.
 
 ```ts
 import type { E2EConfig, StepExecutor } from 'e2e';
@@ -180,23 +179,22 @@ export default {
 } satisfies E2EConfig;
 ```
 
-What you do there is out of band: the harness still bounds the step and
-records the verdict, but it witnesses no actions, records no trace for
-replay, and attaches no artifacts. Report tool calls and model calls through
-`ctx.budgets` so the step keeps its metrics.
+Direct Playwright calls bypass the runner's action authorization and trace
+recording. The runner still enforces the step deadline and records the
+verdict, but these calls have no automatic replay or artifacts. Use
+`ctx.budgets` to count custom tool and model calls.
 
 ## The verdict
 
-Whatever the executor, `runStep` resolves with `passed`, `failed`, or
-`blocked` and a summary. A blocked verdict carries the error code that names
-the cause; [How agent steps work](/agent-steps#how-a-step-ends) lists them
-and the exit each one produces.
+Return `passed`, `failed`, or `blocked` with a summary. A blocked verdict
+also needs an error code. [How agent steps work](/agent-steps#how-a-step-ends)
+lists the codes and resulting exits.
 
 <CardGroup cols={2}>
   <Card title="agent reference" icon="wand-magic-sparkles" href="/reference/agent">
     Every method, option, and budget.
   </Card>
   <Card title="Writing an engine" icon="plug" href="/writing-an-engine">
-    Plug in a whole new surface below the executor.
+    Add support for another platform.
   </Card>
 </CardGroup>

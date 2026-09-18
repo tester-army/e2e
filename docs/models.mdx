@@ -1,23 +1,27 @@
 ---
-title: Choosing a model
-description: Which model an agent uses, which package constructs it, and where its key comes from.
+title: Models
+description: Configure a model with your own subscription, an API key, or a local server.
 ---
 
-The built-in agent uses an AI SDK model instance your config constructs and
-can name a separate model for visual judgments. [Custom executors](/executors)
-own their model calls and may run without a model. The runner has no default
-model, no gateway of its own, and reads no model or key variable. The line in
-`e2e.config.ts` that builds the instance decides who serves it and how it
-authenticates.
+Agent steps use the model configured in `e2e.config.ts`. You can use an
+[existing subscription](/subscriptions), an API key, or a local server.
+`e2e init` offers these choices and writes the config for you. For the first
+setup, follow the [quickstart](/quickstart#use-a-subscription-or-api-key).
+
+Tests without agent steps do not need a model. For the built-in agent,
+choose a model that supports tool calls and images.
 
 ## Pick a gateway or a provider
 
-A gateway reaches every vendor's models with one key. A provider package
-calls one vendor directly. `e2e init` writes the one you chose.
+A gateway gives you access to several providers with one API key. A provider
+package connects to one provider directly. To change an existing config,
+replace its model import and `model` value:
 
 <Tabs>
   <Tab title="Vercel AI Gateway">
 
+`gateway` is included in the `ai` package. Set `AI_GATEWAY_API_KEY`.
+
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
 import { playwright } from '@e2edev/playwright';
@@ -26,209 +30,134 @@ import { gateway } from 'ai';
 
 export default {
   targets: [{ engine: playwright({ url: 'http://localhost:3000' }) }],
-  agents: { default: createAgent({ model: gateway('anthropic/claude-sonnet-4.5') }) },
+  agents: { default: createAgent({ model: gateway('openai/gpt-5.6-luna') }) },
 } satisfies E2EConfig;
 ```
-
-`gateway()` ships with `ai`, so no extra package. It reads `AI_GATEWAY_API_KEY`.
-
   </Tab>
   <Tab title="OpenRouter">
 
-```ts title="e2e.config.ts"
-import type { E2EConfig } from 'e2e';
-import { playwright } from '@e2edev/playwright';
+Install `@openrouter/ai-sdk-provider` and set `OPENROUTER_API_KEY`.
+
+```ts title="Model setup"
 import { createAgent } from 'e2e/agent';
 import { openrouter } from '@openrouter/ai-sdk-provider';
 
-export default {
-  targets: [{ engine: playwright({ url: 'http://localhost:3000' }) }],
-  agents: { default: createAgent({ model: openrouter('anthropic/claude-sonnet-4.5') }) },
-} satisfies E2EConfig;
+const agent = createAgent({ model: openrouter('openai/gpt-5.6-luna') });
 ```
 
-`npm i -D @openrouter/ai-sdk-provider`. It reads `OPENROUTER_API_KEY`.
-
+Use `agent` as `agents.default` in your config.
   </Tab>
-  <Tab title="OpenAI-compatible endpoint">
+  <Tab title="Provider API key">
 
-```ts title="e2e.config.ts"
-import type { E2EConfig } from 'e2e';
-import { playwright } from '@e2edev/playwright';
+Install the provider's AI SDK package and set its API key. For OpenAI,
+install `@ai-sdk/openai` and set `OPENAI_API_KEY`:
+
+```ts title="Model setup"
+import { createAgent } from 'e2e/agent';
+import { openai } from '@ai-sdk/openai';
+
+const agent = createAgent({ model: openai('gpt-5.6-luna') });
+```
+
+Use `agent` as `agents.default`. Other AI SDK providers work the same way,
+with their own package, model IDs, and authentication settings.
+  </Tab>
+  <Tab title="Local or self-hosted">
+
+Install `@ai-sdk/openai-compatible`. Set the endpoint URL and a model ID
+served by that endpoint:
+
+```ts title="Model setup"
 import { createAgent } from 'e2e/agent';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 
 const local = createOpenAICompatible({
-  name: 'ollama',
+  name: 'local',
   baseURL: 'http://127.0.0.1:11434/v1',
-  // apiKey: process.env.LLM_API_KEY, // when the endpoint needs one
+  // apiKey: process.env.LLM_API_KEY,
 });
 
-export default {
-  targets: [{ engine: playwright({ url: 'http://localhost:3000' }) }],
-  agents: { default: createAgent({ model: local.chatModel('llama3.2') }) },
-} satisfies E2EConfig;
+const agent = createAgent({ model: local.chatModel('your-model-id') });
 ```
 
-`npm i -D @ai-sdk/openai-compatible`. Ollama, vLLM, LiteLLM, and most vendors'
-own APIs speak this protocol. You pass the URL and the key; there is no default.
-
-  </Tab>
-  <Tab title="A provider directly">
-
-```ts title="e2e.config.ts"
-import type { E2EConfig } from 'e2e';
-import { playwright } from '@e2edev/playwright';
-import { openai } from '@ai-sdk/openai';
-import { createAgent } from 'e2e/agent';
-
-export default {
-  targets: [{ engine: playwright({ url: 'http://localhost:3000' }) }],
-  agents: { default: createAgent({ model: openai('gpt-5.6-luna') }) },
-} satisfies E2EConfig;
-```
-
-Any AI SDK provider package works: `@ai-sdk/anthropic`, `@ai-sdk/google`,
-`@ai-sdk/amazon-bedrock`, a community provider. Each reads its own variable
-(`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, ...).
-
+Use `agent` as `agents.default`. Add `apiKey` if the server requires one.
   </Tab>
 </Tabs>
 
-| You want | Constructor | Package | Key variable |
-| --- | --- | --- | --- |
-| One key for every vendor, billed by Vercel | `gateway('vendor/model')` | `ai` | `AI_GATEWAY_API_KEY` |
-| One key for every vendor, billed by OpenRouter | `openrouter('vendor/model')` | `@openrouter/ai-sdk-provider` | `OPENROUTER_API_KEY` |
-| A local or self-hosted server | `createOpenAICompatible({ name, baseURL }).chatModel('model')` | `@ai-sdk/openai-compatible` | whatever you pass as `apiKey` |
-| One vendor, your own account | `openai('model')`, `anthropic('model')`, ... | `@ai-sdk/<vendor>` | the vendor's own |
-| Your ChatGPT, Copilot, or SuperGrok plan, no key | `chatgpt('model')` from `@e2edev/oauth/chatgpt`, `copilot('model')` from `/copilot`, `grok('model')` from `/grok` | `@e2edev/oauth` plus the matching `@ai-sdk/*` provider | none; `e2e login` stores the sign-in. See [Subscriptions](/subscriptions). |
-
-The model id is whatever the package accepts. Gateways take `vendor/model`;
-a direct provider takes the vendor's bare id; a local server takes the name
-it serves the model under.
+Keep `ai` installed when using agent steps, including with a subscription
+or another provider package. Model IDs depend on the provider. Gateways
+usually use `provider/model`; direct providers use their own model IDs.
 
 ## Where the key comes from
 
-The provider package reads its key, not the runner. Every AI SDK provider
-accepts `apiKey` at construction and otherwise reads its own environment
-variable on the first request.
+Set the environment variable your provider reads before running e2e:
 
-```ts
-import { createOpenRouter, openrouter } from '@openrouter/ai-sdk-provider';
-
-// Reads OPENROUTER_API_KEY when the first model call is made.
-openrouter('openai/gpt-5.6-luna');
-
-// Use MY_TEAM_MODEL_KEY when set; otherwise use OPENROUTER_API_KEY.
-const apiKey = process.env.MY_TEAM_MODEL_KEY;
-createOpenRouter({
-  ...(apiKey === undefined ? {} : { apiKey }),
-}).chat('openai/gpt-5.6-luna');
+```bash
+export AI_GATEWAY_API_KEY="your-api-key"
+npx e2e run
 ```
 
-Three consequences:
-
-- **The key is read late.** Constructing `gateway('...')` needs no variable.
-  Tests without agent steps, `e2e list`, and config loading all work without a
-  key. Only a step that calls a model needs the provider's key.
-- **There is no `E2E_*` key variable.** The runner never sees the key, so it
-  has nothing to name. Set the variable the package you imported documents.
-- **The runner never logs it.** The key lives in your config module and the
-  provider's request headers. It does not enter the report, the trace, or
-  automatically inherited environment of the app process. Explicitly putting
-  a key in `command.env` forwards it to that process.
+For subscriptions, use `npx e2e login` instead. The config selects the model
+and its provider; e2e has no default model or shared API-key variable.
 
 ## Several models in one config
 
-Each model slot is its own instance, so they can come from different
-packages:
+Give agents different names to use different models:
 
-```ts title="e2e.config.ts"
-import type { E2EConfig } from 'e2e';
-import { playwright } from '@e2edev/playwright';
-import { gateway } from 'ai';
-
-export default {
-  targets: [{ engine: playwright({ url: 'http://localhost:3000' }) }],
-  agents: {
-    default: {
-      context: 'You are a thorough QA agent.',
-      model: gateway('openai/gpt-5.6-luna'),
-    },
-    careful: { model: gateway('anthropic/claude-opus-5'), context: 'Read every label twice.' },
-  },
-} satisfies E2EConfig;
+```ts title="Agent config fragment"
+agents: {
+  default: createAgent({ model: gateway('openai/gpt-5.6-luna') }),
+  careful: createAgent({ model: gateway('anthropic/claude-sonnet-5') }),
+},
 ```
 
-With no configured executor, `model` drives `agent.act` and the judgments,
-pixels included: the act loop shows it screenshots, so pick one that accepts
-images and grounds a point in them well. The provider needs its key when the
-model is first used.
-An `agents.<name>.model` that names a different model than the one passed to
-`createAgent({ model })` is `INVALID_CONFIG`.
-
-A custom executor, one that is not `createAgent(...)`, handles `agent.act`
-and `agent.assert` through `runStep`. That assertion path rejects the
-`vision` and `screenshot` options: the executor decides what its model sees.
-An executor may implement both methods without a model. `agent.waitFor` and `agent.extract` still use the built-in judgment
-tier and its model routing; see [Custom executors](/executors#replace-the-executor).
-`createAgent(...)` is the built-in agent with options: its `agent.act` runs
-through its own loop, and its assertions go to the judgment tier and the
-`judge` like any other agent's.
+Run with `npx e2e run --agent careful`, or
+[choose an agent in a test](/agents). Each model can use a different provider.
 
 ### A judge of its own
 
-`judge` names the model that answers `agent.assert`, `agent.waitFor`, and
-`agent.extract`. Unset, judgments use `model`.
+By default, the same model drives `agent.act` and answers `agent.assert`,
+`agent.waitFor`, and `agent.extract`. Set `judge` to use a separate model
+for those checks:
 
-```ts title="Agent options fragment"
-model: gateway('openai/gpt-5.6-luna'),
-judge: gateway('anthropic/claude-sonnet-5'),
+```ts title="Agent setup"
+const agent = createAgent({
+  model: gateway('openai/gpt-5.6-luna'),
+  judge: gateway('anthropic/claude-sonnet-5'),
+});
 ```
 
-The judge is never shown the act loop's transcript, the steps before it, or
-the acting agent's account of what it did: only the assertion and the screen.
-Giving it a model of its own goes one step further, so a blind spot the actor
-has is not the blind spot that grades it. Every judgment step in the report
-names the model that produced it under `step.model`, so a reader can see the
-actor and the judge apart. `createAgent({ judge })` sets the same slot; a
-config `judge` that names a different model is `INVALID_CONFIG`.
+Judgments use the current screen and the question, without the acting
+agent's transcript or summaries. Reports include the model used for each
+judgment. See [Custom executors](/executors) if you replace the built-in agent.
 
-To switch models per run without editing the config, read a variable of your
-own:
+To switch a model without editing the config, read your own environment
+variable:
 
-```ts title="Agent options fragment"
-model: gateway(process.env.MODEL ?? 'openai/gpt-5.6-luna'),
+```ts title="Agent setup"
+const agent = createAgent({
+  model: gateway(process.env.MODEL ?? 'openai/gpt-5.6-luna'),
+});
 ```
-
-## Models that refuse forced tool calls
-
-The built-in `agent.act` loop asks the model for a tool call on every turn.
-Some models reject that request shape. Anthropic's Claude Fable 5.1 answers HTTP 400 to any
-forced tool choice. The runner recognizes the refusal, retries with the
-choice left to the model and a tools-only rule in its instructions, and keeps
-that mode for the rest of the process. The refused request does not count as
-a model call.
 
 ## What fails, and where
 
-| Symptom | Code | Cause |
+| Problem | Code | Fix |
 | --- | --- | --- |
-| The run stops before any test, exit 2, naming `agents.default.model` | `INVALID_CONFIG` | A string in a model slot. Write the constructor: `gateway('openai/gpt-5.6-luna')`. |
-| The run stops when the first test asks for `agent`, exit 2 | `MODEL_UNAVAILABLE` | No model anywhere: neither `createAgent({ model })` nor `agents.<name>.model` holds an instance. |
-| The first agent step fails with an authentication message | `MODEL_PROVIDER_FAILED` | The provider rejected or could not find its key. The message names the variable the package reads. |
-| The first agent step fails with `ai` not found | `MODEL_UNAVAILABLE` | `ai` is an optional peer dependency; `npm i -D ai`. |
+| A model is a string instead of an AI SDK instance | `INVALID_CONFIG` | Construct it, for example `gateway('openai/gpt-5.6-luna')`. |
+| The built-in agent has no model | `MODEL_UNAVAILABLE` | Set `createAgent({ model })` or `agents.<name>.model`. |
+| Authentication fails on the first model call | `MODEL_PROVIDER_FAILED` | Check the provider's API key, or run `npx e2e login` for a subscription. |
+| The `ai` package is missing | `MODEL_UNAVAILABLE` | Run `npm install -D ai`. |
 
-A missing model is checked once per run, so a suite without one reports one
-run-level error rather than one blocked step per test. A missing key is not
-checked ahead of time: the runner does not know which variable to look for,
-so the provider reports it on the first call.
+If both `createAgent` and the surrounding agent options set `model`, they
+must name the same provider and model. The same rule applies to `judge`;
+conflicting values produce `INVALID_CONFIG`.
 
 <CardGroup cols={2}>
-  <Card title="Agents and personas" icon="users" href="/agents">
-    Several agents in one suite.
+  <Card title="Subscriptions" icon="key" href="/subscriptions">
+    Sign in with ChatGPT, Copilot, or SuperGrok.
   </Card>
-  <Card title="Config reference" icon="sliders" href="/reference/config#model">
-    The `model` slot and every other key.
+  <Card title="Agents and personas" icon="users" href="/agents">
+    Choose agents for tests and signed-in users.
   </Card>
 </CardGroup>

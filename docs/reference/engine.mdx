@@ -1,11 +1,11 @@
 ---
 title: e2e/engine
-description: The engine contract a target's surface implements, and the fixture context it contributes through.
+description: Build an engine with observations, actions, lifecycle hooks, and fixtures.
 ---
 
-`e2e/engine` is the authoring import for an engine. `defineEngine`
-validates the body at config load, freezes it, computes its capability set,
-and returns the handle a target accepts.
+Import engine types and helpers from `e2e/engine`. `defineEngine` validates
+and freezes your implementation, derives its capabilities, and returns a
+handle for `targets` in the config.
 
 ```ts
 import { defineEngine, type EngineHandle } from 'e2e/engine';
@@ -14,11 +14,9 @@ export function defineEngine(spec: Engine): EngineHandle;
 export function isEngineHandle(value: unknown): value is EngineHandle;
 ```
 
-An engine drives one user interface: a browser, a simulator, a desktop shell.
-The contract is platform-neutral vocabulary (semantic nodes, locator
-expressions, action kinds, an error taxonomy). The world around the UI (an
-inbox, an API, a database) is not an engine's to model; it enters a test as a
-fixture through `test.extend`.
+An engine drives a user interface, such as a browser or simulator. It
+implements shared types for nodes, locators, actions, and errors. Use
+`test.extend` fixtures for resources outside the UI, such as APIs or databases.
 
 Validation fails with `INVALID_CONFIG` for:
 
@@ -50,9 +48,8 @@ export interface Engine {
   /** Engine name, for diagnostics. */
   readonly name: string;
   /**
-   * Implementation version, recorded as provenance and part of the trace
-   * cache identity: an engine that resolves nodes differently must not replay
-   * another version's traces, so an unversioned engine is not accepted.
+   * Required implementation version, recorded in reports and cache keys.
+   * Cached traces cannot replay across engine versions.
    */
   readonly version: string;
   /**
@@ -68,28 +65,23 @@ export interface Engine {
    */
   readonly platform?: string;
   /**
-   * The most workers this engine can serve at once for one target: one per
-   * surface it drives concurrently (a device pool's size; 1 for a single
-   * simulator). The scheduler never runs more workers for the target, whatever
-   * `config.workers` allows, so a device target shares a run with browser
-   * targets without being over-subscribed. Omit when there is no such bound.
+   * Maximum workers for this target, such as the number of devices in a
+   * pool. The scheduler applies this cap even when `config.workers` is
+   * higher. Omit when the engine has no concurrency limit.
    */
   readonly workers?: number;
   /** capability: observation. */
   observe?(context: OperationContext, options?: EngineObserveOptions): Promise<EngineSnapshot>;
   /**
-   * capability: actions - requires observation. Performs exactly one action
-   * on a ref this engine minted, from the newest observation or from
-   * `locate` (both live in one id space), with the platform's actionability
-   * checks. The agent's grammar verbs (tap, type, press, select, scroll) and
-   * the `screen` tier's actions both bottom out here, so a surface
-   * implements each action once. A `swipe` on the observation root is the
-   * viewport swipe.
+   * Performs one action on a ref from the newest observation or `locate`,
+   * with the platform's actionability checks. Both agent tools and locator
+   * actions call this method. A `swipe` on the observation root swipes the
+   * viewport.
    *
-   * Error contract (load-bearing for trace replay): throw a retryable
+   * For safe trace replay, throw a retryable
    * `NODE_STALE`-coded error when a ref no longer binds, and an
    * `ACTION_MAY_HAVE_COMMITTED`-coded error when input may have reached the
-   * app - the harness never blindly repeats an uncertain mutation.
+   * app. The runner never repeats an action that may have committed.
    */
   perform?(ref: NodeRef, action: LocatorAction, context: OperationContext): Promise<void>;
   /**
@@ -146,17 +138,12 @@ export interface Engine {
   /** Steering hooks: open, back, restart, reset. */
   readonly session?: EngineSession;
   /**
-   * Once per run and target, in the runner process, before any worker starts
-   * and outside every launch budget. Provision what the engine needs on this
-   * machine here (a first-run browser download, a toolchain fetch), so it
-   * happens once instead of per worker and its progress reaches the reporter
-   * through `info.log`. It runs after collection and before the run's clock
-   * starts: `plan` is emitted, the report's `startedAt` taken, and the app
-   * started only once every target is prepared, so a download is never part
-   * of a run's duration. Failure is infrastructure and ends the run before
-   * any test executes. The result may lower the target's worker cap for this
-   * run, for an engine that only learns its capacity here (a device pool
-   * discovered from the booted devices).
+   * Runs once per target in the runner, after collection and before workers,
+   * app commands, and the run's clock start. Download dependencies or boot
+   * devices here; report progress through `info.log`. No launch timeout
+   * applies. A failure ends the run as an infrastructure error.
+   * The result can lower the target's worker cap, for example after
+   * discovering how many devices are available.
    */
   prepare?(info: EnginePrepareInfo): Promise<void | EnginePrepareResult>;
   /**
@@ -385,11 +372,10 @@ export interface EngineInitInfo {
  */
 export interface EngineAppInfo {
   /**
-   * The site of the app's `url`, its registrable domain as `siteOf` reads it:
-   * where the app's secrets, headers, and basic-auth credentials may go, and
-   * whose child frames an observation reads; `sameSite` applies it. Absent
-   * for an app without a URL, which is no policy at all. The URL itself stays
-   * with the harness: a surface never learns where the app is.
+   * The app URL's registrable domain, as read by `siteOf`. Use `sameSite`
+   * to scope secret fills, injected headers, and observed child frames.
+   * Absent when the app has no URL. The runner passes navigation URLs
+   * separately through `session.open`.
    */
   readonly site?: string;
 }
@@ -486,11 +472,9 @@ it onto every ref, redacts registered secret values, bounds the byte size, and
 checks that `maskedRegionCount` covers every `secure` node when `pixels` are
 present.
 
-Set `truncated` when the tree is not the whole surface: a node cap stopped
-the read, a frame or a subtree was out of reach. The runner appends a marker
-to the listing the model reads, tells it nodes past the cut are on screen but
-not listed, and refuses to report such a screen as unchanged between two
-observations, since what was left out is unknown. A tree read whole omits it.
+Set `truncated` when a node limit or inaccessible subtree leaves content out.
+The runner warns the model that the tree is incomplete and never treats a
+truncated observation as unchanged. Omit it for a complete tree.
 
 A valid empty tree may have a childless root and include `pixels`.
 
@@ -579,11 +563,9 @@ The grammar is closed. Anything beyond it is an agent-side `defineTool`.
 
 ### Pointer actions
 
-The point-addressed half of the vocabulary, for a surface with pixels and
-coordinates where the tree lists nothing. Same kinds, same meanings, no node:
-`dragTo` ends at a second point and `swipe` is a scroll gesture started at
-the point. An engine declares the kinds it honors in `pointerActions`, as it
-declares `actions` for `perform`.
+Pointer actions use viewport coordinates when no semantic node is available.
+`dragTo` ends at another point; `swipe` starts a scroll gesture at the given
+point. Declare supported kinds in `pointerActions`.
 
 ```ts
 export type PointerAction =
@@ -681,12 +663,7 @@ is data; a function here is `INVALID_CONFIG`.
 
 ```ts
 /**
- * What an engine declares about the app it drives. The app
- * under test is the engine's to describe: a browser engine names a URL, a
- * device engine a bundle id. The harness resolves the declaration once per
- * target and owns everything built on it - navigation and origin policy,
- * cache and session identity, the report's target record, and the app
- * process it starts before the run.
+ * App details declared by an engine and resolved once per target.
  */
 export interface EngineAppDeclaration {
   /**
@@ -706,14 +683,10 @@ export interface EngineAppDeclaration {
    */
   readonly environment?: 'test' | 'staging' | 'production';
   /**
-   * Stable logical identity of the app under test, keying trace cache and
-   * session entries. Defaults to the URL's origin and base path, so an
-   * ephemeral per-deploy origin (a PR preview) cold-starts every entry; an
-   * explicit identity keys them by what the app *is* instead of where it is
-   * served this run. A surface without a URL has no default: declare one
-   * (a bundle id, say) or entries key on the target alone. Never share one
-   * identity across genuinely different apps: recorded traces would replay
-   * across them.
+   * App identity for trace cache and session entries. Defaults to the URL's
+   * origin and base path. Set a stable value to reuse entries across preview
+   * URLs. Without a URL or identity, entries use the target alone. Different
+   * apps must have different identities to prevent replay across them.
    */
   readonly identity?: string;
   /**
@@ -841,8 +814,7 @@ export class InfrastructureError extends Error {}  // the surface itself failed:
 
 ## Shared semantics
 
-Behavior every engine must reproduce exactly is exported rather than
-re-implemented per engine:
+Use these helpers to keep behavior consistent across engines:
 
 | Export | Use |
 | --- | --- |
@@ -941,17 +913,14 @@ export interface VideoSegment {
 }
 ```
 
-The runner starts the video, then the trace, right after `startAttempt` (and
-after a session restore) under the launch budget, and stops them before
-`endAttempt` under the cleanup budget. Video comes first so an engine that
-records both through one screencast sizes it for the recording a person
-watches. `stopVideo` returns every segment in order, one per page the
-attempt showed. `stopTrace` returns the trace's path, or every archive in
-order when the trace had to be cut because the context was replaced. When a
-secret was filled in the attempt, every text entry of each archive is
-rewritten through the secret redactor; if that fails the archives are deleted
-and the attempt records `TRACE_WITHHELD`. Recordings mask nothing and are
-recorded with `redaction: 'incomplete'`.
+The runner starts video, then tracing, after `startAttempt` and any session
+restore. Both use the launch budget and stop before `endAttempt`, within the
+cleanup budget. Return segments in recording order from `stopVideo` and
+`stopTrace`.
+
+After a secret fill, the runner redacts every text entry in each trace
+archive. If redaction fails, it deletes the archives and records
+`TRACE_WITHHELD`. Videos are unmasked and carry `redaction: 'incomplete'`.
 
 ## Contributed fixtures
 
