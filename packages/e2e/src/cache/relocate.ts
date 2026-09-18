@@ -27,6 +27,14 @@ import type { TracePosition, TraceTargetDescriptor } from './trace.ts';
  */
 export const REPLAY_POLICY_VERSION = 'conservative/4';
 
+/**
+ * The share of the viewport a scrolled node must have covered when it was
+ * addressed (`ScrollAction.spans`) to scroll as the viewport does once it
+ * cannot be re-found: scrolling the main list and scrolling the screen are
+ * the same gesture, while a smaller region that vanished is gone.
+ */
+export const MAIN_LIST_SHARE = 0.5;
+
 export type RelocationFailure = 'target-not-found' | 'target-ambiguous';
 
 export type RelocationResult =

@@ -9,10 +9,10 @@
  */
 
 import type { SemanticNode } from '../engine/surface.ts';
+import { relocateDescriptor } from '../cache/relocate.ts';
 import { TestError } from '../internal/errors.ts';
 import type { StepAgentDetails, VisionDegradation } from '../run/steps.ts';
 import { describeTarget } from './actions.ts';
-import { relocateDescriptor } from '../cache/relocate.ts';
 import { AgentError } from './error.ts';
 import type { ExecutorObservation, ExecutorObserveOptions, ExecutorTarget } from './executor.ts';
 import type { AgentContext } from './invocation.ts';
@@ -48,6 +48,19 @@ const MAX_RECENT_OBSERVATIONS = 8;
  * the oldest dropped first past this many.
  */
 const MAX_SHOWN_TEXTS = 4_096;
+
+/** A target resolved to a node of the observation it was found in. */
+export interface Resolved {
+  readonly node: SemanticNode;
+  readonly observation: SemanticAgentObservation;
+}
+
+/** What a target names on the newest screen: the id as the screen lists it, the node or nothing, and the screen looked at. */
+export interface Lookup {
+  readonly id: string;
+  readonly node: SemanticNode | undefined;
+  readonly observation: SemanticAgentObservation;
+}
 
 export interface ObservationFeedOptions {
   /** The agent's observation byte ceiling, clamped per capture by the token limit. */
@@ -184,7 +197,20 @@ export class ObservationFeed {
    * and an engine that mints ids per observation renumbers the tree between
    * them. Exactly one match, or the id counts as gone.
    */
-  resolve(target: ExecutorTarget): { node: SemanticNode; observation: SemanticAgentObservation } {
+  resolve(target: ExecutorTarget): Resolved {
+    const { id, node, observation } = this.lookup(target);
+    if (node === undefined) throw nodeGone(id, observation);
+    return { node, observation };
+  }
+
+  /**
+   * The node a target names on the newest screen, if the screen still lists
+   * it or its descriptor re-finds it; the screen must list nodes at all. The
+   * id is the target's without the `#` the listing prefixes, which a model
+   * copies now and then. A caller with its own way of re-finding a lost node
+   * (`scroll-target.ts`) starts here.
+   */
+  lookup(target: ExecutorTarget): Lookup {
     if (typeof target?.id !== 'string' || target.id === '') {
       throw new TestError('INVALID_ARGUMENT', 'action target must be { id: string }');
     }
@@ -193,14 +219,17 @@ export class ObservationFeed {
     if (latest.kind === 'pixels') {
       throw new AgentError('LOCATOR_NOT_FOUND', 'semantic capture is unavailable; previous node ids are no longer valid, so use the current screenshot');
     }
-    const node = latest.nodes.get(id) ?? this.refound(id, latest);
-    if (node === undefined) {
-      throw new AgentError(
-        'LOCATOR_NOT_FOUND',
-        `node #${id} is not on the current screen (observation ${latest.revision}); it was removed or never existed`,
-      );
+    return { id, node: latest.nodes.get(id) ?? this.refound(id, latest), observation: latest };
+  }
+
+  /** What `id` named in the most recent observation that carried it. */
+  lastSeen(id: string): Resolved | undefined {
+    for (let index = this.recent.length - 1; index >= 0; index -= 1) {
+      const observation = this.recent[index]!;
+      const node = observation.nodes.get(id);
+      if (node !== undefined) return { node, observation };
     }
-    return { node, observation: latest };
+    return undefined;
   }
 
   /**
@@ -385,10 +414,7 @@ export class ObservationFeed {
 
   /** The newest node matching the descriptor of what `id` named in a recent observation, if exactly one. */
   private refound(id: string, latest: SemanticAgentObservation): SemanticNode | undefined {
-    let earlier: SemanticNode | undefined;
-    for (let index = this.recent.length - 1; index >= 0 && earlier === undefined; index -= 1) {
-      earlier = this.recent[index]!.nodes.get(id);
-    }
+    const earlier = this.lastSeen(id)?.node;
     if (earlier === undefined) return undefined;
     const options = { redact: this.runtime.redact };
     const descriptor = describeTarget(earlier, options.redact);
@@ -396,9 +422,18 @@ export class ObservationFeed {
     const relocated = relocateDescriptor(descriptor, latest.nodes, options);
     return relocated.kind === 'found' ? latest.nodes.get(relocated.id) : undefined;
   }
+
 }
 
 /** A node whose name or text is what was put into it, not what the screen says. */
 function echoesInput(node: SemanticNode): boolean {
   return isEditable(node) || node.value !== undefined;
+}
+
+/** The error for a target id the newest screen no longer lists. */
+export function nodeGone(id: string, latest: SemanticAgentObservation): AgentError {
+  return new AgentError(
+    'LOCATOR_NOT_FOUND',
+    `node #${id} is not on the current screen (observation ${latest.revision}); it was removed or never existed`,
+  );
 }

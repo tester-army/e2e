@@ -13,7 +13,7 @@
 import type { SemanticNode, ViewportPoint } from '../engine/surface.ts';
 import { asEngineError, TestError } from '../internal/errors.ts';
 import { requireKey } from '../internal/keys.ts';
-import { clampToViewport } from '../internal/geometry.ts';
+import { clampToViewport, viewportShare } from '../internal/geometry.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
 import type { JsonValue, Momentum, ScrollDirection, Secret } from '../types.ts';
 import { containerKey, describeAction, type RecordableAction } from './actions.ts';
@@ -22,11 +22,12 @@ import { isDerivedValue } from './derived.ts';
 import { AgentError } from './error.ts';
 import type { ExecutorActions, ExecutorTarget, PointHit, PointTapResult } from './executor.ts';
 import type { AgentContext } from './invocation.ts';
-import type { ObservationFeed } from './observation-feed.ts';
+import type { ObservationFeed, Resolved } from './observation-feed.ts';
+import { resolveScrollTarget } from './scroll-target.ts';
 import type { OperationQueue } from './operation-queue.ts';
 import { instrumentPhase, recordPolicyEvent } from './phases.ts';
 import { describePointHit, describePointTap, hitTest, type PointProse } from './point-tap.ts';
-import type { AgentObservation } from './observation.ts';
+import type { AgentObservation, SemanticAgentObservation } from './observation.ts';
 import { authorizeSecretFill } from './secrets.ts';
 import type { StepAccounting } from './step-accounting.ts';
 import type { StepTraceSession } from './step-cache.ts';
@@ -156,7 +157,7 @@ export class ActionDispatcher {
 
   /** The tap verb: one committed tap on a resolved node. */
   tap(target: ExecutorTarget): Promise<void> {
-    return this.runAction('tap', this.targeted(target, (node) => this.performTap(node)));
+    return this.commitTargeted('tap', target, (node) => this.performTap(node));
   }
 
   /**
@@ -179,7 +180,7 @@ export class ActionDispatcher {
       const summary = describePointTap({ point: clamped, control, under: hit.under, ...this.prose(observation) });
       if (control !== undefined) {
         const target = { id: control.ref.id };
-        await this.runActionNow('tap', this.targeted(target, (node) => this.performTap(node)));
+        await this.runActionNow('tap', () => this.targeted(this.feed.resolve(target), (node) => this.performTap(node)));
         return { point: clamped, target, summary };
       }
       if (!this.verbs.has('tapAt')) {
@@ -278,20 +279,31 @@ export class ActionDispatcher {
     if (!['up', 'down', 'left', 'right'].includes(direction)) {
       throw new TestError('INVALID_ARGUMENT', `invalid scroll direction "${String(direction)}"`);
     }
-    if (target === undefined) {
-      await this.runAction('scroll', async () => {
-        await this.session.swipe(direction, SCROLL_MOMENTUM, this.accounting.actionOperation());
-        return { name: 'scroll', direction };
+    const viewport = async (): Promise<RecordableAction> => {
+      await this.session.swipe(direction, SCROLL_MOMENTUM, this.accounting.actionOperation());
+      return { name: 'scroll', direction };
+    };
+    if (target === undefined) return this.runAction('scroll', viewport);
+    await this.runAction('scroll', async () => {
+      // A list that filled the screen and left the tree scrolls as the
+      // viewport does (`scroll-target.ts`).
+      const resolved = resolveScrollTarget(this.feed, target);
+      if (resolved === undefined) return viewport();
+      return this.targeted(resolved, async (node, observation) => {
+        await this.session.perform(
+          node.ref,
+          { kind: 'swipe', direction, momentum: SCROLL_MOMENTUM },
+          this.accounting.actionOperation(),
+        );
+        // How much of the screen the list covered decides, on replay, whether
+        // a list that cannot be re-found scrolls as the viewport.
+        return {
+          name: 'scroll',
+          direction,
+          node,
+          ...(node.rect === undefined ? {} : { spans: viewportShare(node.rect, observation.viewport) }),
+        };
       });
-      return;
-    }
-    await this.commitTargeted('scroll', target, async (node) => {
-      await this.session.perform(
-        node.ref,
-        { kind: 'swipe', direction, momentum: SCROLL_MOMENTUM },
-        this.accounting.actionOperation(),
-      );
-      return { name: 'scroll', direction, node };
     });
   }
 
@@ -404,44 +416,47 @@ export class ActionDispatcher {
     target: ExecutorTarget,
     perform: (node: SemanticNode) => Promise<RecordableAction>,
   ): Promise<void> {
-    return this.runAction(name, this.targeted(target, perform));
+    // Resolved inside the body, so it reads the screen the earlier actions of the turn left.
+    return this.runAction(name, () => this.targeted(this.feed.resolve(target), perform));
   }
 
-  /** The body of one targeted action: resolution, the relocation loop, and the placement the trace records. */
-  private targeted(
-    target: ExecutorTarget,
-    perform: (node: SemanticNode) => Promise<RecordableAction>,
-  ): () => Promise<RecordableAction> {
-    return async () => {
-      let { node, observation } = this.feed.resolve(target);
-      const redact = this.runtime.redact;
-      for (let relocations = 0; ; relocations += 1) {
-        // The container the node sits in is captured with it: that is what
-        // tells this row's "Delete" from the next row's when the flow replays.
-        const within = containerKey(node.ref.id, observation.nodes, observation.parents, redact);
-        // When the description still matches several controls, the position among
-        // them is recorded too; a replay that finds the same number picks the same one.
-        const position = describePosition(node, within, observation.nodes, { redact });
-        try {
-          const action = await perform(node);
-          return {
-            ...action,
-            ...(within === undefined ? {} : { within }),
-            ...(position === undefined ? {} : { position }),
-          };
-        } catch (cause) {
-          if (asEngineError(cause)?.code !== 'NODE_STALE') throw cause;
-          const relocated = relocations < MAX_STALE_RELOCATIONS ? await this.feed.relocate(node) : undefined;
-          if (relocated === undefined) {
-            throw new AgentError('LOCATOR_NOT_FOUND', 'the target node left the screen before the action reached it', {
-              cause,
-            });
-          }
-          node = relocated.node;
-          observation = relocated.observation;
+  /**
+   * The body of one targeted action past its resolution: the relocation
+   * loop and the placement the trace records. `perform` gets the node with
+   * the observation it was found in.
+   */
+  private async targeted(
+    resolved: Resolved,
+    perform: (node: SemanticNode, observation: SemanticAgentObservation) => Promise<RecordableAction>,
+  ): Promise<RecordableAction> {
+    let { node, observation } = resolved;
+    const redact = this.runtime.redact;
+    for (let relocations = 0; ; relocations += 1) {
+      // The container the node sits in is captured with it: that is what
+      // tells this row's "Delete" from the next row's when the flow replays.
+      const within = containerKey(node.ref.id, observation.nodes, observation.parents, redact);
+      // When the description still matches several controls, the position among
+      // them is recorded too; a replay that finds the same number picks the same one.
+      const position = describePosition(node, within, observation.nodes, { redact });
+      try {
+        const action = await perform(node, observation);
+        return {
+          ...action,
+          ...(within === undefined ? {} : { within }),
+          ...(position === undefined ? {} : { position }),
+        };
+      } catch (cause) {
+        if (asEngineError(cause)?.code !== 'NODE_STALE') throw cause;
+        const relocated = relocations < MAX_STALE_RELOCATIONS ? await this.feed.relocate(node) : undefined;
+        if (relocated === undefined) {
+          throw new AgentError('LOCATOR_NOT_FOUND', 'the target node left the screen before the action reached it', {
+            cause,
+          });
         }
+        node = relocated.node;
+        observation = relocated.observation;
       }
-    };
+    }
   }
 }
 

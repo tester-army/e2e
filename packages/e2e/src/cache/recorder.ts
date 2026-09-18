@@ -19,6 +19,7 @@
 import { describeAction, type RecordableAction } from '../agent/actions.ts';
 import {
   bound,
+  DESCRIPTOR_FIELDS,
   MAX_TRACE_ACTIONS,
   MAX_TRACE_DESCRIPTOR_CHARS,
   MAX_TRACE_END_WAIT_MS,
@@ -26,6 +27,7 @@ import {
   MAX_TRACE_SUMMARY_CHARS,
   type ActionTrace,
   type RecordedAction,
+  type ScrollAction,
   type TraceProvenance,
   type TraceTargetDescriptor,
 } from './trace.ts';
@@ -170,6 +172,7 @@ export class TraceRecorder {
           summary,
           direction: action.direction,
           ...(target === undefined ? {} : { target }),
+          ...(action.spans === undefined ? {} : { spans: fraction(action.spans) }),
         };
       case 'navigate':
         return { name: 'navigate', summary, url: this.verbatim(action.url) };
@@ -213,6 +216,14 @@ export class TraceRecorder {
   }
 
   private push(action: RecordedAction): void {
+    // A scroll repeated in the same direction on the same target is one
+    // action that ran several times, not several actions: a long list paged
+    // to its end fits the trace, and replays with the same repeats.
+    const last = this.actions[this.actions.length - 1];
+    if (action.name === 'scroll' && last?.name === 'scroll' && sameScroll(last, action)) {
+      this.actions[this.actions.length - 1] = { ...last, times: (last.times ?? 1) + 1 };
+      return;
+    }
     if (this.actions.length >= this.maxActions) {
       this.truncated = true;
       return;
@@ -224,4 +235,18 @@ export class TraceRecorder {
 /** A place inside a box as a fraction of its side, clamped to the box and rounded so the entry stays small. */
 function fraction(value: number): number {
   return Math.round(Math.min(1, Math.max(0, value)) * 10_000) / 10_000;
+}
+
+/** True when two recorded scrolls move the same way on the same target. */
+function sameScroll(a: ScrollAction, b: ScrollAction): boolean {
+  return a.direction === b.direction && sameTarget(a.target, b.target);
+}
+
+function sameTarget(a: TraceTargetDescriptor | undefined, b: TraceTargetDescriptor | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return (
+    DESCRIPTOR_FIELDS.every((field) => a[field] === b[field]) &&
+    a.position?.index === b.position?.index &&
+    a.position?.of === b.position?.of
+  );
 }

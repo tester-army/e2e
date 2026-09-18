@@ -165,6 +165,14 @@ export interface ExecutorActions {
   typeSecret(target: ExecutorTarget, name: string): Promise<void>;
   press(target: ExecutorTarget, key: string): Promise<void>;
   select(target: ExecutorTarget, value: string): Promise<void>;
+  /**
+   * Scrolls the viewport, or one node by a swipe inside its box. A scroll
+   * target is what sits where it sits more than what it says: a device
+   * names a scroll view after its first visible row and renumbers the tree
+   * on every look, so a target id the newest screen lacks is re-found by its
+   * place and role, and a list that filled the screen and cannot be re-found
+   * scrolls as the viewport, which is what scrolling the main list does.
+   */
   scroll(direction: ScrollDirection, target?: ExecutorTarget): Promise<void>;
   /** Navigates to an http(s) URL or an app-relative path. */
   navigate(url: string): Promise<void>;

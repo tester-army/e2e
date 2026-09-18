@@ -294,6 +294,32 @@ describe('replayTrace: bare-point taps', () => {
     expect(points).toEqual([{ x: 400, y: 260 }]);
   });
 
+  it('repeats a folded scroll as many times as recorded', async () => {
+    const host = makeHost({});
+    const outcome = await replayTrace(host, trace([{ name: 'scroll', summary: 'scroll down x4', direction: 'down', times: 4 }]));
+    expect(outcome).toMatchObject({ completed: true, executed: 1 });
+    expect(host.calls).toEqual(['scroll', 'scroll', 'scroll', 'scroll']);
+  });
+
+  it('scrolls the viewport when a list that filled the screen cannot be re-found', async () => {
+    const targets: unknown[] = [];
+    const host = makeHost({ nodes: [email], onAction: (name, detail) => void (name === 'scroll' && targets.push(detail)) });
+    const list = { role: 'group', name: 'Rows 1 to 12' };
+    const outcome = await replayTrace(host, trace([{ name: 'scroll', summary: 'scroll down x2', direction: 'down', target: list, times: 2, spans: 0.92 }]));
+    expect(outcome).toMatchObject({ completed: true, executed: 1 });
+    expect(targets).toEqual([{ direction: 'down', t: undefined }, { direction: 'down', t: undefined }]);
+  });
+
+  it('hands off when a smaller scrolled region cannot be re-found, never scrolling the viewport for it', async () => {
+    const host = makeHost({ nodes: [email] });
+    const carousel = { role: 'group', name: 'Recommended' };
+    const outcome = await replayTrace(host, trace([{ name: 'scroll', summary: 'scroll right', direction: 'right', target: carousel, spans: 0.18 }]));
+    expect(outcome).toMatchObject({ completed: false, executed: 0, stopReason: 'target-not-found' });
+    expect(host.calls).toEqual([]);
+    const unknown = await replayTrace(makeHost({ nodes: [email] }), trace([{ name: 'scroll', summary: 'scroll right', direction: 'right', target: carousel }]));
+    expect(unknown).toMatchObject({ completed: false, executed: 0, stopReason: 'target-not-found' });
+  });
+
   it('diverges when the node the point was placed in is gone or has no box', async () => {
     const boxless: SemanticNode = { ref: { id: 'm', revision: 'r1' }, role: 'img', name: 'Map' };
     const within = { target: { role: 'img', name: 'Map' }, fx: 0.5, fy: 0.5 };

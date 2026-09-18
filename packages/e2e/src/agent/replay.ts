@@ -13,11 +13,12 @@
  */
 
 import { anchorsPresent } from '../cache/anchors.ts';
-import { relocateDescriptor, type RelocationResult } from '../cache/relocate.ts';
+import { MAIN_LIST_SHARE, relocateDescriptor, type RelocationFailure, type RelocationResult } from '../cache/relocate.ts';
 import type { ActionTrace, RecordedAction, TraceTargetDescriptor, TraceViewport } from '../cache/trace.ts';
 import type { SemanticNode, ViewportPoint } from '../engine/surface.ts';
 import { hasCause } from '../internal/errors.ts';
 import { sleep } from '../internal/time.ts';
+import type { ScrollDirection } from '../types.ts';
 import {
   isRuntimeHardStop,
   type ExecutorActions,
@@ -91,6 +92,21 @@ type PlannedCall =
       readonly invoke: (target: ExecutorTarget) => Promise<void>;
     }
   | { readonly kind: 'free'; readonly invoke: () => Promise<void> }
+  /**
+   * A scroll, folded from its repeats, each replayed with a settled look
+   * between them as the live loop took. The list is re-found before every
+   * repeat, because a device renumbers its tree on each look and names a
+   * scroll view after its first visible row. A list that filled the screen
+   * when recorded (`spans`) and cannot be re-found scrolls as the viewport,
+   * which is what scrolling the main list does; a smaller region hands off.
+   */
+  | {
+      readonly kind: 'scroll';
+      readonly direction: ScrollDirection;
+      readonly descriptor?: TraceTargetDescriptor;
+      readonly spans?: number;
+      readonly times: number;
+    }
   /** A bare point, replayed as given once the viewport is the recorded size. */
   | { readonly kind: 'point'; readonly point: ViewportPoint; readonly viewport: TraceViewport }
   /** A bare point placed inside a re-found node's live box. */
@@ -127,13 +143,13 @@ function planCall(action: RecordedAction, actions: ExecutorActions): PlannedCall
         invoke: (t) => actions.select(t, action.value),
       };
     case 'scroll':
-      return action.target === undefined
-        ? { kind: 'free', invoke: () => actions.scroll(action.direction) }
-        : {
-            kind: 'targeted',
-            descriptor: action.target,
-            invoke: (t) => actions.scroll(action.direction, t),
-          };
+      return {
+        kind: 'scroll',
+        direction: action.direction,
+        ...(action.target === undefined ? {} : { descriptor: action.target }),
+        ...(action.spans === undefined ? {} : { spans: action.spans }),
+        times: action.times ?? 1,
+      };
     case 'navigate':
       return { kind: 'free', invoke: () => actions.navigate(action.url) };
     case 'typeText':
@@ -179,6 +195,14 @@ export async function replayTrace(
         case 'free':
           await planned.invoke();
           break;
+        case 'scroll': {
+          for (let index = 0; index < planned.times; index += 1) {
+            if (index > 0) await host.observeSettled();
+            const lost = await scrollOnce(host, planned);
+            if (lost !== undefined) return stop(lost);
+          }
+          break;
+        }
         case 'point': {
           const screen = await host.observeSettled();
           if (screen.kind === 'pixels') return stop('action-failed');
@@ -290,6 +314,25 @@ async function relocate(
 type Relocated =
   | { readonly kind: 'found'; readonly id: string; readonly node: SemanticNode }
   | Extract<RelocationResult, { kind: 'failed' }>;
+
+/**
+ * One repeat of a folded scroll: on the re-found list, on the viewport for a
+ * lost list that filled the screen, or the failure to hand the step off on.
+ */
+async function scrollOnce(host: ReplayHost, planned: Extract<PlannedCall, { kind: 'scroll' }>): Promise<RelocationFailure | undefined> {
+  if (planned.descriptor === undefined) {
+    await host.actions.scroll(planned.direction);
+    return undefined;
+  }
+  const relocated = await relocate(host, planned.descriptor);
+  if (relocated.kind === 'found') {
+    await host.actions.scroll(planned.direction, { id: relocated.id });
+    return undefined;
+  }
+  if ((planned.spans ?? 0) < MAIN_LIST_SHARE) return relocated.failure;
+  await host.actions.scroll(planned.direction);
+  return undefined;
+}
 
 /**
  * Probes a settled observation, then re-probes fresh raw captures on a fixed
