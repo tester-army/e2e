@@ -131,6 +131,21 @@ To keep recordings only for failed attempts, configure:
 artifacts: { kinds: ['video'], video: { retain: 'on-failure' } },
 ```
 
+## Console output
+
+`console.log` and `console.error` inside a test print as the test runs, above
+the live view, under a heading that names the stream, the target, the file,
+and the test:
+
+```text
+stdout | web tests/todos.e2e.ts > adds a todo
+hello from the test
+```
+
+Nothing is buffered or dropped: every line appears when it is written, in a
+pipe or a CI log as much as in a terminal. The output is not part of the
+report; use `expect` or an artifact for anything a later reader needs.
+
 ## Agent steps
 
 Use these flags to inspect agent behavior:

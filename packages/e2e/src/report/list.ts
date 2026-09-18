@@ -247,6 +247,8 @@ export class ListReporter implements Reporter {
    * block, live rows, failure entry, and test counters.
    */
   private explore: ExploreView | undefined;
+  /** The stream and source of the output line printed last, while nothing else printed since. */
+  private lastOutput: string | undefined;
 
   constructor(
     private readonly output: ListReporterOutput = DEFAULT_OUTPUT,
@@ -289,6 +291,9 @@ export class ListReporter implements Reporter {
       case 'step':
         this.step(event);
         break;
+      case 'output':
+        this.testOutput(event);
+        break;
       case 'test-finished':
         this.testFinished(event.result);
         break;
@@ -312,10 +317,35 @@ export class ListReporter implements Reporter {
 
   /** Writes one permanent line without disturbing the live window. */
   private print(line: string): void {
+    this.lastOutput = undefined;
     this.window.erase();
     this.output.write(line);
     this.window.logged(line);
     this.window.redraw();
+  }
+
+  /**
+   * Text a test wrote to stdout or stderr, printed at once above the live
+   * window under a `stdout | file › title` heading, as vitest does. Writes
+   * that follow one another from the same source share one heading; any
+   * other line in between brings it back. A write that ends its line
+   * finishes there; the next write starts a new one, so a heading never
+   * lands mid-line.
+   */
+  private testOutput(event: RunEventOf<'output'>): void {
+    const { pc } = this;
+    if (event.text === '') return;
+    const running = event.pair === undefined ? undefined : this.pairs.get(pairKey(event.pair.testId, event.pair.agent, event.target));
+    const source = running === undefined ? this.badge(event.target) : `${this.badge(running.group.target)} ${bounded(running.group.file)}${this.separator}${running.title}`;
+    const key = `${event.stream}\u0000${source}`;
+    if (this.lastOutput !== key) {
+      const label = event.stream === 'stderr' ? pc.yellow(event.stream) : pc.dim(event.stream);
+      this.print(`${label} ${pc.dim('|')} ${source}`);
+    }
+    const lines = event.text.split('\n');
+    if (lines.at(-1) === '') lines.pop();
+    for (const line of lines) this.print(bounded(line));
+    this.lastOutput = key;
   }
 
   /**

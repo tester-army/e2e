@@ -16,7 +16,14 @@ import { AiTraceRecorder, registerAiTraceRecorder } from '../../internal/ai-trac
 import { DebugTrace } from '../../internal/debug.ts';
 import { classifyError, ConfigurationError, serializeError } from '../../internal/errors.ts';
 import { SessionStore } from '../sessions.ts';
-import type { ChildProcessInbound, RunUnitMessage, WirePair, WorkerBootstrap, WorkerToMain } from './protocol.ts';
+import type {
+  ChildProcessInbound,
+  OutputMessage,
+  RunUnitMessage,
+  WirePair,
+  WorkerBootstrap,
+  WorkerToMain,
+} from './protocol.ts';
 import { TargetWorker, type ResolvedUnitPairs, type TargetWorkerDeps } from './session.ts';
 
 /**
@@ -48,6 +55,31 @@ function exitAfterFlush(code: 0 | 1): void {
   const exit = (): void => process.exit(code);
   setTimeout(exit, FLUSH_GRACE_MS).unref();
   void outbox.then(exit);
+}
+
+/**
+ * Routes everything the process writes to stdout or stderr into `output`
+ * messages: the streams are inherited from the runner, whose terminal shows
+ * the live window, so a test's `console.log` written straight through would
+ * land inside it and be painted over. Each write becomes one message,
+ * attributed to the pair in flight.
+ */
+function captureOutput(pairInFlight: () => OutputMessage['pair']): void {
+  for (const [stream, name] of [
+    [process.stdout, 'stdout'],
+    [process.stderr, 'stderr'],
+  ] as const) {
+    type Done = (error?: Error | null) => void;
+    const write = (chunk: string | Uint8Array, encoding?: BufferEncoding | Done, callback?: Done): boolean => {
+      const done = typeof encoding === 'function' ? encoding : callback;
+      const text =
+        typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString(typeof encoding === 'string' ? encoding : 'utf8');
+      send({ type: 'output', pair: pairInFlight(), stream: name, text });
+      if (done !== undefined) done();
+      return true;
+    };
+    stream.write = write as typeof stream.write;
+  }
 }
 
 function fatal(cause: unknown): void {
@@ -141,6 +173,7 @@ function main(): void {
   process.on('unhandledRejection', (cause) => fatal(cause));
 
   let worker: TargetWorker | undefined;
+  captureOutput(() => worker?.pairInFlight);
 
   // The channel closes when the runner is gone: killed, crashed, or exited
   // before this worker. A worker nobody is listening to must not keep driving

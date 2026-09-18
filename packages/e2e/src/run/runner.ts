@@ -654,6 +654,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             emit({ type: 'test-started', ...start, target: targetName }),
           onProgress: (pair, targetName, progress) =>
             emit({ type: 'step', testId: pair.testId, agent: pair.agent, target: targetName, progress }),
+          onOutput: (output, targetName) => emit({ type: 'output', target: targetName, ...output }),
           onDebug: (snapshot) => debug.merge(snapshot),
           onAiTrace: (snapshot) => aiTrace?.merge(snapshot),
         },

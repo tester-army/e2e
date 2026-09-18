@@ -137,6 +137,20 @@ export interface ProgressMessage {
   readonly progress: StepProgress;
 }
 
+/**
+ * Text a test wrote to the worker's stdout or stderr (`console.log` and
+ * friends). The worker's streams are the runner's terminal, where a stray
+ * line would land inside the live window, so the worker captures them and
+ * the reporter prints each line above it, attributed to `pair` when one is
+ * executing.
+ */
+export interface OutputMessage {
+  readonly type: 'output';
+  readonly pair: { readonly testId: string; readonly agent: string } | undefined;
+  readonly stream: 'stdout' | 'stderr';
+  readonly text: string;
+}
+
 export interface ResultMessage {
   readonly type: 'result';
   readonly result: WireResultRecord;
@@ -189,6 +203,7 @@ export type WorkerToMain =
   | ReadyMessage
   | PairStartMessage
   | ProgressMessage
+  | OutputMessage
   | ResultMessage
   | SerialGroupMessage
   | UnitDoneMessage

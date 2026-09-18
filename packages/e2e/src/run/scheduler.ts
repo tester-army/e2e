@@ -28,6 +28,7 @@ import {
   pairKey,
 } from './units.ts';
 import {
+  type OutputMessage,
   type PairStart,
   type WirePair,
   type WorkerToMain,
@@ -44,6 +45,8 @@ export interface SchedulerEvents {
   onTestStart?(start: PairStart, targetName: string): void;
   /** Live step progress of one running pair, identified by test id and agent. */
   onProgress?(pair: { testId: string; agent: string }, targetName: string, progress: StepProgress): void;
+  /** Text a worker's process wrote to stdout or stderr, attributed to the pair executing when one was. */
+  onOutput?(output: Omit<OutputMessage, 'type'>, targetName: string): void;
   /** Phase timings a child-process worker drained after one unit. */
   onDebug?(snapshot: DebugSnapshot): void;
   /** Model calls a child-process worker drained after one unit. */
@@ -499,6 +502,11 @@ class Scheduler {
           worker.targetName,
           message.progress,
         );
+        break;
+      }
+      case 'output': {
+        const { type: _type, ...output } = message;
+        this.options.events.onOutput?.(output, worker.targetName);
         break;
       }
       case 'result': {

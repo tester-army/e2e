@@ -1588,6 +1588,45 @@ describe('ListReporter', () => {
       reporter.handle(testStarted('t1', 'signs in', 'chromium'));
       expect(lines).toEqual([]);
     });
+    it('prints a test\u2019s console output above the window under one heading per source', () => {
+      const { lines, output } = liveCapture();
+      const reporter = plainReporter(output, true);
+      reporter.handle(runStarted());
+      reporter.handle(testStarted('t1', 'signs in', 'chromium'));
+      const write = (stream: 'stdout' | 'stderr', text: string, pair?: { testId: string; agent: string }) =>
+        reporter.handle({ type: 'output', target: 'chromium', pair, stream, text });
+      const t1 = { testId: 't1', agent: 'default' };
+      write('stdout', 'hello\n', t1);
+      write('stdout', 'two\nlines\n', t1);
+      write('stderr', 'oops\n', t1);
+      write('stdout', 'again\n', t1);
+      write('stdout', 'no pair\n');
+      expect(lines.slice(lines.indexOf('stdout | |chromium| tests/case.e2e.ts > signs in'))).toEqual([
+        'stdout | |chromium| tests/case.e2e.ts > signs in',
+        'hello',
+        'two',
+        'lines',
+        'stderr | |chromium| tests/case.e2e.ts > signs in',
+        'oops',
+        'stdout | |chromium| tests/case.e2e.ts > signs in',
+        'again',
+        'stdout | |chromium|',
+        'no pair',
+      ]);
+    });
+
+    it('brings the output heading back after another line printed in between', () => {
+      const { lines, output } = liveCapture();
+      const reporter = plainReporter(output, true);
+      reporter.handle(runStarted());
+      reporter.handle(testStarted('t1', 'signs in', 'chromium'));
+      reporter.handle({ type: 'output', target: 'chromium', pair: { testId: 't1', agent: 'default' }, stream: 'stdout', text: 'one\n' });
+      reporter.handle({ type: 'notice', target: 'chromium', message: 'between' });
+      reporter.handle({ type: 'output', target: 'chromium', pair: { testId: 't1', agent: 'default' }, stream: 'stdout', text: 'two\n' });
+      expect(lines.filter((line) => line.startsWith('stdout |'))).toHaveLength(2);
+      expect(lines.at(-1)).toBe('two');
+    });
+
     it('pads the block to the bottom of a tall terminal and shrinks it as the log grows', () => {
       const restore = withTerminalSize({ rows: 60, columns: 120 });
       try {

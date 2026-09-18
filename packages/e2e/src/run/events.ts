@@ -117,6 +117,20 @@ export type RunEventFact =
     }
   | {
       /**
+       * Text a test wrote to stdout or stderr (`console.log` and friends),
+       * as one write of a worker process on `target`. `pair` is the test
+       * executing at the time, or undefined for output between tests (a
+       * module's top level while its file loads). Reporters print it above
+       * the live window; the runner never lets it reach the terminal itself.
+       */
+      readonly type: 'output';
+      readonly target: string;
+      readonly pair: { readonly testId: string; readonly agent: string } | undefined;
+      readonly stream: 'stdout' | 'stderr';
+      readonly text: string;
+    }
+  | {
+      /**
        * One step of the run's setup, before any test: `started` as it begins,
        * `finished` once it is done, with how long it took. Collection and each
        * target's engine `prepare` come before `plan`; the services and app

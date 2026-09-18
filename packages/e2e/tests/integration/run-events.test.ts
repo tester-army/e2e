@@ -233,6 +233,52 @@ test.describe('group', { serial: true, retries: 1 }, () => {
 });
 
 describe('run events: run lifecycle hygiene', () => {
+  it('a test\u2019s console output arrives as output events attributed to it, and never on the runner\u2019s streams', async () => {
+    const app = await startFixtureApp();
+    const events: RunEvent[] = [];
+    const written: string[] = [];
+    const stdoutWrite = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      written.push(String(chunk));
+      return true;
+    });
+    let project: FixtureProject | undefined;
+    try {
+      const result = await runProjectWithConfigFile(
+        {
+          'tests/logs.e2e.ts': `import { test } from 'e2e';
+console.log('top level');
+test('talks', async () => {
+  console.log('hello', { from: 'the test' });
+  console.error('careful');
+});
+`,
+        },
+        {
+          appUrl: app.url,
+          configSource: workerConfigSource(1),
+          runOptions: { onEvent: (event: RunEvent) => { events.push(event); } },
+        },
+      );
+      project = result.project;
+      expect(result.outcome.status).toBe('passed');
+      const output = events.filter((event) => event.type === 'output');
+      const started = events.find((event) => event.type === 'test-started')!;
+      const inTest = output.filter((event) => event.pair?.testId === started.testId);
+      expect(inTest.map((event) => [event.stream, event.text])).toEqual([
+        ['stdout', "hello { from: 'the test' }\n"],
+        ['stderr', 'careful\n'],
+      ]);
+      expect(inTest.every((event) => event.target === 'web' && event.pair?.agent === 'default')).toBe(true);
+      // The module's top level runs while the file loads, outside any pair.
+      expect(output.some((event) => event.pair === undefined && event.text === 'top level\n')).toBe(true);
+      expect(written.join('')).not.toContain('hello');
+    } finally {
+      stdoutWrite.mockRestore();
+      project?.cleanup();
+      await app.close();
+    }
+  }, 120_000);
+
   it('a junit-write failure is one stderr line and leaves the outcome, the report, and run-finished alone', async () => {
     const app = await startFixtureApp();
     const project = createProject({ 'tests/events.e2e.ts': SUITE });
