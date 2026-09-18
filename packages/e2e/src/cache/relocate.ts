@@ -100,7 +100,11 @@ export function descriptorTiers(descriptor: TraceTargetDescriptor): readonly Tra
   if (!isRelocatableDescriptor(descriptor)) return [];
   if (descriptor.testId === undefined) return [descriptor];
   const semantic = withoutTestId(descriptor);
-  return isRelocatableDescriptor(semantic) ? [descriptor, semantic] : [descriptor];
+  // A test id that churned is forgiven only when the semantic fields still
+  // identify the node. Dropping it must not leave an anonymous descriptor: a
+  // position counted among test-id twins says nothing about the unnamed
+  // controls of that role, so it would relocate to an unrelated one.
+  return isRelocatableDescriptor(semantic) && !isAnonymous(semantic) ? [descriptor, semantic] : [descriptor];
 }
 
 /** Every listed field the recording captured must be present and equal on the candidate. */
@@ -166,8 +170,11 @@ export function relocateDescriptor(
 ): RelocationResult {
   const matches = matchingIds(descriptor, nodes, options);
   if (matches.length === 0) return { kind: 'failed', failure: 'target-not-found' };
-  if (matches.length === 1) return { kind: 'found', id: matches[0]! };
   const { position } = descriptor;
+  // A lone match is the node for a descriptor with an identity. An anonymous
+  // one has only its count and place: one unnamed twin where the recording
+  // counted two is as likely the other field as the right one.
+  if (matches.length === 1 && (!isAnonymous(descriptor) || position?.of === 1)) return { kind: 'found', id: matches[0]! };
   const positioned = position !== undefined && position.of === matches.length ? matches[position.index] : undefined;
   return positioned === undefined
     ? { kind: 'failed', failure: 'target-ambiguous' }

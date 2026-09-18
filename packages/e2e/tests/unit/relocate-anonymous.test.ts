@@ -37,10 +37,19 @@ describe('an anonymous target', () => {
     expect(relocateDescriptor({ role: 'textbox', position: { index: 0, of: 1 } }, screen(textbox('a', 'Email'), textbox('b')), options)).toEqual({ kind: 'found', id: 'b' });
   });
 
-  it('diverges when the number of unnamed twins changed, or none is left', () => {
+  it('diverges when the number of unnamed twins changed, one survivor included, or none is left', () => {
     const recorded = { role: 'textbox', position: { index: 1, of: 2 } };
     expect(relocateDescriptor(recorded, screen(textbox('a'), textbox('b'), textbox('c')), options)).toEqual({ kind: 'failed', failure: 'target-ambiguous' });
+    // One unnamed twin where two were counted: it may be the other field.
+    expect(relocateDescriptor(recorded, screen(textbox('a', 'Email'), textbox('b')), options)).toEqual({ kind: 'failed', failure: 'target-ambiguous' });
     expect(relocateDescriptor(recorded, screen(textbox('a', 'Email')), options)).toEqual({ kind: 'failed', failure: 'target-not-found' });
+  });
+
+  it('never lets a churned test id fall back to an anonymous position', () => {
+    // Recorded among test-id twins; when the id churns, the position says nothing about unnamed textboxes.
+    const recorded = { role: 'textbox', testId: 'field-zz9', position: { index: 0, of: 2 } };
+    const form = screen(textbox('a'), textbox('b'));
+    expect(relocateDescriptor(recorded, form, options)).toEqual({ kind: 'failed', failure: 'target-not-found' });
   });
 
   it('survives the trace reader with a count of one', () => {
