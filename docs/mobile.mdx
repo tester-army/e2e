@@ -100,7 +100,7 @@ your config.
 
 ```ts
 export interface DeviceProvider {
-  /** Label in progress lines and the report. */
+  /** Label in progress lines and error messages. */
   readonly name: string;
   /** Called once per worker slot, for every slot at once, in the runner process. */
   acquire(request: DeviceRequest): Promise<DeviceLease>;
@@ -123,9 +123,12 @@ export interface DeviceLease {
 `acquire` receives the platform, run id, target, slot, the `app` and resolved
 `appPath` options, the run's environment, an interrupt signal, and a `log`
 that reaches the reporter. Read tokens from `request.env`, not
-`process.env`. A slot that fails to lease releases the others and ends the
-run before any test runs. Leases are released after the last worker exits,
-also on failure and interrupt, within `cleanupTimeout`.
+`process.env`. A target with nothing to run leases nothing. A slot that
+fails to lease releases the others and ends the run before any test runs.
+Leases are released after the last worker exits, also on failure and
+interrupt, within `cleanupTimeout`. `release` receives the object `acquire`
+returned, so a provider can keep its own fields on it; only `id`, `daemon`,
+`device`, and `installedApp` travel to the workers.
 
 The provider below runs tests on
 [EAS Simulator](https://docs.expo.dev/preview/eas-simulator/rest-api/)

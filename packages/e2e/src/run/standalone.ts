@@ -88,12 +88,16 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
   setSecretRegistry(config);
   let processes: AppProcesses;
   let prepared: EnginePrepareResult | void;
-  /** Releases what `prepare` acquired; runs on every exit path once `prepare` was called. */
+  /**
+   * Releases what `prepare` acquired; runs on every exit path once `prepare`
+   * was called. Under its own cleanup budget, never the attempt's signal: a
+   * cancelled attempt is exactly when a leased device must still be released.
+   */
   const finishEngineOnce = async (onFailure: (cause: unknown) => void): Promise<void> => {
     try {
       await finishEngine(
         target,
-        { runId, projectRoot: config.projectRoot, env: options.env, signal, timeoutMs: config.cleanupTimeout },
+        { runId, projectRoot: config.projectRoot, env: options.env, signal: new AbortController().signal, timeoutMs: config.cleanupTimeout },
         (line) => notice(target.name, line),
       );
     } catch (cause) {

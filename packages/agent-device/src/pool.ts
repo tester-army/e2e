@@ -23,6 +23,14 @@ import { message, runCommand } from './errors.ts';
 import type { AgentDeviceOptions, AgentDevicePlatform, ClientFactory } from './options.ts';
 import { isDeviceLease, isDeviceProvider, validateProvider, type DeviceLease, type DeviceProvider } from './provider.ts';
 
+/** The most the serialized leases of one target may occupy in a worker's environment. */
+const MAX_LEASES_ENV_BYTES = 16 * 1024;
+
+/** A lease reduced to the fields a worker reads; the provider keeps its own extras on the object it is handed back. */
+function portableLease(lease: DeviceLease): DeviceLease {
+  return obj({ id: lease.id, daemon: obj({ baseUrl: lease.daemon.baseUrl, authToken: lease.daemon.authToken }), device: lease.device, installedApp: lease.installedApp });
+}
+
 /** An Apple simulator UDID; anything else names a device. */
 const UDID = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/i;
 
@@ -186,7 +194,9 @@ export class DevicePool {
    * that did, then fails the run here, before any test executes.
    */
   private async acquireForRun(provider: DeviceProvider, info: EnginePrepareInfo): Promise<EnginePrepareResult> {
-    const slots = Math.max(1, info.slots);
+    // A target nothing runs on leases nothing: a hosted session is billed from the moment it starts.
+    if (info.slots === 0) return {};
+    const slots = info.slots;
     const appPath = this.options.appPath === undefined ? undefined : path.resolve(info.projectRoot, this.options.appPath);
     info.log(`leasing ${slots} ${this.options.platform} device(s) from ${provider.name}`);
     const settled = await Promise.allSettled(
@@ -224,9 +234,19 @@ export class DevicePool {
       }
       info.log(`${provider.name}: leased ${lease.id}${lease.device === undefined ? '' : ` (${lease.device})`}`);
     }
+    // Only the fields the worker reads travel, so a provider's own extras never
+    // reach the environment; what does is bounded, or a worker could fail to spawn.
+    const handed = JSON.stringify(leases.map(portableLease));
+    if (handed.length > MAX_LEASES_ENV_BYTES) {
+      throw new EngineError(
+        'ENGINE_FAILURE',
+        `device provider "${provider.name}" returned leases of ${handed.length} bytes; the worker environment carries at most ${MAX_LEASES_ENV_BYTES}`,
+        { retryable: false },
+      );
+    }
     return {
       workers: leases.length,
-      env: { [poolVariable(info.targetName, 'LEASES')]: JSON.stringify(leases) },
+      env: { [poolVariable(info.targetName, 'LEASES')]: handed },
     };
   }
 

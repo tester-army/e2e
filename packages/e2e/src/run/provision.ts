@@ -9,7 +9,8 @@
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import type { EnginePrepareResult } from '../engine/index.ts';
 import type { DebugTrace } from '../internal/debug.ts';
-import { ConfigurationError, translateProvisioningError } from '../internal/errors.ts';
+import { ConfigurationError, InfrastructureError, translateProvisioningError } from '../internal/errors.ts';
+import { withTimeout } from '../internal/time.ts';
 import { describeTarget, type TargetProvenance } from '../report/build.ts';
 import { declaredProcesses } from './declared-processes.ts';
 import { ManagedProcess, ServiceStack, type ManagedProcessHooks } from './managed-process.ts';
@@ -76,8 +77,12 @@ export async function prepareEngine(
  * Runs one target's `finish` hook within the cleanup budget, streaming its
  * progress lines to `log`. Called for every target whose `prepare` was
  * called, whether or not it succeeded, so what a hook acquired before it
- * failed is still released. Resolves to nothing when the engine declares no
- * hook; a failure is the caller's to record as a cleanup error.
+ * failed is still released. The wait is bounded like engine disposal: a hook
+ * that ignores its signal is abandoned at the budget with `CLEANUP_TIMEOUT`,
+ * so teardown and the report never hang on it. `scope.signal` is a forced
+ * stop, not the run's interrupt: an interrupted run still releases what it
+ * leased. Resolves to nothing when the engine declares no hook; a failure is
+ * the caller's to record as a cleanup error.
  */
 export async function finishEngine(
   target: ResolvedTarget,
@@ -86,10 +91,17 @@ export async function finishEngine(
 ): Promise<void> {
   const engine = target.engine;
   if (engine?.finish === undefined) return;
-  const budget = AbortSignal.any([scope.signal, AbortSignal.timeout(scope.timeoutMs)]);
+  const budget = new AbortController();
+  const signal = AbortSignal.any([scope.signal, budget.signal]);
+  const info = { runId: scope.runId, targetName: target.name, env: scope.env, signal, timeoutMs: scope.timeoutMs, log };
   try {
-    await engine.finish({ runId: scope.runId, targetName: target.name, env: scope.env, signal: budget, timeoutMs: scope.timeoutMs, log });
+    await withTimeout(
+      Promise.resolve().then(() => engine.finish!(info)),
+      scope.timeoutMs,
+      () => new InfrastructureError('CLEANUP_TIMEOUT', `finishing engine ${engine.name} for target "${target.name}" timed out`),
+    );
   } catch (cause) {
+    budget.abort();
     throw translateProvisioningError(cause, ` while finishing engine ${engine.name} for target "${target.name}"`);
   }
 }

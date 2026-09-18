@@ -1480,6 +1480,48 @@ describe('device provider', () => {
     });
   });
 
+  it('leases nothing for a target with no slots, hands the workers only the declared lease fields, and rejects leases too large for an environment', async () => {
+    const idle = provider();
+    const h = harness({ device: idle.impl });
+    expect(await h.engine.prepare!(prepareInfo({}, 0))).toEqual({});
+    expect(idle.acquired).toEqual([]);
+    await h.engine.finish!(finishInfo());
+    expect(idle.released).toEqual([]);
+
+    // A provider's own bookkeeping stays on its object: release gets it back, the worker never sees it.
+    const acquiredLeases: DeviceLease[] = [];
+    const releasedLeases: DeviceLease[] = [];
+    const bookkeeping: DeviceProvider = {
+      name: 'notes',
+      async acquire(request) {
+        const lease = { id: `l-${request.slot}`, daemon: { baseUrl: 'https://d.example' }, expoSession: { secret: 'x'.repeat(100) } };
+        acquiredLeases.push(lease);
+        return lease;
+      },
+      async release(lease) {
+        releasedLeases.push(lease);
+      },
+    };
+    const notes = harness({ device: bookkeeping });
+    const result = await notes.engine.prepare!(prepareInfo({}, 1));
+    const handed = result?.env ?? {};
+    expect(JSON.parse(handed[leaseVariableIn(handed, 'IOS')]!)).toEqual([{ id: 'l-0', daemon: { baseUrl: 'https://d.example' } }]);
+    await notes.engine.finish!(finishInfo());
+    expect(releasedLeases).toEqual(acquiredLeases);
+
+    const oversized: DeviceProvider = {
+      name: 'huge',
+      async acquire(request) {
+        return { id: `l-${request.slot}`, daemon: { baseUrl: 'https://d.example', authToken: 'x'.repeat(20_000) } };
+      },
+      async release() {},
+    };
+    const huge = harness({ device: oversized });
+    await expect(huge.engine.prepare!(prepareInfo({}, 1))).rejects.toMatchObject({
+      message: expect.stringContaining('the worker environment carries at most 16384'),
+    });
+  });
+
   it('without a prepared lease a provider-backed worker falls back to the local daemon, and finish has nothing to release', async () => {
     const cloud = provider();
     const h = harness({ device: cloud.impl });

@@ -45,7 +45,12 @@ export interface DeviceRequest {
  * drives it through the environment.
  */
 export interface DeviceLease {
-  /** The provider's handle on the lease (a session id); named in progress lines and handed back to `release`. */
+  /**
+   * The provider's handle on the lease (a session id); named in progress
+   * lines and handed back to `release`. A provider may keep further fields on
+   * the object it returns: `release` gets that same object, while only the
+   * fields declared here travel to the worker.
+   */
   readonly id: string;
   /** The agent-device daemon the worker connects to instead of its local one. */
   readonly daemon: {
@@ -82,7 +87,7 @@ export interface DeviceReleaseContext {
  * runner process, so a provider may keep state between them.
  */
 export interface DeviceProvider {
-  /** Label in progress lines and the report; joins the trace cache identity. */
+  /** Label in progress lines and error messages. */
   readonly name: string;
   acquire(request: DeviceRequest): Promise<DeviceLease>;
   release(lease: DeviceLease, context: DeviceReleaseContext): Promise<void>;

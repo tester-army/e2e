@@ -69,7 +69,7 @@ function toyEngine(
     withState?: boolean;
     withIsolation?: boolean;
     withoutInit?: boolean;
-    withPrepare?: 'ok' | 'fail';
+    withPrepare?: 'ok' | 'fail' | 'hang-finish';
   } = {},
 ) {
   const lifecycle: string[] = [];
@@ -99,8 +99,12 @@ function toyEngine(
             return { env: { TOY_POOL: 'sim-a,sim-b', TOY_CACHE: '/overwritten' } };
           },
           // Releases what prepare acquired: after the last worker, on every exit path.
-          async finish(info: { env: NodeJS.ProcessEnv; log: (line: string) => void }) {
+          async finish(info: { env: NodeJS.ProcessEnv; signal: AbortSignal; log: (line: string) => void }) {
             lifecycle.push('finish');
+            if (options.withPrepare === 'hang-finish') {
+              // Ignores its signal on purpose: the runner must not wait on it.
+              await new Promise(() => undefined);
+            }
             info.log(`releasing toy device for ${info.env['TOY_CACHE'] ?? 'no cache'}`);
           },
         }),
@@ -483,6 +487,33 @@ test('second attempt also starts fresh', async ({ screen }) => {
       expect(errors).toHaveLength(1);
       expect(errors[0]?.message).toContain('toolchain missing');
       expect(errors[0]?.phase).toBe('launch');
+    } finally {
+      project.cleanup();
+    }
+  });
+
+  it('abandons a finish hook that outlives the cleanup budget as a cleanup error instead of hanging the run', async () => {
+    const toy = toyEngine({ withLocate: true, withPrepare: 'hang-finish' });
+    const project = createProject({ 'tests/screen.e2e.ts': DETERMINISTIC_SUITE });
+    const errors: { code: string; phase: string | undefined }[] = [];
+    try {
+      const outcome = await run({
+        cwd: project.dir,
+        rawConfig: {
+          targets: [{ name: 'toy-sim', platform: 'ios', engine: toy.engine }],
+          cache: 'off',
+          cleanupTimeout: 300,
+        },
+        env: { ...process.env, APP_URL: '', CI: '' },
+        quiet: true,
+        onEvent: (event) => {
+          if (event.type === 'run-error') errors.push({ code: event.error.code, phase: event.error.phase });
+        },
+      });
+      // The tests ran and passed; only the teardown is in error, and the run still reported.
+      expect(outcome.results.map((result) => result.status)).toEqual(['passed']);
+      expect(toy.lifecycle).toEqual(['prepare', 'init', 'dispose', 'finish']);
+      expect(errors).toEqual([{ code: 'CLEANUP_TIMEOUT', phase: 'cleanup' }]);
     } finally {
       project.cleanup();
     }
