@@ -95,7 +95,7 @@ describe('relocation with a recorded position', () => {
     expect(readTraceEntry(stored)?.payload.actions[0]).toMatchObject({
       target: { position: { index: 1, of: 3 } },
     });
-    for (const position of [{ index: 3, of: 3 }, { index: -1, of: 3 }, { index: 0, of: 1 }, { index: '1', of: 3 }, 'second']) {
+    for (const position of [{ index: 3, of: 3 }, { index: -1, of: 3 }, { index: 0, of: 0 }, { index: '1', of: 3 }, 'second']) {
       const broken = JSON.parse(JSON.stringify(stored));
       broken.payload.actions[0].target.position = position;
       expect(readTraceEntry(broken)).toBeUndefined();
