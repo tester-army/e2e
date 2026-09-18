@@ -35,7 +35,8 @@ npx e2e run --no-cache
 
 ## How a replay works
 
-1. Check the starting page. Retries always run live.
+1. Check the starting page, up to the ids the app mints per record. Retries
+   always run live.
 2. Find each recorded control and repeat its action. The runner matches
    controls by their role, name, test id, and surrounding context. It waits
    for missing controls and stops if a match is ambiguous.

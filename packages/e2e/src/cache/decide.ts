@@ -82,7 +82,10 @@ export type TraceReplayDecision =
  * Decides whether one entry replays for the current step. A trace that does
  * not open with a navigate carries a start-path precondition: the app must
  * be on the page where the recording began, or the recorded actions would
- * run against a different screen than they were proven on.
+ * run against a different screen than they were proven on. "The page" is
+ * the path up to the ids the app mints per record (`samePathShape`), as at
+ * the end of a trace: a step that edits the record a previous step created
+ * starts on `/companies/<id>`, and that id is new on every run.
  */
 export function decideTraceReplay(
   entry: TraceEntry,
@@ -91,7 +94,7 @@ export function decideTraceReplay(
   if (entry.payload.truncated === true) return { action: 'miss', reason: 'truncated' };
   if (!opensWithNavigate(entry.payload)) {
     const startPath = entry.payload.startPath;
-    if (startPath === undefined || currentPath === undefined || !samePathname(startPath, currentPath)) {
+    if (startPath === undefined || currentPath === undefined || !samePathShape(startPath, currentPath)) {
       return { action: 'miss', reason: 'wrong-context' };
     }
   }
