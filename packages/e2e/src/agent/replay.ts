@@ -172,18 +172,21 @@ export async function replayTrace(
 ): Promise<ReplayOutcome> {
   const summaries: string[] = [];
   const total = trace.actions.length;
-  const stop = (stopReason: ReplayHandOffReason): ReplayOutcome => ({
-    completed: false,
-    executed: summaries.length,
-    total,
-    summaries,
-    stopReason,
-  });
+  const stop = (stopReason: ReplayHandOffReason, partial?: string): ReplayOutcome => {
+    if (partial !== undefined) summaries.push(partial);
+    return { completed: false, executed: summaries.length, total, summaries, stopReason };
+  };
 
   for (const action of trace.actions) {
     if (!host.traceEligible) return stop('action-failed');
     const planned = planCall(action, host.actions);
     if (planned.kind === 'gap') return stop('gap');
+    // Repeats of a folded scroll done before it failed moved the screen: the
+    // hand-off counts them as executed, so the executor is not told the
+    // screen is untouched.
+    let repeated = 0;
+    const partial = (): string | undefined =>
+      repeated === 0 || planned.kind !== 'scroll' ? undefined : `${action.summary} (${String(repeated)} of ${String(planned.times)} repeats)`;
     try {
       switch (planned.kind) {
         case 'targeted': {
@@ -199,7 +202,8 @@ export async function replayTrace(
           for (let index = 0; index < planned.times; index += 1) {
             if (index > 0) await host.observeSettled();
             const lost = await scrollOnce(host, planned);
-            if (lost !== undefined) return stop(lost);
+            if (lost !== undefined) return stop(lost, partial());
+            repeated += 1;
           }
           break;
         }
@@ -229,9 +233,9 @@ export async function replayTrace(
         // Input may have reached the app (spec 09): the hand-off must name
         // the uncertain action so the executor verifies before re-acting —
         // the runner never repeats an unknown-commit operation itself.
-        return { ...stop('action-uncertain'), uncertainAction: action.summary };
+        return { ...stop('action-uncertain', partial()), uncertainAction: action.summary };
       }
-      return stop('action-failed');
+      return stop('action-failed', partial());
     }
     summaries.push(action.summary);
   }

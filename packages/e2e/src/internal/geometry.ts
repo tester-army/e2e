@@ -37,8 +37,15 @@ export function overlapShare(a: Box, b: Box): number {
   return union <= 0 ? 0 : shared / union;
 }
 
-/** The share of a viewport a box covers, 0 to 1; 0 for a viewport without area. */
+/**
+ * The share of a viewport a box covers, 0 to 1: only the part of the box
+ * inside the viewport counts, so a tall list mostly below the fold is not
+ * the main list. 0 for a viewport without area.
+ */
 export function viewportShare(box: Box, viewport: ViewportSize): number {
   if (viewport.width <= 0 || viewport.height <= 0) return 0;
-  return clamp((box.width * box.height) / (viewport.width * viewport.height), 0, 1);
+  const width = Math.min(box.x + box.width, viewport.width) - Math.max(box.x, 0);
+  const height = Math.min(box.y + box.height, viewport.height) - Math.max(box.y, 0);
+  if (width <= 0 || height <= 0) return 0;
+  return clamp((width * height) / (viewport.width * viewport.height), 0, 1);
 }

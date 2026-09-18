@@ -310,6 +310,20 @@ describe('replayTrace: bare-point taps', () => {
     expect(targets).toEqual([{ direction: 'down', t: undefined }, { direction: 'down', t: undefined }]);
   });
 
+  it('counts the repeats of a folded scroll that ran before a later one lost the list', async () => {
+    const list: SemanticNode = { ref: { id: 'g1', revision: 'r1' }, role: 'group', name: 'Rows 1 to 12', rect: { x: 0, y: 0, width: 390, height: 300 } };
+    const host = makeHost({ nodes: [list, email] });
+    host.observe = async () => {
+      host.observations += 1;
+      // The list leaves the tree after the first scroll.
+      return screen(host.calls.includes('scroll') ? [email] : [list, email]);
+    };
+    const outcome = await replayTrace(host, trace([{ name: 'scroll', summary: 'scroll down x3', direction: 'down', target: { role: 'group', name: 'Rows 1 to 12' }, times: 3, spans: 0.3 }]));
+    expect(outcome).toMatchObject({ completed: false, executed: 1, stopReason: 'target-not-found' });
+    expect(outcome.summaries).toEqual(['scroll down x3 (1 of 3 repeats)']);
+    expect(host.calls).toEqual(['scroll']);
+  });
+
   it('hands off when a smaller scrolled region cannot be re-found, never scrolling the viewport for it', async () => {
     const host = makeHost({ nodes: [email] });
     const carousel = { role: 'group', name: 'Recommended' };

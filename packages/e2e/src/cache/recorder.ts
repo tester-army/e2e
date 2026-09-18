@@ -221,7 +221,11 @@ export class TraceRecorder {
     // to its end fits the trace, and replays with the same repeats.
     const last = this.actions[this.actions.length - 1];
     if (action.name === 'scroll' && last?.name === 'scroll' && sameScroll(last, action)) {
-      this.actions[this.actions.length - 1] = { ...last, times: (last.times ?? 1) + 1 };
+      // The smallest coverage of the repeats decides the viewport fallback,
+      // so a list that shrank on the way is never promoted by its first size.
+      const { spans: previous, ...rest } = last;
+      const spans = previous === undefined || action.spans === undefined ? undefined : Math.min(previous, action.spans);
+      this.actions[this.actions.length - 1] = { ...rest, times: (last.times ?? 1) + 1, ...(spans === undefined ? {} : { spans }) };
       return;
     }
     if (this.actions.length >= this.maxActions) {

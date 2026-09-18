@@ -102,6 +102,20 @@ describe('TraceRecorder', () => {
     expect(oversized.finalize(conclusion)?.truncated).toBe(true);
   });
 
+  it('keeps the smallest coverage when folding scrolls, and none when a repeat lacks one', () => {
+    const list: SemanticNode = { ref: { id: 'l1', revision: 'r1' }, role: 'group', name: 'Rows', rect: { x: 0, y: 0, width: 390, height: 500 } };
+    const recorder = makeRecorder();
+    recorder.record({ name: 'scroll', direction: 'down', node: list, spans: 0.6 });
+    recorder.record({ name: 'scroll', direction: 'down', node: list, spans: 0.4 });
+    expect(recorder.finalize(conclusion)?.actions[0]).toMatchObject({ name: 'scroll', times: 2, spans: 0.4 });
+    const mixed = makeRecorder();
+    mixed.record({ name: 'scroll', direction: 'down', node: list, spans: 0.6 });
+    mixed.record({ name: 'scroll', direction: 'down', node: list });
+    const folded = mixed.finalize(conclusion)?.actions[0];
+    expect(folded).toMatchObject({ name: 'scroll', times: 2 });
+    expect(folded).not.toHaveProperty('spans');
+  });
+
   it('folds consecutive identical scrolls into one action with a repeat count', () => {
     const recorder = makeRecorder({ maxActions: 3 });
     for (let i = 0; i < 5; i += 1) recorder.record({ name: 'scroll', direction: 'down' });
