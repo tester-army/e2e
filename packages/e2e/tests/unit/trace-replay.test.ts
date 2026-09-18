@@ -159,6 +159,28 @@ describe('replayTrace', () => {
     expect(outcome).toMatchObject({ completed: false, executed: 0, stopReason: 'target-not-found' });
   }, 15_000);
 
+  it('keeps looking while a positioned target is ambiguous, since a form still rendering shows fewer twins', async () => {
+    const unnamed = (id: string): SemanticNode => ({ ref: { id, revision: 'r1' }, role: 'textbox' });
+    const host = makeHost({ nodes: [unnamed('a')] });
+    let looks = 0;
+    host.observe = async () => {
+      looks += 1;
+      // The first look shows one unnamed textbox where the recording counted two; the form finishes rendering after that.
+      return screen(looks < 3 ? [unnamed('a')] : [unnamed('a'), unnamed('b')]);
+    };
+    const outcome = await replayTrace(host, trace([{ name: 'type', summary: 'type "x" into textbox (2 of 2)', target: { role: 'textbox', position: { index: 1, of: 2 } }, value: 'x' }]));
+    expect(outcome).toMatchObject({ completed: true, executed: 1 });
+    expect(host.calls).toEqual(['type']);
+  });
+
+  it('still diverges at once on ambiguity for a target with no recorded position', async () => {
+    const twin: SemanticNode = { ref: { id: 'n9', revision: 'r1' }, role: 'button', name: 'Upgrade' };
+    const host = makeHost({ nodes: [upgrade, twin, email] });
+    const outcome = await replayTrace(host, trace([tapUpgrade]));
+    expect(outcome).toMatchObject({ completed: false, executed: 0, stopReason: 'target-ambiguous' });
+    expect(host.observations).toBeLessThan(3);
+  });
+
   it('relocates by semantic identity when a recorded test id churned', async () => {
     const churned: SemanticNode = {
       ref: { id: 'n5', revision: 'r1' },

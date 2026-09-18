@@ -629,7 +629,8 @@ function readPosition(document: unknown): TracePosition | undefined {
   if (typeof document !== 'object' || document === null || Array.isArray(document)) return undefined;
   const { index, of } = document as Record<string, unknown>;
   if (!Number.isSafeInteger(index) || !Number.isSafeInteger(of)) return undefined;
-  if ((of as number) < 2 || (of as number) > MAX_TRACE_POSITION_OF) return undefined;
+  // `of: 1` is an anonymous target counted alone (`describePosition`); a named target never records a position under two.
+  if ((of as number) < 1 || (of as number) > MAX_TRACE_POSITION_OF) return undefined;
   if ((index as number) < 0 || (index as number) >= (of as number)) return undefined;
   return { index: index as number, of: of as number };
 }

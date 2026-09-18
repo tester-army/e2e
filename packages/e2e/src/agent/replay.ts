@@ -260,22 +260,29 @@ const END_WAIT_POLL_MS = 1_000;
 const END_WAIT_RESERVE_MS = 20_000;
 
 /**
- * Relocates one descriptor against the settling screen. Only a missing target
- * is worth another look; ambiguity never retries — two matching nodes will
- * not become one by waiting, and acting on either would be a guess.
+ * Relocates one descriptor against the settling screen. A missing target is
+ * worth another look. So is ambiguity for a descriptor that recorded its
+ * position among twins: a form still rendering shows fewer of them than the
+ * recording counted, and the count catches up. Ambiguity for a descriptor
+ * without a position never retries — two matching nodes will not become one
+ * by waiting, and acting on either would be a guess.
  */
 async function relocate(
   host: ReplayHost,
   descriptor: TraceTargetDescriptor,
 ): Promise<Relocated> {
   const options = { redact: host.redact };
+  let last: Relocated = { kind: 'failed', failure: 'target-not-found' };
   const settled = await pollSettled(host, ({ nodes }): Relocated | undefined => {
     const result = relocateDescriptor(descriptor, nodes, options);
-    if (result.kind === 'failed') return result.failure === 'target-not-found' ? undefined : result;
+    if (result.kind === 'failed') {
+      last = result;
+      return result.failure === 'target-not-found' || descriptor.position !== undefined ? undefined : result;
+    }
     const node = nodes.get(result.id);
     return node === undefined ? undefined : { kind: 'found', id: result.id, node };
   });
-  return settled ?? { kind: 'failed', failure: 'target-not-found' };
+  return settled ?? last;
 }
 
 /** A relocation with the node it found, for a replay that needs its box. */
