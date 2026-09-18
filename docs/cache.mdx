@@ -35,8 +35,9 @@ npx e2e run --no-cache
 
 ## How a replay works
 
-1. Check the starting page, up to the ids the app mints per record. Retries
-   always run live.
+1. Check the starting screen: the same route, whatever the record id, the
+   query, or the fragment. A slug the runner cannot tell from a route word is
+   decided by the screen's controls. Retries always run live.
 2. Find each recorded control and repeat its action. The runner matches
    controls by their role, name, test id, and surrounding context. It waits
    for missing controls and stops if a match is ambiguous. A control with no
@@ -117,7 +118,7 @@ Cancelling a run leaves the cache unchanged.
 | `retry` | Retries never replay. | Nothing. |
 | `invalid-entry` | The file is unreadable, over 1 MiB, or from another schema version. | `npx e2e cache clear`. |
 | `truncated` | More than 50 actions, a typed value or URL over 4,096 characters or containing a registered secret, or a control with no usable description. | Split the step, or pass the secret as a `Secret`. |
-| `wrong-context` | The app was on another path than when the step was recorded. The query string is ignored. | Open the same route before the step. |
+| `wrong-context` | The app was on another screen than when the step was recorded: a different route, not a different record, query, or fragment. | Open the same screen before the step. |
 | `target-not-found` | A recorded control did not appear within 15 seconds. | The UI changed. The next passing run re-records. |
 | `target-ambiguous` | The number of matching controls changed. | Give repeated controls distinct names or use unique test data. |
 | `gap` | An action cannot be replayed, such as a mutating project tool or typing a value read from the app. | The agent continues this part live. |

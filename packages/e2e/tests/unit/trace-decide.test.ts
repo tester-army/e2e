@@ -1,70 +1,99 @@
-/** Path comparison for the replay precondition and postcondition: exact, or the same shape up to minted ids. */
+/** The replay precondition: the screen the recording began on, as a route, with the screen itself as the arbiter. */
 
 import { describe, expect, it } from 'vitest';
-import { decideTraceReplay, samePathShape, samePathname } from '../../src/cache/decide.ts';
+import { decideTraceReplay, type ReplayContext } from '../../src/cache/decide.ts';
+import { screenSignature } from '../../src/cache/route.ts';
 import { buildTraceEntry, type TraceEntry } from '../../src/cache/trace.ts';
+import type { SemanticNode } from '../../src/engine/surface.ts';
+import { createRedactor } from '../../src/internal/redact.ts';
 
-describe('samePathShape', () => {
-  it('accepts the same pathname, query aside', () => {
-    expect(samePathShape('/projects', '/projects?tab=tests')).toBe(true);
-    expect(samePathname('/projects', '/projects?tab=tests')).toBe(true);
-  });
+const redact = createRedactor(new Map());
 
-  it('accepts a minted id in place of another', () => {
-    expect(
-      samePathShape('/dashboard/e2e-45961c4c/projects/a77c12665e90', '/dashboard/e2e-45961c4c/projects/0c1d2e3f4a5b'),
-    ).toBe(true);
-    expect(
-      samePathShape('/runs/3f2504e0-4f89-11d3-9a0c-0305e82c3301', '/runs/9c858901-8a57-4791-81fe-4c455b099bc9'),
-    ).toBe(true);
-    expect(samePathShape('/orders/48213', '/orders/48901')).toBe(true);
-    expect(samePathShape('/projects/h6oOdrnB-LwS', '/projects/abcdEFGHijkl')).toBe(true);
-  });
+function node(id: string, role: string, name: string): SemanticNode {
+  return { ref: { id, revision: 'r' }, role, name };
+}
 
-  it('never takes a plain word for a minted id', () => {
-    expect(samePathShape('/projects/integrations', '/projects/testaccounts')).toBe(false);
-    expect(samePathShape('/projects/h6oOdrnB-LwS', '/projects/integrations')).toBe(false);
-  });
+function screen(...list: SemanticNode[]): ReadonlyMap<string, SemanticNode> {
+  return new Map(list.map((item) => [item.ref.id, item]));
+}
 
-  it('rejects a differing segment that is not minted on both sides', () => {
-    expect(samePathShape('/projects/a77c12665e90', '/projects/new')).toBe(false);
-    expect(samePathShape('/settings/general', '/settings/members')).toBe(false);
-    expect(samePathShape('/projects/a77c12665e90', '/customers/a77c12665e90')).toBe(false);
-  });
+const productPage = screen(
+  node('h', 'heading', 'Edit product'),
+  node('b1', 'button', 'Save'),
+  node('b2', 'button', 'Delete product'),
+  node('t1', 'tab', 'General data'),
+  node('t2', 'tab', 'Variants'),
+  node('l1', 'link', 'Products & services'),
+);
+const companyPage = screen(
+  node('h', 'heading', 'Company'),
+  node('b1', 'button', 'Save'),
+  node('b2', 'button', 'Delete company'),
+  node('t1', 'tab', 'Identity'),
+  node('t2', 'tab', 'Contacts'),
+  node('l1', 'link', 'Companies'),
+);
 
-  it('rejects a different depth', () => {
-    expect(samePathShape('/projects/a77c12665e90', '/projects/a77c12665e90/tests')).toBe(false);
-    expect(samePathShape('/projects', '/projects/a77c12665e90')).toBe(false);
+function entry(startPath: string, options: { first?: 'tap' | 'navigate'; startScreen?: readonly string[] } = {}): TraceEntry {
+  return buildTraceEntry({
+    actions:
+      options.first === 'navigate'
+        ? [{ name: 'navigate', summary: 'navigate to "/companies"', url: '/companies' }]
+        : [{ name: 'tap', summary: 'tap button "Save"', target: { role: 'button', name: 'Save' } }],
+    executor: { name: 'test' },
+    summary: 'saved',
+    startPath,
+    ...(options.startScreen === undefined ? {} : { startScreen: options.startScreen }),
   });
-});
+}
+
+function at(path: string | undefined, nodes?: ReadonlyMap<string, SemanticNode>, knownValues: readonly string[] = []): ReplayContext {
+  return { path, nodes, knownValues, redact };
+}
 
 describe('decideTraceReplay', () => {
-  const entry = (startPath: string, first: 'tap' | 'navigate' = 'tap'): TraceEntry =>
-    buildTraceEntry({
-      actions:
-        first === 'navigate'
-          ? [{ name: 'navigate', summary: 'navigate to "/companies"', url: '/companies' }]
-          : [{ name: 'tap', summary: 'tap button "Save"', target: { role: 'button', name: 'Save' } }],
-      executor: { name: 'test' },
-      summary: 'saved',
-      startPath,
-    });
-
-  it('replays on the page the recording began on, up to the id the app minted for the record', () => {
+  it('replays on the same route, whatever the record id, the query, or the fragment', () => {
     const recorded = entry('/backend/customers/companies-v2/ad3339e0-074f-45e0-b778-3dee8ab545eb');
-    expect(decideTraceReplay(recorded, '/backend/customers/companies-v2/8374a7a7-a64a-422d-9183-4350756c7f07')).toEqual({ action: 'replay' });
-    expect(decideTraceReplay(recorded, '/backend/customers/companies-v2/8374a7a7-a64a-422d-9183-4350756c7f07?tab=notes')).toEqual({ action: 'replay' });
-    expect(decideTraceReplay(entry('/backend/sales/documents/01dbf481-05ee-4522-ba14-f91737953533?kind=quote'), '/backend/sales/documents/f08b47d3-7fda-43c3-a2e3-09f5c365fb44?kind=quote')).toEqual({ action: 'replay' });
+    expect(decideTraceReplay(recorded, at('/backend/customers/companies-v2/8374a7a7-a64a-422d-9183-4350756c7f07'))).toEqual({ action: 'replay' });
+    expect(decideTraceReplay(recorded, at('/backend/customers/companies-v2/8374a7a7-a64a-422d-9183-4350756c7f07?tab=notes#top'))).toEqual({ action: 'replay' });
+    expect(decideTraceReplay(entry('/orders/42'), at('/orders/43917'))).toEqual({ action: 'replay' });
   });
 
-  it('still misses on another page, and on a plain word in place of another', () => {
+  it('misses on another route, and without a location', () => {
     const recorded = entry('/backend/customers/companies-v2/ad3339e0-074f-45e0-b778-3dee8ab545eb');
-    expect(decideTraceReplay(recorded, '/backend/customers/people-v2/8374a7a7-a64a-422d-9183-4350756c7f07')).toEqual({ action: 'miss', reason: 'wrong-context' });
-    expect(decideTraceReplay(entry('/settings/billing'), '/settings/members')).toEqual({ action: 'miss', reason: 'wrong-context' });
-    expect(decideTraceReplay(recorded, undefined)).toEqual({ action: 'miss', reason: 'wrong-context' });
+    expect(decideTraceReplay(recorded, at('/backend/customers/people-v2/8374a7a7-a64a-422d-9183-4350756c7f07'))).toEqual({ action: 'miss', reason: 'wrong-context' });
+    expect(decideTraceReplay(entry('/settings/billing'), at('/settings/members'))).toEqual({ action: 'miss', reason: 'wrong-context' });
+    expect(decideTraceReplay(recorded, at(undefined))).toEqual({ action: 'miss', reason: 'wrong-context' });
+  });
+
+  it('recognizes a record by the value this call marked, in any spelling a URL gives it', () => {
+    // The recorded path reaches the decision with this call's value already filled in (`expandTrace`),
+    // so both sides carry the same value, possibly spelled differently by the app and by the recording.
+    const known = ['E2E xyz Sneaker'];
+    expect(decideTraceReplay(entry('/products/e2e-xyz-sneaker'), at('/products/E2E%20xyz%20Sneaker', undefined, known))).toEqual({ action: 'replay' });
+    expect(decideTraceReplay(entry('/products/E2E xyz Sneaker'), at('/products/e2e-xyz-sneaker', undefined, known))).toEqual({ action: 'replay' });
+    // Without the value, a slug is a route word and two of them differ.
+    expect(decideTraceReplay(entry('/products/e2e-abc-sneaker'), at('/products/e2e-xyz-sneaker'))).toEqual({ action: 'miss', reason: 'wrong-context' });
+  });
+
+  it('lets the screen decide a slug it cannot recognize, and only the screen', () => {
+    const recordedOnProduct = entry('/products/summer-sneaker', { startScreen: screenSignature(productPage, { redact }) });
+    expect(decideTraceReplay(recordedOnProduct, at('/products/winter-boot', productPage))).toEqual({ action: 'replay' });
+    // Same slug shape, another screen: the signature does not match.
+    expect(decideTraceReplay(recordedOnProduct, at('/products/winter-boot', companyPage))).toEqual({ action: 'miss', reason: 'wrong-context' });
+    // No signature recorded, or no screen observed: a slug difference is another route.
+    expect(decideTraceReplay(entry('/products/summer-sneaker'), at('/products/winter-boot', productPage))).toEqual({ action: 'miss', reason: 'wrong-context' });
+    expect(decideTraceReplay(recordedOnProduct, at('/products/winter-boot'))).toEqual({ action: 'miss', reason: 'wrong-context' });
+    // Two unexplained differences are never the same screen, whatever it shows.
+    expect(decideTraceReplay(entry('/shop/summer/sneaker', { startScreen: screenSignature(productPage, { redact }) }), at('/shop/winter/boot', productPage))).toEqual({ action: 'miss', reason: 'wrong-context' });
   });
 
   it('needs no starting point when the recording opens with a navigate', () => {
-    expect(decideTraceReplay(entry('/anywhere', 'navigate'), '/elsewhere')).toEqual({ action: 'replay' });
+    expect(decideTraceReplay(entry('/anywhere', { first: 'navigate' }), at('/elsewhere'))).toEqual({ action: 'replay' });
+  });
+
+  it('compares a device screen title as itself', () => {
+    expect(decideTraceReplay(entry('Settings'), at('Settings'))).toEqual({ action: 'replay' });
+    expect(decideTraceReplay(entry('Settings'), at('General'))).toEqual({ action: 'miss', reason: 'wrong-context' });
   });
 });

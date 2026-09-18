@@ -25,7 +25,7 @@ import type { TracePosition, TraceTargetDescriptor } from './trace.ts';
  * change, because an entry recorded under different rules could relocate to a
  * different node.
  */
-export const REPLAY_POLICY_VERSION = 'conservative/3';
+export const REPLAY_POLICY_VERSION = 'conservative/4';
 
 export type RelocationFailure = 'target-not-found' | 'target-ambiguous';
 

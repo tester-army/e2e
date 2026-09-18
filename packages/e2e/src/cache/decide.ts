@@ -8,55 +8,10 @@
  * entry alone cannot: is it whole, and is the app where the recording began?
  */
 
+import type { SemanticNode } from '../engine/surface.ts';
+import type { DescriptorMatchOptions } from './relocate.ts';
+import { routeOf, sameRoute, screenSignature, signatureMatches } from './route.ts';
 import type { ActionTrace, TraceEntry } from './trace.ts';
-
-/**
- * Whether two recorded locations are the same page. Pathname only, at both
- * ends of a trace: a volatile query string (`?utm=…`, a cache-busting stamp)
- * must not break zero-turn, and the relocated targets and end anchors — not
- * the query — are what prove the screen is the one the flow was proven on.
- */
-export function samePathname(a: string, b: string): boolean {
-  return pathnameOf(a) === pathnameOf(b);
-}
-
-function pathnameOf(path: string): string {
-  return path.split('?')[0] ?? path;
-}
-
-/**
- * A path segment the app mints per record: a uuid, a hex or digit run of
- * eight or more, or a long random token (twelve or more url-safe characters
- * carrying a digit or both letter cases, which a plain lowercase word such as
- * `integrations` never does). Only such segments may differ between two
- * paths of the same shape.
- */
-const MINTED_SEGMENT: readonly RegExp[] = [
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
-  /^[0-9a-f]{8,}$/i,
-  /^\d{4,}$/,
-  /^(?=.*(?:\d|[a-z][A-Za-z0-9_-]*[A-Z]|[A-Z][A-Za-z0-9_-]*[a-z]))[A-Za-z0-9_-]{12,}$/,
-];
-
-/**
- * Whether a live end path is the recorded one up to the identifiers the app
- * mints per record. A step that creates something ends on that thing's page,
- * and the next run's record has a different id, so an exact path could never
- * match again. Same segment count; every segment equal, or different only
- * where both look minted (`MINTED_SEGMENT`). The query is ignored as in
- * `samePathname`.
- */
-export function samePathShape(recorded: string, live: string): boolean {
-  if (samePathname(recorded, live)) return true;
-  const expected = pathnameOf(recorded).split('/');
-  const actual = pathnameOf(live).split('/');
-  if (expected.length !== actual.length) return false;
-  return expected.every((segment, index) => {
-    const other = actual[index] ?? '';
-    if (segment === other) return true;
-    return MINTED_SEGMENT.some((pattern) => pattern.test(segment) && pattern.test(other));
-  });
-}
 
 /**
  * Whether a trace establishes its own starting point by navigating first.
@@ -78,25 +33,34 @@ export type TraceReplayDecision =
   | { readonly action: 'replay' }
   | { readonly action: 'miss'; readonly reason: 'truncated' | 'wrong-context' };
 
+/** The live screen a replay is decided against. */
+export interface ReplayContext extends DescriptorMatchOptions {
+  /** The location the engine reports now, when it reports one. */
+  readonly path: string | undefined;
+  /** The semantic screen now, when it could be observed; the arbiter for a route the path alone cannot settle. */
+  readonly nodes: ReadonlyMap<string, SemanticNode> | undefined;
+  /** This call's `unique()` values, which name a record wherever they appear in a path. */
+  readonly knownValues: readonly string[];
+}
+
 /**
  * Decides whether one entry replays for the current step. A trace that does
- * not open with a navigate carries a start-path precondition: the app must
- * be on the page where the recording began, or the recorded actions would
- * run against a different screen than they were proven on. "The page" is
- * the path up to the ids the app mints per record (`samePathShape`), as at
- * the end of a trace: a step that edits the record a previous step created
- * starts on `/companies/<id>`, and that id is new on every run.
+ * not open with a navigate carries a start precondition: the app must be on
+ * the screen where the recording began, or the recorded actions would run
+ * against a different screen than they were proven on. The screen is its
+ * route (`routeOf`), not its URL; where the route alone cannot tell, the
+ * recorded signature of the start screen against the live one does.
  */
-export function decideTraceReplay(
-  entry: TraceEntry,
-  currentPath: string | undefined,
-): TraceReplayDecision {
-  if (entry.payload.truncated === true) return { action: 'miss', reason: 'truncated' };
-  if (!opensWithNavigate(entry.payload)) {
-    const startPath = entry.payload.startPath;
-    if (startPath === undefined || currentPath === undefined || !samePathShape(startPath, currentPath)) {
-      return { action: 'miss', reason: 'wrong-context' };
-    }
-  }
-  return { action: 'replay' };
+export function decideTraceReplay(entry: TraceEntry, context: ReplayContext): TraceReplayDecision {
+  const trace = entry.payload;
+  if (trace.truncated === true) return { action: 'miss', reason: 'truncated' };
+  if (opensWithNavigate(trace)) return { action: 'replay' };
+  if (trace.startPath === undefined || context.path === undefined) return { action: 'miss', reason: 'wrong-context' };
+  const recorded = routeOf(trace.startPath, context.knownValues);
+  const live = routeOf(context.path, context.knownValues);
+  const sameScreen = sameRoute(recorded, live, () => {
+    if (trace.startScreen === undefined || context.nodes === undefined) return false;
+    return signatureMatches(trace.startScreen, screenSignature(context.nodes, context, context.knownValues));
+  });
+  return sameScreen ? { action: 'replay' } : { action: 'miss', reason: 'wrong-context' };
 }

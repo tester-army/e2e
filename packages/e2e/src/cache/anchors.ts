@@ -102,7 +102,7 @@ function isBareNumber(anchor: TraceTargetDescriptor): boolean {
   return label !== undefined && /^\d+$/.test(label) && anchor.testId === undefined && (anchor.name === undefined || anchor.text === undefined || anchor.name === anchor.text);
 }
 
-function isVolatileAnchor(anchor: TraceTargetDescriptor): boolean {
+export function isVolatileAnchor(anchor: TraceTargetDescriptor): boolean {
   return (
     isBareNumber(anchor) ||
     [anchor.text, anchor.name].some((value) => value !== undefined && VOLATILE_TEXT.some((pattern) => pattern.test(value)))

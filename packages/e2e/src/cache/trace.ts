@@ -16,6 +16,7 @@
  * `undefined`, never as a repaired or partially trusted entry.
  */
 
+import { MAX_SCREEN_SIGNATURE, MAX_SCREEN_SIGNATURE_CHARS } from './route.ts';
 import { timestamp } from '../internal/ids.ts';
 import type { ScrollDirection } from '../types.ts';
 
@@ -230,6 +231,13 @@ export interface ActionTrace {
   /** Location path when the step began; a precondition unless the trace opens with navigate. */
   readonly startPath?: string;
   /**
+   * The start screen's signature (`cache/route.ts`): the controls a user would
+   * name the screen by. Decides the precondition where the route alone cannot,
+   * when the recorded and live paths differ in one segment the runner could
+   * not recognize as a record, such as a slug.
+   */
+  readonly startScreen?: readonly string[];
+  /**
    * Location path when the step passed — the trace's deterministic postcondition.
    * A full replay self-finalizes only while the live pathname still matches;
    * a recorded flow whose destination changed hands off instead of passing.
@@ -323,6 +331,8 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
       return undefined;
     }
   }
+  const startScreen = readScreenSignature(raw['startScreen']);
+  if (raw['startScreen'] !== undefined && startScreen === undefined) return undefined;
   const truncated = raw['truncated'];
   if (truncated !== undefined && typeof truncated !== 'boolean') return undefined;
 
@@ -365,11 +375,24 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
     ...(recordedFor === undefined ? {} : { recordedFor }),
     summary,
     ...(startPath === undefined ? {} : { startPath }),
+    ...(startScreen === undefined || startScreen.length === 0 ? {} : { startScreen }),
     ...(endPath === undefined ? {} : { endPath }),
     ...(endAnchors === undefined || endAnchors.length === 0 ? {} : { endAnchors }),
     ...(endWaitMs === undefined ? {} : { endWaitMs }),
     ...(truncated === undefined ? {} : { truncated }),
   };
+}
+
+/** `startScreen`: a bounded list of bounded, non-empty strings. */
+function readScreenSignature(value: unknown): readonly string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > MAX_SCREEN_SIGNATURE) return undefined;
+  const out: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== 'string' || entry === '' || entry.length > MAX_SCREEN_SIGNATURE_CHARS) return undefined;
+    out.push(entry);
+  }
+  return out;
 }
 
 function readRecordedAction(document: unknown): RecordedAction | undefined {
@@ -584,6 +607,15 @@ export function mapTraceText(trace: ActionTrace, map: TraceTextMap): ActionTrace
   if (summary === undefined || (trace.startPath !== undefined && startPath === undefined) || (trace.endPath !== undefined && endPath === undefined)) {
     return undefined;
   }
+  let startScreen: string[] | undefined;
+  if (trace.startScreen !== undefined) {
+    startScreen = [];
+    for (const entry of trace.startScreen) {
+      const mapped = map(entry);
+      if (mapped === undefined) return undefined;
+      startScreen.push(mapped);
+    }
+  }
   let endAnchors: TraceTargetDescriptor[] | undefined;
   if (trace.endAnchors !== undefined) {
     endAnchors = [];
@@ -598,6 +630,7 @@ export function mapTraceText(trace: ActionTrace, map: TraceTextMap): ActionTrace
     actions,
     summary,
     ...(startPath === undefined ? {} : { startPath }),
+    ...(startScreen === undefined ? {} : { startScreen }),
     ...(endPath === undefined ? {} : { endPath }),
     ...(endAnchors === undefined ? {} : { endAnchors }),
   };

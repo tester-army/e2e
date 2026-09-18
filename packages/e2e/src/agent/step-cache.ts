@@ -12,14 +12,10 @@
  * when replay performed no action.
  */
 
-import { describeAnchors } from '../cache/anchors.ts';
+import { anchorsPresent, describeAnchors } from '../cache/anchors.ts';
 import type { AgentCacheContext } from '../cache/context.ts';
-import {
-  decideTraceReplay,
-  opensWithNavigate,
-  samePathShape,
-  type TraceReplayMissReason,
-} from '../cache/decide.ts';
+import { decideTraceReplay, opensWithNavigate, type TraceReplayMissReason } from '../cache/decide.ts';
+import { routeOf, sameRoute, screenSignature } from '../cache/route.ts';
 import { instructionDigest } from '../cache/identity.ts';
 import { TraceRecorder } from '../cache/recorder.ts';
 import { expandTrace, templateParams, templateTrace, type ParamTemplate } from '../cache/template.ts';
@@ -255,7 +251,12 @@ export class StepTraceSession {
   private async captureStart(): Promise<void> {
     const observation = await probeScreen(this.host, this.recorder !== undefined);
     this.startPath = observation?.path;
-    if (this.recorder !== undefined && observation?.kind === 'semantic') this.startNodes = observation.nodes;
+    if (observation?.kind === 'semantic') this.startNodes = observation.nodes;
+  }
+
+  /** This call's `unique()` values: what names a record wherever it appears in a path. */
+  private get knownValues(): readonly string[] {
+    return this.options.templates.map((template) => template.value);
   }
 
   /**
@@ -272,7 +273,12 @@ export class StepTraceSession {
       this.info = this.missed('truncated', trace.actions.length);
       return undefined;
     }
-    const decision = decideTraceReplay(entry, this.startPath);
+    const decision = decideTraceReplay(entry, {
+      path: this.startPath,
+      nodes: this.startNodes,
+      knownValues: this.knownValues,
+      redact: this.options.redact,
+    });
     if (decision.action === 'miss') {
       this.info = this.missed(decision.reason, trace.actions.length);
       return undefined;
@@ -296,13 +302,14 @@ export class StepTraceSession {
   }
 
   /**
-   * The trace's postcondition against the live screen: the recorded end path
-   * (pathname only, when the live location is known, and up to the ids the
-   * app mints per record) and every recorded end anchor present again.
+   * The trace's postcondition against the live screen: the recorded end
+   * route (`routeOf`, when the live location is known) and every recorded
+   * end anchor present again. Where the routes differ in one segment the
+   * runner cannot recognize as a record, the anchors decide.
    */
   private async endStateMatches(trace: ActionTrace): Promise<boolean> {
     if (!this.host.traceEligible) return false;
-    const initial = await this.endScreen(trace.endPath);
+    const initial = await this.endScreen(trace);
     if (initial === undefined) return false;
     return (await verifyAnchors(this.host, trace.endAnchors ?? [], {
       initial,
@@ -310,13 +317,23 @@ export class StepTraceSession {
     })) && this.host.traceEligible;
   }
 
-  /** Captures the semantic end state once its path matches, retaining it for anchor verification. */
-  private async endScreen(endPath: string | undefined): Promise<Extract<ObservedScreen, { kind: 'semantic' }> | undefined> {
+  /** Captures the semantic end state once its route matches, retaining it for anchor verification. */
+  private async endScreen(trace: ActionTrace): Promise<Extract<ObservedScreen, { kind: 'semantic' }> | undefined> {
     const startedMs = Date.now();
+    const recorded = trace.endPath === undefined ? undefined : routeOf(trace.endPath, this.knownValues);
     for (let attempt = 0; ; attempt += 1) {
       const observation = await probeScreen(this.host, false);
       if (observation?.kind !== 'semantic' || !this.host.traceEligible) return undefined;
-      if (endPath === undefined || observation.path === undefined || samePathShape(endPath, observation.path)) return observation;
+      if (recorded === undefined || observation.path === undefined) return observation;
+      const { nodes } = observation;
+      // A path the runner cannot recognize as the recorded route is the
+      // recorded screen only if the recorded effect is visibly on it; with
+      // no anchors recorded there is nothing to see, and it is another screen.
+      const anchors = trace.endAnchors ?? [];
+      const arrived = sameRoute(recorded, routeOf(observation.path, this.knownValues), () =>
+        anchors.length > 0 && anchorsPresent(anchors, nodes, { redact: this.options.redact }),
+      );
+      if (arrived) return observation;
       const delay = END_PATH_DELAYS_MS[attempt];
       if (
         delay === undefined ||
@@ -388,6 +405,7 @@ export class StepTraceSession {
       },
       summary: this.replayed?.summary ?? verdictSummary ?? 'step passed',
       ...(this.startPath === undefined ? {} : { startPath: this.startPath }),
+      startScreen: screenSignature(this.startNodes, this.options, this.knownValues),
       ...(endPath === undefined ? {} : { endPath }),
       endAnchors,
       // How long the app took to show its end state after the last action,
