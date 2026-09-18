@@ -8,7 +8,7 @@
  */
 
 import { test } from '@e2edev/playwright';
-import { credentials } from '@e2edev/e2e';
+import { credentials } from 'e2e';
 
 test('clean: promo-storefront sells products behind its overlays', async ({ app, agent }) => {
   await app.open('/e/promo-storefront');

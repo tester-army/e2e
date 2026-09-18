@@ -10,7 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@e2edev/e2e": "workspace:*"
+    "e2e": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "26.4.1",
