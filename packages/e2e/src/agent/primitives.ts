@@ -245,7 +245,7 @@ export function createGrammarTools(
       description:
         'Look at the screen again and get what changed since the screen you last received. Action results already include their changes, so call this only after waiting for something in progress, never right after an action.',
       inputSchema: z.object({}),
-      execute: () => inOrder(() => guard(() => present('Observed.', { expectChange: false }))),
+      execute: () => inOrder(() => guard(() => present('Observed.', { expectChange: false, keyboardNote: false }))),
     }),
   };
   if (verbs.has('tap')) {

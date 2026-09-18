@@ -202,6 +202,14 @@ describe('ScreenPresenter and the on-screen keyboard', () => {
     expect(text).not.toContain('keyboard closed');
   });
 
+  it('honours keyboardNote through present, the path the grammar tools take', () => {
+    const presenter = new ScreenPresenter();
+    presenter.open(screen('b1', [...FORM, ...KEYBOARD]));
+    expect(presenter.present(screen('b2', FORM), { lead: 'Dismissed the keyboard.', expectChange: false, keyboardNote: false })).not.toContain('keyboard closed');
+    presenter.present(screen('b3', [...FORM, ...KEYBOARD]), { lead: 'Tapped #n3.' });
+    expect(presenter.present(screen('b4', FORM), { lead: 'Tapped #n7.' })).toContain('The on-screen keyboard closed with this action.');
+  });
+
   it('stays quiet after an explicit dismissal and when the keyboard stays or appears', () => {
     const presenter = new ScreenPresenter();
     presenter.initial(screen('b1', [...FORM, ...KEYBOARD]));

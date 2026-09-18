@@ -67,7 +67,8 @@ export interface ScreenUpdateOptions {
   /**
    * Whether an on-screen keyboard leaving with the action is pointed out,
    * since on a touch screen the tap that closes it may have done nothing
-   * else. Default on; off for the dismissal whose whole point that was.
+   * else. Default on; off for the dismissal whose whole point that was, and
+   * for a plain look, which acted on nothing.
    */
   readonly keyboardNote?: boolean | undefined;
 }
@@ -162,7 +163,7 @@ export class ScreenPresenter {
   present(observation: ExecutorObservation, options: ScreenUpdateOptions = {}): ScreenOutput {
     this.attach(observation);
     const text = this.update(observation, {
-      lead: options.lead,
+      ...options,
       expectChange: this.showingPixels && interactiveNodeCount(observation) === 0 ? false : options.expectChange,
     });
     return this.withScreenshot(observation, text);
