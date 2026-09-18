@@ -318,6 +318,17 @@ describe('replayTrace: bare-point taps', () => {
     expect(points).toEqual([{ x: 300, y: 100 }]);
   });
 
+  it('ignores a hidden look-alike that keeps its box, as the hit test that recorded the point did', async () => {
+    const shown: SemanticNode = { ref: { id: 'a', revision: 'r1' }, role: 'img', name: 'Map', rect: { x: 200, y: 0, width: 200, height: 200 } };
+    const hidden: SemanticNode = { ...shown, ref: { id: 'h', revision: 'r1' }, states: { hidden: true } };
+    const within = { target: { role: 'img', name: 'Map' }, fx: 0.5, fy: 0.5 };
+    const points: unknown[] = [];
+    const host = makeHost({ nodes: [shown, hidden], onAction: (name, detail) => void (name === 'tapAt' && points.push(detail)) });
+    const outcome = await replayTrace(host, trace([{ ...pin, within }]));
+    expect(outcome).toMatchObject({ completed: true, executed: 1 });
+    expect(points).toEqual([{ x: 300, y: 100 }]);
+  });
+
   it('hands off among look-alikes when the point settles nothing or the viewport changed', async () => {
     const left: SemanticNode = { ref: { id: 'a', revision: 'r1' }, role: 'img', name: 'Map', rect: { x: 0, y: 0, width: 200, height: 200 } };
     const right: SemanticNode = { ref: { id: 'b', revision: 'r1' }, role: 'img', name: 'Map', rect: { x: 200, y: 0, width: 200, height: 200 } };

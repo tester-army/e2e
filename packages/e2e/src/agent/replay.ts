@@ -340,8 +340,9 @@ type Relocated =
 
 /**
  * The live box a recorded point is placed in: the re-found node's, or among
- * look-alikes the one that contains the recorded point on a viewport of the
- * recorded size. Undefined when the node is gone or has no box, or the point
+ * the visible look-alikes the one that contains the recorded point on a
+ * viewport of the recorded size, as the hit test that recorded it skipped
+ * hidden nodes. Undefined when the node is gone or has no box, or the point
  * settles nothing: tapping the bare point could press whatever now sits there.
  */
 function boxWithin(relocated: Relocated, planned: Extract<PlannedCall, { kind: 'within' }>): Box | undefined {
@@ -350,7 +351,9 @@ function boxWithin(relocated: Relocated, planned: Extract<PlannedCall, { kind: '
   const { viewport, nodes } = relocated.screen;
   if (viewport.width !== planned.viewport.width || viewport.height !== planned.viewport.height) return undefined;
   const containing = relocated.candidates
-    .map((id) => usableBox(nodes.get(id)?.rect))
+    .map((id) => nodes.get(id))
+    .filter((node): node is SemanticNode => node !== undefined && node.states?.hidden !== true)
+    .map((node) => usableBox(node.rect))
     .filter((box) => box !== undefined && containsPoint(box, planned.point));
   return containing.length === 1 ? containing[0] : undefined;
 }
