@@ -142,11 +142,16 @@ export function prepareObservation(
   };
 }
 
-/** Trace and executor locations use the same capture, without a second engine call. */
+/**
+ * Trace and executor locations use the same capture, without a second engine
+ * call. The fragment is kept only when the app routes in it (`#/companies/1`);
+ * a plain anchor (`#top`) is not part of where the page is.
+ */
 function observationPath(location: string): string {
   if (!URL.canParse(location)) return location;
   const url = new URL(location);
-  return `${url.pathname}${url.search}`;
+  const fragment = url.hash.startsWith('#/') ? url.hash : '';
+  return `${url.pathname}${url.search}${fragment}`;
 }
 
 /** Phase metrics describe a node count only when the capture actually read nodes. */
