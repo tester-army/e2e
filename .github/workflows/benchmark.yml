@@ -56,8 +56,11 @@ jobs:
           # The reporter posts the comment with the job's token.
           GITHUB_TOKEN: ${{ github.token }}
         run: pnpm --filter @e2edev/web-benchmark run ${{ matrix.script }}
+      # The comment is the result; the artifact is evidence for it. A storage
+      # quota that refuses the upload must not turn a green suite red.
       - name: Upload report
         if: ${{ !cancelled() }}
+        continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: web-benchmark-${{ matrix.id }}
@@ -199,8 +202,11 @@ jobs:
           # The reporter posts the comment with the job's token.
           GITHUB_TOKEN: ${{ github.token }}
         run: pnpm --filter @e2edev/mobile-benchmark run ${{ matrix.script }} --target ios-simulator
+      # The comment is the result; the artifact is evidence for it. A storage
+      # quota that refuses the upload must not turn a green suite red.
       - name: Upload report
         if: ${{ !cancelled() }}
+        continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: mobile-benchmark-${{ matrix.id }}
