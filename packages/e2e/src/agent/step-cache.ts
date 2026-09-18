@@ -390,9 +390,12 @@ export class StepTraceSession {
       ...(this.startPath === undefined ? {} : { startPath: this.startPath }),
       ...(endPath === undefined ? {} : { endPath }),
       endAnchors,
-      // What the live run needed to reach its end state, plus room for a
-      // slower day: the budget a replay waits for the anchors to return.
-      endWaitMs: Date.now() - this.startedMs + END_WAIT_MARGIN_MS,
+      // How long the app took to show its end state after the last action,
+      // plus room for a slower day: the budget a replay waits for the anchors
+      // to return. Measured from the last action, not the step's start: the
+      // model's thinking time before that action is no reason for a replay,
+      // which does not think, to wait.
+      endWaitMs: Date.now() - (recorder.lastActionAtMs ?? this.startedMs) + END_WAIT_MARGIN_MS,
     });
     if (trace === undefined) return;
     // A trace with no start anchor — no recorded path (a surface without a URL)

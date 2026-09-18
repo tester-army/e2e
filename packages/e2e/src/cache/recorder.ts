@@ -47,15 +47,23 @@ export class TraceRecorder {
     this.maxActions = Math.min(options.maxActions ?? MAX_TRACE_ACTIONS, MAX_TRACE_ACTIONS);
   }
 
+  private lastActionAt: number | undefined;
+
   /** Number of actions recorded so far, gaps included. */
   get recordedCount(): number {
     return this.actions.length;
+  }
+
+  /** When the last action or gap was recorded; undefined before the first. */
+  get lastActionAtMs(): number | undefined {
+    return this.lastActionAt;
   }
 
   /** Records one committed grammar action. */
   record(action: RecordableAction): void {
     const { target, summary } = describeAction(action, this.redact);
     this.push(this.toRecorded(action, target, summary));
+    this.lastActionAt = Date.now();
   }
 
   /**
@@ -65,6 +73,7 @@ export class TraceRecorder {
    */
   recordGap(toolName: string): void {
     this.push({ name: 'tool', summary: bound(`tool ${this.redact(toolName)}`, MAX_TRACE_SUMMARY_CHARS) });
+    this.lastActionAt = Date.now();
   }
 
   /**

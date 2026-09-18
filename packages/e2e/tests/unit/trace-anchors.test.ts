@@ -131,14 +131,27 @@ describe('describeAnchors', () => {
     expect(describeAnchors(nodes([heading]), end, options)).toEqual([{ text: 'sk_b1bccf4e03c5_...' }]);
   });
 
-  it('does not mistake counts, versions, or short ids for volatile text', () => {
+  it('does not mistake progress, versions, short ids, or a named counter for volatile text', () => {
     const end = nodes([
       heading,
       node('a', { text: '3 / 30 steps' }),
       node('b', { text: 'v2.2.1' }),
       node('c', { text: 'E2E workspace 00d8365e' }),
+      node('d', { role: 'status', name: 'Counter', text: '1' }),
     ]);
-    expect(describeAnchors(nodes([heading]), end, options)).toHaveLength(3);
+    expect(describeAnchors(nodes([heading]), end, options)).toHaveLength(4);
+  });
+
+  it('skips pagination ranges, record counts, millisecond timings, and bare numbers, which grow with the data', () => {
+    const end = nodes([
+      heading,
+      node('p', { text: 'Showing 1 to 9 of 9 results' }),
+      node('q', { text: 'Showing 1 to 5 of 5 results in 321ms' }),
+      node('r', { text: '12 items' }),
+      node('s', { text: '11' }),
+      node('t', { role: 'alert', name: 'Roles' }),
+    ]);
+    expect(describeAnchors(nodes([heading]), end, options)).toEqual([{ role: 'alert', name: 'Roles' }]);
   });
 
   it('is empty when nothing appeared', () => {

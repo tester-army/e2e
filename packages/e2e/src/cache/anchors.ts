@@ -73,23 +73,39 @@ export function describeAnchors(
 
 /**
  * Text that cannot read the same on the next run: a minted key prefix or id,
- * a countdown or age, a date, a clock time. An anchor made of it hands every
- * replay off, so it is skipped while some stable anchor exists; with nothing
- * else, the volatile ones stay, because a replay that always hands off is
- * still safer than one that passes on mechanics alone.
+ * a countdown or age, a date, a clock time, a timing in milliseconds, a
+ * pagination range or record count that grows with the data every run
+ * leaves behind. An anchor made of it hands every replay off, so it is
+ * skipped while some stable anchor exists; with nothing else, the volatile
+ * ones stay, because a replay that always hands off is still safer than
+ * one that passes on mechanics alone.
  */
 const VOLATILE_TEXT: readonly RegExp[] = [
   /\b(?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]{12,}\b/,
-  /\b\d+\s*(?:s|secs?|seconds?|m|mins?|minutes?|h|hrs?|hours?|d|days?|weeks?|months?|years?)\b/i,
+  /\b\d+\s*(?:ms|s|secs?|seconds?|m|mins?|minutes?|h|hrs?|hours?|d|days?|weeks?|months?|years?)\b/i,
+  /\b\d+\s*(?:to|-|\u2013)\s*\d+\s+of\s+\d+\b/i,
+  /\b\d+\s+(?:results?|items?|rows?|entries|records?|matches|total)\b/i,
   /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:,?\s+\d{4})?\b/i,
   /\b\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?(?:\s+\d{4})?\b/i,
   /\b\d{4}-\d{2}-\d{2}\b/,
   /\b\d{1,2}:\d{2}(?::\d{2})?\b/,
 ];
 
+/**
+ * A bare number is a badge or a tally, `11` unread, and reads differently
+ * once the data changes; it is volatile when it is all the anchor has to say.
+ * The same digit inside a named control, a status labelled "Counter" that
+ * reads `1` after one increment, is the step's effect and stays.
+ */
+function isBareNumber(anchor: TraceTargetDescriptor): boolean {
+  const label = anchor.name ?? anchor.text;
+  return label !== undefined && /^\d+$/.test(label) && anchor.testId === undefined && (anchor.name === undefined || anchor.text === undefined || anchor.name === anchor.text);
+}
+
 function isVolatileAnchor(anchor: TraceTargetDescriptor): boolean {
-  return [anchor.text, anchor.name].some(
-    (value) => value !== undefined && VOLATILE_TEXT.some((pattern) => pattern.test(value)),
+  return (
+    isBareNumber(anchor) ||
+    [anchor.text, anchor.name].some((value) => value !== undefined && VOLATILE_TEXT.some((pattern) => pattern.test(value)))
   );
 }
 
