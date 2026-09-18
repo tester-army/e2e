@@ -1588,6 +1588,66 @@ describe('ListReporter', () => {
       reporter.handle(testStarted('t1', 'signs in', 'chromium'));
       expect(lines).toEqual([]);
     });
+    it('pads the block to the bottom of a tall terminal and shrinks it as the log grows', () => {
+      const restore = withTerminalSize({ rows: 60, columns: 120 });
+      try {
+        const { chunks, lines, output } = liveCapture();
+        const reporter = plainReporter(output, true);
+        reporter.handle(runStarted());
+        reporter.handle(plan([{ file: 'tests/case.e2e.ts', tests: 2 }]));
+        reporter.handle(testStarted('t1', 'signs in', 'chromium'));
+        const painted = (chunk: string) => chunk.split('\n').length - 1;
+        // The header took the rows above; the block takes every row under
+        // it but the cursor's, so the summary sits at the bottom of the screen.
+        const above = lines.length;
+        expect(painted(chunks.at(-1)!)).toBe(60 - 1 - above);
+        expect(chunks.at(-1)!.replace(ANSI_PATTERN, '')).toMatch(/Duration {2}\d+m?s\n\n$/);
+        // A permanent notice above the block takes one row from it: no scroll.
+        reporter.handle({ type: 'notice', target: 'chromium', message: 'one more line' });
+        expect(painted(chunks.at(-1)!)).toBe(60 - 1 - above - 1);
+      } finally {
+        restore();
+      }
+    });
+
+    it('stops shrinking at the rows the running area needs once the log has grown down to it', () => {
+      const restore = withTerminalSize({ rows: 30, columns: 120 });
+      try {
+        const { chunks, output } = liveCapture();
+        const reporter = plainReporter(output, true);
+        reporter.handle(runStarted());
+        reporter.handle(plan([{ file: 'tests/case.e2e.ts', tests: 2 }]));
+        reporter.handle(testStarted('t1', 'signs in', 'chromium'));
+        for (let i = 0; i < 40; i += 1) {
+          reporter.handle({ type: 'notice', target: 'chromium', message: `line ${i}` });
+        }
+        const rows = chunks.at(-1)!.split('\n').length - 1;
+        // Fourteen running rows plus the frame and the summary, no more.
+        expect(rows).toBeGreaterThanOrEqual(14 + 3 + 2);
+        expect(rows).toBeLessThan(29);
+        expect(chunks.at(-1)!).toContain('└── signs in');
+      } finally {
+        restore();
+      }
+    });
+
+    it('counts a wrapped permanent line by its rows', () => {
+      const restore = withTerminalSize({ rows: 40, columns: 40 });
+      try {
+        const { chunks, lines, output } = liveCapture();
+        const reporter = plainReporter(output, true);
+        reporter.handle(runStarted());
+        reporter.handle(testStarted('t1', 'signs in', 'chromium'));
+        const before = chunks.at(-1)!.split('\n').length - 1;
+        reporter.handle({ type: 'notice', target: 'chromium', message: 'x'.repeat(70) });
+        expect(lines.at(-1)).toContain('x'.repeat(70));
+        // Seventy-two visible characters on a forty-column terminal wrap onto two rows.
+        expect(chunks.at(-1)!.split('\n').length - 1).toBe(before - 2);
+      } finally {
+        restore();
+      }
+    });
+
     it('keeps the window within the terminal height and folds the tests that do not fit', () => {
       const restore = withTerminalSize({ rows: 8, columns: 60 });
       try {

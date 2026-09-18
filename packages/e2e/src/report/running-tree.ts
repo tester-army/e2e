@@ -2,7 +2,8 @@
  * The running part of the list reporter's live window: each running file,
  * its tests with a ticking clock, each test's finished steps, and its current
  * step with the model turns and tool calls so far and the turn in flight.
- * Padded to a fixed height so the summary below never moves.
+ * Padded to the bottom of the screen, so the summary sits there and never
+ * moves as calls come and go.
  */
 
 import { bounded, F_POINTER, formatTime, terminalColumns, terminalRows, type Colors } from './format.ts';
@@ -31,11 +32,14 @@ const DETAIL_INDENT = '       ';
  * blank lines, the `… more running` marker, and a margin above the prompt.
  */
 const CHROME_ROWS = 6;
+/** Blank rows framing the block: above the running area, between it and the summary, and under the summary. */
+export const FRAME_ROWS = 3;
 /**
- * Rows reserved for the running area from the first paint: one file row, one
- * test row, its current step, the calls the window shows, the turn in flight,
- * and a few finished steps. The area never shrinks during the run, so the
- * summary below it stays put instead of jumping as calls come and go.
+ * Rows the running area keeps once the log has grown down to it: one file
+ * row, one test row, its current step, the calls the window shows, the turn
+ * in flight, and a few finished steps. Until then the area reaches the bottom
+ * of the screen; from then on it never shrinks below what it once needed, so
+ * the summary stays put instead of jumping as calls come and go.
  */
 const RESERVED_ROWS = 14;
 /**
@@ -61,6 +65,16 @@ function shimmer(pc: Colors, word: string, frame: number): string {
     .join('');
 }
 
+/**
+ * Pads the running area down to the bottom of the screen: to `fill`, the rows
+ * left under the log once the summary has its own, or to `reserved` when the
+ * log has grown past that point and the block scrolls it instead.
+ */
+export function padToScreen(lines: string[], reserved: number, fill: number): void {
+  const height = Math.max(reserved, fill);
+  while (lines.length < height) lines.push('');
+}
+
 /** `… N earlier things` folding rows that do not fit. */
 function foldMarker(pc: Colors, count: number, noun: string): string {
   return pc.dim(`… ${count} earlier ${noun}${count === 1 ? '' : 's'}`);
@@ -81,12 +95,14 @@ export class RunningTree {
    * than the terminal has breaks the cursor-up erase: rows left after the
    * summary go to the running tests, each test's detail shares what remains
    * once every test has its own row, and tests that still do not fit fold
-   * into one `more running` marker.
+   * into one `more running` marker. `room` is the screen under the permanent
+   * log; the block pads out to it so the summary sits at the bottom.
    */
   render(
     running: readonly RunningTest[],
     summary: readonly string[],
     now: number,
+    room: number,
     setup?: SetupInFlight,
   ): string[] {
     const { pc } = this;
@@ -135,9 +151,8 @@ export class RunningTree {
       });
     }
     if (hidden > 0) lines.push(pc.dim(`   … ${hidden} more running`));
-    // Pad the running area to its reserved height so the summary does not move.
     this.reservedRows = Math.min(capacity, Math.max(this.reservedRows, lines.length));
-    while (lines.length < this.reservedRows) lines.push('');
+    padToScreen(lines, this.reservedRows, room - FRAME_ROWS - summary.length);
     return ['', ...lines, '', ...summary, ''];
   }
 

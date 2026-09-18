@@ -257,7 +257,7 @@ export class ListReporter implements Reporter {
     this.pc = picocolors.createColors(options.colors ?? (live || picocolors.isColorSupported));
     this.separator = this.pc.dim(' > ');
     this.tree = new RunningTree(this.pc, (target) => this.badge(target));
-    this.window = new LiveWindow(live ? output.raw?.bind(output) : undefined, () => this.renderWindow());
+    this.window = new LiveWindow(live ? output.raw?.bind(output) : undefined, (room) => this.renderWindow(room));
   }
 
   onEvent(event: RunEvent): void {
@@ -314,6 +314,7 @@ export class ListReporter implements Reporter {
   private print(line: string): void {
     this.window.erase();
     this.output.write(line);
+    this.window.logged(line);
     this.window.redraw();
   }
 
@@ -360,8 +361,8 @@ export class ListReporter implements Reporter {
     this.targets = event.targets;
     this.launchedAt = new Date();
     const version = packageVersion(import.meta.url, '../../package.json', '0.0.0');
-    this.output.write('');
-    this.output.write(
+    this.print('');
+    this.print(
       `${pc.bold(pc.black(pc.bgCyan(' RUN ')))} ${pc.cyan(`e2e v${version}`)} ${pc.gray(event.projectRoot)}`,
     );
     const details = [`run ${event.runId}`, `targets: ${event.targets.join(', ')}`];
@@ -369,13 +370,13 @@ export class ListReporter implements Reporter {
       details.push(`${event.agents.length === 1 ? 'agent' : 'agents'}: ${event.agents.map(bounded).join(', ')}`);
     }
     if (event.ci) details.push('CI');
-    this.output.write(BADGE_PADDING + pc.dim(details.join(' · ')));
+    this.print(BADGE_PADDING + pc.dim(details.join(' · ')));
     if (event.model !== undefined) {
       this.models = bounded(event.model);
       if (event.judge !== undefined) this.models += ` · judge ${bounded(event.judge)}`;
-      this.output.write(BADGE_PADDING + pc.dim(`model ${this.models}`));
+      this.print(BADGE_PADDING + pc.dim(`model ${this.models}`));
     }
-    this.output.write('');
+    this.print('');
     this.window.start();
   }
 
@@ -738,12 +739,13 @@ export class ListReporter implements Reporter {
   }
 
   /** The live window: the running tree, then the summary. */
-  private renderWindow(): string[] {
+  /** The block's rows for `room` screen rows under the permanent log. */
+  private renderWindow(room: number): string[] {
     const running = [...this.pairs.values()].filter((test) => test.executing);
     if (this.explore !== undefined) {
-      return this.explore.liveRows(this.exploreBadge(), running[0]?.current?.events, this.summaryRows(false), Date.now());
+      return this.explore.liveRows(this.exploreBadge(), running[0]?.current?.events, this.summaryRows(false), Date.now(), room);
     }
-    return this.tree.render(running, this.summaryRows(false), Date.now(), this.inFlight);
+    return this.tree.render(running, this.summaryRows(false), Date.now(), room, this.inFlight);
   }
 
   /** The badge of the explored target: an exploration runs on exactly one. */

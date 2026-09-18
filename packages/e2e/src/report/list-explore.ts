@@ -32,6 +32,7 @@ import {
 import type { ShownEvent } from './list-model.ts';
 import { eventLine } from './list-steps.ts';
 import { WIDTH_MARGIN } from './live-window.ts';
+import { FRAME_ROWS, padToScreen } from './running-tree.ts';
 import { waitingRow } from './running-tree.ts';
 
 /** A finding, in the live window and the CI log. */
@@ -224,7 +225,7 @@ export class ExploreView {
    * time order, or the planner deciding. Sized to the screen as the running
    * tree is: the step in progress has priority, older finished steps fold.
    */
-  liveRows(badge: string, events: readonly ShownEvent[] | undefined, summary: readonly string[], now: number): string[] {
+  liveRows(badge: string, events: readonly ShownEvent[] | undefined, summary: readonly string[], now: number, room: number): string[] {
     const { pc } = this;
     const columns = terminalColumns() - WIDTH_MARGIN;
     const clock = pc.bold(pc.yellow(formatTime(Math.max(0, now - this.startedMs))));
@@ -240,7 +241,7 @@ export class ExploreView {
     }
     lines.push(...current);
     this.reservedRows = Math.min(capacity, Math.max(this.reservedRows, lines.length));
-    while (lines.length < this.reservedRows) lines.push('');
+    padToScreen(lines, this.reservedRows, room - FRAME_ROWS - summary.length);
     return ['', ...lines, '', ...summary, ''];
   }
 
