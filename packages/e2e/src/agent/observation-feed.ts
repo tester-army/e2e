@@ -18,6 +18,7 @@ import type { ExecutorObservation, ExecutorObserveOptions, ExecutorTarget } from
 import type { AgentContext } from './invocation.ts';
 import {
   changeShape,
+  isEditable,
   isTransitionalObservation,
   observationShape,
   pixelsForModel,
@@ -41,6 +42,12 @@ import type { StepAccounting } from './step-accounting.ts';
  * turn can reach.
  */
 const MAX_RECENT_OBSERVATIONS = 8;
+/**
+ * Strings the screens of a step showed, kept for telling a typed value read
+ * off the screen from one the model composed (`derived.ts`): one per node,
+ * the oldest dropped first past this many.
+ */
+const MAX_SHOWN_TEXTS = 4_096;
 
 export interface ObservationFeedOptions {
   /** The agent's observation byte ceiling, clamped per capture by the token limit. */
@@ -52,6 +59,8 @@ export class ObservationFeed {
   /** A cache probe may supply the executor's first look, once, before any action. */
   private opening: AgentObservation | undefined;
   private semanticHistory = true;
+  /** What the step's screens have shown, one string per node, oldest first; see MAX_SHOWN_TEXTS. */
+  private readonly shown = new Set<string>();
   /** The newest observations of the step, oldest first; see MAX_RECENT_OBSERVATIONS. */
   private readonly recent: SemanticAgentObservation[] = [];
   /**
@@ -87,6 +96,11 @@ export class ObservationFeed {
   /** A trace may only describe a step observed with semantic evidence throughout. */
   get traceEligible(): boolean {
     return this.semanticHistory;
+  }
+
+  /** What the step's screens have shown so far, one string per node; what a typed value is checked against. */
+  shownText(): ReadonlySet<string> {
+    return this.shown;
   }
 
   /** The newest observation, which an action addresses; before the first look there is nothing to address. */
@@ -268,8 +282,28 @@ export class ObservationFeed {
     if (observation.kind === 'pixels') this.recent.length = 0;
     else this.recent.push(observation);
     if (this.recent.length > MAX_RECENT_OBSERVATIONS) this.recent.shift();
+    if (observation.kind === 'semantic') this.noteShown(observation);
     const metrics = this.accounting.metrics;
     metrics.observationBytes = Math.max(metrics.observationBytes, observation.bytes);
+  }
+
+  /**
+   * Remembers what a screen displayed: the name and text of every node but
+   * those that echo input (an editable field, whose name is its value or its
+   * placeholder example; any node carrying a value) and the wrappers that
+   * restate a field, which some platforms name after the field they hold.
+   */
+  private noteShown(observation: SemanticAgentObservation): void {
+    for (const node of observation.nodes.values()) {
+      if (echoesInput(node) || (node.children ?? []).some(echoesInput)) continue;
+      for (const text of [node.name, node.text]) {
+        if (text !== undefined && text !== '') this.shown.add(text);
+      }
+    }
+    for (const oldest of this.shown) {
+      if (this.shown.size <= MAX_SHOWN_TEXTS) break;
+      this.shown.delete(oldest);
+    }
   }
 
   /** One raw observation capture: retried at the engine, then redacted and bounded. */
@@ -357,4 +391,9 @@ export class ObservationFeed {
     const relocated = relocateDescriptor(descriptor, latest.nodes, options);
     return relocated.kind === 'found' ? latest.nodes.get(relocated.id) : undefined;
   }
+}
+
+/** A node whose name or text is what was put into it, not what the screen says. */
+function echoesInput(node: SemanticNode): boolean {
+  return isEditable(node) || node.value !== undefined;
 }

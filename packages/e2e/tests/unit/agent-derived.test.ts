@@ -10,9 +10,28 @@ describe('isDerivedValue', () => {
     expect(isDerivedValue('  nimbus paper co ', 'Add "Nimbus Paper Co"', undefined)).toBe(false);
   });
 
-  it('treats a value found nowhere in the step as derived at run time', () => {
-    expect(isDerivedValue('TK-4972', 'Enter the details of the ticket you were issued earlier.', undefined)).toBe(true);
+  it('treats a value read off a screen the step saw as derived at run time', () => {
+    const shown = ['Your ticket', 'Reference TK-4972'];
+    expect(isDerivedValue('TK-4972', 'Enter the details of the ticket you were issued earlier.', undefined, shown)).toBe(true);
+    expect(isDerivedValue('TK-4972', 'Enter the ticket reference.', undefined, new Set(shown))).toBe(true);
+  });
+
+  it('treats a date or time the model reckoned as derived at run time', () => {
     expect(isDerivedValue('2026-09-03', 'Set the date to today', { note: 'Q3' })).toBe(true);
+    expect(isDerivedValue('12/31/2026', 'pick the last day', undefined)).toBe(true);
+    expect(isDerivedValue('09:30', 'book the morning slot', undefined)).toBe(true);
+  });
+
+  it('treats a value the model composed itself as literal, so the flow replays', () => {
+    expect(isDerivedValue('Jane Merchant', 'fill in the signup form with plausible details', undefined)).toBe(false);
+    expect(isDerivedValue('jane@example.com', 'fill in the signup form', undefined, ['Step 1 of 3'])).toBe(false);
+    expect(isDerivedValue('Jane', 'fill in the form', undefined, ['Welcome back, Jane'])).toBe(true);
+  });
+
+  it('matches shown text as whole tokens, never inside a longer word', () => {
+    expect(isDerivedValue('123', 'pay with any CVC', undefined, ['CVC', 'Pay 10,99 US$', 'n20123'])).toBe(false);
+    expect(isDerivedValue('Jane', 'fill the form', undefined, ['Janet Leigh'])).toBe(false);
+    expect(isDerivedValue('123', 'enter the code', undefined, ['Your code is 123'])).toBe(true);
   });
 
   it('never treats an empty value as derived', () => {

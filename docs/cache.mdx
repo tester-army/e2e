@@ -120,7 +120,7 @@ Cancelling a run leaves the cache unchanged.
 | `wrong-context` | The app was on another screen than when the step was recorded: a different route, not a different record, query, or fragment. | Open the same screen before the step. |
 | `target-not-found` | A recorded control did not appear within 15 seconds. | The UI changed. The next passing run re-records. |
 | `target-ambiguous` | The number of matching controls changed. | Give repeated controls distinct names or use unique test data. |
-| `gap` | An action cannot be replayed, such as a mutating project tool or typing a value read from the app. | The agent continues this part live. |
+| `gap` | An action cannot be replayed: a mutating project tool, or a value the agent read off the screen (a code, a reference the app minted) or reckoned from the date. A value the agent composed itself, or one from the instruction or `params`, replays. | The agent continues this part live. Put stable values in `params`. |
 | `action-failed` | The app rejected a replayed action. | Check the app. |
 | `action-uncertain` | A replayed action failed with an unknown commit state. The agent is told to check before acting again. | Check the app. |
 | `viewport-changed` | A bare-point tap was recorded on a viewport of another size. | Keep the viewport fixed. |
