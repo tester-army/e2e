@@ -6,6 +6,7 @@
  * reason, so the gap stays visible in every run.
  */
 
+import type { Device } from '@e2edev/agent-device';
 import type { Agent, Screen } from 'e2e';
 import { expect, openScenario, test } from '../tests/fixtures.ts';
 
@@ -165,9 +166,9 @@ const SCENARIOS: readonly Scenario[] = [
 
 async function complete(
   scenario: Scenario,
-  { agent, screen }: { agent: Agent; screen: Screen },
+  { agent, device, screen }: { agent: Agent; device: Device; screen: Screen },
 ): Promise<void> {
-  await openScenario(screen, scenario.name);
+  await openScenario({ device, screen }, scenario.name);
   await agent.act(
     `Complete this scenario as the screen instructs: ${scenario.goal}`,
     scenario.maxSteps === undefined ? undefined : { maxSteps: scenario.maxSteps },
