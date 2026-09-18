@@ -1,7 +1,7 @@
 /** End anchors: the step's delta as relocatable descriptors. */
 
 import { describe, expect, it } from 'vitest';
-import { anchorsPresent, anchorsShare, describeAnchors, describeScreen } from '../../src/cache/anchors.ts';
+import { anchorsPresent, describeAnchors } from '../../src/cache/anchors.ts';
 import { MAX_TRACE_ANCHORS } from '../../src/cache/trace.ts';
 import type { SemanticNode } from '../../src/engine/surface.ts';
 import { createRedactor } from '../../src/internal/redact.ts';
@@ -185,34 +185,5 @@ describe('anchorsPresent', () => {
     const rerendered = node('r2', { role: 'link', name: 'PB-Twin-Alpha', testId: 'row-9f8e' });
     expect(anchorsPresent([anchor], nodes([rerendered]), options)).toBe(true);
     expect(anchorsPresent([{ role: 'listitem', testId: 'row-1a2b' }], nodes([rerendered]), options)).toBe(false);
-  });
-});
-
-describe('describeScreen and anchorsShare', () => {
-  it('names a screen by its controls and headings, skipping content, volatile text, and what nothing could relocate', () => {
-    const start = nodes([
-      heading,
-      node('b', { role: 'button', name: 'Save' }),
-      node('f', { role: 'textbox', attributes: { placeholder: 'e.g., Summer sneaker' } }),
-      node('l', { role: 'link', name: 'Products & services' }),
-      node('p', { text: 'A paragraph of description text' }),
-      node('d', { role: 'button', name: 'Added Sep 8, 2026' }),
-      node('n', { role: 'textbox' }),
-      node('c', { role: 'cell', name: 'Acme Corp' }),
-    ]);
-    expect(describeScreen(start, options)).toEqual([
-      { role: 'heading', name: 'Playbooks' },
-      { role: 'button', name: 'Save' },
-      { role: 'textbox', placeholder: 'e.g., Summer sneaker' },
-      { role: 'link', name: 'Products & services' },
-    ]);
-  });
-
-  it('measures how much of a recorded screen is on the live one', () => {
-    const recorded = describeScreen(nodes([heading, node('b', { role: 'button', name: 'Save' }), node('c', { role: 'button', name: 'Cancel' }), node('t', { role: 'tab', name: 'Details' })]), options);
-    expect(recorded).toHaveLength(4);
-    expect(anchorsShare(recorded, nodes([heading, node('b', { role: 'button', name: 'Save' }), node('x', { role: 'button', name: 'Other' })]), options)).toBe(0.5);
-    expect(anchorsShare(recorded, nodes([heading, node('b', { role: 'button', name: 'Save' }), node('c', { role: 'button', name: 'Cancel' }), node('t', { role: 'tab', name: 'Details' })]), options)).toBe(1);
-    expect(anchorsShare([], nodes([heading]), options)).toBe(0);
   });
 });

@@ -36,10 +36,7 @@ npx e2e run --no-cache
 ## How a replay works
 
 1. Check the starting screen: the same route, whatever the record id, the
-   query, or the fragment. Where one path segment differs and the runner
-   cannot tell a slug from a route word, the recording's start controls
-   may settle it: most of them have to be on screen again. Retries always
-   run live.
+   query, or the fragment. Retries always run live.
 2. Find each recorded control and repeat its action. The runner matches
    controls by their role, name, test id, and surrounding context. It waits
    for missing controls and stops if a match is ambiguous. A control with no

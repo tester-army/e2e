@@ -86,8 +86,6 @@ export class TraceRecorder {
     readonly recordedFor: TraceProvenance;
     readonly summary: string;
     readonly startPath?: string;
-    /** The start screen's controls and headings (`describeScreen`), recorded as given. */
-    readonly startAnchors?: readonly TraceTargetDescriptor[];
     readonly endPath?: string;
     /** Already projected and capped by `describeAnchors`; recorded as given. */
     readonly endAnchors?: readonly TraceTargetDescriptor[];
@@ -118,7 +116,6 @@ export class TraceRecorder {
       },
       summary: summary.trim() === '' ? 'step passed' : summary,
       ...(startPath === undefined ? {} : { startPath }),
-      ...(conclusion.startAnchors === undefined || conclusion.startAnchors.length === 0 ? {} : { startAnchors: conclusion.startAnchors }),
       ...(endPath === undefined ? {} : { endPath }),
       ...(conclusion.endAnchors === undefined || conclusion.endAnchors.length === 0
         ? {}

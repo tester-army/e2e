@@ -509,6 +509,11 @@ describe('StepTraceSession', () => {
     expect((await good.begin())?.status).toBe('passed');
     expect(good.cacheInfo?.mode).toBe('self-finalized');
 
+    // Anchors that arrive after the route poll still count: the anchor wait, sized by the recording, decides.
+    const lateHost = { ...makeHost(['/products', '/products/winter-boot'], [[], [], [], [], [], [], [], [savedMarker]]), remainingMs: () => 60_000 };
+    const late = makeSession(entryContext({ endPath: '/products/summer-sneaker', endAnchors: [savedAnchor], endWaitMs: 5_000 }), lateHost);
+    expect((await late.begin())?.status).toBe('passed');
+
     // No anchors recorded: nothing can settle it, so it is another screen.
     const bare = makeSession(entryContext({ endPath: '/products/summer-sneaker' }), makeHost(['/products', '/products/winter-boot']));
     expect(await bare.begin()).toBeUndefined();
@@ -518,7 +523,7 @@ describe('StepTraceSession', () => {
     const far = makeSession(entryContext({ endPath: '/shop/summer/sneaker', endAnchors: [savedAnchor] }), makeHost(['/shop', '/shop/winter/boot'], [[savedMarker]]));
     expect(await far.begin()).toBeUndefined();
     expect(far.replayedPrefix?.stopReason).toBe('end-mismatch');
-  });
+  }, 30_000);
 
   it('re-stages the original verdict prose, not the replay wrapper', async () => {
     const context = entryContext({ endPath: '/customers' });

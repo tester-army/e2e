@@ -19,10 +19,12 @@
  *
  * Two routes that still differ in exactly one segment are `undecided`: a slug
  * of a record the runner never saw the value of reads as two literals, and
- * only the screen can say whether they are the same page. The caller asks
- * the screen, with the recorded start anchors at the start of a step and the
- * recorded end anchors at its end. A device engine reports a screen title in
- * place of a URL, which is already a route and compares as itself.
+ * only the screen can say whether they are the same page. At the end of a
+ * step the recorded anchors can, because they are the step's own effect. At
+ * the start nothing recorded is specific to the screen (the controls a start
+ * screen shows are mostly the app's header and sidebar, shared by every
+ * screen), so an undecided start is a miss. A device engine reports a screen
+ * title in place of a URL, which is already a route and compares as itself.
  */
 
 export type Route =

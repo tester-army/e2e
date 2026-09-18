@@ -8,16 +8,8 @@
  * entry alone cannot: is it whole, and is the app where the recording began?
  */
 
-import type { SemanticNode } from '../engine/surface.ts';
-import { anchorsShare } from './anchors.ts';
-import type { DescriptorMatchOptions } from './relocate.ts';
 import { compareRoutes, routeOf } from './route.ts';
 import type { ActionTrace, TraceEntry } from './trace.ts';
-
-/** How much of a recorded start screen must be on screen again for an undecided route to be the same screen. */
-const START_ANCHORS_SHARE = 0.6;
-/** Fewer recorded start anchors than this cannot tell one screen from another. */
-const MIN_START_ANCHORS = 4;
 
 /**
  * Whether a trace establishes its own starting point by navigating first.
@@ -39,34 +31,20 @@ export type TraceReplayDecision =
   | { readonly action: 'replay' }
   | { readonly action: 'miss'; readonly reason: 'truncated' | 'wrong-context' };
 
-/** The live screen a replay is decided against. */
-export interface ReplayContext extends DescriptorMatchOptions {
-  /** The location the engine reports now, when it reports one. */
-  readonly path: string | undefined;
-  /** The semantic screen now, when it could be observed; what settles a route the path alone cannot. */
-  readonly nodes: ReadonlyMap<string, SemanticNode> | undefined;
-}
-
 /**
  * Decides whether one entry replays for the current step. A trace that does
  * not open with a navigate carries a start precondition: the app must be on
  * the screen where the recording began, or the recorded actions would run
  * against a different screen than they were proven on. The screen is its
- * route (`routeOf`), not its URL; a route the path alone leaves undecided is
- * the same screen when most of the recorded start anchors are on it again.
+ * route (`routeOf`), not its URL; a route the path leaves undecided is a
+ * miss, since nothing recorded at the start is specific enough to settle it.
  */
-export function decideTraceReplay(entry: TraceEntry, context: ReplayContext): TraceReplayDecision {
+export function decideTraceReplay(entry: TraceEntry, currentPath: string | undefined): TraceReplayDecision {
   const trace = entry.payload;
   if (trace.truncated === true) return { action: 'miss', reason: 'truncated' };
   if (opensWithNavigate(trace)) return { action: 'replay' };
-  if (trace.startPath === undefined || context.path === undefined) return { action: 'miss', reason: 'wrong-context' };
-  const verdict = compareRoutes(routeOf(trace.startPath), routeOf(context.path));
-  const sameScreen =
-    verdict === 'same' ||
-    (verdict === 'undecided' &&
-      trace.startAnchors !== undefined &&
-      trace.startAnchors.length >= MIN_START_ANCHORS &&
-      context.nodes !== undefined &&
-      anchorsShare(trace.startAnchors, context.nodes, context) >= START_ANCHORS_SHARE);
-  return sameScreen ? { action: 'replay' } : { action: 'miss', reason: 'wrong-context' };
+  if (trace.startPath === undefined || currentPath === undefined) return { action: 'miss', reason: 'wrong-context' };
+  return compareRoutes(routeOf(trace.startPath), routeOf(currentPath)) === 'same'
+    ? { action: 'replay' }
+    : { action: 'miss', reason: 'wrong-context' };
 }

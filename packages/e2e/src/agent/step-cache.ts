@@ -6,13 +6,13 @@
  * it. The dispatch owns budgets, the grammar, and the verdict; this class owns
  * nothing but the cache.
  *
- * A settled capture before the step gives the replay decision its screen and
- * a step that may write its baseline; one after the step gives the end
- * anchors. The initial capture can also serve the executor when replay
- * performed no action.
+ * In read-write mode, settled captures before and after the step provide the
+ * baseline and end anchors. Read-only mode needs only a raw starting capture
+ * for the route precondition. The initial capture can also serve the executor
+ * when replay performed no action.
  */
 
-import { anchorsPresent, describeAnchors, describeScreen } from '../cache/anchors.ts';
+import { anchorsPresent, describeAnchors } from '../cache/anchors.ts';
 import type { AgentCacheContext } from '../cache/context.ts';
 import { decideTraceReplay, opensWithNavigate, type TraceReplayMissReason } from '../cache/decide.ts';
 import { compareRoutes, routeOf } from '../cache/route.ts';
@@ -95,14 +95,13 @@ export class StepTraceSession {
   private startPath: string | undefined;
   private startedMs = Date.now();
   /**
-   * The screen before any action. The replay decision consults it for a
-   * route the path leaves undecided, and a step that may write keeps it as
-   * its baseline: the staged trace's end anchors are the delta between this
-   * and the passing observation, so a replay must reproduce the step's effect
-   * to pass alone. Undefined after `begin` when the surface could not be
-   * observed; the step still runs — an executor that never looks at the
-   * screen owes the cache nothing — but nothing is staged, because a trace
-   * without its baseline has no anchors and would replay on mechanics alone.
+   * The screen before any action, captured only when this step may write: the
+   * staged trace's end anchors are the delta between this and the passing
+   * observation, so a replay must reproduce the step's effect to pass alone.
+   * Undefined after `begin` when the surface could not be observed; the step
+   * still runs — an executor that never looks at the screen owes the cache
+   * nothing — but nothing is staged, because a trace without its baseline has
+   * no anchors and would replay on mechanics alone.
    */
   private startNodes: ObservedNodes | undefined;
   /**
@@ -245,15 +244,14 @@ export class StepTraceSession {
   }
 
   /**
-   * The preconditions, captured before any action: the start path, doubling
-   * as the replay decision's current path, and the settled start screen,
-   * which the decision consults for a route the path leaves undecided and
-   * which a step that may write keeps as its baseline.
+   * The write-side preconditions, captured before any action: the start path,
+   * doubling as the replay decision's current path, and the baseline screen
+   * when this step may write.
    */
   private async captureStart(): Promise<void> {
-    const observation = await probeScreen(this.host);
+    const observation = await probeScreen(this.host, this.recorder !== undefined);
     this.startPath = observation?.path;
-    if (observation?.kind === 'semantic') this.startNodes = observation.nodes;
+    if (this.recorder !== undefined && observation?.kind === 'semantic') this.startNodes = observation.nodes;
   }
 
   /**
@@ -270,7 +268,7 @@ export class StepTraceSession {
       this.info = this.missed('truncated', trace.actions.length);
       return undefined;
     }
-    const decision = decideTraceReplay(entry, { path: this.startPath, nodes: this.startNodes, redact: this.options.redact });
+    const decision = decideTraceReplay(entry, this.startPath);
     if (decision.action === 'miss') {
       this.info = this.missed(decision.reason, trace.actions.length);
       return undefined;
@@ -314,7 +312,9 @@ export class StepTraceSession {
    * Captures the semantic end state once its route matches the recording,
    * polling while a navigation the last action started commits. Reports
    * whether the anchors were what settled the route, so the caller does not
-   * verify them again.
+   * verify them again. A route still undecided when the poll runs out is
+   * handed on with the anchors unseen: the caller's anchor wait, sized by
+   * the recording, is the one that decides it, as for a route that matched.
    */
   private async endScreen(
     trace: ActionTrace,
@@ -331,7 +331,8 @@ export class StepTraceSession {
       // A path the runner cannot recognize as the recorded route is the
       // recorded screen only if the recorded effect is visibly on it; with
       // no anchors recorded there is nothing to see, and it is another screen.
-      if (verdict === 'undecided' && anchors.length > 0 && anchorsPresent(anchors, observation.nodes, { redact: this.options.redact })) {
+      const undecided = verdict === 'undecided' && anchors.length > 0;
+      if (undecided && anchorsPresent(anchors, observation.nodes, { redact: this.options.redact })) {
         return { screen: observation, anchorsSeen: true };
       }
       const delay = END_PATH_DELAYS_MS[attempt];
@@ -341,7 +342,7 @@ export class StepTraceSession {
         this.host.remainingMs() <= delay ||
         this.host.signal.aborted
       ) {
-        return undefined;
+        return undecided ? { screen: observation, anchorsSeen: false } : undefined;
       }
       await sleep(delay, this.host.signal);
     }
@@ -405,7 +406,6 @@ export class StepTraceSession {
       },
       summary: this.replayed?.summary ?? verdictSummary ?? 'step passed',
       ...(this.startPath === undefined ? {} : { startPath: this.startPath }),
-      startAnchors: describeScreen(this.startNodes, this.options),
       ...(endPath === undefined ? {} : { endPath }),
       endAnchors,
       // How long the app took to show its end state after the last action,

@@ -1,8 +1,7 @@
 /** trace-1 entry format and the replay decision. */
 
 import { describe, expect, it } from 'vitest';
-import { decideTraceReplay, type ReplayContext } from '../../src/cache/decide.ts';
-import { createRedactor } from '../../src/internal/redact.ts';
+import { decideTraceReplay } from '../../src/cache/decide.ts';
 import {
   buildTraceEntry,
   MAX_TRACE_ACTIONS,
@@ -135,14 +134,9 @@ function withPayload(overrides: Record<string, unknown>): unknown {
   return raw;
 }
 
-/** The replay context of a step that sees `path` and no screen. */
-function at(path: string | undefined): ReplayContext {
-  return { path, nodes: undefined, redact: createRedactor(new Map()) };
-}
-
 describe('decideTraceReplay', () => {
   it('never replays a truncated trace', () => {
-    expect(decideTraceReplay(entryOf(trace({ truncated: true })), at('/settings'))).toEqual({
+    expect(decideTraceReplay(entryOf(trace({ truncated: true })), '/settings')).toEqual({
       action: 'miss',
       reason: 'truncated',
     });
@@ -150,9 +144,9 @@ describe('decideTraceReplay', () => {
 
   it('enforces the start-path precondition when the trace does not open with navigate', () => {
     const entry = entryOf(trace());
-    expect(decideTraceReplay(entry, at('/settings')).action).toBe('replay');
+    expect(decideTraceReplay(entry, '/settings').action).toBe('replay');
     for (const currentPath of ['/other', undefined]) {
-      expect(decideTraceReplay(entry, at(currentPath))).toEqual({
+      expect(decideTraceReplay(entry, currentPath)).toEqual({
         action: 'miss',
         reason: 'wrong-context',
       });
@@ -161,11 +155,11 @@ describe('decideTraceReplay', () => {
 
   it('compares the start path by pathname so query strings never cold-miss', () => {
     const entry = entryOf(trace());
-    expect(decideTraceReplay(entry, at('/settings?utm_source=mail')).action).toBe('replay');
-    expect(decideTraceReplay(entryOf(trace({ startPath: '/settings?tab=2' })), at('/settings')).action).toBe(
+    expect(decideTraceReplay(entry, '/settings?utm_source=mail').action).toBe('replay');
+    expect(decideTraceReplay(entryOf(trace({ startPath: '/settings?tab=2' })), '/settings').action).toBe(
       'replay',
     );
-    expect(decideTraceReplay(entry, at('/settings/billing'))).toEqual({
+    expect(decideTraceReplay(entry, '/settings/billing')).toEqual({
       action: 'miss',
       reason: 'wrong-context',
     });
@@ -173,19 +167,19 @@ describe('decideTraceReplay', () => {
 
   it('replays a navigate-opening trace from anywhere', () => {
     const entry = entryOf(trace({ actions: [navigate, tap] }));
-    expect(decideTraceReplay(entry, at('/other')).action).toBe('replay');
-    expect(decideTraceReplay(entry, at(undefined)).action).toBe('replay');
+    expect(decideTraceReplay(entry, '/other').action).toBe('replay');
+    expect(decideTraceReplay(entry, undefined).action).toBe('replay');
   });
 
   it('skips leading gaps when checking for the navigate opener', () => {
     const entry = entryOf(trace({ actions: [gap, navigate] }));
-    expect(decideTraceReplay(entry, at('/elsewhere')).action).toBe('replay');
+    expect(decideTraceReplay(entry, '/elsewhere').action).toBe('replay');
   });
 
   it('requires a recorded start path for a non-navigating trace', () => {
     const { startPath, ...rest } = trace();
     void startPath;
-    expect(decideTraceReplay(entryOf(rest), at('/settings'))).toEqual({
+    expect(decideTraceReplay(entryOf(rest), '/settings')).toEqual({
       action: 'miss',
       reason: 'wrong-context',
     });
