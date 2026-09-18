@@ -5,11 +5,16 @@
  */
 
 import type { createAgentDeviceClient } from 'agent-device';
+import type { DeviceLease, DeviceProvider } from './provider.ts';
 
 export type AgentDeviceClient = ReturnType<typeof createAgentDeviceClient>;
 
-/** Mints the agent-device client for one session; the seam unit tests script. */
-export type ClientFactory = (session: string) => AgentDeviceClient;
+/**
+ * Mints the agent-device client for one session, against a leased daemon
+ * when a provider supplied one, else the local daemon; the seam unit tests
+ * script.
+ */
+export type ClientFactory = (session: string, daemon?: DeviceLease['daemon']) => AgentDeviceClient;
 
 export type AgentDevicePlatform = 'ios' | 'android';
 
@@ -48,9 +53,11 @@ export interface AgentDeviceOptions {
    * `n`th, so `workers` at or above the pool size runs the target's files
    * across every device at once. Omitted, the pool is every booted device of
    * the platform at `prepare`, as many as the run has slots; with none booted,
-   * agent-device boots one.
+   * agent-device boots one. A `DeviceProvider` leases hosted devices instead:
+   * one per worker slot at `prepare`, each driven through the daemon the
+   * lease names, all released when the run ends.
    */
-  readonly device?: string | readonly string[] | undefined;
+  readonly device?: string | readonly string[] | DeviceProvider | undefined;
   /**
    * agent-device session name, before the worker slot: slot `n` drives its
    * device under `<session>-<n>`, `e2e-<target name>-<n>` by default. One run

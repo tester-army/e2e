@@ -147,6 +147,13 @@ export interface Engine {
    */
   prepare?(info: EnginePrepareInfo): Promise<void | EnginePrepareResult>;
   /**
+   * Once per run and target in the runner process, after every worker of the
+   * target is gone, on every exit path, whenever `prepare` was called.
+   * Release what `prepare` acquired for the run (a leased cloud device).
+   * Runs within the cleanup budget; a failure is a cleanup-phase run error.
+   */
+  finish?(info: EngineFinishInfo): Promise<void>;
+  /**
    * Once per worker, before the first step; boot devices here, not in a step
    * budget. The same handle can be booted again after `dispose`: a config-held
    * handle outlives an in-process worker, so init MUST work on a disposed
@@ -267,6 +274,7 @@ export interface EngineKeyboard {
 | Hook | Budget |
 | --- | --- |
 | `prepare(info)` | none; only `info.signal` (the run's interrupt) cuts it short. Failure ends the run before any test |
+| `finish(info)` | `cleanupTimeout`; runs whenever `prepare` was called, on every exit path; failure is a cleanup run error |
 | `init(info)` | `launchTimeout`; failure is infrastructure |
 | `startAttempt(context)` | `launchTimeout`; on failure or timeout `context.signal` aborts and `endAttempt` runs |
 | `endAttempt(context)` | `cleanupTimeout`; failure marks cleanup failed, the test keeps its status |
@@ -300,6 +308,8 @@ export interface EnginePrepareInfo {
   readonly runId: string;
   /** The target being prepared. */
   readonly targetName: string;
+  /** Directory relative paths in the config resolve against; see `EngineInitInfo.projectRoot`. */
+  readonly projectRoot: string;
   /**
    * The worker slots the run will start for this target, `0` to `slots - 1`:
    * the run's worker cap, the engine's declared `workers`, and the work units
@@ -327,6 +337,22 @@ export interface EnginePrepareInfo {
    * event, so it reaches the reporter and every host sink instead of being
    * written to a worker's stderr underneath the live status block.
    */
+  readonly log: (line: string) => void;
+}
+
+/** Handed to `finish`, once per run and target after the last worker is gone. */
+export interface EngineFinishInfo {
+  /** The run id. */
+  readonly runId: string;
+  /** The target being finished. */
+  readonly targetName: string;
+  /** The run's environment, the same `prepare` saw. */
+  readonly env: Readonly<Record<string, string | undefined>>;
+  /** Aborts when the cleanup budget is spent. */
+  readonly signal: AbortSignal;
+  /** Remaining cleanup budget when the call starts. */
+  readonly timeoutMs: number;
+  /** Reports one line of progress, streamed as a `notice` run event like `prepare`'s. */
   readonly log: (line: string) => void;
 }
 

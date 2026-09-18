@@ -85,9 +85,11 @@ export interface AgentDeviceOptions {
    * `n`th, so `workers` at or above the pool size runs the target's files
    * across every device at once. Omitted, the pool is every booted device of
    * the platform at `prepare`, as many as the run has slots; with none booted,
-   * agent-device boots one.
+   * agent-device boots one. A `DeviceProvider` leases hosted devices instead:
+   * one per worker slot at `prepare`, each driven through the daemon the
+   * lease names, all released when the run ends.
    */
-  readonly device?: string | readonly string[] | undefined;
+  readonly device?: string | readonly string[] | DeviceProvider | undefined;
   /**
    * agent-device session name, before the worker slot: slot `n` drives its
    * device under `<session>-<n>`, `e2e-<target name>-<n>` by default. One run
@@ -117,7 +119,9 @@ export interface AgentDeviceOptions {
 }
 ```
 
-An empty `device` list is `INVALID_CONFIG`.
+An empty `device` list is `INVALID_CONFIG`. A `device` provider object
+leases hosted devices; see [Hosted simulators](/mobile#hosted-simulators)
+for the `DeviceProvider` contract and an EAS Simulator example.
 
 Devices boot in `prepare`, once per run and before the run's clock starts, so
 a cold boot on CI is never charged against `launchTimeout`. agent-device

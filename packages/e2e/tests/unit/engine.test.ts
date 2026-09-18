@@ -163,6 +163,18 @@ describe('defineEngine', () => {
     );
   });
 
+  it('binds finish like every other lifecycle hook', async () => {
+    let boundToSpec = false;
+    const spec: Engine = observingEngine({
+      async finish(this: unknown) {
+        boundToSpec = this === spec;
+      },
+    });
+    const handle = defineEngine(spec);
+    await handle.finish?.({ runId: 'run', targetName: 'toy', env: {}, signal: new AbortController().signal, timeoutMs: 1000, log: () => {} });
+    expect(boundToSpec).toBe(true);
+  });
+
   it('binds prepare like every other lifecycle hook', async () => {
     let boundToSpec = false;
     const spec: Engine = observingEngine({
@@ -174,6 +186,7 @@ describe('defineEngine', () => {
     await handle.prepare?.({
       runId: 'run',
       targetName: 'toy',
+      projectRoot: '/project',
       slots: 1,
       env: {},
       signal: new AbortController().signal,

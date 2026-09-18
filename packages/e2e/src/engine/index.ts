@@ -397,6 +397,8 @@ export interface EnginePrepareInfo {
   readonly runId: string;
   /** The target being prepared. */
   readonly targetName: string;
+  /** Directory relative paths in the config resolve against; see `EngineInitInfo.projectRoot`. */
+  readonly projectRoot: string;
   /**
    * The worker slots the run will start for this target, `0` to `slots - 1`:
    * the run's worker cap, the engine's declared `workers`, and the work units
@@ -424,6 +426,22 @@ export interface EnginePrepareInfo {
    * event, so it reaches the reporter and every host sink instead of being
    * written to a worker's stderr underneath the live status block.
    */
+  readonly log: (line: string) => void;
+}
+
+/** Handed to `finish`, once per run and target after the last worker is gone. */
+export interface EngineFinishInfo {
+  /** The run id. */
+  readonly runId: string;
+  /** The target being finished. */
+  readonly targetName: string;
+  /** The run's environment, the same `prepare` saw. */
+  readonly env: Readonly<Record<string, string | undefined>>;
+  /** Aborts when the cleanup budget is spent. */
+  readonly signal: AbortSignal;
+  /** Remaining cleanup budget when the call starts. */
+  readonly timeoutMs: number;
+  /** Reports one line of progress, streamed as a `notice` run event like `prepare`'s. */
   readonly log: (line: string) => void;
 }
 
@@ -661,6 +679,16 @@ export interface Engine {
    * discovered from the booted devices).
    */
   prepare?(info: EnginePrepareInfo): Promise<void | EnginePrepareResult>;
+  /**
+   * Once per run and target, in the runner process, after every worker of
+   * the target has been disposed and on every exit path: a passing run, a
+   * failure, an interrupt, or a `prepare` that threw part-way. Release what
+   * `prepare` acquired for the run here (a leased cloud device, a remote
+   * session billed by the minute); per-worker resources belong in
+   * `dispose`. Runs only when `prepare` was called, within the cleanup
+   * budget; a failure is a cleanup-phase run error, never a crash.
+   */
+  finish?(info: EngineFinishInfo): Promise<void>;
   /**
    * Once per worker, before the first step; boot devices here, not in a step
    * budget. The same handle can be booted again after `dispose`: a config-held

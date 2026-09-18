@@ -25,6 +25,7 @@ export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
     platform: surface.options.platform,
     ...(surface.pool.size === undefined ? {} : { workers: surface.pool.size }),
     prepare: (info) => surface.pool.prepare(info),
+    finish: (info) => surface.pool.finish(info),
     init: (info) => surface.init(info),
     startAttempt: (context) => surface.startAttempt(context),
     endAttempt: (context) => surface.endAttempt(context),
@@ -67,7 +68,10 @@ export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
 
 /** Creates one agent-device engine: one device session per worker, one fresh app launch per attempt. */
 export function agentDevice(options: AgentDeviceOptions): EngineHandle {
-  const factory: ClientFactory = (session) => createAgentDeviceClient({ session });
+  const factory: ClientFactory = (session, daemon) =>
+    createAgentDeviceClient(
+      daemon === undefined ? { session } : obj({ session, daemonBaseUrl: daemon.baseUrl, daemonAuthToken: daemon.authToken }),
+    );
   return buildEngine(new AgentDeviceSurface(options, factory));
 }
 

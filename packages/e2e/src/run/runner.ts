@@ -46,7 +46,7 @@ import type { BuiltinReporter, E2EConfig, FinishedRun, Reporter, ReporterSummary
 import { modelLabel } from '../config/agent.ts';
 import { detectVcs, type VcsInfo } from '../internal/vcs.ts';
 import type { EnginePrepareResult } from '../engine/index.ts';
-import { prepareEngine, startDeclaredProcesses, validateEngine, type AppProcesses } from './provision.ts';
+import { finishEngine, prepareEngine, startDeclaredProcesses, validateEngine, type AppProcesses, type PrepareScope } from './provision.ts';
 
 export interface RunOptions {
   cwd?: string | undefined;
@@ -229,6 +229,8 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   /** The services and app commands the targets' engines declared, once started. */
   let processes: AppProcesses | undefined;
   let sessionStore: SessionStore | undefined;
+  /** Targets whose engine `prepare` was called; each gets its `finish` at teardown, whatever happened in between. */
+  const preparedTargets: ResolvedTarget[] = [];
 
   // Hoisted: workers re-resolve the same config file and need these overrides,
   // or a flag would apply in the runner and be dropped in every worker.
@@ -549,7 +551,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // of a worker's stderr fighting the live status block.
     try {
       plans = await debug.time('engine.prepare', () =>
-        prepareEngines(plans, runWorkers, { runId, env, signal: interrupted }, emit),
+        prepareEngines(plans, runWorkers, { runId, projectRoot: config.projectRoot, env, signal: interrupted }, emit, preparedTargets),
       );
     } catch (cause) {
       if (!interrupted.aborted) recordFailure(cause, 'launch');
@@ -694,9 +696,23 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     } catch (cause) {
       recordFailure(cause);
     }
-    // Services go down after the apps that depended on them; a failing service
-    // teardown command is a cleanup error of the run, not a crash.
+    // Engines finish first: every worker is gone, and what `prepare` leased
+    // (a cloud device billed by the minute) should not wait on the app's
+    // shutdown. Services go down after the apps that depended on them; a
+    // failing service teardown command is a cleanup error of the run, not a
+    // crash.
+    const finishEngines = async (): Promise<void> => {
+      const scope = { runId, projectRoot: config.projectRoot, env, signal: forceController.signal, timeoutMs: config.cleanupTimeout };
+      for (const target of preparedTargets) {
+        try {
+          await finishEngine(target, scope, (line) => emit({ type: 'notice', target: target.name, message: line }));
+        } catch (cause) {
+          recordFailure(cause, 'cleanup');
+        }
+      }
+    };
     for (const teardown of [
+      finishEngines,
       () => sessionStore?.cleanup(),
       () => processes?.stop((cause) => recordFailure(cause, 'cleanup')),
     ]) {
@@ -722,8 +738,9 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
 async function prepareEngines(
   plans: readonly TargetWorkPlan[],
   runWorkers: number,
-  scope: { runId: string; env: NodeJS.ProcessEnv; signal: AbortSignal },
+  scope: PrepareScope,
   emit: (fact: RunEventFact) => void,
+  preparedTargets: ResolvedTarget[],
 ): Promise<TargetWorkPlan[]> {
   const prepared: TargetWorkPlan[] = [];
   for (const plan of plans) {
@@ -737,6 +754,8 @@ async function prepareEngines(
     emit({ type: 'setup', step, state: 'started' });
     const startedMs = Date.now();
     const slots = plannedSlots(plan, runWorkers);
+    // Registered before the hook runs: a `prepare` that throws part-way still gets its `finish`.
+    preparedTargets.push(target);
     const result = await prepareEngine(target, slots, scope, (line) => emit({ type: 'notice', target: target.name, message: line }));
     prepared.push(withPreparedWorkers(plan, engine.name, slots, result));
     if (!scope.signal.aborted) {

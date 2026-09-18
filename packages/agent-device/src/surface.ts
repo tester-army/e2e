@@ -315,9 +315,17 @@ export class AgentDeviceSurface {
 
   async init(info: EngineInitInfo): Promise<void> {
     this.projectRoot = info.projectRoot;
+    // A leased device is driven through the daemon its lease names; the
+    // provider may also have installed the build, in which case the worker
+    // installs nothing and opens what the lease says is there.
+    const lease = this.pool.lease(info.targetName, info.workerSlot, info.env);
     this.device = this.pool.device(info.targetName, info.workerSlot, info.env);
-    this.client ??= this.createClient(this.pool.session(info.targetName, info.workerSlot));
+    this.client ??= this.createClient(this.pool.session(info.targetName, info.workerSlot), lease?.daemon);
     await this.command('boot', (client) => client.devices.boot(this.selection()), info.signal);
+    if (lease?.installedApp !== undefined) {
+      if (this.options.app === undefined) this.installedApp = lease.installedApp;
+      return;
+    }
     if (this.options.appPath === undefined) return;
     const installed = await this.installApp(
       this.options.appPath,

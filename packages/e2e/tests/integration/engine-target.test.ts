@@ -98,6 +98,11 @@ function toyEngine(
             // result's env; the run's own variables are never overwritten.
             return { env: { TOY_POOL: 'sim-a,sim-b', TOY_CACHE: '/overwritten' } };
           },
+          // Releases what prepare acquired: after the last worker, on every exit path.
+          async finish(info: { env: NodeJS.ProcessEnv; log: (line: string) => void }) {
+            lifecycle.push('finish');
+            info.log(`releasing toy device for ${info.env['TOY_CACHE'] ?? 'no cache'}`);
+          },
         }),
     ...(options.withoutInit === true
       ? {}
@@ -407,7 +412,8 @@ test('second attempt also starts fresh', async ({ screen }) => {
           if (!order.includes(event.type)) order.push(event.type);
           if (event.type === 'notice') {
             notices.push({ target: event.target, message: event.message });
-            noticeAt = Date.parse(event.at);
+            // The prepare notice; finish narrates after the clock, and is not what startedAt is measured against.
+            if (noticeAt === 0) noticeAt = Date.parse(event.at);
           }
           if (event.type === 'setup') {
             setup.push({
@@ -420,9 +426,12 @@ test('second attempt also starts fresh', async ({ screen }) => {
         },
       });
       expect(outcome.exitCode).toBe(0);
-      expect(toy.lifecycle).toEqual(['prepare', 'init', 'dispose']);
-      // The hook sees the run's environment, the one the workers start with.
-      expect(notices).toEqual([{ target: 'toy-sim', message: 'provisioning toy device for /run/cache' }]);
+      expect(toy.lifecycle).toEqual(['prepare', 'init', 'dispose', 'finish']);
+      // Both hooks see the run's environment, the one the workers start with.
+      expect(notices).toEqual([
+        { target: 'toy-sim', message: 'provisioning toy device for /run/cache' },
+        { target: 'toy-sim', message: 'releasing toy device for /run/cache' },
+      ]);
       // The result's env reached init as the worker's environment; the run's own value won.
       expect(toy.initEnv()).toEqual({ TOY_POOL: 'sim-a,sim-b', TOY_CACHE: '/run/cache' });
       expect(env['TOY_POOL']).toBeUndefined();
@@ -468,8 +477,9 @@ test('second attempt also starts fresh', async ({ screen }) => {
       });
       expect(outcome.status).toBe('error');
       expect(outcome.results).toEqual([]);
-      // No worker ever booted: nothing to init, nothing to dispose.
-      expect(toy.lifecycle).toEqual(['prepare']);
+      // No worker ever booted: nothing to init, nothing to dispose. What the
+      // failed prepare may have acquired is still released.
+      expect(toy.lifecycle).toEqual(['prepare', 'finish']);
       expect(errors).toHaveLength(1);
       expect(errors[0]?.message).toContain('toolchain missing');
       expect(errors[0]?.phase).toBe('launch');

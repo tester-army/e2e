@@ -10,9 +10,18 @@
  */
 
 import { createHash } from 'node:crypto';
-import { ConfigurationError, EngineError, obj, type EnginePrepareInfo, type EnginePrepareResult } from 'e2e/engine';
+import path from 'node:path';
+import {
+  ConfigurationError,
+  EngineError,
+  obj,
+  type EngineFinishInfo,
+  type EnginePrepareInfo,
+  type EnginePrepareResult,
+} from 'e2e/engine';
 import { message, runCommand } from './errors.ts';
 import type { AgentDeviceOptions, AgentDevicePlatform, ClientFactory } from './options.ts';
+import { isDeviceLease, isDeviceProvider, validateProvider, type DeviceLease, type DeviceProvider } from './provider.ts';
 
 /** An Apple simulator UDID; anything else names a device. */
 const UDID = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/i;
@@ -35,15 +44,15 @@ export function deviceSelection(
  * per target: the name made environment-safe for reading, plus a digest of
  * the exact name so `ios-a` and `ios.a` never share a key.
  */
-function poolVariable(targetName: string): string {
+function poolVariable(targetName: string, kind: 'POOL' | 'LEASES' = 'POOL'): string {
   const readable = targetName.replace(/[^A-Za-z0-9]/g, '_').toUpperCase();
   const digest = createHash('sha256').update(targetName).digest('hex').slice(0, 8).toUpperCase();
-  return `E2E_AGENT_DEVICE_POOL_${readable}_${digest}`;
+  return `E2E_AGENT_DEVICE_${kind}_${readable}_${digest}`;
 }
 
-/** The configured pool, or `undefined` when the devices are discovered at run time. */
+/** The configured pool, or `undefined` when the devices are discovered at run time or leased from a provider. */
 function configured(device: AgentDeviceOptions['device']): readonly string[] | undefined {
-  if (device === undefined) return undefined;
+  if (device === undefined || isDeviceProvider(device)) return undefined;
   if (typeof device === 'string') return [device];
   if (device.length === 0) {
     throw new ConfigurationError(
@@ -59,12 +68,17 @@ export class DevicePool {
   private readonly configured: readonly string[] | undefined;
   /** What `prepare` discovered in this process, per target: a handle may serve several targets and runs. */
   private readonly discovered = new Map<string, readonly string[]>();
+  /** The hosted-device provider, when `device` is one; its leases per target live until `finish`. */
+  readonly provider: DeviceProvider | undefined;
+  private readonly leases = new Map<string, readonly DeviceLease[]>();
 
   constructor(
     private readonly options: AgentDeviceOptions,
     private readonly createClient: ClientFactory,
   ) {
     this.configured = configured(options.device);
+    this.provider = isDeviceProvider(options.device) ? options.device : undefined;
+    if (this.provider !== undefined) validateProvider(this.provider);
   }
 
   /**
@@ -91,6 +105,7 @@ export class DevicePool {
    * target at the workers this engine declared or reported.
    */
   device(targetName: string, slot: number, env: Readonly<Record<string, string | undefined>>): string | undefined {
+    if (this.provider !== undefined) return this.lease(targetName, slot, env)?.device;
     const devices = this.configured ?? this.discovered.get(targetName) ?? this.fromEnvironment(env, targetName);
     if (devices === undefined || devices.length === 0) return undefined;
     if (slot >= devices.length) {
@@ -119,6 +134,7 @@ export class DevicePool {
    * boots whatever agent-device picks.
    */
   async prepare(info: EnginePrepareInfo): Promise<EnginePrepareResult> {
+    if (this.provider !== undefined) return this.acquireForRun(this.provider, info);
     const devices = this.configured ?? (await this.discoverForRun(info));
     const slots = Math.min(info.slots, Math.max(1, devices.length));
     const app = this.options.appPath === undefined ? this.options.app : undefined;
@@ -141,6 +157,112 @@ export class DevicePool {
       workers: Math.max(1, Math.min(slots, devices.length)),
       env: { [poolVariable(info.targetName)]: JSON.stringify(devices) },
     };
+  }
+
+  /**
+   * The lease of a worker slot, for a worker's `init`: what this process's
+   * `prepare` acquired for the target, else what it left in the environment
+   * for a child worker. `undefined` without a provider, or for a run that
+   * never prepared (the choice then stays with the local daemon).
+   */
+  lease(targetName: string, slot: number, env: Readonly<Record<string, string | undefined>>): DeviceLease | undefined {
+    const leases = this.leases.get(targetName) ?? this.leasesFromEnvironment(env, targetName);
+    if (leases === undefined) return undefined;
+    const lease = leases[slot];
+    if (lease === undefined) {
+      throw new EngineError(
+        'ENGINE_FAILURE',
+        `worker slot ${slot} is outside the ${leases.length} device lease(s) prepare acquired; the runner must cap the target at the engine's reported workers`,
+        { retryable: false },
+      );
+    }
+    return lease;
+  }
+
+  /**
+   * Leases one device per worker slot from the provider, all at once: hosted
+   * sessions start in parallel and are billed from the moment they do, so
+   * nothing waits on a sibling. A slot that fails to lease releases the ones
+   * that did, then fails the run here, before any test executes.
+   */
+  private async acquireForRun(provider: DeviceProvider, info: EnginePrepareInfo): Promise<EnginePrepareResult> {
+    const slots = Math.max(1, info.slots);
+    const appPath = this.options.appPath === undefined ? undefined : path.resolve(info.projectRoot, this.options.appPath);
+    info.log(`leasing ${slots} ${this.options.platform} device(s) from ${provider.name}`);
+    const settled = await Promise.allSettled(
+      Array.from({ length: slots }, (_, slot) =>
+        provider.acquire({
+          platform: this.options.platform,
+          runId: info.runId,
+          targetName: info.targetName,
+          slot,
+          slots,
+          app: this.options.app,
+          appPath,
+          env: info.env,
+          signal: info.signal,
+          log: (line) => info.log(`${provider.name} (${slot + 1} of ${slots}): ${line}`),
+        }),
+      ),
+    );
+    const leases = settled.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []));
+    this.leases.set(info.targetName, leases);
+    const failed = settled.find((result) => result.status === 'rejected');
+    if (failed !== undefined) {
+      throw new EngineError('ENGINE_FAILURE', `device provider "${provider.name}" could not lease a device: ${message(failed.reason)}`, {
+        retryable: false,
+        cause: failed.reason,
+      });
+    }
+    for (const lease of leases) {
+      if (!isDeviceLease(lease)) {
+        throw new EngineError(
+          'ENGINE_FAILURE',
+          `device provider "${provider.name}" returned a lease without an id and a daemon baseUrl`,
+          { retryable: false },
+        );
+      }
+      info.log(`${provider.name}: leased ${lease.id}${lease.device === undefined ? '' : ` (${lease.device})`}`);
+    }
+    return {
+      workers: leases.length,
+      env: { [poolVariable(info.targetName, 'LEASES')]: JSON.stringify(leases) },
+    };
+  }
+
+  /**
+   * Releases every lease `prepare` acquired for the target, each one whatever
+   * happened to the others; the first failure is reported once all were
+   * tried. A pool without a provider has nothing to release.
+   */
+  async finish(info: EngineFinishInfo): Promise<void> {
+    const provider = this.provider;
+    const leases = this.leases.get(info.targetName);
+    this.leases.delete(info.targetName);
+    if (provider === undefined || leases === undefined || leases.length === 0) return;
+    const context = { runId: info.runId, targetName: info.targetName, env: info.env, signal: info.signal, log: info.log };
+    const settled = await Promise.allSettled(leases.map((lease) => provider.release(lease, context)));
+    const failed = settled.find((result) => result.status === 'rejected');
+    if (failed !== undefined) {
+      throw new EngineError('ENGINE_FAILURE', `device provider "${provider.name}" could not release a device: ${message(failed.reason)}`, {
+        retryable: false,
+        cause: failed.reason,
+      });
+    }
+    info.log(`${provider.name}: released ${leases.length} device(s)`);
+  }
+
+  /** The leases `prepare` left for this target in the environment, if any. */
+  private leasesFromEnvironment(env: Readonly<Record<string, string | undefined>>, targetName: string): readonly DeviceLease[] | undefined {
+    const raw = env[poolVariable(targetName, 'LEASES')];
+    if (raw === undefined) return undefined;
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.every(isDeviceLease)) return parsed;
+    } catch {
+      // Not ours to read.
+    }
+    return undefined;
   }
 
   /** Discovers the pool for a run: the booted devices, as many as the run has slots; `prepare` hands them to the workers through its result's `env`. */

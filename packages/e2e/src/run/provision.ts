@@ -35,6 +35,8 @@ export function validateEngine(target: ResolvedTarget, config: ResolvedConfig): 
 
 export interface PrepareScope {
   readonly runId: string;
+  /** The config's directory, where an engine resolves a relative option (a build path). */
+  readonly projectRoot: string;
   /** The same `env` the workers are started with: what prepare provisions must be where a launch will look for it. */
   readonly env: NodeJS.ProcessEnv;
   readonly signal: AbortSignal;
@@ -56,9 +58,39 @@ export async function prepareEngine(
   const engine = target.engine;
   if (engine?.prepare === undefined) return;
   try {
-    return await engine.prepare({ runId: scope.runId, targetName: target.name, slots, env: scope.env, signal: scope.signal, log });
+    return await engine.prepare({
+      runId: scope.runId,
+      targetName: target.name,
+      projectRoot: scope.projectRoot,
+      slots,
+      env: scope.env,
+      signal: scope.signal,
+      log,
+    });
   } catch (cause) {
     throw translateProvisioningError(cause, ` while preparing engine ${engine.name} for target "${target.name}"`);
+  }
+}
+
+/**
+ * Runs one target's `finish` hook within the cleanup budget, streaming its
+ * progress lines to `log`. Called for every target whose `prepare` was
+ * called, whether or not it succeeded, so what a hook acquired before it
+ * failed is still released. Resolves to nothing when the engine declares no
+ * hook; a failure is the caller's to record as a cleanup error.
+ */
+export async function finishEngine(
+  target: ResolvedTarget,
+  scope: PrepareScope & { readonly timeoutMs: number },
+  log: (line: string) => void,
+): Promise<void> {
+  const engine = target.engine;
+  if (engine?.finish === undefined) return;
+  const budget = AbortSignal.any([scope.signal, AbortSignal.timeout(scope.timeoutMs)]);
+  try {
+    await engine.finish({ runId: scope.runId, targetName: target.name, env: scope.env, signal: budget, timeoutMs: scope.timeoutMs, log });
+  } catch (cause) {
+    throw translateProvisioningError(cause, ` while finishing engine ${engine.name} for target "${target.name}"`);
   }
 }
 

@@ -88,6 +88,139 @@ agentDevice({ platform: 'ios', app: 'com.example.app', device: ['iPhone 17', 'iP
 Without `device`, the engine uses booted devices up to the worker limit.
 If none are booted, it boots one. Two workers never drive the same device.
 
+## Hosted simulators
+
+A `device` can also be a `DeviceProvider`: an object that leases one hosted
+device per worker slot when the run starts and releases it when the run
+ends. The engine drives each lease through the agent-device daemon the lease
+names instead of the local one, so any service that exposes an agent-device
+daemon works: Expo's EAS Simulator, a device farm, or a Mac in your own rack.
+Nothing in the framework knows a vendor; a provider is a few dozen lines in
+your config.
+
+```ts
+export interface DeviceProvider {
+  /** Label in progress lines and the report. */
+  readonly name: string;
+  /** Called once per worker slot, for every slot at once, in the runner process. */
+  acquire(request: DeviceRequest): Promise<DeviceLease>;
+  /** Called once per lease when the run ends, on every exit path. */
+  release(lease: DeviceLease, context: DeviceReleaseContext): Promise<void>;
+}
+
+export interface DeviceLease {
+  /** The provider's handle (a session id), handed back to `release`. */
+  readonly id: string;
+  /** The agent-device daemon the worker connects to. */
+  readonly daemon: { readonly baseUrl: string; readonly authToken?: string };
+  /** Device to select inside that daemon, when it hosts more than one. */
+  readonly device?: string;
+  /** Bundle id or package the provider installed itself; skips `appPath`. */
+  readonly installedApp?: string;
+}
+```
+
+`acquire` receives the platform, run id, target, slot, the `app` and resolved
+`appPath` options, the run's environment, an interrupt signal, and a `log`
+that reaches the reporter. Read tokens from `request.env`, not
+`process.env`. A slot that fails to lease releases the others and ends the
+run before any test runs. Leases are released after the last worker exits,
+also on failure and interrupt, within `cleanupTimeout`.
+
+The provider below runs tests on
+[EAS Simulator](https://docs.expo.dev/preview/eas-simulator/rest-api/)
+sessions. Each session installs an EAS build; set `app` to the build's bundle
+id so every attempt opens it.
+
+```ts title="eas-simulator.ts"
+import type { DeviceLease, DeviceProvider, DeviceRequest } from '@e2edev/agent-device';
+
+const API = 'https://api.expo.dev/v2/device-run-sessions';
+
+interface Session {
+  id: string;
+  status: string;
+  remoteConfig: {
+    agentDeviceRemoteSessionUrl: string;
+    agentDeviceRemoteSessionToken?: string;
+    webPreviewUrl?: string;
+  } | null;
+}
+
+async function expo<T>(token: string, path: string, init: RequestInit = {}): Promise<T> {
+  const response = await fetch(`${API}${path}`, {
+    ...init,
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...init.headers },
+  });
+  if (!response.ok) throw new Error(`EAS Simulator ${init.method ?? 'GET'} ${path}: HTTP ${response.status}`);
+  return ((await response.json()) as { data: T }).data;
+}
+
+/** Leases one EAS Simulator session per worker slot, with the given EAS build installed. */
+export function easSimulator(options: { appId: string; buildId: string; device?: string }): DeviceProvider {
+  const token = (env: DeviceRequest['env']): string => {
+    const value = env['EXPO_TOKEN'];
+    if (value === undefined || value === '') throw new Error('EXPO_TOKEN is not set');
+    return value;
+  };
+  return {
+    name: 'eas-simulator',
+    async acquire(request) {
+      const created = await expo<Session>(token(request.env), '', {
+        method: 'POST',
+        body: JSON.stringify({
+          appId: options.appId,
+          platform: request.platform,
+          type: 'agent-device',
+          buildId: options.buildId,
+          name: `${request.runId} ${request.targetName} ${request.slot + 1}/${request.slots}`,
+          ...(options.device === undefined ? {} : { deviceIdentifier: options.device }),
+        }),
+      });
+      let session = created;
+      while (session.status === 'new' || session.remoteConfig === null) {
+        if (session.status !== 'new' && session.status !== 'in-progress') {
+          throw new Error(`EAS Simulator session ${session.id} is ${session.status}`);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 5_000));
+        if (request.signal.aborted) throw new Error('interrupted while the simulator was starting');
+        session = await expo<Session>(token(request.env), `/${session.id}`);
+      }
+      const { agentDeviceRemoteSessionUrl, agentDeviceRemoteSessionToken, webPreviewUrl } = session.remoteConfig;
+      if (webPreviewUrl !== undefined) request.log(`watch at ${webPreviewUrl}`);
+      return { id: session.id, daemon: { baseUrl: agentDeviceRemoteSessionUrl, authToken: agentDeviceRemoteSessionToken } };
+    },
+    async release(lease: DeviceLease, context) {
+      await expo(token(context.env), `/${lease.id}/stop`, { method: 'POST' });
+    },
+  };
+}
+```
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { agentDevice } from '@e2edev/agent-device';
+import { easSimulator } from './eas-simulator.ts';
+
+export default {
+  targets: [
+    {
+      name: 'ios',
+      engine: agentDevice({
+        platform: 'ios',
+        app: 'com.example.app',
+        device: easSimulator({ appId: process.env.EAS_APP_ID!, buildId: process.env.EAS_BUILD_ID! }),
+      }),
+    },
+  ],
+  workers: 2,
+} satisfies E2EConfig;
+```
+
+Two workers lease two sessions in parallel. Sessions are billed while they
+run, so keep `workers` at what the suite can fill. The trace cache keys on
+`app`, so traces recorded locally replay on hosted devices.
+
 ## Writing a device test
 
 `screen` maps native controls to common roles such as `button`, `textbox`,

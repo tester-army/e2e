@@ -10,6 +10,7 @@ import type { Device } from './device.ts';
 
 export { agentDevice } from './engine.ts';
 export type { AgentDeviceOptions, AgentDevicePlatform } from './options.ts';
+export type { DeviceLease, DeviceProvider, DeviceReleaseContext, DeviceRequest } from './provider.ts';
 export type { InstallAppOptions, InstalledApp } from './surface.ts';
 export type { BiometricSensor, Device, DeviceOrientation, DevicePermission, ForegroundApp } from './device.ts';
 
