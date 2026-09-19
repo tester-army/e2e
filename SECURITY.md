@@ -1,7 +1,7 @@
 # Security
 
 The user-facing version of this document, with every rule and limit as the
-code enforces it, is [e2e.mintlify.app/security](https://e2e.mintlify.app/security).
+code enforces it, is [e2e.tester.army/docs/security](https://e2e.tester.army/docs/security).
 
 ## Reporting a vulnerability
 
@@ -89,7 +89,7 @@ variables, and credentials are never sent. Engine names, platforms, and model
 ids are sent as your config declares them when they are plain tokens and as
 `other` otherwise; an error code that is not an upper-case token is `OTHER`.
 Every property
-is listed at [docs.e2e.army/telemetry](https://docs.e2e.army/telemetry),
+is listed at [e2e.tester.army/docs/telemetry](https://e2e.tester.army/docs/telemetry),
 and `E2E_TELEMETRY_DEBUG=1` prints each event instead of sending it.
 
 Opt out with `e2e telemetry disable`, `E2E_TELEMETRY_DISABLED=1`, or

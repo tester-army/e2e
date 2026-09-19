@@ -305,7 +305,7 @@ per agent step, so a specialised agent gets the same replay benefit.
   can be the `agent`; the runner still owns observations, actions, budgets,
   and the report.
 
-Full reference: https://docs.e2e.army/agents
+Full reference: https://e2e.tester.army/docs/agents
 
 ## In CI
 

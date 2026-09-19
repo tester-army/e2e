@@ -23,4 +23,4 @@ For your own product, `createOAuthFetch(provider, { store, userAgent })` is the 
 
 Claude Pro/Max is not included: Anthropic permits subscription sign-in only for its own applications.
 
-Docs: https://docs.e2e.army/subscriptions
+Docs: https://e2e.tester.army/docs/subscriptions

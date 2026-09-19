@@ -55,18 +55,18 @@ await screen.getByRole('button', { name: 'Confirm' }).tap();
 - Runs locally. No account, no hosted runner. The CLI sends anonymous usage
   counts to improve the framework, never your tests or your app's data;
   `e2e telemetry disable` turns that off
-  ([what is sent](https://docs.e2e.army/telemetry)).
+  ([what is sent](https://e2e.tester.army/docs/telemetry)).
 
 ## Documentation
 
-[docs.e2e.army](https://docs.e2e.army)
+[e2e.tester.army/docs](https://e2e.tester.army/docs)
 
 ## Coding agents
 
 `e2e init` installs an agent skill into `.agents/skills/` and
 `.claude/skills/`, and `npx skills add tester-army/e2e` installs it
 anywhere else. Without it, `npx e2e guide` prints the same text.
-See [Coding agents](https://docs.e2e.army/coding-agents).
+See [Coding agents](https://e2e.tester.army/docs/coding-agents).
 
 `e2e mcp` opens a live session on the app for a coding agent over MCP, with
 the same tools the testing agent has behind four fixed MCP tools, so the
@@ -80,7 +80,7 @@ test. `e2e init` registers it for Claude Code and Cursor.
   to a target as `engine: playwright()`.
 - [`@e2edev/agent-device`](./packages/agent-device) — the mobile engine for iOS
   simulators and Android emulators; see the
-  [device reference](https://docs.e2e.army/reference/agent-device).
+  [device reference](https://e2e.tester.army/docs/reference/agent-device).
 
 ## Contributing
 

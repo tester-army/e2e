@@ -146,4 +146,4 @@ through a deterministic `screen` action in a setup step instead.
 
 ## Documentation
 
-Full documentation lives at [docs.e2e.army](https://docs.e2e.army).
+Full documentation lives at [e2e.tester.army/docs](https://e2e.tester.army/docs).
