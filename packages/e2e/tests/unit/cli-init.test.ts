@@ -89,9 +89,9 @@ describe('e2e init', () => {
     expect(clack.select).not.toHaveBeenCalled();
     expect(clack.multiselect).not.toHaveBeenCalled();
     expect(spawnSync).not.toHaveBeenCalled();
-    expect(output()).toContain('add scripts: test:e2e (e2e run)');
-    expect(output()).toContain('no tsconfig.json');
-    expect(output()).toContain('next: npm install, then APP_URL=http://localhost:3000 npm run test:e2e');
+    expect(output()).toContain('Add scripts: test:e2e (e2e run)');
+    expect(output()).toContain('No tsconfig.json');
+    expect(output()).toContain('Next: npm install, then APP_URL=http://localhost:3000 npm run test:e2e');
   });
 
   it('keeps quiet about tsconfig.json when the project has one', async () => {
@@ -131,7 +131,7 @@ describe('e2e init', () => {
     expect(read('e2e.config.ts').includes('@e2edev/agent-device')).toBe(device);
     expect(read('tests/example.e2e.ts').includes('@e2edev/agent-device')).toBe(device);
     expect(read('e2e.config.ts').includes('APP_URL')).toBe(engine === 'playwright');
-    expect(output()).toContain(`next: npm install, then ${device ? '' : 'APP_URL=http://localhost:3000 '}npm run test:e2e`);
+    expect(output()).toContain(`Next: npm install, then ${device ? '' : 'APP_URL=http://localhost:3000 '}npm run test:e2e`);
     expect(spawnSync).not.toHaveBeenCalled();
   });
 
@@ -212,9 +212,9 @@ describe('e2e init', () => {
     vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     expect(await init(dir)).toBe(0);
     const { validate } = vi.mocked(clack.text).mock.calls[0]![0] as { validate: (value: string | undefined) => string | undefined };
-    expect(validate(undefined)).toContain('enter the base URL');
-    expect(validate('   ')).toContain('enter the base URL');
-    expect(validate('not a url')).toContain('not a URL');
+    expect(validate(undefined)).toContain('Enter the base URL');
+    expect(validate('   ')).toContain('Enter the base URL');
+    expect(validate('not a url')).toContain('Not a URL');
     expect(validate('http://llm.example/v1')).toContain('HTTPS');
     expect(validate('http://localhost:11434/v1')).toBeUndefined();
     expect(validate('https://llm.example/v1')).toBeUndefined();
@@ -236,7 +236,7 @@ describe('e2e init', () => {
     expect(spawnSync).toHaveBeenCalledExactlyOnceWith('npm', ['install'], {
       cwd: dir, stdio: 'inherit', shell: process.platform === 'win32',
     });
-    expect(output()).toContain('next: APP_URL=http://localhost:3000 npm run test:e2e');
+    expect(output()).toContain('Next: APP_URL=http://localhost:3000 npm run test:e2e');
   });
 
   it('writes the selected dependencies when installation is declined', async () => {
@@ -245,7 +245,7 @@ describe('e2e init', () => {
     expect(await init(dir)).toBe(0);
     expect(JSON.parse(read('package.json')).devDependencies).toHaveProperty('ai', '^7.0.0');
     expect(spawnSync).not.toHaveBeenCalled();
-    expect(output()).toContain('next: npm install, then APP_URL=');
+    expect(output()).toContain('Next: npm install, then APP_URL=');
   });
 
   it.each(['engine', 'gateway', 'endpoint', 'skill', 'mcp', 'files', 'install'])('leaves the directory untouched when cancelling at %s', async (stage) => {
@@ -293,7 +293,7 @@ describe('e2e init', () => {
     vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     expect(await init(dir)).toBe(0);
     expect(JSON.parse(read('package.json')).scripts).toEqual({ 'test:e2e': script });
-    expect(output()).toContain(`next: npm install, then APP_URL=http://localhost:3000 ${step}`);
+    expect(output()).toContain(`Next: npm install, then APP_URL=http://localhost:3000 ${step}`);
   });
 
   it('adds missing dependencies without changing existing fields, ranges, or formatting', async () => {
@@ -363,18 +363,18 @@ describe('e2e init', () => {
     expect(existsSync(path.join(target, 'e2e.config.ts'))).toBe(true);
     expect(existsSync(path.join(target, 'tests', 'example.e2e.ts'))).toBe(true);
     expect(output()).toContain('e2e init apps/web');
-    expect(output()).toContain('next: cd apps/web, then npm install, then APP_URL=http://localhost:3000 npm run test:e2e');
+    expect(output()).toContain('Next: cd apps/web, then npm install, then APP_URL=http://localhost:3000 npm run test:e2e');
   });
 
   it('quotes a directory the shell would otherwise split, for the platform it runs on', async () => {
     expect(await init(path.join(dir, 'apps', 'my web'), { yes: true, directory: 'apps/my web' })).toBe(0);
-    expect(output()).toContain("next: cd 'apps/my web', then npm install, then");
+    expect(output()).toContain("Next: cd 'apps/my web', then npm install, then");
     expect(existsSync(path.join(dir, 'apps', 'my web', 'e2e.config.ts'))).toBe(true);
 
     stdoutSpy.mockClear();
     vi.spyOn(os, 'platform').mockReturnValue('win32');
     expect(await init(path.join(dir, 'my app'), { yes: true, directory: 'my app' })).toBe(0);
-    expect(output()).toContain('next: cd "my app", then npm install, then');
+    expect(output()).toContain('Next: cd "my app", then npm install, then');
   });
 
   it('does not create the directory when cancelling', async () => {
@@ -449,7 +449,7 @@ describe('e2e init', () => {
     expect(read('.mcp.json')).toContain('"e2e"');
     expect(clack.confirm).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('create .claude/skills/e2e/') }));
     expect(existsSync(path.join(dir, '.agents/skills'))).toBe(false);
-    expect(output()).toContain('created .claude/skills/e2e/');
+    expect(output()).toContain('Created .claude/skills/e2e/');
     const reference = path.join(dir, '.claude/skills/e2e/references/setup.md');
     const shipped = read('.claude/skills/e2e/references/setup.md');
 
@@ -459,7 +459,7 @@ describe('e2e init', () => {
     expect(read('.claude/skills/e2e/references/setup.md')).toBe(shipped);
     expect(existsSync(path.join(dir, '.agents/skills'))).toBe(false);
     expect(clack.multiselect).toHaveBeenCalledTimes(2);
-    expect(output()).toContain('updated .claude/skills/e2e/');
+    expect(output()).toContain('Updated .claude/skills/e2e/');
   });
 
   it('repairs a damaged copy without asking and leaves other locations alone', async () => {
@@ -470,7 +470,7 @@ describe('e2e init', () => {
     expect(read('.agents/skills/e2e/references/setup.md')).toContain('# Setting up e2e');
     expect(existsSync(path.join(dir, '.claude'))).toBe(false);
     expect(clack.multiselect).not.toHaveBeenCalled();
-    expect(output()).toContain('updated .agents/skills/e2e/');
+    expect(output()).toContain('Updated .agents/skills/e2e/');
   });
 
   it('fails before any prompt or write when the package lacks its skill files', async () => {
@@ -505,7 +505,7 @@ describe('e2e init', () => {
     stdoutSpy.mockClear();
     await init(dir, { yes: true });
     expect(files.map(read)).toEqual(before);
-    expect(output()).toContain('nothing to create; project already initialized');
+    expect(output()).toContain('Nothing to create; project already initialized');
     expect(spawnSync).not.toHaveBeenCalled();
   });
 

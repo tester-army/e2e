@@ -20,7 +20,7 @@ export interface InitOptions {
   yes?: boolean;
   /**
    * The directory argument as the user typed it, when `cwd` was chosen from
-   * one; the closing `next:` line then starts with `cd` into it.
+   * one; the closing `Next:` line then starts with `cd` into it.
    */
   directory?: string;
   /**
@@ -90,8 +90,8 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
   const existingConfig = ['e2e.config.ts', 'e2e.config.mts'].find((file) => existsSync(path.join(cwd, file)));
   const examplePath = path.join('tests', 'example.e2e.ts');
   const exampleExists = existsSync(path.join(cwd, examplePath));
-  if (existingConfig !== undefined) clack.log.warn(`exists, not touching: ${existingConfig}`);
-  if (exampleExists) clack.log.warn(`exists, not touching: ${examplePath}`);
+  if (existingConfig !== undefined) clack.log.warn(`Exists, not touching: ${existingConfig}`);
+  if (exampleExists) clack.log.warn(`Exists, not touching: ${examplePath}`);
 
   const gitignorePath = path.join(cwd, '.gitignore');
   const existingIgnore = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : '';
@@ -164,10 +164,10 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
   const dependencies = addDependencies(pkg.manifest, scaffold.dependencies);
   const { manifest, additions: scripts } = addScripts(dependencies.manifest, SCRIPTS);
   if (dependencies.additions.length > 0) {
-    clack.log.info(`add dev dependencies: ${dependencies.additions.map(([name, version]) => `${name}@${version}`).join(', ')}`);
+    clack.log.info(`Add dev dependencies: ${dependencies.additions.map(([name, version]) => `${name}@${version}`).join(', ')}`);
   }
   if (scripts.length > 0) {
-    clack.log.info(`add scripts: ${scripts.map(([name, command]) => `${name} (${command})`).join(', ')}`);
+    clack.log.info(`Add scripts: ${scripts.map(([name, command]) => `${name} (${command})`).join(', ')}`);
   }
 
   const files = [
@@ -179,7 +179,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
   ];
 
   if (files.length === 0 && skillInstalls.length === 0 && mcpRegistrations.length === 0 && missingIgnore.length === 0) {
-    clack.outro('nothing to create; project already initialized');
+    clack.outro('Nothing to create; project already initialized');
     return 0;
   }
 
@@ -190,7 +190,8 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
       ...mcpRegistrations.map((registration) => `${registration.existing ? 'update' : 'create'} ${registration.relative}`),
       ...(missingIgnore.length > 0 ? ['update .gitignore'] : []),
     ];
-    const proceed = await clack.confirm({ message: `${actions.join(', ')}?` });
+    const message = actions.join(', ');
+    const proceed = await clack.confirm({ message: `${message.charAt(0).toUpperCase()}${message.slice(1)}?` });
     if (isCancelled(proceed) || !proceed) return cancelled();
   }
 
@@ -208,30 +209,30 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
     const absolute = path.join(cwd, file.relative);
     mkdirSync(path.dirname(absolute), { recursive: true });
     writeFileSync(absolute, file.content, 'utf8');
-    clack.log.success(`${file.existing ? 'updated' : 'created'} ${file.relative}`);
+    clack.log.success(`${file.existing ? 'Updated' : 'Created'} ${file.relative}`);
   }
   for (const skill of skillInstalls) {
     for (const file of skill.files) {
       mkdirSync(path.dirname(file.absolute), { recursive: true });
       writeFileSync(file.absolute, file.content, 'utf8');
     }
-    clack.log.success(`${skill.existing ? 'updated' : 'created'} ${skill.relative}/ (${skill.files.length} files)`);
+    clack.log.success(`${skill.existing ? 'Updated' : 'Created'} ${skill.relative}/ (${skill.files.length} files)`);
   }
   if (skillDirs.length === 0) {
-    clack.log.info(`skipped the agent skill; agents can still print it with ${execCommand(manager, 'e2e guide')}`);
+    clack.log.info(`Skipped the agent skill; agents can still print it with ${execCommand(manager, 'e2e guide')}`);
   }
   for (const registration of mcpRegistrations) {
     mkdirSync(path.dirname(registration.absolute), { recursive: true });
     writeFileSync(registration.absolute, registration.content, 'utf8');
-    clack.log.success(`${registration.existing ? 'updated' : 'created'} ${registration.relative} (e2e mcp server)`);
+    clack.log.success(`${registration.existing ? 'Updated' : 'Created'} ${registration.relative} (e2e mcp server)`);
   }
   if (mcpFiles.length === 0) {
-    clack.log.info('skipped the MCP server; register it later with: claude mcp add e2e -- npx e2e mcp');
+    clack.log.info('Skipped the MCP server; register it later with: claude mcp add e2e -- npx e2e mcp');
   }
   if (missingIgnore.length > 0) {
     const prefix = existingIgnore === '' || existingIgnore.endsWith('\n') ? '' : '\n';
     writeFileSync(gitignorePath, `${existingIgnore}${prefix}${missingIgnore.join('\n')}\n`, 'utf8');
-    clack.log.success(`updated .gitignore (${missingIgnore.length} entries)`);
+    clack.log.success(`Updated .gitignore (${missingIgnore.length} entries)`);
     if (missingIgnore.includes(CACHE_IGNORE_ENTRY)) {
       clack.log.info(`${CACHE_IGNORE_ENTRY} is ignored; committing agent.act replays is opt-in, see ${DOCS_URL}/cache#commit-your-traces`);
     }
@@ -241,13 +242,13 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
     const result = spawnSync(manager, ['install'], { cwd, stdio: 'inherit', shell: process.platform === 'win32' });
     if (result.error !== undefined || result.status !== 0) {
       const reason = result.error?.message ?? `exit ${result.status ?? result.signal}`;
-      clack.log.error(`installation failed (${reason}); retry with ${manager} install`);
-      clack.outro('scaffold saved');
+      clack.log.error(`Installation failed (${reason}); retry with ${manager} install`);
+      clack.outro('Scaffold saved');
       return result.signal === 'SIGINT' ? 130 : 2;
     }
   }
   if (!existsSync(path.join(cwd, 'tsconfig.json'))) {
-    clack.log.info('no tsconfig.json; add one for editor completions on e2e.config.ts and tests/');
+    clack.log.info('No tsconfig.json; add one for editor completions on e2e.config.ts and tests/');
   }
   // The script init adds, unless the project already had one of its own under that name.
   const runCommand = /^e2e run(?:\s|$)/u.test(manifest.scripts?.[RUN_SCRIPT] ?? '')
@@ -261,7 +262,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
     subscription === undefined ? undefined : execCommand(manager, `e2e login ${subscription}`),
     `${scaffold.needsAppUrl ? 'APP_URL=http://localhost:3000 ' : ''}${runCommand}`,
   ].filter((step) => step !== undefined);
-  clack.outro(`next: ${next.join(', then ')}`);
+  clack.outro(`Next: ${next.join(', then ')}`);
   return 0;
 }
 
@@ -278,15 +279,15 @@ function shellArgument(value: string): string {
 /** The same rule config resolution applies: HTTPS, or HTTP on a loopback host. */
 function validateEndpoint(value: string | undefined): string | undefined {
   const trimmed = value?.trim() ?? '';
-  if (trimmed === '') return 'enter the base URL, e.g. http://127.0.0.1:11434/v1';
+  if (trimmed === '') return 'Enter the base URL, e.g. http://127.0.0.1:11434/v1';
   let parsed: URL;
   try {
     parsed = new URL(trimmed);
   } catch {
-    return `not a URL: ${trimmed}`;
+    return `Not a URL: ${trimmed}`;
   }
   if (parsed.protocol === 'https:' || (parsed.protocol === 'http:' && isLoopbackHost(parsed.hostname))) return undefined;
-  return 'must use HTTPS unless the host is loopback';
+  return 'Must use HTTPS unless the host is loopback';
 }
 
 /** Cancellation is only reachable before the first write, so nothing needs undoing. */
@@ -321,6 +322,6 @@ function isCancelled<Value>(value: Value | symbol): value is symbol {
 }
 
 function cancelled(): number {
-  clack.cancel('cancelled; no changes were made');
+  clack.cancel('Cancelled; no changes were made');
   return 0;
 }
