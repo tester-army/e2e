@@ -13,15 +13,15 @@ import { createCodexProvider, type CodexProviderOptions } from './providers/open
 import { defaultCredentialStore } from './store.ts';
 import type { CredentialStore } from './types.ts';
 
-export interface ChatGptOptions extends Pick<CodexProviderOptions, 'originator' | 'apiUrl'> {
+export interface ChatGptOptions extends Pick<CodexProviderOptions, 'apiUrl'> {
+  /** Where the login is read from; the default is the file `e2e login` wrote, or `E2E_OAUTH_CREDENTIALS`. */
   readonly store?: CredentialStore;
-  readonly userAgent?: string;
 }
 
 export function chatgpt(modelId: string, options: ChatGptOptions = {}): LanguageModelV4 {
   const fetch = createOAuthFetch(createCodexProvider(options), {
     store: options.store ?? defaultCredentialStore(),
-    userAgent: options.userAgent ?? USER_AGENT,
+    userAgent: USER_AGENT,
     loginHint: loginHint('openai'),
   });
   // The key header is removed per request; the value only satisfies the constructor.

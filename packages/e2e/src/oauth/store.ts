@@ -152,26 +152,6 @@ export class EnvCredentialStore implements CredentialStore {
   }
 }
 
-/** A store for tests and embedders that keep credentials elsewhere. */
-export class MemoryCredentialStore implements CredentialStore {
-  private readonly entries = new Map<string, OAuthCredentials>();
-  constructor(initial: Record<string, OAuthCredentials> = {}) {
-    for (const [id, credentials] of Object.entries(initial)) this.entries.set(id, credentials);
-  }
-  async get(providerId: string): Promise<OAuthCredentials | undefined> {
-    return this.entries.get(providerId);
-  }
-  async set(providerId: string, credentials: OAuthCredentials): Promise<void> {
-    this.entries.set(providerId, credentials);
-  }
-  async remove(providerId: string): Promise<void> {
-    this.entries.delete(providerId);
-  }
-  async list(): Promise<string[]> {
-    return [...this.entries.keys()];
-  }
-}
-
 /** The file's entries; one damaged entry is dropped rather than taking every login down with it. */
 function parseCredentials(text: string, source: string): CredentialsFile {
   let parsed: unknown;

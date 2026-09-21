@@ -50,7 +50,9 @@ descriptions and commit bodies; `git log` and `gh pr view` are the archive.
     action), `src/oauth/` subscription sign-in (the `e2e login`, `logout`,
     and `models` commands and the `e2e/oauth/*` model constructors; each
     constructor subpath is the only place its `@ai-sdk/*` optional peer is
-    imported, so the CLI boots without them). `tests/live/` holds hand-run
+    imported, so the CLI boots without them). The constructors and the CLI
+    are the whole public surface: the flows, stores, and fetch behind them
+    are module-private, not a library for other products. `tests/live/` holds hand-run
     checks that need a stored login and are never part of `pnpm test`.
 - `packages/playwright` — the published `@e2edev/playwright` package: the
   browser engine, built with the public `defineEngine`, contributing the
@@ -297,7 +299,7 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
   Nothing the script writes is committed; `git checkout -- packages .changeset`
   afterwards.
 - The runner publishes as the unscoped `e2e` (entry points `e2e`, `e2e/agent`,
-  `e2e/engine`, `e2e/oauth` and its per-provider subpaths; the bin is `e2e` too); engines and reporters publish public
+  `e2e/engine`, `e2e/oauth/chatgpt`, `e2e/oauth/copilot`, `e2e/oauth/grok`; the bin is `e2e` too); engines and reporters publish public
   under the `@e2edev` scope. `@e2edev/e2e` and `@e2edev/oauth` (folded into
   `e2e/oauth` on 2026-09-21) are the retired names: deprecated on npm, never
   referenced here. Provenance stays off until the repository is

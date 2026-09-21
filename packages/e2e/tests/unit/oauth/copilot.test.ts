@@ -1,7 +1,8 @@
 import { generateText, tool } from 'ai';
 import { z } from 'zod';
 import { afterEach, describe, expect, it } from 'vitest';
-import { MemoryCredentialStore, copilotBaseUrl, createCopilotProvider, enterpriseHost } from '../../../src/oauth/index.ts';
+import { copilotBaseUrl, createCopilotProvider, enterpriseHost } from '../../../src/oauth/providers/github-copilot.ts';
+import { MemoryCredentialStore } from './helpers/store.ts';
 import { copilot } from '../../../src/oauth/copilot.ts';
 import { sendCopilotRequest } from '../../../src/oauth/providers/github-copilot.ts';
 import { echoUpstream, json, useServers, type Echo, type Received } from './helpers/server.ts';

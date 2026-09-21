@@ -1,6 +1,8 @@
 import { generateText } from 'ai';
 import { afterEach, describe, expect, it } from 'vitest';
-import { MemoryCredentialStore, createOAuthFetch, createXaiProvider } from '../../../src/oauth/index.ts';
+import { createOAuthFetch } from '../../../src/oauth/fetch.ts';
+import { createXaiProvider } from '../../../src/oauth/providers/xai.ts';
+import { MemoryCredentialStore } from './helpers/store.ts';
 import { grok } from '../../../src/oauth/grok.ts';
 import { fakeJwt, json, useServers, type Received } from './helpers/server.ts';
 

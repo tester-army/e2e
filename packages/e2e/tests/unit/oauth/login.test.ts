@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { EnvCredentialStore, MemoryCredentialStore, logout } from '../../../src/oauth/index.ts';
+import { EnvCredentialStore } from '../../../src/oauth/store.ts';
+import { logout } from '../../../src/oauth/login.ts';
+import { MemoryCredentialStore } from './helpers/store.ts';
 
 describe('logout', () => {
   it('reports whether a login was stored and writes nothing when there was none', async () => {

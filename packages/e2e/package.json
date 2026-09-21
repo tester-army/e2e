@@ -46,10 +46,6 @@
       "types": "./dist/engine/index.d.ts",
       "default": "./dist/engine/index.js"
     },
-    "./oauth": {
-      "types": "./dist/oauth/index.d.ts",
-      "default": "./dist/oauth/index.js"
-    },
     "./oauth/chatgpt": {
       "types": "./dist/oauth/chatgpt.d.ts",
       "default": "./dist/oauth/chatgpt.js"

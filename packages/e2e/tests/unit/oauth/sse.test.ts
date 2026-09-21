@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { foldResponsesStream } from '../../../src/oauth/index.ts';
+import { foldResponsesStream } from '../../../src/oauth/sse.ts';
 import { parseSse } from '../../../src/oauth/sse.ts';
 
 function sse(events: Array<{ event?: string; data: unknown }>, headers: Record<string, string> = { 'content-type': 'text/event-stream' }): Response {

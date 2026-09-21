@@ -1,7 +1,9 @@
 import { generateText, tool } from 'ai';
 import { z } from 'zod';
 import { afterEach, describe, expect, it } from 'vitest';
-import { MemoryCredentialStore, createCodexProvider, listModels, type CodexCredentials } from '../../../src/oauth/index.ts';
+import { createCodexProvider, type CodexCredentials } from '../../../src/oauth/providers/openai.ts';
+import { listModels } from '../../../src/oauth/models.ts';
+import { MemoryCredentialStore } from './helpers/store.ts';
 import { chatgpt } from '../../../src/oauth/chatgpt.ts';
 import { extractAccountId, parseAuthorizationInput, sendCodexRequest } from '../../../src/oauth/providers/openai.ts';
 import { echoUpstream, fakeJwt, json, startServer, useServers, type Echo, type Received } from './helpers/server.ts';
