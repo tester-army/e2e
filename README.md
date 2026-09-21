@@ -25,9 +25,10 @@ test('a member upgrades to Pro', async ({ app, agent, screen }) => {
 npx e2e init
 ```
 
-A passing agent step records its actions and the next run replays them with
-no model calls, until the app changes. Tests without agent steps need no
-model. Bring your own subscription, API key, or local model.
+An agent step that a later assertion verifies records its actions, and the
+next run replays them with no model calls until the app changes. Tests
+without agent steps need no model. Bring your own subscription, API key, or
+local model.
 
 ## Documentation
 
@@ -47,4 +48,4 @@ Maestro, and the full reference.
 ## Contributing
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) and [SECURITY.md](./SECURITY.md).
-MIT, by [TesterArmy](https://tester.army).
+Apache-2.0, by [TesterArmy](https://tester.army).
