@@ -18,7 +18,7 @@
     "@react-navigation/bottom-tabs": "7.18.16",
     "@react-navigation/native": "7.3.16",
     "@react-navigation/native-stack": "7.18.8",
-    "@stripe/stripe-react-native": "0.64.0",
+    "@stripe/stripe-react-native": "0.77.0",
     "expo": "57.0.22",
     "expo-audio": "57.0.3",
     "expo-image-picker": "57.0.11",
