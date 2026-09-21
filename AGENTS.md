@@ -243,9 +243,11 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
     refs, and denied destinations are `POLICY_DENIED`. Model text is never
     evaluated as code, selectors, shell, or config. App content, ledger text,
     and pixels are quoted as untrusted evidence with no policy authority.
-  - Navigation is checked against the target's allowed origins on every hop
-    (initial URL, redirects, popups, frames, agent requests). `file:`, `data:`,
-    `javascript:`, link-local, and cloud-metadata destinations are denied.
+  - Every navigation a test or the agent asks for (`app.open`, the `navigate`
+    verb, `device.openLink`) goes through one rule: `file:`, `data:`, and
+    `javascript:` destinations and malformed URLs are `POLICY_DENIED`. There
+    is no origin or host allowlist; PR #290 removed them on purpose, since a
+    click reaches any origin a typed URL could.
   - Sessions are per-run, target-bound, AES-256-GCM encrypted with a
     memory-only key, and deleted at cleanup; payloads never enter diagnostics.
   - Reports escape contextually, strip terminal controls, generate artifact
