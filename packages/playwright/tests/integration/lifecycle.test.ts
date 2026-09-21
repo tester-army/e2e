@@ -272,7 +272,7 @@ describe('playwright engine lifecycle', () => {
       expect(afterMenu?.text).toBe('context menu');
 
       // Every pointer kind at a bare point, read back from the page's event log.
-      expect(engine.pointerActions).toEqual(['tap', 'doubleTap', 'secondaryTap', 'longPress', 'hover', 'dragTo', 'swipe']);
+      expect(engine.pointerActions).toEqual(['tap', 'doubleTap', 'secondaryTap', 'longPress', 'hover', 'dragTo', 'swipe', 'swipeTo']);
       await engine.performAt!({ x: 150, y: 350 }, { kind: 'tap' }, op());
       await engine.performAt!({ x: 160, y: 360 }, { kind: 'doubleTap' }, op());
       await engine.performAt!({ x: 170, y: 370 }, { kind: 'secondaryTap' }, op());
@@ -280,6 +280,8 @@ describe('playwright engine lifecycle', () => {
       await engine.performAt!({ x: 190, y: 390 }, { kind: 'hover' }, op());
       await engine.performAt!({ x: 200, y: 400 }, { kind: 'dragTo', target: { x: 300, y: 450 } }, op());
       await engine.performAt!({ x: 210, y: 410 }, { kind: 'swipe', direction: 'down' }, op());
+      // A fractional path lands on whole pixels: the browser would truncate it a pixel early.
+      await engine.performAt!({ x: 220.6, y: 420.4 }, { kind: 'swipeTo', target: { x: 320.5, y: 460.5 } }, op());
       const [log] = await engine.locate!({ kind: 'selector', selector: '#log' }, op());
       const lines = (log?.text ?? '').split('\n').filter((line) => line !== '');
       expect(lines).toContain('click:150,350');
@@ -290,6 +292,8 @@ describe('playwright engine lifecycle', () => {
       expect(lines).toContain('mousedown:200,400');
       expect(lines).toContain('mouseup:300,450');
       expect(lines.some((line) => line.startsWith('wheel:210,410:') && Number(line.split(':')[2]) > 0)).toBe(true);
+      expect(lines).toContain('mousedown:221,420');
+      expect(lines).toContain('mouseup:321,461');
     } finally {
       await engine.endAttempt!(cleanup());
       await engine.dispose!(cleanup());
