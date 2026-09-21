@@ -3,38 +3,63 @@ title: From Playwright
 description: Run e2e alongside Playwright and migrate tests one file at a time.
 ---
 
-`@e2edev/web` uses your installed Playwright when its version satisfies
-the engine's peer dependency. Both test runners can stay in the same project.
-e2e uses `e2e.config.ts` and finds `tests/**/*.e2e.ts` by default. Keep the two
-runners' file patterns separate.
+`@e2edev/playwright` uses your installed Playwright when its version satisfies
+the engine's peer dependency (`>=1.63.0 <2`). Both runners can stay in one
+project. e2e reads `e2e.config.ts` and finds `tests/**/*.e2e.ts` by default,
+so keep the two file patterns apart.
 
 Follow the [quickstart](/quickstart) to install e2e and configure a model for
-agent calls.
+agent calls. This page maps each Playwright feature to its e2e counterpart
+and says whether it exists. The reference pages hold the details:
+[screen](/reference/screen), [expect](/reference/expect),
+[test](/reference/test), [config](/reference/config), and the
+[Playwright engine](/reference/playwright).
 
 ## Config
 
-| Playwright | e2e |
-| --- | --- |
-| `use.baseURL` | `web({ url })` |
-| `webServer` | `web({ url, command })`, see [Starting your app](/starting-your-app) |
-| `projects` | `targets`, one engine instance each |
-| `use.viewport`, `use.browserName` | `web({ viewport, browser })` |
-| `testIdAttribute` | `web({ testIdAttribute })` |
-| `retries`, `workers`, `timeout` | The same names at the top level |
-| `storageState` | `test.setup` and `{ session }`, see [Signing in](/authentication) |
-| `reporter` | `reporters: ['list', 'junit']` |
+Every e2e config key is a top-level key or an option of `playwright(...)`.
+A Playwright key the runner recognizes (`testDir`, `baseURL`, `webServer`,
+`projects`) is rejected with a message naming where that fact lives here.
 
-## Command line
+### App, targets, and output
 
-| Playwright | e2e |
-| --- | --- |
-| `npx playwright test tests/checkout.spec.ts` | `npx e2e run tests/checkout.e2e.ts`; a directory, a bare file name, or a quoted glob also selects files |
-| `npx playwright test tests/checkout.spec.ts:12` | `npx e2e run tests/checkout.e2e.ts:12`, the test whose `test(` call opens on that line |
-| `--project chromium` | `--target web`, the name in `targets` |
-| `--grep`, `--grep-invert` | The same, matched against the describe titles and the test title joined by spaces; tags are `--tag` and `--exclude-tag` |
-| `--headed`, `--workers`, `--retries`, `--pass-with-no-tests`, `--last-failed`, `--shard`, `--max-failures`, `--repeat-each` | The same names; `--shard` keeps serial groups together |
-| `--reporter junit` | `--reporter list,junit` |
-| `--ui`, `--debug` | `npx e2e mcp` gives a coding agent a live session; `--debug` prints timings and the agent step table |
+| Playwright | e2e | Lives in | Status |
+| --- | --- | --- | --- |
+| `use.baseURL` | `playwright({ url })` | config | renamed |
+| `webServer` | `playwright({ url, command })`, see [Starting your app](/starting-your-app) | config | renamed |
+| `webServer.reuseExistingServer` | `command: { reuseExisting: true }`; CI ignores it | config | renamed |
+| `globalSetup` | `services` on the engine, started before the app command | config | renamed |
+| `projects` | `targets`, one engine instance each | config | renamed |
+| `projects[].dependencies` for sign-in | `test.setup` and `{ session }`, see [Signing in](/authentication) | config | renamed |
+| `testDir`, `testMatch` | `tests`, globs relative to the project root | config | renamed |
+| `testIgnore` | not yet; name only the globs you want | config | missing |
+| `fullyParallel` | not yet; a file's tests run in order on one worker, files run in parallel | config | missing |
+| `maxFailures` | not yet | config | missing |
+| `reporter` | `reporters: ['list', 'junit']`; also `json` and `markdown` | config | renamed |
+| `reporter: 'html'` | no equivalent; `markdown` writes `.e2e/summary.md`, every run writes `.e2e/report.json` | config | missing |
+| `outputDir` | `--artifacts <dir>`, default `.e2e/artifacts` | CLI | renamed |
+| `metadata` | not yet | config | missing |
+
+### Browser, timeouts, and artifacts
+
+| Playwright | e2e | Lives in | Status |
+| --- | --- | --- | --- |
+| `use.viewport`, `use.browserName` | `playwright({ viewport, browser })` | config | renamed |
+| `use.testIdAttribute` | `playwright({ testIdAttribute })` | config | renamed |
+| `use.httpCredentials` | `playwright({ basicAuth })` | config | renamed |
+| `use.extraHTTPHeaders` | `playwright({ headers })`, sent to the app's site only | config | renamed |
+| `use.connectOptions`, `connectOverCDP` | `playwright({ connect })` | config | renamed |
+| `retries`, `workers`, `timeout` | the same names at the top level; the defaults differ, see [below](#defaults-that-differ) | config | same |
+| `expect.timeout` | `assertionTimeout` | config | renamed |
+| `use.actionTimeout` | `actionTimeout` | config | renamed |
+| `use.navigationTimeout` | `timeout`, the test budget; `web.goto(url, { timeout })` overrides one call | config | renamed |
+| `use.storageState` | `test.setup` and `{ session }`; no file import, see [By design](#by-design) | config | by design |
+| `use.trace` | `artifacts.kinds`; a trace is on for every attempt by default | config | renamed |
+| `use.video` | `artifacts: { kinds: ['video'], video: { retain: 'on-failure' } }`, or `--video` for one run | config | renamed |
+| `use.headless: false` | `--headed` on the CLI | CLI | renamed |
+| `use.locale`, `timezoneId`, `colorScheme`, `geolocation`, `permissions` | not yet | config | missing |
+| `devices['iPhone 15']`, `userAgent`, `deviceScaleFactor`, `isMobile`, `hasTouch` | not yet; `playwright({ viewport })` sets the size only | config | missing |
+| `ignoreHTTPSErrors`, `bypassCSP`, `offline`, `launchOptions`, `proxy` | not yet | config | missing |
 
 ## A test, before and after
 
@@ -53,7 +78,7 @@ test('checkout', async ({ page }) => {
 ```
 
 ```ts title="e2e"
-import { test } from '@e2edev/web';
+import { test } from '@e2edev/playwright';
 import { expect } from 'e2e';
 
 test('checkout', async ({ app, agent, screen }) => {
@@ -63,41 +88,233 @@ test('checkout', async ({ app, agent, screen }) => {
 });
 ```
 
-The navigation and final assertion stay explicit. The agent handles the
-checkout interactions and can adapt when the form changes.
+The navigation and the final assertion stay explicit. The agent handles the
+checkout interactions and adapts when the form changes. A test can also stay
+fully deterministic: every `page.getBy*` line has a `screen.getBy*` line.
 
 ## API map
 
-| Playwright | e2e |
-| --- | --- |
-| `page.goto(path)` | `app.open(path)` |
-| `page.getByRole`, `getByLabel`, `getByText`, `getByTestId`, `getByPlaceholder` | The same on `screen` |
-| `locator.click()` | `locator.tap()`; `click()` is an alias |
-| `locator.click({ position })` | `locator.tap({ position })` |
-| `page.mouse.click(x, y)` | `screen.tapAt({ x, y })` |
-| `page.mouse` down, move, up | `screen.swipe({ from, to })` |
-| `page.locator('css')` | `web.locator('css')`, not portable |
-| `page.frameLocator` | `web.frameLocator` |
-| `page.route`, `page.waitForResponse` | `web.route`, `web.waitForResponse` |
-| `page.on('dialog')` | `web.onDialog('accept')` |
-| `page.waitForEvent('download')` | `web.waitForDownload(() => ...)` |
-| `page.evaluate` | `web.evaluate` |
-| `context.addCookies` | `web.setCookies` |
-| `page.setViewportSize` | `web.setViewport` |
-| `expect(page).toHaveURL` | `expect(web).toHaveURL` |
-| `expect(locator).toHaveScreenshot()` | No pixel-diff equivalent. Use `agent.assert('...', { vision: true })` for a visual judgment. |
-| `page.waitForTimeout` | Use a locator assertion for the condition you need |
-| `test.extend` | `test.extend`, same shape |
+Every e2e call sits on one side of a line. What is on `screen` and
+`expect(locator)` runs on every target: a browser, a simulator or emulator
+through `@e2edev/agent-device`, any engine built on the same contract. What
+is on `web` runs only in a browser, and a test that uses it declares
+`requires: ['web']` so other targets skip it. A Playwright test ports line by
+line to one side or the other; the `Lives in` column says which. `Status`
+says whether the call exists: `same`, `renamed`, `web only`, `by design`
+(it differs on purpose, see [By design](#by-design)), or `missing`, with what
+to do today.
 
-Where the behaviour differs from Playwright's:
+### Locators
 
-- `getByText` matches exactly by default. Pass `{ exact: false }` for
-  Playwright's substring match.
-- Single-node reads and assertions fail on multiple matches. Narrow with
-  `.filter()`, `.first()`, or `{ visible: true }`.
-- A password is a `Secret` with no string value. It comes from
-  `credentials.user('admin').password` and goes into `fill` or an `act`
-  param.
+| Playwright | e2e | Lives in | Status |
+| --- | --- | --- | --- |
+| `page.getByRole`, `getByLabel`, `getByText`, `getByTestId`, `getByPlaceholder` | the same on `screen` | `screen` | same |
+| `getByText('Save')` | matches exactly; `{ exact: false }` for Playwright's substring match | `screen` | by design |
+| `getByRole('img')` | `getByRole('image')`; `img` is not in the closed `Role` list | `screen` | renamed |
+| `getByAltText(alt)` | `getByRole('image', { name: alt })` | `screen` | renamed |
+| `getByTitle` | not yet; the node carries no title | `web` | missing |
+| `getByRole(role, { includeHidden })` | a role query never matches a hidden node; `{ visible: true }` on the other queries drops hidden twins | `screen` | by design |
+| `locator.filter({ hasText, has })` | the same | `screen` | same |
+| `filter({ hasNot, hasNotText })` | not yet; a positive filter or `nth` | `screen` | missing |
+| `first()`, `last()`, `nth(i)` | the same | `screen` | same |
+| `locator.and(other)`, `locator.or(other)` | not yet | `screen` | missing |
+| `locator.count()` | the same | `screen` | same |
+| `locator.all()`, `allTextContents()`, `allInnerTexts()` | `count()`, then `nth(i).textContent()` in a loop | `screen` | missing |
+| `page.locator('css')`, `page.locator('xpath=...')` | `web.locator('css')` | `web` | web only |
+| `locator.locator('css')` | not yet; `web.locator('css').getByRole(...)` scopes the other way round | `web` | missing |
+| `page.frameLocator('#frame')` | `web.frameLocator('#frame')`, then `screen` queries inside it | `web` | web only |
+
+### Actions
+
+| Playwright | e2e | Lives in | Status |
+| --- | --- | --- | --- |
+| `locator.click()` | `locator.tap()`; `click()` is an alias | `screen` | same |
+| `click({ button: 'right' })` | `secondaryTap()` | `screen` | renamed |
+| `dblclick()` | `doubleTap()` | `screen` | renamed |
+| `click({ position })`, `click({ force })` | not yet; the agent has `tap_at` | `screen` | missing |
+| `click({ modifiers, clickCount, delay, trial })` | not yet | `web` | missing |
+| `fill(value)` | the same; also takes a `Secret` | `screen` | same |
+| `pressSequentially(text)` | not yet; `focus()`, then `web.keyboard.type(text)` | `screen` | missing |
+| `press(key)` | the same; modifiers join with `+`, see the [key grammar](/reference/engine#keys) | `screen` | same |
+| `clear()`, `check()`, `uncheck()`, `focus()`, `hover()`, `selectOption()`, `setInputFiles()`, `dragTo()` | the same | `screen` | same |
+| `selectOption(['a', 'b'])` | not yet; one option per call | `screen` | missing |
+| `setInputFiles({ name, buffer })` | not yet; paths only, resolved from the project root | `screen` | missing |
+| `scrollIntoViewIfNeeded()` | `scrollIntoView()` | `screen` | renamed |
+| `locator.textContent()`, `innerText()` | `textContent()`, whitespace normalized | `screen` | same |
+| `inputValue()`, `getAttribute()`, `isVisible()`, `isEnabled()`, `isChecked()`, `boundingBox()` | the same | `screen` | same |
+| `isHidden()`, `isDisabled()`, `isEditable()` | negate `isVisible()` and `isEnabled()`; no editable read | `screen` | missing |
+| `waitFor({ state: 'visible' })`, `'hidden'` | the same | `screen` | same |
+| `waitFor({ state: 'attached' })`, `'detached'` | not yet; `expect(locator).toHaveCount(n)` | `screen` | missing |
+| `locator.evaluate(fn)`, `evaluateAll(fn)` | not yet; `web.evaluate(fn, selector)` with a CSS selector argument | `web` | missing |
+| `locator.screenshot()` | not yet; `app.screenshot(label)` captures the viewport | `app` | missing |
+| `innerHTML()`, `dispatchEvent()`, `selectText()`, `blur()`, `highlight()` | not yet; `web.evaluate` | `web` | missing |
+| `ariaSnapshot()` | not yet | `web` | missing |
+| `page.keyboard.press`, `keyboard.type` | `web.keyboard.press`, `web.keyboard.type`; plain text only, never a `Secret` | `web` | web only |
+| `keyboard.down`, `keyboard.up`, `keyboard.insertText` | not yet | `web` | missing |
+| `page.mouse.move`, `wheel`, `down`, `up` | `web.mouse.*` | `web` | web only |
+| `page.mouse.click(x, y)` | not yet; `web.mouse.move`, `down`, `up` | `web` | missing |
+
+### Assertions
+
+| Playwright | e2e | Lives in | Status |
+| --- | --- | --- | --- |
+| `expect(locator).toBeVisible()`, `toBeHidden()`, `toBeEnabled()`, `toBeDisabled()`, `toBeChecked()`, `toBeFocused()` | the same | `expect` | same |
+| `toHaveText()`, `toContainText()`, `toHaveValue()`, `toHaveAttribute()`, `toHaveCount()`, `toHaveAccessibleName()` | the same | `expect` | same |
+| `toHaveText(['a', 'b'])` on several matches | not yet; `nth(i)` per item | `expect` | missing |
+| `toHaveAttribute('aria-selected', 'true')`, `'aria-expanded'` | `toBeSelected()`, `toBeExpanded()` | `expect` | renamed |
+| a positive matcher on several matches | `LOCATOR_AMBIGUOUS` at once; narrow with `filter`, `first`, or `{ visible: true }` | `expect` | by design |
+| `toBeAttached()`, `toBeEmpty()`, `toBeInViewport()`, `toBeEditable()`, `toHaveRole()`, `toHaveAccessibleDescription()` | not yet; `toHaveCount(1)` stands in for attached | `expect` | missing |
+| `expect(locator).toHaveClass(cls)` | `expect(web).toHaveClass(locator, cls)`; a DOM fact is asserted through `web` | `web` | web only |
+| `toHaveCSS()`, `toHaveId()`, `toHaveJSProperty()`, `toContainClass()`, `toHaveValues()` | not yet; `web.evaluate` plus a value matcher | `web` | missing |
+| `expect(page).toHaveURL()`, `toHaveTitle()` | `expect(web).toHaveURL()`, `toHaveTitle()` | `web` | web only |
+| `toHaveScreenshot()`, `toMatchSnapshot()` | not yet; `agent.assert('...', { vision: true })` is a judgment, not a pixel diff | `expect` | missing |
+| `toMatchAriaSnapshot()` | not yet | `web` | missing |
+| `expect(value).toBe()`, `toEqual()`, `toContain()`, `toMatch()`, `toBeTruthy()`, `toBeCloseTo()` and the rest | the same 15, see [value matchers](/reference/expect#value-matchers) | `expect` | same |
+| `toHaveLength()`, `toMatchObject()`, `toStrictEqual()`, `toThrow()`, `toBeInstanceOf()`, `toHaveProperty()` | not yet; `expect(list.length).toBe(n)`, `toEqual` on the shape you need | `expect` | missing |
+| `expect.any()`, `objectContaining()`, `arrayContaining()`, `stringMatching()` | not yet | `expect` | missing |
+| `expect(async () => { ... }).toPass()` | `expect.poll(read).toBe(...)` | `expect` | renamed |
+| `expect.poll()` | the same | `expect` | same |
+| `expect.soft()` | not yet; the first failure ends the test | `expect` | missing |
+| `expect.extend()` | not yet | `expect` | missing |
+| `expect(promise).resolves`, `.rejects` | not yet; `await` first, then `expect(value)` | `expect` | missing |
+
+### Navigation and app
+
+| Playwright | e2e | Lives in | Status |
+| --- | --- | --- | --- |
+| `page.goto(path)` | `app.open(path)`; `web.goto(url, { waitUntil, timeout })` for the browser options | `app` | renamed |
+| `const response = await page.goto()` | returns nothing; take the response from `web.waitForResponse` | `web` | by design |
+| `page.goBack()` | `app.back()`, or `web.back()` | `app` | renamed |
+| `page.goForward()`, `page.reload()` | `web.forward()`, `web.reload()` | `web` | web only |
+| `page.url()`, `page.title()` | `web.url()`, `web.title()` | `web` | web only |
+| `page.waitForURL()` | `web.waitForURL()` | `web` | web only |
+| `page.waitForLoadState()` | not yet; `web.goto(url, { waitUntil })` on the navigation itself | `web` | missing |
+| `page.waitForFunction(fn)` | `expect.poll(() => web.evaluate(fn)).toBeTruthy()` | `web` | missing |
+| `page.waitForTimeout(ms)` | a locator assertion on the state you are waiting for | `expect` | by design |
+| `page.setViewportSize()` | `web.setViewport()` | `web` | web only |
+| `page.screenshot()` | `app.screenshot(label)`: the viewport, redacted, attached to the report; no `fullPage` | `app` | renamed |
+| a fresh `context` per test | every attempt starts in a fresh context; `app.restart()` recreates it, `app.clearState()` also clears storage | `app` | same |
+| `page.pause()` | not yet; `--headed` to watch, [`e2e mcp`](/reference/mcp) to drive the app from a coding agent | CLI | missing |
+
+### Network and browser
+
+| Playwright | e2e | Lives in | Status |
+| --- | --- | --- | --- |
+| `page.route(pattern, handler)` | `web.route(pattern, handler)`; the handler decides exactly once | `web` | web only |
+| `route.fulfill({ json, body, status, headers })` | the same; `json` or `body`, never both | `web` | web only |
+| `route.fulfill({ path, contentType })`, `route.fetch()` | not yet; read the file in the test and pass `body` | `web` | missing |
+| `route.continue(overrides)`, `route.abort(code)` | `continue()` and `abort()` take no arguments | `web` | missing |
+| `page.unroute()` | `web.unroute()` | `web` | web only |
+| `page.waitForResponse(pattern)` | `web.waitForResponse(pattern)`: `url`, `status`, `headers`, `json()`, `text()` | `web` | web only |
+| `response.ok()`, `response.body()`, `response.request()` | not yet; `status` and `text()` | `web` | missing |
+| `page.waitForRequest()`, `request.postDataJSON()` | not yet; `route.request.postData` is a string | `web` | missing |
+| `routeFromHAR()`, `routeWebSocket()` | not yet | `web` | missing |
+| `page.on('dialog')` | `web.onDialog('accept')`, or a handler that calls `accept` or `dismiss` | `web` | web only |
+| `page.waitForEvent('download')` | `web.waitForDownload(() => trigger)` | `web` | web only |
+| `page.waitForEvent('popup')`, `context.on('page')` | not yet; a window the app opens is not driven | `web` | missing |
+| `page.on('console')`, `page.on('pageerror')` | not yet; assert on what the page shows | `web` | missing |
+| `page.evaluate(fn, arg)` | `web.evaluate(fn, arg)`; JSON in and out, no handles | `web` | web only |
+| `page.exposeFunction()`, `addInitScript()`, `setExtraHTTPHeaders()`, `emulateMedia()`, `clock` | not yet | `web` | missing |
+| `context.addCookies()`, `context.cookies()` | `web.setCookies()`, `web.cookies()` | `web` | web only |
+| `context.clearCookies()` | `app.clearState()` | `app` | renamed |
+| `request` fixture | Node `fetch`; forward the browser session from `web.cookies()` when the API needs it | `test` | by design |
+| `context.storageState({ path })` | not yet; sessions are per run and encrypted, see [By design](#by-design) | `test` | by design |
+
+### Test structure
+
+| Playwright | e2e | Lives in | Status |
+| --- | --- | --- | --- |
+| `import { test, expect } from '@playwright/test'` | `import { test } from '@e2edev/playwright'` and `import { expect } from 'e2e'` | `test` | renamed |
+| `test(title, fn)`, `test.describe`, `beforeEach`, `afterEach` | the same | `test` | same |
+| `test.beforeAll`, `afterAll` | the same, with `platform` as the only fixture; no `browser` or `request` | `test` | same |
+| `{ page }` in a test | `{ screen, app, web }`; no raw `Page` in tests, see [By design](#by-design) | `test` | by design |
+| `test.skip(title, fn)`, `test.skip(condition, reason)` | the same | `test` | same |
+| `test.only` | the same; CI rejects it with `ONLY_IN_CI` | `test` | same |
+| `test.describe.only` | not yet; `test.only` on each member | `test` | missing |
+| `test.describe.skip` | `test.describe(title, { skip: true }, fn)` | `test` | renamed |
+| `test.describe.serial`, `describe.configure({ mode: 'serial' })` | `test.describe(title, { serial: true }, fn)`: one retry unit with shared app state | `test` | renamed |
+| `describe.configure({ mode: 'parallel' })` | not yet; a file's tests run in order on one worker | `test` | missing |
+| `describe.configure({ retries, timeout })` | `{ retries, timeout }` on the group | `test` | renamed |
+| `test.setTimeout(ms)`, `test.slow()` | `test(title, { timeout }, fn)` | `test` | renamed |
+| `test.fixme()`, `test.fail()` | not yet; `{ skip: 'reason' }` | `test` | missing |
+| `test.step(title, fn)` | not yet; every `screen`, `web`, and `agent` call is already a named step in the report | `test` | missing |
+| `test.info()`, `attach()`, `annotations` | not yet; `app.screenshot(label)` attaches a screenshot | `test` | missing |
+| `{ tag: '@smoke' }` | `{ tags: ['smoke'] }` on a test or group | `test` | renamed |
+| `test.use({ ... })` | per target in the config; `web.setViewport` at runtime | config | renamed |
+| `test.extend({ fixture })` | the same shape; a fixture that needs another goes in a chained `extend` | `test` | same |
+| `{ scope: 'worker' }` fixtures, option fixtures | not yet; `beforeAll` for per-file setup | `test` | missing |
+| a `setup` project with `storageState` | `test.setup(title, { sessions }, fn)` and `session.save(name)` | `test` | renamed |
+
+### CLI
+
+| Playwright | e2e | Lives in | Status |
+| --- | --- | --- | --- |
+| `npx playwright test` | `npx e2e run` | CLI | renamed |
+| `npx playwright test tests/login.spec.ts` | `npx e2e run tests/login.e2e.ts`; a directory, a bare name, or a glob also selects | CLI | same |
+| `--project web` | `--target web` | CLI | renamed |
+| `-g`, `--grep`, `--grep-invert` | `--grep` and `--grep-invert`, matched against the describe titles and the test title joined by spaces; tags are `--tag` and `--exclude-tag` | CLI | same |
+| `tests/login.spec.ts:12` | `tests/login.e2e.ts:12`, the test whose `test(` call opens on that line | CLI | same |
+| `--headed` | the same | CLI | same |
+| `--debug` | not yet; `--headed` to watch. `e2e run --debug` prints phase timings and the agent step table, not an inspector | CLI | missing |
+| `--ui` | not yet; `--headed` to watch, `e2e mcp` to drive the app from a coding agent | CLI | missing |
+| `--retries`, `--workers`, `--config`, `--pass-with-no-tests` | the same | CLI | same |
+| `--reporter` | the same flag; the ids are `list`, `json`, `junit`, `markdown` | CLI | same |
+| `--output` | `--artifacts` | CLI | renamed |
+| `--trace on` | a trace is on for every attempt; `artifacts.kinds` without `'trace'` turns it off | config | renamed |
+| `--last-failed`, `--shard`, `--repeat-each`, `--max-failures` | the same names; `--shard` keeps serial groups together | CLI | same |
+| `--quiet` | not yet | CLI | missing |
+| `--update-snapshots` | no equivalent; there is no pixel assertion | CLI | missing |
+| `--list` | `npx e2e list`, with the same selection flags | CLI | renamed |
+| `npx playwright codegen` | `npx e2e explore` walks the app from a goal and reports what it found; `npx e2e mcp` gives a coding agent a live session so it writes the test while driving the app, see [Coding agents](/coding-agents) | CLI | renamed |
+| `npx playwright show-trace` | the same, on `trace/<name>.zip` under the attempt's artifact directory | CLI | same |
+| `npx playwright show-report` | not yet; `.e2e/summary.md` from the `markdown` reporter | CLI | missing |
+| `npx playwright install` | still works; the engine also installs a missing browser once per run, before the run's clock starts | CLI | same |
+
+## By design
+
+These differ from Playwright on purpose and will stay that way.
+
+- `getByText` is exact. A substring match on `Save` also hits `Save as
+  draft`, and a test that passes on the wrong node is worse than one that
+  fails. Pass `{ exact: false }` or a `RegExp` when you mean a fragment.
+- One match or `LOCATOR_AMBIGUOUS`. An action, read, or assertion on several
+  matches fails at once, `isVisible()` included. Playwright's `isVisible()`
+  reads the first match silently; here a second match is usually a hidden
+  duplicate the test did not know about. Narrow with `filter`, `first`,
+  `nth`, or `{ visible: true }`.
+- `web.evaluate` takes and returns JSON only. The result is recorded in the
+  report and redacted; a `JSHandle` or `ElementHandle` cannot be. Pass values
+  in through `arg`.
+- `goto` returns nothing. `app.open` and `web.goto` resolve to `void`; the
+  response of a navigation comes from `web.waitForResponse`.
+- A password is a `Secret`. `credentials.user('admin').password` has no string
+  value. `fill` and `act` params accept it, the runner fills it, masks it in
+  every observation, and redacts it from traces and the report. The model
+  never sees it. See [Signing in](/authentication).
+- Sessions are per run and encrypted. `test.setup` saves state under a name
+  and `{ session }` restores it. The file is AES-256-GCM encrypted with a key
+  that lives in memory and is deleted at cleanup, so there is no
+  `.auth/user.json` to cache across runs; setup runs once per run and target.
+- Every `web` call is a step. It lands in the report with its arguments
+  redacted, so a failure shows the exact call without a `test.step` around
+  it.
+- No raw `Page` in tests. Nothing on a raw page is recorded, redacted, or
+  masked, so `page.screenshot()` after a secret fill would leak pixels.
+  `surfaceOf(engine)` exists for [custom executors](/executors#driving-the-page-yourself),
+  not for test code.
+
+## Defaults that differ
+
+| Setting | Playwright | e2e |
+| --- | --- | --- |
+| Test timeout | 30 s | 120 s, `timeout` |
+| Action timeout | none | 30 s, `actionTimeout` |
+| Expect timeout | 5 s | 5 s, `assertionTimeout` |
+| Navigation timeout | none | 120 s, the test budget; `web.goto(url, { timeout })` overrides one call |
+| Retries | 0 | 1 in CI, 0 locally |
+| Trace | `off` (`on-first-retry` in the scaffolded config) | on for every attempt; no retain policy |
+| `getByText` | case-insensitive substring | exact |
+| `isVisible()` on several matches | the first match, no error | `LOCATOR_AMBIGUOUS` |
 
 ## What to migrate first
 
@@ -109,7 +326,7 @@ Tests that already work well can remain in Playwright.
   <Card title="Writing tests" icon="pen-to-square" href="/writing-tests">
     Goals, checks, extraction, and where a deterministic call still belongs.
   </Card>
-  <Card title="Web engine reference" icon="masks-theater" href="/reference/web">
+  <Card title="Playwright reference" icon="masks-theater" href="/reference/playwright">
     Every option and every `web` method.
   </Card>
 </CardGroup>
