@@ -1,4 +1,4 @@
-import { test } from '@e2edev/agent-device';
+import { test } from '@e2edev/mobile';
 import { expect } from 'e2e';
 
 test('the agent opens General', async ({ agent, device }) => {

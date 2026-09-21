@@ -1,4 +1,4 @@
-import { test } from '@e2edev/playwright';
+import { test } from '@e2edev/web';
 import { expect } from 'e2e';
 
 test('one submit opens one confirm, even when double-clicked', async ({ app, screen, web }) => {

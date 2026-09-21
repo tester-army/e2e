@@ -30,17 +30,17 @@ Configure an engine for your app and a model for the agent:
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
 import { createAgent } from 'e2e/agent';
-import { playwright } from '@e2edev/playwright';
+import { web } from '@e2edev/web';
 import { gateway } from 'ai';
 
 export default {
-  targets: [{ engine: playwright({ url: 'http://localhost:3000' }) }],
+  targets: [{ engine: web({ url: 'http://localhost:3000' }) }],
   agents: { default: createAgent({ model: gateway('openai/gpt-5.6-luna') }) },
 } satisfies E2EConfig;
 ```
 
-The Playwright engine drives Chromium, Firefox, and WebKit. The agent-device
-engine drives iOS simulators and Android emulators. Both expose the same
+The web engine drives Chromium, Firefox, and WebKit through Playwright. The
+mobile engine drives iOS simulators and Android emulators through agent-device. Both expose the same
 agent and screen APIs, with extra APIs for platform-specific operations.
 You can also [write an engine](/writing-an-engine) for another platform.
 

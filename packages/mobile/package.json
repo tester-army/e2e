@@ -1,0 +1,84 @@
+{
+  "name": "@e2edev/mobile",
+  "version": "0.8.0-canary-20260917213813",
+  "description": "Mobile engine (iOS and Android) for e2e agentic end-to-end testing, built on agent-device",
+  "keywords": [
+    "e2e",
+    "testing",
+    "agentic",
+    "end-to-end",
+    "agent-device",
+    "ios",
+    "android",
+    "engine"
+  ],
+  "license": "Apache-2.0",
+  "contributors": [
+    "Oskar Kwaśniewski <oskar@tester.army>",
+    "Szymon Rybczak <szymon@tester.army>"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tester-army/e2e.git",
+    "directory": "packages/mobile"
+  },
+  "bugs": {
+    "url": "https://github.com/tester-army/e2e/issues"
+  },
+  "homepage": "https://github.com/tester-army/e2e/tree/main/packages/mobile#readme",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public",
+    "provenance": false,
+    "tag": "beta"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./tools": {
+      "types": "./dist/tools.d.ts",
+      "default": "./dist/tools.js"
+    }
+  },
+  "files": [
+    "dist",
+    "NOTICE"
+  ],
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc --project tsconfig.build.json && node ../../scripts/stamp-dist.ts",
+    "prepublishOnly": "node ../../scripts/check-dist.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run tests/unit",
+    "test:simulator": "E2E_AGENT_DEVICE_SIMULATOR=1 vitest run tests/integration"
+  },
+  "dependencies": {
+    "agent-device": "0.21.6",
+    "pngjs": "7.0.0",
+    "zod": "4.6.1"
+  },
+  "peerDependencies": {
+    "ai": "^7.0.0",
+    "e2e": "0.15.0-canary-20260917213813"
+  },
+  "peerDependenciesMeta": {
+    "ai": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "26.4.1",
+    "@types/pngjs": "6.0.5",
+    "ai": "7.0.105",
+    "e2e": "workspace:*",
+    "typescript": "7.0.2",
+    "vitest": "5.0.0"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

@@ -21,19 +21,19 @@ export function getEnginePresets() {
   const ios = os.platform() === 'darwin';
   return [
     {
-      id: 'playwright',
+      id: 'web',
       label: 'Web',
       hint: 'Playwright',
-      dependencies: { ...siblingDependency('@e2edev/playwright'), playwright: playwrightRange(SIBLING_VERSIONS?.['playwright']) },
-      imports: ["import { playwright } from '@e2edev/playwright';"],
+      dependencies: { ...siblingDependency('@e2edev/web'), playwright: playwrightRange(SIBLING_VERSIONS?.['playwright']) },
+      imports: ["import { web } from '@e2edev/web';"],
       config: `  targets: [{
-    engine: playwright({
+    engine: web({
       url: process.env.APP_URL ?? 'http://localhost:3000',
       // Or let the runner start the dev server:
       // command: { executable: 'npm', args: ['run', 'dev'] },
     }),
   }],`,
-      example: `import { test } from '@e2edev/playwright';
+      example: `import { test } from '@e2edev/web';
 import { expect } from 'e2e';
 
 test('app opens', async ({ app, web }) => {
@@ -52,19 +52,19 @@ test('app opens', async ({ app, web }) => {
       needsAppUrl: true,
     },
     {
-      id: 'agent-device',
+      id: 'mobile',
       label: 'Mobile (iOS/Android)',
       hint: 'agent-device',
-      dependencies: siblingDependency('@e2edev/agent-device'),
-      imports: ["import { agentDevice } from '@e2edev/agent-device';"],
+      dependencies: siblingDependency('@e2edev/mobile'),
+      imports: ["import { mobile } from '@e2edev/mobile';"],
       config: ios
         ? `  // Replace Settings with your app's bundle id.
-  targets: [{ name: 'ios', engine: agentDevice({ platform: 'ios', app: 'Settings' }) }],
+  targets: [{ name: 'ios', engine: mobile({ platform: 'ios', app: 'Settings' }) }],
   workers: 1,`
         : `  // Replace com.android.settings with your app's package name.
-  targets: [{ name: 'android', engine: agentDevice({ platform: 'android', app: 'com.android.settings' }) }],
+  targets: [{ name: 'android', engine: mobile({ platform: 'android', app: 'com.android.settings' }) }],
   workers: 1,`,
-      example: `import { test } from '@e2edev/agent-device';
+      example: `import { test } from '@e2edev/mobile';
 import { expect } from 'e2e';
 
 test('Settings opens', async ({ screen }) => {
@@ -109,7 +109,7 @@ test('app responds', async () => {
 }
 
 export type EngineId = ReturnType<typeof getEnginePresets>[number]['id'];
-export const DEFAULT_ENGINE_ID = 'playwright' satisfies EngineId;
+export const DEFAULT_ENGINE_ID = 'web' satisfies EngineId;
 
 /** Resolves a preset with the common shape used by scaffold generation. */
 export function getEnginePreset(id: EngineId): EnginePreset {

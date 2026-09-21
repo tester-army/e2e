@@ -15,7 +15,7 @@ function resolve(raw: Parameters<typeof resolveConfig>[0], env: NodeJS.ProcessEn
   return resolveConfig({ targets: TARGETS, ...raw }, { projectRoot: ROOT, env });
 }
 
-/** A minimal observing engine declaring the given app facts, the way playwright() or agentDevice() would. */
+/** A minimal observing engine declaring the given app facts, the way web() or mobile() would. */
 function fakeEngine(app: EngineAppDeclaration = {}) {
   return defineEngine({ name: 'fake', version: '1.0.0', spiVersion: 1, observe: async () => snapshot([]), app });
 }
@@ -134,10 +134,10 @@ describe('resolveConfig', () => {
     expect(() => resolve({ testDir: 'tests' } as never)).toThrow(
       'unknown config key "testDir"; test files are selected by tests, a glob such as "tests/**/*.e2e.ts"',
     );
-    expect(() => resolve({ app: {} } as never)).toThrow('the app under test is declared by the engine: engine: playwright({ url })');
-    expect(() => resolve({ webServer: {} } as never)).toThrow('playwright({ url, command: { executable, args } })');
+    expect(() => resolve({ app: {} } as never)).toThrow('the app under test is declared by the engine: engine: web({ url })');
+    expect(() => resolve({ webServer: {} } as never)).toThrow('web({ url, command: { executable, args } })');
     expect(() => resolve({ screen: { testIdAttribute: 'data-qa' } } as never)).toThrow(
-      'unknown config key "screen"; the test-id attribute is an engine option: engine: playwright({ testIdAttribute })',
+      'unknown config key "screen"; the test-id attribute is an engine option: engine: web({ testIdAttribute })',
     );
     expect(() => resolve({ targets: [{ ...WEB, url: 'http://localhost:3000' }] } as never)).toThrow(
       'target "web" has unknown key "url"; a target is { name?, platform?, engine? }; the app under test is declared by the engine',

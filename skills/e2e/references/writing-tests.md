@@ -4,7 +4,7 @@
 
 ```ts
 // tests/todos.e2e.ts
-import { test } from '@e2edev/playwright';
+import { test } from '@e2edev/web';
 import { expect } from 'e2e';
 
 test.describe('todos', { tags: ['todos'] }, () => {
@@ -88,8 +88,8 @@ Fixtures are lazy; destructure them in the callback.
 | `screen` | `Screen` | Always. |
 | `agent` | `Agent` | Needs a configured model, else `MODEL_UNAVAILABLE`. See the `agent` topic. |
 | `platform` | `'web' \| 'ios' \| 'android' \| string` | Always; also in `beforeAll` and `afterAll`. |
-| `web` | `Web` | Browser targets. Import `test` from `@e2edev/playwright`. |
-| `device` | `Device` | Device targets. Import `test` from `@e2edev/agent-device`. |
+| `web` | `Web` | Browser targets. Import `test` from `@e2edev/web`. |
+| `device` | `Device` | Device targets. Import `test` from `@e2edev/mobile`. |
 | `session` | `SetupSession` | Only in `test.setup`. |
 
 ### app
@@ -115,7 +115,7 @@ subtree.
 | `getByPlaceholder(text)` | Inputs by placeholder. |
 | `getByText(text, { exact?, visible? })` | Visible text. |
 | `getByDisplayValue(value)` | Inputs by current value. |
-| `getByTestId(id, { visible? })` | `data-testid` on the web (or `playwright({ testIdAttribute })`), the accessibility identifier or resource id on a device. Last resort. |
+| `getByTestId(id, { visible? })` | `data-testid` on the web (or `web({ testIdAttribute })`), the accessibility identifier or resource id on a device. Last resort. |
 
 Roles: `button`, `link`, `textbox`, `searchbox`, `combobox`, `listbox`,
 `option`, `checkbox`, `radio`, `switch`, `slider`, `image`, `heading`, `tab`,
@@ -209,7 +209,7 @@ tests declare it. Selecting a dependent test alone still runs its setup.
 
 ```ts
 // tests/auth.setup.e2e.ts
-import { test } from '@e2edev/playwright';
+import { test } from '@e2edev/web';
 import { expect, credentials } from 'e2e';
 
 test.setup('authenticate as admin', { sessions: ['admin'] }, async ({ app, screen, session, web }) => {
@@ -262,7 +262,7 @@ a setup test and keep the evidence in the tests that matter.
 
 ## The web fixture (browser only)
 
-Import `test` from `@e2edev/playwright`. Prefer `app` and `screen`; use
+Import `test` from `@e2edev/web`. Prefer `app` and `screen`; use
 `web` for what only a browser has. Portable suites declare
 `requires: ['web']` so device targets skip the test instead of failing.
 

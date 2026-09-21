@@ -7,7 +7,7 @@ import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { createProject, runExisting, type FixtureProject } from '../helpers/run-project.ts';
 
 const SUITE = `
-import { test } from '@e2edev/playwright';
+import { test } from '@e2edev/web';
 import { expect } from 'e2e';
 
 test('asks the agent', async ({ app, agent }) => {
@@ -18,7 +18,7 @@ test('asks the agent', async ({ app, agent }) => {
 `;
 
 const PINNED_SUITE = `
-import { test } from '@e2edev/playwright';
+import { test } from '@e2edev/web';
 import { expect } from 'e2e';
 
 test.describe('as the buyer', { agent: 'buyer' }, () => {
@@ -49,7 +49,7 @@ test('an unknown agent on a call fails that call', async ({ app, agent }) => {
 `;
 
 const PERSONA_SUITE = `
-import { test } from '@e2edev/playwright';
+import { test } from '@e2edev/web';
 import { expect } from 'e2e';
 
 test.describe('checkout', { agent: ['buyer', 'admin'] }, () => {

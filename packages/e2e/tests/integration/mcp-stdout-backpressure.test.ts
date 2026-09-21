@@ -17,10 +17,10 @@ const PACKAGE_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const CLI = path.join(PACKAGE_ROOT, 'dist', 'cli', 'bin.js');
 
 const CONFIG = `import type { E2EConfig } from 'e2e';
-import { playwright } from '@e2edev/playwright';
+import { web } from '@e2edev/web';
 
 export default {
-  targets: [{ name: 'web', platform: 'web', engine: playwright({ url: 'http://127.0.0.1:1' }) }],
+  targets: [{ name: 'web', platform: 'web', engine: web({ url: 'http://127.0.0.1:1' }) }],
 } satisfies E2EConfig;
 `;
 

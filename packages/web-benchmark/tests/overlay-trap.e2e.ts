@@ -1,4 +1,4 @@
-import { test } from '@e2edev/playwright';
+import { test } from '@e2edev/web';
 import { expect } from 'e2e';
 
 test('continues only after the banner and the overlay are gone', async ({ app, screen }) => {

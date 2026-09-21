@@ -120,7 +120,7 @@ These appear in terminal output and in the report as plain string codes.
 | `WORKER_PROTOCOL` | A worker reported a unit other than the one it was running, or started an attempt while another was still running | infrastructure | 3 |
 | `SESSION_KEY_INVALID` | A worker received a session key that is not 32 bytes. Packaging or IPC fault. | infrastructure | 3 |
 | `REPORT_WRITE_FAILED` | `report.json` or `ai-trace.json` could not be written. Recorded as a run error; the in-memory outcome is still complete. A `junit.xml` that could not be written is the `junit` reporter's stderr line instead | infrastructure | 3 |
-| `EVALUATE_FAILED` | `web.evaluate` threw inside the page (`@e2edev/playwright`) | test | 1 |
+| `EVALUATE_FAILED` | `web.evaluate` threw inside the page (`@e2edev/web`) | test | 1 |
 | `INTERRUPTED` | A user or CI signal aborted the run | interrupted | 130 |
 
 Errors raised by argument validation in test code use `INVALID_ARGUMENT` and

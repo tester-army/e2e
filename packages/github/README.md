@@ -10,11 +10,11 @@ npm install --save-dev @e2edev/github
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
-import { playwright } from '@e2edev/playwright';
+import { web } from '@e2edev/web';
 import { github } from '@e2edev/github';
 
 export default {
-  targets: [{ engine: playwright({ url: 'http://localhost:3000' }) }],
+  targets: [{ engine: web({ url: 'http://localhost:3000' }) }],
   reporters: ['list', github()],
 } satisfies E2EConfig;
 ```

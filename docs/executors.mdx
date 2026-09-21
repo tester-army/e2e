@@ -23,11 +23,11 @@ its accessible name.
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
 import { createToolLoopExecutor } from 'e2e/agent';
-import { playwright, surfaceOf } from '@e2edev/playwright';
+import { web, surfaceOf } from '@e2edev/web';
 import { gateway, tool } from 'ai';
 import { z } from 'zod';
 
-const engine = playwright({ url: 'http://localhost:3000' });
+const engine = web({ url: 'http://localhost:3000' });
 
 export default {
   targets: [{ engine }],
@@ -85,7 +85,7 @@ understand.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig, StepExecutor } from 'e2e';
-import { playwright } from '@e2edev/playwright';
+import { web } from '@e2edev/web';
 
 const scripted: StepExecutor = {
   name: 'scripted',
@@ -109,7 +109,7 @@ const scripted: StepExecutor = {
 };
 
 export default {
-  targets: [{ engine: playwright({ url: 'http://localhost:3000' }) }],
+  targets: [{ engine: web({ url: 'http://localhost:3000' }) }],
   agents: { default: scripted },
 } satisfies E2EConfig;
 ```
@@ -151,15 +151,15 @@ configured model and raise `MODEL_UNAVAILABLE` without one.
 
 ### Driving the page yourself
 
-Use `surfaceOf(handle)` from `@e2edev/playwright` to access the current
+Use `surfaceOf(handle)` from `@e2edev/web` to access the current
 attempt's `Page` and `BrowserContext`. Both accessors throw `INVALID_STATE`
 outside an active attempt.
 
 ```ts
 import type { E2EConfig, StepExecutor } from 'e2e';
-import { playwright, surfaceOf } from '@e2edev/playwright';
+import { web, surfaceOf } from '@e2edev/web';
 
-const engine = playwright({ url: 'http://localhost:3000' });
+const engine = web({ url: 'http://localhost:3000' });
 const own: StepExecutor = {
   name: 'own-tools',
   version: '1',

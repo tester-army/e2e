@@ -122,7 +122,7 @@ function splitModel(model: { readonly provider: string; readonly model: string }
   return { provider: plainToken(model.model.slice(0, separator)), id: model.model.slice(separator + 1) };
 }
 
-/** `playwright@0.6.1`, and a project's own engine the same way; a name that is not a plain token is `other` alone. */
+/** `web@0.6.1`, and a project's own engine the same way; a name that is not a plain token is `other` alone. */
 function engineLabel(engine: { readonly name: string; readonly version: string }): string {
   const name = plainToken(engine.name);
   if (name === 'other') return name;

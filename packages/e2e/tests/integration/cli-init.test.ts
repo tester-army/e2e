@@ -59,14 +59,14 @@ describe('initializing standalone projects', () => {
     async (appUrl) => {
       vi.stubEnv('APP_URL', appUrl);
       await execFileAsync(process.execPath, [CLI, 'init', '--yes'], { cwd: dir });
-      linkPackages('e2e', 'playwright');
+      linkPackages('e2e', 'web');
       linkModules('ai');
 
       const raw = await loadConfigModule(path.join(dir, 'e2e.config.ts'));
       const config = resolveConfig(raw, { projectRoot: dir, env: {} });
       const collection = await collect(config);
 
-      expect(config.targets).toMatchObject([{ name: 'web', platform: 'web', engine: { name: 'playwright' } }]);
+      expect(config.targets).toMatchObject([{ name: 'web', platform: 'web', engine: { name: 'web' } }]);
       // --yes writes the default gateway as its provider's constructor; the runner implies none, and no key is needed to load it.
       expect(readFileSync(path.join(dir, 'e2e.config.ts'), 'utf8')).toContain("model: gateway('openai/gpt-5.6-luna'),");
       expect(config.agent.model).toMatchObject({ provider: 'gateway', id: 'openai/gpt-5.6-luna' });
@@ -91,7 +91,7 @@ describe('initializing standalone projects', () => {
     const config = resolveConfig(raw, { projectRoot: dir, env: {} });
     const collection = await collect(config);
 
-    expect(scaffold.dependencies).not.toHaveProperty('@e2edev/playwright');
+    expect(scaffold.dependencies).not.toHaveProperty('@e2edev/web');
     expect(scaffold.dependencies).toMatchObject({ ai: '^7.0.0', '@openrouter/ai-sdk-provider': '^3.0.0' });
     expect(config.agent.model).toMatchObject({ provider: expect.stringMatching(/^openrouter/), id: 'openai/gpt-5.6-luna' });
     expect(config.targets[0]!.app.base).toBeUndefined();
@@ -103,12 +103,12 @@ describe('initializing standalone projects', () => {
     { host: 'linux', platform: 'android' },
   ] as const)('loads the $platform device scaffold generated on $host without a simulator', async ({ host, platform }) => {
     vi.spyOn(os, 'platform').mockReturnValue(host);
-    const scaffold = createScaffold('agent-device', { gateway: 'vercel' });
+    const scaffold = createScaffold('mobile', { gateway: 'vercel' });
     writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ type: 'module', devDependencies: scaffold.dependencies }));
     writeFileSync(path.join(dir, 'e2e.config.ts'), scaffold.config);
     mkdirSync(path.join(dir, 'tests'));
     writeFileSync(path.join(dir, 'tests/example.e2e.ts'), scaffold.example);
-    linkPackages('e2e', 'agent-device');
+    linkPackages('e2e', 'mobile');
     linkModules('ai');
 
     const raw = await loadConfigModule(path.join(dir, 'e2e.config.ts'));
@@ -120,16 +120,16 @@ describe('initializing standalone projects', () => {
       identity: platform === 'ios' ? 'Settings' : 'com.android.settings',
     });
     expect(config.workers).toBe(1);
-    expect(config.targets).toMatchObject([{ name: platform, platform, engine: { name: 'agent-device' } }]);
+    expect(config.targets).toMatchObject([{ name: platform, platform, engine: { name: 'mobile' } }]);
     expect(collection.tests.map((test) => test.title)).toEqual(['Settings opens']);
     // The engine installs agent-device itself; init writes the engine, never the driver.
-    expect(scaffold.dependencies).toHaveProperty('@e2edev/agent-device');
+    expect(scaffold.dependencies).toHaveProperty('@e2edev/mobile');
     expect(scaffold.dependencies).not.toHaveProperty('agent-device');
   });
 
   it('runs the generated browser example against any page without a model key', async () => {
     await execFileAsync(process.execPath, [CLI, 'init', '--yes'], { cwd: dir });
-    linkPackages('e2e', 'playwright');
+    linkPackages('e2e', 'web');
     linkModules('ai');
     const server = createServer((_request, response) => response.end('<p>hello</p>'));
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -142,10 +142,10 @@ describe('initializing standalone projects', () => {
       const { stdout } = await execFileAsync(process.execPath, [CLI, 'run', '--workers', '1', '--no-cache'], { cwd: dir, env });
       expect(stdout).toContain('1 passed');
       const manifest = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'));
-      const playwrightVersion = (JSON.parse(readFileSync(path.resolve(PACKAGE_ROOT, '..', 'playwright', 'package.json'), 'utf8')) as { version: string }).version;
-      expect(manifest.devDependencies['@e2edev/playwright']).toBe(dependencyRange(playwrightVersion));
+      const playwrightVersion = (JSON.parse(readFileSync(path.resolve(PACKAGE_ROOT, '..', 'web', 'package.json'), 'utf8')) as { version: string }).version;
+      expect(manifest.devDependencies['@e2edev/web']).toBe(dependencyRange(playwrightVersion));
       const recorded = JSON.parse(readFileSync(path.join(PACKAGE_ROOT, 'dist', 'cli', 'init', 'sibling-versions.json'), 'utf8')) as Record<string, string>;
-      expect(Object.keys(recorded).toSorted()).toEqual(['@e2edev/agent-device', '@e2edev/playwright', 'playwright']);
+      expect(Object.keys(recorded).toSorted()).toEqual(['@e2edev/mobile', '@e2edev/web', 'playwright']);
       expect(manifest.devDependencies.playwright).toBe(`^${recorded.playwright}`);
       expect(manifest.devDependencies.ai).toBe('^7.0.0');
       expect(manifest.scripts).toEqual({ 'test:e2e': 'e2e run' });
@@ -240,7 +240,7 @@ describe('initializing standalone projects', () => {
 
   it('names look-alike test files when the globs match nothing', async () => {
     await execFileAsync(process.execPath, [CLI, 'init', '--yes'], { cwd: dir });
-    linkPackages('e2e', 'playwright');
+    linkPackages('e2e', 'web');
     linkModules('ai');
     writeFileSync(path.join(dir, 'tests', 'login.test.ts'), 'export {};\n');
     rmSync(path.join(dir, 'tests', 'example.e2e.ts'));

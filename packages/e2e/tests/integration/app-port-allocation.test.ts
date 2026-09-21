@@ -2,7 +2,7 @@ import { readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { playwright } from '@e2edev/playwright';
+import { web } from '@e2edev/web';
 import type { E2EConfig } from '../../src/index.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import {
@@ -43,12 +43,12 @@ const DECLARATION = {
 
 /** The same declaration as a config file, so the worker path re-resolves it from disk. */
 const CONFIG_SOURCE = `import type { E2EConfig } from 'e2e';
-import { playwright } from '@e2edev/playwright';
+import { web } from '@e2edev/web';
 
 export default {
   targets: [{
     name: 'web',
-    engine: playwright({
+    engine: web({
       url: 'http://127.0.0.1:0',
       command: { executable: process.execPath, args: ['server.cjs'], env: { PORT: '{port}' } },
     }),
@@ -59,7 +59,7 @@ export default {
 
 /** One target per name, every one asking for its own port with the same declaration. */
 function targets(names: readonly string[]): NonNullable<E2EConfig['targets']> {
-  return names.map((name) => ({ name, engine: playwright(DECLARATION) })) as unknown as NonNullable<
+  return names.map((name) => ({ name, engine: web(DECLARATION) })) as unknown as NonNullable<
     E2EConfig['targets']
   >;
 }

@@ -1,5 +1,5 @@
 import type { E2EConfig } from 'e2e';
-import { playwright } from '@e2edev/playwright';
+import { web } from '@e2edev/web';
 import { gateway } from 'ai';
 
 /**
@@ -22,7 +22,7 @@ export default {
   targets: [
     {
       name: 'web',
-      engine: playwright(
+      engine: web(
         url === undefined
           ? {
               url: 'http://127.0.0.1:4275',

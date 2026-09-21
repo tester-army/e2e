@@ -9,12 +9,12 @@ when the run ends.
 
 ## Point at a running app
 
-Import `playwright` from `@e2edev/playwright` and put this in the exported
+Import `playwright` from `@e2edev/web` and put this in the exported
 config object:
 
 ```ts title="Config fragment"
 targets: [{
-  engine: playwright({ url: process.env.APP_URL ?? 'http://localhost:3000' }),
+  engine: web({ url: process.env.APP_URL ?? 'http://localhost:3000' }),
 }],
 ```
 
@@ -30,7 +30,7 @@ answers, and stops it when the run ends, fails, or is interrupted:
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
 import { createAgent } from 'e2e/agent';
-import { playwright } from '@e2edev/playwright';
+import { web } from '@e2edev/web';
 import { gateway } from 'ai';
 
 export default {
@@ -41,7 +41,7 @@ export default {
     }),
   },
   targets: [{
-    engine: playwright({
+    engine: web({
       url: process.env.APP_URL ?? 'http://localhost:3000',
       command: {
         executable: 'npm',
@@ -68,7 +68,7 @@ The main command options are:
 | `startupTimeout` | How long to wait for readiness, 60 seconds by default. |
 
 To probe a health endpoint instead of the base URL, set `readyUrl` on
-`playwright({ url, readyUrl, command })`, alongside `command`.
+`web({ url, readyUrl, command })`, alongside `command`.
 
 The command runs without a shell. `executable` is resolved on `PATH` and
 `args` are passed as written. The child inherits only basic system variables
@@ -82,7 +82,7 @@ chooses a free port and replaces `{port}` in the command's `args` and `env`.
 Your app command must use that value:
 
 ```ts
-engine: playwright({
+engine: web({
   url: 'http://127.0.0.1:0',
   command: { executable: 'pnpm', args: ['dev', '--port', '{port}'], env: { PORT: '{port}' } },
 }),
@@ -100,7 +100,7 @@ start in order before the app command and stop in reverse order when the
 run ends.
 
 ```ts title="Target fragment"
-engine: playwright({
+engine: web({
   url: 'http://localhost:3000',
   services: [
     {
@@ -143,14 +143,14 @@ Two browsers on one app are two targets that each name it:
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
-import { playwright } from '@e2edev/playwright';
+import { web } from '@e2edev/web';
 
 const app = { url: 'http://localhost:3000' };
 
 export default {
   targets: [
-    { name: 'chromium', engine: playwright(app) },
-    { name: 'webkit-mobile', engine: playwright({ ...app, browser: 'webkit', viewport: { width: 390, height: 844 } }) },
+    { name: 'chromium', engine: web(app) },
+    { name: 'webkit-mobile', engine: web({ ...app, browser: 'webkit', viewport: { width: 390, height: 844 } }) },
   ],
 } satisfies E2EConfig;
 ```
@@ -158,7 +158,7 @@ export default {
 Targets that declare the same `command` share one process. Every test runs
 on every target unless it is scoped with `platforms` or `requires`;
 `--target <name>` selects at run time. A device target sits beside a browser
-target in the same list; see the [agent-device reference](/reference/agent-device).
+target in the same list; see the [Mobile engine reference](/reference/mobile).
 One target per screen size is how a suite runs at several
 [viewports](/viewports).
 
@@ -168,7 +168,7 @@ Use `headers` to access protected previews or skip a tunnel's interstitial
 page. For example, a Vercel preview can use a protection bypass header:
 
 ```ts title="Target fragment"
-engine: playwright({
+engine: web({
   url: process.env.PREVIEW_URL ?? 'http://localhost:3000',
   identity: 'storefront',
   headers: {
@@ -189,7 +189,7 @@ Use `basicAuth` for HTTP basic authentication. The browser sends these
 credentials when any origin requests them with a `401` challenge:
 
 ```ts title="Target fragment"
-engine: playwright({
+engine: web({
   url: 'https://staging.example.com',
   basicAuth: { username: 'preview', password: process.env.PREVIEW_PASSWORD ?? '' },
 }),
@@ -205,7 +205,7 @@ trace can contain your bypass secret. Restrict access to those traces.
   <Card title="Config reference" icon="sliders" href="/reference/config#the-app-under-test">
     `command`, `services`, and every app option.
   </Card>
-  <Card title="Playwright reference" icon="masks-theater" href="/reference/playwright">
+  <Card title="Web engine reference" icon="masks-theater" href="/reference/web">
     Browser, viewport, `connect`, `headers`, `basicAuth`.
   </Card>
 </CardGroup>

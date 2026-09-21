@@ -36,7 +36,7 @@ jobs:
       - name: Error code reference
         run: pnpm docs:check-errors
       - name: Install browsers
-        run: pnpm --filter @e2edev/playwright exec playwright install chromium --with-deps
+        run: pnpm --filter @e2edev/web exec playwright install chromium --with-deps
       - name: Testbed
         run: pnpm --filter @e2edev/testbed test
 
@@ -55,6 +55,6 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Install browsers
-        run: pnpm --filter @e2edev/playwright exec playwright install chromium --with-deps
+        run: pnpm --filter @e2edev/web exec playwright install chromium --with-deps
       - name: Unit and integration tests
         run: pnpm test

@@ -30,13 +30,13 @@ export const kiosk = createFakeEngine({
 
 const CONFIG = `import type { E2EConfig } from 'e2e';
 import { createAgent, defineTool, getToolContext } from 'e2e/agent';
-import { playwright } from '@e2edev/playwright';
+import { web } from '@e2edev/web';
 import { z } from 'zod';
 import { kiosk } from './kiosk.ts';
 
 export default {
   targets: [
-    { name: 'web', platform: 'web', engine: playwright({ url: process.env.APP_URL! }) },
+    { name: 'web', platform: 'web', engine: web({ url: process.env.APP_URL! }) },
     { name: 'kiosk', platform: 'kiosk', engine: kiosk.engine },
   ],
   agents: { default: createAgent({

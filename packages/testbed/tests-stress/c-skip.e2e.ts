@@ -1,4 +1,4 @@
-import { test } from '@e2edev/playwright';
+import { test } from '@e2edev/web';
 
 test.skip('bare skip without a reason', async () => {});
 

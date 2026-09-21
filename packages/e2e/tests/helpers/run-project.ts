@@ -4,7 +4,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { playwright } from '@e2edev/playwright';
+import { web } from '@e2edev/web';
 import type { ListOptions, ListedPair, RunOptions, RunOutcome } from '../../src/run/runner.ts';
 import type { E2EConfig } from '../../src/index.ts';
 
@@ -26,7 +26,7 @@ const TMP_ROOT = path.join(PACKAGE_ROOT, 'tests', 'tmp-projects');
  * runtime even though the src/dist types differ.
  */
 function defaultTargets(appUrl: string): NonNullable<E2EConfig['targets']> {
-  return [{ name: 'web', engine: playwright({ url: appUrl }) }] as unknown as NonNullable<
+  return [{ name: 'web', engine: web({ url: appUrl }) }] as unknown as NonNullable<
     E2EConfig['targets']
   >;
 }
@@ -106,10 +106,10 @@ export async function listProject(
 /** Default file-backed config used by worker-path integration tests. */
 export function workerConfigSource(workers: number, extra = ''): string {
   return `import type { E2EConfig } from 'e2e';
-import { playwright } from '@e2edev/playwright';
+import { web } from '@e2edev/web';
 
 export default {
-  targets: [{ name: 'web', engine: playwright({ url: process.env.APP_URL! }) }],
+  targets: [{ name: 'web', engine: web({ url: process.env.APP_URL! }) }],
   workers: ${workers},${extra}
 } satisfies E2EConfig;
 `;

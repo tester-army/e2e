@@ -819,7 +819,7 @@ export interface Target {
    * target without an engine; when both name one, they must agree.
    */
   platform?: string;
-  /** The engine driving the surface: `playwright(...)`, `agentDevice(...)`, or any `defineEngine` handle. */
+  /** The engine driving the surface: `web(...)`, `mobile(...)`, or any `defineEngine` handle. */
   engine?: EngineHandle;
 }
 

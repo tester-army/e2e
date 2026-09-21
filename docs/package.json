@@ -9,9 +9,9 @@
     "typecheck": "tsc --noEmit --project examples/tsconfig.json"
   },
   "devDependencies": {
-    "@e2edev/agent-device": "workspace:*",
+    "@e2edev/mobile": "workspace:*",
     "e2e": "workspace:*",
-    "@e2edev/playwright": "workspace:*",
+    "@e2edev/web": "workspace:*",
     "@types/node": "26.4.1",
     "agent-device": "0.21.6",
     "ai": "7.0.105",

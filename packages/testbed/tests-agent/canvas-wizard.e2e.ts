@@ -5,7 +5,7 @@
  * screenshot rather than replay positions; the DOM shows the picks at the end.
  */
 
-import { test } from '@e2edev/playwright';
+import { test } from '@e2edev/web';
 import { expect } from 'e2e';
 
 test('act walks an eight-screen wizard painted on a canvas', async ({ web, agent, screen }) => {

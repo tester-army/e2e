@@ -8,7 +8,7 @@
  */
 
 import type { E2EConfig, StepExecutor, StepVerdict } from 'e2e';
-import { playwright } from '@e2edev/playwright';
+import { web } from '@e2edev/web';
 import { createGateway, stepCountIs, tool, ToolLoopAgent } from 'ai';
 import { z } from 'zod';
 
@@ -79,7 +79,7 @@ export default {
   specVersion: '0.1',
   projectId: 'dev.e2e.testbed-dogfood-brain',
   tests: 'tests-dogfood-brain/**/*.e2e.ts',
-  targets: [{ name: 'web', engine: playwright({ url: 'http://127.0.0.1:4312' }) }],
+  targets: [{ name: 'web', engine: web({ url: 'http://127.0.0.1:4312' }) }],
   timeout: 120_000,
   agents: { default: mathBrain },
 } satisfies E2EConfig;

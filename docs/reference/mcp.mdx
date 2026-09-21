@@ -73,7 +73,7 @@ What `call` can run depends on the session's target:
 
 Project tools passed to `createAgent({ tools })` follow in the catalog under
 their own names, scoped to the target's platform. A mobile project that
-passes `agentDeviceTools(...)` also gets `open_app`, `swipe`,
+passes `mobileTools(...)` also gets `open_app`, `swipe`,
 and `alert`. A project tool named like a built-in is not served. An unknown
 name fails with `UNKNOWN_TOOL` and the list of names.
 

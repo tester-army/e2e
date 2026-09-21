@@ -19,7 +19,7 @@ import { fakeCalls, installFakeModel, type FakeCall } from '../helpers/fake-mode
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { createProject, type FixtureProject } from '../helpers/run-project.ts';
-import { playwright } from '@e2edev/playwright';
+import { web } from '@e2edev/web';
 import { z } from 'zod';
 
 type PlanAnswer = { decision: 'step'; title: string; instruction: string } | { decision: 'finish'; summary: string };
@@ -65,7 +65,7 @@ async function runExplore(
   const outcome = await explore({
     cwd: project.dir,
     rawConfig: {
-      targets: [{ name: 'web', engine: playwright({ url: app.url }) }] as never,
+      targets: [{ name: 'web', engine: web({ url: app.url }) }] as never,
       agents: { default: projectAgent ?? { model } },
       // The scripted loop answers instantly; the deterministic engine budget is the one that matters.
       actionTimeout: 10_000,
@@ -281,7 +281,7 @@ describe('e2e explore', () => {
     const outcome = await explore({
       cwd: project.dir,
       rawConfig: {
-        targets: [{ engine: playwright({ url: app.url }) }, { name: 'second', engine: playwright({ url: app.url }) }] as never,
+        targets: [{ engine: web({ url: app.url }) }, { name: 'second', engine: web({ url: app.url }) }] as never,
         agents: { default: { model } },
       },
       goal: 'Look around',
@@ -293,12 +293,12 @@ describe('e2e explore', () => {
     expect(outcome.report.run.results.map((result) => result.targetId)).toEqual(['web']);
     expect(outcome.report.run.results[0]!.attempts[0]!.steps[0]!.api).toBe('app.open');
 
-    const web = { targets: [{ name: 'web', engine: playwright({ url: app.url }) }] as never, agents: { default: { model } } };
-    await expect(explore({ cwd: project.dir, rawConfig: { ...web, reporters: 'json' as never }, goal: 'Look around' })).rejects.toMatchObject({
+    const config = { targets: [{ name: 'web', engine: web({ url: app.url }) }] as never, agents: { default: { model } } };
+    await expect(explore({ cwd: project.dir, rawConfig: { ...config, reporters: 'json' as never }, goal: 'Look around' })).rejects.toMatchObject({
       code: 'INVALID_CONFIG',
       message: /reporters must be an array/,
     });
-    await expect(explore({ cwd: project.dir, rawConfig: web, target: 'nope' })).rejects.toMatchObject({
+    await expect(explore({ cwd: project.dir, rawConfig: config, target: 'nope' })).rejects.toMatchObject({
       code: 'UNKNOWN_TARGET',
       message: /unknown target ID "nope"; the config declares "web"/,
     });
@@ -322,7 +322,7 @@ describe('e2e explore', () => {
     const outcome = await explore({
       cwd: project.dir,
       rawConfig: {
-        targets: [{ name: 'web', engine: playwright({ url: app.url }) }] as never,
+        targets: [{ name: 'web', engine: web({ url: app.url }) }] as never,
         agents: { default: { model }, ux: createAgent({ model: model as never, tools: { ping } }) },
       },
       goal: 'Look around',
@@ -342,7 +342,7 @@ describe('e2e explore', () => {
     expect(seen[0]).toContain(FINDING_TOOL_NAME);
 
     await expect(
-      explore({ cwd: project.dir, rawConfig: { targets: [{ name: 'web', engine: playwright({ url: app.url }) }] as never, agents: { default: { model } } }, agent: 'nope' }),
+      explore({ cwd: project.dir, rawConfig: { targets: [{ name: 'web', engine: web({ url: app.url }) }] as never, agents: { default: { model } } }, agent: 'nope' }),
     ).rejects.toMatchObject({ code: 'INVALID_CONFIG', message: 'unknown agent "nope"; configured: default' });
   }, 120_000);
 
@@ -363,7 +363,7 @@ describe('e2e explore', () => {
     const outcome = await explore({
       cwd: project.dir,
       rawConfig: {
-        targets: [{ name: 'web', engine: playwright({ url: app.url }) }] as never,
+        targets: [{ name: 'web', engine: web({ url: app.url }) }] as never,
         agents: { default: { model } },
         credentials: { ada: { username: 'ada@example.test', password: 'bookworm' } },
       },
@@ -389,7 +389,7 @@ describe('e2e explore', () => {
       Array.from({ length: 400 }, (_, i) => [`account-${String(i)}`, { username: `${'u'.repeat(200)}@example.test`, password: 'pw' }]),
     );
     await expect(
-      explore({ cwd: project.dir, rawConfig: { targets: [{ name: 'web', engine: playwright({ url: app.url }) }] as never, credentials } }),
+      explore({ cwd: project.dir, rawConfig: { targets: [{ name: 'web', engine: web({ url: app.url }) }] as never, credentials } }),
     ).rejects.toMatchObject({ code: 'INVALID_CONFIG', message: expect.stringContaining('400 account(s) serialize to') });
   });
 });

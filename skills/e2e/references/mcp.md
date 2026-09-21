@@ -48,7 +48,7 @@ The catalog, per session:
 | `type_secret` | Fills a configured secret by name: a credential's password into a password field, a `secrets` entry into any editable input; the plaintext never reaches the agent. Listed when the config declares `credentials` or `secrets`. |
 | `locate` | Tries a semantic locator (`role` + `name`, `text`, `label`, `placeholder`, `testId`, `exact`) and returns how many nodes match, which, and the `screen.*` call to write. |
 | `screenshot` | The masked pixels as an image, withheld once a secret was filled in the session. |
-| Project tools | Every `defineTool` passed to `createAgent({ tools })` that applies to the target's platform, under its own name; an engine pack such as `agentDeviceTools` adds `open_app`, `swipe`, `alert`. |
+| Project tools | Every `defineTool` passed to `createAgent({ tools })` that applies to the target's platform, under its own name; an engine pack such as `mobileTools` adds `open_app`, `swipe`, `alert`. |
 
 Resources: `e2e://guide` and `e2e://guide/<topic>` hold this skill.
 

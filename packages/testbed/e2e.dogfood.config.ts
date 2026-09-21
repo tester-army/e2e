@@ -6,7 +6,7 @@
  */
 
 import type { E2EConfig } from 'e2e';
-import { playwright } from '@e2edev/playwright';
+import { web } from '@e2edev/web';
 import { createAgent, defineTool } from 'e2e/agent';
 import { gateway, tool } from 'ai';
 import { z } from 'zod';
@@ -48,7 +48,7 @@ export default {
   targets: [
     {
       name: 'web',
-      engine: playwright({
+      engine: web({
         url: APP_URL,
         command: { executable: 'node', args: ['dogfood/server.mjs'], env: { PORT: '4310' } },
       }),

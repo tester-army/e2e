@@ -30,7 +30,7 @@
     "react-native-webview": "13.16.1"
   },
   "devDependencies": {
-    "@e2edev/agent-device": "workspace:*",
+    "@e2edev/mobile": "workspace:*",
     "@types/node": "26.4.1",
     "@types/react": "19.1.4",
     "ai": "7.0.105",

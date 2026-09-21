@@ -1,6 +1,6 @@
 import type { E2EConfig } from 'e2e';
 import { createAgent } from 'e2e/agent';
-import { agentDeviceTools } from '@e2edev/agent-device/tools';
+import { mobileTools } from '@e2edev/mobile/tools';
 import { gateway } from 'ai';
 import base, { android, ios } from './e2e.config.ts';
 
@@ -22,7 +22,7 @@ export default {
   timeout: 300_000,
   agents: {
     default: {
-      executor: createAgent({ tools: agentDeviceTools(ios, android) }),
+      executor: createAgent({ tools: mobileTools(ios, android) }),
       model: gateway(process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast'),
       // The 600-row list takes about 45 screens plus corrections, so the
       // default action budget would end it a few rows short.

@@ -21,8 +21,8 @@ test('a member upgrades to Pro', async ({ app, agent, screen }) => {
 });
 ```
 
-A target names its engine: [`@e2edev/playwright`](https://www.npmjs.com/package/@e2edev/playwright)
-for the web, [`@e2edev/agent-device`](https://www.npmjs.com/package/@e2edev/agent-device)
+A target names its engine: [`@e2edev/web`](https://www.npmjs.com/package/@e2edev/web)
+for the web, [`@e2edev/mobile`](https://www.npmjs.com/package/@e2edev/mobile)
 for iOS and Android. An agent step that a later assertion verifies records
 its actions, and the next run replays them with no model calls until the app
 changes. Tests without agent steps need no model.

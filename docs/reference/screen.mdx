@@ -49,7 +49,7 @@ without waiting for it to change; use [`expect`](/reference/expect) to wait.
 Every query returns a `Locator` synchronously and performs no work.
 
 `getByTestId` matches the node's `testId`: on the web the value of the
-engine's test-id attribute (`playwright({ testIdAttribute })`, default
+engine's test-id attribute (`web({ testIdAttribute })`, default
 `data-testid`), on a device the accessibility identifier or resource id.
 
 ```ts
@@ -101,7 +101,7 @@ await row.getByRole('button', { name: 'Void' }).tap();
 ```
 
 <Note>
-In the Playwright engine a `getByDisplayValue` locator cannot be the scope
+In the web engine a `getByDisplayValue` locator cannot be the scope
 of a child query or a `has` filter; both fail with `UNSUPPORTED_CAPABILITY`.
 Playwright has no selector for a control's current value, so the engine
 filters candidates after the fact.

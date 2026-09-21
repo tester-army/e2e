@@ -14,8 +14,8 @@ Set up a target with the [mobile guide](/mobile) and a model with the
 
 | Maestro | e2e |
 | --- | --- |
-| `appId` at the top of every flow | `agentDevice({ app: 'com.example.app' })`, opened fresh per attempt |
-| `--device` | `agentDevice({ device: 'iPhone 17' })` |
+| `appId` at the top of every flow | `mobile({ app: 'com.example.app' })`, opened fresh per attempt |
+| `--device` | `mobile({ device: 'iPhone 17' })` |
 | `.maestro/config.yaml` `flows` | `tests`, default `tests/**/*.e2e.ts` |
 | `tags` and `--include-tags` | `{ tags: [...] }` on a test, `--tag` on the CLI |
 | `env` and `${VAR}` | `process.env` in the config, `params` in a goal |
@@ -43,7 +43,7 @@ appId: com.example.app
 ```
 
 ```ts title="e2e"
-import { test } from '@e2edev/agent-device';
+import { test } from '@e2edev/mobile';
 import { expect } from 'e2e';
 
 test('asks for the email', async ({ app, agent, screen }) => {

@@ -1,6 +1,6 @@
 import type { E2EConfig } from 'e2e';
 import { createAgent } from 'e2e/agent';
-import { playwright } from '@e2edev/playwright';
+import { web } from '@e2edev/web';
 import { gateway } from 'ai';
 
 export default {
@@ -11,7 +11,7 @@ export default {
     }),
   },
   targets: [{
-    engine: playwright({
+    engine: web({
       url: process.env.APP_URL ?? 'http://localhost:3000',
       command: {
         executable: 'npm',

@@ -14,10 +14,10 @@ for the agent calls shown below.
 
 | Cypress | e2e |
 | --- | --- |
-| `baseUrl` | `playwright({ url })` |
-| `start-server-and-test` | `playwright({ url, command })`, see [Starting your app](/starting-your-app) |
-| `viewportWidth`, `viewportHeight` | `playwright({ viewport })` |
-| `data-cy` selectors | `playwright({ testIdAttribute: 'data-cy' })`, then `screen.getByTestId` |
+| `baseUrl` | `web({ url })` |
+| `start-server-and-test` | `web({ url, command })`, see [Starting your app](/starting-your-app) |
+| `viewportWidth`, `viewportHeight` | `web({ viewport })` |
+| `data-cy` selectors | `web({ testIdAttribute: 'data-cy' })`, then `screen.getByTestId` |
 | `retries` | `retries` |
 | `env`, `Cypress.env()` | `process.env` |
 | `cypress.env.json` secrets | `credentials` and `secrets`, see [Signing in](/authentication) |
@@ -26,11 +26,11 @@ for the agent calls shown below.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
-import { playwright } from '@e2edev/playwright';
+import { web } from '@e2edev/web';
 
 export default {
   targets: [{
-    engine: playwright({
+    engine: web({
       url: 'http://localhost:3000',
       testIdAttribute: 'data-cy',
     }),
@@ -54,7 +54,7 @@ describe('todos', () => {
 ```
 
 ```ts title="e2e"
-import { test } from '@e2edev/playwright';
+import { test } from '@e2edev/web';
 import { expect } from 'e2e';
 
 test.describe('todos', () => {

@@ -1,5 +1,5 @@
 import type { E2EConfig } from 'e2e';
-import { playwright } from '@e2edev/playwright';
+import { web } from '@e2edev/web';
 
 export default {
   specVersion: '0.1',
@@ -7,7 +7,7 @@ export default {
   targets: [
     {
       name: 'web',
-      engine: playwright({
+      engine: web({
         url: 'http://127.0.0.1:4271',
         command: { executable: 'node', args: ['app/server.mjs'], env: { PORT: '4271' } },
       }),

@@ -3,7 +3,7 @@ title: From Detox
 description: Use your existing app build and testIDs with screen, expect, and agent goals.
 ---
 
-`@e2edev/agent-device` drives a simulator or emulator using your normal debug
+`@e2edev/mobile` drives a simulator or emulator using your normal debug
 or release build. It does not need the Detox framework. React Native
 `testID` props work with `getByTestId` on both platforms.
 
@@ -15,9 +15,9 @@ while migrating one spec at a time.
 
 | Detox (`.detoxrc.js`) | e2e |
 | --- | --- |
-| `apps.<name>.binaryPath` | `agentDevice({ appPath })`, installed once per worker |
-| `apps.<name>.bundleId` | `agentDevice({ app: 'com.example.app' })`, opened fresh per attempt |
-| `devices.<name>.device.type` | `agentDevice({ device: 'iPhone 17' })` |
+| `apps.<name>.binaryPath` | `mobile({ appPath })`, installed once per worker |
+| `apps.<name>.bundleId` | `mobile({ app: 'com.example.app' })`, opened fresh per attempt |
+| `devices.<name>.device.type` | `mobile({ device: 'iPhone 17' })` |
 | `configurations` | `targets`, one engine per platform |
 | Jest config, `maxWorkers` | `workers`, one per device |
 | `detox build` | Your normal build. No Detox framework, no `detox build` step |
@@ -25,12 +25,12 @@ while migrating one spec at a time.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
-import { agentDevice } from '@e2edev/agent-device';
+import { mobile } from '@e2edev/mobile';
 
 export default {
   targets: [
-    { name: 'ios', engine: agentDevice({ platform: 'ios', app: 'com.example.app', appPath: 'ios/build/MyApp.app' }) },
-    { name: 'android', engine: agentDevice({ platform: 'android', app: 'com.example.app', appPath: 'android/app/build/outputs/apk/debug/app-debug.apk' }) },
+    { name: 'ios', engine: mobile({ platform: 'ios', app: 'com.example.app', appPath: 'ios/build/MyApp.app' }) },
+    { name: 'android', engine: mobile({ platform: 'android', app: 'com.example.app', appPath: 'android/app/build/outputs/apk/debug/app-debug.apk' }) },
   ],
   workers: 1,
 } satisfies E2EConfig;
@@ -53,7 +53,7 @@ describe('login', () => {
 ```
 
 ```ts title="e2e"
-import { test } from '@e2edev/agent-device';
+import { test } from '@e2edev/mobile';
 import { expect, credentials } from 'e2e';
 
 test('shows the home screen', async ({ agent, screen }) => {
@@ -118,13 +118,13 @@ Where the behaviour differs from Detox's:
 Start with one flow that needs frequent maintenance. Use `agent.act` for its
 goal and keep exact checks as `expect` assertions. If screens take time to
 settle, configure the engine's
-[`settle` and `transition` options](/reference/agent-device#engine).
+[`settle` and `transition` options](/reference/mobile#engine).
 
 <CardGroup cols={2}>
   <Card title="Testing iOS and Android" icon="mobile-screen" href="/mobile">
     Configure your app and devices.
   </Card>
-  <Card title="agent-device reference" icon="book" href="/reference/agent-device">
+  <Card title="Mobile engine reference" icon="book" href="/reference/mobile">
     Every option, the `device` fixture, and the tool pack.
   </Card>
 </CardGroup>

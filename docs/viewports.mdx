@@ -14,15 +14,15 @@ and cannot resize it.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
-import { playwright } from '@e2edev/playwright';
+import { web } from '@e2edev/web';
 
 const app = { url: 'http://localhost:3000' };
 
 export default {
   targets: [
-    { name: 'desktop', engine: playwright(app) },
-    { name: 'tablet', engine: playwright({ ...app, viewport: { width: 820, height: 1180 } }) },
-    { name: 'phone', engine: playwright({ ...app, browser: 'webkit', viewport: { width: 390, height: 844 } }) },
+    { name: 'desktop', engine: web(app) },
+    { name: 'tablet', engine: web({ ...app, viewport: { width: 820, height: 1180 } }) },
+    { name: 'phone', engine: web({ ...app, browser: 'webkit', viewport: { width: 390, height: 844 } }) },
   ],
 } satisfies E2EConfig;
 ```
@@ -39,7 +39,7 @@ at the target's configured size.
 `web.setViewport` resizes the page for the rest of the attempt:
 
 ```ts
-import { test } from '@e2edev/playwright';
+import { test } from '@e2edev/web';
 import { expect } from 'e2e';
 
 test('the menu collapses on a narrow screen', async ({ app, screen, web }) => {
@@ -103,7 +103,7 @@ dimensions.
   <Card title="Working with the browser" icon="globe" href="/browser">
     Routes, cookies, dialogs, downloads, and the rest of the `web` fixture.
   </Card>
-  <Card title="Playwright reference" icon="masks-theater" href="/reference/playwright">
+  <Card title="Web engine reference" icon="masks-theater" href="/reference/web">
     Every engine option and `web` method, with timeouts and errors.
   </Card>
 </CardGroup>

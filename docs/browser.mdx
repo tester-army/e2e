@@ -5,10 +5,10 @@ description: Mock an API, handle a dialog, download a file, reach into an iframe
 
 Use `screen`, `app`, and `expect` for navigation, interactions, and checks.
 For browser-specific operations such as request mocking, dialogs, and
-downloads, use `web`. Import `test` from `@e2edev/playwright` to access it:
+downloads, use `web`. Import `test` from `@e2edev/web` to access it:
 
 ```ts
-import { test } from '@e2edev/playwright';
+import { test } from '@e2edev/web';
 import { expect } from 'e2e';
 
 test('the dashboard loads', async ({ app, screen, web }) => {
@@ -121,14 +121,14 @@ on one app are two targets:
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
-import { playwright } from '@e2edev/playwright';
+import { web } from '@e2edev/web';
 
 const app = { url: 'http://localhost:3000' };
 
 export default {
   targets: [
-    { name: 'chromium', engine: playwright(app) },
-    { name: 'webkit-mobile', engine: playwright({ ...app, browser: 'webkit', viewport: { width: 390, height: 844 } }) },
+    { name: 'chromium', engine: web(app) },
+    { name: 'webkit-mobile', engine: web({ ...app, browser: 'webkit', viewport: { width: 390, height: 844 } }) },
   ],
 } satisfies E2EConfig;
 ```
@@ -145,7 +145,7 @@ cannot identify an element. If a hidden duplicate causes an ambiguous
 match, try `{ visible: true }` on the query first.
 
 <CardGroup cols={2}>
-  <Card title="Playwright reference" icon="masks-theater" href="/reference/playwright">
+  <Card title="Web engine reference" icon="masks-theater" href="/reference/web">
     Every `web` method, its timeout, and what it throws.
   </Card>
   <Card title="Starting your app" icon="play" href="/starting-your-app">

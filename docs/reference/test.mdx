@@ -103,7 +103,7 @@ test('switches organizations', { session: 'admin' }, async ({ app, agent }) => {
 `describe` body is a type error and a `COLLECTION_ERROR`.
 
 ```ts
-import { test } from '@e2edev/playwright';
+import { test } from '@e2edev/web';
 import { expect } from 'e2e';
 
 test('app opens', async ({ app, web }) => {
@@ -251,8 +251,8 @@ export interface SuiteFixtures {
 ```
 
 Everything else is a fixture the target's engine contributes, or one of
-[your own](#your-own-fixtures). `@e2edev/playwright` contributes
-[`web`](/reference/playwright) and exports a `test` typed with it; a device
+[your own](#your-own-fixtures). `@e2edev/web` contributes
+[`web`](/reference/web) and exports a `test` typed with it; a device
 engine contributes `device`. Reaching for a fixture the engine does not
 contribute fails with `UNSUPPORTED_CAPABILITY`; declare `requires: ['web']`
 to skip such tests at selection instead.
@@ -268,7 +268,7 @@ up afterward, including after a failure. In each fixture function, code before
 after `use` tears it down.
 
 ```ts
-import { test as base } from '@e2edev/playwright';
+import { test as base } from '@e2edev/web';
 
 export const test = base.extend<{ workspace: Workspace }>({
   workspace: async ({ web }, use) => {

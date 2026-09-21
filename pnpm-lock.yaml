@@ -159,12 +159,12 @@ importers:
 
   docs:
     devDependencies:
-      '@e2edev/agent-device':
+      '@e2edev/mobile':
         specifier: workspace:*
-        version: link:../packages/agent-device
-      '@e2edev/playwright':
+        version: link:../packages/mobile
+      '@e2edev/web':
         specifier: workspace:*
-        version: link:../packages/playwright
+        version: link:../packages/web
       '@types/node':
         specifier: 26.4.1
         version: 26.4.1
@@ -186,37 +186,6 @@ importers:
       typescript:
         specifier: 7.0.2
         version: 7.0.2
-
-  packages/agent-device:
-    dependencies:
-      agent-device:
-        specifier: 0.21.6
-        version: 0.21.6(ai@7.0.105(zod@4.6.1))
-      pngjs:
-        specifier: 7.0.0
-        version: 7.0.0
-      zod:
-        specifier: 4.6.1
-        version: 4.6.1
-    devDependencies:
-      '@types/node':
-        specifier: 26.4.1
-        version: 26.4.1
-      '@types/pngjs':
-        specifier: 6.0.5
-        version: 6.0.5
-      ai:
-        specifier: 7.0.105
-        version: 7.0.105(zod@4.6.1)
-      e2e:
-        specifier: workspace:*
-        version: link:../e2e
-      typescript:
-        specifier: 7.0.2
-        version: 7.0.2
-      vitest:
-        specifier: 5.0.0
-        version: 5.0.0(@types/node@26.4.1)(vite@8.1.5(@types/node@26.4.1)(esbuild@0.28.2)(jiti@1.21.7)(tsx@4.23.13)(yaml@2.9.0))
 
   packages/e2e:
     dependencies:
@@ -257,9 +226,9 @@ importers:
       '@ai-sdk/xai':
         specifier: 5.0.2
         version: 5.0.2(zod@4.6.1)
-      '@e2edev/playwright':
+      '@e2edev/web':
         specifier: workspace:*
-        version: link:../playwright
+        version: link:../web
       '@openrouter/ai-sdk-provider':
         specifier: 3.0.0
         version: 3.0.0(ai@7.0.105(zod@4.6.1))(zod@4.6.1)
@@ -286,7 +255,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 5.0.0
-        version: 5.0.0(@types/node@26.4.1)(vite@8.1.5(@types/node@26.4.1)(esbuild@0.28.2)(jiti@1.21.7)(tsx@4.23.13)(yaml@2.9.0))
+        version: 5.0.0(@types/node@26.4.1)(vite@8.1.5(@types/node@26.4.1)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
 
   packages/github:
     devDependencies:
@@ -301,7 +270,38 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 5.0.0
-        version: 5.0.0(@types/node@26.4.1)(vite@8.1.5(@types/node@26.4.1)(esbuild@0.28.2)(jiti@1.21.7)(tsx@4.23.13)(yaml@2.9.0))
+        version: 5.0.0(@types/node@26.4.1)(vite@8.1.5(@types/node@26.4.1)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
+
+  packages/mobile:
+    dependencies:
+      agent-device:
+        specifier: 0.21.6
+        version: 0.21.6(ai@7.0.105(zod@4.6.1))
+      pngjs:
+        specifier: 7.0.0
+        version: 7.0.0
+      zod:
+        specifier: 4.6.1
+        version: 4.6.1
+    devDependencies:
+      '@types/node':
+        specifier: 26.4.1
+        version: 26.4.1
+      '@types/pngjs':
+        specifier: 6.0.5
+        version: 6.0.5
+      ai:
+        specifier: 7.0.105
+        version: 7.0.105(zod@4.6.1)
+      e2e:
+        specifier: workspace:*
+        version: link:../e2e
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@26.4.1)(vite@8.1.5(@types/node@26.4.1)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
 
   packages/mobile-benchmark:
     dependencies:
@@ -345,9 +345,9 @@ importers:
         specifier: 13.16.1
         version: 13.16.1(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)
     devDependencies:
-      '@e2edev/agent-device':
+      '@e2edev/mobile':
         specifier: workspace:*
-        version: link:../agent-device
+        version: link:../mobile
       '@types/node':
         specifier: 26.4.1
         version: 26.4.1
@@ -364,35 +364,11 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
 
-  packages/playwright:
-    devDependencies:
-      '@types/node':
-        specifier: 26.4.1
-        version: 26.4.1
-      '@types/pngjs':
-        specifier: 6.0.5
-        version: 6.0.5
-      e2e:
-        specifier: workspace:*
-        version: link:../e2e
-      playwright:
-        specifier: 1.63.0
-        version: 1.63.0
-      pngjs:
-        specifier: 7.0.0
-        version: 7.0.0
-      typescript:
-        specifier: 7.0.2
-        version: 7.0.2
-      vitest:
-        specifier: 5.0.0
-        version: 5.0.0(@types/node@26.4.1)(vite@8.1.5(@types/node@26.4.1)(esbuild@0.28.2)(jiti@1.21.7)(tsx@4.23.13)(yaml@2.9.0))
-
   packages/testbed:
     dependencies:
-      '@e2edev/playwright':
+      '@e2edev/web':
         specifier: workspace:*
-        version: link:../playwright
+        version: link:../web
       e2e:
         specifier: workspace:*
         version: link:../e2e
@@ -416,11 +392,35 @@ importers:
         specifier: 4.6.1
         version: 4.6.1
 
+  packages/web:
+    devDependencies:
+      '@types/node':
+        specifier: 26.4.1
+        version: 26.4.1
+      '@types/pngjs':
+        specifier: 6.0.5
+        version: 6.0.5
+      e2e:
+        specifier: workspace:*
+        version: link:../e2e
+      playwright:
+        specifier: 1.63.0
+        version: 1.63.0
+      pngjs:
+        specifier: 7.0.0
+        version: 7.0.0
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@26.4.1)(vite@8.1.5(@types/node@26.4.1)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
+
   packages/web-benchmark:
     dependencies:
-      '@e2edev/playwright':
+      '@e2edev/web':
         specifier: workspace:*
-        version: link:../playwright
+        version: link:../web
       e2e:
         specifier: workspace:*
         version: link:../e2e
@@ -10000,7 +10000,7 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.1.1
 
-  '@vitest/mocker@5.0.0(vite@8.1.5(@types/node@26.4.1)(esbuild@0.28.2)(jiti@1.21.7)(tsx@4.23.13)(yaml@2.9.0))':
+  '@vitest/mocker@5.0.0(vite@8.1.5(@types/node@26.4.1)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))':
     dependencies:
       '@jridgewell/trace-mapping': 0.3.31
       '@vitest/spy': 5.0.0
@@ -15396,10 +15396,10 @@ snapshots:
       tsx: 4.23.13
       yaml: 2.9.0
 
-  vitest@5.0.0(@types/node@26.4.1)(vite@8.1.5(@types/node@26.4.1)(esbuild@0.28.2)(jiti@1.21.7)(tsx@4.23.13)(yaml@2.9.0)):
+  vitest@5.0.0(@types/node@26.4.1)(vite@8.1.5(@types/node@26.4.1)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0)):
     dependencies:
       '@types/chai': 5.2.3
-      '@vitest/mocker': 5.0.0(vite@8.1.5(@types/node@26.4.1)(esbuild@0.28.2)(jiti@1.21.7)(tsx@4.23.13)(yaml@2.9.0))
+      '@vitest/mocker': 5.0.0(vite@8.1.5(@types/node@26.4.1)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
       chai: 6.2.2
       es-module-lexer: 2.3.2
       expect-type: 1.4.0

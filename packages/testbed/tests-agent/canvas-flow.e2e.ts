@@ -5,7 +5,7 @@
  * the screenshot; the DOM learns the result only when the drawn OK is pressed.
  */
 
-import { test } from '@e2edev/playwright';
+import { test } from '@e2edev/web';
 import { expect } from 'e2e';
 
 test('act enters a ten-digit code on a keypad painted on a canvas', async ({ web, agent, screen }) => {

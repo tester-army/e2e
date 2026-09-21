@@ -1,13 +1,13 @@
 /**
- * The suite's `test`: the one `@e2edev/agent-device` exports, typed with the
+ * The suite's `test`: the one `@e2edev/mobile` exports, typed with the
  * engine's contributed `device` fixture. `expect` is `e2e`'s.
  */
 
-import type { Device } from '@e2edev/agent-device';
+import type { Device } from '@e2edev/mobile';
 import type { Screen } from 'e2e';
 import { expect } from 'e2e';
 
-export { test } from '@e2edev/agent-device';
+export { test } from '@e2edev/mobile';
 export { expect } from 'e2e';
 
 /**

@@ -17,7 +17,7 @@
     "explore:bench": "node scripts/explore-bench.mjs"
   },
   "dependencies": {
-    "@e2edev/playwright": "workspace:*",
+    "@e2edev/web": "workspace:*",
     "e2e": "workspace:*"
   },
   "devDependencies": {

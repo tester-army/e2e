@@ -10,7 +10,7 @@ that session to start signed in.
   <Tab title="tests/auth.setup.e2e.ts">
 
 ```ts
-import { test } from '@e2edev/playwright';
+import { test } from '@e2edev/web';
 import { expect, credentials } from 'e2e';
 
 test.setup('authenticate as admin', { sessions: ['admin'] }, async ({ app, screen, session, web }) => {
@@ -32,7 +32,7 @@ test.setup('authenticate as admin', { sessions: ['admin'] }, async ({ app, scree
   <Tab title="tests/dashboard.e2e.ts">
 
 ```ts
-import { test } from '@e2edev/playwright';
+import { test } from '@e2edev/web';
 import { expect } from 'e2e';
 
 test('the dashboard opens directly', { session: 'admin' }, async ({ app, screen, web }) => {
@@ -83,7 +83,7 @@ Declare credentials in config and read passwords from the environment:
 
 ```ts title="e2e.config.ts"
 export default {
-  targets: [{ engine: playwright({ url: 'http://127.0.0.1:3000' }) }],
+  targets: [{ engine: web({ url: 'http://127.0.0.1:3000' }) }],
   credentials: {
     admin: {
       username: 'admin@example.test',
@@ -154,7 +154,7 @@ needs to enter:
 
 ```ts title="e2e.config.ts"
 export default {
-  targets: [{ engine: playwright({ url: 'http://127.0.0.1:3000' }) }],
+  targets: [{ engine: web({ url: 'http://127.0.0.1:3000' }) }],
   secrets: {
     'stripe-key': process.env.STRIPE_TEST_KEY ?? '',
     'webhook-token': process.env.WEBHOOK_TOKEN ?? '',
@@ -228,7 +228,7 @@ Save one session per user, then run the same tests with each session and
   <Tab title="tests/personas.setup.e2e.ts">
 
 ```ts
-import { test } from '@e2edev/playwright';
+import { test } from '@e2edev/web';
 import { expect, credentials } from 'e2e';
 
 const PERSONAS = ['buyer', 'admin'] as const;
@@ -251,7 +251,7 @@ test.setup('sign in each persona', { sessions: [...PERSONAS] }, async ({ app, sc
   <Tab title="tests/checkout.e2e.ts">
 
 ```ts
-import { test } from '@e2edev/playwright';
+import { test } from '@e2edev/web';
 
 for (const persona of ['buyer', 'admin'] as const) {
   test.describe(`checkout as ${persona}`, { agent: persona, session: persona, tags: [persona] }, () => {

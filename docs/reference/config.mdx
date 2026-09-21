@@ -9,13 +9,13 @@ config when it loads, including ranges and rules TypeScript cannot check.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
-import { playwright } from '@e2edev/playwright';
+import { web } from '@e2edev/web';
 
 export default {
   targets: [
     {
       name: 'web',
-      engine: playwright({ browser: 'chromium', url: process.env.APP_URL ?? 'http://localhost:3000' }),
+      engine: web({ browser: 'chromium', url: process.env.APP_URL ?? 'http://localhost:3000' }),
     },
   ],
 } satisfies E2EConfig;
@@ -136,7 +136,7 @@ export interface Target {
    * target without an engine; when both name one, they must agree.
    */
   platform?: string;
-  /** The engine driving the surface: `playwright(...)`, `agentDevice(...)`, or any `defineEngine` handle. */
+  /** The engine driving the surface: `web(...)`, `mobile(...)`, or any `defineEngine` handle. */
   engine?: EngineHandle;
 }
 ```
@@ -144,7 +144,7 @@ export interface Target {
 `name` is the id `--target`, reports, sessions, and artifact paths use:
 ASCII letters, digits, `_`, `-`, `.`, unique across targets.
 
-`{ engine: playwright({ url }) }` is a complete target. Two targets on one
+`{ engine: web({ url }) }` is a complete target. Two targets on one
 platform need names. A target without an engine runs through agent tools
 only. Tests whose `requires` names a capability the target lacks are skipped
 for it; a `test.setup` a selected test depends on must be runnable there or
@@ -153,7 +153,7 @@ selection fails with `COLLECTION_ERROR`.
 ## The app under test
 
 The engine declares the app it drives: the browser engine as options of
-`playwright(...)`, the device engine from the app it pins. The runner
+`web(...)`, the device engine from the app it pins. The runner
 resolves it at config load.
 
 ```ts
@@ -216,7 +216,7 @@ is `APP_URL_REQUIRED` at config load.
 A test or the agent may open any http(s) URL; `file:`, `data:`, and
 `javascript:` are `POLICY_DENIED`. The site of `url`, its registrable domain
 (`app.example.com` and `auth.example.com` are one site), scopes two things:
-the browser engine's [`headers`](/reference/playwright#options) reach the
+the browser engine's [`headers`](/reference/web#options) reach the
 site and no other host, and child frames off the site stay out of
 observations.
 
@@ -229,7 +229,7 @@ the base URL, the default `readyUrl`, and the report. The command must take
 the port through `{port}` in `args` or `env`.
 
 ```ts title="e2e.config.ts"
-engine: playwright({
+engine: web({
   url: 'http://127.0.0.1:0',
   command: { executable: 'pnpm', args: ['dev', '--port', '{port}'], env: { PORT: '{port}' } },
 }),
@@ -362,7 +362,7 @@ With `video` among the kinds, or `--video`, every selected engine must
 support recording; otherwise configuration fails with `UNSUPPORTED_ARTIFACT`.
 Playwright writes `video/video.webm` under the attempt's artifact directory,
 one segment per page, later ones as `video/video-part<n>.webm`. The
-agent-device engine writes `video/video.mp4`. Each segment carries
+mobile engine writes `video/video.mp4`. Each segment carries
 `startedAt`, so `step.startedAt - artifact.startedAt` is a step's offset into
 it.
 
@@ -416,11 +416,11 @@ and `INVALID_ARGUMENT` on a call. See [Agents and personas](/agents).
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
 import { createAgent } from 'e2e/agent';
-import { playwright } from '@e2edev/playwright';
+import { web } from '@e2edev/web';
 import { gateway } from 'ai';
 
 export default {
-  targets: [{ engine: playwright({ url: 'http://localhost:3000' }) }],
+  targets: [{ engine: web({ url: 'http://localhost:3000' }) }],
   agents: {
     default: { model: gateway('openai/gpt-5.6-luna') },
     ux: createAgent({ model: gateway('openai/gpt-5.6-luna'), system: 'Check labels, contrast, and keyboard access.' }),

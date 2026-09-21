@@ -17,7 +17,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const SOURCE_ROOTS = ['packages/e2e/src', 'packages/playwright/src'];
+const SOURCE_ROOTS = ['packages/e2e/src', 'packages/web/src'];
 const TYPES_FILE = 'packages/e2e/src/types.ts';
 const CONTRACT_FILE = 'packages/e2e/src/engine/contract.ts';
 const ERRORS_PAGE = 'docs/reference/errors.mdx';

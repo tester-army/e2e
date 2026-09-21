@@ -3,7 +3,7 @@ title: Testing iOS and Android
 description: Set up a simulator or emulator target, write a device test, and know what differs from the web.
 ---
 
-`@e2edev/agent-device` runs tests on iOS simulators and Android emulators.
+`@e2edev/mobile` runs tests on iOS simulators and Android emulators.
 Tests use the same `agent`, `screen`, and `expect` APIs as browser tests.
 Each attempt starts in the configured app.
 
@@ -22,11 +22,11 @@ Settings app and one worker:
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
-import { agentDevice } from '@e2edev/agent-device';
+import { mobile } from '@e2edev/mobile';
 
 export default {
   // Replace Settings with your app's bundle id.
-  targets: [{ name: 'ios', engine: agentDevice({ platform: 'ios', app: 'Settings' }) }],
+  targets: [{ name: 'ios', engine: mobile({ platform: 'ios', app: 'Settings' }) }],
   workers: 1,
 } satisfies E2EConfig;
 ```
@@ -41,7 +41,7 @@ opens it at the start of each attempt and enables `app.restart()` and
 `app.clearState()`. Add `appPath` to install a build first:
 
 ```ts
-agentDevice({
+mobile({
   platform: 'ios',
   app: 'com.example.app',
   appPath: process.env.E2E_APP_PATH, // path to the iOS .app bundle
@@ -61,10 +61,10 @@ Add a target for each platform:
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
-import { agentDevice } from '@e2edev/agent-device';
+import { mobile } from '@e2edev/mobile';
 
-const iphone = agentDevice({ platform: 'ios', app: 'com.example.app' });
-const pixel = agentDevice({ platform: 'android', app: 'com.example.app' });
+const iphone = mobile({ platform: 'ios', app: 'com.example.app' });
+const pixel = mobile({ platform: 'android', app: 'com.example.app' });
 
 export default {
   targets: [
@@ -82,7 +82,7 @@ To run files in parallel, provide a device pool and set `workers` to at
 least the pool's size. Each device gets one worker:
 
 ```ts
-agentDevice({ platform: 'ios', app: 'com.example.app', device: ['iPhone 17', 'iPhone 17 Pro'] })
+mobile({ platform: 'ios', app: 'com.example.app', device: ['iPhone 17', 'iPhone 17 Pro'] })
 ```
 
 Without `device`, the engine uses booted devices up to the worker limit.
@@ -138,7 +138,7 @@ A provider against a typical session API has three requests: create a
 session, poll it until the daemon is reachable, stop it.
 
 ```ts title="device-provider.ts"
-import type { DeviceProvider } from '@e2edev/agent-device';
+import type { DeviceProvider } from '@e2edev/mobile';
 
 /**
  * Leases devices from a service that starts an agent-device daemon per
@@ -191,14 +191,14 @@ export function hostedDevices(options: { serviceUrl: string; image: string }): D
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
-import { agentDevice } from '@e2edev/agent-device';
+import { mobile } from '@e2edev/mobile';
 import { hostedDevices } from './device-provider.ts';
 
 export default {
   targets: [
     {
       name: 'ios',
-      engine: agentDevice({
+      engine: mobile({
         platform: 'ios',
         app: 'com.example.app',
         device: hostedDevices({ serviceUrl: 'https://devices.example.com', image: 'ios-18-iphone-17' }),
@@ -219,7 +219,7 @@ on `app`, so traces recorded locally replay on hosted devices.
 `listitem`, and `switch`. Use `getByTestId` for native element identifiers.
 
 ```ts
-import { test } from '@e2edev/agent-device';
+import { test } from '@e2edev/mobile';
 import { expect } from 'e2e';
 
 test('shows the version offline in dark mode', async ({ agent, device, screen }) => {
@@ -255,22 +255,22 @@ const { app } = await device.installApp('./build/MyApp.app', { reinstall: true }
 await device.openApp(app);
 ```
 
-Every method is in the [agent-device reference](/reference/agent-device#device).
+Every method is in the [mobile engine reference](/reference/mobile#device).
 
 ### Agent tools
 
 The agent already has basic actions such as `tap`, `type`, and `scroll`.
-Add `agentDeviceTools` for app switching, device gestures, and system alerts:
+Add `mobileTools` for app switching, device gestures, and system alerts:
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
 import { createAgent } from 'e2e/agent';
-import { agentDevice } from '@e2edev/agent-device';
-import { agentDeviceTools } from '@e2edev/agent-device/tools';
+import { mobile } from '@e2edev/mobile';
+import { mobileTools } from '@e2edev/mobile/tools';
 import { gateway } from 'ai';
 
-const iphone = agentDevice({ platform: 'ios', app: 'com.example.app' });
-const pixel = agentDevice({ platform: 'android', app: 'com.example.app' });
+const iphone = mobile({ platform: 'ios', app: 'com.example.app' });
+const pixel = mobile({ platform: 'android', app: 'com.example.app' });
 
 export default {
   targets: [
@@ -281,13 +281,13 @@ export default {
   agents: {
     default: createAgent({
       model: gateway('openai/gpt-5.6-luna'),
-      tools: agentDeviceTools(iphone, pixel),
+      tools: mobileTools(iphone, pixel),
     }),
   },
 } satisfies E2EConfig;
 ```
 
-Pass each configured device engine to `agentDeviceTools`. Calls go to the
+Pass each configured device engine to `mobileTools`. Calls go to the
 engine running the current attempt. Tools that change device state require
 the agent to take over during cache replay; the read-only `screenshot` tool
 does not interrupt replay.
@@ -304,7 +304,7 @@ does not interrupt replay.
 | The cache anchors on the page path | The cache anchors on the location `<bundle id> / <screen title>`, the title read off the navigation bar |
 
 <CardGroup cols={2}>
-  <Card title="agent-device reference" icon="mobile-screen" href="/reference/agent-device">
+  <Card title="Mobile engine reference" icon="mobile-screen" href="/reference/mobile">
     Every option, the `device` fixture, and the tool pack.
   </Card>
   <Card title="Writing tests" icon="pen-to-square" href="/writing-tests">

@@ -20,13 +20,13 @@ const PACKAGE_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const CLI = path.join(PACKAGE_ROOT, 'dist', 'cli', 'bin.js');
 
 const CONFIG = `import type { E2EConfig } from 'e2e';
-import { playwright } from '@e2edev/playwright';
+import { web } from '@e2edev/web';
 
 // Anything a config prints must reach stderr, never the protocol stream.
 console.log('config loaded');
 
 export default {
-  targets: [{ name: 'web', platform: 'web', engine: playwright({ url: process.env.APP_URL! }) }],
+  targets: [{ name: 'web', platform: 'web', engine: web({ url: process.env.APP_URL! }) }],
   credentials: { admin: { username: 'admin', password: 'admin-pass' } },
 } satisfies E2EConfig;
 `;
@@ -122,7 +122,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
   it('opens a session with its catalog, then locates, acts, fills a secret, and withholds pixels afterwards', async () => {
     const opened = await invoke('open_session');
     expect(opened.isError, opened.text).toBe(false);
-    expect(opened.text).toMatch(/^Session \S+ open on target "web" \(platform web, engine playwright [^)]+\), headless; config .*e2e\.config\.ts\./);
+    expect(opened.text).toMatch(/^Session \S+ open on target "web" \(platform web, engine web [^)]+\), headless; config .*e2e\.config\.ts\./);
     expect(opened.text).toContain(`App: ${app.url}/`);
     expect(opened.text).toContain('Credentials: "admin" (username "admin")');
     expect(opened.text).toContain('Tools (run one with call {tool, args}; tools {tool} shows a tool\'s arguments):');

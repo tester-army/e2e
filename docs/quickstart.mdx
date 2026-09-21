@@ -48,17 +48,17 @@ need Xcode with an iOS simulator runtime, or the Android SDK with an emulator.
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
 import { createAgent } from 'e2e/agent';
-import { playwright } from '@e2edev/playwright';
+import { web } from '@e2edev/web';
 import { gateway } from 'ai';
 
 export default {
   agents: { default: createAgent({ model: gateway('openai/gpt-5.6-luna') }) },
-  targets: [{ engine: playwright({ url: 'http://localhost:3000' }) }],
+  targets: [{ engine: web({ url: 'http://localhost:3000' }) }],
 } satisfies E2EConfig;
 ```
 
 ```ts title="tests/example.e2e.ts"
-import { test } from '@e2edev/playwright';
+import { test } from '@e2edev/web';
 import { expect } from 'e2e';
 
 test('app opens', async ({ app, web }) => {
@@ -80,18 +80,18 @@ test('app opens', async ({ app, web }) => {
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
 import { createAgent } from 'e2e/agent';
-import { agentDevice } from '@e2edev/agent-device';
+import { mobile } from '@e2edev/mobile';
 import { gateway } from 'ai';
 
 export default {
   agents: { default: createAgent({ model: gateway('openai/gpt-5.6-luna') }) },
-  targets: [{ name: 'ios', engine: agentDevice({ platform: 'ios', app: 'Settings' }) }],
+  targets: [{ name: 'ios', engine: mobile({ platform: 'ios', app: 'Settings' }) }],
   workers: 1,
 } satisfies E2EConfig;
 ```
 
 ```ts title="tests/example.e2e.ts"
-import { test } from '@e2edev/agent-device';
+import { test } from '@e2edev/mobile';
 import { expect } from 'e2e';
 
 test('Settings opens', async ({ screen }) => {
@@ -172,7 +172,7 @@ Adapt the web example to a flow your app supports:
 <Tabs>
   <Tab title="Web">
 ```ts title="tests/agent.e2e.ts"
-import { test } from '@e2edev/playwright';
+import { test } from '@e2edev/web';
 import { expect } from 'e2e';
 
 test('a visitor signs up for a trial', async ({ app, agent, screen }) => {
@@ -189,7 +189,7 @@ test('a visitor signs up for a trial', async ({ app, agent, screen }) => {
   </Tab>
   <Tab title="Mobile (iOS)">
 ```ts title="tests/agent.e2e.ts"
-import { test } from '@e2edev/agent-device';
+import { test } from '@e2edev/mobile';
 import { expect } from 'e2e';
 
 test('the agent opens General', async ({ agent, device }) => {

@@ -1,5 +1,5 @@
-import { test } from '@e2edev/playwright';
-import type { Web } from '@e2edev/playwright';
+import { test } from '@e2edev/web';
+import type { Web } from '@e2edev/web';
 import { expect } from 'e2e';
 import type { Screen } from 'e2e';
 

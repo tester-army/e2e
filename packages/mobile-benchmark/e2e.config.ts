@@ -1,5 +1,5 @@
 import type { E2EConfig } from 'e2e';
-import { agentDevice } from '@e2edev/agent-device';
+import { mobile } from '@e2edev/mobile';
 
 /**
  * Deterministic suite against the benchmark app on an iOS simulator and an
@@ -12,7 +12,7 @@ import { agentDevice } from '@e2edev/agent-device';
  */
 const APP_ID = 'dev.e2e.benchmark';
 
-export const ios = agentDevice({
+export const ios = mobile({
   platform: 'ios',
   app: APP_ID,
   appPath: process.env.E2E_MOBILE_BENCHMARK_IOS_APP,
@@ -25,7 +25,7 @@ export const ios = agentDevice({
   transition: 1_500,
 });
 
-export const android = agentDevice({
+export const android = mobile({
   platform: 'android',
   app: APP_ID,
   appPath: process.env.E2E_MOBILE_BENCHMARK_ANDROID_APP,

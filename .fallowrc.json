@@ -15,7 +15,7 @@
     "packages/mobile-benchmark/tests*/**/*.ts",
     "packages/mobile-benchmark/index.ts",
     "packages/e2e/tests/types/sdk-types.ts",
-    "packages/playwright/tests/types/connection.ts",
+    "packages/web/tests/types/connection.ts",
     "packages/e2e/tests/live/*.ts"
   ],
   "ignorePatterns": [
@@ -26,7 +26,7 @@
   ],
   "ignoreDependencies": [
     "e2e",
-    "@e2edev/playwright",
+    "@e2edev/web",
     "@openrouter/ai-sdk-provider"
   ],
   "rules": {

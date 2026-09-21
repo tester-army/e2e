@@ -54,10 +54,10 @@ descriptions and commit bodies; `git log` and `gh pr view` are the archive.
     are the whole public surface: the flows, stores, and fetch behind them
     are module-private, not a library for other products. `tests/live/` holds hand-run
     checks that need a stored login and are never part of `pnpm test`.
-- `packages/playwright` — the published `@e2edev/playwright` package: the
+- `packages/web` — the published `@e2edev/web` package: the
   browser engine, built with the public `defineEngine`, contributing the
   `web` fixture and `expect(web)`. It depends on `e2e` (peer), never the
-  reverse; a target names it explicitly as `engine: playwright()`. There is
+  reverse; a target names it explicitly as `engine: web()`. There is
   no default engine and no well-known id registry in core. It imports from
   `e2e/engine` only: the semantics every engine must reproduce
   (error taxonomy, text and URL matching, assertion polling, JSON-value rules)
@@ -79,7 +79,7 @@ descriptions and commit bodies; `git log` and `gh pr view` are the archive.
   app of hard mobile surfaces (merged or hidden accessibility trees, native
   alerts over modals, keyboard-covered submits, virtualized lists, a WebView,
   OS permission and payment sheets), copied from the tester-army mobile
-  benchmark, plus the e2e suites on the `@e2edev/agent-device` engine
+  benchmark, plus the e2e suites on the `@e2edev/mobile` engine
   (`tests/` locators only, `tests-agent/` one `agent.act` per scenario).
   Neither runs in CI: no simulator there. Scenario files are copies: keep
   diffs against the source minimal, and name no company a scenario was
@@ -114,20 +114,20 @@ pnpm --filter e2e run build
 pnpm --filter e2e run test:unit                       # unit only, no build
 pnpm --filter e2e exec vitest run tests/unit/scheduler.test.ts
 pnpm --filter e2e exec vitest run -t 'name fragment'
-pnpm --filter @e2edev/playwright run test
+pnpm --filter @e2edev/web run test
 pnpm --filter @e2edev/testbed run test:headed
 ```
 
 - Package `test` scripts do **not** build. Root `build` and `test` order the
   packages explicitly rather than relying on topological sort, because `e2e`
-  devDepends on the playwright engine for its browser-backed integration tests
+  devDepends on the web engine for its browser-backed integration tests
   while the engine peer-depends on `e2e` — pnpm reports that cycle on every
   install.
 - `pnpm typecheck` runs `build` first, then per-package `typecheck`. The
   package `typecheck` covers `tests/**`, which is what makes
   `tests/types/sdk-types.ts` a test.
-- Integration tests need Chromium: `pnpm --filter @e2edev/playwright exec
-  playwright install chromium`. The Playwright engine's `prepare` hook
+- Integration tests need Chromium: `pnpm --filter @e2edev/web exec
+  playwright install chromium`. The web engine's `prepare` hook
   also installs a missing browser once per run, in the runner, before `plan`
   is emitted and the run's clock starts.
 
@@ -277,7 +277,7 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
   here: npmjs auto-assigns `latest` on a package's *first* publish in addition to
   `--tag`, so a brand-new package lands on `latest` once regardless.
   Do not switch to changesets pre mode to get a real prerelease version: it is
-  outside the engine's `e2e` peer range, which majors `@e2edev/playwright` on
+  outside the engine's `e2e` peer range, which majors `@e2edev/web` on
   every runner minor and rewrites the peer range. Widening the range does not
   rescue it — node-semver only lets a prerelease satisfy a comparator set when a
   comparator with the same `major.minor.patch` carries a prerelease, so

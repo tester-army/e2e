@@ -8,7 +8,7 @@
  * grammar has no verb for them yet.
  */
 
-import { test } from '@e2edev/playwright';
+import { test } from '@e2edev/web';
 import { expect } from 'e2e';
 import type { Agent, App, Screen } from 'e2e';
 

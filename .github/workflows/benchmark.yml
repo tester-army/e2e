@@ -43,7 +43,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Install browsers
-        run: pnpm --filter @e2edev/playwright exec playwright install chromium --with-deps
+        run: pnpm --filter @e2edev/web exec playwright install chromium --with-deps
       - name: Build
         run: pnpm run build
       - name: Run test
@@ -92,7 +92,7 @@ jobs:
           fi
       - run: pnpm install --frozen-lockfile
       - name: Install browsers
-        run: pnpm --filter @e2edev/playwright exec playwright install chromium --with-deps
+        run: pnpm --filter @e2edev/web exec playwright install chromium --with-deps
       - name: Build
         run: pnpm run build
       - name: Run test:agent

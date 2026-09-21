@@ -95,7 +95,7 @@ export interface FileGroup {
   printed: boolean;
 }
 
-/** The setup step in flight, ticking in the live window: `starting service "postgres"`, `preparing playwright engine for target "web"`. */
+/** The setup step in flight, ticking in the live window: `starting service "postgres"`, `preparing web engine for target "web"`. */
 export interface SetupInFlight {
   readonly verb: string;
   readonly subject: string;

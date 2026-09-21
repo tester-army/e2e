@@ -115,7 +115,7 @@ clash('redefines an engine fixture', async ({ web }) => {
       expect(clash.status).toBe('failed');
       expect(clash.attempts[0]!.error?.phase).toBe('beforeEach');
       expect(clash.attempts[0]!.error?.code).toBe('TEST_SETUP_FAILED');
-      expect(clash.attempts[0]!.error?.message).toContain('fixture "web" is contributed by engine playwright');
+      expect(clash.attempts[0]!.error?.message).toContain('fixture "web" is contributed by engine web');
 
       expect(readFileSync(logPath, 'utf8').trim().split('\n')).toEqual([
         'setup:first:web',

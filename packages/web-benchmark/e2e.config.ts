@@ -1,5 +1,5 @@
 import type { E2EConfig } from 'e2e';
-import { playwright } from '@e2edev/playwright';
+import { web } from '@e2edev/web';
 import { github } from '@e2edev/github';
 
 /**
@@ -19,7 +19,7 @@ export default {
     {
       name: 'web',
       platform: 'web',
-      engine: playwright({
+      engine: web({
         url: 'http://127.0.0.1:4280',
         command: { executable: 'pnpm', args: ['run', 'start'], reuseExisting: true },
       }),

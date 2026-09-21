@@ -37,13 +37,13 @@ jq '.run.results[] | select(.status != "passed") | .attempts[-1]
 | Code | Usual cause | Fix |
 | --- | --- | --- |
 | `CONFIG_LOAD_FAILED` | The config throws while loading, or imports a package that is not installed or a subpath that does not exist | The message names the cause: install the dependency, or fix the import it quotes |
-| `INVALID_CONFIG` | Unknown key or a stale shape: a top-level `app`, `defineConfig`, a `backend` key, `json` combined with `list` reporters | Move app options into `playwright({ ... })`; use `satisfies E2EConfig`; the message names the key |
+| `INVALID_CONFIG` | Unknown key or a stale shape: a top-level `app`, `defineConfig`, a `backend` key, `json` combined with `list` reporters | Move app options into `web({ ... })`; use `satisfies E2EConfig`; the message names the key |
 | `CONFIG_NOT_FOUND`, `CONFIG_AMBIGUOUS` | Wrong `--config` path; both `.ts` and `.mts` present | Fix the path; keep one config file |
 | `NO_TESTS` | The glob or a positional matched nothing, or a filter left nothing to run | The message names each positional that matched nothing and, under `--tag`, each tag no test declares with the nearest declared one. Check `tests` in the config, the `.e2e.ts` suffix, and the tag names |
 | `COLLECTION_ERROR` | `async` describe body, `test.setup` inside `describe`, an option forbidden in a serial group, registration outside collection | Rework the structure per `writing-tests` |
 | `APP_UNREACHABLE` | `command` never answered `readyUrl` within `startupTimeout`; a service exited non-zero | Read the last log lines quoted under the error; set `command.log` if it says to; check the port and `url`; pass the env the app needs through `command.env`; raise `startupTimeout` |
 | `APP_ALREADY_RUNNING` | Something already serves `url` when the runner wanted to start `command` | Stop it, or set `reuseExisting: true` for local runs |
-| `APP_URL_REQUIRED` | A navigation on an engine without `url` | Add `url` to `playwright({ ... })` |
+| `APP_URL_REQUIRED` | A navigation on an engine without `url` | Add `url` to `web({ ... })` |
 | `LOCATOR_NOT_FOUND` | Wrong role or name, text not exact, element off screen or inside an iframe, page not open | Read the markup for the accessible name; try `exact: false` or a RegExp; `web.frameLocator` for iframes; `app.open()` first; `--headed` to look |
 | `LOCATOR_AMBIGUOUS` | Two matches: a hidden duplicate, a repeated label | Add `{ name }`, scope under a container, `filter`, `first()`, or `{ visible: true }` |
 | `ASSERTION_FAILED` | The expectation is wrong, or the state settles later than 5 s; for `agent.assert`, the judgment was false (explanation in the report) | Compare with the actual text in the report or screenshot; `{ timeout }` on the matcher; rewrite the question |

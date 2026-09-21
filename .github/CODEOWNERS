@@ -14,8 +14,8 @@
 /SECURITY.md                      @okwasniewski
 
 # Engines.
-/packages/playwright/             @okwasniewski @szymonrybczak
-/packages/agent-device/           @szymonrybczak @okwasniewski
+/packages/web/             @okwasniewski @szymonrybczak
+/packages/mobile/           @szymonrybczak @okwasniewski
 
 # Release and CI.
 /.github/                         @okwasniewski

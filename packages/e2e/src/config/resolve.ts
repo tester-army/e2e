@@ -176,7 +176,7 @@ const CACHE_KEYS = new Set(['mode', 'store', 'dir']);
 const CACHE_MODES = new Set(['off', 'read-only', 'read-write']);
 
 const APP_BELONGS_TO_ENGINE =
-  'the app under test is declared by the engine: engine: playwright({ url }) for a browser, agentDevice({ platform, app }) for a device';
+  'the app under test is declared by the engine: engine: web({ url }) for a browser, mobile({ platform, app }) for a device';
 
 /** Keys from other runners' configs, each mapped to where that fact lives here. */
 const FOREIGN_TOP_LEVEL_KEYS: Readonly<Record<string, string>> = {
@@ -186,11 +186,11 @@ const FOREIGN_TOP_LEVEL_KEYS: Readonly<Record<string, string>> = {
   url: APP_BELONGS_TO_ENGINE,
   baseURL: APP_BELONGS_TO_ENGINE,
   baseUrl: APP_BELONGS_TO_ENGINE,
-  webServer: 'the runner starts the app from the engine options: playwright({ url, command: { executable, args } })',
-  use: 'browser and app options are engine options: engine: playwright({ ... })',
+  webServer: 'the runner starts the app from the engine options: web({ url, command: { executable, args } })',
+  use: 'browser and app options are engine options: engine: web({ ... })',
   projects: 'one target per browser or device: targets: [{ engine }]',
   agent: 'agents are named: agents: { default: <what agent held> }; e2e run --agent <name> runs with another',
-  screen: 'the test-id attribute is an engine option: engine: playwright({ testIdAttribute })',
+  screen: 'the test-id attribute is an engine option: engine: web({ testIdAttribute })',
 };
 
 /** Keys authors put on a target that belong to its engine. */
@@ -620,7 +620,7 @@ function resolveTargets(raw: E2EConfig, projectRoot: string, ports: PortAssignme
       const got = typeof target.engine === 'string' ? `the string ${JSON.stringify(target.engine)}` : `a ${typeof target.engine}`;
       throw new ConfigurationError(
         'INVALID_CONFIG',
-        `${where} engine must be an engine handle, got ${got}; call the engine's factory: playwright({ url }) from @e2edev/playwright, agentDevice({ platform, app }) from @e2edev/agent-device, or your own defineEngine(...)`,
+        `${where} engine must be an engine handle, got ${got}; call the engine's factory: web({ url }) from @e2edev/web, mobile({ platform, app }) from @e2edev/mobile, or your own defineEngine(...)`,
       );
     }
     const platform = resolvePlatform(target, where);

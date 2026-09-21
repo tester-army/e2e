@@ -10,8 +10,8 @@ one goal; `agent.assert`, `agent.waitFor`, and `agent.extract` judge the
 screen. Use `screen`, `app`, `web`, and `expect` for exact interactions and
 checks. The trace cache can replay verified actions and check their recorded
 end state without a model call. Agent judgments still run live.
-UI targets use `@e2edev/playwright` for browsers or
-`@e2edev/agent-device` for iOS simulators and Android emulators.
+UI targets use `@e2edev/web` for browsers or
+`@e2edev/mobile` for iOS simulators and Android emulators.
 
 Agent steps can use an existing ChatGPT, Copilot, or SuperGrok subscription,
 an API key, or a local model. `e2e init` offers these choices. See
@@ -21,13 +21,13 @@ an API key, or a local model. `e2e init` offers these choices. See
 // e2e.config.ts
 import type { E2EConfig } from 'e2e';
 import { createAgent } from 'e2e/agent';
-import { playwright } from '@e2edev/playwright';
+import { web } from '@e2edev/web';
 import { gateway } from 'ai';
 
 export default {
   targets: [
     {
-      engine: playwright({
+      engine: web({
         url: 'http://127.0.0.1:3000',
         command: { executable: 'pnpm', args: ['dev'], log: '.e2e/logs/app.log' },
       }),
@@ -45,7 +45,7 @@ export default {
 
 ```ts
 // tests/billing.e2e.ts
-import { test } from '@e2edev/playwright';
+import { test } from '@e2edev/web';
 import { expect } from 'e2e';
 
 test('a member upgrades to Pro', async ({ app, agent, screen, web }) => {
@@ -102,10 +102,10 @@ one. Without them, the installed CLI prints the same text:
 - The config is `export default { ... } satisfies E2EConfig` with
   `import type { E2EConfig } from 'e2e'`. `targets` is required and
   UI targets name an engine. The engine declares the app, for example
-  `playwright({ url, command })`. A tools-only target can omit the engine
+  `web({ url, command })`. A tools-only target can omit the engine
   and set `platform` explicitly. There is no top-level `app` key or `defineConfig`.
 - Import `test`, `expect`, `credentials`, and `secrets` from `e2e`. A test that
-  uses the `web` fixture imports `test` from `@e2edev/playwright` instead: the
+  uses the `web` fixture imports `test` from `@e2edev/web` instead: the
   same runtime `test`, typed with `web`.
 - Config and tests are ES modules and load as such whatever `package.json` sets as `type`.
 - Locators resolve when used. Actions wait for readiness and `expect`

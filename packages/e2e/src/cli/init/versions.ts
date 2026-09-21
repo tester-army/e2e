@@ -32,7 +32,7 @@ export function siblingDependency(name: string): Readonly<Record<string, string>
 }
 
 /**
- * The range init writes for `playwright`, which `@e2edev/playwright` peers on
+ * The range init writes for `playwright`, which `@e2edev/web` peers on
  * rather than installs, so an app that already ships Playwright keeps one copy
  * and one browser cache. The build records the version the engine was built
  * and tested against; from source, where nothing is recorded, any 1.x will do.

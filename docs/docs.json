@@ -144,14 +144,14 @@
             "group": "Web",
             "icon": "globe",
             "pages": [
-              "reference/playwright"
+              "reference/web"
             ]
           },
           {
             "group": "Mobile",
             "icon": "mobile-screen",
             "pages": [
-              "reference/agent-device"
+              "reference/mobile"
             ]
           },
           {
@@ -181,7 +181,15 @@
     },
     {
       "source": "/reference/device",
-      "destination": "/reference/agent-device"
+      "destination": "/reference/mobile"
+    },
+    {
+      "source": "/reference/agent-device",
+      "destination": "/reference/mobile"
+    },
+    {
+      "source": "/reference/playwright",
+      "destination": "/reference/web"
     },
     {
       "source": "/running-tests",
@@ -213,7 +221,7 @@
     },
     {
       "source": "/reference/app-web",
-      "destination": "/reference/playwright"
+      "destination": "/reference/web"
     }
   ]
 }

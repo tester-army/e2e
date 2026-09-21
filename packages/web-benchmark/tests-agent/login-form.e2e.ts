@@ -5,7 +5,7 @@
  * is what makes the test pass or fail; the model only drives.
  */
 
-import { test } from '@e2edev/playwright';
+import { test } from '@e2edev/web';
 import { expect, credentials } from 'e2e';
 
 test('act signs in with the benchmark account', async ({ app, agent, screen }) => {

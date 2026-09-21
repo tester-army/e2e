@@ -14,11 +14,11 @@ agent calls; the locator-based example below works without one.
 
 | Selenium | e2e |
 | --- | --- |
-| The URL in every `driver.get` | `playwright({ url })`, then relative paths |
-| Starting the app in a script | `playwright({ url, command })`, see [Starting your app](/starting-your-app) |
-| One driver per browser | One target per browser, `playwright({ browser: 'firefox' })` |
+| The URL in every `driver.get` | `web({ url })`, then relative paths |
+| Starting the app in a script | `web({ url, command })`, see [Starting your app](/starting-your-app) |
+| One driver per browser | One target per browser, `web({ browser: 'firefox' })` |
 | Selenium Grid | `workers` for parallelism; `connect` attaches to a remote Chromium over CDP |
-| `manage().window().setSize` | `playwright({ viewport })` |
+| `manage().window().setSize` | `web({ viewport })` |
 | Implicit waits | `actionTimeout` and `assertionTimeout` set action and assertion deadlines |
 | A page object for sign-in | `test.setup` and `{ session }`, see [Signing in](/authentication) |
 
@@ -36,7 +36,7 @@ assertEquals("Welcome back, admin!",
 ```
 
 ```ts title="e2e"
-import { test } from '@e2edev/playwright';
+import { test } from '@e2edev/web';
 import { expect, credentials } from 'e2e';
 
 test('signs in', async ({ app, screen, web }) => {
@@ -60,7 +60,7 @@ use `agent.act` to perform sign-in from a goal.
 | --- | --- |
 | `driver.get(url)` | `app.open(path)` |
 | `driver.navigate().back()`, `.refresh()` | `app.back()`, `web.reload()` |
-| `By.id('x')` | `web.locator('#x')`; or `playwright({ testIdAttribute: 'id' })` and `screen.getByTestId('x')` |
+| `By.id('x')` | `web.locator('#x')`; or `web({ testIdAttribute: 'id' })` and `screen.getByTestId('x')` |
 | `By.name('x')` | `web.locator('[name="x"]')`, not portable; prefer a role or label |
 | `By.linkText`, `By.partialLinkText` | `screen.getByRole('link', { name })`, `name: /part/` |
 | `By.cssSelector`, `By.xpath` | `web.locator('css or xpath')`, not portable |

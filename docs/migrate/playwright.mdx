@@ -3,7 +3,7 @@ title: From Playwright
 description: Run e2e alongside Playwright and migrate tests one file at a time.
 ---
 
-`@e2edev/playwright` uses your installed Playwright when its version satisfies
+`@e2edev/web` uses your installed Playwright when its version satisfies
 the engine's peer dependency. Both test runners can stay in the same project.
 e2e uses `e2e.config.ts` and finds `tests/**/*.e2e.ts` by default. Keep the two
 runners' file patterns separate.
@@ -15,11 +15,11 @@ agent calls.
 
 | Playwright | e2e |
 | --- | --- |
-| `use.baseURL` | `playwright({ url })` |
-| `webServer` | `playwright({ url, command })`, see [Starting your app](/starting-your-app) |
+| `use.baseURL` | `web({ url })` |
+| `webServer` | `web({ url, command })`, see [Starting your app](/starting-your-app) |
 | `projects` | `targets`, one engine instance each |
-| `use.viewport`, `use.browserName` | `playwright({ viewport, browser })` |
-| `testIdAttribute` | `playwright({ testIdAttribute })` |
+| `use.viewport`, `use.browserName` | `web({ viewport, browser })` |
+| `testIdAttribute` | `web({ testIdAttribute })` |
 | `retries`, `workers`, `timeout` | The same names at the top level |
 | `storageState` | `test.setup` and `{ session }`, see [Signing in](/authentication) |
 | `reporter` | `reporters: ['list', 'junit']` |
@@ -41,7 +41,7 @@ test('checkout', async ({ page }) => {
 ```
 
 ```ts title="e2e"
-import { test } from '@e2edev/playwright';
+import { test } from '@e2edev/web';
 import { expect } from 'e2e';
 
 test('checkout', async ({ app, agent, screen }) => {
@@ -97,7 +97,7 @@ Tests that already work well can remain in Playwright.
   <Card title="Writing tests" icon="pen-to-square" href="/writing-tests">
     Goals, checks, extraction, and where a deterministic call still belongs.
   </Card>
-  <Card title="Playwright reference" icon="masks-theater" href="/reference/playwright">
+  <Card title="Web engine reference" icon="masks-theater" href="/reference/web">
     Every option and every `web` method.
   </Card>
 </CardGroup>

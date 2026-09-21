@@ -9,7 +9,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { Device } from '@e2edev/agent-device';
+import type { Device } from '@e2edev/mobile';
 import type { Agent, AgentParam, Screen } from 'e2e';
 import { credentials } from 'e2e';
 import { expect, openScenario, test } from '../tests/fixtures.ts';

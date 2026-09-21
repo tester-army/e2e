@@ -1,0 +1,470 @@
+---
+title: Web
+description: The browser engine, its options, and the web fixture it contributes.
+---
+
+`@e2edev/web` drives Chromium, Firefox, and WebKit through Playwright.
+A web target names it as its engine, and it contributes the `web` fixture for
+browser-only work. Import `test` from the package to have `web` typed.
+
+The package declares `playwright` as a peer dependency (`>=1.63.0 <2`) and
+does not install it. An app that already depends on Playwright keeps its
+version; `e2e init` adds `playwright` only to a project that has none.
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2edev/web';
+
+export default {
+  targets: [{ engine: web({ url: 'http://localhost:3000' }) }],
+} satisfies E2EConfig;
+```
+
+## Options
+
+```ts
+/**
+ * Options of the browser engine: the app it drives (`url`, `command`,
+ * `services`, `environment`, `identity`, `readyUrl` - the
+ * engine contract's app declaration) plus the browser itself.
+ */
+export interface WebOptions extends EngineAppDeclaration {
+  /** Browser to launch; defaults to chromium. */
+  readonly browser?: BrowserName;
+  /** Initial viewport of every attempt's page; default 1280 by 720. */
+  readonly viewport?: ViewportSize;
+  /**
+   * Attach to a remote browser over CDP instead of launching locally. Requires
+   * the chromium browser (the default). Wired by a hosted-browser engine.
+   */
+  readonly connect?: WebConnectOptions;
+  /**
+   * Headers added to requests within the app's site, including subdomains.
+   * Useful for preview-protection tokens. Other sites never receive them.
+   * Names are case-insensitive and replace existing headers of the same name.
+   * This enables request routing, disables the browser's HTTP cache, and
+   * blocks service workers. Playwright traces record request headers.
+   */
+  readonly headers?: Readonly<Record<string, string>>;
+  /**
+   * HTTP basic authentication. The browser answers a `401` challenge with
+   * these credentials on any origin, matching Playwright's `httpCredentials`.
+   */
+  readonly basicAuth?: WebBasicAuth;
+  /**
+   * The attribute that carries an element's test id: what the `testId` query
+   * (`screen.getByTestId`) resolves and what `SemanticNode.testId` reports.
+   * Defaults to `data-testid`.
+   */
+  readonly testIdAttribute?: string;
+}
+```
+
+The app declaration fields (`url`, `command`, `readyUrl`, `services`,
+`environment`, `identity`) are documented under
+[the app under test](/reference/config#the-app-under-test). `connect` needs
+chromium; `cdpEndpoint(signal)` is called once per worker and again at an
+attempt start after a disconnect. `:` is not allowed in the `basicAuth` user name.
+
+`headers` and `basicAuth` are how a test reaches a [protected preview](/starting-your-app#protected-previews).
+
+### Recovering a CDP transport
+
+`connect.reconnectEndpoint(signal)` opts into recovery of the same remote
+browser after its CDP transport disconnects. This mode uses the browser's
+persistent default context because Chrome deletes ordinary Playwright contexts
+when their transport detaches.
+
+```ts
+interface WebConnectOptions {
+  cdpEndpoint(signal: AbortSignal): string | Promise<string>;
+  reconnectEndpoint?(signal: AbortSignal): string | Promise<string>;
+}
+```
+
+In this mode, `cdpEndpoint` provisions a fresh, dedicated browser at every
+attempt start, including retries. The engine rejects a browser reused by a
+previous attempt. The remote must have only its default context, and the host
+must delete the browser when the attempt ends. Engine cleanup detaches its
+connection; it does not terminate the host's browser.
+
+After a disconnect, the next operation calls `reconnectEndpoint` once, bounded
+by that operation's timeout and abort signal. This resolver must return the
+existing browser's endpoint. The engine verifies the persistent default context
+ID and the original page's target ID. It refuses browsers that do not expose
+the default context ID. A missing page or a different context fails the attempt.
+A URL match is insufficient to select a replacement tab.
+The engine installs secure-field masking before publishing each CDP binding;
+an incompatible Playwright version fails the connection instead of exposing pixels.
+Recovery also requires the original page's frames to retain their closed shadow
+DOM tracking hooks. If a document loaded without that hook while disconnected,
+recovery fails with `ENGINE_FAILURE`: existing closed roots cannot be recovered
+without reloading the application. Mask queries reject any untracked document.
+
+Endpoint resolution, CDP attachment, setup, and dispatch share one timeout.
+Exhausting it raises `OPERATION_TIMEOUT`; caller or attempt cancellation raises
+`CANCELLED`. Cancelling a concurrent waiter does not cancel the operation that
+started recovery. Cancelling that recovery owner fails the shared recovery.
+
+Recovery clears old node references. Observation-derived `tapAt` calls,
+observation-root swipes, and focused engine keyboard input require a fresh
+engine observation before they resume.
+An observation or locator read started before recovery cannot publish references
+after the connection changes. Each attempt owns its binding and recordings, so
+late cleanup cannot change a later attempt.
+The deterministic `web.mouse` and `web.keyboard` fixtures remain available
+without an agent observation. Test code owns its input and can read current
+geometry and focus with `web.evaluate` before acting.
+
+Recovery preserves the page's unsaved state, storage, the attempt's secret
+taint, and the agent ledger. Operations already dispatched
+are never retried. Dialog and route handlers are reattached. Video and trace
+recording resume, but a segment lost during the disconnect cannot be recovered.
+Code using `surfaceOf(engine)` must read its accessors again after recovery;
+previously retained Playwright objects belong to the disconnected transport.
+
+Persistent recovery does not support `headers`, `basicAuth`, `app.clearState`,
+or session state capture and restore. `app.restart` remains available. Omit
+`reconnectEndpoint` to keep ordinary isolated contexts and the existing behavior.
+
+## Web
+
+```ts
+export interface Web extends Expectable<WebExpectation> {
+  /** Navigates to an allowed URL. */
+  goto(
+    url: string,
+    options?: {
+      waitUntil?: 'load' | 'domcontentloaded' | 'networkidle';
+      timeout?: number;
+    },
+  ): Promise<void>;
+  /** Reloads the current document. */
+  reload(options?: ActionOptions): Promise<void>;
+  /** Navigates browser history back once. */
+  back(options?: ActionOptions): Promise<void>;
+  /** Navigates browser history forward once. */
+  forward(options?: ActionOptions): Promise<void>;
+  /** Returns the current URL. */
+  url(): Promise<string>;
+  /** Returns the current title. */
+  title(): Promise<string>;
+  /** Waits for the current URL to match. */
+  waitForURL(url: string | RegExp, options?: { timeout?: number }): Promise<void>;
+  /** Creates a web-only CSS or XPath locator. */
+  locator(selector: string): Locator;
+  /** Creates a screen query scope inside one iframe. */
+  frameLocator(selector: string): FrameScreen;
+  /** Evaluates trusted test code in the page. */
+  evaluate<T extends JsonValue>(fn: string | (() => T | Promise<T>)): Promise<T>;
+  /** Evaluates trusted test code with one required JSON-safe argument. */
+  evaluate<T extends JsonValue, Arg extends JsonValue>(
+    fn: string | ((arg: Arg) => T | Promise<T>),
+    arg: Arg,
+  ): Promise<T>;
+  /** Adds an attempt-scoped network route. */
+  route(
+    pattern: string | RegExp,
+    handler: (route: WebRoute) => void | Promise<void>,
+  ): Promise<void>;
+  /** Removes matching attempt-scoped routes. */
+  unroute(pattern: string | RegExp): Promise<void>;
+  /** Waits for a matching response. */
+  waitForResponse(
+    pattern: string | RegExp,
+    options?: { timeout?: number },
+  ): Promise<WebResponse>;
+  /** Returns cookies visible to the current context. */
+  cookies(): Promise<Cookie[]>;
+  /** Sets cookies after URL validation. */
+  setCookies(cookies: readonly Cookie[]): Promise<void>;
+  /** Sets the viewport size. */
+  setViewport(size: { width: number; height: number }): Promise<void>;
+  /** Registers an attempt-scoped dialog handler and returns an unsubscribe function. */
+  onDialog(handler: DialogHandler): Promise<() => Promise<void>>;
+  /** Runs a trigger and waits for its download. */
+  waitForDownload(
+    trigger: () => Promise<void>,
+    options?: { timeout?: number },
+  ): Promise<{ path: string; suggestedFilename: string }>;
+  /** Viewport-level keyboard, for whatever has focus. */
+  readonly keyboard: {
+    /** Sends one key. */
+    press(key: string): Promise<void>;
+    /** Types plain text. */
+    type(text: string): Promise<void>;
+  };
+  /**
+   * Direct pointer input from test code, independent of agent observations.
+   * After CDP recovery, test code can read current geometry with `evaluate`
+   * before starting a pointer sequence.
+   */
+  readonly mouse: {
+    /** Moves the pointer. */
+    move(x: number, y: number): Promise<void>;
+    /** Scrolls the pointer wheel. */
+    wheel(deltaX: number, deltaY: number): Promise<void>;
+    /** Presses the primary pointer button. */
+    down(): Promise<void>;
+    /** Releases the primary pointer button. */
+    up(): Promise<void>;
+  };
+}
+```
+
+| Member | Default timeout |
+| --- | --- |
+| `goto`, `reload`, `back`, `forward` | `config.timeout`, 120000 ms, the same budget `app.open()` uses; `{ timeout }` overrides, capped by the test deadline |
+| `waitForResponse`, `waitForDownload` | `config.actionTimeout`, 30000 ms; `{ timeout }` overrides, capped by the test deadline |
+| `waitForURL` | `config.assertionTimeout`, 5000 ms |
+| `url`, `title`, `evaluate`, `route`, `unroute`, `cookies`, `setCookies`, `setViewport`, `onDialog`, `keyboard.*`, `mouse.*` | `config.actionTimeout`, 30000 ms, not overridable |
+
+Every `web` call is a recorded `web.<method>` step. A relative URL needs the
+engine's declared `url`, else `APP_URL_REQUIRED`. Declare `requires: ['web']`
+in a suite that also runs on other platforms.
+
+### Navigation
+
+`goto` defaults `waitUntil` to `'load'` and throws `POLICY_DENIED` for a
+`file:`, `data:`, or `javascript:` URL. `waitForURL` polls every 100 ms; a
+relative string resolves against the base URL and matches exactly after
+normalization, a `RegExp` tests the full URL, and a timeout is
+`ASSERTION_FAILED`. The other navigations throw `ACTION_FAILED`.
+
+```ts
+await web.goto('/dashboard', { waitUntil: 'networkidle' });
+await web.waitForURL(/\/orders\/\d+$/, { timeout: 15_000 });
+```
+
+### Locators and frames
+
+`locator` and `frameLocator`, at the page or inside a frame, throw
+`INVALID_LOCATOR` for an empty selector. `frameLocator` throws
+`LOCATOR_NOT_FOUND` for a missing frame and `LOCATOR_AMBIGUOUS` for several.
+
+```ts
+const payment = web.frameLocator('#payment-frame');
+await payment.getByLabel('Card number').fill('4242424242424242');
+```
+
+`frameLocator` returns a `FrameScreen`: a `Screen` whose queries answer from
+inside the frame, plus the two web-only escape hatches scoped to it.
+
+```ts
+export interface FrameScreen extends Screen {
+  /** Creates a web-only CSS or XPath locator inside this frame. */
+  locator(selector: string): Locator;
+  /** Creates a screen query scope inside an iframe nested in this frame. */
+  frameLocator(selector: string): FrameScreen;
+}
+```
+
+Reach for the frame's `locator` only when the control has no accessible
+name, label, placeholder, or test id; the [browser guide](/browser#reach-into-an-iframe)
+shows when that applies.
+
+### evaluate
+
+The function runs in the page and cannot access variables from the test.
+Pass those values through `arg`. Both `arg` and the return value must be
+`JsonValue`, otherwise the call fails with `INVALID_ARGUMENT`.
+
+An exception in the evaluated code is `EVALUATE_FAILED` with its message. A
+Playwright timeout is `ACTION_FAILED`; a closed page or lost context is
+`ENGINE_FAILURE`.
+
+```ts
+const count = await web.evaluate(() => document.querySelectorAll('li').length);
+const flag = await web.evaluate(
+  (name: string) => window.localStorage.getItem(name),
+  'featureFlags',
+);
+```
+
+### Routing
+
+A route survives `app.restart()`, `app.clearState()`, and session restore.
+The handler must decide exactly once with `fulfill`, `continue`, or `abort`;
+deciding twice or not at all is `ACTION_FAILED`, as is a `waitForResponse`
+that nothing matches inside the deadline.
+
+```ts
+await web.route('**/api/quote', async (route) => {
+  await route.fulfill({ json: { cents: 4200 } });
+});
+
+const response = await web.waitForResponse('**/api/orders');
+expect(response.status).toBe(201);
+```
+
+```ts
+/** `json` or `body`, never both; neither fulfills with an empty body. */
+export type RouteFulfillResponse = {
+  status?: number;
+  headers?: Record<string, string>;
+} & (
+  | { json: JsonValue; body?: never }
+  | { body: string; json?: never }
+  | { body?: never; json?: never }
+);
+
+export interface WebRoute {
+  /** The intercepted request. */
+  readonly request: {
+    readonly url: string;
+    readonly method: string;
+    readonly headers: Readonly<Record<string, string>>;
+    readonly postData?: string;
+  };
+  /** Fulfills the intercepted request once. */
+  fulfill(response: RouteFulfillResponse): Promise<void>;
+  /** Continues the intercepted request once. */
+  continue(): Promise<void>;
+  /** Aborts the intercepted request once. */
+  abort(): Promise<void>;
+}
+
+export interface WebResponse {
+  /** Response URL. */
+  readonly url: string;
+  /** HTTP status. */
+  readonly status: number;
+  /** Response headers, lower-cased names. */
+  readonly headers: Readonly<Record<string, string>>;
+  /** Parses the response body as JSON. */
+  json<T = unknown>(): Promise<T>;
+  /** Reads the response body as text. */
+  text(): Promise<string>;
+}
+```
+
+### Cookies and viewport
+
+`setCookies` validates every cookie before setting any; an unparseable
+target or a forbidden scheme is `POLICY_DENIED` and nothing is set. For the
+`domain` form the scheme follows the base URL and a leading `.` is stripped.
+`setViewport` records the new size on the report.
+
+```ts
+export interface CookieFields {
+  /** Cookie name. */
+  name: string;
+  /** Cookie value. */
+  value: string;
+  /** Unix timestamp in whole seconds. */
+  expires?: number;
+  /** HttpOnly flag. */
+  httpOnly?: boolean;
+  /** Secure flag. */
+  secure?: boolean;
+  /** SameSite attribute. */
+  sameSite?: 'Strict' | 'Lax' | 'None';
+}
+
+/** `url`, or `domain` with an optional `path`, never both. */
+export type Cookie = CookieFields &
+  (
+    | { url: string; domain?: never; path?: never }
+    | { url?: never; domain: string; path?: string }
+  );
+```
+
+```ts
+await web.setCookies([{ url: 'http://localhost:3000', name: 'tz', value: 'UTC' }]);
+```
+
+### Dialogs and downloads
+
+A function handler must call `accept` or `dismiss`; one that does neither
+has the dialog dismissed and fails the next step with `APP_NOT_OPEN`, as an
+unhandled dialog does. `waitForDownload` registers the file as a `download`
+artifact and throws `ACTION_FAILED` when it does not complete in time.
+
+```ts
+/** A native dialog as a test's handler sees it. */
+export interface Dialog {
+  /** The dialog's text. */
+  readonly message: string;
+  /** Accepts the dialog once. */
+  accept(text?: string): Promise<void>;
+  /** Dismisses the dialog once. */
+  dismiss(): Promise<void>;
+}
+```
+
+```ts
+const off = await web.onDialog('accept');
+await screen.getByRole('button', { name: 'Delete' }).tap();
+await off();
+
+const file = await web.waitForDownload(() =>
+  screen.getByRole('link', { name: 'Export CSV' }).tap(),
+);
+```
+
+### keyboard and mouse
+
+Both namespaces are viewport-level. Prefer `locator.press` and
+`locator.fill` when a target exists. `keyboard.type` takes plain text only,
+never a `Secret`.
+
+### JsonValue
+
+```ts
+/** A JSON scalar. */
+export type JsonPrimitive = string | number | boolean | null;
+
+/** Data that survives JSON serialization. */
+export type JsonValue =
+  | JsonPrimitive
+  | { readonly [key: string]: JsonValue }
+  | readonly JsonValue[];
+```
+
+## Semantic capture recovery
+
+When the semantic reader times out, agent observations can recover using a
+fresh viewport screenshot. Playwright runs a new secure-field mask sweep
+across every reachable frame, including open and closed shadow roots. Every
+mask probe must succeed. The observation explicitly reports unavailable
+semantics and clears earlier node references.
+
+Recovery requires time left in the operation budget and permission from the
+runner. `act` permits it before a secret fill; judgments also require
+`vision: true` or `'only'`. Failed masking, cancellation, and hard engine
+errors still stop the observation.
+
+When fallback is permitted, the reader reserves one quarter of the remaining
+observation budget, capped at two seconds, for the screenshot. The deadline
+covers the page walk, metadata and element readback, and nested frames.
+Cleanup does not wait for stalled protocol replies. An abandoned reader
+cannot reuse node IDs or publish handles over a newer observation.
+
+## Exported types
+
+`WebOptions`, `WebConnectOptions`, `WebBasicAuth`,
+`BrowserName`, `PlaywrightLiveSurface`, `Web`, `FrameScreen`, `WebExpectation`, `WebRoute`,
+`WebResponse`, `Cookie`, `Dialog`, and `DialogHandler` are exported from the
+package for typing config helpers and fixtures.
+
+## expect(web)
+
+`expect(web)` returns the `WebExpectation` the engine attaches: `toHaveURL`,
+`toHaveTitle`, and `toHaveClass`. See [web matchers](/reference/expect#web-matchers).
+
+## surfaceOf
+
+```ts
+import { web, surfaceOf } from '@e2edev/web';
+
+const engine = web({ url: 'http://localhost:3000' });
+const live = surfaceOf(engine);   // PlaywrightLiveSurface | undefined
+live!.page();                     // the Page of the current attempt
+live!.context();                  // its BrowserContext
+```
+
+Use `surfaceOf(handle)` in a [custom executor](/executors#driving-the-page-yourself)
+to access the current Playwright page and context directly. It returns
+`undefined` for a handle from another package. The accessors throw
+`INVALID_STATE` outside an active attempt. Direct Playwright calls are not
+recorded as steps.

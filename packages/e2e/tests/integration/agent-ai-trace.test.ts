@@ -161,11 +161,11 @@ describe('--ai-trace on child-process workers', () => {
     // built inside the config file from the shared helper.
     const helper = fileURLToPath(new URL('../helpers/fake-loop-model.ts', import.meta.url));
     const configSource = `import type { E2EConfig } from 'e2e';
-import { playwright } from '@e2edev/playwright';
+import { web } from '@e2edev/web';
 import { installFakeLoopModel } from ${JSON.stringify(helper)};
 
 export default {
-  targets: [{ name: 'web', platform: 'web', engine: playwright({ url: process.env.APP_URL! }) }],
+  targets: [{ name: 'web', platform: 'web', engine: web({ url: process.env.APP_URL! }) }],
   workers: 2,
   agents: { default: { model: installFakeLoopModel(${RESPONDER_SOURCE}) } },
 } satisfies E2EConfig;

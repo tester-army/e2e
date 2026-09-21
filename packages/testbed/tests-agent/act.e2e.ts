@@ -3,7 +3,7 @@
  * by the default ToolLoopAgent executor, verified deterministically after.
  */
 
-import { test } from '@e2edev/playwright';
+import { test } from '@e2edev/web';
 import { expect, credentials } from 'e2e';
 
 test('act drives a multi-action todo flow', async ({ web, agent, screen }) => {

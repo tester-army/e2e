@@ -37,8 +37,8 @@ describe('explainModuleError', () => {
     );
 
     writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ packageManager: 'bun@1.0.0' }));
-    const subpath = nodeError('ERR_MODULE_NOT_FOUND', `Cannot find package '@e2edev/playwright/extra' imported from ${importer}`);
-    expect(explainModuleError(subpath, importer)).toContain('; add it to the project: bun add -d @e2edev/playwright');
+    const subpath = nodeError('ERR_MODULE_NOT_FOUND', `Cannot find package '@e2edev/web/extra' imported from ${importer}`);
+    expect(explainModuleError(subpath, importer)).toContain('; add it to the project: bun add -d @e2edev/web');
   });
 
   it('leaves relative and absolute module paths to the loader message', () => {

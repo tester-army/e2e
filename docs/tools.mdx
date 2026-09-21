@@ -10,7 +10,7 @@ other project-specific operations during a goal. Wrap each AI SDK tool with
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
 import { createAgent, defineTool } from 'e2e/agent';
-import { playwright } from '@e2edev/playwright';
+import { web } from '@e2edev/web';
 import { gateway, tool } from 'ai';
 import { z } from 'zod';
 
@@ -32,7 +32,7 @@ const seedCart = defineTool(
 );
 
 export default {
-  targets: [{ engine: playwright({ url: process.env.APP_URL ?? 'http://localhost:3000' }) }],
+  targets: [{ engine: web({ url: process.env.APP_URL ?? 'http://localhost:3000' }) }],
   agents: { default: createAgent({ model: gateway('openai/gpt-5.6-luna'), tools: { seedCart } }) },
 } satisfies E2EConfig;
 ```
@@ -104,23 +104,23 @@ overwriting an earlier image.
 
 ## Device toolkits
 
-`@e2edev/agent-device` ships a ready tool pack for its engine:
+`@e2edev/mobile` ships a ready tool pack for its engine:
 
 ```ts
 import type { E2EConfig } from 'e2e';
 import { createAgent } from 'e2e/agent';
-import { agentDevice } from '@e2edev/agent-device';
-import { agentDeviceTools } from '@e2edev/agent-device/tools';
+import { mobile } from '@e2edev/mobile';
+import { mobileTools } from '@e2edev/mobile/tools';
 import { gateway } from 'ai';
 
-const iphone = agentDevice({ platform: 'ios', app: 'Settings' });
+const iphone = mobile({ platform: 'ios', app: 'Settings' });
 
 export default {
   targets: [{ engine: iphone }],
   agents: {
     default: createAgent({
       model: gateway('openai/gpt-5.6-luna'),
-      tools: agentDeviceTools(iphone),
+      tools: mobileTools(iphone),
     }),
   },
 } satisfies E2EConfig;
@@ -128,7 +128,7 @@ export default {
 
 It adds `open_app`, `swipe`, and `alert` on device targets.
 Screenshots and point actions come from the engine's built-in tools.
-See the [agent-device reference](/reference/agent-device#agent-tools).
+See the [Mobile engine reference](/reference/mobile#agent-tools).
 
 <CardGroup cols={2}>
   <Card title="Custom executors" icon="gears" href="/executors">

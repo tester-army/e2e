@@ -6,7 +6,7 @@ import { assertValidReport } from '../helpers/report-schema.ts';
 import { resultByTitle, runProject, type FixtureProject } from '../helpers/run-project.ts';
 import type { RunOutcome } from '../helpers/run-project.ts';
 
-const KITCHEN_SINK = `import { test } from '@e2edev/playwright';
+const KITCHEN_SINK = `import { test } from '@e2edev/web';
 import { expect } from 'e2e';
 
 test('deterministic queries and reads', async ({ app, screen, web }) => {

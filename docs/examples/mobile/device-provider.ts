@@ -1,4 +1,4 @@
-import type { DeviceProvider } from '@e2edev/agent-device';
+import type { DeviceProvider } from '@e2edev/mobile';
 
 /**
  * Leases devices from a service that starts an agent-device daemon per

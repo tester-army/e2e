@@ -10,7 +10,7 @@ here.
 
 - `app/server.mjs` — dependency-free playground app (todos, login/session,
   forms, wizard, network, dialogs, iframes, downloads). The runner starts and
-  stops it via the playwright engine's `command` option.
+  stops it via the web engine's `command` option.
 - `app/bug-garden.mjs` — a bookshop with planted defects, for `e2e explore`.
 - `dogfood/server.mjs` — an expense-claims app with a test API, for the
   executor dogfoods.

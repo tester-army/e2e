@@ -40,8 +40,8 @@ Fix the prose when you find it stale.
 This project is a pnpm monorepo containing:
 
 - `packages/e2e`: the published `e2e` package (SDK, runner, CLI, engine contract)
-- `packages/playwright`: the published `@e2edev/playwright` browser engine
-- `packages/agent-device`: the published `@e2edev/agent-device` mobile engine
+- `packages/web`: the published `@e2edev/web` browser engine
+- `packages/mobile`: the published `@e2edev/mobile` mobile engine
 - `packages/testbed`: private dogfood suite that consumes the built packages
 - `packages/web-benchmark`: private Next.js app of hard-surface scenarios plus the e2e suites written against them
 - `docs/`: the docs site, built with [Mintlify](https://mintlify.com)
@@ -69,7 +69,7 @@ pnpm test    # unit + integration
 Integration tests need Chromium:
 
 ```sh
-pnpm --filter @e2edev/playwright exec playwright install chromium
+pnpm --filter @e2edev/web exec playwright install chromium
 ```
 
 Docs are part of the change, not a follow-up. A behavior change updates its
@@ -102,8 +102,8 @@ We use [changesets](https://github.com/changesets/changesets) to publish new
 versions. It handles bumping the version based on semver, writing the
 changelog, and creating tags and GitHub releases.
 
-If your change affects `e2e`, `@e2edev/playwright`, or
-`@e2edev/agent-device`, add a changeset:
+If your change affects `e2e`, `@e2edev/web`, or
+`@e2edev/mobile`, add a changeset:
 
 ```sh
 pnpm changeset
@@ -208,7 +208,7 @@ prompts and tool descriptions.
 
 ### Engine contract
 
-`e2e/engine` is what `@e2edev/playwright` and `@e2edev/agent-device`
+`e2e/engine` is what `@e2edev/web` and `@e2edev/mobile`
 build against, and what a third-party engine builds against too. A change to
 that contract bumps all three packages together in one release, with a
 changeset for each, so an engine and a runner from the same release always
