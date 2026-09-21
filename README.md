@@ -42,8 +42,6 @@ Maestro, and the full reference.
 - [`@e2edev/web`](./packages/web): the browser engine.
 - [`@e2edev/mobile`](./packages/mobile): the iOS and Android engine.
 - [`@e2edev/github`](./packages/github): the pull request comment reporter.
-- [`@e2edev/oauth`](./packages/oauth): sign in with a ChatGPT, GitHub Copilot,
-  or SuperGrok subscription.
 
 ## Contributing
 
