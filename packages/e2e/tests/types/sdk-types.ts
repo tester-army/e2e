@@ -75,9 +75,21 @@ void screen.getByLabel('City').pressSequentially('War', { delay: 50 });
 void agent.act('use the key', { params: { apiKey: secrets.get('key') } });
 // A run-unique value is marked, not inferred; the model still sees the string.
 unique('E2E Company') satisfies Unique;
-void agent.act('create {name}', { params: { name: unique(`E2E ${Date.now()}`), owner: { email: unique('a@b.test') } } });
+void agent.act('create {name}', { params: { name: unique('E2E Company'), owner: { email: unique('a@b.test') } } });
 // @ts-expect-error unique() marks a string.
 unique(7);
+// The tag marks a derivation of the stamp fixture once; strings, numbers, and earlier marks interpolate.
+test('creates', async ({ stamp, agent: acting }) => {
+  stamp satisfies string;
+  const name = unique`${stamp} Company`;
+  name satisfies Unique;
+  unique`${name} #${1}` satisfies Unique;
+  await acting.act('create {name}', { params: { name, key: unique`${stamp}_company` } });
+});
+// @ts-expect-error a template part is a string, a number, or a Unique, never an object.
+unique`${{ id: 1 }} Company`;
+// @ts-expect-error stamp is not a suite fixture.
+test.beforeAll(({ stamp }) => void stamp);
 ({ agents: { default: { model }, ux: { context: 'Review the UX.' } } }) satisfies E2EConfig;
 // @ts-expect-error a model is an AI SDK instance the config constructs; the runner implies no gateway for a string
 ({ agents: { default: { model: 'openai/gpt-5.6-luna-fast' } } }) satisfies E2EConfig;

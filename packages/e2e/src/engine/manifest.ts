@@ -74,7 +74,7 @@ const FUNCTION_MEMBERS = [
 ] as const;
 
 /** Universal fixture names a contribution may never shadow. */
-const RESERVED_FIXTURES = new Set(['agent', 'app', 'screen', 'platform', 'session']);
+const RESERVED_FIXTURES = new Set(['agent', 'app', 'screen', 'platform', 'stamp', 'session']);
 
 const FIXTURE_NAME_PATTERN = /^[a-z][A-Za-z0-9]*$/;
 

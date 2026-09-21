@@ -15,6 +15,7 @@ import { Deadline } from '../internal/time.ts';
 import { didYouMean } from '../internal/suggest.ts';
 import { processSecrets, sessionSecrecy, type SessionSecrecy } from './secrecy.ts';
 import { unavailableCode } from '../secrets.ts';
+import { createStamp } from '../params.ts';
 import { obj } from '../internal/objects.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
 import { FixtureRecorder } from './fixture-recording.ts';
@@ -212,6 +213,7 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
     app,
     screen,
     platform: environment.target.platform,
+    stamp: createStamp(),
     session: {
       save: async (name: string) => {
         const saveSession = environment.saveSession;

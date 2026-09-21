@@ -88,6 +88,7 @@ Fixtures are lazy; destructure them in the callback.
 | `screen` | `Screen` | Always. |
 | `agent` | `Agent` | Needs a configured model, else `MODEL_UNAVAILABLE`. See the `agent` topic. |
 | `platform` | `'web' \| 'ios' \| 'android' \| string` | Always; also in `beforeAll` and `afterAll`. |
+| `stamp` | `string` | Always. Unique to the run and the test, the same for the whole attempt: `e2e` + base36 millisecond + 4 random chars, lowercase letters and digits. Spell it into created data with `unique\`${stamp} Company\``. |
 | `web` | `Web` | Browser targets. Import `test` from `@e2edev/web`. |
 | `device` | `Device` | Device targets. Import `test` from `@e2edev/mobile`. |
 | `session` | `SetupSession` | Only in `test.setup`. |
@@ -318,9 +319,12 @@ expect(response.status).toBe(201);
 - Find selectors in the source, not by guessing: read the component or
   template for labels, roles, and text. Add an `aria-label` or a heading
   where the app has no accessible name, rather than falling back to CSS.
-- Create the data a test needs under a name unique to the run
-  (`Invoice ${Date.now()}`) and clean up in `afterEach`. Replays and retries
-  then never trip over leftovers.
+- Create the data a test needs under a name built from the `stamp` fixture
+  and marked with the `unique` tag (`const name = unique\`${stamp} Invoice\``;
+  pass `name` as an `act` param, `name.value` to a locator) and clean up in
+  `afterEach`. Replays and retries then never trip over leftovers, and the
+  trace cache still replays. Never `Date.now()` or `Math.random()` in a
+  name: the cache cannot tell them from data the flow depends on.
 - One flow across several tests: `test.describe('...', { serial: true })`.
   Otherwise tests are independent and may run on different workers.
 - Tag by area and by cost (`smoke`, `billing`, `agent`) and run subsets with

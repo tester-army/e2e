@@ -27,7 +27,7 @@ export type {
   SecretPurpose,
   Secrets,
 } from './config/secrets.ts';
-export type { Unique } from './params.ts';
+export type { Unique, UniquePart } from './params.ts';
 export type {
   ActionTrace,
   RecordedAction,
@@ -545,6 +545,14 @@ export interface TestFixtures {
   readonly screen: Screen;
   /** The target's platform label: `web`, `ios`, `android`, or an engine's own string. */
   readonly platform: string;
+  /**
+   * A string unique to this run and this test, the same for the whole
+   * attempt: `e2e`, the start millisecond in base36, four random characters,
+   * lowercase letters and digits only. Spell it into the data a test creates
+   * (`unique\`${stamp} Company\``) so runs never collide on a record and the
+   * trace cache still replays.
+   */
+  readonly stamp: string;
 }
 
 export interface SetupFixtures extends TestFixtures {

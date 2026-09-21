@@ -56,19 +56,32 @@ params. Renaming the test or target, changing the instruction or an ordinary
 param, or upgrading the engine's major or minor version causes a miss.
 Changing the model does not.
 
-A timestamp or a fresh email address would cause a miss on every run. Wrap
-values like these in `unique()` so the runner substitutes the current value
-when replaying:
+A name with a timestamp in it or a fresh email address would cause a miss on
+every run. Build such values from the `stamp` fixture, a string unique to
+the run and the test, and mark them with the `unique` tag so the runner
+records a slot and substitutes the current value when replaying:
 
 ```ts
-import { unique } from 'e2e';
+import { expect, test, unique } from 'e2e';
 
-const name = `E2E ${Date.now()} Company`;
-await agent.act('create a company named {name}', { params: { name: unique(name) } });
-await expect(screen.getByRole('heading', { name })).toBeVisible();
+test('creates a company', async ({ app, agent, screen, stamp }) => {
+  const name = unique`${stamp} Company`;
+  const key = unique`${stamp}_company`;
+  await app.open('/companies');
+  await agent.act('create a company named {name} with key {key}', { params: { name, key } });
+  await agent.act('open the company {name}', { params: { name } });
+  await expect(screen.getByRole('heading', { name: name.value })).toBeVisible();
+});
 ```
 
-Use `unique()` for data the flow enters or checks. Keep choices that change
+`stamp` reads `e2e`, the start millisecond in base36, then four random
+characters, all lowercase letters and digits: it stays the same through a
+slug field, a URL path, or a file name, so a check on what the app echoes
+back still matches. The tag returns a `Unique`; pass it to as many `act`
+calls as the flow needs, and read `.value` for a locator. `unique(value)`
+marks a string that already exists.
+
+Use `unique` for data the flow enters or checks. Keep choices that change
 the flow, such as a plan name, as ordinary params. The substitution covers
 the value as a URL spells it too, `%20` in a path or `+` in a search query.
 

@@ -38,6 +38,15 @@ function runtime(engine: EngineHandle, overrides: E2EConfig = {}) {
 
 const empty = () => defineEngine({ name: 'fake', version: '1', spiVersion: 1, observe: async () => snapshot([]) });
 
+describe('stamp fixture', () => {
+  it('is one lowercase alphanumeric string per fixture graph, different across graphs', () => {
+    const first = runtime(empty()).fixtures;
+    const second = runtime(empty()).fixtures;
+    expect(first.stamp).toMatch(/^e2e[0-9a-z]{12}$/);
+    expect(second.stamp).not.toBe(first.stamp);
+  });
+});
+
 describe('explicit screenshot secrecy', () => {
   it.each(['static', 'provider'] as const)('captures before a %s secret fill and denies capture and registration afterward', async (source) => {
     const sentinel = 'synthetic-screenshot-secret-2718';

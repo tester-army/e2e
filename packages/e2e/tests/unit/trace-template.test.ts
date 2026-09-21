@@ -13,7 +13,7 @@ import {
   type ParamTemplate,
 } from '../../src/cache/template.ts';
 import type { ActionTrace } from '../../src/cache/trace.ts';
-import { unique } from '../../src/params.ts';
+import { createStamp, unique } from '../../src/params.ts';
 
 const admin = { kind: 'secret', name: 'admin', purpose: 'password' } as const;
 
@@ -67,6 +67,48 @@ describe('unique() through validateParams', () => {
     expect(() => unique('  ')).toThrow(/non-empty string/);
     expect(() => unique(7 as never)).toThrow(/non-empty string/);
     expect(() => unique('x {{param:/y}}')).toThrow(/placeholder/);
+  });
+
+  it('as a tag marks the interpolated text like unique(string) does, splicing numbers and earlier marks', () => {
+    const stamp = createStamp();
+    const name = unique`${stamp} Company`;
+    expect(name).toEqual(unique(`${stamp} Company`));
+    expect(Object.isFrozen(name)).toBe(true);
+    expect(unique`${name} #${3}`.value).toBe(`${stamp} Company #3`);
+    expect(unique`${'only'}`.value).toBe('only');
+    const { projected, templates } = validateParams({ name, key: unique`${stamp}_company` });
+    expect(projected).toEqual({ name: `${stamp} Company`, key: `${stamp}_company` });
+    expect(templates).toEqual([
+      { pointer: '/name', value: `${stamp} Company` },
+      { pointer: '/key', value: `${stamp}_company` },
+    ]);
+    expect(expandText(templateText(`tap "${stamp} Company"`, templates), values(templates))).toBe(`tap "${stamp} Company"`);
+  });
+
+  it('as a tag refuses blank text, a placeholder, and a part it cannot spell', () => {
+    expect(() => unique``).toThrow(/non-empty string/);
+    expect(() => unique`${'  '}`).toThrow(/non-empty string/);
+    expect(() => unique`x {{param:${'/y'}}}`).toThrow(/placeholder/);
+    expect(() => unique`${Number.NaN} items`).toThrow(/finite numbers/);
+    expect(() => unique`${{} as never}`).toThrow(/finite numbers/);
+  });
+});
+
+describe('createStamp', () => {
+  it('spells the millisecond in base36 behind the e2e prefix and a random lowercase tail', () => {
+    const now = Date.UTC(2026, 8, 21, 12, 0, 0);
+    const stamp = createStamp(now);
+    expect(stamp).toMatch(/^e2e[0-9a-z]{12}$/);
+    expect(stamp.startsWith(`e2e${now.toString(36)}`)).toBe(true);
+    expect(encodeURIComponent(stamp)).toBe(stamp);
+    expect(stamp.toLowerCase()).toBe(stamp);
+  });
+
+  it('differs between two tests of one millisecond and between two runs', () => {
+    const now = Date.now();
+    const sameMillisecond = new Set(Array.from({ length: 200 }, () => createStamp(now)));
+    expect(sameMillisecond.size).toBe(200);
+    expect(createStamp(now).slice(0, -4)).not.toBe(createStamp(now + 1).slice(0, -4));
   });
 
   it('escapes keys the JSON Pointer way, so two shapes never share a pointer', () => {

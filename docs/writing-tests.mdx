@@ -52,8 +52,21 @@ Name what is visible and prefer the exact wording on screen. One goal per
 call. The flow inside a goal is the model's job; the order of goals is yours.
 </Tip>
 
-For a value that changes on every run, wrap it in `unique(value)` so the
-[trace cache](/cache#what-must-match) can replay with the new value.
+Data a test creates needs a name no earlier run took. The `stamp` fixture
+is a short string unique to the run and the test; the `unique` tag marks a
+derivation of it so the [trace cache](/cache#what-must-match) records a slot
+in its place and replays with the next run's value:
+
+```ts
+test('creates a company', async ({ app, agent, screen, stamp }) => {
+  const name = unique`${stamp} Company`;
+  await app.open('/companies');
+  await agent.act('create a company named {name}', { params: { name } });
+  await expect(screen.getByRole('heading', { name: name.value })).toBeVisible();
+});
+```
+
+`unique(value)` marks a value that already exists as a string.
 
 If a goal fails, check the report and make the instruction more specific.
 Use the labels on screen. Put vocabulary shared by several goals in the

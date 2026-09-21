@@ -1,5 +1,5 @@
 import { test } from '@e2edev/web';
-import { expect } from 'e2e';
+import { expect, unique } from 'e2e';
 
 test.describe('forms', { tags: ['forms'] }, () => {
   test.beforeEach(async ({ app }) => {
@@ -24,6 +24,16 @@ test.describe('forms', { tags: ['forms'] }, () => {
     await screen.getByRole('button', { name: 'Save profile' }).tap();
     await expect(screen.getByRole('status', { name: 'Save result' })).toHaveText(
       'Saved profile for Ada Lovelace',
+    );
+  });
+
+  test('names a record after the stamp and reads it back', async ({ screen, stamp }) => {
+    expect(stamp).toMatch(/^e2e[0-9a-z]{12}$/);
+    const name = unique`${stamp} Lovelace`;
+    await screen.getByLabel('Full name').fill(name.value);
+    await screen.getByRole('button', { name: 'Save profile' }).tap();
+    await expect(screen.getByRole('status', { name: 'Save result' })).toHaveText(
+      `Saved profile for ${name.value}`,
     );
   });
 
