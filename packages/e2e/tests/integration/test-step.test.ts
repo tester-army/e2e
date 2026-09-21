@@ -48,6 +48,16 @@ test('forgets an await inside a step', async ({ app, screen }) => {
     void screen.getByRole('button', { name: 'Increment' }).tap();
   });
 });
+
+test('skips inside a step', async ({ app, screen }) => {
+  await app.open();
+  await test.step('optional flow', async () => {
+    await test.step('look for a marketplace', async () => {
+      test.skip((await screen.getByRole('link', { name: 'Marketplace' }).count()) === 0, 'no marketplace here');
+    });
+    await screen.getByRole('link', { name: 'Marketplace' }).tap();
+  });
+});
 `;
       const { outcome, project } = await runProject({ 'tests/steps.e2e.ts': file }, { appUrl: app.url });
       assertValidReport(outcome.report);
@@ -102,6 +112,15 @@ test('forgets an await inside a step', async ({ app, screen }) => {
         ['app.open', 'passed', undefined],
         ['test.step', 'failed', 'STEP_NOT_AWAITED'],
         ['locator.tap', 'failed', 'STEP_NOT_AWAITED'],
+      ]);
+
+      const skipped = resultByTitle(outcome, 'skips inside a step');
+      expect(skipped.status).toBe('skipped');
+      expect(skipped.attempts[0]!.skip).toEqual({ cause: 'explicit', reason: 'no marketplace here' });
+      expect(skipped.attempts[0]!.steps.map((step) => [step.api, step.status, step.error])).toEqual([
+        ['app.open', 'passed', undefined],
+        ['test.step', 'cancelled', undefined],
+        ['test.step', 'cancelled', undefined],
       ]);
       project.cleanup();
     },

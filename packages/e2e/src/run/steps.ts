@@ -7,6 +7,7 @@ import type { TraceReplayMissReason } from '../cache/decide.ts';
 import { withAiTraceStep } from '../internal/ai-trace.ts';
 import { classifyError, serializeError, TestError, withHint, type SerializedError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
+import { isRuntimeSkip } from '../internal/skip.ts';
 import { sourceLocation, type SourceLocation } from '../internal/source.ts';
 
 /**
@@ -425,6 +426,12 @@ export class StepRecorder {
       // A body that threw keeps its own error; a step it left running is failed beside it.
       this.abandonChildren(record);
       record.durationMs = Date.now() - startedMs;
+      // `test.skip()` ended the body: the attempt is skipped, and the step it
+      // cut short did not fail. It ended without finishing, like a cancelled one.
+      if (isRuntimeSkip(cause)) {
+        record.status = 'cancelled';
+        throw cause;
+      }
       const error = classifyError(cause);
       // A blocked verdict is a distinct outcome, not a product failure: the
       // step's error names what stood in the way, and the report says so.

@@ -150,7 +150,9 @@ with the same error and rethrows, so the test fails where it would have
 without the step. The run summary and the failure page point at the call
 that failed, not at the step around it. A body that returns while a step it
 called is still running fails the step with `STEP_NOT_AWAITED`, the same way
-the test body does. A step's duration covers everything inside it.
+the test body does. A `test.skip(...)` inside a step ends the test as
+skipped and records the step as `cancelled`, with no error. A step's
+duration covers everything inside it.
 
 A step is structure for the report. It has no timeout or retry of its own,
 and the agent's prior-step context lists it like any other completed step.

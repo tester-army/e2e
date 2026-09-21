@@ -65,6 +65,14 @@ describe('test.step', () => {
     vexpect(published.steps.all()[0]).toMatchObject({ api: 'test.step', status: 'failed', error: { message: 'boom' } });
   });
 
+  it('ends as cancelled, with no error, when test.skip() cuts its body short', async () => {
+    const published = attempt();
+    end = published.end;
+    await vexpect(test.step('optional flow', () => test.skip('not supported here'))).rejects.toMatchObject({ reason: 'not supported here' });
+    vexpect(published.steps.all()[0]).toMatchObject({ api: 'test.step', status: 'cancelled' });
+    vexpect(published.steps.all()[0]?.error).toBeUndefined();
+  });
+
   it('holds the title to the test title rule and the body to a function before opening a step', () => {
     const published = attempt();
     end = published.end;
