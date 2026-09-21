@@ -35,7 +35,7 @@ afterAll(() => {
 
 describe('selectPositionals', () => {
   it('keeps every discovered file when there are no positionals', () => {
-    expect(selectPositionals(root, DISCOVERED, [])).toEqual({ files: DISCOVERED, unmatched: [] });
+    expect(selectPositionals(root, DISCOVERED, [])).toEqual({ files: DISCOVERED, unmatched: [], lines: new Map() });
   });
 
   it('matches a file path exactly, relative or absolute', () => {
@@ -82,6 +82,35 @@ describe('selectPositionals', () => {
     const selection = selectPositionals(root, DISCOVERED, ['ests/a.e2e.ts', 'e2e.ts', '.e2e.ts', 'gent/b.e2e.ts']);
     expect(selection.files).toEqual([]);
     expect(selection.unmatched).toEqual(['ests/a.e2e.ts', 'e2e.ts', '.e2e.ts', 'gent/b.e2e.ts']);
+  });
+
+  it('splits a trailing :line off any positional form and keeps the lines per file', () => {
+    const selection = selectPositionals(root, DISCOVERED, ['tests/a.e2e.ts:12', 'b:7', 'agent/b.e2e.ts:9', 'tests/other/*.e2e.ts:3']);
+    expect(selection.files).toEqual(['tests/a.e2e.ts', 'tests/agent/b.e2e.ts', 'tests/other/d.e2e.ts']);
+    expect(selection.unmatched).toEqual([]);
+    expect([...selection.lines]).toEqual([
+      ['tests/a.e2e.ts', [12]],
+      ['tests/agent/b.e2e.ts', [7, 9]],
+      ['tests/other/d.e2e.ts', [3]],
+    ]);
+  });
+
+  it('selects a file whole when any positional names it without a line', () => {
+    const selection = selectPositionals(root, DISCOVERED, ['tests/a.e2e.ts:12', 'tests/a.e2e.ts', 'd.e2e.ts:4']);
+    expect(selection.files).toEqual(['tests/a.e2e.ts', 'tests/other/d.e2e.ts']);
+    expect([...selection.lines]).toEqual([['tests/other/d.e2e.ts', [4]]]);
+  });
+
+  it('reads :0 and a path that exists on disk as the path itself', () => {
+    expect(selectPositionals(root, DISCOVERED, ['tests/a.e2e.ts:0']).unmatched).toEqual(['tests/a.e2e.ts:0']);
+    writeFileSync(path.join(root, 'tests', 'a.e2e.ts:1'), '');
+    try {
+      const literal = selectPositionals(root, [...DISCOVERED, 'tests/a.e2e.ts:1'], ['tests/a.e2e.ts:1']);
+      expect(literal.files).toEqual(['tests/a.e2e.ts:1']);
+      expect(literal.lines.size).toBe(0);
+    } finally {
+      rmSync(path.join(root, 'tests', 'a.e2e.ts:1'));
+    }
   });
 
   it('keeps names case-sensitive on every filesystem', () => {

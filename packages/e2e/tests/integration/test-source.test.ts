@@ -122,4 +122,36 @@ describe('test source location', () => {
       column: 1,
     });
   });
+
+  it('selects the test a file:line positional names by that mapped line, in any positional form', async () => {
+    const env = { ...process.env, CI: '' };
+    const listed = await execFileAsync(
+      process.execPath,
+      [CLI, 'list', '--reporter', 'json', 'tests/direct.e2e.ts:3', 'wrapped:3'],
+      { cwd: project.dir, env },
+    );
+    const { pairs } = JSON.parse(listed.stdout) as { pairs: { title: string }[] };
+    expect(pairs.map((pair) => pair.title)).toEqual(['declares its source', 'declares its source through a helper']);
+
+    const missed = await execFileAsync(process.execPath, [CLI, 'list', 'tests/direct.e2e.ts:2'], { cwd: project.dir, env }).then(
+      (): never => {
+        throw new Error('expected the list to fail');
+      },
+      (error: { code?: number; stderr?: string }) => error,
+    );
+    expect(missed.code).toBe(2);
+    expect(missed.stderr).toContain(
+      'NO_TESTS: 3 tests were collected but none is runnable: 1 not declared at a line a positional named: tests/direct.e2e.ts:2 names no test (declared at line 3), 2 file not selected by a positional argument; pass --pass-with-no-tests to allow this',
+    );
+
+    // A test the file registers from an imported module is declared there; line 3 of the importer names nothing.
+    const imported = await execFileAsync(process.execPath, [CLI, 'list', 'tests/imports-shared.e2e.ts:3'], { cwd: project.dir, env }).then(
+      (): never => {
+        throw new Error('expected the list to fail');
+      },
+      (error: { code?: number; stderr?: string }) => error,
+    );
+    expect(imported.code).toBe(2);
+    expect(imported.stderr).toContain('tests/imports-shared.e2e.ts:3 names no test (the file declares no test itself)');
+  });
 });

@@ -86,6 +86,7 @@ export interface SelectionFilters {
  */
 const FILTERED_REASON = {
   file: 'file not selected by a positional argument',
+  line: 'not declared at a line a positional named',
   focus: 'not focused by .only',
   tags: 'tag filter did not match',
   excludedTag: 'carries an excluded tag',
@@ -275,6 +276,7 @@ export function select(
   for (const test of collection.tests) {
     optionsByTest.set(test.id, resolveOptions(test, config));
   }
+  const selectedFiles = new Set(collection.files.filter((file) => file.selected).map((file) => file.file));
 
   assertSerialAgentsAgree(collection.tests, optionsByTest);
   const sessionProducers = collectSessionProducers(collection.tests);
@@ -286,7 +288,7 @@ export function select(
     for (const test of collection.tests) {
       const options = optionsByTest.get(test.id)!;
       for (const agent of options.agents) {
-        pairs.push(classifyPair(test, target, agent, options, focused, filters, tagMode));
+        pairs.push(classifyPair(test, target, agent, options, focused, selectedFiles, filters, tagMode));
       }
     }
   }
@@ -372,6 +374,7 @@ function describeNoTests(
       : describeTagFilter(filters.tags, filters.tagMode ?? 'any', declaredTags);
   const { grep, grepInvert } = patternFilters(filters);
   const filterNames = new Map<string, string | undefined>([
+    [FILTERED_REASON.line, describeLines(collection)],
     [FILTERED_REASON.tags, tagFilter],
     [FILTERED_REASON.excludedTag, filters.excludeTags === undefined ? undefined : `carry one of the excluded tags ${nameTags(filters.excludeTags, declaredTags)}`],
     [FILTERED_REASON.grep, grep === undefined ? undefined : `have titles matching none of ${grep.join(', ')}`],
@@ -402,6 +405,25 @@ function describeNoTests(
   }
   const summary = [...reasons].map(([reason, ids]) => `${ids.size} ${reason}`).join(', ');
   return `${tests.length} tests were collected but none is runnable: ${summary}`;
+}
+
+/**
+ * The `file:line` positionals that named no test, each with the lines its
+ * file declares tests at, so the next edit is a line number away:
+ * `tests/a.e2e.ts:9 names no test (declared at lines 3, 7)`. Undefined when
+ * every named line found its test.
+ */
+function describeLines(collection: Collection): string | undefined {
+  const missed = collection.files.flatMap((file) => {
+    if (file.lines === undefined) return [];
+    const declared = file.declaredLines ?? [];
+    const misses = file.lines.filter((line) => !declared.includes(line));
+    if (misses.length === 0) return [];
+    const where =
+      declared.length === 0 ? 'the file declares no test itself' : `declared at ${declared.length === 1 ? 'line' : 'lines'} ${declared.join(', ')}`;
+    return [`${misses.map((line) => `${file.file}:${line}`).join(', ')} ${misses.length === 1 ? 'names' : 'name'} no test (${where})`];
+  });
+  return missed.length === 0 ? undefined : `${FILTERED_REASON.line}: ${missed.join('; ')}`;
 }
 
 /**
@@ -448,6 +470,7 @@ function classifyPair(
   agent: string,
   options: ResolvedTestOptions,
   focused: readonly CollectedTest[],
+  selectedFiles: ReadonlySet<string>,
   filters: SelectionFilters,
   tagMode: TagMode,
 ): TestTargetPair {
@@ -455,12 +478,13 @@ function classifyPair(
 
   if (test.kind === 'test') {
     // A file no positional named is collected for its setup tests only; its
-    // ordinary tests are unselected, exactly as a tag filter leaves them.
+    // ordinary tests are unselected, exactly as a tag filter leaves them. In
+    // a file named as `file:line`, so are the tests at other lines.
     if (!test.selected) {
       return {
         ...base,
         disposition: 'filtered',
-        skip: { cause: 'filtered', reason: FILTERED_REASON.file },
+        skip: { cause: 'filtered', reason: selectedFiles.has(test.file) ? FILTERED_REASON.line : FILTERED_REASON.file },
       };
     }
     if (focused.length > 0 && test.mode !== 'only') {

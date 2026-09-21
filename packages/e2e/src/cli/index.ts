@@ -90,7 +90,7 @@ function parseBoundedInt(bounds: { readonly min: number; readonly max: number })
 }
 
 const FILES_DESCRIPTION =
-  'test files, directories, or globs relative to the project root; a bare file name (signup.e2e.ts, signup) or a trailing part of the path (agent/signup.e2e.ts) also selects the file';
+  'test files, directories, or globs relative to the project root; a bare file name (signup.e2e.ts, signup) or a trailing part of the path (agent/signup.e2e.ts) also selects the file, and file:line (tests/signup.e2e.ts:12) selects the test declared at that line';
 
 /**
  * A flag commander took for a file because a `--` came before it, which is

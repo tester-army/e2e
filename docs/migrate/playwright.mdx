@@ -29,6 +29,7 @@ agent calls.
 | Playwright | e2e |
 | --- | --- |
 | `npx playwright test tests/checkout.spec.ts` | `npx e2e run tests/checkout.e2e.ts`; a directory, a bare file name, or a quoted glob also selects files |
+| `npx playwright test tests/checkout.spec.ts:12` | `npx e2e run tests/checkout.e2e.ts:12`, the test whose `test(` call opens on that line |
 | `--project chromium` | `--target web`, the name in `targets` |
 | `--grep`, `--grep-invert` | The same, matched against the describe titles and the test title joined by spaces; tags are `--tag` and `--exclude-tag` |
 | `--headed`, `--workers`, `--retries`, `--pass-with-no-tests` | The same names |

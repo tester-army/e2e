@@ -42,7 +42,8 @@ export interface CollectedTest extends RegisteredTest, TestIdentity {
   /** Outermost serial group, when the test is a serial-group member. */
   readonly serialRoot: GroupNode | undefined;
   /**
-   * Whether the positionals selected this test's file (always, with none).
+   * Whether the positionals selected this test (always, with none): its
+   * file, and its declaration line when the file was named as `file:line`.
    * An unselected ordinary test is reported as unselected; an unselected
    * setup test still runs when a selected test consumes its session, which
    * is why the file was collected at all.
@@ -71,8 +72,20 @@ export interface CollectedFile {
   readonly absolutePath: string;
   readonly registration: ModuleRegistration;
   readonly tests: readonly CollectedTest[];
-  /** Whether the positionals selected this file; every test in it carries the same flag. */
+  /** Whether the positionals selected this file; a test in it is selected too unless `lines` leaves it out. */
   readonly selected: boolean;
+  /**
+   * The declaration lines `file:line` positionals named, when every
+   * positional that selected the file named one: only the tests declared at
+   * those lines are selected. Absent when the file was selected whole.
+   */
+  readonly lines?: readonly number[];
+  /**
+   * With `lines`, the lines at which this file itself declares tests, for the
+   * `NO_TESTS` message. A test the file registers from a module it imports
+   * is declared there, not here, and no line of this file names it.
+   */
+  readonly declaredLines?: readonly number[];
 }
 
 export interface Collection {
@@ -143,7 +156,31 @@ function serialSourceId(file: string, group: GroupNode): string {
   return `serial::${testId(file, groupTitles(group))}`;
 }
 
-function toCollectedTests(file: string, registration: ModuleRegistration, selected: boolean): CollectedTest[] {
+/**
+ * Whether a test's recorded declaration is in the collected module itself,
+ * rather than in a module it imports. `captureSource` records the module's
+ * own frame when there is one, so the paths agree except for symlinks.
+ */
+function declaredIn(absolutePath: string, source: SourceLocation | undefined): boolean {
+  if (source === undefined) return false;
+  return source.file === absolutePath || realPathOf(source.file) === realPathOf(absolutePath);
+}
+
+function realPathOf(file: string): string {
+  try {
+    return realpathSync.native(file);
+  } catch {
+    return file;
+  }
+}
+
+function toCollectedTests(
+  file: string,
+  absolutePath: string,
+  registration: ModuleRegistration,
+  selected: boolean,
+  lines: readonly number[] | undefined,
+): CollectedTest[] {
   const seenTitlePaths = new Set<string>();
   return registration.tests.map((registered) => {
     const encoded = testId(file, registered.titlePath);
@@ -160,7 +197,9 @@ function toCollectedTests(file: string, registration: ModuleRegistration, select
       id: registered.kind === 'setup' ? setupTestId(file, registered.titlePath) : encoded,
       serialRoot,
       serialId: serialRoot === undefined ? undefined : serialSourceId(file, serialRoot),
-      selected,
+      selected:
+        selected &&
+        (lines === undefined || (declaredIn(absolutePath, registered.source) && lines.includes(registered.source!.line))),
     };
   });
 }
@@ -213,6 +252,28 @@ function onDiskRelativePath(projectRoot: string, absolutePath: string): string |
 export interface PositionalSelection {
   readonly files: readonly string[];
   readonly unmatched: readonly string[];
+  /**
+   * For each selected file that only `file:line` positionals named, the
+   * lines they named, in the order given. A file one positional named whole
+   * is not here: its tests are all selected.
+   */
+  readonly lines: ReadonlyMap<string, readonly number[]>;
+}
+
+/** `path:line`, the line a positive integer; the path is any positional form. */
+const LINE_SUFFIX = /^(.+):([1-9]\d*)$/u;
+
+/**
+ * Splits a `file:line` positional. A positional that exists on disk as
+ * written is a path even when it ends like one, so a file named `a:1` is
+ * still selectable by name.
+ */
+function splitLine(projectRoot: string, positional: string): { readonly path: string; readonly line: number | undefined } {
+  const match = LINE_SUFFIX.exec(positional);
+  if (match === null || statSync(path.resolve(projectRoot, positional), { throwIfNoEntry: false }) !== undefined) {
+    return { path: positional, line: undefined };
+  }
+  return { path: match[1]!, line: Number(match[2]) };
 }
 
 /**
@@ -226,28 +287,36 @@ export interface PositionalSelection {
  * segment boundary (`saved-tests.e2e.ts`, `regression/saved-tests.e2e.ts`),
  * and one with no `/` and no `.` selects the files whose base name up to the
  * first `.` equals it (`saved-tests`). Names are exact and case-sensitive,
- * like globs. Positionals only narrow: a file the config globs did not
- * discover is never selected. Discovery order is preserved.
+ * like globs. Any form may end in `:line` (`tests/signup.e2e.ts:12`) to
+ * select only the test declared at that line of each file it names.
+ * Positionals only narrow: a file the config globs did not discover is never
+ * selected. Discovery order is preserved.
  */
 export function selectPositionals(
   projectRoot: string,
   discovered: readonly string[],
   positionals: readonly string[],
 ): PositionalSelection {
-  if (positionals.length === 0) return { files: discovered, unmatched: [] };
+  if (positionals.length === 0) return { files: discovered, unmatched: [], lines: new Map() };
   const selected = new Set<string>();
+  const whole = new Set<string>();
+  const lines = new Map<string, number[]>();
   const unmatched: string[] = [];
   for (const positional of positionals) {
-    const matches = positionalMatcher(projectRoot, positional);
+    const { path: named, line } = splitLine(projectRoot, positional);
+    const matches = positionalMatcher(projectRoot, named);
     let matchedAny = false;
     for (const file of discovered) {
       if (!matches(file)) continue;
       selected.add(file);
       matchedAny = true;
+      if (line === undefined) whole.add(file);
+      else lines.set(file, [...(lines.get(file) ?? []), line]);
     }
     if (!matchedAny) unmatched.push(positional);
   }
-  return { files: discovered.filter((file) => selected.has(file)), unmatched };
+  for (const file of whole) lines.delete(file);
+  return { files: discovered.filter((file) => selected.has(file)), unmatched, lines };
 }
 
 function positionalMatcher(projectRoot: string, positional: string): (file: string) => boolean {
@@ -297,14 +366,21 @@ export function collectFromRegistration(
   filePath: string,
   registration: ModuleRegistration,
   selected = true,
+  lines?: readonly number[],
 ): CollectedFile {
   const file = relativeToRoot(projectRoot, filePath);
   return {
     file,
     absolutePath: path.resolve(projectRoot, file),
     registration,
-    tests: toCollectedTests(file, registration, selected),
+    tests: toCollectedTests(file, filePath, registration, selected, lines),
     selected,
+    ...(lines === undefined
+      ? {}
+      : {
+          lines,
+          declaredLines: registration.tests.flatMap((test) => (declaredIn(filePath, test.source) ? [test.source!.line] : [])),
+        }),
   };
 }
 
@@ -342,7 +418,7 @@ export async function collect(
   positionals: readonly string[] = [],
 ): Promise<Collection> {
   const discovered = discoverFiles(config.projectRoot, config.tests);
-  const { files: selectedFiles, unmatched } = selectPositionals(config.projectRoot, discovered, positionals);
+  const { files: selectedFiles, unmatched, lines } = selectPositionals(config.projectRoot, discovered, positionals);
   const selected = new Set(selectedFiles);
   const files: CollectedFile[] = [];
   for (const file of discovered) {
@@ -358,7 +434,7 @@ export async function collect(
         { cause },
       );
     }
-    files.push(collectFromRegistration(config.projectRoot, absolutePath, registration, selected.has(file)));
+    files.push(collectFromRegistration(config.projectRoot, absolutePath, registration, selected.has(file), lines.get(file)));
   }
   return {
     files,

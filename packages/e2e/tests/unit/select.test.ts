@@ -1,3 +1,5 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { collectFromRegistration, type Collection } from '../../src/collect/collect.ts';
 import { collectModule, test } from '../../src/collect/registry.ts';
@@ -479,6 +481,79 @@ describe('select', () => {
 });
 
 describe('positional file selection', () => {
+  /** A file collected as `file:line` named it: only the tests declared at `lines` are selected. */
+  // The tests are declared in this very file, which is what a line names, so
+  // the collected module is this file under the `tests/` root.
+  const THIS_FILE = fileURLToPath(import.meta.url);
+  const TESTS_ROOT = path.dirname(path.dirname(THIS_FILE));
+  const THIS_RELATIVE = 'unit/select.test.ts';
+  async function collectionAtLines(body: () => void, pick: (declared: readonly number[]) => readonly number[]): Promise<Collection> {
+    const registration = await collectModule(async () => body());
+    const declared = registration.tests.map((entry) => entry.source!.line);
+    const collected = collectFromRegistration(TESTS_ROOT, THIS_FILE, registration, true, pick(declared));
+    return { files: [collected], tests: collected.tests, nearMisses: [], unmatchedPositionals: [] };
+  }
+
+  it('ignores a line that matches a test declared in a module the file imports', async () => {
+    const registration = await collectModule(async () => {
+      test('declared elsewhere', noop);
+    });
+    const line = registration.tests[0]!.source!.line;
+    const importer = collectFromRegistration(TESTS_ROOT, path.join(TESTS_ROOT, 'unit', 'importer.e2e.ts'), registration, true, [line]);
+    expect(importer.tests[0]!.selected).toBe(false);
+    expect(importer.declaredLines).toEqual([]);
+    const col: Collection = { files: [importer], tests: importer.tests, nearMisses: [], unmatchedPositionals: [] };
+    expect(() => select(col, config())).toThrow(
+      `1 not declared at a line a positional named: unit/importer.e2e.ts:${line} names no test (the file declares no test itself)`,
+    );
+  });
+
+  it('selects only the tests declared at the lines a file:line positional named', async () => {
+    const col = await collectionAtLines(
+      () => {
+        test('first', noop);
+        test('second', noop);
+        test('third', noop);
+      },
+      (declared) => [declared[1]!],
+    );
+    const selection = select(col, config());
+    expect(selection.pairs.map((pair) => [pair.test.title, pair.disposition])).toEqual([
+      ['first', 'filtered'],
+      ['second', 'run'],
+      ['third', 'filtered'],
+    ]);
+    expect(selection.pairs[0]!.skip?.reason).toBe('not declared at a line a positional named');
+  });
+
+  it('names the file:line that found no test and the lines the file declares tests at', async () => {
+    const col = await collectionAtLines(
+      () => {
+        test('first', noop);
+        test('second', noop);
+      },
+      (declared) => [declared[0]! - 1, declared[1]! + 1],
+    );
+    const [first, second] = col.tests.map((entry) => entry.source!.line);
+    expect(() => select(col, config())).toThrow(
+      `2 tests were collected but none is runnable: 2 not declared at a line a positional named: ${THIS_RELATIVE}:${first! - 1}, ${THIS_RELATIVE}:${second! + 1} name no test (declared at lines ${first}, ${second}); pass --pass-with-no-tests to allow this`,
+    );
+  });
+
+  it('pulls a serial group in whole when a file:line names one member', async () => {
+    const col = await collectionAtLines(
+      () => {
+        test.describe('wizard', { serial: true }, () => {
+          test('step 1', noop);
+          test('step 2', noop);
+        });
+        test('other', noop);
+      },
+      (declared) => [declared[1]!],
+    );
+    expect(select(col, config()).pairs.map((pair) => pair.disposition)).toEqual(['run', 'run', 'filtered']);
+  });
+
   it('runs the setup a selected test needs from a file no positional named, and leaves that file\'s tests unselected', async () => {
     const col = await collectionOf(
       [

@@ -675,6 +675,7 @@ test('other', { tags: ['smoke'] }, async () => {});
       expect(grepped.pairs.map((pair) => pair.title)).toEqual(['plain']);
       grepped.project.cleanup();
 
+
       await expect(listProject({ 'tests/empty.txt': '' }, { appUrl: 'http://127.0.0.1:9' })).rejects.toMatchObject({
         code: 'NO_TESTS',
       });
