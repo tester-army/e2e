@@ -1,23 +1,55 @@
 /**
  * What one worker slot drives, and how it travels from the runner's `prepare`
  * to the worker's `init`. Every way a pool comes by devices (a configured
- * list, the booted devices it discovered, the leases a provider granted)
- * ends in one `SlotBinding` per slot, so the worker reads one shape through
- * one environment variable, whatever produced it.
+ * list, the booted devices it discovered, the leases a provider granted) is
+ * one `DeviceSource` that ends in one `SlotBinding` per slot, so the worker
+ * reads one shape through one environment variable, whatever produced it.
  */
 
 import { createHash } from 'node:crypto';
-import { EngineError, obj } from 'e2e/engine';
-import type { DeviceLease } from './provider.ts';
+import { EngineError, obj, type EngineFinishInfo, type EnginePrepareInfo } from 'e2e/engine';
+import type { AgentDeviceOptions } from './options.ts';
+
+/** An agent-device daemon other than the local one. */
+export interface DeviceDaemon {
+  /** Base URL answering agent-device's `GET /health` and `POST /rpc`. */
+  readonly baseUrl: string;
+  /** Bearer token the daemon expects, when it wants one. */
+  readonly authToken?: string | undefined;
+}
 
 /** What one worker slot drives; `{}` leaves every choice to the local daemon. */
 export interface SlotBinding {
   /** Device to select, by name or UDID; absent, the daemon picks a booted one. */
   readonly device?: string | undefined;
   /** The agent-device daemon to connect to; absent, the local one. */
-  readonly daemon?: DeviceLease['daemon'] | undefined;
+  readonly daemon?: DeviceDaemon | undefined;
   /** App a provider already installed from `appPath`, so the worker installs nothing and opens this. */
   readonly installedApp?: string | undefined;
+}
+
+/**
+ * Where a pool's devices come from. `bind` runs once per run and target in
+ * `prepare`; `finish` releases what `bind` acquired, when anything was.
+ */
+export interface DeviceSource {
+  /** Workers served per target, one per device, when known before `prepare`. */
+  readonly size?: number | undefined;
+  /** What a worker drives when its run had no `prepare`; `undefined` leaves the choice to the local daemon. */
+  readonly fallback?: readonly SlotBinding[] | undefined;
+  /** One binding per worker slot the run will use, `info.slots` at most and never none. */
+  bind(info: EnginePrepareInfo): Promise<readonly SlotBinding[]>;
+  finish?(info: EngineFinishInfo): Promise<void>;
+}
+
+/**
+ * The app a slot opens fresh per attempt: the `app` option, else the app the
+ * build `appPath` installed. `undefined` while a build still awaits its
+ * install in `init`.
+ */
+export function pinnedApp(options: Pick<AgentDeviceOptions, 'app' | 'appPath'>, installedApp: string | undefined): string | undefined {
+  if (options.appPath !== undefined && installedApp === undefined) return undefined;
+  return options.app ?? installedApp;
 }
 
 /**
@@ -76,15 +108,15 @@ function isOptionalString(value: unknown): value is string | undefined {
   return value === undefined || typeof value === 'string';
 }
 
-function isSlotBinding(value: unknown): value is SlotBinding {
+/** A binding as JSON parses it back, or as a provider returned it: nothing the engine did not write is trusted. */
+export function isSlotBinding(value: unknown): value is SlotBinding {
   if (typeof value !== 'object' || value === null) return false;
   const { device, daemon, installedApp } = value as Record<keyof SlotBinding, unknown>;
   return isOptionalString(device) && isOptionalString(installedApp) && (daemon === undefined || isDaemon(daemon));
 }
 
-/** A lease's daemon as JSON parses it back. */
-export function isDaemon(value: unknown): value is DeviceLease['daemon'] {
+function isDaemon(value: unknown): value is DeviceDaemon {
   if (typeof value !== 'object' || value === null) return false;
-  const { baseUrl, authToken } = value as Record<'baseUrl' | 'authToken', unknown>;
+  const { baseUrl, authToken } = value as Record<keyof DeviceDaemon, unknown>;
   return typeof baseUrl === 'string' && isOptionalString(authToken);
 }

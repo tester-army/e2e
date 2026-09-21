@@ -5,7 +5,8 @@
  */
 
 import type { createAgentDeviceClient } from 'agent-device';
-import type { DeviceLease, DeviceProvider } from './provider.ts';
+import type { DeviceDaemon } from './bindings.ts';
+import type { DeviceProvider } from './provider.ts';
 
 export type AgentDeviceClient = ReturnType<typeof createAgentDeviceClient>;
 
@@ -14,7 +15,7 @@ export type AgentDeviceClient = ReturnType<typeof createAgentDeviceClient>;
  * when a provider supplied one, else the local daemon; the seam unit tests
  * script.
  */
-export type ClientFactory = (session: string, daemon?: DeviceLease['daemon']) => AgentDeviceClient;
+export type ClientFactory = (session: string, daemon?: DeviceDaemon) => AgentDeviceClient;
 
 export type AgentDevicePlatform = 'ios' | 'android';
 

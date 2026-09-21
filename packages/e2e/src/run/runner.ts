@@ -231,7 +231,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   let sessionStore: SessionStore | undefined;
   /** The engines' prepare/finish pairing: every prepared target is finished at teardown. */
   const engines = new PreparedEngines();
-  const noticeFor = (target: string) => (message: string) => emit({ type: 'notice', target, message });
+  const notice = (target: string, message: string): void => emit({ type: 'notice', target, message });
 
   // Hoisted: workers re-resolve the same config file and need these overrides,
   // or a flag would apply in the runner and be dropped in every worker.
@@ -552,7 +552,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // of a worker's stderr fighting the live status block.
     try {
       plans = await debug.time('engine.prepare', () =>
-        prepareEngines(plans, runWorkers, engines, { runId, projectRoot: config.projectRoot, env, signal: interrupted }, emit, noticeFor),
+        prepareEngines(plans, runWorkers, engines, { runId, projectRoot: config.projectRoot, env, signal: interrupted, notice }, emit),
       );
     } catch (cause) {
       if (!interrupted.aborted) recordFailure(cause, 'launch');
@@ -703,7 +703,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // failing service teardown command is a cleanup error of the run, not a
     // crash.
     for (const teardown of [
-      () => engines.finish({ runId, env, timeoutMs: config.cleanupTimeout }, noticeFor, (cause) => recordFailure(cause, 'cleanup')),
+      () => engines.finish({ runId, env, timeoutMs: config.cleanupTimeout, notice, onFailure: (cause) => recordFailure(cause, 'cleanup') }),
       () => sessionStore?.cleanup(),
       () => processes?.stop((cause) => recordFailure(cause, 'cleanup')),
     ]) {
@@ -732,7 +732,6 @@ async function prepareEngines(
   engines: PreparedEngines,
   scope: PrepareScope,
   emit: (fact: RunEventFact) => void,
-  noticeFor: (target: string) => (message: string) => void,
 ): Promise<TargetWorkPlan[]> {
   const prepared: TargetWorkPlan[] = [];
   for (const plan of plans) {
@@ -746,7 +745,7 @@ async function prepareEngines(
     emit({ type: 'setup', step, state: 'started' });
     const startedMs = Date.now();
     const slots = plannedSlots(plan, runWorkers);
-    const result = await engines.prepare(target, slots, scope, noticeFor(target.name));
+    const result = await engines.prepare(target, slots, scope);
     prepared.push(withPreparedWorkers(plan, engine.name, slots, result));
     if (!scope.signal.aborted) {
       emit({ type: 'setup', step, state: 'finished', durationMs: Date.now() - startedMs });

@@ -41,6 +41,8 @@ export interface PrepareScope {
   /** The same `env` the workers are started with: what prepare provisions must be where a launch will look for it. */
   readonly env: NodeJS.ProcessEnv;
   readonly signal: AbortSignal;
+  /** Where a hook's progress lines go, under the target they concern. */
+  readonly notice: (targetName: string, line: string) => void;
 }
 
 export interface FinishScope {
@@ -48,6 +50,9 @@ export interface FinishScope {
   readonly env: NodeJS.ProcessEnv;
   /** The cleanup budget every prepared target shares. */
   readonly timeoutMs: number;
+  readonly notice: (targetName: string, line: string) => void;
+  /** Takes every failure; none skips another target's release. */
+  readonly onFailure: (cause: unknown) => void;
 }
 
 /**
@@ -62,17 +67,12 @@ export class PreparedEngines {
 
   /**
    * Runs one target's `prepare` hook for `slots` worker slots, streaming its
-   * progress lines to `log`. Resolves to nothing when the engine declares no
-   * hook. Callers run targets in turn: two engines provisioning the same
+   * progress lines as notices. Resolves to nothing when the engine declares
+   * no hook. Callers run targets in turn: two engines provisioning the same
    * toolchain would race, and the notices of one download read better than
    * two interleaved.
    */
-  async prepare(
-    target: ResolvedTarget,
-    slots: number,
-    scope: PrepareScope,
-    log: (line: string) => void,
-  ): Promise<EnginePrepareResult | void> {
+  async prepare(target: ResolvedTarget, slots: number, scope: PrepareScope): Promise<EnginePrepareResult | void> {
     const engine = target.engine;
     if (engine?.prepare === undefined) return;
     // Registered before the hook runs: a `prepare` that throws part-way still gets its `finish`.
@@ -85,7 +85,7 @@ export class PreparedEngines {
         slots,
         env: scope.env,
         signal: scope.signal,
-        log,
+        log: (line) => scope.notice(target.name, line),
       });
     } catch (cause) {
       throw translateProvisioningError(cause, ` while preparing engine ${engine.name} for target "${target.name}"`);
@@ -97,27 +97,28 @@ export class PreparedEngines {
    * cleanup deadline: releases are independent, and a run should not wait
    * one budget per target. Each hook is bounded like engine disposal: it is
    * never cancelled by an interrupt, and one that ignores its signal is
-   * abandoned at the deadline with `CLEANUP_TIMEOUT`. Every failure goes to
-   * `onFailure`; none skips another target's release.
+   * abandoned at the deadline with `CLEANUP_TIMEOUT`.
    */
-  async finish(scope: FinishScope, log: (targetName: string) => (line: string) => void, onFailure: (cause: unknown) => void): Promise<void> {
+  async finish(scope: FinishScope): Promise<void> {
     const deadline = new Deadline(scope.timeoutMs);
     await Promise.all(
       this.targets.splice(0).map(async (target) => {
         const engine = target.engine;
-        const finish = engine?.finish?.bind(engine);
-        if (engine === undefined || finish === undefined) return;
+        if (engine?.finish === undefined) return;
+        // A handle's members are bound at `defineEngine`, so the hook travels on its own.
+        const { finish } = engine;
         const timeoutMs = deadline.remaining();
         const label = `finishing engine ${engine.name} for target "${target.name}"`;
+        const info = { runId: scope.runId, targetName: target.name, env: scope.env, timeoutMs, log: (line: string) => scope.notice(target.name, line) };
         try {
           await withScopedBudget(
             timeoutMs,
             NEVER_ABORTS,
             () => new InfrastructureError('CLEANUP_TIMEOUT', `${label} timed out`),
-            (signal) => finish({ runId: scope.runId, targetName: target.name, env: scope.env, signal, timeoutMs, log: log(target.name) }),
+            (signal) => finish({ ...info, signal }),
           );
         } catch (cause) {
-          onFailure(translateProvisioningError(cause, ` while ${label}`));
+          scope.onFailure(translateProvisioningError(cause, ` while ${label}`));
         }
       }),
     );

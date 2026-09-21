@@ -89,17 +89,17 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
   let processes: AppProcesses;
   let prepared: EnginePrepareResult | void;
   const engines = new PreparedEngines();
-  const noticeFor = (name: string) => (message: string) => notice(name, message);
   /** Releases what `prepare` acquired, under the cleanup budget; every failure goes to `onFailure`. */
   const finishEngines = (onFailure: (cause: unknown) => void): Promise<void> =>
-    engines.finish({ runId, env: options.env, timeoutMs: config.cleanupTimeout }, noticeFor, onFailure);
+    engines.finish({ runId, env: options.env, timeoutMs: config.cleanupTimeout, notice, onFailure });
   try {
     // One worker on one target: one slot to provision.
-    prepared = await engines.prepare(target, 1, { runId, projectRoot: config.projectRoot, env: options.env, signal }, noticeFor(target.name));
+    prepared = await engines.prepare(target, 1, { runId, projectRoot: config.projectRoot, env: options.env, signal, notice });
     const hooks = { ci: config.ci, notice: (message: string) => notice('app', message) };
     processes = await startDeclaredProcesses([target], config.projectRoot, () => hooks, signal, debug);
   } catch (cause) {
-    // The opening error is the one that surfaces; a release that fails on the way out is narrated.
+    // No attempt exists yet to carry a cleanup error, and the opening error is
+    // the one that surfaces; a release that fails on the way out is narrated.
     await finishEngines((failure) => notice(target.name, classifyError(failure).message));
     releaseSecretRegistry(config);
     throw cause;

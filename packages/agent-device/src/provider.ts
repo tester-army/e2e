@@ -7,9 +7,11 @@
  * a machine down the hall are each one small provider in user code.
  */
 
-import { ConfigurationError } from 'e2e/engine';
-import { isDaemon } from './bindings.ts';
-import type { AgentDevicePlatform } from './options.ts';
+import path from 'node:path';
+import { ConfigurationError, EngineError, obj, type EngineFinishInfo, type EnginePrepareInfo } from 'e2e/engine';
+import { isSlotBinding, type DeviceDaemon, type DeviceSource, type SlotBinding } from './bindings.ts';
+import { message } from './errors.ts';
+import type { AgentDeviceOptions, AgentDevicePlatform } from './options.ts';
 
 /** What the engine asks a provider for: one device for one worker slot of a run. */
 export interface DeviceRequest {
@@ -45,7 +47,7 @@ export interface DeviceRequest {
  * JSON data only: a lease travels from the runner process to the worker that
  * drives it through the environment.
  */
-export interface DeviceLease {
+export interface DeviceLease extends SlotBinding {
   /**
    * The provider's handle on the lease (a session id); named in progress
    * lines and handed back to `release`. A provider may keep further fields on
@@ -54,12 +56,7 @@ export interface DeviceLease {
    */
   readonly id: string;
   /** The agent-device daemon the worker connects to instead of its local one. */
-  readonly daemon: {
-    /** Base URL answering agent-device's `GET /health` and `POST /rpc`. */
-    readonly baseUrl: string;
-    /** Bearer token the daemon expects, when it wants one. */
-    readonly authToken?: string | undefined;
-  };
+  readonly daemon: DeviceDaemon;
   /** Device to select inside that daemon, by name or UDID, when it hosts more than one. */
   readonly device?: string | undefined;
   /**
@@ -95,13 +92,8 @@ export interface DeviceProvider {
   release(lease: DeviceLease, context: DeviceReleaseContext): Promise<void>;
 }
 
-/** True for an object in `device`: a string or list of strings is a local pool, anything else is meant as a provider. */
-export function isProviderShaped(device: unknown): boolean {
-  return typeof device === 'object' && device !== null && !Array.isArray(device);
-}
-
 /** Narrows an intended provider, or names what it is missing. */
-export function asDeviceProvider(device: unknown): DeviceProvider {
+export function asDeviceProvider(device: object): DeviceProvider {
   const candidate = device as Partial<Record<keyof DeviceProvider, unknown>>;
   if (typeof candidate.name !== 'string' || candidate.name.trim() === '') {
     throw new ConfigurationError('INVALID_CONFIG', 'agentDevice: a `device` provider needs a non-empty `name`');
@@ -115,13 +107,81 @@ export function asDeviceProvider(device: unknown): DeviceProvider {
 }
 
 /** A lease as a provider returned it, checked field by field: the engine trusts nothing it did not write. */
-export function isDeviceLease(value: unknown): value is DeviceLease {
-  if (typeof value !== 'object' || value === null) return false;
-  const { id, daemon, device, installedApp } = value as Record<keyof DeviceLease, unknown>;
-  return (
-    typeof id === 'string' &&
-    isDaemon(daemon) &&
-    (device === undefined || typeof device === 'string') &&
-    (installedApp === undefined || typeof installedApp === 'string')
-  );
+function isDeviceLease(value: unknown): value is DeviceLease {
+  return isSlotBinding(value) && typeof (value as { id?: unknown }).id === 'string' && value.daemon !== undefined;
+}
+
+/** Runs every task, then reports the first failure: nothing is skipped because a sibling failed. */
+async function allOrFirstFailure<T>(tasks: readonly (() => Promise<T>)[], describe: string): Promise<T[]> {
+  // `async` so a task that throws before its first await is a rejection like any other, not an escape.
+  const settled = await Promise.allSettled(tasks.map(async (task) => task()));
+  const failed = settled.find((result) => result.status === 'rejected');
+  if (failed !== undefined) {
+    throw new EngineError('ENGINE_FAILURE', `${describe}: ${message(failed.reason)}`, { retryable: false, cause: failed.reason });
+  }
+  return settled.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []));
+}
+
+/**
+ * Devices a provider leases, one per slot, all at once: hosted sessions start
+ * in parallel and are billed from the moment they do, so nothing waits on a
+ * sibling. Every lease granted is held for `finish` before the outcome is
+ * known, so a slot that fails to lease fails the run and the others are
+ * still released, each one whatever happened to the rest.
+ */
+export class LeasedDevices implements DeviceSource {
+  /** Leases granted so far, per target, filled as each `acquire` settles. */
+  private readonly held = new Map<string, DeviceLease[]>();
+
+  constructor(
+    private readonly provider: DeviceProvider,
+    private readonly options: Pick<AgentDeviceOptions, 'platform' | 'app' | 'appPath'>,
+  ) {}
+
+  async bind(info: EnginePrepareInfo): Promise<readonly SlotBinding[]> {
+    const { provider } = this;
+    const { platform, app } = this.options;
+    const appPath = this.options.appPath === undefined ? undefined : path.resolve(info.projectRoot, this.options.appPath);
+    const held: DeviceLease[] = [];
+    this.held.set(info.targetName, held);
+    info.log(`leasing ${info.slots} ${platform} device(s) from ${provider.name}`);
+    const leases = await allOrFirstFailure(
+      Array.from({ length: info.slots }, (_, slot) => async () => {
+        const lease: unknown = await provider.acquire({
+          platform,
+          runId: info.runId,
+          targetName: info.targetName,
+          slot,
+          slots: info.slots,
+          app,
+          appPath,
+          env: info.env,
+          signal: info.signal,
+          log: (line) => info.log(`${provider.name} (${slot + 1} of ${info.slots}): ${line}`),
+        });
+        if (!isDeviceLease(lease)) throw new Error('returned a lease without an id and a daemon baseUrl');
+        held.push(lease);
+        if (lease.installedApp !== undefined && appPath === undefined) {
+          throw new Error('reported an installed app for a request without `appPath`');
+        }
+        info.log(`${provider.name}: leased ${lease.id}${lease.device === undefined ? '' : ` (${lease.device})`}`);
+        return lease;
+      }),
+      `device provider "${provider.name}" could not lease a device`,
+    );
+    return leases.map((lease) => obj({ device: lease.device, daemon: lease.daemon, installedApp: lease.installedApp }));
+  }
+
+  async finish(info: EngineFinishInfo): Promise<void> {
+    const { provider } = this;
+    const leases = this.held.get(info.targetName);
+    this.held.delete(info.targetName);
+    if (leases === undefined || leases.length === 0) return;
+    const context = { runId: info.runId, targetName: info.targetName, env: info.env, signal: info.signal, log: (line: string) => info.log(`${provider.name}: ${line}`) };
+    await allOrFirstFailure(
+      leases.map((lease) => () => provider.release(lease, context)),
+      `device provider "${provider.name}" could not release a device`,
+    );
+    info.log(`${provider.name}: released ${leases.length} device(s)`);
+  }
 }
