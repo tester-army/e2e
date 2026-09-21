@@ -7,7 +7,8 @@ TypeScript 7.
 
 There is no separate spec. The code is the contract, pinned in three places:
 
-- The emitted `packages/e2e/dist/index.d.ts` (and `dist/engine/index.d.ts`)
+- The emitted `packages/e2e/dist/index.d.ts` (and `dist/engine/index.d.ts`,
+  `dist/oauth/*.d.ts`)
   is the public API. `packages/e2e/tests/types/sdk-types.ts` holds compile-time
   assertions (`@ts-expect-error` lines) for the parts that are easy to loosen
   by accident; it runs under the package `typecheck`, never under vitest.
@@ -46,7 +47,11 @@ descriptions and commit bodies; `git log` and `gh pr view` are the archive.
     `src/agent/` the agent (the `act` executor socket plus the judgment
     methods), `src/mcp/` the `e2e mcp` server (a live session that rides
     the `act` socket with a queue executor so every MCP call is a harness
-    action).
+    action), `src/oauth/` subscription sign-in (the `e2e login`, `logout`,
+    and `models` commands and the `e2e/oauth/*` model constructors; each
+    constructor subpath is the only place its `@ai-sdk/*` optional peer is
+    imported, so the CLI boots without them). `tests/live/` holds hand-run
+    checks that need a stored login and are never part of `pnpm test`.
 - `packages/playwright` — the published `@e2edev/playwright` package: the
   browser engine, built with the public `defineEngine`, contributing the
   `web` fixture and `expect(web)`. It depends on `e2e` (peer), never the
@@ -292,9 +297,10 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
   Nothing the script writes is committed; `git checkout -- packages .changeset`
   afterwards.
 - The runner publishes as the unscoped `e2e` (entry points `e2e`, `e2e/agent`,
-  `e2e/engine`; the bin is `e2e` too); engines and reporters publish public
-  under the `@e2edev` scope. `@e2edev/e2e` is the retired name: deprecated on
-  npm, never referenced here. Provenance stays off until the repository is
+  `e2e/engine`, `e2e/oauth` and its per-provider subpaths; the bin is `e2e` too); engines and reporters publish public
+  under the `@e2edev` scope. `@e2edev/e2e` and `@e2edev/oauth` (folded into
+  `e2e/oauth` on 2026-09-21) are the retired names: deprecated on npm, never
+  referenced here. Provenance stays off until the repository is
   public, and the release job authenticates with the `NPM_TOKEN` secret.
   Document the CLI as `npx e2e`; npx runs the locally installed bin first, and
   the flag `--no-install` adds nothing once the package is a dependency.

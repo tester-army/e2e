@@ -6,7 +6,11 @@
     "e2e",
     "testing",
     "agentic",
-    "end-to-end"
+    "end-to-end",
+    "chatgpt",
+    "github-copilot",
+    "grok",
+    "subscription"
   ],
   "license": "Apache-2.0",
   "contributors": [
@@ -41,6 +45,22 @@
     "./engine": {
       "types": "./dist/engine/index.d.ts",
       "default": "./dist/engine/index.js"
+    },
+    "./oauth": {
+      "types": "./dist/oauth/index.d.ts",
+      "default": "./dist/oauth/index.js"
+    },
+    "./oauth/chatgpt": {
+      "types": "./dist/oauth/chatgpt.d.ts",
+      "default": "./dist/oauth/chatgpt.js"
+    },
+    "./oauth/copilot": {
+      "types": "./dist/oauth/copilot.d.ts",
+      "default": "./dist/oauth/copilot.js"
+    },
+    "./oauth/grok": {
+      "types": "./dist/oauth/grok.d.ts",
+      "default": "./dist/oauth/grok.js"
     }
   },
   "bin": {
@@ -52,7 +72,7 @@
     "NOTICE"
   ],
   "scripts": {
-    "build": "node -e \"const fs=require('node:fs');for(const dir of ['dist','skills'])fs.rmSync(dir,{recursive:true,force:true});fs.cpSync('../../skills/e2e','skills/e2e',{recursive:true})\" && tsc --project tsconfig.build.json && node -e \"const fs=require('node:fs');const read=(dir)=>JSON.parse(fs.readFileSync('../'+dir+'/package.json','utf8'));const versions=Object.fromEntries(['playwright','agent-device','oauth'].map((dir)=>['@e2edev/'+dir,read(dir).version]));versions.playwright=read('playwright').devDependencies.playwright;fs.writeFileSync('dist/cli/init/sibling-versions.json',JSON.stringify(versions)+'\\n')\" && node ../../scripts/stamp-dist.ts",
+    "build": "node -e \"const fs=require('node:fs');for(const dir of ['dist','skills'])fs.rmSync(dir,{recursive:true,force:true});fs.cpSync('../../skills/e2e','skills/e2e',{recursive:true})\" && tsc --project tsconfig.build.json && node -e \"const fs=require('node:fs');const read=(dir)=>JSON.parse(fs.readFileSync('../'+dir+'/package.json','utf8'));const versions=Object.fromEntries(['playwright','agent-device'].map((dir)=>['@e2edev/'+dir,read(dir).version]));versions.playwright=read('playwright').devDependencies.playwright;fs.writeFileSync('dist/cli/init/sibling-versions.json',JSON.stringify(versions)+'\\n')\" && node ../../scripts/stamp-dist.ts",
     "prepublishOnly": "node ../../scripts/check-dist.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -60,6 +80,7 @@
     "test:unit": "vitest run tests/unit"
   },
   "dependencies": {
+    "@ai-sdk/provider": "4.0.17",
     "@clack/prompts": "1.8.0",
     "@modelcontextprotocol/sdk": "1.30.0",
     "@vitest/expect": "5.0.0",
@@ -70,20 +91,34 @@
     "zod": "4.6.1"
   },
   "peerDependencies": {
+    "@ai-sdk/openai": "^4.0.0",
+    "@ai-sdk/openai-compatible": "^3.0.0",
+    "@ai-sdk/xai": "^5.0.0",
     "ai": "^7.0.0"
   },
   "peerDependenciesMeta": {
+    "@ai-sdk/openai": {
+      "optional": true
+    },
+    "@ai-sdk/openai-compatible": {
+      "optional": true
+    },
+    "@ai-sdk/xai": {
+      "optional": true
+    },
     "ai": {
       "optional": true
     }
   },
   "devDependencies": {
-    "@ai-sdk/openai-compatible": "3.0.47",
+    "@ai-sdk/openai": "4.0.69",
+    "@ai-sdk/openai-compatible": "3.0.51",
+    "@ai-sdk/xai": "5.0.2",
     "@e2edev/playwright": "workspace:*",
     "@openrouter/ai-sdk-provider": "3.0.0",
     "@types/node": "26.4.1",
     "@types/pngjs": "6.0.5",
-    "ai": "7.0.97",
+    "ai": "7.0.105",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "playwright": "1.63.0",

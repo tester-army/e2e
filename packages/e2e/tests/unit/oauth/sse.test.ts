@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { foldResponsesStream } from '../../src/index.ts';
-import { parseSse } from '../../src/sse.ts';
+import { foldResponsesStream } from '../../../src/oauth/index.ts';
+import { parseSse } from '../../../src/oauth/sse.ts';
 
 function sse(events: Array<{ event?: string; data: unknown }>, headers: Record<string, string> = { 'content-type': 'text/event-stream' }): Response {
   const text = events.map(({ event, data }) => `${event === undefined ? '' : `event: ${event}\n`}data: ${typeof data === 'string' ? data : JSON.stringify(data)}\n\n`).join('');

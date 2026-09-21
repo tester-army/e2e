@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { EnvCredentialStore, FileCredentialStore, MemoryCredentialStore, OAuthError, createOAuthFetch, type OAuthCredentials, type OAuthProvider } from '../../src/index.ts';
+import { EnvCredentialStore, FileCredentialStore, MemoryCredentialStore, OAuthError, createOAuthFetch, type OAuthCredentials, type OAuthProvider } from '../../../src/oauth/index.ts';
 import { json, useServers } from './helpers/server.ts';
 
 const serve = useServers(afterEach);

@@ -14,7 +14,7 @@ import { decodeJwtPayload } from '../jwt.ts';
 import { generatePkce, randomState } from '../pkce.ts';
 import { foldResponsesStream } from '../sse.ts';
 import { expiryFrom, requestTokens, type TokenResponse } from '../token-endpoint.ts';
-import type { FetchFunction, OAuthCredentials, OAuthLoginCallbacks, OAuthProvider } from '../types.ts';
+import type { FetchFunction, OAuthCredentials, OAuthLoginCallbacks, OAuthProvider, SubscriptionModel } from '../types.ts';
 
 /** The public OAuth client of the Codex CLI, which every third-party harness signs in through. */
 const CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
@@ -27,6 +27,12 @@ const DEVICE_POLL_MARGIN_S = 3;
 const LOGIN_TIMEOUT_MS = 10 * 60 * 1000;
 /** The backend rejects a request without instructions; this is the least it accepts when the SDK sent no system prompt. */
 const REQUIRED_INSTRUCTIONS = 'Follow the user request.';
+/**
+ * The model list is served per Codex CLI version: the backend hides models a
+ * client is too old for. This is the Codex CLI release current when the list
+ * was last checked; bump it when a model the ChatGPT app shows is missing.
+ */
+const CODEX_CLIENT_VERSION = '0.155.1';
 
 export interface CodexCredentials extends OAuthCredentials {
   /** The ChatGPT account the requests bill to. */
@@ -77,6 +83,9 @@ export function createCodexProvider(options: CodexProviderOptions = {}): OAuthPr
     },
     async send(request, credentials, upstream) {
       return sendCodexRequest(request, credentials, upstream, { originator, apiUrl });
+    },
+    models(fetch) {
+      return listCodexModels(fetch, apiUrl);
     },
   };
 }
@@ -296,4 +305,46 @@ export async function sendCodexRequest(
   delete body.max_output_tokens;
   const response = await upstream(new Request(options.apiUrl, { method: request.method, headers, body: JSON.stringify(body), signal: request.signal }));
   return wantedStream ? response : foldResponsesStream(response);
+}
+
+/** One entry of the Codex backend's model list, as far as the listing reads it. */
+interface CodexModel {
+  readonly slug?: unknown;
+  readonly display_name?: unknown;
+  readonly visibility?: unknown;
+  readonly default_reasoning_level?: unknown;
+  readonly supported_reasoning_levels?: unknown;
+  readonly priority?: unknown;
+}
+
+/**
+ * The models the Codex backend serves this subscription, `/models` next to
+ * `/responses`. Hidden ones are listed too, marked, because the backend
+ * still serves them.
+ */
+async function listCodexModels(fetch: FetchFunction, apiUrl: string): Promise<SubscriptionModel[]> {
+  if (!apiUrl.endsWith('/responses')) throw new OAuthError('MISCONFIGURED', `the Codex API URL must end in /responses to list models next to it; got ${apiUrl}`);
+  const url = new URL(`${apiUrl.slice(0, -'/responses'.length)}/models`);
+  url.searchParams.set('client_version', CODEX_CLIENT_VERSION);
+  const response = await fetch(url);
+  if (!response.ok) throw new OAuthError('FLOW_FAILED', `ChatGPT did not list its models: ${await describeResponse(response)}`);
+  const payload = (await response.json()) as { models?: unknown };
+  const models = Array.isArray(payload.models) ? (payload.models as CodexModel[]) : [];
+  return models
+    .filter((model) => typeof model.slug === 'string' && model.slug !== '')
+    .toSorted((a, b) => (typeof a.priority === 'number' ? a.priority : 0) - (typeof b.priority === 'number' ? b.priority : 0))
+    .map((model) => {
+      const levels = Array.isArray(model.supported_reasoning_levels)
+        ? model.supported_reasoning_levels.map((level: unknown) => (typeof level === 'string' ? level : (level as { effort?: unknown })?.effort)).filter((level): level is string => typeof level === 'string')
+        : [];
+      const detail = [
+        levels.length === 0 ? undefined : `reasoning ${levels.join('/')}${typeof model.default_reasoning_level === 'string' ? ` (default ${model.default_reasoning_level})` : ''}`,
+        model.visibility === 'hide' ? 'hidden in Codex' : undefined,
+      ].filter((part) => part !== undefined);
+      return {
+        id: model.slug as string,
+        ...(typeof model.display_name === 'string' && model.display_name !== '' ? { name: model.display_name } : {}),
+        ...(detail.length === 0 ? {} : { detail: detail.join('; ') }),
+      };
+    });
 }

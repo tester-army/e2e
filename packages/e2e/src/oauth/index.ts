@@ -2,12 +2,12 @@
  * Sign in to a personal AI subscription once, then use it as an AI SDK model.
  *
  * Model constructors live on subpaths so a config installs only the provider
- * package it uses: `@e2edev/oauth/chatgpt`, `@e2edev/oauth/copilot`,
- * `@e2edev/oauth/grok`. This entry holds the flows, the stores, and the fetch
- * for anyone wiring a provider of their own.
+ * package it uses: `e2e/oauth/chatgpt`, `e2e/oauth/copilot`, `e2e/oauth/grok`.
+ * This entry, `e2e/oauth`, holds the flows, the stores, and the fetch for
+ * anyone wiring a provider of their own.
  */
 
-export type { CredentialStore, FetchFunction, OAuthAuthInfo, OAuthCredentials, OAuthLoginCallbacks, OAuthPrompt, OAuthProvider } from './types.ts';
+export type { CredentialStore, FetchFunction, OAuthAuthInfo, OAuthCredentials, OAuthLoginCallbacks, OAuthPrompt, OAuthProvider, SubscriptionModel } from './types.ts';
 export { OAuthError, type OAuthErrorCode } from './errors.ts';
 export { createOAuthFetch, type OAuthFetchOptions } from './fetch.ts';
 export { CREDENTIALS_ENV, EnvCredentialStore, FileCredentialStore, MemoryCredentialStore, defaultCredentialStore, defaultCredentialsPath } from './store.ts';
@@ -19,3 +19,4 @@ export { copilotBaseUrl, createCopilotProvider, enterpriseHost, type CopilotCred
 export { createXaiProvider, type XaiProviderOptions } from './providers/xai.ts';
 export { PROVIDER_IDS, getProvider, isProviderId, type LoginOptionsById, type ProviderId } from './providers.ts';
 export { login, logout, type LoginInput } from './login.ts';
+export { listModels } from './models.ts';

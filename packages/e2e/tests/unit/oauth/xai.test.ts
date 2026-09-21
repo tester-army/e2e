@@ -1,7 +1,7 @@
 import { generateText } from 'ai';
 import { afterEach, describe, expect, it } from 'vitest';
-import { MemoryCredentialStore, createXaiProvider } from '../../src/index.ts';
-import { grok } from '../../src/grok.ts';
+import { MemoryCredentialStore, createOAuthFetch, createXaiProvider } from '../../../src/oauth/index.ts';
+import { grok } from '../../../src/oauth/grok.ts';
 import { fakeJwt, json, useServers, type Received } from './helpers/server.ts';
 
 const serve = useServers(afterEach);
@@ -78,6 +78,27 @@ describe('SpaceXAI login', () => {
     const result = await generateText({ model, prompt: 'hi' });
     expect(result.text).toBe('hello');
     expect(seen!.headers['authorization']).toBe('Bearer xai-tok');
-    expect(seen!.headers['user-agent']).toMatch(/^e2e-oauth\/\d+\.\d+\.\d+\S* \(\w+; \w+\)$/);
+    expect(seen!.headers['user-agent']).toMatch(/^e2e\/\d+\.\d+\.\d+\S* \(\w+; \w+\)$/);
+  });
+
+  it('lists the language models the token reaches, with aliases and vision', async () => {
+    let seen: Received | undefined;
+    const api = await serve((request, response) => {
+      seen = request;
+      json(response, 200, {
+        models: [
+          { id: 'grok-4', aliases: ['grok-4-latest'], input_modalities: ['text', 'image'] },
+          { id: 'grok-4-fast', aliases: [], input_modalities: ['text'] },
+        ],
+      });
+    });
+    const store = new MemoryCredentialStore({ spacexai: { access: 'xai-tok', refresh: 'rt', expires: 0 } });
+    const provider = createXaiProvider({ modelsUrl: `${api.url}/v1/language-models` });
+    const models = await provider.models!(createOAuthFetch(provider, { store, userAgent: 'test' }));
+    expect(seen!.headers['authorization']).toBe('Bearer xai-tok');
+    expect(models).toEqual([
+      { id: 'grok-4', detail: 'vision; also grok-4-latest' },
+      { id: 'grok-4-fast' },
+    ]);
   });
 });

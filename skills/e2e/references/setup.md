@@ -66,9 +66,10 @@ After installing dependencies, authenticate that provider:
 | Local or self-hosted endpoint | Set the endpoint URL and a model it serves; add a key if required |
 
 An existing config stays unchanged when you run `init`. To switch it to
-ChatGPT manually, install `ai`, `@e2edev/oauth`, and `@ai-sdk/openai`, import
-`chatgpt` from `@e2edev/oauth/chatgpt`, and use `chatgpt('gpt-5.5')` as the
-agent's `model`. Sign in with `npx e2e login openai`. Use API keys in CI.
+ChatGPT manually, install `ai` and `@ai-sdk/openai`, import `chatgpt` from
+`e2e/oauth/chatgpt`, and use `chatgpt('gpt-5.6-luna')` as the
+agent's `model`. Sign in with `npx e2e login openai`. `npx e2e models` prints
+the ids each stored login serves. Use API keys in CI.
 
 ## The config
 

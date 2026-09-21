@@ -14,7 +14,7 @@
     "@e2edev/playwright": "workspace:*",
     "@types/node": "26.4.1",
     "agent-device": "0.21.6",
-    "ai": "7.0.97",
+    "ai": "7.0.105",
     "mint": "4.2.883",
     "playwright": "1.63.0",
     "typescript": "7.0.2"

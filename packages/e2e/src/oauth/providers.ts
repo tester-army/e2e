@@ -1,6 +1,6 @@
 /** The built-in providers by id, and the login options each one takes. */
 
-import { readFileSync } from 'node:fs';
+import { packageVersion } from '../internal/package-version.ts';
 import { createCodexProvider, type CodexLoginOptions } from './providers/openai.ts';
 import { createCopilotProvider, type CopilotLoginOptions } from './providers/github-copilot.ts';
 import { createXaiProvider } from './providers/xai.ts';
@@ -32,21 +32,12 @@ export function getProvider(id: ProviderId): OAuthProvider {
 }
 
 /**
- * How requests identify this harness to a vendor: `e2e-oauth/<version> (<platform>; <arch>)`,
+ * How requests identify this harness to a vendor: `e2e/<version> (<platform>; <arch>)`,
  * alongside the `originator` (ChatGPT) and `referrer` (SpaceXAI) the flows send. Never another client's name.
  */
-export const USER_AGENT = `e2e-oauth/${packageVersion()} (${process.platform}; ${process.arch})`;
-
-function packageVersion(): string {
-  try {
-    const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version?: string };
-    return manifest.version ?? '0.0.0';
-  } catch {
-    return '0.0.0';
-  }
-}
+export const USER_AGENT = `e2e/${packageVersion(import.meta.url, '../../package.json', '0.0.0')} (${process.platform}; ${process.arch})`;
 
 /** How a missing login is described to the user: the CLI command that fixes it. */
 export function loginHint(id: ProviderId): string {
-  return `run \`e2e login ${id}\` (or \`npx e2e-oauth login ${id}\`)`;
+  return `run \`npx e2e login ${id}\``;
 }

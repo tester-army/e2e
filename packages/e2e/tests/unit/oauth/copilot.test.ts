@@ -1,9 +1,9 @@
 import { generateText, tool } from 'ai';
 import { z } from 'zod';
 import { afterEach, describe, expect, it } from 'vitest';
-import { MemoryCredentialStore, copilotBaseUrl, createCopilotProvider, enterpriseHost } from '../../src/index.ts';
-import { copilot } from '../../src/copilot.ts';
-import { sendCopilotRequest } from '../../src/providers/github-copilot.ts';
+import { MemoryCredentialStore, copilotBaseUrl, createCopilotProvider, enterpriseHost } from '../../../src/oauth/index.ts';
+import { copilot } from '../../../src/oauth/copilot.ts';
+import { sendCopilotRequest } from '../../../src/oauth/providers/github-copilot.ts';
 import { echoUpstream, json, useServers, type Echo, type Received } from './helpers/server.ts';
 
 const serve = useServers(afterEach);
@@ -99,5 +99,31 @@ describe('Copilot requests', () => {
     expect(seen!.url).toBe('/chat/completions');
     expect(seen!.headers['authorization']).toBe('Bearer gho_x');
     expect(seen!.headers['copilot-vision-request']).toBe('true');
+  });
+
+  it('lists the chat models of the plan through the login, leaving embeddings out', async () => {
+    let seen: Received | undefined;
+    const api = await serve((request, response) => {
+      seen = request;
+      json(response, 200, {
+        data: [
+          { id: 'claude-sonnet-5', name: 'Claude Sonnet 5', vendor: 'Anthropic', capabilities: { type: 'chat', supports: { tool_calls: true, vision: true } } },
+          { id: 'text-embedding-3-small', name: 'Embedding', vendor: 'Azure OpenAI', capabilities: { type: 'embeddings' } },
+          { id: 'gpt-5.6-luna', name: 'GPT-5.6 Luna', vendor: 'OpenAI', preview: true, capabilities: { type: 'chat', supports: { tool_calls: true } } },
+        ],
+      });
+    });
+    const provider = createCopilotProvider();
+    const models = await provider.models!(async (input, init) => {
+      const request = new Request(input, init);
+      const rerouted = new Request(request.url.replace('https://api.githubcopilot.com', api.url), request);
+      return sendCopilotRequest(rerouted, { access: 'gho_x', refresh: '', expires: 0 }, fetch);
+    });
+    expect(seen!.url).toBe('/models');
+    expect(seen!.headers['openai-intent']).toBe('conversation-edits');
+    expect(models).toEqual([
+      { id: 'claude-sonnet-5', name: 'Claude Sonnet 5', detail: 'Anthropic, tools, vision' },
+      { id: 'gpt-5.6-luna', name: 'GPT-5.6 Luna', detail: 'OpenAI, tools, preview' },
+    ]);
   });
 });

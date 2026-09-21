@@ -33,7 +33,7 @@
     "@e2edev/agent-device": "workspace:*",
     "@types/node": "26.4.1",
     "@types/react": "19.1.4",
-    "ai": "7.0.97",
+    "ai": "7.0.105",
     "e2e": "workspace:*",
     "typescript": "7.0.2"
   }

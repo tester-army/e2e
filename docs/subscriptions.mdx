@@ -21,44 +21,45 @@ Claude subscriptions are not supported. To use Claude, configure an
 ## Set up an existing project
 
 `e2e init` leaves existing configs intact. To switch an existing project to
-a subscription, install its packages and replace the model in your config:
+a subscription, install the AI SDK provider package the model wraps and
+replace the model in your config. The sign-in flows ship with `e2e` itself:
 
 <Tabs>
   <Tab title="ChatGPT">
 ```bash
-npm install -D ai @e2edev/oauth @ai-sdk/openai
+npm install -D ai @ai-sdk/openai
 npx e2e login openai
 ```
 
 ```ts title="Model setup"
 import { createAgent } from 'e2e/agent';
-import { chatgpt } from '@e2edev/oauth/chatgpt';
+import { chatgpt } from 'e2e/oauth/chatgpt';
 
-const agent = createAgent({ model: chatgpt('gpt-5.5') });
+const agent = createAgent({ model: chatgpt('gpt-5.6-luna') });
 ```
   </Tab>
   <Tab title="GitHub Copilot">
 ```bash
-npm install -D ai @e2edev/oauth @ai-sdk/openai-compatible
+npm install -D ai @ai-sdk/openai-compatible
 npx e2e login github-copilot
 ```
 
 ```ts title="Model setup"
 import { createAgent } from 'e2e/agent';
-import { copilot } from '@e2edev/oauth/copilot';
+import { copilot } from 'e2e/oauth/copilot';
 
 const agent = createAgent({ model: copilot('claude-sonnet-5') });
 ```
   </Tab>
   <Tab title="SuperGrok">
 ```bash
-npm install -D ai @e2edev/oauth @ai-sdk/xai
+npm install -D ai @ai-sdk/xai
 npx e2e login spacexai
 ```
 
 ```ts title="Model setup"
 import { createAgent } from 'e2e/agent';
-import { grok } from '@e2edev/oauth/grok';
+import { grok } from 'e2e/oauth/grok';
 
 const agent = createAgent({ model: grok('grok-4') });
 ```
@@ -67,6 +68,22 @@ const agent = createAgent({ model: grok('grok-4') });
 
 Set `agents: { default: agent }` in `e2e.config.ts`. Choose a model
 available to your account.
+
+## Pick a model
+
+The constructor takes the id the vendor uses, which is not always the name
+the app shows. Ask the vendor which ids your login serves:
+
+```bash
+npx e2e models            # every stored login
+npx e2e models openai     # one provider
+```
+
+Each line is the id to pass to `chatgpt()`, `copilot()`, or `grok()`, the
+vendor's display name, and what it says about the model: reasoning levels,
+vision, preview, or hidden. ChatGPT lists what the Codex backend serves your
+plan; Copilot lists the chat models of your plan; SuperGrok lists the
+language models the token reaches.
 
 ## Sign-in help
 

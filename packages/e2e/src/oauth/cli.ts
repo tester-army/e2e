@@ -1,17 +1,19 @@
 /**
- * The terminal side of a login. `runLogin`, `runLogout`, and `runStatus` are
- * what the e2e CLI calls; `runOAuthCli` parses argv for the package's own
- * `e2e-oauth` bin and dispatches to them.
+ * The terminal side of a subscription: `runLogin`, `runLogout`, and
+ * `runModels` are what `e2e login`, `e2e logout`, and `e2e models` call with
+ * the flags commander parsed.
  */
 
 import { spawn } from 'node:child_process';
-import { parseArgs } from 'node:util';
 import * as clack from '@clack/prompts';
+import pc from 'picocolors';
+import { sanitizeText } from '../internal/errors.ts';
 import { OAuthError } from './errors.ts';
 import { login, logout } from './login.ts';
+import { listModels } from './models.ts';
 import { PROVIDER_IDS, getProvider, isProviderId, type LoginOptionsById, type ProviderId } from './providers.ts';
 import { defaultCredentialStore } from './store.ts';
-import type { OAuthLoginCallbacks } from './types.ts';
+import type { OAuthLoginCallbacks, SubscriptionModel } from './types.ts';
 
 export interface CliIo {
   readonly stdout: NodeJS.WritableStream;
@@ -21,26 +23,13 @@ export interface CliIo {
   readonly openUrl?: (url: string) => void;
 }
 
-/** The flags every login takes, as the e2e CLI and the bin hand them over. */
+/** The `e2e login` flags as commander parses them; each provider reads the ones meant for it. */
 export interface LoginFlags {
-  readonly method?: 'device';
+  readonly device?: boolean;
   readonly clientId?: string;
-  readonly fromGitHubCli?: boolean;
+  readonly fromGh?: boolean;
   readonly enterpriseUrl?: string;
 }
-
-const USAGE = `Usage:
-  e2e-oauth login [provider] [--device] [--client-id <id>] [--from-gh] [--enterprise-url <host>]
-  e2e-oauth logout [provider]
-  e2e-oauth status
-
-Without a provider, login and logout show a picker.
-
-Providers: ${PROVIDER_IDS.join(', ')}
-  openai          ChatGPT Plus/Pro (the Codex sign-in); --device for a machine without a browser
-  github-copilot  GitHub Copilot: the GitHub CLI's token when gh is signed in, or a device flow with --client-id
-  spacexai        SuperGrok / X Premium+ (device code)
-`;
 
 /** Signs in to `providerId`; without one, a picker over the providers, marking those already signed in. */
 export async function runLogin(providerId: string | undefined, flags: LoginFlags, io: CliIo = defaultIo()): Promise<number> {
@@ -82,6 +71,57 @@ export async function runLogout(providerId: string | undefined, io: CliIo = defa
   });
 }
 
+/**
+ * Lists the models `providerId`'s login serves; without one, every stored
+ * login in turn, one provider's failure leaving the others listed. One line
+ * per model: the id a config passes to the constructor, the vendor's name for
+ * it, and what the vendor says about it. Vendor text is untrusted and has its
+ * terminal controls stripped. `list` is a test seam.
+ */
+export async function runModels(providerId: string | undefined, io: CliIo = defaultIo(), list: (id: ProviderId) => Promise<SubscriptionModel[]> = listModels): Promise<number> {
+  return report(io, async () => {
+    let ids: readonly ProviderId[];
+    if (providerId === undefined || providerId === '') {
+      ids = [...(await signedIn()).keys()];
+      if (ids.length === 0) throw new OAuthError('NOT_LOGGED_IN', `no login is stored; sign in with e2e login <${PROVIDER_IDS.join('|')}>`);
+    } else {
+      ids = [requireProvider(providerId)];
+    }
+    let failed = false;
+    for (const [index, id] of ids.entries()) {
+      if (index > 0) io.stdout.write('\n');
+      try {
+        printModels(io, id, await list(id));
+      } catch (cause) {
+        if (ids.length === 1) throw cause;
+        failed = true;
+        say(io, 'error', `${getProvider(id).name} (${id}): ${cause instanceof Error ? cause.message : String(cause)}`);
+      }
+    }
+    return failed ? 1 : 0;
+  });
+}
+
+function printModels(io: CliIo, id: ProviderId, models: readonly SubscriptionModel[]): void {
+  const clean = models.map((model) => ({
+    id: sanitizeText(model.id),
+    ...(model.name === undefined ? {} : { name: sanitizeText(model.name) }),
+    ...(model.detail === undefined ? {} : { detail: sanitizeText(model.detail) }),
+  }));
+  const count = clean.length === 0 ? 'no models listed' : `${clean.length} model${clean.length === 1 ? '' : 's'}`;
+  const heading = `${getProvider(id).name} (${id}): ${count}`;
+  io.stdout.write(`${io.isTTY ? pc.bold(heading) : heading}\n`);
+  const width = Math.max(0, ...clean.map((model) => model.id.length));
+  for (const model of clean) {
+    const rest = [model.name, model.detail].filter((part) => part !== undefined && part !== '' && part !== model.id);
+    if (rest.length === 0) {
+      io.stdout.write(`  ${model.id}\n`);
+      continue;
+    }
+    io.stdout.write(`  ${model.id.padEnd(width)}  ${io.isTTY ? pc.dim(rest.join('  ')) : rest.join('  ')}\n`);
+  }
+}
+
 /** The providers with a stored login, and how each one stands. */
 async function signedIn(): Promise<Map<ProviderId, string>> {
   const store = defaultCredentialStore();
@@ -110,26 +150,6 @@ async function pickProvider(io: CliIo, message: string, stored: Map<ProviderId, 
   return choice as ProviderId;
 }
 
-/** Every provider and how it stands: signed in with its token state, or how to sign in. */
-export async function runStatus(io: CliIo = defaultIo()): Promise<number> {
-  return report(io, async () => {
-    const stored = await signedIn();
-    if (!io.isTTY) {
-      for (const id of PROVIDER_IDS) io.stdout.write(`${id.padEnd(16)} ${getProvider(id).name.padEnd(16)} ${stored.get(id) ?? `not signed in; e2e login ${id}`}\n`);
-      return;
-    }
-    clack.intro('Subscriptions');
-    for (const id of PROVIDER_IDS) {
-      const state = stored.get(id);
-      const line = `${getProvider(id).name} (${id}): ${state ?? 'not signed in'}`;
-      if (state === undefined) clack.log.info(line);
-      else clack.log.success(line);
-    }
-    const missing = PROVIDER_IDS.filter((id) => !stored.has(id));
-    clack.outro(missing.length === 0 ? 'Every subscription is signed in.' : `Sign in with ${missing.map((id) => `e2e login ${id}`).join(' or ')}.`);
-  });
-}
-
 /** One line to the user, styled when there is a terminal. */
 function say(io: CliIo, kind: 'success' | 'info' | 'error', message: string): void {
   if (!io.isTTY) {
@@ -137,48 +157,6 @@ function say(io: CliIo, kind: 'success' | 'info' | 'error', message: string): vo
     return;
   }
   clack.log[kind](message);
-}
-
-/** The `e2e-oauth` bin: argv in, exit code out. */
-export async function runOAuthCli(argv: readonly string[], io: CliIo = defaultIo()): Promise<number> {
-  return report(io, async () => {
-    const { values, positionals } = parseArgs({
-      args: [...argv],
-      allowPositionals: true,
-      options: {
-        device: { type: 'boolean' },
-        'client-id': { type: 'string' },
-        'from-gh': { type: 'boolean' },
-        'enterprise-url': { type: 'string' },
-        help: { type: 'boolean', short: 'h' },
-      },
-    });
-    const [command, providerId, ...extra] = positionals;
-    if (values.help === true || command === undefined) {
-      io.stdout.write(USAGE);
-      return command === undefined ? 1 : 0;
-    }
-    if (extra.length > 0) throw new OAuthError('MISCONFIGURED', `unexpected argument ${extra[0]}.\n${USAGE}`);
-    switch (command) {
-      case 'login':
-        return runLogin(
-          providerId,
-          {
-            ...(values.device === true ? { method: 'device' as const } : {}),
-            ...(values['client-id'] === undefined ? {} : { clientId: values['client-id'] }),
-            ...(values['from-gh'] === true ? { fromGitHubCli: true } : {}),
-            ...(values['enterprise-url'] === undefined ? {} : { enterpriseUrl: values['enterprise-url'] }),
-          },
-          io,
-        );
-      case 'logout':
-        return runLogout(providerId, io);
-      case 'status':
-        return runStatus(io);
-      default:
-        throw new OAuthError('MISCONFIGURED', `Unknown command ${command}.\n${USAGE}`);
-    }
-  });
 }
 
 /** Runs a command, printing a failure as one line; cancellation exits like an interrupt. */
@@ -206,11 +184,11 @@ function requireProvider(id: string): ProviderId {
 function toLoginOptions<Id extends ProviderId>(id: Id, flags: LoginFlags): LoginOptionsById[Id] {
   switch (id) {
     case 'openai':
-      return (flags.method === undefined ? {} : { method: flags.method }) as LoginOptionsById[Id];
+      return (flags.device === true ? { method: 'device' } : {}) as LoginOptionsById[Id];
     case 'github-copilot':
       return {
         ...(flags.clientId === undefined ? {} : { clientId: flags.clientId }),
-        ...(flags.fromGitHubCli === true ? { fromGitHubCli: true } : {}),
+        ...(flags.fromGh === true ? { fromGitHubCli: true } : {}),
         ...(flags.enterpriseUrl === undefined ? {} : { enterpriseUrl: flags.enterpriseUrl }),
       } as LoginOptionsById[Id];
     default:

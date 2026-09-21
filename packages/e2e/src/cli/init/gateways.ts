@@ -5,8 +5,6 @@
  * entry here.
  */
 
-import { siblingDependency } from './versions.ts';
-
 export type GatewayId = 'vercel' | 'openrouter' | 'openai-compatible' | 'chatgpt' | 'copilot' | 'grok';
 
 export interface GatewayPreset {
@@ -61,19 +59,19 @@ export const GATEWAYS: readonly GatewayPreset[] = [
     id: 'chatgpt',
     label: 'ChatGPT Plus/Pro subscription',
     hint: 'your ChatGPT plan through the Codex sign-in',
-    dependencies: { ...siblingDependency('@e2edev/oauth'), '@ai-sdk/openai': '^4.0.0' },
-    import: "import { chatgpt } from '@e2edev/oauth/chatgpt';",
-    comment: 'Your ChatGPT subscription serves the model; sign in once with `e2e login openai`.',
+    dependencies: { '@ai-sdk/openai': '^4.0.0' },
+    import: "import { chatgpt } from 'e2e/oauth/chatgpt';",
+    comment: 'Your ChatGPT subscription serves the model; sign in once with `e2e login openai`, `e2e models openai` lists the ids.',
     login: 'openai',
-    model: () => "chatgpt('gpt-5.5')",
+    model: () => "chatgpt('gpt-5.6-luna')",
   },
   {
     id: 'copilot',
     label: 'GitHub Copilot subscription',
     hint: 'your Copilot plan: OpenAI, Anthropic, Google, and SpaceXAI models',
-    dependencies: { ...siblingDependency('@e2edev/oauth'), '@ai-sdk/openai-compatible': '^3.0.0' },
-    import: "import { copilot } from '@e2edev/oauth/copilot';",
-    comment: 'Your GitHub Copilot subscription serves the model; sign in once with `e2e login github-copilot`.',
+    dependencies: { '@ai-sdk/openai-compatible': '^3.0.0' },
+    import: "import { copilot } from 'e2e/oauth/copilot';",
+    comment: 'Your GitHub Copilot subscription serves the model; sign in once with `e2e login github-copilot`, `e2e models github-copilot` lists the ids.',
     login: 'github-copilot',
     model: () => "copilot('claude-sonnet-5')",
   },
@@ -81,9 +79,9 @@ export const GATEWAYS: readonly GatewayPreset[] = [
     id: 'grok',
     label: 'SuperGrok subscription',
     hint: 'your SuperGrok or X Premium+ plan',
-    dependencies: { ...siblingDependency('@e2edev/oauth'), '@ai-sdk/xai': '^5.0.0' },
-    import: "import { grok } from '@e2edev/oauth/grok';",
-    comment: 'Your SuperGrok subscription serves the model; sign in once with `e2e login spacexai`.',
+    dependencies: { '@ai-sdk/xai': '^5.0.0' },
+    import: "import { grok } from 'e2e/oauth/grok';",
+    comment: 'Your SuperGrok subscription serves the model; sign in once with `e2e login spacexai`, `e2e models spacexai` lists the ids.',
     login: 'spacexai',
     model: () => "grok('grok-4')",
   },

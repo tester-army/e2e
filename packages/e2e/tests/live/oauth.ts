@@ -1,9 +1,9 @@
 /**
  * Live check of a stored login: one forced tool call over a small red image,
  * the shape the e2e act loop sends. Run by hand after `e2e login <provider>`:
- *   npx tsx tests/live/check.ts copilot claude-sonnet-5
- *   npx tsx tests/live/check.ts chatgpt gpt-5.5
- *   npx tsx tests/live/check.ts grok grok-4
+ *   npx tsx tests/live/oauth.ts copilot claude-sonnet-5
+ *   npx tsx tests/live/oauth.ts chatgpt gpt-5.6-luna
+ *   npx tsx tests/live/oauth.ts grok grok-4
  */
 import { generateText, tool } from 'ai';
 import { z } from 'zod';
@@ -11,11 +11,11 @@ import type { LanguageModelV4 } from '@ai-sdk/provider';
 
 const [kind = 'copilot', modelId] = process.argv.slice(2);
 const constructors: Record<string, (id: string) => Promise<LanguageModelV4>> = {
-  copilot: async (id) => (await import('../../src/copilot.ts')).copilot(id),
-  chatgpt: async (id) => (await import('../../src/chatgpt.ts')).chatgpt(id),
-  grok: async (id) => (await import('../../src/grok.ts')).grok(id),
+  copilot: async (id) => (await import('../../src/oauth/copilot.ts')).copilot(id),
+  chatgpt: async (id) => (await import('../../src/oauth/chatgpt.ts')).chatgpt(id),
+  grok: async (id) => (await import('../../src/oauth/grok.ts')).grok(id),
 };
-const defaults: Record<string, string> = { copilot: 'claude-sonnet-5', chatgpt: 'gpt-5.5', grok: 'grok-4' };
+const defaults: Record<string, string> = { copilot: 'claude-sonnet-5', chatgpt: 'gpt-5.6-luna', grok: 'grok-4' };
 const construct = constructors[kind];
 if (construct === undefined) throw new Error(`unknown kind ${kind}; one of ${Object.keys(constructors).join(', ')}`);
 const model = await construct(modelId ?? defaults[kind]!);

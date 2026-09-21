@@ -25,7 +25,7 @@
     "@types/node": "26.4.1",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
-    "ai": "7.0.97",
+    "ai": "7.0.105",
     "playwright": "1.63.0",
     "typescript": "7.0.2"
   }

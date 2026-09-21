@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { OAuthError, runDeviceFlow, type DevicePoll } from '../../src/index.ts';
+import { OAuthError, runDeviceFlow, type DevicePoll } from '../../../src/oauth/index.ts';
 
 const authorization = { deviceCode: 'dev', userCode: 'ABCD-1234', verificationUri: 'https://x/device', expiresIn: 60, interval: 5 };
 

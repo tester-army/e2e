@@ -1,9 +1,9 @@
 import { generateText, tool } from 'ai';
 import { z } from 'zod';
 import { afterEach, describe, expect, it } from 'vitest';
-import { MemoryCredentialStore, createCodexProvider, type CodexCredentials } from '../../src/index.ts';
-import { chatgpt } from '../../src/chatgpt.ts';
-import { extractAccountId, parseAuthorizationInput, sendCodexRequest } from '../../src/providers/openai.ts';
+import { MemoryCredentialStore, createCodexProvider, listModels, type CodexCredentials } from '../../../src/oauth/index.ts';
+import { chatgpt } from '../../../src/oauth/chatgpt.ts';
+import { extractAccountId, parseAuthorizationInput, sendCodexRequest } from '../../../src/oauth/providers/openai.ts';
 import { echoUpstream, fakeJwt, json, startServer, useServers, type Echo, type Received } from './helpers/server.ts';
 
 const serve = useServers(afterEach);
@@ -224,5 +224,70 @@ describe('Codex requests', () => {
     expect(body['store']).toBe(false);
     expect(seen!.headers['authorization']).toBe('Bearer tok');
     expect(seen!.headers['chatgpt-account-id']).toBe('acct_9');
+  });
+
+  it('carries the encrypted reasoning of an earlier turn itself instead of referring to it by id', async () => {
+    let seen: Received | undefined;
+    const backend = await serve((request, response) => {
+      seen = request;
+      const completed = { id: 'resp_2', object: 'response', created_at: 1, status: 'completed', model: 'gpt-5.6-luna', output: [], usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } };
+      const message = { type: 'message', id: 'msg_2', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: 'done', annotations: [] }] };
+      response.writeHead(200);
+      response.write(`event: response.output_item.done\ndata: ${JSON.stringify({ type: 'response.output_item.done', output_index: 0, item: message })}\n\n`);
+      response.write(`event: response.completed\ndata: ${JSON.stringify({ type: 'response.completed', response: completed })}\n\n`);
+      response.end();
+    });
+    const store = new MemoryCredentialStore({ openai: { access: 'tok', refresh: 'r', expires: 0 } });
+    const model = chatgpt('gpt-5.6-luna', { store, apiUrl: `${backend.url}/codex/responses` });
+    const result = await generateText({
+      model,
+      messages: [
+        { role: 'user', content: 'Open the form' },
+        {
+          role: 'assistant',
+          content: [
+            { type: 'reasoning', text: '', providerOptions: { openai: { itemId: 'rs_1', reasoningEncryptedContent: 'enc_1' } } },
+            { type: 'tool-call', toolCallId: 'call_1', toolName: 'tap', input: { id: 'n1' }, providerOptions: { openai: { itemId: 'fc_1' } } },
+          ],
+        },
+        { role: 'tool', content: [{ type: 'tool-result', toolCallId: 'call_1', toolName: 'tap', output: { type: 'text', value: 'ok' } }] },
+      ],
+      tools: { tap: tool({ inputSchema: z.object({ id: z.string() }) }) },
+    });
+    expect(result.text).toBe('done');
+    const input = (JSON.parse(seen!.body) as { input: Array<Record<string, unknown>> }).input;
+    expect(input.map((item) => item['type'])).not.toContain('item_reference');
+    expect(input).toContainEqual({ type: 'reasoning', id: 'rs_1', encrypted_content: 'enc_1', summary: [] });
+    expect(input).toContainEqual(expect.objectContaining({ type: 'function_call', call_id: 'call_1', name: 'tap' }));
+  });
+
+  it('lists the models the backend serves, hidden ones marked, through the login', async () => {
+    let seen: Received | undefined;
+    const backend = await serve((request, response) => {
+      seen = request;
+      json(response, 200, {
+        models: [
+          { slug: 'gpt-5.4-mini', display_name: 'GPT-5.4 mini', visibility: 'hide', priority: 5 },
+          { slug: 'gpt-5.6-luna', display_name: 'GPT-5.6 Luna', visibility: 'list', priority: 1, default_reasoning_level: 'medium', supported_reasoning_levels: [{ effort: 'low' }, { effort: 'medium' }, { effort: 'high' }] },
+          { slug: 'gpt-6-astra', display_name: 'GPT-6 Astra', visibility: 'list', priority: 0, supported_reasoning_levels: ['medium', 'xhigh'] },
+          { display_name: 'no slug' },
+        ],
+      });
+    });
+    const store = new MemoryCredentialStore({ openai: { access: 'tok', refresh: 'r', expires: 0, accountId: 'acct_9' } as CodexCredentials });
+    const provider = createCodexProvider({ apiUrl: `${backend.url}/codex/responses` });
+    const models = await provider.models!(async (input, init) => {
+      const request = new Request(input, init);
+      return sendCodexRequest(request, (await store.get('openai')) as CodexCredentials, fetch, { originator: 'e2e', apiUrl: `${backend.url}/codex/responses` });
+    });
+    expect(new URL(seen!.url, backend.url)).toMatchObject({ pathname: '/codex/models' });
+    expect(new URL(seen!.url, backend.url).searchParams.get('client_version')).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(seen!.headers).toMatchObject({ 'chatgpt-account-id': 'acct_9', originator: 'e2e' });
+    expect(models).toEqual([
+      { id: 'gpt-6-astra', name: 'GPT-6 Astra', detail: 'reasoning medium/xhigh' },
+      { id: 'gpt-5.6-luna', name: 'GPT-5.6 Luna', detail: 'reasoning low/medium/high (default medium)' },
+      { id: 'gpt-5.4-mini', name: 'GPT-5.4 mini', detail: 'hidden in Codex' },
+    ]);
+    await expect(listModels('openai', new MemoryCredentialStore())).rejects.toMatchObject({ code: 'NOT_LOGGED_IN' });
   });
 });

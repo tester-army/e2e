@@ -53,6 +53,20 @@ export interface OAuthProvider<Credentials extends OAuthCredentials = OAuthCrede
    * vendor gives it. Absent, the request goes out as is.
    */
   send?(request: Request, credentials: Credentials, upstream: FetchFunction): Promise<Response>;
+  /**
+   * The models the subscription serves, asked of the vendor with `fetch`,
+   * which carries the login the way `send` does. Absent when the vendor
+   * publishes no list.
+   */
+  models?(fetch: FetchFunction): Promise<SubscriptionModel[]>;
+}
+
+/** One model a subscription serves: the id a config passes to the constructor, and how the vendor describes it. */
+export interface SubscriptionModel {
+  readonly id: string;
+  readonly name?: string;
+  /** Vendor facts worth a glance: reasoning levels, vision, preview, hidden. */
+  readonly detail?: string;
 }
 
 /**

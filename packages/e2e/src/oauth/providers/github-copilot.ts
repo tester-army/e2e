@@ -8,8 +8,8 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { rfc8628Flow } from '../device-code.ts';
-import { OAuthError } from '../errors.ts';
-import type { FetchFunction, OAuthCredentials, OAuthProvider } from '../types.ts';
+import { OAuthError, describeResponse } from '../errors.ts';
+import type { FetchFunction, OAuthCredentials, OAuthProvider, SubscriptionModel } from '../types.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -102,6 +102,9 @@ export function createCopilotProvider(options: CopilotProviderOptions = {}): OAu
     send(request, credentials, upstream) {
       return sendCopilotRequest(request, credentials, upstream);
     },
+    models(fetch) {
+      return listCopilotModels(fetch);
+    },
   };
 }
 
@@ -138,4 +141,41 @@ export async function sendCopilotRequest(request: Request, credentials: CopilotC
   headers.set('x-initiator', initiator);
   if (vision) headers.set('copilot-vision-request', 'true');
   return upstream(new Request(url, { method: request.method, headers, signal: request.signal, ...(text === undefined ? {} : { body: text }) }));
+}
+
+/** One entry of the Copilot API's `/models`, as far as the listing reads it. */
+interface CopilotModel {
+  readonly id?: unknown;
+  readonly name?: unknown;
+  readonly vendor?: unknown;
+  readonly preview?: unknown;
+  readonly capabilities?: { readonly type?: unknown; readonly supports?: { readonly tool_calls?: unknown; readonly vision?: unknown } };
+}
+
+/**
+ * The chat models the Copilot plan serves; embeddings and other kinds are
+ * left out because only chat models fit `copilot()`. The request goes through
+ * `send`, so an enterprise login lists its own host.
+ */
+async function listCopilotModels(fetch: FetchFunction): Promise<SubscriptionModel[]> {
+  const response = await fetch(`${COPILOT_API_URL}/models`);
+  if (!response.ok) throw new OAuthError('FLOW_FAILED', `GitHub Copilot did not list its models: ${await describeResponse(response)}`);
+  const payload = (await response.json()) as { data?: unknown };
+  const models = Array.isArray(payload.data) ? (payload.data as CopilotModel[]) : [];
+  return models
+    .filter((model) => typeof model.id === 'string' && model.id !== '' && (model.capabilities?.type === undefined || model.capabilities.type === 'chat'))
+    .map((model) => {
+      const supports = model.capabilities?.supports;
+      const detail = [
+        typeof model.vendor === 'string' ? model.vendor : undefined,
+        supports?.tool_calls === true ? 'tools' : undefined,
+        supports?.vision === true ? 'vision' : undefined,
+        model.preview === true ? 'preview' : undefined,
+      ].filter((part) => part !== undefined);
+      return {
+        id: model.id as string,
+        ...(typeof model.name === 'string' && model.name !== '' ? { name: model.name } : {}),
+        ...(detail.length === 0 ? {} : { detail: detail.join(', ') }),
+      };
+    });
 }

@@ -9,7 +9,7 @@
   ],
   "type": "module",
   "scripts": {
-    "build": "pnpm --filter e2e run build && pnpm --filter @e2edev/playwright run build && pnpm --filter @e2edev/agent-device run build && pnpm --filter @e2edev/github run build && pnpm --filter @e2edev/oauth run build",
+    "build": "pnpm --filter e2e run build && pnpm --filter @e2edev/playwright run build && pnpm --filter @e2edev/agent-device run build && pnpm --filter @e2edev/github run build",
     "check": "pnpm run lint && pnpm run check:dead-code && pnpm run typecheck && pnpm run docs:check-errors && pnpm run docs:check",
     "check:dead-code": "fallow dead-code",
     "docs:check-errors": "node scripts/check-error-codes.ts",
@@ -23,7 +23,7 @@
     "canary": "node scripts/canary-changeset.ts && changeset version --snapshot canary && pnpm run build",
     "canary:publish": "changeset publish --tag canary --no-git-tag",
     "typecheck": "pnpm run build && pnpm -r run typecheck",
-    "test": "pnpm run build && pnpm --filter e2e run test && pnpm --filter @e2edev/playwright run test && pnpm --filter @e2edev/agent-device run test && pnpm --filter @e2edev/github run test && pnpm --filter @e2edev/oauth run test",
+    "test": "pnpm run build && pnpm --filter e2e run test && pnpm --filter @e2edev/playwright run test && pnpm --filter @e2edev/agent-device run test && pnpm --filter @e2edev/github run test",
     "test:testbed": "pnpm run build && pnpm --filter @e2edev/testbed test",
     "test:web-benchmark": "pnpm run build && pnpm --filter @e2edev/web-benchmark test",
     "test:mobile-benchmark": "pnpm run build && pnpm --filter @e2edev/mobile-benchmark test",
