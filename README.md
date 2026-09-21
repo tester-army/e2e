@@ -1,91 +1,50 @@
 # e2e
 
-An open framework for agentic end-to-end testing.
+Agentic end-to-end testing framework for any app.
 
-Write tests in ordinary TypeScript. Describe what a user does in natural
-language, and pin exact values and outcomes with regular assertions.
-
-e2e tests applications through their user interface: web, mobile, desktop,
-and anything else with a UI. It is not an agent-eval harness and not an
-API-only tool.
+Describe what a user does in natural language, pin the exact outcome with
+locators and assertions, and run it like any other test suite. Web runs
+through Playwright, iOS and Android through agent-device, and anything else
+with a UI through the same engine contract.
 
 ```ts
-import { test } from 'e2e';
+// tests/checkout.e2e.ts
+import { test, expect } from 'e2e';
 
-test('user can sign up', async ({ app, agent }) => {
-  await app.open();
-  await agent.act('tap the sign up button');
-  await agent.assert('the dashboard is visible');
+test('a member upgrades to Pro', async ({ app, agent, screen }) => {
+  await app.open('/settings/billing');
+
+  await agent.act('upgrade the workspace to the Pro plan');
+  await agent.assert('the invoice preview shows a prorated amount');
+
+  await expect(screen.getByRole('status')).toContainText('Pro');
 });
 ```
 
 ```bash
-pnpm add -D e2e @e2edev/playwright playwright
-AI_GATEWAY_API_KEY=... npx e2e run
+npx e2e init
 ```
 
-Tests without agent steps, using `screen`, `app`, `web`, and `expect`, need no model.
-The runner knows no platform: `@e2edev/playwright` is the browser engine a
-web target names in its config, and a device or desktop engine plugs into the
-same contract.
-
-## Why
-
-Agentic testing should not require surrendering test control, portability, or
-diagnostics. Every agent call is a bounded operation you can interleave with
-deterministic steps:
-
-```ts
-await agent.act('choose the Pro plan');
-await screen.getByRole('button', { name: 'Confirm' }).tap();
-```
-
-- Your code owns order and values; agent steps stay bounded.
-- Waiting, retries, and reports are handled for you.
-- Each passing `agent.act()` records its action trace and the next run
-  replays it zero-turn — no model calls — diverging to the live agent
-  whenever the app no longer matches. On by default; opt out with
-  `cache: 'off'` or `--no-cache`. Judgments are never cached.
-- Credentials never reach the model or the report.
-- `--ai-trace` records every model call to `.e2e/ai-trace.json`; open it with
-  [unbox-ai](https://github.com/tester-army/unbox-ai) to see where the tokens went.
-- `--video` records every attempt, a WebM in the browser or an MP4 on a
-  device, so a failure can be watched instead of reconstructed. Off by
-  default.
-- Runs locally. No account, no hosted runner. The CLI sends anonymous usage
-  counts to improve the framework, never your tests or your app's data;
-  `e2e telemetry disable` turns that off
-  ([what is sent](https://e2e.tester.army/docs/telemetry)).
+A passing agent step records its actions and the next run replays them with
+no model calls, until the app changes. Tests without agent steps need no
+model. Bring your own subscription, API key, or local model.
 
 ## Documentation
 
-[e2e.tester.army/docs](https://e2e.tester.army/docs)
-
-## Coding agents
-
-`e2e init` installs an agent skill into `.agents/skills/` and
-`.claude/skills/`, and `npx skills add tester-army/e2e` installs it
-anywhere else. Without it, `npx e2e guide` prints the same text.
-See [Coding agents](https://e2e.tester.army/docs/coding-agents).
-
-`e2e mcp` opens a live session on the app for a coding agent over MCP, with
-the same tools the testing agent has behind four fixed MCP tools, so the
-agent can look at the real screen and check a locator before writing the
-test. `e2e init` registers it for Claude Code and Cursor.
+[e2e.tester.army/docs](https://e2e.tester.army/docs): quickstart, writing
+tests, mobile, migrating from Playwright, Cypress, Selenium, Detox, or
+Maestro, and the full reference.
 
 ## Packages
 
-- [`e2e`](./packages/e2e) — the SDK, runner, and CLI.
-- [`@e2edev/playwright`](./packages/playwright) — the browser engine, passed
-  to a target as `engine: playwright()`.
-- [`@e2edev/agent-device`](./packages/agent-device) — the mobile engine for iOS
-  simulators and Android emulators; see the
-  [device reference](https://e2e.tester.army/docs/reference/agent-device).
+- [`e2e`](./packages/e2e): SDK, runner, and CLI.
+- [`@e2edev/playwright`](./packages/playwright): the browser engine.
+- [`@e2edev/agent-device`](./packages/agent-device): the iOS and Android engine.
+- [`@e2edev/github`](./packages/github): the pull request comment reporter.
+- [`@e2edev/oauth`](./packages/oauth): sign in with a ChatGPT, GitHub Copilot,
+  or SuperGrok subscription.
 
 ## Contributing
 
-See [`CONTRIBUTING.md`](./CONTRIBUTING.md).
-
----
-
-by [TesterArmy](https://tester.army)
+See [CONTRIBUTING.md](./CONTRIBUTING.md) and [SECURITY.md](./SECURITY.md).
+MIT, by [TesterArmy](https://tester.army).
