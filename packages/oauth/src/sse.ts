@@ -5,6 +5,12 @@
  * short) event whose `response` is exactly the object the non-streaming
  * endpoint returns, so that event becomes the body; a `response.failed` or
  * `error` event becomes an error body.
+ *
+ * The stream is recognized by its body, not by its `content-type`: the Codex
+ * backend answers with no `content-type` header at all, and a body that
+ * reached the AI SDK unfolded fails there as `Invalid JSON response`. The same
+ * backend sends the final event with an empty `output`, the items having gone
+ * out one by one as `response.output_item.done`; those are folded back in.
  */
 
 export interface SseEvent {
@@ -30,10 +36,15 @@ export function parseSse(text: string): SseEvent[] {
 
 export async function foldResponsesStream(response: Response): Promise<Response> {
   const contentType = response.headers.get('content-type') ?? '';
-  if (!response.ok || !contentType.includes('text/event-stream')) return response;
-  const text = await response.text();
+  if (!response.ok || contentType.includes('application/json')) return response;
+  // Read from a clone: a body that turns out not to be a stream goes back untouched, bytes and metadata alike.
+  const text = await response.clone().text();
+  const events = parseSse(text);
+  if (events.length === 0) return response;
+  await response.body?.cancel();
   let failure: unknown;
-  for (const { data } of parseSse(text)) {
+  const items = new Map<number, unknown>();
+  for (const { data } of events) {
     if (data === '[DONE]') continue;
     let payload: unknown;
     try {
@@ -43,8 +54,11 @@ export async function foldResponsesStream(response: Response): Promise<Response>
     }
     if (typeof payload !== 'object' || payload === null) continue;
     const record = payload as Record<string, unknown>;
+    if (record['type'] === 'response.output_item.done' && typeof record['output_index'] === 'number') {
+      items.set(record['output_index'], record['item']);
+    }
     if (record['type'] === 'response.completed' || record['type'] === 'response.incomplete') {
-      return json(200, record['response']);
+      return json(200, withOutput(record['response'], items));
     }
     if (record['type'] === 'response.failed') {
       const inner = record['response'] as Record<string, unknown> | undefined;
@@ -55,6 +69,15 @@ export async function foldResponsesStream(response: Response): Promise<Response>
   }
   if (failure !== undefined) return json(400, { error: failure });
   return json(502, { error: { message: 'the stream ended without a completed response' } });
+}
+
+/** The final response with the streamed items as its `output` when the event itself carried none. */
+function withOutput(response: unknown, items: ReadonlyMap<number, unknown>): unknown {
+  if (typeof response !== 'object' || response === null || items.size === 0) return response;
+  const record = response as Record<string, unknown>;
+  if (Array.isArray(record['output']) && record['output'].length > 0) return response;
+  const output = [...items.entries()].toSorted(([a], [b]) => a - b).map(([, item]) => item);
+  return { ...record, output };
 }
 
 function json(status: number, body: unknown): Response {

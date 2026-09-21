@@ -196,11 +196,14 @@ describe('Codex requests', () => {
         created_at: 1,
         status: 'completed',
         model: 'gpt-5.5',
-        output: [{ type: 'function_call', id: 'fc_1', call_id: 'call_1', name: 'report', arguments: '{"color":"red"}', status: 'completed' }],
+        output: [],
         usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } },
       };
-      response.writeHead(200, { 'content-type': 'text/event-stream' });
+      const call = { type: 'function_call', id: 'fc_1', call_id: 'call_1', name: 'report', arguments: '{"color":"red"}', status: 'completed' };
+      // As the Codex backend answers: no content-type, items streamed one by one, an empty output on the final event.
+      response.writeHead(200);
       response.write(`event: response.created\ndata: ${JSON.stringify({ type: 'response.created', response: { id: 'resp_1' } })}\n\n`);
+      response.write(`event: response.output_item.done\ndata: ${JSON.stringify({ type: 'response.output_item.done', output_index: 0, item: call })}\n\n`);
       response.write(`event: response.completed\ndata: ${JSON.stringify({ type: 'response.completed', response: completed })}\n\n`);
       response.end();
     });
