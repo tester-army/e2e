@@ -28,7 +28,7 @@ A Playwright key the runner recognizes (`testDir`, `baseURL`, `webServer`,
 | `use.baseURL` | `playwright({ url })` | config | renamed |
 | `webServer` | `playwright({ url, command })`, see [Starting your app](/starting-your-app) | config | renamed |
 | `webServer.reuseExistingServer` | `command: { reuseExisting: true }`; CI ignores it | config | renamed |
-| `globalSetup` | `services` on the engine, started before the app command | config | renamed |
+| `globalSetup` | no direct equivalent; `services` for managed processes, hooks and fixtures or `test.setup` for setup code | config | missing |
 | `projects` | `targets`, one engine instance each | config | renamed |
 | `projects[].dependencies` for sign-in | `test.setup` and `{ session }`, see [Signing in](/authentication) | config | renamed |
 | `testDir`, `testMatch` | `tests`, globs relative to the project root | config | renamed |
@@ -119,7 +119,7 @@ to do today.
 | `first()`, `last()`, `nth(i)` | the same | `screen` | same |
 | `locator.and(other)`, `locator.or(other)` | not yet | `screen` | missing |
 | `locator.count()` | the same | `screen` | same |
-| `locator.all()`, `allTextContents()`, `allInnerTexts()` | `count()`, then `nth(i).textContent()` in a loop | `screen` | missing |
+| `locator.all()`, `allTextContents()` | the same; `allInnerTexts()` is `allTextContents()` | `screen` | same |
 | `page.locator('css')`, `page.locator('xpath=...')` | `web.locator('css')` | `web` | web only |
 | `locator.locator('css')` | not yet; `web.locator('css').getByRole(...)` scopes the other way round | `web` | missing |
 | `page.frameLocator('#frame')` | `web.frameLocator('#frame')`, then `screen` queries inside it | `web` | web only |
@@ -131,7 +131,8 @@ to do today.
 | `locator.click()` | `locator.tap()`; `click()` is an alias | `screen` | same |
 | `click({ button: 'right' })` | `secondaryTap()` | `screen` | renamed |
 | `dblclick()` | `doubleTap()` | `screen` | renamed |
-| `click({ position })`, `click({ force })` | not yet; the agent has `tap_at` | `screen` | missing |
+| `click({ position })` | `tap({ position })`, an offset from the node's top-left corner | `screen` | renamed |
+| `click({ force })` | not yet; `tap({ position })` skips every actionability check but the scroll into view | `screen` | missing |
 | `click({ modifiers, clickCount, delay, trial })` | not yet | `web` | missing |
 | `fill(value)` | the same; also takes a `Secret` | `screen` | same |
 | `pressSequentially(text)` | not yet; `focus()`, then `web.keyboard.type(text)` | `screen` | missing |
@@ -142,17 +143,19 @@ to do today.
 | `scrollIntoViewIfNeeded()` | `scrollIntoView()` | `screen` | renamed |
 | `locator.textContent()`, `innerText()` | `textContent()`, whitespace normalized | `screen` | same |
 | `inputValue()`, `getAttribute()`, `isVisible()`, `isEnabled()`, `isChecked()`, `boundingBox()` | the same | `screen` | same |
-| `isHidden()`, `isDisabled()`, `isEditable()` | negate `isVisible()` and `isEnabled()`; no editable read | `screen` | missing |
+| `isHidden()`, `isDisabled()` | the same | `screen` | same |
+| `isEditable()` | not yet | `screen` | missing |
 | `waitFor({ state: 'visible' })`, `'hidden'` | the same | `screen` | same |
-| `waitFor({ state: 'attached' })`, `'detached'` | not yet; `expect(locator).toHaveCount(n)` | `screen` | missing |
+| `waitFor({ state: 'attached' })`, `'detached'` | not yet; `expect(locator).toBeAttached()` and `.not.toBeAttached()` | `screen` | missing |
 | `locator.evaluate(fn)`, `evaluateAll(fn)` | not yet; `web.evaluate(fn, selector)` with a CSS selector argument | `web` | missing |
 | `locator.screenshot()` | not yet; `app.screenshot(label)` captures the viewport | `app` | missing |
 | `innerHTML()`, `dispatchEvent()`, `selectText()`, `blur()`, `highlight()` | not yet; `web.evaluate` | `web` | missing |
 | `ariaSnapshot()` | not yet | `web` | missing |
 | `page.keyboard.press`, `keyboard.type` | `web.keyboard.press`, `web.keyboard.type`; plain text only, never a `Secret` | `web` | web only |
 | `keyboard.down`, `keyboard.up`, `keyboard.insertText` | not yet | `web` | missing |
+| `page.mouse.click(x, y)` | `screen.tapAt({ x, y })`, viewport coordinates | `screen` | renamed |
+| `mouse.move`, `down`, `up` as a drag | `screen.swipe({ from, to })` | `screen` | renamed |
 | `page.mouse.move`, `wheel`, `down`, `up` | `web.mouse.*` | `web` | web only |
-| `page.mouse.click(x, y)` | not yet; `web.mouse.move`, `down`, `up` | `web` | missing |
 
 ### Assertions
 
@@ -160,10 +163,11 @@ to do today.
 | --- | --- | --- | --- |
 | `expect(locator).toBeVisible()`, `toBeHidden()`, `toBeEnabled()`, `toBeDisabled()`, `toBeChecked()`, `toBeFocused()` | the same | `expect` | same |
 | `toHaveText()`, `toContainText()`, `toHaveValue()`, `toHaveAttribute()`, `toHaveCount()`, `toHaveAccessibleName()` | the same | `expect` | same |
-| `toHaveText(['a', 'b'])` on several matches | not yet; `nth(i)` per item | `expect` | missing |
+| `toHaveText(['a', 'b'])`, `toContainText([...])` on several matches | the same; the count must match too | `expect` | same |
 | `toHaveAttribute('aria-selected', 'true')`, `'aria-expanded'` | `toBeSelected()`, `toBeExpanded()` | `expect` | renamed |
 | a positive matcher on several matches | `LOCATOR_AMBIGUOUS` at once; narrow with `filter`, `first`, or `{ visible: true }` | `expect` | by design |
-| `toBeAttached()`, `toBeEmpty()`, `toBeInViewport()`, `toBeEditable()`, `toHaveRole()`, `toHaveAccessibleDescription()` | not yet; `toHaveCount(1)` stands in for attached | `expect` | missing |
+| `toBeAttached()` | the same; passes on a hidden match too | `expect` | same |
+| `toBeEmpty()`, `toBeInViewport()`, `toBeEditable()`, `toHaveRole()`, `toHaveAccessibleDescription()` | not yet | `expect` | missing |
 | `expect(locator).toHaveClass(cls)` | `expect(web).toHaveClass(locator, cls)`; a DOM fact is asserted through `web` | `web` | web only |
 | `toHaveCSS()`, `toHaveId()`, `toHaveJSProperty()`, `toContainClass()`, `toHaveValues()` | not yet; `web.evaluate` plus a value matcher | `web` | missing |
 | `expect(page).toHaveURL()`, `toHaveTitle()` | `expect(web).toHaveURL()`, `toHaveTitle()` | `web` | web only |
@@ -216,7 +220,7 @@ to do today.
 | `page.evaluate(fn, arg)` | `web.evaluate(fn, arg)`; JSON in and out, no handles | `web` | web only |
 | `page.exposeFunction()`, `addInitScript()`, `setExtraHTTPHeaders()`, `emulateMedia()`, `clock` | not yet | `web` | missing |
 | `context.addCookies()`, `context.cookies()` | `web.setCookies()`, `web.cookies()` | `web` | web only |
-| `context.clearCookies()` | `app.clearState()` | `app` | renamed |
+| `context.clearCookies()` | not yet; `app.clearState()` also clears other persisted state and recreates the context | `web` | missing |
 | `request` fixture | Node `fetch`; forward the browser session from `web.cookies()` when the API needs it | `test` | by design |
 | `context.storageState({ path })` | not yet; sessions are per run and encrypted, see [By design](#by-design) | `test` | by design |
 

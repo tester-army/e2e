@@ -19,7 +19,7 @@ reference pages hold the details: [screen](/reference/screen),
 | Maestro | e2e | Lives in | Status |
 | --- | --- | --- | --- |
 | `appId` at the top of every flow | `agentDevice({ app: 'com.example.app' })`, opened fresh per attempt | config | renamed |
-| a different `appId` per flow | one target per app, or `device.openApp(id)` inside the test | config | renamed |
+| a different `appId` per flow | `device.openApp(id)` inside the test, or separate app-specific configs and runs; every test runs on every selected target | config | renamed |
 | `--platform ios` | `agentDevice({ platform: 'ios' })`, one engine per platform | config | renamed |
 | `--device` | `agentDevice({ device: 'iPhone 17' })`; a list is a pool, one worker per device | config | renamed |
 | `.maestro/config.yaml` `flows` | `tests`, default `tests/**/*.e2e.ts`; Maestro runs one folder level, e2e recurses | config | renamed |
@@ -109,7 +109,7 @@ says whether the call exists: `same`, `renamed`, `device only`, `by design`
 | `tapOn: { id: x }` | `screen.getByTestId('x').tap()` | `screen` | renamed |
 | `tapOn: { text, index: 2 }` | `.nth(2)` | `screen` | renamed |
 | `tapOn: { below: "Email" }`, `above`, `leftOf`, `rightOf`, `containsDescendants` | no equivalent, see [Selectors](#selectors) | `screen` | by design |
-| `tapOn: { point: "50%,50%" }` | not yet; the agent has `tap_at` | `screen` | missing |
+| `tapOn: { point: "x,y" }` | `screen.tapAt({ x, y })`; inside a node, `.tap({ position: { x, y } })` | `screen` | renamed |
 | `retryTapIfNoChange`, `waitToSettleTimeoutMs` | `agentDevice({ settle, transition })`, engine-wide; no per-call knob | config | renamed |
 | `doubleTapOn`, `longPressOn` | `.doubleTap()`, `.longPress({ duration })` | `screen` | renamed |
 | `inputText` | `screen.getByTestId('field').fill('text')` | `screen` | renamed |
@@ -128,7 +128,7 @@ says whether the call exists: `same`, `renamed`, `device only`, `by design`
 | Maestro | e2e | Lives in | Status |
 | --- | --- | --- | --- |
 | `swipe: { direction: UP }` | `screen.swipe({ direction: 'up' })`, or `locator.swipe(...)` inside one node | `screen` | renamed |
-| `swipe: { start, end }` | not yet; the agent's `swipe` tool takes two points | `screen` | missing |
+| `swipe: { start, end }` | `screen.swipe({ from: { x, y }, to: { x, y } })` | `screen` | renamed |
 | `scroll` | `screen.swipe({ direction: 'down' })` | `screen` | renamed |
 | `scrollUntilVisible: { element }` | `screen.scrollUntilVisible(locator, { direction })` | `screen` | renamed |
 | `waitForAnimationToEnd` | an assertion on the settled state; `agentDevice({ settle, transition })` for the engine | `expect` | renamed |
