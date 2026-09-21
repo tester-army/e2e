@@ -1,7 +1,9 @@
 /**
  * The events e2e sends, built from facts the CLI already holds. Every
  * property is a count, a duration, a version, or a short token. The builders
- * copy no title, file, URL, instruction, message, or stack out of the report.
+ * copy no title, file, URL, instruction, message, or stack out of the report;
+ * the one look at a message, in `failure-kind.ts`, yields a token from a
+ * closed list.
  * The names a project declares for its engines, platforms, and model pass
  * through when they are plain tokens, so a homegrown engine counts as itself;
  * a name shaped like a path, a URL, or a sentence folds to `other`, and an
@@ -9,9 +11,11 @@
  * code, folds to `OTHER`. The unit tests hold the payload to that promise.
  */
 
-import type { Report1Document, ReportError, ReportStep } from '../report/build.ts';
+import { GRAMMAR_ACTION_NAMES, PROJECT_TOOL_EVENT_PREFIX } from '../agent/action-names.ts';
+import type { Report1Document, ReportError, ReportStep, ReportUsage } from '../report/build.ts';
 import { STEP_KINDS } from '../run/steps.ts';
 import type { JsonValue } from '../types.ts';
+import { failureKind } from './failure-kind.ts';
 import { errorCodeToken, plainToken } from './token.ts';
 
 export interface TelemetryEvent {
@@ -68,6 +72,7 @@ export interface InitOutcome {
 }
 
 const SEMVER = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/u;
+/** Distinct error codes, and distinct failure kinds, a run event lists. */
 const MAX_ERROR_CODES = 20;
 
 /** The session: the command and its flag names, and how it ended once that is known. */
@@ -146,13 +151,39 @@ function* scopes(report: Report1Document): Generator<ReportScope> {
   }
 }
 
-/** The scope's own errors, then its steps'. */
+/** The scope's verdict, then the steps that led there, then what cleanup added. */
 function errorsOf(scope: ReportScope): ReportError[] {
   return [
     ...(scope.error === undefined ? [] : [scope.error]),
-    ...scope.secondaryErrors,
     ...(scope.steps ?? []).flatMap((step) => (step.error === undefined ? [] : [step.error])),
+    ...scope.secondaryErrors,
   ];
+}
+
+const GRAMMAR_ACTIONS: ReadonlySet<string> = new Set(GRAMMAR_ACTION_NAMES);
+
+/**
+ * How often the agent took each action, by the runner's own names. A
+ * project's tools count together under `tool` and anything else under
+ * `other`, so the keys are a closed set and never a project's vocabulary.
+ */
+function agentActions(steps: readonly ReportStep[]): Record<string, number> {
+  const counts = new Map<string, number>();
+  for (const step of steps) {
+    if (step.kind !== 'agent') continue;
+    for (const event of step.events) {
+      if (event.kind !== 'engine' || event.name === undefined) continue;
+      const name = GRAMMAR_ACTIONS.has(event.name) ? event.name : event.name.startsWith(PROJECT_TOOL_EVENT_PREFIX) ? 'tool' : 'other';
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+  }
+  return Object.fromEntries([...counts].toSorted());
+}
+
+/** Whether anyone priced the model calls: a gateway that did, nobody, or no calls to price. */
+function costSource(usage: ReportUsage, modelCalls: number): 'provider' | 'none' | null {
+  if (usage.estimatedCostUsd !== undefined) return 'provider';
+  return modelCalls > 0 ? 'none' : null;
 }
 
 function durationMs(startedAt: string, finishedAt: string): number | null {
@@ -167,9 +198,10 @@ export function runCompletedEvent(report: Report1Document, flags: readonly strin
   const models = steps.flatMap((step) => (step.model === undefined ? [] : [step.model]));
   const first = models[0];
   const firstModel = first === undefined ? undefined : splitModel(first);
-  const codes = unique(
-    [...run.errors, ...recorded.flatMap(errorsOf)].map((error) => errorCodeToken(error.code)),
-  );
+  // Run-level first, then each scope's in the order it recorded them: the first is the one that decided the status.
+  const errors = [...run.errors, ...recorded.flatMap(errorsOf)];
+  const primary = errors[0];
+  const attempts = [...run.results, ...run.serialGroups].map((unit) => unit.attempts.length);
 
   return {
     name: EVENT_RUN_COMPLETED,
@@ -186,6 +218,8 @@ export function runCompletedEvent(report: Report1Document, flags: readonly strin
       tests_failed: run.summary.failed,
       tests_flaky: run.summary.flaky,
       tests_skipped: run.summary.skipped,
+      attempts_total: attempts.reduce((total, count) => total + count, 0),
+      tests_retried: attempts.filter((count) => count > 1).length,
       targets: run.targets.length,
       platforms: unique(run.targets.map((target) => plainToken(target.platform))),
       engines: unique(run.targets.map((target) => engineLabel(target.engine))),
@@ -197,6 +231,7 @@ export function runCompletedEvent(report: Report1Document, flags: readonly strin
       agent_steps_partial: steps.filter((step) => step.cache?.mode === 'agent-concluded').length,
       agent_steps_missed: steps.filter((step) => step.cache?.mode === 'missed').length,
       agent_steps_vision: steps.filter((step) => step.visionInput === true).length,
+      agent_actions: agentActions(steps),
       model_gateway: first?.provider ?? null,
       model_provider: firstModel?.provider ?? null,
       model_id: firstModel === undefined ? null : plainToken(firstModel.id),
@@ -204,9 +239,12 @@ export function runCompletedEvent(report: Report1Document, flags: readonly strin
       model_tokens: run.usage.modelTokens,
       model_cached_tokens: run.usage.modelCachedTokens ?? null,
       estimated_cost_usd: run.usage.estimatedCostUsd ?? null,
+      cost_source: costSource(run.usage, models.length),
       artifact_bytes: run.usage.artifactBytes,
       errors: run.errors.length,
-      error_codes: codes.slice(0, MAX_ERROR_CODES),
+      primary_error_code: primary === undefined ? null : errorCodeToken(primary.code),
+      error_codes: unique(errors.map((error) => errorCodeToken(error.code))).slice(0, MAX_ERROR_CODES),
+      error_kinds: unique(errors.flatMap(failureKind)).slice(0, MAX_ERROR_CODES),
     },
   };
 }

@@ -16,6 +16,7 @@ import { requireKey } from '../internal/keys.ts';
 import { clampToViewport } from '../internal/geometry.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
 import type { JsonValue, Momentum, ScrollDirection, Secret } from '../types.ts';
+import { PROJECT_TOOL_EVENT_PREFIX } from './action-names.ts';
 import { containerKey, describeAction, type RecordableAction } from './actions.ts';
 import { describePosition } from '../cache/relocate.ts';
 import { isDerivedValue } from './derived.ts';
@@ -215,7 +216,7 @@ export class ActionDispatcher {
       }
       const value = await instrumentPhase(
         this.runtime,
-        { api: this.accounting.api, kind: 'engine', phase: 'agent.action', name: `tool:${call.name}` },
+        { api: this.accounting.api, kind: 'engine', phase: 'agent.action', name: `${PROJECT_TOOL_EVENT_PREFIX}${call.name}` },
         body,
       );
       // A tool the page reacts to at once is read after the reaction; one

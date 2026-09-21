@@ -92,12 +92,17 @@ Versions:
 | `status`, `exit_code`, `duration_ms` | The run's outcome |
 | `flags` | The names of the flags given to the run command, never their values |
 | `tests_discovered`, `tests_selected`, `tests_executed`, `tests_passed`, `tests_failed`, `tests_flaky`, `tests_skipped` | The summary counts |
+| `attempts_total`, `tests_retried` | How many attempts the run made across tests and serial groups, and how many of them needed more than one |
 | `targets`, `platforms`, `engines` | How many targets, on which platforms, and with which engines and versions, as your config declares them: `web`, `ios`, `playwright@0.6.1`, or your own engine's name and version. A name that is not a plain token of letters, digits, dots, dashes, and underscores is reported as `other` |
 | `steps_total`, `steps_agent`, `steps_locator`, `steps_assertion`, `steps_screen`, `steps_app`, `steps_session`, `steps_resource` | Step counts by kind |
 | `agent_steps_replayed`, `agent_steps_partial`, `agent_steps_missed`, `agent_steps_vision` | How the trace cache served the agent steps, and how many used pixel evidence |
+| `agent_actions` | How often the agent took each action, by the runner's own names: `{"tap": 12, "typeText": 3, "scroll": 2}`. A project's own tools are counted together as `tool` and anything else as `other`; no other name is sent |
 | `model_gateway`, `model_provider`, `model_id`, `model_calls`, `model_tokens`, `model_cached_tokens`, `estimated_cost_usd` | For the first model-backed step: the AI SDK provider that served it (`gateway` for the Vercel AI Gateway, `openrouter.chat`, `openai.chat`, ...), the vendor (the first segment of a `vendor/model` id, else the provider), and the public model id (a fine-tuned or routed id is reported as `other`); then the run's totals |
+| `cost_source` | `provider` when the provider priced the calls, `none` when the run made model calls nobody priced, `null` for a run without model calls |
 | `artifact_bytes` | Size of the artifacts the run wrote |
 | `errors`, `error_codes` | How many run-level errors, and the distinct error codes seen anywhere in the run (`LOCATOR_NOT_FOUND`, `APP_UNREACHABLE`, ...), at most 20. A code that is not an upper-case token, the shape of every runner code, is reported as `OTHER` |
+| `primary_error_code` | The first error the run recorded, which is the one that decided its status: a run-level error, else the failed attempt's verdict, else a step's; `null` for a clean run |
+| `error_kinds` | For `ENGINE_FAILURE`, `MODEL_PROVIDER_FAILED`, and `ERROR`, whose code says where a failure surfaced but not what it was: the code and a kind read off the message against a closed list (`auth`, `rate-limit`, `overloaded`, `timeout`, `network`, `server`, `bad-request`, `device`, `daemon`, `browser`, `permission`, `not-found`, `memory`, `other`), as `MODEL_PROVIDER_FAILED:rate-limit`. Only the kind's name leaves the machine, never the message |
 
 ## What is never sent
 

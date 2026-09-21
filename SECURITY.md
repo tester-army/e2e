@@ -80,8 +80,11 @@ OS versions, the CPU count and memory class, and whether the shell is a
 container, a CI vendor, or a coding agent. One `e2e_init_completed` event per
 `e2e init` carries how it ended and the ids of the engine and gateway chosen. One `e2e_run_completed`
 event per run carries the report's numbers: status, exit code, duration, test
-and step counts, engine names and versions, platforms, cache replay counts,
-model provider and public model id, token totals, and the runner's error codes.
+and step counts, attempt counts, engine names and versions, platforms, cache
+replay counts, the agent's action counts by the runner's own action names,
+model provider and public model id, token totals, and the runner's error codes,
+each paired for an engine or provider failure with a kind from a closed list
+(`timeout`, `rate-limit`, `device`, ...) that the message was matched against.
 Events are attributed to a random per-machine id and a hashed project id (the
 SHA-256 of the repository's root commit); in CI the vendor's name stands in for
 the machine, a platform that sets `E2E_TELEMETRY_FLEET` is attributed to that
