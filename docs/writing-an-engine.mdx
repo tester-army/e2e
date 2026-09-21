@@ -197,8 +197,15 @@ Coordinate actions replay only at the recorded viewport size, and the runner
 checks the recorded end state before accepting a replay.
 
 Implement `keyboard` to type into a control after the agent focuses it.
-`keyboard.type` must throw `NOT_ACTIONABLE` when no editable control has
-focus. Omit `dismiss` on platforms without an on-screen keyboard.
+`keyboard.type` must deliver the text as a person typing would, through the
+platform's keyboard path, so that key events reach the app where the platform
+has them: a browser engine dispatches `keydown`, `keypress`, `input`, and
+`keyup` per character; a device engine sends the text through the device
+keyboard. Inserting the value without keystrokes is not a compliant
+implementation. It must throw `NOT_ACTIONABLE` when no editable control has
+focus. Omit `dismiss` on platforms without an on-screen keyboard. The same
+hook, after the `focus` action, is what `locator.pressSequentially` types
+through; the harness composes the two and asks nothing more of the engine.
 
 ### State is a credential
 

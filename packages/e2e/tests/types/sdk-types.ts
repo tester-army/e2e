@@ -67,6 +67,9 @@ credentials.user('admin').password satisfies Secret;
 // @ts-expect-error a Secret has no plaintext accessor.
 secrets.get('key').value;
 void screen.getByLabel('Key').fill(secrets.get('key'));
+// @ts-expect-error a Secret is never typed as keystrokes; fill it.
+void screen.getByLabel('Key').pressSequentially(secrets.get('key'));
+void screen.getByLabel('City').pressSequentially('War', { delay: 50 });
 void agent.act('use the key', { params: { apiKey: secrets.get('key') } });
 // A run-unique value is marked, not inferred; the model still sees the string.
 unique('E2E Company') satisfies Unique;

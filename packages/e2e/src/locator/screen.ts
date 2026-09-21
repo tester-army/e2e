@@ -13,6 +13,7 @@ import type {
   LongPressOptions,
   Locator,
   Point,
+  PressSequentiallyOptions,
   Role,
   RoleOptions,
   Screen,
@@ -285,6 +286,24 @@ class LocatorImpl extends ScreenImpl implements Locator {
     );
   }
 
+  pressSequentially(text: string, options?: PressSequentiallyOptions): Promise<void> {
+    if (isSecret(text)) {
+      throw new TestError(
+        'INVALID_ARGUMENT',
+        'pressSequentially takes a plain string; a Secret goes through fill, which never types it as keystrokes',
+      );
+    }
+    if (typeof text !== 'string') {
+      throw new TestError('INVALID_ARGUMENT', 'pressSequentially requires a string');
+    }
+    rejectUnknownOptions('pressSequentially', options, ['timeout', 'delay']);
+    const delay = validateDelay(options?.delay);
+    const chunks = text.length === 0 ? [] : delay === undefined ? [text] : [...text];
+    return this.action('locator.pressSequentially', () =>
+      this.context.engine.pressSequentially(this.expression, chunks, delay ?? 0, options?.timeout),
+    );
+  }
+
   clear(options?: ActionOptions): Promise<void> {
     return this.action('locator.clear', () =>
       this.context.engine.perform(this.expression, { kind: 'clear' }, options?.timeout),
@@ -527,6 +546,15 @@ function requirePoint(point: Point | undefined, what: string): Point {
 /** A point as the report shows it. */
 function describePoint(point: Point): string {
   return `(${point.x}, ${point.y})`;
+}
+
+/** Validates the pause between typed characters: a finite, non-negative number of milliseconds. */
+function validateDelay(delay: number | undefined): number | undefined {
+  if (delay === undefined) return undefined;
+  if (typeof delay !== 'number' || !Number.isFinite(delay) || delay < 0) {
+    throw new TestError('INVALID_ARGUMENT', 'pressSequentially delay must be a non-negative number of milliseconds');
+  }
+  return delay;
 }
 
 /** Validates the shared long-press duration bound. */

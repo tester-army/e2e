@@ -308,6 +308,48 @@ export class LocatorEngine {
     }
   }
 
+  /**
+   * Focuses exactly one match, then types through the engine's keyboard so
+   * the app receives key events: `fill` sets the value without them.
+   * Composed from the `focus` action and the `keyboard` capability, so the
+   * engine contract does not grow. Each entry of `chunks` is one
+   * `keyboard.type` call, `delayMs` apart, and the whole sequence shares one
+   * action deadline: a pause is cut at the deadline and a keystroke is never
+   * sent past it, so a slow engine cannot stretch the action beyond its
+   * budget. The focus retries a stale node like any action; the typing never
+   * does, because a keystroke may already have landed.
+   */
+  async pressSequentially(
+    expression: LocatorExpression,
+    chunks: readonly string[],
+    delayMs: number,
+    timeoutMs?: number,
+  ): Promise<void> {
+    this.checkAction({ kind: 'focus' });
+    if (!this.session.verbs.has('typeText')) {
+      throw new ConfigurationError(
+        'UNSUPPORTED_CAPABILITY',
+        'pressSequentially is not available on this target: its engine declares no keyboard',
+      );
+    }
+    const deadline = this.deadline(timeoutMs);
+    await this.performUntil(expression, { kind: 'focus' }, deadline);
+    for (const [index, chunk] of chunks.entries()) {
+      if (index > 0) await sleep(Math.min(delayMs, deadline.remaining()), this.signal);
+      if (deadline.expired()) {
+        throw new TestError(
+          'ACTION_FAILED',
+          `operation timed out after typing ${index} of ${chunks.length} characters: ${describeExpression(expression)}`,
+        );
+      }
+      try {
+        await this.session.keyboard.type(chunk, { replace: false }, this.operationWithin(deadline));
+      } catch (cause) {
+        throw translateLocatorError(cause, expression);
+      }
+    }
+  }
+
   /** The action retry loop of `perform`, within a deadline a caller may share across steps. */
   private async performUntil(
     expression: LocatorExpression,

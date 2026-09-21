@@ -45,6 +45,21 @@ test.describe('forms', { tags: ['forms'] }, () => {
     expect(placeholder).toBe('Ada Lovelace');
   });
 
+  test('types with key events where fill leaves the app cold', async ({ screen }) => {
+    const city = screen.getByLabel('City');
+    const suggestions = screen.getByRole('list', { name: 'City suggestions' }).getByRole('listitem');
+
+    await city.fill('W');
+    await expect(city).toHaveValue('W');
+    await expect(suggestions).toHaveCount(0);
+
+    await city.clear();
+    await city.pressSequentially('Wa', { delay: 20 });
+    await expect(city).toHaveValue('Wa');
+    await expect(suggestions).toHaveCount(1);
+    await expect(suggestions.first()).toHaveText('Warsaw');
+  });
+
   test('drives the page with raw keyboard input', async ({ screen, web }) => {
     await screen.getByLabel('Full name').focus();
     await web.keyboard.type('Margaret');

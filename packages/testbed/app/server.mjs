@@ -144,6 +144,10 @@ const pages = {
          <label for="bio">Bio</label>
          <textarea id="bio" placeholder="Tell us about yourself"></textarea>
 
+         <label for="city">City</label>
+         <input id="city" autocomplete="off" />
+         <ul id="city-suggestions" aria-label="City suggestions"></ul>
+
          <label for="team">Team</label>
          <select id="team">
            <option value="platform">Platform</option>
@@ -170,6 +174,21 @@ const pages = {
            const name = document.getElementById('name').value.trim();
            document.querySelector('output').textContent =
              name === '' ? 'Name is required' : 'Saved profile for ' + name;
+         });
+         // Search-as-you-type: suggestions render on keyup, so a value set
+         // without key events leaves the list empty.
+         const cities = ['Warsaw', 'Wroclaw', 'Gdansk', 'Krakow'];
+         const city = document.getElementById('city');
+         city.addEventListener('keyup', () => {
+           const typed = city.value.toLowerCase();
+           const list = document.getElementById('city-suggestions');
+           list.replaceChildren();
+           if (typed === '') return;
+           for (const name of cities.filter((candidate) => candidate.toLowerCase().startsWith(typed))) {
+             const item = document.createElement('li');
+             item.textContent = name;
+             list.appendChild(item);
+           }
          });
        </script>`,
     ),

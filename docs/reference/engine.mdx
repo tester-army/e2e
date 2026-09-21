@@ -206,7 +206,7 @@ export interface OperationContext {
 | `perform` + `actions` | `actions` | `observe` | the agent's grammar verbs (`tap`, `type`, `press`, `select`, `type_secret`, `scroll`, and `tap_at` when the point lands on a listed node) and the `screen`/`Locator` action set with platform actionability checks, each only for a kind listed in `actions` |
 | `locate` | `location` | `observe` | `screen`, `Locator`, `expect(locator)` |
 | `performAt` + `pointerActions` | `pointer` | `observe` | the agent's `tap_at` verb when the point lands on nothing the tree lists, and the test's `screen.tapAt` and `tap({ position })` (all need the `tap` pointer kind) and `screen.swipe({ from, to })` (the `swipeTo` kind): one pointer action at a viewport point in the CSS pixels of `SemanticNode.rect`, with no node behind it |
-| `keyboard.{type,press,dismiss?}` | `keyboard` | `observe` | the agent's `type` and `press` without a target, the keyboard fallback of `type_at` and `press_at` on a point the tree lists nothing at, and `dismiss_keyboard` when `dismiss` exists: input to whatever holds focus, for a field drawn on a canvas or flattened out of a platform's tree |
+| `keyboard.{type,press,dismiss?}` | `keyboard` | `observe` | the agent's `type` and `press` without a target, the keyboard fallback of `type_at` and `press_at` on a point the tree lists nothing at, and `dismiss_keyboard` when `dismiss` exists: input to whatever holds focus, for a field drawn on a canvas or flattened out of a platform's tree; with the `focus` action, `locator.pressSequentially`, which the harness composes as `focus` then `keyboard.type` |
 | `fixtures.<name>` | `<name>` | - | a contributed fixture; `requires: ['<name>']` gates at selection |
 | `state` | `state` | - | `test.setup` sessions and the `session:` option |
 | `artifacts` | `artifacts` | - | `app.screenshot()`, assertion evidence, `artifacts: ['trace']`, `artifacts: ['video']` and `--video` |
@@ -253,11 +253,16 @@ export type EngineCapability =
  */
 export interface EngineKeyboard {
   /**
-   * Types `text` into the focused field, through the platform's keyboard or
-   * text-input path. With `replace`, clears the field first (select-all and
-   * delete on a keyboard surface; the platform's clear on a device). Throw
-   * `NOT_ACTIONABLE` when nothing that accepts text has focus, so the
-   * keystrokes are never silently discarded into the document body.
+   * Types `text` into the focused field as a person typing would, through
+   * the platform's keyboard path: a browser dispatches the key events of each
+   * character, a device sends the text through its keyboard. Where the
+   * platform has key events the app must receive them; setting the value
+   * without keystrokes is not a compliant implementation, since
+   * `locator.pressSequentially` and the agent's `type` rely on the app
+   * reacting as it does to a user. With `replace`, clears the field first
+   * (select-all and delete on a keyboard surface; the platform's clear on a
+   * device). Throw `NOT_ACTIONABLE` when nothing that accepts text has focus,
+   * so the keystrokes are never silently discarded into the document body.
    */
   type(text: string, options: { readonly replace: boolean }, context: OperationContext): Promise<void>;
   /**

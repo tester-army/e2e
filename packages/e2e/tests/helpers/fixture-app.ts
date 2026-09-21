@@ -171,6 +171,32 @@ const PAGES: Record<string, string> = {
   <input id="search" type="search" onkeydown="if (event.key === 'Enter') document.getElementById('submitted').textContent = 'submitted:' + this.value" />
   <output id="submitted" aria-label="Submitted"></output>
 
+  <label for="city">City</label>
+  <input id="city" autocomplete="off" />
+  <output id="keys" aria-label="Keys">0</output>
+  <ul id="cities" aria-label="Cities"></ul>
+  <script>
+    // Suggestions render on key events only: a value set without keystrokes leaves the list empty.
+    const CITIES = ['Warsaw', 'Wroclaw', 'Gdansk'];
+    const city = document.getElementById('city');
+    let keys = 0;
+    city.addEventListener('keydown', () => {
+      keys += 1;
+      document.getElementById('keys').textContent = String(keys);
+    });
+    city.addEventListener('keyup', () => {
+      const typed = city.value.toLowerCase();
+      const list = document.getElementById('cities');
+      list.replaceChildren();
+      if (typed === '') return;
+      for (const name of CITIES.filter((candidate) => candidate.toLowerCase().startsWith(typed))) {
+        const item = document.createElement('li');
+        item.textContent = name;
+        list.appendChild(item);
+      }
+    });
+  </script>
+
   <div id="hover-zone" onmouseenter="document.getElementById('reveal').hidden = false">Hover zone</div>
   <button id="reveal" hidden>Revealed action</button>
 

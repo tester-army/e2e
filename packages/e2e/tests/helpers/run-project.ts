@@ -140,12 +140,17 @@ export async function runProjectWithConfigFile(
   }
 }
 
-/** Finds one result by test title suffix. */
+/**
+ * Finds one result by test title. A miss names the titles the run did produce
+ * and its run-level errors, since an empty run usually means collection failed
+ * (a fixture importing a package that no longer exists, a config the resolver
+ * refused) and the error says which.
+ */
 export function resultByTitle(outcome: RunOutcome, title: string) {
   const result = outcome.results.find((candidate) => candidate.test.title === title);
   if (result === undefined) {
     throw new Error(
-      `no result titled "${title}"; got: ${outcome.results.map((r) => r.test.title).join(', ')}`,
+      `no result titled "${title}"; got: ${outcome.results.map((r) => r.test.title).join(', ')}; run errors: ${JSON.stringify(outcome.report.run.errors)}`,
     );
   }
   return result;

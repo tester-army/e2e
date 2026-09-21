@@ -96,11 +96,16 @@ export type EngineCapability =
  */
 export interface EngineKeyboard {
   /**
-   * Types `text` into the focused field, through the platform's keyboard or
-   * text-input path. With `replace`, clears the field first (select-all and
-   * delete on a keyboard surface; the platform's clear on a device). Throw
-   * `NOT_ACTIONABLE` when nothing that accepts text has focus, so the
-   * keystrokes are never silently discarded into the document body.
+   * Types `text` into the focused field as a person typing would, through
+   * the platform's keyboard path: a browser dispatches the key events of each
+   * character, a device sends the text through its keyboard. Where the
+   * platform has key events the app must receive them; setting the value
+   * without keystrokes is not a compliant implementation, since
+   * `locator.pressSequentially` and the agent's `type` rely on the app
+   * reacting as it does to a user. With `replace`, clears the field first
+   * (select-all and delete on a keyboard surface; the platform's clear on a
+   * device). Throw `NOT_ACTIONABLE` when nothing that accepts text has focus,
+   * so the keystrokes are never silently discarded into the document body.
    */
   type(text: string, options: { readonly replace: boolean }, context: OperationContext): Promise<void>;
   /**

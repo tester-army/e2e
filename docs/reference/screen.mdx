@@ -197,6 +197,12 @@ export interface Locator extends Screen {
   longPress(options?: LongPressOptions): Promise<void>;
   /** Fills exactly one input. Secret values are never logged. */
   fill(value: string | Secret, options?: ActionOptions): Promise<void>;
+  /**
+   * Focuses exactly one input and types `text` through the keyboard, one
+   * character at a time, so the app receives key events. A `Secret` is
+   * refused; it goes through `fill`.
+   */
+  pressSequentially(text: string, options?: PressSequentiallyOptions): Promise<void>;
   /** Clears exactly one input. */
   clear(options?: ActionOptions): Promise<void>;
   /** Sends one key to exactly one node. */
@@ -276,6 +282,22 @@ export interface Locator extends Screen {
   `UNSUPPORTED_CAPABILITY`. See the [key grammar](/reference/engine#keys).
 - `fill` replaces the current content. A `Secret` is resolved on the host
   right before the call and never logged, reported, or sent to a model.
+- `pressSequentially` focuses the input and sends the text as keystrokes
+  through the engine's keyboard, appending to the current content. `fill`
+  sets the value directly and fires no key events, so an autocomplete, a
+  search-as-you-type box, or a masked input wired to `keydown` or `keyup`
+  never reacts to it; this is the action for those. `{ delay }` waits that
+  many milliseconds between characters, each sent in its own keyboard call;
+  without it the whole text goes in one call. Focus, pauses, and keystrokes
+  share the one action deadline: a pause is cut short at it and no character
+  is sent past it, and the action fails with `ACTION_FAILED` naming how many
+  characters landed. It needs the engine's `focus` action and `keyboard`
+  capability, else `UNSUPPORTED_CAPABILITY` before any node resolves, and it
+  relies on the [keyboard contract](/reference/engine#engine): `type`
+  must deliver text as a person typing would, so key events reach the app
+  where the platform has them. A `Secret` is a type error and
+  `INVALID_ARGUMENT` at runtime: a secret is filled, never typed as
+  keystrokes. The step records the locator, not the text, like `fill`.
 - `setInputFiles` paths resolve from the project root. An empty list or blank
   entry throws `INVALID_ARGUMENT`.
 - `dragTo` with a non-runner target throws `INVALID_LOCATOR`.
@@ -291,6 +313,7 @@ await screen.getByRole('button', { name: 'Save' }).tap({ timeout: 10_000 });
 await screen.getByRole('image', { name: 'Seat map' }).tap({ position: { x: 120, y: 48 } });
 await screen.getByRole('textbox', { name: 'Search' }).press('Enter');
 await screen.getByRole('textbox', { name: 'Notes' }).press('ControlOrMeta+a');
+await screen.getByLabel('City').pressSequentially('War', { delay: 50 });
 ```
 
 ## Locator reads
@@ -415,6 +438,12 @@ export interface ActionOptions {
 export interface LongPressOptions extends ActionOptions {
   /** Hold time in milliseconds, 100 through 10000; default 500. */
   duration?: number;
+}
+
+/** `pressSequentially` options: an optional pause between characters. */
+export interface PressSequentiallyOptions extends ActionOptions {
+  /** Milliseconds to wait between characters; omitted types the whole text in one call. */
+  delay?: number;
 }
 
 export interface SwipeOptions {

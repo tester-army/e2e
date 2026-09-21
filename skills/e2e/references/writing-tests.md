@@ -156,10 +156,17 @@ Each action resolves one node, waits for it to be actionable within
 `config.actionTimeout` (30 s, or `{ timeout }`), and performs one operation.
 
 `tap()` (alias `click()`), `doubleTap()`, `longPress({ duration? })`,
-`fill(value | Secret)`, `clear()`, `press(key)`, `check()`, `uncheck()`,
+`fill(value | Secret)`, `pressSequentially(text, { delay? })`, `clear()`,
+`press(key)`, `check()`, `uncheck()`,
 `selectOption(label | { label } | { value } | { index })`, `focus()`, `hover()`,
 `setInputFiles(paths)` (relative to the project root), `dragTo(locator)`,
 `scrollIntoView()`, `swipe({ direction, momentum? })`.
+
+`fill` sets the value and fires no key events. When the app reacts to
+keystrokes (autocomplete, search-as-you-type, a masked input), use
+`pressSequentially`: it focuses the field and types through the keyboard, one
+character per call with `delay`. It takes a plain string only; a `Secret` is
+`INVALID_ARGUMENT` and goes through `fill`.
 
 Coordinates, in CSS pixels, for what the tree does not list: `tap({ position:
 { x, y } })` taps at an offset of the node's top-left corner;

@@ -343,6 +343,12 @@ export interface LongPressOptions extends ActionOptions {
   duration?: number;
 }
 
+/** `pressSequentially` options: an optional pause between characters. */
+export interface PressSequentiallyOptions extends ActionOptions {
+  /** Milliseconds to wait between characters; omitted types the whole text in one call. */
+  delay?: number;
+}
+
 /** A swipe in a direction. */
 export interface SwipeOptions {
   /** Swipe direction. */
@@ -400,6 +406,12 @@ export interface Locator extends Screen {
   longPress(options?: LongPressOptions): Promise<void>;
   /** Fills exactly one input. Secret values are never logged. */
   fill(value: string | Secret, options?: ActionOptions): Promise<void>;
+  /**
+   * Focuses exactly one input and types `text` through the keyboard, one
+   * character at a time, so the app receives key events. A `Secret` is
+   * refused; it goes through `fill`.
+   */
+  pressSequentially(text: string, options?: PressSequentiallyOptions): Promise<void>;
   /** Clears exactly one input. */
   clear(options?: ActionOptions): Promise<void>;
   /** Sends one key to exactly one node. */
