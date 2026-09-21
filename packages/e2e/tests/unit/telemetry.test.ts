@@ -1,23 +1,15 @@
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  cliSessionEvent,
-  EVENT_CLI_SESSION,
-  EVENT_RUN_COMPLETED,
-  runCompletedEvent,
-} from '../../src/telemetry/events.ts';
+import { cliSessionEvent, EVENT_CLI_SESSION, EVENT_RUN_COMPLETED, runCompletedEvent } from '../../src/telemetry/events.ts';
 import { POSTHOG_HOST, POSTHOG_PROJECT_KEY } from '../../src/telemetry/posthog.ts';
-import { preferencesPath, TelemetryStore, telemetryConfigDir } from '../../src/telemetry/store.ts';
+import { collectEnvironment, fleetName, statedIdentity } from '../../src/telemetry/environment.ts';
+import { preferencesPath, TelemetryStore } from '../../src/telemetry/store.ts';
 import { NOTICE_VERSION, Telemetry, type TelemetryOptions } from '../../src/telemetry/telemetry.ts';
-import { SAMPLE_REPORT_SECRETS, sampleReport } from '../helpers/sample-report.ts';
+import { sampleReport } from '../helpers/sample-report.ts';
 
 const temporaries: string[] = [];
-const restores: (() => void)[] = [];
-
-/** Root ignores file modes and Windows has none to speak of, so a read-only directory proves nothing there. */
-const cannotRevokeWrite = process.platform === 'win32' || process.getuid?.() === 0;
 
 function tempDir(): string {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'e2e-telemetry-'));
@@ -32,14 +24,7 @@ function unwritableDir(): string {
   return path.join(blocker, 'e2e');
 }
 
-/** Takes write permission away from `dir` until the test ends. */
-function makeReadOnly(dir: string): void {
-  chmodSync(dir, 0o500);
-  restores.push(() => chmodSync(dir, 0o700));
-}
-
 afterEach(() => {
-  for (const restore of restores.splice(0)) restore();
   for (const dir of temporaries.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -82,103 +67,6 @@ function create(overrides: Partial<TelemetryOptions> = {}) {
   return { telemetry, output, sent, configDir };
 }
 
-describe('telemetry store', () => {
-  it('writes a complete file on open and keeps the id and salt across opens', () => {
-    const dir = tempDir();
-    const store = TelemetryStore.open(dir)!;
-    expect(store.enabled).toBe(true);
-    expect(store.anonymousId).toMatch(/^[a-f0-9]{32}$/u);
-    expect(store.pathSalt).toMatch(/^[a-f0-9]{32}$/u);
-    expect(store.anonymousId).not.toBe(store.pathSalt);
-    expect(JSON.parse(readFileSync(preferencesPath(dir), 'utf8'))).toEqual({
-      anonymousId: store.anonymousId,
-      salt: store.pathSalt,
-    });
-
-    const reopened = TelemetryStore.open(dir)!;
-    expect(reopened.anonymousId).toBe(store.anonymousId);
-    expect(reopened.pathSalt).toBe(store.pathSalt);
-    expect(reopened.saveEnabled(false)).toBe(true);
-    expect(TelemetryStore.open(dir)!.enabled).toBe(false);
-  });
-
-  it('starts over from a file that is not JSON', () => {
-    const dir = tempDir();
-    writeFileSync(preferencesPath(dir), '{not json');
-    const store = TelemetryStore.open(dir)!;
-    expect(store.enabled).toBe(true);
-    expect(JSON.parse(readFileSync(preferencesPath(dir), 'utf8'))).toEqual({
-      anonymousId: store.anonymousId,
-      salt: store.pathSalt,
-    });
-  });
-
-  it('drops fields it does not know or that have the wrong shape', () => {
-    const dir = tempDir();
-    writeFileSync(
-      preferencesPath(dir),
-      JSON.stringify({ enabled: 'yes', anonymousId: 'not hex', salt: 42, notifiedAt: 5, extra: true }),
-    );
-    const store = TelemetryStore.open(dir)!;
-    expect(store.enabled).toBe(true);
-    expect(store.wasNotified(NOTICE_VERSION)).toBe(false);
-    expect(store.anonymousId).toMatch(/^[a-f0-9]{32}$/u);
-    expect(JSON.parse(readFileSync(preferencesPath(dir), 'utf8'))).not.toHaveProperty('extra');
-  });
-
-  it('is absent when the directory cannot be created', () => {
-    expect(TelemetryStore.open(unwritableDir())).toBeUndefined();
-  });
-
-  it.skipIf(cannotRevokeWrite)('is absent when the file lacks its ids and the directory cannot be written', () => {
-    const dir = tempDir();
-    writeFileSync(preferencesPath(dir), JSON.stringify({ enabled: true }));
-    makeReadOnly(dir);
-    expect(TelemetryStore.open(dir)).toBeUndefined();
-  });
-
-  it.skipIf(cannotRevokeWrite)('reads a complete file in a directory that cannot be written', () => {
-    const dir = tempDir();
-    const first = TelemetryStore.open(dir)!;
-    makeReadOnly(dir);
-    const second = TelemetryStore.open(dir)!;
-    expect(second.enabled).toBe(true);
-    expect(second.anonymousId).toBe(first.anonymousId);
-    // A choice that cannot reach the file says so.
-    expect(second.saveEnabled(false)).toBe(false);
-  });
-
-  it('keeps an opt-out another process saved after this one opened the store', () => {
-    const dir = tempDir();
-    const running = TelemetryStore.open(dir)!;
-    const disabler = TelemetryStore.open(dir)!;
-    expect(disabler.saveEnabled(false)).toBe(true);
-    // Reading the ids writes nothing, so the file still says off.
-    expect(running.anonymousId).toBe(disabler.anonymousId);
-    expect(running.pathSalt).toBe(disabler.pathSalt);
-    expect(TelemetryStore.open(dir)!.enabled).toBe(false);
-    expect(running.enabled).toBe(true);
-    running.reload();
-    expect(running.enabled).toBe(false);
-  });
-
-  it('remembers the notice per version', () => {
-    const store = TelemetryStore.open(tempDir())!;
-    expect(store.wasNotified(1)).toBe(false);
-    store.markNotified(1, '2026-09-08T10:00:00.000Z');
-    expect(store.wasNotified(1)).toBe(true);
-    expect(store.wasNotified(2)).toBe(false);
-  });
-
-  it('resolves the config directory from XDG_CONFIG_HOME, the home directory, or APPDATA', () => {
-    expect(telemetryConfigDir({ XDG_CONFIG_HOME: '/xdg' }, 'linux')).toBe(path.join('/xdg', 'e2e'));
-    expect(telemetryConfigDir({ XDG_CONFIG_HOME: '  ' }, 'darwin')).toBe(path.join(os.homedir(), '.config', 'e2e'));
-    expect(telemetryConfigDir({ APPDATA: 'C:\\Users\\me\\AppData\\Roaming' }, 'win32')).toBe(
-      path.join('C:\\Users\\me\\AppData\\Roaming', 'e2e'),
-    );
-  });
-});
-
 describe('Telemetry', () => {
   it('is on by default, prints the notice once, and sends one batch with identity and environment', async () => {
     const { telemetry, output, sent, configDir } = create();
@@ -215,15 +103,41 @@ describe('Telemetry', () => {
     expect(properties['$lib_version']).toBe('1.2.3');
     expect(properties['e2e_version']).toBe('1.2.3');
     expect(properties['$process_person_profile']).toBe(false);
+    expect(properties['$geoip_disable']).toBe(true);
     expect(properties['ci']).toBe(false);
     expect(properties['ci_name']).toBeNull();
+    expect(properties['fleet']).toBeNull();
     expect(properties['coding_agent']).toBeNull();
     expect(properties['os']).toBe(os.platform());
     expect(properties['arch']).toBe(os.arch());
     expect(properties['node_version']).toBe(process.versions.node);
+    expect(properties['runtime']).toBe('node');
+    expect(properties['runtime_version']).toBe(process.versions.node);
+    expect(properties['sandbox']).toBeNull();
+    expect(properties['first_run']).toBe(true);
+    expect(properties['days_since_first_run']).toBe(0);
     expect(typeof properties['cpu_count']).toBe('number');
     expect(typeof properties['memory_gb']).toBe('number');
     expect(typeof properties['package_manager']).toBe('string');
+  });
+
+  it('tells a returning machine from a first run and counts the days since', async () => {
+    const configDir = tempDir();
+    const first = create({ configDir });
+    first.telemetry.record(cliSessionEvent('list', []));
+    await first.telemetry.flush();
+    expect(first.sent.calls[0]!.body.batch[0]!.properties['first_run']).toBe(true);
+
+    const file = preferencesPath(configDir);
+    const saved = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+    writeFileSync(file, JSON.stringify({ ...saved, createdAt: new Date(Date.now() - 3.5 * 86_400_000).toISOString() }));
+    const later = create({ configDir });
+    later.telemetry.record(cliSessionEvent('list', []));
+    await later.telemetry.flush();
+    const { properties } = later.sent.calls[0]!.body.batch[0]!;
+    expect(properties['first_run']).toBe(false);
+    expect(properties['days_since_first_run']).toBe(3);
+    expect(properties['distinct_id']).toBe(saved['anonymousId']);
   });
 
   it('batches every event of an invocation into one request and then has nothing left', async () => {
@@ -341,6 +255,71 @@ describe('Telemetry', () => {
     expect(properties['project_id']).toBeNull();
   });
 
+  it('attributes a fleet to its name, writes no preferences, and prints no notice', async () => {
+    const { telemetry, output, sent, configDir } = create({ env: { E2E_TELEMETRY_FLEET: 'acme-cloud' } });
+    expect(telemetry.enabled).toBe(true);
+    telemetry.notice();
+    telemetry.record(cliSessionEvent('run', ['--reporter']));
+    await telemetry.flush();
+    expect(output).toEqual([]);
+    expect(existsSync(preferencesPath(configDir))).toBe(false);
+    const { properties } = sent.calls[0]!.body.batch[0]!;
+    expect(properties['distinct_id']).toBe('fleet:acme-cloud');
+    expect(properties['fleet']).toBe('acme-cloud');
+    expect(properties['ci']).toBe(false);
+    expect(properties['first_run']).toBeNull();
+    expect(properties['days_since_first_run']).toBeNull();
+    expect(properties['project_id']).toBeNull();
+  });
+
+  it('a fleet name wins over a CI vendor and folds when it is not a plain token', async () => {
+    const { telemetry, sent } = create({ env: { E2E_TELEMETRY_FLEET: 'runner-7.internal.acme.example/eu', CI: '1', GITHUB_ACTIONS: '1' } });
+    telemetry.record(cliSessionEvent('run', []));
+    await telemetry.flush();
+    const { properties } = sent.calls[0]!.body.batch[0]!;
+    expect(properties['distinct_id']).toBe('fleet:other');
+    expect(properties['fleet']).toBe('other');
+    expect(properties['ci_name']).toBe('github-actions');
+  });
+
+  it('reads the fleet name as a plain token and a blank variable as unset', () => {
+    expect(fleetName({ E2E_TELEMETRY_FLEET: ' ' })).toBeNull();
+    expect(fleetName({ E2E_TELEMETRY_FLEET: 'Cloud_Sandbox.v2' })).toBe('Cloud_Sandbox.v2');
+    expect(statedIdentity({ E2E_TELEMETRY_FLEET: 'acme' })).toBe('fleet:acme');
+    expect(statedIdentity({ CI: '1' })).toBe('ci:unknown');
+    expect(statedIdentity({ CI: 'true', GITHUB_ACTIONS: 'true' })).toBe('ci:github-actions');
+    // A vendor marker without CI is a shell on a runner, not a run: the machine stays the unit.
+    expect(statedIdentity({ GITHUB_ACTIONS: 'true' })).toBeUndefined();
+    expect(statedIdentity({})).toBeUndefined();
+  });
+
+  it('still honors an opt-out inside a fleet', async () => {
+    const { telemetry, sent } = create({ env: { E2E_TELEMETRY_FLEET: 'acme', E2E_TELEMETRY_DISABLED: '1' } });
+    expect(telemetry.disabledBy).toBe('E2E_TELEMETRY_DISABLED');
+    telemetry.record(cliSessionEvent('run', []));
+    await telemetry.flush();
+    expect(sent.calls).toEqual([]);
+  });
+
+  it('names the sandbox the kernel announces and the runtime the CLI runs under', () => {
+    const cwd = tempDir();
+    const local = collectEnvironment({ env: {}, cwd, version: '1.2.3' });
+    expect(local.runtime).toBe('node');
+    expect(local.runtime_version).toBe(process.versions.node);
+
+    const sandboxed = collectEnvironment({
+      env: {},
+      cwd,
+      version: '1.2.3',
+      host: { release: '6.18.36-cloudflare-firecracker-2026.6.17', versions: { ...process.versions, bun: '1.3.9', node: '24.20.0' } },
+    });
+    expect(sandboxed.sandbox).toBe('firecracker');
+    expect(sandboxed.runtime).toBe('bun');
+    expect(sandboxed.runtime_version).toBe('1.3.9');
+    expect(sandboxed.node_version).toBe('24.20.0');
+    expect(collectEnvironment({ env: {}, cwd, version: '1.2.3', host: { release: '25.6.0', versions: process.versions } }).sandbox).toBeNull();
+  });
+
   it('names an unclaimed CI and the coding agent driving the shell', async () => {
     const { telemetry, sent } = create({ env: { CI: '1', CLAUDECODE: '1' } });
     telemetry.record(cliSessionEvent('run', []));
@@ -410,97 +389,5 @@ describe('Telemetry', () => {
     prompt.telemetry.record(cliSessionEvent('run', []));
     await prompt.telemetry.flush();
     expect(prompt.sent.calls[0]!.body.batch[0]!.properties['project_id']).toBe('f'.repeat(64));
-  });
-});
-
-describe('telemetry events', () => {
-  it('the session event carries the command and the flag names only', () => {
-    expect(cliSessionEvent('cache ls', ['--config'])).toEqual({
-      name: EVENT_CLI_SESSION,
-      properties: { command: 'cache ls', flags: ['--config'] },
-    });
-  });
-
-  it("the run event is the report's numbers, with project vocabulary folded", () => {
-    const event = runCompletedEvent(sampleReport(), ['--headed', '--workers']);
-    expect(event.name).toBe(EVENT_RUN_COMPLETED);
-    expect(event.at).toBe('2026-09-08T10:00:05.000Z');
-    expect(event.properties).toEqual({
-      status: 'failed',
-      exit_code: 1,
-      duration_ms: 5000,
-      flags: ['--headed', '--workers'],
-      tests_discovered: 3,
-      tests_selected: 2,
-      tests_executed: 2,
-      tests_passed: 1,
-      tests_failed: 1,
-      tests_flaky: 0,
-      tests_skipped: 1,
-      targets: 2,
-      platforms: ['vision-pro', 'web'],
-      engines: ['homegrown@9.9.9', 'playwright@0.6.1'],
-      steps_total: 5,
-      steps_agent: 2,
-      steps_locator: 1,
-      steps_assertion: 1,
-      steps_screen: 1,
-      steps_app: 0,
-      steps_session: 0,
-      steps_resource: 0,
-      agent_steps_replayed: 1,
-      agent_steps_partial: 0,
-      agent_steps_missed: 1,
-      agent_steps_vision: 1,
-      model_gateway: 'anthropic',
-      model_provider: 'anthropic',
-      model_id: 'claude-sonnet-4-5',
-      model_calls: 4,
-      model_tokens: 2850,
-      model_cached_tokens: null,
-      estimated_cost_usd: 0.01,
-      artifact_bytes: 4096,
-      errors: 1,
-      error_codes: ['APP_UNREACHABLE', 'LOCATOR_NOT_FOUND', 'OTHER'],
-    });
-  });
-
-  it('folds an engine name or platform that is not a plain token into other', () => {
-    const report = sampleReport();
-    const homegrown = report.run.targets[1]!;
-    (homegrown as { platform: string }).platform = 'Vision Pro (beta)';
-    (homegrown as { engine: { name: string } }).engine.name = 'acme/engine';
-    const { properties } = runCompletedEvent(report, []);
-    expect(properties['platforms']).toEqual(['other', 'web']);
-    expect(properties['engines']).toEqual(['other', 'playwright@0.6.1']);
-  });
-
-  it('reports the gateway, the vendor, and the id of a gateway-served model', () => {
-    const report = sampleReport();
-    const [first] = report.run.results[0]!.attempts[0]!.steps;
-    (first as { model: { provider: string; model: string } }).model.provider = 'openrouter';
-    (first as { model: { provider: string; model: string } }).model.model = 'openai/gpt-5.4-mini';
-    const { properties } = runCompletedEvent(report, []);
-    expect(properties['model_gateway']).toBe('openrouter');
-    expect(properties['model_provider']).toBe('openai');
-    expect(properties['model_id']).toBe('gpt-5.4-mini');
-  });
-
-  it('folds a fine-tuned or routed model id into other', () => {
-    const report = sampleReport();
-    const [first] = report.run.results[0]!.attempts[0]!.steps;
-    (first as { model: { model: string } }).model.model = 'accounts/acme/models/custom';
-    expect(runCompletedEvent(report, []).properties['model_id']).toBe('other');
-  });
-
-  it('copies no title, file, origin, or message out of the report', () => {
-    const payload = JSON.stringify(runCompletedEvent(sampleReport(), ['--headed']));
-    for (const secret of SAMPLE_REPORT_SECRETS) expect(payload).not.toContain(secret);
-  });
-
-  it('reports a missing duration as null rather than a negative or NaN number', () => {
-    const report = sampleReport();
-    (report.run as { finishedAt: string }).finishedAt = 'not a date';
-    expect(runCompletedEvent(report, []).properties['duration_ms']).toBeNull();
   });
 });

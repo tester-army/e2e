@@ -38,18 +38,34 @@ Each command sends a session event. `run` and `explore` also send a run event.
 Events go in one request when the command ends, with a two-second deadline
 for all telemetry work.
 
-Every event carries these properties:
+Every event carries these properties.
+
+Who ran it:
 
 | Property | Value |
 | --- | --- |
-| `distinct_id` | A random id stored in the preferences file. CI uses `ci:<vendor>` instead |
+| `distinct_id` | A random id stored in the preferences file. CI uses `ci:<vendor>` instead, and a platform that runs e2e for its users uses `fleet:<name>` when it sets `E2E_TELEMETRY_FLEET` |
 | `project_id` | A hash derived from the repository's root commit, shared across full clones. Outside git or in a shallow clone, a hash of the project path with a random local salt. `null` in CI when no root commit is available |
 | `session_id` | A random id for this one invocation |
+| `first_run`, `days_since_first_run` | Whether this command created the preferences file, and whole days since it was created. `null` in CI and in a fleet, where no machine persists, and for a preferences file from before the time was recorded |
+
+Where it ran:
+
+| Property | Value |
+| --- | --- |
 | `os`, `os_release`, `arch`, `cpu_count`, `memory_gb`, `docker`, `wsl`, `tty` | The machine class |
+| `sandbox` | The microVM the kernel announces itself as (`firecracker`), else `null` |
 | `ci`, `ci_name` | Whether `CI` is set, and the vendor when one announces itself (`github-actions`, `gitlab`, `circleci`, ...) |
+| `fleet` | The value of `E2E_TELEMETRY_FLEET` when it is a plain token, `other` when it is not, `null` when unset |
 | `coding_agent` | The coding agent whose shell ran the command, when one announces itself (`claude-code`, `cursor`, `codex`, ...) |
-| `e2e_version`, `node_version`, `package_manager` | Versions and the package manager that invoked the CLI |
-| `$lib`, `$lib_version`, `$process_person_profile` | `e2e`, its version, and `false`: PostHog keeps no person profile |
+
+Versions:
+
+| Property | Value |
+| --- | --- |
+| `e2e_version`, `package_manager` | The e2e version and the package manager that invoked the CLI |
+| `runtime`, `runtime_version`, `node_version` | `node`, `bun`, or `deno`, and its version; `node_version` is Node's own version, or the Node compatibility version under Bun or Deno |
+| `$lib`, `$lib_version`, `$process_person_profile`, `$geoip_disable` | `e2e`, its version, `false`, and `true`: PostHog keeps no person profile and derives no location |
 
 `e2e_cli_session`, once per command:
 
@@ -85,11 +101,21 @@ CI runs are attributed to the CI vendor rather than to a machine, no
 preferences file is written on the runner, and no notice is printed. Set
 `E2E_TELEMETRY_DISABLED: '1'` in the job's `env` to send nothing from CI.
 
+## In a fleet
+
+A platform that runs e2e on its users' behalf starts each run on a fresh
+machine, and every fresh machine would otherwise count as a new user. Set
+`E2E_TELEMETRY_FLEET=<name>` in those machines and they are attributed to
+`fleet:<name>` instead, like CI: no preferences file, no notice, and no
+project id outside git. Or set `E2E_TELEMETRY_DISABLED=1` and send nothing.
+
 ## Where it goes
 
 Events go to a PostHog project we operate, in one request to
-`eu.i.posthog.com`. PostHog keeps no person profile for the ids; the data is
-read in aggregate. Telemetry falls under the
+`eu.i.posthog.com`. PostHog keeps no person profile for the ids and stores
+no request address; every event also asks it to skip its GeoIP step, so no
+country, city, or coordinates are derived from where the request came from.
+The data is read in aggregate. Telemetry falls under the
 [security policy](https://github.com/tester-army/e2e/blob/main/SECURITY.md),
 which also lists every other outbound connection a run can make.
 

@@ -20,11 +20,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { writeFileAtomicSync } from '../internal/atomic-write.ts';
 import { envValue } from '../internal/env.ts';
+import { timestamp } from '../internal/ids.ts';
 
 interface Preferences {
   enabled?: boolean;
   anonymousId?: string;
   salt?: string;
+  /** When the ids were generated: the first time e2e ran on this machine. */
+  createdAt?: string;
   /** When the notice was printed, and which version of it. */
   notifiedAt?: string;
   noticeVersion?: number;
@@ -34,6 +37,7 @@ interface Preferences {
 type Identified = Preferences & { anonymousId: string; salt: string };
 
 const FILE_NAME = 'telemetry.json';
+const DAY_MS = 86_400_000;
 const HEX = /^[a-f0-9]{16,128}$/u;
 
 /** The preferences file inside a config directory. */
@@ -64,6 +68,9 @@ function sanitize(value: unknown): Preferences {
     preferences.anonymousId = raw['anonymousId'];
   }
   if (typeof raw['salt'] === 'string' && HEX.test(raw['salt'])) preferences.salt = raw['salt'];
+  if (typeof raw['createdAt'] === 'string' && !Number.isNaN(Date.parse(raw['createdAt']))) {
+    preferences.createdAt = raw['createdAt'];
+  }
   if (typeof raw['notifiedAt'] === 'string') preferences.notifiedAt = raw['notifiedAt'];
   if (typeof raw['noticeVersion'] === 'number') preferences.noticeVersion = raw['noticeVersion'];
   return preferences;
@@ -85,30 +92,36 @@ function randomHex(): string {
 export class TelemetryStore {
   /** The preferences file, for messages that tell the user where a choice was saved. */
   readonly path: string;
+  /** True when this open generated the ids: the first e2e command on this machine. */
+  readonly fresh: boolean;
   private preferences: Identified;
 
-  private constructor(filePath: string, preferences: Identified) {
+  private constructor(filePath: string, preferences: Identified, fresh: boolean) {
     this.path = filePath;
     this.preferences = preferences;
+    this.fresh = fresh;
   }
 
   /**
    * Opens the store in `directory`. A complete file is only read, so a
-   * read-only preferences file keeps working. A missing file, a file that is
-   * not JSON, or one without an id or a salt is completed in one write that
-   * also creates the directory; a torn write must not turn into a permanent
-   * opt-in or opt-out either way. Returns undefined when that write fails,
-   * which the caller reads as off.
+   * read-only preferences file keeps working, and a file from before the
+   * creation time was recorded stays as it is: its age is unknown, not
+   * today. A missing file, a file that is not JSON, or one without an id or
+   * a salt is completed in one write that also creates the directory; a torn
+   * write must not turn into a permanent opt-in or opt-out either way.
+   * Returns undefined when that write fails, which the caller reads as off.
    */
   static open(directory: string): TelemetryStore | undefined {
     const filePath = preferencesPath(directory);
     const read = readPreferences(filePath);
-    const store = new TelemetryStore(filePath, {
-      ...read,
-      anonymousId: read?.anonymousId ?? randomHex(),
-      salt: read?.salt ?? randomHex(),
-    });
-    if (read !== undefined && read.anonymousId !== undefined && read.salt !== undefined) return store;
+    if (read?.anonymousId !== undefined && read.salt !== undefined) {
+      return new TelemetryStore(filePath, { ...read, anonymousId: read.anonymousId, salt: read.salt }, false);
+    }
+    const store = new TelemetryStore(
+      filePath,
+      { ...read, anonymousId: randomHex(), salt: randomHex(), createdAt: timestamp() },
+      true,
+    );
     try {
       mkdirSync(directory, { recursive: true });
     } catch {
@@ -130,6 +143,13 @@ export class TelemetryStore {
   /** The local salt that keeps a hashed project path unrecoverable; never leaves the machine. */
   get pathSalt(): string {
     return this.preferences.salt;
+  }
+
+  /** Whole days since the ids were generated; undefined for a file from before the time was recorded. */
+  ageDays(now: number = Date.now()): number | undefined {
+    const created = this.preferences.createdAt;
+    if (created === undefined) return undefined;
+    return Math.max(0, Math.floor((now - Date.parse(created)) / DAY_MS));
   }
 
   /** Saves the choice; false when the file could not be written and the choice stayed in memory. */

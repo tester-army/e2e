@@ -52,6 +52,7 @@ variable for a name absent from the config is ignored. An empty value is
 | `E2E_TELEMETRY_DISABLED` | flag | Turns anonymous usage telemetry off. `e2e telemetry disable` saves the same choice in the preferences file |
 | `DO_NOT_TRACK` | flag | Same as `E2E_TELEMETRY_DISABLED` |
 | `E2E_TELEMETRY_DEBUG` | flag | Prints every telemetry event to stderr instead of sending it |
+| `E2E_TELEMETRY_FLEET` | value | Names the platform running e2e for its users; events are attributed to `fleet:<name>` instead of a per-machine id, no preferences file is written, and no notice is printed. A value that is not a plain token is sent as `other` |
 | `XDG_CONFIG_HOME` | value | Directory of the preferences file, `$XDG_CONFIG_HOME/e2e`; default `~/.config/e2e` |
 | `APPDATA` | value | The same on Windows, `%APPDATA%\e2e`; default `~/AppData/Roaming/e2e` |
 

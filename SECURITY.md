@@ -82,15 +82,17 @@ and step counts, engine names and versions, platforms, cache replay counts,
 model provider and public model id, token totals, and the runner's error codes.
 Events are attributed to a random per-machine id and a hashed project id (the
 SHA-256 of the repository's root commit); in CI the vendor's name stands in for
-the machine, and without git, or with a shallow checkout, there is no project
-id. Test titles, file paths,
+the machine, a platform that sets `E2E_TELEMETRY_FLEET` is attributed to that
+name, and without git, or with a shallow checkout, there is no project id. Test titles, file paths,
 URLs, instructions, observations, messages, stack traces, environment
 variables, and credentials are never sent. Engine names, platforms, and model
 ids are sent as your config declares them when they are plain tokens and as
 `other` otherwise; an error code that is not an upper-case token is `OTHER`.
 Every property
 is listed at [e2e.tester.army/docs/telemetry](https://e2e.tester.army/docs/telemetry),
-and `E2E_TELEMETRY_DEBUG=1` prints each event instead of sending it.
+and `E2E_TELEMETRY_DEBUG=1` prints each event instead of sending it. PostHog
+stores no request address and, because every event carries
+`$geoip_disable: true`, derives no location from it.
 
 Opt out with `e2e telemetry disable`, `E2E_TELEMETRY_DISABLED=1`, or
 `DO_NOT_TRACK=1`. Telemetry is a CLI concern; the runner itself sends nothing.

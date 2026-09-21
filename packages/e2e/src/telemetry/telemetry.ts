@@ -18,23 +18,25 @@
  * Identity is deliberately weak: a random per-machine id from the preferences
  * file, a random per-invocation session id, and a hashed project id. In CI
  * there is no preferences file and every run is attributed to the CI vendor,
- * so a fleet of ephemeral runners does not masquerade as a crowd of users.
+ * so a fleet of ephemeral runners does not masquerade as a crowd of users. A
+ * platform that runs e2e for its users names itself the same way with
+ * `E2E_TELEMETRY_FLEET`, and its sandboxes count as one fleet, not as a new
+ * machine each.
  */
 
 import { randomBytes } from 'node:crypto';
 import picocolors from 'picocolors';
 import { DOCS_URL } from '../cli/docs-url.ts';
-import { isCiMode } from '../config/resolve.ts';
 import { envFlag } from '../internal/env.ts';
 import { timestamp } from '../internal/ids.ts';
-import { ciName, collectEnvironment } from './environment.ts';
+import { collectEnvironment, statedIdentity } from './environment.ts';
 import type { TelemetryEvent } from './events.ts';
 import { postBatch, type PostHogEvent } from './posthog.ts';
 import { anonymousProjectId } from './project.ts';
 import { preferencesPath, TelemetryStore, telemetryConfigDir } from './store.ts';
 
 /** Bumped when what is collected changes enough that the notice must show again. */
-export const NOTICE_VERSION = 1;
+export const NOTICE_VERSION = 2;
 /** The longest a flush may hold the process; the project lookup and the request share it. */
 const DEFAULT_FLUSH_MS = 2_000;
 
@@ -83,7 +85,8 @@ export class Telemetry {
   private readonly fetchImpl: typeof fetch;
   private readonly write: (text: string) => void;
   private readonly projectId: typeof anonymousProjectId;
-  private readonly ci: boolean;
+  /** The fleet or CI vendor that stands in for the machine; undefined when the preferences file is the identity. */
+  private readonly statedId: string | undefined;
   /** The store once `store()` opened it, whether or not the file could exist. */
   private opened: { readonly store: TelemetryStore | undefined } | undefined;
   private readonly queue: TelemetryEvent[] = [];
@@ -97,7 +100,7 @@ export class Telemetry {
     this.fetchImpl = options.fetch ?? fetch;
     this.write = options.write ?? ((text) => void process.stderr.write(text));
     this.projectId = options.projectId ?? anonymousProjectId;
-    this.ci = isCiMode(this.env);
+    this.statedId = statedIdentity(this.env);
   }
 
   /** Opened on first use, so `--version` and `--help` never touch the disk; undefined when the file cannot exist. */
@@ -110,7 +113,7 @@ export class Telemetry {
   get disabledBy(): TelemetryDisabledBy | undefined {
     if (envFlag(this.env, 'E2E_TELEMETRY_DISABLED')) return 'E2E_TELEMETRY_DISABLED';
     if (envFlag(this.env, 'DO_NOT_TRACK')) return 'DO_NOT_TRACK';
-    if (this.ci) return undefined;
+    if (this.statedId !== undefined) return undefined;
     const store: TelemetryStore | undefined = this.store();
     if (store === undefined) return 'store';
     return store.enabled ? undefined : 'preference';
@@ -143,11 +146,11 @@ export class Telemetry {
 
   /**
    * Prints the notice the first time this machine runs a version of it, and
-   * records that it did. Nothing in CI, where the output is a log nobody is
-   * reading and there is no file to remember it in; nothing when off.
+   * records that it did. Nothing in CI or a fleet, where the output is a log
+   * nobody is reading and there is no file to remember it in; nothing when off.
    */
   notice(): void {
-    if (this.ci || !this.enabled) return;
+    if (this.statedId !== undefined || !this.enabled) return;
     const store: TelemetryStore | undefined = this.store();
     if (store === undefined || store.wasNotified(NOTICE_VERSION)) return;
     store.markNotified(NOTICE_VERSION, timestamp());
@@ -159,9 +162,9 @@ export class Telemetry {
     if (!this.enabled) return;
     this.queue.push(event);
     // Git is asked for the project id now, while the command runs, so the
-    // flush at the end waits on the network alone. In CI there is no store,
-    // so a path outside git has nothing to salt it and yields no id.
-    const store: TelemetryStore | undefined = this.ci ? undefined : this.store();
+    // flush at the end waits on the network alone. A fleet or CI has no
+    // store, so a path outside git has nothing to salt it and yields no id.
+    const store: TelemetryStore | undefined = this.statedId === undefined ? this.store() : undefined;
     this.project ??= this.projectId(this.cwd, store?.pathSalt);
   }
 
@@ -175,13 +178,14 @@ export class Telemetry {
     const events = this.queue.splice(0);
     if (events.length === 0) return;
     // A choice saved from another process while this command ran wins over the snapshot taken at its start.
-    const store: TelemetryStore | undefined = this.ci ? undefined : this.store();
+    const store: TelemetryStore | undefined = this.statedId === undefined ? this.store() : undefined;
     store?.reload();
     if (!this.enabled) return;
     const deadline = AbortSignal.timeout(maxWaitMs);
     const project = await Promise.race([this.project, aborted(deadline)]);
-    // Outside CI, `enabled` has just vouched for the store; no store means a CI run, attributed to the vendor.
-    const distinctId = store === undefined ? `ci:${ciName(this.env) ?? 'unknown'}` : store.anonymousId;
+    // `enabled` has just vouched for one of the two; nothing is sent that cannot be attributed.
+    const distinctId = this.statedId ?? store?.anonymousId;
+    if (distinctId === undefined) return;
     const environment = collectEnvironment({ env: this.env, cwd: this.cwd, version: this.version });
     // The debug output and the request body are the same objects, so what
     // `E2E_TELEMETRY_DEBUG` shows is what would have been sent, key for key.
@@ -190,14 +194,19 @@ export class Telemetry {
       timestamp: event.at ?? timestamp(),
       properties: {
         ...environment,
+        // Null for a fleet or CI, where no machine persists.
+        first_run: store?.fresh ?? null,
+        days_since_first_run: store?.ageDays() ?? null,
         ...event.properties,
         distinct_id: distinctId,
         project_id: project ?? null,
         session_id: this.sessionId,
         $lib: 'e2e',
         $lib_version: this.version,
-        // Anonymous events: PostHog keeps no person profile for the id.
+        // Anonymous events: PostHog keeps no person profile for the id, and
+        // derives no location from the request address.
         $process_person_profile: false,
+        $geoip_disable: true,
       },
     }));
     if (this.debug) {
