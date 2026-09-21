@@ -6,6 +6,7 @@ import { collectModule, test } from '../../src/collect/registry.ts';
 import { resolveOptions, select } from '../../src/collect/select.ts';
 import { resolveConfig } from '../../src/config/resolve.ts';
 import { defineEngine } from '../../src/engine/index.ts';
+import { resultId } from '../../src/internal/ids.ts';
 
 const noop = async () => {};
 const ENV = { APP_URL: 'http://localhost:3000' } as NodeJS.ProcessEnv;
@@ -282,6 +283,62 @@ describe('select', () => {
     expect(() => select(col, config(), { grepInvert: [/./] })).toThrow(
       '3 tests were collected but none is runnable: 3 have titles matching /./; pass --pass-with-no-tests to allow this',
     );
+  });
+
+  it('keeps only the tests the last run did not pass, by result id per target and agent', async () => {
+    const col = await collection(() => {
+      test('passed', noop);
+      test('failed', noop);
+      test('crashed', noop);
+    });
+    const cfg = configWith({ agents: { default: {}, admin: {} } }, { agents: ['default', 'admin'] });
+    const failedId = (title: string, agent: string) => resultId(col.tests.find((entry) => entry.title === title)!.id, 'web', agent);
+    const selection = select(col, cfg, { lastFailed: new Set([failedId('failed', 'default'), failedId('crashed', 'admin')]) });
+    expect(selection.pairs.filter((pair) => pair.disposition === 'run').map((pair) => [pair.test.title, pair.agent])).toEqual([
+      ['failed', 'default'],
+      ['crashed', 'admin'],
+    ]);
+    expect(selection.pairs[0]!.skip?.reason).toBe('did not fail in the last run');
+    expect(() => select(col, config(), { lastFailed: new Set() })).toThrow(
+      '3 tests were collected but none is runnable: 3 did not fail in the last run, which had no failures; pass --pass-with-no-tests to allow this',
+    );
+  });
+
+  it('cuts a shard from the selected tests after every other filter, keeping a serial group together', async () => {
+    const col = await collection(() => {
+      test('a', noop);
+      test('b', { tags: ['slow'] }, noop);
+      test.describe('wizard', { serial: true }, () => {
+        test('step 1', noop);
+        test('step 2', noop);
+      });
+      test('c', noop);
+      test('d', noop);
+    });
+    const running = (selection: ReturnType<typeof select>) =>
+      selection.pairs.filter((pair) => pair.disposition === 'run').map((pair) => pair.test.title);
+    // Five items once `b` is excluded: a, the wizard, c, d. Two shards split them 2 and 2.
+    const first = select(col, config(), { excludeTags: ['slow'], shard: { index: 1, total: 2 } });
+    expect(running(first)).toEqual(['a', 'step 1', 'step 2']);
+    expect(first.pairs.find((pair) => pair.test.title === 'c')!.skip?.reason).toBe('outside the shard');
+    expect(running(select(col, config(), { excludeTags: ['slow'], shard: { index: 2, total: 2 } }))).toEqual(['c', 'd']);
+    // Three shards of four items: 2, 1, 1, the first shard taking the remainder, every item in exactly one.
+    const shards = [1, 2, 3].map((index) => running(select(col, config(), { excludeTags: ['slow'], shard: { index, total: 3 } })));
+    expect(shards).toEqual([['a', 'step 1', 'step 2'], ['c'], ['d']]);
+    expect(() => select(col, config(), { grep: [/^a$/], shard: { index: 2, total: 2 } })).toThrow(
+      '6 tests were collected but none is runnable: 1 fall outside shard 2/2 (1 test split across 2 shards), 5 have titles matching none of /^a$/; pass --pass-with-no-tests to allow this',
+    );
+  });
+
+  it('brings only the setup tests a shard needs', async () => {
+    const col = await collection(() => {
+      test.setup('login', { sessions: ['user'] }, noop);
+      test('anonymous', noop);
+      test('signed in', { session: 'user' }, noop);
+    });
+    const setup = (selection: ReturnType<typeof select>) => selection.pairs.find((pair) => pair.test.kind === 'setup')!.disposition;
+    expect(setup(select(col, config(), { shard: { index: 1, total: 2 } }))).toBe('filtered');
+    expect(setup(select(col, config(), { shard: { index: 2, total: 2 } }))).toBe('run');
   });
 
   it('names the tag filter against the tags the suite declares', async () => {

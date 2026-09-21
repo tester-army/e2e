@@ -40,6 +40,7 @@ jq '.run.results[] | select(.status != "passed") | .attempts[-1]
 | `INVALID_CONFIG` | Unknown key or a stale shape: a top-level `app`, `defineConfig`, a `backend` key, `json` combined with `list` reporters | Move app options into `web({ ... })`; use `satisfies E2EConfig`; the message names the key |
 | `CONFIG_NOT_FOUND`, `CONFIG_AMBIGUOUS` | Wrong `--config` path; both `.ts` and `.mts` present | Fix the path; keep one config file |
 | `NO_TESTS` | The glob or a positional matched nothing, or a filter left nothing to run | The message names each positional that matched nothing and, under `--tag`, each tag no test declares with the nearest declared one. Check `tests` in the config, the `.e2e.ts` suffix, and the tag names |
+| `NO_LAST_RUN` | `--last-failed` found no `.e2e/report.json` to read | Run once without the flag; the rerun reads the report that run writes |
 | `COLLECTION_ERROR` | `async` describe body, `test.setup` inside `describe`, an option forbidden in a serial group, registration outside collection | Rework the structure per `writing-tests` |
 | `APP_UNREACHABLE` | `command` never answered `readyUrl` within `startupTimeout`; a service exited non-zero | Read the last log lines quoted under the error; set `command.log` if it says to; check the port and `url`; pass the env the app needs through `command.env`; raise `startupTimeout` |
 | `APP_ALREADY_RUNNING` | Something already serves `url` when the runner wanted to start `command` | Stop it, or set `reuseExisting: true` for local runs |

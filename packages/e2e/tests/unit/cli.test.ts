@@ -200,6 +200,26 @@ describe('e2e run argument parsing', () => {
     );
   });
 
+  it('parses --shard as index/total and --last-failed as a flag', async () => {
+    await invoke('run', '--shard', '2/3', '--last-failed');
+    const options = lastRunOptions();
+    expect(options.shard).toEqual({ index: 2, total: 3 });
+    expect(options.lastFailed).toBe(true);
+  });
+
+  it('rejects a --shard that is not index/total within range with exit code 2 and never runs', async () => {
+    for (const value of ['0/3', '4/3', '2', 'a/b', '1/0', '-1/2', '1.5/2']) {
+      stderrSpy.mockClear();
+      process.exitCode = undefined;
+      await invoke('run', '--shard', value);
+      expect(process.exitCode, value).toBe(2);
+      expect(written(stderrSpy)).toBe(
+        `error: option '--shard <index/total>' argument '${value}' is invalid. must be index/total, such as 2/3, with the index from 1 through the total\n(add --help for usage)\n`,
+      );
+    }
+    expect(runMock).not.toHaveBeenCalled();
+  });
+
   it('accepts --tag-mode all', async () => {
     await invoke('run', '--tag-mode', 'all');
     expect(lastRunOptions().tagMode).toBe('all');
@@ -437,6 +457,8 @@ describe('e2e list', () => {
       '--exclude-tag',
       '--grep',
       '--grep-invert',
+      '--last-failed',
+      '--shard',
       '--pass-with-no-tests',
       '--reporter',
       '-h',
@@ -523,6 +545,8 @@ describe('e2e --version and --help', () => {
       '--exclude-tag',
       '--grep',
       '--grep-invert',
+      '--last-failed',
+      '--shard',
       '--pass-with-no-tests',
       '--headed',
       '--agent',

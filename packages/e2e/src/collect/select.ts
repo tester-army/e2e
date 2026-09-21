@@ -1,6 +1,7 @@
 /** Option resolution and test-target selection. */
 
 import { ConfigurationError, CollectionError } from '../internal/errors.ts';
+import { resultId } from '../internal/ids.ts';
 import { didYouMean, suggestionNote } from '../internal/suggest.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import type { Capability } from '../types.ts';
@@ -66,6 +67,12 @@ export interface Selection {
 /** How several `--tag` values combine: a test carries any of them, or every one. */
 export type TagMode = 'any' | 'all';
 
+/** One shard of a run split `total` ways, `index` counted from 1 (`--shard 2/3`). */
+export interface Shard {
+  readonly index: number;
+  readonly total: number;
+}
+
 export interface SelectionFilters {
   readonly tags?: readonly string[];
   readonly tagMode?: TagMode;
@@ -75,6 +82,14 @@ export interface SelectionFilters {
   readonly grep?: readonly RegExp[];
   /** Patterns that leave a test out when its title matches any of them (`--grep-invert`). */
   readonly grepInvert?: readonly RegExp[];
+  /**
+   * The result ids (`resultId(testId, target, agent)`) of the tests the
+   * previous run did not pass (`--last-failed`): only those run. Empty means
+   * nothing failed, so nothing is selected.
+   */
+  readonly lastFailed?: ReadonlySet<string>;
+  /** The one shard of the selection to run, once every other filter applied (`--shard`). */
+  readonly shard?: Shard;
   readonly targetIds?: readonly string[];
 }
 
@@ -92,6 +107,8 @@ const FILTERED_REASON = {
   excludedTag: 'carries an excluded tag',
   grep: 'title does not match --grep',
   grepInvert: 'title matches --grep-invert',
+  lastFailed: 'did not fail in the last run',
+  shard: 'outside the shard',
 } as const;
 
 /** Resolves effective options: test > nearest group > outer groups > config > default. */
@@ -294,7 +311,8 @@ export function select(
   }
 
   const withClosure = applySerialClosure(pairs);
-  const withSessions = applySessionSelection(withClosure, sessionProducers);
+  const withShard = filters.shard === undefined ? withClosure : applyShard(withClosure, filters.shard);
+  const withSessions = applySessionSelection(withShard, sessionProducers);
 
   const runnableOrdinary = withSessions.filter(
     (pair) => pair.disposition === 'run' && pair.test.kind === 'test',
@@ -379,6 +397,11 @@ function describeNoTests(
     [FILTERED_REASON.excludedTag, filters.excludeTags === undefined ? undefined : `carry one of the excluded tags ${nameTags(filters.excludeTags, declaredTags)}`],
     [FILTERED_REASON.grep, grep === undefined ? undefined : `have titles matching none of ${grep.join(', ')}`],
     [FILTERED_REASON.grepInvert, grepInvert === undefined ? undefined : `have titles matching ${grepInvert.join(', ')}`],
+    [
+      FILTERED_REASON.lastFailed,
+      filters.lastFailed === undefined ? undefined : `${FILTERED_REASON.lastFailed}${filters.lastFailed.size === 0 ? ', which had no failures' : ''}`,
+    ],
+    [FILTERED_REASON.shard, filters.shard === undefined ? undefined : describeShard(filters.shard, pairs)],
   ]);
   for (const pair of pairs) {
     if (pair.disposition === 'run' && pair.test.kind === 'test') continue;
@@ -405,6 +428,16 @@ function describeNoTests(
   }
   const summary = [...reasons].map(([reason, ids]) => `${ids.size} ${reason}`).join(', ');
   return `${tests.length} tests were collected but none is runnable: ${summary}`;
+}
+
+/**
+ * The shard that left nothing runnable, with what it was cut from: `fall
+ * outside shard 4/4 (3 tests split across 4 shards)`.
+ */
+function describeShard(shard: Shard, pairs: readonly TestTargetPair[]): string {
+  // Told after the cut, so the items are the running pairs and the ones the shard itself left out.
+  const items = shardItems(pairs, (pair) => pair.disposition === 'run' || pair.skip?.reason === FILTERED_REASON.shard).length;
+  return `fall outside shard ${shard.index}/${shard.total} (${items} ${items === 1 ? 'test' : 'tests'} split across ${shard.total} shards)`;
 }
 
 /**
@@ -523,6 +556,13 @@ function classifyPair(
         skip: { cause: 'filtered', reason: FILTERED_REASON.grepInvert },
       };
     }
+    if (filters.lastFailed !== undefined && !filters.lastFailed.has(resultId(test.id, target.name, agent))) {
+      return {
+        ...base,
+        disposition: 'filtered',
+        skip: { cause: 'filtered', reason: FILTERED_REASON.lastFailed },
+      };
+    }
   }
 
   if (options.platforms !== undefined && !options.platforms.includes(target.platform)) {
@@ -585,6 +625,52 @@ function applySerialClosure(pairs: readonly TestTargetPair[]): TestTargetPair[] 
       return { ...pair, disposition: 'run' as const, skip: undefined };
     }
     return pair;
+  });
+}
+
+/**
+ * What a shard is cut from: the ordinary pairs `included` (the runnable
+ * ones, at the cut), a serial group counting once per target and agent so it
+ * is never split, in report order. The key doubles as the pair's item id.
+ */
+function shardItems(
+  pairs: readonly TestTargetPair[],
+  included: (pair: TestTargetPair) => boolean = (pair) => pair.disposition === 'run',
+): string[] {
+  const items: string[] = [];
+  const seen = new Set<string>();
+  for (const pair of pairs) {
+    if (pair.test.kind !== 'test' || !included(pair)) continue;
+    const item = shardItem(pair);
+    if (seen.has(item)) continue;
+    seen.add(item);
+    items.push(item);
+  }
+  return items;
+}
+
+function shardItem(pair: TestTargetPair): string {
+  return `${pair.target.name}::${pair.agent}::${pair.test.serialId ?? pair.test.id}`;
+}
+
+/**
+ * Keeps the shard's contiguous slice of the items and leaves the rest
+ * unselected. Contiguous rather than dealt round-robin so a shard's tests
+ * come from as few files as possible; the slices differ in size by at most
+ * one item, the first shards taking the remainder. Applied after every other
+ * filter and the serial closure, before the setup tests are chosen, so each
+ * shard brings only the setups it needs.
+ */
+function applyShard(pairs: readonly TestTargetPair[], shard: Shard): TestTargetPair[] {
+  const items = shardItems(pairs);
+  const size = Math.floor(items.length / shard.total);
+  const remainder = items.length % shard.total;
+  const from = (shard.index - 1) * size + Math.min(shard.index - 1, remainder);
+  const to = from + size + (shard.index - 1 < remainder ? 1 : 0);
+  const kept = new Set(items.slice(from, to));
+  return pairs.map((pair) => {
+    if (pair.disposition !== 'run' || pair.test.kind !== 'test' || kept.has(shardItem(pair))) return pair;
+    return { ...pair, disposition: 'filtered' as const, skip: { cause: 'filtered' as const, reason: FILTERED_REASON.shard } };
   });
 }
 

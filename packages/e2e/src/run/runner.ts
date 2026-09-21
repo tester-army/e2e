@@ -11,7 +11,7 @@ import {
 } from '../config/resolve.ts';
 import { collect, collectInMemory, type Collection } from '../collect/collect.ts';
 import type { ModuleRegistration } from '../collect/registry.ts';
-import { select, selectTargets, type Selection, type SelectionFilters, type TagMode } from '../collect/select.ts';
+import { select, selectTargets, type Selection, type SelectionFilters, type Shard, type TagMode } from '../collect/select.ts';
 import {
   classifyError,
   combineExitCodes,
@@ -39,6 +39,7 @@ import type { ResultRecord, RunError, SerialGroupRecord } from './records.ts';
 import { runUnits } from './scheduler.ts';
 import { buildWorkPlans, plannedSlots, type TargetWorkPlan } from './units.ts';
 import { SessionStore } from './sessions.ts';
+import { readLastFailed } from './last-run.ts';
 import { childProcessSpawner } from './worker/handle.ts';
 import { setSecretRegistry } from '../secrets.ts';
 import { withAbort } from '../internal/time.ts';
@@ -63,6 +64,14 @@ export interface RunOptions {
   grep?: readonly RegExp[] | undefined;
   /** Tests whose title matches one of the patterns are left out (`--grep-invert`). */
   grepInvert?: readonly RegExp[] | undefined;
+  /**
+   * Only the tests the previous run did not pass (`--last-failed`), read
+   * from the `report.json` this run will overwrite. No report is
+   * `NO_LAST_RUN`; a run with nothing failed selects nothing.
+   */
+  lastFailed?: boolean | undefined;
+  /** One shard of the selection, cut once every other filter applied (`--shard 2/3`). */
+  shard?: Shard | undefined;
   targetIds?: readonly string[] | undefined;
   headed?: boolean | undefined;
   retries?: number | undefined;
@@ -152,8 +161,11 @@ export type ListOptions = Pick<
   | 'excludeTags'
   | 'grep'
   | 'grepInvert'
+  | 'lastFailed'
+  | 'shard'
   | 'targetIds'
   | 'passWithNoTests'
+  | 'artifactsDir'
   | 'rawConfig'
   | 'env'
 >;
@@ -186,7 +198,7 @@ export async function list(options: ListOptions = {}): Promise<{ pairs: ListedPa
   const selection = select(
     collection,
     config,
-    selectionFilters(options),
+    await selectionFilters(options, config),
     options.passWithNoTests !== undefined ? { passWithNoTests: options.passWithNoTests } : {},
   );
   const pairs: ListedPair[] = [];
@@ -363,7 +375,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
    * is not retried — the destination just failed.
    */
   const writeCanonicalReport = async (config: ResolvedConfig, document: Report1Document): Promise<string | undefined> => {
-    const target = path.join(path.dirname(resolveArtifactsRoot(config, options.artifactsDir)), 'report.json');
+    const target = reportSibling(config, options.artifactsDir, 'report.json');
     try {
       await writeJsonReport(target, document);
       return target;
@@ -395,7 +407,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       aiTraceRecorder.dispose();
       aiTraceRecorder = undefined;
     }
-    const target = path.join(path.dirname(resolveArtifactsRoot(config, options.artifactsDir)), 'ai-trace.json');
+    const target = reportSibling(config, options.artifactsDir, 'ai-trace.json');
     try {
       await writeJsonReport(target, aiTrace.document());
       return target;
@@ -532,7 +544,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
           const selection = select(
             collection,
             config,
-            selectionFilters(options),
+            await selectionFilters(options, config),
             options.passWithNoTests !== undefined ? { passWithNoTests: options.passWithNoTests } : {},
           );
           return { collection, selection };
@@ -812,8 +824,17 @@ function workerEnvFor(plans: readonly TargetWorkPlan[], env: NodeJS.ProcessEnv):
   };
 }
 
-function selectionFilters(options: ListOptions): SelectionFilters {
+/**
+ * The selection filters the options ask for. `--last-failed` reads the
+ * previous run's report here, before collection is judged, so a missing
+ * report is a collection-phase failure like any other selection error.
+ */
+async function selectionFilters(options: ListOptions, config: ResolvedConfig): Promise<SelectionFilters> {
+  const lastFailed =
+    options.lastFailed === true ? await readLastFailed(reportSibling(config, options.artifactsDir, 'report.json')) : undefined;
   return {
+    ...(lastFailed !== undefined ? { lastFailed } : {}),
+    ...(options.shard !== undefined ? { shard: options.shard } : {}),
     ...(options.tags !== undefined ? { tags: options.tags } : {}),
     ...(options.tagMode !== undefined ? { tagMode: options.tagMode } : {}),
     ...(options.excludeTags !== undefined ? { excludeTags: options.excludeTags } : {}),
@@ -963,4 +984,9 @@ function isSummaryRow(value: unknown): value is ReporterSummary[number] {
 function resolveArtifactsRoot(config: ResolvedConfig, override: string | undefined): string {
   if (override !== undefined) return path.resolve(config.projectRoot, override);
   return path.join(config.projectRoot, '.e2e', 'artifacts');
+}
+
+/** A file the run keeps beside the artifact tree: `.e2e/report.json`, `.e2e/ai-trace.json`. */
+function reportSibling(config: ResolvedConfig, artifactsDir: string | undefined, name: string): string {
+  return path.join(path.dirname(resolveArtifactsRoot(config, artifactsDir)), name);
 }

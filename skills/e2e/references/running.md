@@ -23,6 +23,8 @@ npx e2e telemetry [disable|enable] # anonymous usage telemetry: status, or the s
 | `--tag <tags>` | Tag filter, comma-separated or repeated: any of the tags, or every one with `--tag-mode all`. An empty `--target`, `--tag`, or `--agent` value is a usage error, exit 2. |
 | `--exclude-tag <tags>` | Leave out tests carrying any of these tags, whatever else selected them. |
 | `--grep <pattern>`, `--grep-invert <pattern>` | Keep, or leave out, tests whose title matches a regular expression: the describe titles and the test title joined by spaces (`checkout pays`), not the file or the tags. Bare pattern, or `'/pattern/i'` for flags; repeat for alternatives. |
+| `--last-failed` | Only the tests the previous run did not pass, read from `.e2e/report.json`. No report is `NO_LAST_RUN`, exit 2: run once without the flag first. |
+| `--shard <index/total>` | One contiguous slice of the selected tests (`--shard 2/3`), cut after every other filter; serial groups stay together and each shard brings its own setup tests. Same command per CI job with a different index. |
 | `--headed` | Visible browser or simulator when the engine supports it. |
 | `--agent <names>` | Run unpinned tests as other configured agents (`agents.<name>`), comma-separated or repeated; several names run each such test once per agent. Default is `agents.default`. |
 | `--workers <n>`, `--retries <n>` | Override the resolved values. |
@@ -40,13 +42,15 @@ npx e2e run signup.e2e.ts   # the same file by name, from any directory the conf
 npx e2e run tests/signup.e2e.ts:12   # the one test declared at line 12
 npx e2e run tests/agent --tag smoke
 npx e2e run --tag smoke --exclude-tag slow --grep checkout
+npx e2e run --last-failed   # the loop after a red run
+npx e2e run --shard 2/3     # one CI job of three
 npx e2e run 'tests/**/*.smoke.e2e.ts' --target chromium --workers 1 --retries 0
 CI=1 npx e2e run            # reproduce the CI defaults locally
 ```
 
 `list` takes the same files and the selection flags (`--config`, `--target`,
 `--tag`, `--tag-mode`, `--exclude-tag`, `--grep`, `--grep-invert`,
-`--pass-with-no-tests`) and prints one line per
+`--last-failed`, `--shard`, `--pass-with-no-tests`) and prints one line per
 test-target pair, `file › title [target] #tag`, then exits without starting the
 app, an engine, or a worker. `--reporter json` prints `{ "pairs": [...] }`.
 Use it to check a filter before a run.

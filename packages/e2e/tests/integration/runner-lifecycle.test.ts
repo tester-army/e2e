@@ -3,7 +3,7 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
-import { listProject, resultByTitle, runProject, type RunOutcome } from '../helpers/run-project.ts';
+import { listProject, resultByTitle, runExisting, runProject, type RunOutcome } from '../helpers/run-project.ts';
 
 describe('runner lifecycle', () => {
   let app: FixtureApp;
@@ -679,6 +679,39 @@ test('other', { tags: ['smoke'] }, async () => {});
       await expect(listProject({ 'tests/empty.txt': '' }, { appUrl: 'http://127.0.0.1:9' })).rejects.toMatchObject({
         code: 'NO_TESTS',
       });
+    },
+    120_000,
+  );
+
+  it(
+    'runs only what the previous run did not pass under --last-failed, and needs a report to read',
+    async () => {
+      const files = {
+        'tests/rerun.e2e.ts': `import { test } from 'e2e';
+test('passes', async () => {});
+test('fails', async () => {
+  throw new Error('still broken');
+});
+test('also passes', async () => {});
+`,
+      };
+      const fresh = await runProject(files, { appUrl: app.url, runOptions: { lastFailed: true } });
+      expect(fresh.outcome.exitCode).toBe(2);
+      expect(fresh.outcome.report.run.errors.map((error) => [error.code, error.phase])).toEqual([['NO_LAST_RUN', 'collection']]);
+      expect(fresh.outcome.report.run.errors[0]!.message).toContain(path.join(fresh.project.dir, '.e2e', 'report.json'));
+
+      const first = await runExisting(fresh.project, { appUrl: app.url });
+      expect(first.exitCode).toBe(1);
+      const second = await runExisting(fresh.project, { appUrl: app.url, runOptions: { lastFailed: true } });
+      expect(second.exitCode).toBe(1);
+      const byTitle = second.results.toSorted((a, b) => a.test.declarationIndex - b.test.declarationIndex);
+      expect(byTitle.map((result) => [result.test.title, result.selected, result.status])).toEqual([
+        ['passes', false, 'skipped'],
+        ['fails', true, 'failed'],
+        ['also passes', false, 'skipped'],
+      ]);
+      expect(byTitle[0]!.skip?.reason).toBe('did not fail in the last run');
+      fresh.project.cleanup();
     },
     120_000,
   );

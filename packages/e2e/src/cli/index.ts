@@ -7,7 +7,7 @@ import picocolors from 'picocolors';
 import { detectPackageManager, execCommand, runScriptCommand } from '../internal/package-manager.ts';
 import { packageVersion } from '../internal/package-version.ts';
 import { classifyError, exitCodeForCategory } from '../internal/errors.ts';
-import type { TagMode } from '../collect/select.ts';
+import type { Shard, TagMode } from '../collect/select.ts';
 import { list, run, type ListedPair, type RunOptions, type RunOutcome } from '../run/runner.ts';
 import { explore, STEP_BOUNDS, TIMEOUT_BOUNDS } from '../explore/index.ts';
 import { BUILTIN_REPORTERS, isBuiltinReporter } from '../report/builtin.ts';
@@ -78,6 +78,17 @@ function parsePattern(value: string, previous: RegExp[] = []): RegExp[] {
   }
 }
 
+/** `index/total` for `--shard`, both counted from 1, the index within the total. */
+function parseShard(value: string): Shard {
+  const match = /^([1-9]\d*)\/([1-9]\d*)$/u.exec(value);
+  const index = match === null ? Number.NaN : Number(match[1]);
+  const total = match === null ? Number.NaN : Number(match[2]);
+  if (!Number.isSafeInteger(index) || !Number.isSafeInteger(total) || index > total) {
+    throw new InvalidArgumentError('must be index/total, such as 2/3, with the index from 1 through the total');
+  }
+  return { index, total };
+}
+
 /** An integer inside a closed range, for the explore budgets. */
 function parseBoundedInt(bounds: { readonly min: number; readonly max: number }): (value: string) => number {
   return (value) => {
@@ -140,6 +151,8 @@ function selectionOptions(command: Command): Command {
     .option('--exclude-tag <tags>', 'leave out tests carrying any of these tags, comma-separated or repeated', parseNames('tag'))
     .option('--grep <pattern>', 'only tests whose title matches the regular expression (describe titles and test title, space-joined); repeat for alternatives', parsePattern)
     .option('--grep-invert <pattern>', 'leave out tests whose title matches the regular expression; repeat for alternatives', parsePattern)
+    .option('--last-failed', 'only the tests the previous run did not pass, read from .e2e/report.json')
+    .option('--shard <index/total>', 'one contiguous slice of the selected tests, such as 2/3; serial groups stay together', parseShard)
     .option('--pass-with-no-tests', 'exit 0 on an empty selection instead of NO_TESTS');
 }
 
@@ -150,17 +163,23 @@ interface SelectionFlagValues {
   excludeTag?: string[];
   grep?: RegExp[];
   grepInvert?: RegExp[];
+  lastFailed?: boolean;
+  shard?: Shard;
   passWithNoTests?: boolean;
 }
 
 /** The shared selection flags as the runner's options. */
-function selectionRunOptions(options: SelectionFlagValues): Pick<RunOptions, 'tags' | 'tagMode' | 'excludeTags' | 'grep' | 'grepInvert' | 'passWithNoTests'> {
+function selectionRunOptions(
+  options: SelectionFlagValues,
+): Pick<RunOptions, 'tags' | 'tagMode' | 'excludeTags' | 'grep' | 'grepInvert' | 'lastFailed' | 'shard' | 'passWithNoTests'> {
   return {
     tags: options.tag,
     tagMode: options.tagMode,
     excludeTags: options.excludeTag,
     grep: options.grep,
     grepInvert: options.grepInvert,
+    lastFailed: options.lastFailed,
+    shard: options.shard,
     passWithNoTests: options.passWithNoTests,
   };
 }
@@ -460,6 +479,8 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           'e2e run --tag smoke,billing --tag-mode all',
           'e2e run --tag smoke --exclude-tag slow',
           "e2e run --grep checkout --grep-invert '/refund/i'",
+          'e2e run --last-failed',
+          'e2e run --shard 2/3',
           'e2e run --reporter list,junit --workers 4 --retries 2',
           'e2e run --agent ux tests/onboarding.e2e.ts',
           'e2e run --agent buyer,admin tests/checkout.e2e.ts',
@@ -623,7 +644,14 @@ function createProgram(version: string, telemetry: Telemetry): Command {
       'after',
       [
         '',
-        examples(['e2e list', 'e2e list tests/signup.e2e.ts', 'e2e list --tag smoke --target web', 'e2e list --grep checkout', 'e2e list --reporter json']),
+        examples([
+          'e2e list',
+          'e2e list tests/signup.e2e.ts',
+          'e2e list --tag smoke --target web',
+          'e2e list --grep checkout',
+          'e2e list --shard 2/3',
+          'e2e list --reporter json',
+        ]),
         '',
         docsLine('/reference/cli#e2e-list'),
       ].join('\n'),
