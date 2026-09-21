@@ -31,9 +31,9 @@
   },
   "devDependencies": {
     "@e2edev/mobile": "workspace:*",
-    "@types/node": "26.4.1",
+    "@types/node": "26.6.1",
     "@types/react": "19.1.4",
-    "ai": "7.0.105",
+    "ai": "7.0.106",
     "e2e": "workspace:*",
     "typescript": "7.0.2"
   }

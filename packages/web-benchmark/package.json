@@ -22,10 +22,10 @@
   },
   "devDependencies": {
     "@e2edev/github": "workspace:*",
-    "@types/node": "26.4.1",
+    "@types/node": "26.6.1",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
-    "ai": "7.0.105",
+    "ai": "7.0.106",
     "playwright": "1.63.0",
     "typescript": "7.0.2"
   }

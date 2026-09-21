@@ -35,10 +35,10 @@
   ],
   "devDependencies": {
     "@changesets/changelog-github": "1.0.1",
-    "@changesets/cli": "3.0.2",
-    "@types/node": "26.4.1",
-    "fallow": "3.24.1",
-    "oxlint": "1.82.0",
+    "@changesets/cli": "3.0.3",
+    "@types/node": "26.6.1",
+    "fallow": "3.27.0",
+    "oxlint": "1.83.0",
     "typescript": "7.0.2",
     "zod": "4.6.1"
   },

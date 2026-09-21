@@ -71,12 +71,12 @@
     }
   },
   "devDependencies": {
-    "@types/node": "26.4.1",
+    "@types/node": "26.6.1",
     "@types/pngjs": "6.0.5",
-    "ai": "7.0.105",
+    "ai": "7.0.106",
     "e2e": "workspace:*",
     "typescript": "7.0.2",
-    "vitest": "5.0.0"
+    "vitest": "5.0.1"
   },
   "engines": {
     "node": ">=22.12.0"
