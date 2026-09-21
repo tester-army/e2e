@@ -167,6 +167,11 @@ export async function performPointerDrag(
 const ANSI_PATTERN = /\u001b\[\d+(?:;\d+)*m/g;
 
 /** A failure's message with terminal control sequences removed. */
+/** True for a plain object; the shape the object options take. Config runs as JavaScript, so the types alone are no guard. */
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 export function message(cause: unknown): string {
   const text = cause instanceof Error ? cause.message : String(cause);
   return text.replace(ANSI_PATTERN, '');

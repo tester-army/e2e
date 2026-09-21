@@ -30,6 +30,7 @@ import {
   type OperationContext,
   type TextPattern,
 } from 'e2e/engine';
+import { toContextCookies, type Cookie } from './cookies.ts';
 import type { DialogHandler } from './dialogs.ts';
 import { message as causeMessage, translatePwError } from './support.ts';
 import { compileEvaluation } from './evaluation.ts';
@@ -74,28 +75,6 @@ export interface WebResponse {
   /** Reads the response body as text. */
   text(): Promise<string>;
 }
-
-export interface CookieFields {
-  /** Cookie name. */
-  name: string;
-  /** Cookie value. */
-  value: string;
-  /** Unix timestamp in whole seconds. */
-  expires?: number;
-  /** HttpOnly flag. */
-  httpOnly?: boolean;
-  /** Secure flag. */
-  secure?: boolean;
-  /** SameSite attribute. */
-  sameSite?: 'Strict' | 'Lax' | 'None';
-}
-
-/** `url`, or `domain` with an optional `path`, never both. */
-export type Cookie = CookieFields &
-  (
-    | { url: string; domain?: never; path?: never }
-    | { url?: never; domain: string; path?: string }
-  );
 
 export interface WebExpectation {
   /** Inverts the matcher. */
@@ -410,19 +389,7 @@ export function createWebFixture(surface: PlaywrightSurface, context: EngineFixt
         );
       }
       return surface.guard(context.operation(), 'setCookies', async () => {
-        await surface.requireContext().addCookies(
-          cookies.map((cookie) => ({
-            name: cookie.name,
-            value: cookie.value,
-            ...(cookie.url === undefined
-              ? { domain: cookie.domain, path: cookie.path ?? '/' }
-              : { url: cookie.url }),
-            ...(cookie.expires !== undefined ? { expires: cookie.expires } : {}),
-            ...(cookie.httpOnly !== undefined ? { httpOnly: cookie.httpOnly } : {}),
-            ...(cookie.secure !== undefined ? { secure: cookie.secure } : {}),
-            ...(cookie.sameSite !== undefined ? { sameSite: cookie.sameSite } : {}),
-          })),
-        );
+        await surface.requireContext().addCookies(toContextCookies(cookies));
       });
     },
     setViewport: (size) =>

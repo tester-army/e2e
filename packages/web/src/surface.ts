@@ -37,6 +37,7 @@ import { matchesText } from 'e2e/engine';
 import { classifyActionError, dispatchLocatorAction, dispatchPointerAction } from './actions.ts';
 import { BrowserConnection, connectCdp, type BrowserName } from './browser-connection.ts';
 import { AttemptSession, type StorageState } from './attempt-session.ts';
+import { configuredCookies, seedCookies, toContextCookies, type ContextCookie, type WebCookie } from './cookies.ts';
 import { DialogRouter } from './dialogs.ts';
 import { ensureBrowsersInstalled } from './install.ts';
 import { applyPostSteps, frameSelectors, projectExpression } from './locators.ts';
@@ -167,6 +168,17 @@ export interface WebOptions extends EngineAppDeclaration {
    */
   readonly basicAuth?: WebBasicAuth;
   /**
+   * Cookies set in every browser context the engine creates, before its
+   * first request: a sessionless test's, the one `app.clearState()` opens,
+   * and the one a saved session is restored into. The shape `web.setCookies`
+   * takes; a cookie naming no `url` or `domain` targets the app's `url`. A
+   * cookie a restored session carries under the same name keeps the
+   * session's value. For the notices an app shows every new visitor (a demo
+   * banner, a cookie consent) whose acknowledgement the app stores in a
+   * cookie, so no test and no agent has to close them.
+   */
+  readonly cookies?: readonly WebCookie[];
+  /**
    * The attribute that carries an element's test id: what the `testId` query
    * (`screen.getByTestId`) resolves and what `SemanticNode.testId` reports.
    * Defaults to `data-testid`.
@@ -194,6 +206,8 @@ export class PlaywrightSurface {
   /** Injected request headers, names lowercased so they replace the browser's own of the same name. */
   private readonly headers: Readonly<Record<string, string>> | undefined;
   private readonly basicAuth: WebBasicAuth | undefined;
+  /** Configured cookies, resolved to the shape `addCookies` takes, seeded into every context. */
+  private readonly cookies: readonly ContextCookie[] | undefined;
   private readonly testIdAttribute: string;
   private app: EngineAppInfo = {};
   private headed = false;
@@ -213,6 +227,7 @@ export class PlaywrightSurface {
     this.viewport = options.viewport ?? DEFAULT_VIEWPORT;
     this.headers = options.headers === undefined ? undefined : lowercaseNames(options.headers);
     this.basicAuth = options.basicAuth;
+    this.cookies = options.cookies === undefined ? undefined : toContextCookies(configuredCookies(options.cookies, options.url));
     this.testIdAttribute = options.testIdAttribute ?? DEFAULT_TEST_ID_ATTRIBUTE;
   }
 
@@ -316,6 +331,7 @@ export class PlaywrightSurface {
         await target.addInitScript(CLOSED_SHADOW_ROOTS_INIT_SCRIPT);
         target.setDefaultTimeout(CONTEXT_DEFAULT_TIMEOUT_MS);
         target.on('dialog', (dialog) => { void dialogs.dispatch(dialog); });
+        await seedCookies(target, this.cookies);
         await installSiteHeaders(target, this.app.site, this.headers);
         for (const stored of routes) await target.route(stored.predicate, stored.handler);
       },

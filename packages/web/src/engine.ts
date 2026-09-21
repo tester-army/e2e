@@ -18,6 +18,7 @@ import {
 } from 'e2e/engine';
 import { createRequire } from 'node:module';
 import { PlaywrightSurface, type WebOptions } from './surface.ts';
+import { isRecord } from './support.ts';
 import { createWebFixture } from './web.ts';
 
 /** Creates one Playwright engine: one browser per worker, one context per attempt. */
@@ -63,10 +64,10 @@ export function web(options: WebOptions = {}): EngineHandle {
   if (recoverable && typeof options.connect?.reconnectEndpoint !== 'function') {
     throw new ConfigurationError('INVALID_CONFIG', 'connect.reconnectEndpoint must be a function');
   }
-  if (recoverable && (options.headers !== undefined || options.basicAuth !== undefined)) {
+  if (recoverable && (options.headers !== undefined || options.basicAuth !== undefined || options.cookies !== undefined)) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
-      'connect.reconnectEndpoint uses a persistent context; headers and basicAuth require a newly created context',
+      'connect.reconnectEndpoint uses a persistent context; headers, basicAuth, and cookies require a newly created context',
     );
   }
   const surface = new PlaywrightSurface(options);
@@ -128,11 +129,6 @@ const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 /** A control character no HTTP field value may carry; a horizontal tab is the one the grammar allows. */
 // oxlint-disable-next-line no-control-regex -- the control characters are the point
 const FIELD_VALUE_CONTROL = /[\u0000-\u0008\u000A-\u001F\u007F]/;
-
-/** True for a plain object; the shape both options take. Config runs as JavaScript, so the types alone are no guard. */
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 /**
  * Refuses a header the browser could not send, at config load rather than at

@@ -1,8 +1,9 @@
 /**
- * The `headers`, `basicAuth`, and `testIdAttribute` options are checked at
- * config load, so a header the browser could never send or an attribute no
- * element could carry fails the run before a browser launches. What the
- * browser does with valid ones is in tests/integration.
+ * The `headers`, `basicAuth`, `cookies`, and `testIdAttribute` options are
+ * checked at config load, so a header the browser could never send, a cookie
+ * it could not scope, or an attribute no element could carry fails the run
+ * before a browser launches. What the browser does with valid ones is in
+ * tests/integration.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -58,6 +59,69 @@ describe('web({ basicAuth })', () => {
     expect(() =>
       web({ basicAuth: { username: 'ada', password: undefined as unknown as string } }),
     ).toThrowError(/password string/);
+  });
+});
+
+describe('web({ cookies })', () => {
+  it('accepts the web.setCookies shape, with or without a url', () => {
+    expect(() =>
+      web({
+        url: 'http://127.0.0.1:3000',
+        cookies: [
+          { name: 'om_demo_notice_ack', value: 'ack', sameSite: 'Lax' },
+          { url: 'https://staging.example.test/app', name: 'consent', value: '1', secure: true, httpOnly: true, expires: 4_102_444_800 },
+          { domain: '.example.test', path: '/', name: 'tz', value: 'UTC' },
+        ],
+      }),
+    ).not.toThrow();
+    expect(() => web({ cookies: [] })).not.toThrow();
+    // A schemeless app url takes the harness's scheme rule, so the default target still resolves.
+    expect(() => web({ url: 'localhost:3000', cookies: [{ name: 'ack', value: '1' }] })).not.toThrow();
+    expect(() => web({ url: 'staging.example.test', cookies: [{ name: 'ack', value: '1' }] })).not.toThrow();
+    expect(() => web({ url: 'http://127.0.0.1:0', cookies: [{ name: 'ack', value: '1' }] })).not.toThrow();
+  });
+
+  it('rejects cookies that are not an array of objects as INVALID_CONFIG', () => {
+    for (const cookies of [null, {}, 'ack=1', 3]) {
+      expect(() => web({ cookies: cookies as unknown as [] })).toThrowError(/cookies.*must be an array/);
+    }
+    for (const cookie of [null, 'ack=1', ['ack', '1']]) {
+      expect(() => web({ cookies: [cookie as unknown as { name: string; value: string }] })).toThrowError(
+        /entry 0 must be an object/,
+      );
+    }
+  });
+
+  it('rejects a name or value the Cookie header could not carry', () => {
+    for (const name of ['', 'a b', 'a=b', 'a;b', 'a\nb', 3]) {
+      expect(() => web({ cookies: [{ url: 'http://127.0.0.1', name: name as string, value: '1' }] })).toThrowError(
+        /requires a non-empty cookie name/,
+      );
+    }
+    for (const value of ['a;b', 'a\u0000b', 1]) {
+      expect(() => web({ cookies: [{ url: 'http://127.0.0.1', name: 'ack', value: value as string }] })).toThrowError(
+        /cookie "ack" requires a value string/,
+      );
+    }
+  });
+
+  it('rejects a target the browser could not scope the cookie by', () => {
+    const cookie = (target: Record<string, unknown>) =>
+      web({ cookies: [{ name: 'ack', value: '1', ...target } as unknown as { name: string; value: string; url: string }] });
+    expect(() => cookie({ url: 'http://127.0.0.1', domain: '127.0.0.1' })).toThrowError(/url or domain, not both/);
+    expect(() => cookie({ url: 'not a url' })).toThrowError(/absolute http\(s\) URL/);
+    expect(() => cookie({ url: 'file:///tmp/app' })).toThrowError(/absolute http\(s\) URL/);
+    expect(() => cookie({ url: 'http://127.0.0.1', path: '/' })).toThrowError(/path applies to a domain cookie/);
+    expect(() => cookie({ domain: '' })).toThrowError(/domain must be a non-empty string/);
+    expect(() => cookie({})).toThrowError(/target has no url to default to/);
+  });
+
+  it('rejects attribute values outside their type', () => {
+    const base = { url: 'http://127.0.0.1', name: 'ack', value: '1' } as const;
+    expect(() => web({ cookies: [{ ...base, expires: Number.NaN }] })).toThrowError(/expires must be a finite number/);
+    expect(() => web({ cookies: [{ ...base, httpOnly: 'yes' as unknown as boolean }] })).toThrowError(/httpOnly must be a boolean/);
+    expect(() => web({ cookies: [{ ...base, secure: 1 as unknown as boolean }] })).toThrowError(/secure must be a boolean/);
+    expect(() => web({ cookies: [{ ...base, sameSite: 'lax' as unknown as 'Lax' }] })).toThrowError(/sameSite must be/);
   });
 });
 

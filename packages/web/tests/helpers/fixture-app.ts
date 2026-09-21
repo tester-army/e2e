@@ -166,8 +166,8 @@ const TWINS = `<!doctype html>
 </body>
 </html>`;
 
-/** Shows the `x-fixture-header` request header, or `none`; see `headersPage`. */
-function headersPage(value: string | undefined): string {
+/** Shows one request header's value as the heading, or `none`: `/headers` echoes `x-fixture-header`, `/cookies` echoes `cookie`. */
+function echoPage(value: string | undefined): string {
   return `<!doctype html>
 <html>
 <head><title>Fixture Headers</title></head>
@@ -267,7 +267,12 @@ export function startFixtureApp(): Promise<FixtureApp> {
     if (url.pathname === '/headers') {
       const value = request.headers['x-fixture-header'];
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-      response.end(headersPage(Array.isArray(value) ? value.join(',') : value));
+      response.end(echoPage(Array.isArray(value) ? value.join(',') : value));
+      return;
+    }
+    if (url.pathname === '/cookies') {
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      response.end(echoPage(request.headers.cookie));
       return;
     }
     if (url.pathname === '/protected') {

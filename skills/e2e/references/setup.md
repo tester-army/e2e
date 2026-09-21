@@ -141,6 +141,7 @@ identity for cache and session keys. `web()` accepts:
 | `connect` | `{ cdpEndpoint }` attaches to a remote Chromium over CDP. Adding `reconnectEndpoint` uses a dedicated persistent default context, provisions a fresh browser per attempt, and reconnects only to the original browser and page. |
 | `headers` | Request headers sent to the app's site only (a Vercel `x-vercel-protection-bypass`, ngrok's `ngrok-skip-browser-warning`). Reaches every path onto the page, `agent.act` included; turns the browser HTTP cache off and blocks service workers. |
 | `basicAuth` | `{ username, password }` answering a `401` challenge. |
+| `cookies` | Cookies seeded into every fresh browser context (sessionless tests, after `app.clearState()`, under a restored session, whose same-name cookie wins). The `web.setCookies` shape; `url` defaults to the app's `url`. For demo, cookie-consent, and feedback notices the app stores an acknowledgement cookie for, so neither a test nor the agent closes them. |
 
 CDP recovery never repeats a dispatched operation. Endpoint resolution, attachment,
 and dispatch spend one operation budget. Exhaustion raises `OPERATION_TIMEOUT`;
@@ -154,8 +155,8 @@ Observation-derived `tapAt` calls, observation-root swipes, and focused engine
 keyboard input need a fresh engine observation after reconnect. Deterministic
 `web.mouse` and `web.keyboard` calls use test-supplied input without an agent
 observation; test code can read current geometry and focus with `web.evaluate`.
-Persistent recovery does not support `headers`, `basicAuth`, context reset,
-or session state capture and restore. Without `reconnectEndpoint`, contexts
+Persistent recovery does not support `headers`, `basicAuth`, `cookies`, context
+reset, or session state capture and restore. Without `reconnectEndpoint`, contexts
 remain isolated and a dropped connection is reacquired only at the next attempt
 start.
 

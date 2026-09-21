@@ -12,10 +12,9 @@ export { web, surfaceOf } from './engine.ts';
 export type { PlaywrightLiveSurface } from './engine.ts';
 export type { WebBasicAuth, WebConnectOptions, WebOptions } from './surface.ts';
 export type { BrowserName } from './browser-connection.ts';
+export type { Cookie, CookieFields, WebCookie } from './cookies.ts';
 export type { Dialog, DialogHandler } from './dialogs.ts';
 export type {
-  Cookie,
-  CookieFields,
   FrameScreen,
   RouteFulfillResponse,
   Web,

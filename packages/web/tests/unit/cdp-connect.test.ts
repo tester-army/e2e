@@ -34,6 +34,7 @@ describe('web({ connect })', () => {
     const connect = { cdpEndpoint: () => 'ws://localhost:0', reconnectEndpoint: () => 'ws://localhost:0' };
     expect(() => web({ connect, headers: { 'x-preview': 'synthetic' } })).toThrow(/persistent context/);
     expect(() => web({ connect, basicAuth: { username: 'user', password: 'synthetic' } })).toThrow(/persistent context/);
+    expect(() => web({ connect, url: 'http://127.0.0.1:3000', cookies: [{ name: 'ack', value: '1' }] })).toThrow(/persistent context/);
   });
 
   it('accepts a connect option with the default chromium browser', () => {

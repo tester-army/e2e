@@ -73,6 +73,12 @@ On a browser target, a session holds cookies, local storage, and IndexedDB.
 It does not include server or database state. Restoring replaces the client
 state and leaves no page open, so each test calls `app.open()` first.
 
+A cookie every test needs regardless of session, such as the acknowledgement
+of a demo or cookie-consent banner, belongs in the engine's
+[`cookies` option](/reference/web#options): it is seeded into
+sessionless tests, after `app.clearState()`, and under every restored
+session, whose own cookie of the same name wins.
+
 Sessions last for one run. They are encrypted on disk with a key that lives
 only in runner memory, and deleted during cleanup. A session file is a bearer
 credential, so it is never reused across runs.
