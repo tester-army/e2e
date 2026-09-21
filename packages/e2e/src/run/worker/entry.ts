@@ -26,6 +26,7 @@ import type {
   WorkerToMain,
 } from './protocol.ts';
 import { TargetWorker, type ResolvedUnitPairs, type TargetWorkerDeps } from './session.ts';
+import { isAbandonedStepRejection } from '../steps.ts';
 
 /**
  * Outbound messages in flight. `process.send` is asynchronous and a
@@ -195,7 +196,11 @@ function main(): void {
   process.on('SIGINT', () => undefined);
   process.on('SIGTERM', () => undefined);
   process.on('uncaughtException', (cause) => fatal(cause));
-  process.on('unhandledRejection', (cause) => fatal(cause));
+  // A step the body did not await rejects on a promise nobody holds once it
+  // is cancelled; the attempt has already recorded it as STEP_NOT_AWAITED.
+  process.on('unhandledRejection', (cause) => {
+    if (!isAbandonedStepRejection(cause)) fatal(cause);
+  });
 
   let worker: TargetWorker | undefined;
   captureOutput(() => worker?.pairInFlight);

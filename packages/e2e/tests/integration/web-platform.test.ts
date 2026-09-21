@@ -241,6 +241,15 @@ test('forbidden URL schemes are refused', async ({ app }) => {
   await app.open();
   await app.open('javascript:alert(1)');
 });
+
+test('a step call without await', async ({ app }) => {
+  app.open();
+});
+
+test('a step call without await before the body throws', async ({ app }) => {
+  app.open();
+  throw new Error('the body gave up');
+});
 `;
 
 describe('web platform integration', () => {
@@ -304,6 +313,29 @@ describe('web platform integration', () => {
     const result = resultByTitle(outcome, 'secure fields refuse value reads');
     expect(result.status).toBe('failed');
     expect(result.attempts[0]!.error?.code).toBe('POLICY_DENIED');
+  });
+
+  it('fails a body that returns before a step it started finished with STEP_NOT_AWAITED', () => {
+    const result = resultByTitle(outcome, 'a step call without await');
+    expect(result.status).toBe('failed');
+    const attempt = result.attempts[0]!;
+    expect(attempt.error).toMatchObject({ code: 'STEP_NOT_AWAITED', phase: 'body' });
+    expect(attempt.error?.message).toContain('app.open');
+    // A vitest fork reports raw transformed positions; test-source.test.ts covers the mapped line.
+    expect(attempt.error?.source?.file).toBe('tests/kitchen.e2e.ts');
+    expect(attempt.steps).toHaveLength(1);
+    expect(attempt.steps[0]).toMatchObject({ api: 'app.open', status: 'failed', error: { code: 'STEP_NOT_AWAITED' } });
+    expect(outcome.report.run.errors.map((error) => error.code)).toEqual([]);
+  });
+
+  it('keeps the body error primary and notes the un-awaited step beside it', () => {
+    const result = resultByTitle(outcome, 'a step call without await before the body throws');
+    expect(result.status).toBe('failed');
+    const attempt = result.attempts[0]!;
+    expect(attempt.error).toMatchObject({ code: 'ERROR', message: 'the body gave up' });
+    expect(attempt.secondaryErrors.map((error) => error.code)).toEqual(['STEP_NOT_AWAITED']);
+    expect(attempt.steps[0]).toMatchObject({ api: 'app.open', status: 'failed', error: { code: 'STEP_NOT_AWAITED' } });
+    expect(outcome.report.run.errors.map((error) => error.code)).toEqual([]);
   });
 
   it('fails UI operations before open with APP_NOT_OPEN', () => {

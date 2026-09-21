@@ -106,6 +106,7 @@ These appear in terminal output and in the report as plain string codes.
 | `SESSION_UNAVAILABLE` | A test requires a session no selected setup test produced | configuration | 2 |
 | `SESSION_CONTRACT` | A setup test saved a session twice, saved an undeclared name, or finished without saving a declared one | test | 1 |
 | `TEST_TIMEOUT` | The attempt exceeded the resolved test `timeout` | test | 1 |
+| `STEP_NOT_AWAITED` | The test body settled while a step it started was still running: a step call without `await`. The step is failed at the line of the call and cancelled; the attempt fails with this code when the body returned, or keeps the body's own error and records this one under `secondaryErrors` when the body threw | test | 1 |
 | `HOOK_FAILED` | `beforeAll` or `afterAll` threw. Skips the suite's tests. | test | 1 |
 | `LAUNCH_TIMEOUT` | Engine init or attempt start exceeded `config.launchTimeout` | infrastructure | 3 |
 | `CLEANUP_TIMEOUT` | Engine attempt end exceeded `config.cleanupTimeout` | infrastructure | 3 |

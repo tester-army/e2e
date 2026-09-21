@@ -23,7 +23,9 @@ test('todos survive a filter round-trip', async ({ app, agent, screen }) => {
 ## Goals: `agent.act`
 
 Give `act` one goal. The agent chooses and performs the actions, then returns
-when the goal passes or throws when it fails.
+when the goal passes or throws when it fails. Every step call is awaited: a
+body that returns while a step is still running fails with `STEP_NOT_AWAITED`,
+and the code frame names the call.
 
 ```ts
 await agent.act('complete checkout with the test card');

@@ -13,6 +13,7 @@ import {
   TestTimeoutError,
   translateEngineError,
   type SerializedError,
+  type TestError,
 } from '../internal/errors.ts';
 import { isRuntimeSkip, type RuntimeSkip } from '../internal/skip.ts';
 import type { ExecutorAttempt } from '../agent/executor.ts';
@@ -862,14 +863,45 @@ export class TargetExecutor implements SerialHost {
         this.target.engine?.name ?? 'none',
       );
 
+      /**
+       * Steps the body left running when it settled were not awaited. Each
+       * is recorded as failed at its call, cancelled through the attempt
+       * signal the way a timeout cancels the body, and waited for within one
+       * cleanup budget, so teardown starts on a quiet session. Left alone,
+       * such a step would fail once the session closed with nobody to catch
+       * it and take the worker down.
+       */
+      const abandonNotAwaited = async (): Promise<TestError | undefined> => {
+        if (attemptEnd.signal.aborted) return undefined;
+        const notAwaited = steps.abandonRunning();
+        if (notAwaited === undefined) return undefined;
+        attemptAbort.abort();
+        await withTimeout(
+          steps.settleAbandoned(),
+          this.config.cleanupTimeout,
+          () => new Error('abandoned steps did not settle'),
+        ).catch(() => undefined);
+        return notAwaited;
+      };
       const mainWork = async (): Promise<void> => {
-        phase = 'beforeEach';
-        await extended.setUp();
-        for (const hook of beforeEachHooks) {
-          await hook.fn(fixtures);
+        try {
+          phase = 'beforeEach';
+          await extended.setUp();
+          for (const hook of beforeEachHooks) {
+            await hook.fn(fixtures);
+          }
+          phase = 'body';
+          await (registered.fn as SetupFn)(fixtures);
+        } catch (cause) {
+          // The body's own failure stays the verdict; the step it abandoned is noted beside it.
+          const notAwaited = await abandonNotAwaited();
+          if (notAwaited !== undefined && !isRuntimeSkip(cause)) {
+            secondaryErrors.push(serializeError(notAwaited, { phase: 'body', projectRoot: this.config.projectRoot, redact }));
+          }
+          throw cause;
         }
-        phase = 'body';
-        await (registered.fn as SetupFn)(fixtures);
+        const notAwaited = await abandonNotAwaited();
+        if (notAwaited !== undefined) throw notAwaited;
       };
 
       // The interrupt is raced here, not only threaded through the fixtures:

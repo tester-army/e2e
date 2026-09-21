@@ -5,7 +5,7 @@ import { isAgentError } from '../agent/error.ts';
 import type { ReplayHandOffReason } from '../agent/executor.ts';
 import type { TraceReplayMissReason } from '../cache/decide.ts';
 import { withAiTraceStep } from '../internal/ai-trace.ts';
-import { classifyError, serializeError, type SerializedError } from '../internal/errors.ts';
+import { classifyError, serializeError, TestError, withHint, type SerializedError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
 import { sourceLocation, type SourceLocation } from '../internal/source.ts';
 
@@ -260,20 +260,48 @@ export interface StepRecorderOptions {
 /** Frames kept when a step captures where it was called from; the user's line is a few frames up. */
 const STEP_STACK_FRAMES = 20;
 
+/** What abandoned steps rejected with. The promise the test holds rejects with the same value, and nobody awaits it. */
+const ABANDONED_REJECTIONS = new WeakSet<object>();
+
 /**
- * The test line a step was called from, or nothing. Read from a stack taken
- * at the step's start: every step pays it, since the failing one is not known
- * until it fails, and a report that names the line is worth the capture.
+ * Whether an unhandled rejection is an abandoned step's: already recorded as
+ * `STEP_NOT_AWAITED`, reaching the process only because the promise the
+ * test did not await rejected with it. Such a rejection is not a fault.
  */
-function stepSource(projectRoot: string | undefined): SourceLocation | undefined {
+export function isAbandonedStepRejection(cause: unknown): boolean {
+  return typeof cause === 'object' && cause !== null && ABANDONED_REJECTIONS.has(cause);
+}
+
+/**
+ * The stack at a step's start, or nothing without a project root to read it
+ * against. Every step pays the capture, since the failing one is not known
+ * until it fails, and a report that names the line is worth it. The stack
+ * outlives the source it yields: a step the body abandoned reports its
+ * failure from the line it was called on.
+ */
+function stepStack(projectRoot: string | undefined): string | undefined {
   if (projectRoot === undefined) return undefined;
   const limit = Error.stackTraceLimit;
   Error.stackTraceLimit = STEP_STACK_FRAMES;
   try {
-    return sourceLocation(new Error().stack, projectRoot);
+    return new Error().stack;
   } finally {
     Error.stackTraceLimit = limit;
   }
+}
+
+/** Points `error` at the frames of `stack`, keeping its own name and message as the first line. */
+function relocate(error: Error, stack: string | undefined): void {
+  if (stack === undefined) return;
+  const frames = stack.split('\n').slice(1).join('\n');
+  error.stack = `${error.name}: ${error.message}\n${frames}`;
+}
+
+/** Characters of a step label an error message quotes before clipping it. */
+const MAX_QUOTED_LABEL_CHARS = 80;
+
+function quoted(label: string): string {
+  return `"${label.length > MAX_QUOTED_LABEL_CHARS ? `${label.slice(0, MAX_QUOTED_LABEL_CHARS - 3)}...` : label}"`;
 }
 
 export class StepRecorder {
@@ -282,6 +310,14 @@ export class StepRecorder {
   private readonly scope = new AsyncLocalStorage<StepRecord>();
   /** IDs of steps whose bodies are still executing. */
   private readonly running = new Set<string>();
+  /** The promise each running step returned to its caller, to observe when the caller did not. */
+  private readonly pending = new Map<string, Promise<unknown>>();
+  /** The stack each running step was started from, for the error a step abandoned by the body carries. */
+  private readonly stacks = new Map<string, string>();
+  /** Steps the body returned without awaiting: recorded as failed already, whatever they do next. */
+  private readonly abandoned = new Set<string>();
+  /** The promises of abandoned steps, for the wait before teardown. */
+  private readonly abandonedPromises: Promise<unknown>[] = [];
   /** Highest timeline index among passed verification steps, or -1 when none has. */
   private lastVerified = -1;
   private readonly maxEventsPerStep: number;
@@ -316,7 +352,7 @@ export class StepRecorder {
   }
 
   /** Runs one public API call as a recorded top-level step. */
-  async run<T>(
+  run<T>(
     kind: StepKind,
     api: string,
     label: string,
@@ -325,8 +361,8 @@ export class StepRecorder {
   ): Promise<T> {
     const index = this.steps.length;
     const startedAt = timestamp();
-    const startedMs = Date.now();
-    const source = stepSource(this.projectRoot);
+    const stack = stepStack(this.projectRoot);
+    const source = sourceLocation(stack, this.projectRoot);
     const record: StepRecord = {
       id: `${this.attemptId}:${index}`,
       index,
@@ -343,14 +379,27 @@ export class StepRecorder {
     };
     this.steps.push(record);
     this.running.add(record.id);
+    if (stack !== undefined) this.stacks.set(record.id, stack);
     this.publish(record, { phase: 'start', kind, api, label });
+    const promise = this.execute(record, body, options);
+    this.pending.set(record.id, promise);
+    return promise;
+  }
+
+  private async execute<T>(record: StepRecord, body: () => Promise<T>, options: StepRunOptions): Promise<T> {
+    const startedMs = Date.now();
     try {
       // Model calls made inside the body are attributed to this step.
-      const result = await this.scope.run(record, () => withAiTraceStep(api, label, body));
+      const result = await this.scope.run(record, () => withAiTraceStep(record.api, record.label, body));
+      if (this.abandoned.has(record.id)) return result;
       record.durationMs = Date.now() - startedMs;
-      if (options.verifies === true) this.lastVerified = Math.max(this.lastVerified, index);
+      if (options.verifies === true) this.lastVerified = Math.max(this.lastVerified, record.index);
       return result;
     } catch (cause) {
+      if (this.abandoned.has(record.id)) {
+        if (typeof cause === 'object' && cause !== null) ABANDONED_REJECTIONS.add(cause);
+        throw cause;
+      }
       record.durationMs = Date.now() - startedMs;
       const error = classifyError(cause);
       // A blocked verdict is a distinct outcome, not a product failure: the
@@ -365,18 +414,63 @@ export class StepRecorder {
       throw cause;
     } finally {
       this.running.delete(record.id);
-      this.publish(record, {
-        phase: 'end',
-        kind,
-        api,
-        label,
-        status: record.status,
-        durationMs: record.durationMs,
-        modelCalls: record.events.filter((event) => event.kind === 'model').length,
-        ...(record.error === undefined ? {} : { error: record.error }),
-        ...(record.explanation === undefined ? {} : { explanation: record.explanation }),
-      });
+      this.pending.delete(record.id);
+      this.stacks.delete(record.id);
+      // An abandoned step reported its end when the body returned; what it did since is not the test's.
+      if (!this.abandoned.delete(record.id)) this.publishEnd(record);
     }
+  }
+
+  /**
+   * Fails every step still running once the test body has settled, and
+   * returns the error that names them, or nothing when every step was
+   * awaited. Each such step is recorded as failed at the line it was called
+   * on, its later outcome is dropped, and its rejection is observed here: a
+   * step the body abandoned must not take the worker down as an unhandled
+   * rejection.
+   */
+  abandonRunning(): TestError | undefined {
+    const running = this.steps.filter((step) => this.running.has(step.id) && !this.abandoned.has(step.id));
+    let first: TestError | undefined;
+    for (const step of running) {
+      const more = first === undefined && running.length > 1 ? ` and ${running.length - 1} more` : '';
+      const error = new TestError(
+        'STEP_NOT_AWAITED',
+        withHint(`the test body returned before ${step.api} ${quoted(step.label)}${more} finished`, 'put `await` in front of every step call'),
+      );
+      relocate(error, this.stacks.get(step.id));
+      first ??= error;
+      this.abandoned.add(step.id);
+      step.status = 'failed';
+      step.durationMs = Math.max(0, Date.now() - Date.parse(step.startedAt));
+      step.error = serializeError(error, { projectRoot: this.projectRoot, redact: this.redact });
+      const promise = this.pending.get(step.id);
+      if (promise !== undefined) {
+        promise.catch(() => undefined);
+        this.abandonedPromises.push(promise);
+      }
+      this.publishEnd(step);
+    }
+    return first;
+  }
+
+  /** Resolves once every abandoned step has settled, however it did; the caller bounds the wait. */
+  async settleAbandoned(): Promise<void> {
+    await Promise.allSettled(this.abandonedPromises);
+  }
+
+  private publishEnd(record: StepRecord): void {
+    this.publish(record, {
+      phase: 'end',
+      kind: record.kind,
+      api: record.api,
+      label: record.label,
+      status: record.status,
+      durationMs: record.durationMs,
+      modelCalls: record.events.filter((event) => event.kind === 'model').length,
+      ...(record.error === undefined ? {} : { error: record.error }),
+      ...(record.explanation === undefined ? {} : { explanation: record.explanation }),
+    });
   }
 
   /**
@@ -461,7 +555,7 @@ export class StepRecorder {
 
   private current(): StepRecord | undefined {
     const record = this.scope.getStore();
-    return record !== undefined && this.running.has(record.id) ? record : undefined;
+    return record !== undefined && this.running.has(record.id) && !this.abandoned.has(record.id) ? record : undefined;
   }
 
   /** Publishes a phase with the owning record's identity, including nested and finishing steps. */

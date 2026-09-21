@@ -298,6 +298,8 @@ expect(response.status).toBe(201);
 ## Mistakes to avoid
 
 - Sleeps or manual polling loops. Use a matcher with a longer `timeout`.
+- A step call without `await`. The body returns while the step runs and
+  the attempt fails with `STEP_NOT_AWAITED` at the line of the call.
 - `web.locator('.btn-primary')` when `getByRole('button', { name })` exists.
 - `expect(await locator.textContent()).toBe(...)` for a value that is still
   changing; use `toHaveText`.
