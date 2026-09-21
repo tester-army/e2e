@@ -1,6 +1,6 @@
 {
   "name": "@e2edev/playwright",
-  "version": "0.11.0-canary-20260917213813",
+  "version": "0.11.0",
   "description": "Playwright browser engine for e2e agentic end-to-end testing",
   "keywords": [
     "e2e",
@@ -50,7 +50,7 @@
     "test:unit": "vitest run tests/unit"
   },
   "peerDependencies": {
-    "e2e": "0.15.0-canary-20260917213813",
+    "e2e": "0.15.0",
     "playwright": ">=1.63.0 <2"
   },
   "devDependencies": {

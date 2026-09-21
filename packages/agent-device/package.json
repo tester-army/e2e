@@ -1,6 +1,6 @@
 {
   "name": "@e2edev/agent-device",
-  "version": "0.8.0-canary-20260917213813",
+  "version": "0.8.0",
   "description": "agent-device mobile engine (iOS and Android) for e2e agentic end-to-end testing",
   "keywords": [
     "e2e",
@@ -63,7 +63,7 @@
   },
   "peerDependencies": {
     "ai": "^7.0.0",
-    "e2e": "0.15.0-canary-20260917213813"
+    "e2e": "0.15.0"
   },
   "peerDependenciesMeta": {
     "ai": {
