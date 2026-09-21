@@ -45,6 +45,20 @@ describe('error translation', () => {
     expect(failure.message).toBe('boot failed: xcrun exploded');
   });
 
+  it('keeps the agent-device hint in the message so the model sees the recovery path', () => {
+    const refused = new AppError(
+      'UNSUPPORTED_OPERATION',
+      'Unable to dismiss the iOS keyboard: the keyboard exposes no dismiss key',
+      { hint: 'Tap the app\'s own Done control, or press the return key to submit.' },
+    );
+    const translated = translateError(refused, 'keyboard.dismiss');
+    expect(translated).toMatchObject({ code: 'UNSUPPORTED_CAPABILITY' });
+    expect(translated.message).toBe(
+      "keyboard.dismiss failed: Unable to dismiss the iOS keyboard: the keyboard exposes no dismiss key Hint: Tap the app's own Done control, or press the return key to submit.",
+    );
+    expect(translateError(new AppError('COMMAND_FAILED', 'plain'), 'boot').message).toBe('boot failed: plain');
+  });
+
   it('turns an AbortError into CANCELLED', () => {
     const abort = new Error('aborted');
     abort.name = 'AbortError';

@@ -217,7 +217,13 @@ export interface Device {
   back(): Promise<void>;
   /** Accepts or dismisses the visible system alert. */
   alert(action: 'accept' | 'dismiss'): Promise<void>;
-  /** Dismisses the soft keyboard. */
+  /**
+   * Dismisses the soft keyboard. An iPhone keyboard has no dismiss key, and
+   * agent-device never taps outside the keyboard on its behalf, so on iOS
+   * this fails with `UNSUPPORTED_CAPABILITY` when no dismiss key is shown;
+   * the message names the alternatives (the app's own Done control, or
+   * pressing return).
+   */
   dismissKeyboard(): Promise<void>;
   /** Reads the clipboard. */
   clipboard(): Promise<string>;

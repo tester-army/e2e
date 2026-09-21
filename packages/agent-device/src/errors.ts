@@ -13,7 +13,7 @@
  * | anything else                                               | ENGINE_FAILURE              |
  */
 
-import { normalizeAgentDeviceError } from 'agent-device';
+import { isAgentDeviceError, normalizeAgentDeviceError } from 'agent-device';
 import { EngineError, ConfigurationError, InfrastructureError, TestError, raceAbort } from 'e2e/engine';
 import { cancelled } from './support.ts';
 
@@ -33,6 +33,18 @@ export function message(cause: unknown): string {
   return normalizeAgentDeviceError(cause).message;
 }
 
+/**
+ * The normalized message followed by the hint the failure itself declared.
+ * That hint is the recovery path (press return, tap the app's own Done
+ * control) and the model only ever sees the error text, so dropping it leaves
+ * the agent retrying the same refused action. The per-code default hint the
+ * normalizer would add is CLI advice and stays out.
+ */
+function withHint(cause: unknown, text: string): string {
+  const hint = isAgentDeviceError(cause) ? cause.details?.hint?.trim() : undefined;
+  return hint ? `${text} Hint: ${hint}` : text;
+}
+
 const NO_SESSION_PATTERN = /no active (?:app )?session|session\b.*\bnot found|open an app first|no app (?:is )?open/i;
 const UNSUPPORTED_CODES = new Set(['UNSUPPORTED_OPERATION', 'NOT_IMPLEMENTED', 'UNSUPPORTED_PLATFORM']);
 const UNSUPPORTED_PATTERN = /\b(?:is )?not supported\b|\bunsupported\b/i;
@@ -45,7 +57,7 @@ export function translateError(cause: unknown, operation: string): Error {
   if (isClassified(cause)) return cause;
   if (cause instanceof Error && cause.name === 'AbortError') return cancelled(`${operation} cancelled`);
   const normalized = normalizeAgentDeviceError(cause);
-  const text = `${operation} failed: ${normalized.message}`;
+  const text = `${operation} failed: ${withHint(cause, normalized.message)}`;
   const options = { retryable: false, cause };
   if (normalized.code === 'SESSION_NOT_FOUND' || NO_SESSION_PATTERN.test(normalized.message)) {
     return new EngineError('INVALID_STATE', text, options);
