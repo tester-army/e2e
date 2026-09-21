@@ -23,7 +23,7 @@
     "expo-audio": "57.0.3",
     "expo-image-picker": "57.0.11",
     "expo-modules-core": "57.0.18",
-    "react": "19.2.3",
+    "react": "19.3.0",
     "react-native": "0.86.2",
     "react-native-safe-area-context": "5.7.0",
     "react-native-screens": "4.26.2",
@@ -32,7 +32,7 @@
   "devDependencies": {
     "@e2edev/mobile": "workspace:*",
     "@types/node": "26.4.1",
-    "@types/react": "19.1.4",
+    "@types/react": "19.3.0",
     "ai": "7.0.105",
     "e2e": "workspace:*",
     "typescript": "7.0.2"
