@@ -536,6 +536,21 @@ export interface SetupSession {
   save(name: string): Promise<void>;
 }
 
+/** One `cleanup.add` callback. */
+export type CleanupFn = () => void | Promise<void>;
+
+export interface Cleanup {
+  /**
+   * Registers work to run after the test: newest first, after the `afterEach`
+   * hooks and before the `test.extend` teardowns, whether the test passed,
+   * failed, skipped, or timed out. Each callback has its own `cleanupTimeout`
+   * budget; one that throws or overruns joins the attempt's `secondaryErrors`
+   * and never changes its verdict. Registering after the test's cleanup has
+   * run is `TEST_SETUP_FAILED`.
+   */
+  add(fn: CleanupFn): void;
+}
+
 export interface TestFixtures {
   /** Agent steps. Acquiring it without a configured model is `MODEL_UNAVAILABLE`. */
   readonly agent: Agent;
@@ -543,6 +558,8 @@ export interface TestFixtures {
   readonly app: App;
   /** Semantic queries and the actions on their matches. */
   readonly screen: Screen;
+  /** Teardown callbacks for what the test created; see `Cleanup`. */
+  readonly cleanup: Cleanup;
   /** The target's platform label: `web`, `ios`, `android`, or an engine's own string. */
   readonly platform: string;
 }
@@ -1100,7 +1117,7 @@ export interface E2EConfig {
   actionTimeout?: number;
   /** Default `expect` deadline in milliseconds; default 5000. */
   assertionTimeout?: number;
-  /** Budget of each `afterEach` hook, fixture teardown, and engine cleanup in milliseconds; default 30000. */
+  /** Budget of each `afterEach` hook, `cleanup` callback, fixture teardown, and engine cleanup in milliseconds; default 30000. */
   cleanupTimeout?: number;
   /** Retries per test, 0 through 10; default 1 in CI, else 0. */
   retries?: number;

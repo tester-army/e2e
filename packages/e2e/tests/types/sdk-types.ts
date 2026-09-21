@@ -15,6 +15,7 @@ import {
   type App,
   type ArtifactStore,
   type AsyncExpectation,
+  type Cleanup,
   type E2EConfig,
   type Locator,
   type PollExpectation,
@@ -273,6 +274,27 @@ test.extend<{ owner: string; member: string }>({
 });
 // @ts-expect-error a core fixture cannot be redefined
 test.extend<{ agent: string }>({ agent: async (_fixtures, use) => { await use('x'); } });
+// @ts-expect-error cleanup is a core fixture too
+test.extend<{ cleanup: string }>({ cleanup: async (_fixtures, use) => { await use('x'); } });
+
+// The cleanup fixture takes zero-argument callbacks, sync or async, from the body, a hook, or a fixture.
+declare const cleanup: Cleanup;
+cleanup.add(() => undefined);
+cleanup.add(async () => {});
+// @ts-expect-error a callback receives nothing; close over what it needs
+cleanup.add((id: string) => id);
+// @ts-expect-error a callback's result is discarded, so a value promise is a mistake
+cleanup.add(async () => 'deleted');
+test('registers cleanup', async ({ cleanup: registered }) => {
+  registered satisfies Cleanup;
+});
+test.afterEach(({ cleanup: registered }) => registered.add(() => undefined));
+test.extend<{ api: string }>({
+  api: async ({ cleanup: registered }, use) => {
+    registered.add(() => undefined);
+    await use('api');
+  },
+});
 // @ts-expect-error the value handed to use() has the declared fixture type
 test.extend<{ count: number }>({ count: async (_fixtures, use) => { await use('one'); } });
 // The zero-argument form still types an engine's contributed fixtures without defining them.

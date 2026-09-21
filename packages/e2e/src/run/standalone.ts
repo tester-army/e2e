@@ -21,8 +21,10 @@ import { Deadline } from '../internal/time.ts';
 import type { TestFixtures } from '../types.ts';
 import { createAttemptArtifacts } from './artifacts.ts';
 import { AttemptBudget } from './budget.ts';
+import { createCleanupQueue } from './cleanup.ts';
 import { TargetExecutor, type ClosingRecord } from './execute.ts';
 import { createFixtures } from './fixtures.ts';
+import { runHook } from './realm.ts';
 import type { EnginePrepareResult } from '../engine/index.ts';
 import { PreparedEngines, startDeclaredProcesses, validateEngine, type AppProcesses } from './provision.ts';
 import { SessionStore } from './sessions.ts';
@@ -167,6 +169,7 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
     memory: new Map<string, unknown>(),
   };
   const budget = new AttemptBudget(signal, new Deadline(options.timeoutMs));
+  const cleanups = createCleanupQueue();
   const { fixtures, agentRuntime } = createFixtures({
     config,
     target,
@@ -181,6 +184,7 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
     agent: options.agent,
     agentContext: undefined,
     saveSession: undefined,
+    cleanup: cleanups.fixture,
     // A model preflight failure is a run abort in a test; here it is one more
     // reason the attempt reports at close.
     models: new WorkerModels((error) => cleanupErrors.push(serializeError(error))),
@@ -199,6 +203,15 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
     artifactsDir: artifacts.dir,
     close: () => {
       closing ??= (async () => {
+        // Whatever the host registered through `cleanup` runs first, newest
+        // first, each on its own budget, while the session is still open.
+        for (let callback = cleanups.take(); callback !== undefined; callback = cleanups.take()) {
+          const callbackAbort = budget.enter(signal, config.cleanupTimeout);
+          await runHook('cleanup callback', callback, config.cleanupTimeout, () => callbackAbort.abort()).catch(
+            recordCleanupFailure,
+          );
+        }
+        cleanups.seal();
         attemptEnd.abort();
         const record: ClosingRecord = { status: 'passed', cleanup: 'complete' };
         try {

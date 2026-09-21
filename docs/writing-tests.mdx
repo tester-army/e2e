@@ -166,6 +166,28 @@ Share setup and cleanup through `test.extend`. A fixture can create a test
 workspace before the test and delete it afterward, including when the test
 fails. See [Your own fixtures](/reference/test#your-own-fixtures).
 
+For records a test creates as it goes, register their removal with the
+`cleanup` fixture instead of tracking them by hand. Callbacks run newest first
+after the test, whether it passed, failed, skipped, or timed out, after the
+`afterEach` hooks and before your own fixtures tear down, so a hook still sees
+the data and a callback can still use the client that created it. Each has
+its own `cleanupTimeout`; one that throws or overruns is recorded under the
+attempt's `secondaryErrors` and the rest still run. The verdict stays the
+test's own.
+
+```ts
+import { test } from 'e2e';
+import { api } from './helpers/api'; // your REST client
+
+test('creates a customer through the UI', async ({ app, agent, cleanup }) => {
+  await app.open('/customers');
+  await agent.act('add a customer named "Ada Lovelace"');
+  const { id } = await api.find('customers', { name: 'Ada Lovelace' });
+  cleanup.add(() => api.delete(`customers/${id}`));
+  await agent.assert('Ada Lovelace is listed');
+});
+```
+
 ## Structure
 
 ```ts

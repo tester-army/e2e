@@ -53,6 +53,7 @@ export function createScreenFixture(nodes: readonly SemanticNode[]): Screen {
     priorSteps: () => steps.completed(),
     agentContext: undefined,
     saveSession: undefined,
+    cleanup: { add: () => undefined },
     models: new WorkerModels(() => {}),
   });
   return fixtures.screen;

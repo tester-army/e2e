@@ -28,7 +28,7 @@ import {
   type SecretResolver,
 } from '../locator/screen.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
-import type { Agent, App, Expectable, SetupSession, TestFixtures } from '../types.ts';
+import type { Agent, App, Cleanup, Expectable, SetupSession, TestFixtures } from '../types.ts';
 import type { ArtifactRecord } from './records.ts';
 import type { StepRecord, StepRecorder } from './steps.ts';
 
@@ -75,6 +75,8 @@ export interface AttemptEnvironment {
   readonly agent?: string | undefined;
   /** Stages one captured session state; only setup attempts provide this. */
   readonly saveSession: ((name: string) => Promise<void>) | undefined;
+  /** The attempt's `cleanup` fixture; the caller drains its queue once the test is over. */
+  readonly cleanup: Cleanup;
   /** The attempt's trace cache context, or undefined when caching is off. */
   readonly cache?: AgentCacheContext;
   /** `--debug` phase timings; absent when the caller collects none. */
@@ -211,6 +213,7 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
     },
     app,
     screen,
+    cleanup: environment.cleanup,
     platform: environment.target.platform,
     session: {
       save: async (name: string) => {

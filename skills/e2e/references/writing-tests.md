@@ -51,6 +51,7 @@ test.describe('group', { tags: ['billing'] }, () => { /* tests and hooks */ });
 test.describe('checkout flow', { serial: true }, () => { /* ordered, shared app state */ });
 test.beforeEach(async ({ app }) => {});     // per attempt, with test fixtures
 test.afterEach(async ({ screen }) => {});   // runs after failures too, with its own cleanup budget
+test('creates', async ({ cleanup }) => { cleanup.add(() => api.delete(id)); }); // after the test on every verdict, newest first
 test.beforeAll(async ({ platform }) => {}); // per suite realm, no app fixtures
 test.afterAll(async () => {});
 test.skip('later', async () => {});
@@ -86,6 +87,7 @@ Fixtures are lazy; destructure them in the callback.
 | --- | --- | --- |
 | `app` | `App` | Always. |
 | `screen` | `Screen` | Always. |
+| `cleanup` | `Cleanup` | Always. `cleanup.add(fn)` runs `fn` after the test on every verdict, newest first, after `afterEach` and before `test.extend` teardowns; each gets its own `cleanupTimeout`; a throw or overrun lands in `secondaryErrors`, never the verdict. |
 | `agent` | `Agent` | Needs a configured model, else `MODEL_UNAVAILABLE`. See the `agent` topic. |
 | `platform` | `'web' \| 'ios' \| 'android' \| string` | Always; also in `beforeAll` and `afterAll`. |
 | `web` | `Web` | Browser targets. Import `test` from `@e2edev/web`. |
@@ -319,8 +321,9 @@ expect(response.status).toBe(201);
   template for labels, roles, and text. Add an `aria-label` or a heading
   where the app has no accessible name, rather than falling back to CSS.
 - Create the data a test needs under a name unique to the run
-  (`Invoice ${Date.now()}`) and clean up in `afterEach`. Replays and retries
-  then never trip over leftovers.
+  (`Invoice ${Date.now()}`) and register its removal the moment it exists:
+  ``cleanup.add(() => api.delete(`invoices/${id}`))``. Replays and retries then
+  never trip over leftovers, and a failed test leaves nothing behind.
 - One flow across several tests: `test.describe('...', { serial: true })`.
   Otherwise tests are independent and may run on different workers.
 - Tag by area and by cost (`smoke`, `billing`, `agent`) and run subsets with

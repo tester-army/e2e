@@ -29,6 +29,7 @@ import type { TestTargetPair } from '../collect/select.ts';
 import type { ArtifactStore } from '../types.ts';
 import { createAttemptArtifacts, sanitizePathSegment } from './artifacts.ts';
 import { AttemptBudget } from './budget.ts';
+import { createCleanupQueue } from './cleanup.ts';
 import { ENGINE_SPI_VERSION } from '../engine/contract.ts';
 import { createEngineSession } from '../engine/session.ts';
 import { createExtendedFixtures } from './extended-fixtures.ts';
@@ -94,6 +95,17 @@ export interface TargetExecutorOptions {
 }
 
 type AttemptPhase = 'launch' | 'beforeEach' | 'body' | 'afterEach';
+
+/**
+ * One unit of an attempt's teardown. An `afterEach` teardown (a hook or a
+ * fixture teardown) fails a passing attempt; a `cleanup` callback only ever
+ * joins `secondaryErrors`.
+ */
+interface Teardown {
+  readonly label: string;
+  readonly run: () => void | Promise<void>;
+  readonly phase: 'afterEach' | 'cleanup';
+}
 
 /**
  * The slice of an attempt record a session close reads and writes: the
@@ -728,6 +740,7 @@ export class TargetExecutor implements SerialHost {
       signal: attemptEnd.signal,
       memory: shared?.memory ?? new Map<string, unknown>(),
     };
+    const cleanups = createCleanupQueue();
 
     const artifacts = createAttemptArtifacts({
       artifactsRoot: this.artifactsRoot,
@@ -834,6 +847,7 @@ export class TargetExecutor implements SerialHost {
         agentContext: pair.options.agentContext,
         agent: pair.agent,
         saveSession,
+        cleanup: cleanups.fixture,
         ...(cache === undefined ? {} : { cache }),
         debug: this.debug,
         models: this.models,
@@ -938,24 +952,34 @@ export class TargetExecutor implements SerialHost {
       // that overruns has its own operations cancelled, not the next hook's.
       // Only a run interrupt still cuts cleanup short. Fixture teardowns
       // follow the hooks, last set up first, and fail the attempt like them.
-      const teardowns = [
-        ...afterEachHooks.map((hook) => ({ label: `${hook.kind} hook`, run: () => hook.fn(fixtures) })),
-        ...extended.teardowns().map((teardown) => ({
-          label: `fixture "${teardown.name}" teardown`,
-          run: teardown.run,
-        })),
-      ];
-      for (const teardown of teardowns) {
+      // The `cleanup` callbacks run between the two, newest first: after the
+      // hooks, so an `afterEach` still sees what the test created, and before
+      // the fixture teardowns, so a callback can still use the fixture that
+      // created the record. Taken lazily, since a hook or a callback may add
+      // more. Their errors are evidence beside the verdict, never the verdict.
+      const teardowns = function* (): Generator<Teardown> {
+        for (const hook of afterEachHooks) {
+          yield { label: `${hook.kind} hook`, run: () => hook.fn(fixtures), phase: 'afterEach' };
+        }
+        for (let callback = cleanups.take(); callback !== undefined; callback = cleanups.take()) {
+          yield { label: 'cleanup callback', run: callback, phase: 'cleanup' };
+        }
+        cleanups.seal();
+        for (const teardown of extended.teardowns()) {
+          yield { label: `fixture "${teardown.name}" teardown`, run: teardown.run, phase: 'afterEach' };
+        }
+      };
+      for (const teardown of teardowns()) {
         const hookAbort = budget.enter(this.interruptSignal, this.config.cleanupTimeout);
         try {
           await runHook(teardown.label, teardown.run, this.config.cleanupTimeout, () =>
             hookAbort.abort(),
           );
         } catch (cause) {
-          if (failure === undefined) {
+          if (teardown.phase === 'afterEach' && failure === undefined) {
             recordFailure(cause, 'afterEach');
           } else {
-            secondaryErrors.push(serializeError(classifyError(cause), { phase: 'afterEach' }));
+            secondaryErrors.push(serializeError(classifyError(cause), { phase: teardown.phase }));
           }
         }
       }
@@ -963,6 +987,7 @@ export class TargetExecutor implements SerialHost {
       recordFailure(cause, phase);
     } finally {
       attemptEnd.abort();
+      cleanups.seal();
       this.interruptSignal.removeEventListener('abort', onInterrupt);
       // The verdict is reached before the session closes: nothing after this
       // point changes it, and the close reads it to decide what the attempt's

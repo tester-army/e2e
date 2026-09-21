@@ -30,7 +30,7 @@ function runtime(engine: EngineHandle, overrides: E2EConfig = {}) {
     steps, budget: new AttemptBudget(signal, new Deadline(10_000)), runId: 'run', attemptId: 'attempt',
     attempt: { testId: 'test', attemptId: 'attempt', index: 0, signal, memory: new Map() },
     artifacts: { dir: '/tmp', register: registerArtifact }, priorSteps: () => steps.completed(),
-    agentContext: undefined, saveSession: undefined,
+    agentContext: undefined, saveSession: undefined, cleanup: { add: () => undefined },
     models: new WorkerModels(() => {}),
   });
   return { fixtures, steps, config, registerArtifact };

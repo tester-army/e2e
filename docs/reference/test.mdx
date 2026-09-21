@@ -160,9 +160,10 @@ The module is re-imported for every retry, serial group, and setup test, so
 test in that realm is done. A realm that a failure discards runs `afterAll`
 for every scope whose `beforeAll` started.
 
-`beforeEach` and the body share the test timeout. Each `afterEach` hook gets
-its own `cleanupTimeout` budget with working fixtures, so teardown can still
-drive the app after the body timed out.
+`beforeEach` and the body share the test timeout. Each `afterEach` hook and
+[`cleanup` callback](#cleanup-callbacks) gets its own `cleanupTimeout` budget
+with working fixtures, so teardown can still drive the app after the body
+timed out.
 
 A throw inside `beforeAll` or `afterAll` is `HOOK_FAILED` and skips the
 suite's tests with cause `hook-failed`. Inside a serial group it skips every
@@ -235,8 +236,22 @@ export interface TestFixtures {
   readonly app: App;
   /** Semantic queries and the actions on their matches. */
   readonly screen: Screen;
+  /** Teardown callbacks for what the test created; see `Cleanup`. */
+  readonly cleanup: Cleanup;
   /** The target's platform label: `web`, `ios`, `android`, or an engine's own string. */
   readonly platform: string;
+}
+
+export interface Cleanup {
+  /**
+   * Registers work to run after the test: newest first, after the `afterEach`
+   * hooks and before the `test.extend` teardowns, whether the test passed,
+   * failed, skipped, or timed out. Each callback has its own `cleanupTimeout`
+   * budget; one that throws or overruns joins the attempt's `secondaryErrors`
+   * and never changes its verdict. Registering after the test's cleanup has
+   * run is `TEST_SETUP_FAILED`.
+   */
+  add(fn: () => void | Promise<void>): void;
 }
 
 export interface SetupFixtures extends TestFixtures {
@@ -259,6 +274,33 @@ to skip such tests at selection instead.
 
 Fixtures are lazy. Destructuring in the parameter list acquires them before
 the body's first statement.
+
+### Cleanup callbacks
+
+`cleanup.add(fn)` registers work for after the test: deleting a record the
+body created through the UI, revoking a token, or any teardown that belongs to
+one test rather than to a fixture. Register it from the body, a hook, or a
+`test.extend` definition; a callback registered from an `afterEach` hook or
+from another callback runs in the same pass.
+
+```ts
+test('creates a customer', async ({ app, agent, cleanup }) => {
+  await app.open('/customers');
+  await agent.act('add a customer named "Ada Lovelace"');
+  const { id } = await api.find('customers', { name: 'Ada Lovelace' });
+  cleanup.add(() => api.delete(`customers/${id}`));
+});
+```
+
+Callbacks run newest first, after the `afterEach` hooks and before the
+`test.extend` teardowns, so a hook still sees what the test created and a
+callback can still use the fixture that created it. They run on every verdict:
+pass, failure, a `test.skip` from the body, and a timeout. Each has its own
+`cleanupTimeout` budget with working fixtures; one that overruns is cancelled
+and the next still runs. A callback that throws or times out never changes
+the verdict: the error is recorded under the attempt's `secondaryErrors` in
+phase `cleanup`, and the steps it ran appear in the timeline like any other.
+`cleanup.add` after the test's cleanup has run is `TEST_SETUP_FAILED`.
 
 ### Your own fixtures
 
@@ -322,16 +364,17 @@ Per attempt:
    fixture object. The fixture set is the test's own chain: a hook that reads
    `workspace` around a test registered through `base` fails with
    `UNSUPPORTED_CAPABILITY`.
-3. Teardowns run in reverse order after the last `afterEach`, whether or not
-   the body passed, each with its own `cleanupTimeout` budget. An error there
-   fails a passing attempt in phase `afterEach` and joins `secondaryErrors`
-   after a body failure.
+3. Teardowns run in reverse order after the last `afterEach` and after the
+   [`cleanup` callbacks](#cleanup-callbacks), whether or not the body passed,
+   each with its own `cleanupTimeout` budget. An error there fails a passing
+   attempt in phase `afterEach` and joins `secondaryErrors` after a body
+   failure.
 
 What fails, and where:
 
 | Mistake | Fails |
 | --- | --- |
-| A value that is not a plain object of functions, an empty name, a core name (`agent`, `app`, `screen`, `platform`, `session`), or a name an earlier `extend` in the chain defined | At import, `COLLECTION_ERROR` naming the fixture |
+| A value that is not a plain object of functions, an empty name, a core name (`agent`, `app`, `screen`, `cleanup`, `platform`, `session`), or a name an earlier `extend` in the chain defined | At import, `COLLECTION_ERROR` naming the fixture |
 | A name the target's engine contributes (`web` on a Playwright target) | The attempt, in `beforeEach`, `TEST_SETUP_FAILED` |
 | A definition that returns without calling `use` | The attempt, in `beforeEach`, `TEST_SETUP_FAILED` |
 | A definition that calls `use` twice | The attempt, at teardown, `TEST_SETUP_FAILED` |

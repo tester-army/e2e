@@ -449,7 +449,7 @@ function normalizeArgs(
 }
 
 /** Fixtures every attempt has without any engine or `test.extend()` defining them. */
-const CORE_FIXTURE_NAMES: ReadonlySet<string> = new Set(['agent', 'app', 'screen', 'platform', 'session']);
+const CORE_FIXTURE_NAMES: ReadonlySet<string> = new Set(['agent', 'app', 'screen', 'cleanup', 'platform', 'session']);
 
 /**
  * Checks one `test.extend()` argument against the chain it extends. Names
