@@ -138,6 +138,24 @@ CI. `connect` attaches to a remote Chromium over CDP instead of launching
 one. [Testing viewports](/viewports) covers a suite that runs at several
 sizes and what the agent sees at each.
 
+Everything else about the browser is Playwright's own configuration, passed
+through `context` and `launch`: a locale and time zone, a dark color scheme,
+a device descriptor for touch and user-agent emulation, self-signed
+certificates, or a Chrome release channel.
+
+```ts title="e2e.config.ts"
+import { devices } from 'playwright';
+
+engine: web({
+  ...app,
+  context: { ...devices['Pixel 7'], locale: 'de-DE', colorScheme: 'dark' },
+  launch: { channel: 'chrome' },
+});
+```
+
+The [Playwright reference](/reference/playwright#browser-context-and-launch-options)
+lists the few keys the engine keeps for itself.
+
 ## Raw selectors
 
 Use `web.locator('css or xpath')` when role, label, and test-id queries

@@ -36,6 +36,12 @@ import {
 import { matchesText } from 'e2e/engine';
 import { classifyActionError, dispatchLocatorAction, dispatchPointerAction } from './actions.ts';
 import { BrowserConnection, connectCdp, type BrowserName } from './browser-connection.ts';
+import {
+  bringsOwnExecutable,
+  resolveViewport,
+  type WebContextOptions,
+  type WebLaunchOptions,
+} from './browser-options.ts';
 import { AttemptSession, type StorageState } from './attempt-session.ts';
 import { DialogRouter } from './dialogs.ts';
 import { ensureBrowsersInstalled } from './install.ts';
@@ -118,7 +124,7 @@ export interface WebConnectOptions {
    * same browser after a transport drop. Called once before the next
    * operation, within its budget. The original browser and page must survive.
    * Dispatched operations are never retried. The host owns browser cleanup.
-   * Context replacement, headers, and basicAuth are unavailable in this mode.
+   * Context replacement, headers, basicAuth, and context options are unavailable in this mode.
    */
   readonly reconnectEndpoint?: (signal: AbortSignal) => string | Promise<string>;
 }
@@ -140,6 +146,27 @@ export interface WebOptions extends EngineAppDeclaration {
   readonly browser?: BrowserName;
   /** Initial viewport of every attempt's page; default 1280 by 720. */
   readonly viewport?: ViewportSize;
+  /**
+   * Playwright's own context options, passed to `browser.newContext` for
+   * every context an attempt opens: `locale`, `timezoneId`, `colorScheme`,
+   * `geolocation` and `permissions`, `ignoreHTTPSErrors`, `storageState`,
+   * or a device descriptor spread in whole (`...devices['iPhone 13']`) for
+   * mobile emulation. The keys the engine sets itself are refused:
+   * `acceptDownloads`, `httpCredentials` (see `basicAuth`), and
+   * `recordVideo` (see `--video`). `viewport` here is the same setting as
+   * the `viewport` option and may not be `null`. Unavailable with
+   * `connect.reconnectEndpoint`, whose persistent context takes none.
+   */
+  readonly context?: WebContextOptions;
+  /**
+   * Playwright's own launch options, passed to `browserType.launch` for the
+   * worker's browser: `channel: 'chrome'`, `executablePath`, `args`,
+   * `proxy`, `slowMo`, `env`, `timeout`. `headless` is refused; the run's
+   * `--headed` flag owns it. A launch that names its own executable or a
+   * release channel skips the first-run browser download. Unavailable with
+   * `connect`, which attaches to a browser something else launched.
+   */
+  readonly launch?: WebLaunchOptions;
   /**
    * Attach to a remote browser over CDP instead of launching locally. Requires
    * the chromium browser (the default). Wired by a hosted-browser engine.
@@ -191,6 +218,8 @@ export class PlaywrightSurface {
   private session: AttemptSession | undefined;
   private readonly usedContexts = new Set<string>();
   private readonly viewport: ViewportSize;
+  private readonly contextOptions: WebContextOptions | undefined;
+  private readonly launchOptions: WebLaunchOptions | undefined;
   /** Injected request headers, names lowercased so they replace the browser's own of the same name. */
   private readonly headers: Readonly<Record<string, string>> | undefined;
   private readonly basicAuth: WebBasicAuth | undefined;
@@ -210,7 +239,9 @@ export class PlaywrightSurface {
   constructor(options: WebOptions) {
     this.browserName = options.browser ?? 'chromium';
     this.connect = options.connect;
-    this.viewport = options.viewport ?? DEFAULT_VIEWPORT;
+    this.viewport = resolveViewport(options.viewport, options.context, DEFAULT_VIEWPORT);
+    this.contextOptions = options.context;
+    this.launchOptions = options.launch;
     this.headers = options.headers === undefined ? undefined : lowercaseNames(options.headers);
     this.basicAuth = options.basicAuth;
     this.testIdAttribute = options.testIdAttribute ?? DEFAULT_TEST_ID_ATTRIBUTE;
@@ -220,12 +251,13 @@ export class PlaywrightSurface {
 
   /**
    * Installs the browser on first run, once per run before any worker.
-   * A CDP attach uses the remote's browser, so only a local launch needs the
-   * browser here. The download narrates through `info.log` and is bounded by
-   * the run's interrupt alone, never by a launch budget.
+   * A CDP attach uses the remote's browser and a launch that names its own
+   * executable never starts the managed one, so only a plain local launch
+   * needs the browser here. The download narrates through `info.log` and is
+   * bounded by the run's interrupt alone, never by a launch budget.
    */
   async prepare(info: EnginePrepareInfo): Promise<void> {
-    if (this.connect !== undefined) return;
+    if (this.connect !== undefined || bringsOwnExecutable(this.launchOptions)) return;
     await ensureBrowsersInstalled([this.browserName], { env: info.env, signal: info.signal, log: info.log });
   }
 
@@ -250,7 +282,11 @@ export class PlaywrightSurface {
     if (signal.aborted) throw cancelled(`browser ${verb} cancelled`);
     try {
       return await raceAbort(
-        this.connection.acquire(this.browserName, this.headed, BROWSER_LAUNCH_TIMEOUT_MS, this.connector(signal)),
+        this.connection.acquire(
+          this.browserName,
+          { timeout: BROWSER_LAUNCH_TIMEOUT_MS, ...this.launchOptions, headless: !this.headed },
+          this.connector(signal),
+        ),
         signal,
         `browser ${verb}`,
       );
@@ -307,6 +343,7 @@ export class PlaywrightSurface {
       viewport: this.viewport,
       acquire: (signal) => this.acquireBrowser(signal),
       contextOptions: {
+        ...this.contextOptions,
         viewport: this.viewport,
         acceptDownloads: true,
         ...(credentials === undefined ? {} : { httpCredentials: credentials }),

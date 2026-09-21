@@ -92,8 +92,10 @@ resize within the test.
 
 A narrow viewport tests responsive layout. It still uses a desktop browser
 with a scale factor of 1, desktop pointer behavior, and its usual user agent.
-It does not emulate touch, color scheme, or reduced-motion preferences.
-Use the [device engine](/mobile) for tests on a simulator or emulator.
+Touch, a phone user agent, a scale factor, and a color scheme come from a
+device descriptor or the other Playwright options passed through
+[`web({ context })`](/reference/playwright#browser-context-and-launch-options);
+a native app still needs the [device engine](/mobile) on a simulator or emulator.
 
 A `--video` recording on a Playwright target is sized to the viewport the
 attempt started with. A resize mid-attempt does not change the recording's

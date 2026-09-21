@@ -34,6 +34,18 @@ export interface WebOptions extends EngineAppDeclaration {
   /** Initial viewport of every attempt's page; default 1280 by 720. */
   readonly viewport?: ViewportSize;
   /**
+   * Playwright's own context options, passed to `browser.newContext` for
+   * every context an attempt opens. `acceptDownloads`, `httpCredentials`,
+   * and `recordVideo` are refused; `viewport` is the same setting as the
+   * option above and may not be `null`.
+   */
+  readonly context?: WebContextOptions;
+  /**
+   * Playwright's own launch options, passed to `browserType.launch` for the
+   * worker's browser. `headless` is refused; `--headed` owns it.
+   */
+  readonly launch?: WebLaunchOptions;
+  /**
    * Attach to a remote browser over CDP instead of launching locally. Requires
    * the chromium browser (the default). Wired by a hosted-browser engine.
    */
@@ -67,6 +79,74 @@ chromium; `cdpEndpoint(signal)` is called once per worker and again at an
 attempt start after a disconnect. `:` is not allowed in the `basicAuth` user name.
 
 `headers` and `basicAuth` are how a test reaches a [protected preview](/starting-your-app#protected-previews).
+
+### Browser context and launch options
+
+`context` and `launch` hand Playwright's own configuration through. `context`
+goes to `browser.newContext` for every context an attempt opens, the one a
+state reset or a session restore replaces it with included. `launch` goes to
+`browserType.launch` for the worker's browser.
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2edev/web';
+import { devices } from 'playwright';
+
+const app = { url: 'https://staging.example.com' };
+
+export default {
+  targets: [
+    {
+      name: 'de-dark',
+      engine: web({
+        ...app,
+        context: { locale: 'de-DE', timezoneId: 'Europe/Berlin', colorScheme: 'dark' },
+      }),
+    },
+    {
+      name: 'iphone',
+      engine: web({ ...app, context: { ...devices['iPhone 13'] } }),
+    },
+    {
+      name: 'chrome',
+      engine: web({
+        ...app,
+        context: { ignoreHTTPSErrors: true },
+        launch: { channel: 'chrome', args: ['--disable-gpu'] },
+      }),
+    },
+  ],
+} satisfies E2EConfig;
+```
+
+```ts
+type WebContextOptions = Omit<
+  BrowserContextOptions,
+  'acceptDownloads' | 'httpCredentials' | 'recordVideo' | 'viewport'
+> & { readonly viewport?: ViewportSize };
+
+type WebLaunchOptions = Omit<LaunchOptions, 'headless'>;
+```
+
+The engine keeps the keys its own bookkeeping depends on, and refuses them
+as `INVALID_CONFIG` with the option that stands in:
+
+| Refused | Use instead |
+| --- | --- |
+| `context.acceptDownloads` | Always on, for `web.waitForDownload`. |
+| `context.httpCredentials` | `basicAuth`. |
+| `context.recordVideo` | `e2e run --video`. |
+| `context.viewport: null` | A fixed viewport; screenshots and recordings are sized by it. |
+| `launch.headless` | `e2e run --headed`. |
+
+`context.viewport` and `viewport` are one setting, so a device descriptor
+spreads in whole; giving both with different sizes is `INVALID_CONFIG`.
+`context.serviceWorkers: 'allow'` is refused next to `headers`, whose
+site-scoped route depends on the block. `launch.channel` needs the chromium
+browser. A launch that names `executablePath` or a release channel other
+than `chromium` skips the first-run browser download, since the managed
+browser is never started. `launch` is unavailable with `connect`, and
+`context` with `connect.reconnectEndpoint`.
 
 ### Recovering a CDP transport
 
@@ -123,8 +203,8 @@ recording resume, but a segment lost during the disconnect cannot be recovered.
 Code using `surfaceOf(engine)` must read its accessors again after recovery;
 previously retained Playwright objects belong to the disconnected transport.
 
-Persistent recovery does not support `headers`, `basicAuth`, `app.clearState`,
-or session state capture and restore. `app.restart` remains available. Omit
+Persistent recovery does not support `headers`, `basicAuth`, `context`,
+`app.clearState`, or session state capture and restore. `app.restart` remains available. Omit
 `reconnectEndpoint` to keep ordinary isolated contexts and the existing behavior.
 
 ## Web
@@ -442,8 +522,8 @@ cannot reuse node IDs or publish handles over a newer observation.
 
 ## Exported types
 
-`WebOptions`, `WebConnectOptions`, `WebBasicAuth`,
-`BrowserName`, `PlaywrightLiveSurface`, `Web`, `FrameScreen`, `WebExpectation`, `WebRoute`,
+`WebOptions`, `WebConnectOptions`, `WebBasicAuth`, `WebContextOptions`,
+`WebLaunchOptions`, `BrowserName`, `PlaywrightLiveSurface`, `Web`, `FrameScreen`, `WebExpectation`, `WebRoute`,
 `WebResponse`, `Cookie`, `Dialog`, and `DialogHandler` are exported from the
 package for typing config helpers and fixtures.
 

@@ -1,6 +1,6 @@
 /** Shares one browser process connection across a worker's attempts. */
 
-import type { Browser } from 'playwright';
+import type { Browser, LaunchOptions } from 'playwright';
 import { chromium, firefox, selectors, webkit } from 'playwright';
 import { CLOSED_SHADOW_SELECTOR_ENGINE, CLOSED_SHADOW_SELECTOR_ENGINE_SOURCE } from './read-node.ts';
 
@@ -18,27 +18,22 @@ export class BrowserConnection {
 
   /**
    * Returns a connected shared browser, launching or relaunching as needed.
-   * When `connect` is given the connection attaches to a remote browser through it
-   * instead of launching a local one; `connect` is re-invoked on a relaunch,
-   * so a caller that resolves a fresh per-run endpoint reconnects cleanly
-   * after a dropped session.
+   * A local launch passes `launch` to Playwright as is. When `connect` is
+   * given the connection attaches to a remote browser through it instead of
+   * launching a local one; `connect` is re-invoked on a relaunch, so a
+   * caller that resolves a fresh per-run endpoint reconnects cleanly after a
+   * dropped session.
    */
-  async acquire(
-    name: BrowserName,
-    headed: boolean,
-    timeoutMs: number,
-    connect?: () => Promise<Browser>,
-  ): Promise<Browser> {
+  async acquire(name: BrowserName, launch: LaunchOptions, connect?: () => Promise<Browser>): Promise<Browser> {
     const cached = this.pending;
     if (cached !== undefined) {
       const browser = await cached.catch(() => null);
       if (browser !== null && browser.isConnected()) return browser;
-      if (this.pending !== cached) return this.acquire(name, headed, timeoutMs, connect);
+      if (this.pending !== cached) return this.acquire(name, launch, connect);
       this.pending = undefined;
     }
     await registerSelectorEngines();
-    const launching =
-      connect !== undefined ? connect() : browserType(name).launch({ headless: !headed, timeout: timeoutMs });
+    const launching = connect !== undefined ? connect() : browserType(name).launch(launch);
     this.pending = launching;
     try {
       return await launching;
