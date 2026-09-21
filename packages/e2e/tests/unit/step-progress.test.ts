@@ -101,6 +101,7 @@ describe('StepRecorder progress identity', () => {
         attemptIndex: 1,
         stepId: record!.id,
         stepIndex: record!.index,
+        ...(record!.parent === undefined ? {} : { parentStepId: record!.parent }),
       });
     }
   });

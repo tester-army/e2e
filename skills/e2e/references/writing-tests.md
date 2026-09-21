@@ -56,6 +56,7 @@ test.afterAll(async () => {});
 test.skip('later', async () => {});
 test.only('focus', async () => {});         // local only: CI fails with ONLY_IN_CI
 test('conditional', async () => { test.skip(await onlyOneOrg(), 'nothing to switch to'); }); // skips from the body; steps so far stay in the report
+test('grouped', async ({ screen }) => { const n = await test.step('sign in', async () => { await screen.getByRole('button', { name: 'Sign in' }).tap(); return 1; }); }); // one named step in the report; the calls inside carry it as `parent`, a failure points at the call
 test.setup('sign in', { sessions: ['admin'] }, async ({ app, screen, session }) => {}); // see Sign-in sessions
 const wsTest = test.extend<{ ws: Ws }>({ ws: async ({ web }, use) => { await use(await seed()); await drop(); } });
 wsTest('uses the workspace', async ({ ws }) => {}); // code after use() is teardown, runs after failures too

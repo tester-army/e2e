@@ -96,6 +96,7 @@ describe('telemetry events', () => {
       steps_app: 0,
       steps_session: 0,
       steps_resource: 0,
+      steps_test: 0,
       agent_steps_replayed: 1,
       agent_steps_partial: 0,
       agent_steps_missed: 1,

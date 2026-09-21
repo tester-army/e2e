@@ -99,15 +99,19 @@ The `phase` field describes step progress:
 Every step phase emitted by the runner includes `progress.identity`:
 
 ```ts
-{ attemptId: string; attemptIndex: number; stepId: string; stepIndex: number }
+{ attemptId: string; attemptIndex: number; stepId: string; stepIndex: number; parentStepId?: string }
 ```
 
 The IDs match the final report. Both indexes start at zero. A retry has a
 new attempt ID and a higher attempt index; its step indexes start again at
 zero. Serial-group members share the group's attempt ID and index, while
 each member's step IDs remain distinct. Use `stepId` to match start, activity,
-event, replay, and end phases, including nested steps. `identity` is optional
-in the type so a reporter can also accept older streams.
+event, replay, and end phases. Steps nest: a step opened inside a
+`test.step` body carries that step's id as `parentStepId`, the same value the
+report keeps in the step's `parent` field. A `test.step` ends after the
+steps inside it, unless the test body abandoned them all, in which case each
+is failed in start order. `identity` is optional in the type so a reporter
+can also accept older streams.
 
 An `end` phase also includes the step's redacted `error` and `explanation`
 when present. Preserve its `status`, including `blocked` and `cancelled`,

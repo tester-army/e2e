@@ -162,6 +162,8 @@ export interface ReportStep {
   kind: StepRecord['kind'];
   api: string;
   label: string;
+  /** The id of the `test.step` (or other step) whose body called this one; absent at the top level. */
+  parent?: string | undefined;
   source: ReportSource;
   status: StepRecord['status'];
   startedAt: string;

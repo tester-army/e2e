@@ -9,6 +9,7 @@ import { CollectionError } from '../internal/errors.ts';
 import { validateTitle } from '../internal/ids.ts';
 import { realmSlot } from '../internal/realm-slot.ts';
 import { parseSkipCall, skipRunningTest } from '../internal/skip.ts';
+import { runTestStep } from '../internal/test-step.ts';
 import type {
   DescribeOptions,
   FixtureFn,
@@ -521,6 +522,9 @@ function createTestAPI(chain: readonly FixtureDefinition[]): TestAPI {
       }
       skipRunningTest(call.condition, call.reason);
       return undefined;
+    },
+    step<T>(title: string, body: () => T | Promise<T>): Promise<T> {
+      return runTestStep(title, body);
     },
     only(title: string, fn: TestFn): TestCase {
       return requireCollector('test.only()').registerTest('test', 'only', title, { only: true }, [], fn, chain);

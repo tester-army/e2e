@@ -161,6 +161,33 @@
                   "message": "semantic capture timed out",
                   "retryable": false
                 }
+              },
+              {
+                "id": "018f0f5c-7b2a-7abc-8abc-0123456789ab:2",
+                "index": 2,
+                "kind": "test",
+                "api": "test.step",
+                "label": "clean up the cart",
+                "source": { "file": "tests/example.e2e.ts", "line": 9, "column": 3 },
+                "status": "passed",
+                "startedAt": "2026-07-24T12:00:05.200Z",
+                "durationMs": 420,
+                "events": [],
+                "artifacts": []
+              },
+              {
+                "id": "018f0f5c-7b2a-7abc-8abc-0123456789ab:3",
+                "index": 3,
+                "kind": "locator",
+                "api": "locator.tap",
+                "label": "getByRole(\"button\", name: \"Empty cart\")",
+                "parent": "018f0f5c-7b2a-7abc-8abc-0123456789ab:2",
+                "source": { "file": "tests/pages/cart.ts", "line": 14, "column": 5 },
+                "status": "passed",
+                "startedAt": "2026-07-24T12:00:05.210Z",
+                "durationMs": 400,
+                "events": [],
+                "artifacts": []
               }
             ],
             "artifacts": [

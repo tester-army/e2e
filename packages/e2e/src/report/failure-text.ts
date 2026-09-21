@@ -92,11 +92,26 @@ export function toldAttempt(result: ReportResult, final: Outcome): AttemptView {
 /** A step that did not pass. */
 export type FailedStep = ReportStep & { readonly status: Exclude<ReportStep['status'], 'passed'> };
 
-/** The step a failure happened at: the first that did not pass, with its position. */
+/**
+ * The step a failure happened at, with its position: the first that did not
+ * pass and has no failed step of its own inside it. A `test.step` fails with
+ * the call that failed inside it; the call is where the failure happened.
+ */
 export function failedStepOf(steps: readonly ReportStep[]): { index: number; step: FailedStep } | undefined {
-  const index = steps.findIndex((step) => step.status !== 'passed');
-  const step = steps[index];
-  return step === undefined || step.status === 'passed' ? undefined : { index, step: step as FailedStep };
+  const step = steps.find(
+    (candidate): candidate is FailedStep =>
+      candidate.status !== 'passed' && !steps.some((inner) => inner.parent === candidate.id && inner.status !== 'passed'),
+  );
+  return step === undefined ? undefined : { index: steps.indexOf(step), step };
+}
+
+/** How many steps enclose `step`: its indent in a list of the timeline. */
+function stepDepth(steps: readonly ReportStep[], step: ReportStep): number {
+  let depth = 0;
+  for (let parent = step.parent; parent !== undefined; depth += 1) {
+    parent = steps.find((candidate) => candidate.id === parent)?.parent;
+  }
+  return depth;
 }
 
 /**
@@ -245,12 +260,13 @@ export function renderFailurePage(report: Report1Document, result: ReportResult,
   if (told.steps.length > 0) {
     lines.push('## Steps', '');
     told.steps.forEach((step, index) => {
+      const indent = '    '.repeat(stepDepth(told.steps, step));
       const own = step.source.file === 'unknown' ? '' : ` — ${code(`${step.source.file}:${step.source.line}`, MAX_PATH_CHARS)}`;
       const calls = step.metrics === undefined || step.metrics.modelCalls === 0 ? '' : `, ${plural(step.metrics.modelCalls, 'model call')}`;
       const failed = step.status === 'passed' ? '' : ` — **${cell(step.error?.code ?? step.status, 128)}**`;
-      lines.push(`${index + 1}. ${STEP_GLYPH[step.status]} ${code(step.api, MAX_ID_CHARS)} ${stepLabel(step, MAX_CELL_CHARS)} (${formatDuration(step.durationMs)}${calls})${failed}${own}`);
+      lines.push(`${indent}${index + 1}. ${STEP_GLYPH[step.status]} ${code(step.api, MAX_ID_CHARS)} ${stepLabel(step, MAX_CELL_CHARS)} (${formatDuration(step.durationMs)}${calls})${failed}${own}`);
       if (step.status !== 'passed' && step.explanation !== undefined && step.explanation.trim() !== '') {
-        lines.push(`   > ${cell(step.explanation, MAX_DETAIL_CHARS)}`);
+        lines.push(`${indent}   > ${cell(step.explanation, MAX_DETAIL_CHARS)}`);
       }
     });
     lines.push('');

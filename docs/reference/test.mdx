@@ -4,8 +4,9 @@ description: Tests, setup tests, groups, hooks, options, and fixtures.
 ---
 
 Declare tests, groups, and hooks synchronously while the test file is
-imported. Use `test.extend` to add fixtures and `test.skip` to skip a test at
-registration or during its body.
+imported. Use `test.extend` to add fixtures, `test.skip` to skip a test at
+registration or during its body, and `test.step` to group the calls a body
+makes under one name in the report.
 
 ```ts
 export interface TestAPI<Fixtures = TestFixtures> {
@@ -25,6 +26,18 @@ export interface TestAPI<Fixtures = TestFixtures> {
    */
   skip(condition: boolean, reason?: string): void;
   skip(reason?: string): void;
+  /**
+   * Inside a running test: runs `body` as one named step and resolves with
+   * what it returned. The report records a `test.step` step with `title` as
+   * its label, and every step the body called (a `screen` action, an
+   * `expect`, an `agent.act`) carries its id as `parent`, so a page object
+   * or a helper reads as one line in the report and unfolds into the calls
+   * it made. Steps nest. A body that throws fails the step and rethrows; a
+   * body that returns while a step it called is still running fails with
+   * `STEP_NOT_AWAITED`. Outside a running test this is `COLLECTION_ERROR`;
+   * a blank title is `INVALID_ARGUMENT`.
+   */
+  step<T>(title: string, body: () => T | Promise<T>): Promise<T>;
   /** Registers one focused local test. CI rejects focused tests. */
   only(title: string, fn: TestFn<Fixtures>): TestCase;
   /** Registers one setup test with statically declared session outputs. */
@@ -101,6 +114,50 @@ test('switches organizations', { session: 'admin' }, async ({ app, agent }) => {
 ```
 `test.setup` must be top-level, not inside `test.describe`. An `async`
 `describe` body is a type error and a `COLLECTION_ERROR`.
+
+## Steps
+
+`test.step(title, body)` runs `body` as one named step of the running test
+and resolves with what it returned. Every `screen`, `expect`, `app`, and
+`agent` call the body makes is still recorded as its own step; each carries
+the `test.step`'s id in its `parent` field, so the report can show the step
+as one line and unfold it into the calls it made. Steps nest. Use it where a
+page object or a helper wraps several calls:
+
+```ts
+class LoginPage {
+  constructor(private readonly screen: Screen) {}
+
+  signIn(user: Credential) {
+    return test.step(`sign in as ${user.username}`, async () => {
+      await this.screen.getByLabel('Email').fill(user.username);
+      await this.screen.getByLabel('Password').fill(user.password);
+      await this.screen.getByRole('button', { name: 'Sign in' }).tap();
+    });
+  }
+}
+
+test('shows the dashboard', async ({ app, screen }) => {
+  await app.open('/login');
+  await new LoginPage(screen).signIn(credentials.user('member'));
+  const items = await test.step('count the cards', () => screen.getByRole('article').count());
+  expect(items).toBeGreaterThan(0);
+});
+```
+
+A step's status follows its body: a call that fails inside it fails the step
+with the same error and rethrows, so the test fails where it would have
+without the step. The run summary and the failure page point at the call
+that failed, not at the step around it. A body that returns while a step it
+called is still running fails the step with `STEP_NOT_AWAITED`, the same way
+the test body does. A step's duration covers everything inside it.
+
+A step is structure for the report. It has no timeout or retry of its own,
+and the agent's prior-step context lists it like any other completed step.
+Outside a running test (at import, or in `beforeAll` and `afterAll`, which
+run with no attempt) the call is `COLLECTION_ERROR`; a blank title is
+`INVALID_ARGUMENT`. The `list` reporter prints `test.step` rows and indents
+the agent steps that ran inside them.
 
 ```ts
 import { test } from '@e2edev/web';

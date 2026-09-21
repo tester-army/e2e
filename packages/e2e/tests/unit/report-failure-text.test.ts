@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ReportAttempt, ReportResult, ReportStep } from '../../src/report/build.ts';
 import type { ReportSerialGroup } from '../../src/report/build.ts';
-import { attemptsLine, detailLines, evidenceOf, failureSource, lastTurnLines, renderFailurePage, screenLines, toldAttempt } from '../../src/report/failure-text.ts';
+import { attemptsLine, detailLines, evidenceOf, failedStepOf, failureSource, lastTurnLines, renderFailurePage, screenLines, toldAttempt } from '../../src/report/failure-text.ts';
 import { outcome } from '../../src/report/outcome.ts';
 import { reportAttempt, reportDocument, reportError, reportResult, reportStep, reportTarget } from '../helpers/report.ts';
 
@@ -66,6 +66,23 @@ describe('attemptsLine', () => {
   });
 });
 
+describe('failedStepOf', () => {
+  it('names the call that failed inside a test.step, not the step, and the step itself when its own body threw', () => {
+    const nested = [
+      step({ index: 0 }),
+      step({ index: 1, kind: 'test', api: 'test.step', status: 'failed' }),
+      step({ index: 2, parent: 's1' }),
+      step({ index: 3, kind: 'test', api: 'test.step', parent: 's1', status: 'failed' }),
+      step({ index: 4, api: 'expect.toBeVisible', parent: 's3', status: 'failed' }),
+      step({ index: 5, status: 'failed' }),
+    ];
+    expect(failedStepOf(nested)).toMatchObject({ index: 4, step: { api: 'expect.toBeVisible' } });
+    const ownThrow = [step({ index: 0, kind: 'test', api: 'test.step', status: 'failed' }), step({ index: 1, parent: 's0' })];
+    expect(failedStepOf(ownThrow)).toMatchObject({ index: 0, step: { api: 'test.step' } });
+    expect(failedStepOf([step({ index: 0 })])).toBeUndefined();
+  });
+});
+
 describe('failureSource', () => {
   it("prefers the line the error unwound through, then the failing step's own call, then the test's declaration", () => {
     const fromError = result({ attempts: [failed({ error: reportError({ source: { file: 'tests/a.e2e.ts', line: 14, column: 3 } }) })] });
@@ -118,6 +135,26 @@ describe('evidenceOf', () => {
 });
 
 describe('renderFailurePage', () => {
+  it('indents the steps a test.step wrapped under it, and points the turns heading at the call that failed', () => {
+    const steps = [
+      step({ index: 0, api: 'app.open', label: '/' }),
+      step({ index: 1, kind: 'test', api: 'test.step', label: 'archive', status: 'failed' }),
+      step({ index: 2, parent: 's1', api: 'locator.tap', label: 'Archive' }),
+      step({ index: 3, kind: 'test', api: 'test.step', label: 'confirm', parent: 's1', status: 'failed' }),
+      step({ index: 4, parent: 's3', api: 'expect.toBeHidden', label: 'Archive', status: 'failed', error: reportError({ code: 'ASSERTION_FAILED' }) }),
+    ];
+    const body = page([failed({ steps })]);
+    expect(body).toContain([
+      '## Steps',
+      '',
+      '1. ✓ `app.open` `/` (100ms)',
+      '2. ✗ `test.step` `archive` (100ms) — **failed**',
+      '    3. ✓ `locator.tap` `Archive` (100ms)',
+      '    4. ✗ `test.step` `confirm` (100ms) — **failed**',
+      '        5. ✗ `expect.toBeHidden` `Archive` (100ms) — **ASSERTION_FAILED**',
+    ].join('\n'));
+  });
+
   const page = (attempts: ReportAttempt[], readArtifact?: (reportPath: string) => string | undefined) => {
     const failing = reportResult({
       id: 'r1',

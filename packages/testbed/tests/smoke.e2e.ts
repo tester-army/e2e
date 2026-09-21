@@ -15,6 +15,21 @@ test('playground renders and navigates', { tags: ['smoke'] }, async ({ app, scre
   await expect(web).toHaveURL('/');
 });
 
+test('steps group the calls they wrap', { tags: ['smoke'] }, async ({ app, screen, web }) => {
+  await app.open();
+  const heading = await test.step('read the landing page', async () => {
+    await expect(web).toHaveTitle('Playground');
+    return screen.getByRole('heading', { level: 1 }).textContent();
+  });
+  expect(heading).toBe('Playground');
+  await test.step('visit todos', async () => {
+    await test.step('follow the link', async () => {
+      await screen.getByRole('link', { name: 'Todos' }).tap();
+    });
+    await expect(web).toHaveURL('/todos');
+  });
+});
+
 test('screenshots capture evidence', { tags: ['smoke'] }, async ({ app }) => {
   await app.open();
   await app.screenshot('landing');

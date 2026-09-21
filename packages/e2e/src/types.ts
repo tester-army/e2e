@@ -606,6 +606,18 @@ export interface TestAPI<Fixtures = TestFixtures> {
    */
   skip(condition: boolean, reason?: string): void;
   skip(reason?: string): void;
+  /**
+   * Inside a running test: runs `body` as one named step and resolves with
+   * what it returned. The report records a `test.step` step with `title` as
+   * its label, and every step the body called (a `screen` action, an
+   * `expect`, an `agent.act`) carries its id as `parent`, so a page object
+   * or a helper reads as one line in the report and unfolds into the calls
+   * it made. Steps nest. A body that throws fails the step and rethrows; a
+   * body that returns while a step it called is still running fails with
+   * `STEP_NOT_AWAITED`. Outside a running test this is `COLLECTION_ERROR`;
+   * a blank title is `INVALID_ARGUMENT`.
+   */
+  step<T>(title: string, body: () => T | Promise<T>): Promise<T>;
   /** Registers one focused local test. CI rejects focused tests. */
   only(title: string, fn: TestFn<Fixtures>): TestCase;
   /** Registers one setup test with statically declared session outputs. */

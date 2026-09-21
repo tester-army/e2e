@@ -7,7 +7,7 @@
  */
 
 import { bounded, F_POINTER, formatTime, terminalColumns, terminalRows, type Colors } from './format.ts';
-import type { CurrentStep, FileGroup, RunningTest, SetupInFlight } from './list-model.ts';
+import { currentStep, type CurrentStep, type FileGroup, type RunningTest, type SetupInFlight } from './list-model.ts';
 import { eventLine, stepLabel, stepLine } from './list-steps.ts';
 import { REPAINT_INTERVAL_MS, WIDTH_MARGIN } from './live-window.ts';
 
@@ -187,7 +187,7 @@ export class RunningTree {
    */
   private stepRows(test: RunningTest, maxEvents: number, budget: number, now: number): string[] {
     const { pc } = this;
-    const { current } = test;
+    const current = currentStep(test);
     if (current === undefined) return [];
     const rows = [pc.dim(`${F_DOWN_RIGHT} ${current.api} ${stepLabel(current.label)}`)];
     if (current.kind !== 'agent') return rows.slice(0, budget);

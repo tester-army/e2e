@@ -9,8 +9,12 @@ import { classifyError, serializeError, TestError, withHint, type SerializedErro
 import { timestamp } from '../internal/ids.ts';
 import { sourceLocation, type SourceLocation } from '../internal/source.ts';
 
-/** The closed step kind set; the type is derived from it, so the two cannot drift. */
-export const STEP_KINDS = ['agent', 'locator', 'assertion', 'screen', 'app', 'session', 'resource'] as const;
+/**
+ * The closed step kind set; the type is derived from it, so the two cannot
+ * drift. `test` is the author's own grouping step (`test.step`): it runs
+ * nothing of its own, and the steps its body called carry its id as `parent`.
+ */
+export const STEP_KINDS = ['agent', 'locator', 'assertion', 'screen', 'app', 'session', 'resource', 'test'] as const;
 
 export type StepKind = (typeof STEP_KINDS)[number];
 
@@ -153,6 +157,13 @@ export interface StepRecord {
   kind: StepKind;
   api: string;
   label: string;
+  /**
+   * The id of the step whose body called this one, a `test.step` in the
+   * common case; absent on a step the test body called directly. The
+   * timeline stays flat and in start order, so a consumer that ignores this
+   * still sees every step, and one that reads it can rebuild the tree.
+   */
+  parent?: string;
   /** The test line the step was called from; absent when no project line was on the stack. */
   source?: SourceLocation;
   status: 'passed' | 'failed' | 'blocked' | 'timed-out' | 'cancelled';
@@ -190,6 +201,8 @@ interface StepProgressIdentity {
   readonly attemptIndex: number;
   readonly stepId: string;
   readonly stepIndex: number;
+  /** The `stepId` of the step whose body called this one; absent at the top level. */
+  readonly parentStepId?: string;
 }
 
 /** One progress payload before the recorder attaches its identity. */
@@ -351,7 +364,10 @@ export class StepRecorder {
     return this.lastVerified;
   }
 
-  /** Runs one public API call as a recorded top-level step. */
+  /**
+   * Runs one public API call as a recorded step. Called from inside another
+   * step's body (a `test.step`), the new step records that step as its parent.
+   */
   run<T>(
     kind: StepKind,
     api: string,
@@ -363,12 +379,14 @@ export class StepRecorder {
     const startedAt = timestamp();
     const stack = stepStack(this.projectRoot);
     const source = sourceLocation(stack, this.projectRoot);
+    const parent = this.current();
     const record: StepRecord = {
       id: `${this.attemptId}:${index}`,
       index,
       kind,
       api,
       label,
+      ...(parent === undefined ? {} : { parent: parent.id }),
       ...(source === undefined ? {} : { source }),
       status: 'passed',
       startedAt,
@@ -392,6 +410,10 @@ export class StepRecorder {
       // Model calls made inside the body are attributed to this step.
       const result = await this.scope.run(record, () => withAiTraceStep(record.api, record.label, body));
       if (this.abandoned.has(record.id)) return result;
+      // A body that returned while a step it called was still running did
+      // not await it; the step fails the way the test body would.
+      const notAwaited = this.abandonChildren(record);
+      if (notAwaited !== undefined) throw notAwaited;
       record.durationMs = Date.now() - startedMs;
       if (options.verifies === true) this.lastVerified = Math.max(this.lastVerified, record.index);
       return result;
@@ -400,6 +422,8 @@ export class StepRecorder {
         if (typeof cause === 'object' && cause !== null) ABANDONED_REJECTIONS.add(cause);
         throw cause;
       }
+      // A body that threw keeps its own error; a step it left running is failed beside it.
+      this.abandonChildren(record);
       record.durationMs = Date.now() - startedMs;
       const error = classifyError(cause);
       // A blocked verdict is a distinct outcome, not a product failure: the
@@ -430,13 +454,32 @@ export class StepRecorder {
    * rejection.
    */
   abandonRunning(): TestError | undefined {
-    const running = this.steps.filter((step) => this.running.has(step.id) && !this.abandoned.has(step.id));
+    return this.abandon(this.steps.filter((step) => this.isRunning(step)), 'the test body');
+  }
+
+  /** Whether a step's body is still executing and nobody has given it up. */
+  private isRunning(step: StepRecord): boolean {
+    return this.running.has(step.id) && !this.abandoned.has(step.id);
+  }
+
+  /** Fails the steps `parent`'s body called that are still running, naming the parent as what gave them up. */
+  private abandonChildren(parent: StepRecord): TestError | undefined {
+    const children = this.steps.filter((step) => step.parent === parent.id && this.isRunning(step));
+    return this.abandon(children, `${parent.api} ${quoted(parent.label)}`);
+  }
+
+  /**
+   * Fails `running`, the steps `subject` returned without awaiting, and
+   * returns the `STEP_NOT_AWAITED` error naming them, or nothing for an
+   * empty list; see `abandonRunning`.
+   */
+  private abandon(running: readonly StepRecord[], subject: string): TestError | undefined {
     let first: TestError | undefined;
     for (const step of running) {
       const more = first === undefined && running.length > 1 ? ` and ${running.length - 1} more` : '';
       const error = new TestError(
         'STEP_NOT_AWAITED',
-        withHint(`the test body returned before ${step.api} ${quoted(step.label)}${more} finished`, 'put `await` in front of every step call'),
+        withHint(`${subject} returned before ${step.api} ${quoted(step.label)}${more} finished`, 'put `await` in front of every step call'),
       );
       relocate(error, this.stacks.get(step.id));
       first ??= error;
@@ -452,6 +495,11 @@ export class StepRecorder {
       this.publishEnd(step);
     }
     return first;
+  }
+
+  /** Whether any step was given up on, by the test body or by the step that called it. */
+  get hasAbandoned(): boolean {
+    return this.abandonedPromises.length > 0;
   }
 
   /** Resolves once every abandoned step has settled, however it did; the caller bounds the wait. */
@@ -555,7 +603,7 @@ export class StepRecorder {
 
   private current(): StepRecord | undefined {
     const record = this.scope.getStore();
-    return record !== undefined && this.running.has(record.id) && !this.abandoned.has(record.id) ? record : undefined;
+    return record !== undefined && this.isRunning(record) ? record : undefined;
   }
 
   /** Publishes a phase with the owning record's identity, including nested and finishing steps. */
@@ -567,6 +615,7 @@ export class StepRecorder {
         attemptIndex: this.attempt.index,
         stepId: record.id,
         stepIndex: record.index,
+        ...(record.parent === undefined ? {} : { parentStepId: record.parent }),
       },
     });
   }

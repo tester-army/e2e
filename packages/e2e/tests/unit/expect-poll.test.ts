@@ -4,6 +4,7 @@ import { expect as e2eExpect } from '../../src/expect/index.ts';
 import { ConfigurationError, TestError } from '../../src/internal/errors.ts';
 import { Deadline } from '../../src/internal/time.ts';
 import { AttemptBudget } from '../../src/run/budget.ts';
+import { StepRecorder } from '../../src/run/steps.ts';
 
 /** Publishes a fake attempt for one test; `end()` clears it. */
 function attempt(options: { assertionTimeout: number; deadlineMs: number }) {
@@ -15,6 +16,7 @@ function attempt(options: { assertionTimeout: number; deadlineMs: number }) {
       testKind: 'test',
       assertionTimeout: options.assertionTimeout,
       budget: new AttemptBudget(cancel.signal, new Deadline(options.deadlineMs)),
+      steps: new StepRecorder('attempt'),
     },
     end.signal,
   );

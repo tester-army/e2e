@@ -48,16 +48,20 @@ export interface StepLineOptions {
   readonly maxWidth?: number;
 }
 
+/** Columns one level of `test.step` nesting indents a row by. */
+const DEPTH_INDENT = '  ';
+
 /**
- * One finished agent step: outcome glyph, api, quoted label, then duration,
- * model calls, and a non-passed status.
+ * One finished agent or `test.step` step: outcome glyph, api, quoted label,
+ * then duration, model calls, and a non-passed status, indented by how many
+ * `test.step` steps enclose it.
  */
 export function stepLine(pc: Colors, step: FinishedStep, options: StepLineOptions = {}): string {
   const glyph = step.status === 'passed' ? pc.green(F_CHECK) : pc.red(F_CROSS);
   const calls =
     step.modelCalls > 0 ? ` · ${step.modelCalls} model call${step.modelCalls === 1 ? '' : 's'}` : '';
   const outcome = step.status === 'passed' ? '' : ` ${step.status}`;
-  const head = `${glyph} ${options.context ?? ''}${pc.dim(step.api)} `;
+  const head = `${DEPTH_INDENT.repeat(step.depth)}${glyph} ${options.context ?? ''}${pc.dim(step.api)} `;
   const tail = pc.dim(`${formatTime(step.durationMs)}${calls}${outcome}`);
   const room =
     options.maxWidth === undefined

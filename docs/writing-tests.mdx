@@ -186,6 +186,21 @@ test('needs two organizations', async ({ app }) => {
 });
 ```
 
+Wrap the calls a page object or a helper makes in `test.step`. The report
+shows the step as one line with the calls it made underneath, and a failure
+still points at the call that failed:
+
+```ts
+test('renames the workspace', async ({ app, screen }) => {
+  await app.open('/settings');
+  await test.step('rename', async () => {
+    await screen.getByLabel('Name').fill('Acme (renamed)');
+    await screen.getByRole('button', { name: 'Save' }).tap();
+  });
+  await expect(screen.getByRole('status')).toHaveText('Saved');
+});
+```
+
 Common options include `timeout`, `retries`, and `tags`. Use `session` for
 state from a setup test, `agentContext` for extra instructions, and `agent`
 to choose a configured [agent](/agents). Group options apply to their tests.

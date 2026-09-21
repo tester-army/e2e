@@ -150,6 +150,14 @@ expect(1, 'why this holds').not.toBeCloseTo(2, 0);
 test.skip(true, 'not today');
 test.skip('not today');
 test.skip('later', async () => {});
+// A step resolves with what its body returned, whether the body is async or not; the title is a string.
+void (test.step('sign in', async () => 42) satisfies Promise<number>);
+void (test.step('count', () => 'three') satisfies Promise<string>);
+void (test.step('act', async () => {}) satisfies Promise<void>);
+// @ts-expect-error a step title is text
+void test.step(7, async () => {});
+// @ts-expect-error a step body is a function of no arguments
+void test.step('sign in', 'not a body');
 void screen.getByLabel('Plan').selectOption({ value: 'pro' });
 // @ts-expect-error one of label, value, or index, never two
 void screen.getByLabel('Plan').selectOption({ value: 'pro', index: 1 });

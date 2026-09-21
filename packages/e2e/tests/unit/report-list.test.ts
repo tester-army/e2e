@@ -1189,6 +1189,34 @@ describe('ListReporter', () => {
       });
       expect(lines).toEqual([]);
     });
+
+    it('heads the rows inside a test.step with its own, indented, once the step ends', () => {
+      const { lines, output } = capture();
+      const reporter = plainReporter(output);
+      reporter.handle(testStarted('t1', 'checkout', 'chromium'));
+      const step = (progress: object, identity: { stepId: string; parentStepId?: string }) =>
+        reporter.handle({
+          type: 'step',
+          testId: 't1',
+          agent: 'default',
+          target: 'chromium',
+          progress: { ...progress, identity: { attemptId: 'a', attemptIndex: 0, stepIndex: 0, ...identity } },
+        } as never);
+      step({ phase: 'start', kind: 'test', api: 'test.step', label: 'sign in' }, { stepId: 's0' });
+      step({ phase: 'start', kind: 'agent', api: 'agent.act', label: 'fill the form' }, { stepId: 's1', parentStepId: 's0' });
+      step({ phase: 'end', kind: 'agent', api: 'agent.act', label: 'fill the form', status: 'passed', durationMs: 4_200, modelCalls: 3 }, { stepId: 's1', parentStepId: 's0' });
+      step({ phase: 'start', kind: 'locator', api: 'locator.tap', label: 'Sign in' }, { stepId: 's2', parentStepId: 's0' });
+      step({ phase: 'end', kind: 'locator', api: 'locator.tap', label: 'Sign in', status: 'passed', durationMs: 5, modelCalls: 0 }, { stepId: 's2', parentStepId: 's0' });
+      expect(lines).toEqual([]);
+      step({ phase: 'end', kind: 'test', api: 'test.step', label: 'sign in', status: 'passed', durationMs: 4_300, modelCalls: 0 }, { stepId: 's0' });
+      expect(lines).toEqual([
+        '   ✓ checkout > test.step "sign in" 4.30s',
+        '     ✓ checkout > agent.act "fill the form" 4.20s · 3 model calls',
+      ]);
+      step({ phase: 'start', kind: 'agent', api: 'agent.act', label: 'pay' }, { stepId: 's3' });
+      step({ phase: 'end', kind: 'agent', api: 'agent.act', label: 'pay', status: 'failed', durationMs: 900, modelCalls: 1 }, { stepId: 's3' });
+      expect(lines.at(-1)).toBe('   × checkout > agent.act "pay" 900ms · 1 model call failed');
+    });
   });
 
   describe('live window', () => {

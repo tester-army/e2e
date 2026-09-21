@@ -840,7 +840,7 @@ export class TargetExecutor implements SerialHost {
       // `expect.poll` takes no fixture, so the attempt it runs on is
       // published here and cleared when `attemptEnd` fires in `finally`.
       publishAttempt(
-        { attemptId, testKind: pair.test.kind, assertionTimeout: this.config.assertionTimeout, budget },
+        { attemptId, testKind: pair.test.kind, assertionTimeout: this.config.assertionTimeout, budget, steps },
         attemptEnd.signal,
       );
 
@@ -865,13 +865,14 @@ export class TargetExecutor implements SerialHost {
       const abandonNotAwaited = async (): Promise<TestError | undefined> => {
         if (attemptEnd.signal.aborted) return undefined;
         const notAwaited = steps.abandonRunning();
-        if (notAwaited === undefined) return undefined;
-        attemptAbort.abort();
-        await withTimeout(
-          steps.settleAbandoned(),
-          this.config.cleanupTimeout,
-          () => new Error('abandoned steps did not settle'),
-        ).catch(() => undefined);
+        if (steps.hasAbandoned) {
+          attemptAbort.abort();
+          await withTimeout(
+            steps.settleAbandoned(),
+            this.config.cleanupTimeout,
+            () => new Error('abandoned steps did not settle'),
+          ).catch(() => undefined);
+        }
         return notAwaited;
       };
       const mainWork = async (): Promise<void> => {

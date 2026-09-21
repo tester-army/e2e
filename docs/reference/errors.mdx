@@ -98,7 +98,7 @@ These appear in terminal output and in the report as plain string codes.
 | `UNSUPPORTED_CAPABILITY` | A fixture, action, or tier the target's engine does not declare: a contributed fixture it does not contribute, `screen` without `locate`, state restore without `state`, screenshots without `artifacts` | configuration | 2 |
 | `NO_TESTS` | Zero runnable ordinary test-target pairs. The message names the cause: no file matched the `tests` globs (with look-alike files), a positional matched nothing, a file registered no tests, or filters excluded everything. Suppress with `--pass-with-no-tests`. | configuration | 2 |
 | `ONLY_IN_CI` | A focused test reached a CI run | configuration | 2 |
-| `COLLECTION_ERROR` | Registration outside collection, an invalid title, a non-function body, an async `describe` body, nested serial groups, an option forbidden inside a serial group, a setup test inside `describe`, an invalid session name, a malformed test option such as `tags` that is not a list of distinct names, or a positional path outside the project root | configuration | 2 |
+| `COLLECTION_ERROR` | Registration outside collection, an invalid title, a non-function body, an async `describe` body, nested serial groups, an option forbidden inside a serial group, a setup test inside `describe`, an invalid session name, a malformed test option such as `tags` that is not a list of distinct names, a `test.step` or a conditional `test.skip` outside a running test, or a positional path outside the project root | configuration | 2 |
 | `POLICY_DENIED` | Scheme, secret-sink, purpose, or tool policy denial; `app.screenshot()` after a secret has tainted the attempt; see the [security model](/security) | configuration | 2 |
 | `SESSION_MISMATCH` | A stored session does not match the current run, target, engine, platform, or app identity | configuration | 2 |
 | `SESSION_EXPIRED` | A stored session is past its expiry at restore time (configuration, exit 2), or a setup test saved state whose expiry is not after its creation (test, exit 1) | configuration or test | 2 or 1 |
@@ -106,7 +106,7 @@ These appear in terminal output and in the report as plain string codes.
 | `SESSION_UNAVAILABLE` | A test requires a session no selected setup test produced | configuration | 2 |
 | `SESSION_CONTRACT` | A setup test saved a session twice, saved an undeclared name, or finished without saving a declared one | test | 1 |
 | `TEST_TIMEOUT` | The attempt exceeded the resolved test `timeout` | test | 1 |
-| `STEP_NOT_AWAITED` | The test body settled while a step it started was still running: a step call without `await`. The step is failed at the line of the call and cancelled; the attempt fails with this code when the body returned, or keeps the body's own error and records this one under `secondaryErrors` when the body threw | test | 1 |
+| `STEP_NOT_AWAITED` | The test body, or a `test.step` body, settled while a step it started was still running: a step call without `await`. The step is failed at the line of the call and cancelled; the attempt fails with this code when the body returned, or keeps the body's own error and records this one under `secondaryErrors` when the body threw. A `test.step` body fails its step with this code and rethrows | test | 1 |
 | `HOOK_FAILED` | `beforeAll` or `afterAll` threw. Skips the suite's tests. | test | 1 |
 | `LAUNCH_TIMEOUT` | Engine init or attempt start exceeded `config.launchTimeout` | infrastructure | 3 |
 | `CLEANUP_TIMEOUT` | Engine attempt end exceeded `config.cleanupTimeout` | infrastructure | 3 |

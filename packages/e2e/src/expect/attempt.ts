@@ -1,9 +1,10 @@
-/** The running attempt, published for expectations that have no fixture to hang off. */
+/** The running attempt, published for the calls that have no fixture to hang off: `expect.poll`, `test.step`, `test.skip`. */
 
 import { attemptBrand } from '../internal/brands.ts';
 import { InfrastructureError } from '../internal/errors.ts';
 import { realmSlot } from '../internal/realm-slot.ts';
 import type { AttemptBudget } from '../run/budget.ts';
+import type { StepRecorder } from '../run/steps.ts';
 
 export interface PublishedAttempt {
   readonly attemptId: string;
@@ -13,6 +14,8 @@ export interface PublishedAttempt {
   readonly assertionTimeout: number;
   /** Read at call time: the running phase's signal and deadline. */
   readonly budget: AttemptBudget;
+  /** Opens steps on the attempt's timeline; `test.step` records its grouping steps through it. */
+  readonly steps: Pick<StepRecorder, 'run'>;
 }
 
 /**

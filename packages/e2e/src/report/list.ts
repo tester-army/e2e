@@ -46,7 +46,7 @@ import {
   type Counters,
 } from './format.ts';
 import { ExploreView } from './list-explore.ts';
-import { isShownEvent, type FileGroup, type RunningTest, type TestLine } from './list-model.ts';
+import { closeStep, currentStep, finishedRows, isShownEvent, nestRows, openStep, type FileGroup, type FinishedStep, type RunningTest, type TestLine } from './list-model.ts';
 import { stepLine } from './list-steps.ts';
 import { LiveWindow } from './live-window.ts';
 import { RunningTree } from './running-tree.ts';
@@ -518,19 +518,21 @@ export class ListReporter implements Reporter {
       title: this.titledAs(event.title, event.agent),
       startedMs: Date.now(),
       executing: true,
-      current: undefined,
-      steps: this.pairs.get(key)?.steps ?? [],
+      open: [],
+      steps: finishedRows(this.pairs.get(key)),
     });
     this.window.redraw();
   }
 
   /**
    * Tracks step progress of a running pair. With a live window the pair's
-   * finished agent steps accumulate under its row there and print once, nested
-   * under its line, when the file block prints - so every name appears exactly
-   * once in the scrollback. Without a window (CI logs) nothing is transient, so
-   * each finished agent step prints at once, prefixed with its test. Deterministic
-   * steps are fast and many, so they only ever show in the live window.
+   * finished agent and `test.step` steps accumulate under its row there and
+   * print once, nested under its line, when the file block prints - so every
+   * name appears exactly once in the scrollback. Without a window (CI logs)
+   * nothing is transient, so each finished step prints at once, prefixed with
+   * its test; rows inside a `test.step` wait for it to end, so its row heads
+   * them there too. Deterministic steps are fast and many, so they only ever
+   * show in the live window.
    */
   private step(event: RunEventOf<'step'>): void {
     const running = this.pairs.get(pairKey(event.testId, event.agent, event.target));
@@ -539,12 +541,12 @@ export class ListReporter implements Reporter {
     switch (progress.phase) {
       case 'start': {
         const { api, label, kind } = progress;
-        running.current = { api, label, kind, events: [], replaying: false, activity: undefined };
+        openStep(running, { id: progress.identity?.stepId, api, label, kind });
         this.window.redraw();
         break;
       }
       case 'event': {
-        const { current } = running;
+        const current = currentStep(running);
         this.explore?.action(progress.event);
         if (current === undefined) break;
         // The event ends whatever was announced; until the next announcement
@@ -557,36 +559,37 @@ export class ListReporter implements Reporter {
         break;
       }
       case 'activity': {
-        const { current } = running;
+        const current = currentStep(running);
         if (current === undefined) break;
         current.activity = progress.activity;
         this.window.redraw();
         break;
       }
       case 'replay': {
-        const { current } = running;
+        const current = currentStep(running);
         if (current === undefined) break;
         current.replaying = progress.active;
         this.window.redraw();
         break;
       }
       case 'end': {
-        running.current = undefined;
-        if (progress.kind !== 'agent') {
+        const ended = closeStep(running, progress.identity?.stepId);
+        if (progress.kind !== 'agent' && progress.kind !== 'test') {
           this.window.redraw();
           break;
         }
-        const { api, label, status, durationMs, modelCalls } = progress;
-        const step = { api, label, status, durationMs, modelCalls };
         // An exploration's planner and charter steps show as the exploration's own rows.
         if (this.explore !== undefined) break;
+        const { api, label, status, durationMs, modelCalls } = progress;
+        const row: FinishedStep = { api, label, status, durationMs, modelCalls, depth: ended?.depth ?? 0 };
+        const landed = nestRows(running, [row, ...(ended?.rows ?? [])]);
         if (this.live) {
-          running.steps.push(step);
+          running.steps.push(...landed);
           this.window.redraw();
-        } else {
-          const context = `${this.pc.dim(running.title)}${this.separator}`;
-          this.print(`${TEST_INDENT}${stepLine(this.pc, step, { context })}`);
+          break;
         }
+        const context = `${this.pc.dim(running.title)}${this.separator}`;
+        for (const shown of landed) this.print(`${TEST_INDENT}${stepLine(this.pc, shown, { context })}`);
         break;
       }
     }
@@ -617,7 +620,7 @@ export class ListReporter implements Reporter {
     if (!result.selected) return;
     const key = pairKey(result.test.id, result.agent, result.target.name);
     this.flushOutput(key);
-    const steps = this.pairs.get(key)?.steps ?? [];
+    const steps = finishedRows(this.pairs.get(key));
     this.pairs.delete(key);
     const group = this.group(result.test.file, result.target.name);
     const { durationMs, usage, cache, error, videos, failure, screenPath } = this.detailsOf(result);
@@ -800,7 +803,8 @@ export class ListReporter implements Reporter {
   private renderWindow(room: number): string[] {
     const running = [...this.pairs.values()].filter((test) => test.executing);
     if (this.explore !== undefined) {
-      return this.explore.liveRows(this.exploreBadge(), running[0]?.current?.events, this.summaryRows(false), Date.now(), room);
+      const first = running[0];
+      return this.explore.liveRows(this.exploreBadge(), first === undefined ? undefined : currentStep(first)?.events, this.summaryRows(false), Date.now(), room);
     }
     return this.tree.render(running, this.summaryRows(false), Date.now(), room, this.inFlight);
   }

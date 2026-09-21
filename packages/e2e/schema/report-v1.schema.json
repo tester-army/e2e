@@ -249,9 +249,10 @@
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "index": { "type": "integer", "minimum": 0 },
-        "kind": { "enum": ["agent", "locator", "assertion", "screen", "app", "session", "resource"] },
+        "kind": { "enum": ["agent", "locator", "assertion", "screen", "app", "session", "resource", "test"] },
         "api": { "type": "string", "minLength": 1 },
         "label": { "type": "string", "maxLength": 8192 },
+        "parent": { "type": "string", "minLength": 1 },
         "source": { "$ref": "#/$defs/source" },
         "status": { "enum": ["passed", "failed", "blocked", "timed-out", "cancelled"] },
         "startedAt": { "$ref": "#/$defs/timestamp" },
