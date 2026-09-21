@@ -2,6 +2,7 @@
 
 import { sanitizeText } from '../internal/errors.ts';
 import type { Report1Document, ReportError, ReportResult, ReportSerialGroup } from './build.ts';
+import { repeatSuffix } from './format.ts';
 import { outcome } from './outcome.ts';
 import { fileReporter } from './write.ts';
 
@@ -99,7 +100,7 @@ function renderResult(result: ReportResult, groups: ReadonlyMap<string, ReportSe
   // never names one keeps the case names its CI history is keyed on.
   const agent = result.agent === 'default' ? '' : ` [${result.agent}]`;
   const open = `<testcase ${attributes({
-    name: `${result.titlePath.join(' > ')} [${result.targetId}]${agent}`,
+    name: `${result.titlePath.join(' > ')}${repeatSuffix(result.repeat)} [${result.targetId}]${agent}`,
     classname: result.file,
     time: seconds(final.durationMs),
   })}`;

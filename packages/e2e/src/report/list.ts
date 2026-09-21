@@ -35,6 +35,7 @@ import {
   stateString,
   statusBucket,
   stepsCacheTally,
+  repeatSuffix,
   stepsUsage,
   sumUsage,
   tally,
@@ -84,10 +85,11 @@ export interface ListReporterOptions {
 
 /**
  * The identity of one pair across `test-started`, `step`, and `test-finished`:
- * a test runs once per agent it is pinned to, on each target.
+ * a test runs once per agent it is pinned to, on each target, and once per
+ * `--repeat-each` run.
  */
-function pairKey(testId: string, agent: string, target: string): string {
-  return `${testId}@${agent}@${target}`;
+function pairKey(testId: string, agent: string, target: string, repeat: number): string {
+  return `${testId}@${agent}@${target}@${repeat}`;
 }
 
 /** What a test line and a failure entry need from a result's execution. */
@@ -348,7 +350,7 @@ export class ListReporter implements Reporter {
   private testOutput(event: RunEventOf<'output'>): void {
     const { pc } = this;
     if (event.text === '') return;
-    const pair = event.pair === undefined ? undefined : pairKey(event.pair.testId, event.pair.agent, event.target);
+    const pair = event.pair === undefined ? undefined : pairKey(event.pair.testId, event.pair.agent, event.target, event.pair.repeat);
     const running = pair === undefined ? undefined : this.pairs.get(pair);
     const source = running === undefined ? this.badge(event.target) : `${this.badge(running.group.target)} ${bounded(running.group.file)}${this.separator}${running.title}`;
     const key = `${event.stream}\u0000${source}`;
@@ -386,8 +388,8 @@ export class ListReporter implements Reporter {
    * `default`: a test pinned to several agents lists once per agent, and the
    * tag is what tells the lines apart.
    */
-  private titledAs(title: string, agent: string): string {
-    const bare = bounded(title);
+  private titledAs(title: string, agent: string, repeat: number): string {
+    const bare = `${bounded(title)}${repeat === 0 ? '' : this.pc.dim(repeatSuffix(repeat))}`;
     return agent === 'default' ? bare : `${bare} ${this.pc.dim(`[${bounded(agent)}]`)}`;
   }
 
@@ -518,11 +520,11 @@ export class ListReporter implements Reporter {
         if (test.serialId === event.serialId && test.group.target === event.target) test.executing = false;
       }
     }
-    const key = pairKey(event.testId, event.agent, event.target);
+    const key = pairKey(event.testId, event.agent, event.target, event.repeat);
     this.pairs.set(key, {
       group: this.group(event.file, event.target),
       serialId: event.serialId,
-      title: this.titledAs(event.title, event.agent),
+      title: this.titledAs(event.title, event.agent, event.repeat),
       startedMs: Date.now(),
       executing: true,
       current: undefined,
@@ -540,7 +542,7 @@ export class ListReporter implements Reporter {
    * steps are fast and many, so they only ever show in the live window.
    */
   private step(event: RunEventOf<'step'>): void {
-    const running = this.pairs.get(pairKey(event.testId, event.agent, event.target));
+    const running = this.pairs.get(pairKey(event.testId, event.agent, event.target, event.repeat));
     if (running === undefined) return;
     const { progress } = event;
     switch (progress.phase) {
@@ -622,7 +624,7 @@ export class ListReporter implements Reporter {
     // Unselected pairs are report-only: they never print and the plan never
     // counted them.
     if (!result.selected) return;
-    const key = pairKey(result.test.id, result.agent, result.target.name);
+    const key = pairKey(result.test.id, result.agent, result.target.name, result.repeat);
     this.flushOutput(key);
     const steps = this.pairs.get(key)?.steps ?? [];
     this.pairs.delete(key);
@@ -630,7 +632,7 @@ export class ListReporter implements Reporter {
     const { durationMs, usage, cache, error, videos, failure, screenPath } = this.detailsOf(result);
     addUsage(this.runUsage, usage);
     addCacheTally(this.runCache, cache);
-    const title = this.titledAs(result.test.titlePath.join(' > '), result.agent);
+    const title = this.titledAs(result.test.titlePath.join(' > '), result.agent, result.repeat);
     if (this.explore !== undefined) {
       // The exploration's verdict is its findings; any other error is a failure of its own.
       this.explore.result(result.attempts.flatMap((attempt) => attempt.artifacts));

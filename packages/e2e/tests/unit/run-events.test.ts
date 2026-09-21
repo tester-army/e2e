@@ -96,6 +96,7 @@ describe('toEventResult', () => {
       } as unknown as ResultRecord['test'],
       target,
       agent: 'default',
+      repeat: 0,
       status: 'passed',
       selected: true,
       attempts: [],

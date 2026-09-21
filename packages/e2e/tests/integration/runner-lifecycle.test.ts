@@ -3,6 +3,7 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
+import { resultId } from '../../src/internal/ids.ts';
 import { listProject, resultByTitle, runExisting, runProject, type RunOutcome } from '../helpers/run-project.ts';
 
 describe('runner lifecycle', () => {
@@ -679,6 +680,50 @@ test('other', { tags: ['smoke'] }, async () => {});
       await expect(listProject({ 'tests/empty.txt': '' }, { appUrl: 'http://127.0.0.1:9' })).rejects.toMatchObject({
         code: 'NO_TESTS',
       });
+    },
+    120_000,
+  );
+
+  it(
+    'runs every selected test n times under --repeat-each, each run its own result, and --last-failed names a test any repeat of which failed',
+    async () => {
+      const files = {
+        'tests/repeat.e2e.ts': `import { existsSync, writeFileSync } from 'node:fs';
+import { test } from 'e2e';
+const marker = new URL('./ran-once', import.meta.url);
+test('steady', async () => {});
+test('breaks the second time', async () => {
+  if (existsSync(marker)) throw new Error('second run breaks');
+  writeFileSync(marker, '');
+});
+`,
+      };
+      const { outcome, project } = await runProject(files, { appUrl: app.url, runOptions: { repeatEach: 3, retries: 0 } });
+      expect(outcome.exitCode).toBe(1);
+      const results = outcome.report.run.results.toSorted((a, b) => a.declarationIndex - b.declarationIndex || a.repeat - b.repeat);
+      expect(results.map((result) => [result.titlePath[0], result.repeat, result.status])).toEqual([
+        ['steady', 0, 'passed'],
+        ['steady', 1, 'passed'],
+        ['steady', 2, 'passed'],
+        ['breaks the second time', 0, 'passed'],
+        ['breaks the second time', 1, 'failed'],
+        ['breaks the second time', 2, 'failed'],
+      ]);
+      expect(new Set(results.map((result) => result.id)).size).toBe(6);
+      expect(results[0]!.id).toBe(resultId(results[0]!.testId, 'web', 'default'));
+      const paths = results[4]!.attempts[0]!.artifacts.flatMap((artifact) => (artifact.path === undefined ? [] : [artifact.path]));
+      expect(paths.length).toBeGreaterThan(0);
+      expect(paths.every((artifactPath) => artifactPath.includes('/repeat-1/'))).toBe(true);
+      expect(outcome.report.run.summary).toMatchObject({ selected: 6, executed: 6, passed: 4, failed: 2 });
+
+      // Only the breaking test failed, on its later repeats; the rerun names it once and runs it once.
+      const rerun = await runExisting(project, { appUrl: app.url, runOptions: { lastFailed: true } });
+      expect(rerun.results.filter((result) => result.selected).map((result) => result.test.title)).toEqual(['breaks the second time']);
+
+      const invalid = await runExisting(project, { appUrl: app.url, runOptions: { repeatEach: 0 } });
+      expect(invalid.exitCode).toBe(2);
+      expect(invalid.report.run.errors.map((error) => error.message)).toEqual(['repeatEach must be a positive safe integer, got 0']);
+      project.cleanup();
     },
     120_000,
   );

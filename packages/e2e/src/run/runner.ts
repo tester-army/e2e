@@ -11,7 +11,7 @@ import {
 } from '../config/resolve.ts';
 import { collect, collectInMemory, type Collection } from '../collect/collect.ts';
 import type { ModuleRegistration } from '../collect/registry.ts';
-import { select, selectTargets, type Selection, type SelectionFilters, type Shard, type TagMode } from '../collect/select.ts';
+import { repeatEach, select, selectTargets, type Selection, type SelectionFilters, type Shard, type TagMode } from '../collect/select.ts';
 import {
   classifyError,
   combineExitCodes,
@@ -83,6 +83,13 @@ export interface RunOptions {
    * `failure-limit`, and the exit code is the failures' own.
    */
   maxFailures?: number | undefined;
+  /**
+   * Runs every selected test this many times (`--repeat-each`), each run a
+   * result of its own with `repeat` 0 through `n - 1`. Setup tests run once.
+   * With the trace cache on, the first run records and the later ones
+   * replay; pair it with `noCache` to exercise the model each time.
+   */
+  repeatEach?: number | undefined;
   reporters?: readonly BuiltinReporter[] | undefined;
   artifactsDir?: string | undefined;
   passWithNoTests?: boolean | undefined;
@@ -559,11 +566,14 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             options.tests === undefined
               ? await collect(config, options.files)
               : collectInMemory(config.projectRoot, options.tests.file, options.tests.registration);
-          const selection = select(
-            collection,
-            config,
-            await selectionFilters(options, config),
-            options.passWithNoTests !== undefined ? { passWithNoTests: options.passWithNoTests } : {},
+          const selection = repeatEach(
+            select(
+              collection,
+              config,
+              await selectionFilters(options, config),
+              options.passWithNoTests !== undefined ? { passWithNoTests: options.passWithNoTests } : {},
+            ),
+            options.repeatEach ?? 1,
           );
           return { collection, selection };
         }),
@@ -708,7 +718,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
           onTestStart: (start, targetName) =>
             emit({ type: 'test-started', ...start, target: targetName }),
           onProgress: (pair, targetName, progress) =>
-            emit({ type: 'step', testId: pair.testId, agent: pair.agent, target: targetName, progress }),
+            emit({ type: 'step', testId: pair.testId, agent: pair.agent, repeat: pair.repeat, target: targetName, progress }),
           onOutput: (output, targetName) => emit({ type: 'output', target: targetName, ...output }),
           onDebug: (snapshot) => debug.merge(snapshot),
           onAiTrace: (snapshot) => aiTrace?.merge(snapshot),
@@ -866,11 +876,14 @@ async function selectionFilters(options: ListOptions, config: ResolvedConfig): P
 
 /**
  * The run options the CLI parser already bounds, checked again for the SDK
- * path so `run({ maxFailures: 0 })` is `INVALID_CONFIG` rather than a run
- * that stops at its first failure.
+ * path so `run({ maxFailures: 0 })` or `run({ repeatEach: 0 })` is
+ * `INVALID_CONFIG` rather than a run that stops at its first failure or
+ * runs each test once.
  */
 function validateRunOptions(options: ListOptions): void {
-  positiveInt((options as RunOptions).maxFailures, 'maxFailures');
+  const given = options as RunOptions;
+  positiveInt(given.maxFailures, 'maxFailures');
+  positiveInt(given.repeatEach, 'repeatEach');
 }
 
 /** Resolves the run's config: a supplied value, or the discovered file. */

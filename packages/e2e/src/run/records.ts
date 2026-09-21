@@ -108,6 +108,8 @@ export interface SerialGroupRecord {
   platform: string;
   /** The configured agent this variant of the group ran as. */
   agent: string;
+  /** Which run of the group this is under `--repeat-each`, 0 for the first. */
+  repeat: number;
   memberTestIds: string[];
   status: 'passed' | 'flaky' | 'failed' | 'timed-out' | 'interrupted' | 'skipped';
   skip?: SkipInfo;
@@ -136,6 +138,8 @@ export interface ResultRecord {
   target: ResolvedTarget;
   /** The configured agent the test ran as; with a test run as several, one record each. */
   agent: string;
+  /** Which run of the test this is under `--repeat-each`, 0 for the first; one record each. */
+  repeat: number;
   status: ResultStatus;
   selected: boolean;
   skip?: SkipInfo | undefined;

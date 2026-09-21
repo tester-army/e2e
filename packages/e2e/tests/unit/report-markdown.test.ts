@@ -399,6 +399,13 @@ describe('renderMarkdownReport', () => {
     expect(body).toContain('and 5 more\n</details>');
   });
 
+  it('renders a result from a report written before results carried repeat without a suffix', () => {
+    const legacy = { ...named({ title: 'checkout', status: 'failed' }), repeat: undefined as unknown as number };
+    const body = renderMarkdownReport(page({ status: 'failed', results: [legacy] }));
+    expect(body).toContain('checkout');
+    expect(body).not.toContain('repeat #');
+  });
+
   it('reads a serial member from its group: error, steps, failure evidence, and the artifacts of the attempt that failed', () => {
     const member = named({ title: 'step two', status: 'failed', serialGroupId: 'g1' });
     const group: ReportSerialGroup = {
@@ -411,6 +418,7 @@ describe('renderMarkdownReport', () => {
       targetId: 'web',
       platform: 'web',
       agent: 'default',
+      repeat: 0,
       memberTestIds: [member.testId],
       status: 'failed',
       attempts: [

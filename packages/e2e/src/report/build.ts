@@ -234,6 +234,8 @@ export interface ReportSerialGroup {
   platform: string;
   /** The configured agent this variant of the group ran as. */
   agent: string;
+  /** Which run of the group this is under `--repeat-each`, 0 for the first. */
+  repeat: number;
   memberTestIds: readonly string[];
   status: SerialGroupRecord['status'];
   skip?: SkipInfo | undefined;
@@ -256,6 +258,11 @@ export interface ReportResult {
    * with its own `id`.
    */
   agent: string;
+  /**
+   * Which run of the test this is under `--repeat-each`: 0 for the run
+   * every test has, then 1 through `n - 1`, each a result with its own `id`.
+   */
+  repeat: number;
   /** The tags the test declares; `[]` when none. */
   tags: readonly string[];
   serialGroupId?: string | undefined;
@@ -434,6 +441,7 @@ function serializeSerialGroup(group: SerialGroupRecord): ReportSerialGroup {
     targetId: group.targetId,
     platform: group.platform,
     agent: group.agent,
+    repeat: group.repeat,
     memberTestIds: group.memberTestIds,
     status: group.status,
     skip: group.status === 'skipped' ? group.skip : undefined,
@@ -443,7 +451,7 @@ function serializeSerialGroup(group: SerialGroupRecord): ReportSerialGroup {
 
 function serializeResult(config: ResolvedConfig | undefined, result: ResultRecord): ReportResult {
   return {
-    id: resultId(result.test.id, result.target.name, result.agent),
+    id: resultId(result.test.id, result.target.name, result.agent, result.repeat),
     testId: result.test.id,
     kind: result.test.kind,
     declarationIndex: result.test.declarationIndex,
@@ -453,6 +461,7 @@ function serializeResult(config: ResolvedConfig | undefined, result: ResultRecor
     targetId: result.target.name,
     platform: result.target.platform,
     agent: result.agent,
+    repeat: result.repeat,
     tags: result.test.tags,
     serialGroupId: result.serialGroupId,
     status: result.status,

@@ -29,6 +29,7 @@ npx e2e telemetry [disable|enable] # anonymous usage telemetry: status, or the s
 | `--agent <names>` | Run unpinned tests as other configured agents (`agents.<name>`), comma-separated or repeated; several names run each such test once per agent. Default is `agents.default`. |
 | `--workers <n>`, `--retries <n>` | Override the resolved values. |
 | `--max-failures <n>` | Stop once this many tests failed: the rest are skipped with cause `failure-limit`, running tests end as `interrupted`, exit 1. |
+| `--repeat-each <n>` | Run every selected test n times, each run its own result (`repeat` 0 through n-1). Add `--no-cache`, or the later runs replay the first's recording. |
 | `--reporter <ids>` | `list`, `json`, `junit`, `markdown`, comma-separated. `json` cannot combine with `list`. |
 | `--artifacts <dir>` | Artifact root, default `.e2e/artifacts`. |
 | `--no-cache` | Run with the trace cache off. |
@@ -90,7 +91,7 @@ recorded flow is stale — `--no-cache` only skips the cache for one run.
 - `.e2e/report.json` is written on every run whatever the reporters:
   `run.status`, `run.exitCode`, `run.errors[]` (run-level failures such as
   `APP_UNREACHABLE`), and `run.results[]`, one per test and target, with
-  `titlePath`, `file`, `source`, `tags` (`[]` when the test declares none), `status`, and `attempts[]` holding `steps[]`,
+  `titlePath`, `file`, `source`, `tags` (`[]` when the test declares none), `repeat` (0 unless `--repeat-each`), `status`, and `attempts[]` holding `steps[]`,
   `artifacts[]`, and `error`.
 - `junit`: `.e2e/junit.xml` beside the report, for CI test summaries.
   Combine it with the terminal output: `--reporter list,junit`.

@@ -92,6 +92,10 @@ describe('resultId', () => {
     expect(resultId('t.ts::a', 'web', 'default')).toBe(canonicalDigest({ testId: 't.ts::a', targetId: 'web', agent: 'default' }));
     expect(resultId('t.ts::a', 'web', 'default')).toMatch(/^[0-9a-f]{64}$/);
     expect(resultId('t.ts::a', 'web', 'buyer')).not.toBe(resultId('t.ts::a', 'web', 'admin'));
+    // The first run's id ignores the repeat dimension; later runs get their own.
+    expect(resultId('t.ts::a', 'web', 'default', 0)).toBe(resultId('t.ts::a', 'web', 'default'));
+    expect(resultId('t.ts::a', 'web', 'default', 1)).toBe(canonicalDigest({ testId: 't.ts::a', targetId: 'web', agent: 'default', repeat: 1 }));
+    expect(resultId('t.ts::a', 'web', 'default', 1)).not.toBe(resultId('t.ts::a', 'web', 'default', 2));
   });
 });
 

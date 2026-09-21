@@ -69,7 +69,7 @@ const defaultOptions: ResolvedTestOptions = {
 };
 
 function makePair(test: CollectedTest, overrides: Partial<TestTargetPair> = {}): TestTargetPair {
-  return { test, target, agent: 'default', options: defaultOptions, disposition: 'run', skip: undefined, ...overrides };
+  return { test, target, agent: 'default', repeat: 0, options: defaultOptions, disposition: 'run', skip: undefined, ...overrides };
 }
 
 function makeFile(file: string, tests: CollectedTest[]): CollectedFile {
@@ -180,6 +180,7 @@ describe('wire protocol', () => {
       test,
       target,
       agent: 'default',
+      repeat: 0,
       status: 'passed',
       selected: true,
       attempts: [],
@@ -197,6 +198,7 @@ describe('wire protocol', () => {
       test: makeTest('tests/a.e2e.ts', 'x', 0),
       target,
       agent: 'default',
+      repeat: 0,
       options: defaultOptions,
       disposition: 'skip',
       skip: { cause: 'explicit', reason: 'skipped' },

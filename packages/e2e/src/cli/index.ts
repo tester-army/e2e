@@ -469,6 +469,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .option('--workers <n>', 'parallel workers (default: from the config)', parseNonNegativeInt)
     .option('--retries <n>', 'retries per failing test (default: from the config)', parseNonNegativeInt)
     .option('--max-failures <n>', 'stop the run once this many tests have failed; the rest are skipped', parsePositiveInt)
+    .option('--repeat-each <n>', 'run every selected test this many times, each run its own result (pair with --no-cache to exercise the model each time)', parsePositiveInt)
     .option('--no-cache', 'run with the trace cache off, whatever the config says')
     .optionsGroup('Output:')
     .option('--reporter <ids>', `comma-separated reporters: ${BUILTIN_REPORTERS.join(', ')}`, parseReporters)
@@ -491,6 +492,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           'e2e run --shard 2/3',
           'e2e run --reporter list,junit --workers 4 --retries 2',
           'e2e run --max-failures 3',
+          'e2e run --repeat-each 5 --no-cache tests/checkout.e2e.ts',
           'e2e run --agent ux tests/onboarding.e2e.ts',
           'e2e run --agent buyer,admin tests/checkout.e2e.ts',
           'AI_GATEWAY_API_KEY=... e2e run --no-cache',
@@ -513,6 +515,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           retries?: number;
           workers?: number;
           maxFailures?: number;
+          repeatEach?: number;
           reporter?: Reporter[];
           artifacts?: string;
           /** Commander negation: `--no-cache` parses as `cache: false`. */
@@ -535,6 +538,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
             retries: options.retries,
             workers: options.workers,
             maxFailures: options.maxFailures,
+            repeatEach: options.repeatEach,
             reporters: options.reporter,
             artifactsDir: options.artifacts,
             noCache: options.cache === false,

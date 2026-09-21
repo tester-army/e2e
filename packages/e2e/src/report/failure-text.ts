@@ -12,6 +12,7 @@ import { isLoopbackHost } from '../internal/urls.ts';
 import type { StepTurn } from '../run/steps.ts';
 import type { Report1Document, ReportError, ReportResult, ReportSource, ReportStep } from './build.ts';
 import { cell, code, formatDuration, link, MAX_CELL_CHARS, MAX_ID_CHARS, MAX_LABEL_CHARS, MAX_PATH_CHARS, MAX_TITLE_CHARS, plural } from './markdown-text.ts';
+import { repeatSuffix } from './format.ts';
 import type { AttemptView, Outcome } from './outcome.ts';
 
 type ReportArtifact = ReportResult['attempts'][number]['artifacts'][number];
@@ -213,7 +214,7 @@ export function renderFailurePage(report: Report1Document, result: ReportResult,
   const run = report.run;
   const told = toldAttempt(result, final);
   const manyTargets = run.targets.length > 1;
-  const title = result.titlePath.map((part) => cell(part, MAX_TITLE_CHARS)).join(' › ');
+  const title = `${result.titlePath.map((part) => cell(part, MAX_TITLE_CHARS)).join(' › ')}${repeatSuffix(result.repeat)}`;
   const lines: string[] = [`# ✗ ${title}`, ''];
   const about = [
     code(result.file, MAX_PATH_CHARS),

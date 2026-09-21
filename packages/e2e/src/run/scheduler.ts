@@ -50,8 +50,8 @@ export interface SchedulerEvents {
   onFailureLimit?(failures: number, limit: number): void;
   /** A worker began executing one test-target pair. */
   onTestStart?(start: PairStart, targetName: string): void;
-  /** Live step progress of one running pair, identified by test id and agent. */
-  onProgress?(pair: { testId: string; agent: string }, targetName: string, progress: StepProgress): void;
+  /** Live step progress of one running pair, identified by test id, agent, and repeat. */
+  onProgress?(pair: { testId: string; agent: string; repeat: number }, targetName: string, progress: StepProgress): void;
   /** Text a worker's process wrote to stdout or stderr, attributed to the pair executing when one was. */
   onOutput?(output: Omit<OutputMessage, 'type'>, targetName: string): void;
   /** Phase timings a child-process worker drained after one unit. */
@@ -153,6 +153,7 @@ class SchedulerWorker {
     const pairs: WirePair[] = unit.pairs.map((pair) => ({
       test: pair.test,
       agent: pair.agent,
+      repeat: pair.repeat,
       options: pair.options,
     }));
     this.runner.send({
@@ -561,14 +562,14 @@ class Scheduler {
         break;
       }
       case 'pair-start': {
-        worker.inFlightPair = pairKey(message.testId, message.agent);
+        worker.inFlightPair = pairKey(message.testId, message.agent, message.repeat);
         const { type: _type, ...start } = message;
         this.options.events.onTestStart?.(start, worker.targetName);
         break;
       }
       case 'progress': {
         this.options.events.onProgress?.(
-          { testId: message.testId, agent: message.agent },
+          { testId: message.testId, agent: message.agent, repeat: message.repeat },
           worker.targetName,
           message.progress,
         );
@@ -582,7 +583,7 @@ class Scheduler {
       case 'result': {
         const state = this.targetState(worker);
         const result = decodeResult(message.result, state.target);
-        worker.reported.add(pairKey(result.test.id, result.agent));
+        worker.reported.add(pairKey(result.test.id, result.agent, result.repeat));
         if (result.status !== 'passed' && result.status !== 'flaky' && result.status !== 'skipped') {
           worker.sawFailure = true;
         }
@@ -687,7 +688,7 @@ class Scheduler {
   ): void {
     const interrupted = this.interrupting;
     for (const pair of unit.pairs) {
-      const key = pairKey(pair.test.id, pair.agent);
+      const key = pairKey(pair.test.id, pair.agent, pair.repeat);
       if (worker.reported.has(key)) continue;
       if (interrupted) {
         this.report(unstartedResult(pair, this.stopSkip ?? INTERRUPTED_BEFORE_START));

@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { resultId } from '../../src/internal/ids.ts';
 import { readLastFailed } from '../../src/run/last-run.ts';
 
 let dir: string;
@@ -18,9 +19,15 @@ function reportFile(content: string): string {
   return file;
 }
 
+/** A report whose results each name a test by `id` as their test id, on target `web` as agent `default`. */
 function report(results: readonly Record<string, unknown>[]): string {
-  return JSON.stringify({ schemaVersion: 'report-1', run: { results } });
+  return JSON.stringify({
+    schemaVersion: 'report-1',
+    run: { results: results.map((result) => ({ ...result, testId: result['id'], targetId: 'web', agent: 'default' })) },
+  });
 }
+
+const idOf = (testId: string) => resultId(testId, 'web', 'default');
 
 describe('readLastFailed', () => {
   it('collects the ids of the results that did not pass or that the run never carried out', async () => {
@@ -42,11 +49,15 @@ describe('readLastFailed', () => {
         ]),
       ),
     );
-    expect([...ids]).toEqual(['failed', 'timed-out', 'interrupted', 'setup-failed', 'predecessor', 'hook', 'worker']);
+    expect([...ids]).toEqual(['failed', 'timed-out', 'interrupted', 'setup-failed', 'predecessor', 'hook', 'worker'].map(idOf));
   });
 
-  it('is empty when every result passed', async () => {
+  it('is empty when every result passed, and names a test once however many of its repeats failed', async () => {
     expect((await readLastFailed(reportFile(report([{ id: 'a', status: 'passed' }])))).size).toBe(0);
+    const repeated = await readLastFailed(
+      reportFile(report([{ id: 'a', status: 'passed', repeat: 0 }, { id: 'a', status: 'failed', repeat: 1 }, { id: 'a', status: 'failed', repeat: 2 }])),
+    );
+    expect([...repeated]).toEqual([idOf('a')]);
   });
 
   it('is NO_LAST_RUN when no report exists, with the path and the way out', async () => {

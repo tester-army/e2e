@@ -32,7 +32,7 @@ agent calls.
 | `npx playwright test tests/checkout.spec.ts:12` | `npx e2e run tests/checkout.e2e.ts:12`, the test whose `test(` call opens on that line |
 | `--project chromium` | `--target web`, the name in `targets` |
 | `--grep`, `--grep-invert` | The same, matched against the describe titles and the test title joined by spaces; tags are `--tag` and `--exclude-tag` |
-| `--headed`, `--workers`, `--retries`, `--pass-with-no-tests`, `--last-failed`, `--shard`, `--max-failures` | The same names; `--shard` keeps serial groups together |
+| `--headed`, `--workers`, `--retries`, `--pass-with-no-tests`, `--last-failed`, `--shard`, `--max-failures`, `--repeat-each` | The same names; `--shard` keeps serial groups together |
 | `--reporter junit` | `--reporter list,junit` |
 | `--ui`, `--debug` | `npx e2e mcp` gives a coding agent a live session; `--debug` prints timings and the agent step table |
 

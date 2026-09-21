@@ -21,6 +21,8 @@ export interface WirePair {
   readonly test: TestIdentity;
   /** The configured agent this pair runs as; one test may appear once per agent. */
   readonly agent: string;
+  /** Which run of the test this is under `--repeat-each`, 0 for the first; one test may appear once per repeat. */
+  readonly repeat: number;
   readonly options: ResolvedTestOptions;
 }
 
@@ -116,8 +118,10 @@ export interface ReadyMessage {
 /** One pair about to execute, as reporters see it. */
 export interface PairStart {
   readonly testId: string;
-  /** The configured agent the pair runs as; with the test id, the pair's identity. */
+  /** The configured agent the pair runs as; with the test id and the repeat, the pair's identity. */
   readonly agent: string;
+  /** Which run of the test this is under `--repeat-each`, 0 for the first. */
+  readonly repeat: number;
   /** Joined title path, so reporters need no side lookup by test ID. */
   readonly title: string;
   /** Project-root-relative test file. */
@@ -140,6 +144,7 @@ export interface ProgressMessage {
   readonly type: 'progress';
   readonly testId: string;
   readonly agent: string;
+  readonly repeat: number;
   readonly progress: StepProgress;
 }
 
@@ -152,7 +157,7 @@ export interface ProgressMessage {
  */
 export interface OutputMessage {
   readonly type: 'output';
-  readonly pair: { readonly testId: string; readonly agent: string } | undefined;
+  readonly pair: { readonly testId: string; readonly agent: string; readonly repeat: number } | undefined;
   readonly stream: 'stdout' | 'stderr';
   readonly text: string;
 }

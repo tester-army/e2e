@@ -125,7 +125,7 @@ export type RunEventFact =
        */
       readonly type: 'output';
       readonly target: string;
-      readonly pair: { readonly testId: string; readonly agent: string } | undefined;
+      readonly pair: { readonly testId: string; readonly agent: string; readonly repeat: number } | undefined;
       readonly stream: 'stdout' | 'stderr';
       readonly text: string;
     }
@@ -154,6 +154,8 @@ export type RunEventFact =
       readonly testId: string;
       /** The configured agent the test runs as; a test run as several starts once per agent. */
       readonly agent: string;
+      /** Which run of the test this is under `--repeat-each`, 0 for the first; each repeat starts once. */
+      readonly repeat: number;
       readonly title: string;
       /** Project-root-relative test file, so reporters can group by file. */
       readonly file: string;
@@ -169,6 +171,7 @@ export type RunEventFact =
       readonly type: 'step';
       readonly testId: string;
       readonly agent: string;
+      readonly repeat: number;
       readonly target: string;
       readonly progress: StepProgress;
     }

@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { collectFromRegistration, type Collection } from '../../src/collect/collect.ts';
 import { collectModule, test } from '../../src/collect/registry.ts';
-import { resolveOptions, select } from '../../src/collect/select.ts';
+import { repeatEach, resolveOptions, select } from '../../src/collect/select.ts';
 import { resolveConfig } from '../../src/config/resolve.ts';
 import { defineEngine } from '../../src/engine/index.ts';
 import { resultId } from '../../src/internal/ids.ts';
@@ -534,6 +534,29 @@ describe('select', () => {
     expect(() => select(col, config(), { targetIds: ['wbe'] })).toThrow(
       'unknown target ID "wbe"; the config declares "web"; did you mean "web"?',
     );
+  });
+});
+
+describe('repeatEach', () => {
+  it('runs every runnable ordinary pair n times, adjacent and numbered, and setups or left-out pairs once', async () => {
+    const col = await collection(() => {
+      test.setup('login', { sessions: ['user'] }, noop);
+      test('a', { session: 'user' }, noop);
+      test('b', { tags: ['slow'] }, noop);
+      test.skip('c', noop);
+    });
+    const once = select(col, config(), { excludeTags: ['slow'] });
+    expect(repeatEach(once, 1)).toBe(once);
+    const thrice = repeatEach(once, 3);
+    expect(thrice.pairs.map((pair) => [pair.test.title, pair.disposition, pair.repeat])).toEqual([
+      ['login', 'run', 0],
+      ['a', 'run', 0],
+      ['a', 'run', 1],
+      ['a', 'run', 2],
+      ['b', 'filtered', 0],
+      ['c', 'skip', 0],
+    ]);
+    expect(thrice.perTarget[0]!.pairs).toEqual(thrice.pairs);
   });
 });
 

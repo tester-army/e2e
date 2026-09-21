@@ -310,6 +310,7 @@ describe('renderJunitReport', () => {
       targetId: 'web',
       platform: 'web',
       agent: 'default',
+      repeat: 0,
       memberTestIds: ['test-1', 'test-2'],
       status: 'failed',
       attempts: [

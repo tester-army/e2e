@@ -21,7 +21,7 @@ import path from 'node:path';
 import { collapseText } from '../internal/text.ts';
 import type { Report1Document, ReportError, ReportExplore, ReportExploreFinding, ReportResult, ReportStep } from './build.ts';
 import { ENDED_TEXT, orderFindings, SEVERITY_WORDS, stepCountParts } from './explore-text.ts';
-import { formatCost, formatTokens, statusBucket, tally, type Counters } from './format.ts';
+import { formatCost, formatTokens, repeatSuffix, statusBucket, tally, type Counters } from './format.ts';
 import {
   attemptsLine,
   detailLines,
@@ -271,7 +271,7 @@ function fileLabel(file: string, target: string, manyTargets: boolean): string {
 /** `suite › title (target)`. */
 function testName(result: ReportResult, manyTargets: boolean): string {
   const title = result.titlePath.map((part) => cell(part, MAX_TITLE_CHARS)).join(' › ');
-  return `${title}${manyTargets ? ` (${cell(result.targetId, MAX_ID_CHARS)})` : ''}`;
+  return `${title}${repeatSuffix(result.repeat)}${manyTargets ? ` (${cell(result.targetId, MAX_ID_CHARS)})` : ''}`;
 }
 
 /**

@@ -268,3 +268,12 @@ export function aiSegment(usage: AiUsage): string | undefined {
 export function visibleWidth(text: string): number {
   return [...stripVTControlCharacters(text)].length;
 }
+
+/**
+ * The title suffix of a `--repeat-each` run past the first: ` (repeat #2)`;
+ * empty for the first run, and for a report written before results carried
+ * `repeat`, which the renderers may still be handed.
+ */
+export function repeatSuffix(repeat: number | undefined): string {
+  return repeat === undefined || repeat === 0 ? '' : ` (repeat #${repeat})`;
+}

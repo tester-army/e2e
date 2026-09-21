@@ -79,8 +79,8 @@ type RunEventFact =
   | { type: 'notice'; target; message }
   | { type: 'setup'; step: SetupStep; state: 'started' }
   | { type: 'setup'; step: SetupStep; state: 'finished'; durationMs; outcome?: 'reused' }
-  | { type: 'test-started'; testId; agent; title; file; serialId; target }
-  | { type: 'step'; testId; agent; target; progress: StepProgress }
+  | { type: 'test-started'; testId; agent; repeat; title; file; serialId; target }
+  | { type: 'step'; testId; agent; repeat; target; progress: StepProgress }
   | { type: 'test-finished'; result: RunEventResult }
   | { type: 'serial-group'; group: SerialGroupRecord }
   | { type: 'explore'; progress: ExploreProgress }

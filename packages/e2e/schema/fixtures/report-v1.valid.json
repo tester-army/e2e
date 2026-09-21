@@ -70,6 +70,7 @@
         "targetId": "web",
         "platform": "web",
         "agent": "default",
+        "repeat": 0,
         "status": "passed",
         "attempts": [
           {
@@ -226,6 +227,7 @@
         "targetId": "web",
         "platform": "web",
         "agent": "default",
+        "repeat": 0,
         "status": "skipped",
         "attempts": [
           {

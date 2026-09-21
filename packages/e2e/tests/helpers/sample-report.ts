@@ -63,6 +63,7 @@ export function sampleReport(): Report1Document {
         targetId: 'web',
         platform: 'web',
         agent: 'default',
+        repeat: 0,
         memberTestIds: ['tests/secret.e2e.ts::Secret%20Title::pays'],
         status: 'passed',
         attempts: [

@@ -46,6 +46,12 @@ export interface TestTargetPair {
   readonly target: ResolvedTarget;
   /** The configured agent this pair runs as: one of `options.agents`. */
   readonly agent: string;
+  /**
+   * Which run of the test this is under `--repeat-each`: 0 for the one every
+   * run has, then 1 through `n - 1`. Part of the pair's identity with the
+   * test, the target, and the agent.
+   */
+  readonly repeat: number;
   readonly options: ResolvedTestOptions;
   /** run: execute; skip: report skipped; filtered: report as unselected. */
   readonly disposition: 'run' | 'skip' | 'filtered';
@@ -334,6 +340,25 @@ export function select(
   };
 }
 
+/**
+ * The selection with every runnable ordinary pair run `times` times: the
+ * pair itself, then a copy per further repeat right after it, so a test's
+ * runs are adjacent in report order. Setup tests run once whatever the
+ * count, and a filtered or skipped pair is reported once.
+ */
+export function repeatEach(selection: Selection, times: number): Selection {
+  if (times <= 1) return selection;
+  const expand = (pairs: readonly TestTargetPair[]): TestTargetPair[] =>
+    pairs.flatMap((pair) => {
+      if (pair.disposition !== 'run' || pair.test.kind !== 'test') return [pair];
+      return Array.from({ length: times }, (_, repeat) => ({ ...pair, repeat }));
+    });
+  return {
+    pairs: expand(selection.pairs),
+    perTarget: selection.perTarget.map(({ target, pairs }) => ({ target, pairs: expand(pairs) })),
+  };
+}
+
 /** At most this many file names are spelled out in a `NO_TESTS` message. */
 const MAX_NAMED_FILES = 3;
 
@@ -508,7 +533,7 @@ function classifyPair(
   filters: SelectionFilters,
   tagMode: TagMode,
 ): TestTargetPair {
-  const base = { test, target, agent, options };
+  const base = { test, target, agent, repeat: 0, options };
 
   if (test.kind === 'test') {
     // A file no positional named is collected for its setup tests only; its

@@ -146,14 +146,19 @@ function isSkipInfo(value: unknown): value is SkipInfo {
  */
 export function pairResult(
   pair: TestTargetPair,
-  fields: Omit<ResultRecord, 'test' | 'target' | 'agent'>,
+  fields: Omit<ResultRecord, 'test' | 'target' | 'agent' | 'repeat'>,
 ): ResultRecord {
-  return { test: testIdentity(pair.test), target: pair.target, agent: pair.agent, ...fields };
+  return { test: testIdentity(pair.test), target: pair.target, agent: pair.agent, repeat: pair.repeat, ...fields };
 }
 
-/** The identity of one pair among a unit's: a test runs once per agent it is pinned to. */
-export function pairKey(testId: string, agent: string): string {
-  return `${testId}\u0000${agent}`;
+/** The artifact path segment of a `--repeat-each` run past the first; none for the first, whose paths do not change. */
+export function repeatSegment(repeat: number): readonly string[] {
+  return repeat === 0 ? [] : [`repeat-${repeat}`];
+}
+
+/** The identity of one pair among a unit's: a test runs once per agent it is pinned to, and once per repeat. */
+export function pairKey(testId: string, agent: string, repeat: number): string {
+  return `${testId}\u0000${agent}\u0000${repeat}`;
 }
 
 /** Result for a pair reported skipped or unselected without ever dispatching. */
@@ -181,5 +186,5 @@ export function unstartedResult(pair: TestTargetPair, skip: SkipInfo): ResultRec
 
 /** Result for a test that vanished between planning and execution. */
 export function disappearedResult(pair: WirePair, target: ResolvedTarget): ResultRecord {
-  return { test: pair.test, target, agent: pair.agent, status: 'failed', selected: true, attempts: [] };
+  return { test: pair.test, target, agent: pair.agent, repeat: pair.repeat, status: 'failed', selected: true, attempts: [] };
 }

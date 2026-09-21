@@ -49,6 +49,7 @@ function failedResult(error: SerializedError): ResultRecord {
     },
     target,
     agent: 'default',
+    repeat: 0,
     status: 'failed',
     selected: true,
     attempts: [failedAttempt(error)],

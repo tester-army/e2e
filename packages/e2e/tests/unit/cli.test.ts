@@ -216,6 +216,16 @@ describe('e2e run argument parsing', () => {
     expect(runMock).not.toHaveBeenCalled();
   });
 
+  it('parses --repeat-each as a positive integer', async () => {
+    await invoke('run', '--repeat-each', '3');
+    expect(lastRunOptions().repeatEach).toBe(3);
+    runMock.mockClear();
+    process.exitCode = undefined;
+    await invoke('run', '--repeat-each', '0');
+    expect(runMock).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+  });
+
   it('parses --shard as index/total and --last-failed as a flag', async () => {
     await invoke('run', '--shard', '2/3', '--last-failed');
     const options = lastRunOptions();
@@ -569,6 +579,7 @@ describe('e2e --version and --help', () => {
       '--workers',
       '--retries',
       '--max-failures',
+      '--repeat-each',
       '--no-cache',
       '--reporter',
       '--artifacts',

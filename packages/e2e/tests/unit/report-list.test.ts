@@ -47,6 +47,8 @@ function result(overrides: {
   serialGroupId?: string;
   /** The agent the test ran as; `default` unless the case is about personas. */
   agent?: string;
+  /** Which `--repeat-each` run this is; 0 unless the case is about repeats. */
+  repeat?: number;
 }): RunEventResult {
   return {
     test: {
@@ -57,6 +59,7 @@ function result(overrides: {
     },
     target: { name: overrides.target ?? 'chromium', platform: 'web' },
     agent: overrides.agent ?? 'default',
+    repeat: overrides.repeat ?? 0,
     status: overrides.status,
     selected: overrides.selected ?? true,
     skip:
@@ -97,6 +100,7 @@ function serialGroup(
     targetId: 'chromium',
     platform: 'web',
     agent: 'default',
+    repeat: 0,
     memberTestIds: [...new Set(attempts.flatMap((entry) => entry.members.map((member) => member.testId)))],
     status: 'passed',
     attempts: attempts.map((entry, index) => ({
@@ -173,7 +177,7 @@ function testStarted(
   file = 'tests/case.e2e.ts',
   serialId?: string,
 ): RunEventFact {
-  return { type: 'test-started', testId, agent: 'default', title, file, serialId, target };
+  return { type: 'test-started', testId, agent: 'default', repeat: 0, title, file, serialId, target };
 }
 
 function failedAttempt(message: string, stack?: string): AttemptRecord {
@@ -273,6 +277,21 @@ describe('ListReporter', () => {
     expect(lines).toEqual(['stopped after 3 failures (--max-failures 3): the running tests end as interrupted, the rest are skipped']);
   });
 
+  it('titles the later runs of a repeated test and keeps each run its own line', () => {
+    const { lines, output } = capture();
+    const reporter = plainReporter(output);
+    reporter.handle(runStarted());
+    reporter.handle(plan([{ file: 'tests/checkout.e2e.ts', tests: 3 }]));
+    lines.length = 0;
+    for (const repeat of [0, 1, 2]) {
+      reporter.handle(finished(result({ status: repeat === 1 ? 'failed' : 'passed', id: 't1', repeat, file: 'tests/checkout.e2e.ts', title: ['pays'], attempts: [attempt({ durationMs: 80 })] })));
+    }
+    const block = lines.join('\n');
+    expect(block).toContain('pays 80ms');
+    expect(block).toContain('pays (repeat #1)');
+    expect(block).toContain('pays (repeat #2) 80ms');
+  });
+
   it('acknowledges each interrupt the moment it lands', () => {
     const { lines, output } = capture();
     const reporter = plainReporter(output);
@@ -320,12 +339,12 @@ describe('ListReporter', () => {
       reporter.handle(runStarted());
       reporter.handle(plan([{ file: 'tests/checkout.e2e.ts', tests: 3 }]));
       lines.length = 0;
-      reporter.handle({ type: 'test-started', testId: 't1', agent: 'default', title: 'checkout > pays', file: 'tests/checkout.e2e.ts', serialId: undefined, target: 'chromium' });
-      reporter.handle({ type: 'test-started', testId: 't1', agent: 'buyer', title: 'checkout > pays', file: 'tests/checkout.e2e.ts', serialId: undefined, target: 'chromium' });
-      reporter.handle({ type: 'test-started', testId: 't1', agent: 'admin', title: 'checkout > pays', file: 'tests/checkout.e2e.ts', serialId: undefined, target: 'chromium' });
+      reporter.handle({ type: 'test-started', testId: 't1', agent: 'default', repeat: 0, title: 'checkout > pays', file: 'tests/checkout.e2e.ts', serialId: undefined, target: 'chromium' });
+      reporter.handle({ type: 'test-started', testId: 't1', agent: 'buyer', repeat: 0, title: 'checkout > pays', file: 'tests/checkout.e2e.ts', serialId: undefined, target: 'chromium' });
+      reporter.handle({ type: 'test-started', testId: 't1', agent: 'admin', repeat: 0, title: 'checkout > pays', file: 'tests/checkout.e2e.ts', serialId: undefined, target: 'chromium' });
       // Steps route by test id and agent, so the buyer's step stays with the buyer's line.
-      reporter.handle({ type: 'step', testId: 't1', agent: 'buyer', target: 'chromium', progress: { phase: 'start', kind: 'agent', api: 'agent.act', label: 'pay' } });
-      reporter.handle({ type: 'step', testId: 't1', agent: 'buyer', target: 'chromium', progress: { phase: 'end', kind: 'agent', api: 'agent.act', label: 'pay', status: 'passed', durationMs: 4_200, modelCalls: 3 } });
+      reporter.handle({ type: 'step', testId: 't1', agent: 'buyer', repeat: 0, target: 'chromium', progress: { phase: 'start', kind: 'agent', api: 'agent.act', label: 'pay' } });
+      reporter.handle({ type: 'step', testId: 't1', agent: 'buyer', repeat: 0, target: 'chromium', progress: { phase: 'end', kind: 'agent', api: 'agent.act', label: 'pay', status: 'passed', durationMs: 4_200, modelCalls: 3 } });
       for (const agent of ['default', 'buyer', 'admin']) {
         reporter.handle(finished(result({ status: 'passed', id: 't1', agent, file: 'tests/checkout.e2e.ts', title: ['checkout', 'pays'], attempts: [attempt({ durationMs: 80 })] })));
       }
@@ -1035,6 +1054,7 @@ describe('ListReporter', () => {
           type: 'step',
           testId: 'm1',
           agent: 'default',
+          repeat: 0,
           target: 'chromium',
           progress: { phase: 'end', kind: 'agent', api: 'agent.act', label: 'fill the form', status, durationMs: 4_200, modelCalls: 3 },
         });
@@ -1062,10 +1082,10 @@ describe('ListReporter', () => {
       reporter.handle(runStarted());
       reporter.handle(plan([{ file: 'tests/case.e2e.ts', tests: 2 }]));
       reporter.handle(testStarted('m1', 'step 1', 'chromium', 'tests/case.e2e.ts', 'wizard'));
-      reporter.handle({ type: 'step', testId: 'm1', agent: 'default', target: 'chromium', progress: { phase: 'start', kind: 'locator', api: 'app.open', label: '/wizard' } });
+      reporter.handle({ type: 'step', testId: 'm1', agent: 'default', repeat: 0, target: 'chromium', progress: { phase: 'start', kind: 'locator', api: 'app.open', label: '/wizard' } });
       expect(chunks.at(-1)).toContain('step 1');
       reporter.handle(testStarted('m2', 'step 2', 'chromium', 'tests/case.e2e.ts', 'wizard'));
-      reporter.handle({ type: 'step', testId: 'm2', agent: 'default', target: 'chromium', progress: { phase: 'start', kind: 'locator', api: 'locator.fill', label: 'Plan' } });
+      reporter.handle({ type: 'step', testId: 'm2', agent: 'default', repeat: 0, target: 'chromium', progress: { phase: 'start', kind: 'locator', api: 'locator.fill', label: 'Plan' } });
       const window = chunks.at(-1)!;
       expect(window).toContain('step 2');
       expect(window).toContain('locator.fill "Plan"');
@@ -1094,10 +1114,10 @@ describe('ListReporter', () => {
       const reporter = plainReporter(output);
       reporter.handle(plan([{ file: 'tests/flow.e2e.ts', tests: 1 }]));
       reporter.handle(testStarted('t1', 'checkout', 'chromium', 'tests/flow.e2e.ts'));
-      reporter.handle({ type: 'step', testId: 't1', agent: 'default', target: 'chromium', progress: agentStep('start', 'add to cart') });
-      reporter.handle({ type: 'step', testId: 't1', agent: 'default', target: 'chromium', progress: agentStep('end', 'add to cart') });
-      reporter.handle({ type: 'step', testId: 't1', agent: 'default', target: 'chromium', progress: agentStep('start', 'pay') });
-      reporter.handle({ type: 'step', testId: 't1', agent: 'default', target: 'chromium', progress: agentStep('end', 'pay', 'failed') });
+      reporter.handle({ type: 'step', testId: 't1', agent: 'default', repeat: 0, target: 'chromium', progress: agentStep('start', 'add to cart') });
+      reporter.handle({ type: 'step', testId: 't1', agent: 'default', repeat: 0, target: 'chromium', progress: agentStep('end', 'add to cart') });
+      reporter.handle({ type: 'step', testId: 't1', agent: 'default', repeat: 0, target: 'chromium', progress: agentStep('start', 'pay') });
+      reporter.handle({ type: 'step', testId: 't1', agent: 'default', repeat: 0, target: 'chromium', progress: agentStep('end', 'pay', 'failed') });
       reporter.handle(finished(result({
         status: 'failed',
         id: 't1',
@@ -1120,10 +1140,10 @@ describe('ListReporter', () => {
       const reporter = plainReporter(output, true);
       reporter.handle(plan([{ file: 'tests/flow.e2e.ts', tests: 2 }]));
       reporter.handle(testStarted('t1', 'checkout', 'chromium', 'tests/flow.e2e.ts'));
-      reporter.handle({ type: 'step', testId: 't1', agent: 'default', target: 'chromium', progress: agentStep('start', 'add to cart') });
-      reporter.handle({ type: 'step', testId: 't1', agent: 'default', target: 'chromium', progress: agentStep('end', 'add to cart') });
-      reporter.handle({ type: 'step', testId: 't1', agent: 'default', target: 'chromium', progress: agentStep('start', 'pay') });
-      reporter.handle({ type: 'step', testId: 't1', agent: 'default', target: 'chromium', progress: agentStep('end', 'pay', 'failed') });
+      reporter.handle({ type: 'step', testId: 't1', agent: 'default', repeat: 0, target: 'chromium', progress: agentStep('start', 'add to cart') });
+      reporter.handle({ type: 'step', testId: 't1', agent: 'default', repeat: 0, target: 'chromium', progress: agentStep('end', 'add to cart') });
+      reporter.handle({ type: 'step', testId: 't1', agent: 'default', repeat: 0, target: 'chromium', progress: agentStep('start', 'pay') });
+      reporter.handle({ type: 'step', testId: 't1', agent: 'default', repeat: 0, target: 'chromium', progress: agentStep('end', 'pay', 'failed') });
       expect(lines).toEqual([]);
       reporter.handle(finished(result({
         status: 'failed',
@@ -1134,8 +1154,8 @@ describe('ListReporter', () => {
         attempts: [failedAttempt('pay step failed')],
       })));
       reporter.handle(testStarted('t2', 'refund', 'chromium', 'tests/flow.e2e.ts'));
-      reporter.handle({ type: 'step', testId: 't2', agent: 'default', target: 'chromium', progress: agentStep('start', 'refund order') });
-      reporter.handle({ type: 'step', testId: 't2', agent: 'default', target: 'chromium', progress: agentStep('end', 'refund order') });
+      reporter.handle({ type: 'step', testId: 't2', agent: 'default', repeat: 0, target: 'chromium', progress: agentStep('start', 'refund order') });
+      reporter.handle({ type: 'step', testId: 't2', agent: 'default', repeat: 0, target: 'chromium', progress: agentStep('end', 'refund order') });
       reporter.handle(finished(result({ status: 'passed', id: 't2', file: 'tests/flow.e2e.ts', title: ['refund'], declarationIndex: 1 })));
       expect(lines).toEqual([
         ' ❯ |chromium| tests/flow.e2e.ts (2 tests | 1 failed) 240ms',
@@ -1154,8 +1174,8 @@ describe('ListReporter', () => {
       reporter.handle(plan([{ file: 'tests/flow.e2e.ts', tests: 2 }]));
       reporter.handle(testStarted('t1', 'checkout', 'chromium', 'tests/flow.e2e.ts'));
       reporter.handle(testStarted('t2', 'refund', 'chromium', 'tests/flow.e2e.ts'));
-      reporter.handle({ type: 'step', testId: 't1', agent: 'default', target: 'chromium', progress: agentStep('start', 'add to cart') });
-      reporter.handle({ type: 'step', testId: 't1', agent: 'default', target: 'chromium', progress: agentStep('end', 'add to cart') });
+      reporter.handle({ type: 'step', testId: 't1', agent: 'default', repeat: 0, target: 'chromium', progress: agentStep('start', 'add to cart') });
+      reporter.handle({ type: 'step', testId: 't1', agent: 'default', repeat: 0, target: 'chromium', progress: agentStep('end', 'add to cart') });
       expect(lines).toEqual(['   ✓ checkout > agent.act "add to cart" 4.20s · 3 model calls']);
     });
 
@@ -1167,8 +1187,8 @@ describe('ListReporter', () => {
         reporter.handle(plan([{ file: 'tests/flow.e2e.ts', tests: 1 }]));
         reporter.handle(testStarted('t1', 'checkout', 'chromium', 'tests/flow.e2e.ts'));
         const label = 'add two todos named "Buy milk" and "Walk the dog", then mark the first';
-        reporter.handle({ type: 'step', testId: 't1', agent: 'default', target: 'chromium', progress: agentStep('start', label) });
-        reporter.handle({ type: 'step', testId: 't1', agent: 'default', target: 'chromium', progress: agentStep('end', label) });
+        reporter.handle({ type: 'step', testId: 't1', agent: 'default', repeat: 0, target: 'chromium', progress: agentStep('start', label) });
+        reporter.handle({ type: 'step', testId: 't1', agent: 'default', repeat: 0, target: 'chromium', progress: agentStep('end', label) });
         expect(lines.at(-1)).toBe(`   ✓ checkout > agent.act "${label}" 4.20s · 3 model calls`);
       } finally {
         restore();
@@ -1183,6 +1203,7 @@ describe('ListReporter', () => {
         type: 'step',
         testId: 't1',
         agent: 'default',
+        repeat: 0,
         target: 'chromium',
         progress: { phase: 'start', kind: 'locator', api: 'locator.tap', label: 'button' },
       });
@@ -1190,6 +1211,7 @@ describe('ListReporter', () => {
         type: 'step',
         testId: 't1',
         agent: 'default',
+        repeat: 0,
         target: 'chromium',
         progress: { phase: 'end', kind: 'locator', api: 'locator.tap', label: 'button', status: 'passed', durationMs: 5, modelCalls: 0 },
       });
@@ -1240,6 +1262,7 @@ describe('ListReporter', () => {
         type: 'step',
         testId: 't1',
         agent: 'default',
+        repeat: 0,
         target: 'chromium',
         progress: { phase: 'start', kind: 'agent', api: 'agent.act', label: 'add a todo' },
       });
@@ -1247,6 +1270,7 @@ describe('ListReporter', () => {
         type: 'step',
         testId: 't1',
         agent: 'default',
+        repeat: 0,
         target: 'chromium',
         progress: {
           phase: 'event',
@@ -1271,6 +1295,7 @@ describe('ListReporter', () => {
         type: 'step',
         testId: 't1',
         agent: 'default',
+        repeat: 0,
         target: 'chromium',
         progress: step,
       });
@@ -1297,6 +1322,7 @@ describe('ListReporter', () => {
           type: 'step',
           testId: 't1',
           agent: 'default',
+          repeat: 0,
           target: 'chromium',
           progress: { phase: 'start', kind: 'agent', api: 'agent.act', label: 'pay' },
         });
@@ -1304,6 +1330,7 @@ describe('ListReporter', () => {
           type: 'step',
           testId: 't1',
           agent: 'default',
+          repeat: 0,
           target: 'chromium',
           progress: {
             phase: 'event',
@@ -1333,7 +1360,7 @@ describe('ListReporter', () => {
         const reporter = plainReporter(output, true);
         reporter.handle(runStarted());
         reporter.handle(testStarted('t1', 'a', 'chromium'));
-        const step = (progress: object) => reporter.handle({ type: 'step', testId: 't1', agent: 'default', target: 'chromium', progress } as never);
+        const step = (progress: object) => reporter.handle({ type: 'step', testId: 't1', agent: 'default', repeat: 0, target: 'chromium', progress } as never);
         step({ phase: 'start', kind: 'agent', api: 'agent.act', label: 'pay' });
         step({
           phase: 'event',
@@ -1363,7 +1390,7 @@ describe('ListReporter', () => {
         const reporter = plainReporter(output, true);
         reporter.handle(runStarted());
         reporter.handle(testStarted('t1', 'a', 'chromium'));
-        const step = (progress: object) => reporter.handle({ type: 'step', testId: 't1', agent: 'default', target: 'chromium', progress } as never);
+        const step = (progress: object) => reporter.handle({ type: 'step', testId: 't1', agent: 'default', repeat: 0, target: 'chromium', progress } as never);
         step({ phase: 'start', kind: 'agent', api: 'agent.act', label: 'pay' });
         step({
           phase: 'event',
@@ -1396,6 +1423,7 @@ describe('ListReporter', () => {
         type: 'step',
         testId: 't1',
         agent: 'default',
+        repeat: 0,
         target: 'chromium',
         progress: { phase: 'end', kind: 'agent', api: 'agent.act', label: 'pay', status: 'passed', durationMs: 4_200, modelCalls: 3 },
       });
@@ -1419,7 +1447,7 @@ describe('ListReporter', () => {
         reporter.handle(plan([{ file: 'tests/flow.e2e.ts', tests: 1 }]));
         reporter.handle(testStarted('t1', 'checkout', 'chromium', 'tests/flow.e2e.ts'));
         const label = 'add two todos named "Buy milk" and "Walk the dog", then mark the first one as done';
-        const step = (progress: object) => reporter.handle({ type: 'step', testId: 't1', agent: 'default', target: 'chromium', progress } as never);
+        const step = (progress: object) => reporter.handle({ type: 'step', testId: 't1', agent: 'default', repeat: 0, target: 'chromium', progress } as never);
         step({ phase: 'start', kind: 'agent', api: 'agent.act', label });
         step({ phase: 'end', kind: 'agent', api: 'agent.act', label, status: 'passed', durationMs: 4_200, modelCalls: 3 });
         const row = chunks.at(-1)!.replace(ANSI_PATTERN, '').split('\n').find((line) => line.includes('agent.act'))!;
@@ -1436,7 +1464,7 @@ describe('ListReporter', () => {
       reporter.handle(runStarted());
       reporter.handle(plan([{ file: 'tests/flow.e2e.ts', tests: 1 }]));
       reporter.handle(testStarted('t1', 'checkout', 'chromium', 'tests/flow.e2e.ts'));
-      const step = (progress: object) => reporter.handle({ type: 'step', testId: 't1', agent: 'default', target: 'chromium', progress } as never);
+      const step = (progress: object) => reporter.handle({ type: 'step', testId: 't1', agent: 'default', repeat: 0, target: 'chromium', progress } as never);
       step({ phase: 'start', kind: 'agent', api: 'agent.act', label: 'add to cart' });
       step({ phase: 'end', kind: 'agent', api: 'agent.act', label: 'add to cart', status: 'passed', durationMs: 4_200, modelCalls: 3 });
       step({ phase: 'start', kind: 'agent', api: 'agent.act', label: 'pay' });
@@ -1457,7 +1485,7 @@ describe('ListReporter', () => {
       const reporter = plainReporter(output, true);
       reporter.handle(runStarted());
       reporter.handle(testStarted('t1', 'checkout', 'chromium'));
-      const step = (progress: object) => reporter.handle({ type: 'step', testId: 't1', agent: 'default', target: 'chromium', progress } as never);
+      const step = (progress: object) => reporter.handle({ type: 'step', testId: 't1', agent: 'default', repeat: 0, target: 'chromium', progress } as never);
       step({ phase: 'start', kind: 'agent', api: 'agent.act', label: 'pay' });
       step({ phase: 'replay', api: 'agent.act', active: true });
       step({ phase: 'event', api: 'agent.act', event: { kind: 'engine', name: 'tap', detail: 'tap button "Pay"', durationMs: 27, status: 'passed' } });
@@ -1479,6 +1507,7 @@ describe('ListReporter', () => {
         type: 'step',
         testId: 't1',
         agent: 'default',
+        repeat: 0,
         target: 'chromium',
         progress: { phase: 'start', kind: 'locator', api: 'locator.tap', label: 'Pay' },
       });
@@ -1498,12 +1527,12 @@ describe('ListReporter', () => {
           chunk.replace(ANSI_PATTERN, '').split('\n').findIndex((line) => line.startsWith(' Test Files'));
         const before = summaryRow(chunks.at(-1)!);
         reporter.handle(testStarted('t1', 'checkout', 'chromium', 'tests/flow.e2e.ts'));
-        reporter.handle({ type: 'step', testId: 't1', agent: 'default', target: 'chromium', progress: { phase: 'start', kind: 'agent', api: 'agent.act', label: 'pay' } });
+        reporter.handle({ type: 'step', testId: 't1', agent: 'default', repeat: 0, target: 'chromium', progress: { phase: 'start', kind: 'agent', api: 'agent.act', label: 'pay' } });
         for (let i = 0; i < 4; i += 1) {
-          reporter.handle({ type: 'step', testId: 't1', agent: 'default', target: 'chromium', progress: { phase: 'event', api: 'agent.act', event: { kind: 'model', durationMs: 10, count: 100 } as never } });
+          reporter.handle({ type: 'step', testId: 't1', agent: 'default', repeat: 0, target: 'chromium', progress: { phase: 'event', api: 'agent.act', event: { kind: 'model', durationMs: 10, count: 100 } as never } });
         }
         const during = summaryRow(chunks.at(-1)!);
-        reporter.handle({ type: 'step', testId: 't1', agent: 'default', target: 'chromium', progress: { phase: 'end', kind: 'agent', api: 'agent.act', label: 'pay', status: 'passed', durationMs: 40, modelCalls: 4 } });
+        reporter.handle({ type: 'step', testId: 't1', agent: 'default', repeat: 0, target: 'chromium', progress: { phase: 'end', kind: 'agent', api: 'agent.act', label: 'pay', status: 'passed', durationMs: 40, modelCalls: 4 } });
         const after = summaryRow(chunks.at(-1)!);
         expect(before).toBeGreaterThan(5);
         expect(during).toBe(before);
@@ -1599,9 +1628,9 @@ describe('ListReporter', () => {
       const reporter = plainReporter(output, true);
       reporter.handle(runStarted());
       reporter.handle(testStarted('t1', 'signs in', 'chromium'));
-      const write = (stream: 'stdout' | 'stderr', text: string, pair?: { testId: string; agent: string }) =>
+      const write = (stream: 'stdout' | 'stderr', text: string, pair?: { testId: string; agent: string; repeat: number }) =>
         reporter.handle({ type: 'output', target: 'chromium', pair, stream, text });
-      const t1 = { testId: 't1', agent: 'default' };
+      const t1 = { testId: 't1', agent: 'default', repeat: 0 };
       write('stdout', 'hello\n', t1);
       write('stdout', 'two\nlines\n', t1);
       write('stderr', 'oops\n', t1);
@@ -1628,7 +1657,7 @@ describe('ListReporter', () => {
       reporter.handle(plan([{ file: 'tests/case.e2e.ts', tests: 1 }]));
       reporter.handle(testStarted('t1', 'signs in', 'chromium'));
       const write = (text: string) =>
-        reporter.handle({ type: 'output', target: 'chromium', pair: { testId: 't1', agent: 'default' }, stream: 'stdout', text });
+        reporter.handle({ type: 'output', target: 'chromium', pair: { testId: 't1', agent: 'default', repeat: 0 }, stream: 'stdout', text });
       write('progress ');
       write('50%\nnext');
       expect(lines.filter((line) => line.startsWith('progress') || line.startsWith('next'))).toEqual(['progress 50%']);
@@ -1644,9 +1673,9 @@ describe('ListReporter', () => {
       const reporter = plainReporter(output, true);
       reporter.handle(runStarted());
       reporter.handle(testStarted('t1', 'signs in', 'chromium'));
-      reporter.handle({ type: 'output', target: 'chromium', pair: { testId: 't1', agent: 'default' }, stream: 'stdout', text: 'one\n' });
+      reporter.handle({ type: 'output', target: 'chromium', pair: { testId: 't1', agent: 'default', repeat: 0 }, stream: 'stdout', text: 'one\n' });
       reporter.handle({ type: 'notice', target: 'chromium', message: 'between' });
-      reporter.handle({ type: 'output', target: 'chromium', pair: { testId: 't1', agent: 'default' }, stream: 'stdout', text: 'two\n' });
+      reporter.handle({ type: 'output', target: 'chromium', pair: { testId: 't1', agent: 'default', repeat: 0 }, stream: 'stdout', text: 'two\n' });
       expect(lines.filter((line) => line.startsWith('stdout |'))).toHaveLength(2);
       expect(lines.at(-1)).toBe('two');
     });
@@ -1724,6 +1753,7 @@ describe('ListReporter', () => {
             type: 'step',
             testId: id,
             agent: 'default',
+            repeat: 0,
             target: 'chromium',
             progress: { phase: 'start', kind: 'agent', api: 'agent.act', label: `step ${id}` },
           });
@@ -1732,6 +1762,7 @@ describe('ListReporter', () => {
               type: 'step',
               testId: id,
               agent: 'default',
+              repeat: 0,
               target: 'chromium',
               progress: { phase: 'event', api: 'agent.act', event: { kind: 'model', durationMs: 10, count: 100 } as never },
             });
@@ -1842,7 +1873,7 @@ describe('explore runs', () => {
   }
 
   function stepEvent(progress: RunEventOf<'step'>['progress']): RunEventFact {
-    return { type: 'step', testId: 't1', agent: 'default', target: 'web', progress };
+    return { type: 'step', testId: 't1', agent: 'default', repeat: 0, target: 'web', progress };
   }
 
   function engineEvent(name: string, detail?: string): RunEventFact {

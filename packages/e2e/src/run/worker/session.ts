@@ -72,10 +72,10 @@ export class TargetWorker {
    * serial group's members follow one another, so the latest start is the
    * one running.
    */
-  private inFlight: { readonly testId: string; readonly agent: string } | undefined;
+  private inFlight: { readonly testId: string; readonly agent: string; readonly repeat: number } | undefined;
 
   /** The pair executing now, or undefined between units. */
-  get pairInFlight(): { readonly testId: string; readonly agent: string } | undefined {
+  get pairInFlight(): { readonly testId: string; readonly agent: string; readonly repeat: number } | undefined {
     return this.inFlight;
   }
   /** Serializes message handling so units never overlap on one worker. */
@@ -108,23 +108,26 @@ export class TargetWorker {
         events: {
           onResult: (result) => {
             // Teardown after the result (an afterAll) belongs to no pair.
-            if (this.inFlight?.testId === result.test.id && this.inFlight.agent === result.agent) this.inFlight = undefined;
+            if (this.inFlight?.testId === result.test.id && this.inFlight.agent === result.agent && this.inFlight.repeat === result.repeat) {
+              this.inFlight = undefined;
+            }
             this.host.emit({ type: 'result', result: encodeResult(result) });
           },
           onSerialGroup: (group) => this.host.emit({ type: 'serial-group', group }),
           onPairStart: (pair) => {
-            this.inFlight = { testId: pair.test.id, agent: pair.agent };
+            this.inFlight = { testId: pair.test.id, agent: pair.agent, repeat: pair.repeat };
             this.host.emit({
               type: 'pair-start',
               testId: pair.test.id,
               agent: pair.agent,
+              repeat: pair.repeat,
               title: pair.test.titlePath.join(' > '),
               file: pair.test.file,
               serialId: pair.test.serialId,
             });
           },
           onProgress: (pair, progress) =>
-            this.host.emit({ type: 'progress', testId: pair.test.id, agent: pair.agent, progress }),
+            this.host.emit({ type: 'progress', testId: pair.test.id, agent: pair.agent, repeat: pair.repeat, progress }),
           onRunAbort: (runError) => {
             this.interruptController.abort();
             this.host.emit({ type: 'run-abort', error: runError.error });

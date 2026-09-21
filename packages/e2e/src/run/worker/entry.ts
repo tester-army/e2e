@@ -163,7 +163,7 @@ async function bootstrap(
         missing.push(wire);
         continue;
       }
-      pairs.push({ test, target, agent: wire.agent, options: wire.options, disposition: 'run', skip: undefined });
+      pairs.push({ test, target, agent: wire.agent, repeat: wire.repeat, options: wire.options, disposition: 'run', skip: undefined });
     }
     return { pairs, missing, registration };
   };

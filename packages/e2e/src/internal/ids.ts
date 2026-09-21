@@ -105,9 +105,15 @@ export function canonicalDigest(value: unknown): string {
   return sha256Hex(canonicalJson(value));
 }
 
-/** Result ID: SHA-256/JCS of `{ testId, targetId, agent }`; a test run as several agents has one per agent. */
-export function resultId(test: string, targetId: string, agent: string): string {
-  return canonicalDigest({ testId: test, targetId, agent });
+/**
+ * Result ID: SHA-256/JCS of `{ testId, targetId, agent }`, with `repeat` added
+ * for a run past the first under `--repeat-each`; a test run as several
+ * agents has one per agent, and one per repeat. The first run's id is the
+ * same with or without the repeat dimension, so ids are stable across
+ * versions and runs without the flag.
+ */
+export function resultId(test: string, targetId: string, agent: string, repeat = 0): string {
+  return canonicalDigest(repeat === 0 ? { testId: test, targetId, agent } : { testId: test, targetId, agent, repeat });
 }
 
 /** Generates one lowercase UUIDv7 string. */

@@ -21,7 +21,7 @@ import { findRegistered, type Realm, RealmManager } from './realm.ts';
 import type { AttemptRecord, ResultRecord, ResultStatus, SerialAttemptRecord, SerialGroupRecord, SerialMemberRecord, FailedStatus } from './records.ts';
 import { isFailedStatus } from './records.ts';
 import { runWithRetries } from './retry.ts';
-import { interruptedSkip, pairResult } from './units.ts';
+import { interruptedSkip, pairResult, repeatSegment } from './units.ts';
 
 /**
  * One shared session for a serial-group attempt: members preserve app state,
@@ -98,7 +98,10 @@ export async function runSerialUnit(
   // Every member of a unit runs as the same agent (selection guarantees it),
   // so the group is one variant of the flow and is identified as such.
   const agent = first.agent;
-  const groupRecordId = canonicalDigest({ serialId, targetId: host.target.name, agent });
+  const { repeat } = first;
+  const groupRecordId = canonicalDigest(
+    repeat === 0 ? { serialId, targetId: host.target.name, agent } : { serialId, targetId: host.target.name, agent, repeat },
+  );
 
   const group: SerialGroupRecord = {
     id: groupRecordId,
@@ -109,6 +112,7 @@ export async function runSerialUnit(
     targetId: host.target.name,
     platform: host.target.platform,
     agent,
+    repeat,
     memberTestIds: members.map((member) => member.test.id),
     status: 'failed',
     attempts: [],
@@ -183,6 +187,7 @@ async function runSerialAttempt(
     host.target.name,
     sanitizePathSegment(first.test.serialId ?? first.test.id),
     first.agent,
+    ...repeatSegment(first.repeat),
     `attempt-${attemptIndex}`,
   ];
   const artifacts = createAttemptArtifacts({

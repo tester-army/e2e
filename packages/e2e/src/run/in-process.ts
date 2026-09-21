@@ -149,12 +149,12 @@ async function resolveFromSelection(
 ): Promise<ResolvedUnitPairs> {
   const selected = selection.perTarget.find((entry) => entry.target.name === target.name);
   const available = new Map<string, TestTargetPair>();
-  for (const pair of selected?.pairs ?? []) available.set(pairKey(pair.test.id, pair.agent), pair);
+  for (const pair of selected?.pairs ?? []) available.set(pairKey(pair.test.id, pair.agent, pair.repeat), pair);
 
   const pairs: TestTargetPair[] = [];
   const missing: WirePair[] = [];
   for (const wire of unit.pairs) {
-    const pair = available.get(pairKey(wire.test.id, wire.agent));
+    const pair = available.get(pairKey(wire.test.id, wire.agent, wire.repeat));
     if (pair === undefined) missing.push(wire);
     else pairs.push(pair);
   }

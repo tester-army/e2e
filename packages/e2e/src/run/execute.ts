@@ -46,7 +46,7 @@ import type {
 import { isFailedStatus } from './records.ts';
 import { runWithRetries } from './retry.ts';
 import { runSerialUnit, type SerialHost, type SharedSerialSession } from './serial.ts';
-import { interruptedSkip, pairKey, pairResult, unstartedResult } from './units.ts';
+import { interruptedSkip, pairKey, pairResult, repeatSegment, unstartedResult } from './units.ts';
 import { sessionSecrecy } from './secrecy.ts';
 import { SessionStaging, SessionStore, type SessionIdentity } from './sessions.ts';
 import { redactTraceArchives } from './trace-redaction.ts';
@@ -299,11 +299,11 @@ export class TargetExecutor implements SerialHost {
       if (pair.test.serialId !== undefined) {
         // One serial unit per agent the group runs as: its members are the
         // group's pairs under that agent, in declaration order.
-        const unitKey = pairKey(pair.test.serialId, pair.agent);
+        const unitKey = pairKey(pair.test.serialId, pair.agent, pair.repeat);
         if (!executedSerialUnits.has(unitKey)) {
           executedSerialUnits.add(unitKey);
           const members = ordered.filter(
-            (member) => member.test.serialId === pair.test.serialId && member.agent === pair.agent,
+            (member) => member.test.serialId === pair.test.serialId && member.agent === pair.agent && member.repeat === pair.repeat,
           );
           // A serial group owns its realm; whatever realm ordinary tests were
           // sharing ends here, afterAll included.
@@ -733,10 +733,11 @@ export class TargetExecutor implements SerialHost {
       artifactsRoot: this.artifactsRoot,
       // Serial members share the group's session, and therefore its artifact
       // directory; registering under their own would not resolve on disk. The
-      // agent segment keeps a test run as several agents from overwriting itself.
+      // agent and repeat segments keep a test run as several agents, or
+      // several times, from overwriting itself.
       segments:
         shared?.artifactSegments ??
-        [this.target.name, sanitizePathSegment(pair.test.id), pair.agent, `attempt-${attemptIndex}`],
+        [this.target.name, sanitizePathSegment(pair.test.id), pair.agent, ...repeatSegment(pair.repeat), `attempt-${attemptIndex}`],
       attemptId,
       currentStepId: () => steps.currentStepId,
       ...(this.config.artifactStore === undefined ? {} : { store: this.config.artifactStore }),

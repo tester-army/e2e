@@ -2,6 +2,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { ConfigurationError, errorMessage } from '../internal/errors.ts';
+import { resultId } from '../internal/ids.ts';
 import type { Report1Document } from '../report/build.ts';
 
 type ReportResult = Report1Document['run']['results'][number];
@@ -37,9 +38,10 @@ function noLastRun(message: string, cause?: unknown): ConfigurationError {
  * report the run before wrote where this run will write its own: failed,
  * timed out, interrupted, or skipped because a setup, a serial predecessor,
  * a hook, or the worker failed. An explicit skip and a filtered test passed
- * in the sense that matters here: nothing to run again. The ids match
- * `resultId(testId, target, agent)`, so a test is named per target and agent.
- * A missing or unreadable report is `NO_LAST_RUN`.
+ * in the sense that matters here: nothing to run again. The ids are
+ * `resultId(testId, target, agent)`, so a test is named per target and agent
+ * whichever of its `--repeat-each` runs did not pass. A missing or unreadable
+ * report is `NO_LAST_RUN`.
  */
 export async function readLastFailed(reportPath: string): Promise<ReadonlySet<string>> {
   let text: string;
@@ -60,7 +62,7 @@ export async function readLastFailed(reportPath: string): Promise<ReadonlySet<st
   if (!isReport(document)) {
     throw noLastRun(`--last-failed needs a report-1 document at ${reportPath}, which holds something else; run once without the flag to write one`);
   }
-  return new Set(document.run.results.filter(didNotPass).map((result) => result.id));
+  return new Set(document.run.results.filter(didNotPass).map((result) => resultId(result.testId, result.targetId, result.agent)));
 }
 
 /**
