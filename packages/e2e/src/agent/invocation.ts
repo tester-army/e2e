@@ -43,7 +43,14 @@ import {
   type ModelAdapter,
   type ModelImage,
 } from './model/adapter.ts';
-import { observationDetail, pixelsForModel, prepareObservation, type AgentObservation } from './observation.ts';
+import {
+  isLoadingObservation,
+  observationDetail,
+  pixelsForModel,
+  prepareObservation,
+  settleObservation,
+  type AgentObservation,
+} from './observation.ts';
 import { observationByteBudget } from './observation-budget.ts';
 import type { ProtocolValidation } from './protocol.ts';
 import { POLICY_VERSION, buildPrompt, buildSystem, type PromptInput } from './prompts.ts';
@@ -207,21 +214,32 @@ export class Invocation {
     return instrumentPhase(this.runtime, { ...spec, api: this.options.api }, body, detail);
   }
 
-  /** Captures and redacts one fresh observation. */
+  /**
+   * Captures and redacts one fresh observation. A screen still loading (a
+   * spinner, a `Loading...` notice) is waited through, bounded, before it is
+   * judged: a judgment of the skeleton is inconclusive for what the loaded
+   * screen would have answered. The shape is not otherwise required to hold
+   * still; a judgment reads the screen it is asked about.
+   */
   async observe(): Promise<AgentObservation> {
     this.checkDeadline();
     const pixels = this.pixelsRequested();
     const observation = await this.instrument(
       { kind: 'observation', phase: 'agent.observe' },
-      async () => {
-        const raw = await this.captureObservation(pixels);
-        const prepared = prepareObservation(raw, {
-          redact: this.runtime.redact,
-          maxBytes: this.observationByteBudget(),
-          pixelsAllowed: this.options.vision !== false && !this.runtime.taint.value,
-        });
-        return prepared;
-      },
+      () =>
+        settleObservation(
+          async () => {
+            const raw = await this.captureObservation(pixels);
+            return prepareObservation(raw, {
+              redact: this.runtime.redact,
+              maxBytes: this.observationByteBudget(),
+              pixelsAllowed: this.options.vision !== false && !this.runtime.taint.value,
+            });
+          },
+          (prepared) => (prepared.kind === 'pixels' ? undefined : prepared.revision),
+          { remainingMs: () => this.deadline.remaining(), signal: this.runtime.engine.signal },
+          { loading: isLoadingObservation, stableWaitMs: 0 },
+        ),
       observationDetail,
     );
     // Bytes the request carried, so a withheld tree reads as the zero it is.

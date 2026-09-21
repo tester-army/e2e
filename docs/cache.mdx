@@ -42,7 +42,10 @@ npx e2e run --no-cache
    for missing controls and stops if a match is ambiguous. A control with no
    name is found by its place among the unnamed controls of its kind.
 3. Check the final path and controls that appeared during the original step.
-   Text that changes with the data, a count, a date, an id, is not used.
+   Text that changes with the data, a count, a date, an id, is not used. A
+   screen still loading is waited out, up to five seconds, before this check
+   and before the starting screen is captured, so a list that has not
+   rendered yet is neither a missing control nor part of the step's changes.
 4. Finish without a model call, or let the agent continue with a record of
    what ran and why replay stopped.
 

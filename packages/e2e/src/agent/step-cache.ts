@@ -323,7 +323,10 @@ export class StepTraceSession {
     const recorded = trace.endPath === undefined ? undefined : routeOf(trace.endPath);
     const anchors = trace.endAnchors ?? [];
     for (let attempt = 0; ; attempt += 1) {
-      const observation = await probeScreen(this.host, false);
+      // The first look is the settled one: it waits for the last replayed
+      // action's effect and through a list still loading behind the route,
+      // which read raw would look like the recorded effect missing.
+      const observation = await probeScreen(this.host, attempt === 0);
       if (observation?.kind !== 'semantic' || !this.host.traceEligible) return undefined;
       if (recorded === undefined || observation.path === undefined) return { screen: observation, anchorsSeen: false };
       const verdict = compareRoutes(recorded, routeOf(observation.path));

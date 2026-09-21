@@ -35,6 +35,9 @@ model can choose what to do next.
 Judgments from `assert`, `waitFor`, and `extract` see the instruction and
 current screen. They do not see completed steps or the acting agent's
 summaries. You can configure a separate [judge model](/models#a-judge-of-its-own).
+A screen that says it is still loading (a spinner, a `Loading...` notice, a
+busy landmark) is waited out for up to five seconds before it is judged or
+acted on; one still loading after that is judged as it is.
 
 Use `vision: true` to include a masked screenshot or `vision: 'only'` to
 judge the screenshot alone. Pixels are withheld after a secret is filled.

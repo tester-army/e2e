@@ -135,6 +135,9 @@ expect(data.titles).toContain('Buy milk');
   did not show enough to decide is `ASSERTION_INCONCLUSIVE`, also a failure:
   open or wait for the right screen first, and ask about what is visible.
   Malformed output gets one repair round, then `MODEL_OUTPUT_INVALID`.
+- A screen that says it is loading (spinner, `Loading...` notice, busy
+  landmark) is waited out for up to 5 s before a judgment or an action; no
+  `toBeHidden()` on the loading text is needed before an `assert`.
 - Judgments see the assertion and the current screen only, never the steps
   before or the act loop's summaries. `judge` in the agent config names a
   separate model for them; unset, they use `model`.

@@ -1,6 +1,14 @@
 import { assert, describe, expect, it } from 'vitest';
 import type { Observation, SemanticNode } from '../../src/engine/surface.ts';
-import { interactiveNodeCount, observationShape, prepareObservation, settleObservation } from '../../src/agent/observation.ts';
+import {
+  interactiveNodeCount,
+  isLoadingObservation,
+  isTransitionalObservation,
+  observationShape,
+  prepareObservation,
+  settleObservation,
+  type AgentObservation,
+} from '../../src/agent/observation.ts';
 import { createRedactor } from '../../src/internal/redact.ts';
 
 function node(id: string, extra: Partial<SemanticNode> = {}): SemanticNode {
@@ -375,11 +383,140 @@ describe('settleObservation', () => {
     expect(value).toBe('new');
   });
 
+  it('waits through a loading screen before judging it, without a pre-action shape', async () => {
+    const source = scripted(['Loading product', 'Loading product', 'Loading product', 'Winter boot']);
+    const value = await settleObservation(source.capture, (v) => v, clock, {
+      ...fast,
+      stableWaitMs: 0,
+      loading: (v) => v.startsWith('Loading'),
+    });
+    expect(value).toBe('Winter boot');
+    expect(source.calls()).toBe(4);
+  });
+
+  it('judges a screen still loading at the loading bound as it is', async () => {
+    const source = scripted(['Loading product']);
+    const started = Date.now();
+    const value = await settleObservation(source.capture, (v) => v, clock, {
+      ...fast,
+      stableWaitMs: 0,
+      loadingWaitMs: 100,
+      loading: (v) => v.startsWith('Loading'),
+    });
+    expect(value).toBe('Loading product');
+    expect(Date.now() - started).toBeGreaterThanOrEqual(90);
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+
+  it('waits through a loading screen that the change wait ended on', async () => {
+    const source = scripted(['old', 'Loading', 'Loading', 'Loading', 'new', 'new']);
+    const value = await settleObservation(source.capture, (v) => v, clock, {
+      ...fast,
+      changedFrom: 'old',
+      changeWaitMs: 5,
+      loading: (v) => v === 'Loading',
+    });
+    expect(value).toBe('new');
+  });
+
+  it('does not wait through an empty document beyond the change wait', async () => {
+    const source = scripted(['']);
+    const started = Date.now();
+    const value = await settleObservation(source.capture, (v) => v, clock, {
+      ...fast,
+      transitional: (v) => v === '',
+      loading: () => false,
+    });
+    expect(value).toBe('');
+    expect(Date.now() - started).toBeLessThan(150);
+  });
+
   it('settles on stability alone without a pre-action shape', async () => {
     const source = scripted(['a', 'b', 'b']);
     const value = await settleObservation(source.capture, (v) => v, clock, fast);
     expect(value).toBe('b');
     expect(source.calls()).toBe(3);
+  });
+});
+
+describe('isLoadingObservation', () => {
+  const prepared = (tree: SemanticNode): AgentObservation =>
+    prepareObservation(observation(tree), { redact: NO_REDACT, maxBytes: 100_000 });
+  const chrome = [
+    node('nav', { role: 'navigation', children: [
+      node('l1', { role: 'link', name: 'Products' }),
+      node('l2', { role: 'link', name: 'Orders' }),
+      node('l3', { role: 'link', name: 'Customers' }),
+      node('l4', { role: 'link', name: 'Settings' }),
+    ] }),
+    node('banner', { role: 'banner', children: [node('user', { role: 'button', name: 'Account menu' })] }),
+  ];
+  const page = (main: SemanticNode[], extra: Partial<SemanticNode> = {}): SemanticNode =>
+    node('doc', { role: 'document', name: 'Admin', ...extra, children: [...chrome, node('main', { role: 'main', children: main })] });
+
+  it('leaves a document with no body to the transitional rule: nothing promises it content', () => {
+    const blank = prepared(node('doc', { role: 'document' }));
+    expect(isTransitionalObservation(blank)).toBe(true);
+    expect(isLoadingObservation(blank)).toBe(false);
+    expect(isTransitionalObservation(prepared(page([node('t', { text: 'Loading product' })])))).toBe(false);
+  });
+
+  it('is loading for an indeterminate progressbar, not for one with a value', () => {
+    const spinner = page([node('spin', { role: 'progressbar', name: 'Loading' })]);
+    expect(isLoadingObservation(prepared(spinner))).toBe(true);
+    const meter = page([
+      node('h', { role: 'heading', text: 'Upload' }),
+      node('bar', { role: 'progressbar', name: 'Upload progress', value: '100' }),
+      node('done', { text: 'winter-boot.png uploaded' }),
+      node('close', { role: 'button', name: 'Close' }),
+    ]);
+    expect(isLoadingObservation(prepared(meter))).toBe(false);
+  });
+
+  it('is loading for aria-busy on the root or a landmark, not on a widget', () => {
+    const rows = [node('h', { role: 'heading', text: 'Products' }), node('r1', { text: 'Winter boot' }), node('r2', { text: 'Summer sneaker' }), node('r3', { text: 'Rain jacket' })];
+    expect(isLoadingObservation(prepared(page(rows, { attributes: { 'aria-busy': 'true' } })))).toBe(true);
+    const busyMain = node('doc', { role: 'document', name: 'Admin', children: [...chrome, node('main', { role: 'main', attributes: { 'aria-busy': 'true' }, children: rows })] });
+    expect(isLoadingObservation(prepared(busyMain))).toBe(true);
+    const busyWidget = page([...rows, node('chat', { role: 'log', attributes: { 'aria-busy': 'true' }, children: [node('m1', { text: 'Typing' })] })]);
+    expect(isLoadingObservation(prepared(busyWidget))).toBe(false);
+  });
+
+  it('is loading for a content area that is only a loading notice, whatever the chrome around it', () => {
+    expect(isLoadingObservation(prepared(page([node('t', { text: 'Loading product' })])))).toBe(true);
+    expect(isLoadingObservation(prepared(page([node('h', { role: 'heading', text: 'Orders' }), node('t', { role: 'status', text: 'Loading data...' })])))).toBe(true);
+    expect(isLoadingObservation(prepared(page([node('t', { text: 'Please wait' })])))).toBe(true);
+    expect(isLoadingObservation(prepared(page([node('t', { text: '...' })])))).toBe(true);
+    expect(isLoadingObservation(prepared(page([node('t', { text: '\u2026' })])))).toBe(true);
+  });
+
+  it('is not loading for an ordinary page that mentions loading', () => {
+    const article = page([
+      node('h', { role: 'heading', text: 'Performance' }),
+      node('p1', { text: 'Loading the catalog took 40 ms after the cache landed.' }),
+      node('p2', { text: 'The rest of the page renders at once.' }),
+      node('p3', { text: 'Measured on the staging admin.' }),
+      node('cta', { role: 'link', name: 'Read the report' }),
+    ]);
+    expect(isLoadingObservation(prepared(article))).toBe(false);
+    const list = page([
+      node('h', { role: 'heading', text: 'Products' }),
+      node('r1', { text: 'Winter boot' }),
+      node('r2', { text: 'Summer sneaker' }),
+      node('r3', { text: 'Rain jacket' }),
+      node('more', { role: 'button', name: 'Load more' }),
+    ]);
+    expect(isLoadingObservation(prepared(list))).toBe(false);
+  });
+
+  it('never calls a pixel-only observation loading', () => {
+    const pixels = { data: new Uint8Array(4), mediaType: 'image/png' as const, width: 2, height: 2, scale: 1 };
+    const only: Observation = {
+      kind: 'pixels', root: node('root').ref, revision: 'r1', capturedAt: '',
+      viewport: { width: 2, height: 2 }, pixels,
+      redaction: { secureNodeCount: 0, maskedRegionCount: 0 },
+    };
+    expect(isLoadingObservation(prepareObservation(only, { redact: NO_REDACT, maxBytes: 1_000, pixelsAllowed: true }))).toBe(false);
   });
 });
 

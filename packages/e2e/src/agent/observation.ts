@@ -380,6 +380,19 @@ const SETTLE_TIMEOUT_MS = 1_000;
  */
 const CHANGE_WAIT_MS = 2_000;
 
+/**
+ * How long a settle waits through a screen that says it is still loading (see
+ * `isLoadingObservation`) before using it as it is. The stable wait
+ * cannot cover this: a spinner holds perfectly still, so two looks agree on it
+ * within one poll, and the change wait ends as soon as the spinner replaces
+ * the old page. A list behind an admin route takes a few seconds to arrive
+ * after its route has committed; judging or baselining the skeleton fails the
+ * assertion as inconclusive and records the whole table as the step's delta.
+ * Bounded so a page that never stops loading costs one wait, then is judged
+ * as the loading screen it is.
+ */
+const LOADING_WAIT_MS = 5_000;
+
 /** What a settle loop needs from its step: the remaining clock and cancellation. */
 interface SettleClock {
   remainingMs(): number;
@@ -402,8 +415,17 @@ export interface SettleOptions<T> {
    * the change wait and never counts as stable while the change wait lasts.
    */
   readonly transitional?: ((value: T) => boolean) | undefined;
+  /**
+   * Whether a capture is a screen that says it is still loading: a spinner,
+   * a `Loading...` notice, a busy landmark. Such a capture never satisfies
+   * the change wait either, and once that wait is over it is waited
+   * through, bounded by `loadingWaitMs`, before the shape is required to
+   * hold still. An empty document is not one: nothing promises it content.
+   */
+  readonly loading?: ((value: T) => boolean) | undefined;
   readonly changeWaitMs?: number | undefined;
   readonly stableWaitMs?: number | undefined;
+  readonly loadingWaitMs?: number | undefined;
   readonly pollMs?: number | undefined;
 }
 
@@ -422,8 +444,11 @@ export interface SettleOptions<T> {
  * body, a submit rendering), then it waits for the new shape to hold still.
  * A screen that never leaves the pre-action shape is returned as it is once
  * the change wait runs out: the caller reports it unchanged rather than
- * guessing. Evidence with no comparable shape returns immediately; another
- * capture cannot establish semantic stability while semantics are unavailable.
+ * guessing. A capture that says it is loading is then waited through,
+ * bounded by `LOADING_WAIT_MS`, before the shape is required to hold still: a
+ * screen still loading at that bound is returned as it is. Evidence with no
+ * comparable shape returns immediately; another capture cannot establish
+ * semantic stability while semantics are unavailable.
  */
 export async function settleObservation<T>(
   capture: () => Promise<T>,
@@ -434,15 +459,18 @@ export async function settleObservation<T>(
   const pollMs = options.pollMs ?? SETTLE_POLL_MS;
   const stableWaitMs = options.stableWaitMs ?? SETTLE_TIMEOUT_MS;
   const changeWaitMs = options.changeWaitMs ?? CHANGE_WAIT_MS;
+  const loadingWaitMs = options.loadingWaitMs ?? LOADING_WAIT_MS;
   const transitional = options.transitional ?? (() => false);
+  const loading = options.loading ?? (() => false);
   let value = await capture();
   let shape = shapeOf(value);
   if (shape === undefined) return value;
+  const loadingDeadlineMs = Date.now() + loadingWaitMs;
   if (options.changedFrom !== undefined) {
     const changeShapeOf = options.changeShapeOf ?? shapeOf;
     const changeDeadlineMs = Date.now() + changeWaitMs;
     while (
-      (changeShapeOf(value) === options.changedFrom || transitional(value)) &&
+      (changeShapeOf(value) === options.changedFrom || transitional(value) || loading(value)) &&
       Date.now() < changeDeadlineMs &&
       clock.remainingMs() > pollMs
     ) {
@@ -451,6 +479,12 @@ export async function settleObservation<T>(
       shape = shapeOf(value);
       if (shape === undefined) return value;
     }
+  }
+  while (loading(value) && Date.now() < loadingDeadlineMs && clock.remainingMs() > pollMs) {
+    await sleep(pollMs, clock.signal);
+    value = await capture();
+    shape = shapeOf(value);
+    if (shape === undefined) return value;
   }
   const deadlineMs = Date.now() + stableWaitMs;
   while (Date.now() < deadlineMs && clock.remainingMs() > pollMs) {
@@ -469,9 +503,83 @@ export async function settleObservation<T>(
  * Whether an observation shows a screen in transition: nothing but the
  * document itself, as a page reads between the old body being torn down and
  * the new one arriving. Acting or judging on it would be acting on nothing.
+ * It is not waited through beyond the change wait: a blank document promises
+ * no content (`about:blank` before a step's first navigation stays blank),
+ * where a loading screen (`isLoadingObservation`) does.
  */
 export function isTransitionalObservation(observation: AgentObservation): boolean {
   return observation.kind === 'semantic' && observation.nodes.size <= 1;
+}
+
+/**
+ * Whether an observation shows a screen that says it is still loading.
+ * Judging it fails the assertion as inconclusive for what the loaded screen
+ * would have answered; a cache baseline taken from it makes everything that
+ * loads afterwards look like the step's doing. Three rules, each a signal
+ * the app itself gives:
+ *
+ * - an indeterminate `progressbar` (no value), the semantics of a spinner; a
+ *   progress bar with a value is content a settled page may keep;
+ * - `aria-busy="true"` on the root or a landmark, where the node model
+ *   exposes the attribute;
+ * - a content area that is little more than a loading notice: at most
+ *   `LOADING_LEAVES_MAX` text-bearing leaves outside the page chrome
+ *   (navigation, banner, footer), one of them from `LOADING_LEXICON` or an
+ *   ellipsis alone. A paragraph mentioning loading on an ordinary page has
+ *   too many neighbours to qualify.
+ */
+export function isLoadingObservation(observation: AgentObservation): boolean {
+  if (observation.kind !== 'semantic') return false;
+  const { nodes, tree } = observation;
+  for (const node of nodes.values()) {
+    if (node.role === 'progressbar' && (node.value === undefined || node.value === '')) return true;
+    if (BUSY_HOST_ROLES.has(node.role ?? '') && node.attributes?.['aria-busy'] === 'true') return true;
+  }
+  if (tree.attributes?.['aria-busy'] === 'true') return true;
+  const leaves = contentLeaves(tree, []);
+  return leaves.length <= LOADING_LEAVES_MAX && leaves.some(isLoadingNotice);
+}
+
+/** Roles whose `aria-busy` speaks for a whole area of the page rather than one widget. */
+const BUSY_HOST_ROLES: ReadonlySet<string> = new Set([
+  'document',
+  'main',
+  'region',
+  'navigation',
+  'banner',
+  'contentinfo',
+  'complementary',
+  'form',
+  'search',
+]);
+
+/** Landmarks that stay while the content behind them loads; their text says nothing about it. */
+const CHROME_ROLES: ReadonlySet<string> = new Set(['navigation', 'banner', 'contentinfo']);
+
+/** Text-bearing leaves a content area may hold and still read as a loading notice. */
+const LOADING_LEAVES_MAX = 3;
+
+/** The words a loading notice starts with or contains; anything longer is a regex zoo. */
+const LOADING_LEXICON = /\b(?:loading|please wait)\b/i;
+
+/** The name and text of the childless nodes outside the page chrome. */
+function contentLeaves(node: SemanticNode, into: string[]): string[] {
+  if (CHROME_ROLES.has(node.role ?? '')) return into;
+  const children = node.children ?? [];
+  if (children.length === 0) {
+    const name = node.name === undefined ? '' : collapseText(node.name);
+    const text = node.text === undefined ? '' : collapseText(node.text);
+    if (name !== '') into.push(name);
+    if (text !== '' && text !== name) into.push(text);
+    return into;
+  }
+  for (const child of children) contentLeaves(child, into);
+  return into;
+}
+
+/** `Loading product`, `Please wait...`, `...`: what a placeholder says while the content is on its way. */
+function isLoadingNotice(text: string): boolean {
+  return LOADING_LEXICON.test(text) || /^[.\u2026]+$/.test(text);
 }
 
 function indexNodes(

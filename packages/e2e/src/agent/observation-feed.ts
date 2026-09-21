@@ -19,6 +19,7 @@ import type { ExecutorObservation, ExecutorObserveOptions, ExecutorTarget } from
 import type { AgentContext } from './invocation.ts';
 import {
   changeShape,
+  isLoadingObservation,
   isTransitionalObservation,
   observationShape,
   pixelsForModel,
@@ -301,6 +302,7 @@ export class ObservationFeed {
                 changeWaitMs,
                 changeShapeOf: changeShape,
                 transitional: isTransitionalObservation,
+                loading: isLoadingObservation,
               },
             )
           : this.capture(capturePixels),

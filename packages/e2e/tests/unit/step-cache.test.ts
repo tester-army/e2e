@@ -264,6 +264,26 @@ describe('StepTraceSession', () => {
     expect(context.staged[0]?.trace.endPath).toBe('/storage');
   });
 
+  it('takes the baseline from the settled look, which waits out a loading notice, never from a raw one', async () => {
+    const context = fakeContext(noEntry.store.read);
+    const heading: SemanticNode = { ref: { id: 'h', revision: 'r1' }, role: 'heading', name: 'Storage' };
+    const button: SemanticNode = { ref: { id: 'b', revision: 'r1' }, role: 'button', name: 'Save marker' };
+    const notice: SemanticNode = { ref: { id: 't', revision: 'r0' }, text: 'Loading storage...' };
+    // The dispatch's settled look waits through the loading notice (see
+    // settleObservation); a raw look at the step's start would still see it,
+    // and the loaded list would then be staged as the step's delta.
+    const raw = makeHost(['/storage'], [[notice]]);
+    const settled = makeHost(
+      ['/storage', '/storage'],
+      [[heading, button], [{ ...heading, ref: { id: 'h2', revision: 'r2' } }, { ...button, ref: { id: 'b2', revision: 'r2' } }, savedMarker]],
+    );
+    const session = makeSession(context, { ...raw, observeSettled: settled.observeSettled });
+    await session.begin();
+    session.record({ name: 'tap', node: { ...button, ref: { id: 'b', revision: 'r2' } } });
+    await session.conclude('passed', 'saved the marker');
+    expect(context.staged[0]?.trace.endAnchors).toEqual([savedAnchor]);
+  });
+
   it('keys on the params with each unique() value as a placeholder, stages the recording with the slot, and fills it from the next call', async () => {
     const keyed: JsonValue[] = [];
     const recording: AgentCacheContext = {
@@ -608,6 +628,18 @@ describe('destination path settling', () => {
     // (the navigation has not committed), the next sees the destination.
     const host = { ...makeHost(['/pricing', '/pricing', '/customers']), remainingMs: () => 60_000 };
     const verdict = await makeSession(context, host).begin();
+    expect(verdict?.status).toBe('passed');
+    expect(verdict?.summary).toContain('zero-turn');
+  });
+
+  it('reads the end state with the settled look first, so a list still loading behind the route is waited out', async () => {
+    const context = entryContext({ endPath: '/customers', endAnchors: [savedAnchor] });
+    const notice: SemanticNode = { ref: { id: 't', revision: 'r0' }, text: 'Loading customers...' };
+    // Raw looks see the destination with its list still loading; the settled
+    // look is the one that waits through it, and the end check takes that one.
+    const raw = makeHost(['/customers', '/customers', '/customers'], [[notice]]);
+    const settled = makeHost(['/pricing', '/customers'], [[], [savedMarker]]);
+    const verdict = await makeSession(context, { ...raw, observeSettled: settled.observeSettled }).begin();
     expect(verdict?.status).toBe('passed');
     expect(verdict?.summary).toContain('zero-turn');
   });
