@@ -19,6 +19,8 @@ import {
   type Locator,
   type PollExpectation,
   type Reporter,
+  type Role,
+  type RoleAlias,
   type RunEvent,
   type Screen,
   type Secret,
@@ -143,6 +145,22 @@ void expect.poll('x').toBe('x');
 expect('x').toBe('x', { timeout: 1000 });
 screen.getByRole('button', { name: 'Save', visible: true });
 screen.getByRole('heading', { name: 'Dashboard', level: 1 });
+// The vocabulary names composite widgets and structure, and takes ARIA's img as an alias of image.
+screen.getByRole('img', { name: 'Logo' });
+screen.getByRole('tablist', { name: 'Filter' }).getByRole('tab', { selected: true });
+screen.getByRole('menu').getByRole('menuitemcheckbox', { checked: true });
+screen.getByRole('progressbar');
+screen.getByRole('toolbar').getByRole('spinbutton');
+screen.getByRole('tree').getByRole('treeitem', { expanded: true });
+screen.getByRole('grid').getByRole('rowgroup').getByRole('gridcell');
+// @ts-expect-error the vocabulary is closed; a role outside it is a type error, not a runtime miss
+screen.getByRole('carousel');
+// @ts-expect-error a Playwright role the vocabulary does not carry stays out
+screen.getByRole('generic');
+// @ts-expect-error img is an alias getByRole accepts, never a Role an engine emits
+'img' satisfies Role;
+'image' satisfies Role;
+'img' satisfies RoleAlias;
 // A message names a value check; the synchronous matchers still take no options.
 expect(1, 'why this holds').toBe(1);
 expect(1, 'why this holds').not.toBeCloseTo(2, 0);

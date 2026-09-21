@@ -31,7 +31,9 @@ test.describe('todos', { tags: ['todos'] }, () => {
     await expect(screen.getByLabel('Two')).toBeChecked();
     await expect(screen.getByRole('status', { name: 'Remaining' })).toHaveText('2 remaining');
 
-    await screen.getByRole('tab', { name: 'Open' }).tap();
+    const filter = screen.getByRole('tablist', { name: 'Filter' });
+    await expect(filter.getByRole('tab')).toHaveCount(3);
+    await filter.getByRole('tab', { name: 'Open' }).tap();
     await expect(screen.getByRole('tab', { name: 'Open' })).toBeSelected();
     await expect(screen.getByTestId('todo')).toHaveCount(2);
     await expect(screen.getByText('Two')).toBeHidden();

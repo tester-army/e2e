@@ -3,11 +3,19 @@
 import type { LocatorExpression, SemanticQuery } from '../engine/surface.ts';
 import { toTextPattern, type TextPattern } from '../internal/text.ts';
 import { TestError, type ErrorDetails } from '../internal/errors.ts';
-import type { Role, RoleOptions, TextMatch, TextMatchOptions } from '../types.ts';
+import type { Role, RoleAlias, RoleOptions, TextMatch, TextMatchOptions } from '../types.ts';
+
+/** The alias spellings `getByRole` takes, onto the role every engine speaks. */
+const ROLE_ALIASES: ReadonlyMap<string, Role> = new Map([['img', 'image']]);
+
+/** The vocabulary role behind a `getByRole` argument; a role is its own. */
+function canonicalRole(role: Role | RoleAlias): Role {
+  return ROLE_ALIASES.get(role) ?? (role as Role);
+}
 
 /** Builds a role query expression. */
 export function roleQuery(
-  role: Role,
+  role: Role | RoleAlias,
   options: RoleOptions | undefined,
   scope: LocatorExpression | undefined,
 ): LocatorExpression {
@@ -18,7 +26,7 @@ export function roleQuery(
   }
   const query: SemanticQuery = {
     kind: 'role',
-    value: { kind: 'string', value: role, exact: true },
+    value: { kind: 'string', value: canonicalRole(role), exact: true },
     ...(options?.name !== undefined
       ? { name: toTextPattern(options.name, { exact: options.exact ?? true }) }
       : {}),

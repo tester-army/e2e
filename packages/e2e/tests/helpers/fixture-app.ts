@@ -138,6 +138,35 @@ const PAGES: Record<string, string> = {
   </script>
 </body>
 </html>`,
+  // Composite widgets under the roles a ported Playwright test names.
+  '/roles': `<!doctype html>
+<html>
+<head><title>Roles</title></head>
+<body>
+  <h1>Roles</h1>
+  <img id="logo" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAAAAAAALAAAAAABAAEAAAIBRAA7" width="40" height="40" alt="Fixture logo" />
+  <div role="img" aria-label="Sales chart" style="width:80px;height:40px;background:#ccc"></div>
+  <div role="tablist" aria-label="Filter">
+    <button role="tab" aria-selected="true" aria-controls="all-panel" id="all-tab">All</button>
+    <button role="tab" aria-selected="false" aria-controls="open-panel" id="open-tab">Open</button>
+  </div>
+  <div role="tabpanel" id="all-panel" aria-labelledby="all-tab">Everything</div>
+  <div role="toolbar" aria-label="Formatting">
+    <button aria-pressed="false" onclick="this.setAttribute('aria-pressed', this.getAttribute('aria-pressed') === 'true' ? 'false' : 'true')">Bold</button>
+    <input type="number" aria-label="Font size" value="12" />
+  </div>
+  <button aria-haspopup="menu" aria-expanded="false" onclick="document.getElementById('view-menu').hidden = false; this.setAttribute('aria-expanded', 'true')">View</button>
+  <div role="menu" id="view-menu" aria-label="View" hidden>
+    <div role="menuitem" tabindex="0">Zoom in</div>
+    <div role="menuitemcheckbox" aria-checked="true" tabindex="0">Show grid</div>
+  </div>
+  <progress aria-label="Upload" value="4" max="10"></progress>
+  <fieldset><legend>Notifications</legend><input type="checkbox" aria-label="Email" /></fieldset>
+  <form aria-label="Sign in"><input aria-label="User" /></form>
+  <hr />
+  <article aria-label="First post"><p>Body</p></article>
+</body>
+</html>`,
   '/about': `<!doctype html>
 <html>
 <head><title>About page</title></head>

@@ -22,6 +22,14 @@ describe('locator expressions', () => {
     });
   });
 
+  it('rewrites the img alias to the image role before the expression is built', () => {
+    expect(roleQuery('img', { name: 'Logo' }, undefined)).toEqual(roleQuery('image', { name: 'Logo' }, undefined));
+    expect(roleQuery('img', undefined, undefined)).toMatchObject({
+      query: { value: { kind: 'string', value: 'image', exact: true } },
+    });
+    expect(describeExpression(roleQuery('img', undefined, undefined))).toBe(describeExpression(roleQuery('image', undefined, undefined)));
+  });
+
   it('propagates exact:false to the name pattern', () => {
     const expression = roleQuery('button', { name: 'save', exact: false }, undefined);
     expect(expression).toMatchObject({

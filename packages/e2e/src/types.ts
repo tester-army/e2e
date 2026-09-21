@@ -243,7 +243,12 @@ export interface Agent {
   assert(assertion: string, options?: AssertOptions): Promise<void>;
 }
 
-/** The closed role vocabulary; an unsupported role is a type error. */
+/**
+ * The closed role vocabulary; an unsupported role is a type error. Every
+ * engine maps its platform's element types onto these names, so a role query
+ * reads the same against a browser and a device. A role the platform has no
+ * widget for matches nothing there; it is never a type error.
+ */
 export type Role =
   | 'button'
   | 'link'
@@ -254,18 +259,41 @@ export type Role =
   | 'option'
   | 'checkbox'
   | 'radio'
+  | 'radiogroup'
   | 'switch'
   | 'slider'
+  | 'spinbutton'
+  | 'progressbar'
+  | 'meter'
   | 'image'
   | 'heading'
   | 'tab'
+  | 'tablist'
+  | 'tabpanel'
+  | 'menu'
+  | 'menubar'
   | 'menuitem'
+  | 'menuitemcheckbox'
+  | 'menuitemradio'
+  | 'toolbar'
+  | 'tooltip'
+  | 'tree'
+  | 'treeitem'
   | 'list'
   | 'listitem'
   | 'table'
+  | 'grid'
   | 'row'
+  | 'rowgroup'
+  | 'rowheader'
   | 'cell'
+  | 'gridcell'
   | 'columnheader'
+  | 'separator'
+  | 'group'
+  | 'article'
+  | 'figure'
+  | 'form'
   | 'status'
   | 'alert'
   | 'dialog'
@@ -276,6 +304,14 @@ export type Role =
   | 'contentinfo'
   | 'complementary'
   | 'region';
+
+/**
+ * Spellings `getByRole` accepts beside the vocabulary and rewrites to a `Role`
+ * before the query is built: `img` is the ARIA name of `image`. An alias never
+ * reaches an engine, the trace cache, or a report; a `Role` is what they see.
+ */
+export type RoleAlias = 'img';
+
 /** A string matches exactly; a RegExp uses its own source and flags. */
 export type TextMatch = string | RegExp;
 
@@ -364,8 +400,8 @@ export interface SwipePathOptions {
 }
 
 export interface Screen {
-  /** Creates a lazy role query. */
-  getByRole(role: Role, options?: RoleOptions): Locator;
+  /** Creates a lazy role query. An alias such as `img` is rewritten to its role. */
+  getByRole(role: Role | RoleAlias, options?: RoleOptions): Locator;
   /** Creates a lazy accessible-label query. */
   getByLabel(text: TextMatch, options?: TextMatchOptions): Locator;
   /** Creates a lazy placeholder query. */

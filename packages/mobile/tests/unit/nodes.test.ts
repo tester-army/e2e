@@ -139,6 +139,92 @@ describe('snapshot projection', () => {
     expect(screenTitle(projected)).toBe('Settings');
   });
 
+  it('maps iOS composite widgets onto the vocabulary roles a browser reports for them', () => {
+    const projected = project([
+      { ref: 'e1', index: 0, depth: 0, type: 'Application', label: 'Shop' },
+      { ref: 'e2', index: 1, parentIndex: 0, depth: 1, type: 'TabBar' },
+      { ref: 'e3', index: 2, parentIndex: 1, depth: 2, type: 'Button', label: 'Cart' },
+      { ref: 'e4', index: 3, parentIndex: 0, depth: 1, type: 'SegmentedControl' },
+      { ref: 'e5', index: 4, parentIndex: 3, depth: 2, type: 'Button', label: 'Weekly' },
+      { ref: 'e6', index: 5, parentIndex: 0, depth: 1, type: 'ProgressIndicator', label: 'Upload', value: '40%' },
+      { ref: 'e7', index: 6, parentIndex: 0, depth: 1, type: 'ActivityIndicator', label: 'Loading' },
+      { ref: 'e8', index: 7, parentIndex: 0, depth: 1, type: 'Stepper', label: 'Quantity', value: '2' },
+      { ref: 'e9', index: 8, parentIndex: 0, depth: 1, type: 'Toolbar' },
+      { ref: 'e10', index: 9, parentIndex: 0, depth: 1, type: 'Menu' },
+      { ref: 'e11', index: 10, parentIndex: 9, depth: 2, type: 'MenuItem', label: 'Copy' },
+      { ref: 'e12', index: 11, parentIndex: 0, depth: 1, type: 'RadioGroup' },
+      { ref: 'e13', index: 12, parentIndex: 11, depth: 2, type: 'RadioButton', label: 'Card' },
+      { ref: 'e14', index: 13, parentIndex: 0, depth: 1, type: 'Table' },
+      { ref: 'e15', index: 14, parentIndex: 13, depth: 2, type: 'TableRow' },
+      { ref: 'e16', index: 15, parentIndex: 0, depth: 1, type: 'Group' },
+      { ref: 'e17', index: 16, parentIndex: 0, depth: 1, type: 'Other' },
+      { ref: 'e18', index: 17, parentIndex: 0, depth: 1, type: 'PickerWheel' },
+    ]);
+    expect(projected.index.map((entry) => entry.node.role)).toEqual([
+      'application',
+      'tablist',
+      'button',
+      'tablist',
+      'button',
+      'progressbar',
+      'status',
+      'spinbutton',
+      'toolbar',
+      'menu',
+      'menuitem',
+      'radiogroup',
+      'radio',
+      'table',
+      'row',
+      'group',
+      'other',
+      'picker-wheel',
+    ]);
+    expect(projected.index[5]?.node.value).toBe('40%');
+  });
+
+  it('maps Android composite widgets, including the nested tab and bottom navigation item classes', () => {
+    const projected = project([
+      { ref: 'e1', index: 0, depth: 0, type: 'android.widget.FrameLayout' },
+      { ref: 'e2', index: 1, parentIndex: 0, depth: 1, type: 'com.google.android.material.tabs.TabLayout' },
+      { ref: 'e3', index: 2, parentIndex: 1, depth: 2, type: 'com.google.android.material.tabs.TabLayout$TabView', label: 'Open' },
+      { ref: 'e4', index: 3, parentIndex: 0, depth: 1, type: 'com.google.android.material.bottomnavigation.BottomNavigationView' },
+      { ref: 'e5', index: 4, parentIndex: 3, depth: 2, type: 'com.google.android.material.bottomnavigation.BottomNavigationItemView', label: 'Home' },
+      { ref: 'e6', index: 5, parentIndex: 0, depth: 1, type: 'android.widget.ProgressBar', label: 'Upload' },
+      { ref: 'e7', index: 6, parentIndex: 0, depth: 1, type: 'android.widget.RadioGroup' },
+      { ref: 'e8', index: 7, parentIndex: 6, depth: 2, type: 'android.widget.RadioButton', label: 'Card' },
+      { ref: 'e9', index: 8, parentIndex: 0, depth: 1, type: 'androidx.appcompat.widget.Toolbar' },
+      { ref: 'e10', index: 9, parentIndex: 0, depth: 1, type: 'android.widget.NumberPicker' },
+      { ref: 'e11', index: 10, parentIndex: 0, depth: 1, type: 'android.widget.TabWidget' },
+    ]);
+    expect(projected.index.map((entry) => entry.kind)).toEqual([
+      'frame-layout',
+      'tab-layout',
+      'tab-layout$tab-view',
+      'bottom-navigation-view',
+      'bottom-navigation-item-view',
+      'progress-bar',
+      'radio-group',
+      'radio-button',
+      'toolbar',
+      'number-picker',
+      'tab-widget',
+    ]);
+    expect(projected.index.map((entry) => entry.node.role)).toEqual([
+      'group',
+      'tablist',
+      'tab',
+      'tablist',
+      'tab',
+      'progressbar',
+      'radiogroup',
+      'radio',
+      'toolbar',
+      'spinbutton',
+      'tablist',
+    ]);
+  });
+
   it('maps Android view classes, drops echoed values, and titles the screen from the toolbar', () => {
     const projected = project([
       { ref: 'e1', index: 0, depth: 0, type: 'android.widget.FrameLayout' },

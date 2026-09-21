@@ -14,6 +14,7 @@ import type {
   Locator,
   Point,
   Role,
+  RoleAlias,
   RoleOptions,
   Screen,
   Secret,
@@ -111,7 +112,7 @@ class ScreenImpl implements Screen {
     return this.wrap === undefined ? expression : this.wrap(expression);
   }
 
-  getByRole(role: Role, options?: RoleOptions): Locator {
+  getByRole(role: Role | RoleAlias, options?: RoleOptions): Locator {
     return new LocatorImpl(this.context, this.build(roleQuery(role, options, this.scope)));
   }
 

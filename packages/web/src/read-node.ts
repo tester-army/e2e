@@ -257,9 +257,27 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
     };
   };
 
+  /**
+   * True when an element carries a name of its own (HTML-AAM: `aria-label`,
+   * `aria-labelledby`, or `title`). A `<form>` or `<section>` is a landmark
+   * only when named; unnamed, it is a plain container.
+   */
+  const hasOwnName = (el: Element): boolean =>
+    ['aria-label', 'aria-labelledby', 'title'].some((attribute) => (el.getAttribute(attribute) ?? '').trim() !== '');
+
+  /**
+   * True when a `<header>` or `<footer>` is the page's, not an article's or a
+   * section's: only then is it the `banner` or `contentinfo` landmark.
+   */
+  const isPageLevel = (el: Element): boolean => el.closest('article, aside, main, nav, section') === null;
+
   const implicitRole = memoized((el: Element): string | null => {
     const explicit = el.getAttribute('role');
-    if (explicit !== null && explicit !== '') return explicit.split(/\s+/)[0] ?? null;
+    if (explicit !== null && explicit !== '') {
+      const first = explicit.split(/\s+/)[0] ?? null;
+      // The vocabulary spells ARIA's `img` as `image`.
+      return first === 'img' ? 'image' : first;
+    }
     const tag = el.tagName.toLowerCase();
     const type = (el.getAttribute('type') ?? '').toLowerCase();
     switch (tag) {
@@ -277,6 +295,34 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
         return 'navigation';
       case 'main':
         return 'main';
+      case 'aside':
+        return 'complementary';
+      case 'header':
+        return isPageLevel(el) ? 'banner' : null;
+      case 'footer':
+        return isPageLevel(el) ? 'contentinfo' : null;
+      case 'section':
+        return hasOwnName(el) ? 'region' : null;
+      case 'form':
+        return hasOwnName(el) ? 'form' : null;
+      case 'article':
+        return 'article';
+      case 'figure':
+        return 'figure';
+      case 'hr':
+        return 'separator';
+      case 'progress':
+        return 'progressbar';
+      case 'meter':
+        return 'meter';
+      // HTML-AAM: `<menu>` is a list; only `role="menu"` is a menu.
+      case 'menu':
+        return 'list';
+      case 'fieldset':
+      case 'details':
+      case 'optgroup':
+      case 'address':
+        return 'group';
       case 'option':
         return 'option';
       case 'h1':
@@ -295,12 +341,18 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
         return 'table';
       // Rows and cells carry the structure a table's controls belong to: a
       // "Delete" button means one thing per row, and only the row says which.
+      case 'thead':
+      case 'tbody':
+      case 'tfoot':
+        return 'rowgroup';
       case 'tr':
         return 'row';
       case 'td':
         return 'cell';
-      case 'th':
-        return 'columnheader';
+      case 'th': {
+        const scope = (el.getAttribute('scope') ?? '').toLowerCase();
+        return scope === 'row' || scope === 'rowgroup' ? 'rowheader' : 'columnheader';
+      }
       case 'dialog':
         return 'dialog';
       case 'output':
@@ -318,6 +370,8 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
             return 'radio';
           case 'range':
             return 'slider';
+          case 'number':
+            return 'spinbutton';
           case 'search':
             return 'searchbox';
           case 'hidden':
@@ -435,6 +489,10 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
       role === 'heading' ||
       role === 'tab' ||
       role === 'menuitem' ||
+      role === 'menuitemcheckbox' ||
+      role === 'menuitemradio' ||
+      role === 'treeitem' ||
+      role === 'tooltip' ||
       role === 'option' ||
       role === 'listitem' ||
       role === 'status' ||

@@ -118,11 +118,17 @@ subtree.
 | `getByTestId(id, { visible? })` | `data-testid` on the web (or `web({ testIdAttribute })`), the accessibility identifier or resource id on a device. Last resort. |
 
 Roles: `button`, `link`, `textbox`, `searchbox`, `combobox`, `listbox`,
-`option`, `checkbox`, `radio`, `switch`, `slider`, `image`, `heading`, `tab`,
-`menuitem`, `list`, `listitem`, `table`, `row`, `cell`, `columnheader`,
-`status`, `alert`, `dialog`, `alertdialog`, `main`, `navigation`, `banner`,
-`contentinfo`, `complementary`, `region`. The union is closed; anything else
-is a type error.
+`option`, `checkbox`, `radio`, `radiogroup`, `switch`, `slider`, `spinbutton`,
+`progressbar`, `meter`, `image`, `heading`, `tab`, `tablist`, `tabpanel`,
+`menu`, `menubar`, `menuitem`, `menuitemcheckbox`, `menuitemradio`, `toolbar`,
+`tooltip`, `tree`, `treeitem`, `list`, `listitem`, `table`, `grid`, `row`,
+`rowgroup`, `rowheader`, `cell`, `gridcell`, `columnheader`, `separator`,
+`group`, `article`, `figure`, `form`, `status`, `alert`, `dialog`,
+`alertdialog`, `main`, `navigation`, `banner`, `contentinfo`, `complementary`,
+`region`. The union is closed; anything else is a type error. `img` is
+accepted as an alias of `image`, so a ported Playwright `getByRole('img')`
+compiles and builds the `image` query. A role the platform has no widget for
+(`tooltip` on a phone) matches nothing rather than failing to compile.
 
 Text matching is exact by default after whitespace normalization, and
 `getByText` returns the innermost match: a container that echoes its child's

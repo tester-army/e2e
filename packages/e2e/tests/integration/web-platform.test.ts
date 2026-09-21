@@ -57,6 +57,37 @@ test('deterministic queries and reads', async ({ app, screen, web }) => {
   expect(await web.locator('#fixture-image').getAttribute('src')).toBe('/fixture.png');
 });
 
+test('role vocabulary: tabs, menus, progress, toolbars, images', async ({ app, screen }) => {
+  await app.open('/roles');
+
+  await expect(screen.getByRole('image', { name: 'Fixture logo' })).toBeVisible();
+  await expect(screen.getByRole('img', { name: 'Fixture logo' })).toBeVisible();
+  await expect(screen.getByRole('image', { name: 'Sales chart' })).toBeVisible();
+  await expect(screen.getByRole('img')).toHaveCount(2);
+  await expect(screen.getByRole('image')).toHaveCount(2);
+
+  const tabs = screen.getByRole('tablist', { name: 'Filter' });
+  await expect(tabs.getByRole('tab')).toHaveCount(2);
+  await expect(tabs.getByRole('tab', { selected: true })).toHaveText('All');
+  await expect(screen.getByRole('tabpanel', { name: 'All' })).toHaveText('Everything');
+
+  const toolbar = screen.getByRole('toolbar', { name: 'Formatting' });
+  await toolbar.getByRole('button', { name: 'Bold' }).tap();
+  await expect(toolbar.getByRole('button', { name: 'Bold' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(toolbar.getByRole('spinbutton', { name: 'Font size' })).toHaveValue('12');
+
+  await screen.getByRole('button', { name: 'View' }).tap();
+  const menu = screen.getByRole('menu', { name: 'View' });
+  await expect(menu.getByRole('menuitem', { name: 'Zoom in' })).toBeVisible();
+  await expect(menu.getByRole('menuitemcheckbox', { name: 'Show grid' })).toBeChecked();
+
+  await expect(screen.getByRole('progressbar', { name: 'Upload' })).toBeVisible();
+  await expect(screen.getByRole('group', { name: 'Notifications' }).getByRole('checkbox')).toHaveCount(1);
+  await expect(screen.getByRole('form', { name: 'Sign in' }).getByRole('textbox')).toHaveCount(1);
+  await expect(screen.getByRole('separator')).toHaveCount(1);
+  await expect(screen.getByRole('article', { name: 'First post' })).toHaveText('Body');
+});
+
 test('actions and state', async ({ app, screen, web }) => {
   await app.open();
 
@@ -294,6 +325,7 @@ describe('web platform integration', () => {
   it('passes every deterministic behavior test', () => {
     const shouldPass = [
       'deterministic queries and reads',
+      'role vocabulary: tabs, menus, progress, toolbars, images',
       'actions and state',
       'assertions poll until the app settles',
       'web navigation, urls, and titles',

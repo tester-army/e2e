@@ -128,6 +128,11 @@ describe('projectExpression', () => {
       query: { kind: 'role', value: { kind: 'string', value: 'image', exact: true }, name: { kind: 'string', value: 'Map', exact: true } },
     };
     expect(chainOf(projectExpression(page, image).locator)).toEqual(['role(img,{"name":"Map","exact":true})']);
+    const tablist: LocatorExpression = {
+      kind: 'query',
+      query: { kind: 'role', value: { kind: 'string', value: 'tablist', exact: true } },
+    };
+    expect(chainOf(projectExpression(page, tablist).locator)).toEqual(['role(tablist)']);
   });
 
   it('composes positions natively for every query but displayValue', () => {

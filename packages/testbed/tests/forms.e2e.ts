@@ -14,6 +14,8 @@ test.describe('forms', { tags: ['forms'] }, () => {
     await screen.getByLabel('Team').selectOption({ index: 2 });
     await expect(screen.getByLabel('Team')).toHaveValue('mobile');
 
+    const notifications = screen.getByRole('group', { name: 'Notifications' });
+    await expect(notifications.getByRole('checkbox')).toHaveCount(2);
     await screen.getByLabel('Email notifications').check();
     await screen.getByLabel('Weekly digest').uncheck();
     await expect(screen.getByLabel('Email notifications')).toBeChecked();
