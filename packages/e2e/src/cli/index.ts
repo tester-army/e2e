@@ -8,7 +8,7 @@ import { detectPackageManager, execCommand, runScriptCommand } from '../internal
 import { packageVersion } from '../internal/package-version.ts';
 import { classifyError, exitCodeForCategory } from '../internal/errors.ts';
 import type { TagMode } from '../collect/select.ts';
-import { list, run, type ListedPair, type RunOutcome } from '../run/runner.ts';
+import { list, run, type ListedPair, type RunOptions, type RunOutcome } from '../run/runner.ts';
 import { explore, STEP_BOUNDS, TIMEOUT_BOUNDS } from '../explore/index.ts';
 import { BUILTIN_REPORTERS, isBuiltinReporter } from '../report/builtin.ts';
 import { bounded } from '../report/format.ts';
@@ -62,6 +62,22 @@ function parseNames(noun: string): (value: string, previous?: string[]) => strin
   };
 }
 
+/**
+ * A regular expression for `--grep` and `--grep-invert`, accumulated: the
+ * bare pattern (`checkout`), or `/pattern/flags` for flags (`/checkout/i`).
+ * A pattern that does not compile is a usage error.
+ */
+function parsePattern(value: string, previous: RegExp[] = []): RegExp[] {
+  const slashed = /^\/(.*)\/([a-z]*)$/su.exec(value);
+  const [source, flags] = slashed === null ? [value, ''] : [slashed[1]!, slashed[2]!];
+  if (source === '') throw new InvalidArgumentError('must be a regular expression');
+  try {
+    return [...previous, new RegExp(source, flags)];
+  } catch (cause) {
+    throw new InvalidArgumentError(`must be a regular expression: ${cause instanceof Error ? cause.message : String(cause)}`);
+  }
+}
+
 /** An integer inside a closed range, for the explore budgets. */
 function parseBoundedInt(bounds: { readonly min: number; readonly max: number }): (value: string) => number {
   return (value) => {
@@ -111,6 +127,43 @@ function parseReporters(value: string): Reporter[] {
 }
 
 const TAG_MODES = ['any', 'all'] as const satisfies readonly TagMode[];
+
+/** The selection flags `run` and `list` share, after `--config` and `--target`. */
+function selectionOptions(command: Command): Command {
+  return command
+    .option(
+      '--tag <tags>',
+      'only tests carrying these tags, comma-separated or repeated: any of them, or every one with --tag-mode all',
+      parseNames('tag'),
+    )
+    .addOption(new Option('--tag-mode <mode>', 'how several tags combine').choices(TAG_MODES).default('any'))
+    .option('--exclude-tag <tags>', 'leave out tests carrying any of these tags, comma-separated or repeated', parseNames('tag'))
+    .option('--grep <pattern>', 'only tests whose title matches the regular expression (describe titles and test title, space-joined); repeat for alternatives', parsePattern)
+    .option('--grep-invert <pattern>', 'leave out tests whose title matches the regular expression; repeat for alternatives', parsePattern)
+    .option('--pass-with-no-tests', 'exit 0 on an empty selection instead of NO_TESTS');
+}
+
+/** The values the shared selection flags parse to. */
+interface SelectionFlagValues {
+  tag?: string[];
+  tagMode: TagMode;
+  excludeTag?: string[];
+  grep?: RegExp[];
+  grepInvert?: RegExp[];
+  passWithNoTests?: boolean;
+}
+
+/** The shared selection flags as the runner's options. */
+function selectionRunOptions(options: SelectionFlagValues): Pick<RunOptions, 'tags' | 'tagMode' | 'excludeTags' | 'grep' | 'grepInvert' | 'passWithNoTests'> {
+  return {
+    tags: options.tag,
+    tagMode: options.tagMode,
+    excludeTags: options.excludeTag,
+    grep: options.grep,
+    grepInvert: options.grepInvert,
+    passWithNoTests: options.passWithNoTests,
+  };
+}
 
 const LIST_REPORTERS = ['list', 'json'] as const;
 type ListReporter = (typeof LIST_REPORTERS)[number];
@@ -369,23 +422,17 @@ function createProgram(version: string, telemetry: Telemetry): Command {
       process.exitCode = await mcp(version, options);
     });
 
-  program
+  const runCommand = program
     .command('run')
     .summary('run the tests')
     .description(
-      'Run the tests the config discovers and write .e2e/report.json. Files, directories, and quoted globs narrow that selection, as do --tag and --target.',
+      'Run the tests the config discovers and write .e2e/report.json. Files, directories, and quoted globs narrow that selection, as do --tag, --exclude-tag, --grep, and --target.',
     )
     .argument('[files...]', FILES_DESCRIPTION)
     .optionsGroup('Selection:')
     .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
-    .option('--target <ids>', 'target names, comma-separated or repeated (default: all targets)', parseNames('target'))
-    .option(
-      '--tag <tags>',
-      'only tests carrying these tags, comma-separated or repeated: any of them, or every one with --tag-mode all',
-      parseNames('tag'),
-    )
-    .addOption(new Option('--tag-mode <mode>', 'how several tags combine').choices(TAG_MODES).default('any'))
-    .option('--pass-with-no-tests', 'exit 0 on an empty selection instead of NO_TESTS')
+    .option('--target <ids>', 'target names, comma-separated or repeated (default: all targets)', parseNames('target'));
+  selectionOptions(runCommand)
     .optionsGroup('Execution:')
     .option('--headed', 'show the UI while tests run, when the engine supports it')
     .option(
@@ -411,6 +458,8 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           'e2e run tests/signup.e2e.ts --headed',
           "e2e run 'tests/**/*.smoke.e2e.ts' --target web --tag smoke",
           'e2e run --tag smoke,billing --tag-mode all',
+          'e2e run --tag smoke --exclude-tag slow',
+          "e2e run --grep checkout --grep-invert '/refund/i'",
           'e2e run --reporter list,junit --workers 4 --retries 2',
           'e2e run --agent ux tests/onboarding.e2e.ts',
           'e2e run --agent buyer,admin tests/checkout.e2e.ts',
@@ -426,11 +475,9 @@ function createProgram(version: string, telemetry: Telemetry): Command {
       async (
         files: string[],
         // Each value is what its parser returned, so a bad one never reaches here.
-        options: {
+        options: SelectionFlagValues & {
           config?: string;
           target?: string[];
-          tag?: string[];
-          tagMode: TagMode;
           headed?: boolean;
           agent?: string[];
           retries?: number;
@@ -439,7 +486,6 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           artifacts?: string;
           /** Commander negation: `--no-cache` parses as `cache: false`. */
           cache?: boolean;
-          passWithNoTests?: boolean;
           debug?: boolean;
           aiTrace?: boolean;
           video?: boolean;
@@ -452,8 +498,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
             files,
             configPath: options.config,
             targetIds: options.target,
-            tags: options.tag,
-            tagMode: options.tagMode,
+            ...selectionRunOptions(options),
             headed: options.headed,
             agent: options.agent,
             retries: options.retries,
@@ -461,7 +506,6 @@ function createProgram(version: string, telemetry: Telemetry): Command {
             reporters: options.reporter,
             artifactsDir: options.artifacts,
             noCache: options.cache === false,
-            passWithNoTests: options.passWithNoTests,
             debug: options.debug,
             aiTrace: options.aiTrace,
             video: options.video,
@@ -558,23 +602,17 @@ function createProgram(version: string, telemetry: Telemetry): Command {
         ),
     );
 
-  program
+  const listCommand = program
     .command('list')
     .summary('print the tests a run would select, without running them')
     .description(
-      'Collect and select tests exactly as run does, print one line per test and target (file › title [target] #tag), and exit. Nothing starts: no app process, no engine, no worker. The same files, --tag, and --target flags narrow the selection.',
+      'Collect and select tests exactly as run does, print one line per test and target (file › title [target] #tag), and exit. Nothing starts: no app process, no engine, no worker. The same files and selection flags (--tag, --exclude-tag, --grep, --target) narrow the selection.',
     )
     .argument('[files...]', FILES_DESCRIPTION)
     .optionsGroup('Selection:')
     .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
-    .option('--target <ids>', 'target names, comma-separated or repeated (default: all targets)', parseNames('target'))
-    .option(
-      '--tag <tags>',
-      'only tests carrying these tags, comma-separated or repeated: any of them, or every one with --tag-mode all',
-      parseNames('tag'),
-    )
-    .addOption(new Option('--tag-mode <mode>', 'how several tags combine').choices(TAG_MODES).default('any'))
-    .option('--pass-with-no-tests', 'exit 0 on an empty selection instead of NO_TESTS')
+    .option('--target <ids>', 'target names, comma-separated or repeated (default: all targets)', parseNames('target'));
+  selectionOptions(listCommand)
     .optionsGroup('Output:')
     .addOption(
       new Option('--reporter <id>', 'list prints one line per pair; json prints { pairs: [...] }')
@@ -585,7 +623,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
       'after',
       [
         '',
-        examples(['e2e list', 'e2e list tests/signup.e2e.ts', 'e2e list --tag smoke --target web', 'e2e list --reporter json']),
+        examples(['e2e list', 'e2e list tests/signup.e2e.ts', 'e2e list --tag smoke --target web', 'e2e list --grep checkout', 'e2e list --reporter json']),
         '',
         docsLine('/reference/cli#e2e-list'),
       ].join('\n'),
@@ -593,12 +631,9 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .action(
       async (
         files: string[],
-        options: {
+        options: SelectionFlagValues & {
           config?: string;
           target?: string[];
-          tag?: string[];
-          tagMode: TagMode;
-          passWithNoTests?: boolean;
           reporter: ListReporter;
         },
         command: Command,
@@ -610,9 +645,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
             files,
             configPath: options.config,
             targetIds: options.target,
-            tags: options.tag,
-            tagMode: options.tagMode,
-            passWithNoTests: options.passWithNoTests,
+            ...selectionRunOptions(options),
           }));
         } catch (cause) {
           reportFailure(telemetry, cause);

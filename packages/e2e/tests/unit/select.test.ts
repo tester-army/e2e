@@ -233,6 +233,55 @@ describe('select', () => {
     expect(runnable[0]!.test.title).toBe('smoke+billing');
   });
 
+  it('leaves out tests carrying an excluded tag, whatever --tag selected', async () => {
+    const col = await collection(() => {
+      test('smoke', { tags: ['smoke'] }, noop);
+      test('smoke but slow', { tags: ['smoke', 'slow'] }, noop);
+      test('plain', noop);
+    });
+    const excluded = select(col, config(), { excludeTags: ['slow'] });
+    expect(excluded.pairs.filter((pair) => pair.disposition === 'run').map((pair) => pair.test.title)).toEqual(['smoke', 'plain']);
+    const slow = excluded.pairs.find((pair) => pair.test.title === 'smoke but slow')!;
+    expect(slow.disposition).toBe('filtered');
+    expect(slow.skip?.reason).toBe('carries an excluded tag');
+
+    const both = select(col, config(), { tags: ['smoke'], excludeTags: ['slow'] });
+    expect(both.pairs.filter((pair) => pair.disposition === 'run').map((pair) => pair.test.title)).toEqual(['smoke']);
+
+    expect(() => select(col, config(), { tags: ['smoke'], excludeTags: ['smoke', 'nigthly'] })).toThrow(
+      '3 tests were collected but none is runnable: 2 carry one of the excluded tags smoke, nigthly (no test declares it), 1 carry none of the tags smoke; pass --pass-with-no-tests to allow this',
+    );
+  });
+
+  it('matches --grep and --grep-invert against the space-joined title path, any pattern of several', async () => {
+    const col = await collection(() => {
+      test.describe('checkout', () => {
+        test('pays', noop);
+        test('refunds', noop);
+      });
+      test('signs in', noop);
+    });
+    const titles = (selection: ReturnType<typeof select>) =>
+      selection.pairs.filter((pair) => pair.disposition === 'run').map((pair) => pair.test.title);
+    expect(titles(select(col, config(), { grep: [/^checkout pays$/] }))).toEqual(['pays']);
+    expect(titles(select(col, config(), { grep: [/refund/, /signs/] }))).toEqual(['refunds', 'signs in']);
+    expect(titles(select(col, config(), { grepInvert: [/checkout/] }))).toEqual(['signs in']);
+    expect(titles(select(col, config(), { grep: [/checkout/], grepInvert: [/REFUND/i] }))).toEqual(['pays']);
+    // A global pattern is matched from the start for every test, not from where its last match ended.
+    expect(titles(select(col, config(), { grep: [/checkout/g] }))).toEqual(['pays', 'refunds']);
+    // Empty pattern lists are no filter at all.
+    expect(titles(select(col, config(), { grep: [], grepInvert: [] }))).toEqual(['pays', 'refunds', 'signs in']);
+
+    const filtered = select(col, config(), { grep: [/pays/] }).pairs.find((pair) => pair.test.title === 'refunds')!;
+    expect(filtered.skip?.reason).toBe('title does not match --grep');
+    expect(() => select(col, config(), { grep: [/billing/, /admin/i] })).toThrow(
+      '3 tests were collected but none is runnable: 3 have titles matching none of /billing/, /admin/i; pass --pass-with-no-tests to allow this',
+    );
+    expect(() => select(col, config(), { grepInvert: [/./] })).toThrow(
+      '3 tests were collected but none is runnable: 3 have titles matching /./; pass --pass-with-no-tests to allow this',
+    );
+  });
+
   it('names the tag filter against the tags the suite declares', async () => {
     const col = await collection(() => {
       test('smoke', { tags: ['smoke'] }, noop);
@@ -340,13 +389,19 @@ describe('select', () => {
     const col = await collection(() => {
       test.describe('wizard', { serial: true }, () => {
         test('step 1', { tags: ['smoke'] }, noop);
-        test('step 2', noop);
+        test('step 2', { tags: ['slow'] }, noop);
       });
     });
     const selection = select(col, config(), { tags: ['smoke'] });
     const step2 = selection.pairs.find((pair) => pair.test.title === 'step 2')!;
     expect(step2.disposition).toBe('run');
     expect(step2.skip).toBeUndefined();
+
+    // A member another filter left out still runs with its group: the group is one unit.
+    const grepped = select(col, config(), { grep: [/step 1/], excludeTags: ['slow'] });
+    expect(grepped.pairs.map((pair) => pair.disposition)).toEqual(['run', 'run']);
+    // Excluding every member (a tag on the serial describe reaches them all) leaves the group out.
+    expect(() => select(col, config(), { excludeTags: ['smoke', 'slow'] })).toThrow(/2 carry one of the excluded tags smoke, slow/);
   });
 
   it('errors on zero runnable ordinary pairs unless passWithNoTests', async () => {

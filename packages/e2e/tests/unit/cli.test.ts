@@ -169,6 +169,37 @@ describe('e2e run argument parsing', () => {
     expect(runMock).not.toHaveBeenCalled();
   });
 
+  it('accumulates --exclude-tag like --tag', async () => {
+    await invoke('run', '--tag', 'smoke', '--exclude-tag', 'slow, flaky', '--exclude-tag', 'slow');
+    const options = lastRunOptions();
+    expect(options.tags).toEqual(['smoke']);
+    expect(options.excludeTags).toEqual(['slow', 'flaky']);
+  });
+
+  it('compiles --grep and --grep-invert to regular expressions, bare or /pattern/flags, one per repeat', async () => {
+    await invoke('run', '--grep', 'checkout', '--grep', '/sign.?in/i', '--grep-invert', 'refund');
+    const options = lastRunOptions();
+    expect(options.grep).toEqual([/checkout/, /sign.?in/i]);
+    expect(options.grepInvert).toEqual([/refund/]);
+  });
+
+  it('rejects a --grep that does not compile with exit code 2 and never runs', async () => {
+    await invoke('run', '--grep', '(checkout');
+    expect(runMock).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+    expect(written(stderrSpy)).toMatch(
+      /^error: option '--grep <pattern>' argument '\(checkout' is invalid\. must be a regular expression: Invalid regular expression: .*\n\(add --help for usage\)\n$/u,
+    );
+    stderrSpy.mockClear();
+    process.exitCode = undefined;
+    await invoke('run', '--grep-invert', '//');
+    expect(runMock).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+    expect(written(stderrSpy)).toBe(
+      "error: option '--grep-invert <pattern>' argument '//' is invalid. must be a regular expression\n(add --help for usage)\n",
+    );
+  });
+
   it('accepts --tag-mode all', async () => {
     await invoke('run', '--tag-mode', 'all');
     expect(lastRunOptions().tagMode).toBe('all');
@@ -398,7 +429,18 @@ describe('e2e list', () => {
     const headings = [...help.matchAll(/^(\S[^\n]*):$/gmu)].map((match) => match[1]);
     expect(headings).toEqual(['Arguments', 'Selection', 'Output', 'Options', 'Examples']);
     const flags = [...help.matchAll(/^ {2}(-{1,2}[a-z-]+)/gmu)].map((match) => match[1]);
-    expect(flags).toEqual(['--config', '--target', '--tag', '--tag-mode', '--pass-with-no-tests', '--reporter', '-h']);
+    expect(flags).toEqual([
+      '--config',
+      '--target',
+      '--tag',
+      '--tag-mode',
+      '--exclude-tag',
+      '--grep',
+      '--grep-invert',
+      '--pass-with-no-tests',
+      '--reporter',
+      '-h',
+    ]);
     expect(help).toContain('  $ e2e list --reporter json\n');
     expect(help).toContain('Docs: https://e2e.tester.army/docs/reference/cli#e2e-list\n');
     expect(process.exitCode).toBe(0);
@@ -478,6 +520,9 @@ describe('e2e --version and --help', () => {
       '--target',
       '--tag',
       '--tag-mode',
+      '--exclude-tag',
+      '--grep',
+      '--grep-invert',
       '--pass-with-no-tests',
       '--headed',
       '--agent',

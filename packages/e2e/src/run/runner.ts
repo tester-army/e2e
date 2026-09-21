@@ -54,6 +54,15 @@ export interface RunOptions {
   files?: readonly string[] | undefined;
   tags?: readonly string[] | undefined;
   tagMode?: TagMode | undefined;
+  /** Tests carrying any of these tags are left out, whatever else selects them (`--exclude-tag`). */
+  excludeTags?: readonly string[] | undefined;
+  /**
+   * Only tests whose title matches one of the patterns (`--grep`): the
+   * describe titles and the test title joined by one space.
+   */
+  grep?: readonly RegExp[] | undefined;
+  /** Tests whose title matches one of the patterns are left out (`--grep-invert`). */
+  grepInvert?: readonly RegExp[] | undefined;
   targetIds?: readonly string[] | undefined;
   headed?: boolean | undefined;
   retries?: number | undefined;
@@ -135,7 +144,18 @@ const REPORTER_TIMEOUT_MS = 60_000;
 /** The selection flags of `run`, without anything that would start a process. */
 export type ListOptions = Pick<
   RunOptions,
-  'cwd' | 'configPath' | 'files' | 'tags' | 'tagMode' | 'targetIds' | 'passWithNoTests' | 'rawConfig' | 'env'
+  | 'cwd'
+  | 'configPath'
+  | 'files'
+  | 'tags'
+  | 'tagMode'
+  | 'excludeTags'
+  | 'grep'
+  | 'grepInvert'
+  | 'targetIds'
+  | 'passWithNoTests'
+  | 'rawConfig'
+  | 'env'
 >;
 
 /** One test-target pair the runner would report, as `e2e list` prints it. */
@@ -796,6 +816,9 @@ function selectionFilters(options: ListOptions): SelectionFilters {
   return {
     ...(options.tags !== undefined ? { tags: options.tags } : {}),
     ...(options.tagMode !== undefined ? { tagMode: options.tagMode } : {}),
+    ...(options.excludeTags !== undefined ? { excludeTags: options.excludeTags } : {}),
+    ...(options.grep !== undefined ? { grep: options.grep } : {}),
+    ...(options.grepInvert !== undefined ? { grepInvert: options.grepInvert } : {}),
     ...(options.targetIds !== undefined ? { targetIds: options.targetIds } : {}),
   };
 }

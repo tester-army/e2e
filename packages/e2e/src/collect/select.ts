@@ -69,6 +69,12 @@ export type TagMode = 'any' | 'all';
 export interface SelectionFilters {
   readonly tags?: readonly string[];
   readonly tagMode?: TagMode;
+  /** Tags that leave a test out whatever else selects it (`--exclude-tag`). */
+  readonly excludeTags?: readonly string[];
+  /** Patterns a test's title must match, any of them (`--grep`); see `grepText`. */
+  readonly grep?: readonly RegExp[];
+  /** Patterns that leave a test out when its title matches any of them (`--grep-invert`). */
+  readonly grepInvert?: readonly RegExp[];
   readonly targetIds?: readonly string[];
 }
 
@@ -82,6 +88,9 @@ const FILTERED_REASON = {
   file: 'file not selected by a positional argument',
   focus: 'not focused by .only',
   tags: 'tag filter did not match',
+  excludedTag: 'carries an excluded tag',
+  grep: 'title does not match --grep',
+  grepInvert: 'title matches --grep-invert',
 } as const;
 
 /** Resolves effective options: test > nearest group > outer groups > config > default. */
@@ -192,6 +201,31 @@ function matchesTags(declared: readonly string[], tags: readonly string[] | unde
   if (tags === undefined || tags.length === 0) return true;
   const has = (tag: string): boolean => declared.includes(tag);
   return tagMode === 'all' ? tags.every(has) : tags.some(has);
+}
+
+/**
+ * The text `--grep` and `--grep-invert` match: the describe titles and the
+ * test title joined by one space (`checkout pays`). The file is not part of
+ * it, positionals select files; nor are tags, `--tag` selects those.
+ */
+function grepText(test: Pick<CollectedTest, 'titlePath'>): string {
+  return test.titlePath.join(' ');
+}
+
+/** Whether any of the patterns matches the text; none given matches nothing, so callers guard for the filter being absent. */
+function matchesAny(patterns: readonly RegExp[], text: string): boolean {
+  // A global or sticky pattern remembers where its last match ended; every test is matched from the start.
+  return patterns.some((pattern) => {
+    pattern.lastIndex = 0;
+    return pattern.test(text);
+  });
+}
+
+/** The pattern-shaped filters, present only when they hold at least one pattern. */
+function patternFilters(filters: SelectionFilters): { grep: readonly RegExp[] | undefined; grepInvert: readonly RegExp[] | undefined } {
+  const present = (patterns: readonly RegExp[] | undefined): readonly RegExp[] | undefined =>
+    patterns !== undefined && patterns.length > 0 ? patterns : undefined;
+  return { grep: present(filters.grep), grepInvert: present(filters.grepInvert) };
 }
 
 /** Validates target IDs and selects targets once each, in config order. */
@@ -331,10 +365,18 @@ function describeNoTests(
   // Told once for the run, against every tag the suite declares, and applied
   // only to the pairs the tag filter itself left out: a test a positional or
   // a `.only` excluded is not a tag mismatch.
+  const declaredTags = [...new Set(pairs.flatMap((pair) => pair.test.tags))];
   const tagFilter =
     filters.tags === undefined || filters.tags.length === 0
       ? undefined
-      : describeTagFilter(filters.tags, filters.tagMode ?? 'any', [...new Set(pairs.flatMap((pair) => pair.test.tags))]);
+      : describeTagFilter(filters.tags, filters.tagMode ?? 'any', declaredTags);
+  const { grep, grepInvert } = patternFilters(filters);
+  const filterNames = new Map<string, string | undefined>([
+    [FILTERED_REASON.tags, tagFilter],
+    [FILTERED_REASON.excludedTag, filters.excludeTags === undefined ? undefined : `carry one of the excluded tags ${nameTags(filters.excludeTags, declaredTags)}`],
+    [FILTERED_REASON.grep, grep === undefined ? undefined : `have titles matching none of ${grep.join(', ')}`],
+    [FILTERED_REASON.grepInvert, grepInvert === undefined ? undefined : `have titles matching ${grepInvert.join(', ')}`],
+  ]);
   for (const pair of pairs) {
     if (pair.disposition === 'run' && pair.test.kind === 'test') continue;
     if (pair.test.kind === 'setup') {
@@ -352,7 +394,7 @@ function describeNoTests(
         count('require capabilities the engine lacks', pair.test);
         break;
       case 'filtered':
-        count(pair.skip.reason === FILTERED_REASON.tags && tagFilter !== undefined ? tagFilter : pair.skip.reason, pair.test);
+        count(filterNames.get(pair.skip.reason) ?? pair.skip.reason, pair.test);
         break;
       default:
         count('unselected', pair.test);
@@ -369,10 +411,15 @@ function describeNoTests(
  * nearest declared tag when one is close: `smok (did you mean smoke?)`.
  */
 function describeTagFilter(tags: readonly string[], tagMode: TagMode, declared: readonly string[]): string {
-  const named = tags
+  const named = nameTags(tags, declared);
+  return tagMode === 'all' ? `do not carry all of the tags ${named}` : `carry none of the tags ${named}`;
+}
+
+/** Filter tags as a list, each one no test declares marked, with the nearest declared tag when one is close. */
+function nameTags(tags: readonly string[], declared: readonly string[]): string {
+  return tags
     .map((tag) => (declared.includes(tag) ? tag : `${tag}${suggestionNote(tag, declared) || ' (no test declares it)'}`))
     .join(', ');
-  return tagMode === 'all' ? `do not carry all of the tags ${named}` : `carry none of the tags ${named}`;
 }
 
 /** Maps each session name to its unique producer setup test. */
@@ -428,6 +475,28 @@ function classifyPair(
         ...base,
         disposition: 'filtered',
         skip: { cause: 'filtered', reason: FILTERED_REASON.tags },
+      };
+    }
+    if (filters.excludeTags?.some((tag) => test.tags.includes(tag)) === true) {
+      return {
+        ...base,
+        disposition: 'filtered',
+        skip: { cause: 'filtered', reason: FILTERED_REASON.excludedTag },
+      };
+    }
+    const { grep, grepInvert } = patternFilters(filters);
+    if (grep !== undefined && !matchesAny(grep, grepText(test))) {
+      return {
+        ...base,
+        disposition: 'filtered',
+        skip: { cause: 'filtered', reason: FILTERED_REASON.grep },
+      };
+    }
+    if (grepInvert !== undefined && matchesAny(grepInvert, grepText(test))) {
+      return {
+        ...base,
+        disposition: 'filtered',
+        skip: { cause: 'filtered', reason: FILTERED_REASON.grepInvert },
       };
     }
   }

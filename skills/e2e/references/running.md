@@ -21,6 +21,8 @@ npx e2e telemetry [disable|enable] # anonymous usage telemetry: status, or the s
 | `--config <path>` | Explicit config file. Default: `e2e.config.ts` or `.mts` found upward from the working directory. |
 | `--target <ids>` | Target names, comma-separated or repeated. Only selected targets start app commands and services; unknown names fail before startup. |
 | `--tag <tags>` | Tag filter, comma-separated or repeated: any of the tags, or every one with `--tag-mode all`. An empty `--target`, `--tag`, or `--agent` value is a usage error, exit 2. |
+| `--exclude-tag <tags>` | Leave out tests carrying any of these tags, whatever else selected them. |
+| `--grep <pattern>`, `--grep-invert <pattern>` | Keep, or leave out, tests whose title matches a regular expression: the describe titles and the test title joined by spaces (`checkout pays`), not the file or the tags. Bare pattern, or `'/pattern/i'` for flags; repeat for alternatives. |
 | `--headed` | Visible browser or simulator when the engine supports it. |
 | `--agent <names>` | Run unpinned tests as other configured agents (`agents.<name>`), comma-separated or repeated; several names run each such test once per agent. Default is `agents.default`. |
 | `--workers <n>`, `--retries <n>` | Override the resolved values. |
@@ -36,12 +38,14 @@ npx e2e telemetry [disable|enable] # anonymous usage telemetry: status, or the s
 npx e2e run tests/signup.e2e.ts
 npx e2e run signup.e2e.ts   # the same file by name, from any directory the config globs cover
 npx e2e run tests/agent --tag smoke
+npx e2e run --tag smoke --exclude-tag slow --grep checkout
 npx e2e run 'tests/**/*.smoke.e2e.ts' --target chromium --workers 1 --retries 0
 CI=1 npx e2e run            # reproduce the CI defaults locally
 ```
 
 `list` takes the same files and the selection flags (`--config`, `--target`,
-`--tag`, `--tag-mode`, `--pass-with-no-tests`) and prints one line per
+`--tag`, `--tag-mode`, `--exclude-tag`, `--grep`, `--grep-invert`,
+`--pass-with-no-tests`) and prints one line per
 test-target pair, `file › title [target] #tag`, then exits without starting the
 app, an engine, or a worker. `--reporter json` prints `{ "pairs": [...] }`.
 Use it to check a filter before a run.

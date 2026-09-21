@@ -24,6 +24,17 @@ agent calls.
 | `storageState` | `test.setup` and `{ session }`, see [Signing in](/authentication) |
 | `reporter` | `reporters: ['list', 'junit']` |
 
+## Command line
+
+| Playwright | e2e |
+| --- | --- |
+| `npx playwright test tests/checkout.spec.ts` | `npx e2e run tests/checkout.e2e.ts`; a directory, a bare file name, or a quoted glob also selects files |
+| `--project chromium` | `--target web`, the name in `targets` |
+| `--grep`, `--grep-invert` | The same, matched against the describe titles and the test title joined by spaces; tags are `--tag` and `--exclude-tag` |
+| `--headed`, `--workers`, `--retries`, `--pass-with-no-tests` | The same names |
+| `--reporter junit` | `--reporter list,junit` |
+| `--ui`, `--debug` | `npx e2e mcp` gives a coding agent a live session; `--debug` prints timings and the agent step table |
+
 ## A test, before and after
 
 ```ts title="Playwright"

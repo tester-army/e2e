@@ -668,6 +668,13 @@ test('other', { tags: ['smoke'] }, async () => {});
       expect(tagged.pairs.map((pair) => pair.title)).toEqual(['other']);
       tagged.project.cleanup();
 
+      const grepped = await listProject(files, {
+        appUrl: 'http://127.0.0.1:9',
+        listOptions: { grepInvert: [/^group/], excludeTags: ['smoke'] },
+      });
+      expect(grepped.pairs.map((pair) => pair.title)).toEqual(['plain']);
+      grepped.project.cleanup();
+
       await expect(listProject({ 'tests/empty.txt': '' }, { appUrl: 'http://127.0.0.1:9' })).rejects.toMatchObject({
         code: 'NO_TESTS',
       });

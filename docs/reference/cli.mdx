@@ -199,6 +199,9 @@ or every test was filtered out.
 | `--target <ids>` | comma-separated or repeated | every configured target | Selects targets by name. Only selected targets start app commands and services. An unknown ID is `UNKNOWN_TARGET`. |
 | `--tag <tags>` | comma-separated or repeated | none | Only tests carrying the tags: any of them, or every one with `--tag-mode all`. When the filter leaves nothing to run, `NO_TESTS` counts the tests it filtered, marks each tag no test declares, and names the nearest declared one. |
 | `--tag-mode <mode>` | `any` or `all` | `any` | How several tags combine: any of them, or every one. |
+| `--exclude-tag <tags>` | comma-separated or repeated | none | Leaves out every test carrying any of the tags, whatever `--tag` or a positional selected. A serial group still runs whole when any member is selected; tag the serial `describe` to exclude the flow. |
+| `--grep <pattern>` | regular expression, repeatable | none | Only tests whose title matches one of the patterns. The text matched is the describe titles and the test title joined by one space (`checkout pays`); the file and the tags are not part of it. A bare pattern is case-sensitive; `'/pattern/i'` adds flags. A pattern that does not compile is a usage error, exit 2. |
+| `--grep-invert <pattern>` | regular expression, repeatable | none | Leaves out every test whose title matches one of the patterns. Same text and pattern forms as `--grep`; both together keep the tests `--grep` matches minus the ones `--grep-invert` matches. |
 | `--headed` | boolean | `false` | Visible UI when the engine supports it. |
 | `--agent <names>` | comma-separated or repeated | `default` | Runs unpinned tests once per selected agent. For a test with `{ agent }`, selects the shared names when there is overlap; otherwise keeps the test's selection. An unknown name is `INVALID_CONFIG`. |
 | `--retries <n>` | integer 0-10 | config | Replaces `config.retries`. |
@@ -212,9 +215,16 @@ or every test was filtered out.
 | `--video` | boolean | `false` | Records every attempt (WebM on a browser engine, MP4 on a device engine). Adds the `video` kind to `config.artifacts` for this run; an engine that cannot record fails with `UNSUPPORTED_ARTIFACT`. See [video](/reference/config#video). |
 
 Out-of-range `--retries` and `--workers` fail with `INVALID_CONFIG` before
-anything starts, the same as the config value would. `--target`, `--tag`, and
-`--agent` take each name once; an empty value (`--tag ''`, or `--tag "$TAGS"`
-with the variable unset) is a usage error, exit 2, never a wider selection.
+anything starts, the same as the config value would. `--target`, `--tag`,
+`--exclude-tag`, and `--agent` take each name once; an empty value (`--tag ''`,
+or `--tag "$TAGS"` with the variable unset) is a usage error, exit 2, never a
+wider selection.
+
+Filters only narrow, and each applies after the one before: positionals, then
+`.only`, `--tag`, `--exclude-tag`, `--grep`, `--grep-invert`, then the
+platform and capability rules. When they leave nothing to run, `NO_TESTS`
+counts the tests each filter removed, names the tags and patterns, and marks a
+tag no test declares.
 
 `--debug` appends two tables to stderr. Phase timings are summed across the
 runner and every worker. The agent step table lists every agent step in
@@ -253,6 +263,8 @@ npx e2e run tests/signup.e2e.ts --tag smoke
 npx e2e run tests/agent
 npx e2e run 'tests/**/*.smoke.e2e.ts'
 npx e2e run --target web,webkit --tag smoke,billing --tag-mode all
+npx e2e run --tag smoke --exclude-tag slow
+npx e2e run --grep checkout --grep-invert '/refund/i'
 npx e2e run --reporter json --workers 4 --retries 2
 npx e2e run --reporter list,junit
 ```
@@ -346,8 +358,9 @@ test-target pair, and exits. No app process, engine, or worker starts, and
 nothing is written under `.e2e/`.
 
 Positionals and the selection flags (`--config`, `--target`, `--tag`,
-`--tag-mode`, `--pass-with-no-tests`) are those of `run`. `--reporter`
-accepts `list` (the default) or `json`.
+`--tag-mode`, `--exclude-tag`, `--grep`, `--grep-invert`,
+`--pass-with-no-tests`) are those of `run`. `--reporter` accepts `list` (the
+default) or `json`.
 
 | Reporter | Writes |
 | --- | --- |
@@ -360,6 +373,7 @@ Pairs a filter removed are not listed.
 npx e2e list
 npx e2e list tests/signup.e2e.ts
 npx e2e list --tag smoke --target web
+npx e2e list --grep checkout --exclude-tag slow
 npx e2e list --reporter json
 ```
 
