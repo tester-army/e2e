@@ -3,7 +3,7 @@ title: From Playwright
 description: Run e2e alongside Playwright and migrate tests one file at a time.
 ---
 
-`@e2edev/playwright` uses your installed Playwright when its version satisfies
+`@e2edev/web` uses your installed Playwright when its version satisfies
 the engine's peer dependency (`>=1.63.0 <2`). Both runners can stay in one
 project. e2e reads `e2e.config.ts` and finds `tests/**/*.e2e.ts` by default,
 so keep the two file patterns apart.
@@ -13,11 +13,11 @@ agent calls. This page maps each Playwright feature to its e2e counterpart
 and says whether it exists. The reference pages hold the details:
 [screen](/reference/screen), [expect](/reference/expect),
 [test](/reference/test), [config](/reference/config), and the
-[Playwright engine](/reference/playwright).
+[web engine](/reference/web).
 
 ## Config
 
-Every e2e config key is a top-level key or an option of `playwright(...)`.
+Every e2e config key is a top-level key or an option of `web(...)`.
 A Playwright key the runner recognizes (`testDir`, `baseURL`, `webServer`,
 `projects`) is rejected with a message naming where that fact lives here.
 
@@ -25,8 +25,8 @@ A Playwright key the runner recognizes (`testDir`, `baseURL`, `webServer`,
 
 | Playwright | e2e | Lives in | Status |
 | --- | --- | --- | --- |
-| `use.baseURL` | `playwright({ url })` | config | renamed |
-| `webServer` | `playwright({ url, command })`, see [Starting your app](/starting-your-app) | config | renamed |
+| `use.baseURL` | `web({ url })` | config | renamed |
+| `webServer` | `web({ url, command })`, see [Starting your app](/starting-your-app) | config | renamed |
 | `webServer.reuseExistingServer` | `command: { reuseExisting: true }`; CI ignores it | config | renamed |
 | `globalSetup` | no direct equivalent; `services` for managed processes, hooks and fixtures or `test.setup` for setup code | config | missing |
 | `projects` | `targets`, one engine instance each | config | renamed |
@@ -44,11 +44,11 @@ A Playwright key the runner recognizes (`testDir`, `baseURL`, `webServer`,
 
 | Playwright | e2e | Lives in | Status |
 | --- | --- | --- | --- |
-| `use.viewport`, `use.browserName` | `playwright({ viewport, browser })` | config | renamed |
-| `use.testIdAttribute` | `playwright({ testIdAttribute })` | config | renamed |
-| `use.httpCredentials` | `playwright({ basicAuth })` | config | renamed |
-| `use.extraHTTPHeaders` | `playwright({ headers })`, sent to the app's site only | config | renamed |
-| `use.connectOptions`, `connectOverCDP` | `playwright({ connect })` | config | renamed |
+| `use.viewport`, `use.browserName` | `web({ viewport, browser })` | config | renamed |
+| `use.testIdAttribute` | `web({ testIdAttribute })` | config | renamed |
+| `use.httpCredentials` | `web({ basicAuth })` | config | renamed |
+| `use.extraHTTPHeaders` | `web({ headers })`, sent to the app's site only | config | renamed |
+| `use.connectOptions`, `connectOverCDP` | `web({ connect })` | config | renamed |
 | `retries`, `workers`, `timeout` | the same names at the top level; the defaults differ, see [below](#defaults-that-differ) | config | same |
 | `expect.timeout` | `assertionTimeout` | config | renamed |
 | `use.actionTimeout` | `actionTimeout` | config | renamed |
@@ -58,7 +58,7 @@ A Playwright key the runner recognizes (`testDir`, `baseURL`, `webServer`,
 | `use.video` | `artifacts: { kinds: ['video'], video: { retain: 'on-failure' } }`, or `--video` for one run | config | renamed |
 | `use.headless: false` | `--headed` on the CLI | CLI | renamed |
 | `use.locale`, `timezoneId`, `colorScheme`, `geolocation`, `permissions` | not yet | config | missing |
-| `devices['iPhone 15']`, `userAgent`, `deviceScaleFactor`, `isMobile`, `hasTouch` | not yet; `playwright({ viewport })` sets the size only | config | missing |
+| `devices['iPhone 15']`, `userAgent`, `deviceScaleFactor`, `isMobile`, `hasTouch` | not yet; `web({ viewport })` sets the size only | config | missing |
 | `ignoreHTTPSErrors`, `bypassCSP`, `offline`, `launchOptions`, `proxy` | not yet | config | missing |
 
 ## A test, before and after
@@ -78,7 +78,7 @@ test('checkout', async ({ page }) => {
 ```
 
 ```ts title="e2e"
-import { test } from '@e2edev/playwright';
+import { test } from '@e2edev/web';
 import { expect } from 'e2e';
 
 test('checkout', async ({ app, agent, screen }) => {
@@ -96,7 +96,7 @@ fully deterministic: every `page.getBy*` line has a `screen.getBy*` line.
 
 Every e2e call sits on one side of a line. What is on `screen` and
 `expect(locator)` runs on every target: a browser, a simulator or emulator
-through `@e2edev/agent-device`, any engine built on the same contract. What
+through `@e2edev/mobile`, any engine built on the same contract. What
 is on `web` runs only in a browser, and a test that uses it declares
 `requires: ['web']` so other targets skip it. A Playwright test ports line by
 line to one side or the other; the `Lives in` column says which. `Status`
@@ -228,7 +228,7 @@ to do today.
 
 | Playwright | e2e | Lives in | Status |
 | --- | --- | --- | --- |
-| `import { test, expect } from '@playwright/test'` | `import { test } from '@e2edev/playwright'` and `import { expect } from 'e2e'` | `test` | renamed |
+| `import { test, expect } from '@playwright/test'` | `import { test } from '@e2edev/web'` and `import { expect } from 'e2e'` | `test` | renamed |
 | `test(title, fn)`, `test.describe`, `beforeEach`, `afterEach` | the same | `test` | same |
 | `test.beforeAll`, `afterAll` | the same, with `platform` as the only fixture; no `browser` or `request` | `test` | same |
 | `{ page }` in a test | `{ screen, app, web }`; no raw `Page` in tests, see [By design](#by-design) | `test` | by design |
@@ -330,7 +330,7 @@ Tests that already work well can remain in Playwright.
   <Card title="Writing tests" icon="pen-to-square" href="/writing-tests">
     Goals, checks, extraction, and where a deterministic call still belongs.
   </Card>
-  <Card title="Playwright reference" icon="masks-theater" href="/reference/playwright">
+  <Card title="Web engine reference" icon="masks-theater" href="/reference/web">
     Every option and every `web` method.
   </Card>
 </CardGroup>

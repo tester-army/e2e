@@ -12,16 +12,16 @@ Set up a target with the [mobile guide](/mobile) and a model with the
 Maestro command to its e2e counterpart and says whether it exists. The
 reference pages hold the details: [screen](/reference/screen),
 [expect](/reference/expect), [test](/reference/test), and the
-[agent-device engine](/reference/agent-device).
+[mobile engine](/reference/mobile).
 
 ## Config
 
 | Maestro | e2e | Lives in | Status |
 | --- | --- | --- | --- |
-| `appId` at the top of every flow | `agentDevice({ app: 'com.example.app' })`, opened fresh per attempt | config | renamed |
+| `appId` at the top of every flow | `mobile({ app: 'com.example.app' })`, opened fresh per attempt | config | renamed |
 | a different `appId` per flow | `device.openApp(id)` inside the test, or separate app-specific configs and runs; every test runs on every selected target | config | renamed |
-| `--platform ios` | `agentDevice({ platform: 'ios' })`, one engine per platform | config | renamed |
-| `--device` | `agentDevice({ device: 'iPhone 17' })`; a list is a pool, one worker per device | config | renamed |
+| `--platform ios` | `mobile({ platform: 'ios' })`, one engine per platform | config | renamed |
+| `--device` | `mobile({ device: 'iPhone 17' })`; a list is a pool, one worker per device | config | renamed |
 | `.maestro/config.yaml` `flows` | `tests`, default `tests/**/*.e2e.ts`; Maestro runs one folder level, e2e recurses | config | renamed |
 | `flows: ['!helper.yaml']` | not yet; keep helpers outside the glob | config | missing |
 | `tags` and `--include-tags` | `{ tags: [...] }` on a test or group, `--tag` on the CLI | config | renamed |
@@ -57,7 +57,7 @@ appId: com.example.app
 ```
 
 ```ts title="e2e"
-import { test } from '@e2edev/agent-device';
+import { test } from '@e2edev/mobile';
 import { expect } from 'e2e';
 
 test('asks for the email', async ({ app, agent, screen }) => {
@@ -77,7 +77,7 @@ the Resend control. The flow could also stay fully deterministic: every
 
 Every e2e call sits on one side of a line. What is on `screen` and
 `expect(locator)` runs on every target: a simulator or emulator, a browser
-through `@e2edev/playwright`, any engine built on the same contract. What is
+through `@e2edev/web`, any engine built on the same contract. What is
 on `device` runs only on a device, and a test that uses it declares
 `requires: ['device']` so other targets skip it. A Maestro flow ports line by
 line to one side or the other; the `Lives in` column says which. `Status`
@@ -110,7 +110,7 @@ says whether the call exists: `same`, `renamed`, `device only`, `by design`
 | `tapOn: { text, index: 2 }` | `.nth(2)` | `screen` | renamed |
 | `tapOn: { below: "Email" }`, `above`, `leftOf`, `rightOf`, `containsDescendants` | no equivalent, see [Selectors](#selectors) | `screen` | by design |
 | `tapOn: { point: "x,y" }` | `screen.tapAt({ x, y })`; inside a node, `.tap({ position: { x, y } })` | `screen` | renamed |
-| `retryTapIfNoChange`, `waitToSettleTimeoutMs` | `agentDevice({ settle, transition })`, engine-wide; no per-call knob | config | renamed |
+| `retryTapIfNoChange`, `waitToSettleTimeoutMs` | `mobile({ settle, transition })`, engine-wide; no per-call knob | config | renamed |
 | `doubleTapOn`, `longPressOn` | `.doubleTap()`, `.longPress({ duration })` | `screen` | renamed |
 | `inputText` | `screen.getByTestId('field').fill('text')` | `screen` | renamed |
 | `inputRandomEmail`, `inputRandomText`, `faker` | `unique()` around a value in `act` params so the cache still replays; any npm faker for the rest | `test` | renamed |
@@ -131,7 +131,7 @@ says whether the call exists: `same`, `renamed`, `device only`, `by design`
 | `swipe: { start, end }` | `screen.swipe({ from: { x, y }, to: { x, y } })` | `screen` | renamed |
 | `scroll` | `screen.swipe({ direction: 'down' })` | `screen` | renamed |
 | `scrollUntilVisible: { element }` | `screen.scrollUntilVisible(locator, { direction })` | `screen` | renamed |
-| `waitForAnimationToEnd` | an assertion on the settled state; `agentDevice({ settle, transition })` for the engine | `expect` | renamed |
+| `waitForAnimationToEnd` | an assertion on the settled state; `mobile({ settle, transition })` for the engine | `expect` | renamed |
 
 ### Assertions and waits
 
