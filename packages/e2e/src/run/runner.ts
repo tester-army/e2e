@@ -45,6 +45,7 @@ import { setSecretRegistry } from '../secrets.ts';
 import { withAbort } from '../internal/time.ts';
 import type { BuiltinReporter, E2EConfig, FinishedRun, Reporter, ReporterSummary } from '../types.ts';
 import { modelLabel } from '../config/agent.ts';
+import { positiveInt } from '../config/validate.ts';
 import { detectVcs, type VcsInfo } from '../internal/vcs.ts';
 import type { EnginePrepareResult } from '../engine/index.ts';
 import { PreparedEngines, startDeclaredProcesses, validateEngine, type AppProcesses, type PrepareScope } from './provision.ts';
@@ -76,6 +77,12 @@ export interface RunOptions {
   headed?: boolean | undefined;
   retries?: number | undefined;
   workers?: number | undefined;
+  /**
+   * Stops the run once this many tests have failed (`--max-failures`): the
+   * tests running end as interrupted, the rest are skipped with cause
+   * `failure-limit`, and the exit code is the failures' own.
+   */
+  maxFailures?: number | undefined;
   reporters?: readonly BuiltinReporter[] | undefined;
   artifactsDir?: string | undefined;
   passWithNoTests?: boolean | undefined;
@@ -334,6 +341,17 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   };
 
   /**
+   * The failure limit was reached: the scheduler has stopped dispatching and
+   * interrupted its workers on its own. What it cut short is interrupted,
+   * but the run is not: the exit code is the failures', never 130.
+   */
+  let stoppedEarly = false;
+  const stopEarly = (failures: number, limit: number): void => {
+    stoppedEarly = true;
+    emit({ type: 'run-stopped', failures, limit });
+  };
+
+  /**
    * The exit code is a fold over run state — every result, every run error,
    * the interrupt — never threaded through by hand. A run error recorded
    * anywhere, including during teardown or the report write, reaches the exit
@@ -345,7 +363,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
         ...resultExitCodes(results),
         ...runErrors.map((runError) => exitCodeForCategory(runError.error.category)),
         ...(interruptController.signal.aborted ? [130] : []),
-      ].filter((code) => code !== 130 || !runAborted),
+      ].filter((code) => code !== 130 || !(runAborted || stoppedEarly)),
     );
 
   // Detected once the config names the project root; a report written before
@@ -669,6 +687,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       runUnits({
         plans,
         workers: runWorkers,
+        ...(options.maxFailures === undefined ? {} : { maxFailures: options.maxFailures }),
         spawn,
         interruptGraceMs: config.timeout + config.cleanupTimeout,
         interruptSignal: interrupted,
@@ -685,6 +704,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
           },
           onRunError: recordRunError,
           onRunAbort: abortRun,
+          onFailureLimit: stopEarly,
           onTestStart: (start, targetName) =>
             emit({ type: 'test-started', ...start, target: targetName }),
           onProgress: (pair, targetName, progress) =>
@@ -844,6 +864,15 @@ async function selectionFilters(options: ListOptions, config: ResolvedConfig): P
   };
 }
 
+/**
+ * The run options the CLI parser already bounds, checked again for the SDK
+ * path so `run({ maxFailures: 0 })` is `INVALID_CONFIG` rather than a run
+ * that stops at its first failure.
+ */
+function validateRunOptions(options: ListOptions): void {
+  positiveInt((options as RunOptions).maxFailures, 'maxFailures');
+}
+
 /** Resolves the run's config: a supplied value, or the discovered file. */
 async function loadRunConfig(
   options: ListOptions,
@@ -851,6 +880,7 @@ async function loadRunConfig(
   env: NodeJS.ProcessEnv,
   cli: CliOverrides,
 ): Promise<ResolvedConfig> {
+  validateRunOptions(options);
   if (options.rawConfig !== undefined) {
     return resolveConfig(options.rawConfig, { projectRoot: cwd, env, cli });
   }

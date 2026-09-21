@@ -33,6 +33,13 @@ import { telemetry as telemetryCommand, TELEMETRY_ACTIONS, type TelemetryAction 
  */
 const pc = picocolors.createColors(true);
 
+/** A count of at least one, for `--max-failures`. */
+function parsePositiveInt(value: string): number {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) throw new InvalidArgumentError('must be a positive integer');
+  return parsed;
+}
+
 /** Shape check only; the config resolver applies each flag's bounds. */
 function parseNonNegativeInt(value: string): number {
   const parsed = Number(value);
@@ -461,6 +468,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     )
     .option('--workers <n>', 'parallel workers (default: from the config)', parseNonNegativeInt)
     .option('--retries <n>', 'retries per failing test (default: from the config)', parseNonNegativeInt)
+    .option('--max-failures <n>', 'stop the run once this many tests have failed; the rest are skipped', parsePositiveInt)
     .option('--no-cache', 'run with the trace cache off, whatever the config says')
     .optionsGroup('Output:')
     .option('--reporter <ids>', `comma-separated reporters: ${BUILTIN_REPORTERS.join(', ')}`, parseReporters)
@@ -482,6 +490,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           'e2e run --last-failed',
           'e2e run --shard 2/3',
           'e2e run --reporter list,junit --workers 4 --retries 2',
+          'e2e run --max-failures 3',
           'e2e run --agent ux tests/onboarding.e2e.ts',
           'e2e run --agent buyer,admin tests/checkout.e2e.ts',
           'AI_GATEWAY_API_KEY=... e2e run --no-cache',
@@ -503,6 +512,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           agent?: string[];
           retries?: number;
           workers?: number;
+          maxFailures?: number;
           reporter?: Reporter[];
           artifacts?: string;
           /** Commander negation: `--no-cache` parses as `cache: false`. */
@@ -524,6 +534,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
             agent: options.agent,
             retries: options.retries,
             workers: options.workers,
+            maxFailures: options.maxFailures,
             reporters: options.reporter,
             artifactsDir: options.artifacts,
             noCache: options.cache === false,

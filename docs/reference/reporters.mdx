@@ -86,6 +86,7 @@ type RunEventFact =
   | { type: 'explore'; progress: ExploreProgress }
   | { type: 'run-error'; error: SerializedError }
   | { type: 'run-interrupted'; mode: 'graceful' | 'forced' }
+  | { type: 'run-stopped'; failures; limit }
   | { type: 'run-finished'; status; exitCode; reportPath?; aiTracePath? };
 ```
 

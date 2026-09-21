@@ -162,6 +162,11 @@ run live, and a cache miss or hand-off uses the model.
 CI retries once by default. A test that passes only on retry is reported as
 flaky, so you can identify flows that need investigation.
 
+`--max-failures <n>` stops the run once that many tests have failed, so a
+broken deploy does not spend a model call on every remaining agent step. The
+tests not started are skipped with cause `failure-limit`, the ones running
+end as `interrupted`, and the job exits 1.
+
 ## Exit codes
 
 Any non-zero exit fails the job.

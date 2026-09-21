@@ -203,6 +203,17 @@ export type RunEventFact =
       readonly mode: 'graceful' | 'forced';
     }
   | {
+      /**
+       * The run reached its failure limit (`--max-failures`): nothing more
+       * is dispatched, the tests running end as interrupted, and the tests
+       * not started are skipped with cause `failure-limit`. The exit code is
+       * the failures' own, not an interrupt's.
+       */
+      readonly type: 'run-stopped';
+      readonly failures: number;
+      readonly limit: number;
+    }
+  | {
       readonly type: 'run-finished';
       readonly status: RunStatus;
       readonly exitCode: RunExitCode;

@@ -28,6 +28,7 @@ npx e2e telemetry [disable|enable] # anonymous usage telemetry: status, or the s
 | `--headed` | Visible browser or simulator when the engine supports it. |
 | `--agent <names>` | Run unpinned tests as other configured agents (`agents.<name>`), comma-separated or repeated; several names run each such test once per agent. Default is `agents.default`. |
 | `--workers <n>`, `--retries <n>` | Override the resolved values. |
+| `--max-failures <n>` | Stop once this many tests failed: the rest are skipped with cause `failure-limit`, running tests end as `interrupted`, exit 1. |
 | `--reporter <ids>` | `list`, `json`, `junit`, `markdown`, comma-separated. `json` cannot combine with `list`. |
 | `--artifacts <dir>` | Artifact root, default `.e2e/artifacts`. |
 | `--no-cache` | Run with the trace cache off. |

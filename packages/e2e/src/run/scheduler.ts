@@ -8,7 +8,7 @@
  * execution.
  */
 
-import type { TestTargetPair } from '../collect/select.ts';
+import type { SkipInfo, TestTargetPair } from '../collect/select.ts';
 import type { ResolvedTarget } from '../config/resolve.ts';
 import type { AiTraceSnapshot } from '../internal/ai-trace.ts';
 import type { DebugSnapshot } from '../internal/debug.ts';
@@ -19,6 +19,7 @@ import type { StepProgress } from './steps.ts';
 import type { SpawnUnitRunner, UnitRunner } from './unit-runner.ts';
 import {
   INTERRUPTED_BEFORE_START,
+  failureLimitSkip,
   nonRunResult,
   pairResult,
   setupFailedSkip,
@@ -41,6 +42,12 @@ export interface SchedulerEvents {
   onRunError(error: RunError): void;
   /** A worker asks the run to stop over a run-level configuration failure. */
   onRunAbort(error: RunError): void;
+  /**
+   * The failure limit was reached: the queues were skipped with cause
+   * `failure-limit` and every worker is being interrupted. `failures` is
+   * the count that tripped it.
+   */
+  onFailureLimit?(failures: number, limit: number): void;
   /** A worker began executing one test-target pair. */
   onTestStart?(start: PairStart, targetName: string): void;
   /** Live step progress of one running pair, identified by test id and agent. */
@@ -58,6 +65,8 @@ export interface RunUnitsOptions {
   readonly plans: readonly TargetWorkPlan[];
   /** Maximum workers alive at once across all targets. */
   readonly workers: number;
+  /** Failures (failed or timed out results) after which the run stops dispatching and interrupts its workers. */
+  readonly maxFailures?: number;
   /** Budget for a worker to finish an in-flight unit after an interrupt. */
   readonly interruptGraceMs: number;
   readonly interruptSignal: AbortSignal;
@@ -114,6 +123,8 @@ class SchedulerWorker {
   becameReady = false;
   /** Told to tear down at once by a forced interrupt; its exit is then the one asked for. */
   terminated = false;
+  /** Killed by the scheduler once a grace budget ran out; its exit is then the one asked for too. */
+  killed = false;
   private killTimer: NodeJS.Timeout | undefined;
 
   constructor(
@@ -173,7 +184,10 @@ class SchedulerWorker {
 
   killAfter(graceMs: number): void {
     if (this.killTimer !== undefined || !this.runner.alive) return;
-    this.killTimer = setTimeout(() => this.runner.kill(), graceMs);
+    this.killTimer = setTimeout(() => {
+      this.killed = true;
+      this.runner.kill();
+    }, graceMs);
     this.killTimer.unref();
   }
 
@@ -191,8 +205,53 @@ class Scheduler {
   private wake: (() => void) | undefined;
   private interruptBroadcast = false;
   private forceBroadcast = false;
+  /** Failed and timed-out results so far, counted toward `maxFailures`. */
+  private failures = 0;
+  /**
+   * The skip the work left undone gets once the failure limit stopped the
+   * run; from then on the scheduler interrupts as if the signal had fired.
+   */
+  private stopSkip: SkipInfo | undefined;
 
   constructor(private readonly options: RunUnitsOptions) {}
+
+  /** Whether dispatch has ended for good: the interrupt signal fired, or the run stopped at its failure limit. */
+  private get interrupting(): boolean {
+    return this.options.interruptSignal.aborted || this.stopSkip !== undefined;
+  }
+
+  /**
+   * Every result leaves through here, so the failure count is one number
+   * however the result came about: a worker's verdict, a synthesized crash,
+   * or a skip. Reaching the limit stops the run at once.
+   */
+  private report(result: ResultRecord): void {
+    this.options.events.onResult(result);
+    if (result.status !== 'failed' && result.status !== 'timed-out') return;
+    this.failures += 1;
+    const limit = this.options.maxFailures;
+    if (limit !== undefined && this.stopSkip === undefined && this.failures >= limit) this.stopEarly(limit);
+  }
+
+  /**
+   * Stops the run at its failure limit: every queued pair is skipped with the
+   * reason, the runner is told, and the loop wakes to interrupt the workers
+   * the way the interrupt signal would.
+   */
+  private stopEarly(limit: number): void {
+    const skip = failureLimitSkip(this.failures, limit);
+    this.stopSkip = skip;
+    for (const state of this.targets.values()) {
+      const units = [...state.setupQueue, ...state.fileQueue];
+      state.setupQueue.length = 0;
+      state.fileQueue.length = 0;
+      for (const unit of units) {
+        for (const pair of unit.pairs) this.report(unstartedResult(pair, skip));
+      }
+    }
+    this.options.events.onFailureLimit?.(this.failures, limit);
+    this.wakeUp();
+  }
 
   async run(): Promise<void> {
     for (const plan of this.options.plans) {
@@ -206,7 +265,7 @@ class Scheduler {
         failed: false,
       });
       if (!this.options.interruptSignal.aborted) {
-        for (const pair of plan.immediate) this.options.events.onResult(nonRunResult(pair));
+        for (const pair of plan.immediate) this.report(nonRunResult(pair));
       }
     }
 
@@ -237,19 +296,32 @@ class Scheduler {
   }
 
   private broadcastInterrupt(): void {
-    if (!this.options.interruptSignal.aborted || this.interruptBroadcast) return;
+    if (!this.interrupting || this.interruptBroadcast) return;
     this.interruptBroadcast = true;
     for (const state of this.targets.values()) {
       state.setupQueue.length = 0;
       state.fileQueue.length = 0;
     }
+    // A run stopped at its failure limit tells the workers why, so the pairs
+    // they have not started are skipped with that reason rather than as an
+    // interrupt's. Its queues were skipped when it stopped.
+    const skip = this.stopSkip;
     // Snapshot first: retiring a worker mutates `this.workers`, and iterating
     // the live array would skip entries as they are spliced out.
     const live = [...this.workers];
     for (const worker of live) {
-      worker.runner.send({ type: 'interrupt' });
-      if (worker.state === 'busy') worker.killAfter(this.options.interruptGraceMs);
-      else this.retire(worker);
+      worker.runner.send({ type: 'interrupt', ...(skip === undefined ? {} : { skip }) });
+      if (worker.state === 'busy') {
+        worker.killAfter(this.options.interruptGraceMs);
+        continue;
+      }
+      // At the failure limit, a unit handed to a worker still starting is
+      // reported before the worker is let go; a plain interrupt drops it, as
+      // it always has.
+      if (skip !== undefined && worker.queued !== undefined) {
+        for (const pair of worker.queued.pairs) this.report(unstartedResult(pair, skip));
+      }
+      this.retire(worker);
     }
   }
 
@@ -285,7 +357,7 @@ class Scheduler {
    * nothing to do.
    */
   private dispatch(): void {
-    if (this.options.interruptSignal.aborted) return;
+    if (this.interrupting) return;
     for (;;) {
       const state = this.nextTarget();
       if (state === undefined) return;
@@ -343,9 +415,7 @@ class Scheduler {
       const runnable = unit.pairs.filter((pair) => {
         const skip = this.dependencySkip(state, pair);
         if (skip === undefined) return true;
-        this.options.events.onResult(
-          pairResult(pair, { status: 'skipped', selected: true, skip, attempts: [] }),
-        );
+        this.report(pairResult(pair, { status: 'skipped', selected: true, skip, attempts: [] }));
         return false;
       });
       if (runnable.length === 0) continue;
@@ -517,7 +587,7 @@ class Scheduler {
           worker.sawFailure = true;
         }
         if (result.test.kind === 'setup') this.recordSetupOutcome(state, result);
-        this.options.events.onResult(result);
+        this.report(result);
         break;
       }
       case 'serial-group': {
@@ -589,7 +659,9 @@ class Scheduler {
     }
 
     if (unit !== undefined) {
-      if (!worker.terminated) {
+      // A worker the scheduler told to stop and then killed when its grace
+      // ran out exited as asked; only an exit nobody asked for is an error.
+      if (!worker.terminated && !worker.killed) {
         this.options.events.onRunError({
           error: serializeError(
             new InfrastructureError(
@@ -613,12 +685,12 @@ class Scheduler {
     worker: SchedulerWorker,
     unit: WorkUnit,
   ): void {
-    const interrupted = this.options.interruptSignal.aborted;
+    const interrupted = this.interrupting;
     for (const pair of unit.pairs) {
       const key = pairKey(pair.test.id, pair.agent);
       if (worker.reported.has(key)) continue;
       if (interrupted) {
-        this.options.events.onResult(unstartedResult(pair, INTERRUPTED_BEFORE_START));
+        this.report(unstartedResult(pair, this.stopSkip ?? INTERRUPTED_BEFORE_START));
         continue;
       }
       // A crashed setup never persisted its sessions; dependents must skip.
@@ -629,7 +701,7 @@ class Scheduler {
       }
       const wasRunning = key === worker.inFlightPair && pair.test.serialId === undefined;
       if (!wasRunning) {
-        this.options.events.onResult(
+        this.report(
           unstartedResult(pair, {
             cause: 'infrastructure-unavailable',
             reason: 'worker process exited before this test started',
@@ -637,7 +709,7 @@ class Scheduler {
         );
         continue;
       }
-      this.options.events.onResult(
+      this.report(
         pairResult(pair, {
           status: 'failed',
           selected: true,
@@ -678,7 +750,7 @@ class Scheduler {
     state.fileQueue.length = 0;
     for (const unit of units) {
       for (const pair of unit.pairs) {
-        this.options.events.onResult(
+        this.report(
           unstartedResult(pair, {
             cause: 'infrastructure-unavailable',
             reason: 'worker process failed to start',

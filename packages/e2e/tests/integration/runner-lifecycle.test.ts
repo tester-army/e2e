@@ -684,6 +684,45 @@ test('other', { tags: ['smoke'] }, async () => {});
   );
 
   it(
+    'stops at --max-failures: the rest is skipped with the reason and the exit code is the failures\' own',
+    async () => {
+      const files = {
+        'tests/limit.e2e.ts': `import { test } from 'e2e';
+test('first fails', async () => { throw new Error('one'); });
+test('second fails', async () => { throw new Error('two'); });
+test('never runs', async () => {});
+test('never runs either', async () => { throw new Error('three'); });
+`,
+      };
+      const events: string[] = [];
+      const { outcome, project } = await runProject(files, {
+        appUrl: app.url,
+        runOptions: { maxFailures: 2, onEvent: (event) => { if (event.type === 'run-stopped') events.push(`${event.failures}/${event.limit}`); } },
+      });
+      expect(outcome.exitCode).toBe(1);
+      expect(outcome.report.run.status).toBe('failed');
+      expect(events).toEqual(['2/2']);
+      const byDeclaration = outcome.results.toSorted((a, b) => a.test.declarationIndex - b.test.declarationIndex);
+      expect(byDeclaration.map((result) => [result.test.title, result.status, result.skip?.cause])).toEqual([
+        ['first fails', 'failed', undefined],
+        ['second fails', 'failed', undefined],
+        ['never runs', 'skipped', 'failure-limit'],
+        ['never runs either', 'skipped', 'failure-limit'],
+      ]);
+      expect(byDeclaration[2]!.skip?.reason).toBe('run stopped after 2 failures (--max-failures 2)');
+
+      // The SDK path is bounded like the flag: a count below one is a configuration error, not a run that stops at once.
+      const invalid = await runExisting(project, { appUrl: app.url, runOptions: { maxFailures: 0 } });
+      expect(invalid.exitCode).toBe(2);
+      expect(invalid.report.run.errors.map((error) => [error.code, error.message])).toEqual([
+        ['INVALID_CONFIG', 'maxFailures must be a positive safe integer, got 0'],
+      ]);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
     'runs only what the previous run did not pass under --last-failed, and needs a report to read',
     async () => {
       const files = {

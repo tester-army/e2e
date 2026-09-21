@@ -118,6 +118,28 @@ export const INTERRUPTED_BEFORE_START: SkipInfo = {
   reason: 'run interrupted before execution',
 };
 
+/** Skip info for the work a run stopped at its failure limit never started. */
+export function failureLimitSkip(failures: number, limit: number): SkipInfo {
+  return {
+    cause: 'failure-limit',
+    reason: `run stopped after ${failures} ${failures === 1 ? 'failure' : 'failures'} (--max-failures ${limit})`,
+  };
+}
+
+/**
+ * The skip for work an interrupt reached before it started: the skip the
+ * interrupt carried as its reason (a run stopped at its failure limit says
+ * so), else the plain interrupt.
+ */
+export function interruptedSkip(signal: AbortSignal, fallback: SkipInfo = INTERRUPTED_BEFORE_START): SkipInfo {
+  const reason: unknown = signal.reason;
+  return isSkipInfo(reason) ? reason : fallback;
+}
+
+function isSkipInfo(value: unknown): value is SkipInfo {
+  return typeof value === 'object' && value !== null && typeof (value as SkipInfo).cause === 'string' && typeof (value as SkipInfo).reason === 'string';
+}
+
 /**
  * Builds a result for one pair, narrowing the collected test to its identity
  * so no test function or realm state can reach a record or the wire.

@@ -9,6 +9,7 @@ import type { CollectedFile, CollectedTest, Collection } from '../../src/collect
 import type {
   ResolvedTestOptions,
   Selection,
+  SkipInfo,
   TestTargetPair,
 } from '../../src/collect/select.ts';
 import type { ResolvedTarget } from '../../src/config/resolve.ts';
@@ -127,6 +128,8 @@ class FakeFleet {
   readonly unitsByWorker: RunUnitMessage[][] = [];
   /** Control messages every worker received, in order. */
   readonly controlMessages: MainToWorker['type'][] = [];
+  /** The skip each interrupt carried for unstarted pairs, `undefined` for a plain interrupt. */
+  readonly interruptSkips: (SkipInfo | undefined)[] = [];
   live = 0;
   peakLive = 0;
   private readonly liveByTarget = new Map<string, number>();
@@ -183,6 +186,7 @@ class FakeRunner implements UnitRunner {
   send(message: MainToWorker): void {
     if (this.exited) return;
     if (message.type !== 'run-unit') this.fleet.controlMessages.push(message.type);
+    if (message.type === 'interrupt') this.fleet.interruptSkips.push(message.skip);
     if (message.type === 'shutdown') {
       setTimeout(() => this.end('shut down'), 0);
       return;
@@ -239,6 +243,8 @@ interface Collected {
   readonly results: ResultRecord[];
   readonly serialGroups: SerialGroupRecord[];
   readonly runErrors: RunError[];
+  /** `onFailureLimit` calls, as `[failures, limit]`. */
+  readonly failureLimits: [number, number][];
 }
 
 async function run(
@@ -253,10 +259,12 @@ async function run(
     forceSignal?: AbortSignal;
     interruptGraceMs?: number;
     forceGraceMs?: number;
+    maxFailures?: number;
   } = {},
 ): Promise<Collected> {
-  const collected: Collected = { results: [], serialGroups: [], runErrors: [] };
+  const collected: Collected = { results: [], serialGroups: [], runErrors: [], failureLimits: [] };
   await runUnits({
+    ...(overrides.maxFailures === undefined ? {} : { maxFailures: overrides.maxFailures }),
     plans: buildWorkPlans(selection, collection, '/project').map((plan): TargetWorkPlan => {
       const workers = overrides.preparedWorkers?.[plan.target.name];
       return workers === undefined ? plan : { ...plan, workers };
@@ -272,10 +280,70 @@ async function run(
       onSerialGroup: (group) => collected.serialGroups.push(group),
       onRunError: (error) => collected.runErrors.push(error),
       onRunAbort: (error) => collected.runErrors.push(error),
+      onFailureLimit: (failures, limit) => collected.failureLimits.push([failures, limit]),
     },
   });
   return collected;
 }
+
+describe('failure limit', () => {
+  it('stops dispatching at the limit, skips every queued pair with the reason, and interrupts the workers with it', async () => {
+    const target = makeTarget('web', 0);
+    const pairs = ['a', 'b', 'c', 'd', 'e'].map((name) => makePair(makeTest(`tests/${name}.e2e.ts`, name), target));
+    const status = Object.fromEntries(pairs.map((pair) => [pair.test.id, 'failed' as const]));
+    const fleet = new FakeFleet({ status });
+
+    const collected = await run(makeSelection([{ target, pairs }]), makeCollection(pairs.map((pair) => pair.test.file), pairs), fleet, {
+      workers: 1,
+      maxFailures: 2,
+    });
+
+    const byTitle = (title: string) => collected.results.find((result) => result.test.title === title)!;
+    expect(collected.results).toHaveLength(5);
+    expect(['a', 'b'].map((title) => byTitle(title).status)).toEqual(['failed', 'failed']);
+    for (const title of ['c', 'd', 'e']) {
+      expect(byTitle(title)).toMatchObject({
+        status: 'skipped',
+        selected: true,
+        skip: { cause: 'failure-limit', reason: 'run stopped after 2 failures (--max-failures 2)' },
+      });
+    }
+    expect(collected.failureLimits).toEqual([[2, 2]]);
+    expect(fleet.unitsByWorker.flat()).toHaveLength(2);
+    expect(fleet.interruptSkips).toEqual([{ cause: 'failure-limit', reason: 'run stopped after 2 failures (--max-failures 2)' }]);
+    expect(collected.runErrors).toEqual([]);
+  });
+
+  it('kills a worker that outlives the interrupt grace after the limit without calling it an unexpected exit', async () => {
+    const target = makeTarget('web', 0);
+    const pairs = ['fails', 'hangs'].map((name) => makePair(makeTest(`tests/${name}.e2e.ts`, name), target));
+    const fleet = new FakeFleet({ status: { [pairs[0]!.test.id]: 'failed' }, hangOn: ['file::web::tests/hangs.e2e.ts'] });
+    const collected = await run(makeSelection([{ target, pairs }]), makeCollection(pairs.map((pair) => pair.test.file), pairs), fleet, {
+      workers: 2,
+      maxFailures: 1,
+      interruptGraceMs: 10,
+    });
+    expect(collected.runErrors).toEqual([]);
+    expect(collected.results.map((result) => [result.test.title, result.status, result.skip?.cause])).toEqual([
+      ['fails', 'failed', undefined],
+      ['hangs', 'skipped', 'failure-limit'],
+    ]);
+    expect(fleet.controlMessages).toContain('interrupt');
+  });
+
+  it('counts timed-out results and lets a run below the limit finish whole', async () => {
+    const target = makeTarget('web', 0);
+    const pairs = ['a', 'b', 'c'].map((name) => makePair(makeTest(`tests/${name}.e2e.ts`, name), target));
+    const fleet = new FakeFleet({ status: { [pairs[0]!.test.id]: 'timed-out', [pairs[1]!.test.id]: 'failed' } });
+    const collected = await run(makeSelection([{ target, pairs }]), makeCollection(pairs.map((pair) => pair.test.file), pairs), fleet, {
+      workers: 1,
+      maxFailures: 3,
+    });
+    expect(collected.results.map((result) => result.status)).toEqual(['timed-out', 'failed', 'passed']);
+    expect(collected.failureLimits).toEqual([]);
+    expect(fleet.interruptSkips).toEqual([]);
+  });
+});
 
 describe('scheduler capacity', () => {
   it('never exceeds the worker cap, counting discarded workers until they exit', async () => {

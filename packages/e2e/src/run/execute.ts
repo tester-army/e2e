@@ -46,7 +46,7 @@ import type {
 import { isFailedStatus } from './records.ts';
 import { runWithRetries } from './retry.ts';
 import { runSerialUnit, type SerialHost, type SharedSerialSession } from './serial.ts';
-import { INTERRUPTED_BEFORE_START, pairKey, pairResult, unstartedResult } from './units.ts';
+import { interruptedSkip, pairKey, pairResult, unstartedResult } from './units.ts';
 import { sessionSecrecy } from './secrecy.ts';
 import { SessionStaging, SessionStore, type SessionIdentity } from './sessions.ts';
 import { redactTraceArchives } from './trace-redaction.ts';
@@ -293,7 +293,7 @@ export class TargetExecutor implements SerialHost {
       freshRegistration === undefined ? null : this.realms.adopt(freshRegistration);
     for (const [index, pair] of ordered.entries()) {
       if (this.interruptSignal.aborted) {
-        this.emit(unstartedResult(pair, INTERRUPTED_BEFORE_START));
+        this.emit(unstartedResult(pair, interruptedSkip(this.interruptSignal)));
         continue;
       }
       if (pair.test.serialId !== undefined) {

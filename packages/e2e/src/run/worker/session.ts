@@ -138,7 +138,8 @@ export class TargetWorker {
   handle(message: MainToWorker): void {
     switch (message.type) {
       case 'interrupt':
-        this.interruptController.abort();
+        // The skip rides as the abort reason, so the executor's unstarted pairs can say why.
+        this.interruptController.abort(message.skip);
         return;
       case 'run-unit':
         this.enqueue(() => this.runUnit(message));

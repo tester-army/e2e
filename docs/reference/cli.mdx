@@ -216,6 +216,7 @@ or every test was filtered out.
 | `--agent <names>` | comma-separated or repeated | `default` | Runs unpinned tests once per selected agent. For a test with `{ agent }`, selects the shared names when there is overlap; otherwise keeps the test's selection. An unknown name is `INVALID_CONFIG`. |
 | `--retries <n>` | integer 0-10 | config | Replaces `config.retries`. |
 | `--workers <n>` | integer 1-1024 | config | Replaces `config.workers`. |
+| `--max-failures <n>` | integer, at least 1 | none | Stops the run once this many tests have failed or timed out. Nothing more is dispatched, the tests running end as `interrupted`, and the tests not started are skipped with cause `failure-limit` and the reason `run stopped after 3 failures (--max-failures 3)`. The exit code is the failures' own, 1, not 130. |
 | `--reporter <ids>` | comma-separated list | config | Replaces the built-in IDs in `config.reporters`: `list`, `json`, `junit`, `markdown`. `json` with `list` is `INVALID_CONFIG`. [Reporter objects](/reference/reporters) in the config keep running. |
 | `--artifacts <dir>` | string | `.e2e/artifacts` | Relocates the report and artifact tree. |
 | `--no-cache` | boolean | `false` | Trace cache off for this run, whatever `config.cache` says. |
@@ -279,6 +280,7 @@ npx e2e run --grep checkout --grep-invert '/refund/i'
 npx e2e run --last-failed
 npx e2e run --shard 2/3
 npx e2e run --reporter json --workers 4 --retries 2
+npx e2e run --max-failures 3
 npx e2e run --reporter list,junit
 ```
 

@@ -315,6 +315,13 @@ export class ListReporter implements Reporter {
       case 'run-interrupted':
         this.runInterrupted(event);
         break;
+      case 'run-stopped':
+        this.print(
+          this.pc.yellow(
+            `stopped after ${event.failures} ${event.failures === 1 ? 'failure' : 'failures'} (--max-failures ${event.limit}): the running tests end as interrupted, the rest are skipped`,
+          ),
+        );
+        break;
       case 'run-finished':
         this.runFinished(event);
         break;

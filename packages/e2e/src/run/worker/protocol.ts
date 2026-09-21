@@ -8,7 +8,7 @@
  */
 
 import type { TestIdentity } from '../../collect/collect.ts';
-import type { ResolvedTestOptions } from '../../collect/select.ts';
+import type { ResolvedTestOptions, SkipInfo } from '../../collect/select.ts';
 import type { CliOverrides, PortAssignments, ResolvedTarget } from '../../config/resolve.ts';
 import type { AiTraceSnapshot } from '../../internal/ai-trace.ts';
 import type { DebugSnapshot } from '../../internal/debug.ts';
@@ -80,6 +80,12 @@ export interface RunUnitMessage {
 
 export interface InterruptMessage {
   readonly type: 'interrupt';
+  /**
+   * What the pairs the worker has not started yet are skipped as, when the
+   * interrupt has a reason of its own (the run's failure limit); absent for a
+   * plain interrupt.
+   */
+  readonly skip?: SkipInfo;
 }
 
 export interface ShutdownMessage {

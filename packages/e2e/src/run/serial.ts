@@ -21,7 +21,7 @@ import { findRegistered, type Realm, RealmManager } from './realm.ts';
 import type { AttemptRecord, ResultRecord, ResultStatus, SerialAttemptRecord, SerialGroupRecord, SerialMemberRecord, FailedStatus } from './records.ts';
 import { isFailedStatus } from './records.ts';
 import { runWithRetries } from './retry.ts';
-import { INTERRUPTED_BEFORE_START, pairResult } from './units.ts';
+import { interruptedSkip, pairResult } from './units.ts';
 
 /**
  * One shared session for a serial-group attempt: members preserve app state,
@@ -131,7 +131,7 @@ export async function runSerialUnit(
 
   if (group.attempts.length === 0) {
     group.status = 'skipped';
-    group.skip = INTERRUPTED_BEFORE_START;
+    group.skip = interruptedSkip(host.interruptSignal);
   } else {
     group.status = finalStatus;
   }
@@ -248,10 +248,10 @@ async function runSerialAttempt(
     const member = members[memberIndex]!;
     const memberId = `${attemptId}:member:${memberIndex}`;
     if (skipRemaining === undefined && host.interruptSignal.aborted) {
-      skipRemaining = {
+      skipRemaining = interruptedSkip(host.interruptSignal, {
         cause: 'infrastructure-unavailable',
         reason: 'run interrupted during this group attempt',
-      };
+      });
     }
     if (skipRemaining !== undefined) {
       memberRecords.push(skippedMember(attemptId, memberIndex, member.test.id, skipRemaining));

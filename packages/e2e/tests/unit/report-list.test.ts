@@ -267,6 +267,12 @@ describe('ListReporter', () => {
     expect(lines[2]).not.toContain('CI');
   });
 
+  it('says when the failure limit stopped the run', () => {
+    const { lines, output } = capture();
+    plainReporter(output).handle({ type: 'run-stopped', failures: 3, limit: 3 });
+    expect(lines).toEqual(['stopped after 3 failures (--max-failures 3): the running tests end as interrupted, the rest are skipped']);
+  });
+
   it('acknowledges each interrupt the moment it lands', () => {
     const { lines, output } = capture();
     const reporter = plainReporter(output);

@@ -200,6 +200,22 @@ describe('e2e run argument parsing', () => {
     );
   });
 
+  it('parses --max-failures as a positive integer and rejects anything else with exit code 2', async () => {
+    await invoke('run', '--max-failures', '3');
+    expect(lastRunOptions().maxFailures).toBe(3);
+    runMock.mockClear();
+    for (const value of ['0', '-1', '2.5', 'many']) {
+      stderrSpy.mockClear();
+      process.exitCode = undefined;
+      await invoke('run', '--max-failures', value);
+      expect(process.exitCode, value).toBe(2);
+      expect(written(stderrSpy)).toBe(
+        `error: option '--max-failures <n>' argument '${value}' is invalid. must be a positive integer\n(add --help for usage)\n`,
+      );
+    }
+    expect(runMock).not.toHaveBeenCalled();
+  });
+
   it('parses --shard as index/total and --last-failed as a flag', async () => {
     await invoke('run', '--shard', '2/3', '--last-failed');
     const options = lastRunOptions();
@@ -552,6 +568,7 @@ describe('e2e --version and --help', () => {
       '--agent',
       '--workers',
       '--retries',
+      '--max-failures',
       '--no-cache',
       '--reporter',
       '--artifacts',
