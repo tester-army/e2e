@@ -143,7 +143,7 @@ describe('snapshot projection', () => {
     const projected = project([
       { ref: 'e1', index: 0, depth: 0, type: 'Application', label: 'Shop' },
       { ref: 'e2', index: 1, parentIndex: 0, depth: 1, type: 'TabBar' },
-      { ref: 'e3', index: 2, parentIndex: 1, depth: 2, type: 'Button', label: 'Cart' },
+      { ref: 'e3', index: 2, parentIndex: 1, depth: 2, type: 'Button', label: 'Cart', selected: true },
       { ref: 'e4', index: 3, parentIndex: 0, depth: 1, type: 'SegmentedControl' },
       { ref: 'e5', index: 4, parentIndex: 3, depth: 2, type: 'Button', label: 'Weekly' },
       { ref: 'e6', index: 5, parentIndex: 0, depth: 1, type: 'ProgressIndicator', label: 'Upload', value: '40%' },
@@ -163,9 +163,9 @@ describe('snapshot projection', () => {
     expect(projected.index.map((entry) => entry.node.role)).toEqual([
       'application',
       'tablist',
-      'button',
+      'tab',
       'tablist',
-      'button',
+      'tab',
       'progressbar',
       'status',
       'spinbutton',
@@ -181,6 +181,13 @@ describe('snapshot projection', () => {
       'picker-wheel',
     ]);
     expect(projected.index[5]?.node.value).toBe('40%');
+    expect(projected.index[2]?.node.states).toEqual({ selected: true });
+    // Only a tab container's buttons are tabs; the toolbar's stay buttons.
+    const toolbar = project([
+      { ref: 'e1', index: 0, depth: 0, type: 'Toolbar' },
+      { ref: 'e2', index: 1, parentIndex: 0, depth: 1, type: 'Button', label: 'Share' },
+    ]);
+    expect(toolbar.index.map((entry) => entry.node.role)).toEqual(['toolbar', 'button']);
   });
 
   it('maps Android composite widgets, including the nested tab and bottom navigation item classes', () => {

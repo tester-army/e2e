@@ -152,6 +152,7 @@ describe('role mapping', () => {
         <meter value="0.5" aria-label="Disk" data-testid="meter"></meter>
         <input type="number" aria-label="Quantity" value="2" data-testid="number">
         <table data-testid="table">
+          <caption>Scores</caption>
           <thead data-testid="thead"><tr><th data-testid="col">Name</th></tr></thead>
           <tbody data-testid="tbody"><tr><th scope="row" data-testid="rowhead">Ada</th><td data-testid="cell">1</td></tr></tbody>
         </table>
@@ -193,5 +194,11 @@ describe('role mapping', () => {
     });
     expect(nodes.get('number')).toMatchObject({ name: 'Quantity', value: '2' });
     expect(nodes.get('progress')?.name).toBe('Upload');
+    // A legend, a figcaption, and a caption name their parent, so the node the reader
+    // reports carries the name the role selector matched on.
+    expect(nodes.get('fieldset')?.name).toBe('Notifications');
+    expect(nodes.get('figure')?.name).toBe('Figure one');
+    expect(nodes.get('table')?.name).toBe('Scores');
+    expect(nodes.get('details')?.name).toBeUndefined();
   });
 });

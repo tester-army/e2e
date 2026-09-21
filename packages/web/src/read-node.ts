@@ -421,6 +421,9 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
 
   const NAME_OPAQUE_TAGS: ReadonlySet<string> = new Set(['TEXTAREA', 'SELECT', 'INPUT', 'SCRIPT', 'STYLE']);
 
+  /** HTML-AAM: the child element that names its parent when nothing ARIA does. */
+  const NAMING_CHILD_TAGS: Readonly<Record<string, string>> = { fieldset: 'legend', figure: 'figcaption', table: 'caption' };
+
   /** The `<label>` elements associated with a labelable element (button, input, meter, output, progress, select, textarea). */
   const associatedLabels = (el: Element): readonly HTMLLabelElement[] => {
     const labels = (el as Element & { labels?: NodeListOf<HTMLLabelElement> | null }).labels;
@@ -481,6 +484,12 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
     if (el instanceof HTMLImageElement) {
       const alt = el.getAttribute('alt');
       if (alt !== null && alt.trim() !== '') return alt.trim();
+    }
+    const captionTag = NAMING_CHILD_TAGS[el.tagName.toLowerCase()];
+    if (captionTag !== undefined) {
+      const caption = Array.from(el.children).find((child) => child.tagName.toLowerCase() === captionTag);
+      const text = caption === undefined ? '' : nameTextOf(caption);
+      if (text !== '') return text;
     }
     const role = implicitRole(el);
     if (

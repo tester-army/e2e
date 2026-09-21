@@ -83,6 +83,7 @@ test('role vocabulary: tabs, menus, progress, toolbars, images', async ({ app, s
 
   await expect(screen.getByRole('progressbar', { name: 'Upload' })).toBeVisible();
   await expect(screen.getByRole('group', { name: 'Notifications' }).getByRole('checkbox')).toHaveCount(1);
+  await expect(screen.getByRole('group', { name: 'Notifications' })).toHaveAccessibleName('Notifications');
   await expect(screen.getByRole('form', { name: 'Sign in' }).getByRole('textbox')).toHaveCount(1);
   await expect(screen.getByRole('separator')).toHaveCount(1);
   await expect(screen.getByRole('article', { name: 'First post' })).toHaveText('Body');

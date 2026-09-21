@@ -520,7 +520,9 @@ and `<details>` are `group`, `<input type="number">` is `spinbutton`,
 `<thead>` and `<tbody>` are `rowgroup`, `<th scope="row">` is `rowheader`,
 `<figure>` is `figure`, `<article>` is `article`, and `<form>` and `<section>`
 are `form` and `region` only when they carry an `aria-label`,
-`aria-labelledby`, or `title`. `<menu>` is a `list`; only `role="menu"` is a
+`aria-labelledby`, or `title`. A `<legend>`, `<figcaption>`, or `<caption>`
+names its fieldset, figure, or table, so `toHaveAccessibleName` reads what
+`getByRole('group', { name })` matched. `<menu>` is a `list`; only `role="menu"` is a
 `menu`. A device engine maps the platform types it has (a tab bar or segmented
 control is a `tablist`, a progress indicator a `progressbar`, a stepper a
 `spinbutton`) and keeps any other type verbatim, so a role with no native
