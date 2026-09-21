@@ -170,6 +170,41 @@ describe('one canonical model', () => {
   });
 });
 
+describe('one context', () => {
+  const model = fakeModel('openai', 'gpt-5.4-mini');
+
+  it('uses the context createAgent brought, so the agent needs no second key', () => {
+    const config = resolve({ agents: { default: createAgent({ model, context: 'Plans are called tiers.' }) } });
+    expect(config.agent.executor?.context).toBe('Plans are called tiers.');
+    expect(config.agent.context).toBe('Plans are called tiers.');
+    expect(config.agent.model).toMatchObject({ model });
+  });
+
+  it('accepts agent.context repeating the executor context', () => {
+    const config = resolve({
+      agents: { default: { executor: createAgent({ model, context: 'be terse' }), context: 'be terse' } },
+    });
+    expect(config.agent.context).toBe('be terse');
+  });
+
+  it('rejects agent.context and an executor context that differ', () => {
+    expect(() =>
+      resolve({ agents: { default: { executor: createAgent({ model, context: 'be terse' }), context: 'be thorough' } } }),
+    ).toThrow(/agents\.default\.context and the executor's own context \(createAgent\(\{ context \}\)\) differ; configure the context in one place/);
+  });
+
+  it('bounds the executor context by the resolved agent-context limit', () => {
+    expect(() =>
+      resolve({ agents: { default: createAgent({ model, context: 'x'.repeat(2_000) }) }, limits: { maxAgentContextBytes: 1_024 } }),
+    ).toThrow(/the executor's own context is 2000 bytes; the resolved maximum is 1024/);
+  });
+
+  it('leaves the context unset when neither side names one', () => {
+    expect(resolve({ agents: { default: createAgent({ model }) } }).agent.context).toBeUndefined();
+    expect(resolve({ agents: { default: { executor: createAgent({ model }) } } }).agent.context).toBeUndefined();
+  });
+});
+
 describe('judge model', () => {
   const instance = (id: string) => fakeModel('openai', id);
 

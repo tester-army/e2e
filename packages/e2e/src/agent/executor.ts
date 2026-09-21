@@ -446,6 +446,14 @@ export interface StepExecutor {
    * `INVALID_CONFIG` when both are set and differ.
    */
   readonly judge?: ModelInstance;
+  /**
+   * Trusted project context this executor brought along
+   * (`createAgent({ context })`). Config resolution reads it as the agent's
+   * `context` when `agents.<name>.context` is unset, so the vocabulary lives
+   * next to the `system` prompt; `INVALID_CONFIG` when both are set and
+   * differ, exactly as for `model`.
+   */
+  readonly context?: string;
   runStep(context: StepExecutorContext): Promise<StepVerdict>;
 }
 

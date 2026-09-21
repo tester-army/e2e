@@ -34,6 +34,28 @@ and judgments unless you set a separate `judge`. Models that receive
 screenshots must accept images. See [Models](/models) and the
 [config reference](/reference/config#agents).
 
+`createAgent` takes `model`, `system`, and `context` together, so one call is
+a complete agent. Wrapping it in an options object, for budgets or
+`providerOptions`, needs no second `model` or `context` key:
+
+```ts title="e2e.config.ts"
+agents: {
+  default: {
+    executor: createAgent({
+      model: gateway('openai/gpt-5.6-luna'),
+      system: 'Verify a visible confirmation before completing a step.',
+      context: 'Plans are called tiers. Billing lives under Settings.',
+    }),
+    maxSteps: 40,
+  },
+},
+```
+
+`context` on `createAgent` means exactly what `agents.<name>.context` means
+and reaches the same prompts, act turns and judgments alike. Set it in one
+place: naming a different `context` on both is `INVALID_CONFIG`, as it is for
+`model`.
+
 ## Make the agent yours
 
 When a step fails or takes too many calls, inspect its report or run with

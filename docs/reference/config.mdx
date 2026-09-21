@@ -397,7 +397,11 @@ export interface AgentConfig {
   timeout?: number;
   /** Observation payload ceiling for act turns and judgments, 1024 through 16777216; default 262144. */
   maxObservationBytes?: number;
-  /** Trusted project context prepended to agent prompts, at most `limits.maxAgentContextBytes`. */
+  /**
+   * Trusted project context prepended to agent prompts, at most
+   * `limits.maxAgentContextBytes`. Must agree with `createAgent({ context })`
+   * when both are set.
+   */
   context?: string;
   /** Provider options every model call carries, e.g. a reasoning effort. */
   providerOptions?: ProviderOptions;
@@ -425,13 +429,24 @@ export default {
     default: { model: gateway('openai/gpt-5.6-luna') },
     ux: createAgent({ model: gateway('openai/gpt-5.6-luna'), system: 'Check labels, contrast, and keyboard access.' }),
     thorough: { model: gateway('anthropic/claude-opus-5'), context: 'Verify every claim on screen.' },
+    buyer: {
+      executor: createAgent({
+        model: gateway('openai/gpt-5.6-luna'),
+        system: 'You are a first-time buyer.',
+        context: 'Plans are called tiers. Billing lives under Settings.',
+      }),
+      maxSteps: 40,
+    },
   },
 } satisfies E2EConfig;
 ```
 
-A bare `StepExecutor` is shorthand for `{ executor }`. A string in `model` is
-`INVALID_CONFIG` naming the constructor to write, and so is a `model` or
-`judge` that differs from the one passed to `createAgent(...)`. See
+A bare `StepExecutor` is shorthand for `{ executor }`. `createAgent` accepts
+`model`, `system`, and `context`, so `{ executor: createAgent({ model, system,
+context }) }` is a complete agent: the options object around it needs no
+second `model` or `context` key. A string in `model` is
+`INVALID_CONFIG` naming the constructor to write, and so is a `model`,
+`judge`, or `context` that differs from the one passed to `createAgent(...)`. See
 [Custom executors](/executors) and
 [A judge of its own](/models#a-judge-of-its-own).
 
@@ -599,6 +614,7 @@ secret, and `CI` switches the defaults below.
 | --- | --- |
 | Base URL | the engine's declared `url`, else `APP_URL_REQUIRED` at the first navigation. The runner reads no `APP_URL`; the scaffolded config reads it itself |
 | Built-in agent model | the model passed to `createAgent({ model })`, then `agents.<name>.model`, then `MODEL_UNAVAILABLE` at `agent` acquisition |
+| Agent context | the context passed to `createAgent({ context })`, then `agents.<name>.context`; both set and differing is `INVALID_CONFIG` |
 | Model credential | the provider package's own variable or the key passed at construction, read by the provider on the first model call |
 | Credential username and password | the `E2E_USER_*` variable, then the config value |
 

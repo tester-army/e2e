@@ -69,7 +69,7 @@ export async function openInteractiveStep(runtime: AgentContext, options: Intera
     (error: unknown) => ({ error }),
   );
   const context = await Promise.race([
-    executor.context,
+    executor.opened,
     done.then((outcome) => {
       throw outcome.error ?? new Error('the step ended before it started');
     }),
@@ -106,7 +106,7 @@ class HostExecutor implements StepExecutor {
   private stopped: unknown | undefined;
   private resolveContext!: (context: StepExecutorContext) => void;
   /** The step context, once the harness opened the step. */
-  readonly context: Promise<StepExecutorContext> = new Promise((resolve) => {
+  readonly opened: Promise<StepExecutorContext> = new Promise((resolve) => {
     this.resolveContext = resolve;
   });
 

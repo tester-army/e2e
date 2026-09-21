@@ -973,7 +973,11 @@ export interface AgentConfig {
   timeout?: number;
   /** Observation payload ceiling for act turns and judgments, 1024 through 16777216; default 262144. */
   maxObservationBytes?: number;
-  /** Trusted project context prepended to agent prompts, at most `limits.maxAgentContextBytes`. */
+  /**
+   * Trusted project context prepended to agent prompts, at most
+   * `limits.maxAgentContextBytes`. Must agree with `createAgent({ context })`
+   * when both are set.
+   */
   context?: string;
   /** Provider options every model call carries, e.g. a reasoning effort. */
   providerOptions?: ProviderOptions;

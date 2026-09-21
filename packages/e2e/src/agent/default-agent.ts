@@ -61,6 +61,16 @@ export interface CreateAgentOptions {
   readonly judge?: SdkLanguageModel;
   /** Extra system guidance appended to the base execution rules. */
   readonly system?: string;
+  /**
+   * Trusted project context, the same value and meaning as
+   * `agents.<name>.context`: vocabulary the screens use, prepended to every
+   * act turn and judgment of this agent, at most
+   * `limits.maxAgentContextBytes`. Setting it here makes
+   * `{ executor: createAgent({ model, system, context }) }` a complete agent;
+   * the options object needs no second `model` or `context` key. Both set
+   * must agree, or config resolution fails with `INVALID_CONFIG`.
+   */
+  readonly context?: string;
   /** Project tools from `defineTool`, merged with the default toolset. */
   readonly tools?: Readonly<Record<string, DefinedTool>>;
   /** Upper bound on model turns per step; defaults to the model-call budget. */
@@ -150,6 +160,7 @@ export function createAgent(options: CreateAgentOptions = {}): DefaultAgent {
   const agent: DefaultAgent = {
     ...executor,
     ...(options.judge === undefined ? {} : { judge: options.judge }),
+    ...(options.context === undefined ? {} : { context: options.context }),
     options: { ...options, tools: userTools },
     tools: userTools,
   };
