@@ -134,8 +134,9 @@ Rules:
 
 - An action, read, or assertion needs exactly one match. Two matches fail
   immediately with `LOCATOR_AMBIGUOUS`; zero matches poll until the timeout,
-  then `LOCATOR_NOT_FOUND`. `toHaveCount` and `toBeHidden` are the
-  exceptions.
+  then `LOCATOR_NOT_FOUND`. `toHaveCount`, `toBeHidden`, the list form of
+  `toHaveText` and `toContainText`, and the set reads `count()`, `all()`,
+  and `allTextContents()` are the exceptions.
 - Narrow with `filter({ hasText })`, `filter({ has: locator })`, `first()`,
   `last()`, `nth(i)`, or by scoping under another locator.
 - `visible: true` drops nodes the page hides (a closed drawer, a prerendered
@@ -163,10 +164,19 @@ Each action resolves one node, waits for it to be actionable within
 ### Reads
 
 Reads resolve once and do not retry: `textContent()`, `inputValue()`,
-`getAttribute(name)`, `isVisible()`, `isEnabled()`, `isChecked()`,
-`boundingBox()`, `count()`. `waitFor({ state?: 'visible' | 'hidden', timeout? })`
-waits for a state. When a value has to settle, use `expect` instead of a
-read. Reading a password field's value is `POLICY_DENIED`.
+`getAttribute(name)`, `isVisible()`, `isHidden()`, `isEnabled()`,
+`isDisabled()`, `isChecked()`, `boundingBox()`, `count()`. `all()` gives one
+`nth(i)` locator per current match and `allTextContents()` every match's
+text; both are `[]` for zero matches. `waitFor({ state?: 'visible' |
+'hidden', timeout? })` waits for a state. When a value has to settle, use
+`expect` instead of a read. Reading a password field's value is
+`POLICY_DENIED`.
+
+```ts
+for (const row of await screen.getByRole('row').all()) {
+  await row.getByRole('checkbox').check();
+}
+```
 
 ## expect
 
@@ -189,10 +199,13 @@ await expect.poll(() => db.orders.count(), { timeout: 15_000 }).toBe(1);   // re
 
 | Locator matchers | Web matchers | Value matchers |
 | --- | --- | --- |
-| `toBeVisible`, `toBeHidden`, `toBeEnabled`, `toBeDisabled`, `toBeChecked`, `toBeSelected`, `toBeExpanded`, `toHaveText`, `toContainText`, `toHaveValue`, `toHaveCount`, `toHaveAccessibleName` | `toHaveURL`, `toHaveTitle` | `toBe`, `toEqual`, `toBeTruthy`, `toBeFalsy`, `toBeNull`, `toBeUndefined`, `toBeDefined`, `toContain`, `toMatch`, `toBeGreaterThan`, `toBeGreaterThanOrEqual`, `toBeLessThan`, `toBeLessThanOrEqual`, `toBeCloseTo` |
+| `toBeVisible`, `toBeHidden`, `toBeAttached`, `toBeEnabled`, `toBeDisabled`, `toBeChecked`, `toBeSelected`, `toBeExpanded`, `toBeFocused`, `toHaveText`, `toContainText`, `toHaveValue`, `toHaveAttribute`, `toHaveCount`, `toHaveAccessibleName` | `toHaveURL`, `toHaveTitle` | `toBe`, `toEqual`, `toBeTruthy`, `toBeFalsy`, `toBeNull`, `toBeUndefined`, `toBeDefined`, `toContain`, `toMatch`, `toBeGreaterThan`, `toBeGreaterThanOrEqual`, `toBeLessThan`, `toBeLessThanOrEqual`, `toBeCloseTo` |
 
 `toHaveText` compares the whole normalized text; `toContainText` a
-substring or a RegExp. A failed matcher is `ASSERTION_FAILED`, exit code 1.
+substring or a RegExp. Both take a list to check every match at once:
+`toHaveText(['Alpha', /^Beta/])` needs exactly two matches with those texts
+in order. `toBeAttached` waits for a match to exist, hidden or not. A failed
+matcher is `ASSERTION_FAILED`, exit code 1.
 
 ## Sign-in sessions
 

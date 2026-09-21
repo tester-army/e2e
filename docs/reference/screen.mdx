@@ -38,8 +38,8 @@ without waiting for it to change; use [`expect`](/reference/expect) to wait.
 | --- | --- | --- |
 | Actions | Poll until the timeout, then `LOCATOR_NOT_FOUND` | `LOCATOR_AMBIGUOUS` |
 | Reads | `LOCATOR_NOT_FOUND` | `LOCATOR_AMBIGUOUS` |
-| `count()` | `0` | The count |
-| `isVisible()` | `false` | `LOCATOR_AMBIGUOUS` |
+| `count()`, `all()`, `allTextContents()` | `0`, `[]`, `[]` | The count, one locator per match, one text per match |
+| `isVisible()`, `isHidden()` | `false`, `true` | `LOCATOR_AMBIGUOUS` |
 | Assertions | Poll until the timeout | `LOCATOR_AMBIGUOUS` |
 
 ## Queries
@@ -187,14 +187,22 @@ export interface Locator extends Screen {
   getAttribute(name: string): Promise<string | null>;
   /** Reads current visibility. */
   isVisible(): Promise<boolean>;
+  /** Reads current hidden or absent state, the negation of `isVisible`. */
+  isHidden(): Promise<boolean>;
   /** Reads current enabled state. */
   isEnabled(): Promise<boolean>;
+  /** Reads current disabled state, the negation of `isEnabled`. */
+  isDisabled(): Promise<boolean>;
   /** Reads current checked state. */
   isChecked(): Promise<boolean>;
   /** Reads the current viewport-relative rectangle. */
   boundingBox(): Promise<{ x: number; y: number; width: number; height: number } | null>;
   /** Counts current matches without auto-waiting. */
   count(): Promise<number>;
+  /** One `nth(i)` locator per current match, without auto-waiting; empty when nothing matches. */
+  all(): Promise<Locator[]>;
+  /** Reads the normalized text of every current match, without auto-waiting; empty when nothing matches. */
+  allTextContents(): Promise<string[]>;
   /** Waits for the requested locator state. */
   waitFor(options?: { state?: 'visible' | 'hidden'; timeout?: number }): Promise<void>;
   /** Adds deterministic locator filters. */
@@ -240,14 +248,38 @@ await screen.getByRole('textbox', { name: 'Notes' }).press('ControlOrMeta+a');
 `waitFor` defaults `state` to `'visible'` and `timeout` to
 `config.actionTimeout`, and throws `LOCATOR_NOT_FOUND` on timeout.
 
-`textContent`, `inputValue`, and `getAttribute` throw `POLICY_DENIED` on a
-secure field. `isEnabled`, `isChecked`, and `boundingBox` are allowed there.
+`textContent`, `inputValue`, `getAttribute`, and `allTextContents` throw
+`POLICY_DENIED` on a secure field. `isEnabled`, `isDisabled`, `isChecked`,
+and `boundingBox` are allowed there.
+
+`isHidden` is `!isVisible()` and `isDisabled` is `!isEnabled()`, with the
+same strictness: `isHidden` is `true` for zero matches, `isDisabled` is
+`LOCATOR_NOT_FOUND` there, and both are `LOCATOR_AMBIGUOUS` on several.
 
 ```ts
 if (await screen.getByRole('alert').isVisible()) {
   const message = await screen.getByRole('alert').textContent();
 }
 await screen.getByTestId('spinner').waitFor({ state: 'hidden' });
+```
+
+### Every match at once
+
+`all()` resolves the query once and hands back one `nth(i)` locator per
+match, so a loop can act on each row; `allTextContents()` reads every match's
+normalized text in one call. Neither waits or enforces exactly-one: zero
+matches is an empty array, the same snapshot rule as `count()`. Each locator
+`all()` returns re-resolves when used, so a list that changes under the loop
+can make a later `nth(i)` point at a different row, or at nothing. Follow the
+loop with an assertion on the list, and use
+[`toHaveText([...])`](/reference/expect#locator-matchers) instead of a loop
+when the point is to check the texts.
+
+```ts
+for (const row of await screen.getByRole('row').all()) {
+  await row.getByRole('checkbox').check();
+}
+expect(await screen.getByRole('listitem').allTextContents()).toEqual(['Alpha', 'Beta']);
 ```
 
 ## Types

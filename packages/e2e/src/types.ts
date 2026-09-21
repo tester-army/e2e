@@ -396,14 +396,22 @@ export interface Locator extends Screen {
   getAttribute(name: string): Promise<string | null>;
   /** Reads current visibility. */
   isVisible(): Promise<boolean>;
+  /** Reads current hidden or absent state, the negation of `isVisible`. */
+  isHidden(): Promise<boolean>;
   /** Reads current enabled state. */
   isEnabled(): Promise<boolean>;
+  /** Reads current disabled state, the negation of `isEnabled`. */
+  isDisabled(): Promise<boolean>;
   /** Reads current checked state. */
   isChecked(): Promise<boolean>;
   /** Reads the current viewport-relative rectangle. */
   boundingBox(): Promise<{ x: number; y: number; width: number; height: number } | null>;
   /** Counts current matches without auto-waiting. */
   count(): Promise<number>;
+  /** One `nth(i)` locator per current match, without auto-waiting; empty when nothing matches. */
+  all(): Promise<Locator[]>;
+  /** Reads the normalized text of every current match, without auto-waiting; empty when nothing matches. */
+  allTextContents(): Promise<string[]>;
   /** Waits for the requested locator state. */
   waitFor(options?: { state?: 'visible' | 'hidden'; timeout?: number }): Promise<void>;
   /** Adds deterministic locator filters. */
@@ -617,6 +625,8 @@ export interface AsyncExpectation {
   toBeVisible(options?: { timeout?: number }): Promise<void>;
   /** Waits for hidden or absent state. */
   toBeHidden(options?: { timeout?: number }): Promise<void>;
+  /** Waits for one match to exist, visible or not. */
+  toBeAttached(options?: { timeout?: number }): Promise<void>;
   /** Waits for enabled state. */
   toBeEnabled(options?: { timeout?: number }): Promise<void>;
   /** Waits for disabled state. */
@@ -629,10 +639,12 @@ export interface AsyncExpectation {
   toBeExpanded(options?: { timeout?: number }): Promise<void>;
   /** Waits for focused state. */
   toBeFocused(options?: { timeout?: number }): Promise<void>;
-  /** Waits for exact normalized text. */
+  /** Waits for exact normalized text; a list waits for exactly that many matches, each with its entry's text, in order. */
   toHaveText(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
-  /** Waits for contained normalized text. */
+  toHaveText(expected: readonly TextMatch[], options?: { timeout?: number }): Promise<void>;
+  /** Waits for contained normalized text; a list waits for exactly that many matches, each containing its entry, in order. */
   toContainText(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
+  toContainText(expected: readonly TextMatch[], options?: { timeout?: number }): Promise<void>;
   /** Waits for an input value. */
   toHaveValue(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
   /** Waits for the attribute to be present; with `value`, for it to match. */

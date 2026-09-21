@@ -215,6 +215,47 @@ describe('LocatorEngine read contract', () => {
   });
 });
 
+describe('LocatorEngine readAll contract', () => {
+  const OTHER_REF: NodeRef = { id: 'node-2', revision: 'rev-1' };
+  const OTHER_NODE: SemanticNode = { ref: OTHER_REF, role: 'button', name: 'Cancel' };
+
+  it('reads every current match in the order the engine resolved them', async () => {
+    const { engine, calls } = makeEngine({
+      resolve: [() => [REF, OTHER_REF]],
+      read: [() => NODE, () => OTHER_NODE],
+    });
+    expect(await engine.readAll(EXPRESSION)).toEqual([NODE, OTHER_NODE]);
+    expect(calls).toMatchObject({ resolve: 1, read: 2 });
+  });
+
+  it('answers zero matches with an empty list without waiting', async () => {
+    const { engine, calls } = makeEngine({ resolve: [() => []] });
+    expect(await engine.readAll(EXPRESSION)).toEqual([]);
+    expect(calls).toMatchObject({ resolve: 1, read: 0 });
+  });
+
+  it('re-resolves the whole set when one member went stale between resolve and read', async () => {
+    const { engine, calls } = makeEngine({
+      resolve: [() => [REF, OTHER_REF], () => [OTHER_REF]],
+      read: ['stale', () => OTHER_NODE],
+    });
+    expect(await engine.readAll(EXPRESSION)).toEqual([OTHER_NODE]);
+    expect(calls).toMatchObject({ resolve: 2, read: 2 });
+  });
+
+  it('gives up on a set that stays stale at the deadline as LOCATOR_NOT_FOUND', async () => {
+    const { engine } = makeEngine({ read: ['stale', 'stale', 'stale', 'stale', 'stale'] });
+    await expect(engine.readAll(EXPRESSION, new Deadline(150))).rejects.toMatchObject({
+      code: 'LOCATOR_NOT_FOUND',
+    });
+  });
+
+  it('translates non-stale read failures', async () => {
+    const { engine } = makeEngine({ read: ['failure'] });
+    await expect(engine.readAll(EXPRESSION)).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
+  });
+});
+
 describe('translateLocatorError mapping table', () => {
   const cases: Array<[EngineErrorCode, string, string]> = [
     ['NODE_STALE', 'test', 'LOCATOR_NOT_FOUND'],

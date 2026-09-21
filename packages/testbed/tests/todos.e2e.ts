@@ -44,6 +44,35 @@ test.describe('todos', { tags: ['todos'] }, () => {
     await expect(screen.getByTestId('todo')).toHaveCount(3);
   });
 
+  test('reads and checks every todo at once', async ({ screen }) => {
+    for (const title of ['Alpha', 'Beta', 'Gamma']) {
+      await screen.getByLabel('New todo').fill(title);
+      await screen.getByLabel('New todo').press('Enter');
+    }
+    await expect(screen.getByTestId('todo')).toContainText(['Alpha', 'Beta', 'Gamma']);
+    await expect(screen.getByRole('button', { name: /^Delete/ })).toHaveText([
+      'Delete Alpha',
+      /Beta$/,
+      'Delete Gamma',
+    ]);
+    expect(await screen.getByRole('button', { name: /^Delete/ }).allTextContents()).toEqual([
+      'Delete Alpha',
+      'Delete Beta',
+      'Delete Gamma',
+    ]);
+
+    for (const todo of await screen.getByTestId('todo').all()) {
+      await todo.getByRole('checkbox').check();
+    }
+    await expect(screen.getByRole('status', { name: 'Remaining' })).toHaveText('0 remaining');
+    expect(await screen.getByRole('button', { name: 'Add' }).isDisabled()).toBe(false);
+
+    await screen.getByRole('tab', { name: 'Open' }).tap();
+    await expect(screen.getByTestId('todo')).not.toBeAttached();
+    expect(await screen.getByTestId('todo').isHidden()).toBe(true);
+    expect(await screen.getByTestId('todo').all()).toEqual([]);
+  });
+
   test('deletes todos', async ({ screen }) => {
     await screen.getByLabel('New todo').fill('Disposable');
     await screen.getByLabel('New todo').press('Enter');

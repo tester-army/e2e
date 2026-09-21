@@ -30,6 +30,24 @@ test('deterministic queries and reads', async ({ app, screen, web }) => {
   const count = await screen.getByTestId('item').count();
   expect(count).toBe(3);
 
+  const items = await screen.getByTestId('item').all();
+  const texts: string[] = [];
+  for (const item of items) texts.push((await item.textContent()) ?? '');
+  expect(texts).toEqual(['Item Alpha', 'Item Beta', 'Item Gamma']);
+  expect(await screen.getByTestId('item').allTextContents()).toEqual(texts);
+  expect(await screen.getByTestId('missing').all()).toEqual([]);
+  await expect(screen.getByTestId('item')).toHaveText(['Item Alpha', /Beta/, 'Item Gamma']);
+  await expect(screen.getByTestId('item')).toContainText(['Alpha', 'Beta', 'Gamma']);
+  await expect(screen.getByTestId('item')).not.toHaveText(['Item Alpha', 'Item Beta']);
+
+  await expect(screen.getByText('Hidden content')).toBeAttached();
+  await expect(screen.getByText('Hidden content')).toBeHidden();
+  await expect(screen.getByText('Never rendered')).not.toBeAttached();
+  expect(await screen.getByText('Hidden content').isHidden()).toBe(true);
+  expect(await screen.getByText('Never rendered').isHidden()).toBe(true);
+  expect(await screen.getByRole('button', { name: 'Disabled action' }).isDisabled()).toBe(true);
+  expect(await screen.getByRole('button', { name: 'Increment' }).isDisabled()).toBe(false);
+
   await expect(screen.getByRole('button', { name: 'Disabled action' })).toBeDisabled();
   await expect(screen.getByRole('button', { name: 'Increment' })).toBeEnabled();
 

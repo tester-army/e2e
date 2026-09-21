@@ -357,9 +357,17 @@ class LocatorImpl extends ScreenImpl implements Locator {
     return isNodeVisible(await this.readOptional());
   }
 
+  async isHidden(): Promise<boolean> {
+    return !isNodeVisible(await this.readOptional());
+  }
+
   async isEnabled(): Promise<boolean> {
     const node = await this.readGuarded(false);
     return node.states?.disabled !== true;
+  }
+
+  async isDisabled(): Promise<boolean> {
+    return !(await this.isEnabled());
   }
 
   async isChecked(): Promise<boolean> {
@@ -375,6 +383,22 @@ class LocatorImpl extends ScreenImpl implements Locator {
   async count(): Promise<number> {
     const refs = await this.context.engine.resolveAll(this.expression);
     return refs.length;
+  }
+
+  async all(): Promise<Locator[]> {
+    const count = await this.count();
+    return Array.from({ length: count }, (_, index) => this.nth(index));
+  }
+
+  async allTextContents(): Promise<string[]> {
+    const nodes = await this.context.engine.readAll(this.expression);
+    if (nodes.some((node) => node.states?.secure === true)) {
+      throw new ConfigurationError(
+        'POLICY_DENIED',
+        `reading values from a secure field is denied: ${this.label}`,
+      );
+    }
+    return nodes.map((node) => normalizeText(node.text ?? ''));
   }
 
   async waitFor(options?: { state?: 'visible' | 'hidden'; timeout?: number }): Promise<void> {

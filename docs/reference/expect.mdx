@@ -29,10 +29,11 @@ before passing its result to `expect`.
 | Negation grace window | A negated matcher passes after 1000 ms of continuous truth, or after the whole budget when `{ timeout }` is shorter than that |
 | Failure code | `ASSERTION_FAILED`, exit code 1 |
 
-Locator strictness: except for `toHaveCount`, a positive matcher requires
-exactly one match; zero matches keep polling until the timeout, and multiple
-matches fail immediately with `LOCATOR_AMBIGUOUS`. `toBeHidden` and negated
-visibility accept zero matches.
+Locator strictness: except for `toHaveCount` and the list form of
+`toHaveText` and `toContainText`, a positive matcher requires exactly one
+match; zero matches keep polling until the timeout, and multiple matches fail
+immediately with `LOCATOR_AMBIGUOUS`. `toBeHidden`, negated visibility, and
+negated `toBeAttached` accept zero matches.
 
 Text comparison is normalized: leading and trailing whitespace is trimmed and
 each run of whitespace collapses to one space. A `TextMatch` string matches
@@ -48,6 +49,8 @@ export interface AsyncExpectation {
   toBeVisible(options?: { timeout?: number }): Promise<void>;
   /** Waits for hidden or absent state. */
   toBeHidden(options?: { timeout?: number }): Promise<void>;
+  /** Waits for one match to exist, visible or not. */
+  toBeAttached(options?: { timeout?: number }): Promise<void>;
   /** Waits for enabled state. */
   toBeEnabled(options?: { timeout?: number }): Promise<void>;
   /** Waits for disabled state. */
@@ -60,10 +63,12 @@ export interface AsyncExpectation {
   toBeExpanded(options?: { timeout?: number }): Promise<void>;
   /** Waits for focused state. */
   toBeFocused(options?: { timeout?: number }): Promise<void>;
-  /** Waits for exact normalized text. */
+  /** Waits for exact normalized text; a list waits for exactly that many matches, each with its entry's text, in order. */
   toHaveText(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
-  /** Waits for contained normalized text. */
+  toHaveText(expected: readonly TextMatch[], options?: { timeout?: number }): Promise<void>;
+  /** Waits for contained normalized text; a list waits for exactly that many matches, each containing its entry, in order. */
   toContainText(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
+  toContainText(expected: readonly TextMatch[], options?: { timeout?: number }): Promise<void>;
   /** Waits for an input value. */
   toHaveValue(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
   /** Waits for the attribute to be present; with `value`, for it to match. */
@@ -80,9 +85,21 @@ A missing `checked`, `selected`, or `expanded` state counts as `false`; a node
 is enabled unless it reports `disabled`. `toHaveAttribute(name, value)`
 compares like `toHaveText`, after normalization.
 
+`toBeAttached` passes once one match exists, hidden or shown, where
+`toBeVisible` needs a shown one. Negated, it passes once nothing matches.
+
+`toHaveText([...])` and `toContainText([...])` check a list: the match count
+must equal the list length and the match at each position must satisfy the
+entry there, a string exactly after normalization, a `RegExp` by test. There
+is no exactly-one rule; the failure message lists every text observed. An
+empty list holds when nothing matches.
+
 ```ts
 await expect(screen.getByRole('status')).toHaveText('Saved');
 await expect(screen.getByTestId('todo')).toHaveCount(3);
+await expect(screen.getByTestId('todo')).toHaveText(['Write spec', /^Ship/, 'Release']);
+await expect(screen.getByTestId('todo')).toContainText(['spec', 'runner', 'Release']);
+await expect(screen.getByText('Loaded')).toBeAttached();
 await expect(screen.getByRole('dialog')).not.toBeVisible({ timeout: 10_000 });
 ```
 

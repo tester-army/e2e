@@ -12,12 +12,17 @@ import type { AsyncExpectation, TextMatch } from '../types.ts';
 interface Sample {
   readonly count: number;
   readonly node: SemanticNode | null;
+  /** Every current match, read; only a `wholeSet: 'read'` matcher asks for them. */
+  readonly nodes: readonly SemanticNode[];
 }
 
 interface MatcherSpec {
   readonly name: string;
-  /** Evaluates the whole sample instead of requiring one node. */
-  readonly wholeSet?: boolean;
+  /**
+   * Evaluates the whole sample instead of requiring one node: `true` counts
+   * the matches, `'read'` also reads each of them.
+   */
+  readonly wholeSet?: boolean | 'read';
   /** The predicate is meaningful even when zero nodes match. */
   readonly evaluableWithoutNode?: boolean;
   readonly predicate: (sample: Sample) => boolean;
@@ -95,7 +100,7 @@ class AsyncExpectationImpl implements AsyncExpectation {
     const api = `expect.${this.negated ? 'not.' : ''}${spec.name}`;
     await this.internals.context.steps.run('assertion', api, this.label, async () => {
       const deadline = engine.deadline(timeout ?? engine.assertionTimeout);
-      let lastSample: Sample = { count: 0, node: null };
+      let lastSample: Sample = { count: 0, node: null, nodes: [] };
       await pollCondition({
         deadline,
         signal: engine.signal,
@@ -132,17 +137,21 @@ class AsyncExpectationImpl implements AsyncExpectation {
    * means anything; visibility matchers also accept zero matches.
    */
   private conditionEvaluable(spec: MatcherSpec, sample: Sample): boolean {
-    return spec.wholeSet === true || sample.node !== null || spec.evaluableWithoutNode === true;
+    return spec.wholeSet !== undefined || sample.node !== null || spec.evaluableWithoutNode === true;
   }
 
   private async sample(spec: MatcherSpec, deadline: Deadline): Promise<Sample> {
     const { engine } = this.internals.context;
+    if (spec.wholeSet === 'read') {
+      const nodes = await engine.readAll(this.internals.expression, deadline);
+      return { count: nodes.length, node: null, nodes };
+    }
     if (spec.wholeSet === true) {
       const refs = await engine.resolveAll(this.internals.expression, deadline);
-      return { count: refs.length, node: null };
+      return { count: refs.length, node: null, nodes: [] };
     }
     const { node, count } = await engine.tryRead(this.internals.expression, deadline);
-    return { count, node };
+    return { count, node, nodes: [] };
   }
 
   private stateMatcher(name: keyof typeof STATE_MATCHERS, timeout: number | undefined): Promise<void> {
@@ -161,9 +170,10 @@ class AsyncExpectationImpl implements AsyncExpectation {
 
   private textMatcher(
     name: keyof typeof TEXT_MATCHERS,
-    expected: TextMatch,
+    expected: TextMatch | readonly TextMatch[],
     timeout: number | undefined,
   ): Promise<void> {
+    if (isTextMatchList(expected)) return this.textListMatcher(name, expected, timeout);
     const def = TEXT_MATCHERS[name];
     const pattern = toTextPattern(expected, { exact: true });
     return this.poll(
@@ -176,6 +186,35 @@ class AsyncExpectationImpl implements AsyncExpectation {
           const raw = sample.node[def.field] ?? '';
           return `${def.field} ${JSON.stringify(def.normalize ? normalizeText(raw) : raw)}`;
         },
+      },
+      timeout,
+    );
+  }
+
+  /**
+   * The list form: exactly as many matches as entries, each match's field
+   * satisfying the entry at its position.
+   */
+  private textListMatcher(
+    name: keyof typeof TEXT_MATCHERS,
+    expected: readonly TextMatch[],
+    timeout: number | undefined,
+  ): Promise<void> {
+    const def = TEXT_MATCHERS[name];
+    const patterns = expected.map((entry) => toTextPattern(entry, { exact: true }));
+    const fieldOf = (node: SemanticNode): string => {
+      const raw = node[def.field] ?? '';
+      return def.normalize ? normalizeText(raw) : raw;
+    };
+    return this.poll(
+      {
+        name,
+        wholeSet: 'read',
+        predicate: (sample) =>
+          sample.nodes.length === patterns.length &&
+          patterns.every((pattern, index) => def.match(sample.nodes[index]![def.field] ?? '', pattern)),
+        describeExpected: def.describeExpected(`[${patterns.map(describePattern).join(', ')}]`),
+        observed: (sample) => `${def.field} [${sample.nodes.map((node) => JSON.stringify(fieldOf(node))).join(', ')}]`,
       },
       timeout,
     );
@@ -207,6 +246,19 @@ class AsyncExpectationImpl implements AsyncExpectation {
     );
   }
 
+  toBeAttached(options?: { timeout?: number }): Promise<void> {
+    return this.poll(
+      {
+        name: 'toBeAttached',
+        evaluableWithoutNode: true,
+        predicate: (sample) => sample.node !== null,
+        describeExpected: 'attached',
+        observed: (sample) => (sample.node === null ? 'no node' : 'attached'),
+      },
+      options?.timeout,
+    );
+  }
+
   toBeEnabled(options?: { timeout?: number }): Promise<void> {
     return this.stateMatcher('toBeEnabled', options?.timeout);
   }
@@ -231,11 +283,11 @@ class AsyncExpectationImpl implements AsyncExpectation {
     return this.stateMatcher('toBeFocused', options?.timeout);
   }
 
-  toHaveText(expected: TextMatch, options?: { timeout?: number }): Promise<void> {
+  toHaveText(expected: TextMatch | readonly TextMatch[], options?: { timeout?: number }): Promise<void> {
     return this.textMatcher('toHaveText', expected, options?.timeout);
   }
 
-  toContainText(expected: TextMatch, options?: { timeout?: number }): Promise<void> {
+  toContainText(expected: TextMatch | readonly TextMatch[], options?: { timeout?: number }): Promise<void> {
     return this.textMatcher('toContainText', expected, options?.timeout);
   }
 
@@ -297,6 +349,11 @@ class AsyncExpectationImpl implements AsyncExpectation {
       options?.timeout,
     );
   }
+}
+
+/** A list of text matches, as opposed to one string or RegExp. */
+function isTextMatchList(expected: TextMatch | readonly TextMatch[]): expected is readonly TextMatch[] {
+  return Array.isArray(expected);
 }
 
 function observedState(sample: Sample): string {

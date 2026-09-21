@@ -179,6 +179,33 @@ export class LocatorEngine {
     }
   }
 
+  /**
+   * Reads every current match once, in document order. A ref superseded
+   * between resolve and read re-resolves the whole set while the deadline
+   * remains, since one stale member says nothing about the others; a stale
+   * set at the deadline is `LOCATOR_NOT_FOUND`. The caller's deadline, when
+   * given, defaults to the action timeout.
+   */
+  async readAll(
+    expression: LocatorExpression,
+    deadline: Deadline = this.deadline(this.options.actionTimeout),
+  ): Promise<readonly SemanticNode[]> {
+    for (;;) {
+      const refs = await this.resolveOnce(expression, deadline);
+      try {
+        const nodes: SemanticNode[] = [];
+        for (const ref of refs) nodes.push(await this.session.read(ref, this.operationWithin(deadline)));
+        return nodes;
+      } catch (cause) {
+        if (asEngineError(cause)?.code === 'NODE_STALE' && !deadline.expired()) {
+          await sleep(POLL_INTERVAL_MS, this.signal);
+          continue;
+        }
+        throw translateLocatorError(cause, expression);
+      }
+    }
+  }
+
   /** Reads one node for polling surfaces; returns null while zero matches. */
   async tryRead(
     expression: LocatorExpression,

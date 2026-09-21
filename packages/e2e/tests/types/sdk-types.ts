@@ -16,6 +16,7 @@ import {
   type ArtifactStore,
   type AsyncExpectation,
   type E2EConfig,
+  type Locator,
   type PollExpectation,
   type Reporter,
   type RunEvent,
@@ -114,6 +115,18 @@ if (runEvent.type === 'step') {
 ({ reporters: ['xunit'] }) satisfies E2EConfig;
 // @ts-expect-error attribute values must be text matches
 asyncExpectation.toHaveAttribute('x', 42);
+// Set reads answer with lists and never wait; the list form of a text matcher takes strings and RegExps.
+void (screen.getByTestId('todo').all() satisfies Promise<Locator[]>);
+void (screen.getByTestId('todo').allTextContents() satisfies Promise<string[]>);
+void (screen.getByTestId('todo').isHidden() satisfies Promise<boolean>);
+void (screen.getByTestId('todo').isDisabled() satisfies Promise<boolean>);
+void asyncExpectation.toBeAttached({ timeout: 1000 });
+void asyncExpectation.toHaveText(['a', /b/], { timeout: 1000 });
+void asyncExpectation.toContainText(['a', /b/]);
+// @ts-expect-error a text list holds strings and RegExps only
+void asyncExpectation.toHaveText(['a', 1]);
+// @ts-expect-error only toHaveText and toContainText take a list; a value is one string
+void asyncExpectation.toHaveValue(['a']);
 
 // expect.poll carries every value matcher and no other, each resolving to void.
 declare const pollMatcherNames: Exclude<keyof PollExpectation<string>, 'not'>;
