@@ -9,7 +9,7 @@ import type { Unique } from './params.ts';
 import type { StepExecutor } from './agent/executor.ts';
 import type { StepCacheInfo } from './run/steps.ts';
 import type { EngineHandle } from './engine/index.ts';
-import type { Momentum, ScrollDirection, SelectOption } from './engine/contract.ts';
+import type { Momentum, ScrollDirection, SelectOption, ViewportPoint } from './engine/contract.ts';
 import type { TraceCacheStore } from './cache/store.ts';
 import type { RunEvent, RunExitCode, RunStatus } from './run/events.ts';
 import type { Report1Document } from './report/build.ts';
@@ -318,17 +318,49 @@ export interface ActionOptions {
   timeout?: number;
 }
 
+/**
+ * A point in CSS pixels. For `screen.tapAt` and `screen.swipe` the origin is
+ * the viewport's top-left corner, the space `boundingBox()` reports in; for
+ * `tap({ position })` it is the node's own top-left corner.
+ */
+export type Point = ViewportPoint;
+
+/** `tap` and `click` options. */
+export interface TapOptions extends ActionOptions {
+  /**
+   * Where to tap, relative to the node's top-left corner. Without it the
+   * platform picks a point of the node, usually its center, behind its own
+   * actionability checks; with it the pointer is dispatched at that point
+   * once the node is in view and has a box, which needs the engine's `tap`
+   * pointer action.
+   */
+  position?: Point;
+}
+
 /** `longPress` options: the hold time in milliseconds, 100 through 10000, default 500. */
 export interface LongPressOptions extends ActionOptions {
   /** Hold time in milliseconds, 100 through 10000; default 500. */
   duration?: number;
 }
 
+/** A swipe in a direction. */
 export interface SwipeOptions {
   /** Swipe direction. */
   direction: ScrollDirection;
   /** Fling strength; default `none`. */
   momentum?: Momentum;
+  from?: never;
+  to?: never;
+}
+
+/** A swipe along a path between two viewport points: a touch swipe on a device, a pointer drag on a document platform. */
+export interface SwipePathOptions {
+  /** Where the finger goes down. */
+  from: Point;
+  /** Where it lifts. */
+  to: Point;
+  direction?: never;
+  momentum?: never;
 }
 
 export interface Screen {
@@ -344,8 +376,10 @@ export interface Screen {
   getByDisplayValue(value: TextMatch, options?: TextMatchOptions): Locator;
   /** Creates a lazy test-id query. */
   getByTestId(id: string, options?: { visible?: boolean }): Locator;
-  /** Performs a viewport-level swipe. */
-  swipe(options: SwipeOptions): Promise<void>;
+  /** Taps a viewport point, with no node behind it. */
+  tapAt(point: Point, options?: ActionOptions): Promise<void>;
+  /** Performs a viewport-level swipe: in a direction, or along a path from one point to another. */
+  swipe(options: SwipeOptions | SwipePathOptions): Promise<void>;
   /** Scrolls until a locator resolves visibly or times out. */
   scrollUntilVisible(
     target: Locator,
@@ -354,10 +388,10 @@ export interface Screen {
 }
 
 export interface Locator extends Screen {
-  /** Taps exactly one matching actionable node. */
-  tap(options?: ActionOptions): Promise<void>;
+  /** Taps exactly one matching actionable node; with `position`, taps that point of its box once it is in view, with no other actionability check. */
+  tap(options?: TapOptions): Promise<void>;
   /** Alias of tap. */
-  click(options?: ActionOptions): Promise<void>;
+  click(options?: TapOptions): Promise<void>;
   /** Double-taps exactly one matching actionable node. */
   doubleTap(options?: ActionOptions): Promise<void>;
   /** Secondary-taps exactly one matching actionable node: a right click, a two-finger tap. */

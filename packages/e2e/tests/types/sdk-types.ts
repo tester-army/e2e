@@ -142,6 +142,22 @@ void screen.getByLabel('Plan').selectOption({ value: 'pro' });
 void screen.getByLabel('Plan').selectOption({ value: 'pro', index: 1 });
 // @ts-expect-error role queries never match hidden nodes; visible is the one visibility knob
 screen.getByRole('button', { hidden: true });
+
+// Coordinate input: a viewport point on screen, a node-relative one on a locator.
+declare const point: import('../../src/types.ts').Point;
+void screen.tapAt(point, { timeout: 1_000 });
+void screen.swipe({ direction: 'up', momentum: 'fast' });
+void screen.swipe({ from: point, to: point });
+void screen.getByRole('image').tap({ position: point, timeout: 1_000 });
+void screen.getByRole('image').click({ position: point });
+// @ts-expect-error a point has both coordinates.
+void screen.tapAt({ x: 1 });
+// @ts-expect-error a path swipe names both ends.
+void screen.swipe({ from: point });
+// @ts-expect-error a swipe is a direction or a path, never both.
+void screen.swipe({ direction: 'up', to: point });
+// @ts-expect-error a locator swipe is directional; the path form is screen.swipe.
+void screen.getByRole('image').swipe({ from: point, to: point });
 // @ts-expect-error a surface without a url has no base URL; a test must handle undefined
 const appOrigin: string = appFixture.baseUrl;
 void appOrigin;

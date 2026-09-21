@@ -78,6 +78,7 @@ from [configured credentials](/authentication).
 | `by.id('x').withAncestor(by.id('row'))` | `screen.getByTestId('row').getByTestId('x')` |
 | `.atIndex(n)` | `.nth(n)` |
 | `.tap()`, `.multiTap(2)`, `.longPress()` | `.tap()`, `.doubleTap()`, `.longPress()` |
+| `.tap({ x, y })` | `.tap({ position: { x, y } })` |
 | `.typeText(t)`, `.replaceText(t)` | `.fill(t)` replaces the content |
 | `.clearText()` | `.clear()` |
 | `.tapReturnKey()` | `.press('Enter')` |

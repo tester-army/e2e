@@ -5,11 +5,11 @@
  * support.ts).
  */
 
-import type { Locator as PwLocator } from 'playwright';
+import type { Locator as PwLocator, Page } from 'playwright';
 import { describe, expect, it, vi } from 'vitest';
 import { EngineError, type LocatorAction } from 'e2e/engine';
 import { TestError } from 'e2e/engine';
-import { classifyActionError, dispatchLocatorAction } from '../../src/actions.ts';
+import { classifyActionError, dispatchLocatorAction, dispatchPointerAction } from '../../src/actions.ts';
 import type { ActionTarget } from '../../src/support.ts';
 
 function pwTimeout(callLog: readonly string[]): Error {
@@ -191,5 +191,52 @@ describe('dispatchLocatorAction', () => {
       () => destination.target,
     );
     expect(source.locator.dragTo).toHaveBeenCalledWith(destination.target.locator, { timeout: 7 });
+  });
+});
+
+describe('dispatchPointerAction', () => {
+  /** A page stub whose mouse records every call in order. */
+  function stubPage() {
+    const calls: string[] = [];
+    const mouse = {
+      move: async (x: number, y: number) => { calls.push(`move ${x},${y}`); },
+      down: async () => { calls.push('down'); },
+      up: async () => { calls.push('up'); },
+      click: async (x: number, y: number, options?: { button?: string; delay?: number }) => {
+        calls.push(`click ${x},${y}${options?.button === undefined ? '' : ` ${options.button}`}${options?.delay === undefined ? '' : ` ${options.delay}ms`}`);
+      },
+      dblclick: async (x: number, y: number) => { calls.push(`dblclick ${x},${y}`); },
+      wheel: async (dx: number, dy: number) => { calls.push(`wheel ${dx},${dy}`); },
+    };
+    const page = { mouse, viewportSize: () => ({ width: 800, height: 600 }) } as unknown as Page;
+    return { page, calls };
+  }
+
+  it('taps, double-taps, secondary-taps, and long-presses at the point as given', async () => {
+    const { page, calls } = stubPage();
+    await dispatchPointerAction(page, { x: 10, y: 20 }, { kind: 'tap' });
+    await dispatchPointerAction(page, { x: 10, y: 20 }, { kind: 'doubleTap' });
+    await dispatchPointerAction(page, { x: 10, y: 20 }, { kind: 'secondaryTap' });
+    await dispatchPointerAction(page, { x: 10, y: 20 }, { kind: 'longPress', durationMs: 700 });
+    expect(calls).toEqual(['click 10,20', 'dblclick 10,20', 'click 10,20 right', 'click 10,20 700ms']);
+  });
+
+  it('rounds a fractional point to the nearest CSS pixel: the browser would truncate it a pixel early', async () => {
+    const { page, calls } = stubPage();
+    await dispatchPointerAction(page, { x: 332, y: 158.875 }, { kind: 'tap' });
+    await dispatchPointerAction(page, { x: 10.4, y: 20.5 }, { kind: 'swipeTo', target: { x: 110.6, y: 20.5 } });
+    expect(calls).toEqual(['click 332,159', 'move 10,21', 'down', 'move 61,21', 'move 111,21', 'up']);
+  });
+
+  it('swipes along a path as a pointer drag: down at the point, through the midpoint, up at the end', async () => {
+    const { page, calls } = stubPage();
+    await dispatchPointerAction(page, { x: 10, y: 20 }, { kind: 'swipeTo', target: { x: 110, y: 20 } });
+    expect(calls).toEqual(['move 10,20', 'down', 'move 60,20', 'move 110,20', 'up']);
+  });
+
+  it('swipes in a direction as a wheel gesture over the point, sized by the viewport', async () => {
+    const { page, calls } = stubPage();
+    await dispatchPointerAction(page, { x: 10, y: 20 }, { kind: 'swipe', direction: 'down' });
+    expect(calls).toEqual(['move 10,20', 'wheel 0,300']);
   });
 });

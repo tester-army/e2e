@@ -200,6 +200,7 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
   const session: TargetSession = {
     verbs: declaredVerbs(engine),
     actions,
+    pointerActions,
     app,
     artifacts,
     ...(engine?.state === undefined

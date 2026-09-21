@@ -160,6 +160,14 @@ Each action resolves one node, waits for it to be actionable within
 `setInputFiles(paths)` (relative to the project root), `dragTo(locator)`,
 `scrollIntoView()`, `swipe({ direction, momentum? })`.
 
+Coordinates, in CSS pixels, for what the tree does not list: `tap({ position:
+{ x, y } })` taps at an offset of the node's top-left corner;
+`screen.tapAt({ x, y })` taps a viewport point
+with no node behind it; `screen.swipe({ from, to })` swipes along a path
+between two points (a touch swipe on a device, a pointer drag in a browser),
+next to the directional `screen.swipe({ direction, momentum? })`. Prefer a
+locator when one exists; a point moves with the layout.
+
 ### Reads
 
 Reads resolve once and do not retry: `textContent()`, `inputValue()`,

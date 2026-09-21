@@ -28,11 +28,13 @@ export const DEVICE_ACTIONS: readonly LocatorActionKind[] = [
 
 /**
  * The pointer actions a device honors at a bare point: agent-device presses
- * by coordinates, so taps, double taps, and long presses land anywhere; a
- * coordinate hover, drag, secondary tap, or swipe has no touch equivalent it
- * exposes without a node.
+ * and swipes by coordinates, so taps, double taps, long presses, and a swipe
+ * to another point land anywhere. A coordinate hover, secondary tap, or drag
+ * (a hold before the move, unlike a swipe) has no touch equivalent it exposes
+ * without a node, and a directional swipe at a bare point has no length, so
+ * only the screen root scrolls that way.
  */
-export const DEVICE_POINTER_ACTIONS: readonly PointerActionKind[] = ['tap', 'doubleTap', 'longPress'];
+export const DEVICE_POINTER_ACTIONS: readonly PointerActionKind[] = ['tap', 'doubleTap', 'longPress', 'swipeTo'];
 
 /**
  * Issues one pointer action at a screen point in logical pixels. `settle` is
@@ -59,6 +61,8 @@ export function pointerInteraction(
         ...settle,
         ...(action.durationMs === undefined ? {} : { durationMs: action.durationMs }),
       });
+    case 'swipeTo':
+      return client.interactions.swipe({ from: at, to: { x: action.target.x, y: action.target.y } });
     case 'secondaryTap':
     case 'hover':
     case 'dragTo':

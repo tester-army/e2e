@@ -122,6 +122,14 @@ describe('projectExpression', () => {
     expect(chainOf(projectExpression(page, checkbox).locator)).toEqual(['role(checkbox,{"checked":true,"disabled":false})']);
   });
 
+  it('spells the contract image role as the img role the selector knows', () => {
+    const image: LocatorExpression = {
+      kind: 'query',
+      query: { kind: 'role', value: { kind: 'string', value: 'image', exact: true }, name: { kind: 'string', value: 'Map', exact: true } },
+    };
+    expect(chainOf(projectExpression(page, image).locator)).toEqual(['role(img,{"name":"Map","exact":true})']);
+  });
+
   it('composes positions natively for every query but displayValue', () => {
     const projected = projectExpression(page, { kind: 'index', source: textbox, index: 1 });
     expect(chainOf(projected.locator)).toEqual(['role(textbox)', 'nth(1)']);

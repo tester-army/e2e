@@ -17,6 +17,7 @@ import type {
   ObservationPixels,
   OperationContext,
   PointerAction,
+  PointerActionKind,
   ScrollDirection,
   SemanticNode,
   ViewportPoint,
@@ -111,6 +112,8 @@ export interface TargetSession {
   readonly verbs: ReadonlySet<GrammarVerb>;
   /** Action kinds the engine declared for `perform`; empty without the actions capability. */
   readonly actions: ReadonlySet<LocatorActionKind>;
+  /** Pointer action kinds the engine declared for `performAt`; empty without the pointer capability. */
+  readonly pointerActions: ReadonlySet<PointerActionKind>;
   /** Captures one atomic agent observation; the harness redacts it downstream. */
   observe(operation: OperationContext, options?: EngineObserveOptions): Promise<Observation>;
   /** Resolves immediately; the runner owns query polling and strictness. */

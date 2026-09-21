@@ -6,7 +6,9 @@ import {
   type LocatorExpression,
   type NodeRef,
   type OperationContext,
+  type PointerAction,
   type SemanticNode,
+  type ViewportPoint,
 } from '../engine/surface.ts';
 import {
   asEngineError,
@@ -22,7 +24,7 @@ import { Deadline, POLL_INTERVAL_MS, sleep } from '../internal/time.ts';
 import type { AttemptBudget } from '../run/budget.ts';
 
 /** Canonical visibility predicate over a semantic node snapshot. */
-export function isNodeVisible(node: SemanticNode | null): boolean {
+export function isNodeVisible(node: SemanticNode | null): node is SemanticNode {
   return node !== null && node.states?.hidden !== true;
 }
 
@@ -92,6 +94,20 @@ export class LocatorEngine {
       );
     }
     if (action.kind === 'press') requireKey(action.key);
+  }
+
+  /** Refuses a pointer action the session would refuse: an undeclared kind is `UNSUPPORTED_CAPABILITY`. */
+  private checkPointerAction(action: PointerAction): void {
+    if (!this.session.pointerActions.has(action.kind)) {
+      throw new ConfigurationError(
+        'UNSUPPORTED_CAPABILITY',
+        `the "${action.kind}" action at a point is not available on this target: its engine declares ${
+          this.session.pointerActions.size === 0
+            ? 'no pointer actions'
+            : [...this.session.pointerActions].join(', ')
+        }`,
+      );
+    }
   }
 
   /** One immediate engine resolve, retrying retryable frame misses within the deadline. */
@@ -209,7 +225,68 @@ export class LocatorEngine {
     timeoutMs?: number,
   ): Promise<void> {
     if (typeof action !== 'function') this.checkAction(action);
+    await this.performUntil(expression, action, this.deadline(timeoutMs));
+  }
+
+  /** Performs one pointer action at a viewport point, with no node behind it. */
+  async performAt(point: ViewportPoint, action: PointerAction, timeoutMs?: number): Promise<void> {
+    this.checkPointerAction(action);
+    await this.dispatchAt(point, action, this.deadline(timeoutMs));
+  }
+
+  /**
+   * Performs one pointer action at an offset from the top-left corner of
+   * exactly one match: the node is scrolled into view when the engine can,
+   * then its box is read and the pointer dispatched at the point, with no
+   * node behind the gesture. The node has to be visible with a box within
+   * the deadline; one that never is fails as LOCATOR_NOT_FOUND, as `waitFor`
+   * does.
+   */
+  async performWithin(
+    expression: LocatorExpression,
+    offset: ViewportPoint,
+    action: PointerAction,
+    timeoutMs?: number,
+  ): Promise<void> {
+    this.checkPointerAction(action);
     const deadline = this.deadline(timeoutMs);
+    const startedMs = Date.now();
+    if (this.session.actions.has('scrollIntoView')) {
+      await this.performUntil(expression, { kind: 'scrollIntoView' }, deadline);
+    }
+    for (;;) {
+      const { node } = await this.tryRead(expression, deadline);
+      const rect = isNodeVisible(node) ? node.rect : undefined;
+      if (rect !== undefined) {
+        await this.dispatchAt({ x: rect.x + offset.x, y: rect.y + offset.y }, action, deadline);
+        return;
+      }
+      if (deadline.expired()) {
+        throw new TestError(
+          'LOCATOR_NOT_FOUND',
+          `locator did not become visible with a box to act within: ${describeExpression(expression)}`,
+          { details: locatorDetails(expression, Date.now() - startedMs) },
+        );
+      }
+      await sleep(POLL_INTERVAL_MS, this.signal);
+    }
+  }
+
+  /** One pointer dispatch within a deadline, its engine error translated to the public taxonomy. */
+  private async dispatchAt(point: ViewportPoint, action: PointerAction, deadline: Deadline): Promise<void> {
+    try {
+      await this.session.performAt(point, action, this.operationWithin(deadline));
+    } catch (cause) {
+      throw translateLocatorError(cause);
+    }
+  }
+
+  /** The action retry loop of `perform`, within a deadline a caller may share across steps. */
+  private async performUntil(
+    expression: LocatorExpression,
+    action: LocatorAction | ((deadline: Deadline) => Promise<LocatorAction>),
+    deadline: Deadline,
+  ): Promise<void> {
     for (;;) {
       const ref = await this.resolveExactlyOne(expression, deadline);
       const resolved = typeof action === 'function' ? await action(deadline) : action;

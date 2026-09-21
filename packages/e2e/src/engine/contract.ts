@@ -287,9 +287,14 @@ export const LOCATOR_ACTION_KINDS = [
  * One action `performAt` carries out at a viewport point, with no node
  * behind it: the pointer half of the action vocabulary, for a surface that
  * has pixels and coordinates where the tree lists nothing (a canvas, a map, a
- * desktop shell, a game). The kinds are the pointer subset of `LocatorAction`
- * with the same meanings; `dragTo` ends at a second point, and `swipe` is a
- * scroll gesture started at the point.
+ * desktop shell, a game), and for a test that names a point outright
+ * (`screen.tapAt`, `screen.swipe({ from, to })`, `tap({ position })`). The
+ * kinds are the pointer subset of `LocatorAction` with the same meanings;
+ * `dragTo` ends at a second point, and `swipe` is a scroll gesture started at
+ * the point. `swipeTo` is the one kind with no node form: the finger's path
+ * from the point to `target`, a touch swipe on a device and a pointer drag on
+ * a document platform, which is distinct from `dragTo` where a platform holds
+ * before it drags.
  */
 export type PointerAction =
   | { readonly kind: 'tap' | 'doubleTap' | 'secondaryTap' | 'hover' }
@@ -299,7 +304,8 @@ export type PointerAction =
       readonly kind: 'swipe';
       readonly direction: ScrollDirection;
       readonly momentum?: Momentum;
-    };
+    }
+  | { readonly kind: 'swipeTo'; readonly target: ViewportPoint };
 
 /** Every pointer action kind; what an engine declares in `pointerActions`. */
 export type PointerActionKind = PointerAction['kind'];
@@ -313,6 +319,7 @@ export const POINTER_ACTION_KINDS = [
   'hover',
   'dragTo',
   'swipe',
+  'swipeTo',
 ] as const satisfies readonly PointerActionKind[];
 
 /**

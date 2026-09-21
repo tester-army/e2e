@@ -38,6 +38,13 @@ function escapeRegexForSelector(re: RegExp): string {
     .replace(/>>/g, '\\>\\>');
 }
 
+/**
+ * The contract's role vocabulary spelled as the ARIA role the role selector
+ * knows, where the two differ: the tree reports an `img` as `image`, so an
+ * `image` query has to go back to `img` to match it.
+ */
+const ARIA_ROLE_BY_CONTRACT_ROLE: Readonly<Record<string, string>> = { image: 'img' };
+
 function queryToPw(scope: PwScope, query: SemanticQuery, testIdAttribute: string): PwLocator {
   switch (query.kind) {
     case 'role': {
@@ -58,7 +65,8 @@ function queryToPw(scope: PwScope, query: SemanticQuery, testIdAttribute: string
       if (states.expanded !== undefined) options.expanded = states.expanded;
       if (states.pressed !== undefined) options.pressed = states.pressed;
       if (query.level !== undefined) options.level = query.level;
-      return scope.getByRole(query.value.value as Parameters<Page['getByRole']>[0], options);
+      const role = ARIA_ROLE_BY_CONTRACT_ROLE[query.value.value] ?? query.value.value;
+      return scope.getByRole(role as Parameters<Page['getByRole']>[0], options);
     }
     case 'label':
       return scope.getByLabel(patternToPw(query.value), { exact: patternExact(query.value) });

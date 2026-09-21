@@ -4,6 +4,7 @@ import nodePath from 'node:path';
 import type { LocatorExpression, SemanticNode } from '../engine/surface.ts';
 import { locatorBrand, secretBrand } from '../internal/brands.ts';
 import { ConfigurationError, TestError } from '../internal/errors.ts';
+import { requireFinitePoint } from '../internal/geometry.ts';
 import { rejectUnknownOptions } from '../internal/options.ts';
 import { realmSlot } from '../internal/realm-slot.ts';
 import { normalizeText } from '../internal/text.ts';
@@ -11,12 +12,15 @@ import type {
   ActionOptions,
   LongPressOptions,
   Locator,
+  Point,
   Role,
   RoleOptions,
   Screen,
   Secret,
   SelectOption,
   SwipeOptions,
+  SwipePathOptions,
+  TapOptions,
   TextMatch,
   TextMatchOptions,
 } from '../types.ts';
@@ -137,7 +141,28 @@ class ScreenImpl implements Screen {
     return new LocatorImpl(this.context, this.build(testIdQuery(id, options, this.scope)));
   }
 
-  async swipe(options: SwipeOptions): Promise<void> {
+  async tapAt(point: Point, options?: ActionOptions): Promise<void> {
+    rejectUnknownOptions('tapAt', options, ['timeout']);
+    const at = requirePoint(point, 'tapAt');
+    await this.context.steps.run('screen', 'screen.tapAt', describePoint(at), () =>
+      this.context.engine.performAt(at, { kind: 'tap' }, options?.timeout),
+    );
+  }
+
+  async swipe(options: SwipeOptions | SwipePathOptions): Promise<void> {
+    if (isSwipePath(options)) {
+      rejectUnknownOptions('swipe', options, ['from', 'to']);
+      const from = requirePoint(options.from, 'swipe from');
+      const to = requirePoint(options.to, 'swipe to');
+      await this.context.steps.run(
+        'screen',
+        'screen.swipe',
+        `${describePoint(from)} → ${describePoint(to)}`,
+        () => this.context.engine.performAt(from, { kind: 'swipeTo', target: to }),
+      );
+      return;
+    }
+    rejectUnknownOptions('swipe', options, ['direction', 'momentum']);
     await this.context.steps.run('screen', 'screen.swipe', options.direction, async () => {
       const { engine } = this.context;
       await engine.session.swipe(options.direction, options.momentum, engine.operation());
@@ -196,15 +221,31 @@ class LocatorImpl extends ScreenImpl implements Locator {
     return this.context.steps.run('locator', api, this.label, body);
   }
 
-  tap(options?: ActionOptions): Promise<void> {
-    return this.action('locator.tap', () =>
-      this.context.engine.perform(this.expression, { kind: 'tap' }, options?.timeout),
-    );
+  tap(options?: TapOptions): Promise<void> {
+    return this.tapWith('tap', options);
   }
 
-  click(options?: ActionOptions): Promise<void> {
-    return this.action('locator.click', () =>
-      this.context.engine.perform(this.expression, { kind: 'tap' }, options?.timeout),
+  click(options?: TapOptions): Promise<void> {
+    return this.tapWith('click', options);
+  }
+
+  /**
+   * One tap of the node: the platform's own, or, with a position, the pointer
+   * dispatched at that offset of the node's box.
+   */
+  private tapWith(api: 'tap' | 'click', options: TapOptions | undefined): Promise<void> {
+    rejectUnknownOptions(api, options, ['timeout', 'position']);
+    if (options?.position === undefined) {
+      return this.action(`locator.${api}`, () =>
+        this.context.engine.perform(this.expression, { kind: 'tap' }, options?.timeout),
+      );
+    }
+    const position = requirePoint(options.position, `${api} position`);
+    return this.context.steps.run(
+      'locator',
+      `locator.${api}`,
+      `${this.label} at ${describePoint(position)}`,
+      () => this.context.engine.performWithin(this.expression, position, { kind: 'tap' }, options.timeout),
     );
   }
 
@@ -443,6 +484,25 @@ class LocatorImpl extends ScreenImpl implements Locator {
     const { node } = await this.context.engine.tryRead(this.expression, deadline);
     return node;
   }
+}
+
+/** Whether swipe options name a path (`from`, `to`) rather than a direction. */
+function isSwipePath(options: SwipeOptions | SwipePathOptions): options is SwipePathOptions {
+  return typeof options === 'object' && options !== null && ('from' in options || 'to' in options);
+}
+
+/** Validates a point a test names: finite, and never off the plane. */
+function requirePoint(point: Point | undefined, what: string): Point {
+  const at = requireFinitePoint(point, what);
+  if (at.x < 0 || at.y < 0) {
+    throw new TestError('INVALID_ARGUMENT', `${what} requires a point { x, y } of non-negative numbers`);
+  }
+  return at;
+}
+
+/** A point as the report shows it. */
+function describePoint(point: Point): string {
+  return `(${point.x}, ${point.y})`;
 }
 
 /** Validates the shared long-press duration bound. */

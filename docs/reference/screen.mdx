@@ -21,8 +21,10 @@ export interface Screen {
   getByDisplayValue(value: TextMatch, options?: TextMatchOptions): Locator;
   /** Creates a lazy test-id query. */
   getByTestId(id: string, options?: { visible?: boolean }): Locator;
-  /** Performs a viewport-level swipe. */
-  swipe(options: SwipeOptions): Promise<void>;
+  /** Taps a viewport point, with no node behind it. */
+  tapAt(point: Point, options?: ActionOptions): Promise<void>;
+  /** Performs a viewport-level swipe: in a direction, or along a path from one point to another. */
+  swipe(options: SwipeOptions | SwipePathOptions): Promise<void>;
   /** Scrolls until a locator resolves visibly or times out. */
   scrollUntilVisible(
     target: Locator,
@@ -105,15 +107,53 @@ Playwright has no selector for a control's current value, so the engine
 filters candidates after the fact.
 </Note>
 
+## screen.tapAt
+
+```ts
+tapAt(point: Point, options?: ActionOptions): Promise<void>;
+```
+
+Taps a viewport point in CSS pixels, the space `boundingBox()` reports in,
+with no node behind it: a pin on a canvas, a control the tree does not
+list. Nothing is resolved or waited for; the page decides what the tap
+lands on. Uses `config.actionTimeout`. Throws `INVALID_ARGUMENT` for a
+negative or non-finite coordinate and `UNSUPPORTED_CAPABILITY` when the
+engine does not list `tap` in its pointer actions.
+
+```ts
+const map = await screen.getByRole('image', { name: 'Map' }).boundingBox();
+await screen.tapAt({ x: map.x + 360, y: map.y + 70 });
+```
+
+Prefer a locator when the tree lists the control; a point moves with the
+layout. For a point inside a node, `tap({ position })` reads the node's box
+for you.
+
 ## screen.swipe
 
 ```ts
-swipe(options: SwipeOptions): Promise<void>;
+swipe(options: SwipeOptions | SwipePathOptions): Promise<void>;
 ```
 
-Viewport-level gesture. Uses `config.actionTimeout`. Throws `ACTION_FAILED`
-when the gesture is rejected and `UNSUPPORTED_CAPABILITY` when the engine
-does not list `swipe` in its actions.
+Viewport-level gesture, in one of two shapes. `{ direction, momentum? }` is
+a scroll gesture on the screen. `{ from, to }` is a swipe along a path
+between two viewport points: a touch swipe on a device, a pointer drag on a
+document platform, which is what reveals a row action, dismisses a sheet,
+or drags a card between columns. Uses `config.actionTimeout`. Throws
+`ACTION_FAILED` when the gesture is rejected, `INVALID_ARGUMENT` for a mix
+of the two shapes or a coordinate off the plane, and `UNSUPPORTED_CAPABILITY`
+when the engine does not list `swipe` in its actions (a direction) or
+`swipeTo` in its pointer actions (a path).
+
+```ts
+await screen.swipe({ direction: 'up', momentum: 'fast' });
+
+const row = await screen.getByText('Design review').boundingBox();
+await screen.swipe({
+  from: { x: row.x + row.width - 10, y: row.y + row.height / 2 },
+  to: { x: row.x + 10, y: row.y + row.height / 2 },
+});
+```
 
 ## screen.scrollUntilVisible
 
@@ -145,10 +185,10 @@ with `{ timeout }`.
 
 ```ts
 export interface Locator extends Screen {
-  /** Taps exactly one matching actionable node. */
-  tap(options?: ActionOptions): Promise<void>;
+  /** Taps exactly one matching actionable node; with `position`, taps that point of its box once it is in view, with no other actionability check. */
+  tap(options?: TapOptions): Promise<void>;
   /** Alias of tap. */
-  click(options?: ActionOptions): Promise<void>;
+  click(options?: TapOptions): Promise<void>;
   /** Double-taps exactly one matching actionable node. */
   doubleTap(options?: ActionOptions): Promise<void>;
   /** Performs a secondary tap, such as a right click or two-finger tap. */
@@ -211,6 +251,15 @@ export interface Locator extends Screen {
 - An action whose kind the engine does not list in `actions` throws
   `UNSUPPORTED_CAPABILITY` before reaching the engine.
 - `click` is an alias of `tap`.
+- `tap({ position })` taps at an offset of the node's top-left corner, in
+  CSS pixels. The node is scrolled into view when the engine lists
+  `scrollIntoView`, then its box is read and the pointer dispatched at the
+  point, with no node behind the gesture, so the platform's other
+  actionability checks (enabled, not covered) do not run. A node the engine
+  cannot bring into view fails as the engine reports it (`ACTION_FAILED` on
+  the browser engine, whose scroll waits for visibility); one that resolves
+  but never shows a visible box within the timeout is `LOCATOR_NOT_FOUND`.
+  An engine without the `tap` pointer action is `UNSUPPORTED_CAPABILITY`.
 - `press` takes zero or more modifiers (`Shift`, `Control`, `Alt`, `Meta`,
   `ControlOrMeta`) and one key, joined with `+`: a named key (`Enter`,
   `Escape`, `Tab`, `Backspace`, `Delete`, `Insert`, `Space`, the arrows,
@@ -231,6 +280,7 @@ await screen.getByRole('checkbox', { name: 'Remember me' }).check();
 await screen.getByLabel('Plan').selectOption({ label: 'Pro' });
 await screen.getByLabel('Plan').selectOption({ value: 'pro' });
 await screen.getByRole('button', { name: 'Save' }).tap({ timeout: 10_000 });
+await screen.getByRole('image', { name: 'Seat map' }).tap({ position: { x: 120, y: 48 } });
 await screen.getByRole('textbox', { name: 'Search' }).press('Enter');
 await screen.getByRole('textbox', { name: 'Notes' }).press('ControlOrMeta+a');
 ```
@@ -340,6 +390,37 @@ export interface SwipeOptions {
   direction: ScrollDirection;
   /** Fling strength; default `none`. */
   momentum?: Momentum;
+  from?: never;
+  to?: never;
+}
+
+/** A swipe along a path between two viewport points: a touch swipe on a device, a pointer drag on a document platform. */
+export interface SwipePathOptions {
+  /** Where the finger goes down. */
+  from: Point;
+  /** Where it lifts. */
+  to: Point;
+  direction?: never;
+  momentum?: never;
+}
+
+/**
+ * A point in CSS pixels. For `screen.tapAt` and `screen.swipe` the origin is
+ * the viewport's top-left corner, the space `boundingBox()` reports in; for
+ * `tap({ position })` it is the node's own top-left corner.
+ */
+export type Point = ViewportPoint; // { x: number; y: number }
+
+/** `tap` and `click` options. */
+export interface TapOptions extends ActionOptions {
+  /**
+   * Where to tap, relative to the node's top-left corner. Without it the
+   * platform picks a point of the node, usually its center, behind its own
+   * actionability checks; with it the pointer is dispatched at that point
+   * once the node is in view and has a box, which needs the engine's `tap`
+   * pointer action.
+   */
+  position?: Point;
 }
 
 /** One option of a select: its label (a bare string too), its `value` attribute, or its zero-based index. */

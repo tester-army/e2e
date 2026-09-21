@@ -108,10 +108,12 @@ export interface Engine {
    * at a viewport point, in the CSS pixels of `SemanticNode.rect`, with no
    * node behind it: the agent's `tap_at` verb lands here when the point the
    * model named in a screenshot sits on nothing the tree lists (a shape on a
-   * canvas, a pin on a map, a control in a system sheet). Dispatch the
-   * pointer at the point as given; the harness has already clamped it to the
-   * viewport. Throw `UNSUPPORTED_CAPABILITY` for a declared kind the surface
-   * cannot deliver at this particular point.
+   * canvas, a pin on a map, a control in a system sheet), and so do a test's
+   * `screen.tapAt`, `screen.swipe({ from, to })`, and `tap({ position })`.
+   * Dispatch the pointer at the point as given; the harness has clamped an
+   * agent's point to the viewport and validated a test's. Throw
+   * `UNSUPPORTED_CAPABILITY` for a declared kind the surface cannot deliver
+   * at this particular point.
    */
   performAt?(point: ViewportPoint, action: PointerAction, context: OperationContext): Promise<void>;
   /**
@@ -203,7 +205,7 @@ export interface OperationContext {
 | `observe` | `observation` | - | judgment tier, prompt snapshots, trace replay, the viewport swipe's root |
 | `perform` + `actions` | `actions` | `observe` | the agent's grammar verbs (`tap`, `type`, `press`, `select`, `type_secret`, `scroll`, and `tap_at` when the point lands on a listed node) and the `screen`/`Locator` action set with platform actionability checks, each only for a kind listed in `actions` |
 | `locate` | `location` | `observe` | `screen`, `Locator`, `expect(locator)` |
-| `performAt` + `pointerActions` | `pointer` | `observe` | the agent's `tap_at` verb when the point lands on nothing the tree lists (needs the `tap` pointer kind): one pointer action at a viewport point in the CSS pixels of `SemanticNode.rect`, with no node behind it |
+| `performAt` + `pointerActions` | `pointer` | `observe` | the agent's `tap_at` verb when the point lands on nothing the tree lists, and the test's `screen.tapAt` and `tap({ position })` (all need the `tap` pointer kind) and `screen.swipe({ from, to })` (the `swipeTo` kind): one pointer action at a viewport point in the CSS pixels of `SemanticNode.rect`, with no node behind it |
 | `keyboard.{type,press,dismiss?}` | `keyboard` | `observe` | the agent's `type` and `press` without a target, the keyboard fallback of `type_at` and `press_at` on a point the tree lists nothing at, and `dismiss_keyboard` when `dismiss` exists: input to whatever holds focus, for a field drawn on a canvas or flattened out of a platform's tree |
 | `fixtures.<name>` | `<name>` | - | a contributed fixture; `requires: ['<name>']` gates at selection |
 | `state` | `state` | - | `test.setup` sessions and the `session:` option |
@@ -588,7 +590,10 @@ The grammar is closed. Anything beyond it is an agent-side `defineTool`.
 
 Pointer actions use viewport coordinates when no semantic node is available.
 `dragTo` ends at another point; `swipe` starts a scroll gesture at the given
-point. Declare supported kinds in `pointerActions`.
+point. `swipeTo` is the one kind with no node form: the finger's path from
+the point to `target`, a touch swipe on a device and a pointer drag on a
+document platform, distinct from `dragTo` where a platform holds before it
+drags. Declare supported kinds in `pointerActions`.
 
 ```ts
 export type PointerAction =
@@ -599,7 +604,8 @@ export type PointerAction =
       readonly kind: 'swipe';
       readonly direction: ScrollDirection;
       readonly momentum?: Momentum;
-    };
+    }
+  | { readonly kind: 'swipeTo'; readonly target: ViewportPoint };
 
 /** Every pointer action kind; what an engine declares in `pointerActions`. */
 export type PointerActionKind = PointerAction['kind'];
@@ -613,6 +619,7 @@ export const POINTER_ACTION_KINDS = [
   'hover',
   'dragTo',
   'swipe',
+  'swipeTo',
 ] as const satisfies readonly PointerActionKind[];
 ```
 

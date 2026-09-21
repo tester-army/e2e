@@ -7,6 +7,7 @@ import {
   isClassified,
   isPwTimeout,
   message,
+  nearestPixel,
   performElementSwipe,
   performPointDrag,
   performPointerDrag,
@@ -113,8 +114,9 @@ export async function dispatchLocatorAction(
  * behind it: no actionability wait, because there is no element to wait on,
  * and the page decides what the gesture lands on, as it does for a person.
  */
-export async function dispatchPointerAction(page: Page, point: ViewportPoint, action: PointerAction): Promise<void> {
+export async function dispatchPointerAction(page: Page, at: ViewportPoint, action: PointerAction): Promise<void> {
   const { mouse } = page;
+  const point = nearestPixel(at);
   switch (action.kind) {
     case 'tap':
       await mouse.click(point.x, point.y);
@@ -132,6 +134,8 @@ export async function dispatchPointerAction(page: Page, point: ViewportPoint, ac
       await mouse.move(point.x, point.y);
       return;
     case 'dragTo':
+    case 'swipeTo':
+      // A swipe along a path is a pointer drag on a document platform.
       await performPointDrag(mouse, point, action.target);
       return;
     case 'swipe':

@@ -28,6 +28,7 @@ const layout = (title, body) => `<!doctype html>
     <a href="/dialogs">Dialogs</a>
     <a href="/frames">Frames</a>
     <a href="/board">Board</a>
+    <a href="/pointer">Pointer</a>
     <a href="/canvas">Canvas</a>
     <a href="/canvas-flow">Keypad</a>
     <a href="/canvas-wizard">Canvas wizard</a>
@@ -325,6 +326,42 @@ const pages = {
          document.getElementById('attachment').addEventListener('change', (event) => {
            document.querySelector('output[aria-label="Attachment state"]').textContent =
              event.target.files[0] ? event.target.files[0].name : 'none';
+         });
+       </script>`,
+    ),
+
+  // Coordinate input: a pad that reports where a tap landed relative to its
+  // own top-left corner, and where a swipe went down and lifted.
+  '/pointer': () =>
+    layout(
+      'Pointer',
+      `<h1>Pointer</h1>
+       <div id="pad" role="img" aria-label="Pointer pad" style="width: 320px; height: 200px; background: #e5e7eb; touch-action: none;"></div>
+       <output aria-label="Pad state">untouched</output>
+       <div aria-label="Hidden pad" hidden>never shown</div>
+       <script>
+         const pad = document.getElementById('pad');
+         const padState = document.querySelector('output[aria-label="Pad state"]');
+         const local = (event) => {
+           const box = pad.getBoundingClientRect();
+           return Math.round(event.clientX - box.left) + ',' + Math.round(event.clientY - box.top);
+         };
+         let downAt = null;
+         let swiped = false;
+         pad.addEventListener('pointerdown', (event) => {
+           downAt = local(event);
+           swiped = false;
+         });
+         pad.addEventListener('pointerup', (event) => {
+           const upAt = local(event);
+           if (downAt !== null && upAt !== downAt) {
+             swiped = true;
+             padState.textContent = 'swiped from ' + downAt + ' to ' + upAt;
+           }
+           downAt = null;
+         });
+         pad.addEventListener('click', (event) => {
+           if (!swiped) padState.textContent = 'tapped at ' + local(event);
          });
        </script>`,
     ),

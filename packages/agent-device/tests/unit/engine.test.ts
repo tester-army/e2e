@@ -1221,7 +1221,9 @@ describe('deterministic actions', () => {
     expect(h.fake.lastArgs('interactions.press')).toEqual({ x: 10, y: 20, doubleTap: true });
     await h.engine.performAt!({ x: 10, y: 20 }, { kind: 'longPress', durationMs: 700 }, test());
     expect(h.fake.lastArgs('interactions.longPress')).toEqual({ x: 10, y: 20, durationMs: 700 });
-    expect(h.engine.pointerActions).toEqual(['tap', 'doubleTap', 'longPress']);
+    await h.engine.performAt!({ x: 10, y: 20 }, { kind: 'swipeTo', target: { x: 10, y: 300 } }, test());
+    expect(h.fake.lastArgs('interactions.swipe')).toEqual({ from: { x: 10, y: 20 }, to: { x: 10, y: 300 } });
+    expect(h.engine.pointerActions).toEqual(['tap', 'doubleTap', 'longPress', 'swipeTo']);
 
     const about = await observed(h, 'About');
     await h.engine.perform!(about.ref, { kind: 'tap' }, { ...operation(), origin: 'agent' });

@@ -632,10 +632,12 @@ export interface Engine {
    * at a viewport point, in the CSS pixels of `SemanticNode.rect`, with no
    * node behind it: the agent's `tap_at` verb lands here when the point the
    * model named in a screenshot sits on nothing the tree lists (a shape on a
-   * canvas, a pin on a map, a control in a system sheet). Dispatch the
-   * pointer at the point as given; the harness has already clamped it to the
-   * viewport. Throw `UNSUPPORTED_CAPABILITY` for a declared kind the surface
-   * cannot deliver at this particular point.
+   * canvas, a pin on a map, a control in a system sheet), and so do a test's
+   * `screen.tapAt`, `screen.swipe({ from, to })`, and `tap({ position })`.
+   * Dispatch the pointer at the point as given; the harness has clamped an
+   * agent's point to the viewport and validated a test's. Throw
+   * `UNSUPPORTED_CAPABILITY` for a declared kind the surface cannot deliver
+   * at this particular point.
    */
   performAt?(point: ViewportPoint, action: PointerAction, context: OperationContext): Promise<void>;
   /**

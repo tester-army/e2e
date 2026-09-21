@@ -326,11 +326,24 @@ export function performViewportSwipe(
   return page.mouse.wheel(deltaX, deltaY);
 }
 
-/** A pointer drag from one viewport point to another, with an intermediate move so drag handlers see motion. */
-export async function performPointDrag(mouse: Mouse, from: ViewportPoint, to: ViewportPoint): Promise<void> {
+/**
+ * The browser truncates a fractional pointer coordinate, so a point composed
+ * from a fractional box (`tap({ position })` on a node at y 148.875) would
+ * land on the pixel before the one asked for; it is rounded to the nearest
+ * CSS pixel instead.
+ */
+export function nearestPixel(point: ViewportPoint): ViewportPoint {
+  return { x: Math.round(point.x), y: Math.round(point.y) };
+}
+
+/** A pointer drag from one viewport point to another, on whole pixels, with an intermediate move so drag handlers see motion. */
+export async function performPointDrag(mouse: Mouse, start: ViewportPoint, end: ViewportPoint): Promise<void> {
+  const from = nearestPixel(start);
+  const to = nearestPixel(end);
+  const middle = nearestPixel({ x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 });
   await mouse.move(from.x, from.y);
   await mouse.down();
-  await mouse.move((from.x + to.x) / 2, (from.y + to.y) / 2);
+  await mouse.move(middle.x, middle.y);
   await mouse.move(to.x, to.y);
   await mouse.up();
 }

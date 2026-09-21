@@ -143,6 +143,10 @@ const row = screen.getByRole('listitem').filter({ hasText: 'Design review' });
 await row.getByRole('button', { name: 'Archive' }).tap();
 await screen.swipe({ direction: 'up', momentum: 'fast' });
 
+// Coordinates, for what the tree does not list:
+await screen.getByRole('image', { name: 'Seat map' }).tap({ position: { x: 120, y: 48 } });
+await screen.swipe({ from: { x: 300, y: 400 }, to: { x: 40, y: 400 } });
+
 // Polling assertions:
 await expect(screen.getByRole('status')).toHaveText('2 remaining');
 await expect(web).toHaveURL('/dashboard');

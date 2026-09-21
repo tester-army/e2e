@@ -61,6 +61,9 @@ checkout interactions and can adapt when the form changes.
 | `page.goto(path)` | `app.open(path)` |
 | `page.getByRole`, `getByLabel`, `getByText`, `getByTestId`, `getByPlaceholder` | The same on `screen` |
 | `locator.click()` | `locator.tap()`; `click()` is an alias |
+| `locator.click({ position })` | `locator.tap({ position })` |
+| `page.mouse.click(x, y)` | `screen.tapAt({ x, y })` |
+| `page.mouse` down, move, up | `screen.swipe({ from, to })` |
 | `page.locator('css')` | `web.locator('css')`, not portable |
 | `page.frameLocator` | `web.frameLocator` |
 | `page.route`, `page.waitForResponse` | `web.route`, `web.waitForResponse` |

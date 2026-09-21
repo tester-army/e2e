@@ -13,7 +13,7 @@
 import type { SemanticNode, ViewportPoint } from '../engine/surface.ts';
 import { asEngineError, TestError } from '../internal/errors.ts';
 import { requireKey } from '../internal/keys.ts';
-import { clampToViewport, viewportShare } from '../internal/geometry.ts';
+import { clampToViewport, requireFinitePoint, viewportShare } from '../internal/geometry.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
 import type { JsonValue, Momentum, ScrollDirection, Secret } from '../types.ts';
 import { PROJECT_TOOL_EVENT_PREFIX } from './action-names.ts';
@@ -139,7 +139,7 @@ export class ActionDispatcher {
    * left. Costs no action: the verb the executor calls with the result does.
    */
   hitTest(point: ViewportPoint): Promise<PointHit> {
-    requirePoint(point, 'hitTest');
+    requireFinitePoint(point, 'hitTest');
     return this.queue.run(() => {
       const observation = this.feed.requireLatest();
       const clamped = clampToViewport(point, observation.viewport);
@@ -171,7 +171,7 @@ export class ActionDispatcher {
    * lands on the edge rather than failing the engine.
    */
   tapAt(point: ViewportPoint): Promise<PointTapResult> {
-    requirePoint(point, 'tapAt');
+    requireFinitePoint(point, 'tapAt');
     return this.queue.run(async () => {
       const observation = this.feed.requireLatest();
       const clamped = clampToViewport(point, observation.viewport);
@@ -458,11 +458,5 @@ export class ActionDispatcher {
         observation = relocated.observation;
       }
     }
-  }
-}
-
-function requirePoint(point: ViewportPoint, verb: string): void {
-  if (!Number.isFinite(point?.x) || !Number.isFinite(point.y)) {
-    throw new TestError('INVALID_ARGUMENT', `${verb} requires a point { x, y } of finite numbers`);
   }
 }

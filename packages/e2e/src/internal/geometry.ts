@@ -1,9 +1,24 @@
 /** Point and box arithmetic shared by the pixel tier, the point tap, and target relocation. */
 
 import type { SemanticNode, ViewportPoint, ViewportSize } from '../engine/contract.ts';
+import { TestError } from './errors.ts';
 
 /** A node's box, in the viewport's CSS pixels. */
 export type Box = NonNullable<SemanticNode['rect']>;
+
+/**
+ * Validates a point as two finite numbers and returns a plain copy; anything
+ * else is `INVALID_ARGUMENT` naming `what` asked for it. Callers layer their
+ * own rule on top: the agent clamps into the viewport, a test refuses negatives.
+ */
+export function requireFinitePoint(point: unknown, what: string): ViewportPoint {
+  const x = (point as { x?: unknown } | undefined)?.x;
+  const y = (point as { y?: unknown } | undefined)?.y;
+  if (typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)) {
+    throw new TestError('INVALID_ARGUMENT', `${what} requires a point { x, y } of finite numbers`);
+  }
+  return { x, y };
+}
 
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));

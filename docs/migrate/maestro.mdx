@@ -67,7 +67,7 @@ confirmation and the Resend control.
 | `stopApp`, then `launchApp` | `app.restart()` |
 | `tapOn: "Text"` | `screen.getByText('Text').tap()` |
 | `tapOn: { id: x }` | `screen.getByTestId('x').tap()` |
-| `tapOn: { point: ... }` | No deterministic equivalent. The agent has `tap_at` |
+| `tapOn: { point: "x,y" }` | `screen.tapAt({ x, y })`; inside a node, `.tap({ position: { x, y } })` |
 | `doubleTapOn`, `longPressOn` | `.doubleTap()`, `.longPress()` |
 | `inputText` | `screen.getByTestId('field').fill('text')` |
 | `eraseText` | `.clear()` |
@@ -75,6 +75,7 @@ confirmation and the Resend control.
 | `pressKey: Enter` | `.press('Enter')` on the field |
 | `pressKey: Home`, `back` | `device.home()`, `device.back()` |
 | `swipe: { direction: UP }` | `screen.swipe({ direction: 'up' })` |
+| `swipe: { start, end }` | `screen.swipe({ from: { x, y }, to: { x, y } })` |
 | `scroll`, `scrollUntilVisible` | `screen.swipe(...)`, `screen.scrollUntilVisible(locator)` |
 | `assertVisible`, `assertNotVisible` | `await expect(locator).toBeVisible()`, `.toBeHidden()` |
 | `assertVisible: { text, enabled: true }` | `.toBeVisible()` and `.toBeEnabled()` |
