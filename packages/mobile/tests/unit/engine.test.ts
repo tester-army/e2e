@@ -1006,6 +1006,56 @@ describe('device fixture', () => {
     h.fake.respond('command.appState', () => ({ platform: 'android', package: 'com.android.settings', activity: '.Main' }));
     expect(await fixture(h).foregroundApp()).toEqual({ name: 'com.android.settings', bundleId: 'com.android.settings' });
   });
+
+  it('opens a link into the pinned app or a named one, and the location follows the app it landed in', async () => {
+    const h = harness();
+    await openAttempt(h);
+    h.fake.respond('apps.open', () => ({ session: 's', appName: 'Benchmark', appBundleId: 'dev.e2e.benchmark', identifiers: {} }));
+    h.fake.respond('capture.snapshot', () => ({ nodes: SETTINGS_NODES }));
+    const device = fixture(h);
+    const before = h.fake.calls.length;
+    await device.openLink('e2e-benchmark://orders/42?token=abc');
+    await device.openLink('https://example.com/verify', { app: 'com.apple.mobilesafari' });
+    expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
+      ['apps.open', { platform: 'ios', app: 'Settings', url: 'e2e-benchmark://orders/42?token=abc' }],
+      ['apps.open', { platform: 'ios', app: 'com.apple.mobilesafari', url: 'https://example.com/verify' }],
+    ]);
+    expect((await h.engine.observe!(operation())).location).toBe('dev.e2e.benchmark / General');
+  });
+
+  it('lets Android route a link without an app, and needs one on iOS, where an unbound open leaves no session', async () => {
+    const android = harness({ platform: 'android' }, false);
+    await openAttempt(android);
+    android.fake.respond('capture.snapshot', () => ({ nodes: SETTINGS_NODES }));
+    android.fake.respond('apps.open', () => ({ session: 's', appName: 'myapp://orders/42', identifiers: {} }));
+    await fixture(android).openLink('myapp://orders/42');
+    expect(android.fake.lastArgs('apps.open')).toEqual({ platform: 'android', app: 'myapp://orders/42' });
+    expect((await android.engine.observe!(operation())).location).toBe('General');
+    android.fake.respond('apps.open', () => ({ session: 's', appName: 'https://example.com', appBundleId: 'com.android.chrome', identifiers: {} }));
+    await fixture(android).openLink('https://example.com');
+    expect((await android.engine.observe!(operation())).location).toBe('com.android.chrome / General');
+
+    const ios = harness({}, false);
+    await openAttempt(ios);
+    for (const url of ['https://example.com/verify', 'myapp://orders/42']) {
+      await expect(fixture(ios).openLink(url)).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+    }
+    expect(ios.fake.methods()).toEqual(['devices.boot']);
+  });
+
+  it('refuses forbidden schemes and anything but an absolute URL before any device command', async () => {
+    const h = harness();
+    await openAttempt(h);
+    const device = fixture(h);
+    const before = h.fake.calls.length;
+    for (const denied of ['file:///etc/passwd', 'data:text/html,hi', 'javascript:alert(1)']) {
+      await expect(device.openLink(denied)).rejects.toMatchObject({ code: 'POLICY_DENIED' });
+    }
+    for (const malformed of ['orders/42', '', 'https://']) {
+      await expect(device.openLink(malformed)).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+    }
+    expect(h.fake.calls.length).toBe(before);
+  });
 });
 
 describe('reference lifetime and cancellation', () => {

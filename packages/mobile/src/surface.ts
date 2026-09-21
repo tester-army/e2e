@@ -37,6 +37,7 @@ import {
   type ViewportPoint,
   type ViewportSize,
   ConfigurationError,
+  TestError,
 } from 'e2e/engine';
 import { runCommand, staleOr } from './errors.ts';
 import { pointerInteraction } from './actions.ts';
@@ -431,10 +432,52 @@ export class AgentDeviceSurface {
         }),
       signal,
     );
-    // A launch has no screen before it worth matching against: every control
-    // of the new screen is arriving, whatever the previous one looked like.
+    this.launched(result.appBundleId ?? result.appName ?? app);
+  }
+
+  /**
+   * Opens a link on the device, into `app` (the pinned app when none is
+   * named). Bound to an app, agent-device hands the link to it and the
+   * session observes that app afterwards: iOS launches the app first for a
+   * web link and then opens the URL, Android starts a VIEW intent on the
+   * package. Without an app the OS routes the link to the scheme's app, a
+   * verified app link owner, or the browser. iOS needs the app: an unbound
+   * `open <url>` there leaves no app session, so the next snapshot would
+   * fail, and agent-device refuses a deep link without one on a physical
+   * device anyway. An unbound open reports the URL as its app name, which is
+   * no identity, and the package that took the link as its bundle id when
+   * the OS told it; the next snapshot names the foreground app either way.
+   */
+  async openLink(url: URL, app: string | undefined, signal: AbortSignal): Promise<void> {
+    const target = app ?? this.pinnedApp;
+    if (target === undefined && this.options.platform === 'ios') {
+      throw new TestError(
+        'INVALID_ARGUMENT',
+        'openLink needs an app on iOS: pass `app`, or pin one with the engine option `app` or `appPath`; the session observes the app a link is opened into',
+      );
+    }
+    const result = await this.command(
+      'device.openLink',
+      (client) =>
+        client.apps.open({
+          ...this.selection(),
+          ...(target === undefined ? { app: url.href } : { app: target, url: url.href }),
+        }),
+      signal,
+    );
+    this.launched(result.appBundleId ?? (target === undefined ? undefined : (result.appName ?? target)));
+  }
+
+  /**
+   * What a launch leaves behind. It has no screen before it worth matching
+   * against: every control of the new screen is arriving, whatever the
+   * previous one looked like. The identity is the app agent-device named; a
+   * link the OS routed keeps the last known one until the next snapshot
+   * reports the foreground app.
+   */
+  private launched(identity: string | undefined): void {
     this.markAction(undefined);
-    this.appIdentity = result.appBundleId ?? result.appName ?? app;
+    if (identity !== undefined) this.appIdentity = identity;
     this.generation = new Map();
     this.located.clear();
   }

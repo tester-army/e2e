@@ -160,7 +160,7 @@ export default {
 | `perform` | `tap`, `doubleTap`, `longPress`, `fill`, `clear`, `hover`, `check`, `uncheck`, `press` (`Enter` or one character), `swipe`, `dragTo`, and `focus` on editable fields. A tap on a `switch` or `checkbox` lands on its innermost control, since UIKit reports a settings row as one labelled switch with the real toggle as a child. `check` and `uncheck` need a `checked` state, which Android switches lack. `selectOption`, `setInputFiles`, and `scrollIntoView` are not declared. |
 | `locate` | Every `screen` query. Text queries answer with the innermost match. |
 | `app` | `identity` from the pinned `app`, else `appPath`; no `url`. |
-| `session` | `back`; `restart` and `reset` when `app` or `appPath` is pinned. No `open`, so `app.open()` and the agent's `navigate` verb are unavailable. |
+| `session` | `back`; `restart` and `reset` when `app` or `appPath` is pinned. No `open`, so `app.open()` and the agent's `navigate` verb are unavailable; `device.openLink(url)` opens a deep link or web link instead. |
 | `artifacts` | Redacted screenshots under `screenshots/NNN-<label>.png`; a screenshot that cannot be redacted fails instead of being written. Video with `--video` as `video/video.mp4`. No traces. |
 | `location` | `<bundle id> / <screen title>`, the trace cache's anchor. The title is the navigation bar's on iOS and the toolbar's on Android. |
 | `state` | Not declared. `test.setup` and `session:` are unavailable. |
@@ -211,6 +211,17 @@ export interface Device {
   installApp(appPath: string, options?: InstallAppOptions): Promise<InstalledApp>;
   /** Brings an app to the foreground; `relaunch` restarts it fresh. */
   openApp(app: string, options?: { relaunch?: boolean }): Promise<void>;
+  /**
+   * Opens a deep link (`myapp://orders/42`) or a web link (`https://...`)
+   * into `app` (default: the pinned app), which the session observes
+   * afterwards. iOS launches the app for a web link and then opens the URL;
+   * a web link the app does not claim goes to Safari, and the next
+   * observation brings the app back. Android starts the link on that
+   * package. Without an app, Android lets the OS route the link; iOS needs
+   * one (`INVALID_ARGUMENT` without). `file:`, `data:`, and `javascript:`
+   * links are `POLICY_DENIED`.
+   */
+  openLink(url: string, options?: { app?: string }): Promise<void>;
   /** Closes the session's current app. */
   closeApp(): Promise<void>;
   /** The app currently in the foreground of the session. */
@@ -266,6 +277,25 @@ the build by.
 ```ts
 const { app } = await device.installApp('./build/MyApp.app', { reinstall: true });
 await device.openApp(app);
+```
+
+`openLink` opens a deep link or a web link into `app` (default: the pinned
+app), for magic-link sign-in and deep-link routes, and the session observes
+that app afterwards. iOS launches the app for a web link and then opens the
+URL; a web link the app does not claim goes to Safari, and the next
+observation brings the app back. Android starts the link on that package.
+Without an app, Android lets the OS route the link, to a verified app link
+owner or the browser, and the session follows the package that took it. iOS
+needs an app: an open bound to none leaves no app session to observe, so it
+is `INVALID_ARGUMENT`. `file:`, `data:`, and `javascript:` links are
+`POLICY_DENIED`, as on the web. The report shows the link cut before its
+query and fragment, where a magic link carries its token. The trace cache
+anchors on the location the link lands on: a step recorded after `openLink`
+replays when the link lands on the same screen again.
+
+```ts
+await device.openLink('myapp://orders/42');
+await expect(screen.getByText('Order #42')).toBeVisible();
 ```
 
 Use `device.locator` for platform-specific selectors that `screen` queries

@@ -293,8 +293,9 @@ export default {
   cancellation.
 - `screen`, `expect`, `app`, and `agent` work unchanged. Import `test` from
   `@e2edev/mobile` to type the `device` fixture (`setAppearance`,
-  `setNetwork`, `setPermission`, `installApp`, `locator('role=... id=...')`,
-  and more). Portable suites declare `requires: ['device']`.
+  `setNetwork`, `setPermission`, `installApp`, `openLink('myapp://...')`,
+  `locator('role=... id=...')`, and more). Portable suites declare
+  `requires: ['device']`.
 - No `state` capability: `test.setup` and `session` are unavailable on a
   device. Sign in within each test using `screen` actions or `agent.act`.
   Both can fill a `Secret`; screenshots are withheld afterward.

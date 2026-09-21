@@ -9,8 +9,8 @@ import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { EngineHandle, OperationContext, SemanticNode } from 'e2e/engine';
-import { mobile } from '../../src/index.ts';
+import type { EngineFixtureContext, EngineHandle, OperationContext, SemanticNode } from 'e2e/engine';
+import { mobile, type Device } from '../../src/index.ts';
 
 const enabled = process.env['E2E_AGENT_DEVICE_SIMULATOR'] === '1';
 
@@ -117,5 +117,23 @@ describe.skipIf(!enabled)('agent-device engine on a booted iOS simulator', () =>
     await expect(engine.perform!(cell!.ref, { kind: 'tap' }, operation())).rejects.toMatchObject({
       code: 'NODE_STALE',
     });
+  });
+
+  it('opens a web link and a custom scheme into named apps through the device fixture, and observes the app each landed in', async () => {
+    const context = {
+      targetName: 'ios',
+      fixture: (_name: string, value: object) => value,
+      signal: new AbortController().signal,
+      locator: () => undefined,
+    } as unknown as EngineFixtureContext;
+    const device = engine.fixtures!['device']!(context) as Device;
+    await device.openLink('https://example.com', { app: 'com.apple.mobilesafari' });
+    expect(await locationWhen(engine, (location) => location.startsWith('com.apple.mobilesafari'))).toMatch(/^com\.apple\.mobilesafari/);
+    const safari = await engine.observe!(operation());
+    expect([...walk(safari.root)].some((node) => node.name?.includes('Example Domain'))).toBe(true);
+    await device.openLink('maps://?q=Cupertino', { app: 'com.apple.Maps' });
+    expect(await locationWhen(engine, (location) => location.startsWith('com.apple.Maps'))).toMatch(/^com\.apple\.Maps/);
+    await device.openApp('Settings', { relaunch: true });
+    expect(await locationWhen(engine, (location) => location.startsWith('com.apple.Preferences'))).toMatch(/^com\.apple\.Preferences/);
   });
 });

@@ -6,6 +6,7 @@
  */
 
 import type { EngineFixtureContext, Locator } from 'e2e/engine';
+import { linkLabel, linkTarget } from './links.ts';
 import type { AgentDeviceSurface, InstallAppOptions, InstalledApp } from './surface.ts';
 
 /** Permissions agent-device can grant, deny, or reset on an open app. */
@@ -67,6 +68,17 @@ export interface Device {
   installApp(appPath: string, options?: InstallAppOptions): Promise<InstalledApp>;
   /** Brings an app to the foreground; `relaunch` restarts it fresh. */
   openApp(app: string, options?: { relaunch?: boolean }): Promise<void>;
+  /**
+   * Opens a deep link (`myapp://orders/42`) or a web link (`https://...`)
+   * into `app` (default: the pinned app), which the session observes
+   * afterwards. iOS launches the app for a web link and then opens the URL;
+   * a web link the app does not claim goes to Safari, and the next
+   * observation brings the app back. Android starts the link on that
+   * package. Without an app, Android lets the OS route the link; iOS needs
+   * one (`INVALID_ARGUMENT` without). `file:`, `data:`, and `javascript:`
+   * links are `POLICY_DENIED`.
+   */
+  openLink(url: string, options?: { app?: string }): Promise<void>;
   /** Closes the session's current app. */
   closeApp(): Promise<void>;
   /** The app currently in the foreground of the session. */
@@ -157,6 +169,9 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Engine
     async openApp(app, options) {
       await surface.openApp(app, options?.relaunch === true, context.signal);
     },
+    async openLink(url, options) {
+      await surface.openLink(linkTarget(url), options?.app, context.signal);
+    },
     async closeApp() {
       await surface.command('device.closeApp', (client) => client.apps.close({}), context.signal);
     },
@@ -205,6 +220,7 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Engine
     enrollBiometrics: action,
     installApp: { ...action, label: (appPath) => appPath },
     openApp: { ...action, label: (app) => app },
+    openLink: { ...action, label: (url) => linkLabel(url) },
     closeApp: action,
     foregroundApp: action,
     home: action,
