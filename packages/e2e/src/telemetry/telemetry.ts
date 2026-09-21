@@ -30,7 +30,7 @@ import { DOCS_URL } from '../cli/docs-url.ts';
 import { envFlag } from '../internal/env.ts';
 import { timestamp } from '../internal/ids.ts';
 import { collectEnvironment, statedIdentity } from './environment.ts';
-import type { TelemetryEvent } from './events.ts';
+import { cliSessionEvent, type TelemetryEvent } from './events.ts';
 import { postBatch, type PostHogEvent } from './posthog.ts';
 import { anonymousProjectId } from './project.ts';
 import { preferencesPath, TelemetryStore, telemetryConfigDir } from './store.ts';
@@ -91,6 +91,11 @@ export class Telemetry {
   private opened: { readonly store: TelemetryStore | undefined } | undefined;
   private readonly queue: TelemetryEvent[] = [];
   private project: Promise<string | undefined> | undefined;
+  private readonly startedAt = Date.now();
+  /** The command this invocation runs, once the CLI has named it; the session event is built from it at the flush. */
+  private command: { readonly name: string; readonly flags: readonly string[] } | undefined;
+  private failure: string | undefined;
+  private exitCode: number | undefined;
 
   constructor(options: TelemetryOptions) {
     this.version = options.version;
@@ -157,15 +162,53 @@ export class Telemetry {
     this.write(noticeText());
   }
 
+  /**
+   * Names the command this invocation runs. The CLI calls it as soon as
+   * commander turns to the subcommand, so a rejected flag still leaves a
+   * session of that command, and again with the flags once the action runs.
+   * A no-op when off.
+   */
+  session(command: string, flags: readonly string[] = []): void {
+    if (!this.enabled) return;
+    this.command = { name: command, flags };
+    this.lookUpProject();
+  }
+
+  /** The runner code of the failure that ended the command before it could run; the first is the one that did. */
+  failSession(code: string): void {
+    this.failure ??= code;
+  }
+
+  /** The exit code the process leaves with; the entry point knows it last. */
+  endSession(exitCode: number): void {
+    this.exitCode = exitCode;
+  }
+
   /** Queues one event for the flush; a no-op when off. */
   record(event: TelemetryEvent): void {
     if (!this.enabled) return;
     this.queue.push(event);
-    // Git is asked for the project id now, while the command runs, so the
-    // flush at the end waits on the network alone. A fleet or CI has no
-    // store, so a path outside git has nothing to salt it and yields no id.
+    this.lookUpProject();
+  }
+
+  /**
+   * Git is asked for the project id now, while the command runs, so the
+   * flush at the end waits on the network alone. A fleet or CI has no
+   * store, so a path outside git has nothing to salt it and yields no id.
+   */
+  private lookUpProject(): void {
     const store: TelemetryStore | undefined = this.statedId === undefined ? this.store() : undefined;
     this.project ??= this.projectId(this.cwd, store?.pathSalt);
+  }
+
+  /** The session event, first in the batch; absent for an invocation that never reached a command. */
+  private sessionEvent(): TelemetryEvent[] {
+    if (this.command === undefined) return [];
+    const ended =
+      this.exitCode === undefined
+        ? undefined
+        : { exitCode: this.exitCode, errorCode: this.failure, elapsedMs: Date.now() - this.startedAt };
+    return [cliSessionEvent(this.command.name, this.command.flags, ended)];
   }
 
   /**
@@ -175,7 +218,8 @@ export class Telemetry {
    * telemetry.
    */
   async flush(maxWaitMs: number = DEFAULT_FLUSH_MS): Promise<void> {
-    const events = this.queue.splice(0);
+    const events = [...this.sessionEvent(), ...this.queue.splice(0)];
+    this.command = undefined;
     if (events.length === 0) return;
     // A choice saved from another process while this command ran wins over the snapshot taken at its start.
     const store: TelemetryStore | undefined = this.statedId === undefined ? this.store() : undefined;

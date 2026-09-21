@@ -1,12 +1,57 @@
 import { describe, expect, it } from 'vitest';
-import { cliSessionEvent, EVENT_CLI_SESSION, EVENT_RUN_COMPLETED, runCompletedEvent } from '../../src/telemetry/events.ts';
+import {
+  cliSessionEvent,
+  EVENT_CLI_SESSION,
+  EVENT_INIT_COMPLETED,
+  EVENT_RUN_COMPLETED,
+  initCompletedEvent,
+  runCompletedEvent,
+} from '../../src/telemetry/events.ts';
 import { SAMPLE_REPORT_SECRETS, sampleReport } from '../helpers/sample-report.ts';
 
 describe('telemetry events', () => {
-  it('the session event carries the command and the flag names only', () => {
+  it('the session event carries the command and the flag names only, and how it ended once known', () => {
     expect(cliSessionEvent('cache ls', ['--config'])).toEqual({
       name: EVENT_CLI_SESSION,
       properties: { command: 'cache ls', flags: ['--config'] },
+    });
+    expect(cliSessionEvent('run', [], { exitCode: 2, errorCode: 'CONFIG_NOT_FOUND', elapsedMs: 41.6 }).properties).toEqual({
+      command: 'run',
+      flags: [],
+      exit_code: 2,
+      error_code: 'CONFIG_NOT_FOUND',
+      duration_ms: 42,
+    });
+    expect(cliSessionEvent('run', [], { exitCode: 0, errorCode: undefined, elapsedMs: -5 }).properties).toMatchObject({
+      error_code: null,
+      duration_ms: 0,
+    });
+  });
+
+  it('the init event carries the result and the option ids chosen', () => {
+    expect(
+      initCompletedEvent({
+        result: 'scaffolded',
+        yes: false,
+        existingConfig: false,
+        engine: 'playwright',
+        gateway: 'openai-compatible',
+        skill: true,
+        mcp: false,
+        install: true,
+      }),
+    ).toEqual({
+      name: EVENT_INIT_COMPLETED,
+      properties: {
+        result: 'scaffolded',
+        yes: false,
+        existing_config: false,
+        engine: 'playwright',
+        gateway: 'openai-compatible',
+        skill: true,
+        mcp: false,
+        install: true,
+      },
     });
   });
 

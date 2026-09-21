@@ -25,12 +25,84 @@ export interface TelemetryEvent {
 export const EVENT_CLI_SESSION = 'e2e_cli_session';
 /** One per `e2e run`, from the report the run wrote. */
 export const EVENT_RUN_COMPLETED = 'e2e_run_completed';
+/** One per `e2e init`, however it ended: what was chosen and whether anything was written. */
+export const EVENT_INIT_COMPLETED = 'e2e_init_completed';
+/** The session's error code for a flag or argument commander rejected; no runner code exists for it. */
+export const USAGE_ERROR_CODE = 'CLI_USAGE';
+
+/** How the invocation ended, known only once the command has returned or thrown. */
+export interface SessionEnd {
+  readonly exitCode: number;
+  /** The runner code of the failure that ended the command before it could run; undefined when nothing did. */
+  readonly errorCode: string | undefined;
+  readonly elapsedMs: number;
+}
+
+/**
+ * How `e2e init` ended. `scaffolded` wrote files, `already-initialized` found
+ * nothing to write, `cancelled` stopped at a prompt, `install-failed` wrote
+ * the files but the package manager failed, `not-interactive` had prompts and
+ * no terminal, `invalid-project` could not start (a file for a directory, an
+ * unreadable package.json, a bundled skill missing).
+ */
+export type InitResult =
+  | 'scaffolded'
+  | 'already-initialized'
+  | 'cancelled'
+  | 'install-failed'
+  | 'not-interactive'
+  | 'invalid-project';
+
+/** What `e2e init` was asked and chose: the CLI's own option ids, never a path or an endpoint the user typed. */
+export interface InitOutcome {
+  readonly result: InitResult;
+  readonly yes: boolean;
+  /** Whether a config already existed, in which case no engine or gateway was asked. */
+  readonly existingConfig: boolean;
+  readonly engine: string | null;
+  readonly gateway: string | null;
+  /** Whether the agent skill, the MCP registration, and the install were chosen. */
+  readonly skill: boolean;
+  readonly mcp: boolean;
+  readonly install: boolean;
+}
 
 const SEMVER = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/u;
 const MAX_ERROR_CODES = 20;
 
-export function cliSessionEvent(command: string, flags: readonly string[]): TelemetryEvent {
-  return { name: EVENT_CLI_SESSION, properties: { command, flags: [...flags] } };
+/** The session: the command and its flag names, and how it ended once that is known. */
+export function cliSessionEvent(command: string, flags: readonly string[], ended?: SessionEnd): TelemetryEvent {
+  return {
+    name: EVENT_CLI_SESSION,
+    properties: {
+      command,
+      flags: [...flags],
+      ...(ended === undefined
+        ? {}
+        : {
+            exit_code: ended.exitCode,
+            error_code: ended.errorCode === undefined ? null : errorCodeToken(ended.errorCode),
+            duration_ms: Math.max(0, Math.round(ended.elapsedMs)),
+          }),
+    },
+  };
+}
+
+/** The init event: each choice as its option id. */
+export function initCompletedEvent(outcome: InitOutcome): TelemetryEvent {
+  return {
+    name: EVENT_INIT_COMPLETED,
+    properties: {
+      result: outcome.result,
+      yes: outcome.yes,
+      existing_config: outcome.existingConfig,
+      engine: outcome.engine,
+      gateway: outcome.gateway,
+      skill: outcome.skill,
+      mcp: outcome.mcp,
+      install: outcome.install,
+    },
+  };
 }
 
 /**

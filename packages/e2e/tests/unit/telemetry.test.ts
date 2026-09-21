@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { cliSessionEvent, EVENT_CLI_SESSION, EVENT_RUN_COMPLETED, runCompletedEvent } from '../../src/telemetry/events.ts';
+import { EVENT_CLI_SESSION, EVENT_RUN_COMPLETED, runCompletedEvent } from '../../src/telemetry/events.ts';
 import { POSTHOG_HOST, POSTHOG_PROJECT_KEY } from '../../src/telemetry/posthog.ts';
 import { collectEnvironment, fleetName, statedIdentity } from '../../src/telemetry/environment.ts';
 import { preferencesPath, TelemetryStore } from '../../src/telemetry/store.ts';
@@ -82,7 +82,7 @@ describe('Telemetry', () => {
     expect(output[0]).toContain('/telemetry');
     expect(TelemetryStore.open(configDir)!.wasNotified(NOTICE_VERSION)).toBe(true);
 
-    telemetry.record(cliSessionEvent('run', ['--headed']));
+    telemetry.session('run', ['--headed']);
     await telemetry.flush();
 
     expect(sent.calls).toHaveLength(1);
@@ -124,7 +124,7 @@ describe('Telemetry', () => {
   it('tells a returning machine from a first run and counts the days since', async () => {
     const configDir = tempDir();
     const first = create({ configDir });
-    first.telemetry.record(cliSessionEvent('list', []));
+    first.telemetry.session('list', []);
     await first.telemetry.flush();
     expect(first.sent.calls[0]!.body.batch[0]!.properties['first_run']).toBe(true);
 
@@ -132,7 +132,7 @@ describe('Telemetry', () => {
     const saved = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
     writeFileSync(file, JSON.stringify({ ...saved, createdAt: new Date(Date.now() - 3.5 * 86_400_000).toISOString() }));
     const later = create({ configDir });
-    later.telemetry.record(cliSessionEvent('list', []));
+    later.telemetry.session('list', []);
     await later.telemetry.flush();
     const { properties } = later.sent.calls[0]!.body.batch[0]!;
     expect(properties['first_run']).toBe(false);
@@ -142,7 +142,7 @@ describe('Telemetry', () => {
 
   it('batches every event of an invocation into one request and then has nothing left', async () => {
     const { telemetry, sent } = create();
-    telemetry.record(cliSessionEvent('run', []));
+    telemetry.session('run', []);
     telemetry.record(runCompletedEvent(sampleReport(), []));
     await telemetry.flush();
     expect(sent.calls).toHaveLength(1);
@@ -154,17 +154,68 @@ describe('Telemetry', () => {
     expect(sent.calls).toHaveLength(1);
   });
 
+  it('sends the session first, named as the CLI last named it', async () => {
+    const { telemetry, sent } = create();
+    telemetry.record(runCompletedEvent(sampleReport(), []));
+    telemetry.session('run');
+    telemetry.session('run', ['--tag']);
+    await telemetry.flush();
+    const batch = sent.calls[0]!.body.batch;
+    expect(batch.map((item) => item.event)).toEqual([EVENT_CLI_SESSION, EVENT_RUN_COMPLETED]);
+    expect(batch[0]!.properties['flags']).toEqual(['--tag']);
+    expect(batch[0]!.properties).not.toHaveProperty('exit_code');
+  });
+
+  it('stamps how the invocation ended on the session event alone', async () => {
+    const { telemetry, sent } = create();
+    telemetry.session('run');
+    telemetry.record(runCompletedEvent(sampleReport(), []));
+    telemetry.endSession(0);
+    await telemetry.flush();
+    const [session, run] = sent.calls[0]!.body.batch;
+    expect(session!.properties['exit_code']).toBe(0);
+    expect(session!.properties['error_code']).toBeNull();
+    expect(session!.properties['duration_ms']).toBeGreaterThanOrEqual(0);
+    // The run event keeps the report's exit code and never a session field.
+    expect(run!.properties['exit_code']).toBe(1);
+    expect(run!.properties).not.toHaveProperty('error_code');
+  });
+
+  it('names the first failure as the one that ended the command, folded like every code', async () => {
+    const { telemetry, sent } = create();
+    telemetry.session('run');
+    telemetry.failSession('CONFIG_NOT_FOUND');
+    telemetry.failSession('INVALID_CONFIG');
+    telemetry.endSession(2);
+    await telemetry.flush();
+    expect(sent.calls[0]!.body.batch[0]!.properties['error_code']).toBe('CONFIG_NOT_FOUND');
+
+    const folded = create();
+    folded.telemetry.session('run');
+    folded.telemetry.failSession('not-a-runner-code');
+    folded.telemetry.endSession(1);
+    await folded.telemetry.flush();
+    expect(folded.sent.calls[0]!.body.batch[0]!.properties['error_code']).toBe('OTHER');
+  });
+
+  it('sends nothing for an invocation that never reached a command', async () => {
+    const { telemetry, sent } = create();
+    telemetry.endSession(2);
+    await telemetry.flush();
+    expect(sent.calls).toEqual([]);
+  });
+
   it('keeps the same project id across invocations on one machine and differs across machines', async () => {
     const cwd = tempDir();
     const configDir = tempDir();
     const first = create({ cwd, configDir });
-    first.telemetry.record(cliSessionEvent('list', []));
+    first.telemetry.session('list', []);
     await first.telemetry.flush();
     const second = create({ cwd, configDir });
-    second.telemetry.record(cliSessionEvent('list', []));
+    second.telemetry.session('list', []);
     await second.telemetry.flush();
     const other = create({ cwd });
-    other.telemetry.record(cliSessionEvent('list', []));
+    other.telemetry.session('list', []);
     await other.telemetry.flush();
 
     const projectOf = (batch: SentBatch[]): unknown => batch[0]!.body.batch[0]!.properties['project_id'];
@@ -181,7 +232,7 @@ describe('Telemetry', () => {
     expect(telemetry.disabledBy).toBe(reason);
     expect(telemetry.enabled).toBe(false);
     telemetry.notice();
-    telemetry.record(cliSessionEvent('run', []));
+    telemetry.session('run', []);
     await telemetry.flush();
     expect(output).toEqual([]);
     expect(sent.calls).toEqual([]);
@@ -202,7 +253,7 @@ describe('Telemetry', () => {
     const second = create({ configDir });
     expect(second.telemetry.disabledBy).toBe('preference');
     second.telemetry.notice();
-    second.telemetry.record(cliSessionEvent('run', []));
+    second.telemetry.session('run', []);
     await second.telemetry.flush();
     expect(second.output).toEqual([]);
     expect(second.sent.calls).toEqual([]);
@@ -213,7 +264,7 @@ describe('Telemetry', () => {
 
   it('drops an event recorded before the opt-out landed', async () => {
     const { telemetry, sent } = create();
-    telemetry.record(cliSessionEvent('telemetry', []));
+    telemetry.session('telemetry', []);
     telemetry.setEnabled(false);
     await telemetry.flush();
     expect(sent.calls).toEqual([]);
@@ -222,7 +273,7 @@ describe('Telemetry', () => {
   it('drops the batch when another process saved an opt-out while the command ran', async () => {
     const configDir = tempDir();
     const running = create({ configDir });
-    running.telemetry.record(cliSessionEvent('run', []));
+    running.telemetry.session('run', []);
     const other = create({ configDir });
     expect(other.telemetry.setEnabled(false)).toBe(preferencesPath(configDir));
     await running.telemetry.flush();
@@ -234,7 +285,7 @@ describe('Telemetry', () => {
     expect(telemetry.disabledBy).toBe('store');
     expect(telemetry.setEnabled(true)).toBeUndefined();
     telemetry.notice();
-    telemetry.record(cliSessionEvent('run', []));
+    telemetry.session('run', []);
     await telemetry.flush();
     expect(output).toEqual([]);
     expect(sent.calls).toEqual([]);
@@ -243,7 +294,7 @@ describe('Telemetry', () => {
   it('attributes CI runs to the vendor, writes no preferences, and prints no notice', async () => {
     const { telemetry, output, sent, configDir } = create({ env: { CI: 'true', GITHUB_ACTIONS: 'true' } });
     telemetry.notice();
-    telemetry.record(cliSessionEvent('run', ['--reporter']));
+    telemetry.session('run', ['--reporter']);
     await telemetry.flush();
     expect(output).toEqual([]);
     expect(existsSync(preferencesPath(configDir))).toBe(false);
@@ -259,7 +310,7 @@ describe('Telemetry', () => {
     const { telemetry, output, sent, configDir } = create({ env: { E2E_TELEMETRY_FLEET: 'acme-cloud' } });
     expect(telemetry.enabled).toBe(true);
     telemetry.notice();
-    telemetry.record(cliSessionEvent('run', ['--reporter']));
+    telemetry.session('run', ['--reporter']);
     await telemetry.flush();
     expect(output).toEqual([]);
     expect(existsSync(preferencesPath(configDir))).toBe(false);
@@ -274,7 +325,7 @@ describe('Telemetry', () => {
 
   it('a fleet name wins over a CI vendor and folds when it is not a plain token', async () => {
     const { telemetry, sent } = create({ env: { E2E_TELEMETRY_FLEET: 'runner-7.internal.acme.example/eu', CI: '1', GITHUB_ACTIONS: '1' } });
-    telemetry.record(cliSessionEvent('run', []));
+    telemetry.session('run', []);
     await telemetry.flush();
     const { properties } = sent.calls[0]!.body.batch[0]!;
     expect(properties['distinct_id']).toBe('fleet:other');
@@ -296,7 +347,7 @@ describe('Telemetry', () => {
   it('still honors an opt-out inside a fleet', async () => {
     const { telemetry, sent } = create({ env: { E2E_TELEMETRY_FLEET: 'acme', E2E_TELEMETRY_DISABLED: '1' } });
     expect(telemetry.disabledBy).toBe('E2E_TELEMETRY_DISABLED');
-    telemetry.record(cliSessionEvent('run', []));
+    telemetry.session('run', []);
     await telemetry.flush();
     expect(sent.calls).toEqual([]);
   });
@@ -322,7 +373,7 @@ describe('Telemetry', () => {
 
   it('names an unclaimed CI and the coding agent driving the shell', async () => {
     const { telemetry, sent } = create({ env: { CI: '1', CLAUDECODE: '1' } });
-    telemetry.record(cliSessionEvent('run', []));
+    telemetry.session('run', []);
     await telemetry.flush();
     const { properties } = sent.calls[0]!.body.batch[0]!;
     expect(properties['distinct_id']).toBe('ci:unknown');
@@ -333,7 +384,7 @@ describe('Telemetry', () => {
   it('prints every event under E2E_TELEMETRY_DEBUG and sends nothing', async () => {
     const { telemetry, output, sent } = create({ env: { E2E_TELEMETRY_DEBUG: '1' } });
     expect(telemetry.debug).toBe(true);
-    telemetry.record(cliSessionEvent('cache ls', []));
+    telemetry.session('cache ls', []);
     await telemetry.flush();
     expect(sent.calls).toEqual([]);
     const lines = output.filter((text) => text.startsWith('[telemetry] '));
@@ -356,7 +407,7 @@ describe('Telemetry', () => {
         init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
       })) as typeof fetch;
     const slow = create({ fetch: hanging });
-    slow.telemetry.record(cliSessionEvent('run', []));
+    slow.telemetry.session('run', []);
     const started = Date.now();
     await slow.telemetry.flush(50);
     expect(Date.now() - started).toBeLessThan(1_500);
@@ -366,19 +417,19 @@ describe('Telemetry', () => {
         throw new Error('offline');
       }) as typeof fetch,
     });
-    throwing.telemetry.record(cliSessionEvent('run', []));
+    throwing.telemetry.session('run', []);
     await expect(throwing.telemetry.flush()).resolves.toBeUndefined();
 
     const rejected = recordingFetch(500);
     const refused = create({ fetch: rejected.fetch });
-    refused.telemetry.record(cliSessionEvent('run', []));
+    refused.telemetry.session('run', []);
     await expect(refused.telemetry.flush()).resolves.toBeUndefined();
     expect(rejected.calls).toHaveLength(1);
   });
 
   it('holds the project lookup to the same deadline as the request', async () => {
     const stuck = create({ projectId: () => new Promise<string | undefined>(() => undefined) });
-    stuck.telemetry.record(cliSessionEvent('run', []));
+    stuck.telemetry.session('run', []);
     const started = Date.now();
     await stuck.telemetry.flush(50);
     expect(Date.now() - started).toBeLessThan(1_500);
@@ -386,7 +437,7 @@ describe('Telemetry', () => {
     expect(stuck.sent.calls).toEqual([]);
 
     const prompt = create({ projectId: async () => 'f'.repeat(64) });
-    prompt.telemetry.record(cliSessionEvent('run', []));
+    prompt.telemetry.session('run', []);
     await prompt.telemetry.flush();
     expect(prompt.sent.calls[0]!.body.batch[0]!.properties['project_id']).toBe('f'.repeat(64));
   });

@@ -75,8 +75,10 @@ child frames off the site are dropped from observations.
 
 The CLI sends anonymous usage telemetry, on by default. One `e2e_cli_session`
 event per command carries the command name, the names of the flags given, the
-e2e, Node, and OS versions, the CPU count and memory class, and whether the
-shell is a container, a CI vendor, or a coding agent. One `e2e_run_completed`
+exit code and the runner error code that ended the command, the e2e, Node, and
+OS versions, the CPU count and memory class, and whether the shell is a
+container, a CI vendor, or a coding agent. One `e2e_init_completed` event per
+`e2e init` carries how it ended and the ids of the engine and gateway chosen. One `e2e_run_completed`
 event per run carries the report's numbers: status, exit code, duration, test
 and step counts, engine names and versions, platforms, cache replay counts,
 model provider and public model id, token totals, and the runner's error codes.

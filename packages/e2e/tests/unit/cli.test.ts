@@ -25,6 +25,22 @@ const { version: packageVersion } = JSON.parse(
   readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
 ) as { version: string };
 
+/** What a mocked `init` hands back: the exit code and the choices, none made. */
+function initOutcome(exitCode: number, overrides: Record<string, unknown> = {}) {
+  return {
+    exitCode,
+    result: exitCode === 0 ? 'scaffolded' : 'invalid-project',
+    yes: false,
+    existingConfig: false,
+    engine: null,
+    gateway: null,
+    skill: false,
+    mcp: false,
+    install: false,
+    ...overrides,
+  };
+}
+
 function lastRunOptions(): RunOptions {
   expect(runMock).toHaveBeenCalledTimes(1);
   return runMock.mock.calls[0]?.[0] as RunOptions;
@@ -48,7 +64,7 @@ beforeEach(() => {
   listMock.mockReset();
   listMock.mockResolvedValue({ pairs: [] });
   initMock.mockReset();
-  initMock.mockResolvedValue(0);
+  initMock.mockResolvedValue(initOutcome(0));
   process.exitCode = undefined;
   stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
   stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
@@ -401,7 +417,7 @@ describe('e2e init argument parsing', () => {
   });
 
   it('resolves a directory argument against the working directory and passes it along as typed', async () => {
-    initMock.mockResolvedValue(2);
+    initMock.mockResolvedValue(initOutcome(2));
     await invoke('init', 'apps/web');
     expect(initMock).toHaveBeenCalledExactlyOnceWith(
       path.resolve(process.cwd(), 'apps/web'),
@@ -665,6 +681,60 @@ describe('e2e telemetry', () => {
     for (const secret of SAMPLE_REPORT_SECRETS) expect(payload).not.toContain(secret);
     expect(payload).not.toContain('"3"');
     expect(process.exitCode).toBe(1);
+  });
+
+  it('ends the session event with the exit code, and the failure code when the command threw', async () => {
+    await invoke('list');
+    const [listed] = printedEvents();
+    expect(listed!.properties['exit_code']).toBe(0);
+    expect(listed!.properties['error_code']).toBeNull();
+    expect(typeof listed!.properties['duration_ms']).toBe('number');
+
+    stderrSpy.mockClear();
+    runMock.mockRejectedValue(new ConfigurationError('CONFIG_NOT_FOUND', 'no e2e.config.ts in /secret/place'));
+    await invoke('run');
+    const [failed] = printedEvents();
+    expect(failed!.event).toBe('e2e_cli_session');
+    expect(failed!.properties['exit_code']).toBe(2);
+    expect(failed!.properties['error_code']).toBe('CONFIG_NOT_FOUND');
+    expect(JSON.stringify(failed)).not.toContain('secret');
+    expect(process.exitCode).toBe(2);
+
+    stderrSpy.mockClear();
+    runMock.mockResolvedValue({ exitCode: 1, report: sampleReport() });
+    await invoke('run');
+    const [session, run] = printedEvents();
+    expect(session!.properties['exit_code']).toBe(1);
+    expect(session!.properties['error_code']).toBeNull();
+    expect(run!.properties).not.toHaveProperty('error_code');
+  });
+
+  it('names a usage error commander rejected, as a session of the command it was aimed at', async () => {
+    await invoke('run', '--workers', 'many');
+    const events = printedEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0]!.properties['command']).toBe('run');
+    expect(events[0]!.properties['flags']).toEqual([]);
+    expect(events[0]!.properties['exit_code']).toBe(2);
+    expect(events[0]!.properties['error_code']).toBe('CLI_USAGE');
+    expect(JSON.stringify(events)).not.toContain('many');
+    expect(process.exitCode).toBe(2);
+    expect(runMock).not.toHaveBeenCalled();
+
+    stderrSpy.mockClear();
+    await invoke('cache', 'ls', '--nope');
+    const [nested] = printedEvents();
+    expect(nested!.properties['command']).toBe('cache ls');
+    expect(nested!.properties['error_code']).toBe('CLI_USAGE');
+  });
+
+  it('records the init event from the outcome init returns', async () => {
+    initMock.mockResolvedValue(initOutcome(0, { result: 'cancelled', engine: 'agent-device' }));
+    await invoke('init', 'apps/secret-app');
+    const events = printedEvents();
+    expect(events.map((event) => event.event)).toEqual(['e2e_cli_session', 'e2e_init_completed']);
+    expect(events[1]!.properties).toMatchObject({ result: 'cancelled', engine: 'agent-device', gateway: null, skill: false });
+    expect(JSON.stringify(events)).not.toContain('secret-app');
   });
 
   it('is listed in the help with its actions', async () => {

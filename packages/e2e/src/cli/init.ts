@@ -15,6 +15,7 @@ import { findRegisteredMcpFiles, MCP_LOCATIONS, planMcpRegistration } from './in
 import { addDependencies, addScripts, describeManifestError, readPackage, serializePackage } from './init/package.ts';
 import { createScaffold, type ScaffoldModel } from './init/scaffold.ts';
 import { MISSING_SKILL_MESSAGE, readSkillFiles } from './skill.ts';
+import type { InitOutcome, InitResult } from '../telemetry/events.ts';
 
 export interface InitOptions {
   yes?: boolean;
@@ -60,18 +61,34 @@ type GatewayChoice = GatewayId | 'none';
  * the user asks. The agent skill is offered once; later runs refresh the
  * copies that exist and never add new locations.
  */
-export async function init(cwd: string, options: InitOptions = {}): Promise<number> {
+export async function init(cwd: string, options: InitOptions = {}): Promise<InitOutcome & { readonly exitCode: number }> {
   clack.intro(options.directory === undefined ? 'e2e init' : `e2e init ${options.directory}`);
+  // Filled in as the choices are made; every return hands them back with how the run ended.
+  const facts: { -readonly [Key in keyof Omit<InitOutcome, 'result'>]: InitOutcome[Key] } = {
+    yes: options.yes === true,
+    existingConfig: false,
+    engine: null,
+    gateway: null,
+    skill: false,
+    mcp: false,
+    install: false,
+  };
+  const done = (result: InitResult, exitCode: number): InitOutcome & { readonly exitCode: number } => ({
+    exitCode,
+    result,
+    ...facts,
+  });
+  const cancel = (): InitOutcome & { readonly exitCode: number } => done('cancelled', cancelled());
 
   if (options.interactive === false && !options.yes) {
     clack.log.error(
       'e2e init asks questions and needs an interactive terminal; run it from a terminal, or pass --yes to accept the defaults (Playwright, the Vercel AI Gateway, no installation)',
     );
-    return 2;
+    return done('not-interactive', 2);
   }
   if (existsSync(cwd) && !statSync(cwd).isDirectory()) {
     clack.log.error(`${options.directory ?? cwd} is a file, not a directory`);
-    return 2;
+    return done('invalid-project', 2);
   }
 
   let pkg: ReturnType<typeof readPackage>;
@@ -79,17 +96,18 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
     pkg = readPackage(cwd);
   } catch (cause) {
     clack.log.error(`${path.join(cwd, 'package.json')} could not be read: ${describeManifestError(cause)}; fix it before running e2e init`);
-    return 2;
+    return done('invalid-project', 2);
   }
   const bundledSkill = readSkillFiles();
   if (bundledSkill.length === 0) {
     clack.log.error(MISSING_SKILL_MESSAGE);
-    return 2;
+    return done('invalid-project', 2);
   }
 
   const existingConfig = ['e2e.config.ts', 'e2e.config.mts'].find((file) => existsSync(path.join(cwd, file)));
   const examplePath = path.join('tests', 'example.e2e.ts');
   const exampleExists = existsSync(path.join(cwd, examplePath));
+  facts.existingConfig = existingConfig !== undefined;
   if (existingConfig !== undefined) clack.log.warn(`Exists, not touching: ${existingConfig}`);
   if (exampleExists) clack.log.warn(`Exists, not touching: ${examplePath}`);
 
@@ -107,7 +125,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
       initialValue: DEFAULT_ENGINE_ID,
       options: getEnginePresets().map(({ id, label, hint }) => ({ value: id, label, hint })),
     });
-    if (isCancelled(selectedEngine)) return cancelled();
+    if (isCancelled(selectedEngine)) return cancel();
     engine = selectedEngine;
 
     // The gateway is a visible choice, not a runner default: the config imports
@@ -120,7 +138,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
         { value: 'none', label: 'None', hint: 'deterministic tests only; add a gateway later' },
       ],
     });
-    if (isCancelled(gateway)) return cancelled();
+    if (isCancelled(gateway)) return cancel();
     if (gateway === 'none') {
       model = undefined;
     } else if (gateway === 'openai-compatible') {
@@ -129,11 +147,15 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
         placeholder: 'http://127.0.0.1:11434/v1',
         validate: validateEndpoint,
       });
-      if (isCancelled(endpoint)) return cancelled();
+      if (isCancelled(endpoint)) return cancel();
       model = { gateway, endpoint: endpoint.trim() };
     } else {
       model = { gateway };
     }
+  }
+  if (existingConfig === undefined) {
+    facts.engine = engine;
+    facts.gateway = model?.gateway ?? 'none';
   }
 
   const skillDirs = await chooseLocations(
@@ -142,7 +164,8 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
     'Install the e2e skill for coding agents?',
     options.yes,
   );
-  if (isCancelled(skillDirs)) return cancelled();
+  if (isCancelled(skillDirs)) return cancel();
+  facts.skill = skillDirs.length > 0;
   const skillInstalls = planSkillInstall(cwd, skillDirs, bundledSkill);
 
   const mcpFiles = await chooseLocations(
@@ -151,13 +174,14 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
     'Register the e2e MCP server for coding agents?',
     options.yes,
   );
-  if (isCancelled(mcpFiles)) return cancelled();
+  if (isCancelled(mcpFiles)) return cancel();
+  facts.mcp = mcpFiles.length > 0;
   let mcpRegistrations: ReturnType<typeof planMcpRegistration>;
   try {
     mcpRegistrations = planMcpRegistration(cwd, mcpFiles);
   } catch (cause) {
     clack.log.error(cause instanceof Error ? cause.message : String(cause));
-    return 2;
+    return done('invalid-project', 2);
   }
 
   const scaffold = createScaffold(engine, model);
@@ -180,7 +204,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
 
   if (files.length === 0 && skillInstalls.length === 0 && mcpRegistrations.length === 0 && missingIgnore.length === 0) {
     clack.outro('Nothing to create; project already initialized');
-    return 0;
+    return done('already-initialized', 0);
   }
 
   if (!options.yes) {
@@ -192,16 +216,17 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
     ];
     const message = actions.join(', ');
     const proceed = await clack.confirm({ message: `${message.charAt(0).toUpperCase()}${message.slice(1)}?` });
-    if (isCancelled(proceed) || !proceed) return cancelled();
+    if (isCancelled(proceed) || !proceed) return cancel();
   }
 
   const manager = detectPackageManager(cwd, manifest.packageManager);
   let install = false;
   if (!options.yes) {
     const selected = await clack.confirm({ message: `Install dependencies with ${manager}?`, initialValue: true });
-    if (isCancelled(selected)) return cancelled();
+    if (isCancelled(selected)) return cancel();
     install = selected;
   }
+  facts.install = install;
 
   // The first write; a directory named on the command line comes into being here.
   mkdirSync(cwd, { recursive: true });
@@ -244,7 +269,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
       const reason = result.error?.message ?? `exit ${result.status ?? result.signal}`;
       clack.log.error(`Installation failed (${reason}); retry with ${manager} install`);
       clack.outro('Scaffold saved');
-      return result.signal === 'SIGINT' ? 130 : 2;
+      return done('install-failed', result.signal === 'SIGINT' ? 130 : 2);
     }
   }
   if (!existsSync(path.join(cwd, 'tsconfig.json'))) {
@@ -263,7 +288,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<numb
     `${scaffold.needsAppUrl ? 'APP_URL=http://localhost:3000 ' : ''}${runCommand}`,
   ].filter((step) => step !== undefined);
   clack.outro(`Next: ${next.join(', then ')}`);
-  return 0;
+  return done('scaffolded', 0);
 }
 
 /**

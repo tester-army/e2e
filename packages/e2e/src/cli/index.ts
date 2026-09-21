@@ -13,7 +13,7 @@ import { explore, STEP_BOUNDS, TIMEOUT_BOUNDS } from '../explore/index.ts';
 import { BUILTIN_REPORTERS, isBuiltinReporter } from '../report/builtin.ts';
 import { bounded } from '../report/format.ts';
 import type { BuiltinReporter } from '../types.ts';
-import { cliSessionEvent, runCompletedEvent } from '../telemetry/events.ts';
+import { initCompletedEvent, runCompletedEvent, USAGE_ERROR_CODE } from '../telemetry/events.ts';
 import { Telemetry } from '../telemetry/telemetry.ts';
 import { cache, type CacheCommand } from './cache.ts';
 import { DOCS_URL } from './docs-url.ts';
@@ -199,12 +199,23 @@ async function runToOutcome(
     // The run event is the report's own numbers; every run has a report, even one that failed before its first test.
     telemetry.record(runCompletedEvent(outcome.report, usedFlags(command)));
   } catch (cause) {
-    const error = classifyError(cause);
-    process.stderr.write(`${error.code}: ${error.message}\n`);
-    process.exitCode = exitCodeForCategory(error.category);
+    reportFailure(telemetry, cause);
   } finally {
     release();
   }
+}
+
+/** Prints a failure that stopped a command before it could run, sets the exit code, and names it in the session. */
+function reportFailure(telemetry: Telemetry, cause: unknown): void {
+  const error = classifyError(cause);
+  process.stderr.write(`${error.code}: ${error.message}\n`);
+  process.exitCode = exitCodeForCategory(error.category);
+  telemetry.failSession(error.code);
+}
+
+/** `command` and every command below it. */
+function withSubcommands(command: Command): Command[] {
+  return [command, ...command.commands.flatMap(withSubcommands)];
 }
 
 /** Builds the commander program. */
@@ -250,13 +261,13 @@ function createProgram(version: string, telemetry: Telemetry): Command {
   // Commander would exit(1) on a usage error itself; the exit-code table reserves 1
   // for product failures and 2 for CLI errors, so exits are decided in main.
   program.exitOverride();
-  // Every command that runs is one session event. The notice precedes the
-  // first of them on a machine, except `telemetry` itself: that is where
-  // someone who read the notice goes to act on it.
+  // Every command that runs is one session. The notice precedes the first
+  // of them on a machine, except `telemetry` itself: that is where someone
+  // who read the notice goes to act on it.
   program.hook('preAction', (_program, actionCommand) => {
     const command = commandPath(actionCommand);
     if (command !== 'telemetry') telemetry.notice();
-    telemetry.record(cliSessionEvent(command, usedFlags(actionCommand)));
+    telemetry.session(command, usedFlags(actionCommand));
   });
 
   program
@@ -272,12 +283,14 @@ function createProgram(version: string, telemetry: Telemetry): Command {
       ['', examples(['e2e init', 'e2e init my-app', 'e2e init --yes']), '', docsLine('/reference/cli')].join('\n'),
     )
     .action(async (directory: string | undefined, options: { yes?: boolean }) => {
-      process.exitCode = await init(resolvePath(process.cwd(), directory ?? '.'), {
+      const { exitCode, ...outcome } = await init(resolvePath(process.cwd(), directory ?? '.'), {
         ...options,
         ...(directory === undefined ? {} : { directory }),
         // Prompts need a terminal on both ends; a pipe or a CI log has neither.
         interactive: process.stdin.isTTY === true && process.stdout.isTTY === true,
       });
+      telemetry.record(initCompletedEvent(outcome));
+      process.exitCode = exitCode;
     });
 
   program
@@ -589,9 +602,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
             passWithNoTests: options.passWithNoTests,
           }));
         } catch (cause) {
-          const error = classifyError(cause);
-          process.stderr.write(`${error.code}: ${error.message}\n`);
-          process.exitCode = exitCodeForCategory(error.category);
+          reportFailure(telemetry, cause);
           return;
         }
         process.stdout.write(
@@ -653,6 +664,13 @@ function createProgram(version: string, telemetry: Telemetry): Command {
       process.exitCode = telemetryCommand(action, telemetry);
     });
 
+  // A session is named as soon as commander turns to a subcommand, before it
+  // parses the flags, so a rejected flag still counts as a session of that
+  // command; `preAction` names it again with the flags. Commander fires the
+  // hook on the parent alone, hence one per command that has children.
+  for (const parent of withSubcommands(program).filter((command) => command.commands.length > 0)) {
+    parent.hook('preSubcommand', (_parent, subcommand) => telemetry.session(commandPath(subcommand)));
+  }
   return program;
 }
 
@@ -668,11 +686,14 @@ export async function main(argv: readonly string[]): Promise<void> {
       // Commander has already written its diagnostic. `--help` and
       // `--version` exit 0; every usage error is a CLI error: exit 2.
       process.exitCode = cause.exitCode === 0 ? 0 : 2;
+      if (cause.exitCode !== 0) telemetry.failSession(USAGE_ERROR_CODE);
     } else {
       process.stderr.write(`${cause instanceof Error ? cause.message : String(cause)}\n`);
       process.exitCode = 2;
+      telemetry.failSession(classifyError(cause).code);
     }
   } finally {
+    telemetry.endSession(typeof process.exitCode === 'number' ? process.exitCode : 0);
     // One bounded request; the deadline, not the network, decides when the CLI is done.
     await telemetry.flush();
   }

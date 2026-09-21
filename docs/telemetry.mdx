@@ -34,9 +34,9 @@ sends nothing.
 
 ## What is sent
 
-Each command sends a session event. `run` and `explore` also send a run event.
-Events go in one request when the command ends, with a two-second deadline
-for all telemetry work.
+Each command sends a session event. `run` and `explore` also send a run event,
+and `init` an init event. Events go in one request when the command ends,
+with a two-second deadline for all telemetry work.
 
 Every event carries these properties.
 
@@ -73,6 +73,17 @@ Versions:
 | --- | --- |
 | `command` | `init`, `run`, `list`, `cache ls`, `guide`, `telemetry`, ... |
 | `flags` | The names of the flags given, such as `--headed` or `--tag`. Never their values |
+| `exit_code`, `duration_ms` | How the command ended and how long it took |
+| `error_code` | The runner code of the failure that ended the command before it could run (`CONFIG_NOT_FOUND`, `INVALID_CONFIG`, ...), `CLI_USAGE` for a flag or argument the CLI rejected, `null` otherwise. A code that is not an upper-case token is reported as `OTHER` |
+
+`e2e_init_completed`, once per `e2e init`:
+
+| Property | Value |
+| --- | --- |
+| `result` | `scaffolded`, `already-initialized`, `cancelled`, `install-failed`, `not-interactive`, or `invalid-project` |
+| `yes`, `existing_config` | Whether `--yes` was given, and whether a config already existed so no engine or gateway was asked |
+| `engine`, `gateway` | The ids of the engine and the model gateway chosen for a new config (`playwright`, `agent-device`, `none`; `vercel`, `openrouter`, `openai-compatible`, `chatgpt`, `copilot`, `grok`, `none`), `null` when not asked. Never the endpoint typed for an OpenAI-compatible gateway |
+| `skill`, `mcp`, `install` | Whether the agent skill, the MCP registration, and the dependency install were chosen |
 
 `e2e_run_completed`, once per `e2e run` or `e2e explore`, built from the numbers in `report.json`:
 
