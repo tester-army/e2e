@@ -8,7 +8,7 @@
     "agentic",
     "end-to-end"
   ],
-  "license": "MIT",
+  "license": "Apache-2.0",
   "contributors": [
     "Oskar Kwaśniewski <oskar@tester.army>",
     "Szymon Rybczak <szymon@tester.army>"
@@ -48,7 +48,8 @@
   },
   "files": [
     "dist",
-    "skills"
+    "skills",
+    "NOTICE"
   ],
   "scripts": {
     "build": "node -e \"const fs=require('node:fs');for(const dir of ['dist','skills'])fs.rmSync(dir,{recursive:true,force:true});fs.cpSync('../../skills/e2e','skills/e2e',{recursive:true})\" && tsc --project tsconfig.build.json && node -e \"const fs=require('node:fs');const read=(dir)=>JSON.parse(fs.readFileSync('../'+dir+'/package.json','utf8'));const versions=Object.fromEntries(['playwright','agent-device','oauth'].map((dir)=>['@e2edev/'+dir,read(dir).version]));versions.playwright=read('playwright').devDependencies.playwright;fs.writeFileSync('dist/cli/init/sibling-versions.json',JSON.stringify(versions)+'\\n')\" && node ../../scripts/stamp-dist.ts",

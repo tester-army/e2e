@@ -29,4 +29,4 @@ Full documentation lives at [e2e.tester.army/docs/github](https://e2e.tester.arm
 
 ## License
 
-MIT
+Apache-2.0

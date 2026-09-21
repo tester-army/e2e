@@ -5,9 +5,10 @@ fixes count as much as features.
 
 ## License and contribution terms
 
-The code is MIT (see [`LICENSE`](./LICENSE)). There is no CLA and no DCO bot.
-By opening a pull request you agree that your contribution is licensed under
-the same MIT terms as the project (inbound = outbound). Only submit work you
+The code is Apache-2.0 (see [`LICENSE`](./LICENSE)). There is no CLA and
+no DCO bot. Section 5 of the license covers contributions: by opening a pull
+request you agree that your contribution is licensed under the same
+Apache-2.0 terms as the project (inbound = outbound). Only submit work you
 have the right to license that way.
 
 Please read the [code of conduct](./CODE_OF_CONDUCT.md) before you post.
