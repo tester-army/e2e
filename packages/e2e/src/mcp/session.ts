@@ -345,7 +345,7 @@ export class SessionHost {
       inputSchema: z.object({
         target: z.string().min(1).optional().describe('Target name from the config; required when the config declares several'),
         config: z.string().min(1).optional().describe("Path to an e2e config file, relative to the server's directory; default: the nearest e2e.config.ts"),
-      }),
+      }).strict(),
       readOnly: false,
       call: async (args) => textResult(await this.open(args)),
     });
@@ -359,7 +359,7 @@ export class SessionHost {
       inputSchema: z.object({
         tool: z.string().min(1).optional().describe('A catalog tool name, for its full contract'),
         session: z.string().min(1).optional().describe('Session id; defaults to the open session'),
-      }),
+      }).strict(),
       readOnly: true,
       call: async (args) => textResult(this.catalog(args.session, args.tool)),
     });
@@ -374,7 +374,7 @@ export class SessionHost {
         tool: z.string().min(1).describe('A catalog tool name, e.g. "observe", "tap", "locate", "screenshot"'),
         args: z.record(z.string(), z.unknown()).optional().describe("The tool's arguments; omit for a tool without any"),
         session: z.string().min(1).optional().describe('Session id; defaults to the open session'),
-      }),
+      }).strict(),
       readOnly: false,
       call: (args, extra) => this.call(args.session, args.tool, args.args ?? {}, extra),
     });
@@ -386,7 +386,7 @@ export class SessionHost {
       description: 'Close the live session: end the attempt, dispose the engine, and stop the app processes the session started.',
       inputSchema: z.object({
         session: z.string().min(1).optional().describe('Session id; defaults to the open session'),
-      }),
+      }).strict(),
       readOnly: false,
       call: async (args) => textResult(await this.close('closed by the agent', args.session)),
     });

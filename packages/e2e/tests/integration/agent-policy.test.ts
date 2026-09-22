@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
-import { installFakeLoopModel, loopCalls } from '../helpers/fake-loop-model.ts';
+import { installFakeLoopModel, loopCalls, nodeIdFor } from '../helpers/fake-loop-model.ts';
 import { installFakeModel, judgment } from '../helpers/fake-model.ts';
 import type { FakeCall } from '../helpers/fake-model.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
@@ -79,6 +79,15 @@ test('judges with the model createAgent brought', async ({ app, agent }) => {
     schema: { '~standard': { version: 1, vendor: 'test', validate: (value) => ({ value }) } },
   });
   if (data.counter !== '0') throw new Error('unexpected counter ' + data.counter);
+});
+`;
+
+const VOCABULARY_SUITE = `import { test, expect } from 'e2e';
+
+test('the agent increments the counter once', async ({ app, agent, screen }) => {
+  await app.open();
+  await agent.act('increment the counter once');
+  await expect(screen.getByRole('status')).toHaveText('1');
 });
 `;
 
@@ -451,4 +460,110 @@ test('${TITLE}', async ({ app, agent }) => {
     expect(attempt.artifacts.filter((artifact) => artifact.kind === 'screenshot')).toEqual([]);
     expect(JSON.stringify(outcome.report)).not.toContain(SECRET);
   });
+});
+
+describe('tool calls outside the vocabulary', () => {
+  let app: FixtureApp;
+
+  beforeAll(async () => {
+    app = await startFixtureApp();
+  });
+
+  afterAll(async () => {
+    await app?.close();
+  });
+
+  const agentStep = (outcome: RunOutcome) =>
+    resultByTitle(outcome, 'the agent increments the counter once').attempts.at(-1)!.steps.find((step) => step.api === 'agent.act')!;
+
+  it('refuses a call with a field the schema does not declare, names the field, and runs nothing until the repaired call', async () => {
+    const model = installFakeLoopModel((call) => {
+      const target = nodeIdFor(call.prompt, /button "Increment"/);
+      if (call.turn === 1) return [{ toolName: 'tap', input: { target, force: true, selector: '#increment' } }];
+      if (call.turn === 2) return [{ toolName: 'tap', input: { target } }];
+      return [{ toolName: 'complete_step', input: { status: 'passed', summary: 'the counter shows 1' } }];
+    });
+    const { outcome, project } = await runProject(
+      { 'tests/vocabulary.e2e.ts': VOCABULARY_SUITE },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: { model } } } },
+    );
+    try {
+      const result = resultByTitle(outcome, 'the agent increments the counter once');
+      expect(result.attempts.at(-1)!.error?.message ?? '').toBe('');
+      expect(result.status).toBe('passed');
+      // The refusal is the call's result: it names the tool and the keys, and it is not a policy denial.
+      const refusal = loopCalls[1]!.lastToolResult;
+      expect(refusal).toContain('Invalid input for tool tap');
+      expect(refusal).toContain('unrecognized_keys');
+      expect(refusal).toContain('"force"');
+      expect(refusal).toContain('"selector"');
+      expect(refusal).not.toContain('POLICY_DENIED');
+      // Only the repaired call reached the app: one action, and its result shows the change.
+      expect(loopCalls).toHaveLength(3);
+      expect(loopCalls[2]!.lastToolResult).toMatch(/changed #\S+ status "Counter" text="1"/);
+      const step = agentStep(outcome);
+      expect(step.metrics!.actionSteps).toBe(1);
+      expect(step.metrics!.modelCalls).toBe(3);
+      // The step's turns show the refusal as the model read it.
+      expect(step.turns![0]!.outcome).toContain(`[tap] error: ${refusal.split('\n')[0]}`);
+    } finally {
+      project.cleanup();
+    }
+  }, 120_000);
+
+  it('refuses a tool the step does not offer, lists the vocabulary, and runs nothing', async () => {
+    const model = installFakeLoopModel((call) => {
+      const target = nodeIdFor(call.prompt, /button "Increment"/);
+      if (call.turn === 1) return [{ toolName: 'click', input: { target } }];
+      if (call.turn === 2) return [{ toolName: 'tap', input: { target } }];
+      return [{ toolName: 'complete_step', input: { status: 'passed', summary: 'the counter shows 1' } }];
+    });
+    const { outcome, project } = await runProject(
+      { 'tests/vocabulary.e2e.ts': VOCABULARY_SUITE },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: { model } } } },
+    );
+    try {
+      const result = resultByTitle(outcome, 'the agent increments the counter once');
+      expect(result.attempts.at(-1)!.error?.message ?? '').toBe('');
+      expect(result.status).toBe('passed');
+      const refusal = loopCalls[1]!.lastToolResult;
+      expect(refusal).toContain("Model tried to call unavailable tool 'click'");
+      expect(refusal).toMatch(/Available tools: .*\btap\b/);
+      expect(refusal).not.toContain('POLICY_DENIED');
+      expect(loopCalls).toHaveLength(3);
+      const step = agentStep(outcome);
+      expect(step.metrics!.actionSteps).toBe(1);
+      expect(step.metrics!.modelCalls).toBe(3);
+      expect(step.turns![0]!.outcome).toContain(`[click] error: ${refusal}`);
+    } finally {
+      project.cleanup();
+    }
+  }, 120_000);
+
+  it('counts refusals toward the failure streak, so a model that never gets a call past the schema is stopped', async () => {
+    const model = installFakeLoopModel((call) => {
+      if (call.toolNames.length === 1 && call.toolNames[0] === 'complete_step') {
+        return [{ toolName: 'complete_step', input: { status: 'failed', summary: 'could not get a call past the schema' } }];
+      }
+      // A different undeclared value every turn, so only the failure streak can stop this, never the repeat guard.
+      return [{ toolName: 'tap', input: { target: nodeIdFor(call.prompt, /button "Increment"/), attempt: call.turn } }];
+    });
+    const { outcome, project } = await runProject(
+      { 'tests/vocabulary.e2e.ts': VOCABULARY_SUITE },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: { model } } } },
+    );
+    try {
+      const result = resultByTitle(outcome, 'the agent increments the counter once');
+      expect(result.status).toBe('failed');
+      expect(result.attempts.at(-1)!.error?.message).toContain('could not get a call past the schema');
+      const step = agentStep(outcome);
+      expect(step.metrics!.actionSteps).toBe(0);
+      // Three refusals warn, five force the verdict; a model this stuck never reaches the turn budget.
+      expect(step.metrics!.modelCalls).toBeLessThanOrEqual(8);
+      expect(loopCalls.some((call) => call.lastPrompt.includes('failed in a row'))).toBe(true);
+      expect(loopCalls.at(-1)!.toolNames).toEqual(['complete_step']);
+    } finally {
+      project.cleanup();
+    }
+  }, 120_000);
 });

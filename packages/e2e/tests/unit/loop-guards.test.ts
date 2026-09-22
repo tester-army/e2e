@@ -6,6 +6,7 @@ import {
   DEFAULT_LOOP_GUARD_THRESHOLDS,
   extractToolResults,
   type GuardToolCall,
+  type GuardToolResult,
   isFailedResult,
 } from '../../src/agent/loop-guards.ts';
 
@@ -91,14 +92,17 @@ describe('failure streak', () => {
     expect(isFailedResult('Typed "failed: no" into #n3.\n\nScreen unchanged since revision b3 (2 nodes).')).toBe(false);
   });
 
+  const failure: GuardToolResult = { text: failed, failed: true };
+  const success: GuardToolResult = { text: tapped, failed: false };
+
   it('warns at three failures in a row, stops at five, and starts over after a success', () => {
-    const streak = (count: number) => Array.from({ length: count }, () => failed);
+    const streak = (count: number) => Array.from({ length: count }, () => failure);
     expect(checkFailureStreak(streak(2)).kind).toBe('clear');
-    const warned = checkFailureStreak([tapped, ...streak(3)]);
+    const warned = checkFailureStreak([success, ...streak(3)]);
     expect(warned.kind).toBe('warn');
     expect((warned as { reason: string }).reason).toBe('the last 3 actions failed in a row');
     expect(checkFailureStreak(streak(5)).kind).toBe('stop');
-    expect(checkFailureStreak([...streak(4), tapped, ...streak(2)]).kind).toBe('clear');
+    expect(checkFailureStreak([...streak(4), success, ...streak(2)]).kind).toBe('clear');
   });
 
   const result = (toolName: string, output: ToolResultPart['output']): ModelMessage => ({
@@ -114,22 +118,34 @@ describe('failure streak', () => {
     ],
   });
 
-  it('reads text tool results in order and skips the conclusion tool and structured results', () => {
+  it('reads text results for the failure shape, counts a call the SDK refused as failed, and skips the conclusion tool and structured results', () => {
+    // What the SDK hands back for an input outside the closed schema and for a tool the step does not offer.
+    const undeclaredField = 'Invalid input for tool tap: Type validation failed: Value: {"target":"n6","force":true}.\nError message: [{"code":"unrecognized_keys","keys":["force"],"path":[],"message":"Unrecognized key: \\"force\\""}]';
+    const unknownTool = "Model tried to call unavailable tool 'click'. Available tools: observe, tap, type, complete_step.";
     const messages: ModelMessage[] = [
       { role: 'user', content: 'Execute this test step' },
       result('tap', { type: 'text', value: failed }),
       result('lookup', { type: 'json', value: { rows: 3 } }),
       result('complete_step', { type: 'text', value: 'Action failed: summary too long' }),
+      result('tap', { type: 'error-text', value: undeclaredField }),
+      result('click', { type: 'error-text', value: unknownTool }),
       result('tap', { type: 'text', value: tapped }),
     ];
-    expect(extractToolResults(messages, 'complete_step')).toEqual([failed, tapped]);
+    expect(extractToolResults(messages, 'complete_step')).toEqual([
+      failure,
+      { text: undeclaredField, failed: true },
+      { text: unknownTool, failed: true },
+      success,
+    ]);
   });
 
   it('reads the text beside a screenshot, so the streak warns and stops in pixel mode too', () => {
     const streak = (count: number) => Array.from({ length: count }, () => result('tap', withScreenshot(failed)));
     const results = extractToolResults([result('tap', withScreenshot(tapped)), ...streak(3)], 'complete_step');
     expect(results).toHaveLength(4);
-    expect(results[1]).toMatch(/^Tapped #n6\. failed: /);
+    expect(results[0]!.failed).toBe(false);
+    expect(results[1]!.text).toMatch(/^Tapped #n6\. failed: /);
+    expect(results[1]!.failed).toBe(true);
     expect(checkFailureStreak(results)).toEqual({ kind: 'warn', reason: 'the last 3 actions failed in a row' });
     expect(checkFailureStreak(extractToolResults(streak(5), 'complete_step')).kind).toBe('stop');
   });

@@ -184,6 +184,10 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     expect(malformed.isError).toBe(true);
     expect(malformed.text).toMatch(/^INVALID_ARGUMENT: call tap: target: /);
     expect(malformed.text).toContain('tools {tool: "tap"} shows its arguments');
+    // An argument the tool does not declare is refused the same way, never stripped and acted on.
+    const decorated = await call('tap', { target: nodeId(after.text, /button "Increment"/), force: true });
+    expect(decorated.isError).toBe(true);
+    expect(decorated.text).toBe('INVALID_ARGUMENT: call tap: Unrecognized key: "force"; tools {tool: "tap"} shows its arguments');
     const nameless = await call('teleport');
     expect(nameless.isError).toBe(true);
     expect(nameless.text).toContain('UNKNOWN_TOOL');
