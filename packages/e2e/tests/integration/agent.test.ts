@@ -10,6 +10,7 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { fakeCalls, installFakeModel, judgment, type FakeCall } from '../helpers/fake-model.ts';
+import { installFakeLoopModel, nodeIdFor } from '../helpers/fake-loop-model.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { resultByTitle, runProject, type FixtureProject } from '../helpers/run-project.ts';
 import type { RunOutcome } from '../helpers/run-project.ts';
@@ -401,5 +402,64 @@ test('the judge judges createAgent assertions', async ({ app, agent }) => {
     const steps = result.attempts.at(-1)!.steps.filter((step) => step.api === 'agent.assert');
     expect(steps.map((step) => step.status)).toEqual(['passed', 'failed']);
     for (const step of steps) expect(step.model).toMatchObject({ model: 'judge', calls: 1 });
+  });
+});
+
+describe('an inconclusive judgment after a secret fill', () => {
+  const SUITE = `import { test, credentials } from 'e2e';
+
+test('the judge is not pointed at vision once a secret was filled', async ({ app, agent }) => {
+  await app.open();
+  await agent.act('sign in as the member', { params: { password: credentials.user('member').password } });
+  await agent.assert('the order total equals the sum of the line items');
+});
+`;
+  let app: FixtureApp;
+  let outcome: RunOutcome;
+  let project: FixtureProject;
+
+  beforeAll(async () => {
+    app = await startFixtureApp();
+    // The act model fills the password through type_secret; from then on the
+    // attempt is pixel-tainted, and no screenshot could reach a judge.
+    const model = installFakeLoopModel((call) => {
+      if (call.toolNames.includes('type_secret') && call.lastToolResult === '') {
+        return [{ toolName: 'type_secret', input: { target: nodeIdFor(call.prompt, /textbox "Password"/), name: 'member' } }];
+      }
+      return [{ toolName: 'complete_step', input: { status: 'passed', summary: 'filled the password' } }];
+    });
+    const judge = installFakeModel(respond, { modelId: 'judge' });
+    const result = await runProject(
+      { 'tests/tainted.e2e.ts': SUITE },
+      {
+        appUrl: app.url,
+        config: {
+          tests: 'tests/**/*.e2e.ts',
+          agents: { default: { model, judge } },
+          credentials: { member: { username: 'ada', password: 'hunter2-secret' } },
+        },
+      },
+    );
+    outcome = result.outcome;
+    project = result.project;
+  }, 120_000);
+
+  afterAll(async () => {
+    project?.cleanup();
+    await app?.close();
+  });
+
+  it('carries the explanation alone: vision: true could add nothing while pixels are withheld', () => {
+    const result = resultByTitle(outcome, 'the judge is not pointed at vision once a secret was filled');
+    expect(result.status).toBe('failed');
+    const attempt = result.attempts.at(-1)!;
+    const filled = attempt.steps.find((step) => step.api === 'agent.act')!;
+    expect(filled.status).toBe('passed');
+    expect(filled.events.some((event) => event.kind === 'engine' && event.name === 'typeSecret' && event.status === 'passed')).toBe(true);
+    expect(attempt.steps.find((step) => step.api === 'agent.assert')!.status).toBe('failed');
+    expect(attempt.error!.code).toBe('ASSERTION_INCONCLUSIVE');
+    // The same judgment on an untainted attempt carries the hint (the suite above); here the engine
+    // declares screenshots and no pixel request was degraded, so the fill is the only gate closing it.
+    expect(attempt.error!.message).toBe('no order total or line items are on this screen');
   });
 });

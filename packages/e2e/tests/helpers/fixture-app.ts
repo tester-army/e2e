@@ -66,6 +66,9 @@ ${button}  <script>
       context.arc(pin.x, pin.y, 14, 0, Math.PI * 2);
       context.fill();
     }
+    // A tap count drawn on the map: every click repaints it, and nothing in
+    // the tree lists it, the way a canvas-rendered widget shows its own state.
+    let taps = 0;
     canvas.addEventListener('click', (event) => {
       const box = canvas.getBoundingClientRect();
       const x = event.clientX - box.left;
@@ -73,6 +76,11 @@ ${button}  <script>
       const pin = pins.find((candidate) => Math.hypot(candidate.x - x, candidate.y - y) <= 18);
       document.getElementById('hit').textContent =
         pin ? pin.name : 'miss at ' + Math.round(x) + ',' + Math.round(y);
+      taps += 1;
+      context.fillStyle = '#dddddd';
+      context.fillRect(0, 176, 120, 24);
+      context.fillStyle = '#000000';
+      context.fillText('taps: ' + taps, 4, 194);
     });
   </script>
 </body>

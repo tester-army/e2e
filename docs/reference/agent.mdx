@@ -161,8 +161,9 @@ the tree alone adds `pass vision: true when the answer is in pixels` to its
 message, worded as a condition (`if the engine captures pixels, ...`) until
 a step of the attempt has received pixels. There is no hint when the engine
 declares no screenshot capture, a secret was filled, or an earlier step's
-pixel request was degraded: `vision: true` could add no evidence then. No
-evidence is captured with
+pixel request was degraded: `vision: true` could add no evidence then. The
+hint is the built-in judge's; with a custom `executor`, `assert` carries the
+executor's explanation alone. No evidence is captured with
 `screenshot: false` or once a secret has been filled in the attempt.
 `screenshot` controls failure evidence attached after the judgment; `vision`
 controls what the model is shown before it. A custom `StepExecutor` judges
