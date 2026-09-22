@@ -25,20 +25,34 @@ function withinFrames(selectors: readonly string[], source: LocatorExpression): 
   );
 }
 
-const INNER_DOCUMENT = '<button onclick="this.textContent = \'Inner clicked\'">Inner button</button>';
-const OUTER_DOCUMENT = `<h2>Outer</h2><iframe id="inner" title="inner" srcdoc="${attribute(INNER_DOCUMENT)}"></iframe>`;
+const TWIN_FRAME = '<iframe class="twin" title="twin" srcdoc="<p>twin</p>"></iframe>';
+const DEEP_DOCUMENT = '<button>Deep button</button>';
+const INNER_DOCUMENT =
+  '<button onclick="this.textContent = \'Inner clicked\'">Inner button</button>' +
+  `<iframe id="deep" title="deep" srcdoc="${attribute(DEEP_DOCUMENT)}"></iframe>`;
+const OUTER_DOCUMENT =
+  `<h2>Outer</h2><iframe id="inner" title="inner" srcdoc="${attribute(INNER_DOCUMENT)}"></iframe>` +
+  TWIN_FRAME +
+  TWIN_FRAME;
 const HOST_DOCUMENT =
   '<h1>Host</h1><iframe id="aside" title="aside" srcdoc="<p>aside</p>"></iframe>' +
+  TWIN_FRAME +
   `<iframe id="outer" title="outer" srcdoc="${attribute(OUTER_DOCUMENT)}"></iframe>`;
 
-const INNER_BUTTON: LocatorExpression = {
-  kind: 'query',
-  query: {
-    kind: 'role',
-    value: { kind: 'string', value: 'button', exact: true },
-    name: { kind: 'string', value: 'Inner button', exact: true },
-  },
-};
+/** A role query for the one button named `name`. */
+function buttonNamed(name: string): LocatorExpression {
+  return {
+    kind: 'query',
+    query: {
+      kind: 'role',
+      value: { kind: 'string', value: 'button', exact: true },
+      name: { kind: 'string', value: name, exact: true },
+    },
+  };
+}
+
+const INNER_BUTTON = buttonNamed('Inner button');
+const DEEP_BUTTON = buttonNamed('Deep button');
 
 describe('nested frame locators', () => {
   const engine = web({});
@@ -54,7 +68,12 @@ describe('nested frame locators', () => {
     await engine.session!.open!('about:blank', operation);
     page = surfaceOf(engine)!.page();
     await page.setContent(HOST_DOCUMENT);
-    await page.frameLocator('#outer').frameLocator('#inner').getByRole('button', { name: 'Inner button' }).waitFor();
+    await page
+      .frameLocator('#outer')
+      .frameLocator('#inner')
+      .frameLocator('#deep')
+      .getByRole('button', { name: 'Deep button' })
+      .waitFor();
   });
 
   afterAll(async () => {
@@ -70,11 +89,29 @@ describe('nested frame locators', () => {
     expect(await page.frameLocator('#outer').frameLocator('#inner').getByRole('button').innerText()).toBe('Inner clicked');
   });
 
+  it('resolves a three-level chain, counting the last frame inside the second', async () => {
+    const matches = await engine.locate!(withinFrames(['#outer', '#inner', '#deep'], DEEP_BUTTON), operation);
+    expect(matches.map((node) => node.name)).toEqual(['Deep button']);
+    await expect(engine.locate!(withinFrames(['#outer', '#deep'], DEEP_BUTTON), operation)).rejects.toMatchObject({
+      code: 'FRAME_NOT_FOUND',
+      message: 'no frame matches #deep',
+    });
+  });
+
   it('names the inner selector when the outer frame holds no such frame, even though the page does', async () => {
     await expect(engine.locate!(withinFrames(['#outer', '#aside'], INNER_BUTTON), operation)).rejects.toMatchObject({
       code: 'FRAME_NOT_FOUND',
       message: 'no frame matches #aside',
       retryable: true,
+    });
+  });
+
+  it('reports two matching frames inside the outer document as ambiguous, though the page holds one', async () => {
+    expect(await page.locator('.twin').count()).toBe(1);
+    await expect(engine.locate!(withinFrames(['#outer', '.twin'], INNER_BUTTON), operation)).rejects.toMatchObject({
+      code: 'FRAME_AMBIGUOUS',
+      message: '2 frames match .twin',
+      retryable: false,
     });
   });
 });
