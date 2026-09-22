@@ -62,6 +62,23 @@ describe('SessionHost', { timeout: 60_000 }, () => {
     expect(fake.stats()).toMatchObject({ attemptsStarted: 2, attemptsEnded: 2, disposes: 2 });
   });
 
+  it('closes the schema of every fixed tool: an argument it does not declare fails validation', () => {
+    const specs = host(createFakeEngine()).toolSpecs();
+    expect(specs.map((spec) => spec.name)).toEqual(['open_session', 'tools', 'call', 'close_session']);
+    const accepted: Record<string, Record<string, unknown>> = {
+      open_session: { target: 'kiosk' },
+      tools: { tool: 'tap' },
+      call: { tool: 'tap', args: { target: 'n1' } },
+      close_session: {},
+    };
+    for (const spec of specs) {
+      expect(spec.inputSchema.safeParse(accepted[spec.name]).success, spec.name).toBe(true);
+      const decorated = spec.inputSchema.safeParse({ ...accepted[spec.name], force: true });
+      expect(decorated.success, spec.name).toBe(false);
+      if (!decorated.success) expect(decorated.error.issues.map((issue) => issue.code)).toEqual(['unrecognized_keys']);
+    }
+  });
+
   it('closes an idle session and disposes the engine', async () => {
     const fake = createFakeEngine();
     const idle = host(fake, { idleMs: 300 });
