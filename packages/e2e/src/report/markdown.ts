@@ -164,22 +164,31 @@ function spendLine(run: ReportRun, entries: readonly Entry[]): string | undefine
   return parts.join(' · ');
 }
 
+/** The artifact paths as the reader finds them: under `artifactsDir` when given, else as the report keeps them, capped. */
+function evidencePaths(sorted: readonly ReportArtifact[], dir: string | undefined, label: (artifact: ReportArtifact, file: string) => string): string[] {
+  const files = sorted.flatMap((artifact) => (artifact.path === undefined ? [] : [{ artifact, file: dir === undefined ? artifact.path : path.posix.join(dir, artifact.path) }]));
+  const shown = files.slice(0, MAX_EVIDENCE_PATHS).map(({ artifact, file }) => label(artifact, file));
+  if (files.length > shown.length) shown.push(`and ${files.length - shown.length} more`);
+  return shown;
+}
+
 /**
- * Where the evidence is: linked to the run page when there is one, listed as
- * paths under `artifactsDir` when the reader has the files, and named by
- * kind otherwise. Paths are POSIX, as the report keeps them.
+ * Where the evidence is: the kinds linked to the run's artifacts when there is
+ * a URL, followed by each file's path inside what was uploaded, so the reader
+ * can find it in the download; listed as paths under `artifactsDir` when the
+ * reader has the files; and named by kind otherwise. Paths are POSIX, as the
+ * report keeps them.
  */
 function evidence(artifacts: readonly ReportArtifact[], options: MarkdownReportOptions): string {
   if (artifacts.length === 0) return '';
   const sorted = artifacts.toSorted((a, b) => KIND_RANK[a.kind] - KIND_RANK[b.kind]);
   const named = [...new Set(sorted.map((artifact) => artifact.kind))].join(', ');
-  if (options.artifactsUrl !== undefined) return link(named, options.artifactsUrl);
-  const dir = options.artifactsDir;
-  const files = dir === undefined ? [] : sorted.flatMap((artifact) => (artifact.path === undefined ? [] : [{ kind: artifact.kind, file: path.posix.join(dir, artifact.path) }]));
-  if (files.length === 0) return named;
-  const shown = files.slice(0, MAX_EVIDENCE_PATHS).map(({ kind, file }) => `${kind} ${code(file)}`);
-  if (files.length > shown.length) shown.push(`and ${files.length - shown.length} more`);
-  return shown.join(', ');
+  if (options.artifactsUrl !== undefined) {
+    const paths = evidencePaths(sorted, options.artifactsDir, (_, file) => code(file));
+    return paths.length === 0 ? link(named, options.artifactsUrl) : `${link(named, options.artifactsUrl)}: ${paths.join(', ')}`;
+  }
+  const shown = options.artifactsDir === undefined ? [] : evidencePaths(sorted, options.artifactsDir, (artifact, file) => `${artifact.kind} ${code(file)}`);
+  return shown.length === 0 ? named : shown.join(', ');
 }
 
 // --- a test that did not pass ---

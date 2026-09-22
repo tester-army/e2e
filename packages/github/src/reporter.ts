@@ -136,7 +136,13 @@ export async function reportRun(
   if (context === undefined) return [{ label: SUMMARY_LABEL, text: 'not posted: not running on GitHub Actions' }];
 
   // One page for both places; the comment carries the marker a rerun finds it by.
-  const page = renderMarkdownReport(run.report, { artifactsUrl: context.runUrl, sourceUrl: sourceUrl(context, run.projectRoot), title: options.key });
+  // Evidence links land on the run page's Artifacts section, where the job's
+  // upload-artifact step put the files; the page names each file's path inside it.
+  const page = renderMarkdownReport(run.report, {
+    artifactsUrl: `${context.runUrl}#artifacts`,
+    sourceUrl: sourceUrl(context, run.projectRoot),
+    title: options.key,
+  });
   const summary = await writeSummary(context, page, deps);
   const post = posting(context);
   const marker = commentMarker(run, context, options.key);

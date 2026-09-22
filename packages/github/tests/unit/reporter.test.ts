@@ -76,8 +76,8 @@ describe('reportRun', () => {
     const body = postedBody(d.calls);
     expect(body.startsWith('<!-- e2e-github project=dev.example.shop workflow=e2e job=test -->\n')).toBe(true);
     expect(body).toContain('[tests/shop flows/cart.e2e.ts:9](https://github.com/octo/app/blob/head-sha/tests/shop%20flows/cart.e2e.ts#L9)');
-    expect(body).toContain('[screenshot](https://github.com/octo/app/actions/runs/99)');
-    expect(body).toContain('[run artifacts](https://github.com/octo/app/actions/runs/99)');
+    expect(body).toContain('Evidence: [screenshot](https://github.com/octo/app/actions/runs/99#artifacts)');
+    expect(body).toContain('[run artifacts](https://github.com/octo/app/actions/runs/99#artifacts)');
   });
 
   it('links sources under the project path inside the checkout, and at the root when the project is the checkout', async () => {

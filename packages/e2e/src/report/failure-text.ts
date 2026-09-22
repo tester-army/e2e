@@ -201,12 +201,13 @@ const STATUS_WORD: Record<ReportResult['status'], string> = {
 
 const STEP_GLYPH: Record<ReportStep['status'], string> = { passed: '✓', failed: '✗', blocked: '✗', 'timed-out': '✗', cancelled: '–' };
 
+/** `[screenshot](run#artifacts) \`web/.../screenshot-1.png\``: the kind, linked to the run's artifacts when there is a URL, and the file's path so the reader finds it. */
 function artifactPath(artifact: ReportArtifact, options: FailurePageOptions): string {
   const kind = cell(artifact.kind, MAX_ID_CHARS);
-  if (options.artifactsUrl !== undefined) return link(kind, options.artifactsUrl);
-  if (artifact.path === undefined) return kind;
+  const named = options.artifactsUrl === undefined ? kind : link(kind, options.artifactsUrl);
+  if (artifact.path === undefined) return named;
   const shown = options.artifactsDir === undefined ? artifact.path : `${options.artifactsDir}/${artifact.path}`;
-  return `${kind} ${code(shown, MAX_PATH_CHARS)}`;
+  return `${named} ${code(shown, MAX_PATH_CHARS)}`;
 }
 
 /** Renders one failed or flaky result as its own markdown page. */

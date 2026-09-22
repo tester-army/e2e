@@ -48,8 +48,12 @@ jobs:
           path: .e2e/artifacts
 ```
 
-Upload artifacts even when a retry passes. The comment links to the
-workflow run, where you can download evidence from failed and flaky tests.
+Upload artifacts even when a retry passes. Each failure's evidence link opens
+the run's Artifacts section and names the file's path inside the upload
+(`web/tests_billing.e2e.ts__upgrades/attempt-0/screenshot-3.png`), so keep
+`path: .e2e/artifacts` and the paths line up with the download. A project that
+sits below the checkout root, such as `packages/e2e-tests`, gets source links
+under that path: the reporter reads `GITHUB_WORKSPACE`.
 
 ## The comment
 
@@ -67,7 +71,7 @@ workflow run, where you can download evidence from failed and flaky tests.
 - Turn 9: `tap({"target":"n41"})` → Screen changed: /checkout/plan. New: #n50 heading "Free plan"
 - Screen: `/checkout/plan`
 
-[tests/billing.e2e.ts:12](https://github.com/acme/shop/blob/1a2b3c/tests/billing.e2e.ts#L12) · Evidence: [screenshot, video, trace](https://github.com/acme/shop/actions/runs/123)
+[tests/billing.e2e.ts:12](https://github.com/acme/shop/blob/1a2b3c/tests/billing.e2e.ts#L12) · Evidence: [screenshot, video, trace](https://github.com/acme/shop/actions/runs/123#artifacts): `web/tests_billing.e2e.ts__upgrades/attempt-0/screenshot-3.png`, `web/tests_billing.e2e.ts__upgrades/attempt-0/video/video.webm`, `web/tests_billing.e2e.ts__upgrades/attempt-0/trace.zip`
 
 <details>
 <summary>⚠️ 1 flaky test passed on a retry</summary>
@@ -78,7 +82,7 @@ workflow run, where you can download evidence from failed and flaky tests.
 
 > the invitation email took too long
 
-[tests/team.e2e.ts:21](https://github.com/acme/shop/blob/1a2b3c/tests/team.e2e.ts#L21) · Evidence: [screenshot, trace](https://github.com/acme/shop/actions/runs/123)
+[tests/team.e2e.ts:21](https://github.com/acme/shop/blob/1a2b3c/tests/team.e2e.ts#L21) · Evidence: [screenshot, trace](https://github.com/acme/shop/actions/runs/123#artifacts): `web/tests_team.e2e.ts__invite/attempt-0/screenshot-2.png`, `web/tests_team.e2e.ts__invite/attempt-0/trace.zip`
 </details>
 
 <details>
@@ -93,7 +97,7 @@ workflow run, where you can download evidence from failed and flaky tests.
 ...
 </details>
 
-<sub>e2e 0.13.0 · 2m 15s · web · [run artifacts](https://github.com/acme/shop/actions/runs/123)</sub>
+<sub>e2e 0.13.0 · 2m 15s · web · [run artifacts](https://github.com/acme/shop/actions/runs/123#artifacts)</sub>
 ```
 
 The comment shows test counts and agent usage, followed by each failure's
