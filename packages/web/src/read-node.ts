@@ -276,11 +276,16 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
    * is not. A rich-text editor (ProseMirror, TipTap, Lexical, Slate) renders
    * its document as such a host with block children; the host is the control
    * a person types into and the blocks are its content, so only the host is a
-   * textbox.
+   * textbox. A drawn or embedded surface (canvas, svg, video, iframe) holds no
+   * DOM text to edit whatever its `contenteditable` says: a canvas made
+   * editable to collect keystrokes is a drawn field the keyboard reaches, not
+   * a textbox.
    */
   const isEditingHost = (el: Element): boolean =>
     el instanceof HTMLElement &&
     el.isContentEditable &&
+    OPAQUE_TAGS.indexOf(el.tagName.toLowerCase()) === -1 &&
+    el.tagName !== 'IFRAME' &&
     !(el.parentElement instanceof HTMLElement && el.parentElement.isContentEditable);
 
   const implicitRole = memoized((el: Element): string | null => {
