@@ -662,15 +662,28 @@ describe('assert evidence under a custom executor', () => {
     expect(steps.all().at(-1)).toMatchObject({ api: 'agent.assert', status: 'passed', artifacts: ['artifact'] });
   });
 
-  it('abandons a screenshot the engine never delivers at the operation budget and keeps the verdict', async () => {
-    const { fixtures, steps, registerArtifact } = runtime(engineWith(() => new Promise<never>(() => {})), {
-      agents: { default: judging },
-      actionTimeout: 200,
-    });
-    const startedMs = Date.now();
-    await fixtures.agent.assert('the screen holds', { timeout: 2_000 });
-    expect(Date.now() - startedMs).toBeLessThan(2_000);
-    expect(registerArtifact).not.toHaveBeenCalled();
-    expect(steps.all().at(-1)).toMatchObject({ api: 'agent.assert', status: 'passed', artifacts: [] });
+  it('abandons a screenshot the engine never delivers at the operation budget, not the step timeout, and keeps the verdict', async () => {
+    vi.useFakeTimers();
+    try {
+      const screenshot = vi.fn(() => new Promise<never>(() => {}));
+      const { fixtures, steps, registerArtifact } = runtime(engineWith(screenshot), {
+        agents: { default: judging },
+        actionTimeout: 200,
+      });
+      let settled = false;
+      const asserting = fixtures.agent.assert('the screen holds', { timeout: 2_000 }).then(() => {
+        settled = true;
+      });
+      // The capture is bounded by the operation budget: actionTimeout, capped by the step clock.
+      await vi.advanceTimersByTimeAsync(199);
+      expect(screenshot).toHaveBeenCalledExactlyOnceWith('assert', expect.objectContaining({ origin: 'agent', timeoutMs: 200 }));
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await asserting;
+      expect(registerArtifact).not.toHaveBeenCalled();
+      expect(steps.all().at(-1)).toMatchObject({ api: 'agent.assert', status: 'passed', artifacts: [] });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
