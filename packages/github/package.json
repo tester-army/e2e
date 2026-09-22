@@ -52,7 +52,7 @@
     "test:unit": "vitest run tests/unit"
   },
   "peerDependencies": {
-    "e2e": "0.15.0-canary-20260922135036"
+    "e2e": ">=0.15.0 <1"
   },
   "devDependencies": {
     "e2e": "workspace:*",
