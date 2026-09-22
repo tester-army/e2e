@@ -826,7 +826,14 @@ describe('e2e telemetry', () => {
   });
 
   it('records no session for --help, help <command>, or --version', async () => {
-    for (const args of [['run', '--help'], ['cache', 'ls', '-h'], ['help', 'run'], ['--version']]) {
+    for (const args of [
+      ['--help'],
+      ['run', '--help'],
+      ['login', '--help'],
+      ['cache', 'ls', '-h'],
+      ['help', 'run'],
+      ['--version'],
+    ]) {
       process.exitCode = undefined;
       await invoke(...args);
       expect(process.exitCode).toBe(0);
