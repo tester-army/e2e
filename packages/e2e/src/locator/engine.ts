@@ -334,14 +334,22 @@ export class LocatorEngine {
     }
     const deadline = this.deadline(timeoutMs);
     await this.performUntil(expression, { kind: 'focus' }, deadline);
+    const timedOut = (typed: number): TestError =>
+      new TestError(
+        'ACTION_FAILED',
+        `operation timed out after typing ${typed} of ${chunks.length} characters: ${describeExpression(expression)}`,
+      );
     for (const [index, chunk] of chunks.entries()) {
-      if (index > 0) await sleep(Math.min(delayMs, deadline.remaining()), this.signal);
-      if (deadline.expired()) {
-        throw new TestError(
-          'ACTION_FAILED',
-          `operation timed out after typing ${index} of ${chunks.length} characters: ${describeExpression(expression)}`,
-        );
+      if (index > 0) {
+        // A pause the deadline cuts short ends the typing by itself. Reading
+        // the clock after the sleep would not: a timer may fire a hair early,
+        // and one more character would go out past the budget.
+        const remaining = deadline.remaining();
+        const cut = remaining < delayMs;
+        await sleep(cut ? remaining : delayMs, this.signal);
+        if (cut) throw timedOut(index);
       }
+      if (deadline.expired()) throw timedOut(index);
       try {
         await this.session.keyboard.type(chunk, { replace: false }, this.operationWithin(deadline));
       } catch (cause) {

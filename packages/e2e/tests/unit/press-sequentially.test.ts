@@ -88,7 +88,7 @@ describe('locator.pressSequentially', () => {
       code: 'ACTION_FAILED',
       message: expect.stringContaining('typing 1 of 2 characters'),
     });
-    // The pause was cut if we returned before the 1000 ms delay would have elapsed; the log is the real proof.
+    // Returned before the 1000 ms pause could elapse; the log proves nothing went out past the cut.
     expect(Date.now() - started).toBeLessThan(1000);
     expect(log).toEqual(['focus:city', 'type:a']);
   });
