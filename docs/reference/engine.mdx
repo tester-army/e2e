@@ -1105,6 +1105,13 @@ export interface SemanticNode {
       >
     >
   >;
+  /**
+   * What excludes a `hidden` node from the platform's accessibility tree while
+   * it may still be painted, in the platform's own term: `aria-hidden` on a
+   * document platform, the accessibility-hidden flag of a view on a device.
+   * Absent when the node is shown, or hidden by layout alone.
+   */
+  readonly hiddenBy?: string;
   /** Heading level of a heading node (`1` through `6` on a document platform); absent elsewhere. */
   readonly level?: number;
   /** Platform attributes, what `getAttribute` reads. */
@@ -1152,3 +1159,11 @@ A `SemanticQuery` with `visible: true` must match only nodes whose
 `SemanticNode`, so `getByText('x', { visible: true })` and `toBeVisible()`
 never disagree. Apply it wherever the query sits in the expression, under a
 scope, filter, or index too.
+
+`states.hidden` is one predicate per engine, shared by `observe` and
+`locate`: a node the tree walk leaves out reads as hidden when located on
+its own, so `toBeVisible()` never passes on a node the snapshot never shows.
+When something other than layout excludes the node, set `hiddenBy` to the
+platform's term for it (`aria-hidden` on the web); the harness prints
+`observed: states: hidden by aria-hidden` in the verdict and reads nothing
+else from the field.

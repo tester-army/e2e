@@ -239,8 +239,11 @@ substring or a RegExp; `toHaveValue` compares a form control's value as it
 is, whitespace included, and fails on a node that has none. Both text
 matchers take a list to check every match at once:
 `toHaveText(['Alpha', /^Beta/])` needs exactly two matches with those texts
-in order. `toBeAttached` waits for a match to exist, hidden or not. A failed
-matcher is `ASSERTION_FAILED`, exit code 1.
+in order. `toBeAttached` waits for a match to exist, hidden or not.
+`toBeVisible` follows the accessibility tree: text under `aria-hidden="true"`
+is hidden even when painted, so assert a header by
+`getByRole('link', { name })`, not by `getByText` on its decorative span. A
+failed matcher is `ASSERTION_FAILED`, exit code 1.
 
 A test that takes only `app` opens no page and calls no model; the browser
 the worker launched and the context per attempt are still paid. Check an

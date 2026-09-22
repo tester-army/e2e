@@ -156,6 +156,15 @@ export interface SemanticNode {
       >
     >
   >;
+  /**
+   * What excludes a `hidden` node from the platform's accessibility tree while
+   * it may still be painted, in the platform's own term: `aria-hidden` on a
+   * document platform, the accessibility-hidden flag of a view on a device.
+   * Absent when the node is shown, or hidden by layout alone. The harness
+   * only relays it, so a visibility verdict can say why text a person sees
+   * counts as hidden.
+   */
+  readonly hiddenBy?: string;
   /** Heading level of a heading node (`1` through `6` on a document platform); absent elsewhere. */
   readonly level?: number;
   /** Platform attributes, what `getAttribute` reads. */

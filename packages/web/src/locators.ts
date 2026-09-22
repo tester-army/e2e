@@ -99,9 +99,12 @@ export type PostStep =
 
 /**
  * Self-selector for the part of the semantic `hidden` state Playwright's own
- * visibility filter does not read: `aria-hidden` on the element itself.
+ * visibility filter does not read: `aria-hidden="true"` on the element or an
+ * ancestor. XPath because Playwright's CSS `:not()` takes no descendant
+ * selector; `ancestor-or-self` stops at a shadow root, so a hidden host's
+ * shadow tree is left to the terminal batch read, whose predicate crosses it.
  */
-const NOT_ARIA_HIDDEN = ':scope:not([aria-hidden="true"])';
+const NOT_ARIA_HIDDEN = 'xpath=self::*[not(ancestor-or-self::*[@aria-hidden="true"])]';
 
 /**
  * A `visible` query narrows its candidates inside the selector, before any

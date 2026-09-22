@@ -628,6 +628,19 @@ line2  </textarea>
   </script>
 </body>
 </html>`,
+  // A header that paints its label as decoration beside an aria-label, and
+  // text an aria-hidden ancestor keeps out of the accessibility tree.
+  '/aria-hidden': `<!doctype html>
+<html>
+<head><title>Aria hidden</title></head>
+<body>
+  <header>
+    <a href="/" aria-label="Good Ppl"><span aria-hidden="true">Good Ppl</span></a>
+  </header>
+  <div aria-hidden="true"><p>Following</p></div>
+  <p>Following</p>
+</body>
+</html>`,
 };
 
 /**
