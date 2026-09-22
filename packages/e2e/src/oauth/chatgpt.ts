@@ -9,18 +9,12 @@ import { createOpenAI } from '@ai-sdk/openai';
 import type { LanguageModelV4, LanguageModelV4CallOptions } from '@ai-sdk/provider';
 import { createOAuthFetch } from './fetch.ts';
 import { USER_AGENT, loginHint } from './providers.ts';
-import { createCodexProvider, type CodexProviderOptions } from './providers/openai.ts';
+import { createCodexProvider } from './providers/openai.ts';
 import { defaultCredentialStore } from './store.ts';
-import type { CredentialStore } from './types.ts';
 
-export interface ChatGptOptions extends Pick<CodexProviderOptions, 'apiUrl'> {
-  /** Where the login is read from; the default is the file `e2e login` wrote, or `E2E_OAUTH_CREDENTIALS`. */
-  readonly store?: CredentialStore;
-}
-
-export function chatgpt(modelId: string, options: ChatGptOptions = {}): LanguageModelV4 {
-  const fetch = createOAuthFetch(createCodexProvider(options), {
-    store: options.store ?? defaultCredentialStore(),
+export function chatgpt(modelId: string): LanguageModelV4 {
+  const fetch = createOAuthFetch(createCodexProvider(), {
+    store: defaultCredentialStore(),
     userAgent: USER_AGENT,
     loginHint: loginHint('openai'),
   });

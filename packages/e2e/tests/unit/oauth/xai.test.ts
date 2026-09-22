@@ -4,9 +4,10 @@ import { createOAuthFetch } from '../../../src/oauth/fetch.ts';
 import { createXaiProvider } from '../../../src/oauth/providers/xai.ts';
 import { MemoryCredentialStore } from './helpers/store.ts';
 import { grok } from '../../../src/oauth/grok.ts';
-import { fakeJwt, json, useServers, type Received } from './helpers/server.ts';
+import { fakeJwt, json, useServers, useVendor, type Received } from './helpers/server.ts';
 
 const serve = useServers(afterEach);
+const vendor = useVendor(afterEach);
 
 describe('SpaceXAI login', () => {
   it('runs the RFC 8628 device flow against auth.x.ai and reads expiry from the JWT', async () => {
@@ -73,8 +74,8 @@ describe('SpaceXAI login', () => {
         usage: { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4 },
       });
     });
-    const store = new MemoryCredentialStore({ spacexai: { access: 'xai-tok', refresh: 'rt', expires: 0 } });
-    const model = grok('grok-4', { store, baseURL: api.url });
+    vendor(api, { spacexai: { access: 'xai-tok', refresh: 'rt', expires: 0 } });
+    const model = grok('grok-4');
     expect(model).toMatchObject({ modelId: 'grok-4' });
     expect(model.provider).toMatch(/^xai/);
     const result = await generateText({ model, prompt: 'hi' });

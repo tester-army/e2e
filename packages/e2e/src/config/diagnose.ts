@@ -20,12 +20,33 @@ export const RUNTIME_EXPORTS: readonly string[] = [
   'unique',
   'AgentError',
   'isAgentError',
-  'BLOCKABLE_CODES',
-  'RUNTIME_CODES',
-  'buildTraceEntry',
-  'readTraceEntry',
   'renderMarkdownReport',
 ];
+
+/**
+ * Exports removed from a public entry, by specifier, each with what stands in
+ * for it. Consulted before the spelling and type heuristics, so a removed
+ * runtime value never draws `import type` advice that fails the same way.
+ */
+const REMOVED_EXPORTS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  e2e: {
+    defineConfig: 'defineConfig was removed in e2e 0.5: default-export the object and end it with satisfies E2EConfig',
+    BLOCKABLE_CODES:
+      'BLOCKABLE_CODES was removed in e2e 0.16: a blocked verdict carries any code the errors reference marks blocked, and the set was never usable outside the runner',
+    RUNTIME_CODES:
+      "RUNTIME_CODES was removed in e2e 0.16: STEP_BUDGET_EXHAUSTED, STEP_TIMEOUT, and CANCELLED are the runtime's own codes, which an executor carries but never assigns",
+    buildTraceEntry:
+      'buildTraceEntry was removed in e2e 0.16: a TraceCacheStore stores the entry it is handed as is, the runner frames and validates it',
+    readTraceEntry:
+      'readTraceEntry was removed in e2e 0.16: a TraceCacheStore returns the entry it stored as is, the runner validates it',
+  },
+  'e2e/agent': {
+    isDefinedTool:
+      'isDefinedTool was removed in e2e/agent 0.16: pass what defineTool returns in tools, createAgent checks each entry itself',
+    toolAppliesTo:
+      'toolAppliesTo was removed in e2e/agent 0.16: createAgent offers a defined tool only on the platforms its annotations name',
+  },
+};
 
 interface Manifest {
   readonly path: string;
@@ -93,10 +114,9 @@ function subpathHint(subpath: string, manifestPath: string): string {
 }
 
 function missingExportHint(specifier: string, exportName: string): string {
+  const removed = REMOVED_EXPORTS[specifier]?.[exportName];
+  if (removed !== undefined) return removed;
   if (specifier !== 'e2e') return '';
-  if (exportName === 'defineConfig') {
-    return 'defineConfig was removed in e2e 0.5: default-export the object and end it with satisfies E2EConfig';
-  }
   const suggestion = suggest(exportName, RUNTIME_EXPORTS);
   if (suggestion !== undefined) return `did you mean "${suggestion}"?`;
   return /^[A-Z]/.test(exportName)
