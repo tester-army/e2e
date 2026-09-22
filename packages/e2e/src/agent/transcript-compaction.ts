@@ -10,13 +10,15 @@
  * oldest part first, across the opening prompt and tool results alike.
  */
 
-import type { FilePart, ModelMessage, TextPart, UserContent } from 'ai';
-import { FULL_SCREEN_PATTERN } from './screen-update.ts';
+import type { FilePart, ModelMessage, TextPart, ToolResultPart, UserContent } from 'ai';
+import { FULL_SCREEN_PATTERN, toolResultTexts } from './screen-update.ts';
 
 /** A part of a user message; a string message counts as one text part. */
 type UserPart = Exclude<UserContent, string>[number];
 /** A part of a tool message. */
 type ToolPart = Extract<ModelMessage, { role: 'tool' }>['content'][number];
+/** An item of a tool result with a screenshot attached: its text, or the image. */
+type ContentItem = Extract<ToolResultPart['output'], { type: 'content' }>['value'][number];
 
 /**
  * A rewrite of one part. Returning undefined declines the part; a returned
@@ -117,19 +119,42 @@ export function compactScreenHistory(
   const staleBytes = screens.slice(0, stale).reduce((bytes, text) => bytes + Buffer.byteLength(text, 'utf8'), 0);
   if (staleBytes <= (options.keepStaleBytes ?? KEEP_STALE_SCREEN_BYTES)) return messages;
   return rewriteOldestParts(messages, stale, {
-    user: (part) => (part.type === 'text' && FULL_SCREEN_PATTERN.test(part.text) ? { ...part, text: elideScreen(part.text) } : undefined),
-    tool: (part) => {
-      const text = fullScreenText(part);
-      return text === undefined ? undefined : { ...part, output: { type: 'text', value: elideScreen(text) } };
-    },
+    user: (part) => (part.type === 'text' && isFullScreen(part.text) ? { ...part, text: elideScreen(part.text) } : undefined),
+    tool: elideResultScreen,
   });
 }
 
 /** The full-screen text a part carries, if any. */
 function fullScreenText(part: UserPart | ToolPart): string | undefined {
-  if (part.type === 'text') return FULL_SCREEN_PATTERN.test(part.text) ? part.text : undefined;
-  if (part.type !== 'tool-result' || part.output.type !== 'text' || typeof part.output.value !== 'string') return undefined;
-  return FULL_SCREEN_PATTERN.test(part.output.value) ? part.output.value : undefined;
+  if (part.type === 'text') return isFullScreen(part.text) ? part.text : undefined;
+  return part.type === 'tool-result' ? toolResultTexts(part.output).find(isFullScreen) : undefined;
+}
+
+/**
+ * The tool result with its full screen elided, or undefined when it carries
+ * none. A result with a screenshot attached loses only the screen text and
+ * keeps its other items: the image, or the notice that replaced it.
+ */
+function elideResultScreen(part: ToolPart): ToolPart | undefined {
+  if (part.type !== 'tool-result') return undefined;
+  const { output } = part;
+  if (output.type === 'text') {
+    return isFullScreen(output.value) ? { ...part, output: { ...output, value: elideScreen(output.value) } } : undefined;
+  }
+  if (output.type !== 'content' || !output.value.some(isScreenItem)) return undefined;
+  return {
+    ...part,
+    output: { ...output, value: output.value.map((item) => (isScreenItem(item) ? { ...item, text: elideScreen(item.text) } : item)) },
+  };
+}
+
+function isFullScreen(text: string): boolean {
+  return FULL_SCREEN_PATTERN.test(text);
+}
+
+/** True for the text item of a screenshot-carrying result that holds a full screen. */
+function isScreenItem(item: ContentItem): item is Extract<ContentItem, { type: 'text' }> {
+  return item.type === 'text' && isFullScreen(item.text);
 }
 
 /** Everything before the screen, then the notice in place of the tree. */
