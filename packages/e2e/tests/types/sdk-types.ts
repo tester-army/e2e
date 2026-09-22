@@ -370,6 +370,6 @@ grok('grok-4', {});
 // agents.<name>: the judge slot beside model, and every budget in one entry.
 ({ targets: [{ engine }], agents: { default: { model, judge: model, timeout: 30_000, maxSteps: 5, maxModelCalls: 10, maxObservationBytes: 1000 } } }) satisfies E2EConfig;
 // @ts-expect-error the judge is an AI SDK instance like model; a string names no gateway model
-({ agents: { default: { model, judge: 'openai/gpt-5.6-luna-fast' } } }) satisfies E2EConfig;
+({ targets: [{ engine }], agents: { default: { model, judge: 'openai/gpt-5.6-luna-fast' } } }) satisfies E2EConfig;
 // @ts-expect-error timeout is milliseconds, not a duration string
-({ agents: { default: { model, timeout: '30s' } } }) satisfies E2EConfig;
+({ targets: [{ engine }], agents: { default: { model, timeout: '30s' } } }) satisfies E2EConfig;
