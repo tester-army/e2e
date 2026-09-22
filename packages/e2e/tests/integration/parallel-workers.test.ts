@@ -243,4 +243,68 @@ test('sleeps a long time', { timeout: 8000 }, async ({ app }) => {
     },
     120_000,
   );
+
+  it(
+    'reports a target whose workers cannot boot once, whatever the worker count',
+    async () => {
+      const testFile = (name: string) => `import { test } from 'e2e';
+
+test('${name} never runs', async ({ app }) => {
+  await app.open();
+});
+`;
+      const { outcome, project } = await runProjectWithConfigFile(
+        Object.fromEntries(['one', 'two', 'three', 'four'].map((name) => [`tests/${name}.e2e.ts`, testFile(name)])),
+        {
+          appUrl: app.url,
+          // Every worker resolves its own project id, so none agrees with the runner's digest.
+          configSource: workerConfigSource(4, "\n  projectId: 'p-' + Math.random().toString(36).slice(2),"),
+        },
+      );
+      const run = outcome.report['run'] as unknown as Record<string, unknown>;
+      const errors = run['errors'] as Record<string, unknown>[];
+      expect(errors.filter((error) => error['code'] === 'WORKER_INIT_FAILED')).toHaveLength(1);
+      expect(errors.some((error) => error['code'] === 'CONFIG_NOT_DETERMINISTIC')).toBe(true);
+      for (const name of ['one', 'two', 'three', 'four']) {
+        const result = resultByTitle(outcome, `${name} never runs`);
+        expect(result.status).toBe('skipped');
+        expect(result.skip?.cause).toBe('infrastructure-unavailable');
+      }
+      expect(outcome.exitCode).not.toBe(0);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
+    'fails the test that rejected a promise it never awaited, and runs the rest of its file',
+    async () => {
+      const strayFile = `import { test } from 'e2e';
+
+test('leaves a rejection behind', async ({ app }) => {
+  await app.open();
+  void Promise.reject(new Error('boom'));
+});
+
+test('runs after the rejection', async ({ app }) => {
+  await app.open();
+});
+`;
+      const { outcome, project } = await runProjectWithConfigFile(
+        { 'tests/stray.e2e.ts': strayFile },
+        { appUrl: app.url, configSource: workerConfigSource(1) },
+      );
+      const stray = resultByTitle(outcome, 'leaves a rejection behind');
+      expect(stray.status).toBe('failed');
+      expect(stray.attempts[0]?.error?.message).toBe('boom');
+      expect(resultByTitle(outcome, 'runs after the rejection').status).toBe('passed');
+      expect(outcome.exitCode).toBe(1);
+
+      const run = outcome.report['run'] as unknown as Record<string, unknown>;
+      const errors = run['errors'] as Record<string, unknown>[];
+      expect(errors).toEqual([]);
+      project.cleanup();
+    },
+    120_000,
+  );
 });

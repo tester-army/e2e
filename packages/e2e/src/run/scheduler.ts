@@ -125,7 +125,7 @@ class SchedulerWorker {
   becameReady = false;
   /** Told to tear down at once by a forced interrupt; its exit is then the one asked for. */
   terminated = false;
-  /** Killed by the scheduler once a grace budget ran out; its exit is then the one asked for too. */
+  /** Killed by the scheduler, once a grace budget ran out or over a fatal it reported; its exit is then the one asked for too. */
   killed = false;
   private killTimer: NodeJS.Timeout | undefined;
 
@@ -634,6 +634,7 @@ class Scheduler {
       }
       case 'fatal': {
         this.options.events.onRunError({ error: message.error });
+        worker.killed = true;
         worker.runner.kill();
         break;
       }
@@ -741,17 +742,23 @@ class Scheduler {
     }
   }
 
-  /** Fails a target whose workers cannot boot; drains its queues with skips. */
+  /**
+   * Fails a target whose workers cannot boot; drains its queues with skips.
+   * The error is recorded once: every worker still starting when the target
+   * failed exits after it and requeues its unit, which lands here again.
+   */
   private failTarget(state: TargetState): void {
-    state.failed = true;
-    this.options.events.onRunError({
-      error: serializeError(
-        new InfrastructureError(
-          'WORKER_INIT_FAILED',
-          `workers for target "${state.target.name}" failed to start ${MAX_INIT_FAILURES} times; remaining units skipped`,
+    if (!state.failed) {
+      state.failed = true;
+      this.options.events.onRunError({
+        error: serializeError(
+          new InfrastructureError(
+            'WORKER_INIT_FAILED',
+            `workers for target "${state.target.name}" failed to start ${MAX_INIT_FAILURES} times; remaining units skipped`,
+          ),
         ),
-      ),
-    });
+      });
+    }
     const units = [...state.setupQueue, ...state.fileQueue];
     state.setupQueue.length = 0;
     state.fileQueue.length = 0;

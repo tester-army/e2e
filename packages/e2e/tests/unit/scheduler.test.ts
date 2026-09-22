@@ -14,6 +14,7 @@ import type {
 } from '../../src/collect/select.ts';
 import type { ResolvedTarget } from '../../src/config/resolve.ts';
 import { defineEngine, type EngineHandle } from '../../src/engine/index.ts';
+import { classifyError, serializeError } from '../../src/internal/errors.ts';
 import type { ResultRecord, RunError, SerialGroupRecord } from '../../src/run/records.ts';
 import { runUnits } from '../../src/run/scheduler.ts';
 import { buildWorkPlans, type TargetWorkPlan } from '../../src/run/units.ts';
@@ -113,6 +114,8 @@ interface FakeBehaviour {
   readonly status?: Record<string, ResultRecord['status']>;
   /** Unit ids whose worker exits mid-unit instead of finishing. */
   readonly crashOn?: readonly string[];
+  /** Unit ids whose worker reports a fatal error instead of finishing, and waits to be killed. */
+  readonly fatalOn?: readonly string[];
   /** Targets whose workers exit instead of becoming ready. */
   readonly failInit?: readonly string[];
   /** Targets whose workers hang in startup, never becoming ready or exiting. */
@@ -207,6 +210,10 @@ class FakeRunner implements UnitRunner {
 
   private completeUnit(message: RunUnitMessage): void {
     if (this.exited) return;
+    if (this.behaviour.fatalOn?.includes(message.unitId) === true) {
+      this.events.onMessage({ type: 'fatal', error: serializeError(classifyError(new Error('engine exploded'))) });
+      return;
+    }
     const crash = this.behaviour.crashOn?.includes(message.unitId) === true;
     for (const pair of message.pairs) {
       if (crash) {
@@ -572,6 +579,49 @@ describe('scheduler fault handling', () => {
     const notStarted = collected.results.find((result) => result.test.title === 'second')!;
     expect(notStarted.status).toBe('skipped');
     expect(notStarted.skip?.cause).toBe('infrastructure-unavailable');
+  });
+
+  it('reports a fatal error once and not the kill that follows it', async () => {
+    const target = makeTarget('web', 0);
+    const pairs = ['first', 'second'].map((name, index) =>
+      makePair(makeTest('tests/a.e2e.ts', name, { declarationIndex: index }), target),
+    );
+    const fleet = new FakeFleet({ fatalOn: ['file::web::tests/a.e2e.ts'] });
+
+    const collected = await run(
+      makeSelection([{ target, pairs }]),
+      makeCollection(['tests/a.e2e.ts'], pairs),
+      fleet,
+      { workers: 1 },
+    );
+
+    expect(collected.runErrors.map((error) => error.error.message)).toEqual(['engine exploded']);
+    expect(collected.results.map((result) => [result.status, result.skip?.cause])).toEqual([
+      ['skipped', 'infrastructure-unavailable'],
+      ['skipped', 'infrastructure-unavailable'],
+    ]);
+  });
+
+  it('records a boot failure once, however many workers of the target were still starting', async () => {
+    const target = makeTarget('web', 0);
+    const pairs = ['a', 'b', 'c', 'd'].map((name) =>
+      makePair(makeTest(`tests/${name}.e2e.ts`, name), target),
+    );
+    const fleet = new FakeFleet({ failInit: ['web'] });
+
+    const collected = await run(
+      makeSelection([{ target, pairs }]),
+      makeCollection(
+        pairs.map((pair) => pair.test.file),
+        pairs,
+      ),
+      fleet,
+      { workers: 4 },
+    );
+
+    expect(collected.runErrors.map((error) => error.error.code)).toEqual(['WORKER_INIT_FAILED']);
+    expect(collected.results).toHaveLength(4);
+    for (const result of collected.results) expect(result.status).toBe('skipped');
   });
 
   it('fails a target whose workers never start and skips its remaining units', async () => {

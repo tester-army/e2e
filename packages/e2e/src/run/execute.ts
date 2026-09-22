@@ -132,6 +132,8 @@ export class TargetExecutor implements SerialHost {
   readonly debug: DebugTrace;
 
   private readonly runErrors: RunError[] = [];
+  /** Fails the attempt in flight from outside it, while one is; see `failInFlight`. */
+  private strayFailure: ((cause: unknown) => void) | undefined;
   private readonly models: WorkerModels;
   private readonly sessionIdentity: SessionIdentity;
   /** Resolves once the engine's init hook completed for this worker. */
@@ -199,6 +201,20 @@ export class TargetExecutor implements SerialHost {
   /** Run-level errors recorded so far, in order. */
   collectedRunErrors(): readonly RunError[] {
     return this.runErrors;
+  }
+
+  /**
+   * Fails the attempt in flight with a rejection nobody caught: a promise the
+   * test started and never awaited. While the body runs it is cut short the
+   * way a timeout cuts it; after, the rejection is the failure of the phase
+   * it landed in. False when no attempt is in flight, so the caller can
+   * treat the rejection as the process's own.
+   */
+  failInFlight(cause: unknown): boolean {
+    const fail = this.strayFailure;
+    if (fail === undefined) return false;
+    fail(cause);
+    return true;
   }
 
   /**
@@ -801,6 +817,21 @@ export class TargetExecutor implements SerialHost {
       attemptIndex,
     });
 
+    // A rejection nobody caught, handed in by the process while this attempt
+    // is in flight. Set while the body's race is pending, so the rejection
+    // ends the body like a timeout; at any other point it is recorded against
+    // the phase it landed in, beside a failure already there.
+    let cutBody: ((cause: unknown) => void) | undefined;
+    this.strayFailure = (cause) => {
+      if (cutBody !== undefined) {
+        attemptAbort.abort();
+        cutBody(cause);
+        return;
+      }
+      if (failure === undefined) recordFailure(cause, phase);
+      else secondaryErrors.push(serializeError(classifyError(cause), { phase, projectRoot: this.config.projectRoot, redact }));
+    };
+
     try {
       const session =
         shared?.session ??
@@ -917,13 +948,19 @@ export class TargetExecutor implements SerialHost {
       // own timeout — minutes, on a device target. The abandoned body goes
       // down with the worker process; the attempt records the interrupt and
       // moves to cleanup.
-      const body = this.options.isolated
+      const work = this.options.isolated
         ? withAbort(
             mainWork(),
             this.interruptSignal,
             () => new E2EError('interrupted', 'INTERRUPTED', `run interrupted in phase ${phase}`),
           )
         : mainWork();
+      const body = Promise.race([
+        work,
+        new Promise<never>((_, reject) => {
+          cutBody = reject;
+        }),
+      ]);
       try {
         await this.debug.time('test.body', () =>
           withTimeout(
@@ -946,6 +983,12 @@ export class TargetExecutor implements SerialHost {
           await captureEvidence();
         }
       }
+      cutBody = undefined;
+      // A promise the body rejected and never awaited reaches the process
+      // once the microtasks drain, which is after the body settled but before
+      // the next turn of the event loop; waiting that turn out lands it on
+      // this attempt instead of between two.
+      await new Promise<void>((resolve) => setImmediate(resolve));
       // A body that timed out or was interrupted never closed its soft
       // failures; they are noted here so teardown starts with the collection
       // closed either way, and a soft matcher in a hook throws.
@@ -984,6 +1027,7 @@ export class TargetExecutor implements SerialHost {
     } catch (cause) {
       recordFailure(cause, phase);
     } finally {
+      this.strayFailure = undefined;
       attemptEnd.abort();
       this.interruptSignal.removeEventListener('abort', onInterrupt);
       // The verdict is reached before the session closes: nothing after this
