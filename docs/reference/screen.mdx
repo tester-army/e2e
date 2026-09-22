@@ -85,7 +85,10 @@ await screen.getByTestId('memory-list', { visible: true }).getByRole('listitem')
 `visible` uses the same visibility check as `toBeVisible()`, `isVisible()`,
 and `waitFor()`. It works with scopes, `filter`, `first`, `last`, and `nth`:
 `getByText('Save', { visible: true }).first()` is the first visible match.
-Prefer it over `web.locator('p:visible')`, which ties the test to CSS.
+One limit on the web: as a scope or a `has` filter, a visible query reads
+`aria-hidden` up to the nearest shadow root, so a node inside the shadow tree
+of an `aria-hidden` host can still scope a child query there. Prefer
+`visible` over `web.locator('p:visible')`, which ties the test to CSS.
 
 ## Refinement
 

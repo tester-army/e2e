@@ -105,7 +105,8 @@ compares like `toHaveText`, after normalization.
 
 `toBeVisible` follows the accessibility tree, not the paint. A node the tree
 excludes is hidden even when its text is on screen: on the web, anything
-under `aria-hidden="true"`, on the element or an ancestor. Playwright's own
+under `aria-hidden="true"`, on the element, an ancestor, or the `<iframe>`
+embedding its document. Playwright's own
 `toBeVisible` checks layout alone and passes there. A header that paints its
 label as decoration beside an `aria-label` fails `getByText`, and the verdict
 names the cause:
