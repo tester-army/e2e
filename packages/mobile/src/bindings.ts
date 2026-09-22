@@ -27,10 +27,10 @@ export interface DeviceDaemon {
  * scope a daemon resolves a hosted device by (`tenant`, `runId`, `leaseId`,
  * `leaseBackend`, `leaseProvider`), the `stateDir` of a daemon other than the
  * default one, provider options. JSON data only, since it travels to the
- * worker through the environment; `session`, `daemonBaseUrl`, and
- * `daemonAuthToken` are not part of it.
+ * worker through the environment; `session`, `daemonBaseUrl`,
+ * `daemonAuthToken`, and the transport are not part of it.
  */
-export type DeviceClientConfig = Omit<AgentDeviceClientConfig, 'session' | 'daemonBaseUrl' | 'daemonAuthToken'>;
+export type DeviceClientConfig = Omit<AgentDeviceClientConfig, 'session' | 'daemonBaseUrl' | 'daemonAuthToken' | 'daemonTransport'>;
 
 /** How a worker's agent-device client reaches its device: which daemon, and with what configuration. */
 export type DeviceConnection = Pick<SlotBinding, 'daemon' | 'client'>;
@@ -140,8 +140,11 @@ export function isSlotBinding(value: unknown): value is SlotBinding {
   );
 }
 
-/** Reserved for the engine and the `daemon` field; a provider setting them would be silently overruled. */
-const RESERVED_CLIENT_KEYS: ReadonlySet<string> = new Set(['session', 'daemonBaseUrl', 'daemonAuthToken']);
+/**
+ * Reserved for the engine and the `daemon` field, where a provider's value would be
+ * silently overruled; the transport is how the worker reaches the daemon, not a device fact.
+ */
+const RESERVED_CLIENT_KEYS: ReadonlySet<string> = new Set(['session', 'daemonBaseUrl', 'daemonAuthToken', 'daemonTransport']);
 
 /** Plain JSON data with none of the reserved keys: what survives the environment and what the engine will not override. */
 function isClientConfig(value: unknown): value is DeviceClientConfig {
@@ -152,8 +155,10 @@ function isJsonObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value) && Object.values(value).every(isJsonValue);
 }
 
+/** What survives `JSON.stringify` unchanged: a non-finite number would reach the worker as `null`. */
 function isJsonValue(value: unknown): boolean {
-  if (value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return true;
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
   if (Array.isArray(value)) return value.every(isJsonValue);
   return isJsonObject(value);
 }

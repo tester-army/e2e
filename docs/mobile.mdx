@@ -138,8 +138,8 @@ the run's clock starts.
 
 `client` is agent-device client configuration, JSON data the worker's client
 is created with on top of the session name and the `daemon` address (the
-engine owns `session`, `daemonBaseUrl`, and `daemonAuthToken`, and refuses a
-lease that sets them). It is how a device reached through agent-device's own
+engine owns `session`, `daemonBaseUrl`, `daemonAuthToken`, and
+`daemonTransport`, and refuses a lease that sets them). It is how a device reached through agent-device's own
 device-cloud runtimes is told apart: the daemon resolves a hosted device from
 the lease scope on each command (`tenant`, `runId`, `leaseId`, `leaseBackend`,
 `leaseProvider`, as `leases.allocate` returned it), and a command without one

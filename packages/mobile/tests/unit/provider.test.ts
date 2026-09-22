@@ -217,7 +217,11 @@ describe('device provider', () => {
       { id: 'bare' },
       { id: 'session', client: { session: 'mine', leaseId: 'x' } },
       { id: 'daemon-keys', client: { daemonBaseUrl: 'https://d.example' } },
+      { id: 'transport', client: { leaseId: 'x', daemonTransport: 'http' } },
       { id: 'not-json', client: { leaseId: 'x', onReady: () => undefined } },
+      { id: 'nan', client: { leaseId: 'x', leaseTtlMs: Number.NaN } },
+      { id: 'infinity', client: { leaseId: 'x', leaseTtlMs: Number.POSITIVE_INFINITY } },
+      { id: 'negative-infinity', client: { leaseId: 'x', leaseTtlMs: Number.NEGATIVE_INFINITY } },
     ]) {
       const h = harness({ device: { name: 'odd', acquire: async () => lease as unknown as DeviceLease, release: async () => {} } });
       await expect(h.engine.prepare!(prepareInfo({}, 1))).rejects.toMatchObject({
