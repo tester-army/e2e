@@ -387,3 +387,10 @@ if (runEvent.type === 'explore') {
   runEvent.progress.phase satisfies 'started' | 'planning' | 'step-started' | 'step-finished' | 'finding' | 'finished';
   if (runEvent.progress.phase === 'finding') runEvent.progress.finding.severity satisfies 1 | 2 | 3 | 4 | 5;
 }
+
+// agents.<name>: the judge slot beside model, and every budget in one entry.
+({ targets: [{ engine }], agents: { default: { model, judge: model, timeout: 30_000, maxSteps: 5, maxModelCalls: 10, maxObservationBytes: 1000 } } }) satisfies E2EConfig;
+// @ts-expect-error the judge is an AI SDK instance like model; a string names no gateway model
+({ agents: { default: { model, judge: 'openai/gpt-5.6-luna-fast' } } }) satisfies E2EConfig;
+// @ts-expect-error timeout is milliseconds, not a duration string
+({ agents: { default: { model, timeout: '30s' } } }) satisfies E2EConfig;
