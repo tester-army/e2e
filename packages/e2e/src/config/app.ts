@@ -3,11 +3,11 @@
  * about the app it drives, validated where an error can name the target.
  */
 
-import fs from 'node:fs';
 import path from 'node:path';
 import type { EngineAppDeclaration, EngineHandle } from '../engine/index.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import { obj } from '../internal/objects.ts';
+import { insideProjectRoot } from '../internal/paths.ts';
 import {
   isImplicitTestHost,
   normalizeBaseUrl,
@@ -244,43 +244,6 @@ function rejectReuse(command: CommandConfig, label: string, reason: string): voi
   if (command.reuseExisting !== undefined) {
     throw new ConfigurationError('INVALID_CONFIG', `${label}.reuseExisting needs readyUrl: ${reason}`);
   }
-}
-
-/**
- * `target` with the symlinks of its deepest existing ancestor resolved and the
- * missing tail appended as written. A log file usually does not exist yet,
- * but the directory a symlink points at does, so this is what the runner
- * would actually open.
- */
-function realpathOfExisting(target: string): string {
-  const tail: string[] = [];
-  let current = target;
-  for (;;) {
-    try {
-      return path.join(fs.realpathSync(current), ...tail);
-    } catch {
-      const parent = path.dirname(current);
-      if (parent === current) return target;
-      tail.unshift(path.basename(current));
-      current = parent;
-    }
-  }
-}
-
-/**
- * Whether `target` is a path strictly below the project root once both are
- * resolved through the filesystem: an in-project symlink pointing outside is
- * rejected, a symlinked project root still counts as the root, and a name
- * that merely starts with `..` (`..logs/out.log`) is an ordinary entry.
- */
-function insideProjectRoot(projectRoot: string, target: string): boolean {
-  const relative = path.relative(realpathOfExisting(projectRoot), realpathOfExisting(target));
-  return (
-    relative !== '' &&
-    relative !== '..' &&
-    !relative.startsWith(`..${path.sep}`) &&
-    !path.isAbsolute(relative)
-  );
 }
 
 /** The longest `name` a service may carry; a label, not a description. */
