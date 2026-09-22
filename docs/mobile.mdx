@@ -410,9 +410,10 @@ cleanup.
 
 **A snapshot the runner could not present.** `regular iOS snapshot
 presentation requires a valid viewport` is a per-capture check inside the
-runner, not a property of the screen. The engine takes the snapshot once more
-before failing the step, as it does for a sparse one; a second failure
-propagates with the same recovery.
+runner, not a property of the screen; so are the payload checks (`regular iOS
+snapshot payload refers to a parent outside the payload`, a malformed graph).
+The engine takes the snapshot once more before failing the step, as it does
+for a sparse one; a second failure propagates with the same recovery.
 
 **A timeout the device reports.** A simulator boot, the runner connecting, or
 an app launch that agent-device times out is an `ENGINE_FAILURE` whose
