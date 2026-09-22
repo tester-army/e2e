@@ -89,6 +89,26 @@ test('role vocabulary: tabs, menus, progress, toolbars, images', async ({ app, s
   await expect(screen.getByRole('article', { name: 'First post' })).toHaveText('Body');
 });
 
+test('aria-hidden text is hidden by the tree; the named link is shown', async ({ app, screen }) => {
+  await app.open('/aria-hidden');
+  await expect(screen.getByRole('link', { name: 'Good Ppl' })).toBeVisible();
+  await expect(screen.getByText('Good Ppl')).toBeHidden();
+  expect(await screen.getByText('Following').first().isHidden()).toBe(true);
+  await expect(screen.getByText('Following')).toHaveCount(2);
+  await expect(screen.getByText('Following', { visible: true })).toHaveCount(1);
+  await expect(screen.getByText('Following', { visible: true }).first()).toBeVisible();
+});
+
+test('toBeVisible on text the span marks aria-hidden', async ({ app, screen }) => {
+  await app.open('/aria-hidden');
+  await expect(screen.getByText('Good Ppl')).toBeVisible({ timeout: 500 });
+});
+
+test('toBeVisible on text under an aria-hidden ancestor', async ({ app, screen }) => {
+  await app.open('/aria-hidden');
+  await expect(screen.getByText('Following').first()).toBeVisible({ timeout: 500 });
+});
+
 test('actions and state', async ({ app, screen, web }) => {
   await app.open();
 
@@ -327,6 +347,7 @@ describe('web platform integration', () => {
     const shouldPass = [
       'deterministic queries and reads',
       'role vocabulary: tabs, menus, progress, toolbars, images',
+      'aria-hidden text is hidden by the tree; the named link is shown',
       'actions and state',
       'assertions poll until the app settles',
       'web navigation, urls, and titles',
@@ -345,6 +366,20 @@ describe('web platform integration', () => {
     for (const title of shouldPass) {
       const result = resultByTitle(outcome, title);
       expect(result.status, `${title}: ${JSON.stringify(result.attempts[0]?.error)}`).toBe('passed');
+    }
+  });
+
+  it('names aria-hidden as what hides text the tree excludes', () => {
+    for (const title of [
+      'toBeVisible on text the span marks aria-hidden',
+      'toBeVisible on text under an aria-hidden ancestor',
+    ]) {
+      const result = resultByTitle(outcome, title);
+      expect(result.status, title).toBe('failed');
+      expect(result.attempts[0]!.error?.code, title).toBe('ASSERTION_FAILED');
+      expect(result.attempts[0]!.error?.message, title).toContain(
+        'observed: states: hidden by aria-hidden (match count 1)',
+      );
     }
   });
 

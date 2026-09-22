@@ -356,12 +356,17 @@ function isTextMatchList(expected: TextMatch | readonly TextMatch[]): expected i
   return Array.isArray(expected);
 }
 
+/**
+ * The node's active states, `hidden` naming what the platform says excludes
+ * the node when it is not layout (`hidden by aria-hidden`), so a failure on
+ * text a person sees explains itself.
+ */
 function observedState(sample: Sample): string {
   if (sample.node === null) return 'no node';
-  const states = sample.node.states ?? {};
+  const { states = {}, hiddenBy } = sample.node;
   const active = Object.entries(states)
     .filter(([, value]) => value === true)
-    .map(([key]) => key);
+    .map(([key]) => (key === 'hidden' && hiddenBy !== undefined ? `hidden by ${hiddenBy}` : key));
   return active.length === 0 ? 'default states' : `states: ${active.join(', ')}`;
 }
 

@@ -113,6 +113,8 @@ export interface RawNodeData {
     hidden: boolean;
     secure: boolean;
   };
+  /** `aria-hidden` when that, on the element or an ancestor, is what hides it; null otherwise. */
+  hiddenBy: 'aria-hidden' | null;
   /** Heading level of a heading: `aria-level`, else the digit of `h1` through `h6`; null for anything else. */
   level: number | null;
   attributes: Record<string, string>;
@@ -547,8 +549,23 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
   const shadowRootOf = (el: Element): ShadowRoot | null =>
     el.shadowRoot ?? closedShadowRoots?.get(el) ?? null;
 
-  const isHidden = (el: Element, style = styleOf(el)): boolean => {
-    if (el.getAttribute('aria-hidden') === 'true') return true;
+  /**
+   * True when `aria-hidden="true"` on the element or an ancestor excludes it
+   * from the accessibility tree. Shadow hosts count as ancestors, as the walk
+   * that skips a hidden subtree never enters a hidden host's shadow tree, so
+   * a single-node read agrees with it for every element.
+   */
+  const isAriaHidden = (el: Element): boolean => {
+    for (let current: Element | null = el; current !== null; ) {
+      if (current.closest('[aria-hidden="true"]') !== null) return true;
+      const root = current.getRootNode();
+      current = root instanceof ShadowRoot ? root.host : null;
+    }
+    return false;
+  };
+
+  /** True when layout keeps the element off screen: `display`, `visibility`, or no box. */
+  const isLayoutHidden = (el: Element, style = styleOf(el)): boolean => {
     if (!(el instanceof HTMLElement)) return el.getClientRects().length === 0;
     if (style !== undefined && (style.visibility === 'hidden' || style.display === 'none')) {
       return true;
@@ -559,6 +576,9 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
     if (style !== undefined && style.display === 'contents') return false;
     return el.getClientRects().length === 0;
   };
+
+  /** The one visibility predicate: the walk skips what it calls hidden, a node read reports it. */
+  const isHidden = (el: Element, style = styleOf(el)): boolean => isAriaHidden(el) || isLayoutHidden(el, style);
 
   /** Smallest side, in CSS pixels, an empty box must have to be worth reporting. */
   const MIN_BOX_SIDE = 12;
@@ -792,6 +812,7 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
       else level = 2;
     }
 
+    const ariaHidden = isAriaHidden(el);
     return {
       role,
       name,
@@ -806,9 +827,10 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
         expanded: ariaExpanded === null ? null : ariaExpanded === 'true',
         pressed: ariaPressed === null ? null : ariaPressed === 'true',
         focused: el.ownerDocument.activeElement === el,
-        hidden: isHidden(el, style),
+        hidden: ariaHidden || isLayoutHidden(el, style),
         secure,
       },
+      hiddenBy: ariaHidden ? 'aria-hidden' : null,
       level,
       attributes,
       testId: el.getAttribute(options.testIdAttribute),
@@ -912,6 +934,7 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
         // Listed on purpose, so not "hidden"; the label is the name and the
         // value attribute is the app's internal token, not something to show.
         node.states.hidden = false;
+        node.hiddenBy = null;
         node.value = null;
       }
       return;

@@ -24,6 +24,7 @@ function document(stalled?: ReadStage) {
     role: 'button', name: 'Button', labels: null, text: null, value: null,
     inputPurpose: 'none', attributes: {}, testId: 'button', parent: -1, level: null,
     states: { checked: null, disabled: false, selected: null, expanded: null, pressed: null, focused: false, hidden: false, secure: false },
+    hiddenBy: null,
     rect: { x: 0, y: 0, width: 100, height: 80 },
   };
   const element = {
