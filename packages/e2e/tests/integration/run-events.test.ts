@@ -291,6 +291,46 @@ test('talks', async () => {
     }
   }, 120_000);
 
+  it('a serial member’s unfinished line leaves with the member that wrote it, not the one after', async () => {
+    const app = await startFixtureApp();
+    const events: RunEvent[] = [];
+    let project: FixtureProject | undefined;
+    try {
+      const result = await runProjectWithConfigFile(
+        {
+          'tests/serial-logs.e2e.ts': `import { test } from 'e2e';
+test.describe('shared', { serial: true }, () => {
+  test('first', async () => { process.stdout.write('progress'); });
+  test('second', async () => { process.stdout.write(' done\\n'); });
+});
+`,
+        },
+        {
+          appUrl: app.url,
+          // A registered secret is what makes the worker hold an unfinished line.
+          configSource: workerConfigSource(1, `
+  secrets: { 'stripe-key': 'sk_live_generic_4242' },`),
+          runOptions: { onEvent: (event: RunEvent) => { events.push(event); } },
+        },
+      );
+      project = result.project;
+      expect(result.outcome.status).toBe('passed');
+      const started = new Map(
+        events.flatMap((event) => (event.type === 'test-started' ? [[event.title, event.testId] as const] : [])),
+      );
+      const outputOf = (title: string): string[] => {
+        const testId = started.get(title);
+        expect(testId).toBeDefined();
+        return events.flatMap((event) => (event.type === 'output' && event.pair?.testId === testId ? [event.text] : []));
+      };
+      expect(outputOf('shared > first')).toEqual(['progress']);
+      expect(outputOf('shared > second')).toEqual([' done\n']);
+    } finally {
+      project?.cleanup();
+      await app.close();
+    }
+  }, 120_000);
+
   it('a junit-write failure is one stderr line and leaves the outcome, the report, and run-finished alone', async () => {
     const app = await startFixtureApp();
     const project = createProject({ 'tests/events.e2e.ts': SUITE });

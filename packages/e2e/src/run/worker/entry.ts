@@ -76,30 +76,30 @@ function exitAfterFlush(code: 0 | 1): void {
  * land inside it and be painted over. Text is attributed to the pair in
  * flight, with every secret value this process has seen redacted across
  * writes: a write that ends mid-line holds back the tail a later write could
- * complete into a value, and the returned function releases what is held to
- * the pair it names. The stream's contract holds: the callback fires once
- * the channel took the message, `write` answers false past the high-water
- * mark, and `drain` follows when the backlog has cleared.
+ * complete into a value, and the returned function releases what is held,
+ * attributed to the pair that wrote it. The stream's contract holds: the
+ * callback fires once the channel took the message, `write` answers false
+ * past the high-water mark, and `drain` follows when the backlog has cleared.
  */
-function captureOutput(pairInFlight: () => OutputMessage['pair']): (pair: OutputMessage['pair']) => void {
-  const flushes: ((pair: OutputMessage['pair']) => void)[] = [];
+function captureOutput(pairInFlight: () => OutputMessage['pair']): () => void {
+  const flushes: (() => void)[] = [];
   for (const [stream, name] of [
     [process.stdout, 'stdout'],
     [process.stderr, 'stderr'],
   ] as const) {
     type Done = (error?: Error | null) => void;
     const redactor = new StreamRedactor(processSecrets);
+    let heldFor: OutputMessage['pair'] = undefined;
     let pending = 0;
     let needsDrain = false;
     const output = (text: string, pair: OutputMessage['pair']): Promise<void> =>
       text === '' ? Promise.resolve() : send({ type: 'output', pair, stream: name, text });
-    flushes.push((pair) => void output(redactor.flush(), pair));
+    flushes.push(() => void output(redactor.flush(), heldFor));
     const write = (chunk: string | Uint8Array, encoding?: BufferEncoding | Done, callback?: Done): boolean => {
       const done = typeof encoding === 'function' ? encoding : callback;
-      const text =
-        typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString(typeof encoding === 'string' ? encoding : 'utf8');
+      const pair = pairInFlight();
       pending += 1;
-      void output(redactor.push(text), pairInFlight()).then(() => {
+      void output(redactor.push(chunk), pair).then(() => {
         pending -= 1;
         if (done !== undefined) done();
         if (needsDrain && pending < OUTPUT_HIGH_WATER) {
@@ -107,14 +107,15 @@ function captureOutput(pairInFlight: () => OutputMessage['pair']): (pair: Output
           stream.emit('drain');
         }
       });
+      heldFor = pair;
       if (pending < OUTPUT_HIGH_WATER) return true;
       needsDrain = true;
       return false;
     };
     stream.write = write as typeof stream.write;
   }
-  return (pair) => {
-    for (const flush of flushes) flush(pair);
+  return () => {
+    for (const flush of flushes) flush();
   };
 }
 
@@ -233,11 +234,16 @@ function main(): void {
       const aiTrace = message.bootstrap.aiTrace ? new AiTraceRecorder() : undefined;
       const emit = (outbound: WorkerToMain): void => {
         // Output written without a final newline is still held; it leaves
-        // before the message that ends the test, the unit, or the worker.
-        if (outbound.type === 'result') {
-          flushOutput({ testId: outbound.result.test.id, agent: outbound.result.agent, repeat: outbound.result.repeat });
-        } else if (outbound.type === 'unit-done' || outbound.type === 'shutdown-done') {
-          flushOutput(undefined);
+        // before the message that starts the next pair (a serial member's
+        // line must not land on the member after it), ends the test, the
+        // unit, or the worker.
+        if (
+          outbound.type === 'pair-start' ||
+          outbound.type === 'result' ||
+          outbound.type === 'unit-done' ||
+          outbound.type === 'shutdown-done'
+        ) {
+          flushOutput();
         }
         if (outbound.type !== 'unit-done' && outbound.type !== 'shutdown-done') {
           send(outbound);

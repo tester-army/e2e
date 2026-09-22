@@ -146,4 +146,33 @@ describe('StreamRedactor', () => {
     expect(stream.push('partial')).toBe('partial');
     expect(stream.flush()).toBe('');
   });
+
+  it('redacts a run of overlapping occurrences longer than any buffer as the whole would, holding under two spellings', () => {
+    const periodic = new SecretLedger([['s', 'abababab']]);
+    const stream = new StreamRedactor(periodic);
+    const text = 'ab'.repeat(40_000);
+    let out = '';
+    for (let at = 0; at < text.length; at += 1_001) out += stream.push(text.slice(at, at + 1_001));
+    expect(out).not.toContain('abababab');
+    const tail = stream.flush();
+    expect(tail.replaceAll('<secret:s>', 'abababab').length).toBeLessThan(2 * periodic.maxFormLength);
+    expect(out + tail).toBe(periodic.redact(text));
+    expect(out + tail).toBe('<secret:s>'.repeat(10_000));
+  });
+
+  it('decodes bytes as UTF-8, so a character split across two writes still completes a value', () => {
+    const euro = new SecretLedger([['pay', 'pay€2718secret']]);
+    const stream = new StreamRedactor(euro);
+    const bytes = Buffer.from('token pay€2718secret leaked\n', 'utf8');
+    const mid = Buffer.byteLength('token pay') + 1;
+    const first = stream.push(bytes.subarray(0, mid));
+    const second = stream.push(bytes.subarray(mid));
+    expect(first).not.toContain('�');
+    expect(first + second).toBe('token <secret:pay> leaked\n');
+  });
+
+  it('releases an unfinished character on flush instead of holding it', () => {
+    const stream = new StreamRedactor(ledger());
+    expect(stream.push(Buffer.from([0x68, 0x69, 0xe2])) + stream.flush()).toBe('hi�');
+  });
 });

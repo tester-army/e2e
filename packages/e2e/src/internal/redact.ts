@@ -1,5 +1,6 @@
 /** Runner-side secret redaction. */
 
+import { StringDecoder } from 'node:string_decoder';
 import { escapeRegexpChar } from './regexp.ts';
 
 /**
@@ -7,8 +8,9 @@ import { escapeRegexpChar } from './regexp.ts';
  * the value takes in text the runner writes or rewrites, with its stable
  * secret name.
  *
- * Longer values are substituted first, so a secret that contains another
- * secret is not left half-rewritten.
+ * Occurrences are rewritten leftmost first, and where two values start at
+ * one position the longer wins, so a secret that contains another secret is
+ * rewritten whole, not half.
  */
 export function createRedactor(
   secrets: Iterable<readonly [string, string]>,
@@ -16,55 +18,50 @@ export function createRedactor(
   return compile([...secrets]).redact;
 }
 
-/** One value's matcher: `replace` rewrites every occurrence, `find` reports every start, overlapping ones included. */
-interface Matcher {
-  readonly marker: string;
-  readonly replace: RegExp;
-  readonly find: RegExp;
-}
-
 interface Compiled {
   readonly redact: (text: string) => string;
-  readonly matchers: readonly Matcher[];
-  /** The most text one value can match; a piece shorter than this holds at most part of one occurrence. */
+  /** Every occurrence of every value, leftmost first and never overlapping: the matches `redact` rewrites. Absent with no values. */
+  readonly pattern: RegExp | undefined;
+  /** The most text one occurrence can span; a piece shorter than this holds at most part of one. */
   readonly maxFormLength: number;
-  /** Whether a value contains a line break: the one spelling of a value an unfinished line cannot be cut from. */
+  /** Whether a value contains a line break: the one case an unfinished line cannot be cut from the line before it. */
   readonly spansLines: boolean;
 }
 
 /**
- * One matcher per non-empty value, longest value first. A value matches
- * character by character, each in any spelling a serializer gives it, so one
- * pattern covers a JSON body, a serialized page, a URL, and the raw value
- * alike, and a mixed or unusual spelling needs no form of its own.
+ * One pattern over every non-empty value, longest value first. A value
+ * matches character by character, each in any spelling a serializer gives it,
+ * so one pattern covers a JSON body, a serialized page, a URL, and the raw
+ * value alike, and a mixed or unusual spelling needs no form of its own.
  */
 function compile(values: readonly (readonly [string, string])[]): Compiled {
-  let maxFormLength = 0;
-  let spansLines = false;
-  const matchers = values
-    .filter(([, value]) => value.length > 0)
-    .toSorted((a, b) => b[1].length - a[1].length)
-    .map(([name, value]): Matcher => {
-      let source = '';
-      let length = 0;
-      for (const ch of value) {
-        const options = spellings(ch);
-        source += `(?:${options.map(literal).join('|')})`;
-        length += Math.max(...options.map((option) => option.length));
-      }
-      maxFormLength = Math.max(maxFormLength, length);
-      spansLines ||= value.includes('\n');
-      return { marker: `<secret:${name}>`, replace: new RegExp(source, 'g'), find: new RegExp(`(?=(${source}))`, 'g') };
-    });
-  const redact =
-    matchers.length === 0
-      ? (text: string): string => text
-      : (text: string): string => {
-          let out = text;
-          for (const { replace, marker } of matchers) out = out.replace(replace, () => marker);
-          return out;
-        };
-  return { redact, matchers, maxFormLength, spansLines };
+  const entries = values.filter(([, value]) => value.length > 0).toSorted((a, b) => b[1].length - a[1].length);
+  if (entries.length === 0) return { redact: (text) => text, pattern: undefined, maxFormLength: 0, spansLines: false };
+  const markers = entries.map(([name]) => `<secret:${name}>`);
+  const patterns = entries.map(([, value]) => valuePattern(value));
+  const pattern = new RegExp(patterns.map(({ source }) => `(${source})`).join('|'), 'g');
+  return {
+    redact: (text) =>
+      text.replace(pattern, (_occurrence: string, ...rest: unknown[]) => {
+        const matched = rest.slice(0, markers.length).findIndex((group) => group !== undefined);
+        return markers[matched] ?? '';
+      }),
+    pattern,
+    maxFormLength: Math.max(...patterns.map(({ maxLength }) => maxLength)),
+    spansLines: entries.some(([, value]) => value.includes('\n')),
+  };
+}
+
+/** The source matching `value` in every spelling, and the most text one match of it can span. */
+function valuePattern(value: string): { source: string; maxLength: number } {
+  let source = '';
+  let maxLength = 0;
+  for (const ch of value) {
+    const options = spellings(ch);
+    source += `(?:${options.map(literal).join('|')})`;
+    maxLength += options[0]?.length ?? 1;
+  }
+  return { source, maxLength };
 }
 
 const NAMED_REFERENCES: Readonly<Record<string, readonly string[]>> = {
@@ -164,36 +161,28 @@ export class SecretLedger {
    * holds a secret has to be withheld instead.
    */
   appearsIn(bytes: Uint8Array): boolean {
-    const text = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('utf8');
-    return this.compile().matchers.some(({ replace }) => text.search(replace) !== -1);
+    const { pattern } = this.compile();
+    if (pattern === undefined) return false;
+    return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('utf8').search(pattern) !== -1;
   }
 
   /**
    * Where `text` must be held back while more may follow: the index from
    * which a later piece could complete an occurrence. That is the last
    * `maxFormLength - 1` characters, or only the unfinished last line when no
-   * value spans lines, moved back over any occurrence the cut would split so
-   * that each side redacts whole on its own.
+   * value spans lines, moved back to the start of the one occurrence the
+   * redactor would rewrite across that point, so each side redacts on its own
+   * to what the whole does. Occurrences never overlap, so the move is one and
+   * what is held stays under twice `maxFormLength`.
    */
   holdFrom(text: string): number {
-    const { matchers, spansLines } = this.compile();
-    if (matchers.length === 0) return text.length;
-    const reach = this.maxFormLength - 1;
-    let cut = Math.max(0, text.length - reach);
+    const { pattern, spansLines, maxFormLength } = this.compile();
+    if (pattern === undefined) return text.length;
+    let cut = Math.max(0, text.length - (maxFormLength - 1));
     if (!spansLines) cut = Math.max(cut, text.lastIndexOf('\n') + 1);
-    for (let moved = true; moved && cut > 0; ) {
-      moved = false;
-      const from = Math.max(0, cut - reach);
-      const window = text.slice(from, Math.min(text.length, cut + reach));
-      for (const { find } of matchers) {
-        for (const match of window.matchAll(find)) {
-          const start = from + match.index;
-          if (start < cut && start + (match[1]?.length ?? 0) > cut) {
-            cut = start;
-            moved = true;
-          }
-        }
-      }
+    pattern.lastIndex = 0;
+    for (let match = pattern.exec(text); match !== null && match.index < cut; match = pattern.exec(text)) {
+      if (match.index + match[0].length > cut) return match.index;
     }
     return cut;
   }
@@ -205,35 +194,31 @@ export class SecretLedger {
 }
 
 /**
- * Held text past which a stream stops waiting for a clean cut: occurrences
- * overlapping one another all the way back to the start (a value that repeats
- * its own prefix, written over and over) would otherwise hold everything.
- */
-const MAX_HELD = 64 * 1024;
-
-/**
- * Redaction for text that arrives in pieces, so a value split across two
- * writes is still caught. Each `push` returns what is safe to pass on and
- * holds back the rest: the tail a later piece could complete, as the ledger
- * measures it. `flush` releases the tail, redacted, when the stream ends.
+ * Redaction for text that arrives in pieces, as a stream writes it, so a
+ * value split across two writes is still caught. Each `push` returns what is
+ * safe to pass on and holds back the rest: the tail a later piece could
+ * complete, as the ledger measures it. Bytes are decoded as UTF-8 with a
+ * character split across pieces kept whole. `flush` releases what is held,
+ * redacted, when the stream ends. The pieces together redact to exactly what
+ * the whole text would.
  */
 export class StreamRedactor {
+  private readonly decoder = new StringDecoder('utf8');
   private held = '';
 
   constructor(private readonly ledger: SecretLedger) {}
 
   /** Redacts and returns what `chunk` completes; the rest waits for the next piece or `flush`. */
-  push(chunk: string): string {
-    const text = this.held + chunk;
-    let cut = this.ledger.holdFrom(text);
-    if (cut === 0 && text.length >= MAX_HELD) cut = text.length;
+  push(chunk: string | Uint8Array): string {
+    const text = this.held + (typeof chunk === 'string' ? chunk : this.decoder.write(chunk));
+    const cut = this.ledger.holdFrom(text);
     this.held = text.slice(cut);
     return this.ledger.redact(text.slice(0, cut));
   }
 
-  /** Redacts and returns whatever is held; nothing more will follow. */
+  /** Redacts and returns whatever is held, an unfinished character included; nothing more will follow. */
   flush(): string {
-    const text = this.held;
+    const text = this.held + this.decoder.end();
     this.held = '';
     return this.ledger.redact(text);
   }

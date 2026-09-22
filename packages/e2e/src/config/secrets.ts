@@ -68,21 +68,26 @@ export interface CredentialConfig {
 export type SecretConfig = string | SecretProvider;
 
 /**
- * The fewest characters a static secret value may have. Redaction rewrites
- * every occurrence of a value, so a shorter one (a PIN, a port number) would
- * take ordinary text in reports and output with it.
+ * The fewest characters, counted as code points, a static secret value may
+ * have. Redaction rewrites every occurrence of a value, so a shorter one (a
+ * PIN, a port number) would take ordinary text in reports and output with it.
  */
 export const MIN_SECRET_LENGTH = 6;
 
-/** A static value of at least `MIN_SECRET_LENGTH` characters or a provider function; anything else is the caller's error to name. */
+/** A value's length as a reader counts it: in code points, so an emoji is one character, not two. */
+export function secretLength(value: string): number {
+  return [...value].length;
+}
+
+/** A static value of at least `MIN_SECRET_LENGTH` code points or a provider function; anything else is the caller's error to name. */
 export function isSecretValue(value: unknown): value is string | SecretProvider {
-  return (typeof value === 'string' && value.length >= MIN_SECRET_LENGTH) || typeof value === 'function';
+  return (typeof value === 'string' && secretLength(value) >= MIN_SECRET_LENGTH) || typeof value === 'function';
 }
 
 /** Which rule a value `isSecretValue` refused broke, for the `INVALID_CONFIG` message that names it. */
 export function secretValueProblem(value: unknown): string {
   return typeof value === 'string' && value !== ''
-    ? `must be at least ${MIN_SECRET_LENGTH} characters, not ${value.length}; a shorter value cannot be redacted without rewriting unrelated text`
+    ? `must be at least ${MIN_SECRET_LENGTH} characters (code points), not ${secretLength(value)}; a shorter value cannot be redacted without rewriting unrelated text`
     : 'must be a non-empty string or a provider function';
 }
 

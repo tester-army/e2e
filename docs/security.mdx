@@ -105,13 +105,15 @@ reference, named, decimal, or hex; and percent-encoded in either hex case,
 with `+` for a space. It retains old values after a secret rotates. Secret
 values are excluded from cache entries, model input, and reports.
 
-A static value shorter than 6 characters is `INVALID_CONFIG`, and a provider
-returning one fails the fill. Every occurrence of a value becomes
-`<secret:name>`, so a value that short would take ordinary text with it.
+A static value shorter than 6 characters (code points) is `INVALID_CONFIG`,
+and a provider returning one fails the fill. Every occurrence of a value
+becomes `<secret:name>`, so a value that short would take ordinary text with
+it.
 
 A test's console output is redacted in the worker before it leaves, across
 writes: a value split over two `process.stdout.write` calls, or over the
-chunks of a piped child's output, is still caught. A run whose tests execute
+chunks of a piped child's output, is still caught, a multibyte character
+split between chunks included. A run whose tests execute
 in the runner's own process, the path an embedding host takes when it
 supplies its config or tests in memory rather than from a file, has no such
 hook; its console output reaches the runner's streams as written.

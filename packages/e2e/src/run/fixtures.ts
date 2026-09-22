@@ -28,7 +28,7 @@ import {
   type SecretResolver,
 } from '../locator/screen.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
-import { MIN_SECRET_LENGTH } from '../config/secrets.ts';
+import { MIN_SECRET_LENGTH, secretLength } from '../config/secrets.ts';
 import type { Agent, App, Expectable, SetupSession, TestFixtures } from '../types.ts';
 import type { ArtifactRecord } from './records.ts';
 import type { StepRecord, StepRecorder } from './steps.ts';
@@ -110,10 +110,10 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
       }
       const value = registered.value;
       const plaintext = typeof value === 'function' ? await value() : value;
-      if (typeof plaintext !== 'string' || plaintext.length < MIN_SECRET_LENGTH) {
+      if (typeof plaintext !== 'string' || secretLength(plaintext) < MIN_SECRET_LENGTH) {
         throw new ConfigurationError(
           unavailableCode(secret),
-          `secret "${secret.name}" provider did not return a string of at least ${MIN_SECRET_LENGTH} characters`,
+          `secret "${secret.name}" provider did not return a string of at least ${MIN_SECRET_LENGTH} characters (code points)`,
         );
       }
       // Only a value that exists can reach the screen: a failed provider

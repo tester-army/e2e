@@ -501,8 +501,8 @@ type SecretProvider = () => string | Promise<string>;
 A `SecretProvider` is called on every authorized fill (a vault lookup, a
 freshly computed TOTP) and recorded in the config digest by name only. An
 `E2E_USER_*` override wins over it. A static password is at least 6
-characters, like a secret, or `INVALID_CONFIG`; a provider returning fewer
-fails the fill with `AUTH_CREDENTIAL_UNAVAILABLE`.
+characters (code points), like a secret, or `INVALID_CONFIG`; a provider
+returning fewer fails the fill with `AUTH_CREDENTIAL_UNAVAILABLE`.
 
 `credentials.user(name)` resolves a configured entry into a `Credential`.
 The username is a plain string; the password is an opaque `Secret` that test
@@ -537,8 +537,8 @@ export type SecretConfig = string | SecretProvider;
 An entry is a static value, or a provider called on every authorized fill (a
 vault lookup, a freshly computed TOTP). It is recorded in the config digest by
 name only, and an `E2E_SECRET_<NAME>` override wins over both. Every entry
-must resolve to a string of at least 6 characters or a function; anything
-else is `INVALID_CONFIG`. The minimum exists for redaction: every occurrence
+must resolve to a string of at least 6 characters (code points) or a
+function; anything else is `INVALID_CONFIG`. The minimum exists for redaction: every occurrence
 of a value becomes `<secret:name>`, and a shorter value would take ordinary
 text in reports and output with it. A provider's value is held to the same
 minimum at fill time, with `SECRET_UNAVAILABLE`.
