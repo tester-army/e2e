@@ -153,7 +153,10 @@ describe('failure streak', () => {
   it('reads the message of a call the SDK refused before dispatch', () => {
     const refused = 'AI_InvalidToolInputError: Invalid input for tool tap: unrecognized key "force"';
     const results = extractToolResults([result('tap', { type: 'error-text', value: refused }), result('tap', { type: 'text', value: tapped })], 'complete_step');
-    expect(results).toEqual([refused, tapped]);
+    expect(results).toEqual([
+      { text: refused, failed: true },
+      { text: tapped, failed: false },
+    ]);
   });
 
   it('reads the text beside a screenshot, so the streak warns and stops in pixel mode too', () => {
