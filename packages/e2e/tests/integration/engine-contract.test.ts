@@ -960,4 +960,47 @@ test('fails on purpose', async ({ app }) => {
     },
     60_000,
   );
+
+  it(
+    'keeps the recording of a setup whose session save failed under retain: on-failure',
+    async () => {
+      const fake = createFakeEngine({
+        video: true,
+        state: true,
+        capturedState: {
+          format: 'fake-state',
+          version: 1,
+          data: { ok: true },
+          expiresAt: new Date(Date.now() - 60_000).toISOString(),
+        },
+      });
+      const files = {
+        'tests/auth.setup.e2e.ts': `import { test } from 'e2e';
+
+test.setup('capture session', { sessions: ['acct'] }, async ({ app, session }) => {
+  await app.open('/');
+  await session.save('acct');
+});
+`,
+        'tests/uses-session.e2e.ts': `import { test } from 'e2e';
+
+test('consumes session', { session: 'acct' }, async ({ app }) => {
+  await app.open('/');
+});
+`,
+      };
+      const { outcome, project } = await runProject(files, {
+        appUrl: APP_URL,
+        config: fakeConfig(fake, { artifacts: { kinds: ['video'], video: { retain: 'on-failure' } } }),
+      });
+      const setup = resultByTitle(outcome, 'capture session');
+      expect(setup.status).toBe('failed');
+      expect(setup.attempts[0]!.error?.code).toBe('SESSION_EXPIRED');
+      const kept = videosOf(outcome, 'capture session');
+      expect(kept).toHaveLength(1);
+      expect(existsSync(path.join(project.dir, '.e2e', 'artifacts', kept[0]!.path!))).toBe(true);
+      project.cleanup();
+    },
+    60_000,
+  );
 });

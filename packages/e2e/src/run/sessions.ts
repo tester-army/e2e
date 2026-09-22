@@ -1,7 +1,7 @@
 /** Per-run encrypted session store. */
 
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import { lstatSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { EngineSpiVersion, EngineState } from '../engine/surface.ts';
@@ -10,6 +10,8 @@ import { ConfigurationError, E2EError } from '../internal/errors.ts';
 import { canonicalJson, timestamp } from '../internal/ids.ts';
 
 const MAX_SESSION_AGE_MS = 24 * 60 * 60 * 1000;
+/** The lease a run writes into its directory; never an envelope name, those carry `--`. */
+const OWNER_FILE = 'owner.json';
 
 export interface SessionIdentity {
   readonly targetId: string;
@@ -91,12 +93,16 @@ export class SessionStore {
   }
 
   /**
-   * Opens the store for a new run, generating its key, and sweeps the
-   * directories of runs that never reached `cleanup`.
+   * Opens the store for a new run, generating its key. Sweeps the
+   * directories of runs that never reached `cleanup`, then claims this run's
+   * directory with an owner file naming this process, so a later run's sweep
+   * can tell a run still going from one that died.
    */
   static create(runId: string, sessionsRoot: string): SessionStore {
     sweepStaleRuns(sessionsRoot, runId);
-    return new SessionStore(runId, sessionsRoot, randomBytes(32));
+    const store = new SessionStore(runId, sessionsRoot, randomBytes(32));
+    store.claim();
+    return store;
   }
 
   /** Opens the store in a worker, reusing the key the runner generated. */
@@ -114,6 +120,24 @@ export class SessionStore {
 
   private ensureDirectory(): void {
     mkdirSync(this.directory, { recursive: true, mode: 0o700 });
+  }
+
+  /**
+   * Writes the owner file. Best effort: a directory this process cannot
+   * create fails the first `save` with its own error, and leaves nothing for
+   * a sweep to remove.
+   */
+  private claim(): void {
+    try {
+      this.ensureDirectory();
+      writeFileSync(
+        path.join(this.directory, OWNER_FILE),
+        `${JSON.stringify({ pid: process.pid, startedAt: timestamp() })}\n`,
+        { mode: 0o600 },
+      );
+    } catch {
+      // See above.
+    }
   }
 
   private filePath(targetId: string, name: string): string {
@@ -292,11 +316,15 @@ function hasCipherFields(state: unknown): boolean {
 }
 
 /**
- * Removes sibling run directories whose last write is older than a session
- * may live. A run killed before `cleanup` (a third Ctrl-C, SIGKILL, a crash)
- * leaves its directory behind with its memory-only key gone, so nothing can
- * read what is in it. Best effort: the sweep never fails the run, skips the
- * current run's directory, and never follows a symlink.
+ * Removes sibling run directories whose runner is gone and whose last write
+ * is older than a session may live. A run killed before `cleanup` (a third
+ * Ctrl-C, SIGKILL, a crash) leaves its directory behind with its memory-only
+ * key gone, so nothing can read what is in it. A run still going after a day
+ * keeps its directory: its owner file names a live pid. Sessions never leave
+ * the machine, so pid liveness is the portable check; a pid an unrelated
+ * process has since taken keeps a dead run's directory until that process
+ * exits too. Best effort: the sweep never fails the run, skips the current
+ * run's directory, and never follows a symlink.
  */
 function sweepStaleRuns(sessionsRoot: string, runId: string): void {
   const cutoff = Date.now() - MAX_SESSION_AGE_MS;
@@ -305,12 +333,31 @@ function sweepStaleRuns(sessionsRoot: string, runId: string): void {
       if (entry.name === runId || !entry.isDirectory()) continue;
       const directory = path.join(sessionsRoot, entry.name);
       try {
-        if (lstatSync(directory).mtimeMs < cutoff) rmSync(directory, { recursive: true, force: true });
+        if (lstatSync(directory).mtimeMs >= cutoff || ownerAlive(directory)) continue;
+        rmSync(directory, { recursive: true, force: true });
       } catch {
         // A sibling another process holds or already removed is left for the next run.
       }
     }
   } catch {
     // No sessions root yet, or one this process cannot list.
+  }
+}
+
+/** Whether the directory's owner file names a process that is still running. */
+function ownerAlive(directory: string): boolean {
+  let pid: unknown;
+  try {
+    pid = (JSON.parse(readFileSync(path.join(directory, OWNER_FILE), 'utf8')) as { pid?: unknown }).pid;
+  } catch {
+    return false;
+  }
+  if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (cause) {
+    // EPERM: the process exists under another user. Anything else: gone.
+    return (cause as NodeJS.ErrnoException).code === 'EPERM';
   }
 }

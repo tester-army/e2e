@@ -474,39 +474,33 @@ export class TargetExecutor implements SerialHost {
         });
         attempts.push(attempt);
         await this.realms.leave(realm);
-
-        if (attempt.status === 'passed') {
-          const missing = staging.missing();
-          if (missing.length > 0) {
-            attempt.status = 'failed';
-            attempt.error = serializeError(
-              new E2EError(
-                'test',
-                'SESSION_CONTRACT',
-                `setup must save each declared session exactly once; missing: [${missing.join(', ')}]`,
-              ),
-              { phase: 'body' },
-            );
-            return attempt;
-          }
-          // A save that fails (state the engine captured already expired, a
-          // full or read-only sessions directory) is this setup's failure:
-          // recorded on the attempt so dependents skip as setup-failed, never
-          // thrown, since a throw here takes the worker down with it.
-          try {
-            for (const [name, state] of staging.entries()) {
-              await this.options.sessionStore.save(name, this.sessionIdentity, state);
-            }
-          } catch (cause) {
-            attempt.status = 'failed';
-            attempt.error = serializeError(classifyError(cause), { phase: 'body' });
-          }
-        }
         return attempt;
       },
     );
 
     this.emitUnitResult(pair, finalStatus, attempts, hookFailure);
+  }
+
+  /**
+   * Honors a setup attempt's session contract once its body passed: every
+   * declared name staged, then each staged state encrypted to disk. Throws
+   * the failure the attempt records, so a save the store refuses (state the
+   * engine captured already expired, a full or read-only sessions directory)
+   * fails the setup and its dependents skip as setup-failed, and never
+   * escapes the unit to take the worker down.
+   */
+  private async persistSessions(staging: SessionStaging): Promise<void> {
+    const missing = staging.missing();
+    if (missing.length > 0) {
+      throw new E2EError(
+        'test',
+        'SESSION_CONTRACT',
+        `setup must save each declared session exactly once; missing: [${missing.join(', ')}]`,
+      );
+    }
+    for (const [name, state] of staging.entries()) {
+      await this.options.sessionStore.save(name, this.sessionIdentity, state);
+    }
   }
 
   /**
@@ -1024,6 +1018,18 @@ export class TargetExecutor implements SerialHost {
           } else {
             secondaryErrors.push(serializeError(classifyError(cause), { phase: 'afterEach' }));
           }
+        }
+      }
+      // A setup's sessions are persisted while the verdict is still open, so
+      // a save the store refuses is the attempt's failure by the time the
+      // session closes and reads the verdict to decide what its recording is
+      // worth.
+      if (context.kind === 'setup' && failure === undefined && skipped === undefined) {
+        try {
+          await this.persistSessions(context.staging);
+        } catch (cause) {
+          recordFailure(cause, 'body');
+          await captureEvidence();
         }
       }
     } catch (cause) {
