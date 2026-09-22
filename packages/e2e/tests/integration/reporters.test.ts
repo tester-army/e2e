@@ -102,9 +102,15 @@ describe('reporter objects', () => {
       onRunFinished: async () => [{ href: 'https://example.test' }, { label: 'ok', text: 'https://example.test/ok' }],
     } as unknown as Reporter;
     const scalar = { name: 'scalar', onRunFinished: async () => 'done' } as unknown as Reporter;
+    const loud: Reporter = {
+      name: 'loud',
+      onEvent: () => {
+        throw new Error('bang');
+      },
+    };
     const outcome = await runExisting(project, {
       appUrl: app.url,
-      config: { tests: 'tests/**/*.e2e.ts', reporters: [throwing, hanging, malformed, scalar], cache: 'off' as const },
+      config: { tests: 'tests/**/*.e2e.ts', reporters: [throwing, hanging, malformed, scalar, loud], cache: 'off' as const },
       runOptions: { reporterTimeout: 200 },
     });
 
@@ -117,6 +123,7 @@ describe('reporter objects', () => {
     expect(written).toContain('e2e: reporter "hanging" did not finish within 200ms');
     expect(written).toContain('e2e: reporter "malformed" returned 1 row(s) without a label and text; dropped');
     expect(written).toContain('e2e: reporter "scalar" returned something other than summary rows; dropped');
+    expect(written).toContain('e2e: reporter "loud" threw on run-started: bang; ignoring it for the rest of the run');
   }, 120_000);
 
   it('abandons a reporter when the run is forced to stop', async () => {

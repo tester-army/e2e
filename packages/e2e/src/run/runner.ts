@@ -317,9 +317,9 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   ];
   const emit = createRunEventEmitter([
     ...activeReporters.map((reporter) =>
-      reporter.onEvent === undefined ? undefined : reporter.onEvent.bind(reporter),
+      reporter.onEvent === undefined ? undefined : { name: reporter.name, onEvent: reporter.onEvent.bind(reporter) },
     ),
-    options.onEvent,
+    ...(options.onEvent === undefined ? [] : [{ name: 'onEvent', onEvent: options.onEvent }]),
   ]);
 
   /** Records one run-level error once: into the report and onto the stream. */
