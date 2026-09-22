@@ -71,8 +71,12 @@ The browser engine uses a hostname-based site check for two purposes:
   observations.
 
 The site check approximates the registrable domain without a public suffix
-list. Shared hosting domains such as `vercel.app` count as one site, so
-headers can reach other hosts under that domain. `basicAuth` is broader:
+list, and reads one label deeper under a shared hosting suffix such as
+`vercel.app`, `netlify.app`, `pages.dev`, or `github.io`: `myapp.vercel.app`
+and `other.vercel.app` are two sites, and headers never cross between them.
+The suffixes are listed in `siteOf`'s source
+(`packages/e2e/src/internal/urls.ts`); under a shared host the list misses,
+headers reach every deployment of that host. `basicAuth` is broader:
 it answers a `401` challenge from any origin.
 
 The runner checks forbidden schemes on explicit navigation: `app.open`, the

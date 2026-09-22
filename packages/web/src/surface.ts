@@ -156,11 +156,12 @@ export interface WebOptions extends EngineAppDeclaration {
    */
   readonly connect?: WebConnectOptions;
   /**
-   * HTTP headers added to every request the browser sends to an allowed
-   * origin: a preview-protection bypass token, a tunnel's interstitial skip.
-   * Requests to any other origin (a CDN, an analytics endpoint, an identity
-   * provider) never carry them, so a header that is a secret stays with the
-   * app it unlocks. Names are case-insensitive; a header the page already
+   * HTTP headers added to every request the browser sends to the app's site,
+   * its registrable domain, one label deeper on a shared host such as
+   * `vercel.app`: a preview-protection bypass token, a tunnel's interstitial
+   * skip. Requests to any other site (a CDN, an analytics endpoint, an
+   * identity provider, another deployment of the shared host) never carry
+   * them, so a header that is a secret stays with the app it unlocks. Names are case-insensitive; a header the page already
    * sends under the same name is replaced. Applies to every path onto the
    * page, deterministic and agent-driven alike. Injecting headers routes
    * every request of the attempt, which turns the browser's HTTP cache off
