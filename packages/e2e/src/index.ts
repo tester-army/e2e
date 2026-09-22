@@ -27,6 +27,9 @@ export type {
   ExecutorPixels,
   ExecutorStep,
   ExecutorTarget,
+  ExecutorVerb,
+  PointHit,
+  PointTapResult,
   ReplayedPrefix,
   ReplayHandOffReason,
   StepExecutor,
@@ -34,6 +37,6 @@ export type {
   StepVerdict,
   StepVerdictStatus,
 } from './agent/executor.ts';
-export type { VisionDegradation } from './run/steps.ts';
-export type { RunEvent, RunEventOf } from './run/events.ts';
+export type { StepTurn, VisionDegradation } from './run/steps.ts';
+export type { RunEvent, RunEventOf, RunExitCode, RunStatus } from './run/events.ts';
 export type { EngineAppDeclaration } from './engine/index.ts';

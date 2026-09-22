@@ -7,6 +7,7 @@ import { repeatEach, resolveOptions, select } from '../../src/collect/select.ts'
 import { resolveConfig } from '../../src/config/resolve.ts';
 import { defineEngine } from '../../src/engine/index.ts';
 import { resultId } from '../../src/internal/ids.ts';
+import type { E2EConfig } from '../../src/types.ts';
 
 const noop = async () => {};
 const ENV = { APP_URL: 'http://localhost:3000' } as NodeJS.ProcessEnv;
@@ -40,12 +41,12 @@ function emptyCollection(nearMisses: readonly string[] = []): Collection {
   return { files: [], tests: [], nearMisses, unmatchedPositionals: [] };
 }
 
-function config(raw: Parameters<typeof resolveConfig>[0] = {}, env: NodeJS.ProcessEnv = ENV) {
+function config(raw: Partial<E2EConfig> = {}, env: NodeJS.ProcessEnv = ENV) {
   return resolveConfig({ targets: [{ name: 'web', platform: 'web' }], ...raw }, { projectRoot: '/root', env });
 }
 
 /** `config()` with command-line overrides, the way `--agent` reaches selection. */
-function configWith(raw: Parameters<typeof resolveConfig>[0], cli: NonNullable<Parameters<typeof resolveConfig>[1]['cli']>) {
+function configWith(raw: Partial<E2EConfig>, cli: NonNullable<Parameters<typeof resolveConfig>[1]['cli']>) {
   return resolveConfig({ targets: [{ name: 'web', platform: 'web' }], ...raw }, { projectRoot: '/root', env: ENV, cli });
 }
 

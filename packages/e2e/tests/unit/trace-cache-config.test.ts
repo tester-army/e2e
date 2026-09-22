@@ -5,13 +5,13 @@ import { describe, expect, it } from 'vitest';
 import { createAgentCacheContext, flushStagedTraces } from '../../src/cache/context.ts';
 import { buildTraceEntry, readTraceEntry } from '../../src/cache/trace.ts';
 import { resolveConfig } from '../../src/config/resolve.ts';
-import type { ActionTrace, TraceCacheStore } from '../../src/types.ts';
+import type { ActionTrace, E2EConfig, TraceCacheStore } from '../../src/types.ts';
 
 const ROOT = path.resolve('/tmp/e2e-cache-config-tests');
 const BASE_ENV = {} as NodeJS.ProcessEnv;
 
 function resolve(
-  raw: Parameters<typeof resolveConfig>[0],
+  raw: Partial<E2EConfig>,
   env: NodeJS.ProcessEnv = BASE_ENV,
   cli: Parameters<typeof resolveConfig>[1]['cli'] = {},
 ) {

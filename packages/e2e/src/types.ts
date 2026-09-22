@@ -133,7 +133,9 @@ export type VisionMode = boolean | 'only';
 export interface VisionOption {
   /**
    * What the judge is shown; `false` by default. The tree, the tree with a
-   * masked screenshot, or the screenshot alone.
+   * masked screenshot, or the screenshot alone. A custom `StepExecutor`
+   * rejects it with `UNSUPPORTED_CAPABILITY`: the executor decides what its
+   * model sees.
    */
   vision?: VisionMode;
 }
@@ -947,6 +949,8 @@ export interface ModelInstance {
   readonly provider: string;
   /** Model id, recorded per step in the report. */
   readonly modelId: string;
+  /** The generate call every AI SDK language model implements; what tells a live instance from its three id strings. */
+  readonly doGenerate: (...args: never[]) => unknown;
 }
 
 /** Trace cache posture. In CI, `read-write` is forced down to `read-only`. */
@@ -963,7 +967,7 @@ export type CacheMode = 'off' | 'read-only' | 'read-write';
 export interface CacheConfig {
   /** Default `read-write`; `read-only` in CI when unset. */
   mode?: CacheMode;
-  /** Custom entry store; undefined selects the file store at `dir`. */
+  /** Custom entry store; omit it to use the file store at `dir`. */
   store?: TraceCacheStore;
   /** File store directory, resolved against the project root. */
   dir?: string;
@@ -1031,7 +1035,7 @@ export interface VideoArtifactConfig {
 export interface ArtifactsConfig {
   /** Kinds to capture; defaults to screenshot and trace. */
   kinds?: readonly ConfiguredArtifactKind[];
-  /** Host store every produced artifact is handed to; undefined keeps files local only. */
+  /** Host store every produced artifact is handed to; omit it to keep files local only. */
   store?: ArtifactStore;
   /** Options of the `video` kind; ignored unless `video` is among the kinds. */
   video?: VideoArtifactConfig;
@@ -1143,8 +1147,8 @@ export interface E2EConfig {
   specVersion?: '0.1';
   /** Stable project id, 1 through 256 characters; defaults to the root `package.json` name. */
   projectId?: string;
-  /** The surfaces tests run on; at least one. */
-  targets?: readonly Target[];
+  /** The surfaces tests run on; required, at least one, each naming its engine. */
+  targets: readonly Target[];
   /** Test file globs relative to the project root (`*`, `?`, and a whole `**` segment); default every `*.e2e.ts` under `tests/`. */
   tests?: string | readonly string[];
   /** Test attempt deadline in milliseconds; default 120000. */

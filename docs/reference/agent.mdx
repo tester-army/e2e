@@ -159,7 +159,10 @@ when the screen did not show enough to decide. Both carry the explanation
 and, when permitted, a screenshot path. No evidence is captured with
 `screenshot: false` or once a secret has been filled in the attempt.
 `screenshot` controls failure evidence attached after the judgment; `vision`
-controls what the model is shown before it.
+controls what the model is shown before it. A custom `StepExecutor` judges
+the assertion itself: it honors `screenshot`, since the runner takes that
+evidence after the verdict, and rejects `vision` with
+`UNSUPPORTED_CAPABILITY`, since the executor decides what its model sees.
 
 ```ts
 await agent.assert('the dashboard shows a trial badge');
