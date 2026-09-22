@@ -204,6 +204,14 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
     'embed',
   ];
   const OPAQUE_TAGS = ['svg', 'math', 'canvas', 'video', 'audio'];
+  /**
+   * Tags a `contenteditable` never makes an editing host. A drawn or embedded
+   * surface and a void element hold no DOM text to edit; a native control (a
+   * link, a button, a form field) has a role and a value of its own, so a fill
+   * reaches it as what it is. Chromium reports `isContentEditable` on all of
+   * them regardless.
+   */
+  const NON_HOST_TAGS = [...OPAQUE_TAGS, 'iframe', 'img', 'hr', 'br', 'wbr', 'area', 'a', 'button', 'input', 'textarea', 'select'];
   /** Options listed under one select; a country picker's tail is not worth the tokens. */
   const MAX_SELECT_OPTIONS = 60;
   /** Input types whose accessible name falls back to the placeholder (HTML-AAM 4.1.1). */
@@ -271,6 +279,21 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
    */
   const isPageLevel = (el: Element): boolean => el.closest('article, aside, main, nav, section') === null;
 
+  /**
+   * The root of a contenteditable region: editable itself, under a parent that
+   * is not. A rich-text editor (ProseMirror, TipTap, Lexical, Slate) renders
+   * its document as such a host with block children; the host is the control
+   * a person types into and the blocks are its content, so only the host is a
+   * textbox, whatever its tag: an `<article contenteditable>` is the editor,
+   * not an article. A canvas made editable to collect keystrokes is a drawn
+   * field the keyboard reaches, not a textbox; see `NON_HOST_TAGS`.
+   */
+  const isEditingHost = (el: Element): boolean =>
+    el instanceof HTMLElement &&
+    el.isContentEditable &&
+    NON_HOST_TAGS.indexOf(el.tagName.toLowerCase()) === -1 &&
+    !(el.parentElement instanceof HTMLElement && el.parentElement.isContentEditable);
+
   const implicitRole = memoized((el: Element): string | null => {
     const explicit = el.getAttribute('role');
     if (explicit !== null && explicit !== '') {
@@ -278,6 +301,9 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
       // The vocabulary spells ARIA's `img` as `image`.
       return first === 'img' ? 'image' : first;
     }
+    // Ahead of the tag: an editor's host is the control, whatever landmark or
+    // structure its tag would otherwise be.
+    if (isEditingHost(el)) return 'textbox';
     const tag = el.tagName.toLowerCase();
     const type = (el.getAttribute('type') ?? '').toLowerCase();
     switch (tag) {
@@ -391,32 +417,130 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
   };
 
   /**
-   * Text for an accessible name: what innerText shows minus every aria-hidden
-   * subtree, which the name computation drops and a screen reader never speaks
-   * (a required-field marker, a decorative glyph). Walks the tree itself so a
-   * display:none or visibility:hidden descendant stays out, as innerText keeps
-   * it out, while aria-hidden text between visible fragments is skipped too.
+   * State of one accname walk. `inReference` is set inside an aria-labelledby
+   * traversal, where a nested reference is not followed (accname 2B);
+   * `hiddenAllowed` when that traversal began at a hidden target, whose whole
+   * subtree then counts (2A); `visited` holds every element already read, so a
+   * descendant that references its ancestor, or two that reference each other,
+   * contribute once.
+   */
+  interface NameWalk {
+    readonly inReference: boolean;
+    readonly hiddenAllowed: boolean;
+    readonly visited: Set<Element>;
+  }
+
+  /** A walk from the top, with the elements that may not contribute again already visited. */
+  const nameWalk = (visited: readonly Element[]): NameWalk => ({
+    inReference: false,
+    hiddenAllowed: false,
+    visited: new Set(visited),
+  });
+
+  /** Computed style of any element, SVG included: what the name computation's hidden and block tests read. */
+  const nameStyleOf = (el: Element): CSSStyleDeclaration | undefined =>
+    el.ownerDocument.defaultView?.getComputedStyle(el);
+
+  /** True for a subtree the name computation drops: aria-hidden, or hidden by style as innerText leaves it out. */
+  const isNameHidden = (el: Element, style: CSSStyleDeclaration | undefined): boolean =>
+    el.getAttribute('aria-hidden') === 'true' ||
+    (style !== undefined && (style.display === 'none' || style.visibility === 'hidden'));
+
+  /** `alt` of an element HTML-AAM names by it: an `<img>` or an `<input type="image">`. */
+  const altOf = (el: Element): string | null => {
+    const named = el instanceof HTMLImageElement || (el instanceof HTMLInputElement && el.type === 'image');
+    const alt = named ? el.getAttribute('alt') : null;
+    return alt !== null && alt.trim() !== '' ? alt.trim() : null;
+  };
+
+  /**
+   * Each aria-labelledby target's contribution (accname 2B), in attribute
+   * order, unnamed targets dropped; null when the element references nothing
+   * that names it. A hidden target is read whole, as a screen reader reads it,
+   * and a reference inside a target is not followed, so this is null inside a
+   * reference traversal too.
+   */
+  const referencedNamesOf = (el: Element, walk: NameWalk): string[] | null => {
+    if (walk.inReference) return null;
+    const ids = (el.getAttribute('aria-labelledby') ?? '').trim();
+    if (ids === '') return null;
+    const names: string[] = [];
+    for (const id of ids.split(/\s+/)) {
+      const target = el.ownerDocument.getElementById(id);
+      if (target === null) continue;
+      const name = contentNameOf(target, nameStyleOf(target), {
+        inReference: true,
+        hiddenAllowed: isHidden(target),
+        visited: walk.visited,
+      })
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (name !== '') names.push(name);
+    }
+    return names.length === 0 ? null : names;
+  };
+
+  /**
+   * What one element contributes to a name computed through another: as an
+   * aria-labelledby target (accname 2B) or as a descendant read for name from
+   * content (2F). Its own references, else its `aria-label`, its `alt`, its
+   * children, then its `title`. So `<button><img alt="Search"></button>` is
+   * the button "Search", an icon whose only child is
+   * `<svg aria-labelledby="t"><title id="t">Close</title></svg>` is "Close",
+   * and a hidden `<span>` a button references still names it. A form
+   * control's content is its value, not label text, so it contributes nothing.
+   */
+  const contentNameOf = (el: Element, style: CSSStyleDeclaration | undefined, walk: NameWalk): string => {
+    if (walk.visited.has(el)) return '';
+    walk.visited.add(el);
+    if (!walk.hiddenAllowed && isNameHidden(el, style)) return '';
+    const referenced = referencedNamesOf(el, walk);
+    if (referenced !== null) return referenced.join(' ');
+    const ariaLabel = el.getAttribute('aria-label');
+    if (ariaLabel !== null && ariaLabel.trim() !== '') return ariaLabel.trim();
+    const alt = altOf(el);
+    if (alt !== null) return alt;
+    if (NAME_OPAQUE_TAGS.has(el.tagName)) return '';
+    const content = childrenNameOf(el, walk);
+    if (content.trim() !== '') return content;
+    const title = el.getAttribute('title');
+    return title === null ? '' : title.trim();
+  };
+
+  /**
+   * The children's contributions joined as Playwright's role selector joins
+   * them: a space on each side of a block-level child and of a `<br>`, none
+   * around an inline one. `<img alt="Search">Go` reads "SearchGo" and
+   * `<div>A</div><div>B</div>` reads "A B", so the name a role query matched
+   * is the name the node reports.
+   */
+  const childrenNameOf = (el: Element, walk: NameWalk): string => {
+    let out = '';
+    for (const child of Array.from(el.childNodes)) {
+      if (child.nodeType === 3) {
+        out += child.nodeValue ?? '';
+        continue;
+      }
+      if (!(child instanceof Element)) continue;
+      const style = nameStyleOf(child);
+      const token = contentNameOf(child, style, walk);
+      const block = child.tagName === 'BR' || (style?.display ?? 'inline') !== 'inline';
+      out += block ? ` ${token} ` : token;
+    }
+    return out;
+  };
+
+  /**
+   * Text for an accessible name from an element's own content (accname 2F):
+   * its descendants' contributions, hidden and aria-hidden subtrees dropped (a
+   * required-field marker, a decorative glyph), whitespace collapsed. The
+   * element's own attributes are `accessibleName`'s business; this reads what
+   * is inside it.
    */
   const nameTextOf = (el: Element): string => {
-    const parts: string[] = [];
-    const walk = (node: Node): void => {
-      if (node.nodeType === 3) {
-        parts.push(node.nodeValue ?? '');
-        return;
-      }
-      if (!(node instanceof Element)) return;
-      if (node.getAttribute('aria-hidden') === 'true') return;
-      // A control's own content is its value, not label text: innerText renders none of it.
-      if (NAME_OPAQUE_TAGS.has(node.tagName)) return;
-      if (node instanceof HTMLElement) {
-        const style = styleOf(node);
-        if (style !== undefined && (style.display === 'none' || style.visibility === 'hidden')) return;
-        if (node.tagName === 'BR') parts.push(' ');
-      }
-      for (const child of Array.from(node.childNodes)) walk(child);
-    };
-    walk(el);
-    return parts.join('').replace(/\s+/g, ' ').trim();
+    if (isNameHidden(el, nameStyleOf(el))) return '';
+    if (NAME_OPAQUE_TAGS.has(el.tagName)) return '';
+    return childrenNameOf(el, nameWalk([el])).replace(/\s+/g, ' ').trim();
   };
 
   const NAME_OPAQUE_TAGS: ReadonlySet<string> = new Set(['TEXTAREA', 'SELECT', 'INPUT', 'SCRIPT', 'STYLE']);
@@ -435,14 +559,7 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
     const labels: string[] = [];
     const ariaLabel = el.getAttribute('aria-label');
     if (ariaLabel !== null && ariaLabel.trim() !== '') labels.push(ariaLabel.trim());
-    const labelledBy = el.getAttribute('aria-labelledby');
-    if (labelledBy !== null) {
-      for (const id of labelledBy.split(/\s+/)) {
-        const target = el.ownerDocument.getElementById(id);
-        const text = target === null ? '' : nameTextOf(target);
-        if (text !== '') labels.push(text);
-      }
-    }
+    for (const name of referencedNamesOf(el, nameWalk([])) ?? []) labels.push(name);
     for (const label of associatedLabels(el)) {
       const text = nameTextOf(label);
       if (text !== '') labels.push(text);
@@ -460,19 +577,11 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
   });
 
   const accessibleName = memoized((el: Element): string | null => {
+    // accname reads a labelledby reference (2B) before the element's own aria-label (2C).
+    const referenced = referencedNamesOf(el, nameWalk([]));
+    if (referenced !== null) return referenced.join(' ');
     const ariaLabel = el.getAttribute('aria-label');
     if (ariaLabel !== null && ariaLabel.trim() !== '') return ariaLabel.trim();
-    const labelledBy = el.getAttribute('aria-labelledby');
-    if (labelledBy !== null && labelledBy.trim() !== '') {
-      const parts = labelledBy
-        .split(/\s+/)
-        .map((id) => {
-          const target = el.ownerDocument.getElementById(id);
-          return target === null ? '' : nameTextOf(target);
-        })
-        .filter((part) => part.trim() !== '');
-      if (parts.length > 0) return parts.join(' ').trim();
-    }
     const labels = associatedLabels(el);
     if (labels.length > 0) {
       const joined = labels
@@ -481,10 +590,8 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
         .trim();
       if (joined !== '') return joined;
     }
-    if (el instanceof HTMLImageElement) {
-      const alt = el.getAttribute('alt');
-      if (alt !== null && alt.trim() !== '') return alt.trim();
-    }
+    const alt = altOf(el);
+    if (alt !== null) return alt;
     const captionTag = NAMING_CHILD_TAGS[el.tagName.toLowerCase()];
     if (captionTag !== undefined) {
       const caption = Array.from(el.children).find((child) => child.tagName.toLowerCase() === captionTag);
@@ -522,15 +629,38 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
       if (placeholder !== null && placeholder.trim() !== '') return placeholder.trim();
       const ariaPlaceholder = el.getAttribute('aria-placeholder');
       if (ariaPlaceholder !== null && ariaPlaceholder.trim() !== '') return ariaPlaceholder.trim();
+      if (isEditingHost(el)) return editorPlaceholderOf(el);
     }
     return null;
   });
 
-  /** The controls HTML-AAM lets a placeholder name: text-like inputs and textareas. */
+  /**
+   * The controls a placeholder may name: text-like inputs and textareas
+   * (HTML-AAM 4.1.1), and the textbox and searchbox roles `aria-placeholder`
+   * applies to, an editing host among them.
+   */
   const isPlaceholderNamed = (el: Element): boolean => {
     if (el instanceof HTMLTextAreaElement) return true;
-    if (!(el instanceof HTMLInputElement)) return false;
-    return PLACEHOLDER_NAMED_INPUT_TYPES.indexOf(el.type) !== -1;
+    if (el instanceof HTMLInputElement) return PLACEHOLDER_NAMED_INPUT_TYPES.indexOf(el.type) !== -1;
+    const role = implicitRole(el);
+    return role === 'textbox' || role === 'searchbox';
+  };
+
+  /**
+   * The placeholder a rich-text editor paints from `data-placeholder`, the one
+   * convention its frameworks share: Quill sets it on the host; ProseMirror
+   * and TipTap set it on the first empty block and drop it once the document
+   * has content, as the painted hint goes.
+   */
+  const editorPlaceholderOf = (host: Element): string | null => {
+    const own = host.getAttribute('data-placeholder');
+    if (own !== null && own.trim() !== '') return own.trim();
+    for (const block of Array.from(host.querySelectorAll('[data-placeholder]'))) {
+      if ((block.textContent ?? '').trim() !== '') continue;
+      const placeholder = block.getAttribute('data-placeholder');
+      if (placeholder !== null && placeholder.trim() !== '') return placeholder.trim();
+    }
+    return null;
   };
 
   /** Computed style, or undefined for a node the view cannot style. */
@@ -722,6 +852,12 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
     } else if (el instanceof HTMLOptionElement) {
       selectedState = el.selected;
       value = el.value;
+    } else if (isEditingHost(el)) {
+      // An editor's document is its value, as a textarea's text is: trimmed,
+      // since an empty editor renders `<p><br></p>` and innerText reads that
+      // as a newline, and cut like text in the model-bound projection.
+      value = textOf(el).trim();
+      if (projection.textLimit !== null) value = value.slice(0, projection.textLimit);
     }
     const ariaChecked = el.getAttribute('aria-checked');
     if (ariaChecked !== null) checked = ariaChecked === 'true';
