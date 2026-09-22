@@ -9,7 +9,7 @@
 
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
-import type { Browser, BrowserContext, ElementHandle, Page, Route } from 'playwright';
+import type { Browser, BrowserContext, ElementHandle, FrameLocator, Page, Route } from 'playwright';
 import {
   EngineError,
   raceAbort,
@@ -727,12 +727,18 @@ export class PlaywrightSurface {
     }
   }
 
+  /**
+   * Checks that every frame selector along the expression matches exactly one
+   * element, each counted inside the frame before it, the way `project` walks
+   * the same chain; a frame-scoped `count` is 0 until that frame's document
+   * has loaded, which is what makes `FRAME_NOT_FOUND` worth retrying.
+   */
   private async validateFrames(expression: LocatorExpression): Promise<void> {
-    const page = this.requirePage();
+    let scope: Page | FrameLocator = this.requirePage();
     for (const selector of frameSelectors(expression)) {
       let count: number;
       try {
-        count = await page.locator(selector).count();
+        count = await scope.locator(selector).count();
       } catch (cause) {
         throw translatePwError(cause, 'frame resolution');
       }
@@ -746,6 +752,7 @@ export class PlaywrightSurface {
           retryable: false,
         });
       }
+      scope = scope.frameLocator(selector);
     }
   }
 
