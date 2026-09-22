@@ -59,12 +59,20 @@ function escapeInline(text: string): string {
     .replaceAll('>', '&gt;');
 }
 
-/** A code span: a backtick cannot be escaped inside one, so it goes; the cell separator is escaped, which GFM honours inside a span. */
+/**
+ * A code span around text that may hold backticks: the delimiter is one
+ * backtick longer than the longest run inside and, when longer than one,
+ * padded with a space GFM strips, so no character of the text is lost. The
+ * cell separator is escaped, which GFM honours inside a span in a table.
+ */
 function codeSpan(text: string): string {
-  return `\`${text.replaceAll('`', '').replaceAll('|', '\\|')}\``;
+  const longest = Math.max(0, ...Array.from(text.matchAll(/`+/g), (run) => run[0].length));
+  const fence = '`'.repeat(longest + 1);
+  const inner = text.replaceAll('|', '\\|');
+  return longest === 0 ? `${fence}${inner}${fence}` : `${fence} ${inner} ${fence}`;
 }
 
-/** A path or label inside backticks: only the backtick and the cell separator have to go. */
+/** A path or label inside backticks: only the cell separator is escaped; a backtick inside lengthens the delimiter. */
 export function code(text: string, max = MAX_CELL_CHARS): string {
   return codeSpan(ellipsize(collapseText(text), max));
 }
