@@ -50,7 +50,7 @@ async function setup() {
     runId: 'run', targetName: 'fixture', projectRoot: process.cwd(), app: {}, env: {},
     headed: false, workerSlot: 0, signal, log: () => undefined,
   });
-  await surface.startAttempt({ attemptId: 'attempt', artifactsDir: tmpdir(), signal });
+  await surface.startAttempt({ attemptId: 'attempt', artifactsDir: tmpdir(), signal, registerSecret: () => undefined });
   await surface.ensurePage();
   vi.mocked(captureDocument).mockRejectedValue(TIMEOUT);
   return { surface, masks, screenshot };

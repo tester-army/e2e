@@ -2,15 +2,17 @@
  * The ArtifactStore seam at its plug point: every registered artifact is
  * handed to the store as it lands, with its bytes, digest, and identity; the
  * store's reference is recorded; a failing store never surfaces; and without a
- * store the streaming measure path is unchanged.
+ * store the streaming measure path is unchanged. A download, the one kind
+ * whose bytes come from the app, is scanned against the ledger first.
  */
 
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ArtifactStore, StoredArtifact } from '../../src/types.ts';
+import { SecretLedger } from '../../src/internal/redact.ts';
 import { createAttemptArtifacts } from '../../src/run/artifacts.ts';
 
 const roots: string[] = [];
@@ -172,6 +174,98 @@ describe('createAttemptArtifacts with an ArtifactStore', () => {
     expect(record.size).toBe(5);
     expect(record.sha256).toBe(createHash('sha256').update(body).digest('hex'));
     expect(record.mediaType).toBe('text/plain');
+  });
+});
+
+describe('download scanning', () => {
+  const SECRET = 'export-secret-Qx7#&=2718';
+
+  function scanning(options: { store?: ArtifactStore; ledger?: SecretLedger }) {
+    const withheld: { code: string; message: string }[] = [];
+    const artifacts = createAttemptArtifacts({
+      artifactsRoot: root(),
+      segments: ['web', 'test-1', 'attempt-0'],
+      attemptId: 'att-1',
+      currentStepId: () => 'step-download',
+      ...(options.store === undefined ? {} : { store: options.store }),
+      ...(options.ledger === undefined ? {} : { ledger: () => options.ledger! }),
+      onWithheld: () => (error) => withheld.push({ code: error.code, message: error.message }),
+    });
+    mkdirSync(path.join(artifacts.dir, 'downloads'));
+    return { artifacts, withheld, file: path.join(artifacts.dir, 'downloads', '001-report.csv') };
+  }
+
+  it('deletes a download that holds a registered value, records it without a path, keeps it from the store, and says why', async () => {
+    const store = capturing();
+    const { artifacts, withheld, file } = scanning({ store, ledger: new SecretLedger([['api', SECRET]]) });
+    writeFileSync(file, `id,total,key\n1,42,${SECRET}\n`);
+    artifacts.sink.register('download', 'downloads/001-report.csv');
+    await artifacts.settle();
+
+    expect(artifacts.records[0]).toMatchObject({
+      kind: 'download',
+      redaction: 'incomplete',
+      producer: { kind: 'step', stepId: 'step-download' },
+    });
+    expect(artifacts.records[0]!.path).toBeUndefined();
+    expect(artifacts.records[0]!.size).toBeUndefined();
+    expect(artifacts.records[0]!.sha256).toBeUndefined();
+    expect(existsSync(file)).toBe(false);
+    expect(store.puts).toEqual([]);
+    expect(withheld).toEqual([
+      {
+        code: 'ARTIFACT_WITHHELD',
+        message: 'the download downloads/001-report.csv was deleted because a registered secret value occurs in it',
+      },
+    ]);
+  });
+
+  it('finds an encoded form of the value too', async () => {
+    const { artifacts, withheld, file } = scanning({ ledger: new SecretLedger([['api', SECRET]]) });
+    writeFileSync(file, `key=${encodeURIComponent(SECRET)}`);
+    artifacts.sink.register('download', 'downloads/001-report.csv');
+    await artifacts.settle();
+    expect(withheld.map((error) => error.code)).toEqual(['ARTIFACT_WITHHELD']);
+    expect(existsSync(file)).toBe(false);
+  });
+
+  it('keeps a clean download as complete, with its path, digest, and store ref', async () => {
+    const store = capturing();
+    const { artifacts, withheld, file } = scanning({ store, ledger: new SecretLedger([['api', SECRET]]) });
+    const body = Buffer.from('id,total\n1,42\n');
+    writeFileSync(file, body);
+    artifacts.sink.register('download', 'downloads/001-report.csv');
+    await artifacts.settle();
+    expect(artifacts.records[0]).toMatchObject({
+      redaction: 'complete',
+      path: 'web/test-1/attempt-0/downloads/001-report.csv',
+      size: body.byteLength,
+      sha256: createHash('sha256').update(body).digest('hex'),
+    });
+    expect(store.puts.map((put) => put.kind)).toEqual(['download']);
+    expect(artifacts.records[0]!.ref).toBeDefined();
+    expect(withheld).toEqual([]);
+    expect(existsSync(file)).toBe(true);
+  });
+
+  it('labels a download incomplete when there is no ledger to scan against, and keeps it', async () => {
+    const { artifacts, withheld, file } = scanning({});
+    writeFileSync(file, 'id,total\n1,42\n');
+    artifacts.sink.register('download', 'downloads/001-report.csv');
+    await artifacts.settle();
+    expect(artifacts.records[0]).toMatchObject({ redaction: 'incomplete', path: 'web/test-1/attempt-0/downloads/001-report.csv' });
+    expect(withheld).toEqual([]);
+    expect(existsSync(file)).toBe(true);
+  });
+
+  it('scans against the ledger as it is at scan time, so a value registered after the attempt opened counts', async () => {
+    const ledger = new SecretLedger();
+    const { artifacts, withheld, file } = scanning({ ledger });
+    writeFileSync(file, SECRET);
+    ledger.register('late', SECRET);
+    artifacts.sink.register('download', 'downloads/001-report.csv');
+    await artifacts.settle();
+    expect(withheld.map((error) => error.code)).toEqual(['ARTIFACT_WITHHELD']);
   });
 });
 

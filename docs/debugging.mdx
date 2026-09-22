@@ -104,10 +104,15 @@ Artifacts land under `.e2e/artifacts/`, one directory per attempt:
 After a secret fill, the runner withholds screenshots from agent calls and
 `app.screenshot()` for the rest of the attempt.
 
-Playwright traces and videos need separate care. Trace redaction replaces
-secret text with `<secret:name>`, but it cannot remove a secret rendered as
-pixels. A trace marked `redaction: "complete"` can still contain those
-images. Videos mask nothing and are marked `redaction: "incomplete"`.
+Playwright traces, downloads, and videos need separate care. A trace is
+rewritten whenever the attempt knows a value that may be in it: a filled
+secret, a configured static value, an injected header, a restored cookie.
+Redaction replaces secret text with `<secret:name>`, but it cannot remove a
+secret rendered as pixels. A trace marked `redaction: "complete"` can still
+contain those images. A download that holds a registered value is deleted
+and recorded without a path, with `ARTIFACT_WITHHELD` among the attempt's
+`secondaryErrors`. Videos mask nothing and are marked
+`redaction: "incomplete"`.
 
 If trace rewriting fails, the runner deletes the trace from the attempt's
 artifact directory. For a path outside that directory, it withholds the

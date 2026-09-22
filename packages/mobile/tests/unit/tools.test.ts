@@ -50,7 +50,7 @@ describe('agent tool pack', () => {
 
     await expect(run('alert', { action: 'dismiss' })).rejects.toMatchObject({ code: 'INVALID_STATE' });
 
-    const attempt = (attemptId: string) => ({ attemptId, artifactsDir: '/tmp', signal: new AbortController().signal });
+    const attempt = (attemptId: string) => ({ attemptId, artifactsDir: '/tmp', signal: new AbortController().signal, registerSecret: () => undefined });
     await android.startAttempt!(attempt('a1'));
     expect(await run('open_app', { app: 'Clock', relaunch: true })).toBe('Opened Clock.');
     expect(await run('swipe', { from: { x: 300, y: 200 }, to: { x: 20, y: 200 } })).toMatch(/Swiped/);

@@ -107,15 +107,25 @@ excluded from cache entries, model input, and reports.
 
 - A transformed form of the value, such as its last four characters, is not
   the secret and passes through.
-- A Playwright trace from a tainted session is rewritten before it is kept.
-  Text entries become `<secret:name>`. Image entries cannot be rewritten:
-  one containing the literal secret bytes is dropped, one that merely renders
-  the secret as pixels survives. A trace the runner cannot rewrite is
-  deleted and the attempt records `TRACE_WITHHELD`.
+- A Playwright trace is rewritten before it is kept whenever the attempt's
+  ledger holds a value: a filled secret, a configured static value the app
+  rendered on its own, an injected header, a restored cookie. Text entries
+  become `<secret:name>`. Image entries cannot be rewritten: one containing
+  the literal secret bytes is dropped, one that merely renders the secret as
+  pixels survives. A trace the runner cannot rewrite is deleted and the
+  attempt records `TRACE_WITHHELD`. A trace from a session whose ledger is
+  empty is kept as recorded and labelled `not-required`.
+- A download is scanned as bytes. One that holds a registered value, in any
+  form the redactor knows, is deleted and the attempt records
+  `ARTIFACT_WITHHELD`. A value the app compressed or otherwise transformed
+  inside the file (a zipped export, a PDF stream) is not found.
 - A video masks nothing and is labelled `redaction: "incomplete"`. It is
   never recorded unless you ask.
-- The `headers` a protected preview needs are recorded in the trace as
-  request headers. Share that trace as you would the bypass secret.
+- The browser engine registers the `headers` a protected preview needs and
+  the `basicAuth` password at attempt start, so they read
+  `<secret:header.<name>>` and `<secret:basicAuth.password>` in the trace. A
+  header value shorter than 16 characters is not registered and stays in the
+  trace as sent.
 - `command.log` and service logs are captured as the process writes them.
   The runner does not redact them. Keep secrets out of your app's stdout.
 
@@ -135,6 +145,12 @@ for one run.
 
 Invalid, expired, missing, or mismatched sessions are refused. See the
 [session errors](/reference/errors) for the corresponding codes.
+
+A restored session sends its cookies on every request, and a trace records
+them. The browser engine registers each cookie and local-storage value of 16
+characters or more when a session is captured or restored, so they read
+`<secret:cookie.<name>>` and `<secret:storage.<key>>` in the trace. Shorter
+values and IndexedDB contents are not registered.
 
 ## Cache trust
 
@@ -160,7 +176,8 @@ path you configure.
 | --- | --- | --- |
 | `report.json` | The run record. Errors, reasoning excerpts, and action summaries pass the redactor. | complete |
 | `artifacts/.../*.png` | Screenshots. Secure fields are masked before screenshots are returned or saved as artifacts. | complete |
-| `artifacts/.../trace.zip` | Playwright trace, rewritten after a secret fill. | not-required, complete, or deleted |
+| `artifacts/.../trace.zip` | Playwright trace, rewritten whenever the attempt's ledger holds a value. | not-required, complete, or deleted |
+| `artifacts/.../downloads/*` | Files the app served through `web.waitForDownload`, scanned for registered values; one that holds a value is deleted and the attempt records `ARTIFACT_WITHHELD`. | complete, or withheld |
 | `artifacts/.../*.webm`, `*.mp4` | Video, opt-in, kept for every attempt unless `retain: 'on-failure'`. | incomplete |
 | `artifacts/.../failure/screen.txt` | The redacted tree at the moment of failure. | complete |
 | `ai-trace.json` | Every model call, opt-in via `--ai-trace`. Prompts are the redacted ones the model saw; inline image bytes are replaced by their size. | as the prompt |
@@ -169,7 +186,7 @@ path you configure.
 | The path in `command.log` | Your app's stdout and stderr, verbatim. Must be inside the project root. | none |
 
 An `artifacts.store` receives each artifact's bytes as they are produced,
-after trace redaction. A `cache.store` receives every recorded entry and
+after trace redaction and the download scan; a withheld file never reaches it. A `cache.store` receives every recorded entry and
 supplies every replayed one; what comes back is validated again before use.
 
 ## Outbound connections
