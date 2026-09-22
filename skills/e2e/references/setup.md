@@ -118,8 +118,8 @@ export default {
 | `reporters` | `['list']` | `list`, `json`, `junit`, `markdown`, and reporter objects (`{ name, onEvent?, onRunFinished? }`) that receive the finished run. `json` excludes `list`; `--reporter` keeps the objects. |
 | `cache` | `'read-write'`, `'read-only'` in CI | The trace cache for `agent.act`; `'off'` disables it. |
 | `agents` | `{ default: built-in }` | Agents by name. `default` is what tests run with; `e2e run --agent <name>` runs with another. Each entry is `createAgent(...)`, an options block `{ model, judge, context, maxSteps, maxModelCalls, providerOptions }`, or a custom `StepExecutor`. The built-in agent requires `model` as an AI SDK instance. Custom executors can implement `act` and `assert` without a model; `waitFor` and `extract` still need one. |
-| `credentials` | `{}` | Named `{ username, password }` entries; `password` may be a function returning the value. |
-| `secrets` | `{}` | Named values the model never sees (API keys, tokens): a string or a function returning the value. A name cannot also be a credential. |
+| `credentials` | `{}` | Named `{ username, password }` entries; `password` is a string of at least 6 characters (code points) or a function returning the value. |
+| `secrets` | `{}` | Named values the model never sees (API keys, tokens): a string of at least 6 characters (code points) or a function returning the value. A name cannot also be a credential. |
 | `artifacts` | `['screenshot', 'trace']` | Kinds to keep (`screenshot`, `trace`, and the opt-in `video`), or `{ kinds, store, video }`; `video: { retain: 'on-failure' }` keeps only the recordings of attempts that did not pass. |
 | `projectId` | the package name | Report and cache identity. |
 

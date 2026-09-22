@@ -15,7 +15,7 @@ import { loadAiSdk } from '../../agent/ai-sdk.ts';
 import { AiTraceRecorder, redactAiTraceDocument, registerAiTraceRecorder } from '../../internal/ai-trace.ts';
 import { DebugTrace } from '../../internal/debug.ts';
 import { classifyError, ConfigurationError, serializeError } from '../../internal/errors.ts';
-import { redactLeaves } from '../../internal/redact.ts';
+import { redactLeaves, StreamRedactor } from '../../internal/redact.ts';
 import { processSecrets, registerStaticSecrets } from '../secrecy.ts';
 import { SessionStore } from '../sessions.ts';
 import type {
@@ -73,26 +73,33 @@ function exitAfterFlush(code: 0 | 1): void {
  * Routes everything the process writes to stdout or stderr into `output`
  * messages: the streams are inherited from the runner, whose terminal shows
  * the live window, so a test's `console.log` written straight through would
- * land inside it and be painted over. Each write becomes one message,
- * attributed to the pair in flight, with every secret value this process
- * has seen redacted. The stream's contract holds: the callback fires once
- * the channel took the message, `write` answers false past the high-water
- * mark, and `drain` follows when the backlog has cleared.
+ * land inside it and be painted over. Text is attributed to the pair in
+ * flight, with every secret value this process has seen redacted across
+ * writes: a write that ends mid-line holds back the tail a later write could
+ * complete into a value, and the returned function releases what is held,
+ * attributed to the pair that wrote it. The stream's contract holds: the
+ * callback fires once the channel took the message, `write` answers false
+ * past the high-water mark, and `drain` follows when the backlog has cleared.
  */
-function captureOutput(pairInFlight: () => OutputMessage['pair']): void {
+function captureOutput(pairInFlight: () => OutputMessage['pair']): () => void {
+  const flushes: (() => void)[] = [];
   for (const [stream, name] of [
     [process.stdout, 'stdout'],
     [process.stderr, 'stderr'],
   ] as const) {
     type Done = (error?: Error | null) => void;
+    const redactor = new StreamRedactor(processSecrets);
+    let heldFor: OutputMessage['pair'] = undefined;
     let pending = 0;
     let needsDrain = false;
+    const output = (text: string, pair: OutputMessage['pair']): Promise<void> =>
+      text === '' ? Promise.resolve() : send({ type: 'output', pair, stream: name, text });
+    flushes.push(() => void output(redactor.flush(), heldFor));
     const write = (chunk: string | Uint8Array, encoding?: BufferEncoding | Done, callback?: Done): boolean => {
       const done = typeof encoding === 'function' ? encoding : callback;
-      const text =
-        typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString(typeof encoding === 'string' ? encoding : 'utf8');
+      const pair = pairInFlight();
       pending += 1;
-      void send({ type: 'output', pair: pairInFlight(), stream: name, text: processSecrets.redact(text) }).then(() => {
+      void output(redactor.push(chunk), pair).then(() => {
         pending -= 1;
         if (done !== undefined) done();
         if (needsDrain && pending < OUTPUT_HIGH_WATER) {
@@ -100,12 +107,16 @@ function captureOutput(pairInFlight: () => OutputMessage['pair']): void {
           stream.emit('drain');
         }
       });
+      heldFor = pair;
       if (pending < OUTPUT_HIGH_WATER) return true;
       needsDrain = true;
       return false;
     };
     stream.write = write as typeof stream.write;
   }
+  return () => {
+    for (const flush of flushes) flush();
+  };
 }
 
 function fatal(cause: unknown): void {
@@ -208,7 +219,7 @@ function main(): void {
   });
 
   let worker: TargetWorker | undefined;
-  captureOutput(() => worker?.pairInFlight);
+  const flushOutput = captureOutput(() => worker?.pairInFlight);
 
   // The channel closes when the runner is gone: killed, crashed, or exited
   // before this worker. A worker nobody is listening to must not keep driving
@@ -230,6 +241,18 @@ function main(): void {
       // Records leave the worker through its ledger as it stands: a value a
       // provider resolved during the attempt is known here, not in the runner.
       const emit = (outbound: WorkerToMain): void => {
+        // Output written without a final newline is still held; it leaves
+        // before the message that starts the next pair (a serial member's
+        // line must not land on the member after it), ends the test, the
+        // unit, or the worker.
+        if (
+          outbound.type === 'pair-start' ||
+          outbound.type === 'result' ||
+          outbound.type === 'unit-done' ||
+          outbound.type === 'shutdown-done'
+        ) {
+          flushOutput();
+        }
         switch (outbound.type) {
           case 'result':
             send({ ...outbound, result: redactLeaves(outbound.result, processSecrets.redact) });

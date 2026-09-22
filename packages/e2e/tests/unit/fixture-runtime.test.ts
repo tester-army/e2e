@@ -98,6 +98,28 @@ describe('explicit screenshot secrecy', () => {
       setSecretRegistry(undefined);
     }
   });
+
+  it.each([
+    ['1234', 'four characters'],
+    ['🔐🔐🔐', 'three emoji, six UTF-16 units'],
+  ])('refuses a provider value under 6 code points (%s, %s) at fill time with the unavailable code, pixels untainted', async (value) => {
+    const screenshot = vi.fn(async () => 'screenshots/evidence.png');
+    const { fixtures, config } = runtime(defineEngine({
+      name: 'fake', version: '1', spiVersion: 1, artifacts: { screenshot },
+    }), {
+      credentials: { member: { username: 'ada', password: async () => value } },
+    });
+    setSecretRegistry(config);
+    try {
+      await expect(fixtures.screen.getByRole('textbox').fill(credentials.user('member').password)).rejects.toMatchObject({
+        code: 'AUTH_CREDENTIAL_UNAVAILABLE',
+        message: expect.stringContaining('at least 6 characters (code points)'),
+      });
+      await expect(fixtures.app.screenshot()).resolves.toBe('screenshots/evidence.png');
+    } finally {
+      setSecretRegistry(undefined);
+    }
+  });
 });
 
 describe('generic secrets', () => {
@@ -173,7 +195,7 @@ describe('generic secrets', () => {
   });
 
   it('fails a secret the config does not declare with SECRET_UNAVAILABLE', () => {
-    const { config } = runtime(empty(), { secrets: { known: 'v' } });
+    const { config } = runtime(empty(), { secrets: { known: 'known-value' } });
     setSecretRegistry(config);
     try {
       expect(() => secrets.get('unknown')).toThrow(expect.objectContaining({ code: 'SECRET_UNAVAILABLE' }));

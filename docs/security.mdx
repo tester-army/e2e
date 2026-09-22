@@ -115,23 +115,45 @@ After any secret fill, screenshot and pixel tools are unavailable,
 runner omits assertion and failure screenshots. The app could display the
 value anywhere, beyond the field's masked rectangle.
 
-The redactor matches registered values in raw, JSON, HTML, and URL-encoded
-forms. It retains old values after a secret rotates, and never rewrites a
-marker it wrote, so text that passes it twice reads as text that passed once.
-Secret values are excluded from cache entries, model input, and reports. A
-step label that spells a value out, such as `app.open('/reset?token=...')` or
-``agent.act(`use key ${key}`)``, is recorded, reported, and handed to later
-steps as `<secret:name>`. The instruction of that same step still reaches
-its own model call as written. `report.json` and `ai-trace.json` pass the
-ledger once more as they are written, with every value known by then, so a
-value a provider resolved after a step was recorded or a model call closed
-is covered too.
+The redactor matches each registered value character by character, in every
+spelling a serializer gives a character: as is; JSON-escaped once or twice,
+including `\uXXXX` escapes in either hex case; as an HTML character
+reference, named, decimal, or hex; and percent-encoded in either hex case,
+with `+` for a space. It retains old values after a secret rotates, and never
+rewrites a marker it wrote, so text that passes it twice reads as text that
+passed once. Secret values are excluded from cache entries, model input, and
+reports. A step label that spells a value out, such as
+`app.open('/reset?token=...')` or ``agent.act(`use key ${key}`)``, is
+recorded, reported, and handed to later steps as `<secret:name>`. The
+instruction of that same step still reaches its own model call as written.
+`report.json` and `ai-trace.json` pass the ledger once more as they are
+written, with every value known by then, so a value a provider resolved after
+a step was recorded or a model call closed is covered too.
+
+A static value shorter than 6 characters (code points) is `INVALID_CONFIG`,
+and a provider returning one fails the fill. Every occurrence of a value
+becomes `<secret:name>`, so a value that short would take ordinary text with
+it.
+
+A test's console output is redacted in the worker before it leaves, across
+writes: a value split over two `process.stdout.write` calls, or over the
+chunks of a piped child's output, is still caught, a multibyte character
+split between chunks included. A run whose tests execute
+in the runner's own process, the path an embedding host takes when it
+supplies its config or tests in memory rather than from a file, has no such
+hook; its console output reaches the runner's streams as written.
 
 ### Where redaction stops
 
 
 - A transformed form of the value, such as its last four characters, is not
   the secret and passes through.
+- A value encoded as a whole rather than character by character, base64 or
+  a hash, is a different string and passes through.
+- A value the app renders in another Unicode normalization form, decomposed
+  accents where the secret has composed ones, passes through.
+- A value spread over several nodes, one character per cell as a PIN pad
+  shows it, is not one string in the tree and passes through.
 - A Playwright trace from a tainted session is rewritten before it is kept.
   Text entries become `<secret:name>`. Image entries cannot be rewritten:
   one containing the literal secret bytes is dropped, one that merely renders

@@ -252,6 +252,8 @@ test('talks', async () => {
   console.error('careful');
   process.stdout.write('token sk_live_generic_4242 leaked');
   process.stdout.write(' twice sk_live_generic_4242\\n');
+  process.stdout.write('split sk_live_gen');
+  process.stdout.write('eric_4242 across writes\\n');
 });
 `,
         },
@@ -267,20 +269,63 @@ test('talks', async () => {
       const output = events.filter((event) => event.type === 'output');
       const started = events.find((event) => event.type === 'test-started')!;
       const inTest = output.filter((event) => event.pair?.testId === started.testId);
-      // Every write is one event, secret values redacted before it leaves the worker.
-      expect(inTest.map((event) => [event.stream, event.text])).toEqual([
-        ['stdout', "hello { from: 'the test' }\n"],
-        ['stderr', 'careful\n'],
-        ['stdout', 'token <secret:stripe-key> leaked'],
-        ['stdout', ' twice <secret:stripe-key>\n'],
-      ]);
-      expect(events.some((event) => event.type === 'output' && event.text.includes('sk_live'))).toBe(false);
+      // Secret values are redacted before output leaves the worker, across writes: a write that
+      // ends mid-line holds back what a later write could complete into a value, so the pieces of
+      // one line may land as one event or several, never with a piece of a secret in any of them.
+      const joined = (stream: string): string =>
+        inTest.filter((event) => event.stream === stream).map((event) => event.text).join('');
+      expect(inTest[0]).toMatchObject({ stream: 'stdout', text: "hello { from: 'the test' }\n" });
+      expect(joined('stderr')).toBe('careful\n');
+      expect(joined('stdout')).toBe(
+        "hello { from: 'the test' }\ntoken <secret:stripe-key> leaked twice <secret:stripe-key>\nsplit <secret:stripe-key> across writes\n",
+      );
+      expect(events.some((event) => event.type === 'output' && /sk_live|eric_4242/.test(event.text))).toBe(false);
       expect(inTest.every((event) => event.target === 'web' && event.pair?.agent === 'default')).toBe(true);
       // The module's top level runs while the file loads, outside any pair.
       expect(output.some((event) => event.pair === undefined && event.text === 'top level\n')).toBe(true);
       expect(written.join('')).not.toContain('hello');
     } finally {
       stdoutWrite.mockRestore();
+      project?.cleanup();
+      await app.close();
+    }
+  }, 120_000);
+
+  it('a serial member’s unfinished line leaves with the member that wrote it, not the one after', async () => {
+    const app = await startFixtureApp();
+    const events: RunEvent[] = [];
+    let project: FixtureProject | undefined;
+    try {
+      const result = await runProjectWithConfigFile(
+        {
+          'tests/serial-logs.e2e.ts': `import { test } from 'e2e';
+test.describe('shared', { serial: true }, () => {
+  test('first', async () => { process.stdout.write('progress'); });
+  test('second', async () => { process.stdout.write(' done\\n'); });
+});
+`,
+        },
+        {
+          appUrl: app.url,
+          // A registered secret is what makes the worker hold an unfinished line.
+          configSource: workerConfigSource(1, `
+  secrets: { 'stripe-key': 'sk_live_generic_4242' },`),
+          runOptions: { onEvent: (event: RunEvent) => { events.push(event); } },
+        },
+      );
+      project = result.project;
+      expect(result.outcome.status).toBe('passed');
+      const started = new Map(
+        events.flatMap((event) => (event.type === 'test-started' ? [[event.title, event.testId] as const] : [])),
+      );
+      const outputOf = (title: string): string[] => {
+        const testId = started.get(title);
+        expect(testId).toBeDefined();
+        return events.flatMap((event) => (event.type === 'output' && event.pair?.testId === testId ? [event.text] : []));
+      };
+      expect(outputOf('shared > first')).toEqual(['progress']);
+      expect(outputOf('shared > second')).toEqual([' done\n']);
+    } finally {
       project?.cleanup();
       await app.close();
     }

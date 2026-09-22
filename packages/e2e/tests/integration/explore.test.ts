@@ -388,7 +388,7 @@ describe('e2e explore', () => {
     await expect(explore({ cwd: project.dir, rawConfig: resolvable, goal: 'x'.repeat(2_001) })).rejects.toMatchObject({ code: 'INVALID_CONFIG' });
     await expect(explore({ cwd: project.dir, rawConfig: resolvable, maxSteps: 13 })).rejects.toMatchObject({ code: 'INVALID_CONFIG' });
     const credentials = Object.fromEntries(
-      Array.from({ length: 400 }, (_, i) => [`account-${String(i)}`, { username: `${'u'.repeat(200)}@example.test`, password: 'pw' }]),
+      Array.from({ length: 400 }, (_, i) => [`account-${String(i)}`, { username: `${'u'.repeat(200)}@example.test`, password: 'password' }]),
     );
     await expect(
       explore({ cwd: project.dir, rawConfig: { targets: [{ name: 'web', engine: web({ url: app.url }) }] as never, credentials } }),
