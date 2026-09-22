@@ -7,7 +7,7 @@
  */
 
 import type { ModelInstance } from '../../src/types.ts';
-import { createScriptedInstance, scriptedResult } from './scripted-model.ts';
+import { createScriptedInstance, scriptedResult, type ScriptedProviderMetadata } from './scripted-model.ts';
 
 export interface LoopCall {
   /** One-based generate round within the step. */
@@ -40,13 +40,23 @@ export interface LoopToolCall {
   readonly input: Record<string, unknown>;
 }
 
-/** A turn's scripted answer: tool calls, or prose without any (`{ text }`). Either form may carry `reasoning`. */
+/** What a scripted turn may carry beside its answer: reasoning, and the metadata a provider would attach. */
+interface LoopExtras {
+  readonly reasoning?: string;
+  readonly providerMetadata?: ScriptedProviderMetadata;
+}
+
+/**
+ * A turn's scripted answer: tool calls, or prose without any (`{ text }`), or
+ * tool calls with prose before them (`{ toolCalls, text }`). Any form may
+ * carry `reasoning` and `providerMetadata`.
+ */
 export type LoopResponder = (
   call: LoopCall,
 ) =>
   | readonly LoopToolCall[]
-  | { readonly text: string; readonly reasoning?: string }
-  | { readonly toolCalls: readonly LoopToolCall[]; readonly reasoning?: string };
+  | ({ readonly text: string } & LoopExtras)
+  | ({ readonly toolCalls: readonly LoopToolCall[]; readonly text?: string } & LoopExtras);
 
 /** Recorded calls, newest last. Cleared by every installFakeLoopModel call. */
 export const loopCalls: LoopCall[] = [];
@@ -113,14 +123,15 @@ export function installFakeLoopModel(respond: LoopResponder): ModelInstance {
       return scriptedResult(answer.map(toPart), 'tool-calls');
     }
     const object = answer as
-      | { readonly text: string; readonly reasoning?: string }
-      | { readonly toolCalls: readonly LoopToolCall[]; readonly reasoning?: string };
+      | ({ readonly text: string } & LoopExtras)
+      | ({ readonly toolCalls: readonly LoopToolCall[]; readonly text?: string } & LoopExtras);
     const reasoning =
       object.reasoning === undefined ? [] : [{ type: 'reasoning' as const, text: object.reasoning }];
+    const text = object.text === undefined ? [] : [{ type: 'text' as const, text: object.text }];
     if ('toolCalls' in object) {
-      return scriptedResult([...reasoning, ...object.toolCalls.map(toPart)], 'tool-calls');
+      return scriptedResult([...reasoning, ...text, ...object.toolCalls.map(toPart)], 'tool-calls', object.providerMetadata);
     }
-    return scriptedResult([...reasoning, { type: 'text' as const, text: object.text }], 'stop');
+    return scriptedResult([...reasoning, ...text], 'stop', object.providerMetadata);
   });
 }
 
