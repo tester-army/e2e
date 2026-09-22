@@ -185,6 +185,13 @@ Limit snapshot size if the platform can return an unbounded tree. Set
 `truncated` when the limit cuts off nodes so the runner knows the listing
 is incomplete. Use the platform's accessible names for nodes.
 
+Report `states.hidden` by one predicate in `observe` and `locate`: a node
+the tree walk skips must read as hidden when located on its own, or
+`toBeVisible()` passes on a node the snapshot never shows. When the cause is
+not layout (`aria-hidden` on a document, a view's accessibility-hidden flag),
+name it in `hiddenBy`; the failure message then reads `hidden by aria-hidden`
+instead of marking text a person can see hidden with no reason.
+
 Put test identifiers in `testId`, whether they come from a document attribute,
 an iOS accessibility identifier, an Android resource id, or a desktop
 automation id. The `testId` query matches only that field.

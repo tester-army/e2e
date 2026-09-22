@@ -110,6 +110,28 @@ compares like `toHaveText`, after normalization.
 `toBeVisible` needs a shown one. Negated, it passes once nothing has matched
 for the negation window.
 
+`toBeVisible` follows the accessibility tree, not the paint. A node the tree
+excludes is hidden even when its text is on screen: on the web, anything
+under `aria-hidden="true"`, on the element, an ancestor, or the `<iframe>`
+embedding its document. Playwright's own
+`toBeVisible` checks layout alone and passes there. A header that paints its
+label as decoration beside an `aria-label` fails `getByText`, and the verdict
+names the cause:
+
+```text
+expect.toBeVisible failed
+locator: getByText("Good Ppl")
+expected: visible
+observed: states: hidden by aria-hidden (match count 1)
+```
+
+Assert the node the tree exposes instead:
+
+```ts
+// <a href="/" aria-label="Good Ppl"><span aria-hidden="true">Good Ppl</span></a>
+await expect(screen.getByRole('link', { name: 'Good Ppl' })).toBeVisible();
+```
+
 `toHaveText([...])` and `toContainText([...])` check a list: the match count
 must equal the list length and the match at each position must satisfy the
 entry there, a string exactly after normalization, a `RegExp` by test. There

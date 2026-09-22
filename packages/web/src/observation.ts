@@ -335,6 +335,7 @@ export function toSemanticNode(
     ...(raw.testId !== null ? { testId: raw.testId } : {}),
     inputPurpose: raw.inputPurpose,
     states,
+    ...(raw.hiddenBy !== null ? { hiddenBy: raw.hiddenBy } : {}),
     ...(raw.level !== null ? { level: raw.level } : {}),
     attributes: raw.attributes,
     rect: raw.rect,
