@@ -126,13 +126,14 @@ export interface DeviceLease {
 `appPath` options, the run's environment, an interrupt signal, and a `log`
 that reaches the reporter. Read tokens from `request.env`, not
 `process.env`. A target with nothing to run leases nothing. Every lease
-granted is held by the engine: a slot that fails to lease ends the run
-before any test, and the leases that succeeded are still released. Release
-happens after the last worker exits, on every exit path including failure,
-interrupt, and a `prepare` that threw, within `cleanupTimeout`. `release`
-receives the object `acquire` returned, so a provider can keep its own
-fields on it; only `daemon`, `client`, `device`, and `installedApp` travel to
-the workers. Report `installedApp` only for a request that carried `appPath`.
+granted is held by the engine, one it then refuses included: a slot that
+fails to lease ends the run before any test, and the leases that succeeded
+are still released. Release happens after the last worker exits, on every
+exit path including failure, interrupt, and a `prepare` that threw, within
+`cleanupTimeout`. `release` receives the object `acquire` returned, so a
+provider can keep its own fields on it; only `daemon`, `client`, `device`,
+and `installedApp` travel to the workers. Report `installedApp` only for a
+request that carried `appPath`.
 Leased devices are warmed like local ones: booted and opened once before
 the run's clock starts.
 

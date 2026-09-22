@@ -9,7 +9,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppError } from 'agent-device';
 import { decodePng, encodePng } from '../helpers/png.ts';
 import type { EngineFixtureContext, OperationContext, SemanticNode } from 'e2e/engine';
@@ -315,6 +315,15 @@ describe('lifecycle', () => {
     expect(none.fake.lastArgs('interactions.press')).toEqual({ ref: '@e4' });
     await none.engine.session!.back!(operation());
     expect(none.fake.lastArgs('command.back')).toEqual({});
+    const screen = await screenRootOf(none);
+    await none.engine.perform!(screen.ref, { kind: 'swipe', direction: 'down' }, operation());
+    expect(none.fake.lastArgs('interactions.scroll')).toEqual({ direction: 'down', amount: 0.5 });
+
+    // A test's own step never settles: its `expect` polls for the outcome.
+    const step: OperationContext = { ...operation(), origin: 'test' };
+    const slowScreen = await screenRootOf(slow);
+    await slow.engine.perform!(slowScreen.ref, { kind: 'swipe', direction: 'up', momentum: 'slow' }, step);
+    expect(slow.fake.lastArgs('interactions.scroll')).toEqual({ direction: 'up', amount: 0.75 });
 
     expect(() => harness({ settle: -1 })).toThrow(/non-negative integer/);
     expect(() => harness({ settle: 1.5 })).toThrow(/non-negative integer/);
@@ -461,6 +470,33 @@ describe('observation', () => {
     expect([...walk(snapshot.root)]).toHaveLength(10);
   });
 
+  it('flags a tree agent-device cut, or one still sparse after the retries, as truncated; a whole tree carries no flag', async () => {
+    const h = harness();
+    await openAttempt(h);
+    expect((await h.engine.observe!(operation())).truncated).toBeUndefined();
+
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, truncated: true }));
+    expect((await h.engine.observe!(operation())).truncated).toBe(true);
+
+    // One application node after every retry: the screen holds more than the listing shows.
+    let calls = 0;
+    h.fake.respond('capture.snapshot', () => {
+      calls += 1;
+      return { nodes: [{ ref: '@e1', type: 'application' }], snapshotQuality: { state: 'sparse' } };
+    });
+    vi.useFakeTimers();
+    try {
+      const pending = h.engine.observe!(operation());
+      await vi.advanceTimersByTimeAsync(4_200);
+      const sparse = await pending;
+      expect(calls).toBe(3);
+      expect([...walk(sparse.root)]).toHaveLength(1);
+      expect(sparse.truncated).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('is an empty screen before any app is open when no app is pinned, and a fault when one is', async () => {
     const free = harness({}, false);
     free.fake.respond('capture.snapshot', () => {
@@ -604,8 +640,8 @@ describe('perform', () => {
       ['interactions.press', { ref: '@e7', settle: true, settleQuietMs: 150 }],
       ['interactions.type', { text: ' ' }],
       ['interactions.swipe', { from: { x: 195, y: 620 }, to: { x: 195, y: 420 } }],
-      // The root swipe is the viewport swipe: agent-device's whole-screen scroll.
-      ['interactions.scroll', { direction: 'up' }],
+      // The root swipe is the viewport swipe: agent-device's whole-screen scroll, the momentum its reach, settled like a tap.
+      ['interactions.scroll', { direction: 'up', amount: 0.8, settle: true, settleQuietMs: 150 }],
       ['interactions.drag', { source: '@e4', destination: '@e3' }],
     ]);
   });
@@ -706,7 +742,7 @@ describe('session hooks, viewport swipe, location, artifacts', () => {
     await h.engine.session!.restart!(operation());
     await h.engine.session!.reset!(operation());
     expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
-      ['interactions.scroll', { direction: 'down' }],
+      ['interactions.scroll', { direction: 'down', amount: 0.8, settle: true, settleQuietMs: 150 }],
       ['command.back', { settle: true, settleQuietMs: 150 }],
       ['apps.open', { app: 'Settings', platform: 'ios', relaunch: true }],
       ['settings.update', { setting: 'clear-app-state', state: 'clear', app: 'Settings' }],

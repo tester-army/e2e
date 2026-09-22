@@ -48,6 +48,17 @@ export function readPngSize(data: Uint8Array): { width: number; height: number }
 }
 
 /**
+ * The share of its box one swipe travels, by fling strength: half for a plain
+ * flick, three quarters for a deliberate `slow` scroll (the runner's grammar
+ * scroll, which keeps every row on screen once while covering a feed in few
+ * actions), and the most a touch surface reaches for `fast`. agent-device's
+ * whole-screen `scroll` saturates at 0.8 of the axis, so `fast` is its reach.
+ */
+export function swipeShare(momentum: Momentum | undefined): number {
+  return momentum === 'fast' ? 0.8 : momentum === 'slow' ? 0.75 : 0.5;
+}
+
+/**
  * The finger gesture that scrolls one rect's content in `direction`. Scrolling
  * down reveals what is below, so the finger travels up; the travel is a share
  * of the rect's extent scaled by momentum, and never leaves the rect.
@@ -57,7 +68,7 @@ export function swipeWithin(
   direction: ScrollDirection,
   momentum: Momentum | undefined,
 ): { from: Point; to: Point } {
-  const ratio = momentum === 'fast' ? 0.8 : momentum === 'slow' ? 0.25 : 0.5;
+  const ratio = swipeShare(momentum);
   const centre = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
   const dx = (rect.width * ratio) / 2;
   const dy = (rect.height * ratio) / 2;

@@ -64,6 +64,7 @@ import {
   sanitizeFilename,
   screenLocation,
   type RawScreenshotResult,
+  swipeShare,
   swipeWithin,
   unsupported,
   type Rect,
@@ -98,9 +99,20 @@ interface RawInstallResult {
 /** The snapshot fields this engine reads off agent-device's response. */
 interface RawSnapshot {
   readonly nodes?: readonly RawNode[];
+  readonly truncated?: boolean;
   readonly appName?: string;
   readonly appBundleId?: string;
   readonly snapshotQuality?: { readonly state?: string };
+}
+
+/**
+ * Whether a snapshot leaves out nodes that are on screen: agent-device says
+ * it cut the tree, or the tree is still sparse after the retries (one
+ * application node while the app publishes its tree). The harness never
+ * calls such a screen unchanged, and the trace cache records the flag.
+ */
+function isTruncated(raw: RawSnapshot): boolean {
+  return raw.truncated === true || raw.snapshotQuality?.state === 'sparse';
 }
 
 /** Action data only: located references never retain a projected snapshot through parent links. */
@@ -588,6 +600,7 @@ export class AgentDeviceSurface {
     return {
       root: screenRoot(projected.roots, viewport),
       viewport,
+      ...(isTruncated(raw) ? { truncated: true } : {}),
       ...(location === undefined ? {} : { location }),
       ...(capture === undefined ? {} : { pixels: capture.pixels, maskedRegionCount: capture.masked }),
     };
@@ -714,24 +727,28 @@ export class AgentDeviceSurface {
   }
 
   async perform(ref: NodeRef, action: LocatorAction, operation: OperationContext): Promise<void> {
-    // The observation root is the screen: a swipe on it scrolls the whole
-    // viewport, which is the one action a screen takes.
-    if (ref.id === ROOT_ID) {
-      if (action.kind !== 'swipe') throw notActionable(`the screen root takes swipe only, not ${action.kind}; act on a node`);
-      const before = this.latestIndex;
-      await this.command('swipe', (client) => client.interactions.scroll({ direction: action.direction }), operation.signal);
-      this.markAction(before);
-      return;
-    }
-    const entry = this.resolveRef(ref);
-    const label = `perform ${action.kind}`;
-    const client = this.requireClient();
     // A test's step verifies its outcome with `expect`, so it never waits for
     // the screen to settle afterwards; it only lets a control that came with
     // the last action finish arriving. The agent reads the screen right after
     // acting, so its actions settle first.
     const deterministic = operation.origin === 'test';
     const settle = deterministic ? {} : this.settleOptions;
+    // The observation root is the screen: a swipe on it scrolls the whole
+    // viewport, which is the one action a screen takes.
+    if (ref.id === ROOT_ID) {
+      if (action.kind !== 'swipe') throw notActionable(`the screen root takes swipe only, not ${action.kind}; act on a node`);
+      const before = this.latestIndex;
+      await this.command(
+        'swipe',
+        (client) => client.interactions.scroll({ direction: action.direction, amount: swipeShare(action.momentum), ...settle }),
+        operation.signal,
+      );
+      this.markAction(before);
+      return;
+    }
+    const entry = this.resolveRef(ref);
+    const label = `perform ${action.kind}`;
+    const client = this.requireClient();
     // A toggle already in the wanted state sends nothing, so it neither waits
     // for a transition nor counts as an action the next control must wait on.
     if ((action.kind === 'check' || action.kind === 'uncheck') && entry.node.states?.checked === (action.kind === 'check')) {
