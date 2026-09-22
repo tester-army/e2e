@@ -16,6 +16,7 @@ import path from 'node:path';
 import * as clack from '@clack/prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { init } from '../../src/cli/init.ts';
+import { planSkillInstall } from '../../src/cli/init/agent-skill.ts';
 import { dependencyRange } from '../../src/cli/init/versions.ts';
 import { readSkillFiles } from '../../src/cli/skill.ts';
 
@@ -603,6 +604,28 @@ describe('e2e init', () => {
     expect(clack.confirm).not.toHaveBeenCalled();
   });
 
+  it('plans a location outside the project as links, even with no symlink on the way', () => {
+    const elsewhere = mkdtempSync(path.join(os.tmpdir(), 'e2e-init-elsewhere-'));
+    try {
+      const location = path.relative(dir, path.join(elsewhere, 'skills')).split(path.sep).join('/');
+      const bundled = readSkillFiles();
+      const installs = planSkillInstall(dir, [location], bundled);
+      expect(installs).toHaveLength(1);
+      expect(installs[0]!.relative).toBe(`${location}/e2e`);
+      expect(installs[0]!.existing).toBe(false);
+      expect(installs[0]!.obstacles).toEqual([]);
+      expect(installs[0]!.links).toEqual(
+        bundled.map((file) => ({
+          relative: `${location}/e2e/${file.relative}`,
+          target: path.join(realpathSync(elsewhere), 'skills', 'e2e', file.relative),
+        })),
+      );
+      expect(existsSync(path.join(elsewhere, 'skills'))).toBe(false);
+    } finally {
+      rmSync(elsewhere, { recursive: true, force: true });
+    }
+  });
+
   describe.skipIf(!symlinks)('a symlinked skill directory', () => {
     /** Links `<location>/e2e` to `target`, which holds the user's own SKILL.md. */
     function linkSkill(location: string, target: string): void {
@@ -699,6 +722,42 @@ describe('e2e init', () => {
       } finally {
         rmSync(elsewhere, { recursive: true, force: true });
       }
+    });
+
+    it('is left alone under --yes when it dangles, and the warning names the target as written', async () => {
+      mkdirSync(path.join(dir, '.claude/skills'), { recursive: true });
+      const link = path.join(dir, '.claude/skills/e2e');
+      symlinkSync(path.join('..', '..', 'gone', 'e2e'), link, 'dir');
+      expect((await init(dir, { yes: true })).exitCode).toBe(0);
+      expect(output()).toContain(`Symlink, not touching: .claude/skills/e2e -> ${path.join(dir, 'gone', 'e2e')}`);
+      expect(output()).not.toContain('Broken, not touching');
+      expect(lstatSync(link).isSymbolicLink()).toBe(true);
+      expect(existsSync(link)).toBe(false);
+      expect(existsSync(path.join(dir, 'gone'))).toBe(false);
+      // A link to nothing is no installed copy, so --yes takes every location and the other one gets the skill.
+      expect(read('.agents/skills/e2e/SKILL.md')).toMatch(/^---\nname: e2e\n/);
+      expect(clack.confirm).not.toHaveBeenCalled();
+    });
+
+    it('is replaced with a copy when it dangles and the user agrees', async () => {
+      mkdirSync(path.join(dir, '.claude/skills'), { recursive: true });
+      const link = path.join(dir, '.claude/skills/e2e');
+      symlinkSync(path.join('..', '..', 'gone', 'e2e'), link, 'dir');
+      vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+      expect((await init(dir)).exitCode).toBe(0);
+      expect(clack.confirm).toHaveBeenNthCalledWith(1, {
+        message: `Replace the symlink .claude/skills/e2e -> ${path.join(dir, 'gone', 'e2e')} with a copy of the skill?`,
+        initialValue: false,
+      });
+      expect(clack.confirm).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ message: expect.stringContaining('create .agents/skills/e2e/, replace .claude/skills/e2e/') }),
+      );
+      expect(lstatSync(link).isSymbolicLink()).toBe(false);
+      expect(read('.claude/skills/e2e/SKILL.md')).toMatch(/^---\nname: e2e\n/);
+      expect(read('.claude/skills/e2e/references/setup.md')).toContain('# Setting up e2e');
+      expect(existsSync(path.join(dir, 'gone'))).toBe(false);
+      expect(output()).toContain('Replaced .claude/skills/e2e/');
     });
 
     it('is skipped without a question when a parent is the link', async () => {
