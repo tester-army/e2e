@@ -171,12 +171,15 @@ export function extractToolResults(messages: readonly ModelMessage[], concludeTo
 
 /**
  * Whether a tool result reports its action failing, by the first line's
- * shape: `Tapped #n6. failed: …` from a grammar action, `Action failed: …`
- * from the loop's guard, `Tool "x" failed: …` from a project tool.
+ * shape: `Tapped #n6. failed: …` from an id-addressed grammar action,
+ * `tap_at (30, 30) failed: …` from a point verb, `Action failed: …` from the
+ * loop's guard, `Tool "x" failed: …` from a project tool. A point verb's lead
+ * is its name and the point, so `failed:` after a closing parenthesis counts
+ * only at the line's start; text the model typed never leads a line.
  */
 export function isFailedResult(text: string): boolean {
   const first = text.split('\n', 1)[0] ?? '';
-  return /(?:^|\. )(?:Action |Tool "[^"]*" )?failed: /.test(first);
+  return /(?:^|\. )(?:Action |Tool "[^"]*" )?failed: |^[a-z_]+ \([^)]*\) failed: /.test(first);
 }
 
 /**

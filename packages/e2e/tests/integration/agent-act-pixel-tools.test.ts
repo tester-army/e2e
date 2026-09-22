@@ -86,6 +86,11 @@ test('refuses focused typing when nothing editable has focus', async ({ app, age
   await app.open('/');
   await agent.act('type blind');
 });
+
+test('stops a streak of failing point verbs', async ({ app, agent }) => {
+  await app.open('/canvas');
+  await agent.act('pick options off the empty map margin');
+});
 `;
 
 /** The act model: a screenshot, then point verbs in it, then a verdict carrying the last result. */
@@ -153,6 +158,13 @@ function actModel(call: LoopCall) {
   }
   if (call.prompt.includes('type blind')) {
     return calls === 0 ? [{ toolName: 'type', input: { value: 'nope' } }] : conclude('failed');
+  }
+  if (call.prompt.includes('pick options off the empty map margin')) {
+    // Five select_at calls on the blank page right of the controls: nothing listed is there, so each
+    // fails, and each names a new point so only the failure streak can stop the loop.
+    if (calls === 0) return [{ toolName: 'screenshot', input: {} }];
+    if (calls <= 5) return [{ toolName: 'select_at', input: { x: 380 + calls * 20, y: 180 + calls * 10, value: 'x' } }];
+    return conclude('failed');
   }
   return conclude('passed');
 }
@@ -341,6 +353,20 @@ describe('agent.act pixel verbs', () => {
     expect(step.events.filter((event) => event.kind === 'engine' && event.status === 'passed')).toHaveLength(0);
     const [, second] = turnsOf('type blind');
     expect(second!.lastToolResult).toContain('nothing that takes keystrokes has focus: the typed text would reach no field');
+  });
+
+  it('counts failing point verbs toward the failure streak: a warning at three, a forced verdict at five', () => {
+    expect(resultByTitle(outcome, 'stops a streak of failing point verbs').status).toBe('failed');
+    const step = stepOf('stops a streak of failing point verbs');
+    expect(step.metrics!.modelCalls).toBeLessThanOrEqual(8);
+    const turns = turnsOf('pick options off the empty map margin');
+    // Every refusal reads `select_at (x, y) failed: ...` beside a fresh screenshot: pixel mode held.
+    expect(turns[2]!.lastToolResult).toContain('select_at (400, 190) failed: nothing the screen lists is at');
+    expect(turns[2]!.lastToolResult).toContain('"type":"file"');
+    expect(turns.some((turn) => turn.lastPrompt.includes('the last 3 actions failed in a row'))).toBe(true);
+    const last = turns.at(-1)!;
+    expect(last.toolNames).toEqual(['complete_step']);
+    expect(last.lastPrompt).toContain('Loop guard: the last 5 actions failed in a row');
   });
 });
 

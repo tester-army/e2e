@@ -94,13 +94,14 @@ export function isScreenOutput(value: unknown): value is Exclude<ScreenOutput, s
 }
 
 /**
- * The text of a tool result as the model reads it: a text result's value, or
- * the text items of a result with a screenshot attached, lead first. A
- * structured result carries none. Every reader of the transcript goes through
- * this, so a screen that arrived with pixels is never taken for no text.
+ * The text of a tool result as the model reads it: a text result's value,
+ * the message of a call the SDK refused before dispatch, or the text items
+ * of a result with a screenshot attached, lead first. A structured result
+ * carries none. Every reader of the transcript goes through this, so a
+ * screen that arrived with pixels is never taken for no text.
  */
 export function toolResultTexts(output: ToolResultPart['output']): string[] {
-  if (output.type === 'text') return [output.value];
+  if (output.type === 'text' || output.type === 'error-text') return [output.value];
   if (output.type !== 'content') return [];
   return output.value.flatMap((item) => (item.type === 'text' ? [item.text] : []));
 }
