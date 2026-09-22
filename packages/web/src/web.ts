@@ -16,6 +16,7 @@ import type { Download, Route } from 'playwright';
 import type { ActionOptions, Expectable, JsonValue, Locator, Screen, TextMatch } from 'e2e';
 import {
   Deadline,
+  describeNegationTimeout,
   describePattern,
   matchesText,
   pollCondition,
@@ -531,10 +532,15 @@ function createWebExpectation(deps: ExpectationDeps, negated = false): WebExpect
       signal: deps.context.signal,
       negated,
       evaluate: condition,
-      onTimeout: async () =>
+      onTimeout: async (expiry) =>
         new TestError(
           'ASSERTION_FAILED',
-          `expect.${negated ? 'not.' : ''}${api} failed\nexpected: ${negated ? 'not ' : ''}${label}\nobserved: ${await observed()}`,
+          [
+            `expect.${negated ? 'not.' : ''}${api} failed`,
+            `expected: ${negated ? 'not ' : ''}${label}`,
+            `observed: ${await observed()}`,
+            ...(expiry.negation === undefined ? [] : [describeNegationTimeout(expiry.negation)]),
+          ].join('\n'),
         ),
     });
   };

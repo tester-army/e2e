@@ -868,7 +868,7 @@ Use these helpers to keep behavior consistent across engines:
 | --- | --- |
 | `matchesText(actual, pattern)`, `toTextPattern(match, { exact? })`, `describePattern(pattern)` | `TextPattern` matching for `locate` and text matchers |
 | `urlMatches(current, expected, baseHref)` | `toHaveURL`-style comparison |
-| `pollCondition({ deadline, signal, negated, evaluate, onTimeout })`, `Deadline` | Assertion polling and the negation grace window |
+| `pollCondition({ deadline, signal, negated, evaluate, onTimeout })`, `Deadline`, `describeNegationTimeout(negation)` | Assertion polling and the negation window: `evaluate` receives the deadline in force, `onTimeout` the negation state, which the describer turns into the failure line |
 | `validateJsonValue(value, label)` | Rejects `undefined`, `NaN`, and cycles in a value a fixture returns |
 | `obj`, `raceAbort`, `withTimeout`, `withinCleanupBudget` | See [Contributed fixtures](#contributed-fixtures) |
 

@@ -11,7 +11,7 @@ import {
   type TextComparison,
 } from '../internal/text.ts';
 import { isValueControl } from '../internal/roles.ts';
-import { Deadline, pollCondition } from '../internal/time.ts';
+import { Deadline, describeNegationTimeout, pollCondition } from '../internal/time.ts';
 import { isNodeVisible } from '../locator/engine.ts';
 import { describeExpression } from '../locator/expression.ts';
 import type { LocatorInternals } from '../locator/screen.ts';
@@ -122,13 +122,13 @@ class AsyncExpectationImpl implements AsyncExpectation {
         deadline,
         signal: engine.signal,
         negated: this.negated,
-        evaluate: async () => {
-          const sample = await this.sample(spec, deadline);
+        evaluate: async (within) => {
+          const sample = await this.sample(spec, within);
           lastSample = sample;
           if (!this.conditionEvaluable(spec, sample)) return undefined;
           return spec.predicate(sample);
         },
-        onTimeout: () => {
+        onTimeout: (expiry) => {
           const expected = `${this.negated ? 'not ' : ''}${spec.describeExpected}`;
           const observed = spec.observed(lastSample);
           return new TestError(
@@ -138,6 +138,7 @@ class AsyncExpectationImpl implements AsyncExpectation {
               `locator: ${this.label}`,
               `expected: ${expected}`,
               `observed: ${observed} (match count ${lastSample.count})`,
+              ...(expiry.negation === undefined ? [] : [describeNegationTimeout(expiry.negation)]),
             ].join('\n'),
             {
               // The same facts, one per field, for a reporter that lays them out.

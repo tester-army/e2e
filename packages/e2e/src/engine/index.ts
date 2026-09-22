@@ -33,7 +33,16 @@ export { validateJsonValue, type JsonValueRules } from '../internal/json-value.t
 export { describePattern, matchesText, toTextPattern } from '../internal/text.ts';
 export type { TextMatch } from '../types.ts';
 export { raceAbort } from './timing.ts';
-export { Deadline, pollCondition, withTimeout, withinCleanupBudget, type PollConditionOptions } from '../internal/time.ts';
+export {
+  Deadline,
+  describeNegationTimeout,
+  pollCondition,
+  withTimeout,
+  withinCleanupBudget,
+  type NegationTimeout,
+  type PollConditionOptions,
+  type PollTimeout,
+} from '../internal/time.ts';
 export { sameSite, siteOf, urlMatches } from '../internal/urls.ts';
 export { obj, type WithoutUndefined } from '../internal/objects.ts';
 import type { CommandConfig, Expectable, Locator, Screen, ServiceConfig } from '../types.ts';
