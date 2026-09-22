@@ -135,7 +135,7 @@ to do today.
 | `click({ force })` | not yet; `tap({ position })` skips every actionability check but the scroll into view | `screen` | missing |
 | `click({ modifiers, clickCount, delay, trial })` | not yet | `web` | missing |
 | `fill(value)` | the same; also takes a `Secret` | `screen` | same |
-| `pressSequentially(text)` | not yet; `focus()`, then `web.keyboard.type(text)` | `screen` | missing |
+| `pressSequentially(text, { delay })` | the same; keystrokes through the platform keyboard, a `Secret` is refused | `screen` | same |
 | `press(key)` | the same; modifiers join with `+`, see the [key grammar](/reference/engine#keys) | `screen` | same |
 | `clear()`, `check()`, `uncheck()`, `focus()`, `hover()`, `selectOption()`, `setInputFiles()`, `dragTo()` | the same | `screen` | same |
 | `selectOption(['a', 'b'])` | not yet; one option per call | `screen` | missing |
