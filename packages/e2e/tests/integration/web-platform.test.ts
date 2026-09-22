@@ -312,6 +312,13 @@ test('contenteditable hosts are textboxes: reached by label, filled, and read as
   await expect(screen.getByLabel('Message')).toHaveValue('Hi');
 });
 
+test('nested frame locators resolve each frame inside the one before it', async ({ app, web }) => {
+  await app.open('/frame-nested');
+  const inner = web.frameLocator('#outer').frameLocator('#child');
+  await inner.getByRole('button', { name: 'Frame button' }).tap();
+  await expect(inner.getByRole('button', { name: 'Frame clicked' })).toBeVisible();
+});
+
 test('downloads are captured as artifacts', async ({ app, web }) => {
   await app.open('/downloads');
   const download = await web.waitForDownload(() => web.locator('a[download]').tap());
@@ -396,6 +403,7 @@ describe('web platform integration', () => {
       'dialogs are handled by registered handlers',
       'frame locators scope queries into iframes',
       'a nested absent frame counts as zero matches at once',
+      'nested frame locators resolve each frame inside the one before it',
       'css selectors via web.locator',
       'contenteditable hosts are textboxes: reached by label, filled, and read as a value',
       'downloads are captured as artifacts',
