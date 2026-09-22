@@ -106,15 +106,16 @@ These appear in terminal output and in the report as plain string codes.
 | `SESSION_INVALID` | A stored session failed authentication. Tampered or corrupt. | configuration | 2 |
 | `SESSION_UNAVAILABLE` | A test requires a session no selected setup test produced | configuration | 2 |
 | `SESSION_CONTRACT` | A setup test saved a session twice, saved an undeclared name, or finished without saving a declared one | test | 1 |
-| `TEST_TIMEOUT` | The attempt exceeded the resolved test `timeout` | test | 1 |
+| `TEST_TIMEOUT` | The attempt exceeded the resolved test `timeout`. The body is not stopped: the harness operation it is in is cancelled and its fixtures die with the attempt, so it cannot reach the next test | test | 1 |
 | `STEP_NOT_AWAITED` | The test body settled while a step it started was still running: a step call without `await`. The step is failed at the line of the call and cancelled; the attempt fails with this code when the body returned, or keeps the body's own error and records this one under `secondaryErrors` when the body threw | test | 1 |
+| `UNHANDLED_REJECTION` | A promise rejected with no test running. An unhandled rejection is charged to the test running when it surfaces, since Node cannot say which test created the promise; between tests it is this run error, naming the last test that finished in the worker as the likely source. Before any test has finished in the worker it ends the worker instead (`WORKER_EXIT`). The body that left it keeps running like one past `TEST_TIMEOUT` | test | 1 |
 | `HOOK_FAILED` | `beforeAll` or `afterAll` threw. Skips the suite's tests. | test | 1 |
 | `LAUNCH_TIMEOUT` | Engine init or attempt start exceeded `config.launchTimeout` | infrastructure | 3 |
 | `CLEANUP_TIMEOUT` | Engine attempt end exceeded `config.cleanupTimeout` | infrastructure | 3 |
 | `TRACE_WITHHELD` | A trace from an attempt that filled a secret could not be rewritten, so it was deleted. Recorded in the attempt's `secondaryErrors`; never fails the attempt. | infrastructure | 3 |
 | `BROWSER_INSTALL_FAILED` | Browser provisioning failed | infrastructure | 3 |
 | `WORKER_INIT_FAILED` | A worker process never became ready | infrastructure | 3 |
-| `WORKER_EXIT` | A worker exited unexpectedly while running a file: the test in flight fails with `WORKER_CRASH` and the file's other tests are skipped. A rejection nobody caught during a test fails that test with its own error instead | infrastructure | 3 |
+| `WORKER_EXIT` | A worker exited unexpectedly while running a file: the test in flight fails with `WORKER_CRASH` and the file's other tests are skipped. An unhandled rejection is charged to the test running when it surfaces, or recorded as `UNHANDLED_REJECTION` between tests; it ends the worker only before any test has finished there | infrastructure | 3 |
 | `WORKER_CRASH` | A worker exited during a specific test | infrastructure | 3 |
 | `WORKER_ENTRY_MISSING` | The worker entry module could not be resolved. Packaging fault. | infrastructure | 3 |
 | `ENGINE_FAILURE` | Any engine fault with no more specific mapping | infrastructure | 3 |
