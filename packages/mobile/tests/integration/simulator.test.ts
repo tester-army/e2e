@@ -59,7 +59,7 @@ describe.skipIf(!enabled)('agent-device engine on a booted iOS simulator', () =>
       env: {},
       signal: new AbortController().signal,
     });
-    await engine.startAttempt!({ attemptId: 'sim-1', artifactsDir, signal: new AbortController().signal });
+    await engine.startAttempt!({ attemptId: 'sim-1', artifactsDir, signal: new AbortController().signal, registerSecret: () => undefined });
   });
 
   afterAll(async () => {

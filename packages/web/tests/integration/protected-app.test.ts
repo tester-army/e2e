@@ -35,7 +35,7 @@ async function boot(engine: EngineHandle, app: FixtureApp, artifactsDir: string,
     log: () => undefined,
     signal: new AbortController().signal,
   });
-  await engine.startAttempt!({ attemptId, artifactsDir, signal: new AbortController().signal });
+  await engine.startAttempt!({ attemptId, artifactsDir, signal: new AbortController().signal, registerSecret: () => undefined });
 }
 
 async function shutdown(engine: EngineHandle): Promise<void> {

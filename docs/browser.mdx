@@ -71,7 +71,8 @@ const file = await web.waitForDownload(() =>
 
 The download is registered as a `download` artifact. `file.path` is relative to
 the attempt's artifact directory, not an absolute or project-relative file
-path.
+path. A download that holds a registered secret value is deleted and recorded
+without a path; see the [security model](/security#artifacts-and-logs).
 
 ## Reach into an iframe
 

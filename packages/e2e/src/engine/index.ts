@@ -510,6 +510,16 @@ export interface EngineAttemptContext {
    * harness ends the attempt's isolation right behind it and may retry.
    */
   readonly signal: AbortSignal;
+  /**
+   * Registers a value the surface puts on the wire or restores into the app
+   * without the harness seeing it pass: an injected request header, a
+   * basic-auth password, a cookie or storage value of a restored session.
+   * The redactor then replaces it with `<secret:name>` in model input, in
+   * the report, and in the trace rewrite; the value itself never enters any
+   * of them. Register a value as soon as the surface holds it, so a trace
+   * that recorded it is rewritten before it is kept.
+   */
+  readonly registerSecret: (name: string, value: string) => void;
 }
 
 /**

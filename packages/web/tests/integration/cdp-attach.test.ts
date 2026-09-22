@@ -66,7 +66,7 @@ describe('web engine over CDP', () => {
     expect(resolved).toBe(1);
 
     try {
-      await engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal });
+      await engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, registerSecret: () => undefined });
       await engine.session!.open!(`${app.url}/`, operation('a1'));
       const headings = await engine.locate!(
         { kind: 'query', query: { kind: 'role', value: { kind: 'string', value: 'heading', exact: true } } },
@@ -107,7 +107,7 @@ describe('web engine over CDP', () => {
       signal: new AbortController().signal,
     });
     try {
-      await engine.startAttempt!({ attemptId: 'r1', artifactsDir, signal: new AbortController().signal });
+      await engine.startAttempt!({ attemptId: 'r1', artifactsDir, signal: new AbortController().signal, registerSecret: () => undefined });
       await engine.session!.open!(`${app.url}/`, operation('r1'));
       await engine.endAttempt!(cleanup());
       expect(resolved).toBe(1);
@@ -122,7 +122,7 @@ describe('web engine over CDP', () => {
 
       // The next attempt must not fail on the dead browser: it reacquires,
       // running the resolver again, and works over the new session.
-      await engine.startAttempt!({ attemptId: 'r2', artifactsDir, signal: new AbortController().signal });
+      await engine.startAttempt!({ attemptId: 'r2', artifactsDir, signal: new AbortController().signal, registerSecret: () => undefined });
       expect(resolved).toBe(2);
       await engine.session!.open!(`${app.url}/`, operation('r2'));
       const headings = await engine.locate!(

@@ -29,6 +29,20 @@ export function registerStaticSecrets(secrets: ResolvedConfig['secrets']): void 
   }
 }
 
+/**
+ * Registers a value an engine put on the wire or restored into the app (an
+ * injected header, a basic-auth password, a session cookie) with the
+ * session's ledger and the process ledger, under a name restricted to the
+ * alphabet secret names share so it reads as one in `<secret:name>`. An empty
+ * value registers nothing.
+ */
+export function registerEngineSecret(secrecy: SessionSecrecy, name: string, value: string): void {
+  if (value === '') return;
+  const clean = name.replaceAll(/[^A-Za-z0-9_.-]/g, '_').slice(0, 64) || 'engine';
+  secrecy.ledger.register(clean, value);
+  processSecrets.register(clean, value);
+}
+
 /** Secrets survive every fixture graph that shares the same live isolation. */
 const secrecyBySession = new WeakMap<TargetSession, SessionSecrecy>();
 

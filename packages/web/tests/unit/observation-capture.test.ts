@@ -86,7 +86,7 @@ async function setup(stalled?: ReadStage) {
     runId: 'run', targetName: 'fixture', projectRoot: process.cwd(), app: {}, env: {},
     headed: false, workerSlot: 0, signal: controller.signal, log: () => undefined,
   });
-  await surface.startAttempt({ attemptId: 'attempt', artifactsDir: tmpdir(), signal: controller.signal });
+  await surface.startAttempt({ attemptId: 'attempt', artifactsDir: tmpdir(), signal: controller.signal, registerSecret: () => undefined });
   await surface.ensurePage();
   return { ...doc, surface, page, context, screenshot, count, operation, controller };
 }

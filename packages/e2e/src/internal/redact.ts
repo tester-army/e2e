@@ -185,6 +185,11 @@ export class SecretLedger {
     this.compiled = undefined;
   }
 
+  /** Whether no value is registered: nothing to rewrite, and nothing a capture could hold. */
+  get isEmpty(): boolean {
+    return this.values.length === 0;
+  }
+
   /** Bound so it can be handed out as a plain function. */
   readonly redact = (text: string): string => this.compile().redact(text);
 

@@ -64,7 +64,7 @@ describe('nested frame locators', () => {
 
   beforeAll(async () => {
     await engine.init!({ runId: 'frames', targetName: 'fixture', projectRoot: process.cwd(), app: {}, env: {}, headed: false, workerSlot: 0, signal, log: () => undefined });
-    await engine.startAttempt!({ attemptId: 'attempt', artifactsDir, signal });
+    await engine.startAttempt!({ attemptId: 'attempt', artifactsDir, signal, registerSecret: () => undefined });
     await engine.session!.open!('about:blank', operation);
     page = surfaceOf(engine)!.page();
     await page.setContent(HOST_DOCUMENT);
