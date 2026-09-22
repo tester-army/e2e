@@ -15,7 +15,7 @@ export interface OAuthFetchOptions {
   /** The `User-Agent` sent to the vendor; name your product, never another client. */
   readonly userAgent: string;
   readonly fetch?: FetchFunction;
-  /** How a missing login is described; the CLI names its own command. */
+  /** How a missing or expired login is fixed; the CLI names its own command. */
   readonly loginHint?: string;
 }
 
@@ -102,6 +102,7 @@ export function createOAuthFetch<Credentials extends OAuthCredentials>(
           if (cause instanceof OAuthError && cause.code === 'LOGIN_REQUIRED') {
             const rotated = await rotatedElsewhere(latest);
             if (rotated !== undefined) return rotated;
+            throw new OAuthError('LOGIN_REQUIRED', `${cause.message}; ${options.loginHint ?? 'sign in again'}`, { cause });
           }
           throw cause;
         }

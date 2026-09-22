@@ -26,7 +26,8 @@ export async function postForm(url: string, params: Record<string, string>, sign
 /**
  * Posts a grant and returns the tokens. A 400 or 401 means the grant itself
  * was rejected and maps to `rejected` (LOGIN_REQUIRED for a refresh, FLOW_FAILED
- * for a code exchange); anything else not OK is FLOW_FAILED.
+ * for a code exchange); anything else not OK is FLOW_FAILED. The message names
+ * the failure only; the fetch that called for the refresh appends the remedy.
  */
 export async function requestTokens(
   vendor: string,
@@ -37,8 +38,7 @@ export async function requestTokens(
   const response = await postForm(url, params);
   if (!response.ok) {
     const code = response.status === 400 || response.status === 401 ? rejected : 'FLOW_FAILED';
-    const suffix = code === 'LOGIN_REQUIRED' ? '; sign in again' : '';
-    throw new OAuthError(code, `${vendor} token request failed (${await describeResponse(response)})${suffix}`);
+    throw new OAuthError(code, `${vendor} token request failed (${await describeResponse(response)})`);
   }
   const tokens = (await response.json()) as Partial<TokenResponse>;
   if (typeof tokens.access_token !== 'string' || tokens.access_token === '') {

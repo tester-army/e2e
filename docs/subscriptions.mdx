@@ -101,7 +101,9 @@ in. Run `npx e2e logout` to remove a saved login.
 
 Logins are stored in `~/.config/e2e/oauth.json`, or under
 `$XDG_CONFIG_HOME`, with file permissions restricted to your user. Tokens
-refresh automatically.
+refresh automatically. When a vendor rejects the saved refresh token, the run
+fails with `LOGIN_REQUIRED` and names the `npx e2e login <provider>` command
+to run.
 
 Use API keys in CI. `E2E_OAUTH_CREDENTIALS` can supply credential JSON
 instead of the local file, but refreshed tokens are not saved back to that
