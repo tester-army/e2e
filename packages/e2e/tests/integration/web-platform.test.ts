@@ -253,6 +253,15 @@ test('frame locators scope queries into iframes', async ({ app, web }) => {
   const frame = web.frameLocator('#child');
   await frame.getByRole('button', { name: 'Frame button' }).tap();
   await new Promise((resolve) => setTimeout(resolve, 100));
+
+  const absent = web.frameLocator('#absent').getByRole('button');
+  const started = Date.now();
+  expect(await absent.count()).toBe(0);
+  expect(await absent.all()).toEqual([]);
+  expect(await absent.allTextContents()).toEqual([]);
+  expect(await absent.isVisible()).toBe(false);
+  expect(await absent.isHidden()).toBe(true);
+  expect(Date.now() - started).toBeLessThan(2_000);
 });
 
 test('downloads are captured as artifacts', async ({ app, web }) => {

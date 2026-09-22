@@ -36,7 +36,7 @@ import {
   testIdQuery,
   textQuery,
 } from './expression.ts';
-import { Deadline, POLL_INTERVAL_MS, pollCondition, sleep } from '../internal/time.ts';
+import { POLL_INTERVAL_MS, pollCondition, sleep } from '../internal/time.ts';
 
 export interface SecretResolver {
   /**
@@ -415,11 +415,11 @@ class LocatorImpl extends ScreenImpl implements Locator {
   }
 
   async isVisible(): Promise<boolean> {
-    return isNodeVisible(await this.readOptional());
+    return isNodeVisible(await this.context.engine.readNow(this.expression));
   }
 
   async isHidden(): Promise<boolean> {
-    return !isNodeVisible(await this.readOptional());
+    return !(await this.isVisible());
   }
 
   async isEnabled(): Promise<boolean> {
@@ -442,7 +442,7 @@ class LocatorImpl extends ScreenImpl implements Locator {
   }
 
   async count(): Promise<number> {
-    const refs = await this.context.engine.resolveAll(this.expression);
+    const refs = await this.context.engine.resolveNow(this.expression);
     return refs.length;
   }
 
@@ -452,7 +452,7 @@ class LocatorImpl extends ScreenImpl implements Locator {
   }
 
   async allTextContents(): Promise<string[]> {
-    const nodes = await this.context.engine.readAll(this.expression);
+    const nodes = await this.context.engine.readAllNow(this.expression);
     if (nodes.some((node) => node.states?.secure === true)) {
       throw new ConfigurationError(
         'POLICY_DENIED',
@@ -520,12 +520,6 @@ class LocatorImpl extends ScreenImpl implements Locator {
         `reading values from a secure field is denied: ${this.label}`,
       );
     }
-    return node;
-  }
-
-  private async readOptional(): Promise<SemanticNode | null> {
-    const deadline = new Deadline(0);
-    const { node } = await this.context.engine.tryRead(this.expression, deadline);
     return node;
   }
 }
