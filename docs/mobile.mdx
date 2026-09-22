@@ -317,6 +317,7 @@ const { app } = await device.installApp('./build/MyApp.app', { reinstall: true }
 await device.openApp(app);
 ```
 
+`device.openApp` takes a bundle id, package, or display name, never a link.
 `device.openLink` opens a deep link or a web link into the pinned app, or
 into the `app` named in its options, for magic-link sign-in and deep-link
 routes:

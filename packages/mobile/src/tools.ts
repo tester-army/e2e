@@ -74,7 +74,7 @@ export function mobileTools(
     open_app: defineTool(
       deviceTool({
         description:
-          'Open an app by bundle id, package, or display name (e.g. "Settings"), bringing it to the foreground. Set relaunch to restart it fresh.',
+          'Open an app by bundle id, package, or display name (e.g. "Settings"), bringing it to the foreground. Set relaunch to restart it fresh. Takes an app, not a URL: a link is refused.',
         inputSchema: z.object({ app: z.string().min(1), relaunch: z.boolean().optional() }),
         execute: async ({ app, relaunch }, options) => {
           await active().openApp(app, relaunch === true, abort(options) ?? new AbortController().signal);

@@ -209,7 +209,11 @@ export interface Device {
    * binary and keeps its data. Resolves to the identity to `openApp` it by.
    */
   installApp(appPath: string, options?: InstallAppOptions): Promise<InstalledApp>;
-  /** Brings an app to the foreground; `relaunch` restarts it fresh. */
+  /**
+   * Brings an app to the foreground by bundle id, package, or display name;
+   * `relaunch` restarts it fresh. A link is `INVALID_ARGUMENT` (`file:`,
+   * `data:`, and `javascript:` are `POLICY_DENIED`): `openLink` opens one.
+   */
   openApp(app: string, options?: { relaunch?: boolean }): Promise<void>;
   /**
    * Opens a deep link (`myapp://orders/42`) or a web link (`https://...`)
@@ -279,6 +283,13 @@ const { app } = await device.installApp('./build/MyApp.app', { reinstall: true }
 await device.openApp(app);
 ```
 
+`openApp` brings an app to the foreground by bundle id, package, or display
+name (`Settings`); `relaunch: true` restarts it fresh. It takes no link:
+agent-device opens any `scheme:rest` string as a URL, so a link is refused
+before the device sees it. A `file:`, `data:`, or `javascript:` link is
+`POLICY_DENIED`, the rule every navigation follows; any other link is
+`INVALID_ARGUMENT` pointing at `openLink`.
+
 `openLink` opens a deep link or a web link into `app` (default: the pinned
 app), for magic-link sign-in and deep-link routes, and the session observes
 that app afterwards. iOS launches the app for a web link and then opens the
@@ -319,7 +330,7 @@ device engines in one call; the tools use the current attempt's engine.
 
 | Tool | Replay | Purpose |
 | --- | --- | --- |
-| `open_app` | gap | Bring an app to the foreground, optionally relaunched. |
+| `open_app` | gap | Bring an app to the foreground by id, optionally relaunched. A link is refused, as it is for `device.openApp`. |
 | `swipe` | gap | Free-form swipe between two points in logical pixels. |
 | `alert` | gap | Accept or dismiss a system alert; prefer a listed button, whose tap replays. |
 
