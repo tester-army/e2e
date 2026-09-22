@@ -41,7 +41,7 @@ before passing its result to `expect`.
 | --- | --- |
 | Default timeout | `config.assertionTimeout`, 5000 ms |
 | Override | `{ timeout }` in milliseconds, on every locator and `web` matcher |
-| Negation grace window | A negated matcher passes after 1000 ms of continuous truth, or after the whole budget when `{ timeout }` is shorter than that |
+| Negation window | A negated matcher passes once its negation has held continuously for 1000 ms, or half the budget when `{ timeout }` is under 2000 ms; the negation must begin by the timeout and may finish its window up to one window after it |
 | Failure code | `ASSERTION_FAILED`, exit code 1 |
 
 Locator strictness: except for `toHaveCount` and the list form of
@@ -49,6 +49,10 @@ Locator strictness: except for `toHaveCount` and the list form of
 match; zero matches keep polling until the timeout, and multiple matches fail
 immediately with `LOCATOR_AMBIGUOUS`. `toBeHidden`, negated visibility, and
 negated `toBeAttached` accept zero matches.
+
+A negated matcher that fails while its negation holds says how long it held
+beside what it observed: `held for 300 ms, short of the 450 ms negation
+window`.
 
 Text comparison is normalized: leading and trailing whitespace is trimmed and
 each run of whitespace collapses to one space. A `TextMatch` string matches
@@ -58,7 +62,7 @@ exactly; a `RegExp` uses its own source and flags.
 
 ```ts
 export interface AsyncExpectation {
-  /** Inverts the matcher. A negated matcher passes after 1000 ms of continuous truth. */
+  /** Inverts the matcher. A negated matcher passes once its negation has held for the negation window: 1000 ms, or half the budget when that is shorter. */
   readonly not: AsyncExpectation;
   /** Waits for visibility. */
   toBeVisible(options?: { timeout?: number }): Promise<void>;
@@ -101,7 +105,8 @@ is enabled unless it reports `disabled`. `toHaveAttribute(name, value)`
 compares like `toHaveText`, after normalization.
 
 `toBeAttached` passes once one match exists, hidden or shown, where
-`toBeVisible` needs a shown one. Negated, it passes once nothing matches.
+`toBeVisible` needs a shown one. Negated, it passes once nothing has matched
+for the negation window.
 
 `toHaveText([...])` and `toContainText([...])` check a list: the match count
 must equal the list length and the match at each position must satisfy the
