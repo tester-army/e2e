@@ -1,7 +1,11 @@
-/** report-1 run status: `blocked` needs every failing result blockable and no run-level error. */
+/**
+ * report-1 documents built from run records: the run status (`blocked` needs
+ * every failing result blockable and no run-level error), result tags, and
+ * the result source made relative to the project root.
+ */
 
 import { describe, expect, it } from 'vitest';
-import type { ResolvedTarget } from '../../src/config/resolve.ts';
+import type { ResolvedConfig, ResolvedTarget } from '../../src/config/resolve.ts';
 import type { SerializedError } from '../../src/internal/errors.ts';
 import { uuidv7 } from '../../src/internal/ids.ts';
 import { buildReport, type BuildReportOptions } from '../../src/report/build.ts';
@@ -105,6 +109,25 @@ describe('result tags', () => {
     };
     const document = build({ results: [plain, tagged] });
     expect(document.run.results.map((result) => result.tags)).toEqual([[], ['smoke', 'billing']]);
+  });
+});
+
+describe('result source', () => {
+  const config = { projectRoot: '/repo/app', targets: [] } as unknown as ResolvedConfig;
+
+  function declaredAt(file: string): ResultRecord {
+    const plain = failedResult(productFailure);
+    return { ...plain, test: { ...plain.test, source: { file, line: 7, column: 3 } } };
+  }
+
+  it('keeps a file under the project root relative to it', () => {
+    const document = build({ config, results: [declaredAt('/repo/app/tests/case.e2e.ts')] });
+    expect(document.run.results[0]!.source).toEqual({ file: 'tests/case.e2e.ts', line: 7, column: 3 });
+  });
+
+  it('does not treat a sibling directory sharing the root prefix as inside the project', () => {
+    const document = build({ config, results: [declaredAt('/repo/app-shared/helpers.ts')] });
+    expect(document.run.results[0]!.source).toEqual({ file: 'tests/case.e2e.ts', line: 7, column: 3 });
   });
 });
 

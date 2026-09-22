@@ -154,9 +154,23 @@ async function measure(absolute: string): Promise<{ size: number; sha256: string
   }
 }
 
-/** Restricts a report path segment to a safe filename alphabet. */
+/** Longest report path segment the runner writes: a name every common filesystem accepts. */
+const MAX_SEGMENT_CHARS = 120;
+/** Hex characters of the digest a cut segment ends in. */
+const SEGMENT_DIGEST_CHARS = 8;
+
+/**
+ * Restricts a report path segment to a safe filename alphabet and length. A
+ * value within the cap is unchanged. One past it is cut and ends in a digest
+ * of the whole original, so two long test ids that share a prefix (a monorepo
+ * path, a describe, a long title) get directories of their own instead of
+ * writing over each other's evidence.
+ */
 export function sanitizePathSegment(value: string): string {
-  return value.replaceAll(/[^A-Za-z0-9._-]/g, '_').slice(0, 120);
+  const sanitized = value.replaceAll(/[^A-Za-z0-9._-]/g, '_');
+  if (sanitized.length <= MAX_SEGMENT_CHARS) return sanitized;
+  const digest = createHash('sha256').update(value).digest('hex').slice(0, SEGMENT_DIGEST_CHARS);
+  return `${sanitized.slice(0, MAX_SEGMENT_CHARS - SEGMENT_DIGEST_CHARS - 1)}-${digest}`;
 }
 
 function mediaTypeFor(relativePath: string): string {
