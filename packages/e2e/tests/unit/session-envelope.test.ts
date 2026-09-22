@@ -1,6 +1,7 @@
 /** Session envelope wire format. */
 
-import { existsSync, mkdirSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -78,6 +79,20 @@ function ageDirectory(directory: string, ageMs: number): void {
   utimesSync(directory, then, then);
 }
 
+/** Creates a run directory holding one envelope-shaped file and, when given, an owner file. */
+function seedRunDirectory(directory: string, owner?: string): void {
+  mkdirSync(directory, { mode: 0o700 });
+  writeFileSync(path.join(directory, 'web--acct.json'), '{}', { mode: 0o600 });
+  if (owner !== undefined) writeFileSync(path.join(directory, 'owner.json'), owner, { mode: 0o600 });
+}
+
+/** The pid of a process that has already exited and been reaped. */
+function deadPid(): number {
+  const child = spawnSync(process.execPath, ['-e', '0']);
+  if (child.pid === undefined || child.status !== 0) throw new Error('could not spawn a short-lived process');
+  return child.pid;
+}
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 describe('session envelope', () => {
@@ -132,37 +147,52 @@ describe('session envelope', () => {
 });
 
 describe('stale run directories', () => {
-  it('create sweeps siblings older than a session may live and nothing else', async () => {
+  it('create sweeps old siblings whose runner is gone and nothing else', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'e2e-sessions-'));
-    const stale = path.join(root, 'stale-run');
-    const fresh = path.join(root, 'fresh-run');
+    const ownerless = path.join(root, 'ownerless-run');
+    const dead = path.join(root, 'dead-run');
+    const garbage = path.join(root, 'garbage-owner-run');
+    const live = path.join(root, 'live-run');
+    const fresh = path.join(root, 'fresh-dead-run');
     const current = path.join(root, 'current-run');
     const outside = await mkdtemp(path.join(tmpdir(), 'e2e-sessions-outside-'));
-    for (const directory of [stale, fresh, current]) {
-      mkdirSync(directory, { mode: 0o700 });
-      writeFileSync(path.join(directory, 'web--acct.json'), '{}', { mode: 0o600 });
-    }
+    const gone = JSON.stringify({ pid: deadPid(), startedAt: '2026-01-01T00:00:00.000Z' });
+    seedRunDirectory(ownerless);
+    seedRunDirectory(dead, gone);
+    seedRunDirectory(garbage, 'not json');
+    seedRunDirectory(live, JSON.stringify({ pid: process.pid, startedAt: '2026-01-01T00:00:00.000Z' }));
+    seedRunDirectory(fresh, gone);
+    seedRunDirectory(current);
     writeFileSync(path.join(outside, 'web--acct.json'), '{}');
     symlinkSync(outside, path.join(root, 'linked-run'));
     writeFileSync(path.join(root, 'stray.json'), '{}');
-    ageDirectory(stale, 2 * DAY_MS);
-    ageDirectory(current, 2 * DAY_MS);
-    ageDirectory(outside, 2 * DAY_MS);
+    for (const directory of [ownerless, dead, garbage, live, current, outside]) ageDirectory(directory, 2 * DAY_MS);
     ageDirectory(fresh, DAY_MS / 2);
 
-    SessionStore.create('current-run', root);
+    const store = SessionStore.create('current-run', root);
 
-    expect(existsSync(stale)).toBe(false);
+    expect(existsSync(ownerless)).toBe(false);
+    expect(existsSync(dead)).toBe(false);
+    expect(existsSync(garbage)).toBe(false);
+    expect(existsSync(live)).toBe(true);
     expect(existsSync(fresh)).toBe(true);
     expect(existsSync(current)).toBe(true);
     expect(existsSync(path.join(root, 'linked-run'))).toBe(true);
     expect(existsSync(path.join(outside, 'web--acct.json'))).toBe(true);
     expect(existsSync(path.join(root, 'stray.json'))).toBe(true);
+    store.cleanup();
   });
 
-  it('create tolerates a sessions root that does not exist yet', () => {
+  it('create claims the run directory with this process as owner, and cleanup removes it', () => {
     const root = path.join(tmpdir(), `e2e-sessions-missing-${uuidv7()}`);
-    expect(() => SessionStore.create('run', root)).not.toThrow();
-    expect(existsSync(root)).toBe(false);
+    const store = SessionStore.create('run', root);
+    const owner = JSON.parse(readFileSync(path.join(root, 'run', 'owner.json'), 'utf8')) as {
+      pid: number;
+      startedAt: string;
+    };
+    expect(owner.pid).toBe(process.pid);
+    expect(Number.isNaN(Date.parse(owner.startedAt))).toBe(false);
+    store.cleanup();
+    expect(existsSync(path.join(root, 'run'))).toBe(false);
   });
 });

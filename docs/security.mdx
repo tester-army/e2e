@@ -168,7 +168,7 @@ for one run.
 | Key | 32 random bytes generated per run and held in memory. Workers receive it over IPC, never through disk or the environment. |
 | Bound to | Run id, target, engine name and version, platform, and app identity, all authenticated as additional data |
 | Lifetime | At most 24 hours, sooner if the saved state declares an earlier expiry |
-| Cleanup | The directory is removed when the run ends. A run killed before that (a third Ctrl-C, `SIGKILL`, a crash) leaves its directory behind with its key gone; the next run removes any sibling directory older than 24 hours |
+| Cleanup | The directory is removed when the run ends. It carries an `owner.json` naming the runner's pid: a run killed before cleanup (a third Ctrl-C, `SIGKILL`, a crash) leaves its directory behind with its key gone, and the next run removes any sibling older than 24 hours whose pid is no longer running |
 
 Invalid, expired, missing, or mismatched sessions are refused. See the
 [session errors](/reference/errors) for the corresponding codes.
@@ -201,7 +201,7 @@ path you configure.
 | `artifacts/.../*.webm`, `*.mp4` | Video, opt-in, kept for every attempt unless `retain: 'on-failure'`. | incomplete |
 | `artifacts/.../failure/screen.txt` | The redacted tree at the moment of failure. | complete |
 | `ai-trace.json` | Every model call, opt-in via `--ai-trace`. Prompts are the redacted ones the model saw; inline image bytes are replaced by their size. | as the prompt |
-| `sessions/<runId>/` | Encrypted sessions, deleted at cleanup; a killed run's directory is removed by the next run once it is a day old. | encrypted |
+| `sessions/<runId>/` | Encrypted sessions and the run's `owner.json` (pid, start time), deleted at cleanup; a killed run's directory goes once it is a day old and its runner has exited. | encrypted |
 | `cache/` | Trace entries. | secret-free by construction |
 | The path in `command.log` | Your app's stdout and stderr, verbatim. Must be inside the project root. | none |
 
