@@ -296,25 +296,28 @@ export class TargetExecutor implements SerialHost {
     let realm: Realm | null =
       freshRegistration === undefined ? null : this.realms.adopt(freshRegistration);
     for (const [index, pair] of ordered.entries()) {
+      // One serial unit per agent the group runs as: its members are the
+      // group's pairs under that agent, in declaration order. The unit
+      // reports every member when it runs, however it ended, so a later
+      // member is done here before the interrupt is consulted; an interrupt
+      // that landed during the group would otherwise report it twice.
+      const serialUnitKey =
+        pair.test.serialId === undefined ? undefined : pairKey(pair.test.serialId, pair.agent, pair.repeat);
+      if (serialUnitKey !== undefined && executedSerialUnits.has(serialUnitKey)) continue;
       if (this.interruptSignal.aborted) {
         this.emit(unstartedResult(pair, interruptedSkip(this.interruptSignal)));
         continue;
       }
-      if (pair.test.serialId !== undefined) {
-        // One serial unit per agent the group runs as: its members are the
-        // group's pairs under that agent, in declaration order.
-        const unitKey = pairKey(pair.test.serialId, pair.agent, pair.repeat);
-        if (!executedSerialUnits.has(unitKey)) {
-          executedSerialUnits.add(unitKey);
-          const members = ordered.filter(
-            (member) => member.test.serialId === pair.test.serialId && member.agent === pair.agent && member.repeat === pair.repeat,
-          );
-          // A serial group owns its realm; whatever realm ordinary tests were
-          // sharing ends here, afterAll included.
-          if (realm !== null) await this.realms.leave(realm);
-          realm = null;
-          await runSerialUnit(this, members, file.absolutePath);
-        }
+      if (serialUnitKey !== undefined) {
+        executedSerialUnits.add(serialUnitKey);
+        const members = ordered.filter(
+          (member) => member.test.serialId === pair.test.serialId && member.agent === pair.agent && member.repeat === pair.repeat,
+        );
+        // A serial group owns its realm; whatever realm ordinary tests were
+        // sharing ends here, afterAll included.
+        if (realm !== null) await this.realms.leave(realm);
+        realm = null;
+        await runSerialUnit(this, members, file.absolutePath);
         continue;
       }
       this.pairStarted(pair);

@@ -1,10 +1,10 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { resultId } from '../../src/internal/ids.ts';
-import { listProject, resultByTitle, runExisting, runProject, type RunOutcome } from '../helpers/run-project.ts';
+import { createProject, listProject, resultByTitle, runExisting, runProject, type RunOutcome } from '../helpers/run-project.ts';
 
 describe('runner lifecycle', () => {
   let app: FixtureApp;
@@ -761,6 +761,96 @@ test('never runs either', async () => { throw new Error('three'); });
       expect(invalid.exitCode).toBe(2);
       expect(invalid.report.run.errors.map((error) => [error.code, error.message])).toEqual([
         ['INVALID_CONFIG', 'maxFailures must be a positive safe integer, got 0'],
+      ]);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
+    'stops at --max-failures inside a serial group and reports each member once',
+    async () => {
+      const files = {
+        'tests/serial-limit.e2e.ts': `import { test } from 'e2e';
+test.describe('wizard', { serial: true }, () => {
+  test('step 1 fails', async () => { throw new Error('one'); });
+  test('step 2', async () => {});
+  test('step 3', async () => {});
+});
+test('after the group', async () => {});
+test('after the group too', async () => {});
+`,
+      };
+      let planned = 0;
+      const { outcome, project } = await runProject(files, {
+        appUrl: app.url,
+        runOptions: { maxFailures: 1, onEvent: (event) => { if (event.type === 'plan') planned = event.total; } },
+      });
+      expect(outcome.exitCode).toBe(1);
+      expect(planned).toBe(5);
+      const byDeclaration = outcome.results.toSorted((a, b) => a.test.declarationIndex - b.test.declarationIndex);
+      expect(byDeclaration.map((result) => [result.test.title, result.status, result.skip?.cause])).toEqual([
+        ['step 1 fails', 'failed', undefined],
+        ['step 2', 'skipped', 'serial-predecessor-failed'],
+        ['step 3', 'skipped', 'serial-predecessor-failed'],
+        ['after the group', 'skipped', 'failure-limit'],
+        ['after the group too', 'skipped', 'failure-limit'],
+      ]);
+      expect(outcome.report.run.summary.discovered).toBe(planned);
+      expect(new Set(outcome.report.run.results.map((result) => result.id)).size).toBe(planned);
+      assertValidReport(outcome.report);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
+    'an interrupt reports every test it never started, and --last-failed runs them next',
+    async () => {
+      const sleeping = `import { test } from 'e2e';
+test('sleeps until interrupted', async () => {
+  await new Promise((resolve) => setTimeout(resolve, 60_000));
+});
+`;
+      const project = createProject({
+        'tests/first.e2e.ts': sleeping,
+        'tests/second.e2e.ts': `import { test } from 'e2e';
+test('never started', async () => {});
+test('never started either', async () => {});
+`,
+      });
+      const controller = new AbortController();
+      let planned = 0;
+      const interrupted = await runExisting(project, {
+        appUrl: app.url,
+        runOptions: {
+          interruptSignal: controller.signal,
+          onEvent: (event) => {
+            if (event.type === 'plan') planned = event.total;
+            if (event.type === 'test-started') controller.abort();
+          },
+        },
+      });
+      expect(interrupted.exitCode).toBe(130);
+      expect(interrupted.status).toBe('interrupted');
+      expect(planned).toBe(3);
+      expect(interrupted.report.run.summary.discovered).toBe(planned);
+      for (const title of ['never started', 'never started either']) {
+        const result = resultByTitle(interrupted, title);
+        expect(result.status).toBe('skipped');
+        expect(result.skip).toEqual({ cause: 'infrastructure-unavailable', reason: 'run interrupted before execution' });
+      }
+      assertValidReport(interrupted.report);
+
+      // The rerun reads the report the interrupt wrote; the body that slept passes at once now.
+      writeFileSync(path.join(project.dir, 'tests', 'first.e2e.ts'), sleeping.replace('setTimeout(resolve, 60_000)', 'setTimeout(resolve, 0)'));
+      const rerun = await runExisting(project, { appUrl: app.url, runOptions: { lastFailed: true } });
+      expect(rerun.exitCode).toBe(0);
+      const byFile = rerun.results.toSorted((a, b) => (a.test.file === b.test.file ? a.test.declarationIndex - b.test.declarationIndex : a.test.file < b.test.file ? -1 : 1));
+      expect(byFile.map((result) => [result.test.title, result.selected, result.status])).toEqual([
+        ['sleeps until interrupted', true, 'passed'],
+        ['never started', true, 'passed'],
+        ['never started either', true, 'passed'],
       ]);
       project.cleanup();
     },

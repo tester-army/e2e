@@ -311,8 +311,11 @@ Signals escalate.
 
 1. The first `SIGINT` or `SIGTERM` interrupts. The running test ends with
    status `interrupted`, its `afterEach` hooks and session close run within
-   the cleanup budget, every worker disposes its engine, and the runner writes
-   a partial report and exits 130.
+   the cleanup budget, and every worker disposes its engine. The tests not
+   started are skipped with cause `infrastructure-unavailable` and the reason
+   `run interrupted before execution`, so the report lists every planned
+   test and `--last-failed` runs the interrupted and the unstarted ones
+   again. The runner writes the report and exits 130.
 2. A second signal forces. Workers dispose their engines at once and are
    killed when the cleanup budget is spent. The report is still written.
 3. A third signal exits on the spot, after killing the process groups of every

@@ -33,18 +33,19 @@ function failedAttempt(error: SerializedError): AttemptRecord {
   };
 }
 
-function failedResult(error: SerializedError): ResultRecord {
+/** A failed result for one test titled `title`; two in one report need distinct titles, as a run gives each result its own id. */
+function failedResult(error: SerializedError, title = 'case'): ResultRecord {
   return {
     test: {
       kind: 'test',
-      title: 'case',
-      titlePath: ['suite', 'case'],
+      title,
+      titlePath: ['suite', title],
       declarationIndex: 0,
       sessions: [],
       tags: [],
       source: undefined,
       file: 'tests/case.e2e.ts',
-      id: 'tests/case.e2e.ts::suite::case',
+      id: `tests/case.e2e.ts::suite::${title}`,
       serialId: undefined,
     },
     target,
@@ -114,7 +115,7 @@ describe('run status derivation', () => {
   });
 
   it('stays failed when one result failed on the product', () => {
-    const document = build({ results: [failedResult(blocked), failedResult(productFailure)] });
+    const document = build({ results: [failedResult(blocked, 'blocked'), failedResult(productFailure, 'product')] });
     expect(document.run.status).toBe('failed');
   });
 
