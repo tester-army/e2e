@@ -9,13 +9,15 @@ import { attempt, finished, report, result } from './fixtures.ts';
 const posted = json(201, { id: 5, html_url: 'https://github.com/octo/app/pull/41#issuecomment-5' });
 const script = { 'GET *': () => json(200, []), 'POST *': () => posted.clone() };
 
-function deps(env: NodeJS.ProcessEnv, fetchImpl?: typeof fetch) {
+/** Fakes for the reporter; `gitDirs` are the `.git` entries that exist, so the checkout root is where the test puts it. */
+function deps(env: NodeJS.ProcessEnv, fetchImpl?: typeof fetch, gitDirs: readonly string[] = ['/work/.git']) {
   const written: Record<string, string> = {};
   const gh = fakeGitHub(script);
   return {
     deps: {
       fetch: fetchImpl ?? gh.fetch,
       env,
+      exists: (file: string) => gitDirs.includes(file),
       readFile: readEvent,
       appendFile: async (file: string, text: string) => {
         if (file === '/readonly.md') throw new Error('EACCES: permission denied');
@@ -81,15 +83,28 @@ describe('reportRun', () => {
   });
 
   it('links sources under the project path inside the checkout, and at the root when the project is the checkout', async () => {
+    // The checkout is the workspace (.git at /work); the project is its packages-style child.
     const nested = deps({ ...actionsEnv, GITHUB_TOKEN: 'ghs', GITHUB_WORKSPACE: '/work' });
     await reportRun(failedRun, signal, {}, nested.deps);
     expect(postedBody(nested.calls)).toContain('(https://github.com/octo/app/blob/head-sha/app/tests/shop%20flows/cart.e2e.ts#L9)');
+    // actions/checkout with `path: app`: the repository root is below the workspace, and the project is that root.
+    const checkedOutBelow = deps({ ...actionsEnv, GITHUB_TOKEN: 'ghs', GITHUB_WORKSPACE: '/work' }, undefined, ['/work/app/.git']);
+    await reportRun(failedRun, signal, {}, checkedOutBelow.deps);
+    expect(postedBody(checkedOutBelow.calls)).toContain('(https://github.com/octo/app/blob/head-sha/tests/shop%20flows/cart.e2e.ts#L9)');
+    // No .git anywhere: the workspace is taken for the checkout.
+    const bare = deps({ ...actionsEnv, GITHUB_TOKEN: 'ghs', GITHUB_WORKSPACE: '/work' }, undefined, []);
+    await reportRun(failedRun, signal, {}, bare.deps);
+    expect(postedBody(bare.calls)).toContain('(https://github.com/octo/app/blob/head-sha/app/tests/shop%20flows/cart.e2e.ts#L9)');
     const root = deps({ ...actionsEnv, GITHUB_TOKEN: 'ghs', GITHUB_WORKSPACE: '/work/app' });
     await reportRun(failedRun, signal, {}, root.deps);
     expect(postedBody(root.calls)).toContain('(https://github.com/octo/app/blob/head-sha/tests/shop%20flows/cart.e2e.ts#L9)');
     const outside = deps({ ...actionsEnv, GITHUB_TOKEN: 'ghs', GITHUB_WORKSPACE: '/elsewhere' });
     await reportRun(failedRun, signal, {}, outside.deps);
     expect(postedBody(outside.calls)).toContain('(https://github.com/octo/app/blob/head-sha/tests/shop%20flows/cart.e2e.ts#L9)');
+    // A project directory may begin with two dots; only a real parent traversal drops the prefix.
+    const dotted = deps({ ...actionsEnv, GITHUB_TOKEN: 'ghs', GITHUB_WORKSPACE: '/work' });
+    await reportRun({ ...failedRun, projectRoot: '/work/..app' }, signal, {}, dotted.deps);
+    expect(postedBody(dotted.calls)).toContain('(https://github.com/octo/app/blob/head-sha/..app/tests/shop%20flows/cart.e2e.ts#L9)');
   });
 
   it('adds the key to the marker, encoded, so matrix replicas keep their own comments', async () => {

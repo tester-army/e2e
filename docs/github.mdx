@@ -53,7 +53,7 @@ the run's Artifacts section and names the file's path inside the upload
 (`web/tests_billing.e2e.ts__upgrades/attempt-0/screenshot-3.png`), so keep
 `path: .e2e/artifacts` and the paths line up with the download. A project that
 sits below the checkout root, such as `packages/e2e-tests`, gets source links
-under that path: the reporter reads `GITHUB_WORKSPACE`.
+under that path: the reporter finds the checkout root as the nearest directory holding `.git`, inside `GITHUB_WORKSPACE`, so a checkout placed with `actions/checkout`'s `path` input resolves too.
 
 ## The comment
 
