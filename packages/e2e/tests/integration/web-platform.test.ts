@@ -161,6 +161,18 @@ test('missing locators poll until the deadline', async ({ app, screen }) => {
   await screen.getByRole('button', { name: 'Never exists' }).tap({ timeout: 800 });
 });
 
+test('a textarea value compares raw', async ({ app, screen }) => {
+  await app.open();
+  await expect(screen.getByLabel('Notes')).toHaveValue('line1\\n\\nline2  ');
+  await expect(screen.getByLabel('Notes')).toHaveValue(/^line1\\n\\nline2 {2}$/);
+  await expect(screen.getByLabel('Notes')).not.toHaveValue('line1 line2');
+});
+
+test('a textarea value is never normalized to match', async ({ app, screen }) => {
+  await app.open();
+  await expect(screen.getByLabel('Notes')).toHaveValue('line1 line2');
+});
+
 test('secure fields refuse value reads', async ({ app, screen }) => {
   await app.open();
   await screen.getByLabel('Password').fill('hunter2');
@@ -326,6 +338,7 @@ describe('web platform integration', () => {
   it('passes every deterministic behavior test', () => {
     const shouldPass = [
       'deterministic queries and reads',
+      'a textarea value compares raw',
       'role vocabulary: tabs, menus, progress, toolbars, images',
       'actions and state',
       'assertions poll until the app settles',
@@ -358,6 +371,15 @@ describe('web platform integration', () => {
     const result = resultByTitle(outcome, 'missing locators poll until the deadline');
     expect(result.status).toBe('failed');
     expect(result.attempts[0]!.error?.code).toBe('LOCATOR_NOT_FOUND');
+  });
+
+  it('fails toHaveValue on a textarea against the raw value, and prints what it compared', () => {
+    // The web engine reports the value raw, and the matcher neither collapses
+    // the newlines to match nor prints a string it never compared.
+    const result = resultByTitle(outcome, 'a textarea value is never normalized to match');
+    expect(result.status).toBe('failed');
+    expect(result.attempts[0]!.error?.code).toBe('ASSERTION_FAILED');
+    expect(result.attempts[0]!.error?.message).toContain('observed: value "line1\\n\\nline2  "');
   });
 
   it('denies secure value reads with POLICY_DENIED', () => {

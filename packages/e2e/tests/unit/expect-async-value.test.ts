@@ -22,7 +22,7 @@ describe('toHaveValue', () => {
     });
   });
 
-  it.each(['textbox', 'searchbox', 'combobox', 'spinbutton', 'slider'])(
+  it.each(['textbox', 'searchbox', 'combobox', 'spinbutton', 'slider', 'listbox', 'option'])(
     'reads a %s the platform reports without a value as the empty string',
     async (role) => {
       const control: SemanticNode = { ref: { id: 'node-1', revision: '' }, role, testId: 'field' };
@@ -42,6 +42,19 @@ describe('toHaveValue', () => {
       message: vexpect.stringContaining('observed: no value (not a form control)'),
     });
     await vexpect(expectFixture(locator).not.toHaveValue('Title')).rejects.toMatchObject({
+      code: 'ASSERTION_FAILED',
+      message: vexpect.stringContaining('observed: no value (not a form control)'),
+    });
+  });
+
+  it('refuses a link, whose name and text are not a value', async () => {
+    const link: SemanticNode = { ref: { id: 'node-1', revision: '' }, role: 'link', name: 'Docs', text: 'Docs' };
+    const locator = createScreenFixture([link]).getByRole('link');
+    await vexpect(expectFixture(locator).toHaveValue('Docs')).rejects.toMatchObject({
+      code: 'ASSERTION_FAILED',
+      message: vexpect.stringContaining('observed: no value (not a form control)'),
+    });
+    await vexpect(expectFixture(locator).not.toHaveValue('')).rejects.toMatchObject({
       code: 'ASSERTION_FAILED',
       message: vexpect.stringContaining('observed: no value (not a form control)'),
     });
