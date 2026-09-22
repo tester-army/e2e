@@ -805,8 +805,16 @@ export class TargetExecutor implements SerialHost {
     // afterEach cleanup, teardown — must not confirm traces the failure
     // implicated (a cleanup assertion says nothing about the failed flow).
     let lastVerifiedAtFailure = -1;
+    // The first failure is the verdict; whatever lands after it, a teardown
+    // that also threw or a rejection surfacing late, is kept beside it.
     const recordFailure = (cause: unknown, atPhase: AttemptPhase): void => {
-      if (failure === undefined) lastVerifiedAtFailure = steps.lastVerifiedStepIndex;
+      if (failure !== undefined) {
+        secondaryErrors.push(
+          serializeError(classifyError(cause), { phase: atPhase, projectRoot: this.config.projectRoot, redact }),
+        );
+        return;
+      }
+      lastVerifiedAtFailure = steps.lastVerifiedStepIndex;
       failure = classifyError(cause);
       failurePhase = atPhase;
     };
@@ -845,8 +853,7 @@ export class TargetExecutor implements SerialHost {
         cutBody(cause);
         return;
       }
-      if (failure === undefined) recordFailure(cause, phase);
-      else secondaryErrors.push(serializeError(classifyError(cause), { phase, projectRoot: this.config.projectRoot, redact }));
+      recordFailure(cause, phase);
     };
 
     try {
@@ -993,6 +1000,9 @@ export class TargetExecutor implements SerialHost {
           ),
         );
       } catch (cause) {
+        // The race has settled: a rejection surfacing while the evidence is
+        // captured is recorded, not aimed at it.
+        cutBody = undefined;
         // `skipRunningTest` has already refused the cases that may not skip.
         if (isRuntimeSkip(cause)) skipped = cause;
         else {
@@ -1034,11 +1044,7 @@ export class TargetExecutor implements SerialHost {
             hookAbort.abort(),
           );
         } catch (cause) {
-          if (failure === undefined) {
-            recordFailure(cause, 'afterEach');
-          } else {
-            secondaryErrors.push(serializeError(classifyError(cause), { phase: 'afterEach' }));
-          }
+          recordFailure(cause, 'afterEach');
         }
       }
     } catch (cause) {
