@@ -104,9 +104,9 @@ export interface MobileOptions {
    */
   readonly snapshot?: 'full' | 'interactive' | undefined;
   /**
-   * UI stability window after a tap, fill, or back, in milliseconds.
-   * Default 150. Raise it for slow transitions. `0` keeps only the first
-   * re-observation; `false` skips the wait.
+   * UI stability window after a tap, fill, screen scroll, or back, in
+   * milliseconds. Default 150. Raise it for slow transitions. `0` keeps only
+   * the first re-observation; `false` skips the wait.
    */
   readonly settle?: number | false | undefined;
   /**
