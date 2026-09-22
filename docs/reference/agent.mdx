@@ -248,7 +248,9 @@ about an empty screen.
 
 If capture fails before a judgment, the report records zero model calls and
 omits `observationRevision` and `explanation`. The step error describes the
-capture failure.
+capture failure. An answer the closed grammar rejects is a `schema` event on
+the step and earns one repair round; when that answer is rejected too, the
+step fails with `MODEL_OUTPUT_INVALID` and its `explanation` is the rejection.
 
 ## Types
 

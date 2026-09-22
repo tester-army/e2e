@@ -366,18 +366,19 @@ export class Invocation {
         );
         return result.value;
       } catch (cause) {
-        if (
-          cause instanceof ModelOutputInvalidError &&
-          this.metrics.modelCalls < this.options.maxModelCalls &&
-          !this.deadline.expired()
-        ) {
-          this.recordSchemaRejection(request.schemaName);
+        if (!(cause instanceof ModelOutputInvalidError)) throw cause;
+        this.recordSchemaRejection(request.schemaName);
+        if (this.canAsk()) {
           repair = {
             issue: cause.explanation,
             rawText: cause.rawText,
           };
           continue;
         }
+        // No answer became a verdict. The rejection is what the step has to
+        // say for the model calls it made; report-1 requires an explanation
+        // on a judgment step once a call was spent.
+        this.note({ explanation: cause.explanation });
         throw cause;
       }
     }
