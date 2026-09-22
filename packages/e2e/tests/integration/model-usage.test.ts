@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { stripVTControlCharacters } from 'node:util';
+import { describe, expect, it, vi } from 'vitest';
 import { defineEngine } from '../../src/engine/index.ts';
 import { judgment } from '../helpers/fake-model.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
@@ -9,6 +10,37 @@ import { createScriptedInstance, scriptedResult } from '../helpers/scripted-mode
 import { snapshot } from '../helpers/snapshot.ts';
 
 describe('reported model usage', () => {
+  it('names the model the steps reported on the list reporter’s AI row', async () => {
+    const project = createProject({ 'tests/usage.e2e.ts': `import { test } from 'e2e';
+      test('judge twice', async ({ agent }) => {
+        await agent.assert('ready');
+        await agent.assert('still ready');
+      });` });
+    const model = createScriptedInstance('fake-loop', 'scripted-loop', async () =>
+      scriptedResult([{ type: 'text', text: JSON.stringify(judgment(true, 'ready')) }], 'stop'));
+    const written: string[] = [];
+    const stdoutWrite = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      written.push(String(chunk));
+      return true;
+    });
+    try {
+      const outcome = await runExisting(project, { appUrl: 'http://127.0.0.1:4599', config: {
+        targets: [{ name: 'fake', platform: 'custom', engine: defineEngine({
+          name: 'fake', version: '1', spiVersion: 1, observe: async () => snapshot([]),
+        }) }], agents: { default: { model } }, cache: 'off',
+      }, runOptions: { quiet: false } });
+      stdoutWrite.mockRestore();
+      expect(outcome.status).toBe('passed');
+      const printed = stripVTControlCharacters(written.join(''));
+      expect(printed).toContain('model fake-loop/scripted-loop');
+      expect(printed).toMatch(/AI {2}240 tokens · 2 model calls · fake-loop\/scripted-loop\n/);
+      expect(printed).not.toContain('undefined');
+    } finally {
+      stdoutWrite.mockRestore();
+      project.cleanup();
+    }
+  });
+
   it('keeps run totals representable when separate steps overflow their sum', async () => {
     const project = createProject({ 'tests/usage.e2e.ts': `import { test } from 'e2e';
       test('judge twice', async ({ agent }) => {

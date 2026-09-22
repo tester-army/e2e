@@ -258,9 +258,15 @@ export function cacheText(pc: Colors, counts: CacheTally): string | undefined {
   return parts.length === 0 ? undefined : parts.join(pc.dim(' · '));
 }
 
-/** `provider/model`, the form the run header names the configured model in. */
-export function stepModelLabel(model: Pick<StepModelInfo, 'provider' | 'model'>): string {
-  return `${model.provider}/${model.model}`;
+/**
+ * `provider/model`, the form the run header names the configured model in;
+ * undefined when the record lacks either half, so a step an executor reported
+ * without provenance never prints as `undefined/undefined`.
+ */
+export function stepModelLabel(model: Pick<StepModelInfo, 'provider' | 'model'>): string | undefined {
+  const { provider, model: id } = model as Partial<Pick<StepModelInfo, 'provider' | 'model'>>;
+  if (typeof provider !== 'string' || provider === '' || typeof id !== 'string' || id === '') return undefined;
+  return `${provider}/${id}`;
 }
 
 /** The models a run's steps reported, `provider/model` to the calls each answered. */
@@ -277,6 +283,7 @@ export function stepsModelTally(stepLists: readonly (readonly StepRecord[])[]): 
     for (const step of steps) {
       if (step.model === undefined) continue;
       const label = stepModelLabel(step.model);
+      if (label === undefined) continue;
       counts.set(label, (counts.get(label) ?? 0) + step.model.calls);
     }
   }
