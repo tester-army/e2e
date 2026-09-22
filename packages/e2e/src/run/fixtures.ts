@@ -6,7 +6,7 @@ import type { ExecutorAttempt, StepExecutor } from '../agent/executor.ts';
 import { isDefaultAgent } from '../agent/default-agent.ts';
 import type { AgentCacheContext } from '../cache/context.ts';
 import type { WorkerModels } from './worker-models.ts';
-import type { EngineFixtureContext } from '../engine/index.ts';
+import type { EngineCapability, EngineFixtureContext } from '../engine/index.ts';
 import type { OperationContext, TargetSession } from '../engine/surface.ts';
 import { expectationBrand } from '../internal/brands.ts';
 import type { DebugTrace } from '../internal/debug.ts';
@@ -183,6 +183,7 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
 
   const agentRuntime: AgentContext = {
     engine,
+    engineCapabilities: environment.target.engine?.capabilities ?? new Set<EngineCapability>(),
     steps: environment.steps,
     select,
     config: environment.config,

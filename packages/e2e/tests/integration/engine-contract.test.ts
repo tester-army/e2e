@@ -593,6 +593,47 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
   );
 
   it(
+    'leaves vision out of an inconclusive judgment on an engine that declares no screenshot capture',
+    async () => {
+      const fake = createFakeEngine();
+      const model = installFakeModel(() => judgment('inconclusive', 'the tree lists no state for the Submit button'));
+      const { outcome, project } = await runProject(
+        { 'tests/observe-inconclusive.e2e.ts': OBSERVE_TEST },
+        { appUrl: APP_URL, config: fakeConfig(fake, { agents: { default: { model } } }) },
+      );
+      const result = resultByTitle(outcome, 'asserts a node');
+      expect(result.status).toBe('failed');
+      const error = result.attempts.at(-1)!.error!;
+      expect(error.code).toBe('ASSERTION_INCONCLUSIVE');
+      // A retry with vision: true could only record UNSUPPORTED_CAPABILITY here.
+      expect(error.message).toBe('the tree lists no state for the Submit button');
+      project.cleanup();
+    },
+    60_000,
+  );
+
+  it(
+    'words the vision hint as a condition on an engine that declares screenshots but has produced no pixels',
+    async () => {
+      // The SPI has no pixel-capture declaration: an engine with the artifacts
+      // capability may still return no pixels from observe, as this one does.
+      const fake = createFakeEngine({ artifacts: true });
+      const model = installFakeModel(() => judgment('inconclusive', 'the tree lists no state for the Submit button'));
+      const { outcome, project } = await runProject(
+        { 'tests/observe-inconclusive-artifacts.e2e.ts': OBSERVE_TEST },
+        { appUrl: APP_URL, config: fakeConfig(fake, { agents: { default: { model } } }) },
+      );
+      const error = resultByTitle(outcome, 'asserts a node').attempts.at(-1)!.error!;
+      expect(error.code).toBe('ASSERTION_INCONCLUSIVE');
+      expect(error.message).toBe(
+        'the tree lists no state for the Submit button; the judge saw the semantic tree only; if the engine captures pixels, pass vision: true when the answer is in pixels',
+      );
+      project.cleanup();
+    },
+    60_000,
+  );
+
+  it(
     'reports the step timeout when an observation outlives the deadline that bounded it',
     async () => {
       // An observation is handed whatever remains of the invocation deadline,

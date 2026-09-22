@@ -47,10 +47,15 @@ const ASSERT_MODEL_CALLS = 2;
 
 /**
  * Appended to an inconclusive judgment made from the tree alone while pixels
- * were there to ask for: the docs say to add `vision: true` when the answer
- * is in pixels, and the failing test is where that advice is needed.
+ * may be there to ask for: the docs say to add `vision: true` when the answer
+ * is in pixels, and the failing test is where that advice is needed. Firm
+ * once a step of the attempt has received pixels; a condition before, since
+ * the SPI declares no pixel capability and an engine that captures none says
+ * so only once asked.
  */
 const VISION_HINT = 'the judge saw the semantic tree only; pass vision: true when the answer is in pixels';
+const VISION_HINT_UNPROVEN =
+  'the judge saw the semantic tree only; if the engine captures pixels, pass vision: true when the answer is in pixels';
 
 const WAIT_FOR_KEYS = ['timeout', 'interval', 'maxModelCalls', 'vision', 'agent'] as const;
 const EXTRACT_KEYS = ['schema', 'timeout', 'vision', 'agent'] as const;
@@ -68,14 +73,24 @@ export function createAgentFixture(runtime: AgentContext): Agent {
   };
 
   /**
-   * A judgment's explanation as the test reads it. An inconclusive verdict
-   * reached without pixels, on a viewport that could still show them, carries
-   * the vision hint; a tainted viewport cannot, so the hint would mislead.
+   * The vision hint for an inconclusive judgment made from the tree alone,
+   * or none when `vision: true` could add no evidence in this attempt: the
+   * engine declares no screenshot capture, a secret was filled, or an
+   * earlier step's pixel request was already degraded.
    */
-  const explain = (judgment: { readonly verdict: string; readonly explanation: string }, vision: VisionMode): string =>
-    judgment.verdict === 'inconclusive' && vision === false && !runtime.taint.value
-      ? withHint(judgment.explanation, VISION_HINT)
-      : judgment.explanation;
+  const visionHint = (): string | undefined => {
+    if (runtime.taint.value || !runtime.engineCapabilities.has('artifacts')) return undefined;
+    const steps = runtime.steps.completed();
+    if (steps.some((step) => step.visionDegraded !== undefined)) return undefined;
+    return steps.some((step) => step.visionInput === true) ? VISION_HINT : VISION_HINT_UNPROVEN;
+  };
+
+  /** A judgment's explanation as the test reads it: an inconclusive verdict reached without pixels carries the vision hint when there is one. */
+  const explain = (judgment: { readonly verdict: string; readonly explanation: string }, vision: VisionMode): string => {
+    if (judgment.verdict !== 'inconclusive' || vision !== false) return judgment.explanation;
+    const hint = visionHint();
+    return hint === undefined ? judgment.explanation : withHint(judgment.explanation, hint);
+  };
 
   /**
    * Runs one agent method as a top-level step carrying agent metrics. A

@@ -10,6 +10,7 @@ import type { JSONSchema7 } from 'ai';
 import type { AgentCacheContext } from '../cache/context.ts';
 import type { ResolvedAgentConfig } from '../config/agent.ts';
 import type { ResolvedApp, ResolvedConfig } from '../config/resolve.ts';
+import type { EngineCapability } from '../engine/index.ts';
 import type { TargetSession, Observation } from '../engine/surface.ts';
 import type { DebugTrace } from '../internal/debug.ts';
 import { timestamp } from '../internal/ids.ts';
@@ -79,6 +80,12 @@ export interface AgentSelection {
 /** Attempt-scoped services one agent fixture needs. */
 export interface AgentContext {
   readonly engine: LocatorEngine;
+  /**
+   * What the target's engine declares; empty for an agent-tools-only target.
+   * `artifacts` is the nearest declaration of pixel capture the SPI has: an
+   * engine says whether it produces pixels only once `observe` asks.
+   */
+  readonly engineCapabilities: ReadonlySet<EngineCapability>;
   readonly steps: StepRecorder;
   /**
    * The agent a call runs with: the one it names, else the test's pin, else

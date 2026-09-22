@@ -135,8 +135,9 @@ expect(data.titles).toContain('Buy milk');
   did not show enough to decide is `ASSERTION_INCONCLUSIVE`, also a failure:
   open or wait for the right screen first, and ask about what is visible.
   Judged from the tree alone, its message adds `pass vision: true when the
-  answer is in pixels`; `waitFor`'s timeout carries the same hint after an
-  inconclusive round.
+  answer is in pixels` (none when the engine captures no screenshots, a
+  secret was filled, or a pixel request already degraded); `waitFor`'s
+  timeout carries the same hint after an inconclusive round.
   Malformed output gets one repair round, then `MODEL_OUTPUT_INVALID`.
 - Judgments see the assertion and the current screen only, never the steps
   before or the act loop's summaries. `judge` in the agent config names a
