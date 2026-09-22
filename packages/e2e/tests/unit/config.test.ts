@@ -4,6 +4,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { isCiMode, resolveConfig } from '../../src/config/resolve.ts';
 import { defineEngine, type EngineAppDeclaration } from '../../src/engine/index.ts';
+import type { E2EConfig } from '../../src/types.ts';
 import { snapshot } from '../helpers/snapshot.ts';
 
 const ROOT = '/tmp/e2e-config-project';
@@ -11,7 +12,7 @@ const BASE_ENV = {} as NodeJS.ProcessEnv;
 const WEB = { name: 'web', platform: 'web' } as const;
 const TARGETS = [WEB];
 
-function resolve(raw: Parameters<typeof resolveConfig>[0], env: NodeJS.ProcessEnv = BASE_ENV) {
+function resolve(raw: Partial<E2EConfig>, env: NodeJS.ProcessEnv = BASE_ENV) {
   return resolveConfig({ targets: TARGETS, ...raw }, { projectRoot: ROOT, env });
 }
 
@@ -52,7 +53,7 @@ describe('resolveConfig', () => {
 
   it('validates tests as globs at resolution, not at collection', () => {
     /** The code and message of the error `resolve` throws for `raw`. */
-    const failure = (raw: Parameters<typeof resolveConfig>[0]): { code: string; message: string } => {
+    const failure = (raw: Partial<E2EConfig>): { code: string; message: string } => {
       try {
         resolve(raw);
       } catch (error) {
@@ -100,7 +101,8 @@ describe('resolveConfig', () => {
   });
 
   it('requires explicit targets: core resolves no default engine', () => {
-    expect(() => resolveConfig({}, { projectRoot: ROOT, env: BASE_ENV })).toThrow(
+    // The type already demands targets; the loader still guards a config written in JavaScript.
+    expect(() => resolveConfig({} as E2EConfig, { projectRoot: ROOT, env: BASE_ENV })).toThrow(
       /targets is required/,
     );
     const config = resolve({});

@@ -15,7 +15,7 @@ import { installFakeLoopModel, loopCalls } from '../helpers/fake-loop-model.ts';
 import { snapshot } from '../helpers/snapshot.ts';
 
 /** A real fixture graph with an in-memory engine and no runner process or model provider. */
-function runtime(engine: EngineHandle, overrides: E2EConfig = {}) {
+function runtime(engine: EngineHandle, overrides: Partial<E2EConfig> = {}) {
   const config = resolveConfig(
     { targets: [{ name: 'fake', platform: 'custom', engine }], cache: 'off', ...overrides },
     { projectRoot: process.cwd(), env: {} },

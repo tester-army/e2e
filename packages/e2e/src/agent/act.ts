@@ -32,6 +32,7 @@ import { projectPriorSteps, serializeLedger } from './ledger.ts';
 import { instantiateLanguageModel } from './model/sdk.ts';
 import type { AgentObservation } from './observation.ts';
 import { ObservationFeed } from './observation-feed.ts';
+import { recordPolicyEvent } from './phases.ts';
 import type { ObservedScreen } from './replay.ts';
 import { OperationQueue } from './operation-queue.ts';
 import { StepAccounting } from './step-accounting.ts';
@@ -59,6 +60,8 @@ export interface DispatchSpec {
   readonly maxModelCalls: number | undefined;
   /** The configured agent the call named, if any. */
   readonly agent: string | undefined;
+  /** Assert only: whether the harness keeps a redacted screenshot after the verdict; `false` opts out. */
+  readonly screenshot?: boolean;
 }
 
 /** Runs one `agent.act()` call as a harness-dispatched executor step. */
@@ -90,7 +93,10 @@ export async function runActStep(
  * Runs one `agent.assert()` call through the executor socket. Used when a
  * custom executor is configured: the brain that plans flows also judges
  * assertions, so swapping brains swaps all the thinking. The built-in
- * single-judgment tier remains the default-path implementation.
+ * single-judgment tier remains the default-path implementation. `screenshot`
+ * is harness evidence taken after the verdict, so it is honored here as on
+ * the default path; `vision` is what the executor's model sees, which only
+ * the executor decides.
  */
 export async function runAssertStep(
   runtime: AgentContext,
@@ -98,12 +104,6 @@ export async function runAssertStep(
   options: { timeout?: number; vision?: unknown; screenshot?: boolean; agent?: string } | undefined,
 ): Promise<void> {
   const normalized = validateInstruction(assertion, 'agent.assert');
-  if (options?.screenshot !== undefined) {
-    throw new ConfigurationError(
-      'UNSUPPORTED_CAPABILITY',
-      'agent.assert screenshot evidence (options.screenshot) is not supported with a custom executor',
-    );
-  }
   if (options?.vision !== undefined) {
     throw new ConfigurationError(
       'UNSUPPORTED_CAPABILITY',
@@ -122,6 +122,7 @@ export async function runAssertStep(
     maxSteps: undefined,
     maxModelCalls: undefined,
     agent: options?.agent,
+    ...(options?.screenshot === undefined ? {} : { screenshot: options.screenshot }),
   });
 }
 
@@ -149,7 +150,8 @@ export async function dispatchAgentStep(
       } catch (cause) {
         throw dispatch.settleThrown(toAgentError(cause));
       }
-      dispatch.settle(validateVerdict(verdict, agent.executor.name));
+      const evidence = await dispatch.captureEvidence();
+      dispatch.settle(validateVerdict(verdict, agent.executor.name), evidence);
       await dispatch.conclude('passed');
       return dispatch.result();
     } catch (cause) {
@@ -330,8 +332,30 @@ class ActDispatch {
     await this.stepCache?.conclude(outcome, this.explanation);
   }
 
-  /** Maps the executor's verdict onto the runner outcome. Fail-closed on hard stops. */
-  settle(verdict: StepVerdict): void {
+  /**
+   * Keeps a redacted screenshot as an assert step's evidence once the
+   * executor has judged, on a passing verdict too, as the built-in judgment
+   * does. `screenshot: false` opts out and a pixel-tainted viewport denies
+   * it. Best-effort: a failed capture never fails the step. Returns the
+   * artifact's report-relative path.
+   */
+  async captureEvidence(): Promise<string | undefined> {
+    if (this.spec.kind !== 'assert' || this.spec.screenshot === false) return undefined;
+    if (this.runtime.taint.value) {
+      recordPolicyEvent(this.runtime.steps, 'assert.screenshot', 'denied', 'PIXEL_TAINTED');
+      return undefined;
+    }
+    try {
+      const relative = await this.runtime.engine.session.artifacts.screenshot('assert', this.accounting.operation());
+      this.runtime.steps.attachArtifact(this.runtime.artifacts.register('screenshot', relative));
+      return relative;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Maps the executor's verdict onto the runner outcome, carrying the evidence on a failure. Fail-closed on hard stops. */
+  settle(verdict: StepVerdict, screenshot?: string): void {
     let settled = verdict;
     const hardStop = this.accounting.hardStop;
     if (hardStop !== undefined) {
@@ -361,6 +385,7 @@ class ActDispatch {
         : this.spec.defaultFailureCode;
     throw new AgentError(code, `${this.spec.api} ${settled.status}: ${settled.summary}`, {
       blocked: settled.status === 'blocked',
+      ...(screenshot === undefined ? {} : { screenshot }),
     });
   }
 

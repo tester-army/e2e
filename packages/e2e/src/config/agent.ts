@@ -214,7 +214,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /** Resolves the `limits` block. The observation budget is attached by the caller. */
-export function resolveLimits(raw: E2EConfig): ResolvedBaseLimits {
+export function resolveLimits(raw: Pick<E2EConfig, 'limits'>): ResolvedBaseLimits {
   const limits = raw.limits;
   if (limits !== undefined) {
     if (typeof limits !== 'object' || limits === null || Array.isArray(limits)) {

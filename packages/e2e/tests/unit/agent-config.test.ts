@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { resolveConfig, type CliOverrides } from '../../src/config/resolve.ts';
 import { createAgent } from '../../src/agent/default-agent.ts';
 import type { SdkLanguageModel } from '../../src/agent/ai-sdk.ts';
+import type { E2EConfig } from '../../src/types.ts';
 
 const ROOT = '/tmp/e2e-agent-config-project';
 const BASE_ENV = { APP_URL: 'http://localhost:3000' } as NodeJS.ProcessEnv;
@@ -20,7 +21,7 @@ function fakeModel(provider: string, modelId: string): SdkLanguageModel {
 }
 
 function resolve(
-  raw: Parameters<typeof resolveConfig>[0],
+  raw: Partial<E2EConfig>,
   env: NodeJS.ProcessEnv = BASE_ENV,
   cli?: CliOverrides,
 ) {

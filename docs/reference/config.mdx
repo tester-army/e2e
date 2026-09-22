@@ -25,6 +25,17 @@ Unknown keys are rejected with `INVALID_CONFIG` at every level. There is no
 top-level `app` key: the engine declares the app it drives (see
 [the app under test](#the-app-under-test)).
 
+An optional key takes a value or is left out; `undefined` is not a value, so
+`store: process.env.CACHE_URL && createStore(...)` fails to compile. Spread a
+key that depends on the environment in only when it has a value:
+
+```ts
+export default {
+  targets: [{ engine: web({ url: 'http://localhost:3000' }) }],
+  ...(process.env.CACHE_URL === undefined ? {} : { cache: { store: createStore(process.env.CACHE_URL) } }),
+} satisfies E2EConfig;
+```
+
 ## Loading
 
 `--config <path>` selects an explicit file. Otherwise the runner searches the
@@ -49,8 +60,8 @@ export interface E2EConfig {
   specVersion?: '0.1';
   /** Stable project id, 1 through 256 characters; defaults to the root `package.json` name. */
   projectId?: string;
-  /** The surfaces tests run on; at least one. */
-  targets?: readonly Target[];
+  /** The surfaces tests run on; required, at least one, each naming its engine. */
+  targets: readonly Target[];
   /** Test file globs relative to the project root (`*`, `?`, and a whole `**` segment); default every `*.e2e.ts` under `tests/`. */
   tests?: string | readonly string[];
   /** Test attempt deadline in milliseconds; default 120000. */
@@ -489,6 +500,8 @@ export interface ModelInstance {
   readonly provider: string;
   /** Model id, recorded per step in the report. */
   readonly modelId: string;
+  /** The generate call every AI SDK language model implements; what tells a live instance from its three id strings. */
+  readonly doGenerate: (...args: never[]) => unknown;
 }
 ```
 
@@ -605,7 +618,7 @@ See [Caching agent steps](/cache).
 export interface CacheConfig {
   /** Default `read-write`; `read-only` in CI when unset. */
   mode?: CacheMode;
-  /** Custom entry store; undefined selects the file store at `dir`. */
+  /** Custom entry store; omit it to use the file store at `dir`. */
   store?: TraceCacheStore;
   /** File store directory, resolved against the project root. */
   dir?: string;
