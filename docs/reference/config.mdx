@@ -227,7 +227,9 @@ is `APP_URL_REQUIRED` at config load.
 
 A test or the agent may open any http(s) URL; `file:`, `data:`, and
 `javascript:` are `POLICY_DENIED`. The site of `url`, its registrable domain
-(`app.example.com` and `auth.example.com` are one site), scopes two things:
+(`app.example.com` and `auth.example.com` are one site; on a shared host such
+as `vercel.app` it is one label deeper, so `myapp.vercel.app` and
+`other.vercel.app` are two), scopes two things:
 the browser engine's [`headers`](/reference/web#options) reach the
 site and no other host, and child frames off the site stay out of
 observations.
