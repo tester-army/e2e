@@ -450,8 +450,29 @@ describe('resolveConfig', () => {
     expect(() => resolve({ secrets: { key: { value: 'v' } as never } })).toThrow(/secret "key" must be a non-empty string/);
     expect(() => resolve({ secrets: { key: 'v' } }, { ...BASE_ENV, E2E_SECRET_KEY: '' } as NodeJS.ProcessEnv)).toThrow(/secret "key" must be/);
     expect(() =>
-      resolve({ credentials: { admin: { username: 'u', password: 'p' } }, secrets: { admin: 'v' } }),
+      resolve({ credentials: { admin: { username: 'u', password: 'password-1' } }, secrets: { admin: 'value-1' } }),
     ).toThrow(/secret "admin" is also a credential/);
+  });
+
+  it('refuses a static secret or password shorter than 6 characters, from config or the environment, naming the minimum', () => {
+    expect(() => resolve({ secrets: { pin: '12345' } })).toThrow(expect.objectContaining({ code: 'INVALID_CONFIG' }));
+    expect(() => resolve({ secrets: { pin: '12345' } })).toThrow(
+      /secret "pin" must be at least 6 characters, not 5; a shorter value cannot be redacted without rewriting unrelated text/,
+    );
+    expect(() => resolve({ secrets: { pin: '123456' } })).not.toThrow();
+    expect(() => resolve({ secrets: { pin: 'long-enough' } }, { ...BASE_ENV, E2E_SECRET_PIN: '7' } as NodeJS.ProcessEnv)).toThrow(
+      /secret "pin" must be at least 6 characters, not 1/,
+    );
+    expect(() => resolve({ credentials: { admin: { username: 'u', password: 'short' } } })).toThrow(
+      /credential "admin" password must be at least 6 characters, not 5/,
+    );
+    expect(() =>
+      resolve(
+        { credentials: { admin: { username: 'u', password: 'long-enough' } } },
+        { ...BASE_ENV, E2E_USER_ADMIN_PASSWORD: 'pw' } as NodeJS.ProcessEnv,
+      ),
+    ).toThrow(/credential "admin" password must be at least 6 characters, not 2/);
+    expect(() => resolve({ secrets: { pin: () => '1' } })).not.toThrow();
   });
 
 

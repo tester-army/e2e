@@ -36,7 +36,7 @@ import {
   type ResolvedBaseLimits,
 } from './agent.ts';
 import { digestAppDeclaration, resolveTargetApp, type ResolvedApp } from './app.ts';
-import { envName, isSecretValue } from './secrets.ts';
+import { envName, isSecretValue, secretValueProblem } from './secrets.ts';
 
 export type { ResolvedAgentConfig, ResolvedLimits } from './agent.ts';
 export type { ResolvedApp } from './app.ts';
@@ -748,10 +748,7 @@ function resolveSecrets(
     // rotating a credential must not need to know how it was configured.
     const password = env[`${prefix}_PASSWORD`] ?? credential.password;
     if (!isSecretValue(password)) {
-      throw new ConfigurationError(
-        'INVALID_CONFIG',
-        `credential "${name}" password must be a non-empty string or a provider function`,
-      );
+      throw new ConfigurationError('INVALID_CONFIG', `credential "${name}" password ${secretValueProblem(password)}`);
     }
     credentials.set(name, { name, username });
     secrets.set(name, { name, purpose: 'password', value: password });
@@ -765,10 +762,7 @@ function resolveSecrets(
     }
     const value = env[envName('E2E_SECRET', name)] ?? entry;
     if (!isSecretValue(value)) {
-      throw new ConfigurationError(
-        'INVALID_CONFIG',
-        `secret "${name}" must be a non-empty string or a provider function`,
-      );
+      throw new ConfigurationError('INVALID_CONFIG', `secret "${name}" ${secretValueProblem(value)}`);
     }
     secrets.set(name, { name, purpose: 'generic-secret', value });
   }

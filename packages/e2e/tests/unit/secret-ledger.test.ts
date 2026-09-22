@@ -1,7 +1,7 @@
 /** The attempt secret ledger: live registration and rotation-safe redaction. */
 
 import { describe, expect, it } from 'vitest';
-import { SecretLedger } from '../../src/internal/redact.ts';
+import { SecretLedger, StreamRedactor } from '../../src/internal/redact.ts';
 
 describe('SecretLedger', () => {
   it('redacts values registered after the redact function was handed out', () => {
@@ -56,6 +56,41 @@ describe('encoded forms', () => {
       '<secret:plain> <secret:plain>',
     );
   });
+
+  it('redacts percent-encoding in lower-case hex, as some servers spell it', () => {
+    const path = new SecretLedger([['path', 'a/b c?d']]);
+    expect(path.redact('q=a%2fb%20c%3fd')).toBe('q=<secret:path>');
+    expect(path.redact('q=a%2Fb+c%3Fd')).toBe('q=<secret:path>');
+  });
+
+  it('redacts numeric character references: decimal, zero-padded, hex in either case, and &apos;', () => {
+    const quoted = new SecretLedger([['quoted', "it's <ok>"]]);
+    expect(quoted.redact('it&#39;s &#60;ok&#62;')).toBe('<secret:quoted>');
+    expect(quoted.redact('it&#039;s &lt;ok&gt;')).toBe('<secret:quoted>');
+    expect(quoted.redact('it&#x27;s &#x3c;ok&#x3E;')).toBe('<secret:quoted>');
+    expect(quoted.redact('it&apos;s &lt;ok&gt;')).toBe('<secret:quoted>');
+  });
+
+  it('redacts \\uXXXX JSON escapes in either hex case, once and twice quoted', () => {
+    const quoted = new SecretLedger([['quoted', "it's <ok>"]]);
+    expect(quoted.redact('{"v":"it\\u0027s \\u003cok\\u003E"}')).toBe('{"v":"<secret:quoted>"}');
+    const inner = '{"v":"it\\u0027s \\u003cok\\u003e"}';
+    expect(quoted.redact(JSON.stringify({ t: inner }))).toBe(JSON.stringify({ t: '{"v":"<secret:quoted>"}' }));
+  });
+
+  it('redacts a slash escaped the way PHP writes JSON', () => {
+    expect(new SecretLedger([['path', 'a/b/c']]).redact('{"p":"a\\/b\\/c"}')).toBe('{"p":"<secret:path>"}');
+  });
+
+  it('spells letters one way only: a value differing in case is not the secret', () => {
+    expect(new SecretLedger([['plain', 'Hunter2']]).redact('hunter2 HUNTER2 Hunter2')).toBe('hunter2 HUNTER2 <secret:plain>');
+  });
+
+  it('measures the longest spelling a registered value can take', () => {
+    expect(new SecretLedger().maxFormLength).toBe(0);
+    expect(new SecretLedger([['plain', 'hunter2']]).maxFormLength).toBe(7);
+    expect(new SecretLedger([['quoted', 'a"b']]).maxFormLength).toBe(1 + '\\\\u0022'.length + 1);
+  });
 });
 
 describe('appearsIn', () => {
@@ -70,5 +105,45 @@ describe('appearsIn', () => {
 
   it('redacts the value as encodeURI spells it in a path', () => {
     expect(ledger.redact('/reset/p@ss%20word/done')).toBe('/reset/<secret:member>/done');
+  });
+});
+
+describe('StreamRedactor', () => {
+  const secret = 'synthetic-stream-secret-2718';
+  const ledger = (): SecretLedger => new SecretLedger([['token', secret]]);
+
+  it('redacts a value split across two writes', () => {
+    const stream = new StreamRedactor(ledger());
+    const first = stream.push('token synthetic-stream-');
+    const second = stream.push('secret-2718 leaked\n');
+    expect(first).not.toContain('synthetic');
+    expect(first + second).toBe('token <secret:token> leaked\n');
+  });
+
+  it('passes a finished line through at once and holds an unfinished one for the next write', () => {
+    const stream = new StreamRedactor(ledger());
+    expect(stream.push('hello\n')).toBe('hello\n');
+    expect(stream.push('progress')).toBe('');
+    expect(stream.push(' 50%\n')).toBe('progress 50%\n');
+  });
+
+  it('holds no more of a long unfinished line than the longest spelling less one character', () => {
+    const registered = ledger();
+    const stream = new StreamRedactor(registered);
+    const held = registered.maxFormLength - 1;
+    expect(stream.push('x'.repeat(200))).toBe('x'.repeat(200 - held));
+    expect(stream.flush()).toBe('x'.repeat(held));
+  });
+
+  it('moves the cut back over an occurrence it would split', () => {
+    const stream = new StreamRedactor(ledger());
+    expect(stream.push(`prefix ${secret}${'y'.repeat(30)}`)).toBe('prefix ');
+    expect(stream.flush()).toBe(`<secret:token>${'y'.repeat(30)}`);
+  });
+
+  it('holds nothing when no value is registered', () => {
+    const stream = new StreamRedactor(new SecretLedger());
+    expect(stream.push('partial')).toBe('partial');
+    expect(stream.flush()).toBe('');
   });
 });

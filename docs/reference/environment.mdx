@@ -26,7 +26,9 @@ See [Models](/models) and [Subscriptions](/subscriptions).
 `<NAME>` is the name uppercased with every character outside `A-Z0-9`
 replaced by `_`, so `power-user` becomes `E2E_USER_POWER_USER_USERNAME`. A
 variable for a name absent from the config is ignored. An empty value is
-`INVALID_CONFIG`.
+`INVALID_CONFIG`, and so is a password or secret shorter than 6 characters:
+redaction rewrites every occurrence of a value, and one that short would take
+ordinary text with it.
 
 ## Run mode
 

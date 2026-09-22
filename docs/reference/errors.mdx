@@ -48,9 +48,9 @@ try {
 
 | Code | When it happens | Class | Exit |
 | --- | --- | --- | ---: |
-| `AUTH_CREDENTIAL_UNAVAILABLE` | A `Secret` or `credentials.user()` names a credential absent from `config.credentials`, or the call happened outside an active runner | configuration | 2 |
+| `AUTH_CREDENTIAL_UNAVAILABLE` | A `Secret` or `credentials.user()` names a credential absent from `config.credentials`, the call happened outside an active runner, or the password's provider returned something other than a string of at least 6 characters | configuration | 2 |
 | `AUTH_CREDENTIAL_INVALID` | A configured credential was rejected by the application (blocked: credentials) | configuration | 2 |
-| `SECRET_UNAVAILABLE` | A `Secret` or `secrets.get()` names a secret absent from `config.secrets`, or the call happened outside an active runner | configuration | 2 |
+| `SECRET_UNAVAILABLE` | A `Secret` or `secrets.get()` names a secret absent from `config.secrets`, the call happened outside an active runner, or the secret's provider returned something other than a string of at least 6 characters | configuration | 2 |
 | `ENVIRONMENT_UNAVAILABLE` | The environment under test is down or unreachable beyond the app itself (blocked: environment) | infrastructure | 3 |
 | `SEED_DATA_MISSING` | Data the step depends on does not exist in the environment (blocked: seed_data) | configuration | 2 |
 | `TEST_SETUP_FAILED` | Test prerequisites outside the product failed to arrange (blocked: test_setup). Also a `test.extend()` fixture that broke its contract: returned without calling `use()`, called it twice, or redefined a fixture the target's engine contributes | configuration | 2 |
@@ -83,7 +83,7 @@ These appear in terminal output and in the report as plain string codes.
 | `CONFIG_NOT_FOUND` | `--config <path>` names a file that does not exist, or no `e2e.config.ts` or `e2e.config.mts` exists from the working directory up to the repository root | configuration | 2 |
 | `CONFIG_AMBIGUOUS` | Both `e2e.config.ts` and `e2e.config.mts` in one directory | configuration | 2 |
 | `CONFIG_LOAD_FAILED` | The config module failed to import: a package that is declared but not installed, an undeclared package, a wrong subpath, or a removed export. The message names the fix | configuration | 2 |
-| `INVALID_CONFIG` | Unknown key, out-of-range value, invalid enum, missing `targets`, a target key outside `{ name, platform, engine }`, an `engine` that is not a `defineEngine` handle, `json` reporter combined with `list`, duplicate or malformed target name, oversized `agent.context`, an `expect.poll` `timeout` or `interval` that is not a finite number of milliseconds, or a `tests` value that is not a glob or a list of globs | configuration | 2 |
+| `INVALID_CONFIG` | Unknown key, out-of-range value, invalid enum, missing `targets`, a target key outside `{ name, platform, engine }`, an `engine` that is not a `defineEngine` handle, `json` reporter combined with `list`, duplicate or malformed target name, a secret or credential password shorter than 6 characters, oversized `agent.context`, an `expect.poll` `timeout` or `interval` that is not a finite number of milliseconds, or a `tests` value that is not a glob or a list of globs | configuration | 2 |
 | `CONFIG_NOT_DETERMINISTIC` | A worker re-resolved the config module and got a different digest than the runner | configuration | 2 |
 | `APP_URL_REQUIRED` | A navigation or relative URL on a target whose engine declares no `url`, or a declared `command` with no `url` or `readyUrl` to poll | configuration | 2 |
 | `INVALID_APP_URL` | Base URL with userinfo, a query, a fragment, a non-HTTP scheme, plain HTTP on a non-loopback host, port 0 on a host other than a literal loopback address (`127.0.0.1`, `[::1]`), a loopback address the run could not bind a free port on, or unparseable | configuration | 2 |
