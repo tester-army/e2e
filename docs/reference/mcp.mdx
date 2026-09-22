@@ -69,7 +69,14 @@ What `call` can run depends on the session's target:
 | `tap`, `type`, `press`, `select`, `scroll`, `navigate`, `type_secret` | A node id from the newest observation, plus the value, key, direction, URL, or secret name | The action's summary and what changed on screen. A verb the engine does not declare is not in the catalog. `type_secret` is listed when the config declares `credentials` or `secrets`; the plaintext never reaches the agent. |
 | `locate` | Exactly one of `role` (with optional `name`), `text`, `label`, `placeholder`, `testId`; `exact` | How many nodes match, which, and the `screen.*` call to write. Zero or several matches name the error a test would get. What it shows of a node passes the secret ledger, as `observe` does: a filled secret reads `<secret:name>`. |
 | `screenshot` | none | The masked viewport as an image. From then on every action result carries a fresh screenshot. Once a secret has been filled it answers `PIXEL_TAINTED` instead, for the rest of the session. |
-| `tap_at` | `x`, `y` in the latest screenshot's pixels | Taps that point: a listed control under it by id, otherwise the bare point through the engine's `performAt`. |
+| `tap_at` | `x`, `y` in the latest screenshot's pixels | Taps that point: a listed control under it by id, otherwise the bare point through the engine's `performAt`; without `performAt` the point must land on a listed control. Listed when the engine declares `tap` or `performAt`. |
+| `type_at` | `x`, `y`, `value`; `replace` on an engine with a keyboard | Fills a listed input under the point by id. With a keyboard, anything else is tapped to focus it and typed into, at the caret unless `replace` is set; without one, a point on nothing listed fails. Listed when the engine declares `type` or a keyboard. |
+| `press_at` | `x`, `y`, `key` | Sends the key to a listed control under the point by id; with a keyboard, anything else is tapped to focus it and the key goes through the keyboard. Listed when the engine declares `press` or a keyboard. |
+| `select_at` | `x`, `y`, `value`, the option's visible label | Picks the option in the listed select-like control under the point; nothing listed there fails. Listed when the engine declares `select`. |
+
+The four point tools answer `PIXEL_TAINTED` once a secret has been filled.
+Before the session's first `screenshot` each answers with the line that says
+to take one, at no cost.
 
 Project tools passed to `createAgent({ tools })` follow in the catalog under
 their own names, scoped to the target's platform. A mobile project that
@@ -84,11 +91,12 @@ client disconnects, and on SIGINT or SIGTERM.
 
 Sessions enforce what tests enforce. Node ids are valid only against the
 newest observation. A secret fills only through `type_secret`; once one has
-been filled, `screenshot` and `tap_at` stay in the catalog but answer
-`PIXEL_TAINTED` for the rest of the session. Every text a `call` returns, a
-node `locate` found, an action's result, or an error, passes the attempt's
-secret ledger. Nothing a session does is recorded as a test result or into
-the trace cache; its artifacts land under `.e2e/artifacts/<target>/sessions/`.
+been filled, `screenshot` and the point tools (`tap_at`, `type_at`,
+`press_at`, `select_at`) stay in the catalog but answer `PIXEL_TAINTED` for
+the rest of the session. Every text a `call` returns, a node `locate` found,
+an action's result, or an error, passes the attempt's secret ledger. Nothing a
+session does is recorded as a test result or into the trace cache; its
+artifacts land under `.e2e/artifacts/<target>/sessions/`.
 
 ## Resources
 
