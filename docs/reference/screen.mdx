@@ -43,6 +43,7 @@ without waiting for it to change; use [`expect`](/reference/expect) to wait.
 | `count()`, `all()`, `allTextContents()` | `0`, `[]`, `[]` | The count, one locator per match, one text per match |
 | `isVisible()`, `isHidden()` | `false`, `true` | `LOCATOR_AMBIGUOUS` |
 | Assertions | Poll until the timeout | `LOCATOR_AMBIGUOUS` |
+| Any of these under a frame that is not in the document | As zero matches for `count()`, `all()`, `allTextContents()`, `isVisible()`, and `isHidden()`; actions, reads, and assertions poll for the frame until the timeout, then `LOCATOR_NOT_FOUND` | `LOCATOR_AMBIGUOUS` when several frames match |
 
 ## Queries
 
@@ -344,7 +345,9 @@ await screen.getByTestId('spinner').waitFor({ state: 'hidden' });
 `all()` resolves the query once and hands back one `nth(i)` locator per
 match, so a loop can act on each row; `allTextContents()` reads every match's
 normalized text in one call. Neither waits or enforces exactly-one: zero
-matches is an empty array, the same snapshot rule as `count()`. Each locator
+matches is an empty array, the same snapshot rule as `count()`. A
+`frameLocator` whose frame is not in the document counts as zero matches here
+and in `isVisible()`, where an action or assertion polls for it. Each locator
 `all()` returns re-resolves when used, so a list that changes under the loop
 can make a later `nth(i)` point at a different row, or at nothing. Follow the
 loop with an assertion on the list, and use

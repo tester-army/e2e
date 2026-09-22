@@ -104,7 +104,7 @@ function locateTool(locator: LocatorEngine, session: TargetSession, redact: (tex
     }),
     execute: async (args: LocateArgs) => {
       const query = locateQuery(args);
-      const refs = await locator.resolveAll(query.expression);
+      const refs = await locator.resolveNow(query.expression);
       const read: SemanticNode[] = [];
       for (const ref of refs.slice(0, MAX_LOCATE_NODES)) {
         read.push(await session.read(ref, locator.operation()));
