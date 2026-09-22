@@ -6,9 +6,10 @@ import { listModels } from '../../../src/oauth/models.ts';
 import { MemoryCredentialStore } from './helpers/store.ts';
 import { chatgpt } from '../../../src/oauth/chatgpt.ts';
 import { extractAccountId, parseAuthorizationInput, sendCodexRequest } from '../../../src/oauth/providers/openai.ts';
-import { echoUpstream, fakeJwt, json, startServer, useServers, type Echo, type Received } from './helpers/server.ts';
+import { echoUpstream, fakeJwt, json, startServer, useServers, useVendor, type Echo, type Received } from './helpers/server.ts';
 
 const serve = useServers(afterEach);
+const vendor = useVendor(afterEach);
 
 const idToken = fakeJwt({ 'https://api.openai.com/auth': { chatgpt_account_id: 'acct_123' } });
 const accessToken = fakeJwt({ 'https://api.openai.com/auth': { chatgpt_compute_residency: 'eu' } });
@@ -210,8 +211,8 @@ describe('Codex requests', () => {
       response.end();
     });
     const login: CodexCredentials = { access: 'tok', refresh: 'r', expires: 0, accountId: 'acct_9' };
-    const store = new MemoryCredentialStore({ 'openai': login });
-    const model = chatgpt('gpt-5.5', { store, apiUrl: `${backend.url}/codex/responses` });
+    vendor(backend, { openai: login });
+    const model = chatgpt('gpt-5.5');
     expect(model).toMatchObject({ provider: 'chatgpt.responses', modelId: 'gpt-5.5' });
     const result = await generateText({
       model,
@@ -239,8 +240,8 @@ describe('Codex requests', () => {
       response.write(`event: response.completed\ndata: ${JSON.stringify({ type: 'response.completed', response: completed })}\n\n`);
       response.end();
     });
-    const store = new MemoryCredentialStore({ openai: { access: 'tok', refresh: 'r', expires: 0 } });
-    const model = chatgpt('gpt-5.6-luna', { store, apiUrl: `${backend.url}/codex/responses` });
+    vendor(backend, { openai: { access: 'tok', refresh: 'r', expires: 0 } });
+    const model = chatgpt('gpt-5.6-luna');
     const result = await generateText({
       model,
       messages: [

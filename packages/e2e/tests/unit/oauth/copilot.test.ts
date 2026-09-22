@@ -2,12 +2,12 @@ import { generateText, tool } from 'ai';
 import { z } from 'zod';
 import { afterEach, describe, expect, it } from 'vitest';
 import { copilotBaseUrl, createCopilotProvider, enterpriseHost } from '../../../src/oauth/providers/github-copilot.ts';
-import { MemoryCredentialStore } from './helpers/store.ts';
 import { copilot } from '../../../src/oauth/copilot.ts';
 import { sendCopilotRequest } from '../../../src/oauth/providers/github-copilot.ts';
-import { echoUpstream, json, useServers, type Echo, type Received } from './helpers/server.ts';
+import { echoUpstream, json, useServers, useVendor, type Echo, type Received } from './helpers/server.ts';
 
 const serve = useServers(afterEach);
+const vendor = useVendor(afterEach);
 const noCli = async () => undefined;
 
 describe('Copilot login', () => {
@@ -87,8 +87,8 @@ describe('Copilot requests', () => {
         usage: { prompt_tokens: 7, completion_tokens: 3, total_tokens: 10 },
       });
     });
-    const store = new MemoryCredentialStore({ 'github-copilot': { access: 'gho_x', refresh: '', expires: 0 } });
-    const model = copilot('gpt-4.1', { store, baseURL: api.url });
+    vendor(api, { 'github-copilot': { access: 'gho_x', refresh: '', expires: 0 } });
+    const model = copilot('gpt-4.1');
     expect(model).toMatchObject({ provider: 'github-copilot.chat', modelId: 'gpt-4.1' });
     const result = await generateText({
       model,

@@ -12,24 +12,16 @@ import { createOAuthFetch } from './fetch.ts';
 import { USER_AGENT, loginHint } from './providers.ts';
 import { COPILOT_API_URL, createCopilotProvider } from './providers/github-copilot.ts';
 import { defaultCredentialStore } from './store.ts';
-import type { CredentialStore } from './types.ts';
 
-export interface CopilotOptions {
-  /** Where the login is read from; the default is the file `e2e login` wrote, or `E2E_OAUTH_CREDENTIALS`. */
-  readonly store?: CredentialStore;
-  /** Where the Copilot API is reached, for a proxy in front of it. */
-  readonly baseURL?: string;
-}
-
-export function copilot(modelId: string, options: CopilotOptions = {}): LanguageModelV4 {
+export function copilot(modelId: string): LanguageModelV4 {
   const fetch = createOAuthFetch(createCopilotProvider(), {
-    store: options.store ?? defaultCredentialStore(),
+    store: defaultCredentialStore(),
     userAgent: USER_AGENT,
     loginHint: loginHint('github-copilot'),
   });
   return createOpenAICompatible({
     name: 'github-copilot',
-    baseURL: options.baseURL ?? COPILOT_API_URL,
+    baseURL: COPILOT_API_URL,
     apiKey: 'oauth',
     fetch,
     includeUsage: true,

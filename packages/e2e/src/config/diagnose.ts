@@ -20,10 +20,6 @@ export const RUNTIME_EXPORTS: readonly string[] = [
   'unique',
   'AgentError',
   'isAgentError',
-  'BLOCKABLE_CODES',
-  'RUNTIME_CODES',
-  'buildTraceEntry',
-  'readTraceEntry',
   'renderMarkdownReport',
 ];
 
