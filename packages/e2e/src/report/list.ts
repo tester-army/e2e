@@ -16,6 +16,7 @@ import type { Reporter, ReporterSummary } from '../types.ts';
 import { codeFrame, userFrame } from './code-frame.ts';
 import {
   addCacheTally,
+  addModelTally,
   addUsage,
   aiSegment,
   bounded,
@@ -30,12 +31,14 @@ import {
   fileOutcome,
   formatClock,
   formatTime,
+  modelsText,
   padTitle,
   rule,
   stateString,
   statusBucket,
   stepsCacheTally,
   repeatSuffix,
+  stepsModelTally,
   stepsUsage,
   sumUsage,
   tally,
@@ -45,6 +48,7 @@ import {
   type CacheTally,
   type Colors,
   type Counters,
+  type ModelTally,
 } from './format.ts';
 import { ExploreView } from './list-explore.ts';
 import { isShownEvent, type FileGroup, type RunningTest, type TestLine } from './list-model.ts';
@@ -96,6 +100,8 @@ function pairKey(testId: string, agent: string, target: string, repeat: number):
 interface ResultDetails {
   readonly durationMs: number;
   readonly usage: AiUsage;
+  /** The models its steps reported, with their call counts. */
+  readonly models: ModelTally;
   readonly cache: CacheTally;
   readonly error: SerializedError | undefined;
   /** Report-relative paths of the recordings the attempts kept, in attempt order. */
@@ -107,10 +113,12 @@ interface ResultDetails {
 
 /** Details of an ordinary result: summed over its attempts, the error from the last. */
 function attemptDetails(attempts: readonly AttemptRecord[]): ResultDetails {
+  const steps = attempts.map((attempt) => attempt.steps);
   return {
     durationMs: attempts.reduce((total, attempt) => total + attempt.durationMs, 0),
-    usage: stepsUsage(attempts.map((attempt) => attempt.steps)),
-    cache: stepsCacheTally(attempts.map((attempt) => attempt.steps)),
+    usage: stepsUsage(steps),
+    models: stepsModelTally(steps),
+    cache: stepsCacheTally(steps),
     error: attempts[attempts.length - 1]?.error,
     videos: videoPaths(attempts),
     ...failureOf(attempts[attempts.length - 1]),
@@ -152,10 +160,12 @@ function serialMemberDetails(group: SerialGroupRecord, testId: string): ResultDe
   const last = runs[runs.length - 1];
   const own = last?.member;
   const neverRan = own === undefined || own.status === 'skipped';
+  const steps = runs.map((run) => run.member?.steps ?? []);
   return {
     durationMs: runs.reduce((total, run) => total + (run.member?.durationMs ?? 0), 0),
-    usage: stepsUsage(runs.map((run) => run.member?.steps ?? [])),
-    cache: stepsCacheTally(runs.map((run) => run.member?.steps ?? [])),
+    usage: stepsUsage(steps),
+    models: stepsModelTally(steps),
+    cache: stepsCacheTally(steps),
     error: own?.error ?? (neverRan ? last?.attempt.error : undefined),
     // The group's recording covers every member, so a failed member points at it.
     videos: videoPaths(group.attempts),
@@ -234,13 +244,16 @@ export class ListReporter implements Reporter {
   private startupMs = 0;
   /** Run-wide model usage, summed from every reported result and serial group. */
   private readonly runUsage = emptyUsage();
+  /** The models every reported step named, `provider/id` to call count, for the summary's `AI` row. */
+  private readonly runModels: ModelTally = new Map();
   /** The trace cache's part in every reported step, for the summary's `Cache` row. */
   private readonly runCache = emptyCacheTally();
   /**
-   * The configured models as the summary names them, `provider/id` plus
-   * `judge provider/id` when judgments go to a separate model: `runUsage`
-   * sums both, so the row names both. Repeated in the summary because the
-   * header has scrolled away by the time a long run ends.
+   * The configured models as the header names them, `provider/id` plus
+   * `judge provider/id` when judgments go to a separate model. The summary's
+   * `AI` row names the models the steps reported instead, since a custom
+   * executor or a pinned agent can answer on another; this label stands in
+   * there only when no step named one.
    */
   private models: string | undefined;
   /**
@@ -629,8 +642,9 @@ export class ListReporter implements Reporter {
     const steps = this.pairs.get(key)?.steps ?? [];
     this.pairs.delete(key);
     const group = this.group(result.test.file, result.target.name);
-    const { durationMs, usage, cache, error, videos, failure, screenPath } = this.detailsOf(result);
+    const { durationMs, usage, models, cache, error, videos, failure, screenPath } = this.detailsOf(result);
     addUsage(this.runUsage, usage);
+    addModelTally(this.runModels, models);
     addCacheTally(this.runCache, cache);
     const title = this.titledAs(result.test.titlePath.join(' > '), result.agent, result.repeat);
     if (this.explore !== undefined) {
@@ -780,8 +794,8 @@ export class ListReporter implements Reporter {
       ];
     const ai = usageText(this.runUsage);
     if (ai !== undefined) {
-      const models = this.models === undefined ? '' : ` · ${this.models}`;
-      rows.push(padTitle(pc, 'AI') + `${ai} · ${this.runUsage.calls} model calls${models}`);
+      const models = modelsText(this.runModels) ?? this.models;
+      rows.push(padTitle(pc, 'AI') + `${ai} · ${this.runUsage.calls} model calls${models === undefined ? '' : ` · ${models}`}`);
     }
     const cache = cacheText(pc, this.runCache);
     if (cache !== undefined) rows.push(padTitle(pc, 'Cache') + cache);

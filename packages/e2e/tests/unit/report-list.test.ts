@@ -121,7 +121,7 @@ function serialGroup(
 }
 
 function runStarted(
-  overrides: { ci?: boolean; targets?: string[]; projectRoot?: string; model?: string } = {},
+  overrides: { ci?: boolean; targets?: string[]; projectRoot?: string; model?: string; judge?: string } = {},
 ): RunEventFact {
   const projectRoot = overrides.projectRoot ?? '/project';
   return {
@@ -133,6 +133,7 @@ function runStarted(
     ci: overrides.ci ?? false,
     targets: overrides.targets ?? ['chromium'],
     ...(overrides.model === undefined ? {} : { model: overrides.model }),
+    ...(overrides.judge === undefined ? {} : { judge: overrides.judge }),
   };
 }
 
@@ -740,7 +741,7 @@ describe('ListReporter', () => {
       }
     });
 
-    it('reports model usage per file and for the run, naming the configured model', () => {
+    it('reports model usage per file and for the run, naming the one model the steps reported without a count', () => {
       const { lines, output } = capture();
       const reporter = plainReporter(output);
       reporter.handle(runStarted({ model: 'openai/gpt-5.6-luna-fast' }));
@@ -756,7 +757,7 @@ describe('ListReporter', () => {
         durationMs: 10,
         events: [],
         artifacts: [],
-        model: { calls: 3, inputTokens: 12_000, outputTokens: 400, estimatedCostUsd: 0.0123 },
+        model: { provider: 'openai', model: 'gpt-5.6-luna-fast', calls: 3, inputTokens: 12_000, outputTokens: 400, estimatedCostUsd: 0.0123 },
       } as unknown as AttemptRecord['steps'][number];
       reporter.handle(finished(result({ status: 'passed', file: 'tests/a.e2e.ts', attempts: [attempt({ steps: [step] })] })));
       reporter.handle(runFinished({ reportPath: 'r.json' }));
@@ -765,7 +766,7 @@ describe('ListReporter', () => {
       expect(lines).toContain('         AI  12.4k tokens · $0.0123 · 3 model calls · openai/gpt-5.6-luna-fast');
     });
 
-    it('leaves the model off the AI row when none is configured', () => {
+    it("names the step's model on the AI row when none is configured", () => {
       const { lines, output } = capture();
       const reporter = plainReporter(output);
       reporter.handle(runStarted());
@@ -781,11 +782,65 @@ describe('ListReporter', () => {
         durationMs: 10,
         events: [],
         artifacts: [],
-        model: { calls: 3, inputTokens: 12_000, outputTokens: 400, estimatedCostUsd: 0.0123 },
+        model: { provider: 'typesafe-ai', model: 'jev', calls: 3, inputTokens: 12_000, outputTokens: 400, estimatedCostUsd: 0.0123 },
       } as unknown as AttemptRecord['steps'][number];
       reporter.handle(finished(result({ status: 'passed', file: 'tests/a.e2e.ts', attempts: [attempt({ steps: [step] })] })));
       reporter.handle(runFinished({ reportPath: 'r.json' }));
-      expect(lines).toContain('         AI  12.4k tokens · $0.0123 · 3 model calls');
+      expect(lines.some((line) => line.startsWith('      model '))).toBe(false);
+      expect(lines).toContain('         AI  12.4k tokens · $0.0123 · 3 model calls · typesafe-ai/jev');
+    });
+
+    it('names the models the steps reported on the AI row, most calls first, while the header keeps the configuration', () => {
+      const { lines, output } = capture();
+      const reporter = plainReporter(output);
+      reporter.handle(runStarted({ model: 'gateway/openai/gpt-5.6-luna', judge: 'anthropic/claude-sonnet-4.5' }));
+      reporter.handle(plan([{ file: 'tests/a.e2e.ts', tests: 2 }]));
+      const step = (api: string, model: { provider: string; model: string; calls: number; inputTokens: number; outputTokens: number }) =>
+        ({
+          id: api,
+          index: 0,
+          kind: 'agent',
+          api,
+          label: 'do it',
+          status: 'passed',
+          startedAt: new Date(0).toISOString(),
+          durationMs: 10,
+          events: [],
+          artifacts: [],
+          model,
+        }) as unknown as AttemptRecord['steps'][number];
+      const acted = step('agent.act', { provider: 'typesafe-ai', model: 'jev', calls: 22, inputTokens: 10_000, outputTokens: 400 });
+      const judged = step('agent.assert', { provider: 'anthropic', model: 'claude-sonnet-4.5', calls: 1, inputTokens: 2_000, outputTokens: 0 });
+      reporter.handle(finished(result({ status: 'passed', id: 'test-1', title: ['suite', 'acts'], file: 'tests/a.e2e.ts', attempts: [attempt({ steps: [acted] })] })));
+      reporter.handle(
+        finished(result({ status: 'passed', id: 'test-2', title: ['suite', 'judges'], declarationIndex: 1, file: 'tests/a.e2e.ts', attempts: [attempt({ steps: [judged] })] })),
+      );
+      reporter.handle(runFinished({ reportPath: 'r.json' }));
+      expect(lines[3]).toBe('      model gateway/openai/gpt-5.6-luna · judge anthropic/claude-sonnet-4.5');
+      expect(lines).toContain('         AI  12.4k tokens · 23 model calls · typesafe-ai/jev (22 calls) · anthropic/claude-sonnet-4.5 (1 call)');
+    });
+
+    it('prints no AI row for a run whose steps made no model call; the header alone names the configured model', () => {
+      const { lines, output } = capture();
+      const reporter = plainReporter(output);
+      reporter.handle(runStarted({ model: 'gateway/openai/gpt-5.6-luna' }));
+      reporter.handle(plan([{ file: 'tests/a.e2e.ts', tests: 1 }]));
+      const step = {
+        id: 's',
+        index: 0,
+        kind: 'locator',
+        api: 'locator.tap',
+        label: 'button',
+        status: 'passed',
+        startedAt: new Date(0).toISOString(),
+        durationMs: 10,
+        events: [],
+        artifacts: [],
+      } as unknown as AttemptRecord['steps'][number];
+      reporter.handle(finished(result({ status: 'passed', file: 'tests/a.e2e.ts', attempts: [attempt({ steps: [step] })] })));
+      reporter.handle(runFinished({ reportPath: 'r.json' }));
+      expect(lines[3]).toBe('      model gateway/openai/gpt-5.6-luna');
+      expect(lines.some((line) => line.trimStart().startsWith('AI '))).toBe(false);
     });
 
     it('tallies the trace cache under the AI row by step, leaving zero counts out', () => {
