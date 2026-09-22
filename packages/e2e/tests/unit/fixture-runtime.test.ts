@@ -11,6 +11,7 @@ import { createFixtures } from '../../src/run/fixtures.ts';
 import { StepRecorder } from '../../src/run/steps.ts';
 import { WorkerModels } from '../../src/run/worker-models.ts';
 import { createAgent } from '../../src/agent/default-agent.ts';
+import type { StepExecutor } from '../../src/agent/executor.ts';
 import { defineTool, getToolContext } from '../../src/agent/tool.ts';
 import type { E2EConfig } from '../../src/types.ts';
 import { installFakeLoopModel } from '../helpers/fake-loop-model.ts';
@@ -662,5 +663,36 @@ describe('coordinate input', () => {
     });
     await expect(fixtures.screen.swipe({ direction: 'up' })).rejects.toMatchObject({ code: 'UNSUPPORTED_CAPABILITY' });
     expect(performedAt).toEqual(['swipeTo @ 10,20 -> 10,300']);
+  });
+});
+
+describe('assert evidence under a custom executor', () => {
+  const judging: StepExecutor = {
+    name: 'judging',
+    version: '1',
+    runStep: async () => ({ status: 'passed', summary: 'holds' }),
+  };
+  const engineWith = (screenshot: () => Promise<string>) =>
+    defineEngine({ name: 'fake', version: '1', spiVersion: 1, observe: async () => snapshot([]), artifacts: { screenshot } });
+
+  it('attaches the screenshot the engine delivers after the verdict', async () => {
+    const screenshot = vi.fn(async () => 'screenshots/assert.png');
+    const { fixtures, steps, registerArtifact } = runtime(engineWith(screenshot), { agents: { default: judging } });
+    await fixtures.agent.assert('the screen holds');
+    expect(screenshot).toHaveBeenCalledExactlyOnceWith('assert', expect.objectContaining({ origin: 'agent' }));
+    expect(registerArtifact).toHaveBeenCalledExactlyOnceWith('screenshot', 'screenshots/assert.png');
+    expect(steps.all().at(-1)).toMatchObject({ api: 'agent.assert', status: 'passed', artifacts: ['artifact'] });
+  });
+
+  it('abandons a screenshot the engine never delivers at the operation budget and keeps the verdict', async () => {
+    const { fixtures, steps, registerArtifact } = runtime(engineWith(() => new Promise<never>(() => {})), {
+      agents: { default: judging },
+      actionTimeout: 200,
+    });
+    const startedMs = Date.now();
+    await fixtures.agent.assert('the screen holds', { timeout: 2_000 });
+    expect(Date.now() - startedMs).toBeLessThan(2_000);
+    expect(registerArtifact).not.toHaveBeenCalled();
+    expect(steps.all().at(-1)).toMatchObject({ api: 'agent.assert', status: 'passed', artifacts: [] });
   });
 });

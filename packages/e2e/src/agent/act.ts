@@ -21,6 +21,7 @@ import { writeFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ConfigurationError } from '../internal/errors.ts';
+import { withAbort, withTimeout } from '../internal/time.ts';
 import type { ActOptions, ActResult, AgentErrorCode, JsonValue, ModelInstance, Secret } from '../types.ts';
 import { AgentError, CATEGORY_BY_CODE, isAgentError, toAgentError } from './error.ts';
 import { validateActOptions, validateInstruction, validateParams, validateVerdict } from './act-validation.ts';
@@ -336,8 +337,13 @@ class ActDispatch {
    * Keeps a redacted screenshot as an assert step's evidence once the
    * executor has judged, on a passing verdict too, as the built-in judgment
    * does. `screenshot: false` opts out and a pixel-tainted viewport denies
-   * it. Best-effort: a failed capture never fails the step. Returns the
-   * artifact's report-relative path.
+   * it. Best-effort: a failed capture never fails the step, and neither does
+   * one that never settles. The capture runs after `run()` cleared the step
+   * timer, and an engine may ignore the cancellation its operation carries,
+   * so the wait is bounded by that operation's own budget (`actionTimeout`
+   * capped by the step clock) and by the step signal; past either the
+   * capture is abandoned and the verdict stands without evidence. Returns
+   * the artifact's report-relative path.
    */
   async captureEvidence(): Promise<string | undefined> {
     if (this.spec.kind !== 'assert' || this.spec.screenshot === false) return undefined;
@@ -345,8 +351,17 @@ class ActDispatch {
       recordPolicyEvent(this.runtime.steps, 'assert.screenshot', 'denied', 'PIXEL_TAINTED');
       return undefined;
     }
+    const { signal } = this.accounting;
+    if (signal.aborted) return undefined;
     try {
-      const relative = await this.runtime.engine.session.artifacts.screenshot('assert', this.accounting.operation());
+      const operation = this.accounting.operation();
+      const capture = this.runtime.engine.session.artifacts.screenshot('assert', operation);
+      void capture.catch(() => undefined);
+      const relative = await withTimeout(
+        withAbort(capture, signal, () => new Error('the step ended before its evidence was captured')),
+        operation.timeoutMs,
+        () => new Error(`evidence capture outlived its ${operation.timeoutMs} ms operation budget`),
+      );
       this.runtime.steps.attachArtifact(this.runtime.artifacts.register('screenshot', relative));
       return relative;
     } catch {
