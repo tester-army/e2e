@@ -1,5 +1,16 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import * as clack from '@clack/prompts';
@@ -14,6 +25,20 @@ vi.mock('node:child_process', () => ({ spawnSync: vi.fn() }));
 
 let dir: string;
 let stdoutSpy: ReturnType<typeof vi.spyOn>;
+
+/** Whether this host lets the tests create symlinks; Windows needs a privilege for them. */
+const symlinks = ((): boolean => {
+  const probe = mkdtempSync(path.join(os.tmpdir(), 'e2e-init-symlink-'));
+  try {
+    writeFileSync(path.join(probe, 'file'), '');
+    symlinkSync(path.join(probe, 'file'), path.join(probe, 'link'));
+    return true;
+  } catch {
+    return false;
+  } finally {
+    rmSync(probe, { recursive: true, force: true });
+  }
+})();
 
 /** Captures user-facing output without ANSI formatting. */
 function output(): string {
@@ -563,5 +588,101 @@ describe('e2e init', () => {
     expect(read('.gitignore').startsWith('node_modules/\r\n.e2e/artifacts/\n')).toBe(true);
     expect(read('.gitignore').match(/\.e2e\/artifacts\//g)).toHaveLength(1);
     expect(read('.gitignore')).toContain('.e2e/sessions/');
+  });
+
+  describe.skipIf(!symlinks)('a symlinked skill directory', () => {
+    /** Links `<location>/e2e` to `target`, which holds the user's own SKILL.md. */
+    function linkSkill(location: string, target: string): void {
+      mkdirSync(target, { recursive: true });
+      writeFileSync(path.join(target, 'SKILL.md'), 'mine\n');
+      mkdirSync(path.join(dir, location), { recursive: true });
+      symlinkSync(target, path.join(dir, location, 'e2e'), 'dir');
+    }
+
+    /** The target holds exactly what the user put there. */
+    function untouched(target: string): void {
+      expect(readdirSync(target)).toEqual(['SKILL.md']);
+      expect(readFileSync(path.join(target, 'SKILL.md'), 'utf8')).toBe('mine\n');
+    }
+
+    it('is left alone under --yes when it points outside the project, and the warning names it', async () => {
+      const elsewhere = mkdtempSync(path.join(os.tmpdir(), 'e2e-init-elsewhere-'));
+      try {
+        const target = path.join(elsewhere, 'e2e');
+        linkSkill('.claude/skills', target);
+        expect((await init(dir, { yes: true })).exitCode).toBe(0);
+        untouched(target);
+        expect(lstatSync(path.join(dir, '.claude/skills/e2e')).isSymbolicLink()).toBe(true);
+        expect(output()).toContain(`Symlink, not touching: .claude/skills/e2e -> ${realpathSync(target)}`);
+        expect(output()).not.toContain('.claude/skills/e2e/ (');
+        expect(read('e2e.config.ts')).toContain('targets:');
+        expect(JSON.parse(read('.mcp.json'))).toHaveProperty('mcpServers.e2e');
+        expect(read('.gitignore')).toContain('.e2e/cache/');
+        // The link counts as the installed location, so no other one is added.
+        expect(existsSync(path.join(dir, '.agents'))).toBe(false);
+        expect(clack.confirm).not.toHaveBeenCalled();
+      } finally {
+        rmSync(elsewhere, { recursive: true, force: true });
+      }
+    });
+
+    it('is left alone under --yes when it points inside the project', async () => {
+      const target = path.join(dir, 'shared', 'e2e');
+      mkdirSync(target, { recursive: true });
+      writeFileSync(path.join(target, 'SKILL.md'), 'mine\n');
+      mkdirSync(path.join(dir, '.agents/skills'), { recursive: true });
+      symlinkSync(path.join('..', '..', 'shared', 'e2e'), path.join(dir, '.agents/skills/e2e'), 'dir');
+      expect((await init(dir, { yes: true })).exitCode).toBe(0);
+      untouched(target);
+      expect(output()).toContain(`Symlink, not touching: .agents/skills/e2e -> ${realpathSync(target)}`);
+      expect(existsSync(path.join(dir, '.claude'))).toBe(false);
+    });
+
+    it('asks before replacing the link with a copy, declining by default', async () => {
+      const elsewhere = mkdtempSync(path.join(os.tmpdir(), 'e2e-init-elsewhere-'));
+      try {
+        const target = path.join(elsewhere, 'e2e');
+        linkSkill('.claude/skills', target);
+        const question = {
+          message: `Replace the symlink .claude/skills/e2e -> ${realpathSync(target)} with a copy of the skill?`,
+          initialValue: false,
+        };
+        vi.mocked(clack.confirm).mockResolvedValueOnce(false).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+        expect((await init(dir)).exitCode).toBe(0);
+        expect(clack.confirm).toHaveBeenCalledTimes(3);
+        expect(clack.confirm).toHaveBeenNthCalledWith(1, question);
+        expect(lstatSync(path.join(dir, '.claude/skills/e2e')).isSymbolicLink()).toBe(true);
+        untouched(target);
+        expect(output()).not.toContain('Symlink, not touching');
+
+        stdoutSpy.mockClear();
+        vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+        expect((await init(dir)).exitCode).toBe(0);
+        expect(clack.confirm).toHaveBeenNthCalledWith(4, question);
+        expect(clack.confirm).toHaveBeenNthCalledWith(5, expect.objectContaining({ message: 'Replace .claude/skills/e2e/?' }));
+        expect(lstatSync(path.join(dir, '.claude/skills/e2e')).isSymbolicLink()).toBe(false);
+        expect(read('.claude/skills/e2e/SKILL.md')).toMatch(/^---\nname: e2e\n/);
+        expect(read('.claude/skills/e2e/references/setup.md')).toContain('# Setting up e2e');
+        untouched(target);
+        expect(output()).toContain('Replaced .claude/skills/e2e/');
+      } finally {
+        rmSync(elsewhere, { recursive: true, force: true });
+      }
+    });
+
+    it('is skipped without a question when a parent is the link', async () => {
+      const shared = path.join(dir, 'shared');
+      const target = path.join(shared, 'e2e');
+      mkdirSync(target, { recursive: true });
+      writeFileSync(path.join(target, 'SKILL.md'), 'mine\n');
+      mkdirSync(path.join(dir, '.claude'));
+      symlinkSync(shared, path.join(dir, '.claude/skills'), 'dir');
+      vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+      expect((await init(dir)).exitCode).toBe(0);
+      expect(clack.confirm).toHaveBeenCalledTimes(2);
+      expect(output()).toContain(`Symlink, not touching: .claude/skills/e2e/ (.claude/skills -> ${realpathSync(shared)})`);
+      untouched(target);
+      expect(lstatSync(path.join(dir, '.claude/skills')).isSymbolicLink()).toBe(true);
+    });
   });
 });

@@ -2,12 +2,19 @@
 
 import * as clack from '@clack/prompts';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { detectPackageManager, execCommand, runScriptCommand } from '../internal/package-manager.ts';
 import { DOCS_URL } from './docs-url.ts';
-import { findInstalledSkillDirs, planSkillInstall, SKILL_LOCATIONS } from './init/agent-skill.ts';
+import {
+  describeLinks,
+  findInstalledSkillDirs,
+  planSkillInstall,
+  replaceableLinks,
+  SKILL_LOCATIONS,
+  type SkillInstall,
+} from './init/agent-skill.ts';
 import { isLoopbackHost } from '../internal/urls.ts';
 import { getEnginePresets, DEFAULT_ENGINE_ID, type EngineId } from './init/engines.ts';
 import { GATEWAYS, getGatewayPreset, type GatewayId } from './init/gateways.ts';
@@ -59,7 +66,8 @@ type GatewayChoice = GatewayId | 'none';
  * Runs `e2e init`. Every prompt happens before the first write, existing
  * config and test files are never touched, and dependencies install only when
  * the user asks. The agent skill is offered once; later runs refresh the
- * copies that exist and never add new locations.
+ * copies that exist, never add new locations, and never write through a
+ * symlink.
  */
 export async function init(cwd: string, options: InitOptions = {}): Promise<InitOutcome & { readonly exitCode: number }> {
   clack.intro(options.directory === undefined ? 'e2e init' : `e2e init ${options.directory}`);
@@ -166,7 +174,23 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<Init
   );
   if (isCancelled(skillDirs)) return cancel();
   facts.skill = skillDirs.length > 0;
-  const skillInstalls = planSkillInstall(cwd, skillDirs, bundledSkill);
+  const skillInstalls: SkillInstall[] = [];
+  for (const planned of planSkillInstall(cwd, skillDirs, bundledSkill)) {
+    if (planned.links.length === 0) {
+      skillInstalls.push(planned);
+      continue;
+    }
+    if (options.yes || !replaceableLinks(planned)) {
+      clack.log.warn(`Symlink, not touching: ${describeLinks(planned)}`);
+      continue;
+    }
+    const replace = await clack.confirm({
+      message: `Replace the symlink ${describeLinks(planned)} with a copy of the skill?`,
+      initialValue: false,
+    });
+    if (isCancelled(replace)) return cancel();
+    if (replace) skillInstalls.push(planned);
+  }
 
   const mcpFiles = await chooseLocations(
     findRegisteredMcpFiles(cwd),
@@ -210,7 +234,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<Init
   if (!options.yes) {
     const actions = [
       ...files.map((file) => `${file.existing ? 'update' : 'create'} ${file.relative}`),
-      ...skillInstalls.map((install) => `${install.existing ? 'update' : 'create'} ${install.relative}/`),
+      ...skillInstalls.map((install) => `${install.links.length > 0 ? 'replace' : install.existing ? 'update' : 'create'} ${install.relative}/`),
       ...mcpRegistrations.map((registration) => `${registration.existing ? 'update' : 'create'} ${registration.relative}`),
       ...(missingIgnore.length > 0 ? ['update .gitignore'] : []),
     ];
@@ -237,11 +261,13 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<Init
     clack.log.success(`${file.existing ? 'Updated' : 'Created'} ${file.relative}`);
   }
   for (const skill of skillInstalls) {
+    for (const link of skill.links) unlinkSync(path.join(cwd, link.relative));
     for (const file of skill.files) {
       mkdirSync(path.dirname(file.absolute), { recursive: true });
       writeFileSync(file.absolute, file.content, 'utf8');
     }
-    clack.log.success(`${skill.existing ? 'Updated' : 'Created'} ${skill.relative}/ (${skill.files.length} files)`);
+    const verb = skill.links.length > 0 ? 'Replaced' : skill.existing ? 'Updated' : 'Created';
+    clack.log.success(`${verb} ${skill.relative}/ (${skill.files.length} files)`);
   }
   if (skillDirs.length === 0) {
     clack.log.info(`Skipped the agent skill; agents can still print it with ${execCommand(manager, 'e2e guide')}`);

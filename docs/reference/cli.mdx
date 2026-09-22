@@ -82,7 +82,10 @@ npx e2e init --yes
 
 Re-running `init` keeps an existing config and adds no packages for it. Once
 a skill directory exists, later runs refresh copies that differ from the
-installed version and never add a directory the project did not choose.
+installed version and never add a directory the project did not choose. A
+skill directory that is a symlink, or sits under one, is never written
+through: `--yes` skips it with a warning naming the link and its target, and
+an interactive run offers to replace a linked skill directory with a copy.
 
 Cancellation leaves files untouched and exits 0. An invalid `package.json`
 exits 2 before any write. Without a terminal on stdin and stdout, `init`
