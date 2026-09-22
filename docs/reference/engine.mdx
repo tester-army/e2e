@@ -439,6 +439,16 @@ export interface EngineAttemptContext {
    * harness ends the attempt's isolation right behind it and may retry.
    */
   readonly signal: AbortSignal;
+  /**
+   * Registers a value the surface puts on the wire or restores into the app
+   * without the harness seeing it pass: an injected request header, a
+   * basic-auth password, a cookie or storage value of a restored session.
+   * The redactor then replaces it with `<secret:name>` in model input, in
+   * the report, and in the trace rewrite; the value itself never enters any
+   * of them. Register a value as soon as the surface holds it, so a trace
+   * that recorded it is rewritten before it is kept.
+   */
+  readonly registerSecret: (name: string, value: string) => void;
 }
 
 /**
@@ -916,6 +926,12 @@ export interface EngineStateCapability {
 }
 ```
 
+A restored snapshot travels with every request the surface makes afterwards,
+and a trace records it. Hand the credential values in a snapshot to
+`EngineAttemptContext.registerSecret` on `capture` and on `restore`, so the
+trace rewrite covers them; the browser engine does this for cookie and
+local-storage values of 16 characters or more.
+
 ## Artifacts
 
 ```ts
@@ -966,9 +982,13 @@ restore. Both use the launch budget and stop before `endAttempt`, within the
 cleanup budget. Return segments in recording order from `stopVideo` and
 `stopTrace`.
 
-After a secret fill, the runner redacts every text entry in each trace
-archive. If redaction fails, it deletes the archives and records
-`TRACE_WITHHELD`. Videos are unmasked and carry `redaction: 'incomplete'`.
+Whenever the attempt's ledger holds a value (a filled secret, a configured
+static value, anything registered through `registerSecret`), the runner
+redacts every text entry in each trace archive. If redaction fails, it
+deletes the archives and records `TRACE_WITHHELD`. A `download` artifact is
+scanned as bytes: one holding a registered value is deleted and recorded
+without a path, with `ARTIFACT_WITHHELD`. Videos are unmasked and carry
+`redaction: 'incomplete'`.
 
 ## Contributed fixtures
 

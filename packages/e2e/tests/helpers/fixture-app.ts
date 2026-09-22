@@ -79,6 +79,12 @@ ${button}  <script>
 </html>`;
 }
 
+/**
+ * The value the storage page's cookie carries: long enough to count as a
+ * session token for the engine that registers restored cookies for redaction.
+ */
+export const FIXTURE_COOKIE_VALUE = 'cookie-value-0123456789abcdef';
+
 const PAGES: Record<string, string> = {
   '/': `<!doctype html>
 <html>
@@ -180,7 +186,7 @@ const PAGES: Record<string, string> = {
 <head><title>Storage</title></head>
 <body>
   <h1>Storage</h1>
-  <button onclick="localStorage.setItem('marker', 'saved'); document.cookie = 'fixture=cookie-value; path=/'; render()">Save marker</button>
+  <button onclick="localStorage.setItem('marker', 'saved'); document.cookie = 'fixture=${FIXTURE_COOKIE_VALUE}; path=/'; render()">Save marker</button>
   <output id="marker" aria-label="Marker"></output>
   <script>
     function render() {
@@ -653,6 +659,25 @@ function renderFeed(): string {
 </html>`;
 }
 
+/** A settings page showing a planted value in a definition list, beside an ordinary text input. */
+function renderPlanted(planted: string): string {
+  const escaped = planted
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
+  return `<!doctype html>
+<html>
+<head><title>Planted</title></head>
+<body>
+  <h1>Settings</h1>
+  <dl><dt>API key</dt><dd id="planted">${escaped}</dd></dl>
+  <label for="note">Note</label>
+  <input id="note" />
+</body>
+</html>`;
+}
+
 export interface FixtureApp {
   readonly url: string;
   close(): Promise<void>;
@@ -768,11 +793,25 @@ ${items}
 }
 
 /** Starts the fixture app on an ephemeral loopback port. */
-export async function startFixtureApp(): Promise<FixtureApp> {
+export interface FixtureAppOptions {
+  /**
+   * A value the app shows on `/planted` and writes into `/report.csv`,
+   * standing in for a configured secret the app renders on its own, without
+   * any fill: a settings page listing an API key, an export that contains it.
+   */
+  readonly planted?: string;
+}
+
+export async function startFixtureApp(options: FixtureAppOptions = {}): Promise<FixtureApp> {
   const todos = new Set<string>();
   const server: Server = createServer((request, response) => {
     const requested = new URL(request.url ?? '/', 'http://localhost');
     const pathname = requested.pathname;
+    if (pathname === '/planted') {
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      response.end(renderPlanted(options.planted ?? ''));
+      return;
+    }
     if (pathname === '/todos') {
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       response.end(renderTodos(todos));
@@ -802,7 +841,7 @@ export async function startFixtureApp(): Promise<FixtureApp> {
         'content-type': 'text/csv',
         'content-disposition': 'attachment; filename="report.csv"',
       });
-      response.end('id,total\n1,42\n');
+      response.end(options.planted === undefined ? 'id,total\n1,42\n' : `id,total,key\n1,42,${options.planted}\n`);
       return;
     }
     if (pathname === '/unanchored') {

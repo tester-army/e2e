@@ -20,7 +20,7 @@ describe('web.evaluate error boundaries', () => {
   });
 
   beforeEach(async () => {
-    await surface.startAttempt({ attemptId: 'evaluate', artifactsDir, signal });
+    await surface.startAttempt({ attemptId: 'evaluate', artifactsDir, signal, registerSecret: () => undefined });
     page = await surface.ensurePage();
     web = createWebFixture(surface, {
       operation: () => ({ signal, timeoutMs: 1_000, runId: 'evaluate', attemptId: 'evaluate', origin: 'test' }),

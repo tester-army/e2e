@@ -101,7 +101,7 @@ const initInfo = (workerSlot: number, env: Readonly<Record<string, string | unde
   signal: new AbortController().signal,
   log: () => undefined,
 });
-const attempt = (attemptId: string): EngineAttemptContext => ({ attemptId, artifactsDir: '/tmp/e2e-provider-artifacts', signal: new AbortController().signal });
+const attempt = (attemptId: string): EngineAttemptContext => ({ attemptId, artifactsDir: '/tmp/e2e-provider-artifacts', signal: new AbortController().signal, registerSecret: () => undefined });
 const cleanup = (): EngineCleanupContext => ({ timeoutMs: 1_000, signal: new AbortController().signal });
 const operation = (): OperationContext => ({ timeoutMs: 1_000, signal: new AbortController().signal, runId: 'run-1', attemptId: 'a1', origin: 'test' });
 
@@ -474,7 +474,7 @@ describe('attempt scope', () => {
     const worker = new PlaywrightSurface({ browser: cloud.impl });
     await worker.init(initInfo(0, (await prepared(provider({ scope: 'attempt' }).impl, 1)).env));
     const controller = new AbortController();
-    const starting = worker.startAttempt({ attemptId: 'a1', artifactsDir: '/tmp/e2e-provider-artifacts', signal: controller.signal });
+    const starting = worker.startAttempt({ attemptId: 'a1', artifactsDir: '/tmp/e2e-provider-artifacts', signal: controller.signal, registerSecret: () => undefined });
     controller.abort();
     await expect(starting).rejects.toMatchObject({ code: 'CANCELLED' });
     await worker.endAttempt(cleanup());
@@ -491,7 +491,7 @@ describe('attempt scope', () => {
       const worker = new PlaywrightSurface({ browser: cloud.impl });
       await worker.init(initInfo(0, (await prepared(provider({ scope: 'attempt' }).impl, 1)).env));
       const controller = new AbortController();
-      const starting = worker.startAttempt({ attemptId: 'a1', artifactsDir: '/tmp/e2e-provider-artifacts', signal: controller.signal });
+      const starting = worker.startAttempt({ attemptId: 'a1', artifactsDir: '/tmp/e2e-provider-artifacts', signal: controller.signal, registerSecret: () => undefined });
       if (how === 'aborted') controller.abort();
       else await worker.endAttempt(cleanup());
       grant();

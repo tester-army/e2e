@@ -22,6 +22,14 @@ describe('SecretLedger', () => {
     );
   });
 
+  it('is empty until a non-empty value is registered', () => {
+    const ledger = new SecretLedger();
+    expect(ledger.isEmpty).toBe(true);
+    ledger.register('token', 'abc');
+    expect(ledger.isEmpty).toBe(false);
+    expect(new SecretLedger([['member', 'hunter2']]).isEmpty).toBe(false);
+  });
+
   it('substitutes longer values first, so nested secrets are not half-rewritten', () => {
     const ledger = new SecretLedger([
       ['short', 'abc'],

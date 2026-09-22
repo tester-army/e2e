@@ -25,13 +25,15 @@ export interface ArtifactRecord {
   startedAt?: string;
   /**
    * Mirrors report-1: how much of the file the runner masked. A screenshot is
-   * `complete`; a trace is `complete` once every registered secret value was
-   * rewritten out of its text, and `not-required` when no secret was filled
-   * on its session; a video is `incomplete`, since a recording masks nothing
-   * (a secure field renders its own dots, but anything else the screen
-   * showed is in the frames), and is kept as it is. report-1 also admits an
-   * `incomplete` artifact without a `path`, one its producer withheld; this
-   * runner never writes one.
+   * `complete`; a trace is `complete` once every value in its session's
+   * ledger was rewritten out of its text, and `not-required` when the ledger
+   * held none; a download is `complete` once scanned clean; a video is
+   * `incomplete`, since a recording masks nothing (a secure field renders its
+   * own dots, but anything else the screen showed is in the frames), and is
+   * kept as it is. report-1 also admits an `incomplete` artifact without a
+   * `path`, one its producer withheld: a download that held a registered
+   * value is deleted and recorded that way, with `ARTIFACT_WITHHELD` among
+   * the attempt's secondary errors.
    */
   redaction: 'complete' | 'not-required' | 'incomplete';
   producer: ArtifactProducer;

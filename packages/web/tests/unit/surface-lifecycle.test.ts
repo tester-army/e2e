@@ -59,7 +59,7 @@ beforeEach(async () => {
   acquire.mockResolvedValue(browser);
   surface = new PlaywrightSurface({});
   await surface.init({ runId: 'run', targetName: 'web', projectRoot: process.cwd(), app: {}, env: {}, headed: false, workerSlot: 0, signal: new AbortController().signal, log: () => undefined });
-  await surface.startAttempt({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal });
+  await surface.startAttempt({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, registerSecret: () => undefined });
 });
 
 afterEach(async () => {
@@ -89,7 +89,7 @@ it.each(['dialog', 'route'] as const)('keeps a late %s failure on the attempt th
     } as unknown as Route);
   }
   await surface.endAttempt(cleanup());
-  await surface.startAttempt({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal });
+  await surface.startAttempt({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal, registerSecret: () => undefined });
   release();
   await pending;
   expect(() => oldLatch.throwPending()).toThrow(/old handler failed/);

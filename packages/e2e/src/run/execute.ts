@@ -48,7 +48,7 @@ import { isFailedStatus } from './records.ts';
 import { runWithRetries } from './retry.ts';
 import { runSerialUnit, type SerialHost, type SharedSerialSession } from './serial.ts';
 import { interruptedSkip, pairKey, pairResult, repeatSegment, unstartedResult } from './units.ts';
-import { processSecrets, sessionSecrecy } from './secrecy.ts';
+import { processSecrets, registerEngineSecret, sessionSecrecy } from './secrecy.ts';
 import { SessionStaging, SessionStore, type SessionIdentity } from './sessions.ts';
 import { redactTraceArchives } from './trace-redaction.ts';
 import { StepRecorder, type StepProgress } from './steps.ts';
@@ -592,7 +592,13 @@ export class TargetExecutor implements SerialHost {
       if (startAttempt !== undefined) {
         await this.debug.time('session.launch', () =>
           launch(`starting an attempt on engine ${engine?.name ?? 'none'}`, (launchSignal) =>
-            startAttempt({ attemptId, artifactsDir, signal: launchSignal }),
+            startAttempt({
+              attemptId,
+              artifactsDir,
+              signal: launchSignal,
+              registerSecret: (name, value) =>
+                registerEngineSecret(sessionSecrecy(session, this.config.secrets), name, value),
+            }),
           ),
         );
       }
@@ -672,14 +678,16 @@ export class TargetExecutor implements SerialHost {
       await this.stopRecording('trace', attemptId, record, secondaryErrors, async (operation) => {
         const stopped = await stopTrace(operation);
         const archives = typeof stopped === 'string' ? [stopped] : stopped;
-        // An engine records what happened, filled secrets included, so the
-        // trace is the runner's to redact before anything hashes or stores
-        // it. Only a session a secret was filled on can have recorded one:
-        // the taint is the fill's own mark, so an untainted trace needs no
-        // rewriting, and a tainted one is kept only once rewritten.
+        // An engine records what happened, so the trace is the runner's to
+        // redact before anything hashes or stores it. A fill is not the only
+        // way a value gets recorded: the app can render a configured static
+        // secret on its own, the engine injects headers on every request, a
+        // restored session sends its cookies. The ledger holds all of them,
+        // so a trace from a session whose ledger is empty has nothing to
+        // rewrite, and any other is kept only once rewritten.
         const secrecy = sessionSecrecy(session, this.config.secrets);
         let redaction: 'complete' | 'not-required' = 'not-required';
-        if (secrecy.taint.value) {
+        if (!secrecy.ledger.isEmpty) {
           try {
             await redactTraceArchives(artifactSink.dir, archives, secrecy.ledger);
           } catch (cause) {
@@ -823,6 +831,12 @@ export class TargetExecutor implements SerialHost {
       // A serial member's artifacts are filed under the group attempt in the
       // report, so that is the attempt a store must see for them.
       identity: { runId: this.options.runId, testId: pair.test.id, attemptId: shared?.attemptId ?? attemptId },
+      ledger: () =>
+        openSession === null ? processSecrets : sessionSecrecy(openSession, this.config.secrets).ledger,
+      onWithheld: () => {
+        const producedIn = phase;
+        return (error) => secondaryErrors.push(serializeError(error, { phase: producedIn, redact }));
+      },
     });
 
     const record: AttemptRecord = {

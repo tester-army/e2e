@@ -56,6 +56,7 @@ import {
   type RawNodeData,
 } from './read-node.ts';
 import { httpCredentials, installSiteHeaders, lowercaseNames } from './protected-app.ts';
+import { registerGateSecrets, registerStateSecrets, type SecretRegistrar } from './session-secrets.ts';
 import { RefRegistry } from './refs.ts';
 import {
   cancelled,
@@ -212,6 +213,8 @@ export class PlaywrightSurface {
   private headed = false;
   private artifactsDir = '';
   private artifactCounter = 0;
+  /** The running attempt's registrar for values the browser carries; see `session-secrets.ts`. */
+  private registerSecret: SecretRegistrar = () => undefined;
   /**
    * Attempt-scoped network routes. Registered on the
    * context, not a page, so they cover every page the attempt opens - the
@@ -358,6 +361,10 @@ export class PlaywrightSurface {
     const persistent = await this.persistentBinding(context);
     this.artifactsDir = context.artifactsDir;
     this.artifactCounter = 0;
+    this.registerSecret = context.registerSecret;
+    // Every request of the attempt carries these, and the trace records
+    // request headers: registered before the first one is sent.
+    registerGateSecrets(context.registerSecret, this.headers, this.basicAuth);
     const routes: StoredRoute[] = [];
     this.latch = new ErrorLatch();
     const dialogs = new DialogRouter(this.latch);
@@ -837,9 +844,15 @@ export class PlaywrightSurface {
 
   // --- state ---
 
+  /**
+   * Snapshots the context's persisted state. The cookies and storage it holds
+   * were set by the app during this attempt, so the attempt's trace already
+   * recorded them: registered here, they are rewritten out of it.
+   */
   captureState(operation: OperationContext): Promise<EngineState> {
     return this.guard(operation, 'state capture', async () => {
       const storageState = await this.requireContext().storageState({ indexedDB: true });
+      registerStateSecrets(this.registerSecret, storageState);
       return { format: STATE_FORMAT, version: 1, data: storageState };
     });
   }
@@ -861,6 +874,9 @@ export class PlaywrightSurface {
           retryable: false,
         });
       }
+      // The restored cookies ride every request from here on; registered
+      // before the context that sends them exists.
+      registerStateSecrets(this.registerSecret, state.data);
       await this.requireSession().replace(state.data, currentOperation);
     });
   }
