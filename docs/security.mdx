@@ -36,10 +36,20 @@ Built-in tools have closed schemas and are offered only when the engine
 supports them. Project tools must use `defineTool` and cannot replace a
 built-in name. Only read-only project tools may request an observation.
 
-Element actions resolve node ids against the current observation. Pixel
-tools can act on coordinates when screenshots are permitted. The runner
-does not evaluate model text as code, selectors, shell commands, or config.
-Each step has a deadline and a model-call budget.
+A call outside that vocabulary never runs. A tool name the step does not
+offer is refused with the names it may use; an argument a schema does not
+declare fails the closed schema, and the refusal names the field. Either
+refusal is the call's result: the model's next turn is its repair, and
+refusals count toward the failure streak that forces a verdict. Neither is
+`POLICY_DENIED`.
+
+Element actions resolve node ids against the current observation. A node id
+that is not on the current screen fails the action with `LOCATOR_NOT_FOUND`,
+and the result carries the screen again so the model can re-aim; that is an
+action failure, not a policy denial. Pixel tools can act on coordinates when
+screenshots are permitted. The runner does not evaluate model text as code,
+selectors, shell commands, or config. Each step has a deadline and a
+model-call budget.
 
 A tool call that breaks a rule fails with `POLICY_DENIED`:
 
