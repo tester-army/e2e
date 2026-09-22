@@ -108,10 +108,22 @@ describe('reporter objects', () => {
         throw new Error('bang');
       },
     };
+    const seen: RunEvent['type'][] = [];
+    const quiet: Reporter = {
+      name: 'quiet',
+      onEvent: (event) => {
+        seen.push(event.type);
+      },
+    };
     const outcome = await runExisting(project, {
       appUrl: app.url,
-      config: { tests: 'tests/**/*.e2e.ts', reporters: [throwing, hanging, malformed, scalar, loud], cache: 'off' as const },
-      runOptions: { reporterTimeout: 200 },
+      config: { tests: 'tests/**/*.e2e.ts', reporters: [throwing, hanging, malformed, scalar, loud, quiet], cache: 'off' as const },
+      runOptions: {
+        reporterTimeout: 200,
+        onEvent: () => {
+          throw new Error('host bang');
+        },
+      },
     });
 
     expect(outcome.exitCode).toBe(0);
@@ -123,7 +135,13 @@ describe('reporter objects', () => {
     expect(written).toContain('e2e: reporter "hanging" did not finish within 200ms');
     expect(written).toContain('e2e: reporter "malformed" returned 1 row(s) without a label and text; dropped');
     expect(written).toContain('e2e: reporter "scalar" returned something other than summary rows; dropped');
-    expect(written).toContain('e2e: reporter "loud" threw on run-started: bang; ignoring it for the rest of the run');
+    const loudLine = 'e2e: reporter "loud" threw on run-started: bang; ignoring it for the rest of the run';
+    expect(written.split(loudLine)).toHaveLength(2);
+    expect(written).toContain('e2e: reporter "onEvent" threw on run-started: host bang; ignoring it for the rest of the run');
+    // The quarantine is per sink: the reporter beside the loud one and the host still see the whole run.
+    expect(seen[0]).toBe('run-started');
+    expect(seen).toContain('test-finished');
+    expect(seen.at(-1)).toBe('run-finished');
   }, 120_000);
 
   it('abandons a reporter when the run is forced to stop', async () => {
