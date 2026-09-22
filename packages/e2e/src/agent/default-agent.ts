@@ -7,6 +7,7 @@
  * a caller's own prompt and vocabulary.
  */
 
+import { DEFAULT_AGENT_MARKER } from './agent-brand.ts';
 import type { ToolExecutionOptions, ToolSet } from 'ai';
 
 import type { SdkLanguageModel } from '../config/agent.ts';
@@ -85,7 +86,6 @@ export interface CreateAgentOptions {
 }
 
 /** Cross-realm identity marker for executors `createAgent` built. */
-const DEFAULT_AGENT_MARKER = Symbol.for('e2e.default-agent.v1');
 
 /**
  * The executor `createAgent` returns: the step executor plus the options it
@@ -165,7 +165,6 @@ export function createAgent(options: CreateAgentOptions = {}): DefaultAgent {
   const agent: DefaultAgent = {
     ...executor,
     ...(options.judge === undefined ? {} : { judge: options.judge }),
-    ...(options.context === undefined ? {} : { context: options.context }),
     options: { ...options, tools: userTools },
     tools: userTools,
   };

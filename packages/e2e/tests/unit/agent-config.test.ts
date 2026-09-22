@@ -171,11 +171,17 @@ describe('one canonical model', () => {
 });
 
 describe('one context', () => {
+  it('ignores a context member on a custom executor, string or not', () => {
+    const talkative = { name: 'custom', runStep: async () => ({ status: 'passed' as const, summary: 'ok' }), context: 'not a prompt' };
+    expect(resolve({ agents: { default: { executor: talkative, model } } }).agent.context).toBeUndefined();
+    const stateful = { name: 'custom', runStep: async () => ({ status: 'passed' as const, summary: 'ok' }), context: Promise.resolve(1) };
+    expect(resolve({ agents: { default: { executor: stateful, model } } }).agent.context).toBeUndefined();
+  });
+
   const model = fakeModel('openai', 'gpt-5.4-mini');
 
   it('uses the context createAgent brought, so the agent needs no second key', () => {
     const config = resolve({ agents: { default: createAgent({ model, context: 'Plans are called tiers.' }) } });
-    expect(config.agent.executor?.context).toBe('Plans are called tiers.');
     expect(config.agent.context).toBe('Plans are called tiers.');
     expect(config.agent.model).toMatchObject({ model });
   });

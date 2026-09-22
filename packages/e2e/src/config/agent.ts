@@ -1,6 +1,7 @@
 /** Agent, model, and resource-limit resolution. */
 
 import type { LanguageModel } from 'ai';
+import { builtInAgentContext } from '../agent/agent-brand.ts';
 import { isStepExecutor, type StepExecutor } from '../agent/executor.ts';
 import { boundedInt, positiveInt } from './validate.ts';
 import { ConfigurationError } from '../internal/errors.ts';
@@ -167,7 +168,7 @@ export function resolveAgentConfig(
     DEFAULT_OBSERVATION_BYTES;
 
 
-  const context = resolveContext(agent?.context, executor?.context, limits.maxAgentContextBytes, label);
+  const context = resolveContext(agent?.context, builtInAgentContext(executor), limits.maxAgentContextBytes, label);
 
   const model = resolveCanonicalModel(agent?.model, executor?.model, label, 'model');
   return {
@@ -327,11 +328,11 @@ function resolveModel(model: ModelInstance | undefined, label: string): Resolved
 }
 
 /**
- * One app vocabulary per agent. It may arrive on the executor or on the
- * agent's options object; whichever is set is used. Two different values are
- * rejected rather than joined or overridden, because two vocabularies for one
- * agent would disagree without anyone noticing, and the fix is to write it
- * once.
+ * One app vocabulary per agent. It may arrive with the built-in agent
+ * (`createAgent({ context })`) or on the agent's options object; whichever is
+ * set is used. Two different values are rejected rather than joined or
+ * overridden, because two vocabularies for one agent would disagree without
+ * anyone noticing, and the fix is to write it once.
  */
 function resolveContext(
   configured: unknown,

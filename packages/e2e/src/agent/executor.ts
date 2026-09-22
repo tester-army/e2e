@@ -446,14 +446,6 @@ export interface StepExecutor {
    * `INVALID_CONFIG` when both are set and differ.
    */
   readonly judge?: ModelInstance;
-  /**
-   * The app vocabulary this executor was built with, if any: what the model
-   * is told the screens call things, prepended to its act turns and to the
-   * judgments made on its behalf. An executor that carries one lets its
-   * agent entry omit the `context` key; an entry that sets a different one
-   * is a configuration error.
-   */
-  readonly context?: string;
   runStep(context: StepExecutorContext): Promise<StepVerdict>;
 }
 

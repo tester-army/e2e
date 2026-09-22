@@ -292,7 +292,6 @@ projectAgent.options.system satisfies string | undefined;
 // One complete agent: model, how it works, and the app's vocabulary in one call; the options object needs no second key.
 declare const sdkModel: NonNullable<NonNullable<Parameters<typeof createAgent>[0]>['model']>;
 const completeAgent = createAgent({ model: sdkModel, system: 'Be thorough.', context: 'Plans are called tiers.' });
-completeAgent.context satisfies string | undefined;
 completeAgent.options.context satisfies string | undefined;
 ({ agents: { default: { executor: completeAgent } } }) satisfies E2EConfig;
 // @ts-expect-error context is one string, as agents.<name>.context is
