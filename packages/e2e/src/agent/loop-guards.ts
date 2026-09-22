@@ -157,12 +157,16 @@ export interface GuardToolResult {
 }
 
 /**
- * Extracts every tool result in a transcript, in order, excluding the
- * conclusion tool's. A text result is read for the failure shape; a result
- * with a screenshot attached counts as its text, lead first. A result the
- * SDK refused before dispatch (a tool the step does not offer, an input
- * outside the closed schema) is a failure by construction: nothing ran, and
- * the turn is spent. A structured result is a project tool's own shape and
+ * Extracts every tool result in a transcript, in order. A text result is
+ * read for the failure shape; a result with a screenshot attached counts as
+ * its text, lead first. A result the SDK refused before dispatch (a tool the
+ * step does not offer, an input outside the closed schema) is a failure by
+ * construction: nothing ran, and the turn is spent. The conclusion tool's
+ * own text (an accepted verdict, a blocked one sent back for its code) is
+ * not an action and is skipped, but a refused conclusion counts: the repeat
+ * guard never sees conclusion calls, so this streak is the only bound short
+ * of the turn budget on a model that resends one the schema turns away. A
+ * structured result is a project tool's own shape and
  * says nothing about failure.
  */
 export function extractToolResults(messages: readonly ModelMessage[], concludeToolName: string): GuardToolResult[] {
@@ -170,12 +174,13 @@ export function extractToolResults(messages: readonly ModelMessage[], concludeTo
   for (const message of messages) {
     if (message.role !== 'tool' || !Array.isArray(message.content)) continue;
     for (const part of message.content) {
-      if (part.type !== 'tool-result' || part.toolName === concludeToolName) continue;
+      if (part.type !== 'tool-result') continue;
       const output = part.output;
       if (output.type === 'error-text') {
         results.push({ text: output.value, failed: true });
         continue;
       }
+      if (part.toolName === concludeToolName) continue;
       const texts = toolResultTexts(output);
       if (texts.length === 0) continue;
       const text = texts.join('\n');
