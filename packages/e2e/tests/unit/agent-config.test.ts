@@ -502,6 +502,10 @@ describe('named agents', () => {
   it('rejects the removed agent key with the replacement, bad names, and a non-object agents', () => {
     expect(() => resolve({ agent: { model: fakeModel('openai', 'gpt-5.4-mini') } } as never)).toThrow(/agents: \{ default: <what agent held> \}/);
     expect(() => resolve({ agents: { 'u x': {} } })).toThrow(/invalid agent name "u x"/);
+    // An agent's name is an artifact path segment, so `.` and `..` are out.
+    expect(() => resolve({ agents: { '..': {} } })).toThrow('invalid agent name "..": names are ASCII letters, numbers, "_", "-", or ".", and cannot be only dots');
+    expect(() => resolve({ agents: { '.': {} } })).toThrow(/invalid agent name "\."/);
+    expect(resolve({ agents: { 'v1.2': {} } }).agents.has('v1.2')).toBe(true);
     expect(() => resolve({ agents: [] } as never)).toThrow(/agents must be an object of agents by name/);
     expect(() => resolve({ agents: named('x') } as never)).toThrow(/agents must be an object of agents by name/);
   });

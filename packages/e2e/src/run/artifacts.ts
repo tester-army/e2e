@@ -154,8 +154,9 @@ async function measure(absolute: string): Promise<{ size: number; sha256: string
   }
 }
 
-/** Restricts a report path segment to a safe filename alphabet. */
+/** Restricts a report path segment to a safe filename alphabet; a value that is only dots would name the directory or its parent, so it becomes `_`. */
 export function sanitizePathSegment(value: string): string {
+  if (/^\.+$/.test(value)) return '_';
   return value.replaceAll(/[^A-Za-z0-9._-]/g, '_').slice(0, 120);
 }
 
