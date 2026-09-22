@@ -679,7 +679,9 @@ class Scheduler {
         });
       }
       this.synthesizeCrashResults(state, worker, unit);
-    } else if (tracked && !worker.becameReady) {
+    } else if (tracked && !worker.becameReady && !this.interrupting) {
+      // The interrupt retires every worker still starting; those exits were
+      // asked for and say nothing about whether the target can boot.
       state.initFailures += 1;
       if (state.initFailures >= MAX_INIT_FAILURES) this.failTarget(state);
     }
