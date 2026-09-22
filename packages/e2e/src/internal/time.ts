@@ -95,7 +95,8 @@ export interface PollConditionOptions {
  * deadline. Negated, the condition must have stopped holding by the deadline
  * and then stay that way for the negation window, which may run past the
  * deadline by at most the window itself; a sample that breaks the hold once
- * the deadline has passed fails the poll at once.
+ * the deadline has passed fails the poll at once, and so does one that
+ * completes the hold after the extended deadline, however long it held.
  */
 export async function pollCondition(options: PollConditionOptions): Promise<void> {
   const { deadline } = options;
@@ -110,7 +111,7 @@ export async function pollCondition(options: PollConditionOptions): Promise<void
       if (value === true) return;
     } else if (value === false) {
       heldSince ??= now;
-      if (now - heldSince >= windowMs) return;
+      if (now - heldSince >= windowMs && now <= extended.endsAt) return;
     } else {
       heldSince = undefined;
     }
@@ -126,9 +127,15 @@ export async function pollCondition(options: PollConditionOptions): Promise<void
   }
 }
 
-/** The failure line for a negation that held at the last sample, but not for its window. */
+/**
+ * The failure line for a negation that held at the last sample: for less than
+ * its window, or for the window but confirmed by a sample that landed after
+ * the window had closed.
+ */
 export function describeNegationTimeout(negation: NegationTimeout): string {
-  return `held for ${negation.heldMs} ms, short of the ${negation.windowMs} ms negation window`;
+  return negation.heldMs < negation.windowMs
+    ? `held for ${negation.heldMs} ms, short of the ${negation.windowMs} ms negation window`
+    : `held for ${negation.heldMs} ms, confirmed only after the ${negation.windowMs} ms negation window closed`;
 }
 
 /** Races a promise against a timeout; on timeout invokes onTimeout to build the error. */
