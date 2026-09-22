@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   Deadline,
+  describeNegationTimeout,
   NEGATION_GRACE_MS,
   POLL_INTERVAL_MS,
   pollCondition,
   sleep,
   withTimeout,
+  type PollConditionOptions,
 } from '../../src/internal/time.ts';
 import { E2EError } from '../../src/internal/errors.ts';
 
@@ -88,14 +90,15 @@ describe('pollCondition', () => {
   function makeOptions(overrides: {
     negated?: boolean;
     timeoutMs?: number;
-    evaluate: () => Promise<boolean | undefined>;
-  }) {
+    evaluate: PollConditionOptions['evaluate'];
+    onTimeout?: PollConditionOptions['onTimeout'];
+  }): PollConditionOptions {
     return {
       deadline: new Deadline(overrides.timeoutMs ?? 5000),
       signal: new AbortController().signal,
       negated: overrides.negated ?? false,
       evaluate: overrides.evaluate,
-      onTimeout: () => new Error('poll timed out'),
+      onTimeout: overrides.onTimeout ?? (() => new Error('poll timed out')),
     };
   }
 
@@ -115,17 +118,27 @@ describe('pollCondition', () => {
     expect(calls).toBe(3);
   });
 
-  it('throws the caller error at the deadline', async () => {
+  it('throws the caller error at the deadline, with no negation state', async () => {
     vi.useFakeTimers();
-    const promise = pollCondition(
-      makeOptions({ timeoutMs: 350, evaluate: async () => false }),
-    );
+    const onTimeout = vi.fn(() => new Error('poll timed out'));
+    const seen: Deadline[] = [];
+    const options = makeOptions({
+      timeoutMs: 350,
+      onTimeout,
+      evaluate: async (deadline) => {
+        seen.push(deadline);
+        return false;
+      },
+    });
+    const promise = pollCondition(options);
     const assertion = expect(promise).rejects.toThrow('poll timed out');
     await vi.advanceTimersByTimeAsync(1000);
     await assertion;
+    expect(onTimeout).toHaveBeenCalledWith({});
+    expect(seen.every((deadline) => deadline === options.deadline)).toBe(true);
   });
 
-  it('negated: a budget shorter than the grace window is still satisfiable', async () => {
+  it('negated: a short budget keeps half of itself as the window', async () => {
     vi.useFakeTimers();
     let resolved = false;
     const promise = pollCondition(
@@ -134,9 +147,104 @@ describe('pollCondition', () => {
     void promise.then(() => {
       resolved = true;
     });
-    await vi.advanceTimersByTimeAsync(400 + POLL_INTERVAL_MS);
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
+    expect(resolved).toBe(false);
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
     expect(resolved).toBe(true);
     await promise;
+  });
+
+  it('negated: a negation that begins before the deadline finishes its window past it', async () => {
+    vi.useFakeTimers();
+    const start = Date.now();
+    const seen: number[] = [];
+    let resolved = false;
+    const promise = pollCondition(
+      makeOptions({
+        negated: true,
+        timeoutMs: 5000,
+        evaluate: async (deadline) => {
+          seen.push(deadline.endsAt - start);
+          return Date.now() - start < 4500;
+        },
+      }),
+    );
+    void promise.then(() => {
+      resolved = true;
+    });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(resolved).toBe(false);
+    await vi.advanceTimersByTimeAsync(NEGATION_GRACE_MS - 500);
+    expect(resolved).toBe(true);
+    await promise;
+    // Every sample up to the deadline ran within it; the five past it, within the window.
+    expect(seen).toEqual([...Array<number>(51).fill(5000), ...Array<number>(5).fill(6000)]);
+  });
+
+  it('negated: a hold broken after the deadline fails at once, with no negation state', async () => {
+    vi.useFakeTimers();
+    const start = Date.now();
+    const onTimeout = vi.fn(() => new Error('poll timed out'));
+    const promise = pollCondition(
+      makeOptions({
+        negated: true,
+        timeoutMs: 1000,
+        onTimeout,
+        evaluate: async () => {
+          const elapsed = Date.now() - start;
+          return elapsed < 900 || elapsed >= 1100;
+        },
+      }),
+    );
+    const assertion = expect(promise).rejects.toThrow('poll timed out');
+    await vi.advanceTimersByTimeAsync(1100);
+    await assertion;
+    expect(onTimeout).toHaveBeenCalledWith({});
+  });
+
+  it('negated: a negation that begins after the deadline fails one window later, saying how long it held', async () => {
+    vi.useFakeTimers();
+    const start = Date.now();
+    const onTimeout = vi.fn(() => new Error('poll timed out'));
+    const promise = pollCondition(
+      makeOptions({
+        negated: true,
+        timeoutMs: 900,
+        onTimeout,
+        // A slow read: samples land at 200, 500, 800, 1100, 1400 ms; the node goes at 1000.
+        evaluate: async () => {
+          await sleep(200);
+          return Date.now() - start < 1000;
+        },
+      }),
+    );
+    const assertion = expect(promise).rejects.toThrow('poll timed out');
+    await vi.advanceTimersByTimeAsync(1400);
+    await assertion;
+    expect(onTimeout).toHaveBeenCalledWith({ negation: { heldMs: 300, windowMs: 450 } });
+  });
+
+  it('negated: a hold completed by a sample past the extended deadline fails, however long it held', async () => {
+    vi.useFakeTimers();
+    const start = Date.now();
+    const onTimeout = vi.fn(() => new Error('poll timed out'));
+    const promise = pollCondition(
+      makeOptions({
+        negated: true,
+        timeoutMs: 900,
+        onTimeout,
+        // Samples land at 200, 500, 800, 1100 ms; the node goes at 1000, so the hold
+        // begins at 1100. The next read is slow and lands at 1700, past the 1350 ms cap.
+        evaluate: async () => {
+          await sleep(Date.now() - start >= 1200 ? 500 : 200);
+          return Date.now() - start < 1000;
+        },
+      }),
+    );
+    const assertion = expect(promise).rejects.toThrow('poll timed out');
+    await vi.advanceTimersByTimeAsync(1700);
+    await assertion;
+    expect(onTimeout).toHaveBeenCalledWith({ negation: { heldMs: 600, windowMs: 450 } });
   });
 
   it('negated: passes only after the grace window holds continuously', async () => {
@@ -233,6 +341,20 @@ describe('pollCondition', () => {
     const assertion = expect(promise).rejects.toThrow('async timeout');
     await vi.advanceTimersByTimeAsync(500);
     await assertion;
+  });
+});
+
+describe('describeNegationTimeout', () => {
+  it('states how long the negation held against its window', () => {
+    expect(describeNegationTimeout({ heldMs: 745, windowMs: 1000 })).toBe(
+      'held for 745 ms, short of the 1000 ms negation window',
+    );
+  });
+
+  it('says the window had closed when the hold was long enough but confirmed too late', () => {
+    expect(describeNegationTimeout({ heldMs: 600, windowMs: 450 })).toBe(
+      'held for 600 ms, confirmed only after the 450 ms negation window closed',
+    );
   });
 });
 

@@ -1,9 +1,10 @@
 /**
- * A `screen` fixture over a fake engine that answers every query with the
- * same node list, so locator reads and `expect(locator)` matchers can be
- * exercised without a browser. `index` expressions pick one of the nodes,
- * which is what `all()`, `first()`, and `nth()` need; every other expression
- * kind gets the whole list.
+ * A `screen` fixture over a fake engine that answers every query from one
+ * node list, or from a `() => nodes` source read afresh on every query so a
+ * test can change the screen mid-poll, so locator reads and `expect(locator)`
+ * matchers can be exercised without a browser. `index` expressions pick one
+ * of the nodes, which is what `all()`, `first()`, and `nth()` need; every
+ * other expression kind gets the whole list.
  */
 
 import type { LocatorExpression, SemanticNode } from '../../src/engine/surface.ts';
@@ -21,13 +22,18 @@ import { snapshot } from './snapshot.ts';
 /** Action and assertion timeout of the fixture, short enough for failing-path tests. */
 export const SCREEN_FIXTURE_TIMEOUT_MS = 300;
 
-export function createScreenFixture(nodes: readonly SemanticNode[]): Screen {
+type NodeSource =
+  | readonly SemanticNode[]
+  | (() => readonly SemanticNode[] | Promise<readonly SemanticNode[]>);
+
+export function createScreenFixture(nodes: NodeSource): Screen {
+  const current = typeof nodes === 'function' ? nodes : () => nodes;
   const engine: EngineHandle = defineEngine({
     name: 'fake',
     version: '1',
     spiVersion: 1,
-    observe: async () => snapshot(nodes),
-    locate: async (expression) => pick(expression, nodes),
+    observe: async () => snapshot(await current()),
+    locate: async (expression) => pick(expression, await current()),
   });
   const config = resolveConfig(
     {

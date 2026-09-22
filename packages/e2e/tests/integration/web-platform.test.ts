@@ -151,6 +151,21 @@ test('assertions poll until the app settles', async ({ app, screen }) => {
   await screen.getByRole('button', { name: 'Late arrival' }).waitFor({ state: 'visible' });
 });
 
+test('a negation that begins late in the budget passes past the deadline', async ({ app, screen, web }) => {
+  await app.open();
+  await web.evaluate(() => {
+    setTimeout(() => {
+      document.getElementById('class-card')?.remove();
+      document.title = 'Renamed';
+    }, 1000);
+    return 0;
+  });
+  await Promise.all([
+    expect(screen.getByText('Card')).not.toBeAttached({ timeout: 1500 }),
+    expect(web).not.toHaveTitle('Fixture Home', { timeout: 1500 }),
+  ]);
+});
+
 test('ambiguous locators fail immediately', async ({ app, screen }) => {
   await app.open();
   await screen.getByText('Duplicated').tap({ timeout: 2000 });
@@ -343,6 +358,7 @@ describe('web platform integration', () => {
       'role vocabulary: tabs, menus, progress, toolbars, images',
       'actions and state',
       'assertions poll until the app settles',
+      'a negation that begins late in the budget passes past the deadline',
       'web navigation, urls, and titles',
       'routes intercept and fulfill',
       'routes are attempt-scoped: registered before the first page, kept across restart and clearState',

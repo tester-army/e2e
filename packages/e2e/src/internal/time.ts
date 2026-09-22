@@ -50,45 +50,92 @@ export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 /** Canonical polling cadence for locator and assertion loops. */
 export const POLL_INTERVAL_MS = 100;
 
-/** How long a negated assertion must hold before it passes. */
+/** The most a negated assertion must hold before it passes. */
 export const NEGATION_GRACE_MS = 1000;
+
+/**
+ * How long a negation must hold for a budget: the grace, or half the budget
+ * when that is shorter, so a short `{ timeout }` leaves the negation room to
+ * begin.
+ */
+function negationWindow(budgetMs: number): number {
+  return Math.min(NEGATION_GRACE_MS, Math.floor(Math.max(0, budgetMs) / 2));
+}
+
+/** A negated poll that ran out of time while its last sample held the negation. */
+export interface NegationTimeout {
+  /** How long the negation had held at the last sample. */
+  readonly heldMs: number;
+  /** How long it had to hold. */
+  readonly windowMs: number;
+}
+
+/** What `pollCondition` knows when it gives up, for the caller's failure message. */
+export interface PollTimeout {
+  /** Present when the poll was negated and its last sample satisfied the negation. */
+  readonly negation?: NegationTimeout;
+}
 
 export interface PollConditionOptions {
   readonly deadline: Deadline;
   readonly signal: AbortSignal;
   readonly negated: boolean;
   /**
-   * Evaluates the positive condition once. Returns undefined when the
-   * condition cannot be evaluated yet: the positive poll keeps waiting and
-   * the negation grace window resets.
+   * Evaluates the positive condition once, within `deadline`: the caller's
+   * until it passes, then the negation window a negation that began in time
+   * may finish in. Returns undefined when the condition cannot be evaluated
+   * yet: the positive poll keeps waiting and the negation window resets.
    */
-  evaluate(): Promise<boolean | undefined>;
-  onTimeout(): Error | Promise<Error>;
+  evaluate(deadline: Deadline): Promise<boolean | undefined>;
+  onTimeout(timeout: PollTimeout): Error | Promise<Error>;
 }
 
 /**
- * Polls a condition until it holds (or, when negated, until its negation has
- * held continuously for the negation grace window), throwing the caller's
- * error at the deadline.
+ * Polls a condition until it holds, throwing the caller's error at the
+ * deadline. Negated, the condition must have stopped holding by the deadline
+ * and then stay that way for the negation window, which may run past the
+ * deadline by at most the window itself; a sample that breaks the hold once
+ * the deadline has passed fails the poll at once, and so does one that
+ * completes the hold after the extended deadline, however long it held.
  */
 export async function pollCondition(options: PollConditionOptions): Promise<void> {
-  // A budget shorter than the grace window still has to be satisfiable: the
-  // negation then only needs to hold for the budget itself.
-  const grace = Math.min(NEGATION_GRACE_MS, Math.max(0, options.deadline.remaining()));
-  let negatedTrueSince: number | undefined;
+  const { deadline } = options;
+  const windowMs = negationWindow(deadline.remaining());
+  const extended = new Deadline(windowMs, deadline.endsAt);
+  let heldSince: number | undefined;
+  let within = deadline;
   for (;;) {
-    const value = await options.evaluate();
+    const value = await options.evaluate(within);
+    const now = Date.now();
     if (!options.negated) {
       if (value === true) return;
     } else if (value === false) {
-      negatedTrueSince ??= Date.now();
-      if (Date.now() - negatedTrueSince >= grace) return;
+      heldSince ??= now;
+      if (now - heldSince >= windowMs && now <= extended.endsAt) return;
     } else {
-      negatedTrueSince = undefined;
+      heldSince = undefined;
     }
-    if (options.deadline.expired()) throw await options.onTimeout();
+    if (deadline.expired(now)) {
+      if (heldSince === undefined || extended.expired(now)) {
+        throw await options.onTimeout(
+          heldSince === undefined ? {} : { negation: { heldMs: now - heldSince, windowMs } },
+        );
+      }
+      within = extended;
+    }
     await sleep(POLL_INTERVAL_MS, options.signal);
   }
+}
+
+/**
+ * The failure line for a negation that held at the last sample: for less than
+ * its window, or for the window but confirmed by a sample that landed after
+ * the window had closed.
+ */
+export function describeNegationTimeout(negation: NegationTimeout): string {
+  return negation.heldMs < negation.windowMs
+    ? `held for ${negation.heldMs} ms, short of the ${negation.windowMs} ms negation window`
+    : `held for ${negation.heldMs} ms, confirmed only after the ${negation.windowMs} ms negation window closed`;
 }
 
 /** Races a promise against a timeout; on timeout invokes onTimeout to build the error. */
