@@ -259,6 +259,30 @@ describe('device provider', () => {
     expect(released).toEqual([]);
   });
 
+  it('releases a good lease and a rejected one from the same prepare, and warms neither', async () => {
+    const bad = { id: 'bad' };
+    const released: DeviceLease[] = [];
+    const mixed: DeviceProvider = {
+      name: 'mixed',
+      acquire: async (request) =>
+        request.slot === 0 ? { id: 'lease-0', daemon: { baseUrl: 'https://0.example' }, device: 'sim-0' } : (bad as DeviceLease),
+      release: async (granted) => {
+        released.push(granted);
+      },
+    };
+    const h = harness({ device: mixed });
+    await expect(h.engine.prepare!(prepareInfo({}, 2))).rejects.toMatchObject({
+      code: 'ENGINE_FAILURE',
+      message: expect.stringContaining('returned a lease without an id and a daemon baseUrl or JSON client configuration'),
+    });
+    // The bind failed before the warm-up, so no device was booted or opened, and nothing is left to close.
+    expect(h.fake.methods()).toEqual([]);
+    await h.engine.finish!(finishInfo());
+    expect(released.map((lease) => lease.id)).toEqual(['lease-0', 'bad']);
+    expect(released[1]).toBe(bad);
+    expect(h.fake.methods()).toEqual([]);
+  });
+
   it('rejects bindings too large for a worker environment, by bytes', async () => {
     const oversized: DeviceProvider = {
       name: 'huge',
