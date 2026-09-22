@@ -65,6 +65,14 @@ export function errorResult(cause: unknown): McpToolResult {
   return { content: [{ type: 'text', text: `${code}${errorMessage(cause)}` }], isError: true };
 }
 
+/** The same result with every text part passed through `redact`; image parts are the pixel taint's to withhold. */
+export function redactResult(result: McpToolResult, redact: (text: string) => string): McpToolResult {
+  return {
+    ...result,
+    content: result.content.map((part) => (part.type === 'text' ? { type: 'text', text: redact(part.text) } : part)),
+  };
+}
+
 /** How much of a description the catalog shows per tool: its first sentence, bounded. */
 const CATALOG_SENTENCE_MAX = 160;
 

@@ -23,7 +23,7 @@ import { allocateAppPorts } from '../run/app-ports.ts';
 import { openStandaloneAttempt, type StandaloneAttempt } from '../run/standalone.ts';
 import type { AgentParams } from '../types.ts';
 import { createSessionCatalog, isGrammarVerb, type SessionCatalog } from './catalog.ts';
-import { catalogLine, defineMcpTool, describeToolDetail, invokeTool, textResult, type McpToolCallExtra, type McpToolResult, type McpToolSpec } from './tools.ts';
+import { catalogLine, defineMcpTool, describeToolDetail, errorResult, invokeTool, redactResult, textResult, type McpToolCallExtra, type McpToolResult, type McpToolSpec } from './tools.ts';
 
 /** How long one session may live, whatever happens. */
 const SESSION_TTL_MS = 4 * 60 * 60 * 1000;
@@ -129,12 +129,16 @@ export class SessionHost {
     return describeToolDetail(tool, found, live.catalog.readOnly.has(tool));
   }
 
-  /** Runs one catalog tool inside the live session's step. */
+  /** Runs one catalog tool inside the live session's step; what comes back, a result or a failure, passes the attempt's secret ledger. */
   call(session: string | undefined, name: string, args: Record<string, unknown>, extra: McpToolCallExtra): Promise<McpToolResult> {
     const live = this.requireLive(session);
     const tool = live.catalog.tools[name];
     if (tool === undefined) throw this.unknownTool(live, name);
-    return this.run(live, () => invokeTool(name, tool, args, extra));
+    const redact = live.attempt.agentRuntime.redact;
+    return this.run(live, () => invokeTool(name, tool, args, extra)).then(
+      (result) => redactResult(result, redact),
+      (cause: unknown) => redactResult(errorResult(cause), redact),
+    );
   }
 
   private async openSession(options: OpenSessionOptions): Promise<string> {
@@ -175,6 +179,7 @@ export class SessionHost {
         screen,
         session: attempt.session,
         executor: config.agent.executor,
+        redact: attempt.agentRuntime.redact,
         locator: new LocatorEngine({
           session: attempt.session,
           budget: attempt.budget,
@@ -350,7 +355,7 @@ export class SessionHost {
     return defineMcpTool({
       name: 'tools',
       description:
-        "List the tools the open session can run through call: observe, the grammar its engine honors (tap, type, press, select, scroll, navigate, type_secret, and screenshot and tap_at while no secret has been filled), locate, and the project's own tools. With tool, shows that tool's full description and the JSON Schema of its arguments.",
+        "List the tools the open session can run through call: observe, the grammar its engine honors (tap, type, press, select, scroll, navigate, type_secret, and screenshot and the point tools tap_at, type_at, press_at, select_at, which answer PIXEL_TAINTED once a secret has been filled), locate, and the project's own tools. With tool, shows that tool's full description and the JSON Schema of its arguments.",
       inputSchema: z.object({
         tool: z.string().min(1).optional().describe('A catalog tool name, for its full contract'),
         session: z.string().min(1).optional().describe('Session id; defaults to the open session'),

@@ -1,8 +1,9 @@
 /**
  * The catalog of a live session: every tool `call` can run, as AI SDK tools.
  * `observe` shows the whole screen, the grammar is what the target's engine
- * honors — `screenshot` and `tap_at` among it while pixels may leave the
- * runner — `locate` tries a semantic locator the way a test would, and the
+ * honors, `screenshot` and the point tools (`tap_at`, `type_at`, `press_at`,
+ * `select_at`) among it, answering `PIXEL_TAINTED` once a secret has been
+ * filled, `locate` tries a semantic locator the way a test would, and the
  * project's own tools follow. Built-in
  * names win: a project tool named like one is neither listed nor reachable,
  * the precedence the testing agent's toolset applies.
@@ -11,7 +12,8 @@
 import type { ToolSet } from 'ai';
 import { z } from 'zod';
 import { isDefaultAgent, projectTools } from '../agent/default-agent.ts';
-import type { StepExecutor, StepExecutorContext } from '../agent/executor.ts';
+import type { ExecutorNode, StepExecutor, StepExecutorContext } from '../agent/executor.ts';
+import { projectTree } from '../agent/observation.ts';
 import { createGrammarTools, GRAMMAR_TOOL_NAMES } from '../agent/primitives.ts';
 import type { ScreenPresenter } from '../agent/screen-update.ts';
 import type { LocatorExpression, SemanticNode, TargetSession } from '../engine/surface.ts';
@@ -41,6 +43,8 @@ export interface CatalogOptions {
   readonly session: TargetSession;
   /** The configured executor, whose project tools are served when it came from `createAgent`. */
   readonly executor: StepExecutor | undefined;
+  /** The attempt's secret ledger: what `locate` shows of a node passes through it, as `observe` does. */
+  readonly redact: (text: string) => string;
   readonly warn: (message: string) => void;
 }
 
@@ -53,7 +57,7 @@ export function createSessionCatalog(options: CatalogOptions): SessionCatalog {
   const builtIn: ToolSet = {
     observe: fullObserveTool(context, screen),
     ...verbs,
-    locate: locateTool(options.locator, options.session),
+    locate: locateTool(options.locator, options.session, options.redact),
   };
   const defined = isDefaultAgent(options.executor) ? options.executor.tools : {};
   const readOnly = new Set(['observe', 'locate', 'screenshot']);
@@ -85,7 +89,7 @@ function fullObserveTool(context: StepExecutorContext, screen: ScreenPresenter):
 }
 
 /** The session's `locate`: a semantic locator tried against the live screen, with the verdict a test would get. */
-function locateTool(locator: LocatorEngine, session: TargetSession): ToolSet[string] {
+function locateTool(locator: LocatorEngine, session: TargetSession, redact: (text: string) => string): ToolSet[string] {
   return {
     description:
       'Try a semantic locator against the live screen before writing it into a test: screen.getByRole(role, { name }), getByText, getByLabel, getByPlaceholder, or getByTestId. Returns how many nodes match and which, plus the test code to use. Exactly one of role, text, label, placeholder, or testId; name narrows a role query. Matching is exact unless exact is false.',
@@ -105,7 +109,7 @@ function locateTool(locator: LocatorEngine, session: TargetSession): ToolSet[str
       for (const ref of refs.slice(0, MAX_LOCATE_NODES)) {
         read.push(await session.read(ref, locator.operation()));
       }
-      return describeLocate(query, refs.length, read);
+      return describeLocate(query, refs.length, read, redact);
     },
   };
 }
@@ -149,23 +153,27 @@ export function locateQuery(args: LocateArgs): LocateQuery {
   return { expression: textQuery('placeholder', placeholder!, { exact }, undefined), code: `screen.getByPlaceholder(${JSON.stringify(placeholder)}${options})` };
 }
 
-/** Renders a locate result: the count, the verdict a test would get, and the nodes. */
-export function describeLocate(query: LocateQuery, count: number, nodes: readonly SemanticNode[]): string {
+/** Renders a locate result: the count, the verdict a test would get, and the nodes, each through the attempt's redactor. */
+export function describeLocate(query: LocateQuery, count: number, nodes: readonly SemanticNode[], redact: (text: string) => string): string {
   const lines = [`${count === 1 ? '1 node matches' : `${count} nodes match`} ${describeExpression(query.expression)}.`];
   if (count === 1) lines.push(`Use: ${query.code}`);
   else if (count === 0) lines.push('A test using this locator would fail with LOCATOR_NOT_FOUND. Check the accessible name in the observation (observe), or loosen the match with exact: false.');
   else lines.push(`A test action on ${query.code} would fail with LOCATOR_AMBIGUOUS. Narrow it with { name }, .filter({ hasText }), .first(), or .nth(i), or scope it under a container.`);
-  for (const node of nodes) lines.push(`- ${describeNode(node)}`);
+  for (const node of nodes) lines.push(`- ${describeNode(projectTree(node, redact))}`);
   if (count > nodes.length) lines.push(`- and ${count - nodes.length} more`);
   return lines.join('\n');
 }
 
-/** A located node by what names it; located refs are not observation ids, so none is shown. */
-function describeNode(node: SemanticNode): string {
+/**
+ * A located node by what names it, from the projection `observe` hands an
+ * executor: name, text, and value have passed the secret ledger and a secure
+ * node carries no value. Located refs are not observation ids, so none is shown.
+ */
+function describeNode(node: ExecutorNode): string {
   const parts = [node.role ?? 'node'];
   if (node.name !== undefined && node.name !== '') parts.push(JSON.stringify(node.name));
   if (node.text !== undefined && node.text !== '' && node.text !== node.name) parts.push(`text ${JSON.stringify(node.text)}`);
-  if (node.value !== undefined && node.states?.secure !== true) parts.push(`value ${JSON.stringify(node.value)}`);
+  if (node.value !== undefined) parts.push(`value ${JSON.stringify(node.value)}`);
   const states = Object.entries(node.states ?? {})
     .filter(([, value]) => value === true)
     .map(([key]) => key);
