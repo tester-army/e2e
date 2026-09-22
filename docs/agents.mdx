@@ -78,7 +78,9 @@ agents: {
 ```
 
 Wrapping `createAgent` in an options object, for budgets or `providerOptions`,
-needs no second `model` or `context` key. Set the vocabulary in one place, on
+needs no second `model` or `context` key. `createAgent({ maxTurns })` caps the
+model turns of one step; the cap defaults to `maxModelCalls` and can only
+lower it. Set the vocabulary in one place, on
 `createAgent` or on the options object; two different values for one agent is
 `INVALID_CONFIG`, as it is for `model`.
 
