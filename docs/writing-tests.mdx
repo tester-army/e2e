@@ -166,6 +166,57 @@ Share setup and cleanup through `test.extend`. A fixture can create a test
 workspace before the test and delete it afterward, including when the test
 fails. See [Your own fixtures](/reference/test#your-own-fixtures).
 
+## Tests without a screen
+
+An end-to-end suite covers the API too, in the same files and the same run.
+The built-in fixtures are acquired on first use: a test that takes only
+`app` opens no page and calls no model. Call the API with `fetch` and check
+the response with the value matchers.
+
+```ts title="tests/users-api.e2e.ts"
+import { test, expect } from 'e2e';
+
+test('GET /api/users returns the seeded users', async ({ app }) => {
+  const response = await fetch(new URL('/api/users', app.baseUrl));
+  expect(response.status).toBe(200);
+  expect(response.headers.get('content-type')).toContain('application/json');
+  const users: unknown = await response.json();
+  expect(users).toHaveLength(3);
+  expect(users).toMatchObject([{ name: 'Ada' }, { name: 'Grace' }, { name: expect.any(String) }]);
+});
+```
+
+`app.baseUrl` is the engine's `url`, with the port the run allocated when it
+declared port 0, so the same file runs against the `command` the config
+starts and against a deployed preview. For state the API writes after it
+answers, [`expect.poll`](/reference/expect#polling-a-value) re-reads until a
+matcher passes.
+
+A request helper is [a fixture of your own](/reference/test#your-own-fixtures).
+This one reads `web.cookies()` on every call, so a request after a sign-in
+session or a `beforeEach` that sets cookies runs as the signed-in user. Every
+test registered through this `test` acquires `web`, so it needs a web target.
+
+```ts title="tests/api.ts"
+import { test as base } from '@e2edev/web';
+
+export const test = base.extend<{ api: (path: string, init?: RequestInit) => Promise<Response> }>({
+  api: async ({ app, web }, use) => {
+    await use(async (path, init) => {
+      const headers = new Headers(init?.headers);
+      headers.set('cookie', (await web.cookies()).map((c) => `${c.name}=${c.value}`).join('; '));
+      return fetch(new URL(path, app.baseUrl), { ...init, headers });
+    });
+  },
+});
+```
+
+The target still names an engine: a target without one starts no app and
+has no `app.baseUrl`. So a worker launches its browser once and opens a
+context per test, cheap but not free. One run starts the app once, one
+report covers API and UI, and a UI test can pin its outcome through the API
+in the same body.
+
 ## Structure
 
 ```ts

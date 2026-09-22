@@ -221,7 +221,7 @@ to do today.
 | `page.exposeFunction()`, `addInitScript()`, `setExtraHTTPHeaders()`, `emulateMedia()`, `clock` | not yet | `web` | missing |
 | `context.addCookies()`, `context.cookies()` | `web.setCookies()`, `web.cookies()` | `web` | web only |
 | `context.clearCookies()` | not yet; `app.clearState()` also clears other persisted state and recreates the context | `web` | missing |
-| `request` fixture | Node `fetch`; forward the browser session from `web.cookies()` when the API needs it | `test` | by design |
+| `request` fixture | Node `fetch`, see [Tests without a screen](/writing-tests#tests-without-a-screen) | `test` | by design |
 | `context.storageState({ path })` | not yet; sessions are per run and encrypted, see [By design](#by-design) | `test` | by design |
 
 ### Test structure

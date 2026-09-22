@@ -171,7 +171,7 @@ says whether the call exists: `same`, `renamed`, `device only`, `by design`
 | `optional: true` on a command | the same `isVisible()` check | `test` | renamed |
 | `repeat: { times: n }`, `repeat: { while }` | a `for` or `while` loop | `test` | renamed |
 | `runScript`, `evalScript`, `${output.x}` | TypeScript in the test | `test` | renamed |
-| `http.get`, `http.post`, `json()` | Node `fetch` | `test` | renamed |
+| `http.get`, `http.post`, `json()` | Node `fetch`, see [Tests without a screen](/writing-tests#tests-without-a-screen) | `test` | renamed |
 | `onFlowStart`, `onFlowComplete` | `test.beforeEach`, `test.afterEach` | `test` | renamed |
 | `startRecording`, `stopRecording` | `--video` records whole attempts; no start and stop inside a test | CLI | renamed |
 

@@ -236,6 +236,21 @@ substring or a RegExp. Both take a list to check every match at once:
 in order. `toBeAttached` waits for a match to exist, hidden or not. A failed
 matcher is `ASSERTION_FAILED`, exit code 1.
 
+A test that takes only `app` opens no page and calls no model; the browser
+the worker launched and the context per attempt are still paid. Check an
+API with `fetch` against `app.baseUrl` and the value matchers, in the same
+suite as the UI tests: one run starts the app once and one report covers
+both. A request helper is a `test.extend` fixture; read `web.cookies()`
+inside it when the API needs the signed-in session.
+
+```ts
+test('GET /api/users returns the seeded users', async ({ app }) => {
+  const response = await fetch(new URL('/api/users', app.baseUrl));
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject([{ name: 'Ada' }, { name: 'Grace' }, { name: expect.any(String) }]);
+});
+```
+
 ## Sign-in sessions
 
 Sign in once in a setup test, save the state under a name, and let other

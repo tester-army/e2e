@@ -11,7 +11,9 @@ screen. Use `screen`, `app`, `web`, and `expect` for exact interactions and
 checks. The trace cache can replay verified actions and check their recorded
 end state without a model call. Agent judgments still run live.
 UI targets use `@e2edev/web` for browsers or
-`@e2edev/mobile` for iOS simulators and Android emulators.
+`@e2edev/mobile` for iOS simulators and Android emulators. A test that
+takes only `app` can check an API with `fetch` and `expect`; see the
+`writing-tests` topic.
 
 Agent steps can use an existing ChatGPT, Copilot, or SuperGrok subscription,
 an API key, or a local model. `e2e init` offers these choices. See
