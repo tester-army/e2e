@@ -1,10 +1,13 @@
 /** `agents` by name: `--agent` runs the suite with another configured brain, and the run says so. */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { stripVTControlCharacters } from 'node:util';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { StepExecutor } from '../../src/agent/executor.ts';
 import type { RunEvent } from '../../src/run/events.ts';
+import { judgment } from '../helpers/fake-model.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { createProject, runExisting, type FixtureProject } from '../helpers/run-project.ts';
+import { createScriptedInstance, scriptedResult } from '../helpers/scripted-model.ts';
 
 const SUITE = `
 import { test } from '@e2edev/web';
@@ -65,9 +68,32 @@ test('unpinned follows the run', async ({ app, agent }) => {
 });
 `;
 
+const TWO_MODELS_SUITE = `
+import { test } from '@e2edev/web';
+
+test('the default agent judges twice', async ({ app, agent }) => {
+  await app.open();
+  await agent.assert('ready');
+  await agent.assert('still ready');
+});
+
+test.describe('as the buyer', { agent: 'buyer' }, () => {
+  test('the buyer judges once', async ({ app, agent }) => {
+    await app.open();
+    await agent.assert('ready');
+  });
+});
+`;
+
 /** An executor that signs its verdict, so the report shows which one ran. */
 function signing(name: string): StepExecutor {
   return { name, async runStep() { return { status: 'passed', summary: `done by ${name}` }; } };
+}
+
+/** A scripted model that holds every judgment, named so the AI row can tell it from another. */
+function judging(provider: string, modelId: string) {
+  return createScriptedInstance(provider, modelId, async () =>
+    scriptedResult([{ type: 'text', text: JSON.stringify(judgment(true, 'ready')) }], 'stop'));
 }
 
 describe('named agents', () => {
@@ -171,6 +197,35 @@ describe('named agents', () => {
       expect(started[1]).not.toHaveProperty('model');
     } finally {
       personas.cleanup();
+    }
+  }, 120_000);
+
+  it('names each agent’s model with its call count on the AI row when two agents answered on two models', async () => {
+    const twoModels = createProject({ 'tests/models.e2e.ts': TWO_MODELS_SUITE });
+    const written: string[] = [];
+    const stdoutWrite = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      written.push(String(chunk));
+      return true;
+    });
+    try {
+      const outcome = await runExisting(twoModels, {
+        appUrl: app.url,
+        config: {
+          tests: 'tests/**/*.e2e.ts',
+          cache: 'off',
+          agents: { default: { model: judging('fake-loop', 'scripted-loop') }, buyer: { model: judging('typesafe-ai', 'jev') } },
+        },
+        runOptions: { quiet: false },
+      });
+      stdoutWrite.mockRestore();
+      expect(outcome.status).toBe('passed');
+      const printed = stripVTControlCharacters(written.join(''));
+      // The header names the configuration; the AI row names what answered.
+      expect(printed).toContain('model fake-loop/scripted-loop\n');
+      expect(printed).toContain('3 model calls · fake-loop/scripted-loop (2 calls) · typesafe-ai/jev (1 call)\n');
+    } finally {
+      stdoutWrite.mockRestore();
+      twoModels.cleanup();
     }
   }, 120_000);
 

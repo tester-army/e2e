@@ -22,18 +22,12 @@ export function agentStepTable(
   const steps = collectAgentSteps(results, serialGroups);
   if (steps.length === 0) return '';
 
-  const models = new Set(
-    steps
-      .map((step) => (step.model === undefined ? undefined : stepModelLabel(step.model)))
-      .filter((model): model is string => model !== undefined),
-  );
+  const models = new Set(steps.map(viaLabel).filter((model): model is string => model !== undefined));
   const mixedModels = models.size > 1;
 
   const rows = steps.map((step) => [
     truncate(step.label === '' ? step.api : `${step.api} ${JSON.stringify(step.label)}`, 64),
-    ...(mixedModels
-      ? [step.model === undefined ? '-' : stepModelLabel(step.model)]
-      : []),
+    ...(mixedModels ? [viaLabel(step) ?? '-'] : []),
     formatMs(step.durationMs),
     formatMs(eventMs(step, 'model')),
     formatMs(eventMs(step, 'observation')),
@@ -72,6 +66,11 @@ export function agentStepTable(
     rows,
     '(no agent steps recorded)',
   );
+}
+
+/** The model a step reported, as the `via` column names it; undefined for a step with no model or no provenance. */
+function viaLabel(step: StepRecord): string | undefined {
+  return step.model === undefined ? undefined : stepModelLabel(step.model);
 }
 
 /** Agent steps from every attempt and serial member, in record order. */
