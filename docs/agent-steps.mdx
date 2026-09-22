@@ -72,9 +72,9 @@ An agent step returns one of three verdicts:
 - `blocked`: a prerequisite, environment problem, or execution limit
   prevented a product verdict. The error code determines the exit code.
 
-An error code belongs to `failed` or `blocked` only: a `passed` verdict
-that carries one is refused back to the model like any other schema
-violation, and its next turn repairs it.
+An error code belongs to `failed` or `blocked` only. A `passed` verdict
+that carries one is not refused: the code is dropped, the step passes, and
+the turn's outcome notes the dropped code.
 
 | Blocked by | Codes | Exit |
 | --- | --- | ---: |

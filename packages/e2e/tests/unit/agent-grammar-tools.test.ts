@@ -68,16 +68,19 @@ describe('the grammar tools have closed schemas', () => {
     expectClosed(schemaOf({ complete_step: createVerdictTool().tool }, 'complete_step'), { status: 'passed', summary: 'done' }, 'complete_step');
   });
 
-  it('refuses a passed verdict that carries an error code, and names the rule', () => {
-    const schema = schemaOf({ complete_step: createVerdictTool().tool }, 'complete_step');
-    const contradictory = schema.safeParse({ status: 'passed', summary: 'done', errorCode: 'ACTION_FAILED' });
-    expect(contradictory.success).toBe(false);
-    if (contradictory.success) return;
-    expect(contradictory.error.issues.map((issue) => issue.message)).toEqual(['errorCode is only valid with status failed or blocked']);
-    expect(contradictory.error.issues[0]!.path).toEqual(['errorCode']);
-    expect(schema.safeParse({ status: 'failed', summary: 'done', errorCode: 'ACTION_FAILED' }).success).toBe(true);
+  it('accepts a passed verdict beside an error code: the body records the pass without the code and says what it dropped', async () => {
+    // One model attaches ACTION_FAILED to about half of its passes; a schema refusal had it resend the identical call until the turn budget ran out.
+    const passed = createVerdictTool();
+    const schema = schemaOf({ complete_step: passed.tool }, 'complete_step');
+    const contradictory = { status: 'passed', summary: 'done', errorCode: 'ACTION_FAILED' };
+    expect(schema.safeParse(contradictory).success).toBe(true);
+    const options = { toolCallId: 'verdict', messages: [], context: undefined };
+    expect(await passed.tool.execute!(contradictory, options)).toBe('Step concluded; dropped errorCode ACTION_FAILED on a passed verdict.');
+    expect(passed.verdict()).toEqual({ status: 'passed', summary: 'done' });
+    const failed = createVerdictTool();
+    expect(await failed.tool.execute!({ status: 'failed', summary: 'done', errorCode: 'ACTION_FAILED' }, options)).toBe('Step concluded.');
+    expect(failed.verdict()).toEqual({ status: 'failed', summary: 'done', errorCode: 'ACTION_FAILED' });
     expect(schema.safeParse({ status: 'blocked', summary: 'done', errorCode: 'ENVIRONMENT_UNAVAILABLE' }).success).toBe(true);
-    expect(schema.safeParse({ status: 'passed', summary: 'done' }).success).toBe(true);
   });
 });
 
@@ -99,7 +102,7 @@ describe('the schema a provider receives', () => {
     }
   });
 
-  it('sends complete_step as the object alone: the refinement on errorCode adds no keyword', () => {
+  it('sends complete_step as the plain object: the errorCode rule is its description, never a keyword or a refinement', () => {
     const schema = createVerdictTool().tool.inputSchema as z.ZodType;
     expect(Object.keys(sent(schema)).toSorted()).toEqual(['$schema', 'additionalProperties', 'properties', 'required', 'type']);
     expect(Object.keys(emitted(schema)).toSorted()).toEqual(['$schema', 'additionalProperties', 'properties', 'required', 'type']);
