@@ -55,7 +55,7 @@ import {
 import type { AgentDeviceClient, MobileOptions, MobilePlatform, ClientFactory } from './options.ts';
 import { maskPng } from './png.ts';
 import { pinnedApp } from './bindings.ts';
-import { assertAppId } from './links.ts';
+import { assertAppId, assertConfiguredApp } from './links.ts';
 import { DevicePool, deviceSelection } from './pool.ts';
 import {
   invalidState,
@@ -268,6 +268,7 @@ export class AgentDeviceSurface {
     readonly options: MobileOptions,
     private readonly createClient: ClientFactory,
   ) {
+    assertConfiguredApp(options.app);
     this.pool = new DevicePool(options, createClient);
     this.settleOptions = settleOptions(options.settle);
     this.transitionMs = transitionMs(options.transition);

@@ -12,9 +12,10 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppError } from 'agent-device';
 import { decodePng, encodePng } from '../helpers/png.ts';
-import type { EngineFixtureContext, OperationContext, SemanticNode } from 'e2e/engine';
+import type { EngineFixtureContext, FixtureOperations, OperationContext, SemanticNode } from 'e2e/engine';
 import type { Device } from '../../src/device.ts';
-import { SETTINGS_NODES, SETTINGS_SNAPSHOT } from '../helpers/fake-client.ts';
+import { AgentDeviceSurface } from '../../src/surface.ts';
+import { createFakeClient, SETTINGS_NODES, SETTINGS_SNAPSHOT } from '../helpers/fake-client.ts';
 import { boot, harness, poolVariableIn, PROJECT_ROOT, type Harness } from '../helpers/harness.ts';
 
 /** An agent's operation: the agent reads the screen right after acting, so its actions settle. */
@@ -331,6 +332,24 @@ describe('lifecycle', () => {
 
   it('rejects an empty pool at config time', () => {
     expect(() => harness({ device: [] })).toThrow(/empty pool/);
+  });
+
+  it('rejects a link as the app option at config time, before prepare could open it on a device', () => {
+    expect(() => harness({ app: 'file:///etc/passwd' })).toThrowError(expect.objectContaining({ code: 'INVALID_CONFIG' }));
+    for (const link of ['file:///etc/passwd', 'https://example.com/verify?token=s3cret', 'myapp://orders/42']) {
+      const fake = createFakeClient();
+      expect(() => new AgentDeviceSurface({ platform: 'ios', app: link }, () => fake.client)).toThrowError(
+        expect.objectContaining({
+          code: 'INVALID_CONFIG',
+          message: expect.stringContaining('device.openLink'),
+        }),
+      );
+      expect(fake.methods()).toEqual([]);
+    }
+    expect(() => new AgentDeviceSurface({ platform: 'ios', app: 'https://example.com/verify?token=s3cret' }, () => createFakeClient().client)).toThrowError(
+      expect.objectContaining({ message: expect.not.stringContaining('s3cret') }),
+    );
+    expect(() => harness({ app: 'Notes: Pro' })).not.toThrow();
   });
 
   it('takes undefined for every optional option, so env-driven configs need no conditional spreads', async () => {
@@ -934,10 +953,15 @@ describe('session hooks, viewport swipe, location, artifacts', () => {
 
 describe('device fixture', () => {
   const minted: unknown[] = [];
+  /** What the fixture declared to the harness recorder last, for the step labels. */
+  let declared: FixtureOperations<Device> | undefined;
   function fixture(h: Harness): Device {
     const context = {
       targetName: 'ios-simulator',
-      fixture: (_name: string, value: object) => value,
+      fixture: (_name: string, value: object, operations: FixtureOperations<Device>) => {
+        declared = operations;
+        return value;
+      },
       signal: new AbortController().signal,
       locator: (expression: unknown) => {
         minted.push(expression);
@@ -1125,6 +1149,13 @@ describe('device fixture', () => {
     expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
       ['apps.open', { app: 'com.apple.mobilesafari', platform: 'ios' }],
     ]);
+  });
+
+  it('labels openApp and openLink steps without the link query, so a magic-link token never enters the report', () => {
+    fixture(harness());
+    expect(declared?.openApp?.label?.('https://app.example.com/magic?token=s3cret#frag')).toBe('https://app.example.com/magic');
+    expect(declared?.openApp?.label?.('com.apple.Preferences')).toBe('com.apple.Preferences');
+    expect(declared?.openLink?.label?.('myapp://orders/42?ref=mail')).toBe('myapp://orders/42');
   });
 });
 

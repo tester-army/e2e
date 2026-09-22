@@ -30,7 +30,8 @@ export interface MobileOptions {
    * App opened fresh at the start of every attempt: a bundle id, a package
    * name, or a display name agent-device resolves (`Settings`). Without it the
    * surface observes whatever is in the foreground, and `app.restart()` and
-   * `app.clearState()` are not available.
+   * `app.clearState()` are not available. A link is `INVALID_CONFIG`: a test
+   * opens one with `device.openLink`.
    */
   readonly app?: string | undefined;
   /**

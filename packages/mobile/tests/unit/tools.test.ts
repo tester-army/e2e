@@ -95,9 +95,13 @@ describe('agent tool pack', () => {
       await expect(open(denied)).rejects.toMatchObject({ code: 'POLICY_DENIED' });
     }
     for (const link of ['https://example.com/verify', 'myapp://orders/42']) {
-      await expect(open(link)).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+      await expect(open(link)).rejects.toMatchObject({
+        code: 'INVALID_ARGUMENT',
+        message: expect.stringContaining('device.openLink'),
+      });
     }
     expect(fake.calls.length).toBe(before);
+    expect(tools.open_app!.tool.description).toContain('not a URL');
     expect(await open('com.apple.Preferences')).toBe('Opened com.apple.Preferences.');
     expect(fake.lastArgs('apps.open')).toEqual({ app: 'com.apple.Preferences', platform: 'ios' });
   });
