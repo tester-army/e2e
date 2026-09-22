@@ -48,7 +48,16 @@ The catalog, per session:
 | `type_secret` | Fills a configured secret by name: a credential's password into a password field, a `secrets` entry into any editable input; the plaintext never reaches the agent. Listed when the config declares `credentials` or `secrets`. |
 | `locate` | Tries a semantic locator (`role` + `name`, `text`, `label`, `placeholder`, `testId`, `exact`) and returns how many nodes match, which, and the `screen.*` call to write. |
 | `screenshot` | The masked pixels as an image, withheld once a secret was filled in the session. |
+| `tap_at` | Taps a point (`x`, `y` in the latest screenshot's pixels): a listed control under it by id, otherwise the bare point, which an engine without a bare-point tap cannot do. Listed when the engine declares `tap` or a bare-point tap. |
+| `type_at` | Types `value` into the field at a point: a listed input under it is filled by id; with a keyboard, anything else is tapped to focus it and typed into, at the caret unless `replace` is set. Without a keyboard a point on nothing listed fails. Listed when the engine declares `type` or a keyboard. |
+| `press_at` | Sends one `key` (`Enter`, `Escape`, `Tab`) to the control at a point: a listed control gets it by id; with a keyboard, anything else is tapped to focus it and the key goes through the keyboard. Listed when the engine declares `press` or a keyboard. |
+| `select_at` | Picks the option whose visible label is `value` in the select-like control at a point; the point must land on a listed select. Listed when the engine declares `select`. |
 | Project tools | Every `defineTool` passed to `createAgent({ tools })` that applies to the target's platform, under its own name; an engine pack such as `mobileTools` adds `open_app`, `swipe`, `alert`. |
+
+The four point tools stay in the catalog with `screenshot` but answer
+`PIXEL_TAINTED` once a secret has been filled in the session. Before the
+session's first `screenshot` each answers with the line that says to take
+one, at no cost.
 
 Resources: `e2e://guide` and `e2e://guide/<topic>` hold this skill.
 

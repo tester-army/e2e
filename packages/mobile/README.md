@@ -26,6 +26,7 @@ import type { E2EConfig } from 'e2e';
 import { createAgent } from 'e2e/agent';
 import { mobile } from '@e2edev/mobile';
 import { mobileTools } from '@e2edev/mobile/tools';
+import { gateway } from 'ai';
 
 const iphone = mobile({ platform: 'ios', app: 'Settings' });
 const pixel = mobile({ platform: 'android', app: 'com.android.settings' });
@@ -36,7 +37,12 @@ export default {
     { name: 'pixel', engine: pixel },
   ],
   workers: 1,
-  agents: { default: { executor: createAgent({ tools: mobileTools(iphone, pixel) }) } },
+  agents: {
+    default: createAgent({
+      model: gateway('openai/gpt-5.6-luna'),
+      tools: mobileTools(iphone, pixel),
+    }),
+  },
 } satisfies E2EConfig;
 ```
 
@@ -69,12 +75,13 @@ straight through, with no conditional spread.
   `listitem`; Android `android.widget.TextView` becomes `text`, `EditText`
   becomes `textbox`, `Switch` becomes `switch`), with rects, a viewport, and
   pixels on request with every secure field painted over. Element identifiers
-  (`ABOUT`, `android:id/title`) surface as the configured test id attribute.
+  (`ABOUT`, `android:id/title`) are the node's `testId`, what `getByTestId`
+  matches.
 - **Actions**: tap, double tap, long press, fill, clear, check/uncheck (when
   the tree exposes the checked state; Android switches do not), focus on
   editable fields, `Enter`, single-character keys, swipe within a node, drag.
-  `selectOption`, `setInputFiles`, focus on a control, and other keys fail
-  with `UNSUPPORTED_CAPABILITY`.
+  `selectOption`, `setInputFiles`, `scrollIntoView`, `secondaryTap`, focus on
+  a control, and other keys fail with `UNSUPPORTED_CAPABILITY`.
 - **Location**: every `screen` query, plus agent-device selectors through
   `device.locator('role=NavigationBar id=General')`.
 - **Viewport swipe**, `app.back()`, `app.restart()`, `app.clearState()`, and
@@ -129,21 +136,20 @@ never a link; `openLink` opens one, under the navigation rule.
 
 ## Agent tools
 
-`@e2edev/mobile/tools` exports `mobileTools(...engines)`:
-`open_app`, `swipe` (free-form, in logical pixels), `type_text` (into the
-focused field, for editors that hide it from the tree), `alert`, and
-`screenshot` (the model sees the image). Pass every device engine the config
-declares: tool names are fixed, so two packs cannot be merged, and the pack
-dispatches each call to the engine whose attempt is running. Tools are scoped
-to the platforms of those engines, so a suite that mixes web and device
+`@e2edev/mobile/tools` exports `mobileTools(...engines)`: `open_app`,
+`swipe` (free-form, in logical pixels), and `alert` (accept or dismiss a
+system alert). It takes at least one engine. Pass every device engine the
+config declares: tool names are fixed, so two packs cannot be merged, and the
+pack dispatches each call to the engine whose attempt is running. Tools are
+scoped to the platforms of those engines, so a suite that mixes web and device
 targets can hand the pack to one `createAgent`.
 
 ## Secrets
 
-Secret fills need an origin the runner can check, and a device location is
-not a URL, so it has no origin an allowlist can name: `type_secret` is denied
-on a device target before any plaintext reaches the device. Fill credentials
-through a deterministic `screen` action in a setup step instead.
+`type_secret` and `screen.getByLabel(...).fill(secret)` fill declared secrets
+on a device: a credential's password into a secure field, a `secrets` entry
+into any editable input. The model never sees the value, and screenshots are
+withheld for the rest of the attempt.
 
 ## Documentation
 

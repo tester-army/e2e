@@ -348,7 +348,6 @@ artifacts: {
   kinds: ['screenshot', 'trace', 'video'],
   store: {
     async put(artifact) {
-      // artifact.bytes, .sha256, .mediaType, .path, .runId, .testId, .attemptId, .stepId?, .startedAt?
       const key = await bucket.upload(artifact.path, artifact.bytes);
       return { ref: key };
     },
@@ -366,6 +365,26 @@ engine cannot produce fails before collection with `UNSUPPORTED_ARTIFACT`.
 reference the report records as `ref` beside the local path. A failed `put`
 never fails the run. Each worker constructs its own store from the config
 module.
+
+```ts
+/** One produced artifact, handed to `store.put` once it is complete on disk. */
+export interface StoredArtifact {
+  readonly kind: 'screenshot' | 'trace' | 'video' | 'download' | 'log';
+  readonly mediaType: string;
+  readonly bytes: Uint8Array;
+  readonly size: number;
+  readonly sha256: string;
+  /** Report-relative path with `/` separators, stable across runs of the same test. */
+  readonly path: string;
+  readonly runId: string;
+  readonly testId: string;
+  readonly attemptId: string;
+  /** The step that produced it, when one was running. */
+  readonly stepId?: string;
+  /** When a time-based artifact (a video segment) began recording. */
+  readonly startedAt?: string;
+}
+```
 
 ### video
 
@@ -456,7 +475,9 @@ export default {
 A bare `StepExecutor` is shorthand for `{ executor }`. `createAgent` accepts
 `model`, `system`, and `context`, so `{ executor: createAgent({ model, system,
 context }) }` is a complete agent: the options object around it needs no
-second `model` or `context` key. A string in `model` is
+second `model` or `context` key. `createAgent` also takes `judge`, `tools`,
+`providerOptions`, and `maxTurns`, a cap on the model turns of one step; it
+defaults to `maxModelCalls` and can only lower it. A string in `model` is
 `INVALID_CONFIG` naming the constructor to write, and so is a `model`,
 `judge`, or `context` that differs from the one passed to `createAgent(...)`. See
 [Custom executors](/executors) and

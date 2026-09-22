@@ -74,9 +74,10 @@ same events. Each event has a sequence number, `seq`, and an ISO timestamp,
 
 ```ts
 type RunEventFact =
-  | { type: 'run-started'; runId; projectId; projectRoot; artifactsRoot; ci; targets; agents?; model? }
+  | { type: 'run-started'; runId; projectId; projectRoot; artifactsRoot; ci; targets; agents?; model?; judge? }
   | { type: 'plan'; total; files: { file; target; tests }[] }
   | { type: 'notice'; target; message }
+  | { type: 'output'; target; pair; stream: 'stdout' | 'stderr'; text }
   | { type: 'setup'; step: SetupStep; state: 'started' }
   | { type: 'setup'; step: SetupStep; state: 'finished'; durationMs; outcome?: 'reused' }
   | { type: 'test-started'; testId; agent; repeat; title; file; serialId; target }
@@ -89,6 +90,11 @@ type RunEventFact =
   | { type: 'run-stopped'; failures; limit }
   | { type: 'run-finished'; status; exitCode; reportPath?; aiTracePath? };
 ```
+
+`output` is one write a test made to stdout or stderr; `pair` names the test
+running at the time and is undefined between tests. `judge` on `run-started`
+is the run agent's judge model, present only when judgments use a model other
+than `model`.
 
 The `phase` field describes step progress:
 

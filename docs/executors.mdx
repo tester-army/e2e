@@ -126,6 +126,8 @@ The executor receives this context:
 | `ctx.ledger` | Completed steps in the test |
 | `ctx.attempt` | Test and attempt ids, retry index, abort signal, and a `memory` map that is never reported |
 | `ctx.budgets` | Accounting for custom tools and model calls |
+| `ctx.attachTranscript(text)` | Attaches the model transcript to the step. Kept as a `log` artifact under `--debug`, a no-op otherwise; call once, at conclusion |
+| `ctx.attachTurns(turns)` | Keeps a clipped record of the step's model turns (`{ index, calls, outcome }`) on the step record whatever the debug setting; the report shows the last ones under a failed step |
 
 `tapAt(point)` uses a node id when a listed control occupies the point and
 otherwise calls the engine's coordinate action. `hitTest(point)` finds the
