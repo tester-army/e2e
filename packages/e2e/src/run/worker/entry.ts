@@ -210,8 +210,11 @@ function main(): void {
   process.on('uncaughtException', (cause) => fatal(cause));
   // A step the body did not await rejects on a promise nobody holds once it
   // is cancelled; the attempt has already recorded it as STEP_NOT_AWAITED.
+  // Any other rejection nobody caught fails the attempt it landed in; only
+  // between attempts is it the worker's.
   process.on('unhandledRejection', (cause) => {
-    if (!isAbandonedStepRejection(cause)) fatal(cause);
+    if (isAbandonedStepRejection(cause)) return;
+    if (worker?.failInFlight(cause) !== true) fatal(cause);
   });
 
   let worker: TargetWorker | undefined;

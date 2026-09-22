@@ -139,6 +139,15 @@ export class TargetWorker {
     });
   }
 
+  /**
+   * Hands a rejection nobody in this process caught to the attempt in
+   * flight, which fails with it. False when no attempt is running, and the
+   * rejection is the worker's to die of.
+   */
+  failInFlight(cause: unknown): boolean {
+    return this.executor?.failInFlight(cause) ?? false;
+  }
+
   handle(message: MainToWorker): void {
     switch (message.type) {
       case 'interrupt':
