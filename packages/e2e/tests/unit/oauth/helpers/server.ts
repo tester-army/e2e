@@ -1,5 +1,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { vi } from 'vitest';
+import { CREDENTIALS_ENV } from '../../../../src/oauth/store.ts';
+import type { OAuthCredentials } from '../../../../src/oauth/types.ts';
 
 export interface Received {
   readonly method: string;
@@ -79,4 +82,33 @@ export interface Echo {
   readonly url: string;
   readonly headers: Record<string, string>;
   readonly body: string;
+}
+
+const realFetch = globalThis.fetch;
+
+/**
+ * Puts a local server in a vendor's place for a constructor test: `logins`
+ * is what `E2E_OAUTH_CREDENTIALS` supplies, and every request the process
+ * sends reaches `vendor` with its path and query kept, whatever host it
+ * named. Both stand-ins are undone after each test.
+ */
+export function useVendor(afterEach: (fn: () => void) => void) {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+  return (vendor: { url: string }, logins: Record<string, OAuthCredentials>): void => {
+    vi.stubEnv(CREDENTIALS_ENV, JSON.stringify(logins));
+    vi.stubGlobal('fetch', async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+      const request = new Request(input, init);
+      const url = new URL(request.url);
+      const body = request.method === 'GET' || request.method === 'HEAD' ? undefined : await request.arrayBuffer();
+      return realFetch(new URL(`${url.pathname}${url.search}`, vendor.url), {
+        method: request.method,
+        headers: request.headers,
+        signal: request.signal,
+        ...(body === undefined ? {} : { body }),
+      });
+    });
+  };
 }

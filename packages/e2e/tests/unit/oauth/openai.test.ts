@@ -163,7 +163,8 @@ describe('Codex login', () => {
     expect(renewed).toMatchObject({ access: 'new', refresh: 'old-r', accountId: 'acct_123', residency: 'eu' });
     expect(renewed.expires).toBeGreaterThan(Date.now());
     reply = { status: 400, body: { error: 'invalid_grant' } };
-    await expect(provider.refresh(renewed)).rejects.toMatchObject({ code: 'LOGIN_REQUIRED' });
+    // The provider names the failure alone; the fetch that asked for the refresh appends the login command.
+    await expect(provider.refresh(renewed)).rejects.toMatchObject({ code: 'LOGIN_REQUIRED', message: 'ChatGPT token request failed (400: invalid_grant)' });
   });
 });
 
