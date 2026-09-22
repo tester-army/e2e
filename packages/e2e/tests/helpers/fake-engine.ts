@@ -278,11 +278,15 @@ export function createFakeEngine(behavior: FakeEngineBehavior = {}): FakeEngineH
           artifacts: {
             async screenshot(label, operation) {
               record(`artifacts.screenshot(${label ?? ''})`, operation);
-              // A file the runner can measure, so the artifact record is complete.
+              // A file the runner can measure, so the artifact record is
+              // complete; its bytes differ per attempt, as a screen's would.
               const dir = attempts[current]?.artifactsDir;
               if (dir !== undefined) {
                 mkdirSync(path.join(dir, 'screenshots'), { recursive: true });
-                writeFileSync(path.join(dir, 'screenshots', 'fake.png'), FAKE_PNG);
+                writeFileSync(
+                  path.join(dir, 'screenshots', 'fake.png'),
+                  Buffer.concat([FAKE_PNG, Buffer.from(operation.attemptId, 'utf8')]),
+                );
               }
               return 'screenshots/fake.png';
             },

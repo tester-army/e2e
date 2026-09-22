@@ -5,7 +5,8 @@
  * capability gating - can never silently regress.
  */
 
-import { existsSync, readdirSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -1040,6 +1041,57 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
       const kept = videosOf(outcome, 'capture session');
       expect(kept).toHaveLength(1);
       expect(existsSync(path.join(project.dir, '.e2e', 'artifacts', kept[0]!.path!))).toBe(true);
+      project.cleanup();
+    },
+    60_000,
+  );
+});
+
+describe('artifact directories', () => {
+  /** A describe long enough that the two test ids below share their first 120 characters. */
+  const LONG_DESCRIBE =
+    'a returning customer with a saved card and an expired coupon on file who reloads the checkout page twice before paying';
+  const SHARED_PREFIX_FILE = `import { test } from 'e2e';
+
+test.describe(${JSON.stringify(LONG_DESCRIBE)}, () => {
+  test('keeps the coupon after a reload', async ({ app }) => {
+    await app.open('/');
+    throw new Error('first');
+  });
+
+  test('drops the coupon after sign-out', async ({ app }) => {
+    await app.open('/');
+    throw new Error('second');
+  });
+});
+`;
+
+  it(
+    'two failing tests whose ids share a 120-character prefix keep their evidence apart, on disk and in the report',
+    async () => {
+      const fake = createFakeEngine({ artifacts: true });
+      const { outcome, project } = await runProject(
+        { 'tests/checkouts.e2e.ts': SHARED_PREFIX_FILE },
+        { appUrl: APP_URL, config: fakeConfig(fake, { artifacts: ['screenshot'] }) },
+      );
+      const first = resultByTitle(outcome, 'keeps the coupon after a reload');
+      const second = resultByTitle(outcome, 'drops the coupon after sign-out');
+      expect(first.test.id.slice(0, 120)).toBe(second.test.id.slice(0, 120));
+      expect([first.status, second.status]).toEqual(['failed', 'failed']);
+
+      const screenshotOf = (result: typeof first) =>
+        result.attempts[0]!.artifacts.find((artifact) => artifact.kind === 'screenshot')!;
+      const [a, b] = [screenshotOf(first), screenshotOf(second)];
+      expect(a.path).not.toBe(b.path);
+      expect(a.sha256).not.toBe(b.sha256);
+      for (const artifact of [a, b]) {
+        const absolute = path.join(project.dir, '.e2e', 'artifacts', artifact.path!);
+        expect(existsSync(absolute)).toBe(true);
+        expect(createHash('sha256').update(readFileSync(absolute)).digest('hex')).toBe(artifact.sha256);
+      }
+      // One directory per test under the target, not one written twice.
+      expect(readdirSync(path.join(project.dir, '.e2e', 'artifacts', 'fake'))).toHaveLength(2);
+      assertValidReport(outcome.report);
       project.cleanup();
     },
     60_000,
