@@ -1,0 +1,5 @@
+---
+'e2e': patch
+---
+
+Typing into a listed node the engine cannot fill (a focusable canvas, a widget with its own key handling) no longer reads as a failed action: the result said `the control had no visible effect here: look for another way rather than repeating it` because the tree cannot list that node's text, and the model retyped or gave up. The keyboard fallback now says the tree does not list the text and asks for the app's reaction or a screenshot as the check, and any result whose listed nodes stood still while the attached screenshot changed says `listed nodes unchanged; the screenshot changed` instead of blaming the control. An inconclusive `agent.assert` judged from the tree alone adds `pass vision: true when the answer is in pixels` to its message, as a condition (`if the engine captures pixels, ...`) until a step of the attempt has received pixels, and not at all when the engine declares no screenshot capture, a secret was filled, or an earlier pixel request was degraded; a `waitFor` timeout after an inconclusive round carries the same hint.

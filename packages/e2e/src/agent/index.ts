@@ -10,7 +10,7 @@
  */
 
 import { isVisionMode } from '../config/agent.ts';
-import { TestError } from '../internal/errors.ts';
+import { TestError, withHint } from '../internal/errors.ts';
 import { rejectUnknownOptions } from '../internal/options.ts';
 import { sleep } from '../internal/time.ts';
 import type { StepRunOptions } from '../run/steps.ts';
@@ -45,6 +45,18 @@ const EXTRACT_MODEL_CALLS = 2;
 /** One judgment plus one repair round for a response that missed the grammar. */
 const ASSERT_MODEL_CALLS = 2;
 
+/**
+ * Appended to an inconclusive judgment made from the tree alone while pixels
+ * may be there to ask for: the docs say to add `vision: true` when the answer
+ * is in pixels, and the failing test is where that advice is needed. Firm
+ * once a step of the attempt has received pixels; a condition before, since
+ * the SPI declares no pixel capability and an engine that captures none says
+ * so only once asked.
+ */
+const VISION_HINT = 'the judge saw the semantic tree only; pass vision: true when the answer is in pixels';
+const VISION_HINT_UNPROVEN =
+  'the judge saw the semantic tree only; if the engine captures pixels, pass vision: true when the answer is in pixels';
+
 const WAIT_FOR_KEYS = ['timeout', 'interval', 'maxModelCalls', 'vision', 'agent'] as const;
 const EXTRACT_KEYS = ['schema', 'timeout', 'vision', 'agent'] as const;
 const ASSERT_KEYS = ['timeout', 'screenshot', 'vision', 'agent'] as const;
@@ -58,6 +70,26 @@ export function createAgentFixture(runtime: AgentContext): Agent {
       throw new TestError('INVALID_ARGUMENT', "vision must be true, false, or 'only'");
     }
     return requested;
+  };
+
+  /**
+   * The vision hint for an inconclusive judgment made from the tree alone,
+   * or none when `vision: true` could add no evidence in this attempt: the
+   * engine declares no screenshot capture, a secret was filled, or an
+   * earlier step's pixel request was already degraded.
+   */
+  const visionHint = (): string | undefined => {
+    if (runtime.taint.value || !runtime.engineCapabilities.has('artifacts')) return undefined;
+    const steps = runtime.steps.completed();
+    if (steps.some((step) => step.visionDegraded !== undefined)) return undefined;
+    return steps.some((step) => step.visionInput === true) ? VISION_HINT : VISION_HINT_UNPROVEN;
+  };
+
+  /** A judgment's explanation as the test reads it: an inconclusive verdict reached without pixels carries the vision hint when there is one. */
+  const explain = (judgment: { readonly verdict: string; readonly explanation: string }, vision: VisionMode): string => {
+    if (judgment.verdict !== 'inconclusive' || vision !== false) return judgment.explanation;
+    const hint = visionHint();
+    return hint === undefined ? judgment.explanation : withHint(judgment.explanation, hint);
   };
 
   /**
@@ -110,6 +142,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
       rejectUnknownOptions('agent.waitFor', options, WAIT_FOR_KEYS);
       const intervalMs = validateInterval(options?.interval);
       const { config } = runtime.select(options?.agent);
+      const vision = resolveVision(options?.vision);
       return step(
         {
           api: 'agent.waitFor',
@@ -117,7 +150,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           task: 'judge whether a condition holds',
           timeoutMs: resolveTimeout(options?.timeout, config.timeout),
           maxModelCalls: resolveBoundedBudget(options?.maxModelCalls, config.maxModelCalls, 'maxModelCalls'),
-          vision: resolveVision(options?.vision),
+          vision,
         },
         condition,
         async (invocation) => {
@@ -132,7 +165,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
             observation = await waitForNextJudgment(invocation, {
               since: observation,
               intervalMs,
-              lastExplanation: judgment.explanation,
+              lastExplanation: explain(judgment, vision),
               signal: runtime.engine.signal,
             });
           }
@@ -204,6 +237,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
       if (customExecutor) {
         return runAssertStep(runtime, assertion, options);
       }
+      const vision = resolveVision(options?.vision);
       return step(
         {
           api: 'agent.assert',
@@ -211,7 +245,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           task: 'judge whether an assertion holds',
           timeoutMs: resolveTimeout(options?.timeout, config.timeout),
           maxModelCalls: ASSERT_MODEL_CALLS,
-          vision: resolveVision(options?.vision),
+          vision,
         },
         assertion,
         async (invocation) => {
@@ -229,7 +263,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           // "the screen did not show enough to judge"; neither is a pass.
           throw new AgentError(
             judgment.verdict === 'fails' ? 'ASSERTION_FAILED' : 'ASSERTION_INCONCLUSIVE',
-            judgment.explanation,
+            explain(judgment, vision),
             screenshot === undefined ? {} : { screenshot },
           );
         },
