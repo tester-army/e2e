@@ -83,7 +83,7 @@ describe('agent tool pack', () => {
       env: {},
       signal: new AbortController().signal,
     });
-    await ios.startAttempt!({ attemptId: 'a1', artifactsDir: '/tmp', signal: new AbortController().signal });
+    await ios.startAttempt!({ attemptId: 'a1', artifactsDir: '/tmp', signal: new AbortController().signal, registerSecret: () => undefined });
     const tools = mobileTools(ios);
     const open = (app: string) =>
       (tools.open_app!.tool.execute as (input: unknown, options: object) => Promise<unknown>)({ app }, {

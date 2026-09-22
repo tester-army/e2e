@@ -154,7 +154,7 @@ async function withPage(
     signal,
   });
   try {
-    await engine.startAttempt!({ attemptId: pathname, artifactsDir, signal });
+    await engine.startAttempt!({ attemptId: pathname, artifactsDir, signal, registerSecret: () => undefined });
     await engine.session!.open!(`${app.url}${pathname}`, operation);
     await body(engine, operation);
   } finally {

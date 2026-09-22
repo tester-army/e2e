@@ -194,7 +194,7 @@ describe('automation runner failures through the engine', () => {
   async function openAttempt(h: Harness): Promise<void> {
     artifactsDir = mkdtempSync(path.join(tmpdir(), 'e2e-mobile-errors-'));
     await boot(h.engine, 'ios');
-    await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal });
+    await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, registerSecret: () => undefined });
   }
 
   it('fails prepare when the runner is busy at warm-up, with the session and device in the message; any other open failure is still logged', async () => {
