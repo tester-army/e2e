@@ -123,7 +123,8 @@ The executor receives this context:
 | `ctx.observe({ tree, pixels })` | Redacted screen text, with an optional node tree and masked screenshot |
 | `ctx.actions` | Checked and recorded actions, such as `tap`, `type`, `typeSecret`, and `navigate` |
 | `ctx.target.verbs` | The actions supported by the target's engine. Offer only these to the model. |
-| `ctx.pixelsTainted` | True after a secret fill. Screenshots are withheld for the rest of the attempt. |
+| `ctx.pixelsTainted` | True after a secret fill. Screenshots are withheld and `attachScreenshot` is denied for the rest of the attempt. |
+| `ctx.attachScreenshot(pixels, label)` | Keeps pixels as a `screenshot` artifact of the step and returns its id. `POLICY_DENIED` after a secret fill, as `app.screenshot()` is. |
 | `ctx.ledger` | Completed steps in the test |
 | `ctx.attempt` | Test and attempt ids, retry index, abort signal, and a `memory` map that is never reported |
 | `ctx.budgets` | Accounting for custom tools and model calls |

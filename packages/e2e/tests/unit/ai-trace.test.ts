@@ -7,6 +7,7 @@ import {
   withAiTraceScope,
   withAiTraceStep,
 } from '../../src/internal/ai-trace.ts';
+import { SecretLedger } from '../../src/internal/redact.ts';
 
 const SCOPE = { test: 'todos › adds one', testId: 't1', target: 'web', agent: 'default', attempt: 0 };
 
@@ -124,6 +125,59 @@ describe('AiTraceRecorder', () => {
       outputTokens: 20,
       inputTokenDetails: { cacheReadTokens: 40 },
     });
+  });
+
+  it('redacts registered secret values from the input, output, and error it keeps', async () => {
+    // A quote in the value: its JSON-string form differs from the raw one, and both must go.
+    const secret = 'tok-9f3a"x';
+    const ledger = new SecretLedger([['token', secret]]);
+    const recorder = new AiTraceRecorder({ redact: ledger.redact });
+    const t = recorder.telemetry;
+    const fire = <E>(callback: ((event: E) => unknown) | undefined, event: E) => callback?.(event);
+    await fire(t.onStart, { callId: 'echo', operationId: 'ai.generateText' } as never);
+    await fire(t.onStepStart, {
+      callId: 'echo',
+      stepNumber: 0,
+      provider: 'gateway',
+      modelId: 'm',
+      instructions: 'You are a testing agent.',
+      messages: [{ role: 'user', content: `use ${secret}` }],
+    } as never);
+    await fire(t.onStepEnd, {
+      callId: 'echo',
+      stepNumber: 0,
+      content: [{ type: 'tool-call', toolCallId: 'c1', toolName: 'type', input: { target: 'n2', text: secret } }],
+      finishReason: 'tool-calls',
+      usage: { inputTokens: 1, outputTokens: 1 },
+      providerMetadata: { gateway: { echo: secret } },
+      response: { id: 'r1', modelId: 'm', messages: [{ role: 'assistant', content: `the key is ${secret}` }] },
+    } as never);
+    await fire(t.onEnd, { callId: 'echo' } as never);
+    await fire(t.onStart, { callId: 'boom', operationId: 'ai.generateText' } as never);
+    await fire(t.onStepStart, {
+      callId: 'boom',
+      stepNumber: 0,
+      provider: 'gateway',
+      modelId: 'm',
+      instructions: 'You are a testing agent.',
+      messages: [],
+    } as never);
+    await fire(t.onError, { callId: 'boom', error: new Error(`rejected ${secret}`) });
+
+    const [closed, failed] = recorder.drain().steps;
+    for (const column of [closed!.input, closed!.output!, failed!.error!]) {
+      expect(column).not.toContain('tok-9f3a');
+      expect(column).toContain('<secret:token>');
+    }
+    const output = JSON.parse(closed!.output!) as {
+      content: { input: { text: string } }[];
+      providerMetadata: { gateway: { echo: string } };
+      response: { messages: { content: string }[] };
+    };
+    expect(output.content[0]!.input.text).toBe('<secret:token>');
+    expect(output.providerMetadata.gateway.echo).toBe('<secret:token>');
+    expect(output.response.messages[0]!.content).toBe('the key is <secret:token>');
+    expect(failed!.error).toBe('rejected <secret:token>');
   });
 
   it('closes an open step with the error when the generation fails', async () => {

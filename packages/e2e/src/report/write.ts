@@ -2,18 +2,18 @@
 
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
-import { writeFileAtomic } from '../internal/atomic-write.ts';
+import { writeFileAtomic, type AtomicWriteOptions } from '../internal/atomic-write.ts';
 import type { FinishedRun, Reporter } from '../types.ts';
 
 /** Atomically writes one text document, creating the parent directory when it is missing. */
-export async function writeTextReport(filePath: string, content: string): Promise<void> {
+export async function writeTextReport(filePath: string, content: string, options: AtomicWriteOptions = {}): Promise<void> {
   mkdirSync(path.dirname(filePath), { recursive: true });
-  await writeFileAtomic(filePath, content);
+  await writeFileAtomic(filePath, content, options);
 }
 
 /** Atomically writes a wire JSON document with two-space indent and trailing newline. */
-export async function writeJsonReport(filePath: string, document: unknown): Promise<void> {
-  await writeTextReport(filePath, `${JSON.stringify(document, null, 2)}\n`);
+export async function writeJsonReport(filePath: string, document: unknown, options: AtomicWriteOptions = {}): Promise<void> {
+  await writeTextReport(filePath, `${JSON.stringify(document, null, 2)}\n`, options);
 }
 
 /** A path as the report keeps them: POSIX separators whatever the host. */

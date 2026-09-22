@@ -5,7 +5,7 @@
  * child-process workers.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -198,5 +198,65 @@ export default {
     // File order is time order, whichever worker finished first.
     const starts = document.steps.map((step) => step.started_at);
     expect(starts).toEqual(starts.toSorted());
+  });
+});
+
+describe('--ai-trace and the secret ledger', () => {
+  // A quote and an ampersand: the JSON-string form differs from the raw one.
+  const SECRET = 'trace-secret-Zq9"&2718';
+  const TITLE = 'the model echoes a secret';
+  const ECHO_SUITE = `import { test } from 'e2e';
+
+test('${TITLE}', async ({ app, agent }) => {
+  await app.open();
+  await agent.act('finish the step');
+});
+`;
+  let app: FixtureApp;
+  let outcome: RunOutcome;
+  let project: FixtureProject;
+
+  beforeAll(async () => {
+    app = await startFixtureApp();
+    const model = installFakeLoopModel(() => [
+      { toolName: 'complete_step', input: { status: 'passed', summary: `done, the password was ${SECRET}` } },
+    ]);
+    const result = await runProject(
+      { 'tests/echo.e2e.ts': ECHO_SUITE },
+      {
+        appUrl: app.url,
+        config: {
+          tests: 'tests/**/*.e2e.ts',
+          agents: { default: { model } },
+          credentials: { member: { username: 'ada', password: SECRET } },
+        },
+        runOptions: { aiTrace: true },
+      },
+    );
+    outcome = result.outcome;
+    project = result.project;
+  }, 120_000);
+
+  afterAll(async () => {
+    project?.cleanup();
+    await app?.close();
+  });
+
+  it('replaces a secret the model echoed in a tool call with its name', () => {
+    expect(resultByTitle(outcome, TITLE).status).toBe('passed');
+    const text = readFileSync(path.join(project.dir, '.e2e', 'ai-trace.json'), 'utf8');
+    expect(text).not.toContain(SECRET);
+    const document = JSON.parse(text) as AiTraceDocument;
+    expectDevtoolsShape(document);
+    const answered = document.steps.filter((step) => step.output !== null);
+    expect(answered.length).toBeGreaterThan(0);
+    for (const step of answered) {
+      expect(JSON.stringify(JSON.parse(step.output!))).toContain('done, the password was <secret:member>');
+    }
+    expect(JSON.stringify(outcome.report)).not.toContain(SECRET);
+  });
+
+  it.skipIf(process.platform === 'win32')('is readable by its owner only', () => {
+    expect(statSync(path.join(project.dir, '.e2e', 'ai-trace.json')).mode & 0o777).toBe(0o600);
   });
 });

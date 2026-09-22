@@ -1,10 +1,13 @@
 /**
  * Agent policy, credential, and error-classification coverage on the judgment
- * tier. Secret-fill authorization for planned flows is covered by
- * agent-act-stress.test.ts.
+ * tier, and the secret ledger's reach over what a test authored: step labels
+ * and executor-attached screenshots. Secret-fill authorization for planned
+ * flows is covered by agent-act-stress.test.ts.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { installFakeLoopModel, loopCalls, nodeIdFor } from '../helpers/fake-loop-model.ts';
 import { installFakeModel, judgment } from '../helpers/fake-model.ts';
@@ -14,6 +17,7 @@ import { resultByTitle, runProject, type FixtureProject } from '../helpers/run-p
 import type { RunOutcome } from '../helpers/run-project.ts';
 import { createAgent } from '../../src/agent/default-agent.ts';
 import type { SdkLanguageModel } from '../../src/agent/ai-sdk.ts';
+import type { StepExecutor } from '../../src/agent/executor.ts';
 
 const SUITE = `import { test, credentials } from 'e2e';
 
@@ -454,4 +458,179 @@ describe('tool calls outside the vocabulary', () => {
       project.cleanup();
     }
   }, 120_000);
+});
+
+describe('the secret ledger covers step labels', () => {
+  const SECRET = 'hunter2-secret';
+  const TITLE = 'spells the secret out in step labels';
+  const LABEL_SUITE = `import { test } from 'e2e';
+
+test('${TITLE}', async ({ app, agent }) => {
+  await app.open('/?token=${SECRET}');
+  await agent.act('use key ${SECRET} to continue');
+  await agent.act('say what the previous step did');
+});
+`;
+  let app: FixtureApp;
+  let outcome: RunOutcome;
+  let project: FixtureProject;
+  const stderr: string[] = [];
+
+  beforeAll(async () => {
+    app = await startFixtureApp();
+    const model = installFakeLoopModel((call) => [
+      { toolName: 'complete_step', input: { status: 'passed', summary: `turn ${call.turn} done` } },
+    ]);
+    // The --debug step table goes straight to stderr; keep it for the assertions.
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr.push(typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8'));
+      return true;
+    });
+    try {
+      const result = await runProject(
+        { 'tests/labels.e2e.ts': LABEL_SUITE },
+        {
+          appUrl: app.url,
+          config: {
+            tests: 'tests/**/*.e2e.ts',
+            agents: { default: { model } },
+            credentials: { member: { username: 'ada', password: SECRET } },
+          },
+          runOptions: { aiTrace: true, debug: true },
+        },
+      );
+      outcome = result.outcome;
+      project = result.project;
+    } finally {
+      write.mockRestore();
+    }
+  }, 120_000);
+
+  afterAll(async () => {
+    project?.cleanup();
+    await app?.close();
+  });
+
+  it('records every step label redacted', () => {
+    const result = resultByTitle(outcome, TITLE);
+    expect(result.status, JSON.stringify(result.attempts.at(-1)?.error)).toBe('passed');
+    const steps = result.attempts.at(-1)!.steps;
+    const labelsOf = (api: string) => steps.filter((step) => step.api === api).map((step) => step.label);
+    expect(labelsOf('app.open')).toEqual(['/?token=<secret:member>']);
+    expect(labelsOf('agent.act')).toEqual(['use key <secret:member> to continue', 'say what the previous step did']);
+    expect(JSON.stringify(result.attempts)).not.toContain(SECRET);
+  });
+
+  it('hands the next step a redacted prior-step ledger', () => {
+    const later = loopCalls.filter((call) => call.lastPrompt.includes('say what the previous step did'));
+    expect(later.length).toBeGreaterThan(0);
+    for (const call of later) {
+      const request = JSON.stringify(call);
+      expect(request).toContain('use key <secret:member> to continue');
+      expect(request).not.toContain(SECRET);
+    }
+  });
+
+  it('names the AI trace run by the redacted label and keeps the plaintext out of the file', () => {
+    const text = readFileSync(path.join(project.dir, '.e2e', 'ai-trace.json'), 'utf8');
+    expect(text).not.toContain(SECRET);
+    const document = JSON.parse(text) as { runs: { function_id: string | null }[] };
+    expect(document.runs.map((run) => run.function_id)).toContain(
+      `${TITLE} · agent.act "use key <secret:member> to continue"`,
+    );
+  });
+
+  it('prints the --debug step table with the redacted label', () => {
+    const output = stderr.join('');
+    expect(output).toContain('[e2e debug] agent steps');
+    expect(output).toContain('agent.act "use key <secret:member> to continue"');
+    expect(output).not.toContain(SECRET);
+  });
+});
+
+describe('attachScreenshot after a secret fill', () => {
+  const SECRET = 'hunter2-secret';
+  const TITLE = 'keeps evidence after filling the password';
+  const FILL_SUITE = `import { test, credentials } from 'e2e';
+
+test('${TITLE}', async ({ app, agent }) => {
+  await app.open();
+  await agent.act('fill the password', { params: { password: credentials.user('member').password } });
+});
+`;
+  let app: FixtureApp;
+  let outcome: RunOutcome;
+  let project: FixtureProject;
+  const refusals: { tainted: boolean; code: string | undefined; message: string }[] = [];
+
+  /** Fills the secret, then tries to keep pixels it captured before the fill as evidence. */
+  const filler: StepExecutor = {
+    name: 'fill-then-attach',
+    async runStep(context) {
+      const before = await context.observe({ tree: true, pixels: true });
+      if (before.pixels === undefined) {
+        return { status: 'failed', summary: `pixels withheld before the fill: ${before.pixelsWithheld ?? 'unknown'}` };
+      }
+      const secure = (function find(node): { id: string } | undefined {
+        if (node.states?.secure === true) return node;
+        for (const child of node.children ?? []) {
+          const found = find(child);
+          if (found !== undefined) return found;
+        }
+        return undefined;
+      })(before.tree!);
+      // Declared secrets are keyed by the credential's name, not the param's.
+      await context.actions.typeSecret({ id: secure!.id }, 'member');
+      try {
+        await context.attachScreenshot(before.pixels, 'after-fill');
+        return { status: 'failed', summary: 'attachScreenshot was allowed after a secret fill' };
+      } catch (cause) {
+        const error = cause as { code?: string; message: string };
+        refusals.push({ tainted: context.pixelsTainted, code: error.code, message: error.message });
+        return { status: 'passed', summary: 'attachScreenshot was denied' };
+      }
+    },
+  };
+
+  beforeAll(async () => {
+    app = await startFixtureApp();
+    const result = await runProject(
+      { 'tests/attach.e2e.ts': FILL_SUITE },
+      {
+        appUrl: app.url,
+        config: {
+          tests: 'tests/**/*.e2e.ts',
+          agents: { default: filler },
+          credentials: { member: { username: 'ada', password: SECRET } },
+        },
+      },
+    );
+    outcome = result.outcome;
+    project = result.project;
+  }, 120_000);
+
+  afterAll(async () => {
+    project?.cleanup();
+    await app?.close();
+  });
+
+  it('refuses the attachment with POLICY_DENIED once the viewport is tainted', () => {
+    const result = resultByTitle(outcome, TITLE);
+    expect(result.status, JSON.stringify(result.attempts.at(-1)?.error)).toBe('passed');
+    expect(refusals).toEqual([
+      { tainted: true, code: 'POLICY_DENIED', message: expect.stringContaining('after a secret fill') },
+    ]);
+  });
+
+  it('records the denial on the step and keeps no screenshot artifact', () => {
+    const attempt = resultByTitle(outcome, TITLE).attempts.at(-1)!;
+    const act = attempt.steps.find((step) => step.api === 'agent.act')!;
+    expect(
+      act.events.some(
+        (event) => event.kind === 'policy' && event.name === 'attachScreenshot' && event.decision === 'denied',
+      ),
+    ).toBe(true);
+    expect(attempt.artifacts.filter((artifact) => artifact.kind === 'screenshot')).toEqual([]);
+    expect(JSON.stringify(outcome.report)).not.toContain(SECRET);
+  });
 });

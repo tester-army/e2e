@@ -100,7 +100,9 @@ action queue, so observing from inside it would wait on its own operation.
 
 `attachScreenshot(pixels, label)` adds the image to the step's artifacts and
 returns its artifact id. Use a unique label for each capture to avoid
-overwriting an earlier image.
+overwriting an earlier image. After a secret fill it fails with
+`POLICY_DENIED`, as `app.screenshot()` does, even for pixels `observe`
+returned before the fill.
 
 ## Device toolkits
 

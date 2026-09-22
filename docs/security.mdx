@@ -24,7 +24,7 @@ content. App content cannot grant tools, credentials, or a larger budget.
 | The screen | An accessibility tree with stable node ids, roles, names, text, test ids, and states, truncated at the observation byte limit. Selectors are stripped. |
 | The location | The current URL, redacted. |
 | A screenshot | When needed or requested, only if the engine proves secure fields are masked and no secret has been filled in the attempt. |
-| Prior steps | `agent.act` receives bounded records from the same test or serial group. Judgments use the current screen and instruction, without prior-step records. |
+| Prior steps | `agent.act` receives bounded records from the same test or serial group, each step's label and handoff redacted. Judgments use the current screen and instruction, without prior-step records. |
 
 Secure fields appear as `value=<secure>`. Known secret values in model input
 and reports become `<secret:name>`. This redaction has limits for transformed
@@ -66,6 +66,7 @@ A tool call that breaks a rule fails with `POLICY_DENIED`:
 | A mutating project tool requesting an observation | Observe in a separate call. |
 | `vision: 'only'` when pixels are withheld | There is nothing to fall back to. |
 | `app.screenshot()` after a secret fill | The app may display the secret outside a secure field. |
+| `attachScreenshot(pixels, label)` from an executor or tool after a secret fill | The same rule. The runner cannot tell when the pixels were captured. |
 
 ## Navigation and origins
 
@@ -106,9 +107,9 @@ those model-directed field checks. It still registers the value for
 redaction and disables pixels for the rest of the attempt.
 
 After any secret fill, screenshot and pixel tools are unavailable,
-`app.screenshot()` is denied, and the runner omits assertion and failure
-screenshots. The app could display the value anywhere, beyond the field's
-masked rectangle.
+`app.screenshot()` and an executor's `attachScreenshot` are denied, and the
+runner omits assertion and failure screenshots. The app could display the
+value anywhere, beyond the field's masked rectangle.
 
 The redactor matches each registered value character by character, in every
 spelling a serializer gives a character: as is; JSON-escaped once or twice,
@@ -117,7 +118,10 @@ reference, named, decimal, or hex; and percent-encoded in either hex case,
 with `+` for a space. It retains old values after a secret rotates, and never
 rewrites a marker it wrote, so text that passes it twice reads as text that
 passed once. Secret values are excluded from cache entries, model input, and
-reports.
+reports. A step label that spells a value out, such as
+`app.open('/reset?token=...')` or ``agent.act(`use key ${key}`)``, is
+recorded, reported, and handed to later steps as `<secret:name>`. The
+instruction of that same step still reaches its own model call as written.
 
 A static value shorter than 6 characters (code points) is `INVALID_CONFIG`,
 and a provider returning one fails the fill. Every occurrence of a value
@@ -195,12 +199,12 @@ path you configure.
 
 | Path | Contents | Redaction |
 | --- | --- | --- |
-| `report.json` | The run record. Errors, reasoning excerpts, and action summaries pass the redactor. | complete |
+| `report.json` | The run record. Step labels, errors, model turns, reasoning excerpts, and action summaries pass the redactor. | complete |
 | `artifacts/.../*.png` | Screenshots. Secure fields are masked before screenshots are returned or saved as artifacts. | complete |
 | `artifacts/.../trace.zip` | Playwright trace, rewritten after a secret fill. | not-required, complete, or deleted |
 | `artifacts/.../*.webm`, `*.mp4` | Video, opt-in, kept for every attempt unless `retain: 'on-failure'`. | incomplete |
 | `artifacts/.../failure/screen.txt` | The redacted tree at the moment of failure. | complete |
-| `ai-trace.json` | Every model call, opt-in via `--ai-trace`. Prompts are the redacted ones the model saw; inline image bytes are replaced by their size. | as the prompt |
+| `ai-trace.json` | Every model call, opt-in via `--ai-trace`. Prompts are the ones the model saw; model output, tool-call arguments, errors, and provider metadata pass the redactor; inline image bytes are replaced by their size. Written readable by its owner only. | complete |
 | `sessions/<runId>/` | Encrypted sessions, deleted at cleanup. | encrypted |
 | `cache/` | Trace entries. | secret-free by construction |
 | The path in `command.log` | Your app's stdout and stderr, verbatim. Must be inside the project root. | none |
