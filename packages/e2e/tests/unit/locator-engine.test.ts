@@ -285,6 +285,30 @@ describe('LocatorEngine reads that do not wait', () => {
     expect(calls).toMatchObject({ resolve: 1, read: 0 });
   });
 
+  it('readNow re-resolves after a stale resolve, as a poll would, then reads the node', async () => {
+    const { engine, calls } = makeEngine({ resolve: ['stale', () => [REF]] });
+    expect(await engine.readNow(EXPRESSION)).toEqual(NODE);
+    expect(calls).toMatchObject({ resolve: 2, read: 1 });
+  });
+
+  it('readNow gives a resolve that stays stale the action timeout, then LOCATOR_NOT_FOUND', async () => {
+    const { engine, calls } = makeEngine(
+      { resolve: Array.from({ length: 50 }, () => 'stale' as const) },
+      { actionTimeout: 350 },
+    );
+    const started = Date.now();
+    await expect(engine.readNow(EXPRESSION)).rejects.toMatchObject({ code: 'LOCATOR_NOT_FOUND' });
+    expect(Date.now() - started).toBeGreaterThanOrEqual(300);
+    expect(calls.resolve).toBeGreaterThan(1);
+    expect(calls.read).toBe(0);
+  });
+
+  it('readNow answers null for a node that went stale between resolve and read, without a second read', async () => {
+    const { engine, calls } = makeEngine({ read: ['stale-retryable'] });
+    expect(await engine.readNow(EXPRESSION)).toBeNull();
+    expect(calls).toMatchObject({ resolve: 1, read: 1 });
+  });
+
   it('readNow reads the one match and refuses two with LOCATOR_AMBIGUOUS', async () => {
     expect(await makeEngine({}).engine.readNow(EXPRESSION)).toEqual(NODE);
     const { engine } = makeEngine({ resolve: [() => [REF, { id: 'node-2', revision: 'rev-1' }]] });

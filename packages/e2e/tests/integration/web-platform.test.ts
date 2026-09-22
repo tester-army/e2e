@@ -358,6 +358,18 @@ test('contenteditable hosts are textboxes: reached by label, filled, and read as
   await expect(screen.getByLabel('Message')).toHaveValue('Hi');
 });
 
+test('a nested absent frame counts as zero matches at once', async ({ app, web }) => {
+  await app.open('/frame-nested');
+  const started = Date.now();
+  expect(await web.frameLocator('#outer').frameLocator('#absent').getByRole('button').count()).toBe(0);
+  expect(Date.now() - started).toBeLessThan(2_000);
+});
+
+test('an action under an absent frame polls for the frame until its timeout', async ({ app, web }) => {
+  await app.open('/frame');
+  await web.frameLocator('#absent').getByRole('button').tap({ timeout: 800 });
+});
+
 test('downloads are captured as artifacts', async ({ app, web }) => {
   await app.open('/downloads');
   const download = await web.waitForDownload(() => web.locator('a[download]').tap());
@@ -444,6 +456,7 @@ describe('web platform integration', () => {
       'dialogs are handled by registered handlers',
       'frame locators scope queries into iframes',
       'nested frame locators resolve each frame inside the one before it',
+      'a nested absent frame counts as zero matches at once',
       'css selectors via web.locator',
       'contenteditable hosts are textboxes: reached by label, filled, and read as a value',
       'downloads are captured as artifacts',
@@ -495,6 +508,15 @@ describe('web platform integration', () => {
     expect(visible.attempts[0]!.error?.message).toMatch(
       /^expect\.not\.toBeVisible failed\nlocator: getByText\("Card"\)\nexpected: not visible\nobserved: default states \(match count 1\)$/,
     );
+  });
+
+  it('fails an action under an absent frame with LOCATOR_NOT_FOUND once its timeout has run', () => {
+    const result = resultByTitle(outcome, 'an action under an absent frame polls for the frame until its timeout');
+    expect(result.status).toBe('failed');
+    expect(result.attempts[0]!.error?.code).toBe('LOCATOR_NOT_FOUND');
+    const tap = result.attempts[0]!.steps.find((step) => step.api === 'locator.tap');
+    expect(tap?.status).toBe('failed');
+    expect(tap?.durationMs).toBeGreaterThanOrEqual(800);
   });
 
   it('fails ambiguous locators immediately with LOCATOR_AMBIGUOUS', () => {

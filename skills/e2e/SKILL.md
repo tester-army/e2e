@@ -111,8 +111,10 @@ one. Without them, the installed CLI prints the same text:
   same runtime `test`, typed with `web`.
 - Config and tests are ES modules and load as such whatever `package.json` sets as `type`.
 - Locators resolve when used. Actions wait for readiness and `expect`
-  retries assertions. Reads such as `textContent()` and `count()` do not
-  retry, so use a matcher when a value has to settle.
+  retries assertions. Reads such as `textContent()` and `count()` answer from
+  the current screen: a frame that is not in the document counts as zero
+  matches, a stale node is re-resolved, and nothing waits for a value to
+  change, so use a matcher when a value has to settle.
 - A locator that matches two nodes fails with `LOCATOR_AMBIGUOUS`. Narrow it
   with `{ name }`, `filter()`, `first()`, `nth()`, or `{ visible: true }`.
 - Secrets never appear in test code. Declare accounts under `credentials`

@@ -34,7 +34,10 @@ export interface Screen {
 ```
 
 Most operations require exactly one match. Reads return the current value
-without waiting for it to change; use [`expect`](/reference/expect) to wait.
+without waiting for it to change: a frame that is not in the document answers
+at once, and a node the engine reports stale (a resolve that raced a
+navigation) is re-resolved within the action timeout, which repairs the race
+without waiting for a match. Use [`expect`](/reference/expect) to wait.
 
 | Operation | Zero matches | Multiple matches |
 | --- | --- | --- |
