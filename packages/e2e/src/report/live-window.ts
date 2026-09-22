@@ -5,7 +5,7 @@
  * control channel it is a no-op, so callers never branch.
  */
 
-import { terminalColumns, terminalRows, visibleWidth } from './format.ts';
+import { charColumns, terminalColumns, terminalRows, visibleWidth } from './format.ts';
 
 const ESC = '\u001b';
 /**
@@ -24,27 +24,30 @@ const SYNC_START = `${ESC}[?2026h`;
 const SYNC_END = `${ESC}[?2026l`;
 
 /**
- * Clamps one line to the terminal width, skipping ANSI sequences when
- * counting. The erase sequence counts physical rows, so a line that wraps
- * would leave stale fragments behind on every repaint.
+ * Clamps one line to the terminal width in columns, skipping ANSI sequences
+ * when counting and never cutting inside a code point: a wide glyph that
+ * would cross the limit is dropped whole. The erase sequence counts physical
+ * rows, so a line that wraps would leave stale fragments behind on every
+ * repaint.
  */
 function clampToWidth(text: string, columns: number): string {
   const max = Math.max(4, columns - WIDTH_MARGIN);
   let width = 0;
   let out = '';
   for (let i = 0; i < text.length; ) {
-    const char = text[i] as string;
-    if (char === ESC) {
+    if (text[i] === ESC) {
       const end = text.indexOf('m', i);
       if (end === -1) break;
       out += text.slice(i, end + 1);
       i = end + 1;
       continue;
     }
-    if (width >= max) return `${out}${ESC}[0m…`;
+    const char = String.fromCodePoint(text.codePointAt(i) as number);
+    const advance = charColumns(char);
+    if (width + advance > max) return `${out}${ESC}[0m…`;
     out += char;
-    width += 1;
-    i += 1;
+    width += advance;
+    i += char.length;
   }
   return out;
 }
