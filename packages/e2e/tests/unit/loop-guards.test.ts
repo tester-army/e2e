@@ -105,14 +105,16 @@ describe('failure streak', () => {
     expect(checkFailureStreak([...streak(4), success, ...streak(2)]).kind).toBe('clear');
   });
 
+  const result = (toolName: string, output: ToolResultPart['output']): ModelMessage => ({
+    role: 'tool',
+    content: [{ type: 'tool-result', toolCallId: toolName, toolName, output }],
+  });
+  // What the SDK hands back for an input outside the closed schema and for a tool the step does not offer.
+  const undeclaredField = 'Invalid input for tool tap: Type validation failed: Value: {"target":"n6","force":true}.\nError message: [{"code":"unrecognized_keys","keys":["force"],"path":[],"message":"Unrecognized key: \\"force\\""}]';
+  const unknownTool = "Model tried to call unavailable tool 'click'. Available tools: observe, tap, type, complete_step.";
+  const refusedVerdict = 'Invalid input for tool complete_step: Type validation failed: Value: {"status":"passed","summary":"done","code":"ACTION_FAILED"}.\nError message: [{"code":"unrecognized_keys","keys":["code"],"path":[],"message":"Unrecognized key: \\"code\\""}]';
+
   it('reads text results for the failure shape, counts a call the SDK refused as failed, and skips the conclusion tool and structured results', () => {
-    const result = (toolName: string, output: ToolResultPart['output']): ModelMessage => ({
-      role: 'tool',
-      content: [{ type: 'tool-result', toolCallId: toolName, toolName, output }],
-    });
-    // What the SDK hands back for an input outside the closed schema and for a tool the step does not offer.
-    const undeclaredField = 'Invalid input for tool tap: Type validation failed: Value: {"target":"n6","force":true}.\nError message: [{"code":"unrecognized_keys","keys":["force"],"path":[],"message":"Unrecognized key: \\"force\\""}]';
-    const unknownTool = "Model tried to call unavailable tool 'click'. Available tools: observe, tap, type, complete_step.";
     const messages: ModelMessage[] = [
       { role: 'user', content: 'Execute this test step' },
       result('tap', { type: 'text', value: failed }),
@@ -128,5 +130,17 @@ describe('failure streak', () => {
       { text: unknownTool, failed: true },
       success,
     ]);
+  });
+
+  it('counts a refused conclusion toward the streak: three warn, five force the verdict, and the conclusion tool\'s own text neither counts nor resets', () => {
+    // The repeat guard never sees conclusion calls, so a model resending a complete_step the schema turns away has only this bound short of the turn budget.
+    const refused = (count: number) => Array.from({ length: count }, () => result('complete_step', { type: 'error-text', value: refusedVerdict }));
+    expect(extractToolResults(refused(1), 'complete_step')).toEqual([{ text: refusedVerdict, failed: true }]);
+    expect(checkFailureStreak(extractToolResults(refused(2), 'complete_step')).kind).toBe('clear');
+    expect(checkFailureStreak(extractToolResults(refused(3), 'complete_step')).kind).toBe('warn');
+    expect(checkFailureStreak(extractToolResults(refused(5), 'complete_step')).kind).toBe('stop');
+    const sentBack = result('complete_step', { type: 'text', value: 'Rejected: a blocked verdict requires errorCode naming what blocked you.' });
+    expect(checkFailureStreak(extractToolResults([...refused(2), sentBack, ...refused(1)], 'complete_step')).kind).toBe('warn');
+    expect(checkFailureStreak(extractToolResults([...refused(4), result('tap', { type: 'text', value: tapped })], 'complete_step')).kind).toBe('clear');
   });
 });

@@ -371,15 +371,10 @@ describe('tool calls outside the vocabulary', () => {
     }
   }, 120_000);
 
-  it('refuses a passed verdict that carries an error code, and the clean verdict of the next turn ends the step', async () => {
+  it('drops the error code a passed verdict carries, notes it in the turn, and ends the step on that call with no repair turn', async () => {
     const model = installFakeLoopModel((call) => {
-      if (call.turn === 1) {
-        return [
-          { toolName: 'tap', input: { target: nodeIdFor(call.prompt, /button "Increment"/) } },
-          { toolName: 'complete_step', input: { status: 'passed', summary: 'the counter shows 1', errorCode: 'ACTION_FAILED' } },
-        ];
-      }
-      return [{ toolName: 'complete_step', input: { status: 'passed', summary: 'the counter shows 1' } }];
+      if (call.turn === 1) return [{ toolName: 'tap', input: { target: nodeIdFor(call.prompt, /button "Increment"/) } }];
+      return [{ toolName: 'complete_step', input: { status: 'passed', summary: 'the counter shows 1', errorCode: 'ACTION_FAILED' } }];
     });
     const { outcome, project } = await runProject(
       { 'tests/vocabulary.e2e.ts': VOCABULARY_SUITE },
@@ -389,15 +384,16 @@ describe('tool calls outside the vocabulary', () => {
       const result = resultByTitle(outcome, 'the agent increments the counter once');
       expect(result.attempts.at(-1)!.error?.message ?? '').toBe('');
       expect(result.status).toBe('passed');
-      // A pass beside an error code is a contradiction: refused like any schema violation, naming the rule, and the step is not concluded by it.
+      // One model sends a pass beside ACTION_FAILED about half the time; refusing it produced a 12 to 19 call loop. The code is dropped, never refused.
       expect(loopCalls).toHaveLength(2);
-      const refusal = loopCalls[1]!.toolResults.find((text) => text.includes('Invalid input for tool complete_step'));
-      expect(refusal).toContain('errorCode is only valid with status failed or blocked');
-      expect(refusal).not.toContain('POLICY_DENIED');
       const step = agentStep(outcome);
+      expect(step.status).toBe('passed');
+      expect(step.error).toBeUndefined();
       expect(step.metrics!.actionSteps).toBe(1);
       expect(step.metrics!.modelCalls).toBe(2);
-      expect(step.turns![0]!.outcome).toContain(`[complete_step] error: ${refusal!.split('\n')[0]}`);
+      const verdictTurn = step.turns!.at(-1)!;
+      expect(verdictTurn.calls).toEqual(['complete_step({"status":"passed","summary":"the counter shows 1","errorCode":"ACTION_FAILED"})']);
+      expect(verdictTurn.outcome).toBe('[complete_step] Step concluded; dropped errorCode ACTION_FAILED on a passed verdict.');
     } finally {
       project.cleanup();
     }
