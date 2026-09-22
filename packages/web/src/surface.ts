@@ -53,6 +53,7 @@ import {
   readHandlesSemanticsFunction,
   readManySemanticsFunction,
   SECURE_FIELD_SELECTOR,
+  type RawNodeData,
 } from './read-node.ts';
 import { httpCredentials, installSiteHeaders, lowercaseNames } from './protected-app.ts';
 import { RefRegistry } from './refs.ts';
@@ -542,14 +543,10 @@ export class PlaywrightSurface {
         const token = session.token();
         const refs = session.refs;
         const page = this.requirePage();
-        await this.validateFrames(expression);
+        const hiddenFrame = await this.validateFrames(expression);
         const projected = projectExpression(page, expression, this.testIdAttribute);
         const { displayValue, name, steps } = projected;
-        const readOptions = {
-          testIdAttribute: this.testIdAttribute,
-          secureFieldSelector: SECURE_FIELD_SELECTOR,
-          mode: { kind: 'node' as const },
-        };
+        const readOptions = this.nodeReadOptions();
         // A predicate-filtered match is one element among many candidates, and the candidate
         // list is broad (every labelable control, every input with a value). Re-resolving it
         // by position at action time would act on a neighbor whenever the page inserted or
@@ -561,12 +558,23 @@ export class PlaywrightSurface {
             ? ((await projected.locator.elementHandles()) as ElementHandle<Element>[])
             : null;
         const first = handles?.[0];
-        const raws =
+        const read =
           handles === null
             ? await projected.locator.evaluateAll(readManySemanticsFunction, readOptions)
             : first === undefined
               ? []
               : await first.evaluate(readHandlesSemanticsFunction, { elements: handles, options: readOptions });
+        // A child document cannot see the iframe that embeds it, so a hidden
+        // boundary hides every match inside, for the boundary's reason unless
+        // the match has one of its own.
+        const raws =
+          hiddenFrame === null
+            ? read
+            : read.map((raw) => ({
+                ...raw,
+                states: { ...raw.states, hidden: true },
+                hiddenBy: raw.hiddenBy ?? hiddenFrame.hiddenBy,
+              }));
         const candidates = raws
           .map((raw, index) => ({ raw, index }))
           .filter(({ raw }) => !(projected.visible && raw.states.hidden));
@@ -580,11 +588,12 @@ export class PlaywrightSurface {
               ? (raw: (typeof raws)[number]) =>
                   raw.labels !== null && raw.labels.some((label) => matchesText(label, name))
               : null;
+        const filtered = predicate === null ? candidates : candidates.filter(({ raw }) => predicate(raw));
         const matches =
-          predicate === null
-            ? candidates
+          steps.length === 0
+            ? filtered
             : await applyPostSteps(
-                candidates.filter(({ raw }) => predicate(raw)),
+                filtered,
                 steps,
                 // A filter after a position runs on that one element alone.
                 async ({ index }, options) =>
@@ -727,33 +736,51 @@ export class PlaywrightSurface {
     }
   }
 
+  /** What a single-node read is handed, by `locate` and by the frame boundary check. */
+  private nodeReadOptions() {
+    return {
+      testIdAttribute: this.testIdAttribute,
+      secureFieldSelector: SECURE_FIELD_SELECTOR,
+      mode: { kind: 'node' as const },
+    };
+  }
+
   /**
-   * Checks that every frame selector along the expression matches exactly one
-   * element, each counted inside the frame before it, the way `project` walks
-   * the same chain; a frame-scoped `count` is 0 until that frame's document
-   * has loaded, which is what makes `FRAME_NOT_FOUND` worth retrying.
+   * Resolves each frame along an expression to exactly one iframe, in the
+   * document that embeds it (each counted inside the frame before it, the way
+   * `project` walks the same chain), and reads that boundary element there
+   * with the reader `locate` uses. A frame-scoped read finds nothing until
+   * that frame's document has loaded, which is what makes `FRAME_NOT_FOUND`
+   * worth retrying. The walk skips a hidden iframe with everything in it, and
+   * a child document cannot see the attribute or style that hid its frame, so
+   * the outermost hidden boundary is returned for the caller to apply to
+   * every match inside; null when every frame is shown.
    */
-  private async validateFrames(expression: LocatorExpression): Promise<void> {
+  private async validateFrames(expression: LocatorExpression): Promise<RawNodeData | null> {
     let scope: Page | FrameLocator = this.requirePage();
+    let hidden: RawNodeData | null = null;
     for (const selector of frameSelectors(expression)) {
-      let count: number;
+      let boundaries: RawNodeData[];
       try {
-        count = await scope.locator(selector).count();
+        boundaries = await scope.locator(selector).evaluateAll(readManySemanticsFunction, this.nodeReadOptions());
       } catch (cause) {
         throw translatePwError(cause, 'frame resolution');
       }
-      if (count === 0) {
+      const boundary = boundaries[0];
+      if (boundary === undefined) {
         throw new EngineError('FRAME_NOT_FOUND', `no frame matches ${selector}`, {
           retryable: true,
         });
       }
-      if (count > 1) {
-        throw new EngineError('FRAME_AMBIGUOUS', `${count} frames match ${selector}`, {
+      if (boundaries.length > 1) {
+        throw new EngineError('FRAME_AMBIGUOUS', `${boundaries.length} frames match ${selector}`, {
           retryable: false,
         });
       }
+      if (hidden === null && boundary.states.hidden) hidden = boundary;
       scope = scope.frameLocator(selector);
     }
+    return hidden;
   }
 
   // --- artifacts ---

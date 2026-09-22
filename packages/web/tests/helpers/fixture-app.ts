@@ -226,8 +226,56 @@ const POINTER = `<!doctype html>
 </body>
 </html>`;
 
+/**
+ * Three frames of one child document: one the embedding document marks
+ * aria-hidden, one it collapses, one it shows. The child document sees none
+ * of that, so a frame-scoped read has to carry the boundary's state in.
+ */
+const FRAMES = `<!doctype html>
+<html>
+<head><title>Fixture Frames</title></head>
+<body>
+<h1>Frames</h1>
+<iframe id="hidden-frame" title="Hidden frame" aria-hidden="true" src="/frame-child"></iframe>
+<iframe id="collapsed-frame" title="Collapsed frame" style="display:none" src="/frame-child"></iframe>
+<iframe id="shown-frame" title="Shown frame" src="/frame-child"></iframe>
+</body>
+</html>`;
+
+const FRAME_CHILD = `<!doctype html>
+<html>
+<head><title>Frame child</title></head>
+<body>
+<button>Save</button>
+</body>
+</html>`;
+
+/**
+ * Two shadow hosts, each holding a "Save" button; the first host is
+ * aria-hidden. Playwright's text engine lists shadow matches in host order,
+ * so the hidden one comes first, and no XPath run on a match can see its host.
+ */
+const SHADOW_TWINS = `<!doctype html>
+<html>
+<head><title>Fixture Shadow Twins</title></head>
+<body>
+<h1>Shadow twins</h1>
+<div id="stale" aria-hidden="true"></div>
+<div id="live"></div>
+<script>
+  document.getElementById('stale').attachShadow({ mode: 'open' }).innerHTML = '<button>Save</button>';
+  const live = document.getElementById('live').attachShadow({ mode: 'open' });
+  live.innerHTML = '<button>Save</button>';
+  live.querySelector('button').addEventListener('click', (event) => { event.target.textContent = 'Saved'; });
+</script>
+</body>
+</html>`;
+
 const PAGES: Readonly<Record<string, string>> = {
   '/': HOME,
+  '/frames': FRAMES,
+  '/frame-child': FRAME_CHILD,
+  '/shadow-twins': SHADOW_TWINS,
   '/pointer': POINTER,
   '/closed-shadow': CLOSED_SHADOW,
   '/contents': CONTENTS,

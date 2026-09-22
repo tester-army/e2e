@@ -101,8 +101,10 @@ export type PostStep =
  * Self-selector for the part of the semantic `hidden` state Playwright's own
  * visibility filter does not read: `aria-hidden="true"` on the element or an
  * ancestor. XPath because Playwright's CSS `:not()` takes no descendant
- * selector; `ancestor-or-self` stops at a shadow root, so a hidden host's
- * shadow tree is left to the terminal batch read, whose predicate crosses it.
+ * selector. `ancestor-or-self` stops at a shadow root, so this narrowing is
+ * an approximation where a visible query composes as a scope or `has`
+ * filter; a terminal query, positioned or not, is read whole and its
+ * predicate crosses the host.
  */
 const NOT_ARIA_HIDDEN = 'xpath=self::*[not(ancestor-or-self::*[@aria-hidden="true"])]';
 
@@ -147,15 +149,18 @@ export interface ProjectedLocator {
    * The Playwright locator to compose with as a scope or `has` filter, for a
    * projection whose own predicate lives outside Playwright's chain. An exact
    * label query composes through Playwright's substring label match, which
-   * accepts every control the predicate would and some it would not; that is
-   * the one place the predicate is approximated. Null for a display-value
+   * accepts every control the predicate would and some it would not; a
+   * positioned visible query composes through its selector-level narrowing,
+   * which reads `aria-hidden` up to the nearest shadow root. Those are the two
+   * places the predicate is approximated. Null for a display-value
    * projection, which has no such equivalent and is rejected instead.
    */
   readonly composable: PwLocator | null;
   /**
-   * Steps to apply to the value-filtered matches, innermost first. Always
-   * empty when `displayValue` is null, because the projection then composes
-   * positions and filters natively onto the locator.
+   * Steps to apply to the predicate-filtered matches, innermost first. Empty
+   * for a projection with no display-value predicate, no exact-label
+   * predicate, and no `visible` flag, which composes positions and filters
+   * natively onto the locator.
    */
   readonly steps: readonly PostStep[];
   /**
@@ -236,10 +241,20 @@ function project(scope: PwScope, expression: LocatorExpression, testIdAttribute:
     }
     case 'index': {
       const source = project(scope, expression.source, testIdAttribute);
-      if (source.displayValue !== null || source.name !== null) {
+      if (source.displayValue !== null || source.name !== null || source.visible) {
+        // A position on a visible query is taken among the nodes the full
+        // hidden predicate keeps, after the batch read: the selector-level
+        // narrowing misses a match inside an aria-hidden host's shadow tree,
+        // and `first()` on such a page must be the first shown node.
+        const composable =
+          source.composable !== null
+            ? positioned(source.composable, expression.index)
+            : source.displayValue === null
+              ? positioned(source.locator, expression.index)
+              : null;
         return {
           ...source,
-          composable: source.composable === null ? null : positioned(source.composable, expression.index),
+          composable,
           steps: [...source.steps, { kind: 'index', index: expression.index }],
         };
       }
