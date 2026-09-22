@@ -9,6 +9,7 @@ import { detectPackageManager, execCommand, runScriptCommand } from '../internal
 import { DOCS_URL } from './docs-url.ts';
 import {
   describeLinks,
+  describeObstacles,
   findInstalledSkillDirs,
   planSkillInstall,
   replaceableLinks,
@@ -176,6 +177,10 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<Init
   facts.skill = skillDirs.length > 0;
   const skillInstalls: SkillInstall[] = [];
   for (const planned of planSkillInstall(cwd, skillDirs, bundledSkill)) {
+    if (planned.obstacles.length > 0) {
+      clack.log.warn(`Broken, not touching: ${describeObstacles(planned)}`);
+      continue;
+    }
     if (planned.links.length === 0) {
       skillInstalls.push(planned);
       continue;

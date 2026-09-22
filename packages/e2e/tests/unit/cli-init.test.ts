@@ -590,6 +590,19 @@ describe('e2e init', () => {
     expect(read('.gitignore')).toContain('.e2e/sessions/');
   });
 
+  it('skips a copy with a directory where a file goes or a file where a directory goes, naming each', async () => {
+    mkdirSync(path.join(dir, '.agents/skills/e2e/SKILL.md'), { recursive: true });
+    writeFileSync(path.join(dir, '.agents/skills/e2e/references'), 'not a directory\n');
+    expect((await init(dir, { yes: true })).exitCode).toBe(0);
+    expect(output()).toContain('Broken, not touching: .agents/skills/e2e/ (SKILL.md is a directory, references is a file)');
+    expect(lstatSync(path.join(dir, '.agents/skills/e2e/SKILL.md')).isDirectory()).toBe(true);
+    expect(read('.agents/skills/e2e/references')).toBe('not a directory\n');
+    expect(existsSync(path.join(dir, '.claude'))).toBe(false);
+    expect(read('e2e.config.ts')).toContain('targets:');
+    expect(JSON.parse(read('.mcp.json'))).toHaveProperty('mcpServers.e2e');
+    expect(clack.confirm).not.toHaveBeenCalled();
+  });
+
   describe.skipIf(!symlinks)('a symlinked skill directory', () => {
     /** Links `<location>/e2e` to `target`, which holds the user's own SKILL.md. */
     function linkSkill(location: string, target: string): void {
@@ -621,6 +634,24 @@ describe('e2e init', () => {
         // The link counts as the installed location, so no other one is added.
         expect(existsSync(path.join(dir, '.agents'))).toBe(false);
         expect(clack.confirm).not.toHaveBeenCalled();
+      } finally {
+        rmSync(elsewhere, { recursive: true, force: true });
+      }
+    });
+
+    it('is left alone under --yes without reading what it leads to, even a directory named SKILL.md', async () => {
+      const elsewhere = mkdtempSync(path.join(os.tmpdir(), 'e2e-init-elsewhere-'));
+      try {
+        const target = path.join(elsewhere, 'e2e');
+        mkdirSync(path.join(target, 'SKILL.md'), { recursive: true });
+        mkdirSync(path.join(dir, '.claude/skills'), { recursive: true });
+        symlinkSync(target, path.join(dir, '.claude/skills/e2e'), 'dir');
+        expect((await init(dir, { yes: true })).exitCode).toBe(0);
+        expect(output()).toContain(`Symlink, not touching: .claude/skills/e2e -> ${realpathSync(target)}`);
+        expect(output()).not.toContain('Broken, not touching');
+        expect(lstatSync(path.join(target, 'SKILL.md')).isDirectory()).toBe(true);
+        expect(readdirSync(target)).toEqual(['SKILL.md']);
+        expect(read('e2e.config.ts')).toContain('targets:');
       } finally {
         rmSync(elsewhere, { recursive: true, force: true });
       }
