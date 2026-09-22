@@ -1,6 +1,7 @@
 /**
  * Closed `agent-protocol-1` response grammars. Mirrors
- * `schema/agent-judgment-v2.schema.json`; the schema wins on any divergence.
+ * `schema/agent-judgment-v2.schema.json`; the schema wins on any divergence,
+ * and `tests/unit/agent-judgment-schema.test.ts` holds both to the same answers.
  *
  * Validation is runner-owned: a response that does not match exactly is a
  * policy error before any engine dispatch.
@@ -89,6 +90,17 @@ function asClosedRecord(
 
 function asBoundedString(value: unknown, min: number, max: number): string | null {
   if (typeof value !== 'string') return null;
-  if (value.length < min || value.length > max) return null;
+  const length = codePointLength(value);
+  if (length < min || length > max) return null;
   return value;
+}
+
+/**
+ * Counts code points, the unit JSON Schema `maxLength` measures. `.length`
+ * counts UTF-16 units, so an explanation with astral characters would fail
+ * here while the schema accepts it. The string iterator pairs surrogates and
+ * counts a lone one as a single code point, as Ajv's `ucs2length` does.
+ */
+function codePointLength(value: string): number {
+  return [...value].length;
 }

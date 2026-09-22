@@ -1,8 +1,0 @@
-{
-  "toolVersion": "agent-tool-1",
-  "kind": "tap",
-  "target": {
-    "id": "node-1",
-    "revision": "revision-1"
-  }
-}
