@@ -236,6 +236,20 @@ describe('contenteditable editing hosts', () => {
     expect(await page.getByRole('textbox', { name: 'Message' }).getAttribute('data-testid')).toBe('explicit');
   });
 
+  it('never makes a drawn or embedded surface a textbox, whatever its contenteditable says', async () => {
+    await page.setContent(`
+      <canvas contenteditable tabindex="0" width="120" height="60" data-testid="canvas"></canvas>
+      <svg contenteditable width="20" height="20" data-testid="svg"></svg>
+      <iframe contenteditable srcdoc="<p>Framed</p>" data-testid="frame"></iframe>
+      <div contenteditable data-testid="host"><canvas width="20" height="20"></canvas><p>Caption</p></div>
+    `);
+    await page.frames()[1]?.waitForLoadState('domcontentloaded');
+    const { tree } = await capture();
+    const roles = Object.fromEntries(flatten(tree).filter((node) => node.testId !== undefined).map((node) => [node.testId, node.role]));
+    // A pixel-only surface stays unlisted: with no role, name, or text it is not a node at all.
+    expect(roles).toEqual({ frame: 'iframe', host: 'textbox' });
+  });
+
   it('follows the document as it is edited and focused, as a textarea value does', async () => {
     await page.setContent(`
       <div contenteditable aria-label="Notes" data-testid="editor"><p><br></p></div>
