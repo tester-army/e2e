@@ -2,8 +2,10 @@ import type { Tool, ToolSet } from 'ai';
 import { z } from 'zod';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadAiSdk } from '../../src/agent/ai-sdk.ts';
+import { createGrammarTools } from '../../src/agent/primitives.ts';
 import { TestError } from '../../src/internal/errors.ts';
 import { catalogLine, describeToolDetail, errorResult, invokeTool, resultFromOutput, toolJsonSchema } from '../../src/mcp/tools.ts';
+import { fakeExecutorContext } from '../helpers/fake-executor-context.ts';
 
 const extra = { signal: new AbortController().signal };
 
@@ -75,6 +77,16 @@ describe('invokeTool', () => {
     });
     await expect(invokeTool('tap', guarded, {}, extra)).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
     expect(ran).toBe(false);
+  });
+
+  it('refuses an argument a grammar tool does not declare, before anything is dispatched', async () => {
+    const { context, dispatched } = fakeExecutorContext();
+    const grammar = createGrammarTools(context);
+    await expect(invokeTool('tap', grammar['tap']!, { target: 'n4', force: true }, extra)).rejects.toMatchObject({
+      code: 'INVALID_ARGUMENT',
+      message: 'call tap: Unrecognized key: "force"; tools {tool: "tap"} shows its arguments',
+    });
+    expect(dispatched).toEqual([]);
   });
 
   it('lets a tool failure propagate with its code, for the host to render', async () => {

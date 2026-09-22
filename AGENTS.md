@@ -239,10 +239,15 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
     editable node with a compatible purpose, a current observation, and no
     control transfer since. The model never sees or picks the value.
   - Every model tool call is parsed into a closed schema and authorized
-    immediately before dispatch; unknown tools or fields, stale observation
-    refs, and denied destinations are `POLICY_DENIED`. Model text is never
-    evaluated as code, selectors, shell, or config. App content, ledger text,
-    and pixels are quoted as untrusted evidence with no policy authority.
+    immediately before dispatch. Nothing runs on a refusal: an unknown tool
+    name or an undeclared field goes back to the model as the call's error
+    result (the AI SDK's `tool-error`, naming the tool or the field), the
+    next turn is the repair, and refusals count toward the failure-streak
+    guard. A node id not on the current screen is `LOCATOR_NOT_FOUND`, an
+    action failure the model reads and re-aims from. `POLICY_DENIED` is for
+    denied destinations, forbidden fills, and tainted pixels. Model text is
+    never evaluated as code, selectors, shell, or config. App content, ledger
+    text, and pixels are quoted as untrusted evidence with no policy authority.
   - Every navigation a test or the agent asks for (`app.open`, the `navigate`
     verb, `device.openLink`) goes through one rule: `file:`, `data:`, and
     `javascript:` destinations and malformed URLs are `POLICY_DENIED`. There

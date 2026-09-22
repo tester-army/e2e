@@ -149,19 +149,29 @@ function safeStringify(value: unknown): string {
   }
 }
 
+/** One tool result as the guard reads it: the text the model saw, and whether it reports a failure. */
+export interface GuardToolResult {
+  readonly text: string;
+  readonly failed: boolean;
+}
+
 /**
- * Extracts the text of every tool result in a transcript, in order, excluding
- * the conclusion tool's. Only text results count: a structured result is a
- * project tool's own shape and says nothing about failure.
+ * Extracts every tool result in a transcript, in order, excluding the
+ * conclusion tool's. A text result is read for the failure shape. A result
+ * the SDK refused before dispatch (a tool the step does not offer, an input
+ * outside the closed schema) is a failure by construction: nothing ran, and
+ * the turn is spent. A structured result is a project tool's own shape and
+ * says nothing about failure.
  */
-export function extractToolResults(messages: readonly ModelMessage[], concludeToolName: string): string[] {
-  const results: string[] = [];
+export function extractToolResults(messages: readonly ModelMessage[], concludeToolName: string): GuardToolResult[] {
+  const results: GuardToolResult[] = [];
   for (const message of messages) {
     if (message.role !== 'tool' || !Array.isArray(message.content)) continue;
     for (const part of message.content) {
       if (part.type !== 'tool-result' || part.toolName === concludeToolName) continue;
       const output = part.output;
-      if (output.type === 'text' && typeof output.value === 'string') results.push(output.value);
+      if (output.type === 'text') results.push({ text: output.value, failed: isFailedResult(output.value) });
+      else if (output.type === 'error-text') results.push({ text: output.value, failed: true });
     }
   }
   return results;
@@ -183,11 +193,11 @@ export function isFailedResult(text: string): boolean {
  * that the last id was. Warns first, then forces the conclusion.
  */
 export function checkFailureStreak(
-  results: readonly string[],
+  results: readonly GuardToolResult[],
   thresholds: LoopGuardThresholds = DEFAULT_LOOP_GUARD_THRESHOLDS,
 ): LoopGuardVerdict {
   let streak = 0;
-  for (let index = results.length - 1; index >= 0 && isFailedResult(results[index]!); index -= 1) streak += 1;
+  for (let index = results.length - 1; index >= 0 && results[index]!.failed; index -= 1) streak += 1;
   if (streak >= thresholds.failureStop) {
     return { kind: 'stop', reason: `the last ${String(streak)} actions failed in a row` };
   }

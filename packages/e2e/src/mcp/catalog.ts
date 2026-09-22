@@ -79,7 +79,7 @@ function fullObserveTool(context: StepExecutorContext, screen: ScreenPresenter):
   return {
     description:
       'Look at the whole current screen: every node with its id, role, name, and state. Action results report only what changed since the screen you last received; call this to see everything again or after waiting for something in progress.',
-    inputSchema: z.object({}),
+    inputSchema: z.object({}).strict(),
     execute: async () => screen.initial(await context.observe()),
   };
 }
@@ -97,7 +97,7 @@ function locateTool(locator: LocatorEngine, session: TargetSession): ToolSet[str
       placeholder: z.string().min(1).optional(),
       testId: z.string().min(1).optional(),
       exact: z.boolean().optional().describe('false for substring, case-insensitive matching'),
-    }),
+    }).strict(),
     execute: async (args: LocateArgs) => {
       const query = locateQuery(args);
       const refs = await locator.resolveAll(query.expression);

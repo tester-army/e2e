@@ -561,7 +561,12 @@ class LoopRun {
     return parts.join('\n\n');
   }
 
-  /** Records one turn: what the model said and called, and what came back, each clipped. */
+  /**
+   * Records one turn: what the model said and called, and what came back,
+   * each clipped. A call the SDK refused before dispatch (a tool the step
+   * does not offer, an input outside its closed schema) never ran and has no
+   * result; the turn shows its error instead, rendered as the model read it.
+   */
   private recordTurn(step: StepResult<ToolSet>): void {
     this.turnsUsed += 1;
     const text = step.text.trim();
@@ -570,7 +575,11 @@ class LoopRun {
       calls: step.toolCalls.map((call) => `${call.toolName}(${truncate(safeJson(call.input), MAX_TURN_CALL_CHARS)})`),
       outcome: [
         ...(text === '' ? [] : [`assistant: ${truncate(text, MAX_TURN_TEXT_CHARS)}`]),
-        ...step.toolResults.map((result) => `[${result.toolName}] ${truncate(describeOutput(result.output), MAX_TURN_RESULT_CHARS)}`),
+        ...step.content.flatMap((part) => {
+          if (part.type === 'tool-result') return [`[${part.toolName}] ${truncate(describeOutput(part.output), MAX_TURN_RESULT_CHARS)}`];
+          if (part.type === 'tool-error') return [`[${part.toolName}] error: ${truncate(String(part.error), MAX_TURN_RESULT_CHARS)}`];
+          return [];
+        }),
       ].join('\n'),
     });
   }

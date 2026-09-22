@@ -52,7 +52,7 @@ protocol; anything a config module writes to stdout is redirected.
 | --- | --- | --- |
 | `open_session` | `target` (optional), `config` (optional path) | Loads the config, starts the app command, boots the engine, starts one attempt, opens the app URL when the engine can navigate. Returns the session id, the catalog, and the first observation. |
 | `tools` | `tool` (optional), `session` (optional) | The catalog, one line per tool. With `tool`, its full description and argument schema. |
-| `call` | `tool`, `args` (optional), `session` (optional) | Runs one catalog tool. Arguments are validated against the tool's schema first. |
+| `call` | `tool`, `args` (optional), `session` (optional) | Runs one catalog tool. Arguments are validated against the tool's closed schema first: a wrong type or an argument the tool does not declare is `INVALID_ARGUMENT`, and nothing runs. |
 | `close_session` | `session` (optional) | Ends the attempt, disposes the engine, stops the app processes the session started. |
 
 Only one session can be open at a time. The `session` argument is optional;
