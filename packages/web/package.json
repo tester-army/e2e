@@ -1,6 +1,6 @@
 {
   "name": "@e2edev/web",
-  "version": "0.11.0-canary-20260917213813",
+  "version": "0.11.0",
   "description": "Web engine for e2e agentic end-to-end testing, built on Playwright",
   "keywords": [
     "e2e",
@@ -50,7 +50,7 @@
     "test:unit": "vitest run tests/unit"
   },
   "peerDependencies": {
-    "e2e": "0.15.0-canary-20260921154506",
+    "e2e": "0.15.0",
     "playwright": ">=1.63.0 <2"
   },
   "devDependencies": {

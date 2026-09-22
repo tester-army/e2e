@@ -1,6 +1,6 @@
 {
   "name": "e2e",
-  "version": "0.15.0-canary-20260921154506",
+  "version": "0.15.0",
   "description": "SDK, runner, and CLI for agentic end-to-end testing",
   "keywords": [
     "e2e",
