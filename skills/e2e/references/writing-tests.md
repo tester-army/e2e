@@ -128,7 +128,11 @@ Roles: `button`, `link`, `textbox`, `searchbox`, `combobox`, `listbox`,
 `region`. The union is closed; anything else is a type error. `img` is
 accepted as an alias of `image`, so a ported Playwright `getByRole('img')`
 compiles and builds the `image` query. A role the platform has no widget for
-(`tooltip` on a phone) matches nothing rather than failing to compile.
+(`tooltip` on a phone) matches nothing rather than failing to compile. On the
+web a rich-text editor's `contenteditable` host is a `textbox` in the screen
+the agent sees and takes `fill`; address one from a test with `getByLabel` or
+`getByTestId`, or give the host `role="textbox"` for `getByRole`, which
+resolves through Playwright's role selector.
 
 Text matching is exact by default after whitespace normalization, and
 `getByText` returns the innermost match: a container that echoes its child's
