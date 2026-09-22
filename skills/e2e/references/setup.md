@@ -136,7 +136,7 @@ identity for cache and session keys. `web()` accepts:
 | `services` | Dependency processes started before `command`, in order. |
 | `environment` | `'test'`, `'staging'`, `'production'`. Inferred from the host; a label for the report and the cache key. |
 | `identity` | Stable app identity for cache and session keys when the origin changes per deploy (preview URLs). |
-| `browser` | `'chromium'` (default), `'firefox'`, `'webkit'`. |
+| `browser` | `'chromium'` (default), `'firefox'`, `'webkit'`, or a `BrowserProvider` object that leases hosted browsers over CDP: one per worker slot for the run (`scope: 'worker'`, the default, acquired at `prepare` and released at `finish`) or a fresh one per attempt (`scope: 'attempt'`, released at `endAttempt`, the same limits as `reconnectEndpoint`). A provider implies chromium and excludes `connect`. |
 | `viewport` | `{ width, height }`, default 1280x720. |
 | `connect` | `{ cdpEndpoint }` attaches to a remote Chromium over CDP. Adding `reconnectEndpoint` uses a dedicated persistent default context, provisions a fresh browser per attempt, and reconnects only to the original browser and page. |
 | `headers` | Request headers sent to the app's site only (a Vercel `x-vercel-protection-bypass`, ngrok's `ngrok-skip-browser-warning`). Reaches every path onto the page, `agent.act` included; turns the browser HTTP cache off and blocks service workers. |

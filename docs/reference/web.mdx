@@ -29,8 +29,13 @@ export default {
  * engine contract's app declaration) plus the browser itself.
  */
 export interface WebOptions extends EngineAppDeclaration {
-  /** Browser to launch; defaults to chromium. */
-  readonly browser?: BrowserName;
+  /**
+   * Browser to launch, `chromium` by default. A `BrowserProvider` leases
+   * hosted browsers instead: one per worker slot at `prepare`, or one per
+   * attempt, each attached to over CDP and released when its scope ends. A
+   * provider implies chromium and excludes `connect`.
+   */
+  readonly browser?: BrowserName | BrowserProvider;
   /** Initial viewport of every attempt's page; default 1280 by 720. */
   readonly viewport?: ViewportSize;
   /**
@@ -64,7 +69,11 @@ The app declaration fields (`url`, `command`, `readyUrl`, `services`,
 `environment`, `identity`) are documented under
 [the app under test](/reference/config#the-app-under-test). `connect` needs
 chromium; `cdpEndpoint(signal)` is called once per worker and again at an
-attempt start after a disconnect. `:` is not allowed in the `basicAuth` user name.
+attempt start after a disconnect. A `browser` provider object leases hosted
+browsers and releases them when the run or the attempt ends; see
+[Hosted browsers](/browser#hosted-browsers) for the `BrowserProvider`
+contract and an example provider. `browser: provider` together with
+`connect` is `INVALID_CONFIG`. `:` is not allowed in the `basicAuth` user name.
 
 `headers` and `basicAuth` are how a test reaches a [protected preview](/starting-your-app#protected-previews).
 
@@ -126,6 +135,10 @@ previously retained Playwright objects belong to the disconnected transport.
 Persistent recovery does not support `headers`, `basicAuth`, `app.clearState`,
 or session state capture and restore. `app.restart` remains available. Omit
 `reconnectEndpoint` to keep ordinary isolated contexts and the existing behavior.
+A `browser` provider with `scope: 'attempt'` rides the same persistent
+context, with the same limits: the lease's `cdpEndpoint` provisions the
+attempt's browser and its `reconnectEndpoint` (else `cdpEndpoint` again)
+reconnects to it.
 
 ## Web
 
@@ -442,10 +455,12 @@ cannot reuse node IDs or publish handles over a newer observation.
 
 ## Exported types
 
-`WebOptions`, `WebConnectOptions`, `WebBasicAuth`,
-`BrowserName`, `PlaywrightLiveSurface`, `Web`, `FrameScreen`, `WebExpectation`, `WebRoute`,
-`WebResponse`, `Cookie`, `Dialog`, and `DialogHandler` are exported from the
-package for typing config helpers and fixtures.
+`WebOptions`, `WebConnectOptions`, `WebBasicAuth`, `BrowserName`,
+`BrowserProvider`, `BrowserProviderScope`, `BrowserRequest`, `BrowserLease`,
+`BrowserReleaseContext`, `PlaywrightLiveSurface`, `Web`, `FrameScreen`,
+`WebExpectation`, `WebRoute`, `WebResponse`, `Cookie`, `Dialog`, and
+`DialogHandler` are exported from the package for typing config helpers and
+fixtures.
 
 ## expect(web)
 

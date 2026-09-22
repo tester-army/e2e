@@ -35,7 +35,8 @@ runner starts before the run and stops after it, with `readyUrl` to poll,
 default `url`), `environment`
 (`test`, `staging`, `production`; inferred from the host), and `identity` (a
 stable cache and session key when the origin is ephemeral). Browser options:
-`browser` (`chromium`, `firefox`, `webkit`; default `chromium`), `viewport`
+`browser` (`chromium`, `firefox`, `webkit`; default `chromium`; or a
+`BrowserProvider` that leases hosted browsers, see below), `viewport`
 (`{ width, height }`; default 1280x720), `testIdAttribute` (the attribute
 `getByTestId` and a node's `testId` read; default `data-testid`), and
 `connect` — attach to a remote browser over CDP instead of launching a local
@@ -72,6 +73,31 @@ state capture and restore. Recording resumes after reconnect, but a segment
 lost during the disconnect remains unavailable. See the
 [Playwright reference](../../docs/reference/web.mdx#recovering-a-cdp-transport)
 for the lifecycle and ownership contract.
+
+### Leasing hosted browsers (`browser`)
+
+`connect` has no lifecycle: nothing tells the host when to delete the browser
+it provisioned. Pass a `BrowserProvider` as `browser` instead and the engine
+asks for a browser when one is needed and gives it back when its scope ends,
+on every exit path. `scope: 'worker'` (the default) leases one browser per
+worker slot in `prepare` and releases them in `finish`; a worker whose browser
+drops leases a replacement itself. `scope: 'attempt'` leases a fresh browser in
+every `startAttempt` and releases it in `endAttempt`, reattaching through the
+lease's `reconnectEndpoint` after a transport drop, with the limits of
+`connect.reconnectEndpoint`. A provider implies chromium and excludes
+`connect`; no vendor ships in the package. See
+[Hosted browsers](../../docs/browser.mdx#hosted-browsers) for the contract
+and an example against a generic session API.
+
+```ts
+engine: web({
+  browser: {
+    name: 'hosted-browsers',
+    acquire: async (request) => ({ id: session.id, cdpEndpoint: session.cdpUrl }),
+    release: async (lease) => stopSession(lease.id),
+  },
+});
+```
 
 ## The `web` fixture
 

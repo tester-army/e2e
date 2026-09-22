@@ -17,6 +17,7 @@ import {
   type EngineHandle,
 } from 'e2e/engine';
 import { createRequire } from 'node:module';
+import { asBrowserProvider } from './provider.ts';
 import { PlaywrightSurface, type WebOptions } from './surface.ts';
 import { createWebFixture } from './web.ts';
 
@@ -44,7 +45,14 @@ export function surfaceOf(engine: EngineHandle): PlaywrightLiveSurface | undefin
 }
 
 export function web(options: WebOptions = {}): EngineHandle {
-  if (options.connect !== undefined && options.browser !== undefined && options.browser !== 'chromium') {
+  const provider = typeof options.browser === 'object' && options.browser !== null ? asBrowserProvider(options.browser) : undefined;
+  if (provider !== undefined && options.connect !== undefined) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `web({ browser, connect }) names two browser sources; browser provider "${provider.name}" leases its own browsers, so remove connect`,
+    );
+  }
+  if (options.connect !== undefined && typeof options.browser === 'string' && options.browser !== 'chromium') {
     throw new ConfigurationError(
       'INVALID_CONFIG',
       `web({ connect }) requires the chromium browser; CDP attach is chromium-only, got "${options.browser}"`,
@@ -59,14 +67,17 @@ export function web(options: WebOptions = {}): EngineHandle {
   if (options.headers !== undefined) validateHeaders(options.headers);
   if (options.basicAuth !== undefined) validateBasicAuth(options.basicAuth);
   if (options.testIdAttribute !== undefined) validateTestIdAttribute(options.testIdAttribute);
-  const recoverable = options.connect?.reconnectEndpoint !== undefined;
-  if (recoverable && typeof options.connect?.reconnectEndpoint !== 'function') {
+  const reconnecting = options.connect?.reconnectEndpoint !== undefined;
+  if (reconnecting && typeof options.connect?.reconnectEndpoint !== 'function') {
     throw new ConfigurationError('INVALID_CONFIG', 'connect.reconnectEndpoint must be a function');
   }
+  // A per-attempt lease rides the same persistent context as `reconnectEndpoint`, with the same limits.
+  const recoverable = reconnecting || provider?.scope === 'attempt';
   if (recoverable && (options.headers !== undefined || options.basicAuth !== undefined)) {
+    const mode = provider === undefined ? 'connect.reconnectEndpoint' : `browser provider "${provider.name}" with scope "attempt"`;
     throw new ConfigurationError(
       'INVALID_CONFIG',
-      'connect.reconnectEndpoint uses a persistent context; headers and basicAuth require a newly created context',
+      `${mode} uses a persistent context; headers and basicAuth require a newly created context`,
     );
   }
   const surface = new PlaywrightSurface(options);
@@ -76,6 +87,7 @@ export function web(options: WebOptions = {}): EngineHandle {
     spiVersion: 1,
     platform: 'web',
     prepare: (info) => surface.prepare(info),
+    finish: (info) => surface.finish(info),
     init: (info) => surface.init(info),
     startAttempt: (context) => surface.startAttempt(context),
     endAttempt: (context) => surface.endAttempt(context),

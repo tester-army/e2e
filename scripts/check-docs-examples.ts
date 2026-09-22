@@ -26,6 +26,7 @@ const EXAMPLES: Record<string, string> = {
   'docs/examples/quickstart/e2e.command.config.ts': 'docs/starting-your-app.mdx',
   'docs/examples/mobile/device-provider.ts': 'docs/mobile.mdx',
   'docs/examples/mobile/device-cloud-provider.ts': 'docs/mobile.mdx',
+  'docs/examples/web/browser-provider.ts': 'docs/browser.mdx',
 };
 
 function read(path: string): string {

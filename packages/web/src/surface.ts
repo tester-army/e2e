@@ -21,6 +21,8 @@ import {
   type EngineInitInfo,
   type EngineObserveOptions,
   type EnginePrepareInfo,
+  type EnginePrepareResult,
+  type EngineFinishInfo,
   type EngineSnapshot,
   type EngineState,
   type LocatorAction,
@@ -37,6 +39,8 @@ import { matchesText } from 'e2e/engine';
 import { classifyActionError, dispatchLocatorAction, dispatchPointerAction } from './actions.ts';
 import { BrowserConnection, connectCdp, type BrowserName } from './browser-connection.ts';
 import { AttemptSession, type StorageState } from './attempt-session.ts';
+import type { CdpEndpointResolver } from './cdp-recovery.ts';
+import { LeasedBrowsers, type BrowserProvider } from './provider.ts';
 import { DialogRouter } from './dialogs.ts';
 import { ensureBrowsersInstalled } from './install.ts';
 import { applyPostSteps, frameSelectors, projectExpression } from './locators.ts';
@@ -136,8 +140,13 @@ export interface WebBasicAuth {
  * engine contract's app declaration) plus the browser itself.
  */
 export interface WebOptions extends EngineAppDeclaration {
-  /** Browser to launch; defaults to chromium. */
-  readonly browser?: BrowserName;
+  /**
+   * Browser to launch, `chromium` by default. A `BrowserProvider` leases
+   * hosted browsers instead: one per worker slot at `prepare`, or one per
+   * attempt, each attached to over CDP and released when its scope ends. A
+   * provider implies chromium and excludes `connect`.
+   */
+  readonly browser?: BrowserName | BrowserProvider;
   /** Initial viewport of every attempt's page; default 1280 by 720. */
   readonly viewport?: ViewportSize;
   /**
@@ -188,6 +197,8 @@ export class PlaywrightSurface {
   private readonly browserName: BrowserName;
   private readonly connection = new BrowserConnection();
   private readonly connect: WebConnectOptions | undefined;
+  /** The provider's browsers, when `browser` names one; the runner and worker halves of the lease bookkeeping. */
+  private readonly leases: LeasedBrowsers | undefined;
   private session: AttemptSession | undefined;
   private readonly usedContexts = new Set<string>();
   private readonly viewport: ViewportSize;
@@ -208,7 +219,8 @@ export class PlaywrightSurface {
   private routes: StoredRoute[] = [];
 
   constructor(options: WebOptions) {
-    this.browserName = options.browser ?? 'chromium';
+    this.browserName = typeof options.browser === 'string' ? options.browser : 'chromium';
+    this.leases = typeof options.browser === 'object' && options.browser !== null ? new LeasedBrowsers(options.browser) : undefined;
     this.connect = options.connect;
     this.viewport = options.viewport ?? DEFAULT_VIEWPORT;
     this.headers = options.headers === undefined ? undefined : lowercaseNames(options.headers);
@@ -219,24 +231,37 @@ export class PlaywrightSurface {
   // --- lifecycle ---
 
   /**
-   * Installs the browser on first run, once per run before any worker.
-   * A CDP attach uses the remote's browser, so only a local launch needs the
-   * browser here. The download narrates through `info.log` and is bounded by
-   * the run's interrupt alone, never by a launch budget.
+   * Installs the browser on first run, once per run before any worker, or
+   * leases the run's browsers from a provider. A CDP attach uses the
+   * remote's browser, so only a local launch needs the browser here. The
+   * download narrates through `info.log` and is bounded by the run's
+   * interrupt alone, never by a launch budget.
    */
-  async prepare(info: EnginePrepareInfo): Promise<void> {
+  async prepare(info: EnginePrepareInfo): Promise<EnginePrepareResult | void> {
+    if (this.leases !== undefined) return this.leases.prepare(info);
     if (this.connect !== undefined) return;
     await ensureBrowsersInstalled([this.browserName], { env: info.env, signal: info.signal, log: info.log });
+  }
+
+  /** Releases the browsers `prepare` leased; a local launch or a `connect` has nothing to release. */
+  async finish(info: EngineFinishInfo): Promise<void> {
+    await this.leases?.finish(info);
   }
 
   /** Provisions the shared browser once per worker: a local launch, or a CDP attach. */
   async init(info: EngineInitInfo): Promise<void> {
     this.app = info.app;
     this.headed = info.headed;
+    this.leases?.init(info);
     // The browser was installed in `prepare`; a launch or attach is the one
     // boot step left that can outlive a launch budget, and it honours the
     // init signal.
-    if (this.connect?.reconnectEndpoint === undefined) await this.acquireBrowser(info.signal);
+    if (!this.persistent) await this.acquireBrowser(info.signal);
+  }
+
+  /** Whether attempts ride a persistent remote context, provisioned per attempt, instead of contexts on one shared browser. */
+  private get persistent(): boolean {
+    return this.connect?.reconnectEndpoint !== undefined || this.leases?.scope === 'attempt';
   }
 
   /**
@@ -246,7 +271,7 @@ export class PlaywrightSurface {
    * not use.
    */
   private async acquireBrowser(signal: AbortSignal): Promise<Browser> {
-    const verb = this.connect === undefined ? 'launch' : 'connect';
+    const verb = this.connect === undefined && this.leases === undefined ? 'launch' : 'connect';
     if (signal.aborted) throw cancelled(`browser ${verb} cancelled`);
     try {
       return await raceAbort(
@@ -271,13 +296,13 @@ export class PlaywrightSurface {
    * host's session is never held by an init or attempt that already gave up.
    */
   private connector(signal: AbortSignal): (() => Promise<Browser>) | undefined {
-    const connect = this.connect;
-    if (connect === undefined) return undefined;
+    const source = this.endpointSource();
+    if (source === undefined) return undefined;
     return async () => {
-      const endpoint = await connect.cdpEndpoint(signal);
+      const endpoint = await source.resolve(signal);
       if (signal.aborted) throw cancelled('browser connect cancelled');
       if (typeof endpoint !== 'string' || endpoint.trim() === '') {
-        throw new EngineError('ENGINE_FAILURE', 'connect.cdpEndpoint resolved to an empty CDP endpoint', {
+        throw new EngineError('ENGINE_FAILURE', `${source.name} resolved to an empty CDP endpoint`, {
           retryable: false,
         });
       }
@@ -290,9 +315,45 @@ export class PlaywrightSurface {
     };
   }
 
+  /**
+   * Where the shared browser's CDP endpoint comes from: the `connect`
+   * resolver, or the lease the worker holds from a provider; undefined for a
+   * local launch.
+   */
+  private endpointSource(): { readonly name: string; readonly resolve: CdpEndpointResolver } | undefined {
+    if (this.connect !== undefined) return { name: 'connect.cdpEndpoint', resolve: this.connect.cdpEndpoint };
+    if (this.leases === undefined) return undefined;
+    return { name: 'the browser provider', resolve: (signal) => this.leaseEndpoint(signal) };
+  }
+
+  /** The endpoint of the lease the worker holds; only reached with a provider. */
+  private leaseEndpoint(signal: AbortSignal): Promise<string> {
+    if (this.leases === undefined) throw invalidState('no browser provider is configured');
+    return this.leases.endpoint(signal);
+  }
+
+  /**
+   * The persistent remote context this attempt rides, when it does: the
+   * `connect` resolvers, or a browser leased for this attempt alone, which
+   * reconnects through the lease's own endpoint. Undefined for isolated
+   * contexts on the shared browser.
+   */
+  private async persistentBinding(
+    context: EngineAttemptContext,
+  ): Promise<{ provision: CdpEndpointResolver; reconnect: CdpEndpointResolver; usedContexts: Set<string> } | undefined> {
+    const { connect, usedContexts } = this;
+    if (connect?.reconnectEndpoint !== undefined) {
+      return { provision: connect.cdpEndpoint, reconnect: connect.reconnectEndpoint, usedContexts };
+    }
+    if (this.leases?.scope !== 'attempt') return undefined;
+    const lease = await this.leases.startAttempt(context);
+    return { provision: () => lease.cdpEndpoint, reconnect: () => lease.reconnectEndpoint ?? lease.cdpEndpoint, usedContexts };
+  }
+
   /** Opens one attempt owner before setup starts, so cleanup can cancel pending attachment. */
   async startAttempt(context: EngineAttemptContext): Promise<void> {
     if (this.session !== undefined) throw invalidState('an attempt is already running');
+    const persistent = await this.persistentBinding(context);
     this.artifactsDir = context.artifactsDir;
     this.artifactCounter = 0;
     const routes: StoredRoute[] = [];
@@ -301,7 +362,6 @@ export class PlaywrightSurface {
     this.routes = routes;
     this.dialogs = dialogs;
     const credentials = httpCredentials(this.basicAuth);
-    const connect = this.connect;
     const session = new AttemptSession({
       artifactsDir: context.artifactsDir,
       viewport: this.viewport,
@@ -319,25 +379,32 @@ export class PlaywrightSurface {
         await installSiteHeaders(target, this.app.site, this.headers);
         for (const stored of routes) await target.route(stored.predicate, stored.handler);
       },
-      ...(connect?.reconnectEndpoint === undefined ? {} : { persistent: {
-        provision: connect.cdpEndpoint, reconnect: connect.reconnectEndpoint, usedContexts: this.usedContexts,
-      } }),
+      ...(persistent === undefined ? {} : { persistent }),
     });
     this.session = session;
     await session.start(context.signal);
   }
 
-  /** Retires the owner before awaiting cleanup; late work cannot reach the next attempt. */
+  /**
+   * Retires the owner before awaiting cleanup; late work cannot reach the
+   * next attempt. A browser leased for the attempt is released after its
+   * connection closes, whether or not the close succeeded.
+   */
   async endAttempt(context: EngineCleanupContext): Promise<void> {
     const session = this.session;
     this.session = undefined;
-    if (session !== undefined) await session.close(context);
+    try {
+      if (session !== undefined) await session.close(context);
+    } finally {
+      await this.leases?.endAttempt(context);
+    }
   }
 
-  /** Releases attempt resources and the worker's shared browser process. */
+  /** Releases attempt resources, the worker's shared browser process, and a lease the worker acquired for itself. */
   async dispose(context: EngineCleanupContext): Promise<void> {
     await this.endAttempt(context);
     await withinCleanupBudget(this.connection.dispose(), context);
+    await this.leases?.dispose(context);
   }
 
   /** Returns the active attempt, including its connection generation and references. */

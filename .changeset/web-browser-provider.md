@@ -1,0 +1,5 @@
+---
+'@e2edev/web': minor
+---
+
+`web({ browser })` accepts a `BrowserProvider`: an object that leases hosted browsers and hands back the CDP endpoint to attach to, released when their scope ends on every exit path. In `worker` scope (the default) the engine leases one browser per worker slot when the run starts and releases them all when it ends; a worker whose browser drops leases a replacement itself. In `attempt` scope it leases a fresh browser in every `startAttempt` and releases it in `endAttempt`, reattaching through the lease's `reconnectEndpoint` after a transport drop, with the same limits as `connect.reconnectEndpoint`. Slots lease in parallel; a slot that fails releases the others and ends the run before any test. A provider implies chromium and excludes `connect`, which stays as the low-level option. No vendor ships in the package; the browser guide shows an example provider against a generic session API. `BrowserProvider`, `BrowserProviderScope`, `BrowserRequest`, `BrowserLease`, and `BrowserReleaseContext` are exported.

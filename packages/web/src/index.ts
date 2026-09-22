@@ -11,6 +11,7 @@ import type { Web } from './web.ts';
 export { web, surfaceOf } from './engine.ts';
 export type { PlaywrightLiveSurface } from './engine.ts';
 export type { WebBasicAuth, WebConnectOptions, WebOptions } from './surface.ts';
+export type { BrowserLease, BrowserProvider, BrowserProviderScope, BrowserReleaseContext, BrowserRequest } from './provider.ts';
 export type { BrowserName } from './browser-connection.ts';
 export type { Dialog, DialogHandler } from './dialogs.ts';
 export type {

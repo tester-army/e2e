@@ -135,8 +135,152 @@ export default {
 
 `npx playwright install webkit --with-deps` provisions the extra browser in
 CI. `connect` attaches to a remote Chromium over CDP instead of launching
-one. [Testing viewports](/viewports) covers a suite that runs at several
-sizes and what the agent sees at each.
+one; a [browser provider](#hosted-browsers) does the same and also leases
+and releases the browser. [Testing viewports](/viewports) covers a suite
+that runs at several sizes and what the agent sees at each.
+
+## Hosted browsers
+
+`browser` can also be a `BrowserProvider`: an object that leases a browser
+from a service and hands back the CDP endpoint to attach to. The engine
+attaches over CDP the way `connect` does, and adds the lifecycle `connect`
+lacks: it asks for a browser when one is needed and gives it back when its
+scope ends, on every exit path, so a session billed by the minute stops
+when the run no longer uses it. Nothing in the framework knows a vendor; a
+provider is a few dozen lines in your project.
+
+```ts
+export interface BrowserProvider {
+  /** Label in progress lines and error messages. */
+  readonly name: string;
+  /** `worker` (default): one browser per worker slot for the run. `attempt`: a fresh browser per attempt. */
+  readonly scope?: 'worker' | 'attempt';
+  acquire(request: BrowserRequest): Promise<BrowserLease>;
+  release(lease: BrowserLease, context: BrowserReleaseContext): Promise<void>;
+}
+
+export interface BrowserLease {
+  /** The provider's handle (a session id), handed back to `release`. */
+  readonly id: string;
+  /** `ws://`, `wss://`, or `http://` DevTools endpoint to attach to over CDP. */
+  readonly cdpEndpoint: string;
+  /** Endpoint to reattach to the same browser after a transport drop; per-attempt leases only. */
+  readonly reconnectEndpoint?: string;
+}
+```
+
+`acquire` receives the run id, target, worker slot and slot count, the
+attempt id for a per-attempt lease, the run's environment, an abort signal,
+and a `log` that reaches the reporter. Read tokens from `request.env`, not
+`process.env`. A lease is JSON data: only `id`, `cdpEndpoint`, and
+`reconnectEndpoint` travel to the worker, and `release` gets back the object
+`acquire` returned, so a provider can keep its own fields on it. A target
+with nothing to run leases nothing. A provider implies chromium (CDP attach
+is chromium-only) and cannot be combined with `connect`.
+
+`scope: 'worker'`, the default, leases one browser per worker slot when the
+run starts, all slots in parallel, and each worker attaches to its own for
+every attempt it runs. Every lease granted is held by the engine: a slot
+that fails to lease ends the run before any test, and the leases that
+succeeded are still released. Release happens after the last worker exits,
+on every exit path including failure, interrupt, and a `prepare` that
+threw, within `cleanupTimeout`. When a worker's browser drops, the worker
+leases a replacement itself at the next attempt start and releases it when
+the worker exits; the dead lease stays with the runner, which releases it
+at the end. `acquire` therefore runs in a worker process too, so a provider
+must not depend on state it built in the runner process, and `log` is
+discarded there. Each lease is released exactly once, by the side that
+acquired it.
+
+`scope: 'attempt'` leases a fresh browser in every `startAttempt`, retries
+included, and releases it in `endAttempt`, also after a start that failed.
+The attempt runs in the browser's persistent default context, so the
+remote must contain only that context, and the limits of
+[`connect.reconnectEndpoint`](/reference/web#recovering-a-cdp-transport)
+apply: no `headers` or `basicAuth` (both are `INVALID_CONFIG`), no
+`app.clearState()`, no session state capture or restore. After a transport
+drop the next operation reattaches through the lease's `reconnectEndpoint`,
+or `cdpEndpoint` when the lease has none, and the engine checks it is the
+same browser.
+
+A provider against a typical session API has three requests: create a
+session, poll it until it exposes a DevTools endpoint, stop it.
+
+```ts title="browser-provider.ts"
+import type { BrowserProvider } from '@e2edev/web';
+
+/**
+ * Leases browsers from a service that starts a Chromium per session and
+ * exposes its DevTools endpoint. Replace the three requests with your
+ * service's API.
+ */
+export function hostedBrowsers(options: { serviceUrl: string; scope?: 'worker' | 'attempt' }): BrowserProvider {
+  return {
+    name: 'hosted-browsers',
+    scope: options.scope ?? 'worker',
+    async acquire(request) {
+      const token = request.env['BROWSER_SERVICE_TOKEN'];
+      if (token === undefined || token === '') throw new Error('BROWSER_SERVICE_TOKEN is not set');
+      const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+      // 1. Ask for a browser; name the session after the run so it can be found later.
+      const created = await fetch(`${options.serviceUrl}/sessions`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          name: `e2e ${request.runId} ${request.targetName} ${request.attemptId ?? `slot ${request.slot + 1} of ${request.slots}`}`,
+        }),
+        signal: request.signal,
+      });
+      if (!created.ok) throw new Error(`browser service: HTTP ${created.status}`);
+      const { id } = (await created.json()) as { id: string };
+      // 2. Wait until the session exposes its DevTools endpoint.
+      for (;;) {
+        const response = await fetch(`${options.serviceUrl}/sessions/${id}`, { headers, signal: request.signal });
+        const session = (await response.json()) as { status: string; cdpUrl?: string; viewerUrl?: string };
+        if (session.status === 'ready' && session.cdpUrl !== undefined) {
+          if (session.viewerUrl !== undefined) request.log(`watch at ${session.viewerUrl}`);
+          return { id, cdpEndpoint: session.cdpUrl };
+        }
+        if (session.status !== 'starting') throw new Error(`browser service: session ${id} is ${session.status}`);
+        await new Promise((resolve) => setTimeout(resolve, 2_000));
+      }
+    },
+    async release(lease, context) {
+      // 3. Stop the session; the run waits for this within cleanupTimeout.
+      const token = context.env['BROWSER_SERVICE_TOKEN'] ?? '';
+      await fetch(`${options.serviceUrl}/sessions/${lease.id}/stop`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        signal: context.signal,
+      });
+    },
+  };
+}
+```
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2edev/web';
+import { hostedBrowsers } from './browser-provider.ts';
+
+export default {
+  targets: [
+    {
+      name: 'hosted',
+      engine: web({
+        url: 'https://staging.example.com',
+        browser: hostedBrowsers({ serviceUrl: 'https://browsers.example.com' }),
+      }),
+    },
+  ],
+  workers: 2,
+} satisfies E2EConfig;
+```
+
+Two workers lease two sessions in parallel and keep them for the run. Hosted
+sessions are billed while they run, so keep `workers` at what the suite can
+fill; `scope: 'attempt'` trades a session start per test for a browser no
+earlier test has touched.
 
 ## Raw selectors
 
