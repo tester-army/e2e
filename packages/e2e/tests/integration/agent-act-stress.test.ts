@@ -24,6 +24,16 @@ test('secret probe', async ({ app, agent }) => {
 });
 `;
 
+const EDITOR_SECRET_SUITE = `import { test, credentials, secrets } from 'e2e';
+
+test('editor secret probe', async ({ app, agent }) => {
+  await app.open('/editor');
+  await agent.act('paste the API key into the notes editor', {
+    params: { password: credentials.user('admin').password, apiKey: secrets.get('stripe-key') },
+  });
+});
+`;
+
 describe('secret fill policy under a hostile executor', () => {
   let app: FixtureApp;
 
@@ -65,6 +75,45 @@ describe('secret fill policy under a hostile executor', () => {
     }
   }, 120_000);
 
+
+  it('fills a generic secret into a contenteditable host and refuses a password there', async () => {
+    const model = installFakeLoopModel((call) => {
+      const notes = () => nodeIdFor(call.prompt, /textbox "Notes"/);
+      if (call.turn === 1) return [{ toolName: 'type_secret', input: { target: notes(), name: 'admin' } }];
+      if (call.turn === 2) return [{ toolName: 'type_secret', input: { target: notes(), name: 'stripe-key' } }];
+      return [{ toolName: 'complete_step', input: { status: 'passed', summary: 'filled the API key' } }];
+    });
+    const { outcome, project } = await runProject(
+      { 'tests/secret.e2e.ts': EDITOR_SECRET_SUITE },
+      {
+        appUrl: app.url,
+        config: {
+          tests: 'tests/**/*.e2e.ts',
+          agents: { default: { model } },
+          credentials: CREDS,
+          secrets: { 'stripe-key': 'sk_live_generic_4242' },
+        },
+      },
+    );
+    try {
+      const result = resultByTitle(outcome, 'editor secret probe');
+      expect(result.attempts.at(-1)!.error?.message ?? '').toBe('');
+      expect(result.status).toBe('passed');
+      expect(loopCalls).toHaveLength(3);
+      // The host is an editable textbox, so the sink is accepted; a password
+      // still needs a password field, and the editor has purpose none.
+      expect(loopCalls[1]!.lastToolResult).toContain('field purpose none is incompatible with secret purpose password');
+      expect(loopCalls[2]!.lastToolResult).toContain('Filled secret "stripe-key"');
+      expect(loopCalls[2]!.lastToolResult).toContain('<secret:stripe-key>');
+      for (const call of loopCalls) {
+        expect(call.prompt).not.toContain('sk_live_generic');
+        expect(call.toolResults.join('\n')).not.toContain('sk_live_generic');
+      }
+      expect(JSON.stringify(outcome.report)).not.toContain('sk_live_generic');
+    } finally {
+      project.cleanup();
+    }
+  }, 120_000);
 
   it('never leaks the plaintext into prompts or the transcript', async () => {
     const model = installFakeLoopModel((call) => {

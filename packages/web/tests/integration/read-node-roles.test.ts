@@ -277,6 +277,43 @@ describe('contenteditable editing hosts', () => {
     expect(roles).toEqual({ frame: 'iframe', host: 'textbox' });
   });
 
+  it('drops a name taken from a block placeholder once the editor has content, and keeps one from the host', async () => {
+    await page.setContent(`
+      <div contenteditable class="tiptap ProseMirror" data-testid="tiptap">
+        <p class="is-empty is-editor-empty" data-placeholder="Write something"><br></p>
+      </div>
+      <div contenteditable class="ql-editor ql-blank" data-placeholder="Compose a message" data-testid="quill"><p><br></p></div>
+      <div contenteditable aria-placeholder="Write here" data-testid="aria-placeholder"><p><br></p></div>
+      <span id="notes-label">Notes</span>
+      <div contenteditable aria-labelledby="notes-label" data-testid="labelled">
+        <p class="is-empty is-editor-empty" data-placeholder="Write something"><br></p>
+      </div>
+    `);
+    const before = await rolesByTestId();
+    expect(before.get('tiptap')).toMatchObject({ role: 'textbox', name: 'Write something', value: '' });
+    expect(before.get('quill')).toMatchObject({ role: 'textbox', name: 'Compose a message', value: '' });
+    expect(before.get('aria-placeholder')).toMatchObject({ role: 'textbox', name: 'Write here', value: '' });
+    expect(before.get('labelled')).toMatchObject({ role: 'textbox', name: 'Notes', value: '' });
+
+    for (const testId of ['tiptap', 'quill', 'aria-placeholder', 'labelled']) {
+      await page.getByTestId(testId).fill('Hello');
+    }
+    // TipTap's Placeholder extension paints the hint as a decoration on the
+    // empty block and removes it, class and attribute, once the block has text.
+    await page.evaluate(() => {
+      for (const block of document.querySelectorAll('.tiptap [data-placeholder]')) {
+        block.removeAttribute('data-placeholder');
+        block.classList.remove('is-empty', 'is-editor-empty');
+      }
+    });
+    const after = await rolesByTestId();
+    expect(after.get('tiptap')).toMatchObject({ role: 'textbox', value: 'Hello' });
+    expect(after.get('tiptap')?.name).toBeUndefined();
+    expect(after.get('quill')).toMatchObject({ role: 'textbox', name: 'Compose a message', value: 'Hello' });
+    expect(after.get('aria-placeholder')).toMatchObject({ role: 'textbox', name: 'Write here', value: 'Hello' });
+    expect(after.get('labelled')).toMatchObject({ role: 'textbox', name: 'Notes', value: 'Hello' });
+  });
+
   it('follows the document as it is edited and focused, as a textarea value does', async () => {
     await page.setContent(`
       <div contenteditable aria-label="Notes" data-testid="editor"><p><br></p></div>

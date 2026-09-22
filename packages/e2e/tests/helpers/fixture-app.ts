@@ -246,6 +246,20 @@ const PAGES: Record<string, string> = {
   <output id="file-name" aria-label="File name"></output>
 </body>
 </html>`,
+  // Rich-text editors: a bare contenteditable host named through
+  // aria-labelledby, and one that also carries the explicit role Playwright's
+  // role selector needs to find it.
+  '/editor': `<!doctype html>
+<html>
+<head><title>Editor</title></head>
+<body>
+  <h1>Editor</h1>
+  <span id="notes-label">Notes</span>
+  <div id="notes" contenteditable aria-labelledby="notes-label" data-testid="notes"><p><br></p></div>
+  <span id="message-label">Message</span>
+  <div id="message" contenteditable role="textbox" aria-labelledby="message-label" data-testid="message"><p><br></p></div>
+</body>
+</html>`,
   '/frame': `<!doctype html>
 <html>
 <head><title>Frame host</title></head>
