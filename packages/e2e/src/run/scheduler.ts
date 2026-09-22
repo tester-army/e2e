@@ -54,6 +54,8 @@ export interface SchedulerEvents {
   onProgress?(pair: { testId: string; agent: string; repeat: number }, targetName: string, progress: StepProgress): void;
   /** Text a worker's process wrote to stdout or stderr, attributed to the pair executing when one was. */
   onOutput?(output: Omit<OutputMessage, 'type'>, targetName: string): void;
+  /** One line a worker's engine `init` reported. */
+  onNotice?(message: string, targetName: string): void;
   /** Phase timings a child-process worker drained after one unit. */
   onDebug?(snapshot: DebugSnapshot): void;
   /** Model calls a child-process worker drained after one unit. */
@@ -578,6 +580,10 @@ class Scheduler {
       case 'output': {
         const { type: _type, ...output } = message;
         this.options.events.onOutput?.(output, worker.targetName);
+        break;
+      }
+      case 'notice': {
+        this.options.events.onNotice?.(message.message, worker.targetName);
         break;
       }
       case 'result': {

@@ -479,6 +479,17 @@ export interface EngineInitInfo {
   readonly workerSlot: number;
   /** Aborts on interrupt and when init exceeds the launch timeout; init must stop promptly. */
   readonly signal: AbortSignal;
+  /**
+   * Reports one line of progress. The runner streams it as a `notice` run
+   * event, prefixed with the target and worker slot, so it reaches the
+   * reporter and every host sink instead of being written to a worker's
+   * stderr underneath the live status block. This is where a fact that only
+   * exists once the worker is up belongs: the URL a hosted browser or device
+   * can be watched at, which simulator a slot got, a version it detected.
+   * Meant for `init` itself; a line logged later is still delivered while
+   * the worker lives and dropped once it has exited.
+   */
+  readonly log: (line: string) => void;
 }
 
 /**

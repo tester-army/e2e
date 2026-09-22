@@ -35,6 +35,7 @@ describe('agent tool pack', () => {
         app: {},
         headed: false,
         workerSlot: 0,
+        log: () => undefined,
         env: {},
         signal: new AbortController().signal,
       });

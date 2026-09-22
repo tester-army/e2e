@@ -160,6 +160,10 @@ observation, and compatible editable field. The engine receives a
   cleanup error.
 - `init` runs once per worker before its first attempt. Boot devices here.
   It receives the app's site, project root, worker slot, and headed setting.
+  Its `info.log` reaches the reporter like `prepare`'s, prefixed with the
+  target and worker slot (`ios worker 1: ...`): the place for a fact that
+  only exists once the worker is up, such as the URL where a hosted browser
+  or device can be watched, or which simulator the slot got.
 - `startAttempt` and `endAttempt` surround each attempt. Create and clean up
   the test's UI here. If startup fails or exceeds `launchTimeout`, the runner
   aborts its signal and calls `endAttempt`, so cleanup must be idempotent.

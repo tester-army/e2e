@@ -61,6 +61,8 @@ export interface ExecutionEvents {
   onPairStart?(pair: TestTargetPair): void;
   /** Live step progress of one running attempt, for reporters. */
   onProgress?(pair: TestTargetPair, progress: StepProgress): void;
+  /** One line of progress the engine's `init` reported, already naming the target and worker slot. */
+  onNotice?(message: string): void;
   /**
    * A run-level configuration failure met mid-run, such as an unusable model
    * on the first `agent` acquisition. The run should stop; the error is
@@ -227,6 +229,7 @@ export class TargetExecutor implements SerialHost {
             headed: this.options.headed,
             workerSlot: this.options.workerSlot,
             signal,
+            log: (line) => this.options.events?.onNotice?.(`${this.target.name} worker ${String(this.options.workerSlot)}: ${line}`),
           }),
       ),
     );

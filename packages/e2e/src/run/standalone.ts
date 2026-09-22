@@ -118,7 +118,10 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
     isolated: false,
     interruptSignal: signal,
     debug,
-    ...(options.onProgress === undefined ? {} : { events: { onProgress: (_testId, progress) => options.onProgress?.(progress) } }),
+    events: {
+      onNotice: (message) => notice(target.name, message),
+      ...(options.onProgress === undefined ? {} : { onProgress: (_testId: unknown, progress: StepProgress) => options.onProgress?.(progress) }),
+    },
   });
   const steps = new StepRecorder(attemptId, {
     maxEventsPerStep: config.limits.maxEventsPerStep,

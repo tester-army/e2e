@@ -162,6 +162,15 @@ export interface OutputMessage {
   readonly text: string;
 }
 
+/**
+ * One line the engine's `init` reported through `info.log`. Fire-and-forget
+ * like `progress`: a line the worker sends after its channel closed is lost.
+ */
+export interface NoticeMessage {
+  readonly type: 'notice';
+  readonly message: string;
+}
+
 export interface ResultMessage {
   readonly type: 'result';
   readonly result: WireResultRecord;
@@ -215,6 +224,7 @@ export type WorkerToMain =
   | PairStartMessage
   | ProgressMessage
   | OutputMessage
+  | NoticeMessage
   | ResultMessage
   | SerialGroupMessage
   | UnitDoneMessage

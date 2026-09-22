@@ -105,11 +105,12 @@ export type RunEventFact =
     }
   | {
       /**
-       * One line of run-level progress outside any test, inside the setup
-       * step in flight: a first-run download narrating under a `prepare`
-       * step, a reused app process under an `app` step. `target` is the
-       * target the line is about, or `app` for the app process and its
-       * services.
+       * One line of run-level progress outside any test: a first-run
+       * download narrating under a `prepare` step, a reused app process
+       * under an `app` step, or what a worker's engine `init` reported
+       * (`<target> worker <slot>: <line>`) once the run is executing.
+       * `target` is the target the line is about, or `app` for the app
+       * process and its services.
        */
       readonly type: 'notice';
       readonly target: string;

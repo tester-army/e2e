@@ -32,6 +32,7 @@ async function boot(engine: EngineHandle, app: FixtureApp, artifactsDir: string,
     env: {},
     headed: false,
     workerSlot: 0,
+    log: () => undefined,
     signal: new AbortController().signal,
   });
   await engine.startAttempt!({ attemptId, artifactsDir, signal: new AbortController().signal });

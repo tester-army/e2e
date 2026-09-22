@@ -58,7 +58,7 @@ beforeEach(async () => {
   } as unknown as Browser;
   acquire.mockResolvedValue(browser);
   surface = new PlaywrightSurface({});
-  await surface.init({ runId: 'run', targetName: 'web', projectRoot: process.cwd(), app: {}, env: {}, headed: false, workerSlot: 0, signal: new AbortController().signal });
+  await surface.init({ runId: 'run', targetName: 'web', projectRoot: process.cwd(), app: {}, env: {}, headed: false, workerSlot: 0, signal: new AbortController().signal, log: () => undefined });
   await surface.startAttempt({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal });
 });
 

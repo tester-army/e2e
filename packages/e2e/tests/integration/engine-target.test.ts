@@ -10,7 +10,7 @@ import { defineEngine, type EngineFixtureContext } from '../../src/engine/index.
 import type { StepExecutor } from '../../src/agent/executor.ts';
 import type { SemanticNode } from '../../src/engine/surface.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
-import { createProject } from '../helpers/run-project.ts';
+import { createProject, runProjectWithConfigFile } from '../helpers/run-project.ts';
 import { snapshot } from '../helpers/snapshot.ts';
 
 const builtRunnerModule = new URL('../../dist/run/runner.js', import.meta.url).href;
@@ -37,6 +37,34 @@ test('screen and expect drive the toy device over locate', async ({ screen }) =>
   await screen.getByRole('button', { name: 'Increment' }).tap();
   await expect(screen.getByRole('status')).toHaveText('2');
 });
+`;
+
+const WORKER_LOG_SUITE = `import { test, expect } from 'e2e';
+
+test('the button is there', async ({ screen }) => {
+  await expect(screen.getByRole('button', { name: 'Go' })).toBeVisible();
+});
+`;
+
+/** An engine in a config file, so the runner spawns a worker process and the init line crosses IPC. */
+const WORKER_LOG_CONFIG = `import type { E2EConfig } from 'e2e';
+import { defineEngine } from 'e2e/engine';
+
+const node = { ref: { id: 'n1', revision: '' }, role: 'button', name: 'Go', states: { hidden: false } };
+
+export default {
+  tests: 'tests/**/*.e2e.ts',
+  targets: [{ name: 'hosted', platform: 'ios', engine: defineEngine({
+    name: 'hosted-fake',
+    version: '1.0.0',
+    spiVersion: 1,
+    async init(info) { info.log('watch live at https://example.test/sessions/abc'); },
+    async observe() { return { location: 'app://fake/Home', root: node, viewport: { width: 1280, height: 720 } }; },
+    async locate() { return [node]; },
+  }) }],
+  workers: 1,
+  cache: 'off',
+} satisfies E2EConfig;
 `;
 
 const FIXTURE_SUITE = `import { test, expect } from 'e2e';
@@ -111,9 +139,11 @@ function toyEngine(
     ...(options.withoutInit === true
       ? {}
       : {
-          async init(info: { env: Readonly<Record<string, string | undefined>> }) {
+          async init(info: { env: Readonly<Record<string, string | undefined>>; log: (line: string) => void }) {
             lifecycle.push('init');
             initEnv = { TOY_POOL: info.env['TOY_POOL'], TOY_CACHE: info.env['TOY_CACHE'] };
+            // A fact that only exists once the worker is up: which device the slot got.
+            info.log(`booted ${info.env['TOY_POOL']?.split(',')[0] ?? 'no device'}`);
           },
         }),
     ...(options.withIsolation !== true
@@ -401,6 +431,8 @@ test('second attempt also starts fresh', async ({ screen }) => {
     const setup: { kind: string; state: string; engine?: string; durationMs?: number }[] = [];
     /** Event types in order of first appearance. */
     const order: string[] = [];
+    /** Every event type in sequence, notices with their message. */
+    const sequence: string[] = [];
     let noticeAt = 0;
     const env: NodeJS.ProcessEnv = { ...process.env, APP_URL: '', CI: '', TOY_CACHE: '/run/cache' };
     try {
@@ -414,6 +446,7 @@ test('second attempt also starts fresh', async ({ screen }) => {
         quiet: true,
         onEvent: (event) => {
           if (!order.includes(event.type)) order.push(event.type);
+          sequence.push(event.type === 'notice' ? `notice:${event.message}` : event.type);
           if (event.type === 'notice') {
             notices.push({ target: event.target, message: event.message });
             // The prepare notice; finish narrates after the clock, and is not what startedAt is measured against.
@@ -432,10 +465,14 @@ test('second attempt also starts fresh', async ({ screen }) => {
       expect(outcome.exitCode).toBe(0);
       expect(toy.lifecycle).toEqual(['prepare', 'init', 'dispose', 'finish']);
       // Both hooks see the run's environment, the one the workers start with.
+      // The worker's init line arrives as the same event, naming the target
+      // and slot, since nothing else does once the run is executing.
       expect(notices).toEqual([
         { target: 'toy-sim', message: 'provisioning toy device for /run/cache' },
+        { target: 'toy-sim', message: 'toy-sim worker 0: booted sim-a' },
         { target: 'toy-sim', message: 'releasing toy device for /run/cache' },
       ]);
+      expect(sequence.indexOf('notice:toy-sim worker 0: booted sim-a')).toBeGreaterThan(sequence.indexOf('plan'));
       // The result's env reached init as the worker's environment; the run's own value won.
       expect(toy.initEnv()).toEqual({ TOY_POOL: 'sim-a,sim-b', TOY_CACHE: '/run/cache' });
       expect(env['TOY_POOL']).toBeUndefined();
@@ -455,6 +492,28 @@ test('second attempt also starts fresh', async ({ screen }) => {
       // The clock starts with the plan: the report's startedAt is later than
       // the download it narrated (with a margin for a timer firing early).
       expect(Date.parse(outcome.report.run.startedAt)).toBeGreaterThanOrEqual(noticeAt + 40);
+    } finally {
+      project.cleanup();
+    }
+  });
+
+  it('streams an init log line from a worker process as a notice naming the target and slot', async () => {
+    const notices: { target: string; message: string }[] = [];
+    const { outcome, project } = await runProjectWithConfigFile(
+      { 'tests/go.e2e.ts': WORKER_LOG_SUITE },
+      {
+        appUrl: '',
+        configSource: WORKER_LOG_CONFIG,
+        runOptions: {
+          onEvent: (event) => {
+            if (event.type === 'notice') notices.push({ target: event.target, message: event.message });
+          },
+        },
+      },
+    );
+    try {
+      expect(outcome.exitCode).toBe(0);
+      expect(notices).toEqual([{ target: 'hosted', message: 'hosted worker 0: watch live at https://example.test/sessions/abc' }]);
     } finally {
       project.cleanup();
     }

@@ -84,7 +84,7 @@ async function setup(stalled?: ReadStage) {
   surfaces.add(surface);
   await surface.init({
     runId: 'run', targetName: 'fixture', projectRoot: process.cwd(), app: {}, env: {},
-    headed: false, workerSlot: 0, signal: controller.signal,
+    headed: false, workerSlot: 0, signal: controller.signal, log: () => undefined,
   });
   await surface.startAttempt({ attemptId: 'attempt', artifactsDir: tmpdir(), signal: controller.signal });
   await surface.ensurePage();

@@ -720,6 +720,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
           onProgress: (pair, targetName, progress) =>
             emit({ type: 'step', testId: pair.testId, agent: pair.agent, repeat: pair.repeat, target: targetName, progress }),
           onOutput: (output, targetName) => emit({ type: 'output', target: targetName, ...output }),
+          onNotice: (message, targetName) => notice(targetName, message),
           onDebug: (snapshot) => debug.merge(snapshot),
           onAiTrace: (snapshot) => aiTrace?.merge(snapshot),
         },

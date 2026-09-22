@@ -19,6 +19,7 @@ function initInfo(signal = new AbortController().signal): EngineInitInfo {
     headed: false,
     workerSlot: 0,
     signal,
+    log: () => undefined,
   };
 }
 

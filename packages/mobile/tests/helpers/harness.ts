@@ -35,6 +35,7 @@ export async function boot(
     env,
     headed: false,
     workerSlot,
+    log: () => undefined,
     signal: new AbortController().signal,
   });
 }

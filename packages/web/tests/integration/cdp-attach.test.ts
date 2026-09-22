@@ -60,6 +60,7 @@ describe('web engine over CDP', () => {
       env: {},
       headed: false,
       workerSlot: 0,
+      log: () => undefined,
       signal: new AbortController().signal,
     });
     expect(resolved).toBe(1);
@@ -102,6 +103,7 @@ describe('web engine over CDP', () => {
       env: {},
       headed: false,
       workerSlot: 0,
+      log: () => undefined,
       signal: new AbortController().signal,
     });
     try {
@@ -156,6 +158,7 @@ describe('web engine over CDP', () => {
       env: {},
       headed: false,
       workerSlot: 0,
+      log: () => undefined,
     };
     await expect(engine.init!({ ...info, signal: controller.signal })).rejects.toMatchObject({
       code: 'CANCELLED',

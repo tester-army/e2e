@@ -71,7 +71,7 @@ describe('CDP session recovery', () => {
     await engine.init!({
       runId: 'run-recovery', targetName: 'web', projectRoot: process.cwd(),
       app: { site: new URL(app.url).hostname }, env: {}, headed: false,
-      workerSlot: 0, signal: new AbortController().signal,
+      workerSlot: 0, signal: new AbortController().signal, log: () => undefined,
     });
     await engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal });
     await engine.session!.open!(`${app.url}/login`, operation());

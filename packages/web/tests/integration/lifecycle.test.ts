@@ -112,6 +112,7 @@ async function boot(engine: EngineHandle, app: FixtureApp): Promise<void> {
     env: {},
     headed: false,
     workerSlot: 0,
+    log: () => undefined,
     signal: new AbortController().signal,
   });
 }

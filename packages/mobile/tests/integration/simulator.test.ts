@@ -55,6 +55,7 @@ describe.skipIf(!enabled)('agent-device engine on a booted iOS simulator', () =>
       app: {},
       headed: true,
       workerSlot: 0,
+      log: () => undefined,
       env: {},
       signal: new AbortController().signal,
     });

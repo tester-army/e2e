@@ -48,7 +48,7 @@ async function setup() {
   const signal = new AbortController().signal;
   await surface.init({
     runId: 'run', targetName: 'fixture', projectRoot: process.cwd(), app: {}, env: {},
-    headed: false, workerSlot: 0, signal,
+    headed: false, workerSlot: 0, signal, log: () => undefined,
   });
   await surface.startAttempt({ attemptId: 'attempt', artifactsDir: tmpdir(), signal });
   await surface.ensurePage();

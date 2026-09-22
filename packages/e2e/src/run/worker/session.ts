@@ -128,6 +128,7 @@ export class TargetWorker {
           },
           onProgress: (pair, progress) =>
             this.host.emit({ type: 'progress', testId: pair.test.id, agent: pair.agent, repeat: pair.repeat, progress }),
+          onNotice: (message) => this.host.emit({ type: 'notice', message }),
           onRunAbort: (runError) => {
             this.interruptController.abort();
             this.host.emit({ type: 'run-abort', error: runError.error });
