@@ -79,7 +79,7 @@
     "@ai-sdk/provider": "4.0.17",
     "@clack/prompts": "1.8.0",
     "@modelcontextprotocol/sdk": "1.30.0",
-    "@vitest/expect": "5.0.0",
+    "@vitest/expect": "5.0.1",
     "commander": "15.0.0",
     "picocolors": "1.1.1",
     "pngjs": "7.0.0",
