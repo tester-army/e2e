@@ -19,6 +19,7 @@ import {
 import { installFakeModel, judgment } from '../helpers/fake-model.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { createProject, resultByTitle, runExisting, runProject } from '../helpers/run-project.ts';
+import type { LocatorExpression } from '../../src/engine/index.ts';
 import type { E2EConfig } from '../../src/index.ts';
 
 const APP_URL = FAKE_APP_URL;
@@ -115,7 +116,53 @@ test('waits for a condition', async ({ app, agent }) => {
 });
 `;
 
+const HIDDEN_TEST = `import { test, expect } from 'e2e';
+
+test('hidden by the platform', async ({ app, screen }) => {
+  await app.open('/');
+  await expect(screen.getByText('Decoration')).toBeVisible({ timeout: 300 });
+});
+
+test('hidden by layout', async ({ app, screen }) => {
+  await app.open('/');
+  await expect(screen.getByText('Collapsed')).toBeVisible({ timeout: 300 });
+});
+`;
+
+/** The text a text query asks for, or null for any other expression. */
+function queriedText(expression: LocatorExpression): string | null {
+  if (expression.kind !== 'query' || expression.query.kind !== 'text') return null;
+  return expression.query.value.kind === 'string' ? expression.query.value.value : null;
+}
+
 describe('runner <-> engine contract', () => {
+  it(
+    "relays an engine's hiddenBy into the visibility verdict, and prints a plain hidden without one",
+    async () => {
+      const fake = createFakeEngine({
+        locate: (expression) => {
+          const hidden = { ref: { id: 'hidden-1', revision: '' }, role: 'text', states: { hidden: true } } as const;
+          return queriedText(expression) === 'Decoration' ? [{ ...hidden, hiddenBy: 'accessibility-hidden' }] : [hidden];
+        },
+      });
+      const { outcome, project } = await runProject(
+        { 'tests/hidden.e2e.ts': HIDDEN_TEST },
+        { appUrl: APP_URL, config: fakeConfig(fake) },
+      );
+      const platform = resultByTitle(outcome, 'hidden by the platform');
+      expect(platform.status).toBe('failed');
+      expect(platform.attempts[0]!.error?.code).toBe('ASSERTION_FAILED');
+      expect(platform.attempts[0]!.error?.message).toContain('observed: states: hidden by accessibility-hidden (match count 1)');
+      const layout = resultByTitle(outcome, 'hidden by layout');
+      expect(layout.status).toBe('failed');
+      expect(layout.attempts[0]!.error?.code).toBe('ASSERTION_FAILED');
+      expect(layout.attempts[0]!.error?.message).toContain('observed: states: hidden (match count 1)');
+      project.cleanup();
+    },
+    60_000,
+  );
+
+
   it(
     'hands init the harness-resolved facts and every attempt its own context',
     async () => {
