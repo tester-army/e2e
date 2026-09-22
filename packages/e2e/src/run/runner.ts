@@ -23,7 +23,8 @@ import {
   type ErrorPhase,
 } from '../internal/errors.ts';
 import { loadAiSdk } from '../agent/ai-sdk.ts';
-import { AiTraceCollector, AiTraceRecorder, registerAiTraceRecorder } from '../internal/ai-trace.ts';
+import { AiTraceCollector, AiTraceRecorder, redactAiTraceDocument, registerAiTraceRecorder } from '../internal/ai-trace.ts';
+import { redactLeaves } from '../internal/redact.ts';
 import { DebugTrace } from '../internal/debug.ts';
 import { timestamp, uuidv7 } from '../internal/ids.ts';
 import type { ExploreProgress } from '../explore/progress.ts';
@@ -41,7 +42,7 @@ import { buildWorkPlans, plannedSlots, type TargetWorkPlan } from './units.ts';
 import { SessionStore } from './sessions.ts';
 import { readLastFailed } from './last-run.ts';
 import { childProcessSpawner } from './worker/handle.ts';
-import { processSecrets } from './secrecy.ts';
+import { processSecrets, registerStaticSecrets } from './secrecy.ts';
 import { setSecretRegistry } from '../secrets.ts';
 import { withAbort } from '../internal/time.ts';
 import type { BuiltinReporter, E2EConfig, FinishedRun, Reporter, ReporterSummary } from '../types.ts';
@@ -377,20 +378,28 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   // Detected once the config names the project root; a report written before
   // that (a config failure) has no checkout to describe.
   let vcs: VcsInfo | undefined;
+  /**
+   * The report as written and handed out, passed through the process ledger
+   * as it stands now. Each record was redacted with what was known when it
+   * was written; a value a provider resolved later is covered here.
+   */
   const buildRunReport = (exitCode: RunExitCode): Report1Document =>
-    buildReport({
-      runId,
-      config: loaded.config,
-      vcs,
-      startedAt,
-      status: statusOf(exitCode),
-      exitCode,
-      results,
-      serialGroups,
-      runErrors,
-      targetProvenance,
-      explore: options.tests?.explore?.snapshot(),
-    });
+    redactLeaves(
+      buildReport({
+        runId,
+        config: loaded.config,
+        vcs,
+        startedAt,
+        status: statusOf(exitCode),
+        exitCode,
+        results,
+        serialGroups,
+        runErrors,
+        targetProvenance,
+        explore: options.tests?.explore?.snapshot(),
+      }),
+      processSecrets.redact,
+    );
 
   /**
    * Writes the canonical report and returns its path only once the file
@@ -424,8 +433,10 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
    * Writes the AI trace next to the report, on the same terms: the path is
    * returned only once the file exists, and a lost trace is a recorded run
    * error. The in-process recorder is drained here; child-process workers
-   * already shipped theirs over the worker channel. The file is owner-only,
-   * like the cache and the sessions: it holds every prompt of the run.
+   * already shipped theirs over the worker channel. The document passes the
+   * ledger once more as it is written, for a value a provider resolved after
+   * a record closed. The file is owner-only, like the cache and the sessions:
+   * it holds every prompt of the run.
    */
   const writeAiTrace = async (config: ResolvedConfig): Promise<string | undefined> => {
     if (aiTrace === undefined) return undefined;
@@ -436,7 +447,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     }
     const target = reportSibling(config, options.artifactsDir, 'ai-trace.json');
     try {
-      await writeJsonReport(target, aiTrace.document(), { mode: 0o600 });
+      await writeJsonReport(target, redactAiTraceDocument(aiTrace.document(), processSecrets.redact), { mode: 0o600 });
       return target;
     } catch (cause) {
       recordFailure(
@@ -477,7 +488,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     });
     if (debug.enabled) {
       process.stderr.write(debug.summary());
-      process.stderr.write(agentStepTable(results, serialGroups));
+      process.stderr.write(processSecrets.redact(agentStepTable(results, serialGroups)));
     }
     // `onRunFinished` runs last, after everything the terminal shows, so
     // nothing reading it waits on a slow reporter; the rows they resolve with
@@ -512,6 +523,10 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   vcs = await detectVcs(config.projectRoot, env);
 
   setSecretRegistry(config);
+  // The final pass over the report and the AI trace runs in this process, so
+  // its ledger learns the static values here too, whether or not a session
+  // ever opens in it.
+  registerStaticSecrets(config.secrets);
   // Several run agents have no one model to name; each step names its own.
   // The judge is named only when it is a model of its own.
   const runAgent = config.agentNames.length === 1 ? config.agent : undefined;

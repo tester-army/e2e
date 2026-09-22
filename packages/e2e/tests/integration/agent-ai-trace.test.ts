@@ -260,3 +260,97 @@ test('${TITLE}', async ({ app, agent }) => {
     expect(statSync(path.join(project.dir, '.e2e', 'ai-trace.json')).mode & 0o777).toBe(0o600);
   });
 });
+
+describe('--ai-trace with the ledger as it stands when the files are written', () => {
+  const SECRET = 'trace-title-secret-8841';
+  const LATE = 'late-provider-secret-5512';
+  const TITLED = `the title spells ${SECRET}`;
+  const LATE_TITLE = 'a provider resolves after the first step';
+  const LATE_SUITE = `import { test, secrets } from 'e2e';
+
+test('${TITLED}', async ({ app, agent }) => {
+  await app.open();
+  await agent.act('finish the step');
+});
+
+test('${LATE_TITLE}', async ({ app, agent, screen }) => {
+  await app.open('/?token=${LATE}');
+  await agent.act('finish the step');
+  await screen.getByLabel('Password').fill(secrets.get('late'));
+});
+`;
+  let app: FixtureApp;
+  let outcome: RunOutcome;
+  let project: FixtureProject;
+  let traceText: string;
+  let reportText: string;
+
+  beforeAll(async () => {
+    app = await startFixtureApp();
+    const model = installFakeLoopModel(() => [
+      { toolName: 'complete_step', input: { status: 'passed', summary: 'done' } },
+    ]);
+    const result = await runProject(
+      { 'tests/late.e2e.ts': LATE_SUITE },
+      {
+        appUrl: app.url,
+        config: {
+          tests: 'tests/**/*.e2e.ts',
+          agents: { default: { model } },
+          // A brace as a password: a secret that is JSON punctuation.
+          credentials: {
+            member: { username: 'ada', password: SECRET },
+            brace: { username: 'bob', password: '{' },
+          },
+          secrets: { late: async () => LATE },
+        },
+        runOptions: { aiTrace: true },
+      },
+    );
+    outcome = result.outcome;
+    project = result.project;
+    traceText = readFileSync(path.join(project.dir, '.e2e', 'ai-trace.json'), 'utf8');
+    reportText = readFileSync(path.join(project.dir, '.e2e', 'report.json'), 'utf8');
+  }, 120_000);
+
+  afterAll(async () => {
+    project?.cleanup();
+    await app?.close();
+  });
+
+  it('passes both tests', () => {
+    const failures = outcome.results.flatMap((result) => result.attempts).flatMap((attempt) => attempt.error ?? []);
+    expect(outcome.exitCode, JSON.stringify({ runErrors: outcome.report.run.errors, failures }, null, 2)).toBe(0);
+  });
+
+  it('keeps a secret in a test title out of the run records and the report', () => {
+    expect(traceText).not.toContain(SECRET);
+    expect(reportText).not.toContain(SECRET);
+    const document = JSON.parse(traceText) as AiTraceDocument;
+    const run = document.runs.find((candidate) => candidate.e2e?.test === 'the title spells <secret:member>');
+    expect(run?.function_id).toBe('the title spells <secret:member> · agent.act "finish the step"');
+    expect(outcome.report.run.results.map((result) => result.titlePath.join(' › '))).toContain(
+      'the title spells <secret:member>',
+    );
+  });
+
+  it('keeps every column parseable with a secret that is JSON punctuation', () => {
+    const document = JSON.parse(traceText) as AiTraceDocument;
+    expectDevtoolsShape(document);
+    expect(document.steps.length).toBeGreaterThan(0);
+    for (const { input, output } of document.steps) {
+      expect(() => JSON.parse(input)).not.toThrow();
+      if (output !== null) expect(() => JSON.parse(output)).not.toThrow();
+    }
+  });
+
+  it('covers a value a provider resolved after the label was recorded and the trace step had closed', () => {
+    expect(traceText).not.toContain(LATE);
+    expect(reportText).not.toContain(LATE);
+    const late = outcome.report.run.results.find((result) => result.titlePath.join(' › ') === LATE_TITLE)!;
+    const open = late.attempts[0]!.steps.find((step) => step.api === 'app.open')!;
+    expect(open.label).toBe('/?token=<secret:late>');
+    // The location the model saw in the first step's prompt carried the value; the file has the name.
+    expect(traceText).toContain('<secret:late>');
+  });
+});

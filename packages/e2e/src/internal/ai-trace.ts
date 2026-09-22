@@ -13,7 +13,9 @@
  * model said is not, so every record passes the process secret ledger as it
  * closes: a tool call that echoes a secret value, an assistant message, an
  * error, or provider metadata lands in the file redacted, as the report's
- * turns do.
+ * turns do. `redactAiTraceDocument` applies the ledger once more, when a
+ * worker ships its records and when the file is written, for a value that
+ * became a secret after a record closed.
  *
  * Attribution comes from an async-local scope the run layer enters per
  * attempt and per step, so no model call site needs to know it is traced.
@@ -22,6 +24,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import type { Telemetry } from 'ai';
+import { redactLeaves } from './redact.ts';
 
 /** Longest step label quoted in a run name before truncation. */
 const MAX_LABEL_CHARS = 80;
@@ -314,13 +317,16 @@ export class AiTraceRecorder {
     if (stepScope !== undefined) this.stepRuns.set(stepScope, run);
     const runId = run.runId;
     this.calls.set(event.callId, { runId, openSteps: new Map(), run });
+    // The test title and the step label are test-authored text: redacted
+    // like every other record, the scope object itself left as the key.
+    const name = runName(scope, event.functionId);
     this.runs.push({
       id: runId,
       started_at: new Date().toISOString(),
       parent_run_id: parent?.runId ?? null,
       parent_step_id: parent?.stepId ?? null,
-      function_id: runName(scope, event.functionId),
-      e2e: scope,
+      function_id: name === null ? null : this.redact(name),
+      e2e: scope === undefined ? undefined : redactLeaves(scope, this.redact),
     });
   }
 
@@ -428,10 +434,10 @@ export class AiTraceRecorder {
   }
 
   /**
-   * The one place a step record is finalized. The JSON columns are redacted
-   * as serialized text: the ledger matches a value in its JSON-string form
-   * too, so a secret inside a tool-call argument, an assistant message, or a
-   * provider metadata leaf is replaced without walking the document.
+   * The one place a step record is finalized. String leaves are redacted
+   * before serialization, so keys and JSON structure survive a secret that
+   * is itself JSON punctuation or a property name: a viewer can still parse
+   * every column.
    */
   private closeStep(
     open: OpenStep,
@@ -446,18 +452,55 @@ export class AiTraceRecorder {
       provider: open.provider,
       started_at: open.startedAt,
       duration_ms: open.responseTimeMs ?? Date.now() - open.startedMs,
-      input: this.redact(
-        stringify({
-          prompt: traceMessages(open.prompt),
-          ...(open.tools === undefined ? {} : { tools: open.tools }),
-          ...(open.toolChoice === undefined ? {} : { toolChoice: open.toolChoice }),
-        }),
+      input: stringify(
+        redactLeaves(
+          {
+            prompt: traceMessages(open.prompt),
+            ...(open.tools === undefined ? {} : { tools: open.tools }),
+            ...(open.toolChoice === undefined ? {} : { toolChoice: open.toolChoice }),
+          },
+          this.redact,
+        ),
       ),
-      output: outcome.output === undefined ? null : this.redact(stringify(outcome.output)),
-      usage: outcome.usage === undefined ? null : stringify(outcome.usage),
+      output: outcome.output === undefined ? null : stringify(redactLeaves(outcome.output, this.redact)),
+      usage: outcome.usage === undefined ? null : stringify(redactLeaves(outcome.usage, this.redact)),
       error: outcome.error === undefined ? null : this.redact(outcome.error),
     };
   }
+}
+
+/**
+ * The document, or one drained snapshot, passed through `redact` once more
+ * with the ledger as it stands: a value a provider resolved after a step
+ * closed is covered when a worker ships its records and when the file is
+ * written. The JSON columns are parsed, redacted leaf by leaf, and serialized
+ * again, so what a viewer reads keeps its structure whatever the value.
+ */
+export function redactAiTraceDocument(
+  document: AiTraceDocument,
+  redact: (text: string) => string,
+): AiTraceDocument {
+  return {
+    runs: redactLeaves(document.runs, redact),
+    steps: document.steps.map((step) => ({
+      ...step,
+      input: redactColumn(step.input, redact),
+      output: step.output === null ? null : redactColumn(step.output, redact),
+      usage: step.usage === null ? null : redactColumn(step.usage, redact),
+      error: step.error === null ? null : redact(step.error),
+    })),
+  };
+}
+
+/** A serialized JSON column with its string leaves redacted; text that is not JSON is redacted as text. */
+function redactColumn(column: string, redact: (text: string) => string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(column);
+  } catch {
+    return redact(column);
+  }
+  return JSON.stringify(redactLeaves(parsed, redact));
 }
 
 /**

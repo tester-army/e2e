@@ -12,9 +12,10 @@ import { importModule, loadConfigModule } from '../../config/load.ts';
 import { resolveConfig } from '../../config/resolve.ts';
 import { setSecretRegistry } from '../../secrets.ts';
 import { loadAiSdk } from '../../agent/ai-sdk.ts';
-import { AiTraceRecorder, registerAiTraceRecorder } from '../../internal/ai-trace.ts';
+import { AiTraceRecorder, redactAiTraceDocument, registerAiTraceRecorder } from '../../internal/ai-trace.ts';
 import { DebugTrace } from '../../internal/debug.ts';
 import { classifyError, ConfigurationError, serializeError } from '../../internal/errors.ts';
+import { redactLeaves } from '../../internal/redact.ts';
 import { processSecrets, registerStaticSecrets } from '../secrecy.ts';
 import { SessionStore } from '../sessions.ts';
 import type {
@@ -222,18 +223,34 @@ function main(): void {
       const aiTrace = message.bootstrap.aiTrace
         ? new AiTraceRecorder({ redact: processSecrets.redact })
         : undefined;
+      // Records leave the worker through its ledger as it stands: a value a
+      // provider resolved during the attempt is known here, not in the runner.
       const emit = (outbound: WorkerToMain): void => {
-        if (outbound.type !== 'unit-done' && outbound.type !== 'shutdown-done') {
-          send(outbound);
-          return;
+        switch (outbound.type) {
+          case 'result':
+            send({ ...outbound, result: redactLeaves(outbound.result, processSecrets.redact) });
+            return;
+          case 'serial-group':
+            send({ ...outbound, group: redactLeaves(outbound.group, processSecrets.redact) });
+            return;
+          case 'unit-done':
+          case 'shutdown-done':
+            send({
+              ...outbound,
+              ...(debug.enabled ? { debug: debug.drain() } : {}),
+              ...(aiTrace === undefined
+                ? {}
+                : {
+                    aiTrace: redactAiTraceDocument(
+                      aiTrace.drain({ all: outbound.type === 'shutdown-done' }),
+                      processSecrets.redact,
+                    ),
+                  }),
+            });
+            return;
+          default:
+            send(outbound);
         }
-        send({
-          ...outbound,
-          ...(debug.enabled ? { debug: debug.drain() } : {}),
-          ...(aiTrace === undefined
-            ? {}
-            : { aiTrace: aiTrace.drain({ all: outbound.type === 'shutdown-done' }) }),
-        });
       };
       worker = new TargetWorker(
         { emit, fatal, finished: () => exitAfterFlush(0) },
