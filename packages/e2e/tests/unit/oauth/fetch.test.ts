@@ -129,11 +129,14 @@ describe('createOAuthFetch', () => {
     expect(api.requests[1]?.body).toBe('payload');
   });
 
-  it('does not retry a 401 for a token that cannot be refreshed', async () => {
-    const api = await serve((_request, response) => json(response, 401, {}));
+  it('fails with LOGIN_REQUIRED and the hint on a 401 for a token that cannot be refreshed, without a retry', async () => {
+    const api = await serve((_request, response) => json(response, 401, { message: 'Bad credentials' }));
     const store = new MemoryCredentialStore({ test: { access: 'gh', refresh: '', expires: 0 } });
-    const fetch = createOAuthFetch(provider(), { store, userAgent: 'p' });
-    expect((await fetch(api.url)).status).toBe(401);
+    const fetch = createOAuthFetch(provider(), { store, userAgent: 'p', loginHint: 'run `npx e2e login test`' });
+    await expect(fetch(api.url)).rejects.toMatchObject({
+      code: 'LOGIN_REQUIRED',
+      message: 'Test rejected the stored token (401: Bad credentials); run `npx e2e login test`',
+    });
     expect(api.requests).toHaveLength(1);
   });
 
