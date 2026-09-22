@@ -304,6 +304,8 @@ test('${TITLE}', async ({ app, agent }) => {
 describe('--ai-trace with the ledger as it stands when the files are written', () => {
   const SECRET = 'trace-title-secret-8841';
   const LATE = 'late-provider-secret-5512';
+  // JSON syntax as a password, a quote included, so its JSON-string form differs from the raw one.
+  const BRACE = '{"}[{]}';
   const TITLED = `the title spells ${SECRET}`;
   const LATE_TITLE = 'a provider resolves after the first step';
   const LATE_SUITE = `import { test, secrets } from 'e2e';
@@ -315,7 +317,7 @@ test('${TITLED}', async ({ app, agent }) => {
 
 test('${LATE_TITLE}', async ({ app, agent, screen }) => {
   await app.open('/?token=${LATE}');
-  await agent.act('finish the step');
+  await agent.act('finish the step with ${BRACE}');
   await screen.getByLabel('Password').fill(secrets.get('late'));
 });
 `;
@@ -337,10 +339,9 @@ test('${LATE_TITLE}', async ({ app, agent, screen }) => {
         config: {
           tests: 'tests/**/*.e2e.ts',
           agents: { default: { model } },
-          // A brace as a password: a secret that is JSON punctuation.
           credentials: {
             member: { username: 'ada', password: SECRET },
-            brace: { username: 'bob', password: '{' },
+            brace: { username: 'bob', password: BRACE },
           },
           secrets: { late: async () => LATE },
         },
@@ -382,6 +383,14 @@ test('${LATE_TITLE}', async ({ app, agent, screen }) => {
       expect(() => JSON.parse(input)).not.toThrow();
       if (output !== null) expect(() => JSON.parse(output)).not.toThrow();
     }
+    // The instruction reached its own prompt as written; the column and the run name carry the name.
+    expect(document.runs.map((run) => run.function_id)).toContain(
+      `${LATE_TITLE} · agent.act "finish the step with <secret:brace>"`,
+    );
+    expect(document.steps.some((step) => step.input.includes('finish the step with <secret:brace>'))).toBe(true);
+    // `[{]}` is a slice of the value no JSON document spells on its own.
+    expect(traceText).not.toContain('[{]}');
+    expect(reportText).not.toContain('[{]}');
   });
 
   it('covers a value a provider resolved after the label was recorded and the trace step had closed', () => {
