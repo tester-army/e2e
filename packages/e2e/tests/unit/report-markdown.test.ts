@@ -1,7 +1,7 @@
 /**
  * The markdown page: counts and spend in the head, one block per test that
  * failed with the step it went wrong at, the flaky tests folded, every test
- * folded by file with the file's counts, an exploration rendered as its
+ * folded as one table with a row per file above its tests, an exploration rendered as its
  * findings, untrusted text escaped, and a body that never outgrows a pull
  * request comment. The `markdown` reporter writes it beside the report.
  */
@@ -183,21 +183,21 @@ describe('renderMarkdownReport', () => {
           '</details>',
         ].join('\n'),
         '',
-        // Files worst first, each with its counts, agent work, and time; no table above.
+        // One table: a row per file, worst first, with its counts, agent work, and time, then a row per test; the agent column since the run used the agent.
         [
           '<details>',
           '<summary>All 5 tests in 3 files</summary>',
           '',
-          '**tests/members.e2e.ts** · 1 failed · 2 steps · 16 calls · 1.2s',
-          '- 🔴 members › an email invitation is accepted by the invited account only (1.2s)',
-          '',
-          '**tests/todos.e2e.ts** · 1 flaky, 1 skipped · 1 step · 6.4s',
-          '- ⚠️ todos survive a filter round-trip (6.4s, 1 failed attempt first)',
-          '- ⏭️ not ready yet (skipped: waiting on the API)',
-          '',
-          '**tests/smoke.e2e.ts** · 2 passed · 1 step · 1 call · 3.0s',
-          '- 🟢 opens the app (850ms)',
-          '- 🟢 dashboard › opens directly (2.1s)',
+          '|  | Test | Agent | Time |',
+          '| --- | --- | --- | --- |',
+          '| 🔴 | **tests/members.e2e.ts** · 1 failed | 2 steps · 16 calls | 1.2s |',
+          '| 🔴 | members › an email invitation is accepted by the invited account only | 2 steps · 16 calls | 1.2s |',
+          '| ⚠️ | **tests/todos.e2e.ts** · 1 flaky, 1 skipped | 1 step | 6.4s |',
+          '| ⚠️ | todos survive a filter round-trip (1 failed attempt first) | 1 step | 6.4s |',
+          '| ⏭️ | not ready yet (skipped: waiting on the API) |  |  |',
+          '| 🟢 | **tests/smoke.e2e.ts** · 2 passed | 1 step · 1 call | 3.0s |',
+          '| 🟢 | opens the app |  | 850ms |',
+          '| 🟢 | dashboard › opens directly | 1 step · 1 call | 2.1s |',
           '</details>',
         ].join('\n'),
         '',
@@ -207,12 +207,12 @@ describe('renderMarkdownReport', () => {
     );
   });
 
-  it('is a passing headline, the folded list, and the footer when everything passed, with no spend line for a deterministic run', () => {
+  it('is a passing headline, the folded table without an agent column, and the footer when everything passed, with no spend line for a deterministic run', () => {
     expect(renderMarkdownReport(page({ results: [passing] }))).toBe(
       [
         '### 🟢 e2e: 1 passed',
         '',
-        '<details>\n<summary>All 1 test in 1 file</summary>\n\n**tests/smoke.e2e.ts** · 1 passed · 850ms\n- 🟢 opens the app (850ms)\n</details>',
+        '<details>\n<summary>All 1 test in 1 file</summary>\n\n|  | Test | Time |\n| --- | --- | --- |\n| 🟢 | **tests/smoke.e2e.ts** · 1 passed | 850ms |\n| 🟢 | opens the app | 850ms |\n</details>',
         '',
         '<sub>e2e 0.9.0 · 8.4s · web</sub>',
         '',
@@ -319,7 +319,7 @@ describe('renderMarkdownReport', () => {
     // The canonical sanitizer drops color sequences and marks a control character, as the terminal does.
     expect(body).toContain('line one line two red �\\`tick\\`');
     expect(body).toContain('at step 1 of 2: `screen.tap` `tap x \\| y`, after 900ms\n\n> line one line two red �\\`tick\\`\n> saw &lt;b&gt;bold&lt;/b&gt; and more');
-    expect(body).toContain('**tests/we\\|rd.e2e.ts** · 1 failed · 1.2s');
+    expect(body).toContain('| 🔴 | **tests/we\\|rd.e2e.ts** · 1 failed | 1.2s |');
     expect(body).toContain('[tests/we\\|rd.e2e.ts:3](https://x.test/blob%29%3Cscript%3E)');
     expect(body).toContain('[run artifacts](https://x.test/run%20%281%29)');
     expect(body).not.toContain('');
@@ -361,7 +361,7 @@ describe('renderMarkdownReport', () => {
   it('names the target only when the run has several: in the blocks, the list, and the footer, capped there', () => {
     const body = renderMarkdownReport(page({ status: 'failed', results: [failing, passing], targets: [reportTarget(), reportTarget({ id: 'mobile', index: 1 })] }));
     expect(body).toContain('**🔴 members › an email invitation is accepted by the invited account only (web)**');
-    expect(body).toContain('**tests/smoke.e2e.ts (web)** · 1 passed · 850ms\n- 🟢 opens the app (web) (850ms)');
+    expect(body).toContain('| 🟢 | **tests/smoke.e2e.ts (web)** · 1 passed |  | 850ms |\n| 🟢 | opens the app (web) |  | 850ms |');
     // One file on two targets is two groups and one file.
     const twice = renderMarkdownReport(page({ results: [passing, { ...passing, targetId: 'mobile' }], targets: [reportTarget(), reportTarget({ id: 'mobile', index: 1 })] }));
     expect(twice).toContain('<summary>All 2 tests in 1 file</summary>');
@@ -370,15 +370,15 @@ describe('renderMarkdownReport', () => {
     expect(many).toContain('12 targets (t0, t1, t2, t3, t4, t5, t6, t7, and 4 more)</sub>');
   });
 
-  it('lists files worst first in the fold, each with the counts of its tests', () => {
+  it('lists files worst first in the fold, each row with the counts of its tests', () => {
     const skippedOnly = named({ title: 'later', file: 'tests/a.e2e.ts', status: 'skipped', skip: { cause: 'explicit', reason: 'later' } });
     const body = renderMarkdownReport(page({ status: 'failed', results: [passing, skippedOnly, flaky, failing] }));
-    const headings = body.split('\n').filter((line) => line.startsWith('**tests/'));
-    expect(headings).toEqual([
-      '**tests/members.e2e.ts** · 1 failed · 2 steps · 16 calls · 1.2s',
-      '**tests/todos.e2e.ts** · 1 flaky · 1 step · 6.4s',
-      '**tests/a.e2e.ts** · 1 skipped · 0ms',
-      '**tests/smoke.e2e.ts** · 1 passed · 850ms',
+    const rows = body.split('\n').filter((line) => line.includes('| **tests/'));
+    expect(rows).toEqual([
+      '| 🔴 | **tests/members.e2e.ts** · 1 failed | 2 steps · 16 calls | 1.2s |',
+      '| ⚠️ | **tests/todos.e2e.ts** · 1 flaky | 1 step | 6.4s |',
+      '| ⏭️ | **tests/a.e2e.ts** · 1 skipped |  | 0ms |',
+      '| 🟢 | **tests/smoke.e2e.ts** · 1 passed |  | 850ms |',
     ]);
   });
 
@@ -386,7 +386,7 @@ describe('renderMarkdownReport', () => {
     const results = Array.from({ length: 450 }, (_, index) => named({ title: `t${index}`, file: `tests/f${String(index).padStart(3, '0')}.e2e.ts`, status: 'passed', attempts: [attempt()] }));
     const body = renderMarkdownReport(page({ results }));
     expect(body).toContain('<summary>All 450 tests in 450 files</summary>');
-    expect(body).toContain('- and 50 more');
+    expect(body).toContain('|  | and 50 more |  |\n</details>');
     expect(body).not.toContain('**tests/f449.e2e.ts**');
   });
 
@@ -446,7 +446,7 @@ describe('renderMarkdownReport', () => {
   it('counts zero failed attempts for a flaky test a foreign document gives one attempt, never a negative', () => {
     const oneAttempt = named({ title: 'odd', status: 'flaky', attempts: [attempt({ status: 'passed' })] });
     const body = renderMarkdownReport(page({ results: [oneAttempt] }));
-    expect(body).toContain('(1.2s, 0 failed attempts first)');
+    expect(body).toContain('| ⚠️ | odd (0 failed attempts first) | 1.2s |');
     expect(body).not.toContain('-1');
   });
 

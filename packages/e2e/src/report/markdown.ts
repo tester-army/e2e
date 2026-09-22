@@ -3,9 +3,10 @@
  * a headline with the counts and what the run spent, the run-level errors,
  * one block per test that failed with the step it went wrong at and the
  * agent's last word, the flaky tests folded away with the same block each,
- * and every test folded away under that, grouped by file with the file's
- * counts and time. A green run is the headline, the folds, and the footer:
- * nothing to read unless the reader opens it. An `e2e explore` run
+ * and every test folded away under that as one table, a row per file with
+ * its counts and time above the rows of its tests. A green run is the
+ * headline, the folds, and the footer: nothing to read unless the reader
+ * opens it. An `e2e explore` run
  * renders its record instead: the goal, every finding with its evidence,
  * and the assessment. The built-in `markdown` reporter writes the page as
  * `summary.md` beside `report.json`; `@e2edev/github` posts it as the pull
@@ -307,44 +308,59 @@ function fileGroups(entries: readonly Entry[]): FileGroup[] {
   return rows.toSorted((a, b) => rank(a) - rank(b) || a.file.localeCompare(b.file) || a.target.localeCompare(b.target));
 }
 
-/** One line of the folded list: glyph, name, and how the test ended. */
-function listedTest({ result, final }: Entry, manyTargets: boolean): string {
-  const note =
-    result.status === 'skipped'
-      ? `skipped: ${cell(result.skip?.reason ?? 'skipped')}`
-      : result.status === 'flaky'
-        ? `${formatDuration(final.durationMs)}, ${plural(final.failedAttempts, 'failed attempt')} first`
-        : formatDuration(final.durationMs);
-  return `- ${ICON[statusBucket(result.status)]} ${testName(result, manyTargets)} (${note})`;
-}
-
-/** `**tests/billing.e2e.ts** · 1 failed, 2 passed · 3 steps · 19 calls · 41.2s`: a file's line in the folded list. */
-function fileHeading(group: FileGroup, manyTargets: boolean): string {
-  const results = group.entries.map((entry) => entry.result);
-  const totals = agentTotals(group.entries.flatMap((entry) => entry.final.final.steps));
-  const parts = [`**${fileLabel(group.file, group.target, manyTargets)}**`, countText(tally(results))];
-  if (totals.steps > 0) parts.push(plural(totals.steps, 'step'));
+/** `2 steps · 9 calls`: the agent's work over a set of steps, or nothing when it did none. */
+function agentCell(steps: readonly ReportStep[]): string {
+  const totals = agentTotals(steps);
+  if (totals.steps === 0) return '';
+  const parts = [plural(totals.steps, 'step')];
   if (totals.calls > 0) parts.push(plural(totals.calls, 'call'));
-  parts.push(formatDuration(group.entries.reduce((total, entry) => total + entry.final.durationMs, 0)));
   return parts.join(' · ');
 }
 
-/** Every test, grouped by file worst first, each file with its counts and time, folded away; one block since a `<details>` cannot be cut halfway. */
+/** One table row; every cell has already escaped the separator. */
+function row(cells: readonly string[]): string {
+  return `| ${cells.join(' | ')} |`;
+}
+
+/** `⚠️ | title (1 failed attempt first) | 1 step · 4 calls | 3.4s`: one test's row, how it ended noted when it did not simply pass. */
+function testRow({ result, final }: Entry, manyTargets: boolean, withAgent: boolean): string {
+  const skipped = result.status === 'skipped';
+  const note = skipped ? `skipped: ${cell(result.skip?.reason ?? 'skipped')}` : result.status === 'flaky' ? `${plural(final.failedAttempts, 'failed attempt')} first` : '';
+  const name = `${testName(result, manyTargets)}${note === '' ? '' : ` (${note})`}`;
+  return row([ICON[statusBucket(result.status)], name, ...(withAgent ? [agentCell(final.final.steps)] : []), skipped ? '' : formatDuration(final.durationMs)]);
+}
+
+/** `⚠️ | **tests/billing.e2e.ts** · 1 failed, 2 passed | 3 steps · 19 calls | 41.2s`: a file's row above its tests, the glyph its worst result's. */
+function fileRow(group: FileGroup, manyTargets: boolean, withAgent: boolean): string {
+  const results = group.entries.map((entry) => entry.result);
+  const time = formatDuration(group.entries.reduce((total, entry) => total + entry.final.durationMs, 0));
+  const agent = withAgent ? [agentCell(group.entries.flatMap((entry) => entry.final.final.steps))] : [];
+  return row([ICON[worstBucket(results)], `**${fileLabel(group.file, group.target, manyTargets)}** · ${countText(tally(results))}`, ...agent, time]);
+}
+
+/**
+ * Every test as one table, folded away: a row per file with its counts and
+ * time, worst file first, then a row per test under it. The agent column is
+ * there only when the run used the agent, so a deterministic suite is not
+ * a grid of empty cells. One block, since a `<details>` cannot be cut halfway.
+ */
 function allTests(groups: readonly FileGroup[], total: number, manyTargets: boolean): string[] {
   if (total === 0) return [];
+  const withAgent = groups.some((group) => group.entries.some((entry) => entry.final.final.steps.some((step) => step.kind === 'agent')));
+  const header = ['', 'Test', ...(withAgent ? ['Agent'] : []), 'Time'];
+  const lines = [row(header), row(header.map(() => '---'))];
   let budget = MAX_LISTED_TESTS;
-  const blocks: string[] = [];
   for (const group of groups) {
     if (budget === 0) break;
     const shown = group.entries.slice(0, budget);
     budget -= shown.length;
-    blocks.push([fileHeading(group, manyTargets), ...shown.map((entry) => listedTest(entry, manyTargets))].join('\n'));
+    lines.push(fileRow(group, manyTargets, withAgent), ...shown.map((entry) => testRow(entry, manyTargets, withAgent)));
   }
-  if (total > MAX_LISTED_TESTS) blocks.push(`- and ${total - MAX_LISTED_TESTS} more`);
+  if (total > MAX_LISTED_TESTS) lines.push(row(['', `and ${total - MAX_LISTED_TESTS} more`, ...(withAgent ? [''] : []), '']));
   // A file that ran on several targets is one file, however many groups it has.
   const files = new Set(groups.map((group) => group.file)).size;
   const summary = `All ${plural(total, 'test')} in ${plural(files, 'file')}`;
-  return [['<details>', `<summary>${summary}</summary>`, '', blocks.join('\n\n'), '</details>'].join('\n')];
+  return [['<details>', `<summary>${summary}</summary>`, '', lines.join('\n'), '</details>'].join('\n')];
 }
 
 /** `<sub>e2e 0.13.0 · 2m 15s · web · run artifacts</sub>`: one line of small print. */

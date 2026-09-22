@@ -89,8 +89,8 @@ recorded flow is stale — `--no-cache` only skips the cache for one run.
   (expected and observed, what a locator asked for), the step it went wrong
   at, whether every attempt failed alike, the last model turns, the screen's
   location and closest nodes, the line to look at, evidence paths; the flaky
-  tests folded with the same block each; every test folded by file with the
-  file's counts; or an exploration's findings and assessment. Plus one page per
+  tests folded with the same block each; every test folded as one table, a
+  row per file with its counts above its tests; or an exploration's findings and assessment. Plus one page per
   failed or flaky test under `.e2e/failures/`, with every step, every kept
   turn, and the screen at failure inline. Read the page first; paste the
   summary into a pull request or a handoff rather than retelling the result:

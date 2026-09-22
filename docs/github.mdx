@@ -84,8 +84,12 @@ workflow run, where you can download evidence from failed and flaky tests.
 <details>
 <summary>All 6 tests in 5 files</summary>
 
-**tests/billing.e2e.ts** · 1 failed · 3 steps · 19 calls · 41.2s
-- 🔴 billing › upgrades to Pro (41.2s)
+| | Test | Agent | Time |
+| --- | --- | --- | --- |
+| 🔴 | **tests/billing.e2e.ts** · 1 failed | 3 steps · 19 calls | 41.2s |
+| 🔴 | billing › upgrades to Pro | 3 steps · 19 calls | 41.2s |
+| ⚠️ | **tests/team.e2e.ts** · 1 flaky | 1 step | 6.4s |
+| ⚠️ | invite a member by email (1 failed attempt first) | 1 step | 6.4s |
 ...
 </details>
 
@@ -94,7 +98,8 @@ workflow run, where you can download evidence from failed and flaky tests.
 
 The comment shows test counts and agent usage, followed by each failure's
 error, source line, and evidence links. Flaky tests and the full test list
-are collapsed. Run-level errors appear above the test failures. Large
+are collapsed; the list is one table with a row per file above its tests,
+and its agent column appears only when the run used the agent. Run-level errors appear above the test failures. Large
 reports are shortened to fit GitHub's comment limit.
 
 The built-in `markdown` reporter writes the same summary to
