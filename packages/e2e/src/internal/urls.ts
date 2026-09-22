@@ -139,23 +139,81 @@ export function resolveNavigationUrl(input: string, base: NormalizedBaseUrl | un
 }
 
 /**
+ * Public suffixes under which every customer deployment is a site of its own,
+ * so the site is one label deeper (`myapp.vercel.app`, not `vercel.app`).
+ * Drawn from the PRIVATE DOMAINS section of the Public Suffix List
+ * (publicsuffix.org/list), where hosting providers register the suffixes
+ * they hand out; wildcard entries there (`*.azurestaticapps.net`) are
+ * flattened to the suffix they hang off. The list itself is not a
+ * dependency: it is hundreds of kilobytes that change monthly, and this rule
+ * only decides where configured credentials go and which frames count as
+ * the app, never where a test may navigate. A longer entry wins over a
+ * shorter one it ends with (`s3.amazonaws.com` over `amazonaws.com`).
+ */
+const SHARED_HOST_SUFFIXES: ReadonlySet<string> = new Set([
+  'vercel.app',
+  'now.sh',
+  'netlify.app',
+  'pages.dev',
+  'workers.dev',
+  'trycloudflare.com',
+  'github.io',
+  'gitlab.io',
+  'herokuapp.com',
+  'fly.dev',
+  'onrender.com',
+  'railway.app',
+  'up.railway.app',
+  'azurewebsites.net',
+  'azurestaticapps.net',
+  'cloudfront.net',
+  'amazonaws.com',
+  's3.amazonaws.com',
+  'web.app',
+  'firebaseapp.com',
+  'appspot.com',
+  'surge.sh',
+  'ngrok.io',
+  'ngrok.app',
+  'ngrok-free.app',
+  'loca.lt',
+  'expo.app',
+]);
+
+/**
  * The site a hostname belongs to: its registrable domain, approximated
  * without a public suffix list as the last two labels, or the last three
  * when the last is a two-letter country code and the one before it a short
- * second-level label (`example.co.uk`, `shop.com.au`). An IP literal or a
- * single-label host such as `localhost` is a site of its own. Where the
- * approximation errs it errs narrow, except on shared hosting suffixes such
- * as `vercel.app`, which it reads as one site.
+ * second-level label (`example.co.uk`, `shop.com.au`). Under a shared
+ * hosting suffix from `SHARED_HOST_SUFFIXES` the site is one label deeper
+ * than the suffix, so two deployments of one host are two sites; the suffix
+ * on its own is a site of its own. An IP literal or a single-label host such
+ * as `localhost` is a site of its own. Where the approximation errs it errs
+ * narrow.
  */
 export function siteOf(hostname: string): string {
   const host = hostname.toLowerCase();
   if (host.startsWith('[') || /^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return host;
   const labels = host.split('.');
   if (labels.length <= 2) return host;
+  const shared = sharedHostSuffixLength(labels);
+  if (shared !== undefined) return labels.slice(-(shared + 1)).join('.');
   const tld = labels[labels.length - 1]!;
   const second = labels[labels.length - 2]!;
   const keep = tld.length === 2 && second.length <= 3 ? 3 : 2;
   return labels.slice(-keep).join('.');
+}
+
+/**
+ * The label count of the longest shared hosting suffix the host ends with
+ * and is longer than, or undefined when it is under none. A host that is a
+ * listed suffix itself is not under it.
+ */
+function sharedHostSuffixLength(labels: readonly string[]): number | undefined {
+  for (let count = labels.length - 1; count >= 2; count -= 1) {
+    if (SHARED_HOST_SUFFIXES.has(labels.slice(-count).join('.'))) return count;
+  }
+  return undefined;
 }
 
 /**

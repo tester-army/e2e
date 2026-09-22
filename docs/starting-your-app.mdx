@@ -178,8 +178,9 @@ engine: web({
 ```
 
 `headers` apply to requests on the target's site, determined by its hostname.
-The check also includes subdomains and treats shared suffixes such as
-`vercel.app` as one site. See [header scope](/security#navigation-and-origins)
+The check includes subdomains and, on a shared host such as `vercel.app`,
+stops at the deployment: `myapp.vercel.app` and `other.vercel.app` are two
+sites. See [header scope](/security#navigation-and-origins)
 before using a bypass secret. For ngrok, use
 `'ngrok-skip-browser-warning': '1'`.
 

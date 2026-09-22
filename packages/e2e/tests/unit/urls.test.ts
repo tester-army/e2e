@@ -109,6 +109,31 @@ describe('siteOf and sameSite', () => {
     expect(siteOf('Example.COM')).toBe('example.com');
   });
 
+  it('reads a deployment on a shared host as a site of its own, one label under the suffix', () => {
+    expect(siteOf('myapp.vercel.app')).toBe('myapp.vercel.app');
+    expect(siteOf('a.b.myapp.vercel.app')).toBe('myapp.vercel.app');
+    expect(siteOf('MyApp.Vercel.APP')).toBe('myapp.vercel.app');
+    expect(siteOf('preview.myapp.pages.dev')).toBe('myapp.pages.dev');
+    expect(siteOf('user.github.io')).toBe('user.github.io');
+    expect(siteOf('myapp.up.railway.app')).toBe('myapp.up.railway.app');
+    expect(siteOf('myapp.herokuapp.com')).toBe('myapp.herokuapp.com');
+  });
+
+  it('keeps the suffix itself as one site, and lets a longer listed suffix win over a shorter one', () => {
+    expect(siteOf('vercel.app')).toBe('vercel.app');
+    expect(siteOf('amazonaws.com')).toBe('amazonaws.com');
+    expect(siteOf('s3.amazonaws.com')).toBe('s3.amazonaws.com');
+    expect(siteOf('bucket.s3.amazonaws.com')).toBe('bucket.s3.amazonaws.com');
+    expect(siteOf('ec2-1-2-3-4.compute-1.amazonaws.com')).toBe('compute-1.amazonaws.com');
+  });
+
+  it('leaves hosts under no shared suffix on the registrable-domain rule', () => {
+    expect(siteOf('example.com')).toBe('example.com');
+    expect(siteOf('app.example.com')).toBe('example.com');
+    expect(siteOf('shop.example.co.uk')).toBe('example.co.uk');
+    expect(siteOf('myapp.vercel.example.com')).toBe('example.com');
+  });
+
   it('treats loopback names and IP literals as sites of their own', () => {
     expect(siteOf('localhost')).toBe('localhost');
     expect(siteOf('app.localhost')).toBe('app.localhost');
@@ -122,6 +147,14 @@ describe('siteOf and sameSite', () => {
     expect(sameSite('http://localhost:4000/', '127.0.0.1')).toBe(false);
     expect(sameSite('https://evil.test/', 'tester.army')).toBe(false);
     expect(sameSite('null', 'tester.army')).toBe(false);
+  });
+
+  it('puts two deployments of one shared host on two sites', () => {
+    const site = siteOf('myapp.vercel.app');
+    expect(sameSite('https://myapp.vercel.app/api/x', site)).toBe(true);
+    expect(sameSite('https://preview.myapp.vercel.app/', site)).toBe(true);
+    expect(sameSite('https://other.vercel.app/api/x', site)).toBe(false);
+    expect(sameSite('https://vercel.app/', site)).toBe(false);
   });
 });
 

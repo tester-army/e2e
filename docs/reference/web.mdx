@@ -44,8 +44,11 @@ export interface WebOptions extends EngineAppDeclaration {
    */
   readonly connect?: WebConnectOptions;
   /**
-   * Headers added to requests within the app's site, including subdomains.
-   * Useful for preview-protection tokens. Other sites never receive them.
+   * Headers added to requests within the app's site: its registrable domain
+   * with every subdomain, one label deeper on a shared host such as
+   * `vercel.app`, so `myapp.vercel.app` and `other.vercel.app` are two
+   * sites (the suffixes are listed in `siteOf`'s source). Useful for
+   * preview-protection tokens. Other sites never receive them.
    * Names are case-insensitive and replace existing headers of the same name.
    * This enables request routing, disables the browser's HTTP cache, and
    * blocks service workers. Playwright traces record request headers.
