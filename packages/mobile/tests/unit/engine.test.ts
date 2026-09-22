@@ -9,7 +9,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppError } from 'agent-device';
 import { decodePng, encodePng } from '../helpers/png.ts';
 import type { EngineFixtureContext, OperationContext, SemanticNode } from 'e2e/engine';
@@ -1203,17 +1203,33 @@ describe('video', () => {
 describe('deterministic actions', () => {
   const test = (): OperationContext => ({ ...operation(), origin: 'test' });
 
+  /**
+   * Taps under a stopped clock. The fake client records a dispatch the moment
+   * it is called, so a press recorded before any timer could fire, with no
+   * timer left pending, is one that neither settled nor waited out a
+   * transition budget. An upper bound on wall-clock time says the same only
+   * on an idle machine.
+   */
+  async function tapsAtOnce(h: Harness, node: SemanticNode, expected: unknown): Promise<void> {
+    vi.useFakeTimers({ now: Date.now(), toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    try {
+      const pending = h.engine.perform!(node.ref, { kind: 'tap' }, test());
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(vi.getTimerCount()).toBe(0);
+      expect(h.fake.lastArgs('interactions.press')).toEqual(expected);
+      await pending;
+    } finally {
+      vi.useRealTimers();
+    }
+  }
+
   it('acts at once and without settling on a control that was already on screen before the last action', async () => {
     const h = harness();
     await openAttempt(h);
     // Two looks at the screen: the second is the one the action resolves from, the first stands for the screen before the launch.
     await observed(h, 'About');
     await h.engine.perform!((await observed(h, 'Back')).ref, { kind: 'tap' }, test());
-    const startedAt = Date.now();
-    const about = await observed(h, 'About');
-    await h.engine.perform!(about.ref, { kind: 'tap' }, test());
-    expect(Date.now() - startedAt).toBeLessThan(200);
-    expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e4' });
+    await tapsAtOnce(h, await observed(h, 'About'), { ref: '@e4' });
     expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(3);
   });
 
@@ -1246,14 +1262,12 @@ describe('deterministic actions', () => {
         node.identifier === 'ABOUT' || node.label === 'About' ? { ...node, rect: { x: 0, y: 300, width: 390, height: 44 } } : node,
       ),
     }));
-    let startedAt = Date.now();
+    const startedAt = Date.now();
     await h.engine.perform!((await observed(h, 'About')).ref, { kind: 'tap' }, test());
     expect(Date.now() - startedAt).toBeGreaterThanOrEqual(100);
     // Well after the last action, nothing waits.
     await sleep(150);
-    startedAt = Date.now();
-    await h.engine.perform!((await observed(h, 'About')).ref, { kind: 'tap' }, test());
-    expect(Date.now() - startedAt).toBeLessThan(80);
+    await tapsAtOnce(h, await observed(h, 'About'), { ref: '@e4' });
   });
 
   it('fills, goes back, and taps at a point without settling; the agent keeps the settle path', async () => {
@@ -1317,9 +1331,7 @@ describe('deterministic actions', () => {
         { ref: '@e11', index: 10, parentIndex: 0, depth: 1, type: 'button', label: 'Save', rect: { x: 0, y: 600, width: 390, height: 44 } },
       ],
     }));
-    const startedAt = Date.now();
-    await h.engine.perform!((await observed(h, 'Save')).ref, { kind: 'tap' }, test());
-    expect(Date.now() - startedAt).toBeLessThan(80);
+    await tapsAtOnce(h, await observed(h, 'Save'), { ref: '@e11' });
   });
 
   it('rejects a negative or fractional transition budget', () => {
