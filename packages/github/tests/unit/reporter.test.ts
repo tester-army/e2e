@@ -107,6 +107,28 @@ describe('reportRun', () => {
     expect(postedBody(dotted.calls)).toContain('(https://github.com/octo/app/blob/head-sha/..app/tests/shop%20flows/cart.e2e.ts#L9)');
   });
 
+  it('shows a title token GitHub would link as code, so app text cannot mention anyone, link an issue, or plant a URL', async () => {
+    const d = deps({ ...actionsEnv, GITHUB_TOKEN: 'ghs' });
+    const hostile = finished(
+      report({
+        status: 'failed',
+        results: [
+          result({
+            title: 'ping @octocat see https://evil.example #12',
+            status: 'failed',
+            attempts: [attempt({ status: 'failed', error: { code: 'ASSERTION_FAILED', message: 'no cart' } })],
+          }),
+        ],
+      }),
+    );
+    await reportRun(hostile, signal, {}, d.deps);
+    const body = postedBody(d.calls);
+    expect(body).toContain('ping `@octocat` see `https://evil.example` `#12`');
+    expect(body).not.toMatch(/[^`]@octocat/);
+    expect(body).not.toMatch(/[^`]https:\/\/evil/);
+    expect(body).not.toMatch(/[^`]#12\b/);
+  });
+
   it('adds the key to the marker, encoded, so matrix replicas keep their own comments', async () => {
     const d = deps({ ...actionsEnv, GITHUB_TOKEN: 'ghs' });
     await reportRun(failedRun, signal, { key: 'firefox --> 2' }, d.deps);
