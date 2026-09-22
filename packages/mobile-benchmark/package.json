@@ -21,7 +21,7 @@
     "@stripe/stripe-react-native": "0.64.0",
     "expo": "57.0.22",
     "expo-audio": "57.0.5",
-    "expo-image-picker": "57.0.11",
+    "expo-image-picker": "57.0.19",
     "expo-modules-core": "57.0.18",
     "react": "19.2.3",
     "react-native": "0.86.2",
