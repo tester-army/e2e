@@ -13,6 +13,15 @@ updates:
         dependency-type: development
         patterns:
           - '*'
+    # packages/mobile-benchmark tracks Expo SDK 57; these move together by hand with `npx expo install --fix`.
+    ignore:
+      - dependency-name: expo
+      - dependency-name: 'expo-*'
+      - dependency-name: react
+      - dependency-name: react-native
+      - dependency-name: 'react-native-*'
+      - dependency-name: '@react-native/*'
+      - dependency-name: '@stripe/stripe-react-native'
   - package-ecosystem: github-actions
     directory: /
     schedule:

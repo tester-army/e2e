@@ -38,6 +38,7 @@ jobs:
   # entirely, so the checks list shows what actually ran.
   plan:
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 5
     outputs:
       matrix: ${{ steps.select.outputs.matrix }}
     steps:
@@ -68,6 +69,7 @@ jobs:
   agent:
     needs: plan
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 30
     strategy:
       # One suite failing must not hide the other's result.
       fail-fast: false
@@ -111,10 +113,14 @@ jobs:
           fi
           pnpm --filter @e2edev/testbed run ${{ matrix.script }}
       # The JSON report is the only durable evidence of a model-dependent run.
+      # A storage quota that refuses the upload must not turn a green suite red;
+      # on the weekly schedule two weeks of retention is two runs.
       - name: Upload report
         if: ${{ !cancelled() }}
+        continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: agent-report-${{ matrix.suite }}
           path: packages/testbed/.e2e/report.json
           if-no-files-found: warn
+          retention-days: 14

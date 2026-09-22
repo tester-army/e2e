@@ -64,6 +64,7 @@
   },
   "files": [
     "dist",
+    "schema/*.schema.json",
     "skills",
     "NOTICE"
   ],
