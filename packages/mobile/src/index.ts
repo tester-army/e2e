@@ -10,7 +10,7 @@ import type { Device } from './device.ts';
 
 export { mobile } from './engine.ts';
 export type { MobileOptions, MobilePlatform } from './options.ts';
-export type { DeviceDaemon } from './bindings.ts';
+export type { DeviceClientConfig, DeviceConnection, DeviceDaemon } from './bindings.ts';
 export type { DeviceLease, DeviceProvider, DeviceReleaseContext, DeviceRequest } from './provider.ts';
 export type { InstallAppOptions, InstalledApp } from './surface.ts';
 export type { BiometricSensor, Device, DeviceOrientation, DevicePermission, ForegroundApp } from './device.ts';

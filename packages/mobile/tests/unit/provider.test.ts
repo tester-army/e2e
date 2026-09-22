@@ -83,7 +83,7 @@ describe('device provider', () => {
       'booting sim-1 (2 of 2)',
     ]);
     // Warmed like a local device, through the leased daemon: a fresh hosted simulator is the coldest device there is.
-    expect(h.daemons).toEqual([
+    expect(h.connections.map((connection) => connection?.daemon)).toEqual([
       { baseUrl: 'https://0.example', authToken: 'token-0' },
       { baseUrl: 'https://1.example', authToken: 'token-1' },
     ]);
@@ -99,13 +99,13 @@ describe('device provider', () => {
     // A child worker reads its binding from the environment and drives that daemon and device.
     const worker = harness({ device: cloud.impl });
     await boot(worker.engine, 'ios', 1, { [variable]: handed[variable] });
-    expect(worker.daemons).toEqual([{ baseUrl: 'https://1.example', authToken: 'token-1' }]);
+    expect(worker.connections.map((connection) => connection?.daemon)).toEqual([{ baseUrl: 'https://1.example', authToken: 'token-1' }]);
     expect(worker.sessions).toEqual(['e2e-ios-1']);
     expect(worker.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios', device: 'sim-1' });
 
     // The runner-side handle reads its own bindings and releases the leases at finish.
     await boot(h.engine, 'ios', 0);
-    expect(h.daemons.at(-1)).toEqual({ baseUrl: 'https://0.example', authToken: 'token-0' });
+    expect(h.connections.at(-1)?.daemon).toEqual({ baseUrl: 'https://0.example', authToken: 'token-0' });
     const finished: string[] = [];
     await h.engine.finish!(finishInfo((line) => finished.push(line)));
     expect(cloud.released.map((lease) => lease.id)).toEqual(['lease-0', 'lease-1']);
@@ -183,6 +183,49 @@ describe('device provider', () => {
     expect(releasedLeases).toEqual(acquiredLeases);
   });
 
+  it('carries client configuration to the worker next to the daemon, and accepts a lease with only that', async () => {
+    const scope = { stateDir: '/tmp/devices', tenant: 'cloud', runId: 'run-1', leaseId: 'lease-0', leaseBackend: 'ios-instance', leaseProvider: 'cloud' } as const;
+    const scoped: DeviceProvider = {
+      name: 'scoped',
+      async acquire(request) {
+        return request.slot === 0
+          ? { id: 'l-0', client: scope }
+          : { id: 'l-1', daemon: { baseUrl: 'https://1.example' }, client: { providerOsVersion: '18.0' } };
+      },
+      async release() {},
+    };
+    const h = harness({ device: scoped });
+    const result = await h.engine.prepare!(prepareInfo({}, 2));
+    // Warm-up already drives each device with its lease's configuration.
+    expect(h.connections).toEqual([
+      { client: scope },
+      { daemon: { baseUrl: 'https://1.example' }, client: { providerOsVersion: '18.0' } },
+    ]);
+    const handed = result?.env ?? {};
+    const variable = poolVariableIn(handed, 'IOS');
+    expect(JSON.parse(handed[variable]!)).toEqual([
+      { client: scope },
+      { daemon: { baseUrl: 'https://1.example' }, client: { providerOsVersion: '18.0' } },
+    ]);
+    const worker = harness({ device: scoped });
+    await boot(worker.engine, 'ios', 0, { [variable]: handed[variable] });
+    expect(worker.connections).toEqual([{ client: scope }]);
+  });
+
+  it('refuses a lease that names neither a daemon nor client configuration, or a client with reserved keys', async () => {
+    for (const lease of [
+      { id: 'bare' },
+      { id: 'session', client: { session: 'mine', leaseId: 'x' } },
+      { id: 'daemon-keys', client: { daemonBaseUrl: 'https://d.example' } },
+      { id: 'not-json', client: { leaseId: 'x', onReady: () => undefined } },
+    ]) {
+      const h = harness({ device: { name: 'odd', acquire: async () => lease as unknown as DeviceLease, release: async () => {} } });
+      await expect(h.engine.prepare!(prepareInfo({}, 1))).rejects.toMatchObject({
+        message: expect.stringContaining('returned a lease without an id and a daemon baseUrl or JSON client configuration'),
+      });
+    }
+  });
+
   it('rejects bindings too large for a worker environment, by bytes', async () => {
     const oversized: DeviceProvider = {
       name: 'huge',
@@ -245,7 +288,7 @@ describe('device provider', () => {
     const cloud = provider();
     const h = harness({ device: cloud.impl });
     await boot(h.engine, 'ios', 0);
-    expect(h.daemons).toEqual([undefined]);
+    expect(h.connections).toEqual([undefined]);
     expect(h.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios' });
     await h.engine.finish!(finishInfo());
     expect(cloud.released).toEqual([]);

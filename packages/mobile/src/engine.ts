@@ -68,9 +68,14 @@ export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
 
 /** Creates one agent-device engine: one device session per worker, one fresh app launch per attempt. */
 export function mobile(options: MobileOptions): EngineHandle {
-  const factory: ClientFactory = (session, daemon) =>
+  const factory: ClientFactory = (session, connection) =>
     createAgentDeviceClient(
-      daemon === undefined ? { session } : obj({ session, daemonBaseUrl: daemon.baseUrl, daemonAuthToken: daemon.authToken }),
+      obj({
+        ...connection?.client,
+        session,
+        daemonBaseUrl: connection?.daemon?.baseUrl,
+        daemonAuthToken: connection?.daemon?.authToken,
+      }),
     );
   return buildEngine(new AgentDeviceSurface(options, factory));
 }

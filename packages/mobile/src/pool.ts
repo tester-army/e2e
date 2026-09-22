@@ -191,7 +191,7 @@ export class DevicePool {
     for (const [slot, binding] of bindings.entries()) {
       const label = binding.device ?? `a booted ${this.options.platform} device`;
       const where = deviceSelection(this.options.platform, binding.device);
-      const client = this.createClient(this.session(info.targetName, slot), binding.daemon);
+      const client = this.createClient(this.session(info.targetName, slot), binding);
       info.log(`booting ${label} (${slot + 1} of ${bindings.length})`);
       await runCommand('boot', () => client.devices.boot(where), info.signal);
       const app = pinnedApp(this.options, binding.installedApp);

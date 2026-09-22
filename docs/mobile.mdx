@@ -111,8 +111,10 @@ export interface DeviceProvider {
 export interface DeviceLease {
   /** The provider's handle (a session id), handed back to `release`. */
   readonly id: string;
-  /** The agent-device daemon the worker connects to. */
-  readonly daemon: { readonly baseUrl: string; readonly authToken?: string };
+  /** The agent-device daemon the worker connects to; a lease names this, `client`, or both. */
+  readonly daemon?: { readonly baseUrl: string; readonly authToken?: string };
+  /** agent-device client configuration the worker's client is created with: a lease scope, a `stateDir`. */
+  readonly client?: DeviceClientConfig;
   /** Device to select inside that daemon, when it hosts more than one. */
   readonly device?: string;
   /** Bundle id or package the provider installed itself; skips `appPath`. */
@@ -129,10 +131,21 @@ before any test, and the leases that succeeded are still released. Release
 happens after the last worker exits, on every exit path including failure,
 interrupt, and a `prepare` that threw, within `cleanupTimeout`. `release`
 receives the object `acquire` returned, so a provider can keep its own
-fields on it; only `daemon`, `device`, and `installedApp` travel to the
-workers. Report `installedApp` only for a request that carried `appPath`.
+fields on it; only `daemon`, `client`, `device`, and `installedApp` travel to
+the workers. Report `installedApp` only for a request that carried `appPath`.
 Leased devices are warmed like local ones: booted and opened once before
 the run's clock starts.
+
+`client` is agent-device client configuration, JSON data the worker's client
+is created with on top of the session name and the `daemon` address (the
+engine owns `session`, `daemonBaseUrl`, and `daemonAuthToken`, and refuses a
+lease that sets them). It is how a device reached through agent-device's own
+device-cloud runtimes is told apart: the daemon resolves a hosted device from
+the lease scope on each command (`tenant`, `runId`, `leaseId`, `leaseBackend`,
+`leaseProvider`, as `leases.allocate` returned it), and a command without one
+falls back to the local inventory. A `stateDir` in it points the worker at a
+daemon the provider started, so such a provider needs no `daemon` address at
+all.
 
 A provider against a typical session API has three requests: create a
 session, poll it until the daemon is reachable, stop it.
@@ -212,6 +225,55 @@ export default {
 Two workers lease two sessions in parallel. Hosted sessions are billed while
 they run, so keep `workers` at what the suite can fill. The trace cache keys
 on `app`, so traces recorded locally replay on hosted devices.
+
+A device cloud agent-device speaks to itself needs no session API of your
+own: the provider allocates a lease through a daemon it starts for the run and
+hands the worker the lease scope as `client`.
+
+```ts title="device-cloud-provider.ts"
+import { createAgentDeviceClient } from 'agent-device';
+import type { DeviceProvider } from '@e2edev/mobile';
+
+/**
+ * Leases devices from a device cloud agent-device itself speaks to, through
+ * a daemon started for the run. The daemon's runtime for the cloud creates
+ * the instance when the lease is allocated and deletes it when the lease is
+ * released; the worker's client carries the lease, so every command lands on
+ * that instance. `provider` is agent-device's name for the cloud; its runtime
+ * reads the credentials from the environment the daemon starts with.
+ */
+export function cloudDevices(options: { provider: string; stateDir: string }): DeviceProvider {
+  const scopes = new Map<string, { tenant: string; runId: string; leaseId: string; leaseBackend: 'ios-instance' | 'android-instance'; leaseProvider: string }>();
+  return {
+    name: options.provider,
+    async acquire(request) {
+      // One daemon per run, under a directory of its own.
+      const stateDir = `${options.stateDir}/${request.runId}`;
+      const client = createAgentDeviceClient({ stateDir, session: `lease-${request.slot}` });
+      const leaseBackend = request.platform === 'ios' ? ('ios-instance' as const) : ('android-instance' as const);
+      const lease = await client.leases.allocate({
+        tenant: options.provider,
+        runId: request.runId,
+        leaseBackend,
+        leaseProvider: options.provider,
+        platform: request.platform,
+        target: 'mobile',
+      });
+      request.log(`leased ${lease.leaseId}`);
+      const scope = { tenant: lease.tenantId, runId: lease.runId, leaseId: lease.leaseId, leaseBackend, leaseProvider: options.provider };
+      scopes.set(lease.leaseId, scope);
+      // The worker's client is created with these fields; the daemon resolves the device from them.
+      return { id: lease.leaseId, client: { stateDir, ...scope } };
+    },
+    async release(lease) {
+      const scope = scopes.get(lease.id);
+      if (scope === undefined) return;
+      const client = createAgentDeviceClient({ stateDir: `${options.stateDir}/${scope.runId}`, session: 'release' });
+      await client.leases.release(scope);
+    },
+  };
+}
+```
 
 ## Writing a device test
 

@@ -319,7 +319,7 @@ export class AgentDeviceSurface {
     this.projectRoot = info.projectRoot;
     const binding = this.pool.binding(info.targetName, info.workerSlot, info.env);
     this.device = binding?.device;
-    this.client ??= this.createClient(this.pool.session(info.targetName, info.workerSlot), binding?.daemon);
+    this.client ??= this.createClient(this.pool.session(info.targetName, info.workerSlot), binding);
     await this.command('boot', (client) => client.devices.boot(this.selection()), info.signal);
     if (this.options.appPath === undefined) return;
     // A provider that installed the build itself says so on the binding; the worker then installs nothing.

@@ -7,8 +7,11 @@
  */
 
 import { createHash } from 'node:crypto';
+import type { createAgentDeviceClient } from 'agent-device';
 import { EngineError, obj, type EngineFinishInfo, type EnginePrepareInfo } from 'e2e/engine';
 import type { MobileOptions } from './options.ts';
+
+type AgentDeviceClientConfig = NonNullable<Parameters<typeof createAgentDeviceClient>[0]>;
 
 /** An agent-device daemon other than the local one. */
 export interface DeviceDaemon {
@@ -18,12 +21,28 @@ export interface DeviceDaemon {
   readonly authToken?: string | undefined;
 }
 
+/**
+ * agent-device client configuration the worker's client is created with, on
+ * top of the session name the engine owns and the `daemon` address: the lease
+ * scope a daemon resolves a hosted device by (`tenant`, `runId`, `leaseId`,
+ * `leaseBackend`, `leaseProvider`), the `stateDir` of a daemon other than the
+ * default one, provider options. JSON data only, since it travels to the
+ * worker through the environment; `session`, `daemonBaseUrl`, and
+ * `daemonAuthToken` are not part of it.
+ */
+export type DeviceClientConfig = Omit<AgentDeviceClientConfig, 'session' | 'daemonBaseUrl' | 'daemonAuthToken'>;
+
+/** How a worker's agent-device client reaches its device: which daemon, and with what configuration. */
+export type DeviceConnection = Pick<SlotBinding, 'daemon' | 'client'>;
+
 /** What one worker slot drives; `{}` leaves every choice to the local daemon. */
 export interface SlotBinding {
   /** Device to select, by name or UDID; absent, the daemon picks a booted one. */
   readonly device?: string | undefined;
   /** The agent-device daemon to connect to; absent, the local one. */
   readonly daemon?: DeviceDaemon | undefined;
+  /** Client configuration for that daemon; absent, the client's defaults. */
+  readonly client?: DeviceClientConfig | undefined;
   /** App a provider already installed from `appPath`, so the worker installs nothing and opens this. */
   readonly installedApp?: string | undefined;
 }
@@ -77,6 +96,7 @@ export function encodeBindings(bindings: readonly SlotBinding[]): string {
       obj({
         device: binding.device,
         daemon: binding.daemon === undefined ? undefined : obj({ baseUrl: binding.daemon.baseUrl, authToken: binding.daemon.authToken }),
+        client: binding.client,
         installedApp: binding.installedApp,
       }),
     ),
@@ -111,8 +131,31 @@ function isOptionalString(value: unknown): value is string | undefined {
 /** A binding as JSON parses it back, or as a provider returned it: nothing the engine did not write is trusted. */
 export function isSlotBinding(value: unknown): value is SlotBinding {
   if (typeof value !== 'object' || value === null) return false;
-  const { device, daemon, installedApp } = value as Record<keyof SlotBinding, unknown>;
-  return isOptionalString(device) && isOptionalString(installedApp) && (daemon === undefined || isDaemon(daemon));
+  const { device, daemon, client, installedApp } = value as Record<keyof SlotBinding, unknown>;
+  return (
+    isOptionalString(device) &&
+    isOptionalString(installedApp) &&
+    (daemon === undefined || isDaemon(daemon)) &&
+    (client === undefined || isClientConfig(client))
+  );
+}
+
+/** Reserved for the engine and the `daemon` field; a provider setting them would be silently overruled. */
+const RESERVED_CLIENT_KEYS: ReadonlySet<string> = new Set(['session', 'daemonBaseUrl', 'daemonAuthToken']);
+
+/** Plain JSON data with none of the reserved keys: what survives the environment and what the engine will not override. */
+function isClientConfig(value: unknown): value is DeviceClientConfig {
+  return isJsonObject(value) && Object.keys(value).every((key) => !RESERVED_CLIENT_KEYS.has(key));
+}
+
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value) && Object.values(value).every(isJsonValue);
+}
+
+function isJsonValue(value: unknown): boolean {
+  if (value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return true;
+  if (Array.isArray(value)) return value.every(isJsonValue);
+  return isJsonObject(value);
 }
 
 function isDaemon(value: unknown): value is DeviceDaemon {

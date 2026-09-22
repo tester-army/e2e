@@ -5,17 +5,17 @@
  */
 
 import type { createAgentDeviceClient } from 'agent-device';
-import type { DeviceDaemon } from './bindings.ts';
+import type { DeviceConnection } from './bindings.ts';
 import type { DeviceProvider } from './provider.ts';
 
 export type AgentDeviceClient = ReturnType<typeof createAgentDeviceClient>;
 
 /**
- * Mints the agent-device client for one session, against a leased daemon
- * when a provider supplied one, else the local daemon; the seam unit tests
- * script.
+ * Mints the agent-device client for one session, with the daemon and client
+ * configuration a lease supplied when a provider leased the device, else
+ * against the local daemon; the seam unit tests script.
  */
-export type ClientFactory = (session: string, daemon?: DeviceDaemon) => AgentDeviceClient;
+export type ClientFactory = (session: string, connection?: DeviceConnection) => AgentDeviceClient;
 
 export type MobilePlatform = 'ios' | 'android';
 
@@ -55,8 +55,8 @@ export interface MobileOptions {
    * across every device at once. Omitted, the pool is every booted device of
    * the platform at `prepare`, as many as the run has slots; with none booted,
    * agent-device boots one. A `DeviceProvider` leases hosted devices instead:
-   * one per worker slot at `prepare`, each driven through the daemon the
-   * lease names, all released when the run ends.
+   * one per worker slot at `prepare`, each driven through the daemon and
+   * client configuration the lease names, all released when the run ends.
    */
   readonly device?: string | readonly string[] | DeviceProvider | undefined;
   /**

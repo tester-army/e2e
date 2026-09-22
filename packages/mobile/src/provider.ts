@@ -9,7 +9,7 @@
 
 import path from 'node:path';
 import { ConfigurationError, EngineError, obj, type EngineFinishInfo, type EnginePrepareInfo } from 'e2e/engine';
-import { isSlotBinding, type DeviceDaemon, type DeviceSource, type SlotBinding } from './bindings.ts';
+import { isSlotBinding, type DeviceClientConfig, type DeviceDaemon, type DeviceSource, type SlotBinding } from './bindings.ts';
 import { message } from './errors.ts';
 import type { MobileOptions, MobilePlatform } from './options.ts';
 
@@ -55,8 +55,20 @@ export interface DeviceLease extends SlotBinding {
    * fields declared here travel to the worker.
    */
   readonly id: string;
-  /** The agent-device daemon the worker connects to instead of its local one. */
-  readonly daemon: DeviceDaemon;
+  /**
+   * The agent-device daemon the worker connects to instead of its local one.
+   * A lease names a daemon, `client` configuration, or both.
+   */
+  readonly daemon?: DeviceDaemon | undefined;
+  /**
+   * agent-device client configuration the worker's client is created with:
+   * how a daemon that runs agent-device's own device-cloud runtimes tells the
+   * leased device apart, as its `leases.allocate` returned it (`tenant`,
+   * `runId`, `leaseId`, `leaseBackend`, `leaseProvider`), or the `stateDir` of
+   * a daemon the provider started. JSON data only; `session`, `daemonBaseUrl`,
+   * and `daemonAuthToken` are refused, the engine and `daemon` own those.
+   */
+  readonly client?: DeviceClientConfig | undefined;
   /** Device to select inside that daemon, by name or UDID, when it hosts more than one. */
   readonly device?: string | undefined;
   /**
@@ -108,7 +120,11 @@ export function asDeviceProvider(device: object): DeviceProvider {
 
 /** A lease as a provider returned it, checked field by field: the engine trusts nothing it did not write. */
 function isDeviceLease(value: unknown): value is DeviceLease {
-  return isSlotBinding(value) && typeof (value as { id?: unknown }).id === 'string' && value.daemon !== undefined;
+  return (
+    isSlotBinding(value) &&
+    typeof (value as { id?: unknown }).id === 'string' &&
+    (value.daemon !== undefined || value.client !== undefined)
+  );
 }
 
 /** Runs every task, then reports the first failure: nothing is skipped because a sibling failed. */
@@ -159,7 +175,9 @@ export class LeasedDevices implements DeviceSource {
           signal: info.signal,
           log: (line) => info.log(`${provider.name} (${slot + 1} of ${info.slots}): ${line}`),
         });
-        if (!isDeviceLease(lease)) throw new Error('returned a lease without an id and a daemon baseUrl');
+        if (!isDeviceLease(lease)) {
+          throw new Error('returned a lease without an id and a daemon baseUrl or JSON client configuration (no `session` or daemon keys)');
+        }
         held.push(lease);
         if (lease.installedApp !== undefined && appPath === undefined) {
           throw new Error('reported an installed app for a request without `appPath`');
@@ -169,7 +187,7 @@ export class LeasedDevices implements DeviceSource {
       }),
       `device provider "${provider.name}" could not lease a device`,
     );
-    return leases.map((lease) => obj({ device: lease.device, daemon: lease.daemon, installedApp: lease.installedApp }));
+    return leases.map((lease) => obj({ device: lease.device, daemon: lease.daemon, client: lease.client, installedApp: lease.installedApp }));
   }
 
   async finish(info: EngineFinishInfo): Promise<void> {

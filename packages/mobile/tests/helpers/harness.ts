@@ -1,13 +1,13 @@
 /**
  * The agent-device engine over a scripted client, for unit tests: a harness
- * records the sessions and daemons each client was minted for, and `boot`
- * runs `init` for one worker slot.
+ * records the sessions and connections each client was minted for, and
+ * `boot` runs `init` for one worker slot.
  */
 
 import type { EngineHandle } from 'e2e/engine';
 import { buildEngine } from '../../src/engine.ts';
 import type { MobileOptions } from '../../src/options.ts';
-import type { DeviceLease } from '../../src/provider.ts';
+import type { DeviceConnection } from '../../src/bindings.ts';
 import { AgentDeviceSurface } from '../../src/surface.ts';
 import { createFakeClient, SETTINGS_SNAPSHOT, type FakeClient } from './fake-client.ts';
 
@@ -43,8 +43,8 @@ export interface Harness {
   readonly engine: EngineHandle;
   readonly fake: FakeClient;
   readonly sessions: string[];
-  /** The daemon each client was minted against; `undefined` is the local one. */
-  readonly daemons: (DeviceLease['daemon'] | undefined)[];
+  /** The connection each client was minted with; `undefined` is the local daemon with defaults. */
+  readonly connections: (DeviceConnection | undefined)[];
   readonly surface: AgentDeviceSurface;
 }
 
@@ -57,12 +57,12 @@ export function harness(options: Partial<MobileOptions> = {}, pinned = true): Ha
     'capture.screenshot': () => ({ logicalWidth: 390, logicalHeight: 844 }),
   });
   const sessions: string[] = [];
-  const daemons: (DeviceLease['daemon'] | undefined)[] = [];
+  const connections: (DeviceConnection | undefined)[] = [];
   const base: MobileOptions = pinned ? { platform: 'ios', app: 'Settings' } : { platform: 'ios' };
-  const surface = new AgentDeviceSurface({ ...base, ...options }, (session, daemon) => {
+  const surface = new AgentDeviceSurface({ ...base, ...options }, (session, connection) => {
     sessions.push(session);
-    daemons.push(daemon);
+    connections.push(connection);
     return fake.client;
   });
-  return { engine: buildEngine(surface), fake, sessions, daemons, surface };
+  return { engine: buildEngine(surface), fake, sessions, connections, surface };
 }

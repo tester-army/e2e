@@ -86,8 +86,8 @@ export interface MobileOptions {
    * across every device at once. Omitted, the pool is every booted device of
    * the platform at `prepare`, as many as the run has slots; with none booted,
    * agent-device boots one. A `DeviceProvider` leases hosted devices instead:
-   * one per worker slot at `prepare`, each driven through the daemon the
-   * lease names, all released when the run ends.
+   * one per worker slot at `prepare`, each driven through the daemon and
+   * client configuration the lease names, all released when the run ends.
    */
   readonly device?: string | readonly string[] | DeviceProvider | undefined;
   /**
