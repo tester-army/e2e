@@ -279,8 +279,10 @@ shows when that applies.
 ### evaluate
 
 The function runs in the page and cannot access variables from the test.
-Pass those values through `arg`. Both `arg` and the return value must be
-`JsonValue`, otherwise the call fails with `INVALID_ARGUMENT`.
+It is serialized by its source and inlined into the page, so it must not
+close over anything outside its own body; helpers declared inside the body
+work. Pass outside values through `arg`. Both `arg` and the return value
+must be `JsonValue`, otherwise the call fails with `INVALID_ARGUMENT`.
 
 An exception in the evaluated code is `EVALUATE_FAILED` with its message. A
 Playwright timeout is `ACTION_FAILED`; a closed page or lost context is

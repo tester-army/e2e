@@ -230,6 +230,13 @@ test('evaluate runs trusted code with JSON arguments', async ({ app, web }) => {
   expect(result).toBe(42);
   const href = await web.evaluate(() => document.location.pathname);
   expect(href).toBe('/');
+  // tsx compiles this file with esbuild keepNames, which wraps the nested
+  // const in a \`__name\` helper the serialized source must find in the page.
+  const total = await web.evaluate((input: { a: number; b: number }) => {
+    const pick = (key: 'a' | 'b') => input[key];
+    return pick('a') + pick('b');
+  }, { a: 2, b: 40 });
+  expect(total).toBe(42);
 });
 
 test('cookies round-trip through policy checks', async ({ app, web }) => {
