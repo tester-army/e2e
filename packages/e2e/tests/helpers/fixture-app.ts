@@ -142,6 +142,9 @@ const PAGES: Record<string, string> = {
   <span>Duplicated</span>
 
   <input id="prefilled" aria-label="Prefilled" value="hello-value" />
+  <textarea id="notes" aria-label="Notes">line1
+
+line2  </textarea>
 
   <script>
     setTimeout(() => {
