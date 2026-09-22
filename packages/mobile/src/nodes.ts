@@ -209,7 +209,9 @@ function roleOf(kind: string, android: boolean, parentKind: string | undefined):
  * A node the platform reports as editable takes typed text whatever its
  * class, so a custom input view, or a class the maps do not know, is a
  * `textbox` rather than its verbatim kind; a role that already takes text
- * is kept.
+ * is kept. The flag outranks a control role too: Android sets it from
+ * `TextView.isTextEditable()`, so a `Button` reporting it is a text view
+ * configured for input, and typed text and secrets have to reach it.
  */
 function editableRole(role: string | undefined, editable: boolean | undefined): string | undefined {
   if (editable !== true) return role;
