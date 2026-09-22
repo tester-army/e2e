@@ -768,3 +768,112 @@ describe('trace cache: a bare-point tap replays like a coordinate-driven tool', 
     expect(readOnlyEntry(project).document.payload.actions[0]).toMatchObject({ viewport: { width: 1280, height: 720 } });
   }, 240_000);
 });
+
+const TODOS_SUITE = `import { test, expect } from 'e2e';
+
+test('adds a todo', async ({ app, agent, screen }) => {
+  await app.open('/todos');
+  await agent.act('add a todo for groceries');
+  await expect(screen.getByRole('list', { name: 'Todos' })).toContainText('Buy milk');
+});
+`;
+
+/**
+ * Types a todo it composes itself, "Buy milk", then taps Add: the shape of a
+ * model that made up the flow's data. The value is in neither the instruction
+ * nor the params, so only the screen could make it look derived.
+ */
+function todoExecutor(record: ExecutorRecord): StepExecutor {
+  return {
+    name: 'todo-executor',
+    version: 'test',
+    async runStep(context: StepExecutorContext) {
+      record.calls += 1;
+      record.prefixes.push(context.replayedPrefix);
+      let observation = await context.observe();
+      await context.actions.type({ id: nodeIdFor(observation.text, /textbox "New todo"/) }, 'Buy milk');
+      await context.actions.tap({ id: nodeIdFor(observation.text, /button "Add"/) });
+      observation = await context.observe();
+      if (!/status "Result"[^\n]*text="added"/.test(observation.text)) {
+        return { status: 'failed' as const, summary: 'the todo was not added' };
+      }
+      return { status: 'passed' as const, summary: 'the list shows Buy milk' };
+    },
+  };
+}
+
+describe('trace cache: a replayed typed value is the flow\'s data on an app that keeps state', () => {
+  let app: FixtureApp;
+  let project: FixtureProject;
+  const records: ExecutorRecord[] = [];
+
+  const options = () => {
+    const record: ExecutorRecord = { calls: 0, prefixes: [] };
+    records.push(record);
+    return {
+      appUrl: app.url,
+      config: {
+        tests: 'tests/**/*.e2e.ts',
+        reporters: ['json'] as const,
+        agents: { default: todoExecutor(record) },
+        cache: 'read-write' as const,
+      },
+    };
+  };
+
+  const cacheOf = (outcome: RunOutcome) =>
+    resultByTitle(outcome, 'adds a todo').attempts.at(-1)!.steps.find((s) => s.api === 'agent.act')!;
+
+  beforeAll(async () => {
+    app = await startFixtureApp();
+    project = createProject({ 'tests/todos.e2e.ts': TODOS_SUITE });
+  }, 60_000);
+
+  afterAll(async () => {
+    project?.cleanup();
+    await app?.close();
+  });
+
+  it('replays the typed value on the second and third run although the first run left it on screen', async () => {
+    const first = await runExisting(project, options());
+    expect(first.exitCode).toBe(0);
+    const recorded = readOnlyEntry(project).document.payload.actions;
+    expect(recorded.map((action: { name: string }) => action.name)).toEqual(['type', 'tap']);
+    expect(recorded[0]).toMatchObject({ name: 'type', value: 'Buy milk' });
+
+    // The list now shows "Buy milk" before the step starts: the start-path
+    // probe puts it among the texts the screen showed, where a live type of
+    // the same value would count as read off the screen.
+    for (const run of [2, 3]) {
+      const outcome = await runExisting(project, options());
+      expect(outcome.exitCode).toBe(0);
+      expect(records.at(-1)!.calls, `run ${String(run)}`).toBe(0);
+      const step = cacheOf(outcome);
+      expect(step.cache, `run ${String(run)}`).toEqual({ mode: 'self-finalized', replayedActions: 2, totalActions: 2 });
+      expect(step.metrics!.modelCalls).toBe(0);
+      const restaged = readOnlyEntry(project).document.payload.actions;
+      expect(restaged, `run ${String(run)}`).toEqual(recorded);
+    }
+  }, 360_000);
+
+  it('still records a gap when the executor itself types a value the screen shows', async () => {
+    // A fresh project against the same app: no entry, so the executor runs
+    // live and types "Buy milk" while the list already shows it.
+    const fresh = createProject({ 'tests/todos.e2e.ts': TODOS_SUITE });
+    try {
+      const first = await runExisting(fresh, options());
+      expect(first.exitCode).toBe(0);
+      expect(records.at(-1)!.calls).toBe(1);
+      const actions = readOnlyEntry(fresh).document.payload.actions;
+      expect(actions.map((action: { name: string }) => action.name)).toEqual(['tool', 'tap']);
+      expect(actions[0]).toEqual({ name: 'tool', summary: 'tool type (run-time value)' });
+
+      const second = await runExisting(fresh, options());
+      expect(second.exitCode).toBe(0);
+      expect(records.at(-1)!.calls).toBe(1);
+      expect(cacheOf(second).cache).toMatchObject({ mode: 'missed', reason: 'gap', totalActions: 2 });
+    } finally {
+      fresh.cleanup();
+    }
+  }, 240_000);
+});
