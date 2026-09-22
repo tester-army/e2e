@@ -42,8 +42,17 @@ import {
 import type { EngineHandle, EngineObserveOptions, EngineSnapshot } from '../../src/engine/index.ts';
 import { createAgent, defineTool, type DefaultAgent } from '../../src/agent/public.ts';
 import type { Report } from '../../src/index.ts';
-import type { chatgpt } from '../../src/oauth/chatgpt.ts';
 import type { LanguageModelV2, LanguageModelV3, LanguageModelV4 } from '@ai-sdk/provider';
+import { chatgpt } from '../../src/oauth/chatgpt.ts';
+import { copilot } from '../../src/oauth/copilot.ts';
+import { grok } from '../../src/oauth/grok.ts';
+// @ts-expect-error isDefinedTool left e2e/agent: createAgent checks each tools entry itself
+import { isDefinedTool } from '../../src/agent/public.ts';
+// @ts-expect-error BLOCKABLE_CODES left e2e: a blocked verdict carries any code the errors reference marks blocked
+import { BLOCKABLE_CODES } from '../../src/index.ts';
+
+isDefinedTool;
+BLOCKABLE_CODES;
 
 declare const agent: Agent;
 declare const appFixture: App;
@@ -394,3 +403,14 @@ if (runEvent.type === 'explore') {
 ({ targets: [{ engine }], agents: { default: { model, judge: 'openai/gpt-5.6-luna-fast' } } }) satisfies E2EConfig;
 // @ts-expect-error timeout is milliseconds, not a duration string
 ({ targets: [{ engine }], agents: { default: { model, timeout: '30s' } } }) satisfies E2EConfig;
+
+// e2e/oauth/*: a constructor takes the model id alone; the login comes from e2e login or E2E_OAUTH_CREDENTIALS.
+chatgpt('gpt-5.6-luna') satisfies LanguageModelV4;
+copilot('gpt-4.1') satisfies LanguageModelV4;
+grok('grok-4') satisfies LanguageModelV4;
+// @ts-expect-error the store and apiUrl options are gone
+chatgpt('gpt-5.6-luna', {});
+// @ts-expect-error the store and baseURL options are gone
+copilot('gpt-4.1', {});
+// @ts-expect-error the store and baseURL options are gone
+grok('grok-4', {});
