@@ -86,6 +86,11 @@ test('refuses focused typing when nothing editable has focus', async ({ app, age
   await app.open('/');
   await agent.act('type blind');
 });
+
+test('reads a repaint the tree cannot list off the screenshot', async ({ app, agent }) => {
+  await app.open('/canvas');
+  await agent.act('tap the map twice, then the margin twice');
+});
 `;
 
 /** The act model: a screenshot, then point verbs in it, then a verdict carrying the last result. */
@@ -153,6 +158,16 @@ function actModel(call: LoopCall) {
   }
   if (call.prompt.includes('type blind')) {
     return calls === 0 ? [{ toolName: 'type', input: { value: 'nope' } }] : conclude('failed');
+  }
+  if (call.prompt.includes('tap the map twice, then the margin twice')) {
+    // After the red pin, the same miss point at CSS (100, 100) twice: the status text repeats, so the
+    // listing stands still while the map paints a new tap count. Then the blank margin at CSS (700, 500)
+    // twice: nothing there repaints.
+    if (calls === 0) return [{ toolName: 'screenshot', input: {} }];
+    if (calls === 1) return [{ toolName: 'tap_at', input: { x: 180, y: 36 } }];
+    if (calls <= 3) return [{ toolName: 'tap_at', input: { x: 60, y: 60 } }];
+    if (calls <= 5) return [{ toolName: 'tap_at', input: { x: 420, y: 300 } }];
+    return conclude('passed');
   }
   return conclude('passed');
 }
@@ -346,6 +361,20 @@ describe('agent.act pixel verbs', () => {
     expect(step.events.filter((event) => event.kind === 'engine' && event.status === 'passed')).toHaveLength(0);
     const [, second] = turnsOf('type blind');
     expect(second!.lastToolResult).toContain('nothing that takes keystrokes has focus: the typed text would reach no field');
+  });
+
+  it('reports a moved screenshot under an unchanged listing, and blames the control only when the image stood still too', () => {
+    expect(resultByTitle(outcome, 'reads a repaint the tree cannot list off the screenshot').status).toBe('passed');
+    const turns = turnsOf('tap the map twice, then the margin twice');
+    // The first miss changed the listed status text; the second repeated it, and only the drawn tap count moved.
+    expect(turns[3]!.lastToolResult).toMatch(/changed #\S+ status \\"Hit\\" text=\\"miss at 100,100\\"/);
+    expect(turns[4]!.lastToolResult).toContain('listed nodes unchanged; the screenshot changed');
+    expect(turns[4]!.lastToolResult).not.toContain('had no visible effect');
+    expect(turns[4]!.lastToolResult).toContain('"type":"file"');
+    // The second margin tap changed neither the listing nor a pixel: the same PNG, so the tap is blamed as before.
+    expect(turns[6]!.lastToolResult).toContain('had no visible effect');
+    expect(turns[6]!.lastToolResult).not.toContain('the screenshot changed');
+    expect(turns[6]!.lastToolResult).toContain('"type":"file"');
   });
 });
 
