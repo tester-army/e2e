@@ -13,12 +13,13 @@
  * survives any transport that preserves per-connection order. A sink that
  * throws is quarantined for the rest of the run; a sink whose returned
  * promise rejects is quarantined once the rejection settles, so events
- * emitted before then may still reach it. Either way a broken consumer can
- * never fail the run.
+ * emitted before then may still reach it. Either way the quarantine is one
+ * stderr line naming the sink and the event, and a broken consumer can never
+ * fail the run.
  */
 
 import type { ExploreProgress } from '../explore/progress.ts';
-import type { SerializedError } from '../internal/errors.ts';
+import { errorMessage, type SerializedError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
 import type { ResultRecord, SerialGroupRecord } from './records.ts';
 import type { StepProgress } from './steps.ts';
@@ -245,6 +246,12 @@ export type RunEventOf<Type extends RunEventFact['type']> = Extract<RunEventFact
  */
 export type RunEventSink = (event: RunEvent) => void | Promise<void>;
 
+/** A sink with the label the stderr line names should it be quarantined. */
+interface RunEventSubscriber {
+  readonly name: string;
+  readonly onEvent: RunEventSink;
+}
+
 /** Strips the live target from a result, keeping its stable identity. */
 export function toEventResult(record: ResultRecord): RunEventResult {
   return {
@@ -256,28 +263,37 @@ export function toEventResult(record: ResultRecord): RunEventResult {
 /**
  * Builds the run's single event writer over every configured sink. Sinks are
  * quarantined independently, so one broken sink cannot silence the
- * list reporter or vice versa. Returns a no-op when no sink is configured,
- * so call sites never branch.
+ * list reporter or vice versa, and each quarantine is one stderr line naming
+ * the sink, the event, and the error. Returns a no-op when no sink is
+ * configured, so call sites never branch.
  */
 export function createRunEventEmitter(
-  sinks: readonly (RunEventSink | undefined)[],
+  subscribers: readonly (RunEventSubscriber | undefined)[],
 ): (fact: RunEventFact) => void {
-  const active = sinks.filter((sink) => sink !== undefined);
+  const active = subscribers.filter((subscriber) => subscriber !== undefined);
   if (active.length === 0) return () => undefined;
   let seq = 0;
-  const quarantined = new Set<RunEventSink>();
+  const quarantined = new Set<RunEventSubscriber>();
+  const quarantine = (subscriber: RunEventSubscriber, event: RunEvent, cause: unknown): void => {
+    // Several pending promises of one sink may reject; the first names it, the rest are already quarantined.
+    if (quarantined.has(subscriber)) return;
+    quarantined.add(subscriber);
+    process.stderr.write(
+      `e2e: reporter "${subscriber.name}" threw on ${event.type}: ${errorMessage(cause)}; ignoring it for the rest of the run\n`,
+    );
+  };
   return (fact) => {
     seq += 1;
     const event: RunEvent = { seq, at: timestamp(), ...fact };
-    for (const sink of active) {
-      if (quarantined.has(sink)) continue;
+    for (const subscriber of active) {
+      if (quarantined.has(subscriber)) continue;
       try {
-        const result = sink(event);
+        const result = subscriber.onEvent(event);
         // An async sink's rejection must neither surface as an unhandled
         // rejection nor keep the sink subscribed.
-        if (result instanceof Promise) result.catch(() => quarantined.add(sink));
-      } catch {
-        quarantined.add(sink);
+        if (result instanceof Promise) result.catch((cause: unknown) => quarantine(subscriber, event, cause));
+      } catch (cause) {
+        quarantine(subscriber, event, cause);
       }
     }
   };
