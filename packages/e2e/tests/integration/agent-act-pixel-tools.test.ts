@@ -344,6 +344,11 @@ describe('agent.act pixel verbs', () => {
     expect(actions.map((event) => `${event.name}:${event.status}`)).toEqual(['type:failed', 'tap:passed', 'typeText:passed', 'press:passed']);
     const [, second] = turnsOf('type yo into the pad');
     expect(second!.lastToolResult).toMatch(/#\S+ is not an input; tapped it to focus it and typed through the keyboard\./);
+    // The pad's text is nowhere in the tree, so the unchanged listing is not read as the typing having failed.
+    expect(second!.lastToolResult).toContain(
+      "The tree does not list this node's text, so an unchanged listing says nothing about the typing: verify it through the app's reaction or a screenshot.",
+    );
+    expect(second!.lastToolResult).not.toContain('had no visible effect');
   });
 
   it('refuses focused typing into nothing editable, as an action failure the model reads', () => {

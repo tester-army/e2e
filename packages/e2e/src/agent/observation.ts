@@ -334,11 +334,14 @@ export function observationShape(observation: AgentObservation): string | undefi
   // wait out the whole change window and then be reported as having done
   // nothing. A digest keeps the shape a string and the comparison cheap.
   const pixels = observation.pixels;
-  return pixels === undefined ? text : `${text}\n<pixels ${digest(pixels.data)}>`;
+  return pixels === undefined ? text : `${text}\n<pixels ${pixelDigest(pixels.data)}>`;
 }
 
-/** FNV-1a over the image bytes: fast, and equal frames encode to equal bytes. */
-function digest(bytes: Uint8Array): string {
+/**
+ * FNV-1a over the image bytes: fast, and equal frames encode to equal bytes.
+ * The screen presenter compares consecutive screenshots with it too.
+ */
+export function pixelDigest(bytes: Uint8Array): string {
   let hash = 0x811c9dc5;
   for (const byte of bytes) {
     hash ^= byte;

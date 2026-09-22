@@ -10,7 +10,7 @@
  */
 
 import { isVisionMode } from '../config/agent.ts';
-import { TestError } from '../internal/errors.ts';
+import { TestError, withHint } from '../internal/errors.ts';
 import { rejectUnknownOptions } from '../internal/options.ts';
 import { sleep } from '../internal/time.ts';
 import type { StepRunOptions } from '../run/steps.ts';
@@ -45,6 +45,13 @@ const EXTRACT_MODEL_CALLS = 2;
 /** One judgment plus one repair round for a response that missed the grammar. */
 const ASSERT_MODEL_CALLS = 2;
 
+/**
+ * Appended to an inconclusive judgment made from the tree alone while pixels
+ * were there to ask for: the docs say to add `vision: true` when the answer
+ * is in pixels, and the failing test is where that advice is needed.
+ */
+const VISION_HINT = 'the judge saw the semantic tree only; pass vision: true when the answer is in pixels';
+
 const WAIT_FOR_KEYS = ['timeout', 'interval', 'maxModelCalls', 'vision', 'agent'] as const;
 const EXTRACT_KEYS = ['schema', 'timeout', 'vision', 'agent'] as const;
 const ASSERT_KEYS = ['timeout', 'screenshot', 'vision', 'agent'] as const;
@@ -59,6 +66,16 @@ export function createAgentFixture(runtime: AgentContext): Agent {
     }
     return requested;
   };
+
+  /**
+   * A judgment's explanation as the test reads it. An inconclusive verdict
+   * reached without pixels, on a viewport that could still show them, carries
+   * the vision hint; a tainted viewport cannot, so the hint would mislead.
+   */
+  const explain = (judgment: { readonly verdict: string; readonly explanation: string }, vision: VisionMode): string =>
+    judgment.verdict === 'inconclusive' && vision === false && !runtime.taint.value
+      ? withHint(judgment.explanation, VISION_HINT)
+      : judgment.explanation;
 
   /**
    * Runs one agent method as a top-level step carrying agent metrics. A
@@ -110,6 +127,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
       rejectUnknownOptions('agent.waitFor', options, WAIT_FOR_KEYS);
       const intervalMs = validateInterval(options?.interval);
       const { config } = runtime.select(options?.agent);
+      const vision = resolveVision(options?.vision);
       return step(
         {
           api: 'agent.waitFor',
@@ -117,7 +135,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           task: 'judge whether a condition holds',
           timeoutMs: resolveTimeout(options?.timeout, config.timeout),
           maxModelCalls: resolveBoundedBudget(options?.maxModelCalls, config.maxModelCalls, 'maxModelCalls'),
-          vision: resolveVision(options?.vision),
+          vision,
         },
         condition,
         async (invocation) => {
@@ -132,7 +150,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
             observation = await waitForNextJudgment(invocation, {
               since: observation,
               intervalMs,
-              lastExplanation: judgment.explanation,
+              lastExplanation: explain(judgment, vision),
               signal: runtime.engine.signal,
             });
           }
@@ -204,6 +222,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
       if (customExecutor) {
         return runAssertStep(runtime, assertion, options);
       }
+      const vision = resolveVision(options?.vision);
       return step(
         {
           api: 'agent.assert',
@@ -211,7 +230,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           task: 'judge whether an assertion holds',
           timeoutMs: resolveTimeout(options?.timeout, config.timeout),
           maxModelCalls: ASSERT_MODEL_CALLS,
-          vision: resolveVision(options?.vision),
+          vision,
         },
         assertion,
         async (invocation) => {
@@ -229,7 +248,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           // "the screen did not show enough to judge"; neither is a pass.
           throw new AgentError(
             judgment.verdict === 'fails' ? 'ASSERTION_FAILED' : 'ASSERTION_INCONCLUSIVE',
-            judgment.explanation,
+            explain(judgment, vision),
             screenshot === undefined ? {} : { screenshot },
           );
         },

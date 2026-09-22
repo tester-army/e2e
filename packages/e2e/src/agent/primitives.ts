@@ -409,15 +409,17 @@ export function createGrammarTools(
  * keyboard: the node is tapped so it holds focus, then the value goes to the
  * focused field. The tap comes first because whatever had focus before may be
  * an unrelated field an earlier action left focused, and typing into it
- * would corrupt that field while reporting success on this node. Returns a
- * lead when it took that path.
+ * would corrupt that field while reporting success on this node. Returns
+ * that path's outcome: its lead, and no change expected of the tree, which
+ * does not list what such a node holds, so an unchanged listing would
+ * otherwise read as the typing having failed.
  */
 async function typeIntoNode(
   context: StepExecutorContext,
   target: { readonly id: string },
   value: string,
   label: string,
-): Promise<string | undefined> {
+): Promise<ActionOutcome | undefined> {
   try {
     await context.actions.type(target, value);
     return undefined;
@@ -426,7 +428,10 @@ async function typeIntoNode(
   }
   await context.actions.tap(target);
   await context.actions.typeText(value, { replace: false });
-  return `${label} is not an input; tapped it to focus it and typed through the keyboard.`;
+  return {
+    lead: `${label} is not an input; tapped it to focus it and typed through the keyboard. The tree does not list this node's text, so an unchanged listing says nothing about the typing: verify it through the app's reaction or a screenshot.`,
+    expectChange: false,
+  };
 }
 
 /**
@@ -593,7 +598,7 @@ function createPointTools(
  * queue, so a batched call that queued behind a hard stop or a verdict is
  * skipped when its turn comes rather than acted on because it was queued in
  * time. An action may return its own lead line, for a result only it can
- * describe.
+ * describe, and with it whether the tree is expected to show a change.
  */
 function verbKit(context: StepExecutorContext, options: GrammarToolOptions) {
   const guard = options.guard ?? (<T>(body: () => Promise<T>) => body());
@@ -605,20 +610,22 @@ function verbKit(context: StepExecutorContext, options: GrammarToolOptions) {
     screen.present(await context.observe({ pixels: screen.showingPixels }), { lead, ...update });
   const acting = (
     description: string,
-    action: () => Promise<string | void>,
+    action: () => Promise<string | ActionOutcome | void>,
     { expectChange = true, ...update }: ScreenUpdate = {},
   ): Promise<ScreenOutput> =>
     inOrder(() =>
       guard(async () => {
-        let lead = description;
+        let outcome: ActionOutcome = { lead: description, expectChange };
         try {
-          lead = (await action()) ?? description;
+          const returned = await action();
+          if (typeof returned === 'string') outcome = { lead: returned, expectChange };
+          else if (returned !== undefined) outcome = { lead: returned.lead, expectChange: returned.expectChange ?? expectChange };
         } catch (cause) {
           if (isRuntimeHardStop(cause)) throw cause;
           const message = cause instanceof Error ? cause.message : String(cause);
           return present(`${description} failed: ${message}`);
         }
-        return present(lead, { expectChange, ...update });
+        return present(outcome.lead, { expectChange: outcome.expectChange, ...update });
       }),
     );
   return { guard, screen, verbs: context.target.verbs, inOrder, present, acting };
@@ -626,6 +633,16 @@ function verbKit(context: StepExecutorContext, options: GrammarToolOptions) {
 
 /** How the screen after an action reads (a change expected unless said otherwise); the lead is the action's own. */
 type ScreenUpdate = Omit<ScreenUpdateOptions, 'lead'>;
+
+/**
+ * What an action reports about itself: the lead line the screen follows and,
+ * when the action knows the tree cannot show its effect, that no change of
+ * the listing is expected. Unset, the verb's own default stands.
+ */
+interface ActionOutcome {
+  readonly lead: string;
+  readonly expectChange?: boolean | undefined;
+}
 
 /** Step handlers that report every model round trip to the harness budgets. */
 export interface ModelCallTracker {

@@ -51,6 +51,17 @@ test('an inconclusive judgment fails the assertion too', async ({ app, agent }) 
   await agent.assert('the order total equals the sum of the line items');
 });
 
+test('an inconclusive judgment that saw pixels is not pointed at vision', async ({ app, agent }) => {
+  await app.open();
+  await agent.assert('the order total equals the sum of the line items', { vision: true });
+});
+
+test('a waitFor whose rounds stay inconclusive times out pointing at vision', async ({ app, agent, screen }) => {
+  await app.open('/about');
+  await expect(screen.getByRole('heading')).toHaveText('About');
+  await agent.waitFor('the order total on the About page adds up', { interval: 100, timeout: 1500 });
+});
+
 test('waits without re-judging a page that has not changed', async ({
   app,
   agent,
@@ -94,6 +105,8 @@ test('two judgments in the retired agent-judgment-1 shape exhaust the repair bud
 
 const FALSE_ASSERTION = 'the checkout page is visible';
 const INCONCLUSIVE_ASSERTION = 'the order total equals the sum of the line items';
+const INCONCLUSIVE_CONDITION = 'the order total on the About page adds up';
+const VISION_HINT = 'the judge saw the semantic tree only; pass vision: true when the answer is in pixels';
 const LATE_BUTTON_CONDITION = 'the Late arrival button exists';
 const NEVER_CONDITION = 'a checkout button is on the About page';
 const REPAIRED_ASSERTION = 'the Home heading is visible after a malformed first answer';
@@ -118,6 +131,9 @@ function respond(call: FakeCall): unknown {
       }
       if (call.instruction === INCONCLUSIVE_ASSERTION) {
         return judgment('inconclusive', 'no order total or line items are on this screen');
+      }
+      if (call.instruction === INCONCLUSIVE_CONDITION) {
+        return judgment('inconclusive', 'no order total is on the About page');
       }
       if (call.instruction === NEVER_CONDITION) return judgment(false, 'no checkout button here');
       if (call.instruction === LATE_BUTTON_CONDITION) {
@@ -287,6 +303,26 @@ describe('agent judgment tier', () => {
     expect(error.code).toBe('ASSERTION_INCONCLUSIVE');
     expect(error.category).toBe('test');
     expect(error.message).toContain('no order total');
+    // The judge read the tree alone and the viewport could still show pixels:
+    // the remedy the docs give is named where the failure is read.
+    expect(error.message).toContain(VISION_HINT);
+  });
+
+  it('leaves the vision hint off an inconclusive judgment that already saw pixels', () => {
+    const result = resultByTitle(outcome, 'an inconclusive judgment that saw pixels is not pointed at vision');
+    expect(result.status).toBe('failed');
+    const error = result.attempts.at(-1)!.error!;
+    expect(error.code).toBe('ASSERTION_INCONCLUSIVE');
+    expect(error.message).toContain('no order total');
+    expect(error.message).not.toContain('vision: true');
+  });
+
+  it('points a waitFor timeout at vision when its last round was inconclusive', () => {
+    const result = resultByTitle(outcome, 'a waitFor whose rounds stay inconclusive times out pointing at vision');
+    expect(result.status).toBe('failed');
+    const error = result.attempts.at(-1)!.error!;
+    expect(error.code).toBe('STEP_TIMEOUT');
+    expect(error.message).toContain(`last judgment: no order total is on the About page; ${VISION_HINT}`);
   });
 
   it('routes every judgment to the judge model, never the act model', () => {
