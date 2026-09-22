@@ -130,6 +130,17 @@ describe('renderFailurePage', () => {
     return renderFailurePage(document, failing, outcome(failing, NO_GROUPS), { artifactsDir: '.e2e/artifacts', readArtifact });
   };
 
+  it('quotes a step explanation that starts like a heading as prose, with its linkable tokens as code, through the shared cell', () => {
+    const body = page([
+      failed({
+        steps: [step({ index: 0, kind: 'agent', api: 'agent.act', label: 'pay', status: 'failed', explanation: '# Blocked\nsee @octocat at https://evil.example/p' })],
+      }),
+    ]);
+    expect(body).toContain('   > \\# Blocked see `@octocat` at `https://evil.example/p`\n');
+    expect(body).not.toMatch(/\n# Blocked/);
+    expect(body).not.toMatch(/[^`]@octocat/);
+  });
+
   it('tells the whole story: the error in full, its facts, the line, every step, the turns, the screen inline, and the evidence', () => {
     const screen = { id: 'a:0', kind: 'log' as const, mediaType: 'text/plain', path: 't/failure/screen.txt', redaction: 'complete' as const, producer: { kind: 'attempt' as const } };
     const shot = { id: 'a:1', kind: 'screenshot' as const, mediaType: 'image/png', path: 't/001-failure.png', redaction: 'complete' as const, producer: { kind: 'attempt' as const } };

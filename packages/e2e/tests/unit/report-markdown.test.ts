@@ -358,6 +358,23 @@ describe('renderMarkdownReport', () => {
     expect(body).not.toMatch(/[^`]https:\/\/evil/);
   });
 
+  it('escapes every other block opener at the start of a quoted line: a plus or underscore item and a parenthesised list marker', () => {
+    const opener = named({
+      title: 'openers',
+      status: 'failed',
+      attempts: [
+        attempt({
+          status: 'failed',
+          error: { code: 'ASSERTION_FAILED', message: '+ item\n_ under' },
+          steps: [step({ index: 0, api: 'agent.act', label: 'pay', status: 'failed', explanation: '1) list' })],
+        }),
+      ],
+    });
+    const body = renderMarkdownReport(page({ status: 'failed', results: [opener] }));
+    // The message collapses to one line, so only its first character opens a block; the explanation is its own quoted line.
+    expect(body).toContain('\n\n> \\+ item _ under\n> 1\\) list\n');
+  });
+
   it('clips long text by code point, never through an emoji', () => {
     // 121 and 241 code points: the cut lands on the emoji, which must survive whole.
     const long = named({
@@ -623,6 +640,15 @@ describe('renderMarkdownReport for an exploration', () => {
     expect(renderMarkdownReport(explored({ summary: '1. the cart is the weak spot' }))).toContain('**Assessment**\n\n1\\. the cart is the weak spot\n');
     expect(renderMarkdownReport(explored({ summary: '---' }))).toContain('**Assessment**\n\n\\---\n');
     expect(renderMarkdownReport(explored({ summary: '1.5 stars, see @octocat' }))).toContain('**Assessment**\n\n1.5 stars, see `@octocat`\n');
+  });
+
+  it('keeps an assessment that starts with a plus, an equals sign, an underscore, or a parenthesised number as prose', () => {
+    expect(renderMarkdownReport(explored({ summary: '+ item' }))).toContain('**Assessment**\n\n\\+ item\n');
+    expect(renderMarkdownReport(explored({ summary: '= title' }))).toContain('**Assessment**\n\n\\= title\n');
+    expect(renderMarkdownReport(explored({ summary: '_ under' }))).toContain('**Assessment**\n\n\\_ under\n');
+    expect(renderMarkdownReport(explored({ summary: '1) list' }))).toContain('**Assessment**\n\n1\\) list\n');
+    // Past the first character the same marks are prose already.
+    expect(renderMarkdownReport(explored({ summary: 'a+b = c_d (1) e' }))).toContain('**Assessment**\n\na+b = c_d (1) e\n');
   });
 
   it('links the evidence to the run page when there is one, and names the kind when the reader has neither', () => {
