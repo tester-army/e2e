@@ -1,7 +1,7 @@
 /** Per-run encrypted session store. */
 
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import { mkdirSync, rmSync } from 'node:fs';
+import { lstatSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { EngineSpiVersion, EngineState } from '../engine/surface.ts';
@@ -90,8 +90,12 @@ export class SessionStore {
     this.directory = path.join(sessionsRoot, runId);
   }
 
-  /** Opens the store for a new run, generating its key. */
+  /**
+   * Opens the store for a new run, generating its key, and sweeps the
+   * directories of runs that never reached `cleanup`.
+   */
   static create(runId: string, sessionsRoot: string): SessionStore {
+    sweepStaleRuns(sessionsRoot, runId);
     return new SessionStore(runId, sessionsRoot, randomBytes(32));
   }
 
@@ -226,15 +230,15 @@ export class SessionStore {
     const { tag, ciphertext, ...aadState } = envelope.state;
     const aadEnvelope = { ...envelope, state: aadState };
     const aad = Buffer.from(canonicalJson(aadEnvelope), 'utf8');
-    const decipher = createDecipheriv(
-      'aes-256-gcm',
-      this.key,
-      Buffer.from(envelope.state.iv, 'base64'),
-    );
-    decipher.setAAD(aad);
-    decipher.setAuthTag(Buffer.from(tag, 'base64'));
     let plaintext: Buffer;
     try {
+      const decipher = createDecipheriv(
+        'aes-256-gcm',
+        this.key,
+        Buffer.from(envelope.state.iv, 'base64'),
+      );
+      decipher.setAAD(aad);
+      decipher.setAuthTag(Buffer.from(tag, 'base64'));
       plaintext = Buffer.concat([
         decipher.update(Buffer.from(ciphertext, 'base64')),
         decipher.final(),
@@ -271,12 +275,42 @@ function parseEnvelope(rawText: string, name: string): SessionEnvelope {
   if (
     typeof parsed !== 'object' ||
     parsed === null ||
-    typeof (parsed as { state?: unknown }).state !== 'object' ||
-    (parsed as { state: unknown }).state === null ||
     typeof (parsed as { engine?: unknown }).engine !== 'object' ||
-    (parsed as { engine: unknown }).engine === null
+    (parsed as { engine: unknown }).engine === null ||
+    !hasCipherFields((parsed as { state?: unknown }).state)
   ) {
     throw new ConfigurationError('SESSION_INVALID', `session "${name}" has an unexpected shape`);
   }
   return parsed as SessionEnvelope;
+}
+
+/** Whether `state` carries the non-empty strings decryption reads: `iv`, `tag`, `ciphertext`. */
+function hasCipherFields(state: unknown): boolean {
+  if (typeof state !== 'object' || state === null) return false;
+  const { iv, tag, ciphertext } = state as Record<string, unknown>;
+  return [iv, tag, ciphertext].every((field) => typeof field === 'string' && field.length > 0);
+}
+
+/**
+ * Removes sibling run directories whose last write is older than a session
+ * may live. A run killed before `cleanup` (a third Ctrl-C, SIGKILL, a crash)
+ * leaves its directory behind with its memory-only key gone, so nothing can
+ * read what is in it. Best effort: the sweep never fails the run, skips the
+ * current run's directory, and never follows a symlink.
+ */
+function sweepStaleRuns(sessionsRoot: string, runId: string): void {
+  const cutoff = Date.now() - MAX_SESSION_AGE_MS;
+  try {
+    for (const entry of readdirSync(sessionsRoot, { withFileTypes: true })) {
+      if (entry.name === runId || !entry.isDirectory()) continue;
+      const directory = path.join(sessionsRoot, entry.name);
+      try {
+        if (lstatSync(directory).mtimeMs < cutoff) rmSync(directory, { recursive: true, force: true });
+      } catch {
+        // A sibling another process holds or already removed is left for the next run.
+      }
+    }
+  } catch {
+    // No sessions root yet, or one this process cannot list.
+  }
 }

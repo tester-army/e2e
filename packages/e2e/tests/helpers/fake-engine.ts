@@ -69,6 +69,8 @@ export interface FakeEngineBehavior {
   tree?: SemanticNode;
   /** Declares the state capability. */
   state?: boolean;
+  /** What `capture` returns; default is `{ format: 'fake-state', version: 1, data: { ok: true } }`. */
+  capturedState?: EngineState;
   /** Declares the artifacts capability (screenshot only). */
   artifacts?: boolean;
   /**
@@ -204,7 +206,11 @@ export function createFakeEngine(behavior: FakeEngineBehavior = {}): FakeEngineH
           state: {
             async capture(operation) {
               record('state.capture', operation);
-              const state: EngineState = { format: 'fake-state', version: 1, data: { ok: true } };
+              const state: EngineState = behavior.capturedState ?? {
+                format: 'fake-state',
+                version: 1,
+                data: { ok: true },
+              };
               capturedStates.push(state);
               return state;
             },
