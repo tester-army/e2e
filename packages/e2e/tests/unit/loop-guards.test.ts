@@ -90,6 +90,17 @@ describe('failure streak', () => {
     expect(isFailedResult(tapped)).toBe(false);
     // Text the model typed is not a failure, even when it reads like one.
     expect(isFailedResult('Typed "failed: no" into #n3.\n\nScreen unchanged since revision b3 (2 nodes).')).toBe(false);
+    expect(isFailedResult('Typed "(x) failed: no" into #n3.\n\nScreen unchanged since revision b3 (2 nodes).')).toBe(false);
+  });
+
+  it('recognizes the point verbs, whose lead is the verb and the point rather than a sentence', () => {
+    const missed = 'nothing the screen lists is at (50, 50)';
+    expect(isFailedResult(`tap_at (30, 30) failed: ${missed}; this engine taps listed nodes only\n\nScreen unchanged since revision b3 (2 nodes).`)).toBe(true);
+    expect(isFailedResult(`type_at (60, 189) failed: ${missed}; type_at needs a control the screen lists.`)).toBe(true);
+    expect(isFailedResult(`press_at (60, 189) failed: ${missed}; press_at needs a control the screen lists.`)).toBe(true);
+    expect(isFailedResult(`select_at (30, 30) failed: ${missed}; select_at needs a control the screen lists.`)).toBe(true);
+    expect(isFailedResult('Tapped the point (300, 60); no listed control is there.\n\nScreen unchanged since revision b3 (2 nodes).')).toBe(false);
+    expect(isFailedResult('Typed into the field at (120, 60) (tapped to focus it; nothing the screen lists is at (200, 100)).')).toBe(false);
   });
 
   const failure: GuardToolResult = { text: failed, failed: true };
@@ -137,6 +148,12 @@ describe('failure streak', () => {
       { text: unknownTool, failed: true },
       success,
     ]);
+  });
+
+  it('reads the message of a call the SDK refused before dispatch', () => {
+    const refused = 'AI_InvalidToolInputError: Invalid input for tool tap: unrecognized key "force"';
+    const results = extractToolResults([result('tap', { type: 'error-text', value: refused }), result('tap', { type: 'text', value: tapped })], 'complete_step');
+    expect(results).toEqual([refused, tapped]);
   });
 
   it('reads the text beside a screenshot, so the streak warns and stops in pixel mode too', () => {
