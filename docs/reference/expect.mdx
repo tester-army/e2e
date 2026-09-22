@@ -5,16 +5,31 @@ description: "Locator assertions, fixture assertions, and plain value matchers."
 
 Use `expect(locator)` to wait for an app condition and `expect(value)` to
 check a value immediately. `expect.poll` repeatedly reads a value until its
-matcher passes.
+matcher passes. `expect.soft` keeps a failure for the end of the test body
+instead of throwing it, and `expect.any` and the other
+[asymmetric matchers](#asymmetric-matchers) stand in for values inside a
+structural comparison.
 
 ```ts
-/** The `expect` entry: dispatch on the argument, plus `expect.poll`. */
-export interface Expect {
+/** The `expect(actual)` call: a locator, an engine fixture, or a value, told apart by the argument. */
+export interface ExpectCall {
   (actual: Locator): AsyncExpectation;
   <E extends object>(actual: Expectable<E>): E;
   <T>(actual: T, message?: string): ValueExpectation<T>;
+}
+
+/** The `expect` entry: the call, `expect.poll`, `expect.soft`, and the asymmetric matchers. */
+export interface Expect extends ExpectCall {
   /** Re-reads a value until the chosen matcher holds or `timeout` passes. */
   poll<T>(read: () => T | Promise<T>, options?: PollOptions): PollExpectation<T>;
+  /** The same matchers, a failure kept on the attempt instead of thrown; the attempt fails once the body has settled. */
+  readonly soft: ExpectCall;
+  any(sample: Class | typeof BigInt | typeof Symbol): AsymmetricMatcher;
+  anything(): AsymmetricMatcher;
+  objectContaining(sample: object): AsymmetricMatcher;
+  arrayContaining(sample: readonly unknown[]): AsymmetricMatcher;
+  stringContaining(sample: string): AsymmetricMatcher;
+  stringMatching(sample: string | RegExp): AsymmetricMatcher;
 }
 ```
 
@@ -138,8 +153,10 @@ export interface ValueExpectation<T> {
   readonly not: ValueExpectation<T>;
   /** Compares with Object.is. */
   toBe(expected: T): void;
-  /** Performs recursive structural equality. */
+  /** Performs recursive structural equality; `undefined` properties are ignored and class types are not compared. */
   toEqual(expected: unknown): void;
+  /** Requires every property of `expected` to match recursively; extra properties on the value are fine, arrays must match element-wise with equal length. */
+  toMatchObject(expected: object): void;
   /** Requires a truthy value. */
   toBeTruthy(): void;
   /** Requires a falsy value. */
@@ -150,6 +167,10 @@ export interface ValueExpectation<T> {
   toBeUndefined(): void;
   /** Requires a non-nullish value. */
   toBeDefined(): void;
+  /** Requires a `length` property equal to `expected`: a string, an array, or anything array-like. */
+  toHaveLength(expected: number): void;
+  /** Requires the property at `path` to exist; with `expected`, to equal it by `toEqual` rules. */
+  toHaveProperty(path: PropertyPath, ...expected: [] | [expected: unknown]): void;
   /** Requires string or collection containment. */
   toContain(expected: unknown): void;
   /** Requires a string or regexp match. */
@@ -165,6 +186,12 @@ export interface ValueExpectation<T> {
   /** Requires a number within `10 ** -digits / 2` of `expected`; `digits` defaults to 2. */
   toBeCloseTo(expected: number, digits?: number): void;
 }
+
+/** A class, abstract or not: what `expect.any` takes. */
+export type Class = abstract new (...args: never[]) => unknown;
+
+/** A property path for `toHaveProperty`: dotted (`'user.address.city'`) or one key per element (`['user', 'address', 'city']`). */
+export type PropertyPath = string | readonly (string | number)[];
 ```
 
 Value matchers run synchronously without retrying. For a value that may still
@@ -173,10 +200,42 @@ change, use [Polling a value](#polling-a-value).
 ```ts
 const total = await screen.getByTestId('total').textContent();
 expect(total).toContain('$');
-expect(items.length).toBeGreaterThan(0);
+expect(items).toHaveLength(3);
 expect(payload).toEqual({ ok: true });
+expect(order).toMatchObject({ customer: { name: 'Ada' }, lines: [{ sku: 'a' }, { sku: 'b' }] });
+expect(order).toHaveProperty('customer.email', 'ada@example.test');
 expect(totals.lineTotal).toBeCloseTo(60);
 ```
+
+`toEqual` compares structure the way Jest's does: primitives with `Object.is`
+(so `NaN` equals `NaN` and `0` does not equal `-0`), arrays and plain objects
+by their contents, `Date` by time, `RegExp` by source and flags, `Map` and
+`Set` by their entries. A property whose value is `undefined` is treated as
+absent, a sparse array equals one holding `undefined`, and a class instance
+equals a plain object with the same properties. There is no `toStrictEqual`.
+
+`toMatchObject` reads `expected` as a subset: every property it names must
+match recursively, properties it does not name are ignored. An array in
+`expected` matches an array of the same length, element by element, each
+element again as a subset. Both sides must be objects; a primitive on either
+side is refused.
+
+`toHaveProperty` walks a dotted path or an array of keys. Use the array form
+when a key contains a dot, or to index an array by number
+(`['lines', 0, 'sku']`). Inherited properties count; a property holding
+`undefined` exists. With a second argument the value at the path must equal it
+by `toEqual` rules.
+
+A matcher that cannot evaluate its value (`toContain` on a number,
+`toHaveLength` on an object without one) fails as `ASSERTION_FAILED` like a
+mismatch would, so under `expect.poll` a value that has not taken its final
+shape yet is one more failing sample.
+
+The unit-runner matchers (`toThrow`, `toBeInstanceOf`, `toBeNaN`,
+`toStrictEqual`, `resolves`, `rejects`, `expect.extend`) are not part of
+`expect`. An end-to-end test checks what the app shows and what its API
+returns; the value matchers cover that, and code-level checks belong in the
+unit runner.
 
 Pass a second argument to describe the check in its failure message:
 
@@ -187,6 +246,96 @@ expect(created, 'the company exists through the API').toBeTruthy();
 
 Only value expectations take a message; a locator or `web` expectation
 already names its locator and matcher in the failure.
+
+## Asymmetric matchers
+
+An asymmetric matcher stands in for a value inside `toEqual`,
+`toMatchObject`, the collection form of `toContain`, and the value of
+`toHaveProperty`. Where the comparison would test equality, it asks the
+matcher instead. They are Jest's matchers, with Jest's rules.
+
+```ts
+/**
+ * A stand-in for a value inside `toEqual`, `toMatchObject`, `toContain`, and
+ * `toHaveProperty`: `expect.any(Number)` in place of a number,
+ * `expect.objectContaining({ id: 1 })` in place of a record. The structural
+ * matchers ask it whether a value matches instead of comparing.
+ */
+export interface AsymmetricMatcher {
+  /** Whether `other` satisfies the matcher. */
+  asymmetricMatch(other: unknown): boolean;
+  /** The matcher's name, `ObjectContaining`; a failure message adds the sample. */
+  toString(): string;
+}
+```
+
+| Matcher | Matches |
+| --- | --- |
+| `expect.any(Class)` | An instance of the class. For `String`, `Number`, `Boolean`, `BigInt`, `Symbol`, and `Function`, the primitive too; for `Object`, anything `typeof` calls an object, `null` included |
+| `expect.anything()` | Anything but `null` and `undefined` |
+| `expect.objectContaining(sample)` | An object whose properties include every property of `sample`, each compared by `toEqual` rules |
+| `expect.arrayContaining(sample)` | An array holding every element of `sample`, in any order, each compared by `toEqual` rules |
+| `expect.stringContaining(text)` | A string with `text` as a substring |
+| `expect.stringMatching(text \| RegExp)` | A string the RegExp tests true on; a text sample is compiled to a RegExp, so `'a.b'` matches `'axb'` |
+
+```ts
+expect(created).toEqual({
+  id: expect.stringMatching(/^usr_/),
+  createdAt: expect.any(String),
+  roles: expect.arrayContaining(['member']),
+  profile: expect.objectContaining({ name: 'Ada' }),
+});
+expect(rows).toContain(expect.objectContaining({ status: 'paid' }));
+expect(response).toHaveProperty('body.total', expect.any(Number));
+```
+
+In a failure message a matcher prints as its description: `Any<Number>`,
+`ObjectContaining {"name":"Ada"}`. Matchers nest: an `objectContaining`
+sample may hold an `expect.any`. The string form of `toContain` takes a
+string only, so `expect('abc').toContain(expect.stringContaining('a'))` is
+refused.
+
+## Soft assertions
+
+`expect.soft(actual)` takes what `expect(actual)` takes and returns the same
+matchers. A soft matcher that fails does not throw: the failure is kept on the
+running attempt and the body continues. Once the body has settled, and before
+`afterEach`, the attempt fails with one `ASSERTION_FAILED` that lists every
+kept failure in order. The error's source line is the first soft matcher that
+failed.
+
+```ts
+test('checkout summary', async ({ agent, screen }) => {
+  await agent.act('add the "Pro" plan to the cart and open the summary');
+  expect.soft(await screen.getByTestId('subtotal').textContent()).toBe('$40.00');
+  expect.soft(await screen.getByTestId('tax').textContent()).toBe('$8.00');
+  await expect.soft(screen.getByRole('button', { name: 'Pay' })).toBeEnabled();
+  await expect(screen.getByTestId('total')).toHaveText('$48.00');
+});
+```
+
+```text
+ASSERTION_FAILED: 2 soft assertions failed
+1. expected "$40.00" to be "$41.00"
+2. expect.toBeEnabled failed
+   locator: getByRole('button', { name: 'Pay' })
+   expected: enabled
+   observed: states: disabled (match count 1)
+```
+
+A soft locator or `web` matcher is still a recorded `expect.<matcher>` step,
+marked failed, so the report shows where in the flow it landed. A soft value
+matcher is not a step, the same as a hard one; its failure appears in the
+final error only.
+
+When the body throws on its own, or times out, that error stays the
+attempt's verdict and the soft failures are recorded beside it under
+`secondaryErrors`. A body that skips itself with `test.skip(...)` drops them.
+
+Outside a test body there is nothing to keep a failure for, so `expect.soft`
+throws at once like `expect`: in a standalone script, and in an `afterEach`
+hook, which runs after the soft failures have been settled. There is no
+`expect.soft.poll`; `expect.poll` has its own timeout to fail on.
 
 ## Polling a value
 

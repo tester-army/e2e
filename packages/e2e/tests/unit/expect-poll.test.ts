@@ -1,6 +1,7 @@
 import { describe, expect as vexpect, it } from 'vitest';
 import { currentAttempt, publishAttempt } from '../../src/expect/attempt.ts';
 import { expect as e2eExpect } from '../../src/expect/index.ts';
+import { SoftFailures } from '../../src/expect/soft.ts';
 import { ConfigurationError, TestError } from '../../src/internal/errors.ts';
 import { Deadline } from '../../src/internal/time.ts';
 import { AttemptBudget } from '../../src/run/budget.ts';
@@ -15,6 +16,7 @@ function attempt(options: { assertionTimeout: number; deadlineMs: number }) {
       testKind: 'test',
       assertionTimeout: options.assertionTimeout,
       budget: new AttemptBudget(cancel.signal, new Deadline(options.deadlineMs)),
+      soft: new SoftFailures(),
     },
     end.signal,
   );
@@ -171,6 +173,26 @@ describe('expect.poll', () => {
     await e2eExpect.poll(() => 1, { interval: 5 }).toBeTruthy();
     await e2eExpect.poll(() => 'x', { interval: 5 }).toBeDefined();
     await e2eExpect.poll(() => 1, { interval: 5 }).toBeLessThan(2);
+    await e2eExpect.poll(rows.read, { interval: 5 }).toMatchObject([{ title: 'a' }, {}]);
+    await e2eExpect.poll(rows.read, { interval: 5 }).toHaveLength(2);
+    await e2eExpect.poll(rows.read, { interval: 5 }).toHaveProperty('1.title', 'b');
+    await e2eExpect.poll(rows.read, { interval: 5 }).toHaveProperty([0, 'title']);
+    await e2eExpect.poll(rows.read, { interval: 5 }).toEqual(e2eExpect.arrayContaining([{ title: e2eExpect.any(String) }]));
+  });
+
+  it('polls the new matchers until they hold and reports their last failure', async () => {
+    const rows = settling<string[]>(['a'], ['a', 'b'], 2);
+    await e2eExpect.poll(rows.read, { interval: 5 }).toHaveLength(2);
+    vexpect(rows.reads()).toBe(3);
+    await failsWith(
+      () => e2eExpect.poll(() => ({ status: 'running' }), { timeout: 60, interval: 10 }).toHaveProperty('status', 'done'),
+      /^expect\.poll\(\.\.\.\)\.toHaveProperty\(\.\.\.\) timed out after 60 ms/,
+      /last: expected property "status" of {"status":"running"} to equal "done", got "running"/,
+    );
+    await failsWith(
+      () => e2eExpect.poll(() => ({ a: 1 }), { timeout: 60, interval: 10 }).not.toMatchObject({ a: 1 }),
+      /last: expected {"a":1} not to match object {"a":1}/,
+    );
   });
 
   it('treats a matcher type complaint as not yet, like any other failing sample', async () => {

@@ -35,6 +35,7 @@ import { createExtendedFixtures } from './extended-fixtures.ts';
 import { captureFailureEvidence } from './failure-evidence.ts';
 import { createFixtures, type ArtifactSink } from './fixtures.ts';
 import { publishAttempt } from '../expect/attempt.ts';
+import { SoftFailures } from '../expect/soft.ts';
 import { findRegistered, RealmManager, runHook, type Realm } from './realm.ts';
 import type {
   AttemptRecord,
@@ -838,10 +839,11 @@ export class TargetExecutor implements SerialHost {
         debug: this.debug,
         models: this.models,
       });
-      // `expect.poll` takes no fixture, so the attempt it runs on is
-      // published here and cleared when `attemptEnd` fires in `finally`.
+      // `expect.poll` and `expect.soft` take no fixture, so the attempt they
+      // run on is published here and cleared when `attemptEnd` fires in `finally`.
+      const soft = new SoftFailures();
       publishAttempt(
-        { attemptId, testKind: pair.test.kind, assertionTimeout: this.config.assertionTimeout, budget },
+        { attemptId, testKind: pair.test.kind, assertionTimeout: this.config.assertionTimeout, budget, soft },
         attemptEnd.signal,
       );
 
@@ -885,15 +887,25 @@ export class TargetExecutor implements SerialHost {
           phase = 'body';
           await (registered.fn as SetupFn)(fixtures);
         } catch (cause) {
-          // The body's own failure stays the verdict; the step it abandoned is noted beside it.
+          // The body's own failure stays the verdict; the step it abandoned
+          // and the soft failures it kept are noted beside it.
           const notAwaited = await abandonNotAwaited();
-          if (notAwaited !== undefined && !isRuntimeSkip(cause)) {
-            secondaryErrors.push(serializeError(notAwaited, { phase: 'body', projectRoot: this.config.projectRoot, redact }));
+          const softFailure = soft.close();
+          if (!isRuntimeSkip(cause)) {
+            for (const secondary of [notAwaited, softFailure]) {
+              if (secondary !== undefined) {
+                secondaryErrors.push(serializeError(secondary, { phase: 'body', projectRoot: this.config.projectRoot, redact }));
+              }
+            }
           }
           throw cause;
         }
         const notAwaited = await abandonNotAwaited();
         if (notAwaited !== undefined) throw notAwaited;
+        // Soft failures fail the attempt once the body has settled, before
+        // `afterEach`; a soft matcher in a hook finds collection closed and throws.
+        const softFailure = soft.close();
+        if (softFailure !== undefined) throw softFailure;
       };
 
       // The interrupt is raced here, not only threaded through the fixtures:
@@ -930,6 +942,13 @@ export class TargetExecutor implements SerialHost {
           recordFailure(cause, phase);
           await captureEvidence();
         }
+      }
+      // A body that timed out or was interrupted never closed its soft
+      // failures; they are noted here so teardown starts with the collection
+      // closed either way, and a soft matcher in a hook throws.
+      const lateSoft = soft.close();
+      if (lateSoft !== undefined) {
+        secondaryErrors.push(serializeError(lateSoft, { phase: 'body', projectRoot: this.config.projectRoot, redact }));
       }
 
       phase = 'afterEach';

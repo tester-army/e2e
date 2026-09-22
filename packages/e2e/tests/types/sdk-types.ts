@@ -167,6 +167,38 @@ screen.getByRole('generic');
 // A message names a value check; the synchronous matchers still take no options.
 expect(1, 'why this holds').toBe(1);
 expect(1, 'why this holds').not.toBeCloseTo(2, 0);
+// The Jest-shaped matchers, each also on expect.poll through the derived type.
+expect([1]).toHaveLength(1);
+expect({ a: 1 }).toMatchObject({ a: expect.any(Number) });
+expect({ a: { b: 1 } }).toHaveProperty('a.b');
+expect({ a: { b: 1 } }).toHaveProperty(['a', 'b'], 1);
+expect({ a: [1] }).toHaveProperty(['a', 0], expect.anything());
+void (expect.poll(() => ({ a: 1 })).toHaveProperty('a') satisfies Promise<void>);
+void (expect.poll(() => [1]).not.toHaveLength(2) satisfies Promise<void>);
+// @ts-expect-error toMatchObject takes an object to match against
+expect({ a: 1 }).toMatchObject(1);
+// @ts-expect-error a property path is dotted text or a key array
+expect({ a: 1 }).toHaveProperty({ a: 1 });
+// The asymmetric matchers stand in for a value anywhere a structural matcher compares one.
+expect(1).toEqual(expect.any(Number));
+expect(1n).toEqual(expect.any(BigInt));
+expect(Symbol('s')).toEqual(expect.any(Symbol));
+expect(['a']).toContain(expect.stringContaining('a'));
+expect(['a']).toEqual(expect.arrayContaining([expect.stringMatching(/a/)]));
+expect({ a: 1 }).toEqual(expect.objectContaining({ a: expect.anything() }));
+// @ts-expect-error expect.any takes a class or a primitive constructor, not a value
+expect.any(1);
+// @ts-expect-error expect.arrayContaining takes an array
+expect.arrayContaining('a');
+// @ts-expect-error expect.stringContaining takes text
+expect.stringContaining(/a/);
+// expect.soft has the expect call's three shapes and no poll of its own.
+expect.soft(1, 'why this holds').toBe(1);
+void (expect.soft(screen.getByRole('button')).toBeVisible() satisfies Promise<void>);
+// @ts-expect-error soft is the call, not the whole entry
+expect.soft.poll(() => 1);
+// @ts-expect-error soft has no statics either
+expect.soft.any(Number);
 // Inside a body, skip takes a condition and a reason, or a reason alone; registration keeps its title and body.
 test.skip(true, 'not today');
 test.skip('not today');

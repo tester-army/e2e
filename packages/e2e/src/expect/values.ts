@@ -1,12 +1,24 @@
 /** Synchronous plain-value matchers. */
 
-import { equals, iterableEquality } from '@vitest/expect';
+import { equals, isAsymmetric, iterableEquality, subsetEquality } from '@vitest/expect';
 import { TestError } from '../internal/errors.ts';
 import { testPattern } from '../internal/regexp.ts';
-import type { ValueExpectation } from '../types.ts';
+import type { AsymmetricMatcher, PropertyPath, ValueExpectation } from '../types.ts';
 
 function fail(message: string): never {
   throw new TestError('ASSERTION_FAILED', message);
+}
+
+/**
+ * An asymmetric matcher as it reads in a failure: `Any<Number>` and
+ * `Anything` describe themselves; the rest print their name and sample,
+ * `ObjectContaining {"id":1}`.
+ */
+function describeMatcher(matcher: AsymmetricMatcher): string {
+  const own = (matcher as { toAsymmetricMatcher?: () => string }).toAsymmetricMatcher?.();
+  if (own !== undefined) return own;
+  const sample = (matcher as { sample?: unknown }).sample;
+  return `${matcher.toString()} ${format(sample)}`;
 }
 
 function format(value: unknown): string {
@@ -14,8 +26,10 @@ function format(value: unknown): string {
   if (typeof value === 'bigint') return `${value}n`;
   if (typeof value === 'function') return `[Function ${value.name || 'anonymous'}]`;
   if (typeof value === 'symbol') return value.toString();
+  if (isAsymmetric(value)) return describeMatcher(value);
+  if (value instanceof RegExp) return String(value);
   try {
-    const json = JSON.stringify(value);
+    const json = JSON.stringify(value, (_key, nested: unknown) => (isAsymmetric(nested) ? describeMatcher(nested) : nested));
     if (json !== undefined) return json;
   } catch {
     // fall through
@@ -64,6 +78,21 @@ class ValueExpectationImpl<T> implements ValueExpectation<T> {
     );
   }
 
+  toMatchObject(expected: object): void {
+    const actual = this.actual as unknown;
+    if (typeof actual !== 'object' || actual === null) {
+      fail(`toMatchObject requires an object, got ${format(actual)}`);
+    }
+    if (typeof expected !== 'object' || expected === null) {
+      fail(`toMatchObject takes an object to match against, got ${format(expected)}`);
+    }
+    this.check(
+      equals(actual, expected, [iterableEquality, subsetEquality]),
+      () => `expected ${format(actual)} to match object ${format(expected)}`,
+      () => `expected ${format(actual)} not to match object ${format(expected)}`,
+    );
+  }
+
   toBeTruthy(): void {
     this.check(
       Boolean(this.actual),
@@ -104,6 +133,45 @@ class ValueExpectationImpl<T> implements ValueExpectation<T> {
     );
   }
 
+  toHaveLength(expected: number): void {
+    const actual = this.actual as unknown;
+    const length = (actual as { length?: unknown } | null | undefined)?.length;
+    if ((typeof actual !== 'object' && typeof actual !== 'string' && typeof actual !== 'function') || typeof length !== 'number') {
+      fail(`toHaveLength requires a value with a numeric length, got ${format(actual)}`);
+    }
+    this.check(
+      length === expected,
+      () => `expected ${format(actual)} to have length ${expected}, got ${length}`,
+      () => `expected ${format(actual)} not to have length ${expected}`,
+    );
+  }
+
+  toHaveProperty(path: PropertyPath, ...expected: [] | [expected: unknown]): void {
+    const keys = typeof path === 'string' ? path.split('.') : [...path];
+    if (keys.length === 0 || keys.some((key) => key === '')) {
+      fail(`toHaveProperty takes a dotted path or an array of keys, got ${format(path)}`);
+    }
+    const label = keys.map(String).join('.');
+    const found = lookup(this.actual, keys);
+    if (expected.length === 0) {
+      this.check(
+        found.present,
+        () => `expected ${format(this.actual)} to have property "${label}"`,
+        () => `expected ${format(this.actual)} not to have property "${label}"`,
+      );
+      return;
+    }
+    const [value] = expected;
+    this.check(
+      found.present && equals(found.value, value, [iterableEquality]),
+      () =>
+        found.present
+          ? `expected property "${label}" of ${format(this.actual)} to equal ${format(value)}, got ${format(found.value)}`
+          : `expected ${format(this.actual)} to have property "${label}" equal to ${format(value)}`,
+      () => `expected property "${label}" of ${format(this.actual)} not to equal ${format(value)}`,
+    );
+  }
+
   toContain(expected: unknown): void {
     let contains: boolean;
     const actual = this.actual as unknown;
@@ -113,9 +181,7 @@ class ValueExpectationImpl<T> implements ValueExpectation<T> {
       }
       contains = actual.includes(expected);
     } else if (typeof actual === 'object' && actual !== null && Symbol.iterator in actual) {
-      contains = [...(actual as Iterable<unknown>)].some((item) =>
-        equals(item, expected, [iterableEquality]),
-      );
+      contains = [...(actual as Iterable<unknown>)].some((item) => equals(item, expected, [iterableEquality]));
     } else {
       fail(`toContain requires a string or collection, got ${format(actual)}`);
     }
@@ -191,6 +257,18 @@ class ValueExpectationImpl<T> implements ValueExpectation<T> {
       () => `expected ${actual} not to be ${phrase} ${expected}`,
     );
   }
+}
+
+/** Walks `keys` into `value`; `present` says whether the whole path resolved. */
+function lookup(value: unknown, keys: readonly (string | number)[]): { present: boolean; value: unknown } {
+  let current: unknown = value;
+  for (const key of keys) {
+    if ((typeof current !== 'object' && typeof current !== 'function') || current === null || !(key in current)) {
+      return { present: false, value: undefined };
+    }
+    current = (current as Record<string | number, unknown>)[key];
+  }
+  return { present: true, value: current };
 }
 
 export function createValueExpectation<T>(actual: T, message?: string): ValueExpectation<T> {

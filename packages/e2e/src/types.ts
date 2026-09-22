@@ -748,13 +748,34 @@ export interface Expectable<E> {
   readonly [expectationBrand]: E;
 }
 
+/** A class, abstract or not: what `expect.any` takes. */
+export type Class = abstract new (...args: never[]) => unknown;
+
+/** A property path for `toHaveProperty`: dotted (`'user.address.city'`) or one key per element (`['user', 'address', 'city']`). */
+export type PropertyPath = string | readonly (string | number)[];
+
+/**
+ * A stand-in for a value inside `toEqual`, `toMatchObject`, `toContain`, and
+ * `toHaveProperty`: `expect.any(Number)` in place of a number,
+ * `expect.objectContaining({ id: 1 })` in place of a record. The structural
+ * matchers ask it whether a value matches instead of comparing.
+ */
+export interface AsymmetricMatcher {
+  /** Whether `other` satisfies the matcher. */
+  asymmetricMatch(other: unknown): boolean;
+  /** The matcher's name, `ObjectContaining`; a failure message adds the sample. */
+  toString(): string;
+}
+
 export interface ValueExpectation<T> {
   /** Inverts the matcher. */
   readonly not: ValueExpectation<T>;
   /** Compares with Object.is. */
   toBe(expected: T): void;
-  /** Performs recursive structural equality. */
+  /** Performs recursive structural equality; `undefined` properties are ignored and class types are not compared. */
   toEqual(expected: unknown): void;
+  /** Requires every property of `expected` to match recursively; extra properties on the value are fine, arrays must match element-wise with equal length. */
+  toMatchObject(expected: object): void;
   /** Requires a truthy value. */
   toBeTruthy(): void;
   /** Requires a falsy value. */
@@ -765,6 +786,10 @@ export interface ValueExpectation<T> {
   toBeUndefined(): void;
   /** Requires a non-nullish value. */
   toBeDefined(): void;
+  /** Requires a `length` property equal to `expected`: a string, an array, or anything array-like. */
+  toHaveLength(expected: number): void;
+  /** Requires the property at `path` to exist; with `expected`, to equal it by `toEqual` rules. */
+  toHaveProperty(path: PropertyPath, ...expected: [] | [expected: unknown]): void;
   /** Requires string or collection containment. */
   toContain(expected: unknown): void;
   /** Requires a string or regexp match. */
@@ -803,14 +828,37 @@ export type PollExpectation<T> = {
   ) => Promise<void>;
 };
 
-/** The `expect` entry: dispatch on the argument, plus `expect.poll`. */
-export interface Expect {
+/** The `expect(actual)` call: a locator, an engine fixture, or a value, told apart by the argument. */
+export interface ExpectCall {
   (actual: Locator): AsyncExpectation;
   <E extends object>(actual: Expectable<E>): E;
   /** `message` opens the failure text, so a bare `expected false to be true` says which check it was. */
   <T>(actual: T, message?: string): ValueExpectation<T>;
+}
+
+/** The `expect` entry: the call, `expect.poll`, `expect.soft`, and the asymmetric matchers. */
+export interface Expect extends ExpectCall {
   /** Re-reads a value until the chosen matcher holds or `timeout` passes. */
   poll<T>(read: () => T | Promise<T>, options?: PollOptions): PollExpectation<T>;
+  /**
+   * The same matchers, but a failure is kept on the running attempt instead
+   * of thrown, and the body runs on. Once the body has settled the attempt
+   * fails with `ASSERTION_FAILED` listing every kept failure. Outside a test
+   * body (a standalone script, an `afterEach` hook) a failure throws at once.
+   */
+  readonly soft: ExpectCall;
+  /** Matches an instance of the class; for `String`, `Number`, `Boolean`, `BigInt`, `Symbol`, and `Function`, the primitive too; for `Object`, any non-null object. */
+  any(sample: Class | typeof BigInt | typeof Symbol): AsymmetricMatcher;
+  /** Matches anything but `null` and `undefined`. */
+  anything(): AsymmetricMatcher;
+  /** Matches an object whose properties include every property of `sample`, each compared with `toEqual` rules. */
+  objectContaining(sample: object): AsymmetricMatcher;
+  /** Matches an array holding every element of `sample`, each compared with `toEqual` rules, in any order. */
+  arrayContaining(sample: readonly unknown[]): AsymmetricMatcher;
+  /** Matches a string with `sample` as a substring. */
+  stringContaining(sample: string): AsymmetricMatcher;
+  /** Matches a string the RegExp tests true on; a string sample is compiled to a RegExp. */
+  stringMatching(sample: string | RegExp): AsymmetricMatcher;
 }
 
 export interface CommandConfig {

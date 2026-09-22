@@ -4,6 +4,7 @@ import { attemptBrand } from '../internal/brands.ts';
 import { InfrastructureError } from '../internal/errors.ts';
 import { realmSlot } from '../internal/realm-slot.ts';
 import type { AttemptBudget } from '../run/budget.ts';
+import type { SoftFailures } from './soft.ts';
 
 export interface PublishedAttempt {
   readonly attemptId: string;
@@ -13,12 +14,14 @@ export interface PublishedAttempt {
   readonly assertionTimeout: number;
   /** Read at call time: the running phase's signal and deadline. */
   readonly budget: AttemptBudget;
+  /** Where `expect.soft` keeps its failures until the body settles. */
+  readonly soft: SoftFailures;
 }
 
 /**
  * `globalThis` hosts the slot: test modules load in isolated module realms
  * and share nothing but globals with the runner, and `expect.poll` has no
- * fixture argument to carry the attempt on. One attempt runs at a time per
+ * fixture argument to carry the attempt on, nor has `expect.soft`. One attempt runs at a time per
  * process (the in-process runner is capped at one worker, a child worker
  * runs one unit at a time), so a single slot names it unambiguously.
  * `publishAttempt` refuses a second live attempt rather than trusting that.

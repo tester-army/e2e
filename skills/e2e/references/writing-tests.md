@@ -206,7 +206,13 @@ for (const row of await screen.getByRole('row').all()) {
 `expect(value)` is synchronous. `expect.poll(read, { timeout?, interval?,
 message? })` re-reads a value until a value matcher passes
 (`assertionTimeout` and 100 ms by default, stopping with the attempt); a
-throwing read keeps polling, and it is not a report step.
+throwing read keeps polling, and it is not a report step. `expect.soft(x)`
+has the same matchers but keeps a failure instead of throwing; the attempt
+fails after the body with every soft failure listed. `expect.any(Class)`,
+`expect.anything()`, `expect.objectContaining(obj)`,
+`expect.arrayContaining(arr)`, `expect.stringContaining(s)`, and
+`expect.stringMatching(s | RegExp)` stand in for values inside `toEqual`,
+`toMatchObject`, `toContain`, and `toHaveProperty`.
 
 ```ts
 await expect(screen.getByRole('status')).toHaveText('Saved');
@@ -216,11 +222,13 @@ await expect(web).toHaveURL('/dashboard');   // relative to the base URL, or a R
 await expect(web).toHaveTitle(/Dashboard/);
 expect(await screen.getByTestId('total').textContent()).toContain('$');
 await expect.poll(() => db.orders.count(), { timeout: 15_000 }).toBe(1);   // re-reads until it holds
+expect(order).toMatchObject({ id: expect.any(Number), lines: [{ sku: 'a' }] });
+expect.soft(await screen.getByTestId('tax').textContent()).toBe('$8.00');  // kept, body runs on
 ```
 
 | Locator matchers | Web matchers | Value matchers |
 | --- | --- | --- |
-| `toBeVisible`, `toBeHidden`, `toBeAttached`, `toBeEnabled`, `toBeDisabled`, `toBeChecked`, `toBeSelected`, `toBeExpanded`, `toBeFocused`, `toHaveText`, `toContainText`, `toHaveValue`, `toHaveAttribute`, `toHaveCount`, `toHaveAccessibleName` | `toHaveURL`, `toHaveTitle` | `toBe`, `toEqual`, `toBeTruthy`, `toBeFalsy`, `toBeNull`, `toBeUndefined`, `toBeDefined`, `toContain`, `toMatch`, `toBeGreaterThan`, `toBeGreaterThanOrEqual`, `toBeLessThan`, `toBeLessThanOrEqual`, `toBeCloseTo` |
+| `toBeVisible`, `toBeHidden`, `toBeAttached`, `toBeEnabled`, `toBeDisabled`, `toBeChecked`, `toBeSelected`, `toBeExpanded`, `toBeFocused`, `toHaveText`, `toContainText`, `toHaveValue`, `toHaveAttribute`, `toHaveCount`, `toHaveAccessibleName` | `toHaveURL`, `toHaveTitle` | `toBe`, `toEqual`, `toMatchObject`, `toBeTruthy`, `toBeFalsy`, `toBeNull`, `toBeUndefined`, `toBeDefined`, `toHaveLength`, `toHaveProperty`, `toContain`, `toMatch`, `toBeGreaterThan`, `toBeGreaterThanOrEqual`, `toBeLessThan`, `toBeLessThanOrEqual`, `toBeCloseTo` |
 
 `toHaveText` compares the whole normalized text; `toContainText` a
 substring or a RegExp. Both take a list to check every match at once:
