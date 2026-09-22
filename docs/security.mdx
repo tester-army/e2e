@@ -122,6 +122,9 @@ reports. A step label that spells a value out, such as
 `app.open('/reset?token=...')` or ``agent.act(`use key ${key}`)``, is
 recorded, reported, and handed to later steps as `<secret:name>`. The
 instruction of that same step still reaches its own model call as written.
+`report.json` and `ai-trace.json` pass the ledger once more as they are
+written, with every value known by then, so a value a provider resolved
+after a step was recorded or a model call closed is covered too.
 
 A static value shorter than 6 characters (code points) is `INVALID_CONFIG`,
 and a provider returning one fails the fill. Every occurrence of a value
@@ -204,7 +207,7 @@ path you configure.
 | `artifacts/.../trace.zip` | Playwright trace, rewritten after a secret fill. | not-required, complete, or deleted |
 | `artifacts/.../*.webm`, `*.mp4` | Video, opt-in, kept for every attempt unless `retain: 'on-failure'`. | incomplete |
 | `artifacts/.../failure/screen.txt` | The redacted tree at the moment of failure. | complete |
-| `ai-trace.json` | Every model call, opt-in via `--ai-trace`. Prompts are the ones the model saw; model output, tool-call arguments, errors, and provider metadata pass the redactor; inline image bytes are replaced by their size. Written readable by its owner only. | complete |
+| `ai-trace.json` | Every model call, opt-in via `--ai-trace`. Run names, prompts, model output, tool-call arguments, errors, and provider metadata pass the redactor, once as recorded and once as written; inline image bytes are replaced by their size. Written readable by its owner only. | complete |
 | `sessions/<runId>/` | Encrypted sessions, deleted at cleanup. | encrypted |
 | `cache/` | Trace entries. | secret-free by construction |
 | The path in `command.log` | Your app's stdout and stderr, verbatim. Must be inside the project root. | none |

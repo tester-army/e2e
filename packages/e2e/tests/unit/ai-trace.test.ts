@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AiTraceCollector,
   AiTraceRecorder,
+  redactAiTraceDocument,
   registerAiTraceRecorder,
   stringify,
   withAiTraceScope,
@@ -178,6 +179,79 @@ describe('AiTraceRecorder', () => {
     expect(output.providerMetadata.gateway.echo).toBe('<secret:token>');
     expect(output.response.messages[0]!.content).toBe('the key is <secret:token>');
     expect(failed!.error).toBe('rejected <secret:token>');
+  });
+
+  it('redacts string leaves before serialization, so a secret that is JSON punctuation or a key name leaves every column parseable', async () => {
+    const ledger = new SecretLedger([
+      ['brace', '{'],
+      ['key', 'target'],
+    ]);
+    const recorder = new AiTraceRecorder({ redact: ledger.redact });
+    await withAiTraceScope({ ...SCOPE, test: 'opens {' }, () =>
+      withAiTraceStep('agent.act', 'find the target', () => generation(recorder, 'call-1')),
+    );
+    const { runs, steps } = recorder.drain();
+    expect(runs[0]!.function_id).toBe('opens <secret:brace> · agent.act "find the <secret:key>"');
+    expect(runs[0]!.e2e).toMatchObject({ test: 'opens <secret:brace>', label: 'find the <secret:key>' });
+    const step = steps[0]!;
+    const input = JSON.parse(step.input) as {
+      prompt: { role: string }[];
+      tools: { name: string; parameters: { properties: Record<string, unknown> } }[];
+    };
+    expect(input.prompt.map((message) => message.role)).toEqual(['system', 'user']);
+    // The property name matches the secret and is a key, not a leaf: it stays.
+    expect(Object.keys(input.tools[0]!.parameters.properties)).toEqual(['target']);
+    const output = JSON.parse(step.output!) as { content: { input: Record<string, unknown> }[] };
+    expect(output.content[0]!.input).toEqual({ target: 'n1' });
+  });
+
+  it('redactAiTraceDocument applies a later ledger to closed records and keeps the columns parseable', async () => {
+    // No redactor: the value was not a secret when the records closed.
+    const recorder = new AiTraceRecorder();
+    const t = recorder.telemetry;
+    const fire = <E>(callback: ((event: E) => unknown) | undefined, event: E) => callback?.(event);
+    await withAiTraceScope({ ...SCOPE, test: 'todos › adds hunter2' }, () =>
+      withAiTraceStep('agent.act', 'type hunter2', async () => {
+        await fire(t.onStart, { callId: 'late', operationId: 'ai.generateText' } as never);
+        await fire(t.onStepStart, {
+          callId: 'late',
+          stepNumber: 0,
+          provider: 'gateway',
+          modelId: 'm',
+          instructions: 'You are a testing agent.',
+          messages: [{ role: 'user', content: 'type hunter2 into {' }],
+        } as never);
+        await fire(t.onStepEnd, {
+          callId: 'late',
+          stepNumber: 0,
+          content: [{ type: 'tool-call', toolCallId: 'c1', toolName: 'type', input: { target: 'n1', text: 'hunter2' } }],
+          finishReason: 'tool-calls',
+          usage: { inputTokens: 100, outputTokens: 20 },
+          response: { id: 'r1', modelId: 'm', messages: [] },
+        } as never);
+        await fire(t.onEnd, { callId: 'late' } as never);
+      }),
+    );
+    const drained = recorder.drain();
+    expect(JSON.stringify(drained)).toContain('hunter2');
+
+    const ledger = new SecretLedger([
+      ['pw', 'hunter2'],
+      ['brace', '{'],
+    ]);
+    const document = redactAiTraceDocument(drained, ledger.redact);
+    expect(JSON.stringify(document)).not.toContain('hunter2');
+    expect(document.runs[0]!.function_id).toBe('todos › adds <secret:pw> · agent.act "type <secret:pw>"');
+    expect(document.runs[0]!.e2e?.label).toBe('type <secret:pw>');
+    const step = document.steps[0]!;
+    const input = JSON.parse(step.input) as { prompt: { content: string }[] };
+    expect(input.prompt.at(-1)!.content).toBe('type <secret:pw> into <secret:brace>');
+    const output = JSON.parse(step.output!) as { content: { input: { target: string; text: string } }[] };
+    expect(output.content[0]!.input).toEqual({ target: 'n1', text: '<secret:pw>' });
+    // A column with nothing to redact serializes as it did.
+    expect(step.usage).toBe(drained.steps[0]!.usage);
+    // The drained snapshot is not mutated.
+    expect(JSON.stringify(drained)).toContain('hunter2');
   });
 
   it('closes an open step with the error when the generation fails', async () => {
