@@ -3,6 +3,8 @@
  * engine, an idle session closes itself, the TTL ends a session through the
  * step's own deadline, and an `open_session` that fails after the attempt
  * opened tears the attempt down and leaves the host ready for the next one.
+ * The standalone attempt underneath records a host-driven step through the
+ * session's secret ledger, as a run's attempt does.
  */
 
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -17,6 +19,10 @@ const resolveModule = new URL('../../dist/config/resolve.js', import.meta.url).h
 const { resolveConfig } = (await import(resolveModule)) as typeof import('../../src/config/resolve.ts');
 const secretsModule = new URL('../../dist/secrets.js', import.meta.url).href;
 const { credentials } = (await import(secretsModule)) as typeof import('../../src/secrets.ts');
+const standaloneModule = new URL('../../dist/run/standalone.js', import.meta.url).href;
+const { openStandaloneAttempt } = (await import(standaloneModule)) as typeof import('../../src/run/standalone.ts');
+const interactiveStepModule = new URL('../../dist/agent/interactive-step.js', import.meta.url).href;
+const { openInteractiveStep } = (await import(interactiveStepModule)) as typeof import('../../src/agent/interactive-step.ts');
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -129,5 +135,49 @@ describe('SessionHost', { timeout: 60_000 }, () => {
     expect(text).toContain('button "Submit"');
     await flaky.close('done');
     expect(fake.stats()).toMatchObject({ attemptsStarted: 2, attemptsEnded: 2, disposes: 2 });
+  });
+});
+
+describe('the standalone attempt', { timeout: 60_000 }, () => {
+  const SECRET = 'pw-7f3a-standalone';
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(path.join(os.tmpdir(), 'e2e-standalone-'));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('records and announces a host-driven step whose instruction spells a configured secret as its name', async () => {
+    const fake = createFakeEngine();
+    const config = resolveConfig(
+      { targets: [{ name: 'kiosk', platform: 'kiosk', engine: fake.engine }], credentials: { admin: { username: 'admin', password: SECRET } } } as never,
+      { projectRoot: dir, env: {} },
+    );
+    const announced: string[] = [];
+    const attempt = await openStandaloneAttempt({
+      config,
+      target: config.targets[0]!,
+      headed: false,
+      env: {},
+      signal: new AbortController().signal,
+      timeoutMs: 30_000,
+      artifactsRoot: path.join(dir, '.e2e', 'artifacts'),
+      onProgress: (progress) => {
+        if ('label' in progress) announced.push(progress.label);
+      },
+    });
+    try {
+      const step = await openInteractiveStep(attempt.agentRuntime, { instruction: `sign in with ${SECRET}`, timeout: 10_000 });
+      await step.end({ status: 'passed', summary: 'signed in' });
+      const [recorded] = attempt.steps.completed();
+      expect(recorded).toMatchObject({ api: 'session', label: 'sign in with <secret:admin>', status: 'passed' });
+      expect(announced).toEqual(['sign in with <secret:admin>', 'sign in with <secret:admin>']);
+      expect(JSON.stringify(attempt.steps.all())).not.toContain(SECRET);
+    } finally {
+      expect(await attempt.close()).toEqual([]);
+    }
   });
 });

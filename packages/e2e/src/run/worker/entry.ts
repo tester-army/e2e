@@ -260,6 +260,7 @@ function main(): void {
           case 'shutdown-done':
             send({
               ...outbound,
+              runErrors: redactLeaves(outbound.runErrors, processSecrets.redact),
               ...(debug.enabled ? { debug: debug.drain() } : {}),
               ...(aiTrace === undefined
                 ? {}
