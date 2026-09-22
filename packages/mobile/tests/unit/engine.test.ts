@@ -514,6 +514,22 @@ describe('observation', () => {
     expect(at(600, 290 * 3)).toEqual([0, 0, 0]);
     expect(at(600, 240 * 3)).toEqual([255, 255, 255]);
 
+    // Android flags a password EditText by attribute, not by class; it is painted over the same way.
+    h.fake.respond('capture.snapshot', () => ({
+      nodes: [
+        { ref: 'e1', index: 0, depth: 0, type: 'android.widget.FrameLayout', rect: { x: 0, y: 0, width: 390, height: 844 } },
+        { ref: 'e2', index: 1, parentIndex: 0, depth: 1, type: 'android.widget.EditText', label: 'Password', value: 'hunter2', password: true, rect: { x: 0, y: 270, width: 390, height: 44 } },
+      ],
+    }));
+    const android = await h.engine.observe!(operation(), { pixels: true });
+    expect(android.maskedRegionCount).toBe(1);
+    expect(named(android.root, 'Password')).toMatchObject({ role: 'textbox', inputPurpose: 'password', states: { secure: true } });
+    expect(named(android.root, 'Password').value).toBeUndefined();
+    const androidPixels = decodePng(android.pixels!.data);
+    const androidAt = (x: number, y: number) => [...androidPixels.pixels.subarray((y * 1170 + x) * 4, (y * 1170 + x) * 4 + 3)];
+    expect(androidAt(600, 290 * 3)).toEqual([0, 0, 0]);
+    expect(androidAt(600, 240 * 3)).toEqual([255, 255, 255]);
+
     // A secure node without bounds cannot be masked: the tree ships, the image does not.
     h.fake.respond('capture.snapshot', () => ({
       nodes: [{ ref: 'e1', type: 'SecureTextField', label: 'PIN', value: '1234' }],
