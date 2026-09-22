@@ -156,7 +156,10 @@ It answers `holds`, `fails`, or `inconclusive`.
 
 Throws `ASSERTION_FAILED` on a false judgment and `ASSERTION_INCONCLUSIVE`
 when the screen did not show enough to decide. Both carry the explanation
-and, when permitted, a screenshot path. No evidence is captured with
+and, when permitted, a screenshot path. An inconclusive judgment made from
+the tree alone, with `vision` off and no secret filled in the attempt, adds
+`the judge saw the semantic tree only; pass vision: true when the answer is
+in pixels` to its message. No evidence is captured with
 `screenshot: false` or once a secret has been filled in the attempt.
 `screenshot` controls failure evidence attached after the judgment; `vision`
 controls what the model is shown before it.
@@ -176,8 +179,10 @@ Succeeds on the first judgment that holds; a false or inconclusive round
 keeps waiting.
 
 Throws `STEP_TIMEOUT` on deadline expiry and `STEP_BUDGET_EXHAUSTED` on
-budget exhaustion, each carrying the last judgment, and `INVALID_ARGUMENT`
-for an out-of-range option or one `waitFor` does not take.
+budget exhaustion, each carrying the last judgment (with the same vision
+hint as `agent.assert` when that round was inconclusive), and
+`INVALID_ARGUMENT` for an out-of-range option or one `waitFor` does not
+take.
 
 ```ts
 await agent.waitFor('the upload progress reports completion', { interval: 500 });

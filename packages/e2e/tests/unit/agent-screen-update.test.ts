@@ -89,6 +89,25 @@ describe('ScreenPresenter', () => {
     expect(afterAction).toContain('re-observed as revision b3');
   });
 
+  it('says the screenshot changed, not that the control had no effect, when the listing stood still under a moved image', () => {
+    const presenter = new ScreenPresenter();
+    const shot = (byte: number) => ({ data: new Uint8Array([byte]), mediaType: 'image/png' as const, width: 1, height: 1, scale: 1, maskedRegionCount: 0 });
+    const textOf = (output: ReturnType<ScreenPresenter['present']>) => (typeof output === 'string' ? output : output.text);
+    presenter.open(screen('b1', HOME, { pixels: shot(1) }));
+    const moved = textOf(presenter.present(screen('b2', HOME, { pixels: shot(2) }), { lead: 'Tapped #n3.', expectChange: true }));
+    expect(moved).toContain('Tapped #n3.');
+    expect(moved).toContain('listed nodes unchanged; the screenshot changed');
+    expect(moved).not.toContain('had no visible effect');
+    // The same image again: the tree describes this screen, so the control is blamed as before.
+    const still = textOf(presenter.present(screen('b3', HOME, { pixels: shot(2) }), { lead: 'Tapped #n3.', expectChange: true }));
+    expect(still).toContain('had no visible effect');
+    expect(still).not.toContain('the screenshot changed');
+    // A moved image is reported whether or not a change was expected.
+    const observed = textOf(presenter.present(screen('b4', HOME, { pixels: shot(3) }), { lead: 'Observed.', expectChange: false }));
+    expect(observed).toContain('listed nodes unchanged; the screenshot changed');
+    expect(observed).not.toContain('Screen unchanged since');
+  });
+
   it('ignores focus moving, which every action does, when deciding what changed', () => {
     const presenter = new ScreenPresenter();
     presenter.initial(screen('b1', HOME));

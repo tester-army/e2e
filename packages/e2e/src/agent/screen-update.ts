@@ -11,14 +11,15 @@
  * A screen may carry its pixels too. The presenter is where a screenshot
  * joins the text: it notes the image's size and coordinate space under the
  * screen, remembers that the model now holds pixels (from then on the step is
- * in pixel mode and an unchanged tree is not a failed action), and explains
- * once why pixels the step asked for were withheld. The transcript-side
+ * in pixel mode, and an unchanged tree under a screenshot that moved is
+ * reported as that rather than as a failed action), and explains once why
+ * pixels the step asked for were withheld. The transcript-side
  * elision of superseded screens and screenshots lives in
  * `transcript-compaction.ts`.
  */
 
 import type { ExecutorObservation, ExecutorPixels } from './executor.ts';
-import { interactiveNodeCount } from './observation.ts';
+import { interactiveNodeCount, pixelDigest } from './observation.ts';
 import type { VisionDegradation } from '../run/steps.ts';
 
 /** A diff past this many lines goes out as the full screen instead. */
@@ -96,6 +97,7 @@ export function isScreenOutput(value: unknown): value is Exclude<ScreenOutput, s
 export class ScreenPresenter {
   private shown: ShownScreen | undefined;
   private screenshot: ShownScreenshot | undefined;
+  private screenshotDigest: string | undefined;
 
   /** True once a screenshot went to the model in this step. */
   get showingPixels(): boolean {
@@ -118,6 +120,11 @@ export class ScreenPresenter {
    * the changed lines, or the whole screen when most of it changed.
    */
   update(observation: ExecutorObservation, options: ScreenUpdateOptions = {}): string {
+    return this.render(observation, options, false);
+  }
+
+  /** The update, told whether the screenshot going out with it differs from the one the model held. */
+  private render(observation: ExecutorObservation, options: ScreenUpdateOptions, screenshotChanged: boolean): string {
     const lead = options.lead === undefined ? '' : `${options.lead}\n\n`;
     if (observation.treeUnavailable === true) {
       return `${lead}${this.initial(observation)}`;
@@ -131,7 +138,7 @@ export class ScreenPresenter {
     const changes = diff.length;
     // A truncated screen is never called unchanged: what it left out is unknown.
     if (changes === 0 && !observation.truncated) {
-      return `${lead}${renderUnchanged(previous.revision, observation, options.expectChange === true)}${closed}`;
+      return `${lead}${renderUnchanged(previous.revision, observation, options.expectChange === true, screenshotChanged)}${closed}`;
     }
     if (changes >= MAX_DIFF_LINES || changes > MAX_DIFF_SHARE * next.order.length) {
       return `${lead}The screen changed substantially since revision ${previous.revision}. ${renderFull(observation)}${closed}`;
@@ -157,22 +164,35 @@ export class ScreenPresenter {
    * screen the tree cannot describe (nothing interactive listed) an unchanged
    * tree is not a failed action: what the action did may be drawn, not
    * listed, so the screenshot is the evidence and no action is blamed. On a
-   * screen the tree does describe, an unchanged tree after an action still
-   * means the control had no visible effect, pixels or not.
+   * screen the tree does describe, an unchanged tree after an action means
+   * the control had no visible effect, unless the screenshot moved: then what
+   * changed is drawn, not listed, and the model is told to read the image.
    */
   present(observation: ExecutorObservation, options: ScreenUpdateOptions = {}): ScreenOutput {
-    this.attach(observation);
-    const text = this.update(observation, {
-      ...options,
-      expectChange: this.showingPixels && interactiveNodeCount(observation) === 0 ? false : options.expectChange,
-    });
+    const screenshotChanged = this.attach(observation);
+    const text = this.render(
+      observation,
+      {
+        ...options,
+        expectChange: this.showingPixels && interactiveNodeCount(observation) === 0 ? false : options.expectChange,
+      },
+      screenshotChanged,
+    );
     return this.withScreenshot(observation, text);
   }
 
-  /** Records that a screenshot is going to the model; from here on the step is in pixel mode. */
-  private attach(observation: ExecutorObservation): void {
-    if (observation.pixels === undefined) return;
+  /**
+   * Records that a screenshot is going to the model; from here on the step is
+   * in pixel mode. Returns whether it differs from the screenshot the model
+   * held, which is how an unchanged tree is kept from being read as no effect.
+   */
+  private attach(observation: ExecutorObservation): boolean {
+    if (observation.pixels === undefined) return false;
+    const digest = pixelDigest(observation.pixels.data);
+    const changed = this.screenshotDigest !== undefined && digest !== this.screenshotDigest;
     this.screenshot = { pixels: observation.pixels, viewport: observation.viewport };
+    this.screenshotDigest = digest;
+    return changed;
   }
 
   /**
@@ -227,8 +247,17 @@ function renderFull(observation: ExecutorObservation): string {
   return `Current screen (revision ${observation.revision}${describeLocation(observation)}, ${String(nodes)} nodes):\n${observation.text}`;
 }
 
-function renderUnchanged(since: string, observation: ExecutorObservation, expectedChange: boolean): string {
+/**
+ * An update with no listed line changed. A screenshot that moved while the
+ * listing stood still is said so, whatever was expected: the effect is drawn,
+ * and blaming the control would send the model looking for another way to do
+ * what it just did.
+ */
+function renderUnchanged(since: string, observation: ExecutorObservation, expectedChange: boolean, screenshotChanged: boolean): string {
   const looked = `re-observed as revision ${observation.revision}${describeLocation(observation)}`;
+  if (screenshotChanged) {
+    return `Since revision ${since} (${looked}): listed nodes unchanged; the screenshot changed. Read the effect off the image (a focus ring alone is no effect); the ids you have stay valid.`;
+  }
   return expectedChange
     ? `The screen did not change within the wait after this action (${looked}); the ids you have stay valid. If a change was expected, the control had no visible effect here: look for another way rather than repeating it.`
     : `Screen unchanged since revision ${since} (${looked}); the ids you have stay valid.`;
