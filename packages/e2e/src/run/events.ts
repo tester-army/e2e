@@ -275,6 +275,8 @@ export function createRunEventEmitter(
   let seq = 0;
   const quarantined = new Set<RunEventSubscriber>();
   const quarantine = (subscriber: RunEventSubscriber, event: RunEvent, cause: unknown): void => {
+    // Several pending promises of one sink may reject; the first names it, the rest are already quarantined.
+    if (quarantined.has(subscriber)) return;
     quarantined.add(subscriber);
     process.stderr.write(
       `e2e: reporter "${subscriber.name}" threw on ${event.type}: ${errorMessage(cause)}; ignoring it for the rest of the run\n`,

@@ -91,6 +91,27 @@ describe('createRunEventEmitter', () => {
     ]);
   });
 
+  it('names a sink once when several of its pending promises reject', async () => {
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const events: RunEvent[] = [];
+    const emit = createRunEventEmitter([
+      {
+        name: 'slow',
+        onEvent: () => new Promise((_resolve, reject) => setImmediate(() => reject(new Error('late'))))
+      },
+      collecting(events),
+    ]);
+    // Both promises are pending when the second event is emitted; both reject on the next tick.
+    emit(fact(1));
+    emit(fact(2));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    emit(fact(3));
+    expect(events).toHaveLength(3);
+    expect(stderr.mock.calls.map((call) => String(call[0]))).toEqual([
+      'e2e: reporter "slow" threw on plan: late; ignoring it for the rest of the run\n',
+    ]);
+  });
+
   it('emits JSON-serializable events', () => {
     const events: RunEvent[] = [];
     const emit = createRunEventEmitter([collecting(events)]);
