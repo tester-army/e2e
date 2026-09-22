@@ -97,7 +97,7 @@ export function createCopilotProvider(options: CopilotProviderOptions = {}): OAu
       return { access: token, refresh: '', expires: 0, ...stored };
     },
     async refresh() {
-      throw new OAuthError('LOGIN_REQUIRED', 'GitHub rejected the Copilot token; sign in again');
+      throw new OAuthError('LOGIN_REQUIRED', 'GitHub rejected the Copilot token');
     },
     send(request, credentials, upstream) {
       return sendCopilotRequest(request, credentials, upstream);

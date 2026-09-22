@@ -2,12 +2,13 @@
  * The fetch an AI SDK provider is constructed with. Per request it reads the
  * stored credentials, refreshes them ahead of expiry, replaces the SDK's key
  * header with the bearer token, and hands the request to the provider; on a
- * 401 it refreshes once and retries. One refresh serves every model instance
+ * 401 it refreshes once and retries, or, with nothing to refresh, reports
+ * that the user signs in again. One refresh serves every model instance
  * and every concurrent call over the same credentials, because vendors that
  * rotate refresh tokens reject the second concurrent refresh.
  */
 
-import { OAuthError } from './errors.ts';
+import { OAuthError, describeResponse } from './errors.ts';
 import type { CredentialStore, FetchFunction, OAuthCredentials, OAuthProvider } from './types.ts';
 
 export interface OAuthFetchOptions {
@@ -15,7 +16,7 @@ export interface OAuthFetchOptions {
   /** The `User-Agent` sent to the vendor; name your product, never another client. */
   readonly userAgent: string;
   readonly fetch?: FetchFunction;
-  /** How a missing login is described; the CLI names its own command. */
+  /** How a missing or expired login is fixed; the CLI names its own command. */
   readonly loginHint?: string;
 }
 
@@ -54,6 +55,7 @@ export function createOAuthFetch<Credentials extends OAuthCredentials>(
   const upstream = options.fetch ?? globalThis.fetch;
   const { store } = options;
   const shared = sharedState(store);
+  const remedy = options.loginHint ?? 'sign in again';
 
   async function current(): Promise<Credentials> {
     const stored = await store.get(provider.id);
@@ -102,6 +104,7 @@ export function createOAuthFetch<Credentials extends OAuthCredentials>(
           if (cause instanceof OAuthError && cause.code === 'LOGIN_REQUIRED') {
             const rotated = await rotatedElsewhere(latest);
             if (rotated !== undefined) return rotated;
+            throw new OAuthError('LOGIN_REQUIRED', `${cause.message}; ${remedy}`, { cause });
           }
           throw cause;
         }
@@ -127,7 +130,11 @@ export function createOAuthFetch<Credentials extends OAuthCredentials>(
     let credentials = await current();
     if (expiring(credentials)) credentials = await refresh(credentials);
     const response = await attempt(credentials);
-    if (response.status !== 401 || credentials.refresh === '') return response;
+    if (response.status !== 401) return response;
+    // Nothing to refresh (Copilot's GitHub token) means the token is revoked for good.
+    if (credentials.refresh === '') {
+      throw new OAuthError('LOGIN_REQUIRED', `${provider.name} rejected the stored token (${await describeResponse(response)}); ${remedy}`);
+    }
     await response.body?.cancel();
     return attempt(await refresh(credentials));
   };

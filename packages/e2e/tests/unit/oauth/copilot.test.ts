@@ -102,6 +102,17 @@ describe('Copilot requests', () => {
     expect(seen!.headers['copilot-vision-request']).toBe('true');
   });
 
+  it('names the login command when GitHub rejects the stored token, which has nothing to refresh it', async () => {
+    const api = await serve((_request, response) => json(response, 401, { message: 'Bad credentials' }));
+    const store = new MemoryCredentialStore({ 'github-copilot': { access: 'gho_revoked', refresh: '', expires: 0 } });
+    const model = copilot('gpt-4.1', { store, baseURL: api.url });
+    await expect(generateText({ model, prompt: 'color?' })).rejects.toMatchObject({
+      code: 'LOGIN_REQUIRED',
+      message: 'GitHub Copilot rejected the stored token (401: Bad credentials); run `npx e2e login github-copilot`',
+    });
+    expect(api.requests).toHaveLength(1);
+  });
+
   it('lists the chat models of the plan through the login, leaving embeddings out', async () => {
     let seen: Received | undefined;
     const api = await serve((request, response) => {
