@@ -13,11 +13,14 @@ import { installFakeLoopModel, loopCalls } from '../helpers/fake-loop-model.ts';
 import { installFakeModel, judgment } from '../helpers/fake-model.ts';
 import type { FakeCall } from '../helpers/fake-model.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
-import { resultByTitle, runProject, type FixtureProject } from '../helpers/run-project.ts';
+import { createProject, resultByTitle, runExisting, runProject, type FixtureProject } from '../helpers/run-project.ts';
 import type { RunOutcome } from '../helpers/run-project.ts';
+import { snapshot } from '../helpers/snapshot.ts';
 import { createAgent } from '../../src/agent/default-agent.ts';
 import type { StepExecutor } from '../../src/agent/executor.ts';
 import type { SdkLanguageModel } from '../../src/config/agent.ts';
+import { defineEngine, LOCATOR_ACTION_KINDS } from '../../src/engine/index.ts';
+import type { RunEvent } from '../../src/run/events.ts';
 
 const SUITE = `import { test, credentials } from 'e2e';
 
@@ -349,6 +352,14 @@ test('${TITLE}', async ({ app, agent }) => {
     }
   });
 
+  it('hands a step its own instruction as written', () => {
+    const own = loopCalls.filter(
+      (call) => call.lastPrompt.includes('to continue') && !call.lastPrompt.includes('say what the previous step did'),
+    );
+    expect(own.length).toBeGreaterThan(0);
+    for (const call of own) expect(call.lastPrompt).toContain(`use key ${SECRET} to continue`);
+  });
+
   it('names the AI trace run by the redacted label and keeps the plaintext out of the file', () => {
     const text = readFileSync(path.join(project.dir, '.e2e', 'ai-trace.json'), 'utf8');
     expect(text).not.toContain(SECRET);
@@ -450,5 +461,82 @@ test('${TITLE}', async ({ app, agent }) => {
     ).toBe(true);
     expect(attempt.artifacts.filter((artifact) => artifact.kind === 'screenshot')).toEqual([]);
     expect(JSON.stringify(outcome.report)).not.toContain(SECRET);
+  });
+});
+
+describe('the report passes the ledger as it is written', () => {
+  const SECRET = 'evidence-secret-Hn8x4410';
+  const TITLE = 'taps a button that is not there';
+  const MISSING_SUITE = `import { test } from 'e2e';
+
+test('${TITLE}', async ({ screen }) => {
+  await screen.getByRole('button', { name: 'Missing' }).tap();
+});
+`;
+  let outcome: RunOutcome;
+  let project: FixtureProject;
+  let reportText: string;
+  const events: RunEvent[] = [];
+
+  beforeAll(async () => {
+    // Where a secret reaches the report outside any step record: the location
+    // at failure, and a cleanup error serialized without a session to redact it.
+    const engine = defineEngine({
+      name: 'leaky',
+      version: '1',
+      spiVersion: 1,
+      startAttempt: async () => {},
+      observe: async () =>
+        snapshot([{ ref: { id: 'note', revision: '' }, role: 'status', text: 'nothing to see' }], {
+          location: `http://app.test/?token=${SECRET}`,
+        }),
+      locate: async () => [],
+      actions: LOCATOR_ACTION_KINDS,
+      perform: async () => {},
+      dispose: async () => {
+        throw new Error(`the engine leaked ${SECRET} while disposing`);
+      },
+    });
+    project = createProject({ 'tests/missing.e2e.ts': MISSING_SUITE });
+    outcome = await runExisting(project, {
+      appUrl: 'http://127.0.0.1:4599',
+      config: {
+        targets: [{ name: 'leaky', platform: 'custom', engine }],
+        tests: 'tests/**/*.e2e.ts',
+        cache: 'off',
+        actionTimeout: 300,
+        credentials: { member: { username: 'ada', password: SECRET } },
+      },
+      runOptions: { onEvent: (event) => {
+        events.push(event);
+      } },
+    });
+    reportText = readFileSync(path.join(project.dir, '.e2e', 'report.json'), 'utf8');
+  }, 60_000);
+
+  afterAll(() => {
+    project?.cleanup();
+  });
+
+  it('records the failure evidence with the value replaced', () => {
+    const result = resultByTitle(outcome, TITLE);
+    expect(result.status).toBe('failed');
+    const attempt = result.attempts.at(-1)!;
+    expect(attempt.error?.code).toBe('LOCATOR_NOT_FOUND');
+    expect(attempt.failure?.url).toBe('http://app.test/?token=<secret:member>');
+    const reported = outcome.report.run.results.find((candidate) => candidate.titlePath.join(' › ') === TITLE)!;
+    expect(reported.attempts.at(-1)!.failure?.url).toBe('http://app.test/?token=<secret:member>');
+  });
+
+  it('records a run error with the value replaced, in the report, on the outcome, and in the live event', () => {
+    expect(outcome.report.run.errors.map((error) => [error.phase, error.message])).toContainEqual([
+      'cleanup',
+      'the engine leaked <secret:member> while disposing',
+    ]);
+    expect(reportText).not.toContain(SECRET);
+    expect(JSON.stringify(outcome.results.map(({ target: _target, ...record }) => record))).not.toContain(SECRET);
+    const streamed = events.flatMap((event) => (event.type === 'run-error' ? [event.error.message] : []));
+    expect(streamed).toContain('the engine leaked <secret:member> while disposing');
+    expect(JSON.stringify(events)).not.toContain(SECRET);
   });
 });

@@ -25,6 +25,7 @@ import { TargetExecutor, type ClosingRecord } from './execute.ts';
 import { createFixtures } from './fixtures.ts';
 import type { EnginePrepareResult } from '../engine/index.ts';
 import { PreparedEngines, startDeclaredProcesses, validateEngine, type AppProcesses } from './provision.ts';
+import { sessionSecrecy } from './secrecy.ts';
 import { SessionStore } from './sessions.ts';
 import { StepRecorder, type StepProgress } from './steps.ts';
 import { WorkerModels } from './worker-models.ts';
@@ -123,9 +124,16 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
       ...(options.onProgress === undefined ? {} : { onProgress: (_testId: unknown, progress: StepProgress) => options.onProgress?.(progress) }),
     },
   });
+  let session: TargetSession | null = null;
+  // Step labels and step errors pass the session's ledger, as in a run: a
+  // host-driven step whose instruction spells a secret out is recorded and
+  // announced as `<secret:name>`.
+  const redact = (text: string): string =>
+    session === null ? text : sessionSecrecy(session, config.secrets).ledger.redact(text);
   const steps = new StepRecorder(attemptId, {
     maxEventsPerStep: config.limits.maxEventsPerStep,
     projectRoot: config.projectRoot,
+    redact,
     ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
   });
   const artifacts = createAttemptArtifacts({
@@ -152,7 +160,6 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
     releaseSecretRegistry(config);
   };
 
-  let session: TargetSession;
   try {
     session = await executor.launchSession(undefined, attemptId, artifacts.dir, signal);
   } catch (cause) {

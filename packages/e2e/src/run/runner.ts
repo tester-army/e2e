@@ -242,6 +242,11 @@ export interface RunOutcome {
   reportPath: string | undefined;
   /** Where the AI trace was written; undefined unless `aiTrace` was requested. */
   aiTracePath: string | undefined;
+  /**
+   * The run's records, through the process ledger as the report was: a value
+   * a provider resolved after a record was written is redacted here too,
+   * so a host reading these instead of `report` sees the same text.
+   */
   results: readonly ResultRecord[];
 }
 
@@ -324,10 +329,16 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     options.onEvent,
   ]);
 
-  /** Records one run-level error once: into the report and onto the stream. */
+  /**
+   * Records one run-level error once: into the report and onto the stream,
+   * through the process ledger as it stands. A cleanup or collection failure
+   * is serialized without a session to redact it; the ledger here knows the
+   * static values from the config, and what the workers' sessions learned.
+   */
   const recordRunError = (runError: RunError): void => {
-    runErrors.push(runError);
-    emit({ type: 'run-error', error: runError.error });
+    const error = redactLeaves(runError.error, processSecrets.redact);
+    runErrors.push({ error });
+    emit({ type: 'run-error', error });
   };
 
   /** Records a failure of the run itself, outside any test. */
@@ -512,7 +523,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       forceController.signal,
     );
     listReporter?.rows(rows);
-    return { exitCode, status, report, reportPath, aiTracePath, results };
+    return { exitCode, status, report, reportPath, aiTracePath, results: results.map(redactResult) };
   };
 
   if (loaded.config === undefined) {
@@ -947,6 +958,16 @@ function plannedFiles(selection: Selection): { file: string; target: string; tes
     }
   }
   return [...files.values()];
+}
+
+/**
+ * One record through the process ledger, its live target kept as it is: the
+ * target carries the engine handle, which is not a document, and names no
+ * secret; everything else is the plain data the report was built from.
+ */
+function redactResult(result: ResultRecord): ResultRecord {
+  const { target, ...record } = result;
+  return { ...redactLeaves(record, processSecrets.redact), target };
 }
 
 /** The exit-code status the report builder starts from; `blocked` is derived from the results there. */
