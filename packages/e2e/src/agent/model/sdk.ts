@@ -9,8 +9,8 @@
 
 import type { ModelMessage } from 'ai';
 import { withHint } from '../../internal/errors.ts';
-import type { ResolvedModel, SdkLanguageModel } from '../../config/agent.ts';
-import { aiSdk, loadAiSdk } from '../ai-sdk.ts';
+import type { ResolvedModel } from '../../config/agent.ts';
+import { aiSdk, asSdkLanguageModel, loadAiSdk, type SdkLanguageModel } from '../ai-sdk.ts';
 import { packageVersion } from '../../internal/package-version.ts';
 import { AgentError } from '../error.ts';
 import { isContextOverflow } from './overflow.ts';
@@ -48,7 +48,7 @@ export function createModelAdapter(model: ResolvedModel | undefined): ModelAdapt
     );
   }
   const adapterVersion = packageVersion(import.meta.url, '../../../package.json', '0.0.0');
-  const languageModel = model.model;
+  const languageModel = asSdkLanguageModel(model.model);
 
   return {
     provenance: {
@@ -155,7 +155,7 @@ function userMessage(prompt: string, images: readonly ModelImage[]): ModelMessag
  * adapter.
  */
 export function instantiateLanguageModel(model: ResolvedModel): SdkLanguageModel {
-  return model.model;
+  return asSdkLanguageModel(model.model);
 }
 
 interface UsageCarrier {

@@ -7,8 +7,8 @@ import type {
 } from '../../src/collect/select.ts';
 import type { ResolvedTarget } from '../../src/config/resolve.ts';
 import { buildWorkPlans, nonRunResult, unstartedResult } from '../../src/run/units.ts';
-import { decodeResult, encodeResult } from '../../src/run/worker/protocol.ts';
-import type { ResultRecord } from '../../src/run/records.ts';
+import { decodeResult } from '../../src/run/worker/protocol.ts';
+import { encodeResult, type ResultRecord } from '../../src/run/records.ts';
 
 const EMPTY_APP: ResolvedTarget['app'] = {
   base: undefined,

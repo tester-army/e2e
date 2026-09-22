@@ -13,7 +13,7 @@ import type { CliOverrides, PortAssignments, ResolvedTarget } from '../../config
 import type { AiTraceSnapshot } from '../../internal/ai-trace.ts';
 import type { DebugSnapshot } from '../../internal/debug.ts';
 import type { SerializedError } from '../../internal/errors.ts';
-import type { ResultRecord, RunError, SerialGroupRecord } from '../records.ts';
+import type { ResultRecord, RunError, SerialGroupRecord, WireResultRecord } from '../records.ts';
 import type { StepProgress } from '../steps.ts';
 
 /** One runnable pair on the wire; the worker resolves the test function. */
@@ -104,12 +104,6 @@ export interface TerminateMessage {
 }
 
 export type MainToWorker = RunUnitMessage | InterruptMessage | ShutdownMessage | TerminateMessage;
-
-/**
- * `ResultRecord` minus the live target. Serializable as-is: `test` is a
- * `TestIdentity` and every other field is plain data.
- */
-export type WireResultRecord = Omit<ResultRecord, 'target'>;
 
 export interface ReadyMessage {
   readonly type: 'ready';
@@ -231,12 +225,6 @@ export type WorkerToMain =
   | ShutdownDoneMessage
   | FatalMessage
   | RunAbortMessage;
-
-/** Strips the live target from a result for transport. */
-export function encodeResult(record: ResultRecord): WireResultRecord {
-  const { target: _target, ...rest } = record;
-  return rest;
-}
 
 /** Reattaches the scheduler's resolved target to a wire result. */
 export function decodeResult(wire: WireResultRecord, target: ResolvedTarget): ResultRecord {

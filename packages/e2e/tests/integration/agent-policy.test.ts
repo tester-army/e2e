@@ -16,8 +16,8 @@ import { assertValidReport } from '../helpers/report-schema.ts';
 import { resultByTitle, runProject, type FixtureProject } from '../helpers/run-project.ts';
 import type { RunOutcome } from '../helpers/run-project.ts';
 import { createAgent } from '../../src/agent/default-agent.ts';
+import type { SdkLanguageModel } from '../../src/agent/ai-sdk.ts';
 import type { StepExecutor } from '../../src/agent/executor.ts';
-import type { SdkLanguageModel } from '../../src/config/agent.ts';
 
 const SUITE = `import { test, credentials } from 'e2e';
 

@@ -10,7 +10,7 @@
 import { DEFAULT_AGENT_MARKER } from './agent-brand.ts';
 import type { ToolExecutionOptions, ToolSet } from 'ai';
 
-import type { SdkLanguageModel } from '../config/agent.ts';
+import type { SdkLanguageModel } from './ai-sdk.ts';
 import { AgentError } from './error.ts';
 import type { ReplayedPrefix, StepExecutor, StepExecutorContext } from './executor.ts';
 import { interactiveNodeCount } from './observation.ts';

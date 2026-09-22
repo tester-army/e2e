@@ -10,7 +10,8 @@ not enough. There are two options:
    tools. It handles budgets, repeated-call detection, verdicts, usage
    accounting, and debug transcripts.
 2. `StepExecutor` lets you implement `runStep(ctx)` yourself. A model and
-   the AI SDK are optional.
+   the AI SDK are optional; the `e2e` and `e2e/engine` types compile with no
+   `ai` package installed.
 
 Both receive a deadline, redacted observations, and checked action methods.
 The runner records their verdicts.

@@ -147,6 +147,19 @@ export interface ResultRecord {
   serialGroupId?: string;
 }
 
+/**
+ * `ResultRecord` minus the live target: what crosses the worker channel and
+ * what reporters see. Serializable as-is: `test` is a `TestIdentity` and
+ * every other field is plain data.
+ */
+export type WireResultRecord = Omit<ResultRecord, 'target'>;
+
+/** Strips the live target from a result for transport. */
+export function encodeResult(record: ResultRecord): WireResultRecord {
+  const { target: _target, ...rest } = record;
+  return rest;
+}
+
 export interface RunError {
   error: SerializedError;
 }

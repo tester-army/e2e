@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createAgent } from '../../src/agent/default-agent.ts';
-import type { SdkLanguageModel } from '../../src/config/agent.ts';
+import type { SdkLanguageModel } from '../../src/agent/ai-sdk.ts';
 import { resolveConfig } from '../../src/config/resolve.ts';
 import { defineEngine } from '../../src/engine/index.ts';
 import { createEngineSession } from '../../src/engine/session.ts';

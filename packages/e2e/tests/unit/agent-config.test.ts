@@ -2,7 +2,7 @@ import { APICallError, createGateway } from 'ai';
 import { describe, expect, it, vi } from 'vitest';
 import { resolveConfig, type CliOverrides } from '../../src/config/resolve.ts';
 import { createAgent } from '../../src/agent/default-agent.ts';
-import type { SdkLanguageModel } from '../../src/config/agent.ts';
+import type { SdkLanguageModel } from '../../src/agent/ai-sdk.ts';
 import type { E2EConfig } from '../../src/types.ts';
 
 const ROOT = '/tmp/e2e-agent-config-project';
