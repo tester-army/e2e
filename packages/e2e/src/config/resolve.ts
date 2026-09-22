@@ -147,7 +147,8 @@ export interface CliOverrides {
   agents?: readonly string[];
 }
 
-const TARGET_NAME_PATTERN = /^[A-Za-z0-9_.-]+$/;
+/** A safe artifact path segment: the filename alphabet, and never `.` or `..`, which would name a directory's self or parent. */
+const TARGET_NAME_PATTERN = /^(?!\.+$)[A-Za-z0-9_.-]+$/;
 
 const TARGET_KEYS = new Set(['name', 'platform', 'engine']);
 
@@ -629,7 +630,7 @@ function resolveTargets(raw: E2EConfig, projectRoot: string, ports: PortAssignme
       const source = target.name === undefined ? ' (defaulted from the platform)' : '';
       throw new ConfigurationError(
         'INVALID_CONFIG',
-        `invalid target name ${JSON.stringify(name)}${source}; target names are limited to ASCII letters, numbers, "_", "-", and "."`,
+        `invalid target name ${JSON.stringify(name)}${source}; target names are limited to ASCII letters, numbers, "_", "-", and ".", and cannot be only dots`,
       );
     }
     if (seen.has(name)) {
@@ -818,7 +819,7 @@ function resolveAgents(
     if (!AGENT_NAME_PATTERN.test(name)) {
       throw new ConfigurationError(
         'INVALID_CONFIG',
-        `invalid agent name ${JSON.stringify(name)}: names are ASCII letters, numbers, "_", "-", or "."`,
+        `invalid agent name ${JSON.stringify(name)}: names are ASCII letters, numbers, "_", "-", or ".", and cannot be only dots`,
       );
     }
     agents.set(name, resolveAgentConfig(value, env, ci, limits, `agents.${name}`));

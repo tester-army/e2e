@@ -204,6 +204,13 @@ describe('resolveConfig', () => {
     expect(() => resolve({ targets: [{ platform: 'bad name' }] })).toThrow(
       'invalid target name "bad name" (defaulted from the platform)',
     );
+    // `.` and `..` pass the alphabet and are path segments: a target named `..` would write beside `report.json`.
+    for (const dots of ['.', '..', '...']) {
+      expect(() => resolve({ targets: [{ name: dots, platform: 'web' }] })).toThrow(
+        `invalid target name "${dots}"; target names are limited to ASCII letters, numbers, "_", "-", and ".", and cannot be only dots`,
+      );
+    }
+    expect(resolve({ targets: [{ name: '.hidden', platform: 'web' }, { name: 'v1.2', platform: 'web' }] }).targets.map((target) => target.name)).toEqual(['.hidden', 'v1.2']);
     expect(() =>
       resolve({
         targets: [

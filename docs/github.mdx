@@ -104,7 +104,10 @@ The comment shows test counts and agent usage, followed by each failure's
 error, source line, and evidence links. Flaky tests and the full test list
 are collapsed; the list is one table with a row per file above its tests,
 and its agent column appears only when the run used the agent. Run-level errors appear above the test failures. Large
-reports are shortened to fit GitHub's comment limit.
+reports are shortened to fit GitHub's comment limit. Text from the app under
+test that GitHub would turn into a mention, an issue link, or a URL is shown
+as code, so a screen reading `@someone` or `https://...` notifies no one and
+links nowhere.
 
 The built-in `markdown` reporter writes the same summary to
 `.e2e/summary.md`.

@@ -301,7 +301,7 @@ describe('renderMarkdownReport', () => {
         errors: [{ category: 'infrastructure', code: 'APP_UNREACHABLE', message: 'http://127.0.0.1:3000 did not answer', retryable: true, phase: 'launch' }],
       }),
     );
-    expect(body).toContain('### 🔴 e2e: no tests ran\n\n> **APP_UNREACHABLE** (launch) http://127.0.0.1:3000 did not answer\n');
+    expect(body).toContain('### 🔴 e2e: no tests ran\n\n> **APP_UNREACHABLE** (launch) `http://127.0.0.1:3000` did not answer\n');
     expect(body).not.toContain('<details>');
   });
 
@@ -329,12 +329,33 @@ describe('renderMarkdownReport', () => {
     expect(body).toContain('a \\| b &lt;img src=x onerror=alert(1)&gt; \\*c\\*');
     // The canonical sanitizer drops color sequences and marks a control character, as the terminal does.
     expect(body).toContain('line one line two red �\\`tick\\`');
-    expect(body).toContain('at step 1 of 2: `screen.tap` `tap x \\| y`, after 900ms\n\n> line one line two red �\\`tick\\`\n> saw &lt;b&gt;bold&lt;/b&gt; and more');
+    // A backtick in a label lengthens the code span's delimiter instead of vanishing.
+    expect(body).toContain('at step 1 of 2: `` screen.`tap` `` `` tap `x` \\| y ``, after 900ms\n\n> line one line two red �\\`tick\\`\n> saw &lt;b&gt;bold&lt;/b&gt; and more');
     expect(body).toContain('| 🔴 | **tests/we\\|rd.e2e.ts** · 1 failed | 1.2s |');
     expect(body).toContain('[tests/we\\|rd.e2e.ts:3](https://x.test/blob%29%3Cscript%3E)');
     expect(body).toContain('[run artifacts](https://x.test/run%20%281%29)');
     expect(body).not.toContain('');
     expect(body).not.toContain('');
+  });
+
+  it('shows a token GitHub would link as code, and keeps a quoted line from opening a block', () => {
+    // GitHub's mention and issue filters run on the rendered text, so an entity or a backslash before `@` or `#` changes nothing; a code span is skipped.
+    const hostile = named({
+      title: 'ping @octocat @org/team, see #123 GH-7, open https://evil.example/p (www.evil.example) <https://e.example/`x`|y>',
+      status: 'failed',
+      attempts: [
+        attempt({
+          status: 'failed',
+          error: { code: 'ASSERTION_FAILED', message: '# Heading\n- item' },
+          steps: [step({ index: 0, api: 'agent.act', label: 'pay', status: 'failed', explanation: '1. numbered\nmail a@b.example, color:#123456, x#1' })],
+        }),
+      ],
+    });
+    const body = renderMarkdownReport(page({ status: 'failed', results: [hostile] }));
+    expect(body).toContain('ping `@octocat` `@org/team,` see `#123` `GH-7,` open `https://evil.example/p` `(www.evil.example)` `` <https://e.example/`x`\\|y> ``');
+    expect(body).toContain('\n\n> \\# Heading - item\n> 1\\. numbered mail `a@b.example,` `color:#123456,` `x#1`\n');
+    expect(body).not.toMatch(/[^`]@octocat/);
+    expect(body).not.toMatch(/[^`]https:\/\/evil/);
   });
 
   it('clips long text by code point, never through an emoji', () => {
@@ -588,6 +609,20 @@ describe('renderMarkdownReport for an exploration', () => {
     // The exploration's own failure is the verdict the findings express, so it gets no block and no table.
     expect(body).not.toContain('**🔴 explore');
     expect(body).not.toContain('<details>');
+  });
+
+  it('keeps a backtick inside a linkable token by lengthening the code span delimiter, as GFM reads it', () => {
+    const body = renderMarkdownReport(
+      explored({ summary: 'open https://example.test/`code` then https://x.example/``q`` and https://y.example/z` or plain https://ok.example' }),
+    );
+    expect(body).toContain('open `` https://example.test/`code` `` then ``` https://x.example/``q`` ``` and `` https://y.example/z` `` or plain `https://ok.example`\n');
+  });
+
+  it('keeps an assessment that starts like a heading, a list, or a rule as prose', () => {
+    expect(renderMarkdownReport(explored({ summary: '# Verdict\n- the cart is the weak spot' }))).toContain('**Assessment**\n\n\\# Verdict - the cart is the weak spot\n');
+    expect(renderMarkdownReport(explored({ summary: '1. the cart is the weak spot' }))).toContain('**Assessment**\n\n1\\. the cart is the weak spot\n');
+    expect(renderMarkdownReport(explored({ summary: '---' }))).toContain('**Assessment**\n\n\\---\n');
+    expect(renderMarkdownReport(explored({ summary: '1.5 stars, see @octocat' }))).toContain('**Assessment**\n\n1.5 stars, see `@octocat`\n');
   });
 
   it('links the evidence to the run page when there is one, and names the kind when the reader has neither', () => {

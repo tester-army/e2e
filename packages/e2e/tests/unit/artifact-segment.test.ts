@@ -1,7 +1,8 @@
 /**
- * The report path segment a test id becomes: a safe alphabet, a length cap,
- * and past the cap a digest of the whole id, so two long ids that share a
- * prefix get artifact directories of their own.
+ * The report path segment a name or test id becomes: a safe alphabet, never
+ * `.` or `..` (which would name the directory itself or its parent), a length
+ * cap, and past the cap a digest of the whole id, so two long ids that share
+ * a prefix get artifact directories of their own.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -18,6 +19,12 @@ describe('sanitizePathSegment', () => {
     expect(sanitizePathSegment('tests/auth.e2e.ts::auth::signs in')).toBe('tests_auth.e2e.ts__auth__signs_in');
     const atCap = 'x'.repeat(MAX_SEGMENT_CHARS);
     expect(sanitizePathSegment(atCap)).toBe(atCap);
+  });
+
+  it('never returns the current or parent directory, and keeps dots inside a name', () => {
+    for (const dots of ['.', '..', '...']) expect(sanitizePathSegment(dots)).toBe('_');
+    expect(sanitizePathSegment('.hidden')).toBe('.hidden');
+    expect(sanitizePathSegment('a..b')).toBe('a..b');
   });
 
   it('gives two long ids with a common 120-character prefix distinct, capped segments in the safe alphabet', () => {
