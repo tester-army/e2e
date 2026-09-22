@@ -58,7 +58,13 @@ closed`.
 
 Text comparison is normalized: leading and trailing whitespace is trimmed and
 each run of whitespace collapses to one space. A `TextMatch` string matches
-exactly; a `RegExp` uses its own source and flags.
+exactly; a `RegExp` uses its own source and flags. `toHaveValue` is the
+exception: a form control's value is compared as it is, newlines and trailing
+spaces included, and the failure message prints it that way. A control the
+platform reports without a value, such as a cleared field on a device, reads
+as `''`. A node whose role carries no value, such as a heading or a link,
+never satisfies `toHaveValue`, negated or not; the message reads
+`no value (not a form control)`.
 
 ## Locator matchers
 
@@ -90,7 +96,7 @@ export interface AsyncExpectation {
   /** Waits for contained normalized text; a list waits for exactly that many matches, each containing its entry, in order. */
   toContainText(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
   toContainText(expected: readonly TextMatch[], options?: { timeout?: number }): Promise<void>;
-  /** Waits for an input value. */
+  /** Waits for a form control's value, compared as it is. */
   toHaveValue(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
   /** Waits for the attribute to be present; with `value`, for it to match. */
   toHaveAttribute(name: string, options?: { timeout?: number }): Promise<void>;

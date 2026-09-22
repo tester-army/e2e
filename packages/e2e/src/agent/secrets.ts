@@ -5,7 +5,7 @@ import { unavailableCode } from '../secrets.ts';
 import type { Secret } from '../types.ts';
 import { AgentError, toAgentError } from './error.ts';
 import type { AgentContext } from './invocation.ts';
-import { isEditable } from './observation.ts';
+import { isEditable } from '../internal/roles.ts';
 
 /**
  * The narrow surface a secret fill needs from its step machinery: the act

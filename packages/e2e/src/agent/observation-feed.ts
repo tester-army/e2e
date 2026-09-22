@@ -11,6 +11,7 @@
 import type { SemanticNode } from '../engine/surface.ts';
 import { relocateDescriptor } from '../cache/relocate.ts';
 import { TestError } from '../internal/errors.ts';
+import { isEditable } from '../internal/roles.ts';
 import type { StepAgentDetails, VisionDegradation } from '../run/steps.ts';
 import { describeTarget } from './actions.ts';
 import { AgentError } from './error.ts';
@@ -18,7 +19,6 @@ import type { ExecutorObservation, ExecutorObserveOptions, ExecutorTarget } from
 import type { AgentContext } from './invocation.ts';
 import {
   changeShape,
-  isEditable,
   isTransitionalObservation,
   observationShape,
   pixelsForModel,
