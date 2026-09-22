@@ -250,8 +250,9 @@ export class StreamRedactor {
  * the serialized text would let a secret that is JSON punctuation or a
  * property name corrupt what a reader parses. Follows `JSON.stringify`: own
  * enumerable properties, a value with `toJSON` replaced by what it
- * serializes to, binary views left for the serializer. The input is not
- * mutated. Typed as the input for documents that are already JSON.
+ * serializes to, a function or symbol dropped from an object and `null` in
+ * an array, binary views left for the serializer. The input is not mutated.
+ * Typed as the input for documents that are already JSON.
  */
 export function redactLeaves<T>(value: T, redact: (text: string) => string): T {
   return walk(value, redact) as T;
@@ -259,12 +260,16 @@ export function redactLeaves<T>(value: T, redact: (text: string) => string): T {
 
 function walk(value: unknown, redact: (text: string) => string): unknown {
   if (typeof value === 'string') return redact(value);
+  if (typeof value === 'function' || typeof value === 'symbol') return undefined;
   if (typeof value !== 'object' || value === null) return value;
   if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) return value;
-  if (Array.isArray(value)) return value.map((item: unknown) => walk(item, redact));
+  if (Array.isArray(value)) return value.map((item: unknown) => walk(item, redact) ?? null);
   const toJSON = (value as { toJSON?: unknown }).toJSON;
   if (typeof toJSON === 'function') return walk((toJSON as () => unknown).call(value), redact);
   const out: Record<string, unknown> = {};
-  for (const [key, item] of Object.entries(value)) out[key] = walk(item, redact);
+  for (const [key, item] of Object.entries(value)) {
+    const walked = walk(item, redact);
+    if (walked !== undefined) out[key] = walked;
+  }
   return out;
 }

@@ -27,10 +27,14 @@ export function createScriptedInstance<Options>(
   } as ModelInstance;
 }
 
-/** One scripted generate result with the fixed test usage envelope. */
+/** What a provider attaches to a generation beside its content, keyed by provider name. */
+export type ScriptedProviderMetadata = Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+
+/** One scripted generate result with the fixed test usage envelope, and the provider metadata a script attaches. */
 export function scriptedResult(
   content: readonly unknown[],
   finishReason: 'stop' | 'tool-calls',
+  providerMetadata?: ScriptedProviderMetadata,
 ): object {
   return {
     content,
@@ -41,5 +45,6 @@ export function scriptedResult(
       totalTokens: 120,
     },
     warnings: [],
+    ...(providerMetadata === undefined ? {} : { providerMetadata }),
   };
 }

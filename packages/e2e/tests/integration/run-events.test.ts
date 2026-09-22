@@ -327,6 +327,53 @@ test.describe('shared', { serial: true }, () => {
       expect(outputOf('shared > second')).toEqual([' done\n']);
     } finally {
       project?.cleanup();
+    }
+  });
+
+  it('a step label spelling a secret arrives redacted in the live start event, as the report keeps it', async () => {
+    const SECRET = 'event-secret-Rm2x6630';
+    const app = await startFixtureApp();
+    const events: RunEvent[] = [];
+    const project = createProject({
+      'tests/labels.e2e.ts': `import { test } from 'e2e';
+test('labels', async ({ app, agent }) => {
+  await app.open('/?token=${SECRET}');
+  await agent.act('use key ${SECRET} to continue');
+});
+`,
+    });
+    const passes: StepExecutor = {
+      name: 'passes',
+      async runStep() {
+        return { status: 'passed', summary: 'nothing to do' };
+      },
+    };
+    try {
+      const outcome = await runExisting(project, {
+        appUrl: app.url,
+        config: {
+          tests: 'tests/**/*.e2e.ts',
+          agents: { default: passes },
+          cache: 'off' as const,
+          credentials: { member: { username: 'ada', password: SECRET } },
+        },
+        runOptions: { onEvent: (event) => {
+          events.push(event);
+        } },
+      });
+      expect(outcome.status).toBe('passed');
+      const starts = events.flatMap((event) =>
+        event.type === 'step' && event.progress.phase === 'start' ? [[event.progress.api, event.progress.label]] : [],
+      );
+      expect(starts).toEqual(expect.arrayContaining([
+        ['app.open', '/?token=<secret:member>'],
+        ['agent.act', 'use key <secret:member> to continue'],
+      ]));
+      expect(JSON.stringify(events)).not.toContain(SECRET);
+      const steps = outcome.report.run.results[0]!.attempts[0]!.steps;
+      expect(steps.map((step) => step.label)).toEqual(starts.map(([, label]) => label));
+    } finally {
+      project.cleanup();
       await app.close();
     }
   }, 120_000);

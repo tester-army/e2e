@@ -30,13 +30,24 @@ describe('redactLeaves', () => {
   it('serializes as JSON.stringify would: binary views untouched, toJSON values replaced by their form', () => {
     const bytes = new Uint8Array([1, 2]);
     const out = redactLeaves(
-      { bytes, when: new Date(0), url: new URL('https://x.test/{'), fn: () => 1 },
+      { bytes, when: new Date(0), url: new URL('https://x.test/{') },
       ledger.redact,
     );
     expect(out.bytes).toBe(bytes);
     expect(out.when).toBe('1970-01-01T00:00:00.000Z');
     expect(out.url).toBe('https://x.test/<secret:brace>');
-    expect(typeof out.fn).toBe('function');
+  });
+
+  it('drops functions and symbols as JSON.stringify does: gone from an object, null in an array, undefined alone', () => {
+    const out = redactLeaves(
+      { fn: () => 1, sym: Symbol('s'), list: [() => 1, '{', undefined], kept: 'target' },
+      ledger.redact,
+    );
+    expect(Object.keys(out)).toEqual(['list', 'kept']);
+    expect(out.list).toEqual([null, '<secret:brace>', null]);
+    expect(out.kept).toBe('<secret:key>');
+    expect(redactLeaves(() => 1, ledger.redact)).toBeUndefined();
+    expect(JSON.parse(JSON.stringify(out))).toEqual(out);
   });
 
   it('returns a string redacted and any other primitive as is', () => {
