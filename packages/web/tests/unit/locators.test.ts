@@ -135,6 +135,34 @@ describe('projectExpression', () => {
     expect(chainOf(projectExpression(page, tablist).locator)).toEqual(['role(tablist)']);
   });
 
+  it('narrows a visible query by selector, aria-hidden ancestors included, where it scopes or has-filters', () => {
+    const NOT_ARIA_HIDDEN = 'locator(xpath=self::*[not(ancestor-or-self::*[@aria-hidden="true"])])';
+    const card = (visible: boolean): LocatorExpression => ({
+      kind: 'query',
+      query: { kind: 'testId', value: { kind: 'string', value: 'card', exact: true }, ...(visible ? { visible: true } : {}) },
+    });
+    const button: LocatorExpression = {
+      kind: 'query',
+      query: { kind: 'role', value: { kind: 'string', value: 'button', exact: true }, visible: true },
+    };
+    const terminal = projectExpression(page, button);
+    expect(terminal.visible).toBe(true);
+    expect(chainOf(terminal.locator)).toEqual(['role(button)', 'filter()', NOT_ARIA_HIDDEN]);
+    const scoped = projectExpression(page, { ...textbox, scope: card(true) } as LocatorExpression);
+    expect(chainOf(scoped.locator)).toEqual(['locator(internal:testid=[data-testid="card"s])', 'filter()', NOT_ARIA_HIDDEN, 'role(textbox)']);
+    expect(scoped.visible).toBe(false);
+    const filtered = projectExpression(page, { kind: 'filter', source: card(false), has: button });
+    expect(chainOf(filtered.locator)).toEqual([
+      'locator(internal:testid=[data-testid="card"s])',
+      `filter(has=role(button)>filter()>${NOT_ARIA_HIDDEN})`,
+    ]);
+    // A query without the flag composes bare.
+    expect(chainOf(projectExpression(page, { ...textbox, scope: card(false) } as LocatorExpression).locator)).toEqual([
+      'locator(internal:testid=[data-testid="card"s])',
+      'role(textbox)',
+    ]);
+  });
+
   it('composes positions natively for every query but displayValue', () => {
     const projected = projectExpression(page, { kind: 'index', source: textbox, index: 1 });
     expect(chainOf(projected.locator)).toEqual(['role(textbox)', 'nth(1)']);

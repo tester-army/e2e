@@ -193,6 +193,53 @@ describe('visibility through the engine', () => {
     });
   });
 
+  it('hides a nested match for the outermost hidden boundary, aria-hidden or layout, at depth two', async () => {
+    await withPage('/nested-frames', async (engine, operation) => {
+      const chain = (outer: string, inner: string, visible = false): LocatorExpression => ({
+        kind: 'frame',
+        selector: outer,
+        source: { kind: 'frame', selector: inner, source: text('Save', visible) },
+      });
+      const [shown] = await engine.locate!(chain('#shown-outer', '#shown-inner'), operation);
+      expect(shown?.role).toBe('button');
+      expect(shown?.states?.hidden).toBeUndefined();
+      const [ariaHidden] = await engine.locate!(chain('#shown-outer', '#hidden-inner'), operation);
+      expect(ariaHidden).toMatchObject({ role: 'button', states: { hidden: true }, hiddenBy: 'aria-hidden' });
+      const [collapsed] = await engine.locate!(chain('#collapsed-outer', '#shown-inner'), operation);
+      expect(collapsed).toMatchObject({ role: 'button', states: { hidden: true } });
+      expect(collapsed).not.toHaveProperty('hiddenBy');
+      // Both boundaries hidden: the outermost one, collapsed by layout, gives the reason.
+      const [both] = await engine.locate!(chain('#collapsed-outer', '#hidden-inner'), operation);
+      expect(both).toMatchObject({ role: 'button', states: { hidden: true } });
+      expect(both).not.toHaveProperty('hiddenBy');
+      expect(await engine.locate!(chain('#shown-outer', '#shown-inner', true), operation)).toHaveLength(1);
+      expect(await engine.locate!(chain('#shown-outer', '#hidden-inner', true), operation)).toEqual([]);
+      expect(await engine.locate!(chain('#collapsed-outer', '#shown-inner', true), operation)).toEqual([]);
+      expect(await engine.locate!(chain('#collapsed-outer', '#hidden-inner', true), operation)).toEqual([]);
+    });
+  });
+
+  it('leaves a light-DOM match under an aria-hidden ancestor out of a visible scope and a visible has-filter', async () => {
+    await withPage('/aria-hidden-cards', async (engine, operation) => {
+      const card = (visible: boolean): LocatorExpression => ({
+        kind: 'query',
+        query: { kind: 'testId', value: { kind: 'string', value: 'card', exact: true }, ...(visible ? { visible: true } : {}) },
+      });
+      // Every card, then every Save, is two; the aria-hidden one is painted and Playwright's own filter keeps it.
+      const cards = await engine.locate!(card(false), operation);
+      expect(cards.map((node) => node.hiddenBy)).toEqual(['aria-hidden', undefined]);
+      expect(await engine.locate!({ ...text('Save', false), scope: card(false) }, operation)).toHaveLength(2);
+      expect(await engine.locate!({ kind: 'filter', source: card(false), has: text('Save', false) }, operation)).toHaveLength(2);
+      // The visible query narrows by selector, so the composition never sees the hidden card.
+      const scoped = await engine.locate!({ ...text('Save', false), scope: card(true) }, operation);
+      expect(scoped).toHaveLength(1);
+      expect(scoped[0]?.states?.hidden).toBeUndefined();
+      const filtered = await engine.locate!({ kind: 'filter', source: card(false), has: text('Save', true) }, operation);
+      expect(filtered).toHaveLength(1);
+      expect(filtered[0]?.states?.hidden).toBeUndefined();
+    });
+  });
+
   it('takes first() on a visible query among shown nodes when a hidden shadow host holds the first match', async () => {
     await withPage('/shadow-twins', async (engine, operation) => {
       const all = await engine.locate!(text('Save', false), operation);

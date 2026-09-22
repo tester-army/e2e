@@ -271,10 +271,52 @@ const SHADOW_TWINS = `<!doctype html>
 </body>
 </html>`;
 
+/**
+ * Two outer frames of one middle document, which holds an aria-hidden inner
+ * frame and a shown one: every pairing of a shown or collapsed outer with a
+ * hidden or shown inner, for the depth at which the outermost boundary rules.
+ */
+const NESTED_FRAMES = `<!doctype html>
+<html>
+<head><title>Fixture Nested Frames</title></head>
+<body>
+<h1>Nested frames</h1>
+<iframe id="shown-outer" title="Shown outer" src="/frame-middle"></iframe>
+<iframe id="collapsed-outer" title="Collapsed outer" style="display:none" src="/frame-middle"></iframe>
+</body>
+</html>`;
+
+const FRAME_MIDDLE = `<!doctype html>
+<html>
+<head><title>Frame middle</title></head>
+<body>
+<iframe id="hidden-inner" title="Hidden inner" aria-hidden="true" src="/frame-child"></iframe>
+<iframe id="shown-inner" title="Shown inner" src="/frame-child"></iframe>
+</body>
+</html>`;
+
+/**
+ * Two cards of the same test id and text in the light DOM, the first under
+ * an aria-hidden wrapper that paints as usual: what a visible query composed
+ * as a scope or a `has` filter must leave out by selector alone.
+ */
+const ARIA_HIDDEN_CARDS = `<!doctype html>
+<html>
+<head><title>Fixture Aria Hidden Cards</title></head>
+<body>
+<h1>Cards</h1>
+<div aria-hidden="true"><section data-testid="card"><p>Save</p></section></div>
+<section data-testid="card"><p>Save</p></section>
+</body>
+</html>`;
+
 const PAGES: Readonly<Record<string, string>> = {
   '/': HOME,
   '/frames': FRAMES,
   '/frame-child': FRAME_CHILD,
+  '/nested-frames': NESTED_FRAMES,
+  '/frame-middle': FRAME_MIDDLE,
+  '/aria-hidden-cards': ARIA_HIDDEN_CARDS,
   '/shadow-twins': SHADOW_TWINS,
   '/pointer': POINTER,
   '/closed-shadow': CLOSED_SHADOW,
