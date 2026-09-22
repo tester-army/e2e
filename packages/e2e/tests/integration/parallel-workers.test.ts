@@ -213,7 +213,7 @@ test('survivor passes', async ({ app }) => {
   );
 
   it(
-    'interrupts workers and reports 130',
+    'interrupts workers, reports 130, and lists the file the one worker never reached',
     async () => {
       const slowFile = `import { test } from 'e2e';
 
@@ -222,10 +222,14 @@ test('sleeps a long time', { timeout: 8000 }, async ({ app }) => {
   await new Promise((resolve) => setTimeout(resolve, 60_000));
 });
 `;
+      const queuedFile = `import { test } from 'e2e';
+
+test('waits in the queue', async () => {});
+`;
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 4_000);
       const { outcome, project } = await runProjectWithConfigFile(
-        { 'tests/slow.e2e.ts': slowFile },
+        { 'tests/slow.e2e.ts': slowFile, 'tests/unstarted.e2e.ts': queuedFile },
         {
           appUrl: app.url,
           configSource: workerConfigSource(1),
@@ -239,6 +243,11 @@ test('sleeps a long time', { timeout: 8000 }, async ({ app }) => {
       // The body is a plain sleep that never calls the harness: the interrupt
       // still ends the attempt at once, well before the 8 s test timeout.
       expect(['interrupted', 'skipped']).toContain(result.status);
+      const unstarted = resultByTitle(outcome, 'waits in the queue');
+      expect(unstarted.status).toBe('skipped');
+      expect(unstarted.skip).toEqual({ cause: 'infrastructure-unavailable', reason: 'run interrupted before execution' });
+      expect(outcome.report.run.summary.discovered).toBe(2);
+      assertValidReport(outcome.report);
       project.cleanup();
     },
     120_000,

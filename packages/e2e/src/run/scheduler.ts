@@ -244,16 +244,19 @@ class Scheduler {
   private stopEarly(limit: number): void {
     const skip = failureLimitSkip(this.failures, limit);
     this.stopSkip = skip;
-    for (const state of this.targets.values()) {
-      const units = [...state.setupQueue, ...state.fileQueue];
-      state.setupQueue.length = 0;
-      state.fileQueue.length = 0;
-      for (const unit of units) {
-        for (const pair of unit.pairs) this.report(unstartedResult(pair, skip));
-      }
-    }
+    for (const state of this.targets.values()) this.skipQueues(state, skip);
     this.options.events.onFailureLimit?.(this.failures, limit);
     this.wakeUp();
+  }
+
+  /** Empties a target's queues, reporting every pair they held as skipped for `skip`. */
+  private skipQueues(state: TargetState, skip: SkipInfo): void {
+    const units = [...state.setupQueue, ...state.fileQueue];
+    state.setupQueue.length = 0;
+    state.fileQueue.length = 0;
+    for (const unit of units) {
+      for (const pair of unit.pairs) this.report(unstartedResult(pair, skip));
+    }
   }
 
   async run(): Promise<void> {
@@ -267,9 +270,10 @@ class Scheduler {
         initFailures: 0,
         failed: false,
       });
-      if (!this.options.interruptSignal.aborted) {
-        for (const pair of plan.immediate) this.report(nonRunResult(pair));
-      }
+      // Every pair a plan holds leaves through `report` exactly once, an
+      // interrupt included: the non-run ones now, the queued ones when they
+      // run or when the interrupt skips them.
+      for (const pair of plan.immediate) this.report(nonRunResult(pair));
     }
 
     const onInterrupt = (): void => this.wakeUp();
@@ -298,31 +302,32 @@ class Scheduler {
     resolve?.();
   }
 
+  /**
+   * Stops dispatch for good and reports every pair no worker has started:
+   * the queues, and the unit a worker still starting was handed. A run
+   * stopped at its failure limit skipped its queues with that reason when it
+   * stopped and tells the workers why, so the pairs they have not started
+   * carry it too; a plain interrupt skips them as interrupted before they
+   * started, the skip `--last-failed` reads as work to run again.
+   */
   private broadcastInterrupt(): void {
     if (!this.interrupting || this.interruptBroadcast) return;
     this.interruptBroadcast = true;
-    for (const state of this.targets.values()) {
-      state.setupQueue.length = 0;
-      state.fileQueue.length = 0;
-    }
-    // A run stopped at its failure limit tells the workers why, so the pairs
-    // they have not started are skipped with that reason rather than as an
-    // interrupt's. Its queues were skipped when it stopped.
-    const skip = this.stopSkip;
+    const skip = this.stopSkip ?? INTERRUPTED_BEFORE_START;
+    for (const state of this.targets.values()) this.skipQueues(state, skip);
     // Snapshot first: retiring a worker mutates `this.workers`, and iterating
     // the live array would skip entries as they are spliced out.
     const live = [...this.workers];
     for (const worker of live) {
-      worker.runner.send({ type: 'interrupt', ...(skip === undefined ? {} : { skip }) });
+      worker.runner.send({ type: 'interrupt', ...(this.stopSkip === undefined ? {} : { skip: this.stopSkip }) });
       if (worker.state === 'busy') {
         worker.killAfter(this.options.interruptGraceMs);
         continue;
       }
-      // At the failure limit, a unit handed to a worker still starting is
-      // reported before the worker is let go; a plain interrupt drops it, as
-      // it always has.
-      if (skip !== undefined && worker.queued !== undefined) {
-        for (const pair of worker.queued.pairs) this.report(unstartedResult(pair, skip));
+      const queued = worker.queued;
+      worker.queued = undefined;
+      if (queued !== undefined) {
+        for (const pair of queued.pairs) this.report(unstartedResult(pair, skip));
       }
       this.retire(worker);
     }
@@ -523,18 +528,13 @@ class Scheduler {
 
   /**
    * Discards a worker. It stays in `this.workers` (so it keeps counting
-   * against the cap) until its exit is observed.
+   * against the cap) until its exit is observed. No caller retires a worker
+   * still holding a queued unit: the interrupt broadcast reports and releases
+   * it first, and the others only ever retire idle workers.
    */
   private retire(worker: SchedulerWorker): void {
     if (worker.state === 'retired') return;
     worker.state = 'retired';
-    // Dropping rather than requeueing is only safe because the sole caller
-    // that can retire a worker still holding a unit is the interrupt
-    // broadcast, which clears the queues anyway. Requeueing here would strand
-    // the loop instead: `dispatch` stops once interrupted, so the unit would
-    // sit in a queue that `isDone` waits on forever. The other callers only
-    // ever retire idle workers, which never hold a queued unit.
-    worker.queued = undefined;
     worker.shutdown(SHUTDOWN_GRACE_MS);
   }
 
@@ -752,19 +752,10 @@ class Scheduler {
         ),
       ),
     });
-    const units = [...state.setupQueue, ...state.fileQueue];
-    state.setupQueue.length = 0;
-    state.fileQueue.length = 0;
-    for (const unit of units) {
-      for (const pair of unit.pairs) {
-        this.report(
-          unstartedResult(pair, {
-            cause: 'infrastructure-unavailable',
-            reason: 'worker process failed to start',
-          }),
-        );
-      }
-    }
+    this.skipQueues(state, {
+      cause: 'infrastructure-unavailable',
+      reason: 'worker process failed to start',
+    });
   }
 
   /** Shuts every remaining worker down, force-killing stragglers. */
