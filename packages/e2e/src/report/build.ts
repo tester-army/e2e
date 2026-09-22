@@ -1,6 +1,7 @@
 /** report-1 document construction. */
 
 import os from 'node:os';
+import path from 'node:path';
 import { ENGINE_SPI_VERSION, type EngineSpiVersion } from '../engine/contract.ts';
 import { BLOCKABLE_CODES } from '../agent/executor.ts';
 import { DEFAULT_OBSERVATION_BYTES, resolveLimits } from '../config/agent.ts';
@@ -366,8 +367,8 @@ function relativeSource(
 ): ReportSource {
   if (source === undefined) return { file: fallbackFile, line: 1, column: 1 };
   let file = source.file;
-  if (config !== undefined && file.startsWith(config.projectRoot)) {
-    file = file.slice(config.projectRoot.length).replace(/^[/\\]/, '').split('\\').join('/');
+  if (config !== undefined && file.startsWith(`${config.projectRoot}${path.sep}`)) {
+    file = file.slice(config.projectRoot.length + path.sep.length).split(path.sep).join('/');
   }
   if (file.startsWith('/') || /^[A-Za-z]:/.test(file)) {
     file = fallbackFile;
