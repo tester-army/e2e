@@ -22,6 +22,19 @@ describe('toHaveValue', () => {
     });
   });
 
+  it.each(['textbox', 'searchbox', 'combobox', 'spinbutton', 'slider'])(
+    'reads a %s the platform reports without a value as the empty string',
+    async (role) => {
+      const control: SemanticNode = { ref: { id: 'node-1', revision: '' }, role, testId: 'field' };
+      const locator = createScreenFixture([control]).getByTestId('field');
+      await expectFixture(locator).toHaveValue('');
+      await vexpect(expectFixture(locator).toHaveValue('x')).rejects.toMatchObject({
+        code: 'ASSERTION_FAILED',
+        message: vexpect.stringContaining('observed: value ""'),
+      });
+    },
+  );
+
   it('refuses a node without a value, negated or not', async () => {
     const locator = createScreenFixture([heading]).getByRole('heading');
     await vexpect(expectFixture(locator).toHaveValue('')).rejects.toMatchObject({

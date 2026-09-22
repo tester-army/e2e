@@ -10,6 +10,7 @@ import {
   describePattern,
   type TextComparison,
 } from '../internal/text.ts';
+import { isValueControl } from '../internal/roles.ts';
 import { Deadline, pollCondition } from '../internal/time.ts';
 import { isNodeVisible } from '../locator/engine.ts';
 import { describeExpression } from '../locator/expression.ts';
@@ -385,11 +386,16 @@ function isTextMatchList(expected: TextMatch | readonly TextMatch[]): expected i
 
 /**
  * The node's field as the matcher reads it. Text and name read as the empty
- * string when absent, since a node without text has none; a node without a
- * value is not a form control and cannot answer `toHaveValue` at all.
+ * string when absent, since a node without text has none. A value reads as
+ * the empty string only on a control whose role carries one, because a
+ * device engine omits an empty value; any other node is not a form control
+ * and cannot answer `toHaveValue` at all.
  */
 function readField(def: TextMatcherDef, node: SemanticNode): string | undefined {
-  return node[def.field] ?? (def.field === 'value' ? undefined : '');
+  const raw = node[def.field];
+  if (raw !== undefined) return raw;
+  if (def.field !== 'value') return '';
+  return isValueControl(node) ? '' : undefined;
 }
 
 /** The field as the failure message prints it: normalized when the comparison was, so the message shows what got compared. */

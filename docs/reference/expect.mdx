@@ -54,9 +54,11 @@ Text comparison is normalized: leading and trailing whitespace is trimmed and
 each run of whitespace collapses to one space. A `TextMatch` string matches
 exactly; a `RegExp` uses its own source and flags. `toHaveValue` is the
 exception: a form control's value is compared as it is, newlines and trailing
-spaces included, and the failure message prints it that way. A node with no
-value, such as a heading or a link, never satisfies `toHaveValue`, negated or
-not; the message reads `no value (not a form control)`.
+spaces included, and the failure message prints it that way. A control the
+platform reports without a value, such as a cleared field on a device, reads
+as `''`. A node whose role carries no value, such as a heading or a link,
+never satisfies `toHaveValue`, negated or not; the message reads
+`no value (not a form control)`.
 
 ## Locator matchers
 
