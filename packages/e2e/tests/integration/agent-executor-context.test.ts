@@ -220,11 +220,34 @@ describe('an executor that opts out of the trace cache', () => {
   });
 });
 
-const ASSERT_EVIDENCE_SUITE = `import { test } from 'e2e';
+const ASSERT_EVIDENCE_SUITE = `import { test, credentials } from 'e2e';
 
 test('assert evidence under a custom executor', async ({ app, agent }) => {
   await app.open();
   await agent.assert('the counter shows zero', { screenshot: false });
+  await agent.assert('the counter shows zero');
+  await agent.assert('the checkout page is visible');
+});
+
+test('a failed verdict carries its screenshot', async ({ app, agent }) => {
+  await app.open();
+  try {
+    await agent.assert('the checkout page is visible');
+  } catch (error) {
+    // The path the test body was handed, surfaced where the report can show it.
+    error.message += ' [screenshot=' + String(error.screenshot) + ']';
+    throw error;
+  }
+});
+
+test('vision belongs to the executor', async ({ app, agent }) => {
+  await app.open();
+  await agent.assert('the counter shows zero, judged from pixels', { vision: true });
+});
+
+test('assert evidence after a secret fill', async ({ app, agent }) => {
+  await app.open();
+  await agent.act('sign in with the given credentials', { params: { password: credentials.user('admin').password } });
   await agent.assert('the counter shows zero');
   await agent.assert('the checkout page is visible');
 });
@@ -235,10 +258,18 @@ describe('assert evidence under a custom executor', () => {
   let outcome: RunOutcome;
   let project: FixtureProject;
 
+  /** Every instruction the executor was handed, in order. */
+  const seen: string[] = [];
   const judging: StepExecutor = {
     name: 'judging',
     version: '1',
     async runStep(context: StepExecutorContext) {
+      seen.push(context.step.instruction);
+      if (context.step.instruction.includes('sign in')) {
+        const observation = await context.observe();
+        await context.actions.typeSecret({ id: nodeIdFor(observation.text, /textbox "Password"/) }, 'admin');
+        return { status: 'passed', summary: 'filled the password' };
+      }
       return context.step.instruction.includes('checkout')
         ? { status: 'failed', summary: 'no checkout page exists here' }
         : { status: 'passed', summary: 'the counter reads 0' };
@@ -249,7 +280,14 @@ describe('assert evidence under a custom executor', () => {
     app = await startFixtureApp();
     const result = await runProject(
       { 'tests/evidence.e2e.ts': ASSERT_EVIDENCE_SUITE },
-      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: judging } } },
+      {
+        appUrl: app.url,
+        config: {
+          tests: 'tests/**/*.e2e.ts',
+          agents: { default: judging },
+          credentials: { admin: { username: 'admin', password: 'admin-pass' } },
+        },
+      },
     );
     outcome = result.outcome;
     project = result.project;
@@ -260,16 +298,67 @@ describe('assert evidence under a custom executor', () => {
     await app?.close();
   });
 
+  type Attempt = ReturnType<typeof resultByTitle>['attempts'][number];
+  /** The screenshot artifacts attached to one step. */
+  const screenshotsOf = (attempt: Attempt, step: Attempt['steps'][number]) =>
+    attempt.artifacts.filter((artifact) => artifact.kind === 'screenshot' && step.artifacts.includes(artifact.id));
+  const lastAttempt = (title: string) => resultByTitle(outcome, title).attempts.at(-1)!;
+
   it('takes the screenshot after the verdict, on a pass and on a failure alike, and none with screenshot: false', () => {
-    expect(outcome.exitCode).toBe(1);
-    const attempt = resultByTitle(outcome, 'assert evidence under a custom executor').attempts.at(-1)!;
+    const result = resultByTitle(outcome, 'assert evidence under a custom executor');
+    expect(result.status).toBe('failed');
+    const attempt = result.attempts.at(-1)!;
     expect(attempt.error?.code).toBe('ASSERTION_FAILED');
     const asserts = attempt.steps.filter((step) => step.api === 'agent.assert');
     expect(asserts.map((step) => step.status)).toEqual(['passed', 'passed', 'failed']);
-    const screenshotsOf = (step: (typeof asserts)[number]) =>
-      attempt.artifacts.filter((artifact) => artifact.kind === 'screenshot' && step.artifacts.includes(artifact.id));
-    expect(screenshotsOf(asserts[0]!)).toHaveLength(0);
-    expect(screenshotsOf(asserts[1]!)).toHaveLength(1);
-    expect(screenshotsOf(asserts[2]!)).toHaveLength(1);
+    expect(screenshotsOf(attempt, asserts[0]!)).toHaveLength(0);
+    expect(screenshotsOf(attempt, asserts[1]!)).toHaveLength(1);
+    expect(screenshotsOf(attempt, asserts[2]!)).toHaveLength(1);
+  });
+
+  it('hands the failed verdict the path of its screenshot, and the runner keeps its own failure capture beside it', () => {
+    const attempt = lastAttempt('a failed verdict carries its screenshot');
+    expect(attempt.error?.code).toBe('ASSERTION_FAILED');
+    const step = attempt.steps.find((candidate) => candidate.api === 'agent.assert')!;
+    const [evidence, ...more] = screenshotsOf(attempt, step);
+    expect(more).toEqual([]);
+    // The test body is handed the path inside the attempt's artifact directory; the record's path prefixes that directory.
+    const handed = / \[screenshot=([^\]]+)\]$/.exec(attempt.error?.message ?? '')?.[1];
+    expect(handed).toMatch(/^screenshots\/\d+-assert\.png$/);
+    expect(evidence!.path!.endsWith(`/${handed}`)).toBe(true);
+    // What the runner saw when the failure landed is a capture of its own, not the step's evidence.
+    expect(attempt.failure?.screen).toBeDefined();
+    expect(attempt.failure?.screenshot).toBeDefined();
+    expect(attempt.failure?.screenshot).not.toBe(evidence!.id);
+    expect(attempt.artifacts.find((artifact) => artifact.id === attempt.failure?.screenshot)?.kind).toBe('screenshot');
+  });
+
+  it('refuses vision with UNSUPPORTED_CAPABILITY before the executor is asked: what its model sees is its own call', () => {
+    const attempt = lastAttempt('vision belongs to the executor');
+    expect(attempt.error?.code).toBe('UNSUPPORTED_CAPABILITY');
+    expect(attempt.error?.message).toContain('vision');
+    expect(seen).not.toContain('the counter shows zero, judged from pixels');
+    // Rejected at the call, before a step opens: the attempt records no assert step.
+    expect(attempt.steps.filter((step) => step.api === 'agent.assert')).toEqual([]);
+    // A configuration error in one test decides the run's exit code, over the assertion failures beside it.
+    expect(attempt.error?.category).toBe('configuration');
+    expect(outcome.exitCode).toBe(2);
+  });
+
+  it('denies the screenshot as PIXEL_TAINTED after a secret fill, on both verdicts, and the failure capture keeps no pixels either', () => {
+    const attempt = lastAttempt('assert evidence after a secret fill');
+    expect(attempt.error?.code).toBe('ASSERTION_FAILED');
+    expect(attempt.steps.find((step) => step.api === 'agent.act')?.status).toBe('passed');
+    const asserts = attempt.steps.filter((step) => step.api === 'agent.assert');
+    expect(asserts.map((step) => step.status)).toEqual(['passed', 'failed']);
+    for (const step of asserts) {
+      expect(screenshotsOf(attempt, step)).toEqual([]);
+      expect(step.events.filter((event) => event.kind === 'policy')).toEqual([
+        expect.objectContaining({ name: 'assert.screenshot', decision: 'denied', code: 'PIXEL_TAINTED', status: 'failed' }),
+      ]);
+    }
+    expect(attempt.artifacts.filter((artifact) => artifact.kind === 'screenshot')).toEqual([]);
+    expect(attempt.failure?.screen).toBeDefined();
+    expect(attempt.failure?.screenshot).toBeUndefined();
   });
 });
