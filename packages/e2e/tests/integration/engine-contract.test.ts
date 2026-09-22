@@ -5,8 +5,9 @@
  * capability gating - can never silently regress.
  */
 
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -17,10 +18,68 @@ import {
 } from '../helpers/fake-engine.ts';
 import { installFakeModel, judgment } from '../helpers/fake-model.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
-import { resultByTitle, runProject } from '../helpers/run-project.ts';
+import { createProject, resultByTitle, runExisting, runProject } from '../helpers/run-project.ts';
 import type { E2EConfig } from '../../src/index.ts';
 
 const APP_URL = FAKE_APP_URL;
+
+const BROKEN_MODULE = 'this is not a module (';
+
+/** A test file whose first attempt rewrites the file itself to a syntax error, so the retry cannot import it. */
+function selfBreakingTest(file: string): string {
+  return `import { writeFileSync } from 'node:fs';
+import { test } from 'e2e';
+
+test('breaks its own file', { retries: 1 }, async ({ app }) => {
+  await app.open('/');
+  writeFileSync(${JSON.stringify(file)}, ${JSON.stringify(BROKEN_MODULE)});
+  throw new Error('first try');
+});
+
+test('follows in the file', async ({ app }) => {
+  await app.open('/');
+});
+`;
+}
+
+/** A setup whose first attempt rewrites its file to a syntax error and fails, so the retry cannot import it. */
+function selfBreakingSetup(file: string): string {
+  return `import { writeFileSync } from 'node:fs';
+import { test } from 'e2e';
+
+test.setup('capture session', { sessions: ['acct'], retries: 1 }, async ({ app, session }) => {
+  await app.open('/');
+  writeFileSync(${JSON.stringify(file)}, ${JSON.stringify(BROKEN_MODULE)});
+  await session.save('acct');
+  throw new Error('first try');
+});
+`;
+}
+
+const CONSUMES_SESSION = `import { test } from 'e2e';
+
+test('consumes session', { session: 'acct' }, async ({ app }) => {
+  await app.open('/');
+});
+`;
+
+/** The pid of a process that has already exited and been reaped. */
+function deadPid(): number {
+  const child = spawnSync(process.execPath, ['-e', '0']);
+  if (child.pid === undefined || child.status !== 0) throw new Error('could not spawn a short-lived process');
+  return child.pid;
+}
+
+/** Seeds a sibling run directory under the sessions root: one envelope-shaped file and an owner file naming a dead pid. */
+function seedDeadRun(sessionsRoot: string, name: string, ageMs: number): string {
+  const directory = path.join(sessionsRoot, name);
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  writeFileSync(path.join(directory, 'fake--acct.json'), '{}', { mode: 0o600 });
+  writeFileSync(path.join(directory, 'owner.json'), JSON.stringify({ pid: deadPid(), startedAt: '2026-01-01T00:00:00.000Z' }), { mode: 0o600 });
+  const then = new Date(Date.now() - ageMs);
+  utimesSync(directory, then, then);
+  return directory;
+}
 
 /** A config over the fake engine; the app URL is the engine's own declaration. */
 function fakeConfig(fake: FakeEngineHandle, extra: Partial<E2EConfig> = {}): E2EConfig {
@@ -1000,6 +1059,122 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
       const kept = videosOf(outcome, 'capture session');
       expect(kept).toHaveLength(1);
       expect(existsSync(path.join(project.dir, '.e2e', 'artifacts', kept[0]!.path!))).toBe(true);
+      project.cleanup();
+    },
+    60_000,
+  );
+
+  it(
+    'a test file that fails to re-import for a retry records the attempt at phase collection, and the worker survives',
+    async () => {
+      const fake = createFakeEngine();
+      const project = createProject({ 'tests/breaks.e2e.ts': '' });
+      const file = path.join(project.dir, 'tests', 'breaks.e2e.ts');
+      writeFileSync(file, selfBreakingTest(file));
+      const outcome = await runExisting(project, { appUrl: APP_URL, config: fakeConfig(fake) });
+
+      const broken = resultByTitle(outcome, 'breaks its own file');
+      expect(broken.status).toBe('failed');
+      expect(broken.attempts.map((attempt) => [attempt.status, attempt.error?.phase, attempt.error?.message])).toEqual([
+        ['failed', 'body', 'first try'],
+        ['failed', 'collection', expect.stringContaining('breaks.e2e.ts')],
+      ]);
+      // The file is broken for every later import too; each is recorded, none ends the worker.
+      const follower = resultByTitle(outcome, 'follows in the file');
+      expect(follower.status).toBe('failed');
+      expect(follower.attempts.map((attempt) => attempt.error?.phase)).toEqual(['collection']);
+      expect(outcome.results.flatMap((result) => result.attempts.map((attempt) => attempt.error?.code))).not.toContain('WORKER_CRASH');
+      expect(outcome.report.run.errors).toEqual([]);
+      expect(outcome.exitCode).toBe(1);
+      expect(fake.stats().disposes).toBe(fake.stats().inits);
+      project.cleanup();
+    },
+    60_000,
+  );
+
+  it(
+    'a setup whose file fails to re-import for a retry fails at phase collection, and its dependents skip',
+    async () => {
+      const fake = createFakeEngine({ state: true });
+      const project = createProject({ 'tests/auth.setup.e2e.ts': '', 'tests/uses-session.e2e.ts': CONSUMES_SESSION });
+      const file = path.join(project.dir, 'tests', 'auth.setup.e2e.ts');
+      writeFileSync(file, selfBreakingSetup(file));
+      const outcome = await runExisting(project, { appUrl: APP_URL, config: fakeConfig(fake) });
+
+      const setup = resultByTitle(outcome, 'capture session');
+      expect(setup.status).toBe('failed');
+      expect(setup.attempts.map((attempt) => [attempt.status, attempt.error?.phase, attempt.error?.message])).toEqual([
+        ['failed', 'body', 'first try'],
+        ['failed', 'collection', expect.stringContaining('auth.setup.e2e.ts')],
+      ]);
+      const consumer = resultByTitle(outcome, 'consumes session');
+      expect(consumer.status).toBe('skipped');
+      expect(consumer.skip).toMatchObject({ cause: 'setup-failed' });
+      expect(outcome.results.flatMap((result) => result.attempts.map((attempt) => attempt.error?.code))).not.toContain('WORKER_CRASH');
+      expect(outcome.report.run.errors).toEqual([]);
+      expect(outcome.exitCode).toBe(1);
+      expect(fake.stats().disposes).toBe(fake.stats().inits);
+      project.cleanup();
+    },
+    60_000,
+  );
+
+  it(
+    'a setup that never saves a declared session fails with SESSION_CONTRACT, its dependents skip, and its recording is kept',
+    async () => {
+      const fake = createFakeEngine({ video: true, state: true });
+      const files = {
+        'tests/auth.setup.e2e.ts': `import { test } from 'e2e';
+
+test.setup('forgets to save', { sessions: ['acct'] }, async ({ app }) => {
+  await app.open('/');
+});
+`,
+        'tests/uses-session.e2e.ts': CONSUMES_SESSION,
+      };
+      const { outcome, project } = await runProject(files, {
+        appUrl: APP_URL,
+        config: fakeConfig(fake, { artifacts: { kinds: ['video'], video: { retain: 'on-failure' } } }),
+      });
+      const setup = resultByTitle(outcome, 'forgets to save');
+      expect(setup.status).toBe('failed');
+      expect(setup.attempts).toHaveLength(1);
+      expect(setup.attempts[0]!.error).toMatchObject({
+        category: 'test',
+        code: 'SESSION_CONTRACT',
+        phase: 'body',
+        message: expect.stringContaining('missing: [acct]'),
+      });
+      const consumer = resultByTitle(outcome, 'consumes session');
+      expect(consumer.status).toBe('skipped');
+      expect(consumer.skip).toMatchObject({ cause: 'setup-failed' });
+      expect(outcome.report.run.errors).toEqual([]);
+      expect(outcome.exitCode).toBe(1);
+      const kept = videosOf(outcome, 'forgets to save');
+      expect(kept).toHaveLength(1);
+      expect(existsSync(path.join(project.dir, '.e2e', 'artifacts', kept[0]!.path!))).toBe(true);
+      project.cleanup();
+    },
+    60_000,
+  );
+
+  it(
+    'a run sweeps a sibling session directory whose runner is gone and a day old, and leaves a fresh one',
+    async () => {
+      const fake = createFakeEngine();
+      const project = createProject({ 'tests/contract.e2e.ts': PASSING_TEST });
+      const first = await runExisting(project, { appUrl: APP_URL, config: fakeConfig(fake) });
+      expect(first.exitCode).toBe(0);
+      const sessionsRoot = path.join(project.dir, '.e2e', 'sessions');
+      expect(existsSync(path.join(sessionsRoot, first.report.run.id))).toBe(false);
+
+      const dead = seedDeadRun(sessionsRoot, 'dead-run', 2 * 24 * 60 * 60 * 1000);
+      const fresh = seedDeadRun(sessionsRoot, 'fresh-run', 60 * 60 * 1000);
+      const second = await runExisting(project, { appUrl: APP_URL, config: fakeConfig(fake) });
+      expect(second.exitCode).toBe(0);
+      expect(existsSync(dead)).toBe(false);
+      expect(existsSync(fresh)).toBe(true);
+      expect(existsSync(path.join(sessionsRoot, second.report.run.id))).toBe(false);
       project.cleanup();
     },
     60_000,
