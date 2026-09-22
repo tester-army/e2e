@@ -65,7 +65,6 @@ import {
   sanitizeFilename,
   screenLocation,
   type RawScreenshotResult,
-  swipeShare,
   swipeWithin,
   unsupported,
   type Rect,
@@ -742,15 +741,17 @@ export class AgentDeviceSurface {
     const deterministic = operation.origin === 'test';
     const settle = deterministic ? {} : this.settleOptions;
     // The observation root is the screen: a swipe on it scrolls the whole
-    // viewport, which is the one action a screen takes.
+    // viewport, which is the one action a screen takes. It sends no `amount`
+    // and keeps agent-device's default for every momentum and every origin:
+    // agent-device centres the gesture on the viewport, so the finger starts
+    // at `0.5 + amount / 2` of the height, and a larger amount lands it in
+    // bottom chrome (a sticky footer, a tab bar) that swallows the drag. A
+    // live iOS run lost every `slow` scroll of the mobile benchmark's sticky
+    // chrome flow that way. Only the settle wait varies here, by origin.
     if (ref.id === ROOT_ID) {
       if (action.kind !== 'swipe') throw notActionable(`the screen root takes swipe only, not ${action.kind}; act on a node`);
       const before = this.latestIndex;
-      await this.command(
-        'swipe',
-        (client) => client.interactions.scroll({ direction: action.direction, amount: swipeShare(action.momentum), ...settle }),
-        operation.signal,
-      );
+      await this.command('swipe', (client) => client.interactions.scroll({ direction: action.direction, ...settle }), operation.signal);
       this.markAction(before);
       return;
     }
