@@ -133,7 +133,9 @@ built. Error messages are only stripped of control characters; treat them as
 untrusted.
 
 `onEvent` must not block and must not throw. A throw quarantines the reporter
-for the rest of the run. Slow work belongs in `onRunFinished`.
+for the rest of the run and prints one line on stderr naming the reporter, the
+event type, and the error; the run's outcome is unchanged. Slow work belongs
+in `onRunFinished`.
 
 ## The finished run
 
