@@ -10,9 +10,11 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { chromium } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { EngineCleanupContext, EngineHandle, OperationContext } from 'e2e/engine';
+import { siteOf, type EngineCleanupContext, type EngineHandle, type OperationContext } from 'e2e/engine';
 import { web, surfaceOf } from '../../src/index.ts';
+import { installSiteHeaders } from '../../src/protected-app.ts';
 import { PROTECTED_CREDENTIAL, startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 
 function cleanup(): EngineCleanupContext {
@@ -126,6 +128,46 @@ describe('web({ headers, basicAuth })', () => {
       expect(await surfaceOf(engine)!.page().evaluate(registrations)).toBe(0);
     } finally {
       await shutdown(engine);
+    }
+  });
+
+  it('keeps the headers on one deployment of a shared host and off its neighbour, every request answered locally', async () => {
+    // The surface installs the header route first on every context, and
+    // Playwright runs handlers newest first, so a route registered through
+    // the engine sees each request before the headers are added and cannot
+    // answer it afterwards. Here the recording catch-all comes first and the
+    // same installer the surface calls comes second: the header route hands
+    // the on-site request on with its headers and the catch-all fulfills it,
+    // so a `vercel.app` name never resolves and nothing leaves the machine.
+    const browser = await chromium.launch();
+    try {
+      const context = await browser.newContext();
+      const seen = new Map<string, Record<string, string>>();
+      await context.route('**/*', async (route) => {
+        seen.set(route.request().url(), route.request().headers());
+        await route.fulfill({
+          contentType: 'text/html',
+          headers: { 'access-control-allow-origin': '*' },
+          body: '<h1>ok</h1>',
+        });
+      });
+      await installSiteHeaders(context, siteOf('myapp.vercel.app'), { 'X-Vercel-Protection-Bypass': 'token' });
+      const page = await context.newPage();
+      await page.goto('https://myapp.vercel.app/');
+      const fetched = await page.evaluate(async (urls) => {
+        const statuses: number[] = [];
+        for (const url of urls) statuses.push((await fetch(url)).status);
+        return statuses;
+      }, ['https://api.myapp.vercel.app/y', 'https://other.vercel.app/x', 'https://vercel.app/z']);
+      expect(fetched).toEqual([200, 200, 200]);
+      expect(seen.get('https://myapp.vercel.app/')?.['x-vercel-protection-bypass']).toBe('token');
+      expect(seen.get('https://api.myapp.vercel.app/y')?.['x-vercel-protection-bypass']).toBe('token');
+      for (const url of ['https://other.vercel.app/x', 'https://vercel.app/z']) {
+        expect(seen.get(url), url).toBeDefined();
+        expect(seen.get(url), url).not.toHaveProperty('x-vercel-protection-bypass');
+      }
+    } finally {
+      await browser.close();
     }
   });
 

@@ -193,8 +193,10 @@ export interface EngineAppDeclaration {
  */
 export interface EngineAppInfo {
   /**
-   * The site of the app's `url`, its registrable domain as `siteOf` reads it:
-   * where the app's secrets, headers, and basic-auth credentials may go, and
+   * The site of the app's `url` as `siteOf` reads it: its registrable domain,
+   * one label deeper under a shared hosting suffix such as `vercel.app`, so
+   * `myapp.vercel.app` is a site of its own and `other.vercel.app` another.
+   * Where the app's secrets, headers, and basic-auth credentials may go, and
    * whose child frames an observation reads; `sameSite` applies it. Absent
    * for an app without a URL, which is no policy at all. The URL itself stays
    * with the harness: a surface never learns where the app is.
