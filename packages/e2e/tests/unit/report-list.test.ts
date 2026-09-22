@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
+import { visibleWidth } from '../../src/report/format.ts';
 import { ListReporter } from '../../src/report/list.ts';
 import { userFrame } from '../../src/report/code-frame.ts';
 import type { RunEventFact, RunEventOf, RunEventResult } from '../../src/run/events.ts';
@@ -1195,6 +1196,21 @@ describe('ListReporter', () => {
       }
     });
 
+    it('clips the failure glance by column, so a CJK message stays on its row', () => {
+      const restore = withTerminalSize({ columns: 60 });
+      try {
+        const { lines, output } = capture();
+        const reporter = plainReporter(output);
+        reporter.handle(plan([{ file: 'tests/a.e2e.ts', tests: 1 }]));
+        reporter.handle(finished(result({ status: 'failed', file: 'tests/a.e2e.ts', attempts: [failedAttempt('日'.repeat(40))] })));
+        const glance = lines.find((line) => line.startsWith('     → '))!;
+        expect(glance).toBe(`     → ${'日'.repeat(26)}…`);
+        expect(visibleWidth(glance)).toBe(60);
+      } finally {
+        restore();
+      }
+    });
+
     it('keeps deterministic steps out of the permanent log', () => {
       const { lines, output } = capture();
       const reporter = plainReporter(output);
@@ -1408,6 +1424,50 @@ describe('ListReporter', () => {
         const row = chunks.at(-1)!.replace(ANSI_PATTERN, '').split('\n').find((line) => line.includes('• Thinking'))!;
         expect(row).toContain('• Thinking (1.20s) (↑100 ↓20)');
         expect(row).not.toContain('modal');
+      } finally {
+        restore();
+      }
+    });
+
+    it('clamps a wide-glyph AI row to the window by column and prints it whole in the final summary', () => {
+      const restore = withTerminalSize({ columns: 60, rows: 40 });
+      try {
+        const { chunks, lines, output } = liveCapture();
+        const reporter = plainReporter(output, true);
+        // The header's configured label stands in on the row until the steps' own models do (#428).
+        reporter.handle(runStarted({ model: 'custom/日本語エージェント' }));
+        reporter.handle(plan([{ file: 'tests/a.e2e.ts', tests: 2 }]));
+        const step = (id: string, provider: string, model: string, calls: number) =>
+          ({
+            id,
+            index: 0,
+            kind: 'agent',
+            api: 'agent.act',
+            label: 'do it',
+            status: 'passed',
+            startedAt: new Date(0).toISOString(),
+            durationMs: 10,
+            events: [],
+            artifacts: [],
+            model: { provider, model, calls, inputTokens: 1_000, outputTokens: 100 },
+          }) as unknown as AttemptRecord['steps'][number];
+        reporter.handle(testStarted('t1', 'acts', 'chromium', 'tests/a.e2e.ts'));
+        reporter.handle(finished(result({ status: 'passed', id: 't1', title: ['suite', 'acts'], file: 'tests/a.e2e.ts', attempts: [attempt({ steps: [step('s1', 'custom', '日本語エージェント', 2)] })] })));
+        reporter.handle(testStarted('t2', 'judges', 'chromium', 'tests/a.e2e.ts'));
+        reporter.handle(
+          finished(result({ status: 'passed', id: 't2', title: ['suite', 'judges'], declarationIndex: 1, file: 'tests/a.e2e.ts', attempts: [attempt({ steps: [step('s2', 'typesafe-ai', 'jev', 1)] })] })),
+        );
+        const frame = chunks.at(-1)!;
+        expect(() => encodeURIComponent(frame)).not.toThrow();
+        const row = frame.replace(ANSI_PATTERN, '').split('\n').find((line) => line.trimStart().startsWith('AI '))!;
+        expect(row).toMatch(/^ {9}AI {2}2\.2k tokens · 3 model calls · .*…$/u);
+        // Content stops at the width less WIDTH_MARGIN, then the ellipsis: one column under the terminal, never on it.
+        expect(visibleWidth(row)).toBeLessThanOrEqual(59);
+        expect(visibleWidth(row)).toBeGreaterThanOrEqual(57);
+        expect(row).not.toContain('custom/日本語エージェント');
+        reporter.handle(runFinished({ reportPath: 'r.json' }));
+        const printed = lines.find((line) => line.trimStart().startsWith('AI '))!;
+        expect(printed).toContain('2.2k tokens · 3 model calls · custom/日本語エージェント');
       } finally {
         restore();
       }
