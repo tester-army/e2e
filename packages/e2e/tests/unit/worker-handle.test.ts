@@ -18,13 +18,21 @@ const PACKAGE_ROOT = path.resolve(fileURLToPath(import.meta.url), '..', '..', '.
  * Preloaded into the worker ahead of its entry: drops the channel at once and
  * holds the process open for a second, past the exit the entry itself asks
  * for on `disconnect`. The runner then sees a child whose channel is gone but
- * whose process is not.
+ * whose process is not. Main thread only: from Node 24 a preload also runs in
+ * the module-hooks thread tsx registers, which has no channel to drop and
+ * whose exit the main thread's own exit waits on.
  */
-const SEVER_CHANNEL = `const exit = process.exit.bind(process);
-process.exit = () => undefined;
-setTimeout(() => exit(0), 1000);
-process.disconnect();
+const SEVER_CHANNEL = `import { isMainThread } from 'node:worker_threads';
+if (isMainThread) {
+  const exit = process.exit.bind(process);
+  process.exit = () => undefined;
+  setTimeout(() => exit(0), 1000);
+  process.disconnect();
+}
 `;
+
+/** Longer than the second the preload holds the worker open, shorter than the test budget. */
+const WORKER_LIFETIME_MS = 10_000;
 
 describe('ChildProcessRunner', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'e2e-worker-handle-'));
@@ -66,10 +74,16 @@ describe('ChildProcessRunner', () => {
       });
       // Two sends per turn until the process is gone: the pair the scheduler
       // issues in one loop iteration, an interrupt and then a terminate.
-      while (runner.alive) {
-        runner.send({ type: 'interrupt' });
-        runner.send({ type: 'terminate' });
-        await new Promise((resolve) => setTimeout(resolve, 10));
+      const deadline = Date.now() + WORKER_LIFETIME_MS;
+      try {
+        while (runner.alive && Date.now() < deadline) {
+          runner.send({ type: 'interrupt' });
+          runner.send({ type: 'terminate' });
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+      } finally {
+        // A worker that outlived its second would otherwise hold the channel, and this process, open.
+        if (runner.alive) runner.kill();
       }
       await runner.exit;
       expect(exit).toBe('code 0, signal null');
