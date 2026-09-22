@@ -1,13 +1,15 @@
-/** Every wire schema in `schema/` accepts its valid fixture and rejects its invalid one. */
+/** Every wire schema in `schema/` accepts its valid fixture and rejects its invalid one, and ships in the package. */
 
-import { readdirSync, readFileSync } from 'node:fs';
+import { globSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { describe, expect, it } from 'vitest';
 
-const SCHEMA_ROOT = path.resolve(fileURLToPath(import.meta.url), '..', '..', '..', 'schema');
+const PACKAGE_ROOT = path.resolve(fileURLToPath(import.meta.url), '..', '..', '..');
+const SCHEMA_ROOT = path.join(PACKAGE_ROOT, 'schema');
+const SHIPPED_SCHEMAS = 'schema/*.schema.json';
 
 const schemas = readdirSync(SCHEMA_ROOT)
   .filter((name) => name.endsWith('.schema.json'))
@@ -73,4 +75,12 @@ it('ships a schema for every fixture pair', () => {
   const fixtures = readdirSync(path.join(SCHEMA_ROOT, 'fixtures'))
     .map((name) => name.replace(/\.(valid|invalid)\.json$/, ''));
   expect(new Set(fixtures)).toEqual(new Set(schemas));
+});
+
+it('publishes every schema and no fixture: package.json files names the glob, and the glob matches the schema set', () => {
+  const { files } = JSON.parse(readFileSync(path.join(PACKAGE_ROOT, 'package.json'), 'utf8')) as { files: string[] };
+  expect(files).toContain(SHIPPED_SCHEMAS);
+  const shipped = globSync(SHIPPED_SCHEMAS, { cwd: PACKAGE_ROOT }).map((file) => file.split(path.sep).join('/'));
+  expect(new Set(shipped)).toEqual(new Set(schemas.map((name) => `schema/${name}.schema.json`)));
+  expect(shipped).toHaveLength(schemas.length);
 });
