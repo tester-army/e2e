@@ -295,6 +295,23 @@ test('an action under an absent frame polls for the frame until its timeout', as
   await web.frameLocator('#absent').getByRole('button').tap({ timeout: 800 });
 });
 
+test('contenteditable hosts are textboxes: reached by label, filled, and read as a value', async ({ app, screen }) => {
+  await app.open('/editor');
+  const notes = screen.getByLabel('Notes');
+  await expect(notes).toBeVisible();
+  await notes.fill('Hello');
+  await expect(notes).toHaveValue('Hello');
+  expect(await notes.inputValue()).toBe('Hello');
+  await expect(screen.getByTestId('notes')).toHaveValue('Hello');
+  // getByRole resolves through Playwright's role selector, which knows a
+  // textbox only by an explicit role: a bare host is not found, one with
+  // role="textbox" is.
+  await expect(screen.getByRole('textbox', { name: 'Notes' })).toHaveCount(0);
+  await expect(screen.getByRole('textbox', { name: 'Message' })).toHaveCount(1);
+  await screen.getByRole('textbox', { name: 'Message' }).fill('Hi');
+  await expect(screen.getByLabel('Message')).toHaveValue('Hi');
+});
+
 test('downloads are captured as artifacts', async ({ app, web }) => {
   await app.open('/downloads');
   const download = await web.waitForDownload(() => web.locator('a[download]').tap());
@@ -380,6 +397,7 @@ describe('web platform integration', () => {
       'frame locators scope queries into iframes',
       'a nested absent frame counts as zero matches at once',
       'css selectors via web.locator',
+      'contenteditable hosts are textboxes: reached by label, filled, and read as a value',
       'downloads are captured as artifacts',
       'app lifecycle: restart preserves storage, clearState clears it',
       'screenshots land in the artifact directory',

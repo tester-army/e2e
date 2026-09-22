@@ -571,7 +571,12 @@ the blocks inside it are content, not textboxes. The tag does not matter (an
 control or a drawn surface made editable keeps its own role. `getByRole` resolves through
 Playwright's role selector, which has no such rule, so a test addresses an
 editor by role only when the host carries `role="textbox"`; `getByLabel` and
-`getByTestId` reach it either way.
+`getByTestId` reach it either way. A name taken from a block's
+`data-placeholder` (TipTap, ProseMirror) goes once the editor has content, as
+the painted hint does, so the host reads as an unnamed `textbox` from then on;
+a name from the host's own `aria-label`, `aria-labelledby`, `aria-placeholder`,
+or `data-placeholder` (Quill) stays. Anchor a test on a label or a test id, not
+on the placeholder.
 
 
 For `selectOption`, pass exactly one of `label`, `value`, or `index`. `value`

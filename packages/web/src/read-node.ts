@@ -454,6 +454,13 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
   };
 
   /**
+   * True for a referenced target accname 2A reads whole: hidden itself, or
+   * under an `aria-hidden` ancestor, which excludes it from the tree as
+   * surely as its own attribute would.
+   */
+  const isReferenceHidden = (el: Element): boolean => isHidden(el) || el.closest('[aria-hidden="true"]') !== null;
+
+  /**
    * Each aria-labelledby target's contribution (accname 2B), in attribute
    * order, unnamed targets dropped; null when the element references nothing
    * that names it. A hidden target is read whole, as a screen reader reads it,
@@ -470,7 +477,7 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
       if (target === null) continue;
       const name = contentNameOf(target, nameStyleOf(target), {
         inReference: true,
-        hiddenAllowed: isHidden(target),
+        hiddenAllowed: isReferenceHidden(target),
         visited: walk.visited,
       })
         .replace(/\s+/g, ' ')
