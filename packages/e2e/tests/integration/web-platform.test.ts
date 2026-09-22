@@ -264,6 +264,18 @@ test('frame locators scope queries into iframes', async ({ app, web }) => {
   expect(Date.now() - started).toBeLessThan(2_000);
 });
 
+test('a nested absent frame counts as zero matches at once', async ({ app, web }) => {
+  await app.open('/frame-nested');
+  const started = Date.now();
+  expect(await web.frameLocator('#outer').frameLocator('#absent').getByRole('button').count()).toBe(0);
+  expect(Date.now() - started).toBeLessThan(2_000);
+});
+
+test('an action under an absent frame polls for the frame until its timeout', async ({ app, web }) => {
+  await app.open('/frame');
+  await web.frameLocator('#absent').getByRole('button').tap({ timeout: 800 });
+});
+
 test('downloads are captured as artifacts', async ({ app, web }) => {
   await app.open('/downloads');
   const download = await web.waitForDownload(() => web.locator('a[download]').tap());
@@ -346,6 +358,7 @@ describe('web platform integration', () => {
       'cookies round-trip through policy checks',
       'dialogs are handled by registered handlers',
       'frame locators scope queries into iframes',
+      'a nested absent frame counts as zero matches at once',
       'css selectors via web.locator',
       'downloads are captured as artifacts',
       'app lifecycle: restart preserves storage, clearState clears it',
@@ -355,6 +368,15 @@ describe('web platform integration', () => {
       const result = resultByTitle(outcome, title);
       expect(result.status, `${title}: ${JSON.stringify(result.attempts[0]?.error)}`).toBe('passed');
     }
+  });
+
+  it('fails an action under an absent frame with LOCATOR_NOT_FOUND once its timeout has run', () => {
+    const result = resultByTitle(outcome, 'an action under an absent frame polls for the frame until its timeout');
+    expect(result.status).toBe('failed');
+    expect(result.attempts[0]!.error?.code).toBe('LOCATOR_NOT_FOUND');
+    const tap = result.attempts[0]!.steps.find((step) => step.api === 'locator.tap');
+    expect(tap?.status).toBe('failed');
+    expect(tap?.durationMs).toBeGreaterThanOrEqual(800);
   });
 
   it('fails ambiguous locators immediately with LOCATOR_AMBIGUOUS', () => {

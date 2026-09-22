@@ -248,6 +248,14 @@ const PAGES: Record<string, string> = {
   <iframe id="child" src="/child" title="child"></iframe>
 </body>
 </html>`,
+  '/frame-nested': `<!doctype html>
+<html>
+<head><title>Nested frame host</title></head>
+<body>
+  <h1>Nested frame host</h1>
+  <iframe id="outer" src="/frame" title="outer"></iframe>
+</body>
+</html>`,
   // The frame-scoping trap: the control the agent wants is inside the frame, and
   // the outer document holds one element with the same role and the same `name`
   // attribute. A selector derived for the inner control resolves against the
