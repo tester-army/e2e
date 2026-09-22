@@ -24,9 +24,15 @@ interface Compiled {
   readonly pattern: RegExp | undefined;
   /** The most text one occurrence can span; a piece shorter than this holds at most part of one. */
   readonly maxFormLength: number;
+  /** The longest marker of a known name; a marker cut short at that length or beyond cannot complete into one. */
+  readonly maxMarkerLength: number;
   /** Whether a value contains a line break: the one case an unfinished line cannot be cut from the line before it. */
   readonly spansLines: boolean;
 }
+
+const MARKER_OPEN = '<secret:';
+/** What a secret name spells inside its marker; a `>` closes it. */
+const MARKER_NAME = /^[A-Za-z0-9_.-]*$/;
 
 /**
  * One pattern over every non-empty value, longest value first. A value
@@ -36,8 +42,10 @@ interface Compiled {
  */
 function compile(values: readonly (readonly [string, string])[]): Compiled {
   const entries = values.filter(([, value]) => value.length > 0).toSorted((a, b) => b[1].length - a[1].length);
-  if (entries.length === 0) return { redact: (text) => text, pattern: undefined, maxFormLength: 0, spansLines: false };
-  const markers = entries.map(([name]) => `<secret:${name}>`);
+  if (entries.length === 0) {
+    return { redact: (text) => text, pattern: undefined, maxFormLength: 0, maxMarkerLength: 0, spansLines: false };
+  }
+  const markers = entries.map(([name]) => `${MARKER_OPEN}${name}>`);
   const patterns = entries.map(([, value]) => valuePattern(value));
   const pattern = new RegExp(patterns.map(({ source }) => `(${source})`).join('|'), 'g');
   return {
@@ -48,6 +56,7 @@ function compile(values: readonly (readonly [string, string])[]): Compiled {
       }),
     pattern,
     maxFormLength: Math.max(...patterns.map(({ maxLength }) => maxLength)),
+    maxMarkerLength: Math.max(...markers.map((marker) => marker.length)),
     spansLines: entries.some(([, value]) => value.includes('\n')),
   };
 }
@@ -119,6 +128,20 @@ function literal(text: string): string {
 }
 
 /**
+ * `cut`, moved back to the `<` of a marker the text before it cuts short:
+ * `<`, `<s`, ... `<secret:` and name characters with no `>` yet. A stretch
+ * as long as the longest known marker or longer cannot complete into one and
+ * is left where it is, so the move stays under `maxMarkerLength`.
+ */
+function unfinishedMarkerBefore(text: string, cut: number, maxMarkerLength: number): number {
+  const open = text.lastIndexOf('<', cut - 1);
+  if (open === -1 || cut - open >= maxMarkerLength) return cut;
+  const head = text.slice(open + 1, Math.min(cut, open + MARKER_OPEN.length));
+  if (!MARKER_OPEN.startsWith(`<${head}`)) return cut;
+  return MARKER_NAME.test(text.slice(open + MARKER_OPEN.length, cut)) ? open : cut;
+}
+
+/**
  * The attempt's registered secret values and their redactor, in one owner.
  *
  * Static credential passwords are known up front; a provider-backed value
@@ -168,18 +191,24 @@ export class SecretLedger {
 
   /**
    * Where `text` must be held back while more may follow: the index from
-   * which a later piece could complete an occurrence. That is the last
-   * `maxFormLength - 1` characters, or only the unfinished last line when no
-   * value spans lines, moved back to the start of the one occurrence the
-   * redactor would rewrite across that point, so each side redacts on its own
-   * to what the whole does. Occurrences never overlap, so the move is one and
-   * what is held stays under twice `maxFormLength`.
+   * which a later piece could complete an occurrence or a marker. That is the
+   * last `maxFormLength - 1` characters, or only the unfinished last line when
+   * no value spans lines; moved back over a marker cut short at that point
+   * (`<`, `<s`, ... `<secret:` and name characters with no `>` yet) when
+   * one shorter than the longest known marker could still complete into it,
+   * so a marker split across pieces is never rewritten inside; then moved
+   * back to the start of the one occurrence the redactor would rewrite across
+   * that point, so each side redacts on its own to what the whole does. The
+   * marker move comes first: the other way round it could land inside an
+   * occurrence holding a `<`. Occurrences never overlap, so each move is
+   * one and what is held stays under twice `maxFormLength` plus a marker.
    */
   holdFrom(text: string): number {
-    const { pattern, spansLines, maxFormLength } = this.compile();
+    const { pattern, spansLines, maxFormLength, maxMarkerLength } = this.compile();
     if (pattern === undefined) return text.length;
     let cut = Math.max(0, text.length - (maxFormLength - 1));
     if (!spansLines) cut = Math.max(cut, text.lastIndexOf('\n') + 1);
+    cut = unfinishedMarkerBefore(text, cut, maxMarkerLength);
     pattern.lastIndex = 0;
     for (let match = pattern.exec(text); match !== null && match.index < cut; match = pattern.exec(text)) {
       if (match.index + match[0].length > cut) return match.index;
@@ -197,10 +226,10 @@ export class SecretLedger {
  * Redaction for text that arrives in pieces, as a stream writes it, so a
  * value split across two writes is still caught. Each `push` returns what is
  * safe to pass on and holds back the rest: the tail a later piece could
- * complete, as the ledger measures it. Bytes are decoded as UTF-8 with a
- * character split across pieces kept whole. `flush` releases what is held,
- * redacted, when the stream ends. The pieces together redact to exactly what
- * the whole text would.
+ * complete into a value or a `<secret:name>` marker, as the ledger measures
+ * it. Bytes are decoded as UTF-8 with a character split across pieces kept
+ * whole. `flush` releases what is held, redacted, when the stream ends. The
+ * pieces together redact to exactly what the whole text would.
  */
 export class StreamRedactor {
   private readonly decoder = new StringDecoder('utf8');

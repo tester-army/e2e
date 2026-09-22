@@ -175,4 +175,35 @@ describe('StreamRedactor', () => {
     const stream = new StreamRedactor(ledger());
     expect(stream.push(Buffer.from([0x68, 0x69, 0xe2])) + stream.flush()).toBe('hi�');
   });
+
+  describe('a marker split across writes', () => {
+    const short = (): SecretLedger => new SecretLedger([['apiKey', 'api000']]);
+
+    it('holds an unfinished marker until it closes, so no piece of it is redacted on its own', () => {
+      const stream = new StreamRedactor(short());
+      expect(stream.push('<secret:api')).toBe('');
+      expect(stream.push('Key>')).toBe('');
+      expect(stream.flush()).toBe('<secret:apiKey>');
+    });
+
+    it('releases a lone < whole once ordinary text follows it', () => {
+      const stream = new StreamRedactor(short());
+      expect(stream.push('see <')).toBe('');
+      expect(stream.push('b> and more text')).toBe('see <b> and more');
+      expect(stream.flush()).toBe(' text');
+    });
+
+    it('releases an unfinished marker as is on flush', () => {
+      const stream = new StreamRedactor(short());
+      expect(stream.push('note <secret:abc')).toBe('note ');
+      expect(stream.flush()).toBe('<secret:abc');
+    });
+
+    it('holds no unfinished marker as long as the longest known marker', () => {
+      const stream = new StreamRedactor(short());
+      const name = 'a'.repeat(20);
+      expect(stream.push(`note <secret:${name}`)).toBe(`note <secret:${name.slice(0, 15)}`);
+      expect(stream.flush()).toBe(name.slice(15));
+    });
+  });
 });

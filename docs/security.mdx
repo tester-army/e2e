@@ -113,7 +113,8 @@ it.
 A test's console output is redacted in the worker before it leaves, across
 writes: a value split over two `process.stdout.write` calls, or over the
 chunks of a piped child's output, is still caught, a multibyte character
-split between chunks included. A run whose tests execute
+split between chunks included, and a `<secret:name>` marker split the same
+way reaches the reporter whole. A run whose tests execute
 in the runner's own process, the path an embedding host takes when it
 supplies its config or tests in memory rather than from a file, has no such
 hook; its console output reaches the runner's streams as written.
