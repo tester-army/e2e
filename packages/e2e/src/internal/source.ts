@@ -21,6 +21,21 @@ export type SourceLocation = StackFrame;
 const FRAME_PATTERN = /((?:file:\/\/)?\/[^):]+):(\d+):(\d+)\)?\s*$/;
 
 /**
+ * `file` relative to `projectRoot` with POSIX separators, or nothing when the
+ * file is not below the root: beside it (`/repo/app-shared` next to
+ * `/repo/app`), above it, on another drive, or the root itself.
+ * `path.relative` reads a root of `/` or one ending in a separator the way a
+ * prefix test does not.
+ */
+export function projectRelativePath(projectRoot: string, file: string): string | undefined {
+  const relative = path.relative(projectRoot, file);
+  if (relative === '' || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    return undefined;
+  }
+  return relative.split(path.sep).join('/');
+}
+
+/**
  * First stack frame inside the project and outside node_modules: the line in
  * the user's test file that the failure unwound through. Runner frames never
  * match because the runner lives in node_modules (or outside the project root
@@ -39,7 +54,7 @@ export function userFrame(stack: string | undefined, projectRoot: string | undef
     } catch {
       continue;
     }
-    if (!file.startsWith(`${projectRoot}${path.sep}`)) continue;
+    if (projectRelativePath(projectRoot, file) === undefined) continue;
     if (file.includes(`${path.sep}node_modules${path.sep}`)) continue;
     return { file, line: Number(line), column: Number(column) };
   }
@@ -50,6 +65,7 @@ export function userFrame(stack: string | undefined, projectRoot: string | undef
 export function sourceLocation(stack: string | undefined, projectRoot: string | undefined): SourceLocation | undefined {
   const frame = userFrame(stack, projectRoot);
   if (frame === undefined || projectRoot === undefined) return undefined;
-  const relative = frame.file.slice(projectRoot.length).replace(/^[/\\]/, '').split(path.sep).join('/');
+  const relative = projectRelativePath(projectRoot, frame.file);
+  if (relative === undefined) return undefined;
   return { file: relative, line: Math.max(1, frame.line), column: Math.max(1, frame.column) };
 }

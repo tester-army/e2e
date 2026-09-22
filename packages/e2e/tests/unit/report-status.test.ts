@@ -128,6 +128,14 @@ describe('result source', () => {
     const document = build({ config, results: [declaredAt('/repo/app-shared/helpers.ts')] });
     expect(document.run.results[0]!.source).toEqual({ file: 'tests/case.e2e.ts', line: 7, column: 3 });
   });
+
+  it('keeps a file under a root of / or one ending in a separator', () => {
+    const withRoot = (projectRoot: string) => ({ ...config, projectRoot }) as ResolvedConfig;
+    const atRoot = build({ config: withRoot('/'), results: [declaredAt('/repo/app/tests/case.e2e.ts')] });
+    expect(atRoot.run.results[0]!.source).toEqual({ file: 'repo/app/tests/case.e2e.ts', line: 7, column: 3 });
+    const trailing = build({ config: withRoot('/repo/app/'), results: [declaredAt('/repo/app/tests/case.e2e.ts')] });
+    expect(trailing.run.results[0]!.source).toEqual({ file: 'tests/case.e2e.ts', line: 7, column: 3 });
+  });
 });
 
 describe('run status derivation', () => {
