@@ -36,7 +36,6 @@ import { ObservationFeed } from './observation-feed.ts';
 import { recordPolicyEvent } from './phases.ts';
 import type { ObservedScreen } from './replay.ts';
 import { OperationQueue } from './operation-queue.ts';
-import { recordPolicyEvent } from './phases.ts';
 import { StepAccounting } from './step-accounting.ts';
 import { StepTraceSession, type StepCacheHost, type StepOutcome } from './step-cache.ts';
 import type { ParamTemplate } from '../cache/template.ts';
