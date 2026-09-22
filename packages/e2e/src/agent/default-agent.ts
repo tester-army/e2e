@@ -59,16 +59,21 @@ export interface CreateAgentOptions {
    * its own model it does not share the actor's blind spots either.
    */
   readonly judge?: SdkLanguageModel;
-  /** Extra system guidance appended to the base execution rules. */
+  /**
+   * How the acting agent should work, appended to the built-in execution
+   * rules: its persona, its caution, what it verifies before it finishes. Only
+   * the act loop reads it. The judges behind `assert`, `waitFor`, and
+   * `extract` never see it, so nothing here can talk a judge into a verdict.
+   */
   readonly system?: string;
   /**
-   * Trusted project context, the same value and meaning as
-   * `agents.<name>.context`: vocabulary the screens use, prepended to every
-   * act turn and judgment of this agent, at most
-   * `limits.maxAgentContextBytes`. Setting it here makes
-   * `{ executor: createAgent({ model, system, context }) }` a complete agent;
-   * the options object needs no second `model` or `context` key. Both set
-   * must agree, or config resolution fails with `INVALID_CONFIG`.
+   * What the app calls things, for every model call this agent makes: the
+   * names of screens and menus, where a feature lives, which button submits a
+   * form. Unlike `system`, the judges see it too, since a judge that does not
+   * know "plans are called tiers" cannot check that a tier was chosen.
+   * Prepended as project context to act turns and judgments, at most
+   * `limits.maxAgentContextBytes`. One value per agent: set it here or on the
+   * agent's options object, and if both are set they must be identical.
    */
   readonly context?: string;
   /** Project tools from `defineTool`, merged with the default toolset. */

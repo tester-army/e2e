@@ -34,10 +34,12 @@ Keep `ai@^7` installed when using agent steps with any provider.
   `MODEL_UNAVAILABLE` when the first test acquires `agent`, then stops the
   run with exit 2. Authentication failures occur on the first model call
   and raise `MODEL_PROVIDER_FAILED`.
-- `context` adds trusted project vocabulary: pass it to `createAgent` next
-  to `model` and `system`, or set `agents.<name>.context` on an options
-  object; `agentContext` on a test or group adds more for that test. Set it
-  in one place: differing values on `createAgent` and the surrounding options
+- `context` is what the app calls things, told to every model call, judges
+  included; `system` is how the acting agent works and only the act loop
+  reads it. Pass `context` to `createAgent` next to `model` and `system`, or
+  set it on the agent's options object; `agentContext` on a test or group
+  adds more for that test. Set it in one place: differing values on
+  `createAgent` and the surrounding options
   produce `INVALID_CONFIG`. `{ executor: createAgent({ model, system,
   context }) }` is a complete agent and needs no second `model` key.
 

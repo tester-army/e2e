@@ -327,10 +327,11 @@ function resolveModel(model: ModelInstance | undefined, label: string): Resolved
 }
 
 /**
- * One context per agent, reconciled like the model: the executor's own
- * (`createAgent({ context })`) is it, else the config key. Both set and
- * differing is rejected rather than joined or overridden: two vocabularies
- * for one agent would silently disagree, and the fix is to write it once.
+ * One app vocabulary per agent. It may arrive on the executor or on the
+ * agent's options object; whichever is set is used. Two different values are
+ * rejected rather than joined or overridden, because two vocabularies for one
+ * agent would disagree without anyone noticing, and the fix is to write it
+ * once.
  */
 function resolveContext(
   configured: unknown,

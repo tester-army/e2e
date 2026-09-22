@@ -28,11 +28,18 @@ An entry takes one of three shapes:
 - `createAgent(...)` to add a `system` prompt or [tools](/tools).
 - A [custom executor](/executors), directly or in an options object with `executor`.
 
-Use `context` for project vocabulary and `system` on `createAgent` for
-instructions about how the acting agent should work. `model` handles acting
-and judgments unless you set a separate `judge`. Models that receive
-screenshots must accept images. See [Models](/models) and the
-[config reference](/reference/config#agents).
+`system` and `context` answer different questions. `system` is how the
+acting agent should work: its persona, how careful it is, what it verifies
+before it finishes. Only the act loop reads it; the judges behind `assert`,
+`waitFor`, and `extract` never see it, so nothing in `system` can talk a
+judge into a verdict. `context` is what the app calls things: the names of
+screens and menus, where a feature lives, which button submits a form. Every
+model call gets it, judges included, because a judge that does not know
+"plans are called tiers" cannot check that a tier was chosen.
+
+`model` handles acting and judgments unless you set a separate `judge`.
+Models that receive screenshots must accept images. See [Models](/models) and
+the [config reference](/reference/config#agents).
 
 `createAgent` takes `model`, `system`, and `context` together, so one call is
 a complete agent. Wrapping it in an options object, for budgets or
@@ -51,10 +58,8 @@ agents: {
 },
 ```
 
-`context` on `createAgent` means exactly what `agents.<name>.context` means
-and reaches the same prompts, act turns and judgments alike. Set it in one
-place: naming a different `context` on both is `INVALID_CONFIG`, as it is for
-`model`.
+Set the vocabulary in one place, on `createAgent` or on the options object.
+Two different values for one agent is `INVALID_CONFIG`, as it is for `model`.
 
 ## Make the agent yours
 

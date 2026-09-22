@@ -447,11 +447,11 @@ export interface StepExecutor {
    */
   readonly judge?: ModelInstance;
   /**
-   * Trusted project context this executor brought along
-   * (`createAgent({ context })`). Config resolution reads it as the agent's
-   * `context` when `agents.<name>.context` is unset, so the vocabulary lives
-   * next to the `system` prompt; `INVALID_CONFIG` when both are set and
-   * differ, exactly as for `model`.
+   * The app vocabulary this executor was built with, if any: what the model
+   * is told the screens call things, prepended to its act turns and to the
+   * judgments made on its behalf. An executor that carries one lets its
+   * agent entry omit the `context` key; an entry that sets a different one
+   * is a configuration error.
    */
   readonly context?: string;
   runStep(context: StepExecutorContext): Promise<StepVerdict>;
