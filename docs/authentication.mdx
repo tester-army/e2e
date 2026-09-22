@@ -75,7 +75,16 @@ state and leaves no page open, so each test calls `app.open()` first.
 
 Sessions last for one run. They are encrypted on disk with a key that lives
 only in runner memory, and deleted during cleanup. A session file is a bearer
-credential, so it is never reused across runs.
+credential, so it is never reused across runs. A run killed before cleanup
+leaves its `.e2e/sessions/<runId>` behind, unreadable without the key; the
+next run removes it once it is a day old and the runner that wrote it has
+exited.
+
+A `session.save()` the runner cannot persist, because the state the engine
+captured is already expired (`SESSION_EXPIRED`) or the sessions directory
+cannot be written, fails the setup test like any other error in its body:
+dependents are skipped as `setup-failed`, an on-failure video is kept, and
+the run exits 1.
 
 ## Credentials
 

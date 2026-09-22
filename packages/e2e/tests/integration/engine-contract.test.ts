@@ -507,6 +507,64 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
   );
 
   it(
+    'a setup whose captured state has already expired fails with SESSION_EXPIRED and the worker survives',
+    async () => {
+      const fake = createFakeEngine({
+        state: true,
+        capturedState: {
+          format: 'fake-state',
+          version: 1,
+          data: { ok: true },
+          expiresAt: new Date(Date.now() - 60_000).toISOString(),
+        },
+      });
+      const files = {
+        'tests/auth.setup.e2e.ts': `import { test } from 'e2e';
+
+test.setup('capture session', { sessions: ['acct'] }, async ({ app, session }) => {
+  await app.open('/');
+  await session.save('acct');
+});
+`,
+        'tests/uses-session.e2e.ts': `import { test } from 'e2e';
+
+test('consumes session', { session: 'acct' }, async ({ app }) => {
+  await app.open('/');
+});
+`,
+        'tests/unrelated.e2e.ts': `import { test } from 'e2e';
+
+test('needs no session', async ({ app }) => {
+  await app.open('/');
+});
+`,
+      };
+      const { outcome, project } = await runProject(files, {
+        appUrl: APP_URL,
+        config: fakeConfig(fake),
+      });
+      const setup = resultByTitle(outcome, 'capture session');
+      expect(setup.status).toBe('failed');
+      expect(setup.attempts).toHaveLength(1);
+      expect(setup.attempts[0]!.error).toMatchObject({
+        category: 'test',
+        code: 'SESSION_EXPIRED',
+        phase: 'body',
+      });
+      const consumer = resultByTitle(outcome, 'consumes session');
+      expect(consumer.status).toBe('skipped');
+      expect(consumer.skip).toMatchObject({ cause: 'setup-failed' });
+      expect(resultByTitle(outcome, 'needs no session').status).toBe('passed');
+      expect(outcome.exitCode).toBe(1);
+      expect(outcome.report.run.errors).toEqual([]);
+      // The worker that saw the failure retires by design; each one that booted shut down.
+      expect(fake.stats().disposes).toBe(fake.stats().inits);
+      project.cleanup();
+    },
+    60_000,
+  );
+
+  it(
     'retries retryable stale nodes against the engine and never repeats a possibly committed action',
     async () => {
       let performCalls = 0;
@@ -898,6 +956,49 @@ test('fails on purpose', async ({ app }) => {
         .map(String)
         .filter((entry) => entry.endsWith('fake.webm') && entry.includes('pass'));
       expect(passedVideos).toEqual([]);
+      project.cleanup();
+    },
+    60_000,
+  );
+
+  it(
+    'keeps the recording of a setup whose session save failed under retain: on-failure',
+    async () => {
+      const fake = createFakeEngine({
+        video: true,
+        state: true,
+        capturedState: {
+          format: 'fake-state',
+          version: 1,
+          data: { ok: true },
+          expiresAt: new Date(Date.now() - 60_000).toISOString(),
+        },
+      });
+      const files = {
+        'tests/auth.setup.e2e.ts': `import { test } from 'e2e';
+
+test.setup('capture session', { sessions: ['acct'] }, async ({ app, session }) => {
+  await app.open('/');
+  await session.save('acct');
+});
+`,
+        'tests/uses-session.e2e.ts': `import { test } from 'e2e';
+
+test('consumes session', { session: 'acct' }, async ({ app }) => {
+  await app.open('/');
+});
+`,
+      };
+      const { outcome, project } = await runProject(files, {
+        appUrl: APP_URL,
+        config: fakeConfig(fake, { artifacts: { kinds: ['video'], video: { retain: 'on-failure' } } }),
+      });
+      const setup = resultByTitle(outcome, 'capture session');
+      expect(setup.status).toBe('failed');
+      expect(setup.attempts[0]!.error?.code).toBe('SESSION_EXPIRED');
+      const kept = videosOf(outcome, 'capture session');
+      expect(kept).toHaveLength(1);
+      expect(existsSync(path.join(project.dir, '.e2e', 'artifacts', kept[0]!.path!))).toBe(true);
       project.cleanup();
     },
     60_000,
