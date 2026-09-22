@@ -99,6 +99,7 @@ const initInfo = (workerSlot: number, env: Readonly<Record<string, string | unde
   headed: false,
   workerSlot,
   signal: new AbortController().signal,
+  log: () => undefined,
 });
 const attempt = (attemptId: string): EngineAttemptContext => ({ attemptId, artifactsDir: '/tmp/e2e-provider-artifacts', signal: new AbortController().signal });
 const cleanup = (): EngineCleanupContext => ({ timeoutMs: 1_000, signal: new AbortController().signal });
