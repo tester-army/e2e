@@ -561,6 +561,38 @@ describe('tool calls outside the vocabulary', () => {
     }
   }, 120_000);
 
+  it('refuses a passed verdict that carries an error code, and the clean verdict of the next turn ends the step', async () => {
+    const model = installFakeLoopModel((call) => {
+      if (call.turn === 1) {
+        return [
+          { toolName: 'tap', input: { target: nodeIdFor(call.prompt, /button "Increment"/) } },
+          { toolName: 'complete_step', input: { status: 'passed', summary: 'the counter shows 1', errorCode: 'ACTION_FAILED' } },
+        ];
+      }
+      return [{ toolName: 'complete_step', input: { status: 'passed', summary: 'the counter shows 1' } }];
+    });
+    const { outcome, project } = await runProject(
+      { 'tests/vocabulary.e2e.ts': VOCABULARY_SUITE },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: { model } } } },
+    );
+    try {
+      const result = resultByTitle(outcome, 'the agent increments the counter once');
+      expect(result.attempts.at(-1)!.error?.message ?? '').toBe('');
+      expect(result.status).toBe('passed');
+      // A pass beside an error code is a contradiction: refused like any schema violation, naming the rule, and the step is not concluded by it.
+      expect(loopCalls).toHaveLength(2);
+      const refusal = loopCalls[1]!.toolResults.find((text) => text.includes('Invalid input for tool complete_step'));
+      expect(refusal).toContain('errorCode is only valid with status failed or blocked');
+      expect(refusal).not.toContain('POLICY_DENIED');
+      const step = agentStep(outcome);
+      expect(step.metrics!.actionSteps).toBe(1);
+      expect(step.metrics!.modelCalls).toBe(2);
+      expect(step.turns![0]!.outcome).toContain(`[complete_step] error: ${refusal!.split('\n')[0]}`);
+    } finally {
+      project.cleanup();
+    }
+  }, 120_000);
+
   it('refuses a tool the step does not offer, lists the vocabulary, and runs nothing', async () => {
     const model = installFakeLoopModel((call) => {
       const target = nodeIdFor(call.prompt, /button "Increment"/);

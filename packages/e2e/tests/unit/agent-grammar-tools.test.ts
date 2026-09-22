@@ -67,6 +67,18 @@ describe('the grammar tools have closed schemas', () => {
   it('closes complete_step', () => {
     expectClosed(schemaOf({ complete_step: createVerdictTool().tool }, 'complete_step'), { status: 'passed', summary: 'done' }, 'complete_step');
   });
+
+  it('refuses a passed verdict that carries an error code, and names the rule', () => {
+    const schema = schemaOf({ complete_step: createVerdictTool().tool }, 'complete_step');
+    const contradictory = schema.safeParse({ status: 'passed', summary: 'done', errorCode: 'ACTION_FAILED' });
+    expect(contradictory.success).toBe(false);
+    if (contradictory.success) return;
+    expect(contradictory.error.issues.map((issue) => issue.message)).toEqual(['errorCode is only valid with status failed or blocked']);
+    expect(contradictory.error.issues[0]!.path).toEqual(['errorCode']);
+    expect(schema.safeParse({ status: 'failed', summary: 'done', errorCode: 'ACTION_FAILED' }).success).toBe(true);
+    expect(schema.safeParse({ status: 'blocked', summary: 'done', errorCode: 'ENVIRONMENT_UNAVAILABLE' }).success).toBe(true);
+    expect(schema.safeParse({ status: 'passed', summary: 'done' }).success).toBe(true);
+  });
 });
 
 describe('the schema a provider receives', () => {
@@ -85,6 +97,12 @@ describe('the schema a provider receives', () => {
       // The closed schema emits it on its own, so the wire shape does not rest on the SDK's pass.
       expect(emitted(schema).additionalProperties, `${name} from zod`).toBe(false);
     }
+  });
+
+  it('sends complete_step as the object alone: the refinement on errorCode adds no keyword', () => {
+    const schema = createVerdictTool().tool.inputSchema as z.ZodType;
+    expect(Object.keys(sent(schema)).toSorted()).toEqual(['$schema', 'additionalProperties', 'properties', 'required', 'type']);
+    expect(Object.keys(emitted(schema)).toSorted()).toEqual(['$schema', 'additionalProperties', 'properties', 'required', 'type']);
   });
 
   it('is the SDK that closes a plain object: zod in input mode declares nothing about extra keys', () => {
