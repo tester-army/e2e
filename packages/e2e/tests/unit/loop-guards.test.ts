@@ -149,4 +149,20 @@ describe('failure streak', () => {
     expect(checkFailureStreak(results)).toEqual({ kind: 'warn', reason: 'the last 3 actions failed in a row' });
     expect(checkFailureStreak(extractToolResults(streak(5), 'complete_step')).kind).toBe('stop');
   });
+
+  it('counts a screenshot-bearing failure, an SDK refusal, and a text failure alike, and a screenshot-bearing success ends the streak', () => {
+    const refused = "Model tried to call unavailable tool 'click'. Available tools: observe, tap, type, complete_step.";
+    const results = extractToolResults(
+      [
+        result('tap', withScreenshot(failed)),
+        result('click', { type: 'error-text', value: refused }),
+        result('tap', { type: 'text', value: failed }),
+        result('tap', withScreenshot(tapped)),
+      ],
+      'complete_step',
+    );
+    expect(results.map((entry) => entry.failed)).toEqual([true, true, true, false]);
+    expect(checkFailureStreak(results.slice(0, 3))).toEqual({ kind: 'warn', reason: 'the last 3 actions failed in a row' });
+    expect(checkFailureStreak(results).kind).toBe('clear');
+  });
 });
