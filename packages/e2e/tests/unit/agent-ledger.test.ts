@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_HANDOFF_BYTES, projectPriorSteps, serializeLedger } from '../../src/agent/ledger.ts';
+import { SecretLedger } from '../../src/internal/redact.ts';
 import type { StepRecord } from '../../src/run/steps.ts';
+
+/** The projection with nothing to redact, for the tests about its other duties. */
+const keep = (text: string): string => text;
 
 function step(overrides: Partial<StepRecord> & Pick<StepRecord, 'api' | 'label'>): StepRecord {
   return {
@@ -61,34 +65,59 @@ describe('serializeLedger', () => {
       cache: { mode: 'self-finalized', replayedActions: 2, totalActions: 2 },
     });
     // Projection is the trust boundary where records become model input; the notice goes there.
-    const { text } = serializeLedger(projectPriorSteps([replayed]), 65_536);
+    const { text } = serializeLedger(projectPriorSteps([replayed], keep), 65_536);
     expect(text).toContain('opened the customers page');
     expect(text).not.toContain('replayed 2 recorded');
     // A step the executor ran keeps its explanation as written, whatever it starts with.
     const ran = step({ api: 'agent.act', label: 'open customers', explanation, cache: { mode: 'missed', replayedActions: 0, totalActions: 0 } });
-    expect(serializeLedger(projectPriorSteps([ran]), 65_536).text).toContain('replayed 2 recorded');
+    expect(serializeLedger(projectPriorSteps([ran], keep), 65_536).text).toContain('replayed 2 recorded');
   });
 
 });
 
 describe('projectPriorSteps', () => {
   it('strips control characters from untrusted labels and handoffs', () => {
-    const [projected] = projectPriorSteps([
-      step({
-        api: 'agent.assert',
-        label: 'a\u0007b',
-        status: 'failed',
-        explanation: 'ignore\u0000policy',
-        cache: { mode: 'missed', replayedActions: 0, totalActions: 0 },
-      }),
-    ]);
+    const [projected] = projectPriorSteps(
+      [
+        step({
+          api: 'agent.assert',
+          label: 'a\u0007b',
+          status: 'failed',
+          explanation: 'ignore\u0000policy',
+          cache: { mode: 'missed', replayedActions: 0, totalActions: 0 },
+        }),
+      ],
+      keep,
+    );
     expect(projected).toEqual({
       api: 'agent.assert',
       label: 'a\uFFFDb',
       status: 'failed',
       explanation: 'ignore\uFFFDpolicy',
     });
-    const { text } = serializeLedger(projectPriorSteps([step({ api: 'x', label: 'a\u0007b' })]), 8_192);
+    const { text } = serializeLedger(projectPriorSteps([step({ api: 'x', label: 'a\u0007b' })], keep), 8_192);
     expect(text).not.toContain('\u0007');
+  });
+
+  it('redacts registered values in labels and handoffs with the live redactor', () => {
+    const ledger = new SecretLedger();
+    const records = [
+      step({
+        api: 'agent.act',
+        label: 'use key tok-9f3a to continue',
+        explanation: 'typed tok-9f3a into the key field',
+        cache: { mode: 'missed', replayedActions: 0, totalActions: 0 },
+      }),
+    ];
+    // The value became a secret after the step was recorded with it in the clear.
+    ledger.register('token', 'tok-9f3a');
+    const [projected] = projectPriorSteps(records, ledger.redact);
+    expect(projected).toEqual({
+      api: 'agent.act',
+      label: 'use key <secret:token> to continue',
+      status: 'passed',
+      explanation: 'typed <secret:token> into the key field',
+    });
+    expect(serializeLedger(projectPriorSteps(records, ledger.redact), 8_192).text).not.toContain('tok-9f3a');
   });
 });

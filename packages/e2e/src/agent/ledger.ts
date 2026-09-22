@@ -31,16 +31,18 @@ export interface PriorStep {
 }
 
 /**
- * Projects recorded steps onto the ledger's shape, sanitized here — the one
- * trust boundary where step records become model input — and carrying nothing
- * that names runner internals.
+ * Projects recorded steps onto the ledger's shape, redacted and sanitized
+ * here, the one trust boundary where step records become model input, and
+ * carrying nothing that names runner internals. The records were redacted
+ * when written; `redact` is the attempt's live redactor, so a value that
+ * became a secret after a step was recorded is covered too.
  */
-export function projectPriorSteps(records: readonly StepRecord[]): PriorStep[] {
+export function projectPriorSteps(records: readonly StepRecord[], redact: (text: string) => string): PriorStep[] {
   return records.map((step) => ({
     api: step.api,
-    label: boundedText(step.label),
+    label: boundedText(step.label, redact),
     status: step.status,
-    ...(step.explanation === undefined ? {} : { explanation: boundedText(handoffOf(step)) }),
+    ...(step.explanation === undefined ? {} : { explanation: boundedText(handoffOf(step), redact) }),
   }));
 }
 
@@ -53,8 +55,8 @@ function handoffOf(step: StepRecord): string {
   return step.cache?.mode === 'self-finalized' ? recordedVerdictOf(explanation) : explanation;
 }
 
-function boundedText(text: string): string {
-  return truncateUtf8(sanitizeText(text), MAX_PRIOR_STEP_FIELD_BYTES);
+function boundedText(text: string, redact: (text: string) => string): string {
+  return truncateUtf8(sanitizeText(redact(text)), MAX_PRIOR_STEP_FIELD_BYTES);
 }
 
 export interface LedgerContext {

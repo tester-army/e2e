@@ -377,9 +377,9 @@ export interface StepExecutorContext {
   readonly actions: ExecutorActions;
   /**
    * True once a secret was filled in this attempt: `observe({ pixels: true })`
-   * withholds pixels for the rest of it. An executor reads it when assembling
-   * its vocabulary, to leave screenshot verbs out rather than offer tools
-   * that can only decline.
+   * withholds pixels and `attachScreenshot` is denied for the rest of it. An
+   * executor reads it when assembling its vocabulary, to leave screenshot
+   * verbs out rather than offer tools that can only decline.
    */
   readonly pixelsTainted: boolean;
   /**
@@ -401,7 +401,11 @@ export interface StepExecutorContext {
    * id: what a tool with evidence worth keeping (a defect on screen) calls.
    * The file lands in the attempt's artifact directory and the report's
    * artifact records like every screenshot the runner takes, and reaches a
-   * configured `ArtifactStore`. The label names the file.
+   * configured `ArtifactStore`. The label names the file. Rejects with
+   * `POLICY_DENIED` once a secret was filled in the attempt
+   * (`pixelsTainted`), as `app.screenshot()` does: the app may display the
+   * value outside a masked field, and pixels captured before the fill are
+   * refused on the same rule.
    */
   attachScreenshot(pixels: ExecutorPixels, label: string): Promise<string>;
 }
