@@ -8,58 +8,92 @@ or tools. Tests use `default` unless you select another agent.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
+import { createAgent } from 'e2e/agent';
 import { web } from '@e2edev/web';
 import { gateway } from 'ai';
+
+const vocabulary = 'Plans are called tiers. Billing lives under Settings. "Approve" on an order refunds it.';
 
 export default {
   targets: [{ engine: web({ url: 'http://localhost:3000' }) }],
   agents: {
-    default: { model: gateway('openai/gpt-5.6-luna') },
-    thorough: { model: gateway('anthropic/claude-opus-5'), context: 'Verify every claim on screen before concluding.' },
-    buyer: { model: gateway('openai/gpt-5.6-luna'), context: 'You are a first-time buyer.' },
-    admin: { model: gateway('openai/gpt-5.6-luna'), context: 'You manage orders and approve refunds.' },
+    default: { model: gateway('openai/gpt-5.6-luna'), context: vocabulary },
+    thorough: createAgent({
+      model: gateway('anthropic/claude-opus-5'),
+      system: 'Verify every claim on screen before concluding a step.',
+      context: vocabulary,
+    }),
+    buyer: createAgent({ model: gateway('openai/gpt-5.6-luna'), system: 'You are a first-time buyer.', context: vocabulary }),
+    admin: createAgent({ model: gateway('openai/gpt-5.6-luna'), system: 'You manage orders and approve refunds.', context: vocabulary }),
   },
 } satisfies E2EConfig;
 ```
 
 An entry takes one of three shapes:
 
-- An options object to configure the built-in agent's model, context, and budgets.
-- `createAgent(...)` to add a `system` prompt or [tools](/tools).
+- An options object to configure the built-in agent's model, vocabulary, and budgets.
+- `createAgent(...)` to add a `system` prompt or [tools](/tools). It takes
+  `model`, `system`, and `context` together, so one call is a complete agent.
 - A [custom executor](/executors), directly or in an options object with `executor`.
-
-`system` and `context` answer different questions. `system` is how the
-acting agent should work: its persona, how careful it is, what it verifies
-before it finishes. Only the act loop reads it; the judges behind `assert`,
-`waitFor`, and `extract` never see it, so nothing in `system` can talk a
-judge into a verdict. `context` is what the app calls things: the names of
-screens and menus, where a feature lives, which button submits a form. Every
-model call gets it, judges included, because a judge that does not know
-"plans are called tiers" cannot check that a tier was chosen.
 
 `model` handles acting and judgments unless you set a separate `judge`.
 Models that receive screenshots must accept images. See [Models](/models) and
 the [config reference](/reference/config#agents).
 
-`createAgent` takes `model`, `system`, and `context` together, so one call is
-a complete agent. Wrapping it in an options object, for budgets or
-`providerOptions`, needs no second `model` or `context` key:
+## Instructions and vocabulary
+
+An agent takes two kinds of text, and they go to different readers.
+
+| | `system` | `context` |
+|---|---|---|
+| Answers | How should the acting agent work? | What does this app call things? |
+| Who reads it | The act loop only | Every model call: act turns and the judges behind `assert`, `waitFor`, and `extract` |
+| Belongs here | Persona, caution, what to verify before finishing, how to treat unexpected dialogs | Names of screens and menus, where a feature lives, which button submits a form, domain terms |
+| Set on | `createAgent({ system })` | `createAgent({ context })` or the agent's options object, at most `limits.maxAgentContextBytes` |
+
+The split is deliberate. A judge decides whether the screen shows what the
+test claims, so it must know the app's words: a judge that does not know
+"plans are called tiers" cannot check that a tier was chosen. A judge must
+not know the actor's instructions, or a `system` prompt that says "consider a
+step done once the form closes" would lower the bar for the verdict too.
+Nothing in `system` ever reaches a judge.
+
+A rule of thumb: if the sentence would still be true for a different tester
+using the same app, it is `context`. If it would still be true for the same
+tester on a different app, it is `system`.
 
 ```ts title="e2e.config.ts"
 agents: {
   default: {
     executor: createAgent({
       model: gateway('openai/gpt-5.6-luna'),
-      system: 'Verify a visible confirmation before completing a step.',
-      context: 'Plans are called tiers. Billing lives under Settings.',
+      // How to work: read by the act loop only.
+      system: 'Verify a visible confirmation before completing a step. Close cookie and feedback notices you did not ask for.',
+      // What things are called: read by every model call, judges included.
+      context: 'Plans are called tiers. Billing lives under Settings. Sales documents are quotes until "Convert to order".',
     }),
     maxSteps: 40,
   },
 },
 ```
 
-Set the vocabulary in one place, on `createAgent` or on the options object.
-Two different values for one agent is `INVALID_CONFIG`, as it is for `model`.
+Wrapping `createAgent` in an options object, for budgets or `providerOptions`,
+needs no second `model` or `context` key. Set the vocabulary in one place, on
+`createAgent` or on the options object; two different values for one agent is
+`INVALID_CONFIG`, as it is for `model`.
+
+A test or group can add vocabulary of its own with `agentContext`, which is
+appended after the agent's `context` for that test: the ids of seeded data,
+a feature flag that changes a label, anything only that test knows.
+
+```ts title="tests/billing.e2e.ts"
+test.describe('billing', { agentContext: 'The seeded workspace is called "Acme Trial".' }, () => {
+  test('upgrades the tier', async ({ agent }) => { /* ... */ });
+});
+```
+
+Keep instructions out of `agentContext` for the same reason they stay out of
+`context`: it reaches the judges.
 
 ## Make the agent yours
 
@@ -68,9 +102,9 @@ When a step fails or takes too many calls, inspect its report or run with
 agent if the problem affects several tests:
 
 1. Use the labels on screen in the goal.
-2. Put shared vocabulary in `context`, or use `agentContext` for one test.
-3. Add a `system` prompt through `createAgent` for instructions such as
-   verifying a visible confirmation before completing a step.
+2. Put shared vocabulary in `context`, or in `agentContext` for one test.
+3. Put instructions for the actor, such as verifying a visible confirmation
+   before completing a step, in `system` through `createAgent`.
 4. Add [tools](/tools) for operations such as seeding a cart through a test API.
 5. Compare models or `providerOptions` by running the same tests with
    `--agent <name>`.
