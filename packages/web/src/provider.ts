@@ -246,6 +246,10 @@ export class LeasedBrowsers {
   private current: WorkerLease | undefined;
   private attached = false;
   private attempt: BrowserLease | undefined;
+  /** The attempt whose lease is being acquired or held; a lease that arrives for any other attempt is released, not committed. */
+  private opened: object | undefined;
+  /** This worker's tenure, replaced by `init` and `dispose`; a replacement lease that arrives for an earlier one is released, not committed. */
+  private tenure: object = {};
 
   constructor(private readonly provider: BrowserProvider) {
     this.scope = provider.scope ?? 'worker';
@@ -313,6 +317,7 @@ export class LeasedBrowsers {
     const { provider } = this;
     this.current = undefined;
     this.attached = false;
+    this.tenure = {};
     const handoff = decodeHandoff(info.env[handoffVariable(info.targetName)]);
     if (handoff === undefined) {
       throw new EngineError(
@@ -339,7 +344,9 @@ export class LeasedBrowsers {
    * the slot's lease the first time, and a replacement the worker leases
    * itself every time after, since the connection only asks again once the
    * browser it had dropped. A dead lease is released by the side that
-   * acquired it: the worker here, best effort, or the runner in `finish`.
+   * acquired it: the worker here, best effort, or the runner in `finish`. A
+   * replacement that arrives once the attempt was cancelled or the worker
+   * disposed is given straight back and never committed.
    */
   async endpoint(signal: AbortSignal): Promise<string> {
     const run = this.requireRun();
@@ -348,16 +355,28 @@ export class LeasedBrowsers {
       this.attached = true;
       return previous.lease.cdpEndpoint;
     }
+    const { tenure } = this;
     const lease = await this.acquire({ runId: run.runId, targetName: run.targetName, slot: run.slot, slots: run.slots, env: run.env, signal, log: discard });
+    if (signal.aborted || this.tenure !== tenure) {
+      await this.provider.release(lease, this.releaseContext(run, signal)).catch(discard);
+      throw new EngineError('CANCELLED', `browser lease from "${this.provider.name}" arrived after the worker gave up; released`, { retryable: false });
+    }
     this.current = { lease, owned: true };
     this.attached = true;
     if (previous?.owned === true) await this.provider.release(previous.lease, this.releaseContext(run, signal)).catch(discard);
     return lease.cdpEndpoint;
   }
 
-  /** Leases a fresh browser for the attempt, in `attempt` scope; `endAttempt` releases it on every path. */
+  /**
+   * Leases a fresh browser for the attempt, in `attempt` scope; `endAttempt`
+   * releases it on every path. A lease that arrives once the attempt was
+   * cancelled or already ended (a provider that ignored the abort) is given
+   * straight back and never committed, so a retry never finds it.
+   */
   async startAttempt(context: EngineAttemptContext): Promise<BrowserLease> {
     const run = this.requireRun();
+    const opened = {};
+    this.opened = opened;
     const lease = await this.acquire({
       runId: run.runId,
       targetName: run.targetName,
@@ -368,6 +387,10 @@ export class LeasedBrowsers {
       signal: context.signal,
       log: discard,
     });
+    if (context.signal.aborted || this.opened !== opened) {
+      await this.provider.release(lease, this.releaseContext(run, context.signal)).catch(discard);
+      throw new EngineError('CANCELLED', `browser lease from "${this.provider.name}" arrived after the attempt ended; released`, { retryable: false });
+    }
     this.attempt = lease;
     return lease;
   }
@@ -376,6 +399,7 @@ export class LeasedBrowsers {
   async endAttempt(context: EngineCleanupContext): Promise<void> {
     const lease = this.attempt;
     this.attempt = undefined;
+    this.opened = undefined;
     if (lease === undefined) return;
     await this.release(lease, context);
   }
@@ -385,6 +409,7 @@ export class LeasedBrowsers {
     const current = this.current;
     this.current = undefined;
     this.attached = false;
+    this.tenure = {};
     if (current === undefined || !current.owned) return;
     await this.release(current.lease, context);
   }
@@ -403,6 +428,9 @@ export class LeasedBrowsers {
     try {
       lease = await provider.acquire(request);
     } catch (cause) {
+      if (request.signal.aborted) {
+        throw new EngineError('CANCELLED', `browser lease from "${provider.name}" cancelled`, { retryable: false, cause });
+      }
       throw new EngineError('ENGINE_FAILURE', `browser provider "${provider.name}" could not lease a browser: ${message(cause)}`, { retryable: false, cause });
     }
     if (!isBrowserLease(lease)) {

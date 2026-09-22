@@ -400,11 +400,28 @@ export class PlaywrightSurface {
     }
   }
 
-  /** Releases attempt resources, the worker's shared browser process, and a lease the worker acquired for itself. */
+  /**
+   * Releases attempt resources, the worker's shared browser process, and a
+   * lease the worker acquired for itself: three independent tasks, in that
+   * order, every one attempted whatever the earlier ones did, and the first
+   * failure reported once all ran. A billed browser outlives a failed trace
+   * flush otherwise.
+   */
   async dispose(context: EngineCleanupContext): Promise<void> {
-    await this.endAttempt(context);
-    await withinCleanupBudget(this.connection.dispose(), context);
-    await this.leases?.dispose(context);
+    const tasks = [
+      () => this.endAttempt(context),
+      () => withinCleanupBudget(this.connection.dispose(), context),
+      async () => this.leases?.dispose(context),
+    ];
+    let failure: { cause: unknown } | undefined;
+    for (const task of tasks) {
+      try {
+        await task();
+      } catch (cause) {
+        failure ??= { cause };
+      }
+    }
+    if (failure !== undefined) throw translatePwError(failure.cause, 'dispose');
   }
 
   /** Returns the active attempt, including its connection generation and references. */

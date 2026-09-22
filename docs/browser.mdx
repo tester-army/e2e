@@ -194,6 +194,8 @@ acquired it.
 
 `scope: 'attempt'` leases a fresh browser in every `startAttempt`, retries
 included, and releases it in `endAttempt`, also after a start that failed.
+A lease that arrives once the attempt was cancelled or ended is given
+straight back, never used.
 The attempt runs in the browser's persistent default context, so the
 remote must contain only that context, and the limits of
 [`connect.reconnectEndpoint`](/reference/web#recovering-a-cdp-transport)

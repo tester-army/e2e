@@ -343,6 +343,46 @@ describe('worker scope', () => {
     expect(cloud.released.map((lease) => lease.id)).toEqual(['lease-2', 'lease-3', 'lease-0', 'lease-1']);
   });
 
+  it('releases the replacement on dispose even when ending the attempt failed', async () => {
+    const cloud = provider();
+    const fake = fakeBrowser('context');
+    vi.mocked(connectCdp).mockResolvedValue(fake.browser);
+    const { env } = await prepared(cloud.impl, 1);
+    const worker = new PlaywrightSurface({ browser: cloud.impl });
+    await worker.init(initInfo(0, env));
+    fake.drop();
+    await worker.startAttempt(attempt('a1'));
+    expect(cloud.acquired).toHaveLength(2);
+    vi.spyOn(worker, 'endAttempt').mockRejectedValueOnce(new Error('trace flush failed'));
+    await expect(worker.dispose(cleanup())).rejects.toThrow(/trace flush failed/);
+    expect(cloud.released.map((lease) => lease.id)).toEqual(['lease-1']);
+  });
+
+  it('gives back a replacement that arrives after the worker was disposed, and never commits it', async () => {
+    const cloud = provider();
+    const fake = fakeBrowser('context');
+    vi.mocked(connectCdp).mockResolvedValue(fake.browser);
+    const { env } = await prepared(cloud.impl, 1);
+    let grant!: () => void;
+    const granted = new Promise<void>((resolve) => { grant = resolve; });
+    const inner = cloud.impl.acquire.bind(cloud.impl);
+    let requested = false;
+    cloud.impl.acquire = async (request) => { requested = true; await granted; return inner(request); };
+    const worker = new PlaywrightSurface({ browser: cloud.impl });
+    await worker.init(initInfo(0, env));
+    fake.drop();
+    // Disposing ends the pending attempt, so the start fails as soon as dispose runs.
+    const starting = expect(worker.startAttempt(attempt('a1'))).rejects.toMatchObject({ code: 'CANCELLED' });
+    await expect.poll(() => requested).toBe(true);
+    // The connection's dispose waits on the pending attach; the cleanup budget cuts that short.
+    await worker.dispose({ timeoutMs: 50, signal: new AbortController().signal });
+    await starting;
+    expect(cloud.released).toEqual([]);
+    grant();
+    await expect.poll(() => cloud.released.map((lease) => lease.id)).toEqual(['lease-1']);
+    expect(vi.mocked(connectCdp).mock.calls.map(([endpoint]) => endpoint)).toEqual(['wss://0.example']);
+  });
+
   it('fails the attempt start, naming the provider, when no replacement can be leased', async () => {
     const cloud = provider();
     const fake = fakeBrowser('context');
@@ -422,6 +462,48 @@ describe('attempt scope', () => {
     expect(connectCdp).not.toHaveBeenCalled();
     await worker.endAttempt(cleanup());
     expect(cloud.released).toEqual([]);
+  });
+
+  it('reports an acquire that gave up on the aborted attempt as CANCELLED, not a provider failure', async () => {
+    const cloud = provider({ scope: 'attempt' });
+    cloud.impl.acquire = async (request) => {
+      await new Promise((resolve) => request.signal.addEventListener('abort', resolve, { once: true }));
+      throw new Error('aborted by the service client');
+    };
+    const worker = new PlaywrightSurface({ browser: cloud.impl });
+    await worker.init(initInfo(0, (await prepared(provider({ scope: 'attempt' }).impl, 1)).env));
+    const controller = new AbortController();
+    const starting = worker.startAttempt({ attemptId: 'a1', artifactsDir: '/tmp/e2e-provider-artifacts', signal: controller.signal });
+    controller.abort();
+    await expect(starting).rejects.toMatchObject({ code: 'CANCELLED' });
+    await worker.endAttempt(cleanup());
+    expect(cloud.released).toEqual([]);
+  });
+
+  it('gives back a lease that arrives after the attempt was cancelled or ended, and never commits it', async () => {
+    for (const how of ['aborted', 'ended'] as const) {
+      const cloud = provider({ scope: 'attempt' });
+      let grant!: () => void;
+      const granted = new Promise<void>((resolve) => { grant = resolve; });
+      const inner = cloud.impl.acquire.bind(cloud.impl);
+      cloud.impl.acquire = async (request) => { await granted; return inner(request); };
+      const worker = new PlaywrightSurface({ browser: cloud.impl });
+      await worker.init(initInfo(0, (await prepared(provider({ scope: 'attempt' }).impl, 1)).env));
+      const controller = new AbortController();
+      const starting = worker.startAttempt({ attemptId: 'a1', artifactsDir: '/tmp/e2e-provider-artifacts', signal: controller.signal });
+      if (how === 'aborted') controller.abort();
+      else await worker.endAttempt(cleanup());
+      grant();
+      await expect(starting).rejects.toMatchObject({ code: 'CANCELLED', message: expect.stringContaining('arrived after the attempt ended; released') });
+      expect(cloud.released.map((lease) => lease.id)).toEqual(['lease-0']);
+      expect(connectCdp).not.toHaveBeenCalled();
+      // The next attempt starts clean and leases its own browser.
+      await worker.startAttempt(attempt('a2'));
+      expect(cloud.acquired.at(-1)).toMatchObject({ attemptId: 'a2' });
+      await worker.dispose(cleanup());
+      expect(cloud.released.map((lease) => lease.id)).toEqual(['lease-0', 'lease-1']);
+      vi.mocked(connectCdp).mockClear();
+    }
   });
 
   it('reports a release that failed as a cleanup error, once, and never holds the lease again', async () => {
