@@ -17,10 +17,10 @@ import { ENDED_TEXT, orderFindings, SEVERITY_WORDS, stepCountParts } from './exp
 import type { StepEvent } from '../run/steps.ts';
 import {
   bounded,
-  ellipsize,
   F_CHECK,
   F_CROSS,
   F_POINTER,
+  fitColumns,
   formatTime,
   padTitle,
   rule,
@@ -174,7 +174,7 @@ export class ExploreView {
           : pc.green(F_CHECK);
     const head = ` ${pc.bold(glyph)} ${badge} ${pc.bold(verb)}  `;
     const goal = collapseText(this.goal);
-    return `${head}${maxWidth === undefined ? bounded(goal) : ellipsize(goal, Math.max(24, maxWidth - visibleWidth(head)))}`;
+    return `${head}${maxWidth === undefined ? bounded(goal) : fitColumns(goal, Math.max(24, maxWidth - visibleWidth(head)))}`;
   }
 
   /** One finished step: glyph, number, title, then duration, actions, findings, and a non-passed status; its explanation under it. */
@@ -194,7 +194,7 @@ export class ExploreView {
     // A step that did not pass explains itself; a passed step's summary is the planner's, not the reader's.
     if (step.status !== 'passed' && step.summary !== undefined) {
       const room = terminalColumns() - WIDTH_MARGIN - indent.length - 5;
-      lines.push(`${indent}     ${pc.dim(ellipsize(collapseText(step.summary), Math.max(24, room)))}`);
+      lines.push(`${indent}     ${pc.dim(fitColumns(collapseText(step.summary), Math.max(24, room)))}`);
     }
     return lines;
   }

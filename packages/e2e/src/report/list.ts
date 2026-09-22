@@ -20,7 +20,7 @@ import {
   aiSegment,
   bounded,
   cacheText,
-  ellipsize,
+  fitColumns,
   emptyCacheTally,
   emptyCounters,
   emptyUsage,
@@ -753,7 +753,7 @@ export class ListReporter implements Reporter {
         const rows = [`   ${pc.red(`${F_CROSS} ${line.title}`)}${status} ${duration}${ai}`];
         if (line.firstErrorLine !== undefined) {
           // A glance line; the `Failed Tests` section carries the whole message.
-          const glance = ellipsize(line.firstErrorLine, terminalColumns() - ERROR_GLANCE_INDENT);
+          const glance = fitColumns(line.firstErrorLine, terminalColumns() - ERROR_GLANCE_INDENT);
           rows.push(`     ${pc.red(`${F_RIGHT} ${glance}`)}`);
         }
         return rows;

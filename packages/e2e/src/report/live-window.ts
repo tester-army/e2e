@@ -5,7 +5,7 @@
  * control channel it is a no-op, so callers never branch.
  */
 
-import { charColumns, terminalColumns, terminalRows, visibleWidth } from './format.ts';
+import { graphemes, terminalColumns, terminalRows, visibleWidth } from './format.ts';
 
 const ESC = '\u001b';
 /**
@@ -25,10 +25,10 @@ const SYNC_END = `${ESC}[?2026l`;
 
 /**
  * Clamps one line to the terminal width in columns, skipping ANSI sequences
- * when counting and never cutting inside a code point: a wide glyph that
- * would cross the limit is dropped whole. The erase sequence counts physical
- * rows, so a line that wraps would leave stale fragments behind on every
- * repaint.
+ * when counting and never cutting inside a grapheme cluster: a glyph or emoji
+ * sequence that would cross the limit is dropped whole. The erase sequence
+ * counts physical rows, so a line that wraps would leave stale fragments
+ * behind on every repaint.
  */
 function clampToWidth(text: string, columns: number): string {
   const max = Math.max(4, columns - WIDTH_MARGIN);
@@ -42,12 +42,14 @@ function clampToWidth(text: string, columns: number): string {
       i = end + 1;
       continue;
     }
-    const char = String.fromCodePoint(text.codePointAt(i) as number);
-    const advance = charColumns(char);
-    if (width + advance > max) return `${out}${ESC}[0m…`;
-    out += char;
-    width += advance;
-    i += char.length;
+    const next = text.indexOf(ESC, i);
+    const run = text.slice(i, next === -1 ? text.length : next);
+    for (const cluster of graphemes(run)) {
+      if (width + cluster.columns > max) return `${out}${ESC}[0m…`;
+      out += cluster.text;
+      width += cluster.columns;
+    }
+    i += run.length;
   }
   return out;
 }

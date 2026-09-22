@@ -7,9 +7,9 @@
 import { sanitizeText, truncateUtf8 } from '../internal/errors.ts';
 import { collapseText } from '../internal/text.ts';
 import {
-  ellipsize,
   F_CHECK,
   F_CROSS,
+  fitColumns,
   formatTime,
   formatTokens,
   terminalColumns,
@@ -19,9 +19,9 @@ import {
 import type { FinishedStep, ShownEvent } from './list-model.ts';
 
 /** Step labels stay one glanceable line; the report holds the full text. */
-const MAX_STEP_LABEL_CHARS = 72;
+const MAX_STEP_LABEL_COLUMNS = 72;
 /** A clipped step line keeps at least this much of its label, however narrow the terminal. */
-const MIN_STEP_LABEL_CHARS = 24;
+const MIN_STEP_LABEL_COLUMNS = 24;
 /** Columns a step line spends around its label: the quotes and the space before the tail. */
 const LABEL_CHROME = 3;
 /** A finished model turn. */
@@ -33,12 +33,12 @@ const F_OUTPUT = '↓';
 /** Columns the ` · ` between a turn's timing and its reasoning excerpt takes. */
 const REASONING_SEPARATOR_WIDTH = 3;
 /** A narrower clip than this hides more than it says; the excerpt is dropped instead. */
-const MIN_REASONING_CHARS = 24;
+const MIN_REASONING_COLUMNS = 24;
 
-/** One-line, quoted step label; `maxChars` clips it further to fit a row. */
-export function stepLabel(label: string, maxChars = MAX_STEP_LABEL_CHARS): string {
-  const max = Math.min(MAX_STEP_LABEL_CHARS, Math.max(MIN_STEP_LABEL_CHARS, maxChars));
-  return `"${ellipsize(collapseText(label), max)}"`;
+/** One-line, quoted step label; `maxColumns` clips it further to fit a row. */
+export function stepLabel(label: string, maxColumns = MAX_STEP_LABEL_COLUMNS): string {
+  const max = Math.min(MAX_STEP_LABEL_COLUMNS, Math.max(MIN_STEP_LABEL_COLUMNS, maxColumns));
+  return `"${fitColumns(collapseText(label), max)}"`;
 }
 
 export interface StepLineOptions {
@@ -103,6 +103,6 @@ export function eventLine(pc: Colors, event: ShownEvent, options: { maxWidth?: n
 function reasoningExcerpt(reasoning: string | undefined, headWidth: number, maxWidth?: number): string | undefined {
   if (reasoning === undefined) return undefined;
   const room = (maxWidth ?? terminalColumns()) - headWidth - REASONING_SEPARATOR_WIDTH;
-  if (room < MIN_REASONING_CHARS) return undefined;
-  return ellipsize(collapseText(reasoning), room);
+  if (room < MIN_REASONING_COLUMNS) return undefined;
+  return fitColumns(collapseText(reasoning), room);
 }
