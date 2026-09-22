@@ -112,7 +112,7 @@ describe('web({ cookies })', () => {
     expect(() => cookie({ url: 'not a url' })).toThrowError(/absolute http\(s\) URL/);
     expect(() => cookie({ url: 'file:///tmp/app' })).toThrowError(/absolute http\(s\) URL/);
     expect(() => cookie({ url: 'http://127.0.0.1', path: '/' })).toThrowError(/path applies to a domain cookie/);
-    expect(() => cookie({ domain: '' })).toThrowError(/domain must be a non-empty string/);
+    expect(() => cookie({ domain: '' })).toThrowError(/domain must be a host name/);
     expect(() => cookie({})).toThrowError(/target has no url to default to/);
   });
 

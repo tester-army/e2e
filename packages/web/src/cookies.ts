@@ -63,6 +63,8 @@ const SAME_SITE_VALUES = new Set(['Strict', 'Lax', 'None']);
 /** A control character, or the separator that would end the cookie early in a `Cookie` header. */
 // oxlint-disable-next-line no-control-regex -- the control characters are the point
 const COOKIE_TOKEN_BREAK = /[\u0000-\u001F\u007F;]/;
+/** A cookie domain as the browser stores it: host labels, an optional leading dot, no scheme, port, or path. */
+const COOKIE_DOMAIN = /^\.?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$|^\.?localhost$|^\.?\d{1,3}(?:\.\d{1,3}){3}$/i;
 
 function invalidCookies(detail: string): ConfigurationError {
   return new ConfigurationError('INVALID_CONFIG', `web({ cookies }) ${detail}`);
@@ -104,8 +106,12 @@ export function configuredCookies(cookies: unknown, appUrl: string | undefined):
       ...(sameSite === undefined ? {} : { sameSite: sameSite as 'Strict' | 'Lax' | 'None' }),
     };
     if (domain !== undefined) {
-      if (typeof domain !== 'string' || domain === '') throw invalidCookies(`${label} domain must be a non-empty string`);
-      if (path !== undefined && typeof path !== 'string') throw invalidCookies(`${label} path must be a string`);
+      if (typeof domain !== 'string' || !COOKIE_DOMAIN.test(domain)) {
+        throw invalidCookies(`${label} domain must be a host name, optionally with a leading dot, such as "example.test" or ".example.test"`);
+      }
+      if (path !== undefined && (typeof path !== 'string' || !path.startsWith('/') || COOKIE_TOKEN_BREAK.test(path))) {
+        throw invalidCookies(`${label} path must start with "/" and contain no ";" or control character`);
+      }
       return { ...fields, domain, ...(path === undefined ? {} : { path }) };
     }
     if (path !== undefined) throw invalidCookies(`${label} path applies to a domain cookie; a url cookie carries its path`);

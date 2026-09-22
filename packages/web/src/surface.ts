@@ -172,7 +172,7 @@ export interface WebOptions extends EngineAppDeclaration {
    * first request: a sessionless test's, the one `app.clearState()` opens,
    * and the one a saved session is restored into. The shape `web.setCookies`
    * takes; a cookie naming no `url` or `domain` targets the app's `url`. A
-   * cookie a restored session carries under the same name keeps the
+   * cookie a restored session carries under the same name, domain, and path keeps the
    * session's value. For the notices an app shows every new visitor (a demo
    * banner, a cookie consent) whose acknowledgement the app stores in a
    * cookie, so no test and no agent has to close them.

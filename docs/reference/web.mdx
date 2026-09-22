@@ -56,7 +56,7 @@ export interface WebOptions extends EngineAppDeclaration {
    * first request: a sessionless test's, the one `app.clearState()` opens,
    * and the one a saved session is restored into. The shape `web.setCookies`
    * takes; a cookie naming no `url` or `domain` targets the app's `url`. A
-   * cookie a restored session carries under the same name keeps the
+   * cookie a restored session carries under the same name, domain, and path keeps the
    * session's value.
    */
   readonly cookies?: readonly WebCookie[];
@@ -82,7 +82,7 @@ cookie consent, a feedback prompt) whose acknowledgement it stores in a cookie.
 Seeded, they never render, so no test closes them by hand and no agent step is
 spent on them. The cookies land in every fresh context: a test without a
 session, the context `app.clearState()` opens, and the one a saved session is
-restored into. A restored session's cookie of the same name wins, so a value
+restored into. A restored session's cookie of the same name, domain, and path wins, so a value
 the app itself set during sign-in is never overwritten by config. A cookie
 without `url` or `domain` targets the app's `url`; the port plays no part,
 so a `url` on port `0` works too.

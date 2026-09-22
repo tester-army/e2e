@@ -77,7 +77,7 @@ A cookie every test needs regardless of session, such as the acknowledgement
 of a demo or cookie-consent banner, belongs in the engine's
 [`cookies` option](/reference/web#options): it is seeded into
 sessionless tests, after `app.clearState()`, and under every restored
-session, whose own cookie of the same name wins.
+session, whose own cookie of the same name, domain, and path wins.
 
 Sessions last for one run. They are encrypted on disk with a key that lives
 only in runner memory, and deleted during cleanup. A session file is a bearer
