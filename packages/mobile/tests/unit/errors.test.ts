@@ -221,6 +221,57 @@ describe('automation runner failures through the engine', () => {
     expect(lines[3]).toMatch(/runner not warmed up.*runner still installing/);
   });
 
+  it('closes every session a failed warm-up opened at finish, and still releases the leases when a close fails', async () => {
+    const released: string[] = [];
+    const cloud = {
+      name: 'toy-cloud',
+      acquire: async (request: { slot: number }) => ({
+        id: `lease-${request.slot}`,
+        daemon: { baseUrl: `https://${request.slot}.example` },
+        device: `sim-${request.slot}`,
+      }),
+      release: async (lease: { id: string }) => {
+        released.push(lease.id);
+      },
+    };
+    const h = harness({ device: cloud });
+    h.fake.respond('apps.open', (args) => {
+      if ((args as { device?: string }).device === 'sim-1') throw runnerBusy();
+      return {};
+    });
+    const closes = () => h.fake.methods().filter((method) => method === 'sessions.close').length;
+    const info = { ...prepareInfo([]), slots: 2 };
+    await expect(h.engine.prepare!(info)).rejects.toMatchObject({
+      message: expect.stringContaining('(session e2e-ios-1 on sim-1)'),
+    });
+    expect(h.sessions).toEqual(['e2e-ios-0', 'e2e-ios-1']);
+    expect(closes()).toBe(0);
+
+    h.fake.respond('sessions.close', () => {
+      throw new Error('daemon gone');
+    });
+    const finish = { ...info, timeoutMs: 5_000 };
+    await h.engine.finish!(finish);
+    expect(closes()).toBe(2);
+    expect(released).toEqual(['lease-0', 'lease-1']);
+    // Nothing left: a second finish closes and releases nothing.
+    await h.engine.finish!(finish);
+    expect(closes()).toBe(2);
+    expect(released).toHaveLength(2);
+  });
+
+  it('closes the sessions a local pool warmed too, a boot that failed included', async () => {
+    const h = harness({ device: ['iPhone 17', 'iPhone 17 Pro'] });
+    h.fake.respond('devices.boot', (args) => {
+      if ((args as { device?: string }).device === 'iPhone 17 Pro') throw new AppError('DEVICE_NOT_FOUND', 'no such device');
+      return {};
+    });
+    const info = { ...prepareInfo([]), slots: 2 };
+    await expect(h.engine.prepare!(info)).rejects.toMatchObject({ message: 'boot failed: no such device' });
+    await h.engine.finish!({ ...info, timeoutMs: 5_000 });
+    expect(h.fake.methods().filter((method) => method === 'sessions.close')).toHaveLength(2);
+  });
+
   it('fails prepare when the runner is wedged at warm-up', async () => {
     const h = harness({ device: 'iPhone 17 Pro' });
     h.fake.respond('apps.open', () => {

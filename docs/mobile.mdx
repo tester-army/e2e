@@ -401,7 +401,9 @@ daemon (`npx agent-device daemon stop`) and reboot the simulator
 
 Do what it says. A runner that is still busy or wedged when `prepare` warms
 the device ends the run there, with the same message, instead of opening the
-app and failing the first observation. The wedge itself is agent-device's:
+app and failing the first observation; the sessions warm-up opened are
+closed when the run ends, so the next run does not resume them by name with
+that runner state. The wedge itself is agent-device's:
 0.21.4 stops a runner that reports draining work instead of handing it to the
 next `open`, so a current engine meets it only after a run that never reached
 cleanup.
