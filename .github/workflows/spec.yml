@@ -35,6 +35,8 @@ jobs:
         run: pnpm typecheck
       - name: Error code reference
         run: pnpm docs:check-errors
+      - name: Peer ranges on the runner
+        run: pnpm check:peer-ranges
       - name: Install browsers
         run: pnpm --filter @e2edev/web exec playwright install chromium --with-deps
       - name: Testbed

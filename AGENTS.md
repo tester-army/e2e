@@ -101,7 +101,7 @@ descriptions and commit bodies; `git log` and `gh pr view` are the archive.
 Build first — nearly everything downstream consumes `dist`.
 
 ```bash
-pnpm check          # lint -> check:dead-code -> typecheck -> docs:check-errors -> docs:check (full gate)
+pnpm check          # lint -> check:dead-code -> typecheck -> docs:check-errors -> check:peer-ranges -> docs:check (full gate)
 pnpm test           # builds, then vitest unit + integration
 pnpm test:testbed   # builds, then runs the real CLI against the playground app
 pnpm test:web-benchmark   # builds, then runs the real CLI against the benchmark scenarios
@@ -268,9 +268,18 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
   any prose an agent writes here; other agents install it with
   `npx skills add okwasniewski/dotfiles --skill unslop`.
 - Releases go through changesets: a user-visible change adds a `.changeset/`
-  entry. Peer ranges point one way only (engine -> `e2e`, widened to `>=x <1`);
-  making them mutual or narrow forces changesets to bump both packages to a
-  major on every release.
+  entry. Peer ranges point one way only (engine -> `e2e`) and read
+  `>=<major.minor.patch> <major+1>` of the runner the engine was built against
+  (`>=0.15.0 <1` today); `scripts/check-peer-ranges.ts` (`pnpm check`) fails on
+  any other shape. Narrow or exact, every runner minor (exact: every patch too)
+  falls out of range, and changesets 3 then patch-bumps each engine and
+  rewrites its pin, never a major (`determineDependents` in
+  `@changesets/assemble-release-plan` patches an out-of-range peer dependent).
+  That republishes every engine on every runner release, and a consumer who
+  updates `e2e` alone is left with an exact peer npm 7+ refuses (ERESOLVE). A
+  runner major is the one legitimate rewrite (`>=1.0.0 <2.0.0`, engines
+  patched): `version-packages` runs `scripts/restore-peer-ranges.ts` after
+  `changeset version`, which puts that in shape and leaves a wide range alone.
 - The root `release` script publishes with `--tag beta`, so releases land on the
   `beta` dist-tag and never move an existing `latest`. That flag is what does the
   work: `changeset publish` always passes `--tag` through to the publish tool, so
@@ -278,16 +287,18 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
   hand-run `npm publish` — `pnpm publish` ignores it. One leak is not fixable
   here: npmjs auto-assigns `latest` on a package's *first* publish in addition to
   `--tag`, so a brand-new package lands on `latest` once regardless.
-  Do not switch to changesets pre mode to get a real prerelease version: it is
-  outside the engine's `e2e` peer range, which majors `@e2edev/web` on
-  every runner minor and rewrites the peer range. Widening the range does not
+  Do not switch to changesets pre mode to get a real prerelease version: a
+  `0.16.0-beta.0` runner is outside the engine's `e2e` peer range, so
+  changesets patch-bumps `@e2edev/web` and rewrites the peer to
+  `>=0.16.0-beta.0 <0.16.0`, which no stable runner satisfies. Widening the range does not
   rescue it — node-semver only lets a prerelease satisfy a comparator set when a
   comparator with the same `major.minor.patch` carries a prerelease, so
   `0.3.0-beta.0` satisfies neither `>=0.1.0-0 <1` nor `*`. Never hand-edit a
   package `version` or `CHANGELOG.md`; `changesets/action` owns both.
 - Canaries are hand-run, never from CI: `pnpm run canary` with `GITHUB_TOKEN`
   set versions and builds every public package as a changesets snapshot, and
-  `pnpm run canary:publish` publishes them to the `canary` dist-tag. Publishing
+  `pnpm run canary:publish` publishes them to the `canary` dist-tag, then runs
+  `scripts/restore-peer-ranges.ts`. Publishing
   is its own step because npm's two-factor prompt is interactive. Never publish
   without building first: each build stamps `dist/.build.json`, and every
   package's `prepublishOnly` (`scripts/check-dist.ts`) refuses a `dist` whose
@@ -298,8 +309,13 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
   after `changeset version` so `init` records those versions, and `init` pins a
   prerelease engine exactly, since a caret on a prerelease resolves to the
   newest canary of that tuple, whose peer range names a different runner build.
-  Nothing the script writes is committed; `git checkout -- packages .changeset`
-  afterwards.
+  The snapshot also pins every `e2e` peer to that runner build, since a
+  prerelease satisfies no `>=x <1` range: the tarballs need the pin, main must
+  not keep it, so the restore step widens it to `>=<runner major.minor.patch> <1`
+  before the output (versions, changelogs, consumed changesets, peers) is
+  committed to main as `chore: release`. A `changeset publish` typed by hand
+  needs `node scripts/restore-peer-ranges.ts` after it, or `pnpm check` fails
+  on the pin.
 - The runner publishes as the unscoped `e2e` (entry points `e2e`, `e2e/agent`,
   `e2e/engine`, `e2e/oauth/chatgpt`, `e2e/oauth/copilot`, `e2e/oauth/grok`; the bin is `e2e` too); engines and reporters publish public
   under the `@e2edev` scope. `@e2edev/e2e` and `@e2edev/oauth` (folded into
