@@ -231,7 +231,9 @@ expect.soft(await screen.getByTestId('tax').textContent()).toBe('$8.00');  // ke
 | `toBeVisible`, `toBeHidden`, `toBeAttached`, `toBeEnabled`, `toBeDisabled`, `toBeChecked`, `toBeSelected`, `toBeExpanded`, `toBeFocused`, `toHaveText`, `toContainText`, `toHaveValue`, `toHaveAttribute`, `toHaveCount`, `toHaveAccessibleName` | `toHaveURL`, `toHaveTitle` | `toBe`, `toEqual`, `toMatchObject`, `toBeTruthy`, `toBeFalsy`, `toBeNull`, `toBeUndefined`, `toBeDefined`, `toHaveLength`, `toHaveProperty`, `toContain`, `toMatch`, `toBeGreaterThan`, `toBeGreaterThanOrEqual`, `toBeLessThan`, `toBeLessThanOrEqual`, `toBeCloseTo` |
 
 `toHaveText` compares the whole normalized text; `toContainText` a
-substring or a RegExp. Both take a list to check every match at once:
+substring or a RegExp; `toHaveValue` compares a form control's value as it
+is, whitespace included, and fails on a node that has none. Both text
+matchers take a list to check every match at once:
 `toHaveText(['Alpha', /^Beta/])` needs exactly two matches with those texts
 in order. `toBeAttached` waits for a match to exist, hidden or not. A failed
 matcher is `ASSERTION_FAILED`, exit code 1.

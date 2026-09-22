@@ -39,34 +39,35 @@ export function normalizeRegexpFlags(flags: string): string {
   return order.filter((flag) => present.has(flag)).join('');
 }
 
+/** How a text matcher reads the two strings it compares. */
+export interface TextComparison {
+  /** `contains` accepts the expected string anywhere in the actual one; a regexp is tested the same way in both modes. */
+  readonly mode: 'equals' | 'contains';
+  /** Whether both sides are whitespace-normalized first. `false` compares the raw strings, as a form control's value is. */
+  readonly normalize: boolean;
+}
+
 /**
  * Matches normalized text against a pattern. String matching is exact by
  * default; `exact: false` is case-insensitive substring matching. Regular
  * expressions use ECMAScript semantics with lastIndex reset before every match.
  */
 export function matchesText(actual: string, pattern: TextPattern): boolean {
-  return matchText(actual, pattern, 'equals');
-}
-
-/** Substring/regexp containment matching used by toContainText. */
-export function containsText(actual: string, pattern: TextPattern): boolean {
-  return matchText(actual, pattern, 'contains');
+  return compareText(actual, pattern, { mode: 'equals', normalize: true });
 }
 
 /**
  * The one text-matching rule. `mode` applies only to exact string patterns:
- * regexps and case-insensitive substrings read the same way in both matchers.
+ * regexps and case-insensitive substrings read the same way in both.
+ * `normalize: false` leaves whitespace alone on both sides, for a field the
+ * platform reports verbatim.
  */
-function matchText(actual: string, pattern: TextPattern, mode: 'equals' | 'contains'): boolean {
-  const normalizedActual = normalizeText(actual);
-  if (pattern.kind === 'regexp') return testPattern(pattern.source, pattern.flags, normalizedActual);
-  const normalizedExpected = normalizeText(pattern.value);
-  if (!pattern.exact) {
-    return normalizedActual.toLowerCase().includes(normalizedExpected.toLowerCase());
-  }
-  return mode === 'equals'
-    ? normalizedActual === normalizedExpected
-    : normalizedActual.includes(normalizedExpected);
+export function compareText(actual: string, pattern: TextPattern, comparison: TextComparison): boolean {
+  const subject = comparison.normalize ? normalizeText(actual) : actual;
+  if (pattern.kind === 'regexp') return testPattern(pattern.source, pattern.flags, subject);
+  const expected = comparison.normalize ? normalizeText(pattern.value) : pattern.value;
+  if (!pattern.exact) return subject.toLowerCase().includes(expected.toLowerCase());
+  return comparison.mode === 'equals' ? subject === expected : subject.includes(expected);
 }
 
 /** Renders a pattern for diagnostics. */

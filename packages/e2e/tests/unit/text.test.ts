@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  containsText,
+  compareText,
   matchesText,
   normalizeRegexpFlags,
   normalizeText,
@@ -41,10 +41,21 @@ describe('matchesText', () => {
   });
 });
 
-describe('containsText', () => {
-  it('exact string uses case-sensitive substring', () => {
-    expect(containsText('Hello World', { kind: 'string', value: 'World', exact: true })).toBe(true);
-    expect(containsText('Hello World', { kind: 'string', value: 'world', exact: true })).toBe(false);
+describe('compareText', () => {
+  const contains = { mode: 'contains', normalize: true } as const;
+  const raw = { mode: 'equals', normalize: false } as const;
+
+  it('contains mode uses a case-sensitive substring for an exact string', () => {
+    expect(compareText('Hello World', { kind: 'string', value: 'World', exact: true }, contains)).toBe(true);
+    expect(compareText('Hello World', { kind: 'string', value: 'world', exact: true }, contains)).toBe(false);
+  });
+
+  it('normalize: false compares the raw strings, newlines and trailing spaces included', () => {
+    const value = 'line1\n\nline2  ';
+    expect(compareText(value, { kind: 'string', value: 'line1 line2', exact: true }, raw)).toBe(false);
+    expect(compareText(value, { kind: 'string', value, exact: true }, raw)).toBe(true);
+    expect(compareText(value, { kind: 'regexp', source: '^line1\\n\\nline2 {2}$', flags: '' }, raw)).toBe(true);
+    expect(compareText(value, { kind: 'string', value: 'line1 line2', exact: true }, { ...raw, normalize: true })).toBe(true);
   });
 });
 

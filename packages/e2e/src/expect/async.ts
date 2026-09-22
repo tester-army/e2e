@@ -2,7 +2,14 @@
 
 import type { SemanticNode } from '../engine/surface.ts';
 import { TestError } from '../internal/errors.ts';
-import { normalizeText, containsText, matchesText, toTextPattern, describePattern } from '../internal/text.ts';
+import {
+  normalizeText,
+  compareText,
+  matchesText,
+  toTextPattern,
+  describePattern,
+  type TextComparison,
+} from '../internal/text.ts';
 import { Deadline, pollCondition } from '../internal/time.ts';
 import { isNodeVisible } from '../locator/engine.ts';
 import { describeExpression } from '../locator/expression.ts';
@@ -25,6 +32,12 @@ interface MatcherSpec {
   readonly wholeSet?: boolean | 'read';
   /** The predicate is meaningful even when zero nodes match. */
   readonly evaluableWithoutNode?: boolean;
+  /**
+   * Whether the one matched node can answer the predicate at all. A node it
+   * rejects keeps the poll waiting, negated or not: `not.toHaveValue` on a
+   * heading is not a pass.
+   */
+  readonly evaluableNode?: (node: SemanticNode) => boolean;
   readonly predicate: (sample: Sample) => boolean;
   readonly describeExpected: string;
   readonly observed: (sample: Sample) => string;
@@ -47,37 +60,40 @@ const STATE_MATCHERS = {
   toBeFocused: { key: 'focused', expected: true, describeExpected: 'focused' },
 } as const satisfies Record<string, StateMatcherDef>;
 
-interface TextMatcherDef {
+/**
+ * One text matcher: the node field it reads and how `compareText` reads the
+ * two strings. `normalize: false` compares the raw field, as a form control's
+ * value is, and the failure message prints it raw.
+ */
+interface TextMatcherDef extends TextComparison {
   readonly field: 'text' | 'value' | 'name';
-  readonly match: (actual: string, pattern: ReturnType<typeof toTextPattern>) => boolean;
   readonly describeExpected: (pattern: string) => string;
-  readonly normalize: boolean;
 }
 
 const TEXT_MATCHERS = {
   toHaveText: {
     field: 'text',
-    match: matchesText,
-    describeExpected: (pattern) => `text ${pattern}`,
+    mode: 'equals',
     normalize: true,
+    describeExpected: (pattern) => `text ${pattern}`,
   },
   toContainText: {
     field: 'text',
-    match: containsText,
-    describeExpected: (pattern) => `text containing ${pattern}`,
+    mode: 'contains',
     normalize: true,
+    describeExpected: (pattern) => `text containing ${pattern}`,
   },
   toHaveValue: {
     field: 'value',
-    match: matchesText,
-    describeExpected: (pattern) => `value ${pattern}`,
+    mode: 'equals',
     normalize: false,
+    describeExpected: (pattern) => `value ${pattern}`,
   },
   toHaveAccessibleName: {
     field: 'name',
-    match: matchesText,
+    mode: 'equals',
+    normalize: true,
     describeExpected: (pattern) => `accessible name ${pattern}`,
-    normalize: false,
   },
 } as const satisfies Record<string, TextMatcherDef>;
 
@@ -134,10 +150,13 @@ class AsyncExpectationImpl implements AsyncExpectation {
 
   /**
    * Single-node matchers require an unambiguous node before their predicate
-   * means anything; visibility matchers also accept zero matches.
+   * means anything, and may refuse a node that lacks what they read;
+   * visibility matchers also accept zero matches.
    */
   private conditionEvaluable(spec: MatcherSpec, sample: Sample): boolean {
-    return spec.wholeSet !== undefined || sample.node !== null || spec.evaluableWithoutNode === true;
+    if (spec.wholeSet !== undefined) return true;
+    if (sample.node === null) return spec.evaluableWithoutNode === true;
+    return spec.evaluableNode?.(sample.node) ?? true;
   }
 
   private async sample(spec: MatcherSpec, deadline: Deadline): Promise<Sample> {
@@ -179,12 +198,17 @@ class AsyncExpectationImpl implements AsyncExpectation {
     return this.poll(
       {
         name,
-        predicate: (sample) => sample.node !== null && def.match(sample.node[def.field] ?? '', pattern),
+        evaluableNode: (node) => readField(def, node) !== undefined,
+        predicate: (sample) => {
+          const actual = sample.node === null ? undefined : readField(def, sample.node);
+          return actual !== undefined && compareText(actual, pattern, def);
+        },
         describeExpected: def.describeExpected(describePattern(pattern)),
         observed: (sample) => {
           if (sample.node === null) return 'no node';
-          const raw = sample.node[def.field] ?? '';
-          return `${def.field} ${JSON.stringify(def.normalize ? normalizeText(raw) : raw)}`;
+          const actual = readField(def, sample.node);
+          if (actual === undefined) return `no ${def.field} (not a form control)`;
+          return `${def.field} ${printField(def, actual)}`;
         },
       },
       timeout,
@@ -202,9 +226,9 @@ class AsyncExpectationImpl implements AsyncExpectation {
   ): Promise<void> {
     const def = TEXT_MATCHERS[name];
     const patterns = expected.map((entry) => toTextPattern(entry, { exact: true }));
-    const fieldOf = (node: SemanticNode): string => {
-      const raw = node[def.field] ?? '';
-      return def.normalize ? normalizeText(raw) : raw;
+    const printed = (node: SemanticNode): string => {
+      const actual = readField(def, node);
+      return actual === undefined ? `no ${def.field}` : printField(def, actual);
     };
     return this.poll(
       {
@@ -212,9 +236,12 @@ class AsyncExpectationImpl implements AsyncExpectation {
         wholeSet: 'read',
         predicate: (sample) =>
           sample.nodes.length === patterns.length &&
-          patterns.every((pattern, index) => def.match(sample.nodes[index]![def.field] ?? '', pattern)),
+          patterns.every((pattern, index) => {
+            const actual = readField(def, sample.nodes[index]!);
+            return actual !== undefined && compareText(actual, pattern, def);
+          }),
         describeExpected: def.describeExpected(`[${patterns.map(describePattern).join(', ')}]`),
-        observed: (sample) => `${def.field} [${sample.nodes.map((node) => JSON.stringify(fieldOf(node))).join(', ')}]`,
+        observed: (sample) => `${def.field} [${sample.nodes.map(printed).join(', ')}]`,
       },
       timeout,
     );
@@ -354,6 +381,20 @@ class AsyncExpectationImpl implements AsyncExpectation {
 /** A list of text matches, as opposed to one string or RegExp. */
 function isTextMatchList(expected: TextMatch | readonly TextMatch[]): expected is readonly TextMatch[] {
   return Array.isArray(expected);
+}
+
+/**
+ * The node's field as the matcher reads it. Text and name read as the empty
+ * string when absent, since a node without text has none; a node without a
+ * value is not a form control and cannot answer `toHaveValue` at all.
+ */
+function readField(def: TextMatcherDef, node: SemanticNode): string | undefined {
+  return node[def.field] ?? (def.field === 'value' ? undefined : '');
+}
+
+/** The field as the failure message prints it: normalized when the comparison was, so the message shows what got compared. */
+function printField(def: TextMatcherDef, actual: string): string {
+  return JSON.stringify(def.normalize ? normalizeText(actual) : actual);
 }
 
 function observedState(sample: Sample): string {
