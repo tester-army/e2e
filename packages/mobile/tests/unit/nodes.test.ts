@@ -293,6 +293,17 @@ describe('snapshot projection', () => {
     expect(note!.role).toBe('text');
   });
 
+  it('keeps a role that already takes text when the platform reports it editable, and trusts the flag on a control role', () => {
+    const projected = project([
+      { ref: 'e1', type: 'searchbox', label: 'Search', editable: true },
+      { ref: 'e2', type: 'android.widget.Spinner', label: 'Country', editable: true },
+      { ref: 'e3', type: 'android.widget.Button', label: 'Submit', editable: true },
+      { ref: 'e4', type: 'android.widget.Button', label: 'Cancel', editable: false },
+      { ref: 'e5', type: 'android.widget.Button', label: 'Later' },
+    ]);
+    expect(projected.index.map((entry) => entry.node.role)).toEqual(['searchbox', 'combobox', 'textbox', 'button', 'button']);
+  });
+
   it('reads the screen title from the navigation bar, its inner text, its identifier, or nothing', () => {
     expect(screenTitle(project(SETTINGS_NODES))).toBe('General');
     expect(screenTitle(project([{ ref: '@e1', type: 'navigation-bar', identifier: 'About' }]))).toBe('About');
