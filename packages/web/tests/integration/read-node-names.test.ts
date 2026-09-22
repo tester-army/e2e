@@ -201,4 +201,64 @@ describe('names from content and precedence', () => {
     expect(await locatedTestId('button', 'First Pic')).toBe('two-references');
     expect(await page.getByRole('textbox', { name: 'Address', exact: true }).count()).toBe(0);
   });
+
+  it('reads a referenced target whole when it is hidden, by its own aria-label, and drops hidden parts of a shown one', async () => {
+    await page.setContent(`
+      <button aria-labelledby="l1" aria-label="Delete" data-testid="hidden-reference"><span id="l1" hidden>Delete account</span></button>
+      <button aria-labelledby="l2" aria-label="Delete" data-testid="aria-hidden-reference"><span id="l2" aria-hidden="true">Remove account</span></button>
+      <button aria-labelledby="l3" data-testid="nested-hidden-reference">x</button>
+      <div hidden><span id="l3">Deep <i style="display:none">gone</i>label</span></div>
+      <button aria-labelledby="l4" data-testid="shown-reference">x</button>
+      <span id="l4">Shown <i style="display:none">gone</i></span>
+      <button aria-labelledby="l5" data-testid="labelled-reference">x</button>
+      <span id="l5" aria-label="Own label">Text</span>
+    `);
+    const { tree } = await capture();
+    const byTestId = new Map(flatten(tree).map((node) => [node.testId, node]));
+    const cases: readonly [testId: string, name: string][] = [
+      ['hidden-reference', 'Delete account'],
+      ['aria-hidden-reference', 'Remove account'],
+      ['nested-hidden-reference', 'Deep gone label'],
+      ['shown-reference', 'Shown'],
+      ['labelled-reference', 'Own label'],
+    ];
+    for (const [testId, name] of cases) {
+      expect(byTestId.get(testId), testId).toMatchObject({ role: 'button', name });
+      expect(await locatedTestId('button', name), name).toBe(testId);
+    }
+  });
+
+  it('follows a descendant reference in a name from content, once per element and never from inside another', async () => {
+    await page.setContent(`
+      <button data-testid="svg-reference"><svg aria-labelledby="t1" width="10" height="10"><title id="t1">Close</title></svg>Icon</button>
+      <button data-testid="block-svg-reference"><svg aria-labelledby="t2" style="display:block" width="10" height="10"><title id="t2">Close</title></svg>Icon</button>
+      <button data-testid="svg-title"><svg width="10" height="10"><title>Svg title</title></svg></button>
+      <button data-testid="two-references"><span aria-labelledby="p1 p2"></span></button>
+      <span id="p1">One</span><span id="p2">Two</span>
+      <button data-testid="hidden-target"><span aria-labelledby="p3"></span></button>
+      <span id="p3" hidden>Hidden target</span>
+      <button data-testid="cycle"><span id="c1" aria-labelledby="c2">A</span><span id="c2" aria-labelledby="c1">B</span></button>
+      <button id="ancestor" data-testid="ancestor-reference"><span aria-labelledby="ancestor">A</span>B</button>
+      <button id="me" aria-labelledby="me" data-testid="self-reference">Self</button>
+      <button aria-labelledby="r1" data-testid="nested-reference">x</button>
+      <span id="r1"><span aria-labelledby="r2">Ref text</span></span><span id="r2">Nested</span>
+    `);
+    const { tree } = await capture();
+    const byTestId = new Map(flatten(tree).map((node) => [node.testId, node]));
+    const cases: readonly [testId: string, name: string][] = [
+      ['svg-reference', 'CloseIcon'],
+      ['block-svg-reference', 'Close Icon'],
+      ['svg-title', 'Svg title'],
+      ['two-references', 'One Two'],
+      ['hidden-target', 'Hidden target'],
+      ['cycle', 'B'],
+      ['ancestor-reference', 'AB'],
+      ['self-reference', 'Self'],
+      ['nested-reference', 'Ref text'],
+    ];
+    for (const [testId, name] of cases) {
+      expect(byTestId.get(testId), testId).toMatchObject({ role: 'button', name });
+      expect(await locatedTestId('button', name), name).toBe(testId);
+    }
+  });
 });

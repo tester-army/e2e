@@ -236,6 +236,33 @@ describe('contenteditable editing hosts', () => {
     expect(await page.getByRole('textbox', { name: 'Message' }).getAttribute('data-testid')).toBe('explicit');
   });
 
+  it('makes an editing host a textbox whatever role its tag carries, and leaves a native control its own', async () => {
+    await page.setContent(`
+      <article contenteditable data-testid="article"><p>Post</p></article>
+      <h2 contenteditable data-testid="heading">Title</h2>
+      <ul><li contenteditable data-testid="item">Item</li></ul>
+      <section contenteditable aria-label="Notes" data-testid="section"></section>
+      <button contenteditable data-testid="button">Save</button>
+      <a href="#" contenteditable data-testid="link">Home</a>
+      <select contenteditable data-testid="select"><option>a</option></select>
+      <img contenteditable alt="Pic" src="${PIXEL}" data-testid="image">
+    `);
+    const nodes = await rolesByTestId();
+    const roles = Object.fromEntries([...nodes].map(([testId, node]) => [testId, node.role]));
+    expect(roles).toEqual({
+      article: 'textbox',
+      heading: 'textbox',
+      item: 'textbox',
+      section: 'textbox',
+      button: 'button',
+      link: 'link',
+      select: 'combobox',
+      image: 'image',
+    });
+    expect(nodes.get('article')).toMatchObject({ value: 'Post' });
+    expect(nodes.get('section')).toMatchObject({ name: 'Notes', value: '' });
+  });
+
   it('never makes a drawn or embedded surface a textbox, whatever its contenteditable says', async () => {
     await page.setContent(`
       <canvas contenteditable tabindex="0" width="120" height="60" data-testid="canvas"></canvas>
