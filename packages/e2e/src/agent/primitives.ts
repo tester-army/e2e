@@ -133,26 +133,35 @@ export interface VerdictTool {
 }
 
 /**
- * The `complete_step` verdict tool. A blocked verdict without a blockable
- * code is rejected back to the model, a passed verdict never carries a code,
- * and the first accepted verdict is final.
+ * The `complete_step` verdict tool. A passed verdict with an error code
+ * fails the schema (seen live: `passed` beside `ACTION_FAILED`), a blocked
+ * verdict without a blockable code is rejected back to the model, and the
+ * first accepted verdict is final.
  */
 export function createVerdictTool(): VerdictTool {
   let verdict: StepVerdict | undefined;
   const tool = schemaTool({
     description:
       'Conclude the step with the final verdict. passed = the application behaved as required and you verified it. failed = the application did not behave as required. blocked = credentials, environment, or test setup prevented a product verdict; blocked requires errorCode.',
-    inputSchema: z.object({
-      status: z.enum(['passed', 'failed', 'blocked']),
-      summary: z
-        .string()
-        .min(1)
-        .max(MAX_VERDICT_SUMMARY_CHARS)
-        .describe(
-          'One to three sentences for the next step: what you did, what the screen shows now, and any value it will need (a name or id you created, a message you saw). No page narration; under 400 characters.',
-        ),
-      errorCode: z.enum(MODEL_ERROR_CODES).optional(),
-    }),
+    inputSchema: z
+      .object({
+        status: z.enum(['passed', 'failed', 'blocked']),
+        summary: z
+          .string()
+          .min(1)
+          .max(MAX_VERDICT_SUMMARY_CHARS)
+          .describe(
+            'One to three sentences for the next step: what you did, what the screen shows now, and any value it will need (a name or id you created, a message you saw). No page narration; under 400 characters.',
+          ),
+        errorCode: z
+          .enum(MODEL_ERROR_CODES)
+          .optional()
+          .describe('Why the step failed or what blocked it. Only with status failed or blocked; a passed step carries none.'),
+      })
+      .refine((input) => input.errorCode === undefined || input.status !== 'passed', {
+        error: 'errorCode is only valid with status failed or blocked',
+        path: ['errorCode'],
+      }),
     execute: async (input) => {
       if (verdict !== undefined) return 'The step already concluded.';
       if (
@@ -169,9 +178,7 @@ export function createVerdictTool(): VerdictTool {
       verdict = {
         status: input.status,
         summary: input.summary,
-        ...(input.errorCode === undefined || input.status === 'passed'
-          ? {}
-          : { errorCode: input.errorCode }),
+        ...(input.errorCode === undefined ? {} : { errorCode: input.errorCode }),
       };
       return 'Step concluded.';
     },

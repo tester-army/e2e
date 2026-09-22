@@ -72,6 +72,10 @@ An agent step returns one of three verdicts:
 - `blocked`: a prerequisite, environment problem, or execution limit
   prevented a product verdict. The error code determines the exit code.
 
+An error code belongs to `failed` or `blocked` only: a `passed` verdict
+that carries one is refused back to the model like any other schema
+violation, and its next turn repairs it.
+
 | Blocked by | Codes | Exit |
 | --- | --- | ---: |
 | A credential the app rejected, or one that is not configured | `AUTH_CREDENTIAL_INVALID`, `AUTH_CREDENTIAL_UNAVAILABLE` | 2 |
