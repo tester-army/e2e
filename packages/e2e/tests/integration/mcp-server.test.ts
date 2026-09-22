@@ -119,6 +119,24 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     expect(observed.text).toContain('NO_SESSION');
   });
 
+  it('refuses an argument a fixed tool does not declare at the protocol layer, before anything runs', async () => {
+    // The MCP SDK validates against the closed schema before the handler runs:
+    // the refusal names the tool and the key, and no session opened.
+    for (const [name, args, key] of [
+      ['open_session', { headless: true }, 'headless'],
+      ['tools', { all: true }, 'all'],
+      ['call', { tool: 'observe', verbose: true }, 'verbose'],
+      ['close_session', { force: true }, 'force'],
+    ] as const) {
+      const refused = await invoke(name, args);
+      expect(refused.isError, name).toBe(true);
+      expect(refused.text, name).toContain(`Invalid arguments for tool ${name}: Unrecognized key: "${key}"`);
+    }
+    const listed = await invoke('tools');
+    expect(listed.isError).toBe(true);
+    expect(listed.text).toContain('NO_SESSION');
+  });
+
   it('opens a session with its catalog, then locates, acts, fills a secret, and withholds pixels afterwards', async () => {
     const opened = await invoke('open_session');
     expect(opened.isError, opened.text).toBe(false);

@@ -5,8 +5,9 @@
  */
 
 import type { ToolSet } from 'ai';
-import type { z } from 'zod';
-import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { aiSdk, loadAiSdk } from '../../src/agent/ai-sdk.ts';
 import { createGrammarTools, createVerdictTool, GRAMMAR_TOOL_NAMES } from '../../src/agent/primitives.ts';
 import { fakeExecutorContext } from '../helpers/fake-executor-context.ts';
 
@@ -65,5 +66,30 @@ describe('the grammar tools have closed schemas', () => {
 
   it('closes complete_step', () => {
     expectClosed(schemaOf({ complete_step: createVerdictTool().tool }, 'complete_step'), { status: 'passed', summary: 'done' }, 'complete_step');
+  });
+});
+
+describe('the schema a provider receives', () => {
+  beforeAll(() => loadAiSdk());
+
+  /** The JSON Schema the SDK sends for a tool: the conversion generateText runs on `inputSchema`. */
+  const sent = (schema: z.ZodType) => aiSdk().asSchema(schema).jsonSchema as { additionalProperties?: unknown };
+  /** What zod alone emits in the mode the SDK converts with, before the SDK's own pass over the result. */
+  const emitted = (schema: z.ZodType) => z.toJSONSchema(schema, { target: 'draft-7', io: 'input' }) as { additionalProperties?: unknown };
+
+  it('carries additionalProperties: false for every grammar tool and complete_step, from the schema itself', () => {
+    const tools = { ...createGrammarTools(fakeExecutorContext().context), complete_step: createVerdictTool().tool };
+    for (const [name, tool] of Object.entries(tools)) {
+      const schema = tool.inputSchema as z.ZodType;
+      expect(sent(schema).additionalProperties, `${name} as sent`).toBe(false);
+      // The closed schema emits it on its own, so the wire shape does not rest on the SDK's pass.
+      expect(emitted(schema).additionalProperties, `${name} from zod`).toBe(false);
+    }
+  });
+
+  it('is the SDK that closes a plain object: zod in input mode declares nothing about extra keys', () => {
+    const plain = z.object({ target: z.string() });
+    expect(emitted(plain).additionalProperties).toBeUndefined();
+    expect(sent(plain).additionalProperties).toBe(false);
   });
 });
