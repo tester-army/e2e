@@ -390,8 +390,11 @@ export class ActionDispatcher {
     // A typed value the step read off the screen (its tree, or a screenshot
     // it was shown) or reckoned from the date is this run's data, not the
     // flow's: it is recorded as a gap so replay hands over before it rather
-    // than typing a value the app may not issue again.
+    // than typing a value the app may not issue again. A value a replay
+    // types is the recording's own data and stays: an app that kept the last
+    // run's value shows it on the first screen, and no model chose it.
     if (
+      !this.accounting.replayingTrace &&
       (action.name === 'type' || action.name === 'typeText') &&
       isDerivedValue(action.value, this.options.instruction, this.options.params, {
         shown: this.feed.shownText(),

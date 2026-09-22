@@ -71,7 +71,7 @@ export class StepAccounting {
   private modelProvider: string | undefined;
   private modelId: string | undefined;
   /** Whether the step is replaying a recorded trace: its actions are then a test's, not the model's. */
-  private replayingTrace = false;
+  private inReplay = false;
 
   constructor(
     private readonly runtime: AgentContext,
@@ -203,12 +203,20 @@ export class StepAccounting {
 
   /** Every operation inside a replayed span is the test's, navigation included; outside it, the agent's. */
   private stamped(operation: OperationContext): OperationContext {
-    return this.replayingTrace ? { ...operation, origin: 'test' } : operation;
+    return this.inReplay ? { ...operation, origin: 'test' } : operation;
   }
 
   /** Marks the span in which the step's actions come from a recorded trace rather than the model. */
   replaying(active: boolean): void {
-    this.replayingTrace = active;
+    this.inReplay = active;
+  }
+
+  /**
+   * True inside that span: an action committed now came from the recording,
+   * and what the dispatcher judges about a model's choices does not apply.
+   */
+  get replayingTrace(): boolean {
+    return this.inReplay;
   }
 
   /**
