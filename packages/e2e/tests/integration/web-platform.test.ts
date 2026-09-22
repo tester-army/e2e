@@ -262,6 +262,13 @@ test('frame locators scope queries into iframes', async ({ app, web }) => {
   await new Promise((resolve) => setTimeout(resolve, 100));
 });
 
+test('nested frame locators resolve each frame inside the one before it', async ({ app, web }) => {
+  await app.open('/frame-nested');
+  const inner = web.frameLocator('#outer').frameLocator('#child');
+  await inner.getByRole('button', { name: 'Frame button' }).tap();
+  await expect(inner.getByRole('button', { name: 'Frame clicked' })).toBeVisible();
+});
+
 test('downloads are captured as artifacts', async ({ app, web }) => {
   await app.open('/downloads');
   const download = await web.waitForDownload(() => web.locator('a[download]').tap());
@@ -344,6 +351,7 @@ describe('web platform integration', () => {
       'cookies round-trip through policy checks',
       'dialogs are handled by registered handlers',
       'frame locators scope queries into iframes',
+      'nested frame locators resolve each frame inside the one before it',
       'css selectors via web.locator',
       'downloads are captured as artifacts',
       'app lifecycle: restart preserves storage, clearState clears it',
