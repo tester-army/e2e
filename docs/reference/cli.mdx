@@ -7,6 +7,7 @@ description: Commands, flags, output formats, and exit codes.
 npx e2e init [directory]
 npx e2e login [provider]
 npx e2e logout [provider]
+npx e2e models [provider]
 npx e2e guide [topic]
 npx e2e mcp [options]
 npx e2e run [files...] [options]
@@ -105,8 +106,9 @@ npx e2e login                     # choose a provider
 ```
 
 Signs in to a subscription and stores credentials in
-`~/.config/e2e/oauth.json`. A failed or cancelled sign-in exits 1; an unknown
-provider exits 2. See [Subscriptions](/subscriptions) for model configuration.
+`~/.config/e2e/oauth.json`. A failed sign-in exits 1, a cancelled one 130; an
+unknown provider exits 2. See [Subscriptions](/subscriptions) for model
+configuration.
 
 ## e2e logout
 

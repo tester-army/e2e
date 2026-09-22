@@ -46,8 +46,9 @@ timeout. They do not accept per-call timeout options.
 | `screenshot(label?)` | `config.actionTimeout`, 30000 ms | `POLICY_DENIED` after a secret fill, `UNSUPPORTED_CAPABILITY`, `ENGINE_FAILURE` |
 
 `screenshot` registers the file as an attempt artifact and returns its path
-relative to the artifact root; `label` names the step and joins the file
-name.
+relative to the attempt's artifact directory, under `screenshots/`; the report
+records the artifact-root-relative path. `label` names the step and joins the
+file name.
 
 ```ts
 await app.open('/settings/billing');

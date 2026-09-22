@@ -34,7 +34,7 @@ A Playwright key the runner recognizes (`testDir`, `baseURL`, `webServer`,
 | `testDir`, `testMatch` | `tests`, globs relative to the project root | config | renamed |
 | `testIgnore` | not yet; name only the globs you want | config | missing |
 | `fullyParallel` | not yet; a file's tests run in order on one worker, files run in parallel | config | missing |
-| `maxFailures` | not yet | config | missing |
+| `maxFailures` | `--max-failures <n>`; no config key | CLI | renamed |
 | `reporter` | `reporters: ['list', 'junit']`; also `json` and `markdown` | config | renamed |
 | `reporter: 'html'` | no equivalent; `markdown` writes `.e2e/summary.md`, every run writes `.e2e/report.json` | config | missing |
 | `outputDir` | `--artifacts <dir>`, default `.e2e/artifacts` | CLI | renamed |
@@ -110,7 +110,7 @@ to do today.
 | --- | --- | --- | --- |
 | `page.getByRole`, `getByLabel`, `getByText`, `getByTestId`, `getByPlaceholder` | the same on `screen` | `screen` | same |
 | `getByText('Save')` | matches exactly; `{ exact: false }` for Playwright's substring match | `screen` | by design |
-| `getByRole('img')` | `getByRole('image')`; `img` is not in the closed `Role` list | `screen` | renamed |
+| `getByRole('img')` | the same; `img` is an alias of `image`, so engines, the trace cache, and reports see `image` | `screen` | same |
 | `getByAltText(alt)` | `getByRole('image', { name: alt })` | `screen` | renamed |
 | `getByTitle` | not yet; the node carries no title | `web` | missing |
 | `getByRole(role, { includeHidden })` | a role query never matches a hidden node; `{ visible: true }` on the other queries drops hidden twins | `screen` | by design |
@@ -173,12 +173,13 @@ to do today.
 | `expect(page).toHaveURL()`, `toHaveTitle()` | `expect(web).toHaveURL()`, `toHaveTitle()` | `web` | web only |
 | `toHaveScreenshot()`, `toMatchSnapshot()` | not yet; `agent.assert('...', { vision: true })` is a judgment, not a pixel diff | `expect` | missing |
 | `toMatchAriaSnapshot()` | not yet | `web` | missing |
-| `expect(value).toBe()`, `toEqual()`, `toContain()`, `toMatch()`, `toBeTruthy()`, `toBeCloseTo()` and the rest | the same 15, see [value matchers](/reference/expect#value-matchers) | `expect` | same |
-| `toHaveLength()`, `toMatchObject()`, `toStrictEqual()`, `toThrow()`, `toBeInstanceOf()`, `toHaveProperty()` | not yet; `expect(list.length).toBe(n)`, `toEqual` on the shape you need | `expect` | missing |
-| `expect.any()`, `objectContaining()`, `arrayContaining()`, `stringMatching()` | not yet | `expect` | missing |
+| `expect(value).toBe()`, `toEqual()`, `toContain()`, `toMatch()`, `toBeTruthy()`, `toBeCloseTo()` and the rest | the same 17, see [value matchers](/reference/expect#value-matchers) | `expect` | same |
+| `toHaveLength()`, `toMatchObject()`, `toHaveProperty()` | the same | `expect` | same |
+| `toStrictEqual()`, `toThrow()`, `toBeInstanceOf()` | not yet; `toEqual` on the shape you need | `expect` | missing |
+| `expect.any()`, `objectContaining()`, `arrayContaining()`, `stringMatching()` | the same, plus `anything()` and `stringContaining()`, see [asymmetric matchers](/reference/expect#asymmetric-matchers) | `expect` | same |
 | `expect(async () => { ... }).toPass()` | `expect.poll(read).toBe(...)` | `expect` | renamed |
 | `expect.poll()` | the same | `expect` | same |
-| `expect.soft()` | not yet; the first failure ends the test | `expect` | missing |
+| `expect.soft()` | the same; kept failures fail the attempt once the body settles, see [soft assertions](/reference/expect#soft-assertions) | `expect` | same |
 | `expect.extend()` | not yet | `expect` | missing |
 | `expect(promise).resolves`, `.rejects` | not yet; `await` first, then `expect(value)` | `expect` | missing |
 

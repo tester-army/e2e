@@ -31,7 +31,7 @@ reference pages hold the details: [screen](/reference/screen),
 | `--format junit`, `--output` | `--reporter list,junit`, written to `.e2e/junit.xml` | CLI | renamed |
 | `--format html` | no equivalent; `markdown` writes `.e2e/summary.md`, every run writes `.e2e/report.json` | CLI | missing |
 | `properties` (JUnit `<property>`) | not yet | `test` | missing |
-| `--shards`, `--shard-split` | `device: [...]` plus `workers` splits a target's files across devices on one machine; no cross-machine sharding | config | renamed |
+| `--shards`, `--shard-split` | `device: [...]` plus `workers` splits a target's files across devices on one machine; `--shard <index/total>` splits the suite across machines, see [Sharding](/ci#sharding) | config | renamed |
 | `maestro record`, `startRecording` | `npx e2e run --video`, one MP4 per attempt | CLI | renamed |
 | `maestro test -c`, Maestro Studio | not yet; `npx e2e mcp` gives a coding agent a live session on the device, see [Coding agents](/coding-agents) | CLI | missing |
 | `maestro hierarchy` | not yet; `device.locator` takes agent-device selectors for nodes `screen` cannot name | CLI | missing |

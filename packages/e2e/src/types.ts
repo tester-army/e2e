@@ -847,7 +847,7 @@ export interface Expect extends ExpectCall {
    * body (a standalone script, an `afterEach` hook) a failure throws at once.
    */
   readonly soft: ExpectCall;
-  /** Matches an instance of the class; for `String`, `Number`, `Boolean`, `BigInt`, `Symbol`, and `Function`, the primitive too; for `Object`, any non-null object. */
+  /** Matches an instance of the class; for `String`, `Number`, `Boolean`, `BigInt`, `Symbol`, and `Function`, the primitive too; for `Object`, anything `typeof` calls an object, `null` included. */
   any(sample: Class | typeof BigInt | typeof Symbol): AsymmetricMatcher;
   /** Matches anything but `null` and `undefined`. */
   anything(): AsymmetricMatcher;

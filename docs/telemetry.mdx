@@ -83,7 +83,7 @@ Versions:
 | --- | --- |
 | `result` | `scaffolded`, `already-initialized`, `cancelled`, `install-failed`, `not-interactive`, or `invalid-project` |
 | `yes`, `existing_config` | Whether `--yes` was given, and whether a config already existed so no engine or gateway was asked |
-| `engine`, `gateway` | The ids of the engine and the model gateway chosen for a new config (`playwright`, `agent-device`, `none`; `vercel`, `openrouter`, `openai-compatible`, `chatgpt`, `copilot`, `grok`, `none`), `null` when not asked. Never the endpoint typed for an OpenAI-compatible gateway |
+| `engine`, `gateway` | The ids of the engine and the model gateway chosen for a new config (`web`, `mobile`, `none`; `vercel`, `openrouter`, `openai-compatible`, `chatgpt`, `copilot`, `grok`, `none`), `null` when not asked. Never the endpoint typed for an OpenAI-compatible gateway |
 | `skill`, `mcp`, `install` | Whether the agent skill, the MCP registration, and the dependency install were chosen |
 
 `e2e_run_completed`, once per `e2e run` or `e2e explore`, built from the numbers in `report.json`:
