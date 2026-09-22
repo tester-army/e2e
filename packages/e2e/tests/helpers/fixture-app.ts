@@ -712,11 +712,62 @@ ${rows}
 </html>`;
 }
 
+/**
+ * A todo list the server keeps for the life of the fixture, the way an app
+ * with a database shows the last run's data on the next run's first screen.
+ * Adding one shows a status the page load owns, so every run has an effect
+ * to anchor on even when the list already held the value.
+ */
+function renderTodos(todos: ReadonlySet<string>): string {
+  const items = [...todos].map((todo) => `    <li>${todo}</li>`).join('\n');
+  return `<!doctype html>
+<html>
+<head><title>Todos</title></head>
+<body>
+  <h1>Todos</h1>
+  <label for="todo">New todo</label>
+  <input id="todo" />
+  <button id="add">Add</button>
+  <output id="result" role="status" aria-label="Result"></output>
+  <ul id="todos" aria-label="Todos">
+${items}
+  </ul>
+  <script>
+    document.getElementById('add').addEventListener('click', async () => {
+      const response = await fetch('/api/todos', { method: 'POST', body: document.getElementById('todo').value });
+      const todos = await response.json();
+      document.getElementById('todos').replaceChildren(
+        ...todos.map((todo) => Object.assign(document.createElement('li'), { textContent: todo })),
+      );
+      document.getElementById('result').textContent = 'added';
+    });
+  </script>
+</body>
+</html>`;
+}
+
 /** Starts the fixture app on an ephemeral loopback port. */
 export async function startFixtureApp(): Promise<FixtureApp> {
+  const todos = new Set<string>();
   const server: Server = createServer((request, response) => {
     const requested = new URL(request.url ?? '/', 'http://localhost');
     const pathname = requested.pathname;
+    if (pathname === '/todos') {
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      response.end(renderTodos(todos));
+      return;
+    }
+    if (pathname === '/api/todos' && request.method === 'POST') {
+      const chunks: Buffer[] = [];
+      request.on('data', (chunk: Buffer) => chunks.push(chunk));
+      request.on('end', () => {
+        const todo = Buffer.concat(chunks).toString('utf8').trim();
+        if (todo !== '') todos.add(todo);
+        response.writeHead(200, { 'content-type': 'application/json' });
+        response.end(JSON.stringify([...todos]));
+      });
+      return;
+    }
     if (pathname === '/downloads') {
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       response.end(

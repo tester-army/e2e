@@ -46,8 +46,9 @@ npx e2e run --no-cache
 4. Finish without a model call, or let the agent continue with a record of
    what ran and why replay stopped.
 
-Typed values replay as recorded. Secret fills resolve the current value by
-name and run through authorization again.
+Typed values replay as recorded, even when an earlier run left the same
+value on screen. Secret fills resolve the current value by name and run
+through authorization again.
 
 ## What must match
 
