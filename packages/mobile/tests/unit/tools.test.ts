@@ -68,4 +68,37 @@ describe('agent tool pack', () => {
     expect(await run('open_app', { app: 'Reminders' })).toBe('Opened Reminders.');
     expect(iosFake.lastArgs('apps.open')).toEqual({ app: 'Reminders', platform: 'ios' });
   });
+
+  it('refuses a link the model hands to open_app before the device sees it', async () => {
+    const fake = createFakeClient({ 'apps.open': () => ({ appName: 'Settings' }) });
+    const ios = buildEngine(new AgentDeviceSurface({ platform: 'ios' }, () => fake.client));
+    await ios.init!({
+      runId: 'r',
+      targetName: 'ios',
+      projectRoot: '/project',
+      app: {},
+      headed: false,
+      workerSlot: 0,
+      log: () => undefined,
+      env: {},
+      signal: new AbortController().signal,
+    });
+    await ios.startAttempt!({ attemptId: 'a1', artifactsDir: '/tmp', signal: new AbortController().signal });
+    const tools = mobileTools(ios);
+    const open = (app: string) =>
+      (tools.open_app!.tool.execute as (input: unknown, options: object) => Promise<unknown>)({ app }, {
+        toolCallId: 'c1',
+        messages: [],
+      });
+    const before = fake.calls.length;
+    for (const denied of ['file:///etc/passwd', 'data:text/html,hi', 'javascript:alert(1)']) {
+      await expect(open(denied)).rejects.toMatchObject({ code: 'POLICY_DENIED' });
+    }
+    for (const link of ['https://example.com/verify', 'myapp://orders/42']) {
+      await expect(open(link)).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+    }
+    expect(fake.calls.length).toBe(before);
+    expect(await open('com.apple.Preferences')).toBe('Opened com.apple.Preferences.');
+    expect(fake.lastArgs('apps.open')).toEqual({ app: 'com.apple.Preferences', platform: 'ios' });
+  });
 });

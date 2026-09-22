@@ -55,6 +55,7 @@ import {
 import type { AgentDeviceClient, MobileOptions, MobilePlatform, ClientFactory } from './options.ts';
 import { maskPng } from './png.ts';
 import { pinnedApp } from './bindings.ts';
+import { assertAppId } from './links.ts';
 import { DevicePool, deviceSelection } from './pool.ts';
 import {
   invalidState,
@@ -420,8 +421,14 @@ export class AgentDeviceSurface {
     await withinCleanupBudget(client.sessions.close().catch(() => undefined), context);
   }
 
-  /** Opens an app in the session, remembering its identity for the path anchor. */
+  /**
+   * Opens an app in the session, remembering its identity for the path
+   * anchor. A link is refused before the device sees it: agent-device would
+   * open it as a URL, and `openLink` is the path that carries the
+   * navigation rule.
+   */
   async openApp(app: string, relaunch: boolean, signal: AbortSignal): Promise<void> {
+    assertAppId(app);
     const result = await this.command(
       `open ${app}`,
       (client) =>

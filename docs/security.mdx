@@ -74,9 +74,11 @@ list. Shared hosting domains such as `vercel.app` count as one site, so
 headers can reach other hosts under that domain. `basicAuth` is broader:
 it answers a `401` challenge from any origin.
 
-The runner checks forbidden schemes on explicit navigation. It does not
-re-check redirects or attach to popup pages. Register `web.onDialog` to
-handle browser dialogs.
+The runner checks forbidden schemes on explicit navigation: `app.open`, the
+agent's `navigate` verb, and `device.openLink`. `device.openApp` and the
+`open_app` tool take an app id and refuse a link, since the device would
+open one as a URL. The runner does not re-check redirects or attach to popup
+pages. Register `web.onDialog` to handle browser dialogs.
 
 ## Secrets
 

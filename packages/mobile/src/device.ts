@@ -219,7 +219,7 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Engine
     setBiometrics: action,
     enrollBiometrics: action,
     installApp: { ...action, label: (appPath) => appPath },
-    openApp: { ...action, label: (app) => app },
+    openApp: { ...action, label: (app) => linkLabel(app) },
     openLink: { ...action, label: (url) => linkLabel(url) },
     closeApp: action,
     foregroundApp: action,

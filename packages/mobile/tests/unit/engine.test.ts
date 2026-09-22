@@ -1056,6 +1056,24 @@ describe('device fixture', () => {
     }
     expect(h.fake.calls.length).toBe(before);
   });
+
+  it('refuses a link handed to openApp before any device command, and still opens an app by id', async () => {
+    const h = harness();
+    await openAttempt(h);
+    const device = fixture(h);
+    const before = h.fake.calls.length;
+    for (const denied of ['file:///etc/passwd', 'data:text/html,hi', 'javascript:alert(1)']) {
+      await expect(device.openApp(denied)).rejects.toMatchObject({ code: 'POLICY_DENIED' });
+    }
+    for (const link of ['https://example.com/verify', 'myapp://orders/42']) {
+      await expect(device.openApp(link, { relaunch: true })).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+    }
+    expect(h.fake.calls.length).toBe(before);
+    await device.openApp('com.apple.mobilesafari');
+    expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
+      ['apps.open', { app: 'com.apple.mobilesafari', platform: 'ios' }],
+    ]);
+  });
 });
 
 describe('reference lifetime and cancellation', () => {

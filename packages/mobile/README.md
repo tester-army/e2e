@@ -124,7 +124,8 @@ the `locator` accessor.
 test, for upgrade and fresh-install paths the `appPath` option cannot express.
 A plain install replaces the binary and keeps its data; `reinstall: true`
 removes the app named by `app` (default: the pinned app) first. It resolves to
-the bundle id or package to `openApp` the build by.
+the bundle id or package to `openApp` the build by. `openApp` takes an app id,
+never a link; `openLink` opens one, under the navigation rule.
 
 ## Agent tools
 
