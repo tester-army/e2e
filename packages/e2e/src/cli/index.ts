@@ -773,9 +773,11 @@ export async function main(argv: readonly string[]): Promise<void> {
   } catch (cause) {
     if (cause instanceof CommanderError) {
       // Commander has already written its diagnostic. `--help` and
-      // `--version` exit 0; every usage error is a CLI error: exit 2.
+      // `--version` exit 0 and are no session of the command they were asked
+      // on; every usage error is a CLI error: exit 2.
       process.exitCode = cause.exitCode === 0 ? 0 : 2;
-      if (cause.exitCode !== 0) telemetry.failSession(USAGE_ERROR_CODE);
+      if (cause.exitCode === 0) telemetry.discardSession();
+      else telemetry.failSession(USAGE_ERROR_CODE);
     } else {
       process.stderr.write(`${cause instanceof Error ? cause.message : String(cause)}\n`);
       process.exitCode = 2;

@@ -35,8 +35,9 @@ sends nothing.
 ## What is sent
 
 Each command sends a session event. `run` and `explore` also send a run event,
-and `init` an init event. Events go in one request when the command ends,
-with a two-second deadline for all telemetry work.
+and `init` an init event. `--help` and `--version` send nothing, also when
+asked on a command. Events go in one request when the command ends, with a
+two-second deadline for all telemetry work.
 
 Every event carries these properties.
 

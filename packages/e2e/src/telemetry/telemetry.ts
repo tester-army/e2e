@@ -174,6 +174,14 @@ export class Telemetry {
     this.lookUpProject();
   }
 
+  /**
+   * Forgets the command this invocation named. `--help` and `--version` print
+   * and exit before the command runs, so they are no session of it.
+   */
+  discardSession(): void {
+    this.command = undefined;
+  }
+
   /** The runner code of the failure that ended the command before it could run; the first is the one that did. */
   failSession(code: string): void {
     this.failure ??= code;
