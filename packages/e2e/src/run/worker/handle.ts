@@ -71,9 +71,9 @@ class ChildProcessRunner implements UnitRunner {
         resolve();
       });
     });
-    this.child.once('error', () => {
-      // spawn failures surface through the close event
-    });
+    // Spawn failures surface through the close event. A send the channel
+    // could not take reports here too, on the next tick and once per send.
+    this.child.on('error', () => undefined);
     this.post({ type: 'bootstrap', bootstrap });
   }
 
@@ -86,7 +86,9 @@ class ChildProcessRunner implements UnitRunner {
   }
 
   private post(message: ChildProcessInbound): void {
-    if (this.exited) return;
+    // The channel closes ahead of the process: a send after `disconnect`
+    // would not arrive, and would raise an error event instead.
+    if (this.exited || !this.child.connected) return;
     try {
       this.child.send(message);
     } catch {

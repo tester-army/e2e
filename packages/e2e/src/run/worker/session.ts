@@ -139,6 +139,16 @@ export class TargetWorker {
     });
   }
 
+  /**
+   * Hands a rejection nobody in this process caught to the executor, which
+   * charges it to the attempt in flight or records it against the last test
+   * that finished. False when there is neither, and the rejection is the
+   * worker's to die of.
+   */
+  strayRejection(cause: unknown): boolean {
+    return this.executor?.strayRejection(cause) ?? false;
+  }
+
   handle(message: MainToWorker): void {
     switch (message.type) {
       case 'interrupt':

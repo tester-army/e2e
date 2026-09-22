@@ -25,7 +25,13 @@ test('todos survive a filter round-trip', async ({ app, agent, screen }) => {
 Give `act` one goal. The agent chooses and performs the actions, then returns
 when the goal passes or throws when it fails. Every step call is awaited: a
 body that returns while a step is still running fails with `STEP_NOT_AWAITED`,
-and the code frame names the call.
+and the code frame names the call. Any other unhandled rejection is charged
+to the test running when it surfaces, so a promise that rejects late lands on
+the test after it; between tests it is a run error naming the last test that
+finished, and before any test has finished it ends the worker. A body that
+keeps running past its `timeout` or after such a rejection is not stopped:
+the harness operation it is in is cancelled and its fixtures die with the
+attempt, so it cannot reach the next test.
 
 ```ts
 await agent.act('complete checkout with the test card');

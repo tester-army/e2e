@@ -1,0 +1,5 @@
+---
+'e2e': patch
+---
+
+A worker failure is recorded once. A target whose workers could not boot reported `WORKER_INIT_FAILED` once per worker still starting (`workers: 4` gave four), a worker's fatal error was followed by a second run error for the kill the runner itself issued, and a message to a worker whose channel had just closed could take the runner down without a report and without stopping the app it managed (`APP_ALREADY_RUNNING` on the next run). A promise a test rejects and never awaits now fails that test with the rejection's error; the rest of the file runs and the exit code is 1. Before, the worker died, the next test in the file was skipped as `infrastructure-unavailable`, and the run reported `WORKER_EXIT` with exit code 3. An unhandled rejection is charged to the test running when it surfaces; between tests it is the run error `UNHANDLED_REJECTION`, naming the last test that finished in the worker as the likely source, and it ends the worker only before any test has finished there.
