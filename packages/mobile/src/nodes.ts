@@ -25,6 +25,9 @@ export interface RawNode {
   readonly enabled?: boolean;
   readonly selected?: boolean;
   readonly focused?: boolean;
+  /** Native accessibility facts; absent means unavailable, not false. */
+  readonly editable?: boolean;
+  readonly password?: boolean;
   readonly visibleToUser?: boolean;
   readonly hittable?: boolean;
   readonly appName?: string;
@@ -108,6 +111,7 @@ const ROLE_MAP: Readonly<Record<string, string>> = {
 };
 
 const SECURE_KINDS = new Set(['secure-text-field', 'securetextfield', 'password-field']);
+const TEXT_INPUT_ROLES = new Set(['textbox', 'searchbox', 'combobox']);
 const CHECKABLE_ROLES = new Set(['switch', 'checkbox']);
 const CHECKED_VALUES = new Set(['1', 'on', 'true', 'checked', 'selected']);
 const UNCHECKED_VALUES = new Set(['0', 'off', 'false', 'unchecked']);
@@ -201,6 +205,17 @@ function roleOf(kind: string, android: boolean, parentKind: string | undefined):
   return ROLE_MAP[kind] ?? kind;
 }
 
+/**
+ * A node the platform reports as editable takes typed text whatever its
+ * class, so a custom input view, or a class the maps do not know, is a
+ * `textbox` rather than its verbatim kind; a role that already takes text
+ * is kept.
+ */
+function editableRole(role: string | undefined, editable: boolean | undefined): string | undefined {
+  if (editable !== true) return role;
+  return role !== undefined && TEXT_INPUT_ROLES.has(role) ? role : 'textbox';
+}
+
 function checkedOf(role: string | undefined, value: string | undefined): boolean | undefined {
   if (role === undefined || !CHECKABLE_ROLES.has(role) || value === undefined) return undefined;
   const lowered = value.trim().toLowerCase();
@@ -265,8 +280,10 @@ export function projectSnapshot(raw: readonly RawNode[], options: { readonly min
     const source = raw[position] as RawNode;
     const id = options.mintId();
     const kind = kindOf(source);
-    const role = roleOf(kind, isAndroidClass(source.type), parent?.kind);
-    const secure = SECURE_KINDS.has(kind);
+    const role = editableRole(roleOf(kind, isAndroidClass(source.type), parent?.kind), source.editable);
+    // iOS names a secure field by class; UIAutomator flags a password
+    // `EditText` by attribute, the class being the plain one.
+    const secure = SECURE_KINDS.has(kind) || source.password === true;
     const checked = checkedOf(role, source.value);
     const states = {
       ...(source.enabled === false ? { disabled: true } : {}),
