@@ -858,6 +858,64 @@ test('never started either', async () => {});
   );
 
   it(
+    'a run-level model failure reports every queued test it never started, and --last-failed runs them next',
+    async () => {
+      const needsModel = `import { test } from 'e2e';
+test('needs the model', async ({ app, agent }) => {
+  await app.open();
+  await agent.assert('anything');
+});
+`;
+      const project = createProject({
+        'tests/first.e2e.ts': needsModel,
+        'tests/second.e2e.ts': `import { test } from 'e2e';
+test('queued behind it', async () => {});
+test('queued behind it too', async () => {});
+`,
+      });
+      const aborted = await runExisting(project, {
+        appUrl: app.url,
+        config: { tests: 'tests/**/*.e2e.ts', workers: 1 },
+      });
+      expect(aborted.exitCode).toBe(2);
+      expect(aborted.report.run.errors.map((error) => error.code)).toEqual(['MODEL_UNAVAILABLE']);
+      expect(aborted.report.run.summary.discovered).toBe(3);
+      expect(['MODEL_UNAVAILABLE', 'INTERRUPTED']).toContain(resultByTitle(aborted, 'needs the model').attempts.at(-1)!.error!.code);
+      for (const title of ['queued behind it', 'queued behind it too']) {
+        const result = resultByTitle(aborted, title);
+        expect(result.status).toBe('skipped');
+        expect(result.attempts).toHaveLength(0);
+        expect(result.skip).toEqual({ cause: 'infrastructure-unavailable', reason: 'run interrupted before execution' });
+      }
+      assertValidReport(aborted.report);
+
+      // The rerun reads the report the abort wrote; without the agent fixture the first test passes too.
+      writeFileSync(
+        path.join(project.dir, 'tests', 'first.e2e.ts'),
+        `import { test } from 'e2e';
+test('needs the model', async ({ app }) => {
+  await app.open();
+});
+`,
+      );
+      const rerun = await runExisting(project, {
+        appUrl: app.url,
+        config: { tests: 'tests/**/*.e2e.ts', workers: 1 },
+        runOptions: { lastFailed: true },
+      });
+      expect(rerun.exitCode).toBe(0);
+      const byFile = rerun.results.toSorted((a, b) => (a.test.file === b.test.file ? a.test.declarationIndex - b.test.declarationIndex : a.test.file < b.test.file ? -1 : 1));
+      expect(byFile.map((result) => [result.test.title, result.selected, result.status])).toEqual([
+        ['needs the model', true, 'passed'],
+        ['queued behind it', true, 'passed'],
+        ['queued behind it too', true, 'passed'],
+      ]);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
     'runs only what the previous run did not pass under --last-failed, and needs a report to read',
     async () => {
       const files = {
