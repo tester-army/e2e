@@ -33,7 +33,11 @@ export function bounded(text: string): string {
   return truncateUtf8(sanitizeText(text), MAX_FIELD_BYTES).replaceAll('\t', ' ');
 }
 
-/** Clips to `max` characters with an ellipsis; untouched when it fits. */
+/**
+ * Clips to `max` code points with an ellipsis; untouched when it fits. For
+ * text measured in characters (a markdown cell); a terminal row budget is
+ * `fitColumns`.
+ */
 export function ellipsize(text: string, max: number): string {
   const chars = [...text];
   return chars.length <= max ? text : `${chars.slice(0, Math.max(0, max - 1)).join('')}…`;
@@ -383,25 +387,75 @@ const WIDE_RANGES: readonly (readonly [number, number])[] = [
 
 /** Combining marks and format characters (a joiner, a variation selector) paint in the column of what they follow. */
 const ZERO_WIDTH_PATTERN = /^[\p{M}\p{Cf}]$/u;
+const ZERO_WIDTH_JOINER = 0x200d;
+const VARIATION_SELECTOR_TEXT = 0xfe0e;
+const VARIATION_SELECTOR_EMOJI = 0xfe0f;
+const COMBINING_KEYCAP = 0x20e3;
+const SEGMENTER = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 
 /**
- * Terminal columns one code point paints: 0 for a combining mark, a format
- * character, a Hangul medial or final jamo, or an emoji skin tone modifier;
- * 2 for East Asian wide and fullwidth forms and default emoji presentation;
- * else 1. `char` is one code point, as `for...of` over a string yields it.
+ * Terminal columns one code point paints on its own: 0 for a combining mark,
+ * a format character, a Hangul medial or final jamo, or an emoji skin tone
+ * modifier; 2 for East Asian wide and fullwidth forms and default emoji
+ * presentation; else 1.
  */
-export function charColumns(char: string): number {
-  const codePoint = char.codePointAt(0) ?? 0;
+function codePointColumns(codePoint: number): number {
   if (codePoint < 0x300) return 1;
-  if (ZERO_WIDTH_PATTERN.test(char) || (codePoint >= 0x1160 && codePoint <= 0x11ff) || (codePoint >= 0x1f3fb && codePoint <= 0x1f3ff)) return 0;
+  if (
+    ZERO_WIDTH_PATTERN.test(String.fromCodePoint(codePoint)) ||
+    (codePoint >= 0x1160 && codePoint <= 0x11ff) ||
+    (codePoint >= 0x1f3fb && codePoint <= 0x1f3ff)
+  ) {
+    return 0;
+  }
   return WIDE_RANGES.some(([start, end]) => codePoint >= start && codePoint <= end) ? 2 : 1;
+}
+
+function isRegionalIndicator(codePoint: number): boolean {
+  return codePoint >= 0x1f1e6 && codePoint <= 0x1f1ff;
+}
+
+/**
+ * Terminal columns one grapheme cluster paints. An emoji sequence is two
+ * whatever its length: a ZWJ sequence, a base with the emoji variation
+ * selector, a keycap, or a regional indicator pair; the text variation
+ * selector makes a symbol one. Anything else is the sum of its code points.
+ */
+function graphemeColumns(cluster: string): number {
+  const codePoints = [...cluster].map((char) => char.codePointAt(0) ?? 0);
+  if (codePoints.includes(VARIATION_SELECTOR_TEXT)) return 1;
+  if (codePoints.some((codePoint) => codePoint === ZERO_WIDTH_JOINER || codePoint === VARIATION_SELECTOR_EMOJI || codePoint === COMBINING_KEYCAP)) return 2;
+  if (codePoints.length === 2 && codePoints.every(isRegionalIndicator)) return 2;
+  return codePoints.reduce((columns, codePoint) => columns + codePointColumns(codePoint), 0);
+}
+
+/** The grapheme clusters of `text`, each with the columns it paints; ANSI sequences count as text, so strip them first. */
+export function graphemes(text: string): { readonly text: string; readonly columns: number }[] {
+  return Array.from(SEGMENTER.segment(text), ({ segment }) => ({ text: segment, columns: graphemeColumns(segment) }));
 }
 
 /** Printed width of a line in terminal columns, ANSI sequences excluded. */
 export function visibleWidth(text: string): number {
+  return graphemes(stripVTControlCharacters(text)).reduce((width, cluster) => width + cluster.columns, 0);
+}
+
+/**
+ * Clips terminal text to `columns` with the ellipsis inside the budget, whole
+ * grapheme clusters only; untouched when it fits. Every budget derived from
+ * the terminal width goes through this; `ellipsize` counts characters.
+ */
+export function fitColumns(text: string, columns: number): string {
+  const clusters = graphemes(text);
+  if (clusters.reduce((width, cluster) => width + cluster.columns, 0) <= columns) return text;
+  const limit = Math.max(0, columns - 1);
   let width = 0;
-  for (const char of stripVTControlCharacters(text)) width += charColumns(char);
-  return width;
+  let out = '';
+  for (const cluster of clusters) {
+    if (width + cluster.columns > limit) break;
+    out += cluster.text;
+    width += cluster.columns;
+  }
+  return `${out}…`;
 }
 
 /**

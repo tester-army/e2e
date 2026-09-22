@@ -1,11 +1,15 @@
-/** The live window's clamp and row count: by terminal column, never inside a code point. */
+/** The live window's clamp and row count: by terminal column, never inside a grapheme cluster. */
 
 import { describe, expect, it } from 'vitest';
-import { charColumns, visibleWidth } from '../../src/report/format.ts';
+import { fitColumns, visibleWidth } from '../../src/report/format.ts';
 import { LiveWindow } from '../../src/report/live-window.ts';
 
 // eslint-disable-next-line no-control-regex
 const ANSI_PATTERN = /\u001b\[[0-9;?]*[a-zA-Z]/g;
+const FAMILY = '\u{1F468}‍\u{1F469}‍\u{1F467}‍\u{1F466}';
+const HEART = '❤️';
+const KEYCAP_ONE = '1️⃣';
+const FLAG = '\u{1F1F5}\u{1F1F1}';
 
 function withTerminalSize(size: { rows: number; columns: number }): () => void {
   const saved = { rows: process.stdout.rows, columns: process.stdout.columns };
@@ -46,6 +50,12 @@ describe('LiveWindow', () => {
     expect(shown(payload)).toBe('abc…');
   });
 
+  it('never splits a grapheme cluster: an emoji sequence goes whole or not at all', () => {
+    expect(shown(paint([`ab${FAMILY}cd`], 6))).toBe(`ab${FAMILY}…`);
+    expect(shown(paint([`abc${FAMILY}d`], 6))).toBe('abc…');
+    expect(shown(paint([`abc${FLAG}d`], 6))).toBe('abc…');
+  });
+
   it('clamps an emoji title at the column it reaches, two per emoji', () => {
     const payload = paint(['a\u{1F600}b\u{1F600}c'], 8);
     expect(shown(payload)).toBe('a\u{1F600}b\u{1F600}…');
@@ -81,13 +91,29 @@ describe('LiveWindow', () => {
 });
 
 describe('visibleWidth', () => {
-  it('counts terminal columns, not code units', () => {
+  it('counts terminal columns per grapheme cluster, not code units or code points', () => {
     expect(visibleWidth('abc')).toBe(3);
     expect(visibleWidth('日本')).toBe(4);
     expect(visibleWidth('\u{1F600}')).toBe(2);
+    expect(visibleWidth(HEART)).toBe(2);
+    expect(visibleWidth(FAMILY)).toBe(2);
+    expect(visibleWidth(KEYCAP_ONE)).toBe(2);
+    expect(visibleWidth(FLAG)).toBe(2);
     expect(visibleWidth('é')).toBe(1);
     expect(visibleWidth('\u{1F44D}\u{1F3FD}')).toBe(2);
+    expect(visibleWidth('☁︎')).toBe(1);
     expect(visibleWidth('\u001b[31mab\u001b[0m')).toBe(2);
-    expect(['❯', '✓', '×', '└', '↳', '…', '✳'].map(charColumns)).toEqual([1, 1, 1, 1, 1, 1, 1]);
+    expect(visibleWidth('❯ ✓ × └ ↳ … ✳')).toBe(13);
+  });
+});
+
+describe('fitColumns', () => {
+  it('leaves text that fits alone and clips by column with the ellipsis inside the budget', () => {
+    expect(fitColumns('abc', 3)).toBe('abc');
+    expect(fitColumns('abcd', 3)).toBe('ab…');
+    expect(fitColumns('日本語テスト', 8)).toBe('日本語…');
+    expect(fitColumns(`ab${HEART}cd`, 5)).toBe(`ab${HEART}…`);
+    expect(fitColumns(`a${FAMILY}bc`, 4)).toBe(`a${FAMILY}…`);
+    expect(visibleWidth(fitColumns('日'.repeat(60), 60))).toBe(59);
   });
 });
