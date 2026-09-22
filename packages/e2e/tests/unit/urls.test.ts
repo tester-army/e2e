@@ -127,6 +127,57 @@ describe('siteOf and sameSite', () => {
     expect(siteOf('ec2-1-2-3-4.compute-1.amazonaws.com')).toBe('compute-1.amazonaws.com');
   });
 
+  it('reads a shared suffix ahead of the country-code rule, whichever way that rule would have cut', () => {
+    // `now.sh`: a short label before a two-letter TLD, which the country-code rule reads three deep too.
+    expect(siteOf('myapp.now.sh')).toBe('myapp.now.sh');
+    expect(siteOf('a.myapp.now.sh')).toBe('myapp.now.sh');
+    expect(siteOf('now.sh')).toBe('now.sh');
+    // `loca.lt`: a longer label before a two-letter TLD, which that rule would read two deep, as the suffix alone.
+    expect(siteOf('myapp.loca.lt')).toBe('myapp.loca.lt');
+    expect(siteOf('a.myapp.loca.lt')).toBe('myapp.loca.lt');
+    expect(siteOf('loca.lt')).toBe('loca.lt');
+  });
+
+  // The suffixes `siteOf`'s source lists, mirrored: the list stays private to
+  // the module (a test-only export is dead production API), so this copy is
+  // the spec a typo in either has to fail against.
+  const SHARED_HOST_SUFFIXES = [
+    'vercel.app',
+    'now.sh',
+    'netlify.app',
+    'pages.dev',
+    'workers.dev',
+    'trycloudflare.com',
+    'github.io',
+    'gitlab.io',
+    'herokuapp.com',
+    'fly.dev',
+    'onrender.com',
+    'railway.app',
+    'up.railway.app',
+    'azurewebsites.net',
+    'azurestaticapps.net',
+    'cloudfront.net',
+    'amazonaws.com',
+    's3.amazonaws.com',
+    'web.app',
+    'firebaseapp.com',
+    'appspot.com',
+    'surge.sh',
+    'ngrok.io',
+    'ngrok.app',
+    'ngrok-free.app',
+    'loca.lt',
+    'expo.app',
+  ];
+
+  it.each(SHARED_HOST_SUFFIXES)('reads a deployment under %s as one label deeper, and the suffix as itself', (suffix) => {
+    expect(siteOf(`myapp.${suffix}`)).toBe(`myapp.${suffix}`);
+    expect(siteOf(`a.b.myapp.${suffix}`)).toBe(`myapp.${suffix}`);
+    expect(siteOf(suffix)).toBe(suffix);
+    expect(sameSite(`https://other.${suffix}/`, siteOf(`myapp.${suffix}`))).toBe(false);
+  });
+
   it('leaves hosts under no shared suffix on the registrable-domain rule', () => {
     expect(siteOf('example.com')).toBe('example.com');
     expect(siteOf('app.example.com')).toBe('example.com');
