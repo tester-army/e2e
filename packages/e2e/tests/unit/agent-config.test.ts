@@ -171,6 +171,10 @@ describe('one canonical model', () => {
 });
 
 describe('one context', () => {
+  it('rejects a built-in agent whose context is not a string, as JavaScript can pass one', () => {
+    expect(() => resolve({ agents: { default: createAgent({ model, context: 5 as never }) } })).toThrow(/context/);
+  });
+
   it('ignores a context member on a custom executor, string or not', () => {
     const talkative = { name: 'custom', runStep: async () => ({ status: 'passed' as const, summary: 'ok' }), context: 'not a prompt' };
     expect(resolve({ agents: { default: { executor: talkative, model } } }).agent.context).toBeUndefined();

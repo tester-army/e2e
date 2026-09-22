@@ -336,7 +336,7 @@ function resolveModel(model: ModelInstance | undefined, label: string): Resolved
  */
 function resolveContext(
   configured: unknown,
-  executorContext: string | undefined,
+  executorContext: unknown,
   maxBytes: number,
   label: string,
 ): string | undefined {
