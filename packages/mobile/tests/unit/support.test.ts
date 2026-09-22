@@ -18,7 +18,7 @@ describe('support helpers', () => {
     const rect = { x: 0, y: 100, width: 200, height: 400 };
     expect(swipeWithin(rect, 'down', undefined)).toEqual({ from: { x: 100, y: 400 }, to: { x: 100, y: 200 } });
     expect(swipeWithin(rect, 'up', 'fast')).toEqual({ from: { x: 100, y: 140 }, to: { x: 100, y: 460 } });
-    expect(swipeWithin(rect, 'right', 'slow')).toEqual({ from: { x: 175, y: 300 }, to: { x: 25, y: 300 } });
+    expect(swipeWithin(rect, 'right', 'slow')).toEqual({ from: { x: 125, y: 300 }, to: { x: 75, y: 300 } });
     expect(swipeWithin(rect, 'left', undefined)).toEqual({ from: { x: 50, y: 300 }, to: { x: 150, y: 300 } });
   });
 
