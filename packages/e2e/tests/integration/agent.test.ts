@@ -80,6 +80,16 @@ test('a malformed judgment gets one repair round', async ({ app, agent }) => {
   await app.open();
   await agent.assert('the Home heading is visible after a malformed first answer');
 });
+
+test('a judgment in the retired agent-judgment-1 shape is repaired once', async ({ app, agent }) => {
+  await app.open();
+  await agent.assert('the Home heading is visible, answered in the retired shape first');
+});
+
+test('two judgments in the retired agent-judgment-1 shape exhaust the repair budget', async ({ app, agent }) => {
+  await app.open();
+  await agent.assert('the Home heading is visible, answered in the retired shape twice');
+});
 `;
 
 const FALSE_ASSERTION = 'the checkout page is visible';
@@ -87,6 +97,16 @@ const INCONCLUSIVE_ASSERTION = 'the order total equals the sum of the line items
 const LATE_BUTTON_CONDITION = 'the Late arrival button exists';
 const NEVER_CONDITION = 'a checkout button is on the About page';
 const REPAIRED_ASSERTION = 'the Home heading is visible after a malformed first answer';
+const RETIRED_SHAPE_ONCE = 'the Home heading is visible, answered in the retired shape first';
+const RETIRED_SHAPE_TWICE = 'the Home heading is visible, answered in the retired shape twice';
+/**
+ * The document the deprecated `agent-judgment-v1` schema accepts, as a model
+ * still answering in that shape would send it. The runner asks for
+ * `agent-judgment-2` and takes nothing else.
+ */
+const RETIRED_JUDGMENT = JSON.parse(
+  readFileSync(new URL('../../schema/fixtures/agent-judgment-v1.valid.json', import.meta.url), 'utf8'),
+) as Record<string, unknown>;
 const PROVIDER_OPTIONS = { fake: { reasoningEffort: 'low' } };
 
 /** Scripted responder: judge and extract from the observation. */
@@ -112,6 +132,13 @@ function respond(call: FakeCall): unknown {
         if (first) return { protocolVersion: 'agent-judgment-2', explanation: 'thinking' };
         return judgment(true, 'the Home heading is visible');
       }
+      if (call.instruction === RETIRED_SHAPE_ONCE) {
+        const first = !fakeCalls.some(
+          (earlier) => earlier !== call && earlier.instruction === RETIRED_SHAPE_ONCE,
+        );
+        return first ? RETIRED_JUDGMENT : judgment(true, 'the Home heading is visible');
+      }
+      if (call.instruction === RETIRED_SHAPE_TWICE) return RETIRED_JUDGMENT;
       return judgment(true, 'the observation supports the assertion');
     }
     case 'agent-extract-1': {
@@ -195,6 +222,41 @@ describe('agent judgment tier', () => {
     const repairCalls = fakeCalls.filter((call) => call.instruction === REPAIRED_ASSERTION);
     expect(repairCalls).toHaveLength(2);
     expect(repairCalls[1]!.prompt).toContain('verdict must be "holds", "fails", or "inconclusive"');
+  });
+
+  it('repairs a judgment in the retired agent-judgment-1 shape once, naming the protocol version', () => {
+    expect(RETIRED_JUDGMENT).toMatchObject({ protocolVersion: 'agent-judgment-1', result: true });
+    const result = resultByTitle(outcome, 'a judgment in the retired agent-judgment-1 shape is repaired once');
+    expect(result.status).toBe('passed');
+    const step = result.attempts.at(-1)!.steps.find((candidate) => candidate.api === 'agent.assert')!;
+    expect(step.status).toBe('passed');
+    expect(step.metrics!.modelCalls).toBe(2);
+    expect(step.events.filter((event) => event.kind === 'schema')).toEqual([
+      expect.objectContaining({ name: 'agent-judgment-2', status: 'failed', code: 'MODEL_OUTPUT_INVALID' }),
+    ]);
+    const calls = fakeCalls.filter((call) => call.instruction === RETIRED_SHAPE_ONCE);
+    expect(calls).toHaveLength(2);
+    expect(calls[0]!.prompt).not.toContain('<previous-attempt-rejected>');
+    expect(calls[1]!.prompt).toContain('validation errors: unknown protocolVersion');
+    expect(calls[1]!.prompt).toContain('"protocolVersion":"agent-judgment-1"');
+  });
+
+  it('fails MODEL_OUTPUT_INVALID when the repair round answers in the retired shape too', () => {
+    const result = resultByTitle(outcome, 'two judgments in the retired agent-judgment-1 shape exhaust the repair budget');
+    expect(result.status).toBe('failed');
+    const error = result.attempts.at(-1)!.error!;
+    expect(error.code).toBe('MODEL_OUTPUT_INVALID');
+    expect(error.category).toBe('test');
+    expect(error.message).toContain('unknown protocolVersion');
+    const step = result.attempts.at(-1)!.steps.find((candidate) => candidate.api === 'agent.assert')!;
+    expect(step.status).toBe('failed');
+    // One judgment plus one repair round is the whole budget: no third call, no guessed verdict.
+    expect(step.metrics!.modelCalls).toBe(2);
+    expect(fakeCalls.filter((call) => call.instruction === RETIRED_SHAPE_TWICE)).toHaveLength(2);
+    expect(step.events.filter((event) => event.kind === 'schema')).toHaveLength(2);
+    // The rejection stands in for the verdict the step never got, so the report keeps its evidence rule.
+    expect(step.explanation).toBe('unknown protocolVersion');
+    expect(step.observationRevision).toMatch(/^b\d+$/);
   });
 
   it('leaves room for reasoning and sends provider options without pinning temperature', () => {
