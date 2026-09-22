@@ -1,4 +1,4 @@
-/** The real reader maps explicit ARIA roles and implicit HTML semantics onto the vocabulary. */
+/** The real reader maps explicit ARIA roles, implicit HTML semantics, and contenteditable hosts onto the vocabulary. */
 
 import { chromium, type Browser, type ElementHandle, type Page } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -200,5 +200,52 @@ describe('role mapping', () => {
     expect(nodes.get('figure')?.name).toBe('Figure one');
     expect(nodes.get('table')?.name).toBe('Scores');
     expect(nodes.get('details')?.name).toBeUndefined();
+  });
+});
+
+describe('contenteditable editing hosts', () => {
+  it('reports the host as a textbox named by aria-label, aria-placeholder, or the editor placeholder, with its document as the value', async () => {
+    await page.setContent(`
+      <div contenteditable aria-label="Notes" data-testid="labelled"><p data-testid="block">Hello</p><p>World</p></div>
+      <div contenteditable aria-placeholder="Write here" data-testid="aria-placeholder"><p><br></p></div>
+      <div contenteditable class="tiptap ProseMirror" tabindex="0" data-testid="tiptap">
+        <p class="is-empty is-editor-empty" data-placeholder="Write something"><br></p>
+      </div>
+      <div contenteditable class="ql-editor ql-blank" data-placeholder="Compose a message" data-testid="quill"><p><br></p></div>
+      <div contenteditable role="textbox" aria-label="Message" data-testid="explicit"><p>Hi</p></div>
+      <div contenteditable data-testid="bare"><p>Bare</p></div>
+      <div contenteditable aria-label="Outer" data-testid="outer">
+        <p>Text</p>
+        <span contenteditable="false" data-testid="island">Chip<div contenteditable aria-label="Nested" data-testid="nested"><p>Inner</p></div></span>
+      </div>
+    `);
+    const nodes = await rolesByTestId();
+    expect(nodes.get('labelled')).toMatchObject({ role: 'textbox', name: 'Notes', value: 'Hello\n\nWorld' });
+    // Only the host is the control: a block inside it is content, not a second textbox.
+    expect(nodes.get('block')?.role).toBeUndefined();
+    expect(nodes.get('aria-placeholder')).toMatchObject({ role: 'textbox', name: 'Write here', value: '' });
+    expect(nodes.get('tiptap')).toMatchObject({ role: 'textbox', name: 'Write something' });
+    expect(nodes.get('quill')).toMatchObject({ role: 'textbox', name: 'Compose a message' });
+    expect(nodes.get('explicit')).toMatchObject({ role: 'textbox', name: 'Message', value: 'Hi' });
+    expect(nodes.get('bare')).toMatchObject({ role: 'textbox', value: 'Bare' });
+    expect(nodes.get('bare')?.name).toBeUndefined();
+    expect(nodes.get('outer')).toMatchObject({ role: 'textbox', name: 'Outer' });
+    expect(nodes.get('island')?.role).toBeUndefined();
+    expect(nodes.get('nested')).toMatchObject({ role: 'textbox', name: 'Nested', value: 'Inner' });
+    // Playwright's role selector knows a textbox only through an explicit role; where it has a rule, the two agree.
+    expect(await page.getByRole('textbox', { name: 'Message' }).getAttribute('data-testid')).toBe('explicit');
+  });
+
+  it('follows the document as it is edited and focused, as a textarea value does', async () => {
+    await page.setContent(`
+      <div contenteditable aria-label="Notes" data-testid="editor"><p><br></p></div>
+      <textarea aria-label="Plain" data-testid="plain"></textarea>
+    `);
+    await page.getByTestId('plain').fill('Typed');
+    await page.getByTestId('editor').fill('Typed');
+    const nodes = await rolesByTestId();
+    expect(nodes.get('editor')).toMatchObject({ role: 'textbox', name: 'Notes', value: 'Typed', states: { focused: true } });
+    expect(nodes.get('plain')).toMatchObject({ role: 'textbox', name: 'Plain', value: 'Typed' });
+    expect(nodes.get('plain')?.states?.focused).toBeUndefined();
   });
 });

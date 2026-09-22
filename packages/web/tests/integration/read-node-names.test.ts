@@ -1,4 +1,4 @@
-/** The real reader names unlabeled text controls by placeholder and reports a cut walk. */
+/** The real reader names unlabeled text controls by placeholder, controls by their descendants, and reports a cut walk. */
 
 import { chromium, type Browser, type ElementHandle, type Page } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -137,5 +137,68 @@ describe('truncated flag', () => {
     const beyond = await capture(1_000);
     expect(beyond.truncated).toBe(true);
     expect(flatten(beyond.tree).some((node) => node.name === 'Level 5')).toBe(false);
+  });
+});
+
+const PIXEL = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAAAAAAALAAAAAABAAEAAAIBRAA7';
+
+describe('names from content and precedence', () => {
+  /** The test id of the one element Playwright's role selector resolves for this role and exact name. */
+  async function locatedTestId(role: 'button' | 'link' | 'textbox', name: string): Promise<string | null> {
+    return page.getByRole(role, { name, exact: true }).getAttribute('data-testid');
+  }
+
+  it('names a control from its descendants the way the role selector does: aria-label, alt, content, then title', async () => {
+    await page.setContent(`
+      <button data-testid="img"><img src="${PIXEL}" alt="Search"></button>
+      <button data-testid="svg"><svg aria-label="Close" width="10" height="10"></svg></button>
+      <button data-testid="nested"><span><img src="${PIXEL}" alt="Deep"></span></button>
+      <button data-testid="labelled-span"><span aria-label="Inner"><b>Bold</b></span></button>
+      <button data-testid="mixed"><img src="${PIXEL}" alt="Search">Go</button>
+      <button data-testid="blocks"><div>A</div><div>B</div></button>
+      <button data-testid="titled"><span title="Settings"></span></button>
+      <button data-testid="text-over-title"><span title="Tip">Visible</span></button>
+      <button data-testid="hidden"><img src="${PIXEL}" alt="Hidden" style="display:none"><span aria-hidden="true">x</span><img src="${PIXEL}" alt="Kept"></button>
+      <a href="#" data-testid="link"><img src="${PIXEL}" alt="Home"></a>
+      <input type="image" src="${PIXEL}" alt="Go" data-testid="image-input">
+    `);
+    const { tree } = await capture();
+    const byTestId = new Map(flatten(tree).map((node) => [node.testId, node]));
+    const cases: readonly [testId: string, role: 'button' | 'link', name: string][] = [
+      ['img', 'button', 'Search'],
+      ['svg', 'button', 'Close'],
+      ['nested', 'button', 'Deep'],
+      ['labelled-span', 'button', 'Inner'],
+      ['mixed', 'button', 'SearchGo'],
+      ['blocks', 'button', 'A B'],
+      ['titled', 'button', 'Settings'],
+      ['text-over-title', 'button', 'Visible'],
+      ['hidden', 'button', 'Kept'],
+      ['link', 'link', 'Home'],
+      ['image-input', 'button', 'Go'],
+    ];
+    for (const [testId, role, name] of cases) {
+      expect(byTestId.get(testId), testId).toMatchObject({ role, name });
+      expect(await locatedTestId(role, name), name).toBe(testId);
+    }
+  });
+
+  it('reads aria-labelledby before aria-label, and either before a label element', async () => {
+    await page.setContent(`
+      <span id="heading">Shipping address</span>
+      <input aria-labelledby="heading" aria-label="Address" data-testid="referenced">
+      <label for="named">Label text</label><input id="named" aria-label="Aria text" data-testid="labelled">
+      <span id="first">First</span><span id="second"><img src="${PIXEL}" alt="Pic"></span>
+      <button aria-labelledby="first second" data-testid="two-references">x</button>
+    `);
+    const { tree } = await capture();
+    const byTestId = new Map(flatten(tree).map((node) => [node.testId, node]));
+    expect(byTestId.get('referenced')).toMatchObject({ role: 'textbox', name: 'Shipping address' });
+    expect(byTestId.get('labelled')).toMatchObject({ role: 'textbox', name: 'Aria text' });
+    expect(byTestId.get('two-references')).toMatchObject({ role: 'button', name: 'First Pic' });
+    expect(await locatedTestId('textbox', 'Shipping address')).toBe('referenced');
+    expect(await locatedTestId('textbox', 'Aria text')).toBe('labelled');
+    expect(await locatedTestId('button', 'First Pic')).toBe('two-references');
+    expect(await page.getByRole('textbox', { name: 'Address', exact: true }).count()).toBe(0);
   });
 });
