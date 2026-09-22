@@ -99,8 +99,9 @@ screenshots. The app could display the value anywhere, beyond the field's
 masked rectangle.
 
 The redactor matches registered values in raw, JSON, HTML, and URL-encoded
-forms. It retains old values after a secret rotates. Secret values are
-excluded from cache entries, model input, and reports.
+forms. It retains old values after a secret rotates, and never rewrites a
+marker it wrote, so text that passes it twice reads as text that passed once.
+Secret values are excluded from cache entries, model input, and reports.
 
 ### Where redaction stops
 

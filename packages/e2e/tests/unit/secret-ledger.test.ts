@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { SecretLedger } from '../../src/internal/redact.ts';
+import { redactResult, textResult } from '../../src/mcp/tools.ts';
 
 describe('SecretLedger', () => {
   it('redacts values registered after the redact function was handed out', () => {
@@ -70,5 +71,35 @@ describe('appearsIn', () => {
 
   it('redacts the value as encodeURI spells it in a path', () => {
     expect(ledger.redact('/reset/p@ss%20word/done')).toBe('/reset/<secret:member>/done');
+  });
+});
+
+describe('markers', () => {
+  it('redacts twice as it redacts once: a marker it wrote is never read again', () => {
+    const ledger = new SecretLedger([['apiKey', 'api']]);
+    const once = ledger.redact('key api set');
+    expect(once).toBe('key <secret:apiKey> set');
+    expect(ledger.redact(once)).toBe(once);
+  });
+
+  it('leaves a marker whole when another value is a substring of it, or of the word secret', () => {
+    const ledger = new SecretLedger([
+      ['long', 'longvalue'],
+      ['word', 'secret'],
+      ['apiKey', 'api'],
+      ['k', 'Key'],
+    ]);
+    expect(ledger.redact('longvalue api Key secret')).toBe('<secret:long> <secret:apiKey> <secret:k> <secret:word>');
+  });
+
+  it('cuts out only the markers of names it knows, so a marker-shaped span holding a raw value is still redacted', () => {
+    const ledger = new SecretLedger([['apiKey', 'sk-1234']]);
+    expect(ledger.redact('<secret:sk-1234> <secret:other>')).toBe('<secret:<secret:apiKey>> <secret:other>');
+  });
+
+  it('keeps the MCP call boundary from rewriting what observe already redacted', () => {
+    const ledger = new SecretLedger([['apiKey', 'api']]);
+    const observed = textResult('#n3 textbox "Token" value="<secret:apiKey>"');
+    expect(redactResult(observed, ledger.redact)).toEqual(observed);
   });
 });

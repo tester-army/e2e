@@ -1,8 +1,9 @@
 /**
  * The catalog of a live session: every tool `call` can run, as AI SDK tools.
  * `observe` shows the whole screen, the grammar is what the target's engine
- * honors — `screenshot` and `tap_at` among it while pixels may leave the
- * runner — `locate` tries a semantic locator the way a test would, and the
+ * honors, `screenshot` and the point tools (`tap_at`, `type_at`, `press_at`,
+ * `select_at`) among it, answering `PIXEL_TAINTED` once a secret has been
+ * filled, `locate` tries a semantic locator the way a test would, and the
  * project's own tools follow. Built-in
  * names win: a project tool named like one is neither listed nor reachable,
  * the precedence the testing agent's toolset applies.
