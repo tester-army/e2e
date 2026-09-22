@@ -253,7 +253,12 @@ export interface StepRecorderOptions {
   readonly onProgress?: (progress: StepProgress) => void;
   /** The project root; with it, every step and step error names the test line it came from. */
   readonly projectRoot?: string;
-  /** Replaces secret values in a step error's message and details before the record keeps them. */
+  /**
+   * Replaces secret values in a step's label and in a step error's message
+   * and details before the record keeps them. The label is redacted once
+   * here, so the report, live progress, the `--debug` table, the AI trace
+   * run name, and the prior-step ledger all read the redacted form.
+   */
   readonly redact?: (text: string) => string;
 }
 
@@ -368,7 +373,7 @@ export class StepRecorder {
       index,
       kind,
       api,
-      label,
+      label: this.redact?.(label) ?? label,
       ...(source === undefined ? {} : { source }),
       status: 'passed',
       startedAt,
@@ -380,7 +385,7 @@ export class StepRecorder {
     this.steps.push(record);
     this.running.add(record.id);
     if (stack !== undefined) this.stacks.set(record.id, stack);
-    this.publish(record, { phase: 'start', kind, api, label });
+    this.publish(record, { phase: 'start', kind, api, label: record.label });
     const promise = this.execute(record, body, options);
     this.pending.set(record.id, promise);
     return promise;

@@ -9,8 +9,11 @@
  * definitions, response, and usage of each generation — including calls a
  * custom executor makes through its own `ai` import, because the SDK
  * resolves registered integrations process-wide. What the model saw is
- * already redacted and size-bounded by the observation pipeline, so the
- * trace carries no secret the model could not have seen either.
+ * already redacted and size-bounded by the observation pipeline; what the
+ * model said is not, so every record passes the process secret ledger as it
+ * closes: a tool call that echoes a secret value, an assistant message, an
+ * error, or provider metadata lands in the file redacted, as the report's
+ * turns do.
  *
  * Attribution comes from an async-local scope the run layer enters per
  * attempt and per step, so no model call site needs to know it is traced.
@@ -196,6 +199,16 @@ interface ToolAncestry {
   readonly stepId: string | undefined;
 }
 
+export interface AiTraceRecorderOptions {
+  /**
+   * Replaces secret values in every record before it is kept: the live
+   * process ledger, so a value registered mid-run is covered from then on.
+   * Records are kept verbatim without one; tests that drive the recorder
+   * alone do that.
+   */
+  readonly redact?: (text: string) => string;
+}
+
 /**
  * Collects one process's model calls. Registered once with the AI SDK via
  * `registerTelemetry`; `drain()` hands the completed records to the run
@@ -217,7 +230,12 @@ export class AiTraceRecorder {
    * tools that execute in parallel each see only their own ancestry.
    */
   private readonly toolAncestry = new AsyncLocalStorage<ToolAncestry>();
+  private readonly redact: (text: string) => string;
   private disposed = false;
+
+  constructor(options: AiTraceRecorderOptions = {}) {
+    this.redact = options.redact ?? ((text) => text);
+  }
 
   /** The integration object to hand to `registerTelemetry`. */
   readonly telemetry: Telemetry = {
@@ -409,6 +427,12 @@ export class AiTraceRecorder {
     return [...state.openSteps.values()].at(-1);
   }
 
+  /**
+   * The one place a step record is finalized. The JSON columns are redacted
+   * as serialized text: the ledger matches a value in its JSON-string form
+   * too, so a secret inside a tool-call argument, an assistant message, or a
+   * provider metadata leaf is replaced without walking the document.
+   */
   private closeStep(
     open: OpenStep,
     outcome: { output?: unknown; usage?: unknown; error?: string },
@@ -422,14 +446,16 @@ export class AiTraceRecorder {
       provider: open.provider,
       started_at: open.startedAt,
       duration_ms: open.responseTimeMs ?? Date.now() - open.startedMs,
-      input: stringify({
-        prompt: traceMessages(open.prompt),
-        ...(open.tools === undefined ? {} : { tools: open.tools }),
-        ...(open.toolChoice === undefined ? {} : { toolChoice: open.toolChoice }),
-      }),
-      output: outcome.output === undefined ? null : stringify(outcome.output),
+      input: this.redact(
+        stringify({
+          prompt: traceMessages(open.prompt),
+          ...(open.tools === undefined ? {} : { tools: open.tools }),
+          ...(open.toolChoice === undefined ? {} : { toolChoice: open.toolChoice }),
+        }),
+      ),
+      output: outcome.output === undefined ? null : this.redact(stringify(outcome.output)),
       usage: outcome.usage === undefined ? null : stringify(outcome.usage),
-      error: outcome.error ?? null,
+      error: outcome.error === undefined ? null : this.redact(outcome.error),
     };
   }
 }

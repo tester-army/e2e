@@ -100,7 +100,7 @@ These appear in terminal output and in the report as plain string codes.
 | `NO_LAST_RUN` | `--last-failed` found no `report.json` where the run writes it, or a file there that is not a `report-1` document. Run once without the flag first. | configuration | 2 |
 | `ONLY_IN_CI` | A focused test reached a CI run | configuration | 2 |
 | `COLLECTION_ERROR` | Registration outside collection, an invalid title, a non-function body, an async `describe` body, nested serial groups, an option forbidden inside a serial group, a setup test inside `describe`, an invalid session name, a malformed test option such as `tags` that is not a list of distinct names, or a positional path outside the project root | configuration | 2 |
-| `POLICY_DENIED` | Scheme, secret-sink, purpose, or tool policy denial; `app.screenshot()` after a secret has tainted the attempt; see the [security model](/security) | configuration | 2 |
+| `POLICY_DENIED` | Scheme, secret-sink, purpose, or tool policy denial; `app.screenshot()` or an executor's `attachScreenshot` after a secret has tainted the attempt; see the [security model](/security) | configuration | 2 |
 | `SESSION_MISMATCH` | A stored session does not match the current run, target, engine, platform, or app identity | configuration | 2 |
 | `SESSION_EXPIRED` | A stored session is past its expiry at restore time (configuration, exit 2), or a setup test saved state whose expiry is not after its creation (test, exit 1) | configuration or test | 2 or 1 |
 | `SESSION_INVALID` | A stored session failed authentication. Tampered or corrupt. | configuration | 2 |

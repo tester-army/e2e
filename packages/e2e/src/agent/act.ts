@@ -34,6 +34,7 @@ import type { AgentObservation } from './observation.ts';
 import { ObservationFeed } from './observation-feed.ts';
 import type { ObservedScreen } from './replay.ts';
 import { OperationQueue } from './operation-queue.ts';
+import { recordPolicyEvent } from './phases.ts';
 import { StepAccounting } from './step-accounting.ts';
 import { StepTraceSession, type StepCacheHost, type StepOutcome } from './step-cache.ts';
 import type { ParamTemplate } from '../cache/template.ts';
@@ -234,7 +235,7 @@ class ActDispatch {
     // oxlint-disable-next-line typescript/no-this-alias
     const dispatch = this;
     const ledger = serializeLedger(
-      projectPriorSteps(this.runtime.priorSteps()),
+      projectPriorSteps(this.runtime.priorSteps(), this.runtime.redact),
       this.runtime.config.limits.maxLedgerBytes,
     );
     this.accounting.metrics.ledgerBytes = ledger.bytes;
@@ -442,9 +443,19 @@ class ActDispatch {
   /**
    * Persists observed pixels as a step-attributed `screenshot` artifact and
    * returns its id. The pixels are the engine's redacted capture, so the file
-   * is masked as every screenshot artifact is.
+   * is masked as every screenshot artifact is. Once a secret was filled the
+   * viewport is pixel-tainted and the harness takes no screenshot itself;
+   * pixels an executor or tool captured on its own are refused on the same
+   * rule, so the built-in and custom paths agree.
    */
   private async attachScreenshot(pixels: ExecutorPixels, label: string): Promise<string> {
+    if (this.runtime.taint.value) {
+      recordPolicyEvent(this.runtime.steps, 'attachScreenshot', 'denied', 'PIXEL_TAINTED');
+      throw new AgentError(
+        'POLICY_DENIED',
+        'attachScreenshot() is denied after a secret fill because the app may display the secret outside a secure field',
+      );
+    }
     const name = `${label.replace(/[^A-Za-z0-9_-]+/g, '-')}.png`;
     await writeFile(join(this.runtime.artifacts.dir, name), pixels.data);
     const id = this.runtime.artifacts.register('screenshot', name);

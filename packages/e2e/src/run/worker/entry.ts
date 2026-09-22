@@ -219,7 +219,9 @@ function main(): void {
       // This worker owns its trace outright, so each drain point (unit-done,
       // shutdown-done) ships the entries accumulated since the previous one.
       const debug = new DebugTrace(message.bootstrap.debug);
-      const aiTrace = message.bootstrap.aiTrace ? new AiTraceRecorder() : undefined;
+      const aiTrace = message.bootstrap.aiTrace
+        ? new AiTraceRecorder({ redact: processSecrets.redact })
+        : undefined;
       const emit = (outbound: WorkerToMain): void => {
         if (outbound.type !== 'unit-done' && outbound.type !== 'shutdown-done') {
           send(outbound);

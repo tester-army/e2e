@@ -41,6 +41,7 @@ import { buildWorkPlans, plannedSlots, type TargetWorkPlan } from './units.ts';
 import { SessionStore } from './sessions.ts';
 import { readLastFailed } from './last-run.ts';
 import { childProcessSpawner } from './worker/handle.ts';
+import { processSecrets } from './secrecy.ts';
 import { setSecretRegistry } from '../secrets.ts';
 import { withAbort } from '../internal/time.ts';
 import type { BuiltinReporter, E2EConfig, FinishedRun, Reporter, ReporterSummary } from '../types.ts';
@@ -423,7 +424,8 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
    * Writes the AI trace next to the report, on the same terms: the path is
    * returned only once the file exists, and a lost trace is a recorded run
    * error. The in-process recorder is drained here; child-process workers
-   * already shipped theirs over the worker channel.
+   * already shipped theirs over the worker channel. The file is owner-only,
+   * like the cache and the sessions: it holds every prompt of the run.
    */
   const writeAiTrace = async (config: ResolvedConfig): Promise<string | undefined> => {
     if (aiTrace === undefined) return undefined;
@@ -434,7 +436,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     }
     const target = reportSibling(config, options.artifactsDir, 'ai-trace.json');
     try {
-      await writeJsonReport(target, aiTrace.document());
+      await writeJsonReport(target, aiTrace.document(), { mode: 0o600 });
       return target;
     } catch (cause) {
       recordFailure(
@@ -661,7 +663,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     if (aiTrace !== undefined && inProcess) {
       // In-process execution shares this process with the runner, so the
       // recorder lives here and is drained straight into the collector.
-      aiTraceRecorder = new AiTraceRecorder();
+      aiTraceRecorder = new AiTraceRecorder({ redact: processSecrets.redact });
       await registerAiTraceRecorder(aiTraceRecorder, loadAiSdk);
     }
     const spawn =
