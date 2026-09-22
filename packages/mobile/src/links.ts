@@ -21,6 +21,11 @@ const FORBIDDEN_PROTOCOLS = new Set(['file:', 'data:', 'javascript:']);
  */
 const LINK_SHAPE = /^([A-Za-z][A-Za-z0-9+.-]*):\S+$/;
 
+/** Whether agent-device would open this string as a URL rather than resolve it as an app. */
+export function isLink(value: string): boolean {
+  return LINK_SHAPE.test(value.trim());
+}
+
 function denyForbiddenScheme(protocol: string): void {
   if (FORBIDDEN_PROTOCOLS.has(protocol)) {
     throw new ConfigurationError('POLICY_DENIED', `forbidden URL scheme: ${protocol}`);
@@ -61,6 +66,20 @@ export function assertAppId(app: string): void {
   throw new TestError(
     'INVALID_ARGUMENT',
     'openApp opens an app by bundle id, package, or display name; open a deep link or web link with device.openLink',
+  );
+}
+
+/**
+ * Refuses a link in the engine's `app` option, which the pool opens on every
+ * device in `prepare`, before any attempt's `openApp` would. Config is the
+ * project's own code, so a link there is a mistake, not a policy breach:
+ * `INVALID_CONFIG` whatever the scheme, pointing at `device.openLink`.
+ */
+export function assertConfiguredApp(app: string | undefined): void {
+  if (app === undefined || !isLink(app)) return;
+  throw new ConfigurationError(
+    'INVALID_CONFIG',
+    'mobile: `app` names an app by bundle id, package, or display name, not a link; a test opens a deep link or web link with device.openLink',
   );
 }
 

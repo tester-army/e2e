@@ -11,6 +11,7 @@ import path from 'node:path';
 import { ConfigurationError, EngineError, obj, type EngineFinishInfo, type EnginePrepareInfo } from 'e2e/engine';
 import { isSlotBinding, type DeviceClientConfig, type DeviceDaemon, type DeviceSource, type SlotBinding } from './bindings.ts';
 import { message } from './errors.ts';
+import { isLink } from './links.ts';
 import type { MobileOptions, MobilePlatform } from './options.ts';
 
 /** What the engine asks a provider for: one device for one worker slot of a run. */
@@ -181,6 +182,10 @@ export class LeasedDevices implements DeviceSource {
         held.push(lease);
         if (lease.installedApp !== undefined && appPath === undefined) {
           throw new Error('reported an installed app for a request without `appPath`');
+        }
+        // The pool opens this on the device in `prepare`; agent-device would open a link as a URL.
+        if (lease.installedApp !== undefined && isLink(lease.installedApp)) {
+          throw new Error('reported an installed app that is a link, not a bundle id or package');
         }
         info.log(`${provider.name}: leased ${lease.id}${lease.device === undefined ? '' : ` (${lease.device})`}`);
         return lease;

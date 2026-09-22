@@ -152,6 +152,18 @@ describe('device provider', () => {
     expect(cloud.released.map((lease) => lease.id)).toEqual(['lease-0']);
   });
 
+  it('rejects a lease whose installed app is a link, before the pool opens it on the device', async () => {
+    const cloud = provider({ installedApp: 'file:///etc/passwd' });
+    const h = harness({ device: cloud.impl, appPath: 'build/App.app' }, false);
+    await expect(h.engine.prepare!(prepareInfo({}, 1))).rejects.toMatchObject({
+      code: 'ENGINE_FAILURE',
+      message: expect.stringContaining('reported an installed app that is a link'),
+    });
+    expect(h.fake.methods()).toEqual([]);
+    await h.engine.finish!(finishInfo());
+    expect(cloud.released.map((lease) => lease.id)).toEqual(['lease-0']);
+  });
+
   it('leases nothing for a target with no slots', async () => {
     const cloud = provider();
     const h = harness({ device: cloud.impl });
