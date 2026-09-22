@@ -10,10 +10,10 @@ import type { TestTargetPair } from '../../collect/select.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../../config/resolve.ts';
 import { DebugTrace } from '../../internal/debug.ts';
 import { TargetExecutor } from '../execute.ts';
-import type { RunError } from '../records.ts';
+import { encodeResult, type RunError } from '../records.ts';
 import type { SessionStore } from '../sessions.ts';
 import { disappearedResult } from '../units.ts';
-import { encodeResult, type MainToWorker, type RunUnitMessage, type WirePair, type WorkerToMain } from './protocol.ts';
+import type { MainToWorker, RunUnitMessage, WirePair, WorkerToMain } from './protocol.ts';
 
 /** Pairs resolved locally for one unit, plus identities that vanished. */
 export interface ResolvedUnitPairs {

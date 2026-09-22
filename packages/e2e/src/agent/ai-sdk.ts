@@ -5,10 +5,34 @@
  * MODEL_UNAVAILABLE instead of a module-resolution crash at startup.
  */
 
+import type { LanguageModel } from 'ai';
+import { isModelInstance } from '../config/agent.ts';
+import { ConfigurationError } from '../internal/errors.ts';
 import { realmSlot } from '../internal/realm-slot.ts';
+import type { ModelInstance } from '../types.ts';
 import { AgentError } from './error.ts';
 
 export type AiSdk = typeof import('ai');
+
+/** A live AI SDK language model, as accepted by `generateText`. */
+export type SdkLanguageModel = Exclude<LanguageModel, string>;
+
+/**
+ * Narrows a structurally verified model instance to the SDK model type. The
+ * one place this cast lives; everything downstream takes the checked type.
+ * It sits here, at the SDK boundary, and not in config resolution: the
+ * resolved config is in the type closure of the `e2e` entry, and this is the
+ * only module the `ai` types may enter from.
+ */
+export function asSdkLanguageModel(instance: ModelInstance): SdkLanguageModel {
+  if (!isModelInstance(instance)) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      'value is not an AI SDK language model instance',
+    );
+  }
+  return instance as SdkLanguageModel;
+}
 
 /**
  * The cache lives on `globalThis`, not in module state: config and test

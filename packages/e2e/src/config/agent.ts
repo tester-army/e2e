@@ -1,6 +1,5 @@
 /** Agent, model, and resource-limit resolution. */
 
-import type { LanguageModel } from 'ai';
 import { builtInAgentContext } from '../agent/agent-brand.ts';
 import { isStepExecutor, type StepExecutor } from '../agent/executor.ts';
 import { boundedInt, positiveInt } from './validate.ts';
@@ -14,9 +13,6 @@ import type {
   VisionMode,
 } from '../types.ts';
 
-/** A live AI SDK language model, as accepted by `generateText`. */
-export type SdkLanguageModel = Exclude<LanguageModel, string>;
-
 /**
  * Resolved model identity: a caller-supplied AI SDK model instance
  * (`gateway('openai/gpt-5.6-luna')`, `openrouter(...)`, `openai(...)`, any
@@ -29,7 +25,12 @@ export type SdkLanguageModel = Exclude<LanguageModel, string>;
 export interface ResolvedModel {
   readonly provider: string;
   readonly id: string;
-  readonly model: SdkLanguageModel;
+  /**
+   * The instance, structurally typed. `asSdkLanguageModel` narrows it at the
+   * AI SDK boundary, so this module and the config types built on it name
+   * nothing from the optional `ai` peer.
+   */
+  readonly model: ModelInstance;
 }
 
 /** A resolved model as reports and diagnostics name it: the instance's `provider/model-id`. */
@@ -244,20 +245,6 @@ export function isVisionMode(value: unknown): value is VisionMode {
 }
 
 /**
- * Narrows a structurally verified model instance to the SDK model type. The
- * one place this cast lives; everything downstream takes the checked type.
- */
-export function asSdkLanguageModel(instance: ModelInstance): SdkLanguageModel {
-  if (!isModelInstance(instance)) {
-    throw new ConfigurationError(
-      'INVALID_CONFIG',
-      'value is not an AI SDK language model instance',
-    );
-  }
-  return instance as SdkLanguageModel;
-}
-
-/**
  * True when a config value is a live AI SDK language model instance. The check
  * is structural, exactly like the AI SDK's own model handling, so instances
  * from any realm or provider package are accepted.
@@ -319,12 +306,7 @@ function resolveModel(model: ModelInstance | undefined, label: string): Resolved
       `${label} must be an AI SDK model instance, e.g. gateway('openai/gpt-5.6-luna') from 'ai'`,
     );
   }
-  return {
-    provider: model.provider,
-    id: model.modelId,
-    // Structurally verified above; the AI SDK duck-types models the same way.
-    model: model as SdkLanguageModel,
-  };
+  return { provider: model.provider, id: model.modelId, model };
 }
 
 /**

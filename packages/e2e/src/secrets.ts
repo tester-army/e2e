@@ -3,12 +3,19 @@
 import { credentialBrand, secretBrand } from './internal/brands.ts';
 import { ConfigurationError } from './internal/errors.ts';
 import { realmSlot } from './internal/realm-slot.ts';
-import type { ResolvedConfig } from './config/resolve.ts';
 import { envName } from './config/secrets.ts';
 import type { Credential, Credentials, Secret, SecretPurpose, Secrets } from './types.ts';
 
-/** What the handles resolve against: the run's accounts and every secret by name. */
-export type SecretRegistry = Pick<ResolvedConfig, 'credentials' | 'secrets'>;
+/**
+ * What the handles resolve against: the run's accounts and every secret by
+ * name, as the two maps the resolved config carries. Named structurally
+ * rather than picked from `ResolvedConfig`, so the public `secrets` surface
+ * pulls no config module, and none of its imports, into a consumer's types.
+ */
+export interface SecretRegistry {
+  readonly credentials: ReadonlyMap<string, { readonly username: string }>;
+  readonly secrets: ReadonlyMap<string, { readonly purpose: SecretPurpose }>;
+}
 
 /** Global slot so test modules in an isolated realm reach the runner's registry. */
 const registrySlot = realmSlot<SecretRegistry>('e2e.secrets.v1');

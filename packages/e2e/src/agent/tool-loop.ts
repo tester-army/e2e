@@ -13,8 +13,7 @@
 
 import type { StepTurn } from '../run/steps.ts';
 import type { LanguageModel, ModelMessage, StepResult, ToolSet } from 'ai';
-import { asSdkLanguageModel, type SdkLanguageModel } from '../config/agent.ts';
-import { loadAiSdk, type AiSdk } from './ai-sdk.ts';
+import { asSdkLanguageModel, loadAiSdk, type AiSdk, type SdkLanguageModel } from './ai-sdk.ts';
 import { withHint } from '../internal/errors.ts';
 import type { ProviderOptions } from '../types.ts';
 import { credentialHint, isAbort, TRANSPORT_RETRIES } from './model/sdk.ts';

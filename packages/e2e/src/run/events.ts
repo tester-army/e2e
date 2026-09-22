@@ -20,9 +20,8 @@
 import type { ExploreProgress } from '../explore/progress.ts';
 import type { SerializedError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
-import type { ResultRecord, SerialGroupRecord } from './records.ts';
+import { encodeResult, type ResultRecord, type SerialGroupRecord, type WireResultRecord } from './records.ts';
 import type { StepProgress } from './steps.ts';
-import { encodeResult, type WireResultRecord } from './worker/protocol.ts';
 
 /** The closed set of process exit codes a run can end with. */
 export type RunExitCode = 0 | 1 | 2 | 3 | 4 | 130;

@@ -8,10 +8,10 @@
 
 import type { ToolExecutionOptions } from 'ai';
 import { z } from 'zod';
+import { asSdkLanguageModel } from '../agent/ai-sdk.ts';
 import { createAgent, isDefaultAgent, type DefaultAgent } from '../agent/default-agent.ts';
 import type { StepExecutor } from '../agent/executor.ts';
 import { defineTool, getToolContext, type DefinedTool } from '../agent/tool.ts';
-import { asSdkLanguageModel } from '../config/agent.ts';
 import type { ExploreState } from './state.ts';
 
 export const FINDING_TOOL_NAME = 'report_finding';

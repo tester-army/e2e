@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { SdkLanguageModel } from '../../src/config/agent.ts';
+import type { SdkLanguageModel } from '../../src/agent/ai-sdk.ts';
 import { resolveConfig } from '../../src/config/resolve.ts';
 import { WorkerModels } from '../../src/run/worker-models.ts';
 
