@@ -401,7 +401,9 @@ export interface EngineInitInfo {
    * exists once the worker is up belongs: the URL a hosted browser or device
    * can be watched at, which simulator a slot got, a version it detected.
    * Meant for `init` itself; a line logged later is still delivered while
-   * the worker lives and dropped once it has exited.
+   * the worker lives and dropped once it has exited. The line is shown as is
+   * in reporters and host sinks, so keep tokens and other secrets out of it
+   * (a viewer URL without its credential).
    */
   readonly log: (line: string) => void;
 }
