@@ -157,9 +157,12 @@ It answers `holds`, `fails`, or `inconclusive`.
 Throws `ASSERTION_FAILED` on a false judgment and `ASSERTION_INCONCLUSIVE`
 when the screen did not show enough to decide. Both carry the explanation
 and, when permitted, a screenshot path. An inconclusive judgment made from
-the tree alone, with `vision` off and no secret filled in the attempt, adds
-`the judge saw the semantic tree only; pass vision: true when the answer is
-in pixels` to its message. No evidence is captured with
+the tree alone adds `pass vision: true when the answer is in pixels` to its
+message, worded as a condition (`if the engine captures pixels, ...`) until
+a step of the attempt has received pixels. There is no hint when the engine
+declares no screenshot capture, a secret was filled, or an earlier step's
+pixel request was degraded: `vision: true` could add no evidence then. No
+evidence is captured with
 `screenshot: false` or once a secret has been filled in the attempt.
 `screenshot` controls failure evidence attached after the judgment; `vision`
 controls what the model is shown before it.
