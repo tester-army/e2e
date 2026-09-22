@@ -360,7 +360,15 @@ export class TargetExecutor implements SerialHost {
       pair.options.retries + 1,
       this.interruptSignal,
       async (attemptIndex) => {
-        if (realm === null) realm = await this.realms.create(file.absolutePath);
+        if (realm === null) {
+          try {
+            realm = await this.realms.create(file.absolutePath);
+          } catch (cause) {
+            const attempt = this.unstartedAttempt(attemptIndex, cause);
+            attempts.push(attempt);
+            return attempt;
+          }
+        }
         const registered = findRegistered(realm, pair.test);
         if (registered === undefined) {
           this.recordDisappeared(
@@ -438,10 +446,17 @@ export class TargetExecutor implements SerialHost {
       pair.options.retries + 1,
       this.interruptSignal,
       async (attemptIndex) => {
-        const realm =
-          attemptIndex === 0 && freshRegistration !== undefined
-            ? this.realms.adopt(freshRegistration)
-            : await this.realms.create(absolutePath);
+        let realm: Realm;
+        try {
+          realm =
+            attemptIndex === 0 && freshRegistration !== undefined
+              ? this.realms.adopt(freshRegistration)
+              : await this.realms.create(absolutePath);
+        } catch (cause) {
+          const attempt = this.unstartedAttempt(attemptIndex, cause);
+          attempts.push(attempt);
+          return attempt;
+        }
         const registered = findRegistered(realm, pair.test);
         if (registered === undefined) {
           this.recordDisappeared(`setup ${pair.test.id} disappeared on re-import`);
@@ -474,8 +489,17 @@ export class TargetExecutor implements SerialHost {
             );
             return attempt;
           }
-          for (const [name, state] of staging.entries()) {
-            await this.options.sessionStore.save(name, this.sessionIdentity, state);
+          // A save that fails (state the engine captured already expired, a
+          // full or read-only sessions directory) is this setup's failure:
+          // recorded on the attempt so dependents skip as setup-failed, never
+          // thrown, since a throw here takes the worker down with it.
+          try {
+            for (const [name, state] of staging.entries()) {
+              await this.options.sessionStore.save(name, this.sessionIdentity, state);
+            }
+          } catch (cause) {
+            attempt.status = 'failed';
+            attempt.error = serializeError(classifyError(cause), { phase: 'body' });
           }
         }
         return attempt;
@@ -483,6 +507,27 @@ export class TargetExecutor implements SerialHost {
     );
 
     this.emitUnitResult(pair, finalStatus, attempts, hookFailure);
+  }
+
+  /**
+   * The record of an attempt whose realm could not be created: the test file
+   * failed to re-import for a retry or a later setup. Recorded against the
+   * test, as a serial group's is, rather than thrown out of the unit, which
+   * would end the worker.
+   */
+  private unstartedAttempt(attemptIndex: number, cause: unknown): AttemptRecord {
+    return {
+      id: uuidv7(),
+      index: attemptIndex,
+      status: 'failed',
+      startedAt: timestamp(),
+      durationMs: 0,
+      steps: [],
+      artifacts: [],
+      error: serializeError(classifyError(cause), { phase: 'collection' }),
+      secondaryErrors: [],
+      cleanup: 'complete',
+    };
   }
 
   // --- attempt core ---
