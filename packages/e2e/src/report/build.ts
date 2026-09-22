@@ -1,6 +1,7 @@
 /** report-1 document construction. */
 
 import os from 'node:os';
+import path from 'node:path';
 import { ENGINE_SPI_VERSION, type EngineSpiVersion } from '../engine/contract.ts';
 import { BLOCKABLE_CODES } from '../agent/executor.ts';
 import { DEFAULT_OBSERVATION_BYTES, resolveLimits } from '../config/agent.ts';
@@ -10,6 +11,7 @@ import type { ErrorCategory, ErrorDetails, ErrorPhase, SerializedError } from '.
 import { resultId, timestamp } from '../internal/ids.ts';
 import { obj } from '../internal/objects.ts';
 import { packageVersion } from '../internal/package-version.ts';
+import { projectRelativePath } from '../internal/source.ts';
 import type { VcsInfo } from '../internal/vcs.ts';
 import type { SkipInfo } from '../collect/select.ts';
 import type {
@@ -366,8 +368,8 @@ function relativeSource(
 ): ReportSource {
   if (source === undefined) return { file: fallbackFile, line: 1, column: 1 };
   let file = source.file;
-  if (config !== undefined && file.startsWith(config.projectRoot)) {
-    file = file.slice(config.projectRoot.length).replace(/^[/\\]/, '').split('\\').join('/');
+  if (config !== undefined && path.isAbsolute(file)) {
+    file = projectRelativePath(config.projectRoot, file) ?? fallbackFile;
   }
   if (file.startsWith('/') || /^[A-Za-z]:/.test(file)) {
     file = fallbackFile;
