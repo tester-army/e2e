@@ -119,14 +119,17 @@ export function asDeviceProvider(device: object): DeviceProvider {
   return device as DeviceProvider;
 }
 
-/** A lease as a provider returned it, checked field by field: the engine trusts nothing it did not write. */
-function isDeviceLease(value: unknown): value is DeviceLease {
-  return (
-    isSlotBinding(value) &&
-    typeof (value as { id?: unknown }).id === 'string' &&
-    (value.daemon !== undefined || value.client !== undefined)
-  );
+/** An object with a lease id: something the provider granted and `release` is owed, whatever the field check makes of it. */
+function isGrantedLease(value: unknown): value is Pick<DeviceLease, 'id'> {
+  return typeof value === 'object' && value !== null && typeof (value as { id?: unknown }).id === 'string';
 }
+
+/** A granted lease checked field by field: the engine trusts nothing it did not write. */
+function isDeviceLease(lease: Pick<DeviceLease, 'id'>): lease is DeviceLease {
+  return isSlotBinding(lease) && (lease.daemon !== undefined || lease.client !== undefined);
+}
+
+const REJECTED_LEASE = 'returned a lease without an id and a daemon baseUrl or JSON client configuration (no `session` or daemon keys)';
 
 /** Runs every task, then reports the first failure: nothing is skipped because a sibling failed. */
 async function allOrFirstFailure<T>(tasks: readonly (() => Promise<T>)[], describe: string): Promise<T[]> {
@@ -147,7 +150,7 @@ async function allOrFirstFailure<T>(tasks: readonly (() => Promise<T>)[], descri
  * still released, each one whatever happened to the rest.
  */
 export class LeasedDevices implements DeviceSource {
-  /** Leases granted so far, per target, filled as each `acquire` settles. */
+  /** Leases granted so far, per target, filled as each `acquire` settles; a lease the engine then rejects is among them. */
   private readonly held = new Map<string, DeviceLease[]>();
 
   constructor(
@@ -176,10 +179,11 @@ export class LeasedDevices implements DeviceSource {
           signal: info.signal,
           log: (line) => info.log(`${provider.name} (${slot + 1} of ${info.slots}): ${line}`),
         });
-        if (!isDeviceLease(lease)) {
-          throw new Error('returned a lease without an id and a daemon baseUrl or JSON client configuration (no `session` or daemon keys)');
-        }
+        if (!isGrantedLease(lease)) throw new Error(REJECTED_LEASE);
+        // Held before it is checked: the provider bills for what it granted,
+        // and `release` is owed this same object however the check goes.
         held.push(lease);
+        if (!isDeviceLease(lease)) throw new Error(REJECTED_LEASE);
         if (lease.installedApp !== undefined && appPath === undefined) {
           throw new Error('reported an installed app for a request without `appPath`');
         }

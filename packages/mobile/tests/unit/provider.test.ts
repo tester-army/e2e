@@ -224,7 +224,7 @@ describe('device provider', () => {
     expect(worker.connections).toEqual([{ client: scope }]);
   });
 
-  it('refuses a lease that names neither a daemon nor client configuration, or a client with reserved keys', async () => {
+  it('refuses a lease that names neither a daemon nor client configuration, or a client with reserved keys, and still releases it', async () => {
     for (const lease of [
       { id: 'bare' },
       { id: 'session', client: { session: 'mine', leaseId: 'x' } },
@@ -235,11 +235,40 @@ describe('device provider', () => {
       { id: 'infinity', client: { leaseId: 'x', leaseTtlMs: Number.POSITIVE_INFINITY } },
       { id: 'negative-infinity', client: { leaseId: 'x', leaseTtlMs: Number.NEGATIVE_INFINITY } },
     ]) {
-      const h = harness({ device: { name: 'odd', acquire: async () => lease as unknown as DeviceLease, release: async () => {} } });
+      const released: DeviceLease[] = [];
+      const odd: DeviceProvider = {
+        name: 'odd',
+        acquire: async () => lease as unknown as DeviceLease,
+        release: async (granted) => {
+          released.push(granted);
+        },
+      };
+      const h = harness({ device: odd });
       await expect(h.engine.prepare!(prepareInfo({}, 1))).rejects.toMatchObject({
         message: expect.stringContaining('returned a lease without an id and a daemon baseUrl or JSON client configuration'),
       });
+      // The provider allocated a device for it, so it is billed until released: finish hands back the very object.
+      await h.engine.finish!(finishInfo());
+      expect(released).toHaveLength(1);
+      expect(released[0]).toBe(lease);
     }
+  });
+
+  it('has nothing to release for a lease without an id', async () => {
+    const released: DeviceLease[] = [];
+    const nameless: DeviceProvider = {
+      name: 'nameless',
+      acquire: async () => ({ daemon: { baseUrl: 'https://d.example' } }) as unknown as DeviceLease,
+      release: async (granted) => {
+        released.push(granted);
+      },
+    };
+    const h = harness({ device: nameless });
+    await expect(h.engine.prepare!(prepareInfo({}, 1))).rejects.toMatchObject({
+      message: expect.stringContaining('returned a lease without an id and a daemon baseUrl or JSON client configuration'),
+    });
+    await h.engine.finish!(finishInfo());
+    expect(released).toEqual([]);
   });
 
   it('rejects bindings too large for a worker environment, by bytes', async () => {
