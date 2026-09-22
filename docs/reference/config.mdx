@@ -142,7 +142,8 @@ export interface Target {
 ```
 
 `name` is the id `--target`, reports, sessions, and artifact paths use:
-ASCII letters, digits, `_`, `-`, `.`, unique across targets.
+ASCII letters, digits, `_`, `-`, `.`, not only dots (`.` and `..` are path
+segments), unique across targets.
 
 `{ engine: web({ url }) }` is a complete target. Two targets on one
 platform need names. A target without an engine runs through agent tools
@@ -433,7 +434,8 @@ Tests use the `default` agent unless you select another with
 call. A test with `{ agent: ['buyer', 'admin'] }` runs once for each agent.
 `default` exists even when the config declares no agents, but has no model.
 
-Names may contain ASCII letters, numbers, `_`, `-`, or `.`. An unknown name
+Names may contain ASCII letters, numbers, `_`, `-`, or `.`, and are never
+only dots: a name is an artifact path segment. An unknown name
 is `INVALID_CONFIG` on the CLI flag, `COLLECTION_ERROR` on a test or group,
 and `INVALID_ARGUMENT` on a call. See [Agents and personas](/agents).
 
