@@ -522,6 +522,45 @@ describe('tool calls outside the vocabulary', () => {
     }
   }, 120_000);
 
+  it('runs the valid call of a batched turn, refuses the decorated one, and records both in the turn', async () => {
+    const model = installFakeLoopModel((call) => {
+      const target = nodeIdFor(call.prompt, /button "Increment"/);
+      if (call.turn === 1) {
+        return [
+          { toolName: 'tap', input: { target } },
+          { toolName: 'tap', input: { target, force: true } },
+        ];
+      }
+      return [{ toolName: 'complete_step', input: { status: 'passed', summary: 'the counter shows 1' } }];
+    });
+    const { outcome, project } = await runProject(
+      { 'tests/vocabulary.e2e.ts': VOCABULARY_SUITE },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: { model } } } },
+    );
+    try {
+      const result = resultByTitle(outcome, 'the agent increments the counter once');
+      expect(result.attempts.at(-1)!.error?.message ?? '').toBe('');
+      expect(result.status).toBe('passed');
+      // One turn, two results: the plain tap ran and reported the change; the decorated one never did.
+      expect(loopCalls).toHaveLength(2);
+      const results = loopCalls[1]!.toolResults;
+      expect(results).toHaveLength(2);
+      const ran = results.find((text) => text.startsWith('Tapped #'));
+      const refused = results.find((text) => text.includes('Invalid input for tool tap'));
+      expect(ran).toMatch(/changed #\S+ status "Counter" text="1"/);
+      expect(refused).toContain('"force"');
+      const step = agentStep(outcome);
+      expect(step.metrics!.actionSteps).toBe(1);
+      expect(step.metrics!.modelCalls).toBe(2);
+      const [turn] = step.turns!;
+      expect(turn!.calls).toHaveLength(2);
+      expect(turn!.outcome).toMatch(/\[tap\] Tapped #\S+\./);
+      expect(turn!.outcome).toContain(`[tap] error: ${refused!.split('\n')[0]}`);
+    } finally {
+      project.cleanup();
+    }
+  }, 120_000);
+
   it('refuses a tool the step does not offer, lists the vocabulary, and runs nothing', async () => {
     const model = installFakeLoopModel((call) => {
       const target = nodeIdFor(call.prompt, /button "Increment"/);
