@@ -74,6 +74,21 @@ describe('renderJunitReport', () => {
     expect(xml).not.toContain('<testsuite ');
   });
 
+  it('leaves a result the selection did not choose out of the suites and the counts', () => {
+    const unselected = reportResult({
+      id: 'result-2',
+      testId: 'test-2',
+      file: 'tests/agent/tests.e2e.ts',
+      selected: false,
+      status: 'skipped',
+      skip: { cause: 'filtered', reason: 'file not selected by a positional argument' },
+      attempts: [],
+    });
+    const xml = render(reportDocument({ results: [reportResult(), unselected] }));
+    expect(xml).not.toContain('tests/agent/tests.e2e.ts');
+    expect(rootAttributes(xml)).toMatchObject({ tests: '1', skipped: '0' });
+  });
+
   it('renders a passed result as a bare testcase named by title path and target', () => {
     const xml = render(reportDocument({ results: [reportResult()] }));
     expect(xml).toContain(

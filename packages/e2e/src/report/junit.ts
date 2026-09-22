@@ -185,6 +185,8 @@ export function renderJunitReport(report: Report1Document): string {
   const groups = new Map(report.run.serialGroups.map((group) => [group.id, group]));
   const byFile = new Map<string, RenderedCase[]>();
   for (const result of report.run.results) {
+    // Unselected results are report-only; a CI viewer counts what the run selected.
+    if (result.selected === false) continue;
     const cases = byFile.get(result.file) ?? [];
     cases.push(renderResult(result, groups));
     byFile.set(result.file, cases);

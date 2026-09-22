@@ -80,6 +80,18 @@ describe('reportRun', () => {
     expect(body).toContain('[run artifacts](https://github.com/octo/app/actions/runs/99)');
   });
 
+  it('links sources under the project path inside the checkout, and at the root when the project is the checkout', async () => {
+    const nested = deps({ ...actionsEnv, GITHUB_TOKEN: 'ghs', GITHUB_WORKSPACE: '/work' });
+    await reportRun(failedRun, signal, {}, nested.deps);
+    expect(postedBody(nested.calls)).toContain('(https://github.com/octo/app/blob/head-sha/app/tests/shop%20flows/cart.e2e.ts#L9)');
+    const root = deps({ ...actionsEnv, GITHUB_TOKEN: 'ghs', GITHUB_WORKSPACE: '/work/app' });
+    await reportRun(failedRun, signal, {}, root.deps);
+    expect(postedBody(root.calls)).toContain('(https://github.com/octo/app/blob/head-sha/tests/shop%20flows/cart.e2e.ts#L9)');
+    const outside = deps({ ...actionsEnv, GITHUB_TOKEN: 'ghs', GITHUB_WORKSPACE: '/elsewhere' });
+    await reportRun(failedRun, signal, {}, outside.deps);
+    expect(postedBody(outside.calls)).toContain('(https://github.com/octo/app/blob/head-sha/tests/shop%20flows/cart.e2e.ts#L9)');
+  });
+
   it('adds the key to the marker, encoded, so matrix replicas keep their own comments', async () => {
     const d = deps({ ...actionsEnv, GITHUB_TOKEN: 'ghs' });
     await reportRun(failedRun, signal, { key: 'firefox --> 2' }, d.deps);

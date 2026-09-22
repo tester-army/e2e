@@ -124,8 +124,8 @@ function pageName(options: MarkdownReportOptions): string {
   return title === '' ? 'e2e' : `e2e ${cell(title, MAX_ID_CHARS)}`;
 }
 
-function headline(run: ReportRun, options: MarkdownReportOptions): string {
-  const summary = countText(tally(run.results)) || (run.errors.length > 0 ? 'no tests ran' : 'no tests selected');
+function headline(run: ReportRun, results: readonly ReportResult[], options: MarkdownReportOptions): string {
+  const summary = countText(tally(results)) || (run.errors.length > 0 ? 'no tests ran' : 'no tests selected');
   return `### ${run.status === 'passed' ? ICON.passed : ICON.failed} ${pageName(options)}: ${summary}`;
 }
 
@@ -457,7 +457,11 @@ export function renderMarkdownReport(report: Report1Document, options: MarkdownR
   const run = report.run;
   const explore = run.explore;
   const serialGroups = new Map(run.serialGroups.map((group) => [group.id, group]));
-  const entries: Entry[] = run.results.map((result) => ({ result, final: outcome(result, serialGroups) }));
+  // A result the selection left out (another suite's file, a tag filter) is
+  // report-only: the JSON keeps it, the page never counts or lists it. A
+  // document written before results carried the flag is all selected.
+  const selected = run.results.filter((result) => result.selected !== false);
+  const entries: Entry[] = selected.map((result) => ({ result, final: outcome(result, serialGroups) }));
   const manyTargets = run.targets.length > 1;
 
   const errors = run.errors.slice(0, MAX_RUN_ERRORS).map(runErrorLine);
@@ -475,11 +479,11 @@ export function renderMarkdownReport(report: Report1Document, options: MarkdownR
   );
 
   const spend = spendLine(run, entries);
-  const head = [explore === undefined ? headline(run, options) : exploreHeadline(run, explore, options), ...(spend === undefined ? [] : [spend]), ''];
+  const head = [explore === undefined ? headline(run, selected, options) : exploreHeadline(run, explore, options), ...(spend === undefined ? [] : [spend]), ''];
   const groups = fileGroups(entries);
   const sections =
     explore === undefined
-      ? [errors, ...failures, flaky, allTests(groups, run.results.length, manyTargets)]
+      ? [errors, ...failures, flaky, allTests(groups, selected.length, manyTargets)]
       : [
           [`**Goal:** ${cell(explore.goal, MAX_GOAL_CHARS)}  `, `**Steps:** ${exploreSteps(explore)}`],
           errors,

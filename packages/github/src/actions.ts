@@ -35,6 +35,8 @@ export interface ActionsContext {
   readonly token: string | undefined;
   /** The file `GITHUB_STEP_SUMMARY` names, when the runner provides one. */
   readonly stepSummaryPath: string | undefined;
+  /** `GITHUB_WORKSPACE`, the checkout root the repository's paths are relative to. */
+  readonly workspace: string | undefined;
 }
 
 export interface ActionsDeps {
@@ -125,5 +127,6 @@ export async function detectActions(deps: ActionsDeps): Promise<ActionsContext |
     pullRequest: event?.number ?? pullFromRef(value('GITHUB_REF')),
     token: value('GITHUB_TOKEN') ?? value('GH_TOKEN'),
     stepSummaryPath: value('GITHUB_STEP_SUMMARY'),
+    workspace: value('GITHUB_WORKSPACE'),
   };
 }

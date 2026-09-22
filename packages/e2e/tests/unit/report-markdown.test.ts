@@ -220,6 +220,17 @@ describe('renderMarkdownReport', () => {
     );
   });
 
+  it('leaves a result the selection did not choose out of the counts and the list, and reads one without the flag as selected', () => {
+    const unselected = { ...named({ title: 'agent journey', file: 'tests/agent/tests.e2e.ts', status: 'skipped', skip: { cause: 'filtered', reason: 'file not selected by a positional argument' } }), selected: false };
+    const body = renderMarkdownReport(page({ results: [passing, unselected] }));
+    expect(body).toContain('### 🟢 e2e: 1 passed');
+    expect(body).toContain('All 1 test in 1 file');
+    expect(body).not.toContain('tests/agent/tests.e2e.ts');
+    expect(body).not.toContain('positional argument');
+    const legacy = { ...passing, selected: undefined as unknown as boolean };
+    expect(renderMarkdownReport(page({ results: [legacy] }))).toContain('### 🟢 e2e: 1 passed');
+  });
+
   it('names the page after its title, so two comments on one pull request read apart', () => {
     expect(renderMarkdownReport(page({ results: [passing] }), { title: 'regression' })).toContain('### 🟢 e2e regression: 1 passed\n');
     expect(renderMarkdownReport(page({ results: [passing] }), { title: '  ' })).toContain('### 🟢 e2e: 1 passed\n');

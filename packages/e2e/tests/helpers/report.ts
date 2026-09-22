@@ -83,6 +83,7 @@ export function reportResult(overrides: Partial<ReportResult> = {}): ReportResul
     agent: 'default',
     repeat: 0,
     tags: [],
+    selected: true,
     status: 'passed',
     attempts: [reportAttempt()],
     ...overrides,

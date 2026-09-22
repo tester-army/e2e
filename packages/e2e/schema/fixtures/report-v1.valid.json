@@ -71,6 +71,7 @@
         "platform": "web",
         "agent": "default",
         "repeat": 0,
+        "selected": true,
         "status": "passed",
         "attempts": [
           {
@@ -228,6 +229,7 @@
         "platform": "web",
         "agent": "default",
         "repeat": 0,
+        "selected": true,
         "status": "skipped",
         "attempts": [
           {

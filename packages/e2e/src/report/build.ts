@@ -265,6 +265,14 @@ export interface ReportResult {
   repeat: number;
   /** The tags the test declares; `[]` when none. */
   tags: readonly string[];
+  /**
+   * Whether the selection chose this test. A test left out (another file
+   * than the positionals named, a tag filter, a platform it does not declare)
+   * is still here as `skipped` for the record, but it is report-only: the
+   * summary's `selected` does not count it, and the page and JUnit renderers
+   * leave it out, as the terminal does.
+   */
+  selected: boolean;
   serialGroupId?: string | undefined;
   status: ResultRecord['status'];
   skip?: SkipInfo | undefined;
@@ -463,6 +471,7 @@ function serializeResult(config: ResolvedConfig | undefined, result: ResultRecor
     agent: result.agent,
     repeat: result.repeat,
     tags: result.test.tags,
+    selected: result.selected,
     serialGroupId: result.serialGroupId,
     status: result.status,
     skip: result.status === 'skipped' ? result.skip : undefined,

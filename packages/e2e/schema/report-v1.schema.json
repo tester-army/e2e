@@ -465,6 +465,7 @@
         "agent": { "type": "string", "minLength": 1 },
         "repeat": { "type": "integer", "minimum": 0 },
         "tags": { "type": "array", "items": { "type": "string", "pattern": "^[^\\s,](?:[^,]*[^\\s,])?$" }, "uniqueItems": true },
+        "selected": { "type": "boolean" },
         "serialGroupId": { "type": "string", "minLength": 1 },
         "status": { "enum": ["passed", "flaky", "failed", "timed-out", "interrupted", "skipped"] },
         "skip": { "$ref": "#/$defs/skip" },

@@ -240,7 +240,7 @@ class AsyncExpectationImpl implements AsyncExpectation {
         evaluableWithoutNode: true,
         predicate: (sample) => !isNodeVisible(sample.node),
         describeExpected: 'hidden or absent',
-        observed: observedState,
+        observed: (sample) => (isNodeVisible(sample.node) ? 'visible' : 'hidden'),
       },
       options?.timeout,
     );
