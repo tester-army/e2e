@@ -270,9 +270,13 @@ export type DeviceOrientation = 'portrait' | 'portrait-upside-down' | 'landscape
 ```
 
 Every async method is a recorded step named `device.<method>`, bounded by
-`config.actionTimeout`. A lost session is `APP_NOT_OPEN`, a timeout is
-`ACTION_FAILED`, a command the platform cannot run is
-`UNSUPPORTED_CAPABILITY`, anything else `ENGINE_FAILURE`.
+`config.actionTimeout`. A lost session is `APP_NOT_OPEN`, that budget
+expiring is `ACTION_FAILED`, a command the platform cannot run is
+`UNSUPPORTED_CAPABILITY`, anything else `ENGINE_FAILURE` with agent-device's
+message: a timeout the device itself reports (a boot, the runner connecting)
+keeps its text and hint there, and a busy or wedged iOS automation runner
+names itself and the recovery (see
+[Troubleshooting](/mobile#troubleshooting)).
 
 `installApp` installs a build from inside a test, for upgrade paths. A plain
 install keeps the app's data; `reinstall: true` removes the app named by
