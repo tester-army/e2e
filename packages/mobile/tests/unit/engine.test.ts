@@ -317,13 +317,13 @@ describe('lifecycle', () => {
     expect(none.fake.lastArgs('command.back')).toEqual({});
     const screen = await screenRootOf(none);
     await none.engine.perform!(screen.ref, { kind: 'swipe', direction: 'down' }, operation());
-    expect(none.fake.lastArgs('interactions.scroll')).toEqual({ direction: 'down', amount: 0.5 });
+    expect(none.fake.lastArgs('interactions.scroll')).toEqual({ direction: 'down' });
 
     // A test's own step never settles: its `expect` polls for the outcome.
     const step: OperationContext = { ...operation(), origin: 'test' };
     const slowScreen = await screenRootOf(slow);
     await slow.engine.perform!(slowScreen.ref, { kind: 'swipe', direction: 'up', momentum: 'slow' }, step);
-    expect(slow.fake.lastArgs('interactions.scroll')).toEqual({ direction: 'up', amount: 0.75 });
+    expect(slow.fake.lastArgs('interactions.scroll')).toEqual({ direction: 'up' });
 
     expect(() => harness({ settle: -1 })).toThrow(/non-negative integer/);
     expect(() => harness({ settle: 1.5 })).toThrow(/non-negative integer/);
@@ -640,8 +640,8 @@ describe('perform', () => {
       ['interactions.press', { ref: '@e7', settle: true, settleQuietMs: 150 }],
       ['interactions.type', { text: ' ' }],
       ['interactions.swipe', { from: { x: 195, y: 620 }, to: { x: 195, y: 420 } }],
-      // The root swipe is the viewport swipe: agent-device's whole-screen scroll, the momentum its reach, settled like a tap.
-      ['interactions.scroll', { direction: 'up', amount: 0.8, settle: true, settleQuietMs: 150 }],
+      // The root swipe is the viewport swipe: agent-device's whole-screen scroll at its default amount, settled like a tap.
+      ['interactions.scroll', { direction: 'up', settle: true, settleQuietMs: 150 }],
       ['interactions.drag', { source: '@e4', destination: '@e3' }],
     ]);
   });
@@ -742,7 +742,7 @@ describe('session hooks, viewport swipe, location, artifacts', () => {
     await h.engine.session!.restart!(operation());
     await h.engine.session!.reset!(operation());
     expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
-      ['interactions.scroll', { direction: 'down', amount: 0.8, settle: true, settleQuietMs: 150 }],
+      ['interactions.scroll', { direction: 'down', settle: true, settleQuietMs: 150 }],
       ['command.back', { settle: true, settleQuietMs: 150 }],
       ['apps.open', { app: 'Settings', platform: 'ios', relaunch: true }],
       ['settings.update', { setting: 'clear-app-state', state: 'clear', app: 'Settings' }],

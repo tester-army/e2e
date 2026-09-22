@@ -48,25 +48,14 @@ export function readPngSize(data: Uint8Array): { width: number; height: number }
 }
 
 /**
- * The share of the screen a root swipe scrolls, by fling strength, sent as
- * agent-device's whole-screen `scroll` amount: half for a plain flick, three
- * quarters for a deliberate `slow` scroll (the runner's grammar scroll, which
- * keeps every row on screen once while covering a feed in few actions), and
- * the most the gesture reaches for `fast`; that scroll saturates at 0.8 of
- * the axis. A swipe on a node has its own shares, in `swipeWithin`.
- */
-export function swipeShare(momentum: Momentum | undefined): number {
-  return momentum === 'fast' ? 0.8 : momentum === 'slow' ? 0.75 : 0.5;
-}
-
-/**
  * The finger gesture that scrolls one rect's content in `direction`. Scrolling
  * down reveals what is below, so the finger travels up; the travel is a share
  * of the rect's extent scaled by momentum, and never leaves the rect. The
- * shares are not the root scroll's: this is a gesture inside one control, and
- * deterministic tests step through a list with `slow`, a quarter of the box,
- * shorter than any row, so every row lands fully on screen at some stop. At
- * three quarters the mobile benchmark's scenario list dragged rows past.
+ * root scroll sends no share (agent-device's default, see `perform`); these
+ * are for a gesture inside one control, and deterministic tests step through
+ * a list with `slow`, a quarter of the box, shorter than any row, so every
+ * row lands fully on screen at some stop. At three quarters the mobile
+ * benchmark's scenario list dragged rows past.
  */
 export function swipeWithin(
   rect: Rect,
