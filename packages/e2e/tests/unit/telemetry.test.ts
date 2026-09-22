@@ -205,6 +205,15 @@ describe('Telemetry', () => {
     expect(sent.calls).toEqual([]);
   });
 
+  it('sends nothing for a session the CLI discarded', async () => {
+    const { telemetry, sent } = create();
+    telemetry.session('run');
+    telemetry.discardSession();
+    telemetry.endSession(0);
+    await telemetry.flush();
+    expect(sent.calls).toEqual([]);
+  });
+
   it('keeps the same project id across invocations on one machine and differs across machines', async () => {
     const cwd = tempDir();
     const configDir = tempDir();

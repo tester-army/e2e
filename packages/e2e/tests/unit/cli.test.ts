@@ -825,6 +825,16 @@ describe('e2e telemetry', () => {
     expect(nested!.properties['error_code']).toBe('CLI_USAGE');
   });
 
+  it('records no session for --help, help <command>, or --version', async () => {
+    for (const args of [['run', '--help'], ['cache', 'ls', '-h'], ['help', 'run'], ['--version']]) {
+      process.exitCode = undefined;
+      await invoke(...args);
+      expect(process.exitCode).toBe(0);
+    }
+    expect(printedEvents()).toEqual([]);
+    expect(runMock).not.toHaveBeenCalled();
+  });
+
   it('records the init event from the outcome init returns', async () => {
     initMock.mockResolvedValue(initOutcome(0, { result: 'cancelled', engine: 'agent-device' }));
     await invoke('init', 'apps/secret-app');
