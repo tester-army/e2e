@@ -140,12 +140,13 @@ export class TargetWorker {
   }
 
   /**
-   * Hands a rejection nobody in this process caught to the attempt in
-   * flight, which fails with it. False when no attempt is running, and the
-   * rejection is the worker's to die of.
+   * Hands a rejection nobody in this process caught to the executor, which
+   * charges it to the attempt in flight or records it against the last test
+   * that finished. False when there is neither, and the rejection is the
+   * worker's to die of.
    */
-  failInFlight(cause: unknown): boolean {
-    return this.executor?.failInFlight(cause) ?? false;
+  strayRejection(cause: unknown): boolean {
+    return this.executor?.strayRejection(cause) ?? false;
   }
 
   handle(message: MainToWorker): void {

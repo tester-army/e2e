@@ -307,4 +307,78 @@ test('runs after the rejection', async ({ app }) => {
     },
     120_000,
   );
+
+  it(
+    'charges a rejection that surfaces late to the test running at the time',
+    async () => {
+      const leakingFile = `import { test } from 'e2e';
+
+test('leaves a timer behind', async ({ app }) => {
+  await app.open();
+  setTimeout(() => {
+    void Promise.reject(new Error('late'));
+  }, 1_500);
+});
+`;
+      const sleepingFile = `import { test } from 'e2e';
+
+test('is running when it surfaces', async ({ app }) => {
+  await app.open();
+  await new Promise((resolve) => setTimeout(resolve, 6_000));
+});
+`;
+      const { outcome, project } = await runProjectWithConfigFile(
+        { 'tests/a-leaks.e2e.ts': leakingFile, 'tests/b-sleeps.e2e.ts': sleepingFile },
+        { appUrl: app.url, configSource: workerConfigSource(1) },
+      );
+      expect(resultByTitle(outcome, 'leaves a timer behind').status).toBe('passed');
+      const charged = resultByTitle(outcome, 'is running when it surfaces');
+      expect(charged.status).toBe('failed');
+      expect(charged.attempts[0]?.error?.message).toBe('late');
+      expect(outcome.exitCode).toBe(1);
+
+      const run = outcome.report['run'] as unknown as Record<string, unknown>;
+      expect(run['errors']).toEqual([]);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
+    'records a rejection between tests as a run error naming the last test that finished',
+    async () => {
+      const leakingFile = `import { test } from 'e2e';
+
+test('finishes before the leak', async ({ app }) => {
+  await app.open();
+});
+
+test.afterAll(() => {
+  void Promise.reject(new Error('late'));
+});
+`;
+      const nextFile = `import { test } from 'e2e';
+
+test('runs on the same worker afterwards', async ({ app }) => {
+  await app.open();
+});
+`;
+      const { outcome, project } = await runProjectWithConfigFile(
+        { 'tests/a-leaks.e2e.ts': leakingFile, 'tests/b-next.e2e.ts': nextFile },
+        { appUrl: app.url, configSource: workerConfigSource(1) },
+      );
+      const finished = resultByTitle(outcome, 'finishes before the leak');
+      expect(finished.status).toBe('passed');
+      expect(resultByTitle(outcome, 'runs on the same worker afterwards').status).toBe('passed');
+      expect(outcome.exitCode).toBe(1);
+
+      const run = outcome.report['run'] as unknown as Record<string, unknown>;
+      const errors = run['errors'] as Record<string, unknown>[];
+      expect(errors.map((error) => error['code'])).toEqual(['UNHANDLED_REJECTION']);
+      expect(errors[0]?.['message']).toContain(`"${finished.test.id}"`);
+      expect(errors[0]?.['message']).toContain('late');
+      project.cleanup();
+    },
+    120_000,
+  );
 });
