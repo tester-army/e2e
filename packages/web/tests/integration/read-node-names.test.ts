@@ -212,6 +212,8 @@ describe('names from content and precedence', () => {
       <span id="l4">Shown <i style="display:none">gone</i></span>
       <button aria-labelledby="l5" data-testid="labelled-reference">x</button>
       <span id="l5" aria-label="Own label">Text</span>
+      <button aria-labelledby="l6" data-testid="aria-hidden-ancestor-reference">x</button>
+      <div aria-hidden="true"><span id="l6">Label <i style="display:none">gone</i></span></div>
     `);
     const { tree } = await capture();
     const byTestId = new Map(flatten(tree).map((node) => [node.testId, node]));
@@ -221,6 +223,8 @@ describe('names from content and precedence', () => {
       ['nested-hidden-reference', 'Deep gone label'],
       ['shown-reference', 'Shown'],
       ['labelled-reference', 'Own label'],
+      // An aria-hidden ancestor hides the target as its own attribute would, so it is read whole.
+      ['aria-hidden-ancestor-reference', 'Label gone'],
     ];
     for (const [testId, name] of cases) {
       expect(byTestId.get(testId), testId).toMatchObject({ role: 'button', name });
