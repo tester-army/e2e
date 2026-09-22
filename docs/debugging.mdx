@@ -190,7 +190,7 @@ when you need to inspect the whole flow or rule out a stale recording. See
 
 | Code | Usual cause | Fix |
 | --- | --- | --- |
-| `APP_UNREACHABLE` | Nothing answers at `url`, or `command` never became ready | Set `command.log` and read it; check the port; raise `startupTimeout` |
+| `APP_UNREACHABLE` | Nothing answers at `url`, or `command` never became ready; on a device, the message may name the iOS automation runner instead (busy, wedged, or a snapshot it could not present) | Set `command.log` and read it; check the port; raise `startupTimeout`. For the runner, follow the recovery in the message: `npx agent-device daemon stop`, reboot the simulator (see [Testing iOS and Android](/mobile#troubleshooting)) |
 | `APP_ALREADY_RUNNING` | Something already serves `url` when the runner wanted to start `command` | Stop it, or set `reuseExisting: true` for local runs |
 | `LOCATOR_NOT_FOUND` | Wrong role or name, text not exact, element inside an iframe, page not open | Read the markup for the accessible name; try `exact: false`; `web.frameLocator` for iframes; `--headed` to look |
 | `LOCATOR_AMBIGUOUS` | Two matches: a hidden duplicate, a repeated label | Add `{ name }`, scope under a container, `filter`, `first()`, or `{ visible: true }` |

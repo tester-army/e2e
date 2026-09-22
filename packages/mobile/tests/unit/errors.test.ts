@@ -1,7 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
 import { AppError } from 'agent-device';
-import { EngineError, TestError } from 'e2e/engine';
-import { staleOr, translateError } from '../../src/errors.ts';
+import { EngineError, TestError, type OperationContext } from 'e2e/engine';
+import { isRunnerFailure, isSnapshotPresentationFailure, staleOr, translateError } from '../../src/errors.ts';
+import { SETTINGS_SNAPSHOT } from '../helpers/fake-client.ts';
+import { boot, harness, PROJECT_ROOT, type Harness } from '../helpers/harness.ts';
 
 describe('error translation', () => {
   it('passes classified errors through untouched', () => {
@@ -30,10 +35,24 @@ describe('error translation', () => {
     ).toMatchObject({ code: 'UNSUPPORTED_CAPABILITY' });
   });
 
-  it('maps timeouts, stale refs, and the rest', () => {
+  it('keeps a timeout the device reports under ENGINE_FAILURE with its text and hint, never OPERATION_TIMEOUT', () => {
+    const hint = 'Retry simulator boot and inspect simctl bootstatus logs; in CI reduce parallel jobs or use a larger runner.';
+    const bootTimeout = translateError(
+      new AppError('IOS_BOOT_TIMEOUT', 'Timed out waiting for iPhone 17 Pro to boot', { hint }),
+      'boot',
+    );
+    expect(bootTimeout).toMatchObject({ code: 'ENGINE_FAILURE', retryable: false });
+    expect(bootTimeout.message).toBe(`boot failed: Timed out waiting for iPhone 17 Pro to boot Hint: ${hint}`);
     expect(translateError(new Error('snapshot timed out after 30000ms'), 'snapshot')).toMatchObject({
-      code: 'OPERATION_TIMEOUT',
+      code: 'ENGINE_FAILURE',
+      message: 'snapshot failed: snapshot timed out after 30000ms',
     });
+    expect(
+      translateError(new AppError('IOS_RUNNER_CONNECT_TIMEOUT', 'runner connect timed out after 60s'), 'open com.example.app'),
+    ).toMatchObject({ code: 'ENGINE_FAILURE', message: 'open com.example.app failed: runner connect timed out after 60s' });
+  });
+
+  it('maps stale refs and the rest', () => {
     expect(staleOr(new Error('ref @e12 not found in the current snapshot'), 'perform tap')).toMatchObject({
       code: 'NODE_STALE',
       retryable: true,
@@ -63,5 +82,242 @@ describe('error translation', () => {
     const abort = new Error('aborted');
     abort.name = 'AbortError';
     expect(translateError(abort, 'snapshot')).toMatchObject({ code: 'CANCELLED' });
+  });
+});
+
+/** `RUNNER_BUSY` as the client receives it: folded under `COMMAND_FAILED`, the wire code in the details. */
+function runnerBusy(): AppError {
+  return new AppError(
+    'COMMAND_FAILED',
+    'The iOS runner is still finishing a previous command that exceeded its execution watchdog (usually an accessibility capture on a heavy or animating screen).',
+    {
+      runnerErrorCode: 'RUNNER_BUSY',
+      retriable: true,
+      hint: 'Wait a few seconds and retry. If snapshots keep failing on this screen, use screenshot as visual truth and interact by coordinates, or navigate to another screen.',
+    },
+  );
+}
+
+/** The presentation failure as the client receives it: `COMMAND_FAILED` with the failed check in `reason`. */
+function invalidViewport(): AppError {
+  return new AppError('COMMAND_FAILED', 'regular iOS snapshot presentation requires a valid viewport', {
+    reason: 'invalid-viewport',
+    field: 'viewport',
+    hint: 'Use snapshot --raw to inspect the acquired iOS tree; regular presentation requires valid viewport evidence.',
+  });
+}
+
+const RECOVERY =
+  'If the next run meets it again, stop the daemon (`npx agent-device daemon stop`) and reboot the simulator (`xcrun simctl shutdown <udid>`, then `boot`).';
+
+describe('automation runner failures', () => {
+  it('names a busy runner, the session and device, and the recovery under ENGINE_FAILURE, without the model-facing hint', () => {
+    const translated = translateError(runnerBusy(), 'snapshot', 'session e2e-ios-0 on iPhone 17 Pro');
+    expect(translated).toMatchObject({ code: 'ENGINE_FAILURE', retryable: false });
+    expect(translated.message).toBe(
+      'snapshot failed: the iOS automation runner is still finishing a command that overran its watchdog (session e2e-ios-0 on iPhone 17 Pro): ' +
+        'The iOS runner is still finishing a previous command that exceeded its execution watchdog (usually an accessibility capture on a heavy or animating screen). ' +
+        `The app is fine. Wait a few seconds and rerun. ${RECOVERY}`,
+    );
+    expect(translated.message).not.toContain('Hint:');
+    expect(isRunnerFailure(translated)).toBe(true);
+    expect(isSnapshotPresentationFailure(translated)).toBe(false);
+  });
+
+  it('names a wedged runner by its top-level code, and a watchdog overrun by its wire code', () => {
+    const wedged = translateError(
+      new AppError('RUNNER_WEDGED', 'The iOS runner main thread has been stuck in abandoned work for 120 seconds and cannot recover on its own.'),
+      'perform tap',
+    );
+    expect(wedged).toMatchObject({ code: 'ENGINE_FAILURE' });
+    expect(wedged.message).toBe(
+      'perform tap failed: the iOS automation runner is wedged: its main thread is stuck in abandoned work: ' +
+        'The iOS runner main thread has been stuck in abandoned work for 120 seconds and cannot recover on its own. ' +
+        `The app is fine. agent-device restarts the runner; rerun. ${RECOVERY}`,
+    );
+    expect(isRunnerFailure(wedged)).toBe(true);
+    const overran = translateError(
+      new AppError('COMMAND_FAILED', 'snapshot timed out on the runner main thread', { runnerErrorCode: 'MAIN_THREAD_TIMEOUT' }),
+      'snapshot',
+      'session e2e-ios-0',
+    );
+    expect(overran).toMatchObject({ code: 'ENGINE_FAILURE' });
+    expect(overran.message).toContain("the iOS automation runner's main thread overran its watchdog on this command (session e2e-ios-0)");
+    expect(overran.message).toContain(RECOVERY);
+    expect(isRunnerFailure(overran)).toBe(true);
+    expect(isRunnerFailure(translateError(new AppError('COMMAND_FAILED', 'xcrun exploded'), 'boot'))).toBe(false);
+  });
+
+  it('names a snapshot the runner could not present, by the failed check or the upstream code', () => {
+    const byReason = translateError(invalidViewport(), 'snapshot', 'session e2e-ios-0 on iPhone 17 Pro');
+    expect(byReason).toMatchObject({ code: 'ENGINE_FAILURE', retryable: false });
+    expect(byReason.message).toBe(
+      'snapshot failed: the iOS automation runner could not present the accessibility snapshot (session e2e-ios-0 on iPhone 17 Pro): ' +
+        `regular iOS snapshot presentation requires a valid viewport The app is fine. Rerun. ${RECOVERY}`,
+    );
+    expect(isSnapshotPresentationFailure(byReason)).toBe(true);
+    expect(isRunnerFailure(byReason)).toBe(false);
+    const byCode = translateError(
+      new AppError('IOS_SNAPSHOT_ENGINE_FAILED', 'iOS snapshot graph contains an invalid node depth'),
+      'snapshot',
+    );
+    expect(byCode.message).toContain('could not present the accessibility snapshot: iOS snapshot graph contains an invalid node depth');
+    expect(isSnapshotPresentationFailure(byCode)).toBe(true);
+    expect(isSnapshotPresentationFailure(translateError(new AppError('COMMAND_FAILED', 'plain'), 'snapshot'))).toBe(false);
+  });
+});
+
+describe('automation runner failures through the engine', () => {
+  let artifactsDir: string | undefined;
+
+  afterEach(() => {
+    if (artifactsDir !== undefined) rmSync(artifactsDir, { recursive: true, force: true });
+    artifactsDir = undefined;
+  });
+
+  function prepareInfo(lines: string[]) {
+    return {
+      runId: 'run-1',
+      targetName: 'ios',
+      projectRoot: PROJECT_ROOT,
+      slots: 1,
+      env: {},
+      signal: new AbortController().signal,
+      log: (line: string) => lines.push(line),
+    };
+  }
+
+  function operation(): OperationContext {
+    return { signal: new AbortController().signal, timeoutMs: 30_000, runId: 'run-1', attemptId: 'a1', origin: 'agent' };
+  }
+
+  async function openAttempt(h: Harness): Promise<void> {
+    artifactsDir = mkdtempSync(path.join(tmpdir(), 'e2e-mobile-errors-'));
+    await boot(h.engine, 'ios');
+    await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal });
+  }
+
+  it('fails prepare when the runner is busy at warm-up, with the session and device in the message; any other open failure is still logged', async () => {
+    const h = harness({ device: 'iPhone 17 Pro' });
+    h.fake.respond('apps.open', () => {
+      throw runnerBusy();
+    });
+    const lines: string[] = [];
+    await expect(h.engine.prepare!(prepareInfo(lines))).rejects.toMatchObject({
+      code: 'ENGINE_FAILURE',
+      message: expect.stringContaining(
+        'open Settings failed: the iOS automation runner is still finishing a command that overran its watchdog (session e2e-ios-0 on iPhone 17 Pro)',
+      ),
+    });
+    await expect(h.engine.prepare!(prepareInfo(lines))).rejects.toMatchObject({
+      message: expect.stringContaining('npx agent-device daemon stop'),
+    });
+    expect(lines).toEqual(['booting iPhone 17 Pro (1 of 1)', 'booting iPhone 17 Pro (1 of 1)']);
+
+    h.fake.respond('apps.open', () => {
+      throw new Error('runner still installing');
+    });
+    await h.engine.prepare!(prepareInfo(lines));
+    expect(lines[3]).toMatch(/runner not warmed up.*runner still installing/);
+  });
+
+  it('closes every session a failed warm-up opened at finish, and still releases the leases when a close fails', async () => {
+    const released: string[] = [];
+    const cloud = {
+      name: 'toy-cloud',
+      acquire: async (request: { slot: number }) => ({
+        id: `lease-${request.slot}`,
+        daemon: { baseUrl: `https://${request.slot}.example` },
+        device: `sim-${request.slot}`,
+      }),
+      release: async (lease: { id: string }) => {
+        released.push(lease.id);
+      },
+    };
+    const h = harness({ device: cloud });
+    h.fake.respond('apps.open', (args) => {
+      if ((args as { device?: string }).device === 'sim-1') throw runnerBusy();
+      return {};
+    });
+    const closes = () => h.fake.methods().filter((method) => method === 'sessions.close').length;
+    const info = { ...prepareInfo([]), slots: 2 };
+    await expect(h.engine.prepare!(info)).rejects.toMatchObject({
+      message: expect.stringContaining('(session e2e-ios-1 on sim-1)'),
+    });
+    expect(h.sessions).toEqual(['e2e-ios-0', 'e2e-ios-1']);
+    expect(closes()).toBe(0);
+
+    h.fake.respond('sessions.close', () => {
+      throw new Error('daemon gone');
+    });
+    const finish = { ...info, timeoutMs: 5_000 };
+    await h.engine.finish!(finish);
+    expect(closes()).toBe(2);
+    expect(released).toEqual(['lease-0', 'lease-1']);
+    // Nothing left: a second finish closes and releases nothing.
+    await h.engine.finish!(finish);
+    expect(closes()).toBe(2);
+    expect(released).toHaveLength(2);
+  });
+
+  it('closes the sessions a local pool warmed too, a boot that failed included', async () => {
+    const h = harness({ device: ['iPhone 17', 'iPhone 17 Pro'] });
+    h.fake.respond('devices.boot', (args) => {
+      if ((args as { device?: string }).device === 'iPhone 17 Pro') throw new AppError('DEVICE_NOT_FOUND', 'no such device');
+      return {};
+    });
+    const info = { ...prepareInfo([]), slots: 2 };
+    await expect(h.engine.prepare!(info)).rejects.toMatchObject({ message: 'boot failed: no such device' });
+    await h.engine.finish!({ ...info, timeoutMs: 5_000 });
+    expect(h.fake.methods().filter((method) => method === 'sessions.close')).toHaveLength(2);
+  });
+
+  it('fails prepare when the runner is wedged at warm-up', async () => {
+    const h = harness({ device: 'iPhone 17 Pro' });
+    h.fake.respond('apps.open', () => {
+      throw new AppError('RUNNER_WEDGED', 'The iOS runner main thread has been stuck in abandoned work for 120 seconds and cannot recover on its own.');
+    });
+    await expect(h.engine.prepare!(prepareInfo([]))).rejects.toMatchObject({
+      code: 'ENGINE_FAILURE',
+      message: expect.stringContaining('the iOS automation runner is wedged'),
+    });
+  });
+
+  it('takes a snapshot the runner could not present once more, and fails the observation on the second failure', async () => {
+    const h = harness({ device: 'iPhone 17 Pro' });
+    let failures = 1;
+    h.fake.respond('capture.snapshot', () => {
+      if (failures > 0) {
+        failures -= 1;
+        throw invalidViewport();
+      }
+      return SETTINGS_SNAPSHOT;
+    });
+    await openAttempt(h);
+    const snapshot = await h.engine.observe!(operation());
+    expect(snapshot.root.children?.length).toBeGreaterThan(0);
+    expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(2);
+
+    failures = 2;
+    await expect(h.engine.observe!(operation())).rejects.toMatchObject({
+      code: 'ENGINE_FAILURE',
+      message: expect.stringContaining(
+        'snapshot failed: the iOS automation runner could not present the accessibility snapshot (session e2e-ios-0 on iPhone 17 Pro)',
+      ),
+    });
+    expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(4);
+  });
+
+  it('does not retake a snapshot that failed for any other reason', async () => {
+    const h = harness();
+    h.fake.respond('capture.snapshot', () => {
+      throw runnerBusy();
+    });
+    await openAttempt(h);
+    await expect(h.engine.observe!(operation())).rejects.toMatchObject({
+      code: 'ENGINE_FAILURE',
+      message: expect.stringContaining('the iOS automation runner is still finishing a command that overran its watchdog (session e2e-ios-0)'),
+    });
+    expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(1);
   });
 });
