@@ -28,6 +28,7 @@ console.log('config loaded');
 export default {
   targets: [{ name: 'web', platform: 'web', engine: web({ url: process.env.APP_URL! }) }],
   credentials: { admin: { username: 'admin', password: 'admin-pass' } },
+  secrets: { apiKey: 'sk-live-SUPERSECRET-0000' },
 } satisfies E2EConfig;
 `;
 
@@ -241,6 +242,30 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     const reopened = await invoke('open_session', { target: 'web', config: 'e2e.config.ts' });
     expect(reopened.isError, reopened.text).toBe(false);
     expect(reopened.text).toContain('button "Increment"');
+    const closed = await invoke('close_session');
+    expect(closed.isError, closed.text).toBe(false);
+  });
+
+  it('shows a generic secret filled into a plain textbox by name in locate and observe, never the plaintext', async () => {
+    const opened = await invoke('open_session');
+    expect(opened.isError, opened.text).toBe(false);
+    expect(opened.text).toContain('Secrets: "apiKey"');
+
+    // A generic secret fills any editable input, so the engine projects the
+    // value the way it does for every non-secure field.
+    const observed = await call('observe');
+    const filled = await call('type_secret', { target: nodeId(observed.text, /textbox "Focus target"/), name: 'apiKey' });
+    expect(filled.isError, filled.text).toBe(false);
+    expect(filled.text).toContain('Filled secret "apiKey"');
+
+    const located = await call('locate', { label: 'Focus target' });
+    expect(located.isError, located.text).toBe(false);
+    expect(located.text).toContain('1 node matches');
+    expect(located.text).toContain('- textbox "Focus target" value "<secret:apiKey>"');
+    const after = await call('observe');
+    expect(after.text).toMatch(/textbox "Focus target" value="<secret:apiKey>"/);
+    for (const output of [filled, located, after]) expect(output.text).not.toContain('sk-live-SUPERSECRET-0000');
+
     const closed = await invoke('close_session');
     expect(closed.isError, closed.text).toBe(false);
   });
