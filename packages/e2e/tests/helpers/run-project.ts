@@ -52,7 +52,8 @@ export function createProject(files: Readonly<Record<string, string>>): FixtureP
 
 export interface RunProjectOptions {
   appUrl: string;
-  config?: E2EConfig;
+  /** Overrides of the fixture config; `targets` defaults to the web target on `appUrl`. */
+  config?: Partial<E2EConfig>;
   runOptions?: Partial<RunOptions>;
 }
 

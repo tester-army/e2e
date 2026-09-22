@@ -142,9 +142,10 @@ Secrets in params arrive as name-only placeholders.
 passing the plaintext through your executor.
 
 A custom executor handles `act` and `assert` through `runStep`. Both use the
-act budgets and default to `config.timeout`. The `assert` options `vision`
-and `screenshot` raise `UNSUPPORTED_CAPABILITY` because your executor chooses
-its observations.
+act budgets and default to `config.timeout`. The `assert` option `vision`
+raises `UNSUPPORTED_CAPABILITY` because your executor chooses its
+observations; `screenshot` still works, because the runner takes that
+evidence after your verdict and attaches it to the step.
 
 `waitFor` and `extract` still use the built-in judgments. They require a
 configured model and raise `MODEL_UNAVAILABLE` without one.

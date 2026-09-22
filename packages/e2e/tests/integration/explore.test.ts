@@ -383,8 +383,10 @@ describe('e2e explore', () => {
   }, 120_000);
 
   it('rejects a goal past the ceiling, a budget out of range, and a credential inventory that would not fit a step before anything starts', async () => {
-    await expect(explore({ cwd: project.dir, rawConfig: {}, goal: 'x'.repeat(2_001) })).rejects.toMatchObject({ code: 'INVALID_CONFIG' });
-    await expect(explore({ cwd: project.dir, rawConfig: {}, maxSteps: 13 })).rejects.toMatchObject({ code: 'INVALID_CONFIG' });
+    // A config that resolves, so only the flag can be what rejects.
+    const resolvable = { targets: [{ platform: 'web' }] };
+    await expect(explore({ cwd: project.dir, rawConfig: resolvable, goal: 'x'.repeat(2_001) })).rejects.toMatchObject({ code: 'INVALID_CONFIG' });
+    await expect(explore({ cwd: project.dir, rawConfig: resolvable, maxSteps: 13 })).rejects.toMatchObject({ code: 'INVALID_CONFIG' });
     const credentials = Object.fromEntries(
       Array.from({ length: 400 }, (_, i) => [`account-${String(i)}`, { username: `${'u'.repeat(200)}@example.test`, password: 'pw' }]),
     );

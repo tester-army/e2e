@@ -219,3 +219,57 @@ describe('an executor that opts out of the trace cache', () => {
     expect(actStep(uncached).cache).toBeUndefined();
   });
 });
+
+const ASSERT_EVIDENCE_SUITE = `import { test } from 'e2e';
+
+test('assert evidence under a custom executor', async ({ app, agent }) => {
+  await app.open();
+  await agent.assert('the counter shows zero', { screenshot: false });
+  await agent.assert('the counter shows zero');
+  await agent.assert('the checkout page is visible');
+});
+`;
+
+describe('assert evidence under a custom executor', () => {
+  let app: FixtureApp;
+  let outcome: RunOutcome;
+  let project: FixtureProject;
+
+  const judging: StepExecutor = {
+    name: 'judging',
+    version: '1',
+    async runStep(context: StepExecutorContext) {
+      return context.step.instruction.includes('checkout')
+        ? { status: 'failed', summary: 'no checkout page exists here' }
+        : { status: 'passed', summary: 'the counter reads 0' };
+    },
+  };
+
+  beforeAll(async () => {
+    app = await startFixtureApp();
+    const result = await runProject(
+      { 'tests/evidence.e2e.ts': ASSERT_EVIDENCE_SUITE },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: judging } } },
+    );
+    outcome = result.outcome;
+    project = result.project;
+  }, 120_000);
+
+  afterAll(async () => {
+    project?.cleanup();
+    await app?.close();
+  });
+
+  it('takes the screenshot after the verdict, on a pass and on a failure alike, and none with screenshot: false', () => {
+    expect(outcome.exitCode).toBe(1);
+    const attempt = resultByTitle(outcome, 'assert evidence under a custom executor').attempts.at(-1)!;
+    expect(attempt.error?.code).toBe('ASSERTION_FAILED');
+    const asserts = attempt.steps.filter((step) => step.api === 'agent.assert');
+    expect(asserts.map((step) => step.status)).toEqual(['passed', 'passed', 'failed']);
+    const screenshotsOf = (step: (typeof asserts)[number]) =>
+      attempt.artifacts.filter((artifact) => artifact.kind === 'screenshot' && step.artifacts.includes(artifact.id));
+    expect(screenshotsOf(asserts[0]!)).toHaveLength(0);
+    expect(screenshotsOf(asserts[1]!)).toHaveLength(1);
+    expect(screenshotsOf(asserts[2]!)).toHaveLength(1);
+  });
+});

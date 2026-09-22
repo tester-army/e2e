@@ -16,14 +16,24 @@ import {
   type ArtifactStore,
   type AsyncExpectation,
   type E2EConfig,
+  type ExecutorVerb,
+  type FinishedRun,
   type Locator,
+  type ModelInstance,
+  type PointHit,
+  type PointTapResult,
   type PollExpectation,
   type Reporter,
   type Role,
   type RoleAlias,
   type RunEvent,
+  type RunExitCode,
+  type RunStatus,
   type Screen,
   type Secret,
+  type StepExecutorContext,
+  type StepTurn,
+  type Target,
   type Unique,
   type TraceCacheStore,
   type ExecutorObservation,
@@ -32,6 +42,8 @@ import {
 import type { EngineHandle, EngineObserveOptions, EngineSnapshot } from '../../src/engine/index.ts';
 import { createAgent, defineTool, type DefaultAgent } from '../../src/agent/public.ts';
 import type { Report } from '../../src/index.ts';
+import type { chatgpt } from '../../src/oauth/chatgpt.ts';
+import type { LanguageModelV2, LanguageModelV3, LanguageModelV4 } from '@ai-sdk/provider';
 
 declare const agent: Agent;
 declare const appFixture: App;
@@ -40,6 +52,7 @@ declare const artifactStore: ArtifactStore;
 declare const asyncExpectation: AsyncExpectation;
 declare const screen: Screen;
 declare const engine: EngineHandle;
+declare const targets: readonly Target[];
 
 ({ pixels: false, pixelFallback: true }) satisfies EngineObserveOptions;
 interface CustomSnapshot extends EngineSnapshot { readonly projectMetadata?: string }
@@ -53,17 +66,31 @@ engineSnapshot.treeUnavailable satisfies true | undefined;
 // @ts-expect-error unavailable semantics are explicitly true or absent, never a separate false state.
 ({ ...engineSnapshot, treeUnavailable: false }) satisfies EngineSnapshot;
 
+// There is no implicit target: a config names at least one, and the type says so before the loader does.
+// @ts-expect-error targets is required
 ({ cache: 'read-write' }) satisfies E2EConfig;
-({ cache: { mode: 'read-only', store: remoteStore, dir: 'shared-cache' } }) satisfies E2EConfig;
+({ targets, cache: 'read-write' }) satisfies E2EConfig;
+({ targets, cache: { mode: 'read-only', store: remoteStore, dir: 'shared-cache' } }) satisfies E2EConfig;
 ({ targets: [{ platform: 'ios' }] }) satisfies E2EConfig;
 // A target inherits its platform from the engine; the resolver rejects one with neither.
 ({ targets: [{ engine }] }) satisfies E2EConfig;
-declare const model: import('../../src/types.ts').ModelInstance;
+declare const model: ModelInstance;
+// A model is the live AI SDK object: every LanguageModelV2 through V4 assigns, and so does a subscription constructor.
+declare const modelV2: LanguageModelV2;
+declare const modelV3: LanguageModelV3;
+declare const modelV4: LanguageModelV4;
+declare const subscriptionModel: ReturnType<typeof chatgpt>;
+modelV2 satisfies ModelInstance;
+modelV3 satisfies ModelInstance;
+modelV4 satisfies ModelInstance;
+subscriptionModel satisfies ModelInstance;
+// @ts-expect-error the three id strings alone are not a model; the loader rejects an object without doGenerate
+({ specificationVersion: 'v4', provider: 'openai', modelId: 'gpt-5.6-luna' }) satisfies ModelInstance;
 
 // Secrets: a bare value or a provider; every handle is the same opaque Secret.
-({ secrets: { key: 'sk_test', totp: () => '123456' } }) satisfies E2EConfig;
+({ targets, secrets: { key: 'sk_test', totp: () => '123456' } }) satisfies E2EConfig;
 // @ts-expect-error a secret needs a value; an env variable that may be unset must be defaulted.
-({ secrets: { key: process.env['STRIPE_KEY'] } }) satisfies E2EConfig;
+({ targets, secrets: { key: process.env['STRIPE_KEY'] } }) satisfies E2EConfig;
 secrets.get('key') satisfies Secret;
 credentials.user('admin').password satisfies Secret;
 // @ts-expect-error a Secret has no plaintext accessor.
@@ -78,24 +105,24 @@ unique('E2E Company') satisfies Unique;
 void agent.act('create {name}', { params: { name: unique(`E2E ${Date.now()}`), owner: { email: unique('a@b.test') } } });
 // @ts-expect-error unique() marks a string.
 unique(7);
-({ agents: { default: { model }, ux: { context: 'Review the UX.' } } }) satisfies E2EConfig;
+({ targets, agents: { default: { model }, ux: { context: 'Review the UX.' } } }) satisfies E2EConfig;
 // @ts-expect-error a model is an AI SDK instance the config constructs; the runner implies no gateway for a string
-({ agents: { default: { model: 'openai/gpt-5.6-luna-fast' } } }) satisfies E2EConfig;
+({ targets, agents: { default: { model: 'openai/gpt-5.6-luna-fast' } } }) satisfies E2EConfig;
 // @ts-expect-error agents are named: agents.default is what agent held
-({ agent: { model } }) satisfies E2EConfig;
+({ targets, agent: { model } }) satisfies E2EConfig;
 ({ targets: [{ name: 'phone', engine }] }) satisfies E2EConfig;
 // @ts-expect-error cache mode is a closed union
-({ cache: 'sometimes' }) satisfies E2EConfig;
-({ artifacts: ['screenshot', 'trace', 'video'] }) satisfies E2EConfig;
-({ artifacts: { kinds: ['video'], store: artifactStore, video: { retain: 'on-failure' } } }) satisfies E2EConfig;
+({ targets, cache: 'sometimes' }) satisfies E2EConfig;
+({ targets, artifacts: ['screenshot', 'trace', 'video'] }) satisfies E2EConfig;
+({ targets, artifacts: { kinds: ['video'], store: artifactStore, video: { retain: 'on-failure' } } }) satisfies E2EConfig;
 // @ts-expect-error artifact kinds are a closed union
-({ artifacts: ['gif'] }) satisfies E2EConfig;
+({ targets, artifacts: ['gif'] }) satisfies E2EConfig;
 // @ts-expect-error video retention is a closed union
-({ artifacts: { video: { retain: 'sometimes' } } }) satisfies E2EConfig;
+({ targets, artifacts: { video: { retain: 'sometimes' } } }) satisfies E2EConfig;
 ({ put: async (artifact) => ({ ref: artifact.startedAt ?? artifact.sha256 }) }) satisfies ArtifactStore;
 declare const reporter: Reporter;
-({ reporters: ['list', reporter] }) satisfies E2EConfig;
-({ reporters: [reporter] }) satisfies E2EConfig;
+({ targets, reporters: ['list', reporter] }) satisfies E2EConfig;
+({ targets, reporters: [reporter] }) satisfies E2EConfig;
 ({
   name: 'upload',
   onEvent: (event: RunEvent) => void event.seq,
@@ -117,7 +144,21 @@ if (runEvent.type === 'step') {
 // @ts-expect-error a reporter has a name
 ({ onRunFinished: async () => undefined }) satisfies Reporter;
 // @ts-expect-error reporter ids are a closed union
-({ reporters: ['xunit'] }) satisfies E2EConfig;
+({ targets, reporters: ['xunit'] }) satisfies E2EConfig;
+// Every name a public signature uses is importable, so a reporter or an executor can annotate what it reads.
+declare const finishedRun: FinishedRun;
+finishedRun.status satisfies RunStatus;
+finishedRun.exitCode satisfies RunExitCode;
+// @ts-expect-error the run status is a closed union
+'skipped' satisfies RunStatus;
+// @ts-expect-error the exit codes are the closed set a run ends with
+5 satisfies RunExitCode;
+declare const executorContext: StepExecutorContext;
+executorContext.target.verbs satisfies ReadonlySet<ExecutorVerb>;
+'tapAt' satisfies ExecutorVerb;
+// @ts-expect-error a verb is one of the action grammar's names
+'fly' satisfies ExecutorVerb;
+executorContext.attachTurns([{ index: 1, calls: ['tap({"target":"n19"})'], outcome: 'the form opened' } satisfies StepTurn]);
 // @ts-expect-error attribute values must be text matches
 asyncExpectation.toHaveAttribute('x', 42);
 // Set reads answer with lists and never wait; the list form of a text matcher takes strings and RegExps.
@@ -211,6 +252,8 @@ screen.getByRole('button', { hidden: true });
 
 // Coordinate input: a viewport point on screen, a node-relative one on a locator.
 declare const point: import('../../src/types.ts').Point;
+void (executorContext.actions.tapAt(point) satisfies Promise<PointTapResult>);
+void (executorContext.actions.hitTest(point) satisfies Promise<PointHit>);
 void screen.tapAt(point, { timeout: 1_000 });
 void screen.swipe({ direction: 'up', momentum: 'fast' });
 void screen.swipe({ from: point, to: point });
@@ -320,12 +363,12 @@ declare const seedCart: ReturnType<typeof defineTool>;
 const projectAgent: DefaultAgent = createAgent({ tools: { seedCart }, system: 'Be thorough.' });
 projectAgent.options.tools?.seedCart satisfies ReturnType<typeof defineTool> | undefined;
 projectAgent.options.system satisfies string | undefined;
-({ agents: { default: projectAgent } }) satisfies E2EConfig;
+({ targets, agents: { default: projectAgent } }) satisfies E2EConfig;
 // One complete agent: model, how it works, and the app's vocabulary in one call; the options object needs no second key.
 declare const sdkModel: NonNullable<NonNullable<Parameters<typeof createAgent>[0]>['model']>;
 const completeAgent = createAgent({ model: sdkModel, system: 'Be thorough.', context: 'Plans are called tiers.' });
 completeAgent.options.context satisfies string | undefined;
-({ agents: { default: { executor: completeAgent } } }) satisfies E2EConfig;
+({ targets, agents: { default: { executor: completeAgent } } }) satisfies E2EConfig;
 // @ts-expect-error context is one string, as agents.<name>.context is
 createAgent({ model: sdkModel, context: ['Plans are called tiers.'] });
 // @ts-expect-error the options are read-only
