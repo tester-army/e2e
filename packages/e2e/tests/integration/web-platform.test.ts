@@ -155,12 +155,7 @@ test('actions and state', async ({ app, screen, web }) => {
 
 test('class assertions report the observed class on failure', async ({ app, web }) => {
   await app.open();
-  try {
-    await expect(web).toHaveClass(web.locator('#class-card'), 'card inactive', { timeout: 300 });
-    throw new Error('toHaveClass unexpectedly passed');
-  } catch (error) {
-    if (!(error instanceof Error) || !error.message.includes('class "card active"')) throw error;
-  }
+  await expect(web).toHaveClass(web.locator('#class-card'), 'card inactive', { timeout: 300 });
 });
 
 test('assertions poll until the app settles', async ({ app, screen }) => {
@@ -184,6 +179,39 @@ test('a negation that begins late in the budget passes past the deadline', async
     expect(screen.getByText('Card')).not.toBeAttached({ timeout: 1500 }),
     expect(web).not.toHaveTitle('Fixture Home', { timeout: 1500 }),
   ]);
+});
+
+test('not.toHaveURL and not.toHaveClass negations that begin late pass', async ({ app, web }) => {
+  await app.open();
+  await web.evaluate(() => {
+    setTimeout(() => {
+      history.pushState({}, '', '/late');
+      document.getElementById('class-card')?.classList.replace('active', 'inactive');
+    }, 700);
+    return 0;
+  });
+  await Promise.all([
+    expect(web).not.toHaveURL('/', { timeout: 1500 }),
+    expect(web).not.toHaveClass(web.locator('#class-card'), 'card active', { timeout: 1500 }),
+  ]);
+});
+
+test('a late not.toHaveTitle fails at the first sample past the deadline', async ({ app, web }) => {
+  await app.open();
+  await web.evaluate(() => {
+    setTimeout(() => { document.title = 'Renamed'; }, 1400);
+    return 0;
+  });
+  await expect(web).not.toHaveTitle('Fixture Home', { timeout: 1000 });
+});
+
+test('a late not.toBeVisible fails at the first sample past the deadline', async ({ app, screen, web }) => {
+  await app.open();
+  await web.evaluate(() => {
+    setTimeout(() => document.getElementById('class-card')?.remove(), 1400);
+    return 0;
+  });
+  await expect(screen.getByText('Card')).not.toBeVisible({ timeout: 1000 });
 });
 
 test('ambiguous locators fail immediately', async ({ app, screen }) => {
@@ -406,6 +434,7 @@ describe('web platform integration', () => {
       'actions and state',
       'assertions poll until the app settles',
       'a negation that begins late in the budget passes past the deadline',
+      'not.toHaveURL and not.toHaveClass negations that begin late pass',
       'web navigation, urls, and titles',
       'routes intercept and fulfill',
       'routes are attempt-scoped: registered before the first page, kept across restart and clearState',
@@ -439,6 +468,33 @@ describe('web platform integration', () => {
         'observed: states: hidden by aria-hidden (match count 1)',
       );
     }
+  });
+
+  it('reports the observed class when toHaveClass fails', () => {
+    const result = resultByTitle(outcome, 'class assertions report the observed class on failure');
+    expect(result.status).toBe('failed');
+    expect(result.attempts[0]!.error?.code).toBe('ASSERTION_FAILED');
+    expect(result.attempts[0]!.error?.message).toMatch(
+      /^expect\.toHaveClass failed\nexpected: class "card inactive"\nobserved: class "card active"$/,
+    );
+  });
+
+  it('fails a negation that begins after the deadline at the first sample past it, with no window line', () => {
+    const title = resultByTitle(outcome, 'a late not.toHaveTitle fails at the first sample past the deadline');
+    expect(title.status).toBe('failed');
+    expect(title.attempts[0]!.error?.code).toBe('ASSERTION_FAILED');
+    expect(title.attempts[0]!.error?.message).toMatch(
+      /^expect\.not\.toHaveTitle failed\nexpected: not title "Fixture Home"\nobserved: title "Fixture Home"$/,
+    );
+    const visible = resultByTitle(outcome, 'a late not.toBeVisible fails at the first sample past the deadline');
+    expect(visible.status).toBe('failed');
+    expect(visible.attempts[0]!.error?.code).toBe('ASSERTION_FAILED');
+    // The web engine reads once per sample, so no sample straddles the
+    // deadline and the window line never applies here; the unit test with a
+    // slow read pins that line.
+    expect(visible.attempts[0]!.error?.message).toMatch(
+      /^expect\.not\.toBeVisible failed\nlocator: getByText\("Card"\)\nexpected: not visible\nobserved: default states \(match count 1\)$/,
+    );
   });
 
   it('fails ambiguous locators immediately with LOCATOR_AMBIGUOUS', () => {
