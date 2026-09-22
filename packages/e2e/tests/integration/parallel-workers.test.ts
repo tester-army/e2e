@@ -390,4 +390,119 @@ test('runs on the same worker afterwards', async ({ app }) => {
     },
     120_000,
   );
+
+  it(
+    'keeps the body failure as the verdict when a rejection surfaces after it',
+    async () => {
+      const file = `import { test } from 'e2e';
+
+test('fails twice', async ({ app }) => {
+  await app.open();
+  void Promise.reject(new Error('second'));
+  throw new Error('first');
+});
+
+test('runs after both', async ({ app }) => {
+  await app.open();
+});
+`;
+      const { outcome, project } = await runProjectWithConfigFile(
+        { 'tests/twice.e2e.ts': file },
+        { appUrl: app.url, configSource: workerConfigSource(1) },
+      );
+      const attempt = resultByTitle(outcome, 'fails twice').attempts[0]!;
+      expect(attempt.status).toBe('failed');
+      expect(attempt.error).toMatchObject({ message: 'first', phase: 'body' });
+      expect(attempt.secondaryErrors.map((error) => [error.message, error.phase])).toEqual([['second', 'body']]);
+      expect(resultByTitle(outcome, 'runs after both').status).toBe('passed');
+      expect(outcome.exitCode).toBe(1);
+
+      const run = outcome.report['run'] as unknown as Record<string, unknown>;
+      expect(run['errors']).toEqual([]);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
+    'records a worker fatal once, without a WORKER_EXIT for the kill it asked for',
+    async () => {
+      const file = `import { test } from 'e2e';
+
+test('throws off the stack', async ({ app }) => {
+  await app.open();
+  setTimeout(() => {
+    throw new Error('boom-uncaught');
+  });
+  await new Promise((resolve) => setTimeout(resolve, 2_000));
+});
+
+test('never starts', async ({ app }) => {
+  await app.open();
+});
+`;
+      const { outcome, project } = await runProjectWithConfigFile(
+        { 'tests/fatal.e2e.ts': file },
+        { appUrl: app.url, configSource: workerConfigSource(1) },
+      );
+      const run = outcome.report['run'] as unknown as Record<string, unknown>;
+      const errors = run['errors'] as Record<string, unknown>[];
+      expect(errors.filter((error) => String(error['message']).includes('boom-uncaught'))).toHaveLength(1);
+      expect(errors.map((error) => error['code'])).not.toContain('WORKER_EXIT');
+      const crashed = resultByTitle(outcome, 'throws off the stack');
+      expect(crashed.status).toBe('failed');
+      expect(crashed.attempts[0]?.error?.code).toBe('WORKER_CRASH');
+      const skipped = resultByTitle(outcome, 'never starts');
+      expect(skipped.status).toBe('skipped');
+      expect(skipped.skip?.cause).toBe('infrastructure-unavailable');
+      expect(outcome.exitCode).toBe(3);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
+    'ends the worker on a rejection before any test has finished in it',
+    async () => {
+      const earlyFile = `import { test } from 'e2e';
+
+test.beforeAll(async () => {
+  void Promise.reject(new Error('early'));
+  await new Promise((resolve) => setTimeout(resolve, 500));
+});
+
+test('is on its way when it surfaces', async ({ app }) => {
+  await app.open();
+});
+
+test('follows in the same file', async ({ app }) => {
+  await app.open();
+});
+`;
+      const nextFile = `import { test } from 'e2e';
+
+test('runs on the next worker', async ({ app }) => {
+  await app.open();
+});
+`;
+      const { outcome, project } = await runProjectWithConfigFile(
+        { 'tests/a-early.e2e.ts': earlyFile, 'tests/b-next.e2e.ts': nextFile },
+        { appUrl: app.url, configSource: workerConfigSource(1) },
+      );
+      const run = outcome.report['run'] as unknown as Record<string, unknown>;
+      const errors = run['errors'] as Record<string, unknown>[];
+      expect(errors.map((error) => [error['code'], error['message']])).toEqual([['ERROR', 'early']]);
+      // A beforeAll runs on the way to the file's first test, which is the pair in flight.
+      const crashed = resultByTitle(outcome, 'is on its way when it surfaces');
+      expect(crashed.status).toBe('failed');
+      expect(crashed.attempts[0]?.error?.code).toBe('WORKER_CRASH');
+      const skipped = resultByTitle(outcome, 'follows in the same file');
+      expect(skipped.status).toBe('skipped');
+      expect(skipped.skip?.cause).toBe('infrastructure-unavailable');
+      expect(resultByTitle(outcome, 'runs on the next worker').status).toBe('passed');
+      expect(outcome.exitCode).toBe(3);
+      project.cleanup();
+    },
+    120_000,
+  );
 });
