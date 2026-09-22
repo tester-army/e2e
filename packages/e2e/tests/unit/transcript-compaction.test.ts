@@ -4,9 +4,12 @@
  * survive verbatim.
  */
 
-import type { ModelMessage } from 'ai';
+import type { ModelMessage, ToolResultPart } from 'ai';
 import { describe, expect, it } from 'vitest';
 import { compactScreenHistory, compactScreenshotHistory } from '../../src/agent/transcript-compaction.ts';
+
+const png = Buffer.from('not really a png').toString('base64');
+const image = { type: 'file', data: { type: 'data', data: png }, mediaType: 'image/png' } as const;
 
 function fullScreenResult(id: string, revision: string): ModelMessage {
   return {
@@ -20,6 +23,48 @@ function fullScreenResult(id: string, revision: string): ModelMessage {
       },
     ],
   };
+}
+
+/** A grammar result once the step shows pixels: the full screen, `rows` deep, and the screenshot note as one text item, then the image. */
+function pixelScreenResult(id: string, revision: string, rows = 1): ModelMessage {
+  const tree = Array.from({ length: rows }, (_, index) => ` #n${String(index + 2)} heading "X${String(index)}"`).join('\n');
+  return {
+    role: 'tool',
+    content: [
+      {
+        type: 'tool-result',
+        toolCallId: id,
+        toolName: 'tap',
+        output: {
+          type: 'content',
+          value: [
+            { type: 'text', text: `Tapped #n3.\n\nThe screen changed substantially since revision b0. Current screen (revision ${revision}, ${String(rows + 1)} nodes):\n#n1 document\n${tree}\n\nScreenshot attached: 640 by 360 pixels.` },
+            image,
+          ],
+        },
+      },
+    ],
+  };
+}
+
+/** The output of a tool message's one result. */
+function toolOutput(message: ModelMessage): ToolResultPart['output'] {
+  const [part] = message.content as ToolResultPart[];
+  return part!.output;
+}
+
+/** Characters of text a transcript carries, the text beside a screenshot included; the overflow retry's measure. */
+function textChars(messages: readonly ModelMessage[]): number {
+  return messages.reduce((total, message) => {
+    if (typeof message.content === 'string') return total + message.content.length;
+    return message.content.reduce((inner, part) => {
+      if (part.type === 'text') return inner + part.text.length;
+      if (part.type !== 'tool-result') return inner;
+      if (part.output.type === 'text') return inner + part.output.value.length;
+      if (part.output.type !== 'content') return inner;
+      return inner + part.output.value.reduce((sum, item) => sum + (item.type === 'text' ? item.text.length : 0), 0);
+    }, total);
+  }, 0);
 }
 
 function changesResult(id: string): ModelMessage {
@@ -76,10 +121,52 @@ describe('compactScreenHistory', () => {
     expect(compacted[1]).toEqual(messages[1]);
     expect(compacted.slice(3)).toEqual(messages.slice(3));
   });
+
+  it('elides full screens that arrived with a screenshot, keeping the lead and the image', () => {
+    const messages = [opening, pixelScreenResult('c1', 'b1'), pixelScreenResult('c2', 'b2'), pixelScreenResult('c3', 'b3'), pixelScreenResult('c4', 'b4')];
+    expect(compactScreenHistory(messages, { keepStaleBytes: 1024 })).toBe(messages);
+    const compacted = compactScreenHistory(messages, { keepStaleBytes: 0 });
+    expect(compacted).not.toBe(messages);
+    expect(compacted[0]!.content).toContain('[earlier screen elided');
+    for (const index of [1, 2, 3]) {
+      expect(toolOutput(compacted[index]!)).toEqual({
+        type: 'content',
+        value: [
+          { type: 'text', text: 'Tapped #n3.\n\nThe screen changed substantially since revision b0.\n[earlier screen elided; the newest "Current screen" plus the changes after it describe the screen]' },
+          image,
+        ],
+      });
+    }
+    expect(compacted[4]).toEqual(messages[4]);
+  });
+
+  it('keeps the notice that replaced a screenshot when the screen beside it is elided', () => {
+    const messages = [opening, pixelScreenResult('c1', 'b1'), pixelScreenResult('c2', 'b2')];
+    const compacted = compactScreenHistory(compactScreenshotHistory(messages, { preserve: 1, batch: 1 }), { keepStaleBytes: 0 });
+    expect(toolOutput(compacted[1]!)).toEqual({
+      type: 'content',
+      value: [
+        { type: 'text', text: expect.stringContaining('[earlier screen elided') },
+        { type: 'text', text: '[earlier screenshot elided; the newest screenshots show the current screen]' },
+      ],
+    });
+    expect(compacted[2]).toEqual(messages[2]);
+  });
+
+  it('shrinks a pixel-mode history on the budget-free pass the overflow retry runs after the cache-friendly pass kept it', () => {
+    const messages = [opening, pixelScreenResult('c1', 'b1', 40), changesResult('c2'), fullScreenResult('c3', 'b3'), pixelScreenResult('c4', 'b4', 40)];
+    const kept = compactScreenHistory(messages);
+    expect(kept).toBe(messages);
+    const shrunk = compactScreenHistory(kept, { keepStaleBytes: 0 });
+    expect(textChars(shrunk)).toBeLessThan(textChars(kept));
+    // Text and pixel screens elide alike; the change update and the newest screen survive whole.
+    expect(toolOutput(shrunk[3]!)).toMatchObject({ type: 'text', value: expect.stringContaining('[earlier screen elided') });
+    expect(shrunk[2]).toEqual(messages[2]);
+    expect(shrunk[4]).toEqual(messages[4]);
+  });
 });
 
 describe('compactScreenshotHistory', () => {
-  const png = Buffer.from('not really a png').toString('base64');
   const shot = (id: string): ModelMessage => ({
     role: 'tool',
     content: [

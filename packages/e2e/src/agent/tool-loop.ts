@@ -21,7 +21,7 @@ import { credentialHint, isAbort, TRANSPORT_RETRIES } from './model/sdk.ts';
 import { isContextOverflow } from './model/overflow.ts';
 import { isForcedToolChoiceRejected } from './model/tool-choice.ts';
 import { promptCacheHints, type CacheModelRef, type PromptCacheHints } from './model/prompt-cache.ts';
-import { isScreenOutput } from './screen-update.ts';
+import { isScreenOutput, toolResultTexts } from './screen-update.ts';
 import { compactScreenHistory } from './transcript-compaction.ts';
 import { AgentError, isAgentError } from './error.ts';
 import {
@@ -618,8 +618,9 @@ const OVERFLOW_TEXT_CLIP_CHARS = 16_384;
 /**
  * Shrinks a history the provider refused as too large: every superseded full
  * screen is elided regardless of the cache-friendly budget, then any text
- * part still longer than the clip is cut to its head with a notice, so the
- * model knows to observe again for what it no longer sees.
+ * still longer than the clip, the text beside a screenshot included, is cut
+ * to its head with a notice, so the model knows to observe again for what it
+ * no longer sees.
  */
 function shrinkForOverflow(messages: ModelMessage[]): ModelMessage[] {
   return compactScreenHistory(messages, { keepStaleBytes: 0 }).map((message) => {
@@ -634,8 +635,14 @@ function shrinkForOverflow(messages: ModelMessage[]): ModelMessage[] {
     return {
       ...message,
       content: message.content.map((part) => {
-        if (part.type !== 'tool-result' || part.output.type !== 'text') return part;
-        return { ...part, output: { type: 'text' as const, value: clip(part.output.value) } };
+        if (part.type !== 'tool-result') return part;
+        const { output } = part;
+        if (output.type === 'text') return { ...part, output: { ...output, value: clip(output.value) } };
+        if (output.type !== 'content') return part;
+        return {
+          ...part,
+          output: { ...output, value: output.value.map((item) => (item.type === 'text' ? { ...item, text: clip(item.text) } : item)) },
+        };
       }),
     };
   });
@@ -657,7 +664,7 @@ function textChars(messages: readonly ModelMessage[]): number {
     }
     for (const part of message.content) {
       if (part.type === 'text') total += part.text.length;
-      else if (part.type === 'tool-result' && part.output.type === 'text') total += part.output.value.length;
+      else if (part.type === 'tool-result') total += toolResultTexts(part.output).reduce((sum, text) => sum + text.length, 0);
     }
   }
   return total;

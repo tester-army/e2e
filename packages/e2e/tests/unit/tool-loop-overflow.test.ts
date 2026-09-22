@@ -52,6 +52,25 @@ const bigScreen = () =>
       snapshot(Array.from({ length: 600 }, (_, i) => ({ ref: { id: `n${String(i)}`, revision: '' }, role: 'text', name: `row ${String(i)} ${'x'.repeat(40)}` }))),
   });
 
+/** The big screen with every line changed per variant, so each look after the first goes out whole, and pixels when asked. */
+const changingBigScreen = (variant: () => number) =>
+  defineEngine({
+    name: 'fake',
+    version: '1',
+    spiVersion: 1,
+    observe: async (_context, options) =>
+      snapshot(
+        Array.from({ length: 600 }, (_, i) => ({
+          ref: { id: `n${String(i)}`, revision: '' },
+          role: 'text',
+          name: `v${String(variant())} row ${String(i)} ${'x'.repeat(40)}`,
+        })),
+        options?.pixels === true
+          ? { pixels: { data: new Uint8Array([1]), mediaType: 'image/png', width: 1, height: 1, scale: 1 }, maskedRegionCount: 0 }
+          : {},
+      ),
+  });
+
 const OVERFLOW = 'prompt is too long: 300000 tokens > 200000 maximum';
 
 /** A read-only project tool, so the loop has a first turn to spend before the refusal. */
@@ -80,6 +99,33 @@ describe('tool loop context overflow', () => {
     expect(step.status).toBe('passed');
     // The refused request never answered, so it is not a model call the step paid for.
     expect(step.metrics?.modelCalls).toBe(2);
+  });
+
+  it('shrinks a pixel-mode history, where every screen rides a result with its screenshot, and retries', async () => {
+    let variant = 0;
+    const model = installFakeLoopModel(({ turn }) => {
+      variant = turn;
+      if (turn <= 2) return [{ toolName: 'screenshot', input: {} }];
+      if (turn === 3) throw new Error(OVERFLOW);
+      return [{ toolName: 'complete_step', input: { status: 'passed', summary: 'read the rows' } }];
+    });
+    const { fixtures, steps } = runtime(changingBigScreen(() => variant), { agents: { default: { executor: createAgent(), model } } });
+
+    await fixtures.agent.act('read the big output');
+
+    expect(loopCalls).toHaveLength(4);
+    // The two superseded screens outgrew the cache-friendly budget before the
+    // refusal, so the request the provider refused already carried them
+    // elided, the first screenshot's image still beside its lead.
+    expect(loopCalls[2]!.prompt).toContain('[earlier screen elided');
+    expect(loopCalls[2]!.toolResults[0]).toContain('[earlier screen elided');
+    expect(loopCalls[2]!.toolResults[0]).toContain('"type":"file"');
+    // What was left to shrink is the newest screen, riding the second screenshot's result.
+    expect(loopCalls[3]!.lastToolResult).toContain("more characters cut: the request exceeded the model's context window");
+    expect(loopCalls[3]!.lastToolResult).toContain('"type":"file"');
+    const step = steps.all()[0]!;
+    expect(step.status).toBe('passed');
+    expect(step.metrics?.modelCalls).toBe(3);
   });
 
   it('reports CONTEXT_OVERFLOW when the shrunk request is refused again', async () => {

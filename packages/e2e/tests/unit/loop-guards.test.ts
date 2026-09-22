@@ -101,11 +101,20 @@ describe('failure streak', () => {
     expect(checkFailureStreak([...streak(4), tapped, ...streak(2)]).kind).toBe('clear');
   });
 
+  const result = (toolName: string, output: ToolResultPart['output']): ModelMessage => ({
+    role: 'tool',
+    content: [{ type: 'tool-result', toolCallId: toolName, toolName, output }],
+  });
+  /** A grammar result once the step shows pixels: the text, then the screenshot as a file item. */
+  const withScreenshot = (text: string): ToolResultPart['output'] => ({
+    type: 'content',
+    value: [
+      { type: 'text', text: `${text}\n\nScreenshot attached: 640 by 360 pixels.` },
+      { type: 'file', data: { type: 'data', data: Buffer.from('not really a png').toString('base64') }, mediaType: 'image/png' },
+    ],
+  });
+
   it('reads text tool results in order and skips the conclusion tool and structured results', () => {
-    const result = (toolName: string, output: ToolResultPart['output']): ModelMessage => ({
-      role: 'tool',
-      content: [{ type: 'tool-result', toolCallId: toolName, toolName, output }],
-    });
     const messages: ModelMessage[] = [
       { role: 'user', content: 'Execute this test step' },
       result('tap', { type: 'text', value: failed }),
@@ -114,5 +123,14 @@ describe('failure streak', () => {
       result('tap', { type: 'text', value: tapped }),
     ];
     expect(extractToolResults(messages, 'complete_step')).toEqual([failed, tapped]);
+  });
+
+  it('reads the text beside a screenshot, so the streak warns and stops in pixel mode too', () => {
+    const streak = (count: number) => Array.from({ length: count }, () => result('tap', withScreenshot(failed)));
+    const results = extractToolResults([result('tap', withScreenshot(tapped)), ...streak(3)], 'complete_step');
+    expect(results).toHaveLength(4);
+    expect(results[1]).toMatch(/^Tapped #n6\. failed: /);
+    expect(checkFailureStreak(results)).toEqual({ kind: 'warn', reason: 'the last 3 actions failed in a row' });
+    expect(checkFailureStreak(extractToolResults(streak(5), 'complete_step')).kind).toBe('stop');
   });
 });

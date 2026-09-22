@@ -17,6 +17,7 @@
  * `transcript-compaction.ts`.
  */
 
+import type { ToolResultPart } from 'ai';
 import type { ExecutorObservation, ExecutorPixels } from './executor.ts';
 import { interactiveNodeCount } from './observation.ts';
 import type { VisionDegradation } from '../run/steps.ts';
@@ -90,6 +91,18 @@ export type ScreenOutput = string | { readonly text: string; readonly pixels: Ex
 /** True for a rendered screen that carries its screenshot. */
 export function isScreenOutput(value: unknown): value is Exclude<ScreenOutput, string> {
   return typeof value === 'object' && value !== null && 'text' in value && 'pixels' in value;
+}
+
+/**
+ * The text of a tool result as the model reads it: a text result's value, or
+ * the text items of a result with a screenshot attached, lead first. A
+ * structured result carries none. Every reader of the transcript goes through
+ * this, so a screen that arrived with pixels is never taken for no text.
+ */
+export function toolResultTexts(output: ToolResultPart['output']): string[] {
+  if (output.type === 'text') return [output.value];
+  if (output.type !== 'content') return [];
+  return output.value.flatMap((item) => (item.type === 'text' ? [item.text] : []));
 }
 
 /** Renders one step's screens for the model and remembers what it has seen. */
