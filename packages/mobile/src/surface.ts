@@ -39,7 +39,7 @@ import {
   ConfigurationError,
   TestError,
 } from 'e2e/engine';
-import { runCommand, staleOr } from './errors.ts';
+import { isSnapshotPresentationFailure, runCommand, staleOr } from './errors.ts';
 import { pointerInteraction } from './actions.ts';
 import { resolveExpression } from './locate.ts';
 import {
@@ -221,6 +221,8 @@ export class AgentDeviceSurface {
   private installedApp: string | undefined;
   /** Where relative build paths resolve; the run's project root once init has told us. */
   private projectRoot = process.cwd();
+  /** The session and device this worker drives, for the error messages whose recovery is per device; set in init. */
+  private where: string | undefined;
   /**
    * Commands still running on the device. agent-device takes no abort
    * signal, so a cancelled or timed-out call is only abandoned by its
@@ -286,7 +288,7 @@ export class AgentDeviceSurface {
    */
   async command<T>(label: string, run: (client: AgentDeviceClient) => Promise<T>, signal?: AbortSignal): Promise<T> {
     const client = this.requireClient();
-    return runCommand(label, () => this.track(run(client)), signal ?? new AbortController().signal);
+    return runCommand(label, () => this.track(run(client)), signal ?? new AbortController().signal, this.where);
   }
 
   /** Registers one device command as in flight until it settles. */
@@ -319,7 +321,9 @@ export class AgentDeviceSurface {
     this.projectRoot = info.projectRoot;
     const binding = this.pool.binding(info.targetName, info.workerSlot, info.env);
     this.device = binding?.device;
-    this.client ??= this.createClient(this.pool.session(info.targetName, info.workerSlot), binding);
+    const session = this.pool.session(info.targetName, info.workerSlot);
+    this.where = `session ${session}${this.device === undefined ? '' : ` on ${this.device}`}`;
+    this.client ??= this.createClient(session, binding);
     await this.command('boot', (client) => client.devices.boot(this.selection()), info.signal);
     if (this.options.appPath === undefined) return;
     // A provider that installed the build itself says so on the binding; the worker then installs nothing.
@@ -511,17 +515,30 @@ export class AgentDeviceSurface {
     for (const backoffMs of SPARSE_RETRY_BACKOFF_MS) {
       if (backoffMs > 0) await sleep(backoffMs, operation.signal);
       if (operation.signal.aborted) throw new EngineError('CANCELLED', 'snapshot cancelled', { retryable: false });
-      last = (await this.command(
-        'snapshot',
-        (client) => client.capture.snapshot({ interactiveOnly }),
-        operation.signal,
-      )) as RawSnapshot;
+      last = await this.capture(operation, interactiveOnly);
       if (last.appBundleId !== undefined || last.appName !== undefined) {
         this.appIdentity = last.appBundleId ?? last.appName;
       }
       if (last.snapshotQuality?.state !== 'sparse') return last;
     }
     return last;
+  }
+
+  /**
+   * One capture, taken again once when the iOS runner acquired the tree but
+   * failed its own presentation check on it (a viewport it could not read, a
+   * malformed graph). The check is per capture and a capture is a read, so
+   * the retry is safe; a second failure is the runner's and propagates.
+   */
+  private async capture(operation: OperationContext, interactiveOnly: boolean): Promise<RawSnapshot> {
+    const take = (): Promise<RawSnapshot> =>
+      this.command('snapshot', (client) => client.capture.snapshot({ interactiveOnly }), operation.signal) as Promise<RawSnapshot>;
+    try {
+      return await take();
+    } catch (cause) {
+      if (operation.signal.aborted || !isSnapshotPresentationFailure(cause)) throw cause;
+      return take();
+    }
   }
 
   /**
@@ -802,7 +819,7 @@ export class AgentDeviceSurface {
     try {
       await raceAbort(() => this.track(run()), operation.signal, label);
     } catch (cause) {
-      throw staleOr(cause, label);
+      throw staleOr(cause, label, this.where);
     }
     this.markAction(before);
   }

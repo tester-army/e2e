@@ -374,6 +374,57 @@ does not interrupt replay.
 | `--video` writes a WebM screencast | `--video` writes an MP4 of the device screen with taps shown |
 | The cache anchors on the page path | The cache anchors on the location `<bundle id> / <screen title>`, the title read off the navigation bar |
 
+## Troubleshooting
+
+A device failure reaches the report with agent-device's own message. Under
+the agent, an engine fault with no more specific code reports as
+`APP_UNREACHABLE`; on a device, read the message before the code, because
+the app is often not the part that failed.
+
+**The iOS automation runner is busy or wedged.** An accessibility capture on
+a heavy or animating screen can overrun the runner's watchdog. The runner
+keeps finishing that capture after the step gave up on it, and every command
+until it drains fails with `RUNNER_BUSY`; one stuck for 120 s becomes
+`RUNNER_WEDGED`, and agent-device restarts the runner. A run killed
+mid-attempt (Ctrl-C) can hand a draining runner to the next run. The report
+reads:
+
+```text
+APP_UNREACHABLE: agent.act failed: snapshot failed: the iOS automation runner is still
+finishing a command that overran its watchdog (session e2e-ios-0 on iPhone 17 Pro):
+The iOS runner is still finishing a previous command that exceeded its execution
+watchdog (usually an accessibility capture on a heavy or animating screen). The app
+is fine. Wait a few seconds and rerun. If the next run meets it again, stop the
+daemon (`npx agent-device daemon stop`) and reboot the simulator
+(`xcrun simctl shutdown <udid>`, then `boot`).
+```
+
+Do what it says. A runner that is still busy or wedged when `prepare` warms
+the device ends the run there, with the same message, instead of opening the
+app and failing the first observation. The wedge itself is agent-device's:
+0.21.4 stops a runner that reports draining work instead of handing it to the
+next `open`, so a current engine meets it only after a run that never reached
+cleanup.
+
+**A snapshot the runner could not present.** `regular iOS snapshot
+presentation requires a valid viewport` is a per-capture check inside the
+runner, not a property of the screen. The engine takes the snapshot once more
+before failing the step, as it does for a sparse one; a second failure
+propagates with the same recovery.
+
+**A timeout the device reports.** A simulator boot, the runner connecting, or
+an app launch that agent-device times out is an `ENGINE_FAILURE` whose
+message and hint are agent-device's (`Retry simulator boot and inspect simctl
+bootstatus logs; in CI reduce parallel jobs or use a larger runner`). The
+harness's own budgets are the `LAUNCH_TIMEOUT`, `ACTION_FAILED`, and
+`STEP_TIMEOUT` codes; a device-side timeout never reports as one of them.
+
+```bash
+npx agent-device doctor          # the toolchain, the daemon, the booted devices
+npx agent-device daemon stop     # after a wedge: drops every session, the next run starts the daemon
+xcrun simctl shutdown <udid> && xcrun simctl boot <udid>
+```
+
 <CardGroup cols={2}>
   <Card title="Mobile engine reference" icon="mobile-screen" href="/reference/mobile">
     Every option, the `device` fixture, and the tool pack.

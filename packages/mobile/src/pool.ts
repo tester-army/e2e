@@ -12,7 +12,7 @@
 
 import { ConfigurationError, EngineError, obj, type EngineFinishInfo, type EnginePrepareInfo, type EnginePrepareResult } from 'e2e/engine';
 import { bindingsVariable, decodeBindings, encodeBindings, pinnedApp, type DeviceSource, type SlotBinding } from './bindings.ts';
-import { message, runCommand } from './errors.ts';
+import { isRunnerFailure, message, runCommand } from './errors.ts';
 import type { MobileOptions, MobilePlatform, ClientFactory } from './options.ts';
 import { asDeviceProvider, LeasedDevices } from './provider.ts';
 
@@ -184,22 +184,28 @@ export class DevicePool {
    * cold boot pushes the others past `launchTimeout`. Each slot warms under
    * the session its worker resumes. A device that cannot boot ends the run
    * here; an app that does not open is logged and left to the first attempt.
-   * A build `appPath` installs in `init` is not on the device yet, so that
-   * slot boots only, unless a lease says the build is already there.
+   * An automation runner that is busy or wedged from an earlier run ends it
+   * here too: the first attempt could only meet the same runner and fail
+   * its first observation with the app blamed, and the message names the
+   * recovery, which a wait of up to the runner's recycle window would only
+   * hide. A build `appPath` installs in `init` is not on the device yet, so
+   * that slot boots only, unless a lease says the build is already there.
    */
   private async warm(bindings: readonly SlotBinding[], info: EnginePrepareInfo): Promise<void> {
     for (const [slot, binding] of bindings.entries()) {
       const label = binding.device ?? `a booted ${this.options.platform} device`;
       const where = deviceSelection(this.options.platform, binding.device);
-      const client = this.createClient(this.session(info.targetName, slot), binding);
+      const session = this.session(info.targetName, slot);
+      const at = `session ${session} on ${label}`;
+      const client = this.createClient(session, binding);
       info.log(`booting ${label} (${slot + 1} of ${bindings.length})`);
-      await runCommand('boot', () => client.devices.boot(where), info.signal);
+      await runCommand('boot', () => client.devices.boot(where), info.signal, at);
       const app = pinnedApp(this.options, binding.installedApp);
       if (app === undefined) continue;
       try {
-        await runCommand(`open ${app}`, () => client.apps.open({ app, ...where }), info.signal);
+        await runCommand(`open ${app}`, () => client.apps.open({ app, ...where }), info.signal, at);
       } catch (cause) {
-        if (info.signal.aborted) throw cause;
+        if (info.signal.aborted || isRunnerFailure(cause)) throw cause;
         info.log(`${label}: automation runner not warmed up (${message(cause)}); the first attempt starts it`);
       }
     }
