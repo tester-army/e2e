@@ -52,7 +52,9 @@ negated `toBeAttached` accept zero matches.
 
 A negated matcher that fails while its negation holds says how long it held
 beside what it observed: `held for 300 ms, short of the 450 ms negation
-window`.
+window`, or, when a slow read confirmed the hold only after the window had
+closed, `held for 600 ms, confirmed only after the 450 ms negation window
+closed`.
 
 Text comparison is normalized: leading and trailing whitespace is trimmed and
 each run of whitespace collapses to one space. A `TextMatch` string matches

@@ -224,6 +224,29 @@ describe('pollCondition', () => {
     expect(onTimeout).toHaveBeenCalledWith({ negation: { heldMs: 300, windowMs: 450 } });
   });
 
+  it('negated: a hold completed by a sample past the extended deadline fails, however long it held', async () => {
+    vi.useFakeTimers();
+    const start = Date.now();
+    const onTimeout = vi.fn(() => new Error('poll timed out'));
+    const promise = pollCondition(
+      makeOptions({
+        negated: true,
+        timeoutMs: 900,
+        onTimeout,
+        // Samples land at 200, 500, 800, 1100 ms; the node goes at 1000, so the hold
+        // begins at 1100. The next read is slow and lands at 1700, past the 1350 ms cap.
+        evaluate: async () => {
+          await sleep(Date.now() - start >= 1200 ? 500 : 200);
+          return Date.now() - start < 1000;
+        },
+      }),
+    );
+    const assertion = expect(promise).rejects.toThrow('poll timed out');
+    await vi.advanceTimersByTimeAsync(1700);
+    await assertion;
+    expect(onTimeout).toHaveBeenCalledWith({ negation: { heldMs: 600, windowMs: 450 } });
+  });
+
   it('negated: passes only after the grace window holds continuously', async () => {
     vi.useFakeTimers();
     let resolved = false;
@@ -325,6 +348,12 @@ describe('describeNegationTimeout', () => {
   it('states how long the negation held against its window', () => {
     expect(describeNegationTimeout({ heldMs: 745, windowMs: 1000 })).toBe(
       'held for 745 ms, short of the 1000 ms negation window',
+    );
+  });
+
+  it('says the window had closed when the hold was long enough but confirmed too late', () => {
+    expect(describeNegationTimeout({ heldMs: 600, windowMs: 450 })).toBe(
+      'held for 600 ms, confirmed only after the 450 ms negation window closed',
     );
   });
 });
