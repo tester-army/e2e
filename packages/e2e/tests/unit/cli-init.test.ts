@@ -92,7 +92,7 @@ describe('e2e init', () => {
     expect(read('e2e.config.ts')).toContain('agents: {\n    default: createAgent({');
     // The default gateway is written out as its own provider's constructor, never implied by the runner.
     expect(read('e2e.config.ts')).toContain("import { gateway } from 'ai';");
-    expect(read('e2e.config.ts')).toContain("model: gateway('openai/gpt-5.6-luna'),");
+    expect(read('e2e.config.ts')).toContain("model: gateway('openai/gpt-6-luna-fast'),");
     expect(read('e2e.config.ts')).toContain('// The Vercel AI Gateway serves the model id and reads AI_GATEWAY_API_KEY.');
     expect(read('tests/example.e2e.ts')).toContain('// With the model key in the environment, uncomment:');
     expect(read('e2e.config.ts')).toContain("web({\n      url: process.env.APP_URL ?? 'http://localhost:3000',");
@@ -198,7 +198,7 @@ describe('e2e init', () => {
     expect(manifest.devDependencies['@openrouter/ai-sdk-provider']).toBe(ai ? '^3.0.0' : undefined);
     expect(read('e2e.config.ts').includes('createAgent')).toBe(ai);
     expect(read('e2e.config.ts').includes("import { openrouter } from '@openrouter/ai-sdk-provider';")).toBe(ai);
-    expect(read('e2e.config.ts').includes("model: openrouter('openai/gpt-5.6-luna'),")).toBe(ai);
+    expect(read('e2e.config.ts').includes("model: openrouter('openai/gpt-6-luna-fast'),")).toBe(ai);
     expect(read('e2e.config.ts').includes('// OpenRouter serves the model id and reads OPENROUTER_API_KEY.')).toBe(ai);
     expect(clack.text).not.toHaveBeenCalled();
     expect(read('e2e.config.ts').includes('@e2edev/web')).toBe(engine === 'web');
@@ -255,7 +255,7 @@ describe('e2e init', () => {
     expect(clack.text).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ placeholder: 'http://127.0.0.1:11434/v1' }));
     expect(read('e2e.config.ts')).toContain("import { createOpenAICompatible } from '@ai-sdk/openai-compatible';");
     expect(read('e2e.config.ts')).toContain(
-      "      model: createOpenAICompatible({\n        name: 'openai-compatible',\n        baseURL: 'http://127.0.0.1:11434/v1',\n        // apiKey: process.env.LLM_API_KEY,\n      }).chatModel('gpt-5.6-luna'),",
+      "      model: createOpenAICompatible({\n        name: 'openai-compatible',\n        baseURL: 'http://127.0.0.1:11434/v1',\n        // apiKey: process.env.LLM_API_KEY,\n      }).chatModel('gpt-6-luna'),",
     );
     expect(read('e2e.config.ts')).toContain('// The endpoint serves the model id over the OpenAI chat API; pass apiKey when it needs one.');
     expect(JSON.parse(read('package.json')).devDependencies).toHaveProperty('ai', '^7.0.0');
@@ -263,7 +263,7 @@ describe('e2e init', () => {
   });
 
   it.each([
-    { gateway: 'chatgpt', provider: 'openai', line: "import { chatgpt } from 'e2e/oauth/chatgpt';", model: "model: chatgpt('gpt-5.6-luna'),", sdk: '@ai-sdk/openai' },
+    { gateway: 'chatgpt', provider: 'openai', line: "import { chatgpt } from 'e2e/oauth/chatgpt';", model: "model: chatgpt('gpt-6-luna'),", sdk: '@ai-sdk/openai' },
     { gateway: 'copilot', provider: 'github-copilot', line: "import { copilot } from 'e2e/oauth/copilot';", model: "model: copilot('claude-sonnet-5'),", sdk: '@ai-sdk/openai-compatible' },
     { gateway: 'grok', provider: 'spacexai', line: "import { grok } from 'e2e/oauth/grok';", model: "model: grok('grok-4'),", sdk: '@ai-sdk/xai' },
   ] as const)('writes a $gateway subscription model and names the sign-in as the next step', async ({ gateway, provider, line, model, sdk }) => {

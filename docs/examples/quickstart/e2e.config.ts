@@ -4,6 +4,6 @@ import { web } from '@e2edev/web';
 import { gateway } from 'ai';
 
 export default {
-  agents: { default: createAgent({ model: gateway('openai/gpt-5.6-luna') }) },
+  agents: { default: createAgent({ model: gateway('openai/gpt-6-luna-fast') }) },
   targets: [{ engine: web({ url: 'http://localhost:3000' }) }],
 } satisfies E2EConfig;

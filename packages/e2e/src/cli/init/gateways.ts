@@ -30,7 +30,7 @@ export const GATEWAYS: readonly GatewayPreset[] = [
     dependencies: {},
     import: "import { gateway } from 'ai';",
     comment: 'The Vercel AI Gateway serves the model id and reads AI_GATEWAY_API_KEY.',
-    model: () => "gateway('openai/gpt-5.6-luna')",
+    model: () => "gateway('openai/gpt-6-luna-fast')",
   },
   {
     id: 'openrouter',
@@ -39,7 +39,7 @@ export const GATEWAYS: readonly GatewayPreset[] = [
     dependencies: { '@openrouter/ai-sdk-provider': '^3.0.0' },
     import: "import { openrouter } from '@openrouter/ai-sdk-provider';",
     comment: 'OpenRouter serves the model id and reads OPENROUTER_API_KEY.',
-    model: () => "openrouter('openai/gpt-5.6-luna')",
+    model: () => "openrouter('openai/gpt-6-luna-fast')",
   },
   {
     id: 'openai-compatible',
@@ -53,7 +53,7 @@ export const GATEWAYS: readonly GatewayPreset[] = [
         name: 'openai-compatible',
         baseURL: ${quote(endpoint ?? 'http://127.0.0.1:11434/v1')},
         // apiKey: process.env.LLM_API_KEY,
-      }).chatModel('gpt-5.6-luna')`,
+      }).chatModel('gpt-6-luna')`,
   },
   {
     id: 'chatgpt',
@@ -63,7 +63,7 @@ export const GATEWAYS: readonly GatewayPreset[] = [
     import: "import { chatgpt } from 'e2e/oauth/chatgpt';",
     comment: 'Your ChatGPT subscription serves the model; sign in once with `e2e login openai`, `e2e models openai` lists the ids.',
     login: 'openai',
-    model: () => "chatgpt('gpt-5.6-luna')",
+    model: () => "chatgpt('gpt-6-luna')",
   },
   {
     id: 'copilot',

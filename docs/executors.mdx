@@ -35,7 +35,7 @@ export default {
   agents: {
     default: createToolLoopExecutor({
       name: 'button-agent',
-      model: gateway('openai/gpt-5.6-luna'),
+      model: gateway('openai/gpt-6-luna-fast'),
       system: 'Read the screen before acting. Address buttons by their visible label.',
       buildPrompt: (ctx) => ctx.step.instruction,
       tools: (ctx, { guard }) => ({

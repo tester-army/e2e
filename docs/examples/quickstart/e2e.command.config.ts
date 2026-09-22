@@ -6,7 +6,7 @@ import { gateway } from 'ai';
 export default {
   agents: {
     default: createAgent({
-      model: gateway('openai/gpt-5.6-luna'),
+      model: gateway('openai/gpt-6-luna-fast'),
       system: 'You are a thorough QA agent. Verify every outcome.',
     }),
   },

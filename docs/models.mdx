@@ -30,7 +30,7 @@ import { gateway } from 'ai';
 
 export default {
   targets: [{ engine: web({ url: 'http://localhost:3000' }) }],
-  agents: { default: createAgent({ model: gateway('openai/gpt-5.6-luna') }) },
+  agents: { default: createAgent({ model: gateway('openai/gpt-6-luna-fast') }) },
 } satisfies E2EConfig;
 ```
   </Tab>
@@ -42,7 +42,7 @@ Install `@openrouter/ai-sdk-provider` and set `OPENROUTER_API_KEY`.
 import { createAgent } from 'e2e/agent';
 import { openrouter } from '@openrouter/ai-sdk-provider';
 
-const agent = createAgent({ model: openrouter('openai/gpt-5.6-luna') });
+const agent = createAgent({ model: openrouter('openai/gpt-6-luna-fast') });
 ```
 
 Use `agent` as `agents.default` in your config.
@@ -56,7 +56,7 @@ install `@ai-sdk/openai` and set `OPENAI_API_KEY`:
 import { createAgent } from 'e2e/agent';
 import { openai } from '@ai-sdk/openai';
 
-const agent = createAgent({ model: openai('gpt-5.6-luna') });
+const agent = createAgent({ model: openai('gpt-6-luna') });
 ```
 
 Use `agent` as `agents.default`. Other AI SDK providers work the same way,
@@ -106,7 +106,7 @@ Give agents different names to use different models:
 
 ```ts title="Agent config fragment"
 agents: {
-  default: createAgent({ model: gateway('openai/gpt-5.6-luna') }),
+  default: createAgent({ model: gateway('openai/gpt-6-luna-fast') }),
   careful: createAgent({ model: gateway('anthropic/claude-sonnet-5') }),
 },
 ```
@@ -122,7 +122,7 @@ for those checks:
 
 ```ts title="Agent setup"
 const agent = createAgent({
-  model: gateway('openai/gpt-5.6-luna'),
+  model: gateway('openai/gpt-6-luna-fast'),
   judge: gateway('anthropic/claude-sonnet-5'),
 });
 ```
@@ -136,7 +136,7 @@ variable:
 
 ```ts title="Agent setup"
 const agent = createAgent({
-  model: gateway(process.env.MODEL ?? 'openai/gpt-5.6-luna'),
+  model: gateway(process.env.MODEL ?? 'openai/gpt-6-luna-fast'),
 });
 ```
 
@@ -144,7 +144,7 @@ const agent = createAgent({
 
 | Problem | Code | Fix |
 | --- | --- | --- |
-| A model is a string instead of an AI SDK instance | `INVALID_CONFIG` | Construct it, for example `gateway('openai/gpt-5.6-luna')`. |
+| A model is a string instead of an AI SDK instance | `INVALID_CONFIG` | Construct it, for example `gateway('openai/gpt-6-luna-fast')`. |
 | The built-in agent has no model | `MODEL_UNAVAILABLE` | Set `createAgent({ model })` or `agents.<name>.model`. |
 | Authentication fails on the first model call | `MODEL_PROVIDER_FAILED` | Check the provider's API key, or run `npx e2e login` for a subscription. |
 | The `ai` package is missing | `MODEL_UNAVAILABLE` | Run `npm install -D ai`. |

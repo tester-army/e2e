@@ -12,7 +12,7 @@ import { web } from '@e2edev/web';
 import { createGateway, stepCountIs, tool, ToolLoopAgent } from 'ai';
 import { z } from 'zod';
 
-const MODEL_ID = process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast';
+const MODEL_ID = process.env.E2E_MODEL ?? 'openai/gpt-6-luna-fast';
 
 const mathBrain: StepExecutor = {
   name: 'math-brain',

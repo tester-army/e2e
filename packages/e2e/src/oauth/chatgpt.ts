@@ -1,5 +1,5 @@
 /**
- * `chatgpt('gpt-5.6-luna')`: a ChatGPT Plus/Pro subscription as an AI SDK
+ * `chatgpt('gpt-6-luna')`: a ChatGPT Plus/Pro subscription as an AI SDK
  * model. The instance is `@ai-sdk/openai`'s Responses model with a fetch that
  * carries the stored login; nothing is read until the first call. `e2e models
  * openai` lists the ids the plan serves.

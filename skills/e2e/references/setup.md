@@ -67,7 +67,7 @@ After installing dependencies, authenticate that provider:
 
 An existing config stays unchanged when you run `init`. To switch it to
 ChatGPT manually, install `ai` and `@ai-sdk/openai`, import `chatgpt` from
-`e2e/oauth/chatgpt`, and use `chatgpt('gpt-5.6-luna')` as the
+`e2e/oauth/chatgpt`, and use `chatgpt('gpt-6-luna')` as the
 agent's `model`. Sign in with `npx e2e login openai`. `npx e2e models` prints
 the ids each stored login serves. Use API keys in CI.
 
@@ -96,7 +96,7 @@ export default {
   // The model behind every agent.* step: an AI SDK instance; gateway() from 'ai' reads AI_GATEWAY_API_KEY.
   agents: {
     default: createAgent({
-      model: gateway('openai/gpt-5.6-luna'),
+      model: gateway('openai/gpt-6-luna-fast'),
       system: 'You are a thorough QA agent. Verify every outcome on screen.',
     }),
   },
@@ -267,7 +267,7 @@ export default {
   workers: 1,
   agents: {
     default: createAgent({
-      model: gateway('openai/gpt-5.6-luna'),
+      model: gateway('openai/gpt-6-luna-fast'),
       tools: mobileTools(iphone),
     }),
   },

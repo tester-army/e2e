@@ -17,14 +17,14 @@ const vocabulary = 'Plans are called tiers. Billing lives under Settings. "Appro
 export default {
   targets: [{ engine: web({ url: 'http://localhost:3000' }) }],
   agents: {
-    default: { model: gateway('openai/gpt-5.6-luna'), context: vocabulary },
+    default: { model: gateway('openai/gpt-6-luna-fast'), context: vocabulary },
     thorough: createAgent({
       model: gateway('anthropic/claude-opus-5'),
       system: 'Verify every claim on screen before concluding a step.',
       context: vocabulary,
     }),
-    buyer: createAgent({ model: gateway('openai/gpt-5.6-luna'), system: 'You are a first-time buyer.', context: vocabulary }),
-    admin: createAgent({ model: gateway('openai/gpt-5.6-luna'), system: 'You manage orders and approve refunds.', context: vocabulary }),
+    buyer: createAgent({ model: gateway('openai/gpt-6-luna-fast'), system: 'You are a first-time buyer.', context: vocabulary }),
+    admin: createAgent({ model: gateway('openai/gpt-6-luna-fast'), system: 'You manage orders and approve refunds.', context: vocabulary }),
   },
 } satisfies E2EConfig;
 ```
@@ -66,7 +66,7 @@ tester on a different app, it is `system`.
 agents: {
   default: {
     executor: createAgent({
-      model: gateway('openai/gpt-5.6-luna'),
+      model: gateway('openai/gpt-6-luna-fast'),
       // How to work: read by the act loop only.
       system: 'Verify a visible confirmation before completing a step. Close cookie and feedback notices you did not ask for.',
       // What things are called: read by every model call, judges included.

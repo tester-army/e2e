@@ -15,7 +15,7 @@ import type {
 
 /**
  * Resolved model identity: a caller-supplied AI SDK model instance
- * (`gateway('openai/gpt-5.6-luna')`, `openrouter(...)`, `openai(...)`, any
+ * (`gateway('openai/gpt-6-luna-fast')`, `openrouter(...)`, `openai(...)`, any
  * `LanguageModelV2+`) and the provider and id it reports. The instance owns
  * its own transport and credentials; the runner constructs no model of its
  * own and reads no model variable from the environment. Instances never cross
@@ -303,7 +303,7 @@ function resolveModel(model: ModelInstance | undefined, label: string): Resolved
   if (!isModelInstance(model)) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
-      `${label} must be an AI SDK model instance, e.g. gateway('openai/gpt-5.6-luna') from 'ai'`,
+      `${label} must be an AI SDK model instance, e.g. gateway('openai/gpt-6-luna-fast') from 'ai'`,
     );
   }
   return { provider: model.provider, id: model.modelId, model };

@@ -3,7 +3,7 @@
  * models, each run on its own app instance, a few at a time.
  *
  *   AI_GATEWAY_API_KEY=... node scripts/explore-bench.mjs \
- *     --models openai/gpt-5.6-luna-fast,google/gemini-3.6-flash --steps 8 --timeout 600000 --repeats 3 --concurrency 6
+ *     --models openai/gpt-6-luna-fast,google/gemini-3.6-flash --steps 8 --timeout 600000 --repeats 3 --concurrency 6
  *
  * Each run writes under .e2e/explore-bench/<label>/ (report.json, artifacts,
  * cli.log); the matrix and the per-bug hits land in summary.json and on
@@ -37,7 +37,7 @@ const BUGS = [
 ];
 
 const args = parseArgs(process.argv.slice(2));
-const models = (args.models ?? 'openai/gpt-5.6-luna-fast').split(',').map((value) => value.trim()).filter(Boolean);
+const models = (args.models ?? 'openai/gpt-6-luna-fast').split(',').map((value) => value.trim()).filter(Boolean);
 const repeats = Number(args.repeats ?? '1');
 const concurrency = Number(args.concurrency ?? '6');
 if (!Number.isInteger(repeats) || repeats < 1) throw new Error(`--repeats must be a positive integer, got "${args.repeats}"`);

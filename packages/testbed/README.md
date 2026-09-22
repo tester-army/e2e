@@ -56,12 +56,12 @@ artifacts under `.e2e/artifacts/`.
 `test:agent` and `test:dogfood` spend real model calls, so they never gate a
 PR: they run on the weekly `.github/workflows/agent.yml` schedule, by manual
 dispatch, or by hand. Each config builds its model with the AI SDK's
-`gateway()`, pins `openai/gpt-5.6-luna-fast`, and honours the testbed's own
+`gateway()`, pins `openai/gpt-6-luna-fast`, and honours the testbed's own
 `E2E_MODEL` variable so the same suite can be replayed across providers:
 
 ```bash
 AI_GATEWAY_API_KEY=...  pnpm --filter @e2edev/testbed test:agent
-E2E_MODEL=openai/gpt-5.6-luna AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed test:agent
+E2E_MODEL=openai/gpt-6-luna-fast AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed test:agent
 ```
 
 Agentic assertions are structurally comparable across models, not textually

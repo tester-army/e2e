@@ -23,7 +23,7 @@ export default {
   agents: {
     default: {
       executor: createAgent({ tools: mobileTools(ios, android) }),
-      model: gateway(process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast'),
+      model: gateway(process.env.E2E_MODEL ?? 'openai/gpt-6-luna-fast'),
       // The 600-row list takes about 45 screens plus corrections, so the
       // default action budget would end it a few rows short.
       maxSteps: 80,

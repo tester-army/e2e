@@ -24,7 +24,7 @@ export default {
   reporters: ['list', github({ key: 'web agent' })],
   agents: {
     default: {
-      model: gateway(process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast'),
+      model: gateway(process.env.E2E_MODEL ?? 'openai/gpt-6-luna-fast'),
       // The ceiling a step may ask for: a per-call `maxSteps` can only lower it,
       // and the scroll-heavy scenarios declare the budget they need per test.
       maxSteps: 60,

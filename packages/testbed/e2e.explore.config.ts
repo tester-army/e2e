@@ -36,7 +36,7 @@ export default {
   actionTimeout: 60_000,
   agents: {
     default: {
-      model: gateway(process.env.E2E_MODEL ?? 'openai/gpt-5.6-luna-fast'),
+      model: gateway(process.env.E2E_MODEL ?? 'openai/gpt-6-luna-fast'),
       context: 'Bookshelf is a small online bookshop: a catalog, a cart, checkout, an account page, an orders page, and sign-in.',
     },
   },
