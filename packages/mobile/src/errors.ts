@@ -100,9 +100,21 @@ const RUNNER_STATE: ReadonlyMap<string, { readonly headline: string; readonly fi
  * it as `IOS_SNAPSHOT_ENGINE_FAILED` and rethrows it to the client as
  * `COMMAND_FAILED` with the check that failed in `details.reason`: a
  * per-capture presentation check, not a property of the app or the screen.
+ * The reasons are agent-device's (`ios-snapshot-runtime`,
+ * `runner-presentation`): the viewport checks, a malformed graph, which the
+ * presenter rewraps as `invalid-presented-payload` on the presented tree and
+ * `invalid-quality-payload` on the quality tree, and the payload checks it
+ * raises as `invalid-presented-payload` directly (a parent outside the
+ * payload, a disabled or off-viewport node marked actionable).
  */
 const PRESENTATION_CODE = 'IOS_SNAPSHOT_ENGINE_FAILED';
-const PRESENTATION_REASONS = new Set(['invalid-viewport', 'missing-viewport', 'malformed-graph']);
+const PRESENTATION_REASONS = new Set([
+  'invalid-viewport',
+  'missing-viewport',
+  'malformed-graph',
+  'invalid-presented-payload',
+  'invalid-quality-payload',
+]);
 const PRESENTATION = {
   headline: 'the iOS automation runner could not present the accessibility snapshot',
   firstMove: 'Rerun.',

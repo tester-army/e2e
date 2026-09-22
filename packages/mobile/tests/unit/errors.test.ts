@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AppError } from 'agent-device';
-import { EngineError, TestError, type OperationContext } from 'e2e/engine';
+import { EngineError, TestError, type OperationContext, type SemanticNode } from 'e2e/engine';
 import { isRunnerFailure, isSnapshotPresentationFailure, staleOr, translateError } from '../../src/errors.ts';
 import { SETTINGS_SNAPSHOT } from '../helpers/fake-client.ts';
 import { boot, harness, PROJECT_ROOT, type Harness } from '../helpers/harness.ts';
@@ -143,7 +143,7 @@ describe('automation runner failures', () => {
     );
     expect(overran).toMatchObject({ code: 'ENGINE_FAILURE' });
     expect(overran.message).toContain("the iOS automation runner's main thread overran its watchdog on this command (session e2e-ios-0)");
-    expect(overran.message).toContain(RECOVERY);
+    expect(overran.message).toContain(`The app is fine. Rerun once it has drained. ${RECOVERY}`);
     expect(isRunnerFailure(overran)).toBe(true);
     expect(isRunnerFailure(translateError(new AppError('COMMAND_FAILED', 'xcrun exploded'), 'boot'))).toBe(false);
   });
@@ -164,6 +164,30 @@ describe('automation runner failures', () => {
     expect(byCode.message).toContain('could not present the accessibility snapshot: iOS snapshot graph contains an invalid node depth');
     expect(isSnapshotPresentationFailure(byCode)).toBe(true);
     expect(isSnapshotPresentationFailure(translateError(new AppError('COMMAND_FAILED', 'plain'), 'snapshot'))).toBe(false);
+  });
+
+  it('recognizes every presentation check agent-device raises or rewraps, by reason alone', () => {
+    // The text of each is agent-device's; the reason is what the engine reads.
+    const raised: readonly [reason: string, text: string][] = [
+      ['invalid-viewport', 'regular iOS snapshot presentation requires a valid viewport'],
+      ['missing-viewport', 'regular iOS snapshot presentation requires a viewport'],
+      ['malformed-graph', 'iOS snapshot graph contains an invalid node depth'],
+      ['invalid-presented-payload', 'regular iOS snapshot payload refers to a parent outside the payload'],
+      ['invalid-presented-payload', 'regular iOS snapshot payload marked a disabled or off-viewport node actionable'],
+      ['invalid-quality-payload', 'iOS snapshot graph contains an invalid node depth'],
+    ];
+    for (const [reason, text] of raised) {
+      const translated = translateError(new AppError('COMMAND_FAILED', text, { reason }), 'snapshot', 'session e2e-ios-0');
+      expect(translated, reason).toMatchObject({ code: 'ENGINE_FAILURE', retryable: false });
+      expect(translated.message, reason).toBe(
+        `snapshot failed: the iOS automation runner could not present the accessibility snapshot (session e2e-ios-0): ${text} The app is fine. Rerun. ${RECOVERY}`,
+      );
+      expect(isSnapshotPresentationFailure(translated), reason).toBe(true);
+    }
+    // A reason the presenter does not raise is not a presentation failure: agent-device tags a cancelled capture with one too.
+    const cancelledCapture = translateError(new AppError('COMMAND_FAILED', 'snapshot cancelled', { reason: 'request_canceled' }), 'snapshot');
+    expect(cancelledCapture.message).toBe('snapshot failed: snapshot cancelled');
+    expect(isSnapshotPresentationFailure(cancelledCapture)).toBe(false);
   });
 });
 
@@ -195,6 +219,14 @@ describe('automation runner failures through the engine', () => {
     artifactsDir = mkdtempSync(path.join(tmpdir(), 'e2e-mobile-errors-'));
     await boot(h.engine, 'ios');
     await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal, registerSecret: () => undefined });
+  }
+
+  /** Every node under the root, the root excluded. */
+  function* walk(root: SemanticNode): Generator<SemanticNode> {
+    for (const node of root.children ?? []) {
+      yield node;
+      yield* walk(node);
+    }
   }
 
   it('fails prepare when the runner is busy at warm-up, with the session and device in the message; any other open failure is still logged', async () => {
@@ -306,6 +338,33 @@ describe('automation runner failures through the engine', () => {
       ),
     });
     expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(4);
+  });
+
+  it('names the session and device when a node action or the screen scroll meets a busy runner', async () => {
+    const h = harness({ device: 'iPhone 17 Pro' });
+    await openAttempt(h);
+    const screen = await h.engine.observe!(operation());
+    const about = [...walk(screen.root)].find((node) => node.name === 'About');
+    if (about === undefined) throw new Error('no About node');
+    h.fake.respond('interactions.press', () => {
+      throw runnerBusy();
+    });
+    await expect(h.engine.perform!(about.ref, { kind: 'tap' }, operation())).rejects.toMatchObject({
+      code: 'ENGINE_FAILURE',
+      retryable: false,
+      message: expect.stringContaining(
+        'perform tap failed: the iOS automation runner is still finishing a command that overran its watchdog (session e2e-ios-0 on iPhone 17 Pro)',
+      ),
+    });
+    h.fake.respond('interactions.scroll', () => {
+      throw runnerBusy();
+    });
+    await expect(h.engine.perform!(screen.root.ref, { kind: 'swipe', direction: 'down' }, operation())).rejects.toMatchObject({
+      code: 'ENGINE_FAILURE',
+      message: expect.stringContaining(
+        'swipe failed: the iOS automation runner is still finishing a command that overran its watchdog (session e2e-ios-0 on iPhone 17 Pro)',
+      ),
+    });
   });
 
   it('does not retake a snapshot that failed for any other reason', async () => {
