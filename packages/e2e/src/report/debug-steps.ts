@@ -8,6 +8,7 @@
 import { formatMs, table } from '../internal/debug.ts';
 import type { ResultRecord, SerialGroupRecord } from '../run/records.ts';
 import type { StepRecord } from '../run/steps.ts';
+import { stepModelLabel } from './format.ts';
 
 /**
  * Renders one aligned table of every agent step in the run, in execution
@@ -23,7 +24,7 @@ export function agentStepTable(
 
   const models = new Set(
     steps
-      .map((step) => (step.model === undefined ? undefined : `${step.model.provider}/${step.model.model}`))
+      .map((step) => (step.model === undefined ? undefined : stepModelLabel(step.model)))
       .filter((model): model is string => model !== undefined),
   );
   const mixedModels = models.size > 1;
@@ -31,7 +32,7 @@ export function agentStepTable(
   const rows = steps.map((step) => [
     truncate(step.label === '' ? step.api : `${step.api} ${JSON.stringify(step.label)}`, 64),
     ...(mixedModels
-      ? [step.model === undefined ? '-' : `${step.model.provider}/${step.model.model}`]
+      ? [step.model === undefined ? '-' : stepModelLabel(step.model)]
       : []),
     formatMs(step.durationMs),
     formatMs(eventMs(step, 'model')),

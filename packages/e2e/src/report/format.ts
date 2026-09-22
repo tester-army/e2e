@@ -8,7 +8,7 @@ import { stripVTControlCharacters } from 'node:util';
 import picocolors from 'picocolors';
 import { sanitizeText, truncateUtf8 } from '../internal/errors.ts';
 import type { ResultStatus } from '../run/records.ts';
-import type { StepRecord } from '../run/steps.ts';
+import type { StepModelInfo, StepRecord } from '../run/steps.ts';
 
 /** A picocolors instance; the reporter decides whether it emits color. */
 export type Colors = ReturnType<typeof picocolors.createColors>;
@@ -256,6 +256,44 @@ export function cacheText(pc: Colors, counts: CacheTally): string | undefined {
     counts.missed > 0 ? `${counts.missed} missed` : undefined,
   ].filter((part) => part !== undefined);
   return parts.length === 0 ? undefined : parts.join(pc.dim(' · '));
+}
+
+/** `provider/model`, the form the run header names the configured model in. */
+export function stepModelLabel(model: Pick<StepModelInfo, 'provider' | 'model'>): string {
+  return `${model.provider}/${model.model}`;
+}
+
+/** The models a run's steps reported, `provider/model` to the calls each answered. */
+export type ModelTally = Map<string, number>;
+
+export function addModelTally(into: ModelTally, counts: ModelTally): void {
+  for (const [label, calls] of counts) into.set(label, (into.get(label) ?? 0) + calls);
+}
+
+/** The models several step lists reported, with their call counts. */
+export function stepsModelTally(stepLists: readonly (readonly StepRecord[])[]): ModelTally {
+  const counts: ModelTally = new Map();
+  for (const steps of stepLists) {
+    for (const step of steps) {
+      if (step.model === undefined) continue;
+      const label = stepModelLabel(step.model);
+      counts.set(label, (counts.get(label) ?? 0) + step.model.calls);
+    }
+  }
+  return counts;
+}
+
+/**
+ * The models that answered, most calls first: one model by its label alone,
+ * since the row's call total is its count, several as
+ * `gateway/openai/gpt-5.6-luna (22 calls) · typesafe-ai/jev (1 call)`;
+ * undefined when no step reported a model.
+ */
+export function modelsText(counts: ModelTally): string | undefined {
+  const [first, ...rest] = [...counts].toSorted(([labelA, callsA], [labelB, callsB]) => callsB - callsA || labelA.localeCompare(labelB));
+  if (first === undefined) return undefined;
+  if (rest.length === 0) return bounded(first[0]);
+  return [first, ...rest].map(([label, calls]) => `${bounded(label)} (${calls} call${calls === 1 ? '' : 's'})`).join(' · ');
 }
 
 /** `usageText` labeled `ai …` for lines where nothing else names it. */
