@@ -100,6 +100,7 @@ describe('invokeTool', () => {
       locator: { resolveAll } as never,
       session: {} as never,
       executor: undefined,
+      redact: (text) => text,
       warn: () => undefined,
     });
     await expect(invokeTool('observe', tools['observe']!, { verbose: true }, extra)).rejects.toMatchObject({
