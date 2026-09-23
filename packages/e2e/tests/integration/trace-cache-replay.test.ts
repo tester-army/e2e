@@ -847,11 +847,10 @@ describe('trace cache: a typed value the model composed is the flow\'s data on e
   }, 120_000);
 
   // The app kept the first run's todo, so the second run's opening screen
-  // shows the value the replay is about to type. PR #438 makes the replayed
-  // type the flow's data again; until it lands, the re-staged entry turns it
-  // into a run-time gap (`[ 'tool', 'tap' ]`) and the third run misses with
-  // `gap`. Drop `.fails` with it.
-  it.fails('replays the typed value on the second run and keeps replaying it on the third', async () => {
+  // already shows the value the replay is about to type. A replayed type is
+  // the flow's own data, never a value read off that screen, so the entry
+  // stays intact and the third run replays it too.
+  it('replays the typed value on the second run and keeps replaying it on the third', async () => {
     const second = await todosRun();
     expectPassed(second);
     expectReplayed(onlyActStep(second, 'adds a todo'), 2);

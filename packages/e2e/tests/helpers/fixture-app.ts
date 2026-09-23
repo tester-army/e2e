@@ -268,6 +268,20 @@ line2  </textarea>
   // with the source once something scrolls; the far zone never can. A pointer
   // drag has to scroll for the first and refuse the second, because a pointer can
   // only be put at a coordinate that is on screen.
+  // Rich-text editors: a bare contenteditable host named through
+  // aria-labelledby, and one that also carries the explicit role Playwright's
+  // role selector needs to find it.
+  '/editor': `<!doctype html>
+<html>
+<head><title>Editor</title></head>
+<body>
+  <h1>Editor</h1>
+  <span id="notes-label">Notes</span>
+  <div id="notes" contenteditable aria-labelledby="notes-label" data-testid="notes"><p><br></p></div>
+  <span id="message-label">Message</span>
+  <div id="message" contenteditable role="textbox" aria-labelledby="message-label" data-testid="message"><p><br></p></div>
+</body>
+</html>`,
   '/drag-scroll': `<!doctype html>
 <html>
 <head><title>Drag scroll</title></head>
@@ -855,7 +869,7 @@ function renderTodoForm(todos: readonly string[], added: boolean): string {
 <head><title>Todos</title></head>
 <body>
   <h1>Todos</h1>
-  <form action="/todos" method="get">
+  <form action="/todos-form" method="get">
     <label for="add">New todo</label>
     <input id="add" name="add" />
     <button type="submit">Add</button>
