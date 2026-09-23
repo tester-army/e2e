@@ -207,6 +207,12 @@ const SCENARIOS: readonly Scenario[] = [
     success: 'Payment complete: $8.99',
     platforms: ['ios'],
     maxSteps: 40,
+    // On the CI simulator the Apple Pay sheet completes without its
+    // billing-address step (a fresh simulator has no Wallet state), so the
+    // scenario's own check cannot hold there; a Mac at a desk passes.
+    ...(process.env.CI === 'true'
+      ? { gap: "the CI simulator's Apple Pay sheet skips the billing-address step, so the scenario cannot be completed there" }
+      : {}),
   },
 ];
 
