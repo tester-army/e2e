@@ -8,20 +8,31 @@ here.
 
 ## Layout
 
-- `app/server.mjs` — dependency-free playground app (todos, login/session,
-  forms, wizard, network, dialogs, iframes, downloads). The runner starts and
-  stops it via the web engine's `command` option.
+- `app/server.mjs` — dependency-free playground app. The runner starts and
+  stops it via the web engine's `command` option. The pages live under
+  `app/pages/` by group, each module exporting its routes and its nav
+  entries: `basics` (home, todos, forms, login/session, dashboard, wizard),
+  `interaction` (network, dialogs, board, pointer pad, iframes), `canvas`
+  (four pixels-only surfaces), `downloads` (a file and a long page), and
+  `controls` (control states, scrolling, the browser fixture's page, the
+  speed counter, about). `app/pages/index.mjs` merges them and
+  `app/layout.mjs` renders the nav from that registry.
 - `app/bug-garden.mjs` — a bookshop with planted defects, for `e2e explore`.
 - `dogfood/server.mjs` — an expense-claims app with a test API, for the
   executor dogfoods.
 - `e2e.config.ts` + `tests/` — the local suite, gating every PR: queries,
   actions, polling assertions, sessions (`test.setup` + `session:`), serial
   groups, routes, dialogs, frames, downloads, uploads, keyboard input,
-  credentials and secrets.
+  credentials and secrets, plus one file per surface added since: control
+  states and the failure codes (`controls`), pointer coordinates and path
+  swipes (`pointer`), viewport and node scrolling (`scroll`), the `web`
+  fixture's own verbs (`browser`), and the per-action speed floor (`speed`).
+  `tests/helpers.ts` holds the shared `failure`, `boxOf`, and `centerOf`.
 - `e2e.agent.config.ts` + `tests-agent/` — opt-in agentic suite against the
-  playground: `agent.act` flows, assisted polling, judgments, and
-  schema-validated extraction with zod. `e2e.mixed.config.ts` adds the local
-  suite to it for watching the list reporter interleave the two.
+  playground: `agent.act` flows, assisted polling, judgments,
+  schema-validated extraction with zod, and the pixel tools on the canvas
+  pages. `e2e.mixed.config.ts` adds the local suite to it for watching the
+  list reporter interleave the two.
 - `e2e.dogfood.config.ts` + `tests-dogfood/` — the built-in agent extended
   with project tools (seed and reset over the expense app's test API).
 - `e2e.dogfood-brain.config.ts` + `tests-dogfood-brain/` — a hand-rolled

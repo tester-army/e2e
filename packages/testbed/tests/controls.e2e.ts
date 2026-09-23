@@ -1,23 +1,8 @@
 import { test } from '@e2edev/web';
 import { expect } from 'e2e';
+import { boxOf, failure } from './helpers.ts';
 
-/** The error code a rejected step carried, so a test can assert on it. */
-async function codeOf(step: Promise<unknown>): Promise<string | undefined> {
-  const failure: unknown = await step.then(() => undefined, (error: unknown) => error);
-  return (failure as { code?: string } | undefined)?.code;
-}
-
-/** The error code a synchronous throw carried. */
-function thrownCode(build: () => unknown): string | undefined {
-  try {
-    build();
-    return undefined;
-  } catch (error) {
-    return (error as { code?: string }).code;
-  }
-}
-
-test.describe('controls', { tags: ['controls'] }, () => {
+test.describe('controls', { requires: ['web'], tags: ['controls'] }, () => {
   test.beforeEach(async ({ app }) => {
     await app.open('/controls');
   });
@@ -68,13 +53,14 @@ test.describe('controls', { tags: ['controls'] }, () => {
     expect(await publish.isEnabled()).toBe(false);
     await expect(screen.getByRole('button', { name: 'Publish', disabled: true })).toHaveCount(1);
 
-    await expect(publish).toBeEnabled({ timeout: 5_000 });
+    await screen.getByRole('button', { name: 'Prepare' }).tap();
+    await expect(publish).toBeEnabled();
     await expect.poll(() => publish.isEnabled()).toBe(true);
     expect(await publish.isDisabled()).toBe(false);
     await expect(screen.getByRole('button', { name: 'Publish', disabled: false })).toHaveCount(1);
   });
 
-  test('checked state on a checkbox and a radio group', async ({ screen }) => {
+  test('check and uncheck move checked state, and one radio checks at a time', async ({ screen }) => {
     const agree = screen.getByLabel('Agree to terms');
     expect(await agree.isChecked()).toBe(false);
     await agree.check();
@@ -91,7 +77,7 @@ test.describe('controls', { tags: ['controls'] }, () => {
     expect(await screen.getByRole('radio', { name: 'Large' }).isChecked()).toBe(false);
   });
 
-  test('selected state on listbox options', async ({ screen }) => {
+  test('selecting an option moves selected state onto it', async ({ screen }) => {
     const color = screen.getByLabel('Color');
     await expect(screen.getByRole('option', { name: 'Green' })).toBeSelected();
     await expect(screen.getByRole('option', { name: 'Blue' })).not.toBeSelected();
@@ -129,13 +115,14 @@ test.describe('controls', { tags: ['controls'] }, () => {
     await expect(log).toHaveText('Control+a');
     await keys.press('Alt+Shift+Enter');
     await expect(log).toHaveText('Alt+Shift+Enter');
+    // A lone character is pressed as itself: no modifier is held for it, whatever the layout needs.
     await keys.press('$');
-    await expect(log).toHaveText(/\$$/);
+    await expect(log).toHaveText('$');
     await keys.press('Escape');
     await expect(log).toHaveText('Escape');
   });
 
-  test('attributes, accessible names, classes, and text reads', async ({ screen, web }) => {
+  test('a link reads back its attributes, accessible name, classes, and text', async ({ screen, web }) => {
     const docs = screen.getByRole('link', { name: 'Documentation' });
     await expect(docs).toHaveAttribute('data-kind', 'external');
     await expect(docs).toHaveAttribute('href');
@@ -143,7 +130,6 @@ test.describe('controls', { tags: ['controls'] }, () => {
     await expect(docs).not.toHaveAttribute('hidden');
     await expect(docs).toHaveAccessibleName('Documentation');
     await expect(docs).toHaveText('Docs');
-    await expect.soft(docs).toContainText('Doc');
     await expect(web).toHaveClass(docs, 'link primary');
     await expect(web).toHaveClass(docs, /primary/);
     await expect(web).not.toHaveClass(docs, /secondary/);
@@ -156,7 +142,7 @@ test.describe('controls', { tags: ['controls'] }, () => {
   test('a hidden twin is skipped by a visible query and reached by index', async ({ screen }) => {
     const banner = screen.getByTestId('banner');
     await expect(banner).toHaveCount(2);
-    expect(await codeOf(banner.tap({ timeout: 500 }))).toBe('LOCATOR_AMBIGUOUS');
+    expect(await failure(() => banner.tap({ timeout: 500 }))).toHaveProperty('code', 'LOCATOR_AMBIGUOUS');
 
     await expect(screen.getByTestId('banner', { visible: true })).toHaveCount(1);
     await expect(screen.getByTestId('banner', { visible: true })).toBeVisible();
@@ -169,7 +155,7 @@ test.describe('controls', { tags: ['controls'] }, () => {
     expect(await banner.last().isVisible()).toBe(true);
   });
 
-  test('filter by text and by a nested locator, then index', async ({ screen }) => {
+  test('filters narrow a list by text or a nested match, and nth picks one row', async ({ screen }) => {
     const tickets = screen.getByRole('list', { name: 'Tickets' }).getByRole('listitem');
     await expect(tickets).toHaveCount(3);
     await expect(tickets.filter({ has: screen.getByText('urgent') })).toHaveCount(2);
@@ -183,8 +169,8 @@ test.describe('controls', { tags: ['controls'] }, () => {
     expect(await tickets.allTextContents()).toHaveLength(3);
     expect(await tickets.all()).toHaveLength(3);
 
-    expect(thrownCode(() => tickets.filter({}))).toBe('INVALID_LOCATOR');
-    expect(thrownCode(() => tickets.nth(-1))).toBe('INVALID_LOCATOR');
+    expect(await failure(() => tickets.filter({}))).toHaveProperty('code', 'INVALID_LOCATOR');
+    expect(await failure(() => tickets.nth(-1))).toHaveProperty('code', 'INVALID_LOCATOR');
   });
 
   test('display value queries follow the value', async ({ screen }) => {
@@ -208,13 +194,12 @@ test.describe('controls', { tags: ['controls'] }, () => {
 
     await footnote.scrollIntoView();
     await expect(screen.getByLabel('Footnote state')).toHaveText('in view');
-    const box = await footnote.boundingBox();
-    expect(box).not.toBeNull();
-    expect(box?.y ?? -1).toBeGreaterThanOrEqual(0);
+    expect((await boxOf(footnote)).y).toBeGreaterThanOrEqual(0);
   });
 
   test('a missing locator fails as LOCATOR_NOT_FOUND after its timeout', async ({ screen }) => {
-    expect(await codeOf(screen.getByRole('button', { name: 'Nope' }).tap({ timeout: 500 }))).toBe(
+    expect(await failure(() => screen.getByRole('button', { name: 'Nope' }).tap({ timeout: 500 }))).toHaveProperty(
+      'code',
       'LOCATOR_NOT_FOUND',
     );
     await expect(screen.getByRole('button', { name: 'Nope' })).toHaveCount(0);
