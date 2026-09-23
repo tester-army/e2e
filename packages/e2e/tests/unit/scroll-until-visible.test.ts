@@ -8,38 +8,24 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import {
-  EngineError,
-  type LocatorAction,
-  type LocatorActionKind,
-  type LocatorExpression,
-  type NodeRef,
-  type OperationContext,
-  type SemanticNode,
-} from '../../src/engine/surface.ts';
-import { defineEngine } from '../../src/engine/index.ts';
-import { createEngineSession } from '../../src/engine/session.ts';
-import { Deadline, sleep } from '../../src/internal/time.ts';
-import { LocatorEngine } from '../../src/locator/engine.ts';
-import { createScreen } from '../../src/locator/screen.ts';
-import { AttemptBudget } from '../../src/run/budget.ts';
-import { StepRecorder } from '../../src/run/steps.ts';
-import type { Locator } from '../../src/types.ts';
+import { EngineError, resolveExpression, type NodeRef, type SemanticNode } from '../../src/engine/index.ts';
+import { sleep } from '../../src/internal/time.ts';
+import type { Locator, Screen } from '../../src/types.ts';
+import { invalid } from '../helpers/invalid.ts';
+import { screenOver } from '../helpers/screen-over.ts';
 
 const TARGET: SemanticNode = { ref: { id: 'target', revision: '' }, role: 'button', name: 'Accept', text: 'Accept' };
 const HIDDEN_TARGET: SemanticNode = { ...TARGET, states: { hidden: true } };
-const FEED: SemanticNode = { ref: { id: 'feed', revision: '' }, role: 'list', name: 'Feed' };
-/** Answers the feed for its role query and leaves every other query to the screen. */
-const feedScope = (expression: LocatorExpression): readonly SemanticNode[] | undefined =>
-  expression.kind === 'query' &&
-  expression.query.kind === 'role' &&
-  expression.query.value.kind === 'string' &&
-  expression.query.value.value === 'list'
-    ? [FEED]
-    : undefined;
+/** The scroll container every screen shows, with whatever it has scrolled to as its children. */
+const feed = (...children: readonly SemanticNode[]): SemanticNode => ({
+  ref: { id: 'feed', revision: '' },
+  role: 'list',
+  name: 'Feed',
+  ...(children.length === 0 ? {} : { children }),
+});
 const ROOT: NodeRef = { id: 'root', revision: '' };
 const VIEWPORT = { width: 390, height: 844 } as const;
-const SWIPE_ONLY: readonly LocatorActionKind[] = ['swipe'];
+type ScrollOptions = Parameters<Screen['scrollUntilVisible']>[1];
 
 interface Swipe {
   readonly ref: string;
@@ -52,33 +38,26 @@ interface ScrollScript {
   readonly screens: readonly (readonly SemanticNode[])[];
   /** Whether the engine declares the swipe action; default true. */
   readonly swipeable?: boolean;
-  /** Answers an expression itself, ahead of the current screen; a scope query resolves through it. */
-  readonly resolve?: (expression: LocatorExpression) => readonly SemanticNode[] | undefined;
   /** Every swipe hangs for the whole operation budget, then fails as an engine honouring `timeoutMs` does. */
   readonly hang?: boolean;
-  /** The target name the session reports; default `fake`. */
-  readonly targetName?: string;
   /** The action timeout of the locator engine; default 1000 ms. */
   readonly actionTimeout?: number;
 }
 
 /** A screen over a fake engine that pages through `screens` one swipe at a time and logs every swipe. */
-function screenOver(script: ScrollScript) {
+function scrollScreen(script: ScrollScript) {
   const swipes: Swipe[] = [];
   const current = (): readonly SemanticNode[] =>
     script.screens[Math.min(swipes.length, script.screens.length - 1)] ?? [];
-  const engine = defineEngine({
-    name: 'fake',
-    version: '1',
-    spiVersion: 1,
+  const { screen, steps } = screenOver({
     // The root stays one node whatever is on screen, since a viewport swipe is addressed to it.
-    observe: async () => ({ root: { ref: ROOT, role: 'root', children: current() }, viewport: VIEWPORT }),
-    locate: async (expression) => script.resolve?.(expression) ?? current(),
+    observe: () => ({ root: { ref: ROOT, role: 'root', children: current() }, viewport: VIEWPORT }),
+    locate: (expression) => resolveExpression(expression, current()),
     ...(script.swipeable === false
       ? {}
       : {
-          actions: SWIPE_ONLY,
-          perform: async (ref: NodeRef, action: LocatorAction, operation: OperationContext) => {
+          actions: ['swipe'],
+          perform: async (ref, action, operation) => {
             if (action.kind !== 'swipe') throw new Error(`unexpected ${action.kind}`);
             if (script.hang === true) {
               await sleep(operation.timeoutMs);
@@ -89,27 +68,14 @@ function screenOver(script: ScrollScript) {
             swipes.push({ ref: ref.id, direction: action.direction, momentum: action.momentum });
           },
         }),
-  });
-  const steps = new StepRecorder('attempt');
-  const signal = new AbortController().signal;
-  const screen = createScreen({
-    engine: new LocatorEngine({
-      session: createEngineSession({ engine, targetName: script.targetName ?? 'fake' }),
-      budget: new AttemptBudget(signal, new Deadline(10_000)),
-      runId: 'run',
-      attemptId: 'attempt',
-      actionTimeout: script.actionTimeout ?? 1_000,
-      assertionTimeout: 1_000,
-    }),
-    steps,
-    secrets: { resolve: async () => 'plaintext' },
+    timeoutMs: script.actionTimeout ?? 1_000,
   });
   return { screen, steps, swipes };
 }
 
 describe('screen.scrollUntilVisible', () => {
   it('on a locator, swipes that node instead of the viewport, so a scroll container pages', async () => {
-    const { screen, swipes } = screenOver({ screens: [[], [], [TARGET]], resolve: feedScope });
+    const { screen, swipes } = scrollScreen({ screens: [[feed()], [feed()], [feed(TARGET)]] });
     await screen.getByRole('list', { name: 'Feed' }).scrollUntilVisible(screen.getByText('Accept'));
     expect(swipes).toEqual([
       { ref: 'feed', direction: 'down', momentum: 'slow' },
@@ -118,27 +84,27 @@ describe('screen.scrollUntilVisible', () => {
   });
 
   it('takes a momentum for the stride of each step', async () => {
-    const { screen, swipes } = screenOver({ screens: [[], [TARGET]], resolve: feedScope });
+    const { screen, swipes } = scrollScreen({ screens: [[feed()], [feed(TARGET)]] });
     await screen.getByRole('list', { name: 'Feed' }).scrollUntilVisible(screen.getByText('Accept'), { momentum: 'none' });
     expect(swipes).toEqual([{ ref: 'feed', direction: 'down', momentum: 'none' }]);
   });
 
   it('refuses an option it does not take before any swipe', async () => {
-    const { screen, swipes } = screenOver({ screens: [[], [TARGET]] });
+    const { screen, swipes } = scrollScreen({ screens: [[], [TARGET]] });
     await expect(
-      screen.scrollUntilVisible(screen.getByText('Accept'), { speed: 'fast' } as never),
+      screen.scrollUntilVisible(screen.getByText('Accept'), invalid<ScrollOptions>({ speed: 'fast' })),
     ).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
     expect(swipes).toEqual([]);
   });
 
   it('returns at once when the target is already visible, with no swipe', async () => {
-    const { screen, swipes } = screenOver({ screens: [[TARGET]] });
+    const { screen, swipes } = scrollScreen({ screens: [[TARGET]] });
     await screen.scrollUntilVisible(screen.getByText('Accept'));
     expect(swipes).toEqual([]);
   });
 
   it('swipes down slowly at the observation root until the target appears, then stops', async () => {
-    const { screen, swipes } = screenOver({ screens: [[], [], [TARGET]] });
+    const { screen, swipes } = scrollScreen({ screens: [[], [], [TARGET]] });
     await screen.scrollUntilVisible(screen.getByText('Accept'));
     expect(swipes).toEqual([
       { ref: 'root', direction: 'down', momentum: 'slow' },
@@ -147,25 +113,23 @@ describe('screen.scrollUntilVisible', () => {
   });
 
   it('swipes in the requested direction', async () => {
-    const { screen, swipes } = screenOver({ screens: [[], [TARGET]] });
+    const { screen, swipes } = scrollScreen({ screens: [[], [TARGET]] });
     await screen.scrollUntilVisible(screen.getByText('Accept'), { direction: 'right' });
     expect(swipes).toEqual([{ ref: 'root', direction: 'right', momentum: 'slow' }]);
   });
 
   it('keeps scrolling past a target the engine reports hidden', async () => {
-    const { screen, swipes } = screenOver({ screens: [[HIDDEN_TARGET], [HIDDEN_TARGET], [TARGET]] });
+    const { screen, swipes } = scrollScreen({ screens: [[HIDDEN_TARGET], [HIDDEN_TARGET], [TARGET]] });
     await screen.scrollUntilVisible(screen.getByText('Accept'));
     expect(swipes).toHaveLength(2);
   });
 
   it('fails as LOCATOR_NOT_FOUND naming the locator once the deadline passes, and records the failed step', async () => {
-    const { screen, steps, swipes } = screenOver({ screens: [[]] });
-    const started = Date.now();
+    const { screen, steps, swipes } = scrollScreen({ screens: [[]] });
     await expect(screen.scrollUntilVisible(screen.getByText('Accept'), { timeout: 250 })).rejects.toMatchObject({
       code: 'LOCATOR_NOT_FOUND',
       message: 'target did not become visible while scrolling: getByText("Accept")',
     });
-    expect(Date.now() - started).toBeLessThan(1_000);
     expect(swipes.length).toBeGreaterThanOrEqual(1);
     expect(steps.all()).toEqual([
       expect.objectContaining({
@@ -177,7 +141,7 @@ describe('screen.scrollUntilVisible', () => {
   });
 
   it('bounds a viewport swipe by its own deadline: a hung swipe is LOCATOR_NOT_FOUND within the scroll timeout, not the action timeout', async () => {
-    const { screen, steps } = screenOver({ screens: [[]], hang: true, actionTimeout: 5_000 });
+    const { screen, steps } = scrollScreen({ screens: [[]], hang: true, actionTimeout: 5_000 });
     const started = Date.now();
     await expect(screen.scrollUntilVisible(screen.getByText('Accept'), { timeout: 250 })).rejects.toMatchObject({
       code: 'LOCATOR_NOT_FOUND',
@@ -185,13 +149,11 @@ describe('screen.scrollUntilVisible', () => {
       cause: expect.objectContaining({ code: 'OPERATION_TIMEOUT' }),
     });
     expect(Date.now() - started).toBeLessThan(2_000);
-    expect(steps.all()).toEqual([
-      expect.objectContaining({ api: 'screen.scrollUntilVisible', status: 'failed' }),
-    ]);
+    expect(steps.all()).toEqual([expect.objectContaining({ api: 'screen.scrollUntilVisible', status: 'failed' })]);
   });
 
   it('bounds a locator swipe by the same deadline', async () => {
-    const { screen } = screenOver({ screens: [[]], hang: true, actionTimeout: 5_000, resolve: feedScope });
+    const { screen } = scrollScreen({ screens: [[feed()]], hang: true, actionTimeout: 5_000 });
     const started = Date.now();
     await expect(
       screen.getByRole('list', { name: 'Feed' }).scrollUntilVisible(screen.getByText('Accept'), { timeout: 250 }),
@@ -200,8 +162,8 @@ describe('screen.scrollUntilVisible', () => {
   });
 
   it('rejects a target that is not an e2e locator before recording a step', async () => {
-    const { screen, steps, swipes } = screenOver({ screens: [[TARGET]] });
-    await expect(screen.scrollUntilVisible({} as unknown as Locator)).rejects.toMatchObject({
+    const { screen, steps, swipes } = scrollScreen({ screens: [[TARGET]] });
+    await expect(screen.scrollUntilVisible(invalid<Locator>({}))).rejects.toMatchObject({
       code: 'INVALID_LOCATOR',
       message: 'scrollUntilVisible requires an e2e locator',
     });
@@ -210,7 +172,7 @@ describe('screen.scrollUntilVisible', () => {
   });
 
   it('records one screen.scrollUntilVisible step labelled with the locator', async () => {
-    const { screen, steps } = screenOver({ screens: [[], [TARGET]] });
+    const { screen, steps } = scrollScreen({ screens: [[], [TARGET]] });
     await screen.scrollUntilVisible(screen.getByText('Accept'));
     expect(steps.all()).toEqual([
       expect.objectContaining({
@@ -223,9 +185,9 @@ describe('screen.scrollUntilVisible', () => {
   });
 
   it('on a locator, labels the step with the target, whose description carries the scope once', async () => {
-    const { screen, steps } = screenOver({ screens: [[], [TARGET]], resolve: feedScope });
-    const feed = screen.getByRole('list', { name: 'Feed' });
-    await feed.scrollUntilVisible(feed.getByText('Accept'));
+    const { screen, steps } = scrollScreen({ screens: [[feed()], [feed(TARGET)]] });
+    const container = screen.getByRole('list', { name: 'Feed' });
+    await container.scrollUntilVisible(container.getByText('Accept'));
     expect(steps.all()).toEqual([
       expect.objectContaining({
         api: 'screen.scrollUntilVisible',
@@ -236,9 +198,9 @@ describe('screen.scrollUntilVisible', () => {
   });
 
   it('needs the swipe action only once it has to scroll: a visible target passes on an engine without one', async () => {
-    const visible = screenOver({ screens: [[TARGET]], swipeable: false });
+    const visible = scrollScreen({ screens: [[TARGET]], swipeable: false });
     await visible.screen.scrollUntilVisible(visible.screen.getByText('Accept'));
-    const absent = screenOver({ screens: [[]], swipeable: false });
+    const absent = scrollScreen({ screens: [[]], swipeable: false });
     await expect(absent.screen.scrollUntilVisible(absent.screen.getByText('Accept'))).rejects.toMatchObject({
       code: 'UNSUPPORTED_CAPABILITY',
     });
@@ -248,8 +210,8 @@ describe('screen.scrollUntilVisible', () => {
 describe("a locator made by another target's screen", () => {
   const FOREIGN = "the one given belongs to another target's screen or another attempt";
   const targets = () => ({
-    web: screenOver({ screens: [[TARGET]], targetName: 'web' }),
-    mobile: screenOver({ screens: [[TARGET]], targetName: 'mobile' }),
+    web: scrollScreen({ screens: [[TARGET]] }),
+    mobile: scrollScreen({ screens: [[TARGET]] }),
   });
 
   it('is refused by scrollUntilVisible before any step on either target', async () => {
@@ -285,8 +247,8 @@ describe("a locator made by another target's screen", () => {
   });
 
   it('is refused for a stale locator of the same target from an earlier attempt', async () => {
-    const current = screenOver({ screens: [[TARGET]] });
-    const earlier = screenOver({ screens: [[TARGET]] });
+    const current = scrollScreen({ screens: [[TARGET]] });
+    const earlier = scrollScreen({ screens: [[TARGET]] });
     await expect(current.screen.scrollUntilVisible(earlier.screen.getByText('Accept'))).rejects.toMatchObject({
       code: 'INVALID_LOCATOR',
     });

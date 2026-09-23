@@ -5,31 +5,23 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { defineEngine, LOCATOR_ACTION_KINDS, type LocatorActionKind } from '../../src/engine/index.ts';
-import { createEngineSession } from '../../src/engine/session.ts';
+import { LOCATOR_ACTION_KINDS, type LocatorActionKind } from '../../src/engine/index.ts';
 import { resolveConfig } from '../../src/config/resolve.ts';
 import { secrets, setSecretRegistry } from '../../src/secrets.ts';
-import { Deadline } from '../../src/internal/time.ts';
-import { LocatorEngine } from '../../src/locator/engine.ts';
-import { createScreen } from '../../src/locator/screen.ts';
-import { AttemptBudget } from '../../src/run/budget.ts';
-import { StepRecorder } from '../../src/run/steps.ts';
+import { screenOver } from '../helpers/screen-over.ts';
 import { snapshot } from '../helpers/snapshot.ts';
 
 const FIELD = { ref: { id: 'city', revision: '' }, role: 'textbox' as const, name: 'City' };
 
 /** A screen over an in-memory engine that logs every action and keystroke it receives. */
-function screenOver(shape: { keyboard?: boolean; actions?: readonly LocatorActionKind[] } = {}) {
+function fieldScreen(shape: { keyboard?: boolean; actions?: readonly LocatorActionKind[] } = {}) {
   const log: string[] = [];
   const locate = vi.fn(async () => [FIELD]);
-  const engine = defineEngine({
-    name: 'fake',
-    version: '1',
-    spiVersion: 1,
-    observe: async () => snapshot([FIELD]),
+  const { screen, steps } = screenOver({
     locate,
-    actions: shape.actions ?? LOCATOR_ACTION_KINDS,
-    perform: async (ref, action) => {
+    observe: () => snapshot([FIELD]),
+    ...(shape.actions === undefined ? {} : { actions: shape.actions }),
+    perform: (ref, action) => {
       log.push(`${action.kind}:${ref.id}`);
     },
     ...(shape.keyboard === false
@@ -44,28 +36,14 @@ function screenOver(shape: { keyboard?: boolean; actions?: readonly LocatorActio
             },
           },
         }),
-  });
-  const steps = new StepRecorder('attempt');
-  const signal = new AbortController().signal;
-  const locatorEngine = new LocatorEngine({
-    session: createEngineSession({ engine, targetName: 'fake' }),
-    budget: new AttemptBudget(signal, new Deadline(10_000)),
-    runId: 'run',
-    attemptId: 'attempt',
-    actionTimeout: 2_000,
-    assertionTimeout: 2_000,
-  });
-  const screen = createScreen({
-    engine: locatorEngine,
-    steps,
-    secrets: { resolve: async () => 'plaintext' },
+    timeoutMs: 2_000,
   });
   return { screen, steps, log, locate };
 }
 
 describe('locator.pressSequentially', () => {
   it('focuses the one matching node, then types the whole text in one keyboard call', async () => {
-    const { screen, steps, log } = screenOver();
+    const { screen, steps, log } = fieldScreen();
     await screen.getByLabel('City').pressSequentially('Warsaw');
     expect(log).toEqual(['focus:city', 'type:Warsaw']);
     expect(steps.all()).toEqual([
@@ -74,7 +52,7 @@ describe('locator.pressSequentially', () => {
   });
 
   it('with a delay, types one character per call and waits between them', async () => {
-    const { screen, log } = screenOver();
+    const { screen, log } = fieldScreen();
     const started = Date.now();
     await screen.getByLabel('City').pressSequentially('Wa', { delay: 60 });
     expect(log).toEqual(['focus:city', 'type:W', 'type:a']);
@@ -82,7 +60,7 @@ describe('locator.pressSequentially', () => {
   });
 
   it('cuts a pause at the action deadline and sends no character past it', async () => {
-    const { screen, log } = screenOver();
+    const { screen, log } = fieldScreen();
     const started = Date.now();
     await expect(screen.getByLabel('City').pressSequentially('ab', { delay: 1000, timeout: 100 })).rejects.toMatchObject({
       code: 'ACTION_FAILED',
@@ -94,19 +72,19 @@ describe('locator.pressSequentially', () => {
   });
 
   it('splits by code point, so a surrogate pair is one keystroke', async () => {
-    const { screen, log } = screenOver();
+    const { screen, log } = fieldScreen();
     await screen.getByLabel('City').pressSequentially('a\u{1F600}', { delay: 0 });
     expect(log).toEqual(['focus:city', 'type:a', 'type:\u{1F600}']);
   });
 
   it('types nothing for an empty text but still focuses the field', async () => {
-    const { screen, log } = screenOver();
+    const { screen, log } = fieldScreen();
     await screen.getByLabel('City').pressSequentially('');
     expect(log).toEqual(['focus:city']);
   });
 
   it('refuses a target whose engine has no keyboard before resolving any node', async () => {
-    const { screen, locate, log } = screenOver({ keyboard: false });
+    const { screen, locate, log } = fieldScreen({ keyboard: false });
     await expect(screen.getByLabel('City').pressSequentially('W')).rejects.toMatchObject({
       code: 'UNSUPPORTED_CAPABILITY',
       message: expect.stringContaining('no keyboard'),
@@ -116,7 +94,7 @@ describe('locator.pressSequentially', () => {
   });
 
   it('refuses a target whose engine does not declare the focus action', async () => {
-    const { screen, locate } = screenOver({ actions: LOCATOR_ACTION_KINDS.filter((kind) => kind !== 'focus') });
+    const { screen, locate } = fieldScreen({ actions: LOCATOR_ACTION_KINDS.filter((kind) => kind !== 'focus') });
     await expect(screen.getByLabel('City').pressSequentially('W')).rejects.toMatchObject({
       code: 'UNSUPPORTED_CAPABILITY',
       message: expect.stringContaining('"focus" action'),
@@ -125,7 +103,7 @@ describe('locator.pressSequentially', () => {
   });
 
   it('refuses a Secret with INVALID_ARGUMENT and points at fill, without touching the engine', async () => {
-    const { screen, locate, log, steps } = screenOver();
+    const { screen, locate, log, steps } = fieldScreen();
     const config = resolveConfig(
       { targets: [{ name: 'fake', platform: 'custom' }], secrets: { key: 'sk_live_2718' } },
       { projectRoot: process.cwd(), env: {} },
@@ -145,7 +123,7 @@ describe('locator.pressSequentially', () => {
   });
 
   it('rejects a non-string text and a malformed delay as INVALID_ARGUMENT', () => {
-    const { screen } = screenOver();
+    const { screen } = fieldScreen();
     const city = screen.getByLabel('City');
     expect(() => city.pressSequentially(42 as unknown as string)).toThrow(expect.objectContaining({ code: 'INVALID_ARGUMENT' }));
     expect(() => city.pressSequentially('W', { delay: -1 })).toThrow(expect.objectContaining({ code: 'INVALID_ARGUMENT' }));

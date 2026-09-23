@@ -100,6 +100,12 @@ describe('e2e cache ls', () => {
     expect(written(stdoutSpy).trimEnd().split('\n')[1]).toMatch(/^- +- +- +<1m +2$/);
   });
 
+  it('marks a recording the action cap cut short', async () => {
+    await seed([{ keyHash: 'b'.repeat(64), trace: { ...trace(undefined, 2), truncated: true } }]);
+    await invoke('cache', 'ls');
+    expect(written(stdoutSpy).trimEnd().split('\n')[1]).toMatch(/ 2 \(truncated\)$/);
+  });
+
   it('reports an empty store instead of failing', async () => {
     await invoke('cache', 'ls');
     expect(written(stdoutSpy)).toContain('no trace cache entries in');

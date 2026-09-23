@@ -1,7 +1,10 @@
 /**
- * Instrumented in-memory engine for runner<->engine contract tests. Runtime
- * classes come from the built package so `instanceof` checks inside the built
- * runner (used by run-project.ts) see the same identities.
+ * Instrumented in-memory engine for runner<->engine tests. It records the
+ * lifecycle, state, artifacts, video, and contributed-fixture calls the
+ * contract suite reads. Over a `scene` it is the scripted screen the
+ * deterministic-tier suites drive through the real runner. Runtime classes
+ * come from the built package (engine-runtime.ts) so `instanceof` checks
+ * inside the built runner see the same identities.
  */
 
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -13,23 +16,25 @@ import type {
   EngineInitInfo,
   EngineState,
   LocatorAction,
+  LocatorActionKind,
   LocatorExpression,
   NodeRef,
   OperationContext,
+  PointerAction,
+  PointerActionKind,
   SemanticNode,
+  ViewportPoint,
 } from '../../src/engine/index.ts';
-
-const builtEngineModule = '../../dist/engine/index.js';
+import { defineEngine, ENGINE_SPI_VERSION, LOCATOR_ACTION_KINDS } from './engine-runtime.ts';
+import { createScene, type Scene, type ScriptedNode, type Stage } from './scripted-scene.ts';
 
 /** The EBML magic every WebM file starts with, followed by nothing worth decoding. */
 const FAKE_WEBM = Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x00, 0x00, 0x00, 0x00]);
 /** The PNG signature, followed by nothing worth decoding. */
 const FAKE_PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-const { defineEngine, EngineError, ENGINE_SPI_VERSION, LOCATOR_ACTION_KINDS } = (await import(
-  builtEngineModule
-)) as typeof import('../../src/engine/index.ts');
+const FAKE_VIEWPORT = { width: 1280, height: 720 } as const;
 
-
+/** One engine call with the operation context it arrived with. */
 export interface RecordedOperation {
   readonly method: string;
   readonly attemptIndex: number;
@@ -38,6 +43,39 @@ export interface RecordedOperation {
   readonly timeoutMs: number;
   readonly abortedAtCall: boolean;
 }
+
+export interface RecordedPerform {
+  readonly kind: 'perform';
+  readonly attemptId: string;
+  readonly id: string;
+  readonly action: LocatorAction;
+}
+
+export interface RecordedPointerAction {
+  readonly kind: 'performAt';
+  readonly attemptId: string;
+  readonly point: ViewportPoint;
+  readonly action: PointerAction;
+}
+
+export interface RecordedKey {
+  readonly kind: 'keyboard';
+  readonly attemptId: string;
+  readonly method: 'type' | 'press';
+  /** The text typed, or the key pressed. */
+  readonly text: string;
+  readonly replace?: boolean;
+}
+
+export interface RecordedSessionCall {
+  readonly kind: 'session';
+  readonly attemptId: string;
+  readonly method: 'open' | 'back' | 'restart' | 'reset';
+  readonly url?: string;
+}
+
+/** What the test's actions asked the engine to do, with their payloads. */
+export type RecordedCall = RecordedPerform | RecordedPointerAction | RecordedKey | RecordedSessionCall;
 
 export interface FakeEngineBehavior {
   /** Throw to fail worker boot. Called before any attempt. */
@@ -50,23 +88,39 @@ export interface FakeEngineBehavior {
   onDispose?(): void | Promise<void>;
   /** Throw to fail navigation (app.open); backs `session.open`. */
   onNavigate?(url: string, attemptIndex: number): void | Promise<void>;
-  /** Overrides locate; default resolves one stable node. */
+  /** Overrides locate; default resolves one stable node, or the scene. */
   locate?(
     expression: LocatorExpression,
     operation: OperationContext,
     attemptIndex: number,
   ): readonly SemanticNode[] | Promise<readonly SemanticNode[]>;
-  /** Overrides perform; default succeeds. */
+  /** Runs on every perform, after the scene's own semantics; throw to fail it. */
   perform?(
     ref: NodeRef,
     action: LocatorAction,
     operation: OperationContext,
     attemptIndex: number,
   ): void | Promise<void>;
-  /** Throw to fail observe; default returns one stable observation. */
+  /** Throw to fail observe; default returns one stable observation, or the scene. */
   observe?(operation: OperationContext, attemptIndex: number): void | Promise<void>;
-  /** Overrides the observed tree; default is one Submit button. */
+  /** Overrides the observed tree; default is one Submit button. A scene replaces it. */
   tree?: SemanticNode;
+  /**
+   * A scripted screen, built once per attempt with a stage for timed
+   * mutations: `observe` reports it, `locate` resolves over it with the
+   * contract's `resolveExpression`, `perform` applies each action's in-memory
+   * semantics and the node's own hooks, the keyboard edits the focused
+   * field, and `perform(root, swipe)` reveals what `appearsAfterSwipes` hides.
+   */
+  scene?(stage: Stage): ScriptedNode[];
+  /** Action kinds `perform` honors; default every kind but `swipe`, so the scroll verb and `screen.swipe()` stay absent unless declared. */
+  actions?: readonly LocatorActionKind[];
+  /** Declares `performAt` for these pointer kinds; every call is a `performAt` record. */
+  pointerActions?: readonly PointerActionKind[];
+  /** Declares a keyboard; every call is a `keyboard` record. */
+  keyboard?: boolean;
+  /** Declares `session.back`, `restart`, and `reset` beside `open`; with a scene, the last two close the app. */
+  navigation?: boolean;
   /** Declares the state capability. */
   state?: boolean;
   /** Declares the artifacts capability (screenshot only). */
@@ -77,8 +131,6 @@ export interface FakeEngineBehavior {
    * segment began.
    */
   video?: boolean;
-  /** Declares the `swipe` action kind, unlocking the agent's scroll verb and `screen.swipe()`. */
-  swipe?: boolean;
   /** Throw to fail state restore after startAttempt succeeded. */
   onRestore?(state: EngineState): void | Promise<void>;
   /** Contributes a `gadget` fixture exercising every fixture-context facility. */
@@ -89,17 +141,22 @@ export interface FakeEngineBehavior {
 
 /** The app URL the fake serves and declares by default. */
 export const FAKE_APP_URL = 'http://127.0.0.1:4599';
+
 export interface FakeEngineHandle {
   readonly engine: EngineHandle;
   /** Ordered event names, e.g. 'init', 'startAttempt:0', 'endAttempt:0', 'dispose'. */
   readonly events: string[];
   readonly inits: EngineInitInfo[];
   readonly attempts: EngineAttemptContext[];
+  /** Every engine call in order, with the operation context it carried. */
   readonly operations: RecordedOperation[];
   readonly capturedStates: EngineState[];
   readonly restoredStates: EngineState[];
   /** Calls the contributed `gadget` fixture received, in order. */
   readonly fixtureCalls: string[];
+  /** Every recorded call of one attempt in order, or only those of one kind. */
+  callsOf(attemptId: string): RecordedCall[];
+  callsOf<K extends RecordedCall['kind']>(attemptId: string, kind: K): Extract<RecordedCall, { kind: K }>[];
   stats(): {
     inits: number;
     attemptsStarted: number;
@@ -122,9 +179,11 @@ export function createFakeEngine(behavior: FakeEngineBehavior = {}): FakeEngineH
   const inits: EngineInitInfo[] = [];
   const attempts: EngineAttemptContext[] = [];
   const operations: RecordedOperation[] = [];
+  const calls: RecordedCall[] = [];
   const capturedStates: EngineState[] = [];
   const restoredStates: EngineState[] = [];
   const fixtureCalls: string[] = [];
+  const scenes = new Map<string, Scene>();
   let openAttempts = 0;
   let attemptsStarted = 0;
   let attemptsEnded = 0;
@@ -143,7 +202,22 @@ export function createFakeEngine(behavior: FakeEngineBehavior = {}): FakeEngineH
     });
   }
 
+  function callsOf(attemptId: string): RecordedCall[];
+  function callsOf<K extends RecordedCall['kind']>(attemptId: string, kind: K): Extract<RecordedCall, { kind: K }>[];
+  function callsOf(attemptId: string, kind?: RecordedCall['kind']): RecordedCall[] {
+    return calls.filter((call) => call.attemptId === attemptId && (kind === undefined || call.kind === kind));
+  }
+
+  /** The scene of the attempt an operation belongs to; absent without a `scene`, and never absent with one. */
+  const sceneOf = (operation: OperationContext): Scene | undefined => {
+    if (behavior.scene === undefined) return undefined;
+    const scene = scenes.get(operation.attemptId);
+    if (scene === undefined) throw new Error(`no attempt ${operation.attemptId} is open`);
+    return scene;
+  };
+
   const tree = behavior.tree ?? FAKE_NODE;
+  const location = `${FAKE_APP_URL}/`;
   let videoStartedAt: string | undefined;
 
   const engine = defineEngine({
@@ -163,6 +237,7 @@ export function createFakeEngine(behavior: FakeEngineBehavior = {}): FakeEngineH
       maxConcurrentAttempts = Math.max(maxConcurrentAttempts, openAttempts);
       events.push(`startAttempt:${index}`);
       attempts.push(context);
+      if (behavior.scene !== undefined) scenes.set(context.attemptId, createScene(behavior.scene, location));
       await behavior.onStartAttempt?.(context, index);
     },
     async endAttempt() {
@@ -170,6 +245,11 @@ export function createFakeEngine(behavior: FakeEngineBehavior = {}): FakeEngineH
       openAttempts -= 1;
       attemptsEnded += 1;
       events.push(`endAttempt:${index}`);
+      const attemptId = attempts[index]?.attemptId;
+      if (attemptId !== undefined) {
+        scenes.get(attemptId)?.dispose();
+        scenes.delete(attemptId);
+      }
       await behavior.onEndAttempt?.(index);
     },
     async dispose() {
@@ -180,25 +260,77 @@ export function createFakeEngine(behavior: FakeEngineBehavior = {}): FakeEngineH
     async observe(operation) {
       record('observe', operation);
       await behavior.observe?.(operation, current);
-      return { location: `${FAKE_APP_URL}/`, root: tree, viewport: { width: 1280, height: 720 } };
+      const scene = sceneOf(operation);
+      return {
+        location: scene?.location ?? location,
+        root: scene?.root() ?? tree,
+        viewport: FAKE_VIEWPORT,
+      };
     },
-    actions: LOCATOR_ACTION_KINDS.filter((kind) => kind !== 'swipe' || behavior.swipe === true),
+    actions: behavior.actions ?? LOCATOR_ACTION_KINDS.filter((kind) => kind !== 'swipe'),
     app: behavior.app ?? { url: FAKE_APP_URL },
     session: {
       async open(url, operation) {
         record(`session.open(${url})`, operation);
+        calls.push({ kind: 'session', attemptId: operation.attemptId, method: 'open', url });
+        sceneOf(operation)?.open(url);
         await behavior.onNavigate?.(url, current);
       },
+      ...(behavior.navigation === true
+        ? {
+            async back(operation) {
+              record('session.back', operation);
+              calls.push({ kind: 'session', attemptId: operation.attemptId, method: 'back' });
+            },
+            async restart(operation) {
+              record('session.restart', operation);
+              calls.push({ kind: 'session', attemptId: operation.attemptId, method: 'restart' });
+              sceneOf(operation)?.close();
+            },
+            async reset(operation) {
+              record('session.reset', operation);
+              calls.push({ kind: 'session', attemptId: operation.attemptId, method: 'reset' });
+              sceneOf(operation)?.close();
+            },
+          }
+        : {}),
     },
     async locate(expression, operation) {
       record('locate', operation);
       if (behavior.locate !== undefined) return behavior.locate(expression, operation, current);
-      return [FAKE_NODE];
+      return sceneOf(operation)?.locate(expression) ?? [FAKE_NODE];
     },
     async perform(ref, action, operation) {
       record(`perform(${ref.id},${action.kind})`, operation);
+      calls.push({ kind: 'perform', attemptId: operation.attemptId, id: ref.id, action });
+      sceneOf(operation)?.perform(ref.id, action);
       await behavior.perform?.(ref, action, operation, current);
     },
+    ...(behavior.pointerActions === undefined
+      ? {}
+      : {
+          pointerActions: behavior.pointerActions,
+          async performAt(point: ViewportPoint, action: PointerAction, operation: OperationContext) {
+            record('performAt', operation);
+            calls.push({ kind: 'performAt', attemptId: operation.attemptId, point, action });
+          },
+        }),
+    ...(behavior.keyboard === true
+      ? {
+          keyboard: {
+            async type(text: string, options: { readonly replace: boolean }, operation: OperationContext) {
+              record('keyboard.type', operation);
+              calls.push({ kind: 'keyboard', attemptId: operation.attemptId, method: 'type', text, replace: options.replace });
+              sceneOf(operation)?.type(text, options.replace);
+            },
+            async press(key: string, operation: OperationContext) {
+              record('keyboard.press', operation);
+              calls.push({ kind: 'keyboard', attemptId: operation.attemptId, method: 'press', text: key });
+              sceneOf(operation)?.press(key);
+            },
+          },
+        }
+      : {}),
     ...(behavior.state === true
       ? {
           state: {
@@ -316,6 +448,7 @@ export function createFakeEngine(behavior: FakeEngineBehavior = {}): FakeEngineH
     capturedStates,
     restoredStates,
     fixtureCalls,
+    callsOf,
     stats: () => ({
       inits: inits.length,
       attemptsStarted,
@@ -324,13 +457,4 @@ export function createFakeEngine(behavior: FakeEngineBehavior = {}): FakeEngineH
       maxConcurrentAttempts,
     }),
   };
-}
-
-/** A thrown `EngineError` from the built package, for behaviors that fail on purpose. */
-export function engineFailure(
-  code: ConstructorParameters<typeof EngineError>[0],
-  message: string,
-  retryable = false,
-): InstanceType<typeof EngineError> {
-  return new EngineError(code, message, { retryable });
 }

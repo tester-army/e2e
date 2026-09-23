@@ -9,28 +9,15 @@ import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import {
-  engineFailure,
-  createFakeEngine,
-  FAKE_APP_URL,
-  type FakeEngineHandle,
-} from '../helpers/fake-engine.ts';
+import { engineFailure } from '../helpers/engine-runtime.ts';
+import { createFakeEngine, FAKE_APP_URL, type FakeEngineHandle } from '../helpers/fake-engine.ts';
+import { engineConfig } from '../helpers/fixture-config.ts';
 import { installFakeModel, judgment } from '../helpers/fake-model.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { resultByTitle, runProject } from '../helpers/run-project.ts';
 import type { E2EConfig } from '../../src/index.ts';
 
 const APP_URL = FAKE_APP_URL;
-
-/** A config over the fake engine; the app URL is the engine's own declaration. */
-function fakeConfig(fake: FakeEngineHandle, extra: Partial<E2EConfig> = {}): E2EConfig {
-  return {
-    specVersion: '0.1',
-    targets: [{ name: 'fake', platform: 'web', engine: fake.engine }],
-    artifacts: [],
-    ...extra,
-  } as E2EConfig;
-}
 
 const PASSING_TEST = `import { test } from 'e2e';
 
@@ -63,7 +50,7 @@ describe('runner <-> engine contract', () => {
       const fake = createFakeEngine();
       const { outcome, project } = await runProject(
         { 'tests/contract.e2e.ts': PASSING_TEST },
-        { appUrl: APP_URL, config: fakeConfig(fake) },
+        { appUrl: APP_URL, config: engineConfig(fake.engine) },
       );
       expect(resultByTitle(outcome, 'taps a node').status).toBe('passed');
       expect(fake.inits).toHaveLength(1);
@@ -109,7 +96,7 @@ test('third test', async ({ app }) => {
       };
       const { outcome, project } = await runProject(files, {
         appUrl: APP_URL,
-        config: fakeConfig(fake),
+        config: engineConfig(fake.engine),
       });
       expect(outcome.exitCode).toBe(0);
       const stats = fake.stats();
@@ -143,7 +130,7 @@ test('third test', async ({ app }) => {
       });
       const { outcome, project } = await runProject(
         { 'tests/init-fails.e2e.ts': PASSING_TEST },
-        { appUrl: APP_URL, config: fakeConfig(fake) },
+        { appUrl: APP_URL, config: engineConfig(fake.engine) },
       );
       expect(outcome.exitCode).toBe(3);
       expect(fake.stats().attemptsStarted).toBe(0);
@@ -162,7 +149,7 @@ test('third test', async ({ app }) => {
       const fake = createFakeEngine();
       const { outcome, project } = await runProject(
         { 'tests/ops.e2e.ts': PASSING_TEST },
-        { appUrl: APP_URL, config: fakeConfig(fake) },
+        { appUrl: APP_URL, config: engineConfig(fake.engine) },
       );
       expect(outcome.exitCode).toBe(0);
       expect(fake.operations.length).toBeGreaterThan(2);
@@ -200,7 +187,7 @@ test('flaky against engine', { retries: 1 }, async ({ app }) => {
       process.env['ENGINE_CONTRACT_MARKER'] = marker;
       const { outcome, project } = await runProject(
         { 'tests/retry.e2e.ts': file },
-        { appUrl: APP_URL, config: fakeConfig(fake) },
+        { appUrl: APP_URL, config: engineConfig(fake.engine) },
       );
       delete process.env['ENGINE_CONTRACT_MARKER'];
       rmSync(marker, { force: true });
@@ -232,7 +219,7 @@ test('flaky against engine', { retries: 1 }, async ({ app }) => {
       );
       const { outcome, project } = await runProject(
         { 'tests/launch-fail.e2e.ts': file },
-        { appUrl: APP_URL, config: fakeConfig(fake) },
+        { appUrl: APP_URL, config: engineConfig(fake.engine) },
       );
       const result = resultByTitle(outcome, 'taps a node');
       expect(result.status).toBe('failed');
@@ -262,7 +249,7 @@ test('flaky against engine', { retries: 1 }, async ({ app }) => {
       });
       const { outcome, project } = await runProject(
         { 'tests/open-fail.e2e.ts': PASSING_TEST },
-        { appUrl: APP_URL, config: fakeConfig(failure) },
+        { appUrl: APP_URL, config: engineConfig(failure.engine) },
       );
       const result = resultByTitle(outcome, 'taps a node');
       expect(result.status).toBe('failed');
@@ -279,7 +266,7 @@ test('flaky against engine', { retries: 1 }, async ({ app }) => {
       });
       const second = await runProject(
         { 'tests/open-unsupported.e2e.ts': PASSING_TEST },
-        { appUrl: APP_URL, config: fakeConfig(unsupported) },
+        { appUrl: APP_URL, config: engineConfig(unsupported.engine) },
       );
       const secondResult = resultByTitle(second.outcome, 'taps a node');
       expect(secondResult.attempts[0]!.error?.category).toBe('configuration');
@@ -300,7 +287,7 @@ test('flaky against engine', { retries: 1 }, async ({ app }) => {
       });
       const { outcome, project } = await runProject(
         { 'tests/open-refused.e2e.ts': PASSING_TEST },
-        { appUrl: APP_URL, config: fakeConfig(refused) },
+        { appUrl: APP_URL, config: engineConfig(refused.engine) },
       );
       const result = resultByTitle(outcome, 'taps a node');
       expect(result.status).toBe('failed');
@@ -325,7 +312,7 @@ test('flaky against engine', { retries: 1 }, async ({ app }) => {
       });
       const { outcome, project } = await runProject(
         { 'tests/launch-hang.e2e.ts': PASSING_TEST },
-        { appUrl: APP_URL, config: fakeConfig(fake, { launchTimeout: 1_000 }) },
+        { appUrl: APP_URL, config: engineConfig(fake.engine, { launchTimeout: 1_000 }) },
       );
       const result = resultByTitle(outcome, 'taps a node');
       expect(result.status).toBe('failed');
@@ -350,7 +337,7 @@ test('flaky against engine', { retries: 1 }, async ({ app }) => {
       });
       const { outcome, project } = await runProject(
         { 'tests/close-fail.e2e.ts': PASSING_TEST },
-        { appUrl: APP_URL, config: fakeConfig(fake) },
+        { appUrl: APP_URL, config: engineConfig(fake.engine) },
       );
       const result = resultByTitle(outcome, 'taps a node');
       expect(result.status).toBe('passed');
@@ -373,7 +360,7 @@ test('flaky against engine', { retries: 1 }, async ({ app }) => {
       });
       const { outcome, project } = await runProject(
         { 'tests/dispose-fail.e2e.ts': PASSING_TEST },
-        { appUrl: APP_URL, config: fakeConfig(fake) },
+        { appUrl: APP_URL, config: engineConfig(fake.engine) },
       );
       expect(resultByTitle(outcome, 'taps a node').status).toBe('passed');
       // Disposal happens after the last unit reported, so its error rides the
@@ -398,7 +385,7 @@ test('flaky against engine', { retries: 1 }, async ({ app }) => {
         { 'tests/two-targets.e2e.ts': PASSING_TEST },
         {
           appUrl: APP_URL,
-          config: fakeConfig(fake, {
+          config: engineConfig(fake.engine, {
             targets: [
               { name: 'first', platform: 'web', engine: fake.engine },
               { name: 'second', platform: 'web', engine: fake.engine },
@@ -429,7 +416,7 @@ test('needs web', async ({ app, web }) => {
 `;
       const { outcome, project } = await runProject(
         { 'tests/no-web.e2e.ts': file },
-        { appUrl: APP_URL, config: fakeConfig(fake) },
+        { appUrl: APP_URL, config: engineConfig(fake.engine) },
       );
       const result = resultByTitle(outcome, 'needs web');
       expect(result.status).toBe('failed');
@@ -463,7 +450,7 @@ test('wants session', { session: 'acct' }, async ({ app }) => {
       };
       const { outcome, project } = await runProject(files, {
         appUrl: APP_URL,
-        config: fakeConfig(fake),
+        config: engineConfig(fake.engine),
       });
       const result = resultByTitle(outcome, 'capture session');
       expect(result.status).toBe('failed');
@@ -495,7 +482,7 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
       };
       const { outcome, project } = await runProject(files, {
         appUrl: APP_URL,
-        config: fakeConfig(fake),
+        config: engineConfig(fake.engine),
       });
       expect(resultByTitle(outcome, 'capture session').status).toBe('passed');
       expect(resultByTitle(outcome, 'consumes session').status).toBe('passed');
@@ -521,7 +508,7 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
       });
       const { outcome, project } = await runProject(
         { 'tests/stale.e2e.ts': PASSING_TEST },
-        { appUrl: APP_URL, config: fakeConfig(fake) },
+        { appUrl: APP_URL, config: engineConfig(fake.engine) },
       );
       expect(resultByTitle(outcome, 'taps a node').status).toBe('passed');
       expect(performCalls).toBe(2);
@@ -535,7 +522,7 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
       });
       const second = await runProject(
         { 'tests/committed.e2e.ts': PASSING_TEST },
-        { appUrl: APP_URL, config: fakeConfig(committed) },
+        { appUrl: APP_URL, config: engineConfig(committed.engine) },
       );
       const result = resultByTitle(second.outcome, 'taps a node');
       expect(result.status).toBe('failed');
@@ -562,7 +549,7 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
       const model = installFakeModel(() => judgment(true, 'the Submit button is visible'));
       const { outcome, project } = await runProject(
         { 'tests/observe-race.e2e.ts': OBSERVE_TEST },
-        { appUrl: APP_URL, config: fakeConfig(fake, { agents: { default: { model } } }) },
+        { appUrl: APP_URL, config: engineConfig(fake.engine, { agents: { default: { model } } }) },
       );
       expect(resultByTitle(outcome, 'asserts a node').status).toBe('passed');
       expect(observeCalls).toBe(2);
@@ -582,7 +569,7 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
       const model = installFakeModel(() => judgment(true, 'unreachable'));
       const { outcome, project } = await runProject(
         { 'tests/observe-broken.e2e.ts': OBSERVE_TEST },
-        { appUrl: APP_URL, config: fakeConfig(fake, { agents: { default: { model } } }) },
+        { appUrl: APP_URL, config: engineConfig(fake.engine, { agents: { default: { model } } }) },
       );
       const result = resultByTitle(outcome, 'asserts a node');
       expect(result.status).toBe('failed');
@@ -599,7 +586,7 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
       const model = installFakeModel(() => judgment('inconclusive', 'the tree lists no state for the Submit button'));
       const { outcome, project } = await runProject(
         { 'tests/observe-inconclusive.e2e.ts': OBSERVE_TEST },
-        { appUrl: APP_URL, config: fakeConfig(fake, { agents: { default: { model } } }) },
+        { appUrl: APP_URL, config: engineConfig(fake.engine, { agents: { default: { model } } }) },
       );
       const result = resultByTitle(outcome, 'asserts a node');
       expect(result.status).toBe('failed');
@@ -621,7 +608,7 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
       const model = installFakeModel(() => judgment('inconclusive', 'the tree lists no state for the Submit button'));
       const { outcome, project } = await runProject(
         { 'tests/observe-inconclusive-artifacts.e2e.ts': OBSERVE_TEST },
-        { appUrl: APP_URL, config: fakeConfig(fake, { agents: { default: { model } } }) },
+        { appUrl: APP_URL, config: engineConfig(fake.engine, { agents: { default: { model } } }) },
       );
       const error = resultByTitle(outcome, 'asserts a node').attempts.at(-1)!.error!;
       expect(error.code).toBe('ASSERTION_INCONCLUSIVE');
@@ -657,7 +644,7 @@ test('asserts after a degraded pixel request', async ({ app, agent }) => {
 });
 `,
         },
-        { appUrl: APP_URL, config: fakeConfig(fake, { agents: { default: { model } } }) },
+        { appUrl: APP_URL, config: engineConfig(fake.engine, { agents: { default: { model } } }) },
       );
       const attempt = resultByTitle(outcome, 'asserts after a degraded pixel request').attempts.at(-1)!;
       const [first, second] = attempt.steps.filter((step) => step.api === 'agent.assert');
@@ -689,7 +676,7 @@ test('asserts after a degraded pixel request', async ({ app, agent }) => {
       const model = installFakeModel(() => judgment(false, 'the Submit button is disabled'));
       const { outcome, project } = await runProject(
         { 'tests/observe-deadline.e2e.ts': WAIT_TEST },
-        { appUrl: APP_URL, config: fakeConfig(fake, { agents: { default: { model } } }) },
+        { appUrl: APP_URL, config: engineConfig(fake.engine, { agents: { default: { model } } }) },
       );
       const result = resultByTitle(outcome, 'waits for a condition');
       expect(result.status).toBe('failed');
@@ -706,7 +693,7 @@ test('asserts after a degraded pixel request', async ({ app, agent }) => {
       const fake = createFakeEngine();
       const { outcome, project } = await runProject(
         { 'tests/artifact.e2e.ts': PASSING_TEST },
-        { appUrl: APP_URL, config: fakeConfig(fake, { artifacts: ['trace'] }) },
+        { appUrl: APP_URL, config: engineConfig(fake.engine, { artifacts: ['trace'] }) },
       );
       expect(outcome.status).toBe('error');
       expect(fake.stats().attemptsStarted).toBe(0);
@@ -728,7 +715,7 @@ test('asserts after a degraded pixel request', async ({ app, agent }) => {
       });
       const { outcome, project } = await runProject(
         { 'tests/plain-error.e2e.ts': PASSING_TEST },
-        { appUrl: APP_URL, config: fakeConfig(fake) },
+        { appUrl: APP_URL, config: engineConfig(fake.engine) },
       );
       const result = resultByTitle(outcome, 'taps a node');
       expect(result.status).toBe('failed');
@@ -767,7 +754,7 @@ test('consumes session', { session: 'acct' }, async ({ app }) => {
       };
       const { outcome, project } = await runProject(files, {
         appUrl: APP_URL,
-        config: fakeConfig(fake),
+        config: engineConfig(fake.engine),
       });
       const result = resultByTitle(outcome, 'consumes session');
       expect(result.status).toBe('failed');
@@ -810,7 +797,7 @@ test('bounds a hanging fixture call', async (fixtures) => {
 `;
       const { outcome, project } = await runProject(
         { 'tests/gadget.e2e.ts': file },
-        { appUrl: APP_URL, config: fakeConfig(fake, { actionTimeout: 2_000 }) },
+        { appUrl: APP_URL, config: engineConfig(fake.engine, { actionTimeout: 2_000 }) },
       );
       const drives = resultByTitle(outcome, 'drives the gadget');
       expect(drives.status, JSON.stringify(drives.attempts[0]?.error)).toBe('passed');
@@ -851,7 +838,7 @@ test('needs web', { requires: ['web'] }, async () => {});
 `;
       const { outcome, project } = await runProject(
         { 'tests/requires.e2e.ts': file },
-        { appUrl: APP_URL, config: fakeConfig(fake) },
+        { appUrl: APP_URL, config: engineConfig(fake.engine) },
       );
       expect(resultByTitle(outcome, 'needs gadget').status).toBe('passed');
       const web = resultByTitle(outcome, 'needs web');
@@ -879,7 +866,7 @@ test('swipes without a swipe capability', async ({ screen }) => {
 `;
       const { outcome, project } = await runProject(
         { 'tests/evidence.e2e.ts': file },
-        { appUrl: APP_URL, config: fakeConfig(fake) },
+        { appUrl: APP_URL, config: engineConfig(fake.engine) },
       );
       const evidence = resultByTitle(outcome, 'takes evidence');
       expect(evidence.status).toBe('passed');
@@ -909,8 +896,9 @@ test('fails on purpose', async ({ app }) => {
     resultByTitle(outcome, title).attempts[0]!.artifacts.filter((artifact) => artifact.kind === 'video');
 
   /** A config with the default artifact kinds, so `--video` adds to a best-effort set. */
-  const defaultKindsConfig = (fake: FakeEngineHandle): E2EConfig =>
-    ({ specVersion: '0.1', targets: [{ name: 'fake', platform: 'web', engine: fake.engine }] }) as E2EConfig;
+  const defaultKindsConfig = (fake: FakeEngineHandle): Partial<E2EConfig> => ({
+    targets: [{ name: 'fake', platform: 'fake', engine: fake.engine }],
+  });
 
   it(
     'is a contract even without explicit kinds: --video on an engine that cannot record is UNSUPPORTED_ARTIFACT',
@@ -963,7 +951,7 @@ test('fails on purpose', async ({ app }) => {
         { 'tests/pass.e2e.ts': PASSING_TEST, 'tests/fail.e2e.ts': FAILING_TEST },
         {
           appUrl: APP_URL,
-          config: fakeConfig(fake, { artifacts: { kinds: ['video'], video: { retain: 'on-failure' } } }),
+          config: engineConfig(fake.engine, { artifacts: { kinds: ['video'], video: { retain: 'on-failure' } } }),
         },
       );
       expect(outcome.status).toBe('failed');
@@ -1009,7 +997,7 @@ test.describe(${JSON.stringify(LONG_DESCRIBE)}, () => {
       const fake = createFakeEngine({ artifacts: true });
       const { outcome, project } = await runProject(
         { 'tests/checkouts.e2e.ts': SHARED_PREFIX_FILE },
-        { appUrl: APP_URL, config: fakeConfig(fake, { artifacts: ['screenshot'] }) },
+        { appUrl: APP_URL, config: engineConfig(fake.engine, { artifacts: ['screenshot'] }) },
       );
       const first = resultByTitle(outcome, 'keeps the coupon after a reload');
       const second = resultByTitle(outcome, 'drops the coupon after sign-out');

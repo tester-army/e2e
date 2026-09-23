@@ -1,8 +1,8 @@
 /**
  * The set reads and matchers a Playwright user reaches for first: `all`,
- * `allTextContents`, `isHidden`, `isDisabled`, `toBeAttached`, and the list
- * form of `toHaveText` and `toContainText`, each with its zero-match and
- * ambiguity behaviour.
+ * `allTextContents`, `isHidden`, `isDisabled`, `isEnabled`, `isChecked`,
+ * `toBeAttached`, and the list form of `toHaveText` and `toContainText`, each
+ * with its zero-match and ambiguity behaviour.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -88,6 +88,38 @@ describe('isHidden and isDisabled', () => {
     await expect(createScreenFixture(ITEMS).getByRole('listitem').isDisabled()).rejects.toMatchObject({
       code: 'LOCATOR_AMBIGUOUS',
     });
+  });
+});
+
+describe('isChecked and isEnabled', () => {
+  it('isChecked reads the checked state: true, false, and no state at all as false', async () => {
+    expect(await createScreenFixture([item('on', 'On', { checked: true })]).getByRole('listitem').isChecked()).toBe(true);
+    expect(await createScreenFixture([item('off', 'Off', { checked: false })]).getByRole('listitem').isChecked()).toBe(false);
+    expect(await createScreenFixture([SHOWN]).getByRole('listitem').isChecked()).toBe(false);
+  });
+
+  it('isChecked reads a secure field, since a state is not a value', async () => {
+    expect(
+      await createScreenFixture([item('pw', '', { secure: true, checked: true })]).getByRole('listitem').isChecked(),
+    ).toBe(true);
+  });
+
+  it('isEnabled is true with no states and with disabled: false, false once disabled', async () => {
+    expect(await createScreenFixture([SHOWN]).getByRole('listitem').isEnabled()).toBe(true);
+    expect(await createScreenFixture([item('x', 'x', { disabled: false })]).getByRole('listitem').isEnabled()).toBe(true);
+    expect(await createScreenFixture([item('x', 'x', { disabled: true })]).getByRole('listitem').isEnabled()).toBe(false);
+  });
+
+  it('both fail at once on zero matches, where isVisible answers false, and on several, like isVisible', async () => {
+    const none = createScreenFixture([]).getByRole('listitem');
+    const several = createScreenFixture(ITEMS).getByRole('listitem');
+    const started = Date.now();
+    await expect(none.isChecked()).rejects.toMatchObject({ code: 'LOCATOR_NOT_FOUND' });
+    await expect(none.isEnabled()).rejects.toMatchObject({ code: 'LOCATOR_NOT_FOUND' });
+    await expect(several.isChecked()).rejects.toMatchObject({ code: 'LOCATOR_AMBIGUOUS' });
+    await expect(several.isEnabled()).rejects.toMatchObject({ code: 'LOCATOR_AMBIGUOUS' });
+    expect(await none.isVisible()).toBe(false);
+    expect(Date.now() - started).toBeLessThan(SCREEN_FIXTURE_TIMEOUT_MS);
   });
 });
 
