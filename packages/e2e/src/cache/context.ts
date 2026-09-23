@@ -9,6 +9,7 @@
  */
 
 import type { ResolvedCacheConfig } from '../config/resolve.ts';
+import { canonicalJson } from '../internal/ids.ts';
 import { REPLAY_POLICY_VERSION } from './relocate.ts';
 import {
   buildTraceCacheKey,
@@ -70,6 +71,23 @@ export interface AgentCacheContext {
 }
 
 /**
+ * Whether the store already holds this flow: the same actions, paths, anchors,
+ * executor, and provenance. The model's summary and the measured end wait
+ * differ on every live run, so a step that runs live each time (it types a
+ * value read off the screen) would otherwise rewrite an entry a committed
+ * cache directory carries, changing nothing a replay reads.
+ */
+async function holdsSameFlow(store: TraceCacheStore, keyHash: string, trace: ActionTrace): Promise<boolean> {
+  const existing = await store.read(keyHash);
+  return existing.status === 'hit' && flowOf(existing.entry.payload) === flowOf(trace);
+}
+
+function flowOf(trace: ActionTrace): string {
+  const { summary: _summary, endWaitMs: _endWaitMs, ...flow } = trace;
+  return canonicalJson(flow);
+}
+
+/**
  * Settles the attempt's staged trace writes. A staged trace is confirmed only
  * when a verification step — a deterministic assertion or an agent judgment
  * (`run/steps.ts`, `StepRunOptions.verifies`) — passed after it: an act's own
@@ -97,8 +115,12 @@ export async function flushStagedTraces(
     try {
       switch (entry.kind) {
         case 'write':
-          if (confirmed) await context.store.write(entry.keyHash, entry.trace);
-          else await context.store.delete?.(entry.keyHash);
+          if (!confirmed) {
+            await context.store.delete?.(entry.keyHash);
+            break;
+          }
+          if (await holdsSameFlow(context.store, entry.keyHash, entry.trace)) break;
+          await context.store.write(entry.keyHash, entry.trace);
           break;
         case 'keep':
           if (!confirmed) await context.store.delete?.(entry.keyHash);

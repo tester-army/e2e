@@ -735,3 +735,54 @@ describe('destination path settling', () => {
     expect(session.replayedPrefix?.stopReason).toBe('end-mismatch');
   });
 });
+
+describe('flushStagedTraces and a re-recorded flow', () => {
+  it('leaves an entry the same flow re-recorded untouched, and replaces it when the actions change', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'e2e-flush-'));
+    const store = new FileTraceCacheStore({ directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: true });
+    const context = (): AgentCacheContext => ({
+      mode: 'read-write',
+      store,
+      identity: { testId: 'tests/example.e2e.ts::step', targetId: 'web' },
+      replayEligible: true,
+      claimKeyHash: () => 'c'.repeat(64),
+      staged: [],
+    });
+    const file = join(directory, `${'c'.repeat(64)}.json`);
+    const snapshot = async () => ({ bytes: await readFile(file, 'utf8'), mtimeMs: (await stat(file)).mtimeMs });
+    const trace = (summary: string, endWaitMs: number, taps: number): ActionTrace => ({
+      actions: Array.from({ length: taps }, (_, index) => ({
+        name: 'tap' as const,
+        summary: `tap ${String(index)}`,
+        target: { role: 'button', name: 'Save' },
+      })),
+      executor: { name: 'scripted' },
+      summary,
+      endWaitMs,
+      startPath: '/records/1',
+      endPath: '/records/1',
+      endAnchors: [{ role: 'status', name: 'Record state', text: 'saved' }],
+    });
+    const flush = async (staged: ActionTrace) => {
+      const current = context();
+      current.staged.push({ kind: 'write', keyHash: 'c'.repeat(64), stepIndex: 0, trace: staged });
+      await flushStagedTraces(current, 1);
+    };
+
+    await flush(trace('saved the record', 10_100, 1));
+    const written = await snapshot();
+    expect(JSON.parse(written.bytes).payload.summary).toBe('saved the record');
+
+    // A live run of the same flow words its summary differently and measures
+    // another end wait; the file is what a replay reads, and nothing it reads changed.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await flush(trace('the record reads saved now', 10_137, 1));
+    expect(await snapshot()).toEqual(written);
+
+    // One more tap is a different flow, and the entry follows it.
+    await flush(trace('saved after a retry', 10_090, 2));
+    const replaced = await snapshot();
+    expect(replaced.bytes).not.toBe(written.bytes);
+    expect(JSON.parse(replaced.bytes).payload.actions).toHaveLength(2);
+  });
+});

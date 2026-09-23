@@ -171,7 +171,10 @@ own and CI starts with none. To share replays, remove that line and commit
 the directory. CI stays `read-only` unless you set `cache: 'read-write'`.
 Treat committed entries as test data and review them in the pull request
 that re-recorded them. A step the cache replayed whole never rewrites its
-entry, so local runs leave a committed directory clean. A file changes when
+entry, and a re-recording whose actions, paths, and anchors match the stored
+entry is not written either (only the summary and the measured end wait
+differ between two live runs of the same flow), so local runs leave a
+committed directory clean. A file changes when
 a step records for the first time, when the agent finishes a step after a
 hand-off (the entry is re-recorded with the controls and end state it saw),
 or when an entry is deleted: a step that failed after replaying, an

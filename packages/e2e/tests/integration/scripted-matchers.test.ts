@@ -61,6 +61,8 @@ test('every negated matcher passes on the scripted screen', async ({ app, screen
   await expect(screen.getByTestId('card')).not.toHaveAttribute('hidden', soon);
   await expect(screen.getByTestId('card')).not.toHaveAttribute('class', 'card inactive', soon);
   await expect(screen.getByRole('list', { name: 'Todos' })).not.toHaveAccessibleName('Done', soon);
+  // The third todo arrives on the scene's clock; wait for it so the negation is about the settled count.
+  await expect(screen.getByTestId('todo')).toHaveCount(3);
   await expect(screen.getByTestId('todo')).not.toHaveCount(2, soon);
   await expect(screen.getByTestId('todo')).not.toHaveText(['Write spec', 'Ship runner'], soon);
 });
