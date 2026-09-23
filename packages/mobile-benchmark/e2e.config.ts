@@ -14,20 +14,22 @@ import { mobile } from '@e2edev/mobile';
  */
 const APP_ID = 'dev.e2e.benchmark';
 
+/**
+ * The simulators the iOS target drives: the UDIDs in
+ * `E2E_MOBILE_BENCHMARK_IOS_DEVICE`, comma-separated, one worker each; unset,
+ * every booted simulator. CI boots two and lists both.
+ */
+const iosDevices = process.env.E2E_MOBILE_BENCHMARK_IOS_DEVICE?.split(',')
+  .map((udid) => udid.trim())
+  .filter((udid) => udid !== '');
+
 export const ios = mobile({
   platform: 'ios',
   app: APP_ID,
   appPath: process.env.E2E_MOBILE_BENCHMARK_IOS_APP,
-  device: process.env.E2E_MOBILE_BENCHMARK_IOS_DEVICE,
+  device: iosDevices === undefined || iosDevices.length !== 1 ? iosDevices : iosDevices[0],
   identity: `${APP_ID}-ios`,
   session: 'e2e-mobile-benchmark-ios',
-  // iOS reports a row's final frame from the first frame of a scroll, so a
-  // tap right after a swipe lands on whatever is still passing under that
-  // frame. A drag on the home list flings it up to three screens and takes
-  // over two seconds to come to rest on a loaded machine (a tap after 1.5 s
-  // opened the scenario five rows above the one it was aimed at); the
-  // default budget is half a second.
-  transition: 3_000,
 });
 
 export const android = mobile({
@@ -46,8 +48,9 @@ export default {
     { name: 'ios-simulator', engine: ios },
     { name: 'android-emulator', engine: android },
   ],
-  // One device at a time: two workers would share the pinned sessions.
-  workers: 1,
+  // One worker per simulator in the pool; an engine with fewer devices
+  // narrows its own target. Each worker slot drives its own session.
+  workers: Math.max(1, iosDevices?.length ?? 1),
   credentials: {
     // The Login Form and Flattened Login scenarios' hardcoded account; the
     // Login Form screen prints it as a hint.
