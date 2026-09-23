@@ -39,8 +39,11 @@ export async function openScenario(
   const homeHeader = screen.getByTestId('Benchmark Examples');
   const bars = device.locator('role=NavigationBar');
   const title = device.locator(`role=NavigationBar id=${JSON.stringify(name)}`);
+  // Bottom Tabs is the one route without a navigation bar, so no bar means
+  // that scenario and no other; every other route has to show its own title.
+  const headerless = name === 'Bottom Tabs';
   const opened = async (): Promise<boolean> =>
-    !(await homeHeader.isVisible()) && ((await bars.count()) === 0 || (await title.count()) === 1);
+    !(await homeHeader.isVisible()) && (headerless ? (await bars.count()) === 0 : (await title.count()) === 1);
   for (let attempt = 0; ; attempt += 1) {
     await expect
       .poll(async () => {

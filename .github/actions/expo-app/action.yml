@@ -49,9 +49,12 @@ runs:
         HASH="$(pnpm exec fingerprint fingerprint:generate --platform "$PLATFORM" | jq -r '.hash')"
         test -n "$HASH"
         echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+    # Restore and save are separate steps: an entry is immutable, and a hit
+    # whose app cannot be repacked is deleted below so the rebuilt app can be
+    # saved under the same key instead of every later run rebuilding it.
     - name: Restore the app
       id: app-cache
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ inputs.working-directory }}/.build/${{ inputs.platform }}
         key: mobile-benchmark-${{ inputs.platform }}-${{ steps.fingerprint.outputs.hash }}
@@ -65,6 +68,8 @@ runs:
       env:
         PLATFORM: ${{ inputs.platform }}
         APP_GLOB: ${{ inputs.app-glob }}
+        CACHE_KEY: mobile-benchmark-${{ inputs.platform }}-${{ steps.fingerprint.outputs.hash }}
+        GH_TOKEN: ${{ github.token }}
       run: |
         set -euo pipefail
         APP="$(find ".build/$PLATFORM" -maxdepth 1 -name "$APP_GLOB" | head -1)"
@@ -74,8 +79,9 @@ runs:
           rm -rf "$APP" && mv "$OUT" "$APP"
           echo "result=ok" >> "$GITHUB_OUTPUT"
         else
-          echo "::warning::repack failed; building the app natively instead"
+          echo "::warning::repack failed; building the app natively and replacing the cached one"
           rm -rf ".build/$PLATFORM"
+          gh cache delete "$CACHE_KEY" --repo "$GITHUB_REPOSITORY" || echo "::warning::could not delete the cache entry $CACHE_KEY"
           echo "result=failed" >> "$GITHUB_OUTPUT"
         fi
     - name: Set up Gradle
@@ -88,6 +94,12 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: ${{ inputs.build-command }}
+    - name: Save the app
+      if: steps.app-cache.outputs.cache-hit != 'true' || steps.repack.outputs.result == 'failed'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ inputs.working-directory }}/.build/${{ inputs.platform }}
+        key: mobile-benchmark-${{ inputs.platform }}-${{ steps.fingerprint.outputs.hash }}
     - name: Locate the app
       id: app
       shell: bash

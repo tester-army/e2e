@@ -34,6 +34,8 @@ env:
 
 permissions:
   contents: read
+  # The Expo app action deletes a cached build its repack step proved broken.
+  actions: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

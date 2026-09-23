@@ -163,6 +163,9 @@ const SCENARIOS: readonly Scenario[] = [
     name: 'Photo Picker',
     goal: 'choose a photo and pick the most recent one from the library so it is attached as the receipt',
     success: /^Receipt attached/,
+    // The receipt is seeded with `xcrun simctl addmedia`; the emulator's
+    // seeding (adb push and a media scan) is not written yet.
+    platforms: ['ios'],
     prepare: seedReceiptPhoto,
   },
   {
