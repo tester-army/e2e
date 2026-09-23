@@ -81,7 +81,8 @@ export interface MobileOptions {
   /** Report label joining the cache identity; a simulator or emulator defaults to `test`. */
   readonly environment?: 'test' | 'staging' | 'production' | undefined;
   /**
-   * Simulator or emulator to use, by name or UDID. A list is a pool: the
+   * Simulator or emulator to use, by name, simulator UDID, or emulator
+   * serial (`emulator-5554`). A list is a pool: the
    * engine declares one worker per entry and worker slot `n` drives the
    * `n`th, so `workers` at or above the pool size runs the target's files
    * across every device at once. Omitted, the pool is every booted device of
@@ -157,9 +158,9 @@ export default {
 
 | Contract member | On a device |
 | --- | --- |
-| `observe` | The accessibility tree with rects. iOS: `Button` is `button`, `TextField` and `SearchField` are `textbox`, `SecureTextField` is a secure `textbox`, `Cell` is `listitem`, `StaticText` is `text`, `Switch` is `switch` with `checked`, `TabBar` and `SegmentedControl` are `tablist` and the buttons inside them `tab`, `ProgressIndicator` is `progressbar`, `ActivityIndicator` is `status`, `Stepper` is `spinbutton`, `Toolbar`, `Menu`, and `RadioGroup` are `toolbar`, `menu`, and `radiogroup`. Android: `TextView` is `text`, `EditText` is `textbox` and one UIAutomator flags as `password` is a secure `textbox` like `SecureTextField`, `Switch` and `CheckBox` keep their roles without a `checked` state, layouts are `group`, `RecyclerView` is `list`, `TabLayout` and `BottomNavigationView` are `tablist` with their items as `tab`, `ProgressBar` is `progressbar`, `NumberPicker` is `spinbutton`, `Toolbar` and `RadioGroup` keep their names. Any other type is kept verbatim in lower case (`picker-wheel`), so it answers no vocabulary role, unless the platform reports it editable, which makes it a `textbox`. The accessibility identifier (iOS) or resource id (Android) is the node's `testId`. Pixels on request, with every secure node's bounds painted black. |
-| `perform` | `tap`, `doubleTap`, `longPress`, `fill`, `clear`, `hover`, `check`, `uncheck`, `press` (`Enter` or one character), `swipe`, `dragTo`, and `focus` on editable fields. A tap on a `switch` or `checkbox` lands on its innermost control, since UIKit reports a settings row as one labelled switch with the real toggle as a child. `check` and `uncheck` need a `checked` state, which Android switches lack. `selectOption`, `setInputFiles`, `scrollIntoView`, and `secondaryTap` are not declared. |
-| `locate` | Every `screen` query. Text queries answer with the innermost match. |
+| `observe` | The accessibility tree with rects. iOS: `Button` is `button`, `TextField` and `SearchField` are `textbox`, `SecureTextField` is a secure `textbox`, `Cell` is `listitem`, `StaticText` is `text`, `Switch` is `switch` with `checked`, `TabBar` and `SegmentedControl` are `tablist` and the buttons inside them `tab`, `ProgressIndicator` is `progressbar`, `ActivityIndicator` is `status`, `Stepper` is `spinbutton`, `Toolbar`, `Menu`, and `RadioGroup` are `toolbar`, `menu`, and `radiogroup`. Android: `TextView` is `text`, `EditText` is `textbox` and one UIAutomator flags as `password` is a secure `textbox` like `SecureTextField`, `Switch` and `CheckBox` keep their roles without a `checked` state, layouts are `group`, `RecyclerView` is `list`, `TabLayout` and `BottomNavigationView` are `tablist` with their items as `tab`, `ProgressBar` is `progressbar`, `NumberPicker` is `spinbutton`, `Toolbar` and `RadioGroup` keep their names. Any other type is kept verbatim in lower case (`picker-wheel`), so it answers no vocabulary role, unless the platform reports it editable, which makes it a `textbox`. React Native on iOS has no trait for `checkbox`, `radio`, and a few other roles and spells the role and state into the accessibility value instead (`checkbox, unchecked`, `radio button, checked`); such a node takes that role, `checked` and `expanded` from the state words, and reports only what follows them as its value. An iOS field keeps a value equal to its label (an unlabeled field is named by its text); Android's echo of a text view's label as its value is dropped. The accessibility identifier (iOS) or resource id (Android) is the node's `testId`. Pixels on request, with every secure node's bounds painted black. |
+| `perform` | `tap`, `doubleTap`, `longPress`, `fill`, `clear`, `hover`, `check`, `uncheck`, `press` (`Enter` or one character), `swipe`, `dragTo`, and `focus` on editable fields. A tap on a `switch` or `checkbox` lands on its innermost control, since UIKit reports a settings row as one labelled switch with the real toggle as a child. `check` and `uncheck` need a `checked` state, which Android switches lack and a React Native checkbox or radio on iOS has. `doubleTap` is two presses, 284 to 285 ms apart on iOS (the cadence of agent-device's XCTest tap): agent-device's own double-tap gesture reaches a React Native `Pressable` as one press. A detector with a window of 300 ms or less can read the pair as two single taps. `selectOption`, `setInputFiles`, `scrollIntoView`, and `secondaryTap` are not declared. |
+| `locate` | Every `screen` query. Text and label queries answer with the innermost match, since a device echoes both up the tree (a React Native input is a host view and the field inside it, both labelled). |
 | `app` | `identity` from the pinned `app`, else `appPath`; no `url`. |
 | `session` | `back`; `restart` and `reset` when `app` or `appPath` is pinned. No `open`, so `app.open()` and the agent's `navigate` verb are unavailable; `device.openLink(url)` opens a deep link or web link instead. |
 | `artifacts` | Redacted screenshots under `screenshots/NNN-<label>.png`; a screenshot that cannot be redacted fails instead of being written. Video with `--video` as `video/video.mp4`. No traces. |
@@ -227,9 +228,18 @@ export interface Device {
    * links are `POLICY_DENIED`.
    */
   openLink(url: string, options?: { app?: string }): Promise<void>;
-  /** Closes the session's current app. */
+  /**
+   * Terminates the session's app and ends the session, so the next
+   * `openApp` launches it fresh. Until then the screen is unobservable and
+   * `foregroundApp` is `APP_NOT_OPEN`.
+   */
   closeApp(): Promise<void>;
-  /** The app currently in the foreground of the session. */
+  /**
+   * The app the session is on. iOS answers from the session, not the
+   * device, so it names the app the session opened even after `home()`;
+   * Android reads the device's foreground activity. `APP_NOT_OPEN` once
+   * `closeApp` ended the session.
+   */
   foregroundApp(): Promise<ForegroundApp>;
   /** Sends the device to its home screen. */
   home(): Promise<void>;
@@ -277,6 +287,18 @@ message: a timeout the device itself reports (a boot, the runner connecting)
 keeps its text and hint there, and a busy or wedged iOS automation runner
 names itself and the recovery (see
 [Troubleshooting](/mobile#troubleshooting)).
+
+`back`, `home`, `alert`, `dismissKeyboard`, and `setOrientation` change the
+screen, so they count as actions for the `transition` budget the way a tap
+does: a control that arrives with the screen they reveal waits out the budget
+before the next action lands on it.
+
+`closeApp` terminates the app the session is on and ends the session, so
+`openApp` after it launches the app fresh, on its first screen; a screen
+query or `foregroundApp` in between is `APP_NOT_OPEN`. `foregroundApp` on
+iOS reads the session, not the device: agent-device's `appstate` has no
+device-level answer there, so after `home()` it still names the app the
+session opened. Android reads the device's foreground activity.
 
 `installApp` installs a build from inside a test, for upgrade paths. A plain
 install keeps the app's data; `reinstall: true` removes the app named by

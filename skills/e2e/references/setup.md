@@ -303,6 +303,15 @@ export default {
   only: `test('...', { platforms: ['ios'] }, ...)`.
 - `selectOption`, `setInputFiles`, `scrollIntoView`, and `secondaryTap` are
   `UNSUPPORTED_CAPABILITY` on a device.
+- React Native on iOS: a view with `accessibilityRole="checkbox"` or
+  `"radio"` answers `getByRole`, `check()`, and `toBeChecked` (the role and
+  state are read off the accessibility value); a `tab` is `other` with
+  `selected`, so query it by test id or label. A plain `View` is a leaf
+  beside its children, so `filter({ has })` and queries scoped to it match
+  nothing; scope to the `ScrollView` or give children test ids. `toBeFocused`
+  never passes (agent-device reports no keyboard focus); assert on what the
+  app shows. `device.closeApp()` terminates the app, so the next `openApp`
+  starts it fresh.
 
 ## Done when
 

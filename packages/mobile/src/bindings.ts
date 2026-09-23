@@ -37,8 +37,10 @@ export type DeviceConnection = Pick<SlotBinding, 'daemon' | 'client'>;
 
 /** What one worker slot drives; `{}` leaves every choice to the local daemon. */
 export interface SlotBinding {
-  /** Device to select, by name or UDID; absent, the daemon picks a booted one. */
+  /** Device to select by name; absent, `deviceId` selects one, or the daemon picks a booted one. */
   readonly device?: string | undefined;
+  /** Device to select by the id agent-device lists it under: a simulator UDID or an Android serial. */
+  readonly deviceId?: string | undefined;
   /** The agent-device daemon to connect to; absent, the local one. */
   readonly daemon?: DeviceDaemon | undefined;
   /** Client configuration for that daemon; absent, the client's defaults. */
@@ -59,6 +61,11 @@ export interface DeviceSource {
   /** One binding per worker slot the run will use, `info.slots` at most and never none. */
   bind(info: EnginePrepareInfo): Promise<readonly SlotBinding[]>;
   finish?(info: EngineFinishInfo): Promise<void>;
+}
+
+/** What a binding calls its device in progress and error lines: the name, else the id, else nothing. */
+export function deviceLabel(binding: Pick<SlotBinding, 'device' | 'deviceId'> | undefined): string | undefined {
+  return binding?.device ?? binding?.deviceId;
 }
 
 /**
@@ -95,6 +102,7 @@ export function encodeBindings(bindings: readonly SlotBinding[]): string {
     bindings.map((binding) =>
       obj({
         device: binding.device,
+        deviceId: binding.deviceId,
         daemon: binding.daemon === undefined ? undefined : obj({ baseUrl: binding.daemon.baseUrl, authToken: binding.daemon.authToken }),
         client: binding.client,
         installedApp: binding.installedApp,
@@ -131,9 +139,10 @@ function isOptionalString(value: unknown): value is string | undefined {
 /** A binding as JSON parses it back, or as a provider returned it: nothing the engine did not write is trusted. */
 export function isSlotBinding(value: unknown): value is SlotBinding {
   if (typeof value !== 'object' || value === null) return false;
-  const { device, daemon, client, installedApp } = value as Record<keyof SlotBinding, unknown>;
+  const { device, deviceId, daemon, client, installedApp } = value as Record<keyof SlotBinding, unknown>;
   return (
     isOptionalString(device) &&
+    isOptionalString(deviceId) &&
     isOptionalString(installedApp) &&
     (daemon === undefined || isDaemon(daemon)) &&
     (client === undefined || isClientConfig(client))

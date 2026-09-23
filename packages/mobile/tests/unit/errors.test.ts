@@ -24,6 +24,19 @@ describe('error translation', () => {
     expect(translateError(new Error('No active app session. Run open first.'), 'snapshot')).toMatchObject({
       code: 'INVALID_STATE',
     });
+    // What `appstate` says once `close` ended the session; the harness reports it as APP_NOT_OPEN.
+    expect(
+      translateError(
+        new AppError('INVALID_ARGS', 'appstate requires an active session or an explicit device selector (e.g. --platform ios).'),
+        'device.foregroundApp',
+      ),
+    ).toMatchObject({ code: 'INVALID_STATE', retryable: false });
+    expect(
+      translateError(
+        new AppError('SESSION_NOT_FOUND', 'iOS appstate requires an active session on the target device. Run open first.'),
+        'device.foregroundApp',
+      ),
+    ).toMatchObject({ code: 'INVALID_STATE' });
     expect(translateError(new AppError('UNSUPPORTED_OPERATION', 'hover is macOS only'), 'perform hover')).toMatchObject({
       code: 'UNSUPPORTED_CAPABILITY',
     });

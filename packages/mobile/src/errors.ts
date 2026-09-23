@@ -5,7 +5,7 @@
  * | ----------------------------------------------------------- | ---------------------------- |
  * | already an EngineError / runner error                       | passed through untouched     |
  * | AbortError                                                  | CANCELLED                    |
- * | no active session / session not found                       | INVALID_STATE                |
+ * | no active session / session not found / requires a session  | INVALID_STATE                |
  * | UNSUPPORTED_OPERATION, NOT_IMPLEMENTED, UNSUPPORTED_PLATFORM | UNSUPPORTED_CAPABILITY      |
  * | "not supported on this device" under any code                | UNSUPPORTED_CAPABILITY       |
  * | a ref the daemon no longer knows (action paths only)        | NODE_STALE (retryable)       |
@@ -58,7 +58,8 @@ function withHint(cause: unknown, text: string): string {
   return typeof hint === 'string' && hint.trim() !== '' ? `${text} Hint: ${hint.trim()}` : text;
 }
 
-const NO_SESSION_PATTERN = /no active (?:app )?session|session\b.*\bnot found|open an app first|no app (?:is )?open/i;
+const NO_SESSION_PATTERN =
+  /no active (?:app )?session|requires an active session|session\b.*\bnot found|open an app first|no app (?:is )?open/i;
 const UNSUPPORTED_CODES = new Set(['UNSUPPORTED_OPERATION', 'NOT_IMPLEMENTED', 'UNSUPPORTED_PLATFORM']);
 const UNSUPPORTED_PATTERN = /\b(?:is )?not supported\b|\bunsupported\b/i;
 const STALE_PATTERN =

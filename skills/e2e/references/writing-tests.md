@@ -135,8 +135,9 @@ the agent sees and takes `fill`; address one from a test with `getByLabel` or
 resolves through Playwright's role selector.
 
 Text matching is exact by default after whitespace normalization, and
-`getByText` returns the innermost match: a container that echoes its child's
-text (an iOS Text host view around its StaticText) does not count twice.
+`getByText` and `getByLabel` return the innermost match: a container that
+echoes its child's text or label (an iOS Text host view around its
+StaticText, a TextInput host view around its field) does not count twice.
 `exact: false` is a case-insensitive substring match; a `RegExp` matches as
 written.
 

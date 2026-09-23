@@ -70,8 +70,10 @@ export interface DeviceLease extends SlotBinding {
    * and `daemonAuthToken` are refused, the engine and `daemon` own those.
    */
   readonly client?: DeviceClientConfig | undefined;
-  /** Device to select inside that daemon, by name or UDID, when it hosts more than one. */
+  /** Device to select inside that daemon by name, when it hosts more than one. */
   readonly device?: string | undefined;
+  /** Device to select inside that daemon by the id agent-device lists it under: a simulator UDID or an Android serial. */
+  readonly deviceId?: string | undefined;
   /**
    * Bundle id or package of the app the provider installed from the
    * request's `appPath`, and only then: with it the engine installs nothing
@@ -196,7 +198,7 @@ export class LeasedDevices implements DeviceSource {
       }),
       `device provider "${provider.name}" could not lease a device`,
     );
-    return leases.map((lease) => obj({ device: lease.device, daemon: lease.daemon, client: lease.client, installedApp: lease.installedApp }));
+    return leases.map((lease) => obj({ device: lease.device, deviceId: lease.deviceId, daemon: lease.daemon, client: lease.client, installedApp: lease.installedApp }));
   }
 
   async finish(info: EngineFinishInfo): Promise<void> {

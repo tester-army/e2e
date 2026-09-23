@@ -16,7 +16,7 @@ export function resolveExpression(expression: LocatorExpression, index: readonly
       const candidates =
         expression.scope === undefined ? index : descendantsOf(resolveExpression(expression.scope, index), index);
       const matches = candidates.filter((entry) => matchesQuery(entry, expression.query));
-      return expression.query.kind === 'text' ? innermostOnly(matches) : matches;
+      return ECHOED_QUERY_KINDS.has(expression.query.kind) ? innermostOnly(matches) : matches;
     }
     case 'filter': {
       const source = resolveExpression(expression.source, index);
@@ -45,12 +45,17 @@ export function resolveExpression(expression: LocatorExpression, index: readonly
   }
 }
 
+/** The query kinds a device answers with the innermost match, because it echoes what they match on up the tree. */
+const ECHOED_QUERY_KINDS: ReadonlySet<SemanticQuery['kind']> = new Set(['text', 'label']);
+
 /**
  * Drops every match that contains another match, the way a browser's text
- * selector answers with the innermost element. A device tree echoes text
- * upwards: iOS reports a React Native Text host view and its StaticText child
- * with the same label, and a container view inherits its descendants' labels,
- * so without this rule every `getByText` on such a screen is ambiguous.
+ * selector answers with the innermost element. A device tree echoes text and
+ * labels upwards: iOS reports a React Native Text host view and its
+ * StaticText child with the same label, a TextInput host view and the text
+ * field inside it with the same label, and a container view inherits its
+ * descendants' labels, so without this rule every `getByText` and
+ * `getByLabel` on such a screen is ambiguous.
  */
 function innermostOnly(matches: readonly ProjectedNode[]): ProjectedNode[] {
   return matches.filter((entry) => !matches.some((other) => other !== entry && isWithin(other, entry)));

@@ -79,9 +79,18 @@ export interface Device {
    * links are `POLICY_DENIED`.
    */
   openLink(url: string, options?: { app?: string }): Promise<void>;
-  /** Closes the session's current app. */
+  /**
+   * Terminates the session's app and ends the session, so the next
+   * `openApp` launches it fresh. Until then the screen is unobservable and
+   * `foregroundApp` is `APP_NOT_OPEN`.
+   */
   closeApp(): Promise<void>;
-  /** The app currently in the foreground of the session. */
+  /**
+   * The app the session is on. iOS answers from the session, not the
+   * device, so it names the app the session opened even after `home()`;
+   * Android reads the device's foreground activity. `APP_NOT_OPEN` once
+   * `closeApp` ended the session.
+   */
   foregroundApp(): Promise<ForegroundApp>;
   /** Sends the device to its home screen. */
   home(): Promise<void>;
@@ -144,7 +153,7 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Engine
       );
     },
     async setOrientation(orientation) {
-      await surface.command('device.setOrientation', (client) => client.command.orientation({ orientation }), context.signal);
+      await surface.screenCommand('device.setOrientation', (client) => client.command.orientation({ orientation }), context.signal);
     },
     async setBiometrics(sensor, result) {
       await surface.command(
@@ -173,7 +182,7 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Engine
       await surface.openLink(linkTarget(url), options?.app, context.signal);
     },
     async closeApp() {
-      await surface.command('device.closeApp', (client) => client.apps.close({}), context.signal);
+      await surface.closeApp(context.signal);
     },
     async foregroundApp() {
       const state = await surface.command('device.foregroundApp', (client) => client.command.appState({}), context.signal);
@@ -184,16 +193,16 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Engine
       };
     },
     async home() {
-      await surface.command('device.home', (client) => client.command.home({}), context.signal);
+      await surface.screenCommand('device.home', (client) => client.command.home({}), context.signal);
     },
     async back() {
-      await surface.command('device.back', (client) => client.command.back({ ...surface.settleOptions }), context.signal);
+      await surface.screenCommand('device.back', (client) => client.command.back({ ...surface.settleOptions }), context.signal);
     },
     async alert(action) {
-      await surface.command('device.alert', (client) => client.command.alert({ action }), context.signal);
+      await surface.screenCommand('device.alert', (client) => client.command.alert({ action }), context.signal);
     },
     async dismissKeyboard() {
-      await surface.command('device.dismissKeyboard', (client) => client.command.keyboard({ action: 'dismiss' }), context.signal);
+      await surface.screenCommand('device.dismissKeyboard', (client) => client.command.keyboard({ action: 'dismiss' }), context.signal);
     },
     async clipboard() {
       const result = await surface.command(

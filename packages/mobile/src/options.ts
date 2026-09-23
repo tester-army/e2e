@@ -50,7 +50,8 @@ export interface MobileOptions {
   /** Report label joining the cache identity; a simulator or emulator defaults to `test`. */
   readonly environment?: 'test' | 'staging' | 'production' | undefined;
   /**
-   * Simulator or emulator to use, by name or UDID. A list is a pool: the
+   * Simulator or emulator to use, by name, simulator UDID, or emulator
+   * serial (`emulator-5554`). A list is a pool: the
    * engine declares one worker per entry and worker slot `n` drives the
    * `n`th, so `workers` at or above the pool size runs the target's files
    * across every device at once. Omitted, the pool is every booted device of

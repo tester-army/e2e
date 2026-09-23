@@ -52,11 +52,11 @@ import {
   type ProjectedSnapshot,
   type RawNode,
 } from './nodes.ts';
-import type { AgentDeviceClient, MobileOptions, MobilePlatform, ClientFactory } from './options.ts';
+import type { AgentDeviceClient, MobileOptions, ClientFactory } from './options.ts';
 import { maskPng } from './png.ts';
-import { pinnedApp } from './bindings.ts';
+import { deviceLabel, pinnedApp, type SlotBinding } from './bindings.ts';
 import { assertAppId, assertConfiguredApp } from './links.ts';
-import { DevicePool, deviceSelection } from './pool.ts';
+import { DevicePool, deviceSelection, type DeviceSelection } from './pool.ts';
 import {
   invalidState,
   notActionable,
@@ -223,8 +223,8 @@ function settleOptions(settle: MobileOptions['settle']): SettleOptions {
 export class AgentDeviceSurface {
   private client: AgentDeviceClient | undefined;
   private attempt: Attempt | undefined;
-  /** The device this worker drives, the pool's entry for its slot; undefined leaves the choice to agent-device. */
-  private device: string | undefined;
+  /** The device this worker drives, the pool's binding for its slot; undefined leaves the choice to agent-device. */
+  private device: Pick<SlotBinding, 'device' | 'deviceId'> | undefined;
   private generation = new Map<string, NodeBinding>();
   private readonly located = new Map<string, NodeBinding>();
   private idCounter = 0;
@@ -304,6 +304,21 @@ export class AgentDeviceSurface {
     return runCommand(label, () => this.track(run(client)), signal ?? new AbortController().signal, this.where);
   }
 
+  /**
+   * Runs a fixture command that changes the screen (a back, the home screen,
+   * a dismissed alert or keyboard, a rotation) and records it as an action,
+   * so a control that arrives with the change waits out the transition
+   * budget before a test acts on it, as it does after a tap. Without this a
+   * `device.back()` followed by a tap lands where the returning screen has
+   * not yet arrived.
+   */
+  async screenCommand<T>(label: string, run: (client: AgentDeviceClient) => Promise<T>, signal: AbortSignal): Promise<T> {
+    const before = this.latestIndex;
+    const result = await this.command(label, run, signal);
+    this.markAction(before);
+    return result;
+  }
+
   /** Registers one device command as in flight until it settles. */
   private track<T>(pending: Promise<T>): Promise<T> {
     this.inflight.add(pending);
@@ -326,16 +341,17 @@ export class AgentDeviceSurface {
   }
 
   /** The device selection this worker's commands take. */
-  private selection(): { platform: MobilePlatform; device?: string; udid?: string } {
+  private selection(): DeviceSelection {
     return deviceSelection(this.options.platform, this.device);
   }
 
   async init(info: EngineInitInfo): Promise<void> {
     this.projectRoot = info.projectRoot;
     const binding = this.pool.binding(info.targetName, info.workerSlot, info.env);
-    this.device = binding?.device;
+    this.device = binding;
     const session = this.pool.session(info.targetName, info.workerSlot);
-    this.where = `session ${session}${this.device === undefined ? '' : ` on ${this.device}`}`;
+    const label = deviceLabel(binding);
+    this.where = `session ${session}${label === undefined ? '' : ` on ${label}`}`;
     this.client ??= this.createClient(session, binding);
     await this.command('boot', (client) => client.devices.boot(this.selection()), info.signal);
     if (this.options.appPath === undefined) return;
@@ -492,17 +508,39 @@ export class AgentDeviceSurface {
   }
 
   /**
-   * What a launch leaves behind. It has no screen before it worth matching
-   * against: every control of the new screen is arriving, whatever the
-   * previous one looked like. The identity is the app agent-device named; a
-   * link the OS routed keeps the last known one until the next snapshot
+   * What a launch leaves behind. The identity is the app agent-device named;
+   * a link the OS routed keeps the last known one until the next snapshot
    * reports the foreground app.
    */
   private launched(identity: string | undefined): void {
-    this.markAction(undefined);
     if (identity !== undefined) this.appIdentity = identity;
+    this.screenReplaced();
+  }
+
+  /**
+   * Forgets the screen after a launch or a close. There is no screen before
+   * it worth matching against: every control of whatever shows next is
+   * arriving, whatever the previous screen looked like, and none of its
+   * bindings names a node that still exists.
+   */
+  private screenReplaced(): void {
+    this.markAction(undefined);
     this.generation = new Map();
     this.located.clear();
+  }
+
+  /**
+   * Terminates the session's app, then ends the session. agent-device's bare
+   * `close` ends the session and leaves the app running, so the next
+   * `openApp` would resume it mid-flow; a close that names the app
+   * terminates it first. The app is the one the session last observed, else
+   * the pinned one; with neither known there is nothing to terminate and
+   * only the session ends.
+   */
+  async closeApp(signal: AbortSignal): Promise<void> {
+    const app = this.appIdentity ?? this.pinnedApp;
+    await this.command('device.closeApp', (client) => client.apps.close(app === undefined ? {} : { app }), signal);
+    this.screenReplaced();
   }
 
   /**
@@ -794,7 +832,7 @@ export class AgentDeviceSurface {
           }
           return client.interactions.press({ ...this.actionTarget(entry), ...settle });
         case 'doubleTap':
-          return client.interactions.press({ ...this.actionTarget(entry), doubleTap: true, ...settle });
+          return client.interactions.press({ ...this.actionTarget(entry), count: 2, ...settle });
         case 'longPress':
           return client.interactions.longPress({
             ...this.actionTarget(entry),

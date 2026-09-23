@@ -1,6 +1,6 @@
 /** Explicit fixture operations: open the step before running any engine code. */
 import type { FixtureOperation, FixtureOperations } from '../engine/index.ts';
-import { ConfigurationError, TestError } from '../internal/errors.ts';
+import { asEngineError, ConfigurationError, TestError, translateEngineError } from '../internal/errors.ts';
 import { withAbort, withTimeout } from '../internal/time.ts';
 import type { AttemptEnvironment } from './fixtures.ts';
 
@@ -75,11 +75,25 @@ export class FixtureRecorder {
       if (timeout !== false && timeout !== undefined && (!Number.isFinite(timeout) || timeout <= 0)) {
         throw new TestError('INVALID_ARGUMENT', `${api} timeout must be positive and finite`);
       }
-      const pending = withAbort(body, environment.budget.signal, () => new TestError('CANCELLED', `${api} cancelled`));
+      const pending = withAbort(() => translated(api, body), environment.budget.signal, () => new TestError('CANCELLED', `${api} cancelled`));
       if (timeout === false) return pending;
       const timeoutMs = timeout ?? environment.config.actionTimeout;
       return withTimeout(pending, timeoutMs, () => new TestError('ACTION_FAILED', `${api} exceeded its timeout of ${timeoutMs}ms`));
     }, { verifies: operation.verifies ?? operation.kind === 'assertion' });
+  }
+}
+
+/**
+ * Runs one operation and maps an `EngineError` it rejects with onto the runner
+ * taxonomy, as every other engine surface is mapped: a contributed fixture
+ * that lost its session throws `INVALID_STATE`, which a test reads as
+ * `APP_NOT_OPEN`. Anything else is rethrown as the fixture threw it.
+ */
+async function translated(api: string, body: () => Promise<unknown>): Promise<unknown> {
+  try {
+    return await body();
+  } catch (cause) {
+    throw asEngineError(cause) === undefined ? cause : translateEngineError(cause, ` in ${api}`);
   }
 }
 

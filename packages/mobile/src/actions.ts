@@ -39,9 +39,12 @@ export const DEVICE_POINTER_ACTIONS: readonly PointerActionKind[] = ['tap', 'dou
 /**
  * Issues one pointer action at a screen point in logical pixels. `settle` is
  * the device's quiet-wait options, spread onto the interaction as the node
- * actions do. The kinds outside `DEVICE_POINTER_ACTIONS` never arrive: the
- * harness routes only declared kinds. They are refused here so the switch
- * stays exhaustive against the contract.
+ * actions do. A double tap is two presses (`count: 2`), as it is on a node:
+ * agent-device's own double-tap gesture reaches a React Native `Pressable`
+ * on iOS as one press, while two presses in a row land about 285 ms apart.
+ * The kinds outside `DEVICE_POINTER_ACTIONS` never arrive: the harness
+ * routes only declared kinds. They are refused here so the switch stays
+ * exhaustive against the contract.
  */
 export function pointerInteraction(
   client: AgentDeviceClient,
@@ -54,7 +57,7 @@ export function pointerInteraction(
     case 'tap':
       return client.interactions.press({ ...at, ...settle });
     case 'doubleTap':
-      return client.interactions.press({ ...at, doubleTap: true, ...settle });
+      return client.interactions.press({ ...at, count: 2, ...settle });
     case 'longPress':
       return client.interactions.longPress({
         ...at,

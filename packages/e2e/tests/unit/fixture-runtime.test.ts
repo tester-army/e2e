@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { defineEngine, type EngineHandle, LOCATOR_ACTION_KINDS } from '../../src/engine/index.ts';
+import { defineEngine, EngineError, type EngineHandle, LOCATOR_ACTION_KINDS, TestError } from '../../src/engine/index.ts';
 import { createEngineSession } from '../../src/engine/session.ts';
 import { resolveConfig } from '../../src/config/resolve.ts';
 import { credentials, secrets, setSecretRegistry } from '../../src/secrets.ts';
@@ -301,6 +301,26 @@ describe('explicit fixture operations', () => {
     await (expectFixture(gadget) as unknown as { toBeReady(): Promise<void> }).toBeReady();
     expect(steps.lastVerifiedStepIndex).toBe(2);
     expect(steps.all().map((step) => step.status)).toEqual(['passed', 'failed', 'passed']);
+  });
+
+  it('maps an EngineError a contributed method throws onto the runner taxonomy, and leaves other errors as thrown', async () => {
+    const engine = defineEngine({
+      name: 'fake', version: '1', spiVersion: 1,
+      fixtures: {
+        gadget: (context) => context.fixture('gadget', {
+          async lost(): Promise<void> { throw new EngineError('INVALID_STATE', 'appstate requires an active session', { retryable: false }); },
+          async slow(): Promise<void> { throw new EngineError('OPERATION_TIMEOUT', 'appstate timed out', { retryable: false }); },
+          async denied(): Promise<void> { throw new TestError('POLICY_DENIED', 'no'); },
+          async plain(): Promise<void> { throw new Error('plain failure'); },
+        }, { lost: { kind: 'resource' }, slow: { kind: 'resource' }, denied: { kind: 'resource' }, plain: { kind: 'resource' } }),
+      },
+    });
+    const { fixtures } = runtime(engine);
+    const gadget = (fixtures as unknown as { gadget: Record<'lost' | 'slow' | 'denied' | 'plain', () => Promise<void>> }).gadget;
+    await expect(gadget.lost()).rejects.toMatchObject({ code: 'APP_NOT_OPEN', category: 'test', message: 'appstate requires an active session' });
+    await expect(gadget.slow()).rejects.toMatchObject({ code: 'ACTION_FAILED', message: 'operation timed out in gadget.slow' });
+    await expect(gadget.denied()).rejects.toMatchObject({ code: 'POLICY_DENIED' });
+    await expect(gadget.plain()).rejects.toThrow('plain failure');
   });
 
   it('rejects a factory that returns a surface it did not declare through context.fixture', () => {

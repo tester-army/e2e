@@ -232,6 +232,101 @@ describe('snapshot projection', () => {
     ]);
   });
 
+  it('reads the role and state React Native spells into an iOS accessibility value, and reports the rest as the value', () => {
+    const projected = project([
+      { ref: 'e1', index: 0, depth: 0, type: 'Application', label: 'Benchmark' },
+      { ref: 'e2', index: 1, parentIndex: 0, depth: 1, type: 'Other', label: 'Newsletter', value: 'checkbox, unchecked', identifier: 'newsletter-checkbox' },
+      { ref: 'e3', index: 2, parentIndex: 0, depth: 1, type: 'Other', label: 'Newsletter', value: 'checkbox, checked' },
+      { ref: 'e4', index: 3, parentIndex: 0, depth: 1, type: 'Other', label: 'Small', value: 'radio button, checked', selected: true },
+      { ref: 'e5', index: 4, parentIndex: 0, depth: 1, type: 'Other', label: 'Medium', value: 'radio button, unchecked' },
+      { ref: 'e6', index: 5, parentIndex: 0, depth: 1, type: 'Other', label: 'Terms', value: 'checkbox, mixed' },
+      { ref: 'e7', index: 6, parentIndex: 0, depth: 1, type: 'Other', label: 'Filters', value: 'menu, expanded' },
+      { ref: 'e8', index: 7, parentIndex: 0, depth: 1, type: 'Other', label: 'More', value: 'menu, collapsed, busy' },
+      { ref: 'e9', index: 8, parentIndex: 0, depth: 1, type: 'Other', label: 'Volume', value: 'spin button, 40%' },
+      { ref: 'e10', index: 9, parentIndex: 0, depth: 1, type: 'Other', label: 'Home', value: 'tab', selected: true },
+      { ref: 'e11', index: 10, parentIndex: 0, depth: 1, type: 'Other', label: 'Upload', value: 'progress bar, 3 of 5, almost done' },
+      { ref: 'e12', index: 11, parentIndex: 0, depth: 1, type: 'Other', label: 'Note', value: 'checkboxes are fun' },
+      { ref: 'e13', index: 12, parentIndex: 0, depth: 1, type: 'Switch', label: 'Wi-Fi', value: '1' },
+      { ref: 'e14', index: 13, parentIndex: 0, depth: 1, type: 'Other', label: 'Tabs', value: 'tab list' },
+    ]);
+    const nodes = projected.index.slice(1).map((entry) => entry.node);
+    expect(nodes.map((node) => node.role)).toEqual([
+      'checkbox',
+      'checkbox',
+      'radio',
+      'radio',
+      'checkbox',
+      'menu',
+      'menu',
+      'spinbutton',
+      'tab',
+      'progressbar',
+      'other',
+      'switch',
+      'tablist',
+    ]);
+    expect(nodes.map((node) => node.states)).toEqual([
+      { checked: false },
+      { checked: true },
+      { selected: true, checked: true },
+      { checked: false },
+      undefined,
+      { expanded: true },
+      { expanded: false },
+      undefined,
+      { selected: true },
+      undefined,
+      undefined,
+      { checked: true },
+      undefined,
+    ]);
+    // The descriptor and state words are stripped; a value the app set, and a state the contract has no field for, stay.
+    expect(nodes.map((node) => node.value)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      'mixed',
+      undefined,
+      'busy',
+      '40%',
+      undefined,
+      '3 of 5, almost done',
+      'checkboxes are fun',
+      '1',
+      undefined,
+    ]);
+    expect(nodes[0]).toMatchObject({ name: 'Newsletter', testId: 'newsletter-checkbox', selector: 'id=newsletter-checkbox' });
+    // The platform kind is kept for selectors: `role=Other` still finds the view.
+    expect(projected.index[1]?.kind).toBe('other');
+    // Android never writes this shape; a value that happens to start with a word from the list is a value.
+    const android = project([{ ref: 'e1', type: 'android.widget.TextView', label: 'Kind', value: 'checkbox, unchecked' }]);
+    expect(android.index[0]?.node).toMatchObject({ role: 'text', value: 'checkbox, unchecked' });
+    expect(android.index[0]?.node.states).toBeUndefined();
+  });
+
+  it('keeps the value of an iOS field whose text is also its label, and drops only the Android text view echo', () => {
+    const projected = project([
+      { ref: 'e1', index: 0, depth: 0, type: 'Application', label: 'Benchmark' },
+      { ref: 'e2', index: 1, parentIndex: 0, depth: 1, type: 'TextField', label: 'tester', value: 'tester', identifier: 'username-input' },
+      { ref: 'e3', index: 2, parentIndex: 0, depth: 1, type: 'TextView', label: 'Notes long enough', value: 'Notes long enough' },
+      { ref: 'e4', index: 3, parentIndex: 0, depth: 1, type: 'StaticText', label: 'Row 1', value: 'Row 1' },
+      { ref: 'e5', index: 4, parentIndex: 0, depth: 1, type: 'android.widget.TextView', label: 'Airplane mode', value: 'Airplane mode' },
+      { ref: 'e6', index: 5, parentIndex: 0, depth: 1, type: 'android.widget.EditText', label: 'tester', value: 'tester' },
+      { ref: 'e7', index: 6, parentIndex: 0, depth: 1, type: 'android.widget.TextView', label: 'PIN', value: 'PIN', editable: true },
+      { ref: 'e8', index: 7, parentIndex: 0, depth: 1, type: 'android.widget.TextView', label: 'Total', value: '42' },
+    ]);
+    expect(projected.index.slice(1).map((entry) => [entry.node.role, entry.node.value])).toEqual([
+      ['textbox', 'tester'],
+      ['textbox', 'Notes long enough'],
+      ['text', 'Row 1'],
+      ['text', undefined],
+      ['textbox', 'tester'],
+      ['textbox', 'PIN'],
+      ['text', '42'],
+    ]);
+  });
+
   it('maps Android view classes, drops echoed values, and titles the screen from the toolbar', () => {
     const projected = project([
       { ref: 'e1', index: 0, depth: 0, type: 'android.widget.FrameLayout' },

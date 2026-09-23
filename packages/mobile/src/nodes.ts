@@ -118,6 +118,85 @@ const UNCHECKED_VALUES = new Set(['0', 'off', 'false', 'unchecked']);
 const SCREEN_KINDS = new Set(['application', 'app', 'window']);
 
 /**
+ * The role descriptions React Native writes into an iOS view's accessibility
+ * value for the roles UIKit has no trait for, onto the contract role each
+ * stands for. Fabric (`RCTViewComponentView.mm`) writes `checkbox` and
+ * `radio button`; Paper (`RCTView.m`) writes the whole list.
+ */
+const REACT_NATIVE_ROLE_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  alert: 'alert',
+  checkbox: 'checkbox',
+  'combo box': 'combobox',
+  menu: 'menu',
+  'menu bar': 'menubar',
+  'menu item': 'menuitem',
+  'progress bar': 'progressbar',
+  'radio button': 'radio',
+  'radio group': 'radiogroup',
+  'scroll bar': 'scrollbar',
+  'spin button': 'spinbutton',
+  switch: 'switch',
+  tab: 'tab',
+  'tab list': 'tablist',
+  timer: 'timer',
+  'tool bar': 'toolbar',
+};
+
+/** The state words React Native writes after the role description, and the state each one sets. */
+const REACT_NATIVE_STATE_WORDS: Readonly<Record<string, { readonly checked?: boolean; readonly expanded?: boolean }>> = {
+  checked: { checked: true },
+  unchecked: { checked: false },
+  expanded: { expanded: true },
+  collapsed: { expanded: false },
+};
+
+/** State words with no contract state (`mixed`, `busy`): kept in the value, so they still read. */
+const REACT_NATIVE_LOOSE_STATE_WORDS = new Set(['mixed', 'busy']);
+
+/** What React Native spelled into an iOS accessibility value. */
+interface ReactNativeValue {
+  readonly role: string;
+  readonly states: { readonly checked?: boolean; readonly expanded?: boolean };
+  /** The value proper, after the role and state words; undefined when nothing follows them. */
+  readonly value: string | undefined;
+}
+
+/**
+ * React Native has no UIKit trait for `checkbox`, `radio`, and the other
+ * roles above, so on iOS it spells the role and the checked or expanded
+ * state into the view's accessibility value, comma-separated and before any
+ * value the app set: `checkbox, unchecked`, `radio button, checked`. XCTest
+ * then reports an `Other` whose value says what it is. This reads that
+ * shape back: the role from the leading description, the states from the
+ * words after it, and what follows as the value proper. Undefined for a
+ * value that does not start with a description, which is every other value.
+ */
+function reactNativeValue(value: string | undefined): ReactNativeValue | undefined {
+  if (value === undefined) return undefined;
+  const parts = value.split(', ');
+  const role = REACT_NATIVE_ROLE_DESCRIPTIONS[parts[0]?.toLowerCase() ?? ''];
+  if (role === undefined) return undefined;
+  const states: { checked?: boolean; expanded?: boolean } = {};
+  const rest: string[] = [];
+  let position = 1;
+  for (; position < parts.length; position += 1) {
+    const word = parts[position]?.toLowerCase() ?? '';
+    const state = REACT_NATIVE_STATE_WORDS[word];
+    if (state !== undefined) {
+      Object.assign(states, state);
+      continue;
+    }
+    if (REACT_NATIVE_LOOSE_STATE_WORDS.has(word)) {
+      rest.push(parts[position] as string);
+      continue;
+    }
+    break;
+  }
+  rest.push(...parts.slice(position));
+  return { role, states, value: rest.length === 0 ? undefined : rest.join(', ') };
+}
+
+/**
  * Android view classes onto the role vocabulary, keyed by the simple class
  * name in kebab case. A `TextView` is static text here where an iOS
  * `TextView` is an editor, which is why the two platforms keep separate maps.
@@ -282,11 +361,17 @@ export function projectSnapshot(raw: readonly RawNode[], options: { readonly min
     const source = raw[position] as RawNode;
     const id = options.mintId();
     const kind = kindOf(source);
-    const role = editableRole(roleOf(kind, isAndroidClass(source.type), parent?.kind), source.editable);
+    const android = isAndroidClass(source.type);
+    // The role React Native spelled into the value outranks the platform's
+    // `Other`: it is the role the app declared, and iOS had no trait for it.
+    const spelled = android ? undefined : reactNativeValue(source.value);
+    const role = editableRole(spelled?.role ?? roleOf(kind, android, parent?.kind), source.editable);
+    const editable = source.editable === true || (role !== undefined && TEXT_INPUT_ROLES.has(role));
+    const value = spelled === undefined ? source.value : spelled.value;
     // iOS names a secure field by class; UIAutomator flags a password
     // `EditText` by attribute, the class being the plain one.
     const secure = SECURE_KINDS.has(kind) || source.password === true;
-    const checked = checkedOf(role, source.value);
+    const checked = spelled?.states.checked ?? checkedOf(role, value);
     const states = {
       ...(source.enabled === false ? { disabled: true } : {}),
       ...(source.selected === true ? { selected: true } : {}),
@@ -294,6 +379,7 @@ export function projectSnapshot(raw: readonly RawNode[], options: { readonly min
       ...(source.visibleToUser === false ? { hidden: true } : {}),
       ...(secure ? { secure: true } : {}),
       ...(checked === undefined ? {} : { checked }),
+      ...(spelled?.states.expanded === undefined ? {} : { expanded: spelled.states.expanded }),
     };
     const identifier = source.identifier === undefined || source.identifier === '' ? undefined : source.identifier;
     const projected: { node: SemanticNode | undefined } = { node: undefined };
@@ -318,10 +404,12 @@ export function projectSnapshot(raw: readonly RawNode[], options: { readonly min
       ...(source.label === undefined || source.label === '' ? {} : { name: source.label, text: source.label }),
       // A secure field's value is never observed; the tree carries that it is
       // secure, not what it holds. Android echoes a text view's label as its
-      // value, which would render every line twice, so an echo is dropped.
-      ...(secure || source.value === undefined || source.value === '' || source.value === source.label
+      // value, which would render every line twice, so that echo is dropped;
+      // a field keeps a value equal to its label, since iOS names an
+      // unlabeled field by its text and the value is what a test reads.
+      ...(secure || value === undefined || value === '' || (android && !editable && value === source.label)
         ? {}
-        : { value: source.value }),
+        : { value }),
       ...(secure ? { inputPurpose: 'password' as const } : {}),
       ...(Object.keys(states).length === 0 ? {} : { states }),
       // The accessibility identifier (iOS) or resource id (Android) is the node's test id.

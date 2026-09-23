@@ -245,7 +245,7 @@ describe('lifecycle', () => {
     const handed = result?.env ?? {};
     const variable = poolVariableIn(handed, 'IOS');
     expect(handed[variable]).toBe(
-      JSON.stringify([{ device: '2BBF3F07-AF66-4F95-82AB-BF442506FC89' }, { device: '8A2DC8D6-7B20-44FA-ADBB-47D3EAE6E8F3' }]),
+      JSON.stringify([{ deviceId: '2BBF3F07-AF66-4F95-82AB-BF442506FC89' }, { deviceId: '8A2DC8D6-7B20-44FA-ADBB-47D3EAE6E8F3' }]),
     );
     expect(env).toEqual({});
     // A worker reads the pool from the environment it was started with, never process.env.
@@ -267,14 +267,14 @@ describe('lifecycle', () => {
     const first = await h.engine.prepare!(info);
     expect(first?.workers).toBe(1);
     const firstEnv = first?.env ?? {};
-    expect(h.fake.calls.filter((call) => call.method === 'devices.boot').map((call) => call.args)).toEqual([{ platform: 'ios', device: 'A' }]);
-    expect(firstEnv[poolVariableIn(firstEnv, 'IOS')]).toBe(JSON.stringify([{ device: 'A' }]));
+    expect(h.fake.calls.filter((call) => call.method === 'devices.boot').map((call) => call.args)).toEqual([{ platform: 'ios', udid: 'A' }]);
+    expect(firstEnv[poolVariableIn(firstEnv, 'IOS')]).toBe(JSON.stringify([{ deviceId: 'A' }]));
     // The same handle prepared again, for another target, discovers afresh and hands back that target's own variable.
     h.fake.respond('devices.list', () => [{ platform: 'ios', id: 'C', name: 'C', booted: true }]);
     const second = await h.engine.prepare!({ ...info, targetName: 'ios.a', env });
     const secondEnv = second?.env ?? {};
     expect(h.fake.methods().filter((method) => method === 'devices.list')).toHaveLength(2);
-    expect(secondEnv[poolVariableIn(secondEnv, 'IOS_A')]).toBe(JSON.stringify([{ device: 'C' }]));
+    expect(secondEnv[poolVariableIn(secondEnv, 'IOS_A')]).toBe(JSON.stringify([{ deviceId: 'C' }]));
     // Names that sanitize alike keep distinct variables.
     const third = await h.engine.prepare!({ ...info, targetName: 'ios-a', env });
     expect(Object.keys(third?.env ?? {})[0]).not.toBe(Object.keys(secondEnv)[0]);
@@ -300,6 +300,37 @@ describe('lifecycle', () => {
     await openAttempt(byId);
     expect(byId.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios', udid: '2BBF3F07-AF66-4F95-82AB-BF442506FC89' });
     expect(byId.fake.lastArgs('apps.open')).toEqual({ app: 'Settings', platform: 'ios', udid: '2BBF3F07-AF66-4F95-82AB-BF442506FC89', relaunch: true });
+  });
+
+  it('drives a discovered Android emulator by its serial, and reads a configured serial or name as agent-device does', async () => {
+    const h = harness({ device: undefined, platform: 'android' });
+    h.fake.respond('devices.list', () => [{ platform: 'android', id: 'emulator-5554', name: 'test', booted: true }]);
+    const lines: string[] = [];
+    const result = await h.engine.prepare!({
+      runId: 'run-1',
+      targetName: 'android',
+      projectRoot: PROJECT_ROOT,
+      slots: 1,
+      env: {},
+      signal: new AbortController().signal,
+      log: (line) => lines.push(line),
+    });
+    // The inventory names the device; the boot selects it by the id agent-device lists it under, an adb serial.
+    expect(lines[0]).toMatch(/1 booted android device\(s\); driving 1: test/);
+    expect(h.fake.lastArgs('devices.boot')).toEqual({ platform: 'android', serial: 'emulator-5554' });
+    const handed = result?.env ?? {};
+    const variable = poolVariableIn(handed, 'ANDROID');
+    expect(handed[variable]).toBe(JSON.stringify([{ deviceId: 'emulator-5554' }]));
+    const worker = harness({ device: undefined, platform: 'android' });
+    await boot(worker.engine, 'android', 0, { [variable]: handed[variable] });
+    expect(worker.fake.lastArgs('devices.boot')).toEqual({ platform: 'android', serial: 'emulator-5554' });
+
+    const bySerial = harness({ device: 'emulator-5556', platform: 'android' });
+    await boot(bySerial.engine, 'android');
+    expect(bySerial.fake.lastArgs('devices.boot')).toEqual({ platform: 'android', serial: 'emulator-5556' });
+    const byName = harness({ device: 'Pixel_9', platform: 'android' });
+    await boot(byName.engine, 'android');
+    expect(byName.fake.lastArgs('devices.boot')).toEqual({ platform: 'android', device: 'Pixel_9' });
   });
 
   it('carries the configured settle window on actions, and none when settle is false', async () => {
@@ -661,7 +692,7 @@ describe('perform', () => {
     await h.engine.perform!(about!.ref, { kind: 'dragTo', target: back!.ref }, op);
     expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
       ['interactions.press', { ref: '@e4', settle: true, settleQuietMs: 150 }],
-      ['interactions.press', { ref: '@e4', doubleTap: true, settle: true, settleQuietMs: 150 }],
+      ['interactions.press', { ref: '@e4', count: 2, settle: true, settleQuietMs: 150 }],
       ['interactions.longPress', { ref: '@e4', settle: true, settleQuietMs: 150, durationMs: 900 }],
       ['interactions.press', { ref: '@e7', settle: true, settleQuietMs: 150 }],
       ['interactions.hover', { ref: '@e4' }],
@@ -971,6 +1002,42 @@ describe('device fixture', () => {
     return h.engine.fixtures!['device']!(context) as Device;
   }
 
+  it('counts a back, home, alert, keyboard, or rotation as an action, so a control that arrives with it waits out the transition budget', async () => {
+    const h = harness({ transition: 120 });
+    await openAttempt(h);
+    await observed(h, 'Back');
+    const device = fixture(h);
+    for (const change of [
+      () => device.back(),
+      () => device.home(),
+      () => device.alert('accept'),
+      () => device.dismissKeyboard(),
+      () => device.setOrientation('landscape-left'),
+    ]) {
+      h.fake.respond('capture.snapshot', () => SETTINGS_SNAPSHOT);
+      await observed(h, 'Back');
+      await change();
+      // The next look shows a control that was not there before the change: the screen it revealed.
+      h.fake.respond('capture.snapshot', () => ({
+        ...SETTINGS_SNAPSHOT,
+        nodes: [
+          ...SETTINGS_NODES,
+          { ref: '@e11', index: 10, parentIndex: 0, depth: 1, type: 'button', label: 'Submit', rect: { x: 0, y: 600, width: 390, height: 44 } },
+        ],
+      }));
+      const startedAt = Date.now();
+      const submit = await observed(h, 'Submit');
+      await h.engine.perform!(submit.ref, { kind: 'tap' }, { ...operation(), origin: 'test' });
+      expect(Date.now() - startedAt).toBeGreaterThanOrEqual(100);
+      expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e11' });
+    }
+    // A read leaves the budget alone: the clipboard changes no screen.
+    await device.clipboard();
+    const startedAt = Date.now();
+    await h.engine.perform!((await observed(h, 'Submit')).ref, { kind: 'tap' }, { ...operation(), origin: 'test' });
+    expect(Date.now() - startedAt).toBeLessThan(100);
+  });
+
   it('reads the harness signal per call, so teardown after a body timeout still drives the device', async () => {
     const h = harness();
     await openAttempt(h);
@@ -1065,7 +1132,8 @@ describe('device fixture', () => {
       ['settings.update', { setting: 'fingerprint', state: 'nonmatch' }],
       ['settings.update', { setting: 'touchid', state: 'enroll' }],
       ['apps.open', { app: 'Reminders', platform: 'ios', relaunch: true }],
-      ['apps.close', {}],
+      // The close names the app the session observed, so agent-device terminates it before the session ends.
+      ['apps.close', { app: 'com.apple.Preferences' }],
       ['command.appState', {}],
       ['command.home', {}],
       ['command.back', { settle: true, settleQuietMs: 150 }],
@@ -1383,7 +1451,7 @@ describe('deterministic actions', () => {
     await h.engine.performAt!({ x: 10, y: 20 }, { kind: 'tap' }, test());
     expect(h.fake.lastArgs('interactions.press')).toEqual({ x: 10, y: 20 });
     await h.engine.performAt!({ x: 10, y: 20 }, { kind: 'doubleTap' }, test());
-    expect(h.fake.lastArgs('interactions.press')).toEqual({ x: 10, y: 20, doubleTap: true });
+    expect(h.fake.lastArgs('interactions.press')).toEqual({ x: 10, y: 20, count: 2 });
     await h.engine.performAt!({ x: 10, y: 20 }, { kind: 'longPress', durationMs: 700 }, test());
     expect(h.fake.lastArgs('interactions.longPress')).toEqual({ x: 10, y: 20, durationMs: 700 });
     await h.engine.performAt!({ x: 10, y: 20 }, { kind: 'swipeTo', target: { x: 10, y: 300 } }, test());

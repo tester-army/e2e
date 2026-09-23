@@ -47,14 +47,35 @@ describe('locator expressions over a device snapshot', () => {
     expect(names(query('placeholder', 'anything'))).toEqual([]);
   });
 
-  it('answers text queries with the innermost match when an ancestor echoes the text', () => {
+  it('answers text and label queries with the innermost match when an ancestor echoes the text', () => {
     let counter = 0;
     const { index } = projectSnapshot(SETTINGS_NODES, { mintId: () => `n${++counter}` });
     const matches = resolveExpression(query('text', 'About'), index);
     expect(matches.map((entry) => entry.node.role)).toEqual(['text']);
-    // The echoing cell still answers label and role queries, and filters by its subtree text.
-    expect(names(query('label', 'About'))).toEqual(['About', 'About']);
+    expect(resolveExpression(query('label', 'About'), index).map((entry) => entry.node.role)).toEqual(['text']);
+    // The echoing cell still answers role queries, and filters by its subtree text.
+    expect(names(query('role', 'listitem', { name: exact('About') }))).toEqual(['About']);
     expect(names({ kind: 'filter', source: query('role', 'listitem'), hasText: exact('About') })).toEqual(['About']);
+  });
+
+  it('resolves a label query to the text field inside the host view iOS wraps a React Native input in', () => {
+    let counter = 0;
+    const { index } = projectSnapshot(
+      [
+        { ref: '@e1', index: 0, depth: 0, type: 'Application', label: 'Benchmark' },
+        { ref: '@e2', index: 1, parentIndex: 0, depth: 1, type: 'Other', label: 'Name field' },
+        { ref: '@e3', index: 2, parentIndex: 1, depth: 2, type: 'TextField', label: 'Name field', value: 'Ada', identifier: 'name-input' },
+        { ref: '@e4', index: 3, parentIndex: 0, depth: 1, type: 'Other', label: 'Passphrase field' },
+        { ref: '@e5', index: 4, parentIndex: 3, depth: 2, type: 'SecureTextField', label: 'Passphrase field' },
+      ],
+      { mintId: () => `n${++counter}` },
+    );
+    const field = resolveExpression(query('label', 'Name field'), index);
+    expect(field.map((entry) => [entry.node.role, entry.node.testId])).toEqual([['textbox', 'name-input']]);
+    const pattern: LocatorExpression = { kind: 'query', query: { kind: 'label', value: { kind: 'regexp', source: 'field$', flags: '' } } };
+    expect(resolveExpression(pattern, index).map((entry) => entry.node.role)).toEqual(['textbox', 'textbox']);
+    // A role query keeps both, since the host view answers to no vocabulary role of its own.
+    expect(resolveExpression(query('role', 'textbox'), index)).toHaveLength(2);
   });
 
   it('scopes, filters, and indexes', () => {

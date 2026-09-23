@@ -851,8 +851,10 @@ export const RETRYABLE_ENGINE_ERROR_CODES: ReadonlySet<EngineErrorCode> = new Se
 | `INVALID_STATE` | `APP_NOT_OPEN` | no |
 | `ENGINE_FAILURE`, any non-`EngineError` | infrastructure `ENGINE_FAILURE` | no |
 
-A contributed fixture method fails a step with the runner's own error
-classes, exported from the same entry:
+An `EngineError` a contributed fixture method throws is mapped by the table
+above, so a fixture over a session that ended reports `APP_NOT_OPEN` the way
+an observation would. A method can also fail a step with the runner's own
+error classes, exported from the same entry:
 
 ```ts
 export class TestError extends Error {}            // a test failure: ASSERTION_FAILED, INVALID_LOCATOR, ACTION_FAILED, ...
@@ -867,6 +869,7 @@ Use these helpers to keep behavior consistent across engines:
 | Export | Use |
 | --- | --- |
 | `matchesText(actual, pattern)`, `toTextPattern(match, { exact? })`, `describePattern(pattern)` | `TextPattern` matching for `locate` and text matchers |
+| `resolveExpression(expression, nodes, { selector? })` | The reference `locate`. Resolves one `LocatorExpression` over a semantic tree in document order, with `text` and `label` answering the innermost match when a container echoes a descendant's text. An engine whose tree is the whole truth (a device) calls it; a browser engine reproduces it. A `selector` needs the hook, a `frame` is `FRAME_NOT_FOUND` |
 | `urlMatches(current, expected, baseHref)` | `toHaveURL`-style comparison |
 | `pollCondition({ deadline, signal, negated, evaluate, onTimeout })`, `Deadline` | Assertion polling and the negation grace window |
 | `validateJsonValue(value, label)` | Rejects `undefined`, `NaN`, and cycles in a value a fixture returns |

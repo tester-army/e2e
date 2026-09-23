@@ -19,25 +19,38 @@ import {
   type EnginePrepareInfo,
   type EnginePrepareResult,
 } from 'e2e/engine';
-import { bindingsVariable, decodeBindings, encodeBindings, pinnedApp, type DeviceSource, type SlotBinding } from './bindings.ts';
+import { bindingsVariable, decodeBindings, deviceLabel, encodeBindings, pinnedApp, type DeviceSource, type SlotBinding } from './bindings.ts';
 import { isRunnerFailure, message, runCommand } from './errors.ts';
 import type { AgentDeviceClient, MobileOptions, MobilePlatform, ClientFactory } from './options.ts';
 import { asDeviceProvider, LeasedDevices } from './provider.ts';
 
-/** An Apple simulator UDID; anything else names a device. */
+/** An Apple simulator UDID. */
 const UDID = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/i;
+/** An Android emulator's adb serial. */
+const EMULATOR_SERIAL = /^emulator-\d+$/;
+
+/** The fields agent-device commands select a device by: the platform, then one of a name, a simulator UDID, or an Android serial. */
+export interface DeviceSelection {
+  readonly platform: MobilePlatform;
+  readonly device?: string;
+  readonly udid?: string;
+  readonly serial?: string;
+}
 
 /**
- * The device selection agent-device commands take: the platform, and the
- * device when one is named, as `udid` for a simulator UDID and `device` for a
- * name, the two fields agent-device resolves them by.
+ * The selection agent-device commands take for a binding: an id the pool
+ * discovered goes under the platform's id field (`udid` for a simulator,
+ * `serial` for an Android device), a configured string too when it reads as
+ * a UDID or an emulator serial, and any other string is a device name.
  */
 export function deviceSelection(
   platform: MobilePlatform,
-  device: string | undefined,
-): { platform: MobilePlatform; device?: string; udid?: string } {
-  if (device !== undefined && UDID.test(device)) return { platform, udid: device };
-  return obj({ platform, device });
+  binding: Pick<SlotBinding, 'device' | 'deviceId'> | undefined,
+): DeviceSelection {
+  const { device, deviceId } = binding ?? {};
+  const id = deviceId ?? (device !== undefined && (UDID.test(device) || EMULATOR_SERIAL.test(device)) ? device : undefined);
+  if (id === undefined) return obj({ platform, device });
+  return platform === 'android' ? { platform, serial: id } : { platform, udid: id };
 }
 
 /** The agent-device session slot `slot` of a target drives: the `session` option or `e2e-<target>`, then `-<slot>`. */
@@ -95,7 +108,7 @@ class BootedDevices implements DeviceSource {
       return [{}];
     }
     info.log(`${booted.length} booted ${this.platform} device(s); driving ${chosen.length}: ${chosen.map((device) => device.name).join(', ')}`);
-    return chosen.map((device) => ({ device: device.id }));
+    return chosen.map((device) => ({ deviceId: device.id }));
   }
 
   /** Every booted device of the platform, by stable id and name, in agent-device's inventory order. */
@@ -218,8 +231,8 @@ export class DevicePool {
    */
   private async warm(bindings: readonly SlotBinding[], info: EnginePrepareInfo): Promise<void> {
     for (const [slot, binding] of bindings.entries()) {
-      const label = binding.device ?? `a booted ${this.options.platform} device`;
-      const where = deviceSelection(this.options.platform, binding.device);
+      const label = deviceLabel(binding) ?? `a booted ${this.options.platform} device`;
+      const where = deviceSelection(this.options.platform, binding);
       const session = this.session(info.targetName, slot);
       const at = `session ${session} on ${label}`;
       const client = this.createClient(session, binding);
