@@ -640,9 +640,7 @@ function mapActionText(action: RecordedAction, map: TraceTextMap): RecordedActio
     case 'scrollTo':
     case 'typeSecret':
     case 'press':
-    case 'check':
-    // Upload paths are the executor's input, never screen text.
-    case 'upload': {
+    case 'check': {
       const mapped = target(action.target);
       return mapped === undefined ? undefined : withSummary({ ...action, target: mapped });
     }
@@ -651,6 +649,19 @@ function mapActionText(action: RecordedAction, map: TraceTextMap): RecordedActio
       const mapped = target(action.target);
       const value = map(action.value);
       return mapped === undefined || value === undefined ? undefined : withSummary({ ...action, target: mapped, value });
+    }
+    case 'upload': {
+      // Paths are replay inputs like a typed value: a file named through
+      // `unique()` must be re-resolved from each run's value, or the replay
+      // would upload the recording run's file.
+      const mapped = target(action.target);
+      const paths: string[] = [];
+      for (const path of action.paths) {
+        const value = map(path);
+        if (value === undefined) return undefined;
+        paths.push(value);
+      }
+      return mapped === undefined ? undefined : withSummary({ ...action, target: mapped, paths });
     }
     case 'drag': {
       const mapped = target(action.target);

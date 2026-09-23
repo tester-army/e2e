@@ -126,6 +126,30 @@ describe('templateText and expandText', () => {
 describe('templateTrace and expandTrace', () => {
   const name = (value: string): ParamTemplate[] => [{ pointer: '/name', value }];
 
+  it('templates upload paths, so a file named through unique() is re-resolved from each run\'s value', () => {
+    const upload = (file: string): ActionTrace => ({
+      actions: [
+        {
+          name: 'upload',
+          summary: `upload "${file}", "fixtures/static.txt" to button "Attachment"`,
+          target: { role: 'button', name: 'Attachment' },
+          paths: [file, 'fixtures/static.txt'],
+        },
+      ],
+      executor: { name: 'test' },
+      summary: 'attached',
+      startPath: '/',
+    });
+    const file = (value: string): ParamTemplate[] => [{ pointer: '/file', value }];
+    const recorded = templateTrace(upload('fixtures/run-1.json'), file('fixtures/run-1.json'))!;
+    expect(recorded.actions[0]).toMatchObject({
+      paths: ['{{param:/file}}', 'fixtures/static.txt'],
+      summary: 'upload "{{param:/file}}", "fixtures/static.txt" to button "Attachment"',
+    });
+    expect(expandTrace(recorded, file('fixtures/run-2.json'))).toEqual(upload('fixtures/run-2.json'));
+    expect(expandTrace(recorded, [])).toBeUndefined();
+  });
+
   it('templates inputs, descriptors, anchors, and summaries, and expands them with another run\'s value', () => {
     const recorded = templateTrace(trace('E2E abc Company'), name('E2E abc Company'))!;
     expect(recorded.actions[1]).toMatchObject({ value: '{{param:/name}}', summary: 'type "{{param:/name}}" into textbox "Name"' });
