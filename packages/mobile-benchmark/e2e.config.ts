@@ -30,6 +30,12 @@ export const ios = mobile({
   device: iosDevices === undefined || iosDevices.length !== 1 ? iosDevices : iosDevices[0],
   identity: `${APP_ID}-ios`,
   session: 'e2e-mobile-benchmark-ios',
+  // A control that just moved waits this long to come to rest before a tap;
+  // an unmoved one is tapped at once, so the budget costs only after a
+  // scroll. iOS reports a row's final frame from the first frame of a fling,
+  // and the default half second let a tap after scrollUntilVisible land on
+  // the row still passing underneath on a loaded simulator.
+  transition: 1_500,
 });
 
 export const android = mobile({
