@@ -32,19 +32,31 @@ export type { EngineObserveOptions, EngineState, VideoSegment } from './index.ts
 /**
  * The agent's action grammar, by verb. A session derives which verbs its
  * engine can honor from the action kinds the engine declared, so the agent
- * offers the model exactly that vocabulary. The vision-located tap is not a
- * verb of its own: it rides `tap` when the located point sits on a node the
- * tree lists, and `performAt` when it does not.
+ * offers the model exactly that vocabulary. The vision-located tap and hover
+ * are not verbs of their own: each rides its node verb when the located
+ * point sits on a node the tree lists, and `performAt` when it does not.
  */
 export type GrammarVerb =
   | 'tap'
+  | 'doubleTap'
+  | 'longPress'
+  | 'secondaryTap'
+  | 'hover'
   | 'type'
   | 'typeSecret'
   | 'press'
   | 'select'
+  /** Sets a checkbox, switch, or radio to a state instead of flipping it; needs `check` and `uncheck`. */
+  | 'check'
   | 'scroll'
+  /** Brings one listed node into the viewport (`scrollIntoView`). */
+  | 'scrollTo'
+  | 'drag'
+  | 'upload'
   | 'navigate'
+  | 'back'
   | 'tapAt'
+  | 'hoverAt'
   /** Keyboard input to whatever holds focus: `type` and `press` without a target. */
   | 'typeText'
   | 'pressKey'

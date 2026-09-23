@@ -116,12 +116,16 @@ fail with `UNSUPPORTED_CAPABILITY`.
 | `state.{capture,restore}` | `state` | `test.setup` and the `session` option |
 | `artifacts.{screenshot,startTrace?,stopTrace?,startVideo?,stopVideo?}` | `artifacts` | Screenshots, plus traces and video when their start and stop hooks exist |
 | `app` | | App address, identity, environment, and process settings. [Reference](/reference/config#the-app-under-test). |
-| `session.{open?,back?,restart?,reset?}` | | `app.open()` and the agent's `navigate` verb, `app.back()`, `app.restart()`, `app.clearState()` |
+| `session.{open?,back?,restart?,reset?}` | | `app.open()` and the agent's `navigate` verb, `app.back()` and the agent's `back` verb, `app.restart()`, `app.clearState()` |
 | `fixtures.<name>` | `<name>` | a contributed fixture, typed through `test.extend` |
 
 `actions`, `location`, `pointer`, and `keyboard` require `observe`. The agent
 receives only tools supported by the engine and the step's declared
-credentials. Agent and locator actions both reach `perform` as a
+credentials: each action kind you declare unlocks its verb (`hover` the
+`hover` tool, `dragTo` the `drag` tool, `setInputFiles` the `upload` tool,
+`check` with `uncheck` the `check` tool, and so on; the
+[engine reference](/reference/engine#capabilities) lists the mapping).
+Agent and locator actions both reach `perform` as a
 `LocatorAction`. Throw `UNSUPPORTED_CAPABILITY` if a particular node cannot
 support an otherwise declared action.
 

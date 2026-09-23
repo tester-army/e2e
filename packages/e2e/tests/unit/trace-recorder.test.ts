@@ -148,6 +148,66 @@ describe('TraceRecorder', () => {
   it('returns no trace for a step that committed nothing', () => {
     expect(makeRecorder().finalize(conclusion)).toBeUndefined();
   });
+
+  it('records every node verb, a state, a drag with its destination, files, and a back step, and reads them back', () => {
+    const doneColumn: SemanticNode = { ref: { id: 'n9', revision: 'r1' }, role: 'region', name: 'Done column' };
+    const recorder = makeRecorder();
+    recorder.record({ name: 'hover', node: upgradeButton });
+    recorder.record({ name: 'doubleTap', node: upgradeButton });
+    recorder.record({ name: 'longPress', node: upgradeButton });
+    recorder.record({ name: 'secondaryTap', node: upgradeButton });
+    recorder.record({ name: 'scrollTo', node: upgradeButton });
+    recorder.record({ name: 'check', node: upgradeButton, checked: false });
+    recorder.record({ name: 'drag', node: upgradeButton, destination: { node: doneColumn, within: 'Board' } });
+    recorder.record({ name: 'upload', node: upgradeButton, paths: ['fixtures/a.txt', 'fixtures/b.txt'] });
+    recorder.record({ name: 'back' });
+    recorder.record({ name: 'hoverAt', point: { x: 10, y: 20 }, viewport: { width: 1280, height: 720 } });
+    const trace = recorder.finalize({ ...conclusion, startPath: '/board' })!;
+    expect(trace.truncated).toBeUndefined();
+    expect(trace.actions.map((action) => action.summary)).toEqual([
+      'hover over button "Upgrade"',
+      'double-tap button "Upgrade"',
+      'long-press button "Upgrade"',
+      'secondary-tap button "Upgrade"',
+      'scroll button "Upgrade" into view',
+      'uncheck button "Upgrade"',
+      'drag button "Upgrade" to region "Done column" in "Board"',
+      'upload "fixtures/a.txt", "fixtures/b.txt" to button "Upgrade"',
+      'navigate back',
+      'hover over the point (10, 20)',
+    ]);
+    expect(trace.actions[5]).toMatchObject({ name: 'check', checked: false });
+    expect(trace.actions[6]).toMatchObject({ name: 'drag', destination: { role: 'region', name: 'Done column', within: 'Board' } });
+    expect(trace.actions[7]).toMatchObject({ name: 'upload', paths: ['fixtures/a.txt', 'fixtures/b.txt'] });
+    const entry = readTraceEntry(JSON.parse(JSON.stringify(buildTraceEntry(trace))));
+    expect(entry?.payload.actions).toEqual(trace.actions);
+  });
+
+  it('rejects a stored check, upload, or drag that lost a field', () => {
+    const recorder = makeRecorder();
+    recorder.record({ name: 'check', node: upgradeButton, checked: true });
+    recorder.record({ name: 'upload', node: upgradeButton, paths: ['fixtures/a.txt'] });
+    recorder.record({ name: 'drag', node: upgradeButton, destination: { node: upgradeButton } });
+    const entry = JSON.parse(JSON.stringify(buildTraceEntry(recorder.finalize(conclusion)!)));
+    const broken = (index: number, patch: (action: Record<string, unknown>) => void) => {
+      const copy = JSON.parse(JSON.stringify(entry));
+      patch(copy.payload.actions[index]);
+      return readTraceEntry(copy);
+    };
+    expect(broken(0, (action) => { action['checked'] = 'yes'; })).toBeUndefined();
+    expect(broken(1, (action) => { action['paths'] = []; })).toBeUndefined();
+    expect(broken(1, (action) => { action['paths'] = ['']; })).toBeUndefined();
+    expect(broken(2, (action) => { delete action['destination']; })).toBeUndefined();
+    expect(broken(0, (action) => { action['name'] = 'fly'; })).toBeUndefined();
+  });
+
+  it('poisons an upload of more files than the entry keeps', () => {
+    const recorder = makeRecorder();
+    recorder.record({ name: 'upload', node: upgradeButton, paths: Array.from({ length: 17 }, (_, index) => `fixtures/${String(index)}.txt`) });
+    const trace = recorder.finalize(conclusion)!;
+    expect(trace.truncated).toBe(true);
+    expect((trace.actions[0] as { paths: readonly string[] }).paths).toHaveLength(16);
+  });
 });
 
 describe('describeTarget', () => {

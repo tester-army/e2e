@@ -155,6 +155,14 @@ export interface ExecutorTarget {
  */
 export interface ExecutorActions {
   tap(target: ExecutorTarget): Promise<void>;
+  /** Double-taps one node (`doubleTap` in `target.verbs`). */
+  doubleTap(target: ExecutorTarget): Promise<void>;
+  /** Presses one node and holds for the engine's default duration (`longPress` in `target.verbs`). */
+  longPress(target: ExecutorTarget): Promise<void>;
+  /** A right-click on a pointer surface (`secondaryTap` in `target.verbs`). */
+  secondaryTap(target: ExecutorTarget): Promise<void>;
+  /** Moves the pointer over one node without pressing (`hover` in `target.verbs`). */
+  hover(target: ExecutorTarget): Promise<void>;
   type(target: ExecutorTarget, value: string): Promise<void>;
   /**
    * Fills one secret declared in the step's params into an input. The
@@ -166,6 +174,26 @@ export interface ExecutorActions {
   press(target: ExecutorTarget, key: string): Promise<void>;
   select(target: ExecutorTarget, value: string): Promise<void>;
   /**
+   * Sets a checkbox, switch, or radio to `checked`. A control already in that
+   * state is left alone, which is what tells this verb from a tap that flips
+   * whatever state it finds (`check` in `target.verbs`).
+   */
+  check(target: ExecutorTarget, checked: boolean): Promise<void>;
+  /**
+   * Drags one node onto another: a hold, a move, a release, or the
+   * platform's own drag when it has one (`drag` in `target.verbs`).
+   */
+  drag(source: ExecutorTarget, destination: ExecutorTarget): Promise<void>;
+  /** Brings one listed node into the viewport (`scrollTo` in `target.verbs`). */
+  scrollTo(target: ExecutorTarget): Promise<void>;
+  /**
+   * Attaches files to a file input. Paths are taken relative to the project
+   * root and authorized by the harness before the engine sees them: a file
+   * outside the project, under a hidden directory, or absent is refused
+   * (`upload` in `target.verbs`).
+   */
+  upload(target: ExecutorTarget, paths: readonly string[]): Promise<void>;
+  /**
    * Scrolls the viewport, or one node by a swipe inside its box. A scroll
    * target is what sits where it sits more than what it says: a device
    * names a scroll view after its first visible row and renumbers the tree
@@ -176,16 +204,25 @@ export interface ExecutorActions {
   scroll(direction: ScrollDirection, target?: ExecutorTarget): Promise<void>;
   /** Navigates to an http(s) URL or an app-relative path. */
   navigate(url: string): Promise<void>;
+  /** Navigates back once: browser history on a page, the in-app back on a device (`back` in `target.verbs`). */
+  back(): Promise<void>;
   /**
    * Taps one viewport point, in the CSS pixels of the newest observation
    * (`SemanticNode.rect` space; a point read off `pixels` is divided by its
    * `scale`). The point is routed onto the tree: a listed, enabled control
    * whose box contains it is tapped by its id, exactly like `tap`, with a
    * replayable descriptor; a point on nothing listed goes to the engine as a
-   * bare point when it has the `pointer` capability, recorded as a trace gap.
-   * Fails when the point is on nothing listed and the engine taps nodes only.
+   * bare point when it has the `pointer` capability, recorded with its
+   * viewport. Fails when the point is on nothing listed and the engine taps
+   * nodes only.
    */
   tapAt(point: ViewportPoint): Promise<PointTapResult>;
+  /**
+   * Hovers one viewport point, routed onto the tree the way `tapAt` is: a
+   * listed control under it is hovered by id, a bare point through the
+   * engine's `hover` pointer kind (`hoverAt` in `target.verbs`).
+   */
+  hoverAt(point: ViewportPoint): Promise<PointTapResult>;
   /**
    * Types into whatever holds focus, with no node resolved: the path for a
    * field the tree does not list (drawn on a canvas, flattened out of a
@@ -223,13 +260,13 @@ export interface PointHit {
   readonly summary: string;
 }
 
-/** What one `tapAt` did, for the executor to relay to its model. */
+/** What one point action (`tapAt`, `hoverAt`) did, for the executor to relay to its model. */
 export interface PointTapResult {
-  /** Where the tap landed, in the newest observation's CSS pixels. */
+  /** Where the action landed, in the newest observation's CSS pixels. */
   readonly point: ViewportPoint;
-  /** The listed control the point resolved to; absent when a bare point was tapped. */
+  /** The listed control the point resolved to; absent when a bare point was acted on. */
   readonly target?: ExecutorTarget;
-  /** Prose for a model: what was tapped, or what sits under a bare point. */
+  /** Prose for a model: what was acted on, or what sits under a bare point. */
   readonly summary: string;
 }
 

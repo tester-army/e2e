@@ -110,8 +110,20 @@ interface ActionBase {
   readonly summary: string;
 }
 
-export interface TapAction extends ActionBase {
-  readonly name: 'tap';
+/** The verbs that act on one node and carry no input: tap and its variants, hover, scroll into view. */
+export type NodeActionName = 'tap' | 'doubleTap' | 'longPress' | 'secondaryTap' | 'hover' | 'scrollTo';
+
+const NODE_ACTION_NAMES: ReadonlySet<string> = new Set<NodeActionName>([
+  'tap',
+  'doubleTap',
+  'longPress',
+  'secondaryTap',
+  'hover',
+  'scrollTo',
+]);
+
+export interface NodeAction extends ActionBase {
+  readonly name: NodeActionName;
   readonly target: TraceTargetDescriptor;
 }
 
@@ -140,6 +152,34 @@ export interface SelectAction extends ActionBase {
   readonly value: string;
 }
 
+/** A checkbox, switch, or radio set to a state; replay sets the same state rather than flipping. */
+export interface CheckAction extends ActionBase {
+  readonly name: 'check';
+  readonly target: TraceTargetDescriptor;
+  readonly checked: boolean;
+}
+
+/**
+ * Files attached to an input, by project-relative path. The paths are the
+ * executor's own input, never screen text, and replay runs them through the
+ * same project-root authorization the recording did.
+ */
+export interface UploadAction extends ActionBase {
+  readonly name: 'upload';
+  readonly target: TraceTargetDescriptor;
+  readonly paths: readonly string[];
+}
+
+/** Most files one upload carries; more is a script, not a form. */
+export const MAX_TRACE_UPLOAD_PATHS = 16;
+
+/** A drag from one node onto another; both are re-found before replay drags. */
+export interface DragAction extends ActionBase {
+  readonly name: 'drag';
+  readonly target: TraceTargetDescriptor;
+  readonly destination: TraceTargetDescriptor;
+}
+
 export interface ScrollAction extends ActionBase {
   readonly name: 'scroll';
   readonly direction: ScrollDirection;
@@ -159,22 +199,30 @@ export interface NavigateAction extends ActionBase {
   readonly url: string;
 }
 
+/** One step back in the history or the app, replayed as given. */
+export interface BackAction extends ActionBase {
+  readonly name: 'back';
+}
+
 /** A viewport size in CSS pixels, the precondition of a replayed point. */
 export interface TraceViewport {
   readonly width: number;
   readonly height: number;
 }
 
+/** The verbs that act on a bare viewport point. */
+export type PointActionName = 'tapAt' | 'hoverAt';
+
 /**
- * A tap at a bare viewport point, the way a coordinate-driven tool replays:
- * the same point on the same-sized viewport. When a listed node with a
- * durable descriptor contained the point, the point's place inside that
- * node's box is kept too, and replay re-finds the node and taps the same
- * place in its live box, so a layout shift moves the tap with it. The end
- * anchors decide whether the tap did what it did the first time.
+ * A tap or hover at a bare viewport point, the way a coordinate-driven tool
+ * replays: the same point on the same-sized viewport. When a listed node
+ * with a durable descriptor contained the point, the point's place inside
+ * that node's box is kept too, and replay re-finds the node and acts at the
+ * same place in its live box, so a layout shift moves the point with it.
+ * The end anchors decide whether the action did what it did the first time.
  */
-export interface TapAtAction extends ActionBase {
-  readonly name: 'tapAt';
+export interface PointAction extends ActionBase {
+  readonly name: PointActionName;
   readonly point: { readonly x: number; readonly y: number };
   readonly viewport: TraceViewport;
   readonly within?: {
@@ -227,14 +275,18 @@ export interface ToolGapAction extends ActionBase {
 }
 
 export type RecordedAction =
-  | TapAction
+  | NodeAction
   | TypeAction
   | TypeSecretAction
   | PressAction
   | SelectAction
+  | CheckAction
+  | UploadAction
+  | DragAction
   | ScrollAction
   | NavigateAction
-  | TapAtAction
+  | BackAction
+  | PointAction
   | TypeTextAction
   | PressKeyAction
   | DismissKeyboardAction
@@ -402,11 +454,12 @@ function readRecordedAction(document: unknown): RecordedAction | undefined {
   const summary = readBoundedText(raw['summary'], MAX_TRACE_SUMMARY_CHARS);
   if (summary === undefined) return undefined;
 
-  switch (raw['name']) {
-    case 'tap': {
-      const target = readDescriptor(raw['target']);
-      return target === undefined ? undefined : { name: 'tap', summary, target };
-    }
+  const name = raw['name'];
+  if (typeof name === 'string' && NODE_ACTION_NAMES.has(name)) {
+    const target = readDescriptor(raw['target']);
+    return target === undefined ? undefined : { name: name as NodeActionName, summary, target };
+  }
+  switch (name) {
     case 'type': {
       const target = readDescriptor(raw['target']);
       const value = readInputText(raw['value']);
@@ -431,6 +484,24 @@ function readRecordedAction(document: unknown): RecordedAction | undefined {
       if (target === undefined || value === undefined) return undefined;
       return { name: 'select', summary, target, value };
     }
+    case 'check': {
+      const target = readDescriptor(raw['target']);
+      const checked = raw['checked'];
+      if (target === undefined || typeof checked !== 'boolean') return undefined;
+      return { name: 'check', summary, target, checked };
+    }
+    case 'upload': {
+      const target = readDescriptor(raw['target']);
+      const paths = readInputPaths(raw['paths']);
+      if (target === undefined || paths === undefined) return undefined;
+      return { name: 'upload', summary, target, paths };
+    }
+    case 'drag': {
+      const target = readDescriptor(raw['target']);
+      const destination = readDescriptor(raw['destination']);
+      if (target === undefined || destination === undefined) return undefined;
+      return { name: 'drag', summary, target, destination };
+    }
     case 'scroll': {
       const direction = raw['direction'];
       if (typeof direction !== 'string' || !SCROLL_DIRECTIONS.has(direction)) return undefined;
@@ -453,14 +524,17 @@ function readRecordedAction(document: unknown): RecordedAction | undefined {
       const url = readInputText(raw['url']);
       return url === undefined ? undefined : { name: 'navigate', summary, url };
     }
-    case 'tapAt': {
+    case 'tapAt':
+    case 'hoverAt': {
       const point = readPoint(raw['point']);
       const viewport = readViewport(raw['viewport']);
       if (point === undefined || viewport === undefined) return undefined;
       const within = raw['within'] === undefined ? undefined : readWithin(raw['within']);
       if (raw['within'] !== undefined && within === undefined) return undefined;
-      return { name: 'tapAt', summary, point, viewport, ...(within === undefined ? {} : { within }) };
+      return { name, summary, point, viewport, ...(within === undefined ? {} : { within }) };
     }
+    case 'back':
+      return { name: 'back', summary };
     case 'typeText': {
       const value = readInputText(raw['value']);
       if (value === undefined || typeof raw['replace'] !== 'boolean') return undefined;
@@ -482,7 +556,7 @@ function readRecordedAction(document: unknown): RecordedAction | undefined {
   }
 }
 
-function readPoint(document: unknown): TapAtAction['point'] | undefined {
+function readPoint(document: unknown): PointAction['point'] | undefined {
   const raw = readObject(document);
   const x = raw?.['x'];
   const y = raw?.['y'];
@@ -500,7 +574,7 @@ function readViewport(document: unknown): TraceViewport | undefined {
   return { width: width as number, height: height as number };
 }
 
-function readWithin(document: unknown): NonNullable<TapAtAction['within']> | undefined {
+function readWithin(document: unknown): NonNullable<PointAction['within']> | undefined {
   const raw = readObject(document);
   const target = raw === undefined ? undefined : readDescriptor(raw['target']);
   const fx = raw?.['fx'];
@@ -559,8 +633,16 @@ function mapActionText(action: RecordedAction, map: TraceTextMap): RecordedActio
   const target = (descriptor: TraceTargetDescriptor) => mapDescriptorText(descriptor, map);
   switch (action.name) {
     case 'tap':
+    case 'doubleTap':
+    case 'longPress':
+    case 'secondaryTap':
+    case 'hover':
+    case 'scrollTo':
     case 'typeSecret':
-    case 'press': {
+    case 'press':
+    case 'check':
+    // Upload paths are the executor's input, never screen text.
+    case 'upload': {
       const mapped = target(action.target);
       return mapped === undefined ? undefined : withSummary({ ...action, target: mapped });
     }
@@ -569,6 +651,11 @@ function mapActionText(action: RecordedAction, map: TraceTextMap): RecordedActio
       const mapped = target(action.target);
       const value = map(action.value);
       return mapped === undefined || value === undefined ? undefined : withSummary({ ...action, target: mapped, value });
+    }
+    case 'drag': {
+      const mapped = target(action.target);
+      const destination = target(action.destination);
+      return mapped === undefined || destination === undefined ? undefined : withSummary({ ...action, target: mapped, destination });
     }
     case 'scroll': {
       if (action.target === undefined) return withSummary(action);
@@ -583,11 +670,13 @@ function mapActionText(action: RecordedAction, map: TraceTextMap): RecordedActio
       const value = map(action.value);
       return value === undefined ? undefined : withSummary({ ...action, value });
     }
-    case 'tapAt': {
+    case 'tapAt':
+    case 'hoverAt': {
       if (action.within === undefined) return withSummary(action);
       const mapped = target(action.within.target);
       return mapped === undefined ? undefined : withSummary({ ...action, within: { ...action.within, target: mapped } });
     }
+    case 'back':
     case 'pressKey':
     case 'dismissKeyboard':
     case 'tool':
@@ -688,6 +777,18 @@ function readBoundedText(value: unknown, maxChars: number): string | undefined {
     return undefined;
   }
   return value;
+}
+
+/** One to `MAX_TRACE_UPLOAD_PATHS` verbatim paths, each a replay input like a typed value. */
+function readInputPaths(value: unknown): readonly string[] | undefined {
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_TRACE_UPLOAD_PATHS) return undefined;
+  const paths: string[] = [];
+  for (const entry of value) {
+    const path = readInputText(entry);
+    if (path === undefined) return undefined;
+    paths.push(path);
+  }
+  return paths;
 }
 
 /** Verbatim replay input: bounded but never trimmed — whitespace can be the value. */

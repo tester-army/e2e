@@ -203,23 +203,28 @@ export interface OperationContext {
 | Member | Capability | Requires | Unlocks |
 | --- | --- | --- | --- |
 | `observe` | `observation` | - | judgment tier, prompt snapshots, trace replay, the viewport swipe's root |
-| `perform` + `actions` | `actions` | `observe` | the agent's grammar verbs (`tap`, `type`, `press`, `select`, `type_secret`, `scroll`, and `tap_at` when the point lands on a listed node) and the `screen`/`Locator` action set with platform actionability checks, each only for a kind listed in `actions` |
+| `perform` + `actions` | `actions` | `observe` | the agent's grammar verbs (`tap`, `double_tap`, `long_press`, `right_click`, `hover`, `type`, `press`, `select`, `check`, `type_secret`, `scroll`, `scroll_to`, `drag`, `upload`, and `tap_at` or `hover_at` when the point lands on a listed node) and the `screen`/`Locator` action set with platform actionability checks, each only for a kind listed in `actions` |
 | `locate` | `location` | `observe` | `screen`, `Locator`, `expect(locator)` |
-| `performAt` + `pointerActions` | `pointer` | `observe` | the agent's `tap_at` verb when the point lands on nothing the tree lists, and the test's `screen.tapAt` and `tap({ position })` (all need the `tap` pointer kind) and `screen.swipe({ from, to })` (the `swipeTo` kind): one pointer action at a viewport point in the CSS pixels of `SemanticNode.rect`, with no node behind it |
+| `performAt` + `pointerActions` | `pointer` | `observe` | the agent's `tap_at` and `hover_at` verbs when the point lands on nothing the tree lists (the `tap` and `hover` pointer kinds), and the test's `screen.tapAt` and `tap({ position })` (the `tap` kind) and `screen.swipe({ from, to })` (the `swipeTo` kind): one pointer action at a viewport point in the CSS pixels of `SemanticNode.rect`, with no node behind it |
 | `keyboard.{type,press,dismiss?}` | `keyboard` | `observe` | the agent's `type` and `press` without a target, the keyboard fallback of `type_at` and `press_at` on a point the tree lists nothing at, and `dismiss_keyboard` when `dismiss` exists: input to whatever holds focus, for a field drawn on a canvas or flattened out of a platform's tree; with the `focus` action, `locator.pressSequentially`, which the harness composes as `focus` then `keyboard.type` |
 | `fixtures.<name>` | `<name>` | - | a contributed fixture; `requires: ['<name>']` gates at selection |
 | `state` | `state` | - | `test.setup` sessions and the `session:` option |
 | `artifacts` | `artifacts` | - | `app.screenshot()`, assertion evidence, `artifacts: ['trace']`, `artifacts: ['video']` and `--video` |
 | `app` | - | - | data only: the app under test, its origin policy, identity, and process |
-| `session` | - | - | `app.open()` and the agent's `navigate` verb (`open`), `app.back()` (`back`), `app.restart()` (`restart`), `app.clearState()` (`reset`) |
+| `session` | - | - | `app.open()` and the agent's `navigate` verb (`open`), `app.back()` and the agent's `back` verb (`back`), `app.restart()` (`restart`), `app.clearState()` (`reset`) |
 
 The agent offers the model only what `actions` declares: `tap` needs the
-`tap` kind, `type` and `type_secret` need `fill`, `press` needs `press`,
-`select` needs `selectOption`, `scroll` needs `swipe`, `navigate` needs
-`session.open`, `tap_at` needs the `tap` kind in `actions` or in
-`pointerActions`. An undeclared verb is absent
-from the toolset, and a `screen`/`Locator` method for an undeclared kind
-fails with `UNSUPPORTED_CAPABILITY` before reaching the engine.
+`tap` kind, `double_tap`, `long_press`, and `right_click` need `doubleTap`,
+`longPress`, and `secondaryTap`; `hover` needs `hover`; `type` and `type_secret` need `fill`;
+`press` needs `press`; `select` needs `selectOption`; `check` needs both
+`check` and `uncheck`, since it sets a state rather than flipping one;
+`scroll` needs `swipe`; `scroll_to` needs `scrollIntoView`; `drag` needs
+`dragTo`; `upload` needs `setInputFiles`; `navigate` needs `session.open`;
+`back` needs `session.back`; `tap_at` and `hover_at` need the `tap` or
+`hover` kind in `actions` or in `pointerActions`. `clear` and `focus` unlock
+no verb. An undeclared verb is absent from the toolset, and a
+`screen`/`Locator` method for an undeclared kind fails with
+`UNSUPPORTED_CAPABILITY` before reaching the engine.
 
 `engine.capabilities` is the computed `ReadonlySet` of capability names and is
 what selection, the report, and `UNSUPPORTED_CAPABILITY` messages read.

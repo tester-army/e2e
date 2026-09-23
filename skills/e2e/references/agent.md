@@ -109,6 +109,17 @@ Use the point tools for a canvas, a game, or a native screen without
 accessibility exposure. Once a secret has been filled in the attempt no
 screenshot leaves the runner and the pixel tools leave the vocabulary, so
 act on pixels before signing in, or in a test of its own.
+Beyond tap and type the agent has one tool per engine action: `hover` for
+menus, flyouts, and tooltips that open on the pointer (and `hover_at` for a
+point); `double_tap`, `long_press`, and `right_click` for an item that
+opens on the second click, a long-press menu, or a context menu; `check` to
+set a checkbox or switch to a state instead of flipping it; `drag` from one
+node to another; `scroll_to` to bring a listed node into view; `upload` to
+attach project files to a file input (paths relative to the project root;
+outside it or hidden such as `.env` is `POLICY_DENIED`); `back` to return.
+A device offers no `right_click`, `scroll_to`, or `upload`. Name the file
+in `params` and the target the way the screen names it; the agent picks the
+verb.
 When an action closes an on-screen keyboard, the result says so: on a touch
 screen that tap was often spent on closing it, so act on the control again
 before concluding.

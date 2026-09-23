@@ -121,7 +121,7 @@ The executor receives this context:
 | --- | --- |
 | `ctx.step` | The instruction, params, and `index` in the attempt's timeline |
 | `ctx.observe({ tree, pixels })` | Redacted screen text, with an optional node tree and masked screenshot |
-| `ctx.actions` | Checked and recorded actions, such as `tap`, `type`, `typeSecret`, and `navigate` |
+| `ctx.actions` | Checked and recorded actions: `tap`, `doubleTap`, `longPress`, `secondaryTap`, `hover`, `type`, `typeSecret`, `press`, `select`, `check`, `drag`, `scrollTo`, `upload`, `scroll`, `navigate`, `back`, and the point and keyboard verbs below |
 | `ctx.target.verbs` | The actions supported by the target's engine. Offer only these to the model. |
 | `ctx.pixelsTainted` | True after a secret fill. Screenshots are withheld for the rest of the attempt. |
 | `ctx.ledger` | Completed steps in the test |
@@ -130,10 +130,13 @@ The executor receives this context:
 | `ctx.attachTranscript(text)` | Attaches the model transcript to the step. Kept as a `log` artifact under `--debug`, a no-op otherwise; call once, at conclusion |
 | `ctx.attachTurns(turns)` | Keeps a clipped record of the step's model turns (`{ index, calls, outcome }`) on the step record whatever the debug setting; the report shows the last ones under a failed step |
 
-`tapAt(point)` uses a node id when a listed control occupies the point and
-otherwise calls the engine's coordinate action. `hitTest(point)` finds the
-listed control without acting. Keyboard-capable engines also provide
-`typeText`, `pressKey`, and `dismissKeyboard` for the focused control.
+`tapAt(point)` and `hoverAt(point)` use a node id when a listed control
+occupies the point and otherwise call the engine's coordinate action.
+`hitTest(point)` finds the listed control without acting. Keyboard-capable
+engines also provide `typeText`, `pressKey`, and `dismissKeyboard` for the
+focused control. `upload(target, paths)` authorizes every path against the
+project root before the engine sees it: outside the project or hidden is
+`POLICY_DENIED`, a missing file `INVALID_ARGUMENT`.
 
 If semantic capture fails, an observation sets `treeUnavailable: true` and
 omits `tree`. It includes a screenshot when policy allows one, even if pixels

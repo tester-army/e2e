@@ -44,17 +44,18 @@ The catalog, per session:
 | Catalog tool | Does |
 | --- | --- |
 | `observe` | A fresh observation: one node per line as `#id role "name" ...`, plus the current path. |
-| `tap`, `type`, `press`, `select`, `scroll`, `navigate` | The grammar verbs, exactly as the testing agent gets them. Each reports what changed on screen; `observe` shows the whole screen. A verb the engine cannot honor is not listed and fails with `UNSUPPORTED_CAPABILITY`. |
+| `tap`, `double_tap`, `long_press`, `right_click`, `hover`, `type`, `press`, `select`, `check`, `scroll`, `scroll_to`, `drag`, `upload`, `navigate`, `back` | The grammar verbs, exactly as the testing agent gets them: `check` takes `checked`, `drag` a `to` node, `upload` project-relative `files`. Each reports what changed on screen; `observe` shows the whole screen. A verb the engine cannot honor is not listed and fails with `UNSUPPORTED_CAPABILITY`. |
 | `type_secret` | Fills a configured secret by name: a credential's password into a password field, a `secrets` entry into any editable input; the plaintext never reaches the agent. Listed when the config declares `credentials` or `secrets`. |
 | `locate` | Tries a semantic locator (`role` + `name`, `text`, `label`, `placeholder`, `testId`, `exact`) and returns how many nodes match, which, and the `screen.*` call to write. |
 | `screenshot` | The masked pixels as an image, withheld once a secret was filled in the session. |
 | `tap_at` | Taps a point (`x`, `y` in the latest screenshot's pixels): a listed control under it by id, otherwise the bare point, which an engine without a bare-point tap cannot do. Listed when the engine declares `tap` or a bare-point tap. |
+| `hover_at` | Hovers a point the same way: a listed control under it by id, otherwise the bare point. Listed when the engine declares `hover` or a bare-point hover. |
 | `type_at` | Types `value` into the field at a point: a listed input under it is filled by id; with a keyboard, anything else is tapped to focus it and typed into, at the caret unless `replace` is set. Without a keyboard a point on nothing listed fails. Listed when the engine declares `type` or a keyboard. |
 | `press_at` | Sends one `key` (`Enter`, `Escape`, `Tab`) to the control at a point: a listed control gets it by id; with a keyboard, anything else is tapped to focus it and the key goes through the keyboard. Listed when the engine declares `press` or a keyboard. |
 | `select_at` | Picks the option whose visible label is `value` in the select-like control at a point; the point must land on a listed select. Listed when the engine declares `select`. |
 | Project tools | Every `defineTool` passed to `createAgent({ tools })` that applies to the target's platform, under its own name; an engine pack such as `mobileTools` adds `open_app`, `swipe`, `alert`. |
 
-The four point tools and `screenshot` stay in the catalog once a secret has
+The five point tools and `screenshot` stay in the catalog once a secret has
 been filled in the session, and answer `PIXEL_TAINTED` for the rest of it.
 Before the session's first `screenshot` each point tool answers with the line
 that says to take one, at no cost.

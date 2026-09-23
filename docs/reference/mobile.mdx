@@ -368,9 +368,11 @@ current attempt's engine.
 | `swipe` | gap | Free-form swipe between two points in logical pixels. |
 | `alert` | gap | Accept or dismiss a system alert; prefer a listed button, whose tap replays. |
 
-Basic actions such as `tap`, `type`, and `scroll` need no tool pack. Point
-actions can tap controls absent from the accessibility tree. `type_secret`
-is offered when the step declares a secret.
+The grammar verbs need no tool pack: the engine's declared actions give the
+agent `tap`, `double_tap`, `long_press`, `hover`, `type`, `press`, `check`,
+`scroll`, `drag`, and `back`; there is no `right_click`, `scroll_to`, or
+`upload` on a device. Point actions can tap controls absent from the
+accessibility tree. `type_secret` is offered when the step declares a secret.
 
 After a secret fill the agent offers neither `screenshot` nor `tap_at`,
 including in later members of the same serial group. Pixels whose masking the

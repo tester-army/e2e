@@ -11,6 +11,7 @@
 
 import type { StepResult, Tool, ToolSet } from 'ai';
 import { z } from 'zod';
+import { MAX_TRACE_UPLOAD_PATHS } from '../cache/trace.ts';
 import type { ViewportPoint } from '../engine/surface.ts';
 import { hasCause } from '../internal/errors.ts';
 import type { AgentErrorCode } from '../types.ts';
@@ -216,19 +217,60 @@ export interface GrammarToolOptions {
 export const GRAMMAR_TOOL_NAMES: ReadonlySet<string> = new Set([
   'observe',
   'tap',
+  'double_tap',
+  'long_press',
+  'right_click',
+  'hover',
   'type',
   'type_secret',
   'press',
   'select',
+  'check',
   'scroll',
+  'scroll_to',
+  'drag',
+  'upload',
   'navigate',
+  'back',
   'screenshot',
   'tap_at',
+  'hover_at',
   'type_at',
   'press_at',
   'select_at',
   'dismiss_keyboard',
 ]);
+
+/**
+ * The tap variants, each its own tool rather than a `kind` on `tap`: offered
+ * as an optional enum, one model filled it on ordinary buttons (a
+ * double-click on Save, a right-click then a long press on a menu item) and
+ * kept doing so after the description said not to. A tool has to be chosen,
+ * and its description can say what it is for and what takes a plain tap.
+ */
+const TAP_VARIANTS = [
+  {
+    verb: 'doubleTap',
+    tool: 'double_tap',
+    did: 'Double-tapped',
+    description:
+      'Double-click one node: only for an item that opens or enters editing on the second click, such as a file in a list or a cell in a grid. A button, link, menu item, or field takes tap; double-clicking one clicks it twice.',
+  },
+  {
+    verb: 'longPress',
+    tool: 'long_press',
+    did: 'Long-pressed',
+    description:
+      'Press one node and hold: only for a control with a long-press menu or action. Anything else takes tap.',
+  },
+  {
+    verb: 'secondaryTap',
+    tool: 'right_click',
+    did: 'Right-clicked',
+    description:
+      'Right-click one node to open its context menu, and only for that. The menu items it opens, and every button, link, or field, take tap. When nothing opens, the app has no context menu there: look for a menu button or another path instead.',
+  },
+] as const;
 
 /**
  * AI SDK tools over the harness action grammar, limited to the verbs the
@@ -262,9 +304,26 @@ export function createGrammarTools(
   if (verbs.has('tap')) {
     tools['tap'] = screenTool({
       description:
-        'Tap or click one node. The result waits for the effect (a navigation, a route change, a submit) and reports what changed.',
+        'Tap or click one node: the gesture for a button, link, menu item, tab, checkbox, row, or field. The result waits for the effect (a navigation, a route change, a submit) and reports what changed.',
       inputSchema: z.object({ target }),
       execute: ({ target: id }) => acting(`Tapped #${id}.`, () => context.actions.tap({ id })),
+    });
+  }
+  // Each variant is offered only when its engine action is declared: a device has no right-click to offer.
+  for (const variant of TAP_VARIANTS) {
+    if (!verbs.has(variant.verb)) continue;
+    tools[variant.tool] = screenTool({
+      description: variant.description,
+      inputSchema: z.object({ target }),
+      execute: ({ target: id }) => acting(`${variant.did} #${id}.`, () => context.actions[variant.verb]({ id })),
+    });
+  }
+  if (verbs.has('hover')) {
+    tools['hover'] = screenTool({
+      description:
+        'Move the pointer over one node without clicking: opens what reacts to the pointer resting on it, such as a menu, a flyout, a tooltip, or a control revealed on mouse-over. The result reports what appeared. In a nested menu, hover each level in turn and then tap the item while it is open.',
+      inputSchema: z.object({ target }),
+      execute: ({ target: id }) => acting(`Hovered over #${id}.`, () => context.actions.hover({ id })),
     });
   }
   // Keyboard input to the focused field is offered next to the node-targeted
@@ -323,6 +382,32 @@ export function createGrammarTools(
         acting(`Selected "${value}" in #${id}.`, () => context.actions.select({ id }, value)),
     });
   }
+  if (verbs.has('check')) {
+    tools['check'] = screenTool({
+      description:
+        'Set a checkbox, switch, or radio to a state: checked true (the default) or false. Unlike tap it never flips a control already in that state, so use it whenever the step names the state to end in.',
+      inputSchema: z.object({ target, checked: z.boolean().optional().describe('The state to end in; default true') }),
+      execute: ({ target: id, checked }) =>
+        acting(`${checked === false ? 'Unchecked' : 'Checked'} #${id}.`, () => context.actions.check({ id }, checked !== false)),
+    });
+  }
+  if (verbs.has('drag')) {
+    tools['drag'] = screenTool({
+      description:
+        'Drag one node and drop it on another: reorder a list, move a card to a column, drop an item into a zone. The result reports what moved.',
+      inputSchema: z.object({ target, to: target.describe('Node id of the drop target') }),
+      execute: ({ target: id, to }) => acting(`Dragged #${id} to #${to}.`, () => context.actions.drag({ id }, { id: to })),
+    });
+  }
+  if (verbs.has('upload')) {
+    tools['upload'] = screenTool({
+      description:
+        'Attach one or more files to a file input node. Paths are relative to the project root, e.g. "fixtures/photo.png"; use the paths the step gives you. A file outside the project, a hidden one, or one that does not exist is refused.',
+      inputSchema: z.object({ target, files: z.array(z.string().min(1)).min(1).max(MAX_TRACE_UPLOAD_PATHS) }),
+      execute: ({ target: id, files }) =>
+        acting(`Uploaded ${files.map((file) => JSON.stringify(file)).join(', ')} to #${id}.`, () => context.actions.upload({ id }, files)),
+    });
+  }
   if (verbs.has('scroll')) {
     const direction = z.enum(['up', 'down', 'left', 'right']);
     const times = z
@@ -358,11 +443,26 @@ export function createGrammarTools(
             acting(scrolled(way, count ?? 1), () => scrolling(way, undefined, count ?? 1), { expectChange: false }),
         });
   }
+  if (verbs.has('scrollTo')) {
+    tools['scroll_to'] = screenTool({
+      description:
+        'Scroll until one listed node is inside the viewport: for a target the screen lists but that sits above or below what is shown (a button past the fold, a row far down a long page). Prefer it to blind scrolling whenever the node has an id.',
+      inputSchema: z.object({ target }),
+      execute: ({ target: id }) => acting(`Scrolled #${id} into view.`, () => context.actions.scrollTo({ id }), { expectChange: false }),
+    });
+  }
   if (verbs.has('navigate')) {
     tools['navigate'] = screenTool({
       description: 'Navigate to a URL or an app-relative path.',
       inputSchema: z.object({ url: z.string().min(1) }),
       execute: ({ url }) => acting(`Navigated to ${url}.`, () => context.actions.navigate(url)),
+    });
+  }
+  if (verbs.has('back')) {
+    tools['back'] = screenTool({
+      description: 'Go back one step: the browser history on a page, the in-app back on a device. The result shows the screen you return to.',
+      inputSchema: z.object({}),
+      execute: () => acting('Navigated back.', () => context.actions.back()),
     });
   }
   // The pixel verbs are offered while pixels can still leave the runner. Once
@@ -518,6 +618,20 @@ function createPointTools(
         const point = pointOf(px, py, 'tap_at');
         if (typeof point === 'string') return Promise.resolve(point);
         return acting(`tap_at ${at(px, py)}`, async () => (await context.actions.tapAt(point)).summary);
+      },
+    });
+  }
+  if (verbs.has('hover') || verbs.has('hoverAt')) {
+    tools['hover_at'] = screenTool({
+      description:
+        'Move the pointer to a point in the latest screenshot without clicking, for a hover target the screen does not list (a drawn control, a region of an image). A listed control under the point is hovered by its id; otherwise the bare point is hovered' +
+        (verbs.has('hoverAt') ? '.' : ', which this engine cannot do: the point must land on a listed control.') +
+        ' Last resort: when the screen lists the target, hover it by id.',
+      inputSchema: z.object({ x, y }),
+      execute: ({ x: px, y: py }) => {
+        const point = pointOf(px, py, 'hover_at');
+        if (typeof point === 'string') return Promise.resolve(point);
+        return acting(`hover_at ${at(px, py)}`, async () => (await context.actions.hoverAt(point)).summary);
       },
     });
   }

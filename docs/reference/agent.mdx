@@ -81,6 +81,55 @@ spent, and `cache`: how the [trace cache](/cache) took part
 (`self-finalized`, `agent-concluded`, or `missed` with a `reason`; absent when
 caching is off).
 
+### Action tools
+
+The built-in agent offers one tool per verb the target's engine declares.
+Every tool takes node ids from the newest observation, returns what changed
+on screen, and is recorded for the [trace cache](/cache) with the node it
+acted on. A verb the engine does not declare is not offered.
+
+| Tool | Engine action | What it does |
+| --- | --- | --- |
+| `tap({ target })` | `tap` | Taps or clicks one node: the gesture for a button, link, menu item, tab, checkbox, row, or field. |
+| `double_tap({ target })` | `doubleTap` | Double-clicks one node, for an item that opens or enters editing on the second click. |
+| `long_press({ target })` | `longPress` | Presses one node and holds, for a long-press menu or action. |
+| `right_click({ target })` | `secondaryTap` | Right-clicks one node to open its context menu. |
+| `hover({ target })` | `hover` | Moves the pointer over one node without pressing: hover menus, flyouts, tooltips, controls revealed on mouse-over. |
+| `type({ target?, value, replace? })` | `fill`; without `target`, `keyboard` | Replaces the node's value; without a target, types into whatever has focus. |
+| `type_secret({ target, name })` | `fill` | Fills a secret declared in the step's params. Offered only when the step declares one. |
+| `press({ target?, key })` | `press`; without `target`, `keyboard` | Sends one key to a node or to the focused control. |
+| `select({ target, value })` | `selectOption` | Picks an option by its visible label. |
+| `check({ target, checked? })` | `check` and `uncheck` | Sets a checkbox, switch, or radio to a state (`true` by default). A control already in that state is left alone, unlike a tap, which flips it. |
+| `scroll({ direction, target?, times? })` | `swipe` | Scrolls the viewport or one scrollable node, up to 20 screens per call. |
+| `scroll_to({ target })` | `scrollIntoView` | Brings one listed node into the viewport, for a target the tree lists below or above the fold. |
+| `drag({ target, to })` | `dragTo` | Drags one node and drops it on another: reordering, kanban columns, drop zones. |
+| `upload({ target, files })` | `setInputFiles` | Attaches files to a file input. Paths are project-relative; see the policy below. |
+| `navigate({ url })` | `session.open` | Opens a URL or an app-relative path. |
+| `back()` | `session.back` | Goes back once: browser history on a page, the in-app back on a device. |
+| `observe()` | | Looks again and reports what changed since the last screen the model received. |
+| `dismiss_keyboard()` | `keyboard.dismiss` | Hides an on-screen keyboard. Device engines only. |
+
+`upload` takes the model's path but the runner decides. Each path is
+resolved against the project root the way `locator.setInputFiles` resolves
+it, and is refused with `POLICY_DENIED` when it lies outside the project
+(through a symlink too) or names a hidden file or a file under a hidden
+directory such as `.env`, `.git`, or `.e2e`. A path that names no regular
+file is `INVALID_ARGUMENT`, an ordinary action failure the model reads and
+corrects. Every decision is a `policy` event named `upload-path` on the
+step. Nothing reaches the engine until every path passed.
+
+The tap variants are separate tools rather than an option on `tap` on
+purpose: offered as an optional `kind`, a model filled it on ordinary
+buttons (a double-click on Save), and a double-click on a submit button
+submits twice. A tool has to be chosen, and each one says what takes a
+plain tap instead.
+
+Mobile engines declare `hover`, `doubleTap`, `longPress`, `check`,
+`uncheck`, `dragTo`, and `session.back`, so a device offers `hover`,
+`double_tap`, `long_press`, `check`, `drag`, and `back`; they declare no
+`secondaryTap`, `scrollIntoView`, or `setInputFiles`. Tab switching has no
+verb yet: a new tab is invisible to the model.
+
 ### Pixel tools: screenshot and the point verbs
 
 `act` reads the semantic tree and requests screenshots when it needs them.
@@ -94,6 +143,7 @@ The built-in agent offers these tools while no secret has been filled:
 | --- | --- |
 | `screenshot()` | Returns a masked viewport screenshot and includes a fresh screenshot after every later action in the step. |
 | `tap_at({ x, y })` | Taps the control at the point by node id, or taps the coordinates directly when no control is listed. |
+| `hover_at({ x, y })` | Hovers the control at the point by node id, or moves the pointer to the coordinates when no control is listed. Needs the `hover` action or pointer kind. |
 | `type_at({ x, y, value, replace? })` | Replaces a listed input's value. For an unlisted input, taps to focus and types at the caret unless `replace` is set. Unlisted inputs require keyboard support. |
 | `press_at({ x, y, key })` | Sends a key to the control at the point. If no control is listed, taps to focus and uses the engine's keyboard. |
 | `select_at({ x, y, value })` | Selects an option by visible label in the control at the point. |
@@ -129,12 +179,13 @@ new trace entry, even if the tree later recovers.
 
 A secret filled during the step withholds every later screenshot
 (`PIXEL_TAINTED`), and a step that opens on a tainted viewport offers none of
-the five pixel tools. `tap_at` needs an engine whose `actions` or
-`pointerActions` include `tap`; without the pointer kind the point must land
-on a listed control. A bare-point tap
-replays from the [trace cache](/cache) only on a viewport of the recorded
-size, or at the same place inside the listed node that contained it. A step
-that sent pixels records `visionInput: true` and `metrics.pixelBytes`.
+the six pixel tools. `tap_at` needs an engine whose `actions` or
+`pointerActions` include `tap`, and `hover_at` one whose include `hover`;
+without the pointer kind the point must land on a listed control. A
+bare-point tap or hover replays from the [trace cache](/cache) only on a
+viewport of the recorded size, or at the same place inside the listed node
+that contained it. A step that sent pixels records `visionInput: true` and
+`metrics.pixelBytes`.
 
 Throws `ACTION_FAILED` for a failed verdict with no more specific code; a
 blocked code (`AUTH_CREDENTIAL_UNAVAILABLE`, `ENVIRONMENT_UNAVAILABLE`,

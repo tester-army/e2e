@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-23T18:03:08.643Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "drag",
+        "summary": "drag node \"Banana\" to node \"dropzone\"",
+        "target": {
+          "text": "Banana",
+          "testId": "drag-banana"
+        },
+        "destination": {
+          "testId": "dropzone"
+        }
+      },
+      {
+        "name": "drag",
+        "summary": "drag node \"Cherry\" to node \"dropzone\"",
+        "target": {
+          "text": "Cherry",
+          "testId": "drag-cherry"
+        },
+        "destination": {
+          "testId": "dropzone"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20drag-and-drop",
+      "targetId": "web",
+      "instructionDigest": "24ea40459eba1c0e7841d174c9d6b29255cc71346083add2a38c39491aff758c"
+    },
+    "summary": "Dragged Banana into the dropzone, then Cherry, and the page displayed “Items dropped in the right order.” Apple was left alone.",
+    "startPath": "/e/drag-and-drop",
+    "endPath": "/e/drag-and-drop",
+    "endAnchors": [
+      {
+        "text": "Items dropped in the right order",
+        "testId": "success-message"
+      }
+    ],
+    "endWaitMs": 12698
+  }
+}

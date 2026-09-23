@@ -147,14 +147,24 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     expect(opened.text).toContain('Tools (run one with call {tool, args}; tools {tool} shows a tool\'s arguments):');
     expect(catalogLines(opened.text)).toEqual([
       expect.stringMatching(/^- observe: Look at the whole current screen.* \[read-only\]$/),
-      expect.stringMatching(/^- tap \{target\}: Tap or click one node\.$/),
+      expect.stringMatching(/^- tap \{target\}: Tap or click one node: the gesture for a button, link, menu item, tab, checkbox, row, or field\.$/),
+      expect.stringMatching(/^- double_tap \{target\}: Double-click one node: only for an item that opens or enters editing on the second click/),
+      expect.stringMatching(/^- long_press \{target\}: Press one node and hold: only for a control with a long-press menu or action\.$/),
+      expect.stringMatching(/^- right_click \{target\}: Right-click one node to open its context menu, and only for that\.$/),
+      expect.stringMatching(/^- hover \{target\}: Move the pointer over one node without clicking/),
       expect.stringMatching(/^- type \{target\?, value, replace\?\}: Type a plain-text value into one input node, or into whatever has focus when target is omitted\.$/),
       expect.stringMatching(/^- press \{target\?, key\}: /),
       expect.stringMatching(/^- select \{target, value\}: /),
+      expect.stringMatching(/^- check \{target, checked\?\}: Set a checkbox, switch, or radio to a state/),
+      expect.stringMatching(/^- drag \{target, to\}: Drag one node and drop it on another/),
+      expect.stringMatching(/^- upload \{target, files\}: Attach one or more files to a file input node\.$/),
       expect.stringMatching(/^- scroll \{direction, target\?, times\?\}: /),
+      expect.stringMatching(/^- scroll_to \{target\}: Scroll until one listed node is inside the viewport/),
       expect.stringMatching(/^- navigate \{url\}: /),
+      expect.stringMatching(/^- back: Go back one step/),
       expect.stringMatching(/^- screenshot: Attach a screenshot of the current viewport.* \[read-only\]$/),
       expect.stringMatching(/^- tap_at \{x, y\}: Tap a point in the latest screenshot/),
+      expect.stringMatching(/^- hover_at \{x, y\}: Move the pointer to a point in the latest screenshot/),
       expect.stringMatching(/^- type_at \{x, y, value, replace\?\}: Type a plain-text value into the field at a point/),
       expect.stringMatching(/^- press_at \{x, y, key\}: Send one key/),
       expect.stringMatching(/^- select_at \{x, y, value\}: Pick one option/),
@@ -167,7 +177,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
 
     const listed = await invoke('tools');
     expect(listed.isError, listed.text).toBe(false);
-    expect(listed.text).toContain(`Session ${sessionId} on target "web": 14 tools.`);
+    expect(listed.text).toContain(`Session ${sessionId} on target "web": 24 tools.`);
     expect(catalogLines(listed.text)).toEqual(catalogLines(opened.text));
     const detail = await invoke('tools', { tool: 'type_secret' });
     expect(detail.text).toContain('"admin" (password)');
@@ -176,7 +186,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     const unknown = await invoke('tools', { tool: 'teleport' });
     expect(unknown.isError).toBe(true);
     expect(unknown.text).toContain('UNKNOWN_TOOL');
-    expect(unknown.text).toContain('tools: observe, tap, type');
+    expect(unknown.text).toContain('tools: observe, tap, double_tap, long_press, right_click, hover, type');
 
     const unique = await call('locate', { role: 'button', name: 'Increment' });
     expect(unique.isError, unique.text).toBe(false);

@@ -725,19 +725,29 @@ describe('agent.act with the default ToolLoopAgent executor', () => {
   it('offers the default toolset and concludes through complete_step', () => {
     expect(loopCalls.length).toBeGreaterThanOrEqual(2);
     expect(loopCalls[0]!.toolNames).toEqual([
+      'back',
+      'check',
       'complete_step',
+      'double_tap',
+      'drag',
+      'hover',
+      'hover_at',
+      'long_press',
       'navigate',
       'observe',
       'press',
       'press_at',
+      'right_click',
       'screenshot',
       'scroll',
+      'scroll_to',
       'select',
       'select_at',
       'tap',
       'tap_at',
       'type',
       'type_at',
+      'upload',
     ]);
     expect(loopCalls[0]!.prompt).toContain('increment the counter once');
     expect(loopCalls[0]!.prompt).toMatch(/Current screen \(revision b\d+, path \/, \d+ nodes\):/);

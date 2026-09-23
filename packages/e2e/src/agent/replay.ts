@@ -115,8 +115,10 @@ type PlannedCall =
       readonly times: number;
       readonly list?: ScrolledList;
     }
+  /** A drag whose two nodes are re-found on one screen before the drag joins them. */
+  | { readonly kind: 'drag'; readonly source: TraceTargetDescriptor; readonly destination: TraceTargetDescriptor }
   /** A bare point, replayed as given once the viewport is the recorded size. */
-  | { readonly kind: 'point'; readonly point: ViewportPoint; readonly viewport: TraceViewport }
+  | { readonly kind: 'point'; readonly point: ViewportPoint; readonly viewport: TraceViewport; readonly invoke: PointInvoke }
   /** A bare point placed inside a re-found node's live box. */
   | {
       readonly kind: 'within';
@@ -126,18 +128,35 @@ type PlannedCall =
       /**
        * The recorded point and its viewport: among look-alikes of the node,
        * the one the point lies in on a viewport of the same size is it. The
-       * bare point is never tapped on its own.
+       * bare point is never acted on on its own.
        */
       readonly point: ViewportPoint;
       readonly viewport: TraceViewport;
+      readonly invoke: PointInvoke;
     };
+
+/** The point verb a recorded bare point replays through: `tapAt` or `hoverAt`. */
+type PointInvoke = (point: ViewportPoint) => Promise<unknown>;
 
 function planCall(action: RecordedAction, actions: ExecutorActions): PlannedCall {
   switch (action.name) {
     case 'tool':
       return { kind: 'gap', ...(action.derived === undefined ? {} : { derived: action.derived }) };
     case 'tap':
-      return { kind: 'targeted', descriptor: action.target, invoke: (t) => actions.tap(t) };
+    case 'doubleTap':
+    case 'longPress':
+    case 'secondaryTap':
+    case 'hover':
+    case 'scrollTo':
+      return { kind: 'targeted', descriptor: action.target, invoke: (t) => actions[action.name](t) };
+    case 'check':
+      return { kind: 'targeted', descriptor: action.target, invoke: (t) => actions.check(t, action.checked) };
+    case 'upload':
+      return { kind: 'targeted', descriptor: action.target, invoke: (t) => actions.upload(t, action.paths) };
+    case 'drag':
+      return { kind: 'drag', source: action.target, destination: action.destination };
+    case 'back':
+      return { kind: 'free', invoke: () => actions.back() };
     case 'type':
       return {
         kind: 'targeted',
@@ -180,8 +199,10 @@ function planCall(action: RecordedAction, actions: ExecutorActions): PlannedCall
     case 'dismissKeyboard':
       return { kind: 'free', invoke: () => actions.dismissKeyboard() };
     case 'tapAt':
+    case 'hoverAt': {
+      const invoke: PointInvoke = (point) => actions[action.name](point);
       return action.within === undefined
-        ? { kind: 'point', point: action.point, viewport: action.viewport }
+        ? { kind: 'point', point: action.point, viewport: action.viewport, invoke }
         : {
             kind: 'within',
             descriptor: action.within.target,
@@ -189,7 +210,9 @@ function planCall(action: RecordedAction, actions: ExecutorActions): PlannedCall
             fy: action.within.fy,
             point: action.point,
             viewport: action.viewport,
+            invoke,
           };
+    }
   }
 }
 
@@ -266,6 +289,12 @@ export async function replayTrace(
           }
           break;
         }
+        case 'drag': {
+          const pair = await relocatePair(host, planned.source, planned.destination, look);
+          if (pair.kind === 'failed') return stop(pair.failure);
+          await host.actions.drag({ id: pair.source }, { id: pair.destination });
+          break;
+        }
         case 'point': {
           const screen = await firstLook(host, look);
           if (screen.kind === 'pixels') return stop('action-failed');
@@ -273,14 +302,14 @@ export async function replayTrace(
           if (viewport.width !== planned.viewport.width || viewport.height !== planned.viewport.height) {
             return stop('viewport-changed');
           }
-          await host.actions.tapAt(planned.point);
+          await planned.invoke(planned.point);
           break;
         }
         case 'within': {
           const relocated = await relocate(host, planned.descriptor, look);
           const box = boxWithin(relocated, planned);
           if (box === undefined) return stop(relocated.kind === 'failed' ? relocated.failure : 'target-not-found');
-          await host.actions.tapAt({ x: box.x + planned.fx * box.width, y: box.y + planned.fy * box.height });
+          await planned.invoke({ x: box.x + planned.fx * box.width, y: box.y + planned.fy * box.height });
           break;
         }
       }
@@ -371,6 +400,34 @@ async function relocate(
     return node === undefined ? undefined : { ...result, node };
   }, look);
   return settled ?? last;
+}
+
+/**
+ * Re-finds a drag's two nodes on one screen, so the ids the drag joins name
+ * the same look at the app: an engine that renumbers its tree per
+ * observation would otherwise hand the drag a source from one screen and a
+ * destination from the next. Waits like `relocate` does, and gives up the
+ * same way: a missing node or a positioned twin is worth another look, an
+ * unpositioned ambiguity is not.
+ */
+async function relocatePair(
+  host: ReplayHost,
+  source: TraceTargetDescriptor,
+  destination: TraceTargetDescriptor,
+  look: Look,
+): Promise<{ readonly kind: 'found'; readonly source: string; readonly destination: string } | { readonly kind: 'failed'; readonly failure: RelocationFailure }> {
+  const options = { redact: host.redact };
+  let last: RelocationFailure = 'target-not-found';
+  const settled = await pollSettled(host, (screen) => {
+    const from = relocateDescriptor(source, screen.nodes, options);
+    const to = relocateDescriptor(destination, screen.nodes, options);
+    if (from.kind === 'found' && to.kind === 'found') return { kind: 'found' as const, source: from.id, destination: to.id };
+    const [failed, descriptor] = from.kind === 'failed' ? [from, source] : [to as Extract<RelocationResult, { kind: 'failed' }>, destination];
+    last = failed.failure;
+    const retry = failed.failure === 'target-not-found' || descriptor.position !== undefined;
+    return retry ? undefined : { kind: 'failed' as const, failure: failed.failure };
+  }, look);
+  return settled ?? { kind: 'failed', failure: last };
 }
 
 /** A relocation with the node it found, or with the screen its look-alikes are on, for a replay that needs boxes. */

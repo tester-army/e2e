@@ -47,14 +47,27 @@ function makeHost(options: {
   };
   const actions: ExecutorActions = {
     tap: (t) => act('tap', t),
+    doubleTap: (t) => act('doubleTap', t),
+    longPress: (t) => act('longPress', t),
+    secondaryTap: (t) => act('secondaryTap', t),
+    hover: (t) => act('hover', t),
     type: (t, value) => act('type', { t, value }),
     typeSecret: (t, name) => act('typeSecret', { t, name }),
     press: (t, key) => act('press', { t, key }),
     select: (t, value) => act('select', { t, value }),
+    check: (t, checked) => act('check', { t, checked }),
+    drag: (source, destination) => act('drag', { source, destination }),
+    scrollTo: (t) => act('scrollTo', t),
+    upload: (t, paths) => act('upload', { t, paths }),
     scroll: (direction, t) => act('scroll', { direction, t }),
     navigate: (url) => act('navigate', url),
+    back: () => act('back'),
     tapAt: async (point) => {
       await act('tapAt', point);
+      return { point, summary: 'scripted' };
+    },
+    hoverAt: async (point) => {
+      await act('hoverAt', point);
       return { point, summary: 'scripted' };
     },
     hitTest: (point) => Promise.resolve({ point, summary: 'scripted' }),
@@ -241,6 +254,61 @@ describe('replayTrace', () => {
     expect(host.calls).toEqual(['tap']);
     // The first look was the start capture; the failed one was the fill's.
     expect(host.looks).toEqual(['held-still']);
+  });
+
+  it('replays every node verb through its own grammar call, with the recorded state and files', async () => {
+    const details: unknown[] = [];
+    const host = makeHost({ onAction: (_name, detail) => void details.push(detail) });
+    const target = { role: 'button', name: 'Upgrade' };
+    const outcome = await replayTrace(
+      host,
+      trace([
+        { name: 'hover', summary: 'hover', target },
+        { name: 'doubleTap', summary: 'double', target },
+        { name: 'longPress', summary: 'long', target },
+        { name: 'secondaryTap', summary: 'secondary', target },
+        { name: 'scrollTo', summary: 'scroll to', target },
+        { name: 'check', summary: 'uncheck', target, checked: false },
+        { name: 'upload', summary: 'upload', target, paths: ['fixtures/a.txt'] },
+        { name: 'back', summary: 'back' },
+      ]),
+    );
+    expect(outcome).toMatchObject({ completed: true, executed: 8, total: 8 });
+    expect(host.calls).toEqual(['hover', 'doubleTap', 'longPress', 'secondaryTap', 'scrollTo', 'check', 'upload', 'back']);
+    expect(details[5]).toEqual({ t: { id: 'n1' }, checked: false });
+    expect(details[6]).toEqual({ t: { id: 'n1' }, paths: ['fixtures/a.txt'] });
+  });
+
+  it('re-finds both ends of a drag on one screen before dragging', async () => {
+    const details: unknown[] = [];
+    const host = makeHost({ onAction: (_name, detail) => void details.push(detail) });
+    const outcome = await replayTrace(
+      host,
+      trace([{ name: 'drag', summary: 'drag', target: { role: 'button', name: 'Upgrade' }, destination: { role: 'textbox', name: 'Email' } }]),
+    );
+    expect(outcome).toMatchObject({ completed: true, executed: 1 });
+    expect(host.calls).toEqual(['drag']);
+    expect(details[0]).toEqual({ source: { id: 'n1' }, destination: { id: 'n2' } });
+  });
+
+  it('hands a drag off when either end cannot be re-found, never dragging half of it', async () => {
+    const host = makeHost({ nodes: [upgrade] });
+    const outcome = await replayTrace(
+      host,
+      trace([{ name: 'drag', summary: 'drag', target: { role: 'button', name: 'Upgrade' }, destination: { role: 'textbox', name: 'Email' } }]),
+    );
+    expect(outcome).toMatchObject({ completed: false, executed: 0, stopReason: 'target-not-found' });
+    expect(host.calls).toEqual([]);
+  }, 15_000);
+
+  it('replays a bare-point hover through hoverAt, on the recorded viewport only', async () => {
+    const host = makeHost({});
+    const hoverAt = { name: 'hoverAt' as const, summary: 'hover over the point (300, 60)', point: { x: 300, y: 60 }, viewport: VIEWPORT };
+    expect(await replayTrace(host, trace([hoverAt]))).toMatchObject({ completed: true, executed: 1 });
+    expect(host.calls).toEqual(['hoverAt']);
+    const other = makeHost({ viewport: { width: 800, height: 600 } });
+    expect(await replayTrace(other, trace([hoverAt]))).toMatchObject({ completed: false, stopReason: 'viewport-changed' });
+    expect(other.calls).toEqual([]);
   });
 
   it('diverges with target-not-found when relocation never matches', async () => {

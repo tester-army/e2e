@@ -4,8 +4,8 @@
  * reads the rest off the page; the deterministic check on the scenario's
  * success message decides the test. Scenarios that need pixels (canvas, image
  * and CSS-content UIs, the aria-hidden flow, the onboarding wizard), native
- * dialogs, a second tab, file transfer, or pointer drags are left out: the
- * grammar has no verb for them yet.
+ * dialogs, a second tab, or a file the agent first downloads are left out:
+ * the grammar has no verb for them yet.
  */
 
 import { test } from '@e2edev/web';
@@ -80,6 +80,16 @@ const SCENARIOS: readonly Scenario[] = [
     slug: 'hover-menu',
     goal: 'find Redeem voucher under the Account menu and redeem the voucher',
     success: 'Voucher redeemed',
+  },
+  {
+    slug: 'drag-and-drop',
+    goal: 'drag the right items into the dropzone in the order the page asks for',
+    success: 'Items dropped in the right order',
+  },
+  {
+    slug: 'kanban-board',
+    goal: 'move the cards so the board matches the goal layout the page describes, then submit the board',
+    success: 'Board matches the goal',
   },
   {
     slug: 'context-menu-trap',

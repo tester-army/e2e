@@ -10,6 +10,7 @@ import type { AddressInfo } from 'node:net';
 import { CANVAS_PAGES } from './fixture-pages/canvas.ts';
 import { FORM_PAGES } from './fixture-pages/forms.ts';
 import { FRAME_PAGES } from './fixture-pages/frames.ts';
+import { GESTURE_PAGES } from './fixture-pages/gestures.ts';
 import { HOME_PAGES } from './fixture-pages/home.ts';
 import { LIVE_PAGES } from './fixture-pages/live.ts';
 import type { FixtureState, PageRenderer } from './fixture-pages/page.ts';
@@ -26,6 +27,7 @@ const ROUTES: Record<string, PageRenderer> = {
   ...FRAME_PAGES,
   ...CANVAS_PAGES,
   ...FORM_PAGES,
+  ...GESTURE_PAGES,
   ...LIVE_PAGES,
   ...RECORD_PAGES,
 };

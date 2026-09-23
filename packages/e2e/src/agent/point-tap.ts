@@ -108,20 +108,25 @@ export interface PointProse {
   readonly observation: Pick<AgentObservation, 'text'>;
 }
 
-/** What one point tap did, for the model that named the point. */
-export function describePointTap(
+/** How each point verb reads back to the model, past tense. */
+const POINT_VERB_PAST: Readonly<Record<'tap' | 'hover', string>> = { tap: 'Tapped', hover: 'Hovered over' };
+
+/** What one point action did, for the model that named the point. */
+export function describePointAction(
   input: PointProse & {
+    readonly verb: 'tap' | 'hover';
     readonly point: ViewportPoint;
     readonly control: SemanticNode | undefined;
     readonly under: SemanticNode | undefined;
   },
 ): string {
+  const did = POINT_VERB_PAST[input.verb];
   const at = `(${String(input.point.x)}, ${String(input.point.y)})`;
   if (input.control !== undefined) {
-    return `Tapped ${describeNode(input, input.control)}, the control at ${at}.`;
+    return `${did} ${describeNode(input, input.control)}, the control at ${at}.`;
   }
   const under = input.under === undefined ? '' : ` (under it: ${describeNode(input, input.under)})`;
-  return `Tapped the point ${at}; no listed control is there${under}.`;
+  return `${did} the point ${at}; no listed control is there${under}.`;
 }
 
 /** What one hit test found, for the model that named the point. */

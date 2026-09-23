@@ -165,8 +165,18 @@ finishedRun.exitCode satisfies RunExitCode;
 declare const executorContext: StepExecutorContext;
 executorContext.target.verbs satisfies ReadonlySet<ExecutorVerb>;
 'tapAt' satisfies ExecutorVerb;
+'hover' satisfies ExecutorVerb;
+'drag' satisfies ExecutorVerb;
+'upload' satisfies ExecutorVerb;
+'back' satisfies ExecutorVerb;
 // @ts-expect-error a verb is one of the action grammar's names
 'fly' satisfies ExecutorVerb;
+void (executorContext.actions.hoverAt(point) satisfies Promise<PointTapResult>);
+void (executorContext.actions.check({ id: 'n1' }, true) satisfies Promise<void>);
+void (executorContext.actions.drag({ id: 'n1' }, { id: 'n2' }) satisfies Promise<void>);
+void (executorContext.actions.upload({ id: 'n1' }, ['fixtures/a.txt']) satisfies Promise<void>);
+// @ts-expect-error a drag names two nodes
+void executorContext.actions.drag({ id: 'n1' });
 executorContext.attachTurns([{ index: 1, calls: ['tap({"target":"n19"})'], outcome: 'the form opened' } satisfies StepTurn]);
 // @ts-expect-error attribute values must be text matches
 asyncExpectation.toHaveAttribute('x', 42);

@@ -25,6 +25,7 @@ import {
   MAX_TRACE_END_WAIT_MS,
   MAX_TRACE_INPUT_CHARS,
   MAX_TRACE_SUMMARY_CHARS,
+  MAX_TRACE_UPLOAD_PATHS,
   type ActionTrace,
   type DerivedReason,
   type RecordedAction,
@@ -67,8 +68,8 @@ export class TraceRecorder {
 
   /** Records one committed grammar action. */
   record(action: RecordableAction): void {
-    const { target, summary } = describeAction(action, this.redact);
-    this.push(this.toRecorded(action, target, summary));
+    const { target, summary, destination } = describeAction(action, this.redact);
+    this.push(this.toRecorded(action, target, summary, destination));
     this.lastActionAt = Date.now();
   }
 
@@ -161,17 +162,37 @@ export class TraceRecorder {
     action: RecordableAction,
     target: TraceTargetDescriptor | undefined,
     summary: string,
+    destination: TraceTargetDescriptor | undefined,
   ): RecordedAction {
     // A targeted commit whose node yields no durable descriptor cannot be
     // re-found; the trace stays honest by poisoning instead of guessing.
-    const requireTarget = (): TraceTargetDescriptor => {
-      if (target !== undefined) return target;
+    const require = (descriptor: TraceTargetDescriptor | undefined): TraceTargetDescriptor => {
+      if (descriptor !== undefined) return descriptor;
       this.truncated = true;
       return { role: 'unknown' };
     };
+    const requireTarget = (): TraceTargetDescriptor => require(target);
     switch (action.name) {
       case 'tap':
-        return { name: 'tap', summary, target: requireTarget() };
+      case 'doubleTap':
+      case 'longPress':
+      case 'secondaryTap':
+      case 'hover':
+      case 'scrollTo':
+        return { name: action.name, summary, target: requireTarget() };
+      case 'check':
+        return { name: 'check', summary, target: requireTarget(), checked: action.checked };
+      case 'upload': {
+        // More files than the entry format keeps is a script, not a form;
+        // the trace documents it and never replays it.
+        if (action.paths.length > MAX_TRACE_UPLOAD_PATHS) this.truncated = true;
+        const paths = action.paths.slice(0, MAX_TRACE_UPLOAD_PATHS).map((path) => this.verbatim(path));
+        return { name: 'upload', summary, target: requireTarget(), paths };
+      }
+      case 'drag':
+        return { name: 'drag', summary, target: requireTarget(), destination: require(destination) };
+      case 'back':
+        return { name: 'back', summary };
       case 'type':
         return { name: 'type', summary, target: requireTarget(), value: this.verbatim(action.value) };
       case 'typeSecret':
@@ -196,7 +217,8 @@ export class TraceRecorder {
         return { name: 'pressKey', summary, key: this.verbatim(action.key) };
       case 'dismissKeyboard':
         return { name: 'dismissKeyboard', summary };
-      case 'tapAt': {
+      case 'tapAt':
+      case 'hoverAt': {
         // The point replays as given on a same-sized viewport. When a listed
         // node with a durable descriptor contained it, its place inside that
         // node's box is kept too, so replay can follow the node instead.
@@ -206,7 +228,7 @@ export class TraceRecorder {
             ? undefined
             : { target, fx: fraction((action.point.x - box.x) / box.width), fy: fraction((action.point.y - box.y) / box.height) };
         return {
-          name: 'tapAt',
+          name: action.name,
           summary,
           point: action.point,
           viewport: { width: action.viewport.width, height: action.viewport.height },

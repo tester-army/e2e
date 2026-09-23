@@ -6,7 +6,7 @@
 import { assert, describe, expect, it } from 'vitest';
 import type { Observation, SemanticNode } from '../../src/engine/surface.ts';
 import { prepareObservation } from '../../src/agent/observation.ts';
-import { describePointTap, hitTest, imagePointToViewport, nodeLine } from '../../src/agent/point-tap.ts';
+import { describePointAction, hitTest, imagePointToViewport, nodeLine } from '../../src/agent/point-tap.ts';
 
 function node(id: string, extra: Partial<SemanticNode> = {}): SemanticNode {
   return { ref: { id, revision: 'r1' }, ...extra };
@@ -106,9 +106,10 @@ describe('imagePointToViewport', () => {
   });
 });
 
-describe('describePointTap', () => {
+describe('describePointAction', () => {
   it('names the control the point resolved to, by the line the model already reads', () => {
-    const text = describePointTap({
+    const text = describePointAction({
+      verb: 'tap',
       point: { x: 50, y: 30 },
       control: screen.nodes.get('n2'),
       under: screen.nodes.get('n2'),
@@ -118,13 +119,25 @@ describe('describePointTap', () => {
   });
 
   it('says a bare point landed on nothing listed, with what sits under it', () => {
-    const text = describePointTap({
+    const text = describePointAction({
+      verb: 'tap',
       point: { x: 640, y: 120 },
       control: undefined,
       under: screen.nodes.get('n5'),
       observation: screen,
     });
     expect(text).toBe('Tapped the point (640, 120); no listed control is there (under it: #n5 paragraph text="Body copy").');
+  });
+
+  it('reads a hover the same way, in its own words', () => {
+    const text = describePointAction({
+      verb: 'hover',
+      point: { x: 640, y: 120 },
+      control: undefined,
+      under: screen.nodes.get('n5'),
+      observation: screen,
+    });
+    expect(text).toBe('Hovered over the point (640, 120); no listed control is there (under it: #n5 paragraph text="Body copy").');
   });
 
   it('falls back to the id when the line was cut from the text', () => {

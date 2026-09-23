@@ -14,6 +14,8 @@ import {
   bound,
   MAX_TRACE_DESCRIPTOR_CHARS,
   MAX_TRACE_SUMMARY_CHARS,
+  type NodeActionName,
+  type PointActionName,
   type TraceTargetDescriptor,
   type TracePosition,
 } from '../cache/trace.ts';
@@ -21,13 +23,24 @@ import { sanitizeText } from '../internal/errors.ts';
 import { normalizeText } from '../internal/text.ts';
 import type { ScrollDirection } from '../types.ts';
 
+export type { NodeActionName, PointActionName };
+
 /** One committed grammar action, addressed by the node it actually ran against. */
 export type RecordableAction =
-  | ({ readonly name: 'tap'; readonly node: SemanticNode } & Placement)
+  | ({ readonly name: NodeActionName; readonly node: SemanticNode } & Placement)
   | ({ readonly name: 'type'; readonly node: SemanticNode; readonly value: string } & Placement)
   | ({ readonly name: 'typeSecret'; readonly node: SemanticNode; readonly secret: string } & Placement)
   | ({ readonly name: 'press'; readonly node: SemanticNode; readonly key: string } & Placement)
   | ({ readonly name: 'select'; readonly node: SemanticNode; readonly value: string } & Placement)
+  | ({ readonly name: 'check'; readonly node: SemanticNode; readonly checked: boolean } & Placement)
+  /** Project-relative paths as the executor gave them; replay authorizes them again. */
+  | ({ readonly name: 'upload'; readonly node: SemanticNode; readonly paths: readonly string[] } & Placement)
+  /** The dragged node with its placement, and where it was dropped, with its own. */
+  | ({
+      readonly name: 'drag';
+      readonly node: SemanticNode;
+      readonly destination: { readonly node: SemanticNode } & Placement;
+    } & Placement)
   | ({
       readonly name: 'scroll';
       readonly direction: ScrollDirection;
@@ -36,28 +49,30 @@ export type RecordableAction =
       readonly spans?: number;
     } & Placement)
   | { readonly name: 'navigate'; readonly url: string }
+  | { readonly name: 'back' }
   /** Keyboard input to whatever held focus, with no node resolved. */
   | { readonly name: 'typeText'; readonly value: string; readonly replace: boolean }
   | { readonly name: 'pressKey'; readonly key: string }
   | { readonly name: 'dismissKeyboard' }
   /**
-   * A tap on a bare viewport point that no listed control contained, with
-   * the viewport it was placed in and, when one is listed, the node whose
-   * box contained it: the trace records the point's place inside that box
-   * so replay can follow the node when the layout shifts.
+   * A tap or hover on a bare viewport point that no listed control
+   * contained, with the viewport it was placed in and, when one is listed,
+   * the node whose box contained it: the trace records the point's place
+   * inside that box so replay can follow the node when the layout shifts.
    */
   | {
-      readonly name: 'tapAt';
+      readonly name: PointActionName;
       readonly point: ViewportPoint;
       readonly viewport: ViewportSize;
       readonly under?: SemanticNode;
     };
 
 /** Where the node sat when it was acted on: its container's key and its place among identical twins. */
-interface Placement {
+export interface Placement {
   readonly within?: string;
   readonly position?: TracePosition;
 }
+
 
 /** Roles whose first text names the thing a control belongs to: a row's key, a list item's title. */
 const CONTAINER_ROLES: ReadonlySet<string> = new Set(['row', 'listitem', 'article', 'group', 'region', 'dialog', 'tabpanel']);
@@ -131,31 +146,47 @@ export interface DescribedAction {
    * secret's stable name stands in.
    */
   readonly summary: string;
+  /** Where a drag was dropped, described like its target; only a drag has one. */
+  readonly destination?: TraceTargetDescriptor | undefined;
 }
+
+/** The verb of each node action as its prose reads: `tap button "Save"`, `hover over link "Account"`. */
+const NODE_ACTION_PROSE: Readonly<Record<NodeActionName, string>> = {
+  tap: 'tap',
+  doubleTap: 'double-tap',
+  longPress: 'long-press',
+  secondaryTap: 'secondary-tap',
+  hover: 'hover over',
+  scrollTo: 'scroll into view',
+};
+
+/** How each point verb reads: `tap the point (x, y)`, `hover over the point (x, y)`. */
+const POINT_ACTION_PROSE: Readonly<Record<PointActionName, string>> = { tapAt: 'tap', hoverAt: 'hover over' };
 
 /** Describes one committed action for recording and for the live event. */
 export function describeAction(
   action: RecordableAction,
   redact: (text: string) => string,
 ): DescribedAction {
-  const node = 'node' in action ? action.node : action.name === 'tapAt' ? action.under : undefined;
-  const within = 'within' in action ? action.within : undefined;
-  const position = 'position' in action ? action.position : undefined;
-  const described = node === undefined ? undefined : describeTarget(node, redact);
   const target =
-    described === undefined
-      ? undefined
-      : {
-          ...described,
-          ...(within === undefined ? {} : { within: bound(within, MAX_WITHIN_CHARS) }),
-          ...(position === undefined ? {} : { position }),
-        };
+    'node' in action
+      ? describePlaced(action.node, action, redact)
+      : 'point' in action
+        ? describePlaced(action.under, {}, redact)
+        : undefined;
+  const destination = action.name === 'drag' ? describePlaced(action.destination.node, action.destination, redact) : undefined;
   const where = describeForSummary(target);
   const safe = (value: string) => quote(redact(sanitizeText(value)));
   const prose = (() => {
     switch (action.name) {
       case 'tap':
-        return `tap ${where}`;
+      case 'doubleTap':
+      case 'longPress':
+      case 'secondaryTap':
+      case 'hover':
+        return `${NODE_ACTION_PROSE[action.name]} ${where}`;
+      case 'scrollTo':
+        return `scroll ${where} into view`;
       case 'type':
         return `type ${safe(action.value)} into ${where}`;
       case 'typeSecret':
@@ -164,23 +195,51 @@ export function describeAction(
         return `press ${safe(action.key)} on ${where}`;
       case 'select':
         return `select ${safe(action.value)} in ${where}`;
+      case 'check':
+        return `${action.checked ? 'check' : 'uncheck'} ${where}`;
+      case 'upload':
+        return `upload ${action.paths.map(safe).join(', ')} to ${where}`;
+      case 'drag':
+        return `drag ${where} to ${describeForSummary(destination)}`;
       case 'scroll':
         return target === undefined ? `scroll ${action.direction}` : `scroll ${action.direction} on ${where}`;
       case 'navigate':
         return `navigate to ${safe(action.url)}`;
+      case 'back':
+        return 'navigate back';
       case 'typeText':
         return `type ${safe(action.value)} into the focused field${action.replace ? ', replacing its value' : ''}`;
       case 'pressKey':
         return `press ${safe(action.key)} on the focused field`;
       case 'dismissKeyboard':
         return 'dismiss the keyboard';
-      case 'tapAt': {
-        const at = `tap the point (${String(action.point.x)}, ${String(action.point.y)})`;
+      case 'tapAt':
+      case 'hoverAt': {
+        const at = `${POINT_ACTION_PROSE[action.name]} the point (${String(action.point.x)}, ${String(action.point.y)})`;
         return target === undefined ? at : `${at} on ${where}`;
       }
     }
   })();
-  return { target, summary: bound(prose, MAX_TRACE_SUMMARY_CHARS) };
+  return {
+    target,
+    summary: bound(prose, MAX_TRACE_SUMMARY_CHARS),
+    ...(destination === undefined ? {} : { destination }),
+  };
+}
+
+/** A node's durable descriptor with the placement it was acted on in; undefined for no node or nothing durable. */
+function describePlaced(
+  node: SemanticNode | undefined,
+  placement: Placement,
+  redact: (text: string) => string,
+): TraceTargetDescriptor | undefined {
+  const described = node === undefined ? undefined : describeTarget(node, redact);
+  if (described === undefined) return undefined;
+  return {
+    ...described,
+    ...(placement.within === undefined ? {} : { within: bound(placement.within, MAX_WITHIN_CHARS) }),
+    ...(placement.position === undefined ? {} : { position: placement.position }),
+  };
 }
 
 /**

@@ -379,22 +379,42 @@ describe('createEngineSession', () => {
       [...createEngineSession({ engine: defineEngine(observingEngine(extra)), targetName: 't' }).verbs].toSorted();
     const perform = async () => undefined;
     expect(verbs({})).toEqual([]);
-    expect(verbs({ actions: LOCATOR_ACTION_KINDS, perform })).toEqual(['press', 'scroll', 'select', 'tap', 'type', 'typeSecret']);
+    expect(verbs({ actions: LOCATOR_ACTION_KINDS, perform })).toEqual([
+      'check',
+      'doubleTap',
+      'drag',
+      'hover',
+      'longPress',
+      'press',
+      'scroll',
+      'scrollTo',
+      'secondaryTap',
+      'select',
+      'tap',
+      'type',
+      'typeSecret',
+      'upload',
+    ]);
     expect(verbs({ actions: ['tap'], perform })).toEqual(['tap']);
+    expect(verbs({ actions: ['doubleTap', 'longPress', 'secondaryTap'], perform })).toEqual(['doubleTap', 'longPress', 'secondaryTap']);
     expect(verbs({ actions: ['fill'], perform })).toEqual(['type', 'typeSecret']);
     expect(verbs({ actions: ['press'], perform })).toEqual(['press']);
     expect(verbs({ actions: ['selectOption'], perform })).toEqual(['select']);
     expect(verbs({ actions: ['swipe'], perform })).toEqual(['scroll']);
-    // Kinds without a grammar verb unlock nothing for the agent.
-    expect(verbs({ actions: ['check', 'hover', 'dragTo'], perform })).toEqual([]);
-    // The point tap verb needs the pointer `tap` kind; other pointer kinds alone offer nothing.
-    expect(verbs({ performAt: async () => undefined, pointerActions: ['tap', 'hover'] })).toEqual(['tapAt']);
-    expect(verbs({ performAt: async () => undefined, pointerActions: ['hover'] })).toEqual([]);
+    expect(verbs({ actions: ['hover', 'dragTo', 'scrollIntoView', 'setInputFiles'], perform })).toEqual(['drag', 'hover', 'scrollTo', 'upload']);
+    // `check` sets a state, so it needs both directions; `clear` and `focus` unlock nothing for the agent.
+    expect(verbs({ actions: ['check', 'uncheck'], perform })).toEqual(['check']);
+    expect(verbs({ actions: ['check', 'clear', 'focus'], perform })).toEqual([]);
+    // The point verbs need their own pointer kind; other pointer kinds alone offer nothing.
+    expect(verbs({ performAt: async () => undefined, pointerActions: ['tap', 'hover'] })).toEqual(['hoverAt', 'tapAt']);
+    expect(verbs({ performAt: async () => undefined, pointerActions: ['hover'] })).toEqual(['hoverAt']);
+    expect(verbs({ performAt: async () => undefined, pointerActions: ['longPress', 'swipeTo'] })).toEqual([]);
     const keyboard = { type: async () => undefined, press: async () => undefined };
     expect(verbs({ keyboard })).toEqual(['pressKey', 'typeText']);
     expect(verbs({ keyboard: { ...keyboard, dismiss: async () => undefined } })).toEqual(['dismissKeyboard', 'pressKey', 'typeText']);
     expect(verbs({ session: { open: async () => undefined } })).toEqual(['navigate']);
-    expect(verbs({ session: { back: async () => undefined, restart: async () => undefined } })).toEqual([]);
+    expect(verbs({ session: { back: async () => undefined, restart: async () => undefined } })).toEqual(['back']);
+    expect(verbs({ session: { restart: async () => undefined } })).toEqual([]);
   });
 
   it('rejects a superseded located ref but lets observation refs through to the engine', async () => {

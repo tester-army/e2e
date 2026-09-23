@@ -144,13 +144,23 @@ describe('e2e mcp with project tools and a custom engine', { timeout: 120_000 },
     expect(catalogNames(opened.text)).toEqual([
       'observe',
       'tap',
+      'double_tap',
+      'long_press',
+      'right_click',
+      'hover',
       'type',
       'press',
       'select',
+      'check',
+      'drag',
+      'upload',
       'scroll',
+      'scroll_to',
       'navigate',
+      'back',
       'screenshot',
       'tap_at',
+      'hover_at',
       'type_at',
       'press_at',
       'select_at',
@@ -217,7 +227,30 @@ describe('e2e mcp with project tools and a custom engine', { timeout: 120_000 },
     expect(opened.text).toContain('open on target "kiosk-only"');
     expect(opened.text).toContain('config ');
     expect(opened.text).toContain('kiosk.config.ts');
-    expect(catalogNames(opened.text)).toEqual(['observe', 'tap', 'type', 'press', 'select', 'navigate', 'screenshot', 'tap_at', 'type_at', 'press_at', 'select_at', 'locate']);
+    // The fake declares every node action but no swipe, no back, and no pointer kinds: no scroll, no back, and the point tools ride the node verbs.
+    expect(catalogNames(opened.text)).toEqual([
+      'observe',
+      'tap',
+      'double_tap',
+      'long_press',
+      'right_click',
+      'hover',
+      'type',
+      'press',
+      'select',
+      'check',
+      'drag',
+      'upload',
+      'scroll_to',
+      'navigate',
+      'screenshot',
+      'tap_at',
+      'hover_at',
+      'type_at',
+      'press_at',
+      'select_at',
+      'locate',
+    ]);
     const closed = await invoke('close_session');
     expect(closed.isError, closed.text).toBe(false);
   });
