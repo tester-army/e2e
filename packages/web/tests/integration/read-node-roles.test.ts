@@ -128,6 +128,8 @@ describe('role mapping', () => {
       meter: 'meter',
     });
     expect(nodes.get('check')).toMatchObject({ name: 'Show grid', states: { checked: true } });
+    expect(nodes.get('progressbar')).toMatchObject({ name: 'Upload', value: '40' });
+    expect(nodes.get('spinbutton')?.value).toBeUndefined();
     expect(nodes.get('radio')).toMatchObject({ name: 'Compact', states: { checked: false } });
     expect(nodes.get('treeitem')).toMatchObject({ name: 'src', states: { expanded: false } });
     expect(nodes.get('tooltip')?.name).toBe('Saves the draft');
@@ -149,6 +151,7 @@ describe('role mapping', () => {
         <hr data-testid="rule">
         <menu data-testid="menu"><li data-testid="menu-item">Cut</li></menu>
         <progress value="3" max="10" aria-label="Upload" data-testid="progress"></progress>
+        <progress aria-label="Working" data-testid="busy"></progress>
         <meter value="0.5" aria-label="Disk" data-testid="meter"></meter>
         <input type="number" aria-label="Quantity" value="2" data-testid="number">
         <table data-testid="table">
@@ -180,6 +183,7 @@ describe('role mapping', () => {
       menu: 'list',
       'menu-item': 'listitem',
       progress: 'progressbar',
+      busy: 'progressbar',
       meter: 'meter',
       number: 'spinbutton',
       table: 'table',
@@ -193,7 +197,9 @@ describe('role mapping', () => {
       'page-footer': 'contentinfo',
     });
     expect(nodes.get('number')).toMatchObject({ name: 'Quantity', value: '2' });
-    expect(nodes.get('progress')?.name).toBe('Upload');
+    expect(nodes.get('progress')).toMatchObject({ name: 'Upload', value: '3' });
+    // An indeterminate bar has no value to report: the loading rule reads that as a spinner.
+    expect(nodes.get('busy')?.value).toBeUndefined();
     // A legend, a figcaption, and a caption name their parent, so the node the reader
     // reports carries the name the role selector matched on.
     expect(nodes.get('fieldset')?.name).toBe('Notifications');

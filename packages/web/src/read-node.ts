@@ -865,7 +865,13 @@ const readSemanticsFunction = <Mode extends SemanticMode>(
       // as a newline, and cut like text in the model-bound projection.
       value = textOf(el).trim();
       if (projection.textLimit !== null) value = value.slice(0, projection.textLimit);
+    } else if (el instanceof HTMLProgressElement) {
+      // A determinate bar carries its value; one without the attribute is
+      // indeterminate, the semantics of a spinner, and reports none.
+      if (el.hasAttribute('value')) value = String(el.value);
     }
+    const ariaValueNow = el.getAttribute('aria-valuenow');
+    if (value === null && ariaValueNow !== null && el.getAttribute('role') === 'progressbar') value = ariaValueNow;
     const ariaChecked = el.getAttribute('aria-checked');
     if (ariaChecked !== null) checked = ariaChecked === 'true';
     const ariaSelected = el.getAttribute('aria-selected');

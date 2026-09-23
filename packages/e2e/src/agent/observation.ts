@@ -445,7 +445,8 @@ export interface SettleOptions<T> {
  * A screen that never leaves the pre-action shape is returned as it is once
  * the change wait runs out: the caller reports it unchanged rather than
  * guessing. A capture that says it is loading is then waited through,
- * bounded by `LOADING_WAIT_MS`, before the shape is required to hold still: a
+ * bounded by `LOADING_WAIT_MS` counted from the end of the change wait,
+ * before the shape is required to hold still: a
  * screen still loading at that bound is returned as it is. Evidence with no
  * comparable shape returns immediately; another capture cannot establish
  * semantic stability while semantics are unavailable.
@@ -465,7 +466,6 @@ export async function settleObservation<T>(
   let value = await capture();
   let shape = shapeOf(value);
   if (shape === undefined) return value;
-  const loadingDeadlineMs = Date.now() + loadingWaitMs;
   if (options.changedFrom !== undefined) {
     const changeShapeOf = options.changeShapeOf ?? shapeOf;
     const changeDeadlineMs = Date.now() + changeWaitMs;
@@ -480,6 +480,9 @@ export async function settleObservation<T>(
       if (shape === undefined) return value;
     }
   }
+  // Measured from here, not from the first capture: the change wait before it
+  // may have run its whole window while the old screen stayed up.
+  const loadingDeadlineMs = Date.now() + loadingWaitMs;
   while (loading(value) && Date.now() < loadingDeadlineMs && clock.remainingMs() > pollMs) {
     await sleep(pollMs, clock.signal);
     value = await capture();

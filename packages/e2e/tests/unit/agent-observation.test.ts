@@ -419,6 +419,23 @@ describe('settleObservation', () => {
     expect(value).toBe('new');
   });
 
+  it('gives a loading screen its whole window after a change wait that ran its course', async () => {
+    const started = Date.now();
+    const capture = (): Promise<string> => {
+      const elapsed = Date.now() - started;
+      return Promise.resolve(elapsed < 150 ? 'old' : elapsed < 280 ? 'Loading' : 'new');
+    };
+    const value = await settleObservation(capture, (v) => v, clock, {
+      ...fast,
+      changedFrom: 'old',
+      changeWaitMs: 150,
+      loadingWaitMs: 200,
+      stableWaitMs: 0,
+      loading: (v) => v === 'Loading',
+    });
+    expect(value).toBe('new');
+  });
+
   it('does not wait through an empty document beyond the change wait', async () => {
     const source = scripted(['']);
     const started = Date.now();

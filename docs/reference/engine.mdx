@@ -1081,7 +1081,7 @@ export interface SemanticNode {
   readonly name?: string;
   /** Visible text, cut at `OBSERVED_TEXT_LIMIT`. */
   readonly text?: string;
-  /** Current input value; never reported for a secure field. */
+  /** Current input value, or a determinate progressbar's; never reported for a secure field. */
   readonly value?: string;
   /**
    * The node's test id, when the platform gives it one: the value of the
