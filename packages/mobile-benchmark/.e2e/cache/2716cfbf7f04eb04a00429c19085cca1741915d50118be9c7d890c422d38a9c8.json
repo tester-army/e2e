@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-23T16:59:05.322Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap other \"Open modal\"",
+        "target": {
+          "role": "other",
+          "name": "Open modal",
+          "testId": "open-modal-button",
+          "selector": "id=open-modal-button"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Continue\"",
+        "target": {
+          "role": "other",
+          "name": "Continue",
+          "testId": "continue-button",
+          "selector": "id=continue-button"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Confirm\"",
+        "target": {
+          "role": "button",
+          "name": "Confirm"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Modal%20Flow",
+      "targetId": "ios-simulator",
+      "instructionDigest": "32bf25d16daf4e21f574c8c4919b38c59ac735da3fa3c55d0ddb4093a2abd239"
+    },
+    "summary": "Opened the modal, tapped Continue, and confirmed the native alert. The screen now shows “Flow completed.”.",
+    "startPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endAnchors": [
+      {
+        "role": "other",
+        "name": "Flow completed"
+      },
+      {
+        "role": "text",
+        "name": "Flow completed",
+        "testId": "success-message"
+      }
+    ],
+    "endWaitMs": 11595
+  }
+}

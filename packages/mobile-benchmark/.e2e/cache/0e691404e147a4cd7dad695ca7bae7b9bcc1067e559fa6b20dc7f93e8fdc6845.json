@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-23T17:09:09.737Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "scroll",
+        "summary": "scroll down on scroll-view \"Read the agreement, tap Accept terms at…\"",
+        "direction": "down",
+        "target": {
+          "role": "scroll-view",
+          "name": "Read the agreement, tap Accept terms at the bottom, then Continue."
+        },
+        "times": 3,
+        "spans": 0.8673
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Accept terms\"",
+        "target": {
+          "role": "other",
+          "name": "Accept terms",
+          "testId": "accept-terms",
+          "selector": "id=accept-terms"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Continue\"",
+        "target": {
+          "role": "other",
+          "name": "Continue",
+          "testId": "continue-button",
+          "selector": "id=continue-button"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Sticky%20Chrome%20Target",
+      "targetId": "ios-simulator",
+      "instructionDigest": "c8995bcdba36d775696cf386be302127a69622849b54e095755e2dc908af89bd"
+    },
+    "summary": "Scrolled to the bottom of the agreement, tapped Accept terms (which changed to “Terms accepted ✓”), then tapped Continue. The screen now displays “Terms accepted.”",
+    "startPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endAnchors": [
+      {
+        "role": "other",
+        "name": "Terms accepted"
+      },
+      {
+        "role": "text",
+        "name": "Terms accepted",
+        "testId": "success-message"
+      }
+    ],
+    "endWaitMs": 10296
+  }
+}

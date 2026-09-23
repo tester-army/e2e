@@ -1,0 +1,68 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-23T17:11:53.563Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"Card\"",
+        "target": {
+          "role": "button",
+          "name": "Card",
+          "testId": "Card",
+          "selector": "id=Card"
+        }
+      },
+      {
+        "name": "type",
+        "summary": "type \"4242424242424242\" into textbox \"Card number\"",
+        "target": {
+          "role": "textbox",
+          "name": "Card number"
+        },
+        "value": "4242424242424242"
+      },
+      {
+        "name": "type",
+        "summary": "type \"12/30\" into textbox \"expiration date\"",
+        "target": {
+          "role": "textbox",
+          "name": "expiration date"
+        },
+        "value": "12/30"
+      },
+      {
+        "name": "tool",
+        "summary": "tool type (run-time value)"
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Pay 10,99 US$\"",
+        "target": {
+          "role": "button",
+          "name": "Pay 10,99 US$"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Stripe%20PaymentSheet",
+      "targetId": "ios-simulator",
+      "instructionDigest": "9fe23653d2cc3a36f7e741bcb65cdc35947faf70e0c9231de5686b94c50adafb"
+    },
+    "summary": "Entered CVC 123 and billing postal code SW1A 1AA, then submitted the Stripe test card. The screen confirms “Stripe test payment completed” with card 4242 4242 4242 4242.",
+    "startPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Stripe test payment completed",
+        "testId": "success-message"
+      }
+    ],
+    "endWaitMs": 23387
+  }
+}

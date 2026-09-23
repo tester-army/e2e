@@ -1,0 +1,96 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-23T16:58:11.549Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "type",
+        "summary": "type \"tester@tester.army\" into textbox \"email-input\"",
+        "target": {
+          "role": "textbox",
+          "testId": "email-input",
+          "selector": "id=email-input"
+        },
+        "value": "tester@tester.army"
+      },
+      {
+        "name": "typeSecret",
+        "summary": "fill secret \"benchmark\" into textbox \"password-input\"",
+        "target": {
+          "role": "textbox",
+          "testId": "password-input",
+          "selector": "id=password-input",
+          "inputPurpose": "password"
+        },
+        "secret": "benchmark"
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Log in\"",
+        "target": {
+          "role": "other",
+          "name": "Log in",
+          "testId": "login-button",
+          "selector": "id=login-button"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"return\"",
+        "target": {
+          "role": "button",
+          "name": "return",
+          "testId": "Return",
+          "selector": "id=Return"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Log in\"",
+        "target": {
+          "role": "other",
+          "name": "Log in",
+          "testId": "login-button",
+          "selector": "id=login-button"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Not Now\"",
+        "target": {
+          "role": "button",
+          "name": "Not Now"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Login%20Form",
+      "targetId": "ios-simulator",
+      "instructionDigest": "faf898a5790a0ed0790b7cf57f66838eaa92ae4cb5975ac34563020bbe5cc9a3"
+    },
+    "summary": "Entered tester@tester.army and the provided password, submitted the login form, dismissed the password-save prompt, and verified the “Logged in successfully” message.",
+    "startPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endAnchors": [
+      {
+        "role": "other",
+        "name": "Log out",
+        "testId": "logout-button"
+      },
+      {
+        "role": "other",
+        "name": "Logged in successfully"
+      },
+      {
+        "role": "text",
+        "name": "Logged in successfully",
+        "testId": "success-message"
+      }
+    ],
+    "endWaitMs": 12946
+  }
+}

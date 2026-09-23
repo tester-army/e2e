@@ -131,6 +131,7 @@ const SCENARIOS: readonly Scenario[] = [
     goal: 'scroll to Row 0512 and tap it; the list has 600 rows of equal height and off-screen rows are not in the tree, so scroll many screens at a time',
     success: 'Found Row 0512',
     maxSteps: 80,
+    gap: 'the agent scrolls blind: iOS renumbers the rows on every observation, the scroll target goes stale around row 460 of 512, and the loop guard stops the step; a scroll to a named node is #486',
   },
   {
     name: 'Flattened Registration Form',

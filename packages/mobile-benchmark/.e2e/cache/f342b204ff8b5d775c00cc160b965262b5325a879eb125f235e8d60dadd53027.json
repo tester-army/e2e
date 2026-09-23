@@ -1,0 +1,153 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-23T17:08:46.694Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tapAt",
+        "summary": "tap the point (167, 449) on other \"Use tester@tester.army / <secret:benchm…\"",
+        "point": {
+          "x": 167,
+          "y": 449
+        },
+        "viewport": {
+          "width": 402,
+          "height": 874
+        },
+        "within": {
+          "target": {
+            "role": "other",
+            "name": "Use tester@tester.army / <secret:benchmark>, Email, Password, SIGN IN"
+          },
+          "fx": 0.4154,
+          "fy": 0.4393
+        }
+      },
+      {
+        "name": "tapAt",
+        "summary": "tap the point (171, 452) on other \"Use tester@tester.army / <secret:benchm…\"",
+        "point": {
+          "x": 171,
+          "y": 452
+        },
+        "viewport": {
+          "width": 402,
+          "height": 874
+        },
+        "within": {
+          "target": {
+            "role": "other",
+            "name": "Use tester@tester.army / <secret:benchmark>, Email, Password, SIGN IN"
+          },
+          "fx": 0.4254,
+          "fy": 0.4433
+        }
+      },
+      {
+        "name": "tool",
+        "summary": "tool type (run-time value)"
+      },
+      {
+        "name": "tapAt",
+        "summary": "tap the point (165, 528) on other \"Use tester@tester.army / <secret:benchm…\"",
+        "point": {
+          "x": 165,
+          "y": 528
+        },
+        "viewport": {
+          "width": 402,
+          "height": 874
+        },
+        "within": {
+          "target": {
+            "role": "other",
+            "name": "Use tester@tester.army / <secret:benchmark>, Email, Password, SIGN IN"
+          },
+          "fx": 0.4104,
+          "fy": 0.5435
+        }
+      },
+      {
+        "name": "tapAt",
+        "summary": "tap the point (172, 528) on other \"Use tester@tester.army / <secret:benchm…\"",
+        "point": {
+          "x": 172,
+          "y": 528
+        },
+        "viewport": {
+          "width": 402,
+          "height": 874
+        },
+        "within": {
+          "target": {
+            "role": "other",
+            "name": "Use tester@tester.army / <secret:benchmark>, Email, Password, SIGN IN"
+          },
+          "fx": 0.4279,
+          "fy": 0.5435
+        }
+      },
+      {
+        "name": "tool",
+        "summary": "tool type (run-time value)"
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"return\"",
+        "target": {
+          "role": "button",
+          "name": "return",
+          "testId": "Return",
+          "selector": "id=Return"
+        }
+      },
+      {
+        "name": "tapAt",
+        "summary": "tap the point (202, 596) on other \"Use tester@tester.army / <secret:benchm…\"",
+        "point": {
+          "x": 202,
+          "y": 596
+        },
+        "viewport": {
+          "width": 402,
+          "height": 874
+        },
+        "within": {
+          "target": {
+            "role": "other",
+            "name": "Use tester@tester.army / <secret:benchmark>, Email, Password, SIGN IN"
+          },
+          "fx": 0.5025,
+          "fy": 0.6332
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Not Now\"",
+        "target": {
+          "role": "button",
+          "name": "Not Now"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Flattened%20Login",
+      "targetId": "ios-simulator",
+      "instructionDigest": "2ac57f8c28a31069613ffb9bbf8151a42ea8ceb4bb65d0ad6dcd9eea0b8a2755"
+    },
+    "summary": "Used the hinted login credentials and dismissed the password-save prompt. The screen now displays “Logged in successfully.”",
+    "startPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endAnchors": [
+      {
+        "role": "other",
+        "name": "Logged in successfully"
+      }
+    ],
+    "endWaitMs": 12777
+  }
+}

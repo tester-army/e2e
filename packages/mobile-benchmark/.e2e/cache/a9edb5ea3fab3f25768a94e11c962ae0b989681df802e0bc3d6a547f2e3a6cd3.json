@@ -1,0 +1,52 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-23T17:14:32.283Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap other \"Buy with Apple Pay\"",
+        "target": {
+          "role": "other",
+          "name": "Buy with Apple Pay",
+          "testId": "apple-pay-button",
+          "selector": "id=apple-pay-button"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Pay with Passcode\"",
+        "target": {
+          "role": "button",
+          "name": "Pay with Passcode",
+          "testId": "footer",
+          "selector": "id=footer"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Apple%20Pay",
+      "targetId": "ios-simulator",
+      "instructionDigest": "94f39431cf1ce1c380678b2d8ee27fb1e2a33fe296495a90c007ad4dc3f2ae45"
+    },
+    "summary": "Started Apple Pay, selected Pay with Passcode to authorize the sheet, and verified the success message “Payment complete: $8.99.”.",
+    "startPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endAnchors": [
+      {
+        "role": "other",
+        "name": "Payment complete: $8.99"
+      },
+      {
+        "role": "text",
+        "name": "Payment complete: $8.99",
+        "testId": "success-message"
+      }
+    ],
+    "endWaitMs": 12803
+  }
+}

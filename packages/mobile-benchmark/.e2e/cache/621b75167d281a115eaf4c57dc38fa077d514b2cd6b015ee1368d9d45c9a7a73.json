@@ -1,0 +1,198 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-23T17:14:11.584Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "type",
+        "summary": "type \"alex.johnson@example.com\" into textbox \"email-input\"",
+        "target": {
+          "role": "textbox",
+          "testId": "email-input",
+          "selector": "id=email-input"
+        },
+        "value": "alex.johnson@example.com"
+      },
+      {
+        "name": "press",
+        "summary": "press \"Enter\" on button \"return\"",
+        "target": {
+          "role": "button",
+          "name": "return",
+          "testId": "Return",
+          "selector": "id=Return"
+        },
+        "key": "Enter"
+      },
+      {
+        "name": "tap",
+        "summary": "tap text \"Sequential Onboarding\"",
+        "target": {
+          "role": "text",
+          "name": "Sequential Onboarding"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"return\"",
+        "target": {
+          "role": "button",
+          "name": "return",
+          "testId": "Return",
+          "selector": "id=Return"
+        }
+      },
+      {
+        "name": "tool",
+        "summary": "tool swipe"
+      },
+      {
+        "name": "tool",
+        "summary": "tool swipe"
+      },
+      {
+        "name": "tool",
+        "summary": "tool swipe"
+      },
+      {
+        "name": "tap",
+        "summary": "tap text \"Let's start with your email\"",
+        "target": {
+          "role": "text",
+          "name": "Let's start with your email"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Continue\"",
+        "target": {
+          "role": "other",
+          "name": "Continue",
+          "testId": "continue-button",
+          "selector": "id=continue-button"
+        }
+      },
+      {
+        "name": "tool",
+        "summary": "tool type (run-time value)"
+      },
+      {
+        "name": "tap",
+        "summary": "tap text \"Tell us more about you\"",
+        "target": {
+          "role": "text",
+          "name": "Tell us more about you"
+        }
+      },
+      {
+        "name": "tool",
+        "summary": "tool type (run-time value)"
+      },
+      {
+        "name": "tap",
+        "summary": "tap text \"Tell us more about you\"",
+        "target": {
+          "role": "text",
+          "name": "Tell us more about you"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Continue\"",
+        "target": {
+          "role": "other",
+          "name": "Continue",
+          "testId": "continue-button",
+          "selector": "id=continue-button"
+        }
+      },
+      {
+        "name": "tool",
+        "summary": "tool type (run-time value)"
+      },
+      {
+        "name": "tap",
+        "summary": "tap text \"Your phone number\"",
+        "target": {
+          "role": "text",
+          "name": "Your phone number"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Continue\"",
+        "target": {
+          "role": "other",
+          "name": "Continue",
+          "testId": "continue-button",
+          "selector": "id=continue-button"
+        }
+      },
+      {
+        "name": "tool",
+        "summary": "tool type (run-time value)"
+      },
+      {
+        "name": "tap",
+        "summary": "tap text \"Your phone number\"",
+        "target": {
+          "role": "text",
+          "name": "Your phone number"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Continue\"",
+        "target": {
+          "role": "other",
+          "name": "Continue",
+          "testId": "continue-button",
+          "selector": "id=continue-button"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Sequential%20Onboarding",
+      "targetId": "ios-simulator",
+      "instructionDigest": "970c887978c38f936a27d9b90e47b8e93318f07069e136ba3b343e8bfa936525"
+    },
+    "summary": "Completed the signup wizard using alex.johnson@example.com, Alex Johnson, and 0612456789, dismissing the keyboard before each Continue. The final screen confirms “Onboarding complete” and echoes all three values.",
+    "startPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endAnchors": [
+      {
+        "role": "other",
+        "name": "Onboarding complete"
+      },
+      {
+        "role": "scroll-view",
+        "name": "Onboarding complete"
+      },
+      {
+        "role": "text",
+        "name": "Onboarding complete",
+        "testId": "success-message"
+      },
+      {
+        "role": "text",
+        "name": "alex.johnson@example.com",
+        "testId": "echo-email"
+      },
+      {
+        "role": "text",
+        "name": "Alex Johnson",
+        "testId": "echo-name"
+      },
+      {
+        "role": "text",
+        "name": "0612456789",
+        "testId": "echo-phone"
+      }
+    ],
+    "endWaitMs": 13768
+  }
+}

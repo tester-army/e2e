@@ -1,0 +1,80 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-23T17:10:18.389Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap other \"Trail Mix, 500 g · $6.99\"",
+        "target": {
+          "role": "other",
+          "name": "Trail Mix, 500 g · $6.99",
+          "testId": "product-trail-mix-500",
+          "selector": "id=product-trail-mix-500"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"+\"",
+        "target": {
+          "role": "other",
+          "name": "+",
+          "testId": "quantity-increase",
+          "selector": "id=quantity-increase"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Add to cart\"",
+        "target": {
+          "role": "other",
+          "name": "Add to cart",
+          "testId": "add-to-cart",
+          "selector": "id=add-to-cart"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap other \"Cart (2)\"",
+        "target": {
+          "role": "other",
+          "name": "Cart (2)",
+          "testId": "open-cart",
+          "selector": "id=open-cart"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Product%20Catalog",
+      "targetId": "ios-simulator",
+      "instructionDigest": "df6d87ed0275359863ecaf58d94669a7d2b9881afd75c25cb6af7327bb4e052d"
+    },
+    "summary": "Opened the exact Trail Mix 500 g product, changed quantity to 2, added it to the cart, and opened the cart. The cart shows “2 × Trail Mix 500 g” and confirms “Order ready: 2 × Trail Mix 500 g.”",
+    "startPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Cart"
+      },
+      {
+        "role": "text",
+        "name": "2 × Trail Mix 500 g"
+      },
+      {
+        "role": "other",
+        "name": "‹ Back to catalog"
+      },
+      {
+        "role": "text",
+        "name": "Order ready: 2 × Trail Mix 500 g",
+        "testId": "success-message"
+      }
+    ],
+    "endWaitMs": 10318
+  }
+}
