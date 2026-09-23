@@ -2,7 +2,7 @@
 
 import type { Browser } from 'playwright';
 import { chromium, firefox, selectors, webkit } from 'playwright';
-import { CLOSED_SHADOW_SELECTOR_ENGINES } from './read-node.ts';
+import { CLOSED_SHADOW_SELECTOR_ENGINES } from './closed-shadow.ts';
 
 export type BrowserName = 'chromium' | 'firefox' | 'webkit';
 

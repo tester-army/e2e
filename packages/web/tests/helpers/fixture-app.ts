@@ -290,6 +290,7 @@ const OPENER = `<!doctype html>
 <a id="link" href="/popup" target="_blank">Open link</a>
 <button id="write" onclick="const w = window.open('', '_blank'); w.document.write('<title>Written</title><h1>Written popup</h1><p id=code>TAB-88421</p>'); w.document.close();">Open written</button>
 <button id="nothing" onclick="document.getElementById('count').textContent = 'no window'">Open nothing</button>
+<button id="open-redirecting" onclick="window.open('/redirecting', '_blank')">Open redirecting</button>
 <label>Draft <input id="draft" value="kept"></label>
 <output id="count" aria-label="Opened">0</output>
 </body>
@@ -304,6 +305,34 @@ const POPUP = `<!doctype html>
 <button id="ask" onclick="document.getElementById('popup-answer').textContent = confirm('in the popup?') ? 'yes' : 'no'">Ask</button>
 <button id="self-close" onclick="window.close()">Close me</button>
 <output id="popup-answer" aria-label="Popup answer"></output>
+</body>
+</html>`;
+
+/** A popup that loads, then sends itself on to `/popup`, as an OAuth callback does. */
+const REDIRECTING = `<!doctype html>
+<html>
+<head><title>Fixture Redirecting</title></head>
+<body>
+<h1>Redirecting</h1>
+<script>setTimeout(() => location.replace('/popup'), 50);</script>
+</body>
+</html>`;
+
+/**
+ * One closed root whose host precedes a light-DOM match of the same query, so
+ * the reader's in-place order and the locators' light-first order differ.
+ */
+const CLOSED_ORDER = `<!doctype html>
+<html>
+<head><title>Fixture Closed Order</title></head>
+<body>
+<h1>Order</h1>
+<x-widget></x-widget>
+<button type="button">Beta</button>
+<script>
+  const root = document.querySelector('x-widget').attachShadow({ mode: 'closed' });
+  root.innerHTML = '<button type="button">Alpha</button>';
+</script>
 </body>
 </html>`;
 
@@ -324,10 +353,12 @@ const PAGES: Readonly<Record<string, string>> = {
   '/': HOME,
   '/opener': OPENER,
   '/popup': POPUP,
+  '/redirecting': REDIRECTING,
   '/dialogs': DIALOGS,
   '/pointer': POINTER,
   '/closed-shadow': CLOSED_SHADOW,
   '/closed-form': CLOSED_FORM,
+  '/closed-order': CLOSED_ORDER,
   '/contents': CONTENTS,
   '/closed-login': CLOSED_LOGIN,
   '/form': FORM,

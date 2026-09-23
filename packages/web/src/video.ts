@@ -9,7 +9,9 @@
  * starts the next segment. Each segment is captured at the attempt's viewport
  * size and carries the instant it began, so a consumer can place step
  * timestamps on it. The first segment is `video/video.webm`; later ones are
- * `video/video-part<n>.webm`. Without a recording, every hook here is a no-op.
+ * `video/video-part<n>.webm`, numbered as they start, so a segment a closed
+ * page dropped leaves a gap in the numbers. Without a recording, every hook
+ * here is a no-op.
  */
 
 import { existsSync, mkdirSync } from 'node:fs';
@@ -112,9 +114,12 @@ export class VideoRecorder {
 
   /**
    * Ends the segment in progress. A stop that failed but left a file keeps
-   * the file; one that left nothing (a page closed before the stop, which
-   * Playwright never flushes) lost the segment, which `stop` reports. A
-   * segment that wrote nothing is not a segment.
+   * the file. One that left nothing lost the segment: Playwright never
+   * flushes a screencast whose page closed under it, so when the page is
+   * gone (a popup the app closed itself, a transport drop) the loss is the
+   * expected shape of that close and is dropped; when the page is still open
+   * the loss is a failure, which `stop` reports. A segment that wrote nothing
+   * is not a segment.
    */
   private async end(): Promise<void> {
     const segment = this.current;
@@ -124,7 +129,7 @@ export class VideoRecorder {
       await segment.page.screencast.stop();
     } catch (cause) {
       if (!existsSync(segment.absolute)) {
-        this.lost ??= { relative: segment.relative, cause };
+        if (!segment.page.isClosed()) this.lost ??= { relative: segment.relative, cause };
         return;
       }
     }

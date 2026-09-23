@@ -39,7 +39,7 @@ import { matchesText } from 'e2e/engine';
 import { classifyActionError, dispatchLocatorAction, dispatchPointerAction } from './actions.ts';
 import { BrowserConnection, connectCdp, type BrowserName } from './browser-connection.ts';
 import { AttemptSession, type StorageState } from './attempt-session.ts';
-import type { CdpEndpointResolver } from './cdp-recovery.ts';
+import type { CdpEndpointResolver, StackedPage } from './cdp-recovery.ts';
 import { LeasedBrowsers, type BrowserProvider } from './provider.ts';
 import { DialogRouter } from './dialogs.ts';
 import { ensureBrowsersInstalled } from './install.ts';
@@ -48,12 +48,8 @@ import { ROOT_NODE_ID, toSemanticNode } from './observation.ts';
 import { captureObservation } from './observation-capture.ts';
 import { maskOptions, secureFieldMasks } from './observe.ts';
 import { connectionAbort } from './operation-budget.ts';
-import {
-  CLOSED_SHADOW_ROOTS_INIT_SCRIPT,
-  readHandlesSemanticsFunction,
-  readManySemanticsFunction,
-  SECURE_FIELD_SELECTOR,
-} from './read-node.ts';
+import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT } from './closed-shadow.ts';
+import { readHandlesSemanticsFunction, readManySemanticsFunction, SECURE_FIELD_SELECTOR } from './read-node.ts';
 import { httpCredentials, installSiteHeaders, lowercaseNames } from './protected-app.ts';
 import { RefRegistry } from './refs.ts';
 import {
@@ -469,13 +465,18 @@ export class PlaywrightSurface {
   }
 
   /** Makes a page the app opened the attempt's active page; see `AttemptSession.enterPopup`. */
-  enterPopup(popup: Page): Promise<void> {
+  enterPopup(popup: Page): Promise<StackedPage> {
     return this.requireSession().enterPopup(popup);
   }
 
-  /** Closes a popup entered through `enterPopup`; its opener is the active page again. */
-  closePopup(popup: Page): Promise<void> {
+  /** Closes a popup entered through `enterPopup`; the page below it is the active page again. */
+  closePopup(popup: StackedPage): Promise<void> {
     return this.requireSession().closePopup(popup);
+  }
+
+  /** The URL an entered popup shows now, or the last one it showed once it is gone. */
+  popupUrl(popup: StackedPage): string {
+    return (this.session?.pageOf(popup) ?? popup.page).url();
   }
 
   /**

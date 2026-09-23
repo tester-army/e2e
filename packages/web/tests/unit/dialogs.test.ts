@@ -89,6 +89,20 @@ describe('DialogRouter', () => {
     expect(() => router.throwPending()).not.toThrow();
   });
 
+  it('dismisses a dialog of a kind the contract does not name and latches ENGINE_FAILURE, before any handler', async () => {
+    const router = new DialogRouter();
+    const handler = vi.fn((dialog: { accept(): Promise<void> }) => dialog.accept());
+    router.add(handler);
+    const { dialog, accept, dismiss } = fakeDialog('from the future', 'popover');
+    await router.dispatch(dialog);
+    expect(handler).not.toHaveBeenCalled();
+    expect(accept).not.toHaveBeenCalled();
+    expect(dismiss).toHaveBeenCalledTimes(1);
+    expect(() => router.throwPending()).toThrowError(
+      expect.objectContaining({ code: 'ENGINE_FAILURE', message: expect.stringContaining('unknown kind "popover"') }),
+    );
+  });
+
   it('dismisses a dialog its handler left undecided and latches INVALID_STATE naming the handler', async () => {
     const router = new DialogRouter();
     router.add(() => {

@@ -91,7 +91,8 @@ await popup.close();
 await screen.getByPlaceholder('Verification code').fill(code!);
 ```
 
-A popup the app closes itself returns to the opener on its own. A tab that
+A popup the app closes itself returns to the opener on its own, and
+`popup.url` reads the URL the popup shows now, after any redirect. A tab that
 opens with no wait pending is ignored and closed with the attempt.
 
 ## Reach into an iframe

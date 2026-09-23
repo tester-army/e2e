@@ -32,6 +32,7 @@ beforeEach(async () => {
   type = vi.fn(async (_text: string) => undefined);
   const page = {
     isClosed: () => false,
+    once: () => undefined,
     close: async () => undefined,
     goto: async () => undefined,
     frames: () => [{ evaluate: focus }],

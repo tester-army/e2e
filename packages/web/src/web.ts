@@ -81,7 +81,7 @@ export interface WebResponse {
  * and screenshots follow it until it closes.
  */
 export interface WebPopup {
-  /** The popup's URL once it loaded. */
+  /** The popup's URL as it is now: it follows a redirect inside the popup and a CDP reconnect. */
   readonly url: string;
   /** Closes the popup; the page that opened it is the active page again. */
   close(): Promise<void>;
@@ -504,10 +504,10 @@ export function createWebFixture(surface: PlaywrightSurface, context: EngineFixt
         const popup = await waiter;
         // Playwright reads a zero timeout as none; a spent budget must still fail.
         await popup.waitForLoadState('load', { timeout: Math.max(1, deadline.remaining()) });
-        await surface.enterPopup(popup);
+        const entered = await surface.enterPopup(popup);
         const handle: WebPopup = {
-          url: popup.url(),
-          close: () => surface.guard(context.operation(), 'popup.close', () => surface.closePopup(popup)),
+          get url() { return surface.popupUrl(entered); },
+          close: () => surface.guard(context.operation(), 'popup.close', () => surface.closePopup(entered)),
         };
         return context.fixture('popup', handle, { close: action });
       }, (cause, label) => {

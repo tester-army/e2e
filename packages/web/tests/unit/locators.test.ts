@@ -25,12 +25,15 @@ function fakeLocator(chain: readonly string[]): PwLocator {
       ]),
     getByLabel: (text: string | RegExp, options?: { exact?: boolean }) =>
       fakeLocator([...chain, `label(${String(text)}${options?.exact ? ',exact' : ''})`]),
-    filter: (options: { hasText?: string | RegExp; has?: PwLocator }) =>
+    getByText: (text: string | RegExp, options?: { exact?: boolean }) =>
+      fakeLocator([...chain, `text(${String(text)}${options?.exact ? ',exact' : ''})`]),
+    filter: (options: { hasText?: string | RegExp; has?: PwLocator; visible?: boolean }) =>
       fakeLocator([
         ...chain,
         `filter(${[
           options.hasText === undefined ? '' : `hasText=${String(options.hasText)}`,
           options.has === undefined ? '' : `has=${chainOf(options.has).join('>')}`,
+          options.visible === undefined ? '' : `visible=${String(options.visible)}`,
         ]
           .filter((part) => part !== '')
           .join(',')})`,
@@ -89,6 +92,27 @@ describe('projectExpression', () => {
       query: { kind: 'label', value: { kind: 'string', value: 'Display', exact: false } },
     });
     expect(loose.name).toBeNull();
+  });
+
+  it('narrows a visible query inside the selector for every kind, CSS candidates included', () => {
+    const visibleLabel: LocatorExpression = {
+      kind: 'query',
+      query: { kind: 'label', value: { kind: 'string', value: 'Display name', exact: true }, visible: true },
+    };
+    const projected = projectExpression(page, visibleLabel);
+    expect(chainOf(projected.locator)).toEqual([
+      'locator(e2e-roots=button, input:not([type="hidden"]), textarea, select, meter, output, progress, [aria-label], [aria-labelledby])',
+      'filter(visible=true)',
+      'locator(:scope:not([aria-hidden="true"]))',
+    ]);
+    expect(projected.visible).toBe(true);
+    const visibleText: LocatorExpression = {
+      kind: 'query',
+      query: { kind: 'text', value: { kind: 'string', value: 'Save', exact: true }, visible: true },
+    };
+    expect(chainOf(projectExpression(page, visibleText).locator)).toEqual([
+      ROOTS, 'text(Save,exact)', 'filter(visible=true)', 'locator(:scope:not([aria-hidden="true"]))',
+    ]);
   });
 
   it('projects a testId query onto the configured attribute, encoded as getByTestId encodes it', () => {

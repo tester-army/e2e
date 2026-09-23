@@ -18,7 +18,9 @@ const VIEWPORT = { width: 320, height: 200 };
 /** A page whose screencast writes its file on start unless told not to, and fails to stop when told to. */
 function fakePage(options: { writes?: boolean; stopError?: Error; startError?: Error } = {}) {
   const started: string[] = [];
+  let closed = false;
   const page = {
+    isClosed: () => closed,
     screencast: {
       start: async ({ path: file }: { path: string }) => {
         if (options.startError !== undefined) throw options.startError;
@@ -30,7 +32,7 @@ function fakePage(options: { writes?: boolean; stopError?: Error; startError?: E
       },
     },
   } as unknown as Page;
-  return { page, started };
+  return { page, started, close: () => { closed = true; } };
 }
 
 describe('VideoRecorder', () => {
@@ -88,6 +90,21 @@ describe('VideoRecorder', () => {
     // Reported, then forgotten: the next stop has nothing to say.
     expect(await video.stop()).toEqual([]);
     expect(existsSync(path.join(dir, 'video', 'video.webm'))).toBe(false);
+  });
+
+  it('drops the segment of a page that closed under it without reporting a loss, and numbers on', async () => {
+    const video = recorder();
+    const opener = fakePage();
+    const popup = fakePage({ writes: false, stopError: new Error('Target page, context or browser has been closed') });
+    await video.arm(opener.page);
+    // The popup becomes the view; the app then closes it before anything ends its segment.
+    await video.pageClosing();
+    await video.pageOpened(popup.page);
+    popup.close();
+    await video.pageOpened(opener.page);
+    const segments = await video.stop();
+    expect(segments.map((segment) => segment.path)).toEqual(['video/video.webm', 'video/video-part3.webm']);
+    expect(existsSync(path.join(dir, 'video', 'video-part2.webm'))).toBe(false);
   });
 
   it('stays disarmed when the first segment cannot start', async () => {

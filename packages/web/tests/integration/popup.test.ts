@@ -234,6 +234,35 @@ describe('web.waitForPopup', () => {
     expect(surface.requirePage()).toBe(pages[0]);
   });
 
+  it('closes popups out of order: the first closed under the second leaves the second active, then the opener returns', async () => {
+    await surface.open(`${app.url}/opener`, operation());
+    const first = await web.waitForPopup(() => tap(byRole('button', 'Open window')));
+    await web.goto('/opener');
+    const second = await web.waitForPopup(() => tap(byRole('button', 'Open window')));
+    const pages = surface.requireContext().pages();
+    expect(pages).toHaveLength(3);
+    await first.close();
+    expect(pages[1]!.isClosed()).toBe(true);
+    expect(surface.requirePage()).toBe(pages[2]);
+    expect(await headingName()).toBe('Popup');
+    await second.close();
+    expect(surface.requirePage()).toBe(pages[0]);
+    expect(await headingName()).toBe('Opener');
+    expect(await web.title()).toBe('Fixture Opener');
+  });
+
+  it('reads the popup URL as it is now, after the popup redirected', async () => {
+    await surface.open(`${app.url}/opener`, operation());
+    const popup = await web.waitForPopup(() => tap(byRole('button', 'Open redirecting')));
+    await matchers.toHaveURL('/popup');
+    expect(popup.url).toBe(`${app.url}/popup`);
+    expect(await headingName()).toBe('Popup');
+    await popup.close();
+    // Gone, the handle still says where the popup was.
+    expect(popup.url).toBe(`${app.url}/popup`);
+    expect(await headingName()).toBe('Opener');
+  });
+
   it('records the popup as its own video segment, between two of the opener', async () => {
     await surface.open(`${app.url}/opener`, operation());
     await surface.startVideo(operation());
@@ -243,6 +272,27 @@ describe('web.waitForPopup', () => {
     await matchers.toHaveTitle('Fixture Opener');
     const segments = await surface.stopVideo(operation());
     expect(segments.map((segment) => segment.path)).toEqual(['video/video.webm', 'video/video-part2.webm', 'video/video-part3.webm']);
+  });
+
+  it('drops the segment of a popup the app closed itself and keeps recording the opener', async () => {
+    await surface.open(`${app.url}/opener`, operation());
+    await surface.startVideo(operation());
+    const opener = surface.requirePage();
+    await web.waitForPopup(() => tap(byRole('button', 'Open window')));
+    const popupPage = surface.requirePage();
+    const closed = popupPage.waitForEvent('close');
+    await tap(byRole('button', 'Close me'));
+    await closed;
+    expect(surface.requirePage()).toBe(opener);
+    await matchers.toHaveTitle('Fixture Opener');
+    // Collection succeeds either way: a screencast whose page closed under it
+    // may have flushed frames (the segment is kept) or nothing (it is dropped).
+    const segments = await surface.stopVideo(operation());
+    const paths = segments.map((segment) => segment.path);
+    expect(paths[0]).toBe('video/video.webm');
+    expect(paths.at(-1)).toBe('video/video-part3.webm');
+    expect(paths.length).toBeGreaterThanOrEqual(2);
+    expect(paths.length).toBeLessThanOrEqual(3);
   });
 
   it('refuses to wait before an app page is open', async () => {

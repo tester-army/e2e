@@ -199,3 +199,36 @@ describe('locators inside closed shadow roots', () => {
     expect((await locate(query({ kind: 'displayValue', value: exact('SHADOW-42') }))).map((node) => node.testId)).toEqual(['code']);
   });
 });
+
+describe('match order across one closed root', () => {
+  let app: FixtureApp;
+  let artifactsDir: string;
+  const engine = web();
+  const op = operation('closed-order');
+
+  beforeAll(async () => {
+    app = await startFixtureApp();
+    artifactsDir = mkdtempSync(path.join(tmpdir(), 'e2e-closed-order-'));
+    await boot(engine, app);
+    await engine.startAttempt!({ attemptId: 'closed-order', artifactsDir, signal: new AbortController().signal });
+    await engine.session!.open!(`${app.url}/closed-order`, op);
+  });
+
+  afterAll(async () => {
+    await engine.endAttempt!(cleanup());
+    await engine.dispose!(cleanup());
+    await app.close();
+    rmSync(artifactsDir, { recursive: true, force: true });
+  });
+
+  it('lists light-DOM matches first and the closed root after, where the observed tree lists them in place', async () => {
+    // The host comes before the light-DOM button, so the reader reads Alpha first.
+    const observed = [...walk((await engine.observe!(op)).root)].filter((node) => node.role === 'button');
+    expect(observed.map((node) => node.name)).toEqual(['Alpha', 'Beta']);
+    // A locator searches the light DOM as one root and the closed root as the next.
+    const located = await engine.locate!(byRole('button'), op);
+    expect(located.map((node) => node.name)).toEqual(['Beta', 'Alpha']);
+    const first = await engine.locate!({ kind: 'index', source: byRole('button'), index: 'first' }, op);
+    expect(first.map((node) => node.name)).toEqual(['Beta']);
+  });
+});

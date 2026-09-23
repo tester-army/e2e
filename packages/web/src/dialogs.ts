@@ -22,9 +22,13 @@ export interface Dialog {
 
 export type DialogHandler = 'accept' | 'dismiss' | ((dialog: Dialog) => void | Promise<void>);
 
-/** Playwright types `dialog.type()` as a string; the four it documents are the whole set. */
-function dialogType(dialog: PwDialog): Dialog['type'] {
-  return dialog.type() as Dialog['type'];
+/** The kinds a handler may see, as `Dialog['type']` spells them; `dialogType` admits nothing else. */
+const DIALOG_TYPES = Object.freeze(['alert', 'confirm', 'prompt', 'beforeunload'] as const satisfies readonly Dialog['type'][]);
+
+/** Playwright types `dialog.type()` as a string; only the four kinds it documents pass, anything else is undefined. */
+function dialogType(dialog: PwDialog): Dialog['type'] | undefined {
+  const type = dialog.type();
+  return (DIALOG_TYPES as readonly string[]).includes(type) ? (type as Dialog['type']) : undefined;
 }
 
 interface Registration {
@@ -60,6 +64,19 @@ export class DialogRouter {
 
   /** Routes one native dialog to the newest registered handler. */
   async dispatch(dialog: PwDialog): Promise<void> {
+    const type = dialogType(dialog);
+    if (type === undefined) {
+      // A kind the contract does not name cannot reach a handler typed on the four it does.
+      this.latch.latch(
+        new EngineError(
+          'ENGINE_FAILURE',
+          `dialog of unknown kind "${dialog.type()}": ${dialog.message()}`,
+          { retryable: false },
+        ),
+      );
+      await dialog.dismiss().catch(() => undefined);
+      return;
+    }
     const handler = this.registrations.at(-1)?.handler;
     if (handler === undefined) {
       this.latch.latch(
@@ -74,7 +91,7 @@ export class DialogRouter {
     }
     let decided = false;
     const publicDialog: Dialog = {
-      type: dialogType(dialog),
+      type,
       message: dialog.message(),
       accept: async (text) => {
         decided = true;

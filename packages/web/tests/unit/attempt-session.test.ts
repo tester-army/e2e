@@ -41,6 +41,7 @@ function target(id: string, response?: Promise<{ targetId: string }>) {
     setViewportSize: async () => undefined,
     viewportSize: () => ({ width: 320, height: 200 }),
     isClosed: () => false,
+    once: vi.fn(),
     close: vi.fn(async () => undefined),
   } as unknown as Page;
   return { page, send };

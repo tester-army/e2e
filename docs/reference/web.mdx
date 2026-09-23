@@ -129,9 +129,10 @@ Recovery preserves the page's unsaved state, storage, the attempt's secret
 taint, and the agent ledger. Operations already dispatched
 are never retried. Dialog and route handlers are reattached. Video and trace
 recording resume, but a segment lost during the disconnect cannot be recovered.
-A popup `web.waitForPopup` made active is the target recovery looks for; the
-return to its opener does not survive the reconnect, so close the popup before
-a transport drop is expected, or `web.goto` where the flow continues.
+A popup `web.waitForPopup` made active is found again by its target, and so
+is every page under it, so `close()` on the popup after the reconnect returns
+to the recovered opener. A page of that stack that closed while disconnected
+leaves it; when none is left, recovery fails as above.
 Code using `surfaceOf(engine)` must read its accessors again after recovery;
 previously retained Playwright objects belong to the disconnected transport.
 
@@ -315,8 +316,8 @@ const flag = await web.evaluate(
 
 A route survives `app.restart()`, `app.clearState()`, and session restore.
 The handler must decide exactly once with `fulfill`, `continue`, or `abort`;
-deciding twice or not at all is `ACTION_FAILED`, as is a `waitForResponse`
-that nothing matches inside the deadline.
+deciding twice or not at all is `ACTION_FAILED`; a `waitForResponse` that
+nothing matches inside the deadline is `OPERATION_TIMEOUT`.
 
 ```ts
 await web.route('**/api/quote', async (route) => {
@@ -411,7 +412,7 @@ unhandled dialog does. `type` says which kind of dialog the handler holds,
 so it can route on the kind instead of the message text. Handlers are
 attempt-wide: a dialog a popup opens reaches the same handler.
 `waitForDownload` registers the file as a `download`
-artifact and throws `ACTION_FAILED` when it does not complete in time. It
+artifact and throws `OPERATION_TIMEOUT` when it does not complete in time. It
 resolves with `path` (the artifact path the report shows), `absolutePath`
 (the file on disk, what `setInputFiles` takes to upload it back), and
 `suggestedFilename`.
@@ -454,10 +455,12 @@ dialog handlers follow the popup. `close()` closes it and makes the opener the
 active page again, with the opener's document and state as they were. A popup
 the app closes itself (`window.close()` after an OAuth redirect, say) returns
 to the opener on its own; `close()` is then a no-op. A trigger that opens no
-page is `ACTION_FAILED` when the wait runs out, and a page that opens while
+page is `OPERATION_TIMEOUT` when the wait runs out, and a page that opens while
 no wait is pending is left alone: the opener stays active and the page is
 closed with the attempt. Routes are context-wide and cover the popup without
-re-registration.
+re-registration. A popup the app closes while the video records may lose its
+segment, which Playwright cannot flush for a page that is gone; the opener's
+recording resumes and `stopVideo` still collects.
 
 ```ts
 /**
@@ -466,7 +469,7 @@ re-registration.
  * and screenshots follow it until it closes.
  */
 export interface WebPopup {
-  /** The popup's URL once it loaded. */
+  /** The popup's URL as it is now: it follows a redirect inside the popup and a CDP reconnect. */
   readonly url: string;
   /** Closes the popup; the page that opened it is the active page again. */
   close(): Promise<void>;
@@ -485,7 +488,9 @@ await screen.getByPlaceholder('Verification code').fill(code!);
 
 The popup's URL is the app's choice, like any click's destination, so it is
 not checked against the navigation rule; `app.open` and `web.goto` inside the
-popup are. Nested popups return one level at a time. The agent has no verb of
+popup are. The pages form a stack: a popup opened from a popup returns to
+that popup, then to the opener, and closing a popup under the active one
+takes it off that path while the active page stays. The agent has no verb of
 its own for switching tabs: an `act` step sees whichever page is active when
 it runs, so switch with `waitForPopup` and `close()` around it.
 
