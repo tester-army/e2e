@@ -93,7 +93,7 @@ describe('e2e init', () => {
     // The default gateway is written out as its own provider's constructor, never implied by the runner.
     expect(read('e2e.config.ts')).toContain("import { gateway } from 'ai';");
     expect(read('e2e.config.ts')).toContain("model: gateway('openai/gpt-6-luna-fast'),");
-    expect(read('e2e.config.ts')).toContain('// The Vercel AI Gateway serves the model id and reads AI_GATEWAY_API_KEY.');
+    expect(read('e2e.config.ts')).toContain('// The Vercel AI Gateway serves the model id and reads AI_GATEWAY_API_KEY, or the OIDC token of a linked Vercel project.');
     expect(read('tests/example.e2e.ts')).toContain('// With the model key in the environment, uncomment:');
     expect(read('e2e.config.ts')).toContain("web({\n      url: process.env.APP_URL ?? 'http://localhost:3000',");
     expect(read('e2e.config.ts')).toContain('// command: {');

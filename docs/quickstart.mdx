@@ -158,8 +158,10 @@ Connect the option you chose in the wizard before running an agent step.
   export AI_GATEWAY_API_KEY="your-api-key"
   ```
 
-  OpenRouter uses `OPENROUTER_API_KEY`. You can also configure a provider
-  directly with its own API key, or use a local model. See
+  With a project linked by `npx vercel link`, the gateway can use a
+  [Vercel OIDC token](/models#vercel-oidc-instead-of-a-key) instead of a
+  key. OpenRouter uses `OPENROUTER_API_KEY`. You can also configure a
+  provider directly with its own API key, or use a local model. See
   [Models](/models) for config examples.
   </Tab>
 </Tabs>

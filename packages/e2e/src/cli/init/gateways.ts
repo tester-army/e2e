@@ -29,7 +29,7 @@ export const GATEWAYS: readonly GatewayPreset[] = [
     hint: 'one key for every provider; reads AI_GATEWAY_API_KEY',
     dependencies: {},
     import: "import { gateway } from 'ai';",
-    comment: 'The Vercel AI Gateway serves the model id and reads AI_GATEWAY_API_KEY.',
+    comment: 'The Vercel AI Gateway serves the model id and reads AI_GATEWAY_API_KEY, or the OIDC token of a linked Vercel project.',
     model: () => "gateway('openai/gpt-6-luna-fast')",
   },
   {

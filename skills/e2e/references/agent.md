@@ -8,7 +8,8 @@ test with no agent step makes no model calls.
 ## Configure a model
 
 Configure an AI SDK model under `agents.default`. This example uses Vercel
-AI Gateway and reads `AI_GATEWAY_API_KEY`:
+AI Gateway, which reads `AI_GATEWAY_API_KEY` or, without it, a Vercel OIDC
+token:
 
 ```ts
 import type { E2EConfig } from 'e2e';

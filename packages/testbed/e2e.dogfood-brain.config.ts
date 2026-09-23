@@ -18,7 +18,7 @@ const mathBrain: StepExecutor = {
   name: 'math-brain',
   version: '1',
   async runStep(context) {
-    const model = createGateway({ apiKey: process.env.AI_GATEWAY_API_KEY ?? '' }).languageModel(MODEL_ID);
+    const model = createGateway().languageModel(MODEL_ID);
     let verdict: StepVerdict | undefined;
     const compute = (name: string, body: () => number) =>
       context.budgets.runTool({ name, mutates: false }, async () => String(body()));

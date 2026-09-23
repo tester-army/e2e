@@ -20,7 +20,8 @@ replace its model import and `model` value:
 <Tabs>
   <Tab title="Vercel AI Gateway">
 
-`gateway` is included in the `ai` package. Set `AI_GATEWAY_API_KEY`.
+`gateway` is included in the `ai` package. Set `AI_GATEWAY_API_KEY`, or use
+a [Vercel OIDC token](#vercel-oidc-instead-of-a-key) without a key.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -100,6 +101,27 @@ npx e2e run
 For subscriptions, use `npx e2e login` instead. The config selects the model
 and its provider; e2e has no default model or shared API-key variable.
 
+### Vercel OIDC instead of a key
+
+Without `AI_GATEWAY_API_KEY`, `gateway()` authenticates with a Vercel OIDC
+token. Sign in to the Vercel CLI and link the project once; the gateway then
+mints a short-lived token for that project and refreshes it when it expires:
+
+```bash
+npx vercel login
+npx vercel link
+npx e2e run
+```
+
+The token is a valid `VERCEL_OIDC_TOKEN`, otherwise one minted for the
+project in `.vercel/project.json`, found by walking up from the working
+directory. e2e loads no `.env` files, so a token pulled with
+`npx vercel env pull` reaches the gateway only when your shell exports it.
+
+An OIDC failure is the same `MODEL_PROVIDER_FAILED` as a bad key, and the AI
+SDK's message names only `AI_GATEWAY_API_KEY`. With no key set, check that the
+Vercel CLI is signed in and that `.vercel/project.json` exists.
+
 ## Several models in one config
 
 Give agents different names to use different models:
@@ -146,7 +168,7 @@ const agent = createAgent({
 | --- | --- | --- |
 | A model is a string instead of an AI SDK instance | `INVALID_CONFIG` | Construct it, for example `gateway('openai/gpt-6-luna-fast')`. |
 | The built-in agent has no model | `MODEL_UNAVAILABLE` | Set `createAgent({ model })` or `agents.<name>.model`. |
-| Authentication fails on the first model call | `MODEL_PROVIDER_FAILED` | Check the provider's API key, or run `npx e2e login` for a subscription. |
+| Authentication fails on the first model call | `MODEL_PROVIDER_FAILED` | Check the provider's API key or the linked Vercel project, or run `npx e2e login` for a subscription. |
 | The `ai` package is missing | `MODEL_UNAVAILABLE` | Run `npm install -D ai`. |
 
 If both `createAgent` and the surrounding agent options set `model`, they

@@ -11,8 +11,11 @@ means it is not blank, `0`, or `false`. Flag values are case-insensitive.
 
 Configure a model in `e2e.config.ts`. Its provider reads the API key:
 `gateway()` uses `AI_GATEWAY_API_KEY`, `openrouter()` uses
-`OPENROUTER_API_KEY`, and `openai()` uses `OPENAI_API_KEY`. A missing key
-fails on the first model call. Subscription models use a stored login instead.
+`OPENROUTER_API_KEY`, and `openai()` uses `OPENAI_API_KEY`. Without
+`AI_GATEWAY_API_KEY`, `gateway()` uses a
+[Vercel OIDC token](/models#vercel-oidc-instead-of-a-key). A missing
+credential fails on the first model call. Subscription models use a stored
+login instead.
 See [Models](/models) and [Subscriptions](/subscriptions).
 
 | Variable | Reading | Effect |

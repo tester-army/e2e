@@ -61,7 +61,7 @@ After installing dependencies, authenticate that provider:
 | ChatGPT Plus or Pro | `npx e2e login openai` |
 | GitHub Copilot | `npx e2e login github-copilot`, with the GitHub CLI already signed in or your own `--client-id` |
 | SuperGrok or X Premium+ | `npx e2e login spacexai` |
-| Vercel AI Gateway | Set `AI_GATEWAY_API_KEY` |
+| Vercel AI Gateway | Set `AI_GATEWAY_API_KEY`, or sign in to the Vercel CLI and run `npx vercel link`: without the key the gateway uses a Vercel OIDC token |
 | OpenRouter | Set `OPENROUTER_API_KEY` |
 | Local or self-hosted endpoint | Set the endpoint URL and a model it serves; add a key if required |
 
@@ -93,7 +93,7 @@ export default {
       }),
     },
   ],
-  // The model behind every agent.* step: an AI SDK instance; gateway() from 'ai' reads AI_GATEWAY_API_KEY.
+  // The model behind every agent.* step: an AI SDK instance; gateway() from 'ai' reads AI_GATEWAY_API_KEY or a Vercel OIDC token.
   agents: {
     default: createAgent({
       model: gateway('openai/gpt-6-luna-fast'),
@@ -240,7 +240,7 @@ or read the address from the environment:
 
 | Variable | Effect |
 | --- | --- |
-| `AI_GATEWAY_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, ... | Read by the provider package the config constructs the model with (`gateway()` from `ai`, `openrouter()`, `openai()`), not by the runner. The runner reads no model variable; the model is always an AI SDK instance in the config. |
+| `AI_GATEWAY_API_KEY`, `VERCEL_OIDC_TOKEN`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, ... | Read by the provider package the config constructs the model with (`gateway()` from `ai`, `openrouter()`, `openai()`), not by the runner; `gateway()` without a key uses a Vercel OIDC token, see Subscriptions and API keys above. The runner reads no model variable; the model is always an AI SDK instance in the config. |
 | `E2E_USER_<NAME>_USERNAME`, `E2E_USER_<NAME>_PASSWORD` | Override `credentials.<name>`. `<NAME>` is the credential name uppercased, other characters as `_`. |
 | `E2E_SECRET_<NAME>` | Overrides the value of `secrets.<name>`, same uppercasing rule. |
 | `CI` | Turns on CI defaults: `retries: 1`, `workers: 1`, `test.only` rejected, cache read-only, `reuseExisting` ignored. |

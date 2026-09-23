@@ -35,7 +35,7 @@ export default {
       }),
     },
   ],
-  // The model behind every agent.* step: an AI SDK instance; gateway() from 'ai' reads AI_GATEWAY_API_KEY.
+  // The model behind every agent.* step: an AI SDK instance; gateway() from 'ai' reads AI_GATEWAY_API_KEY or a Vercel OIDC token.
   agents: {
     default: createAgent({
       model: gateway('openai/gpt-6-luna-fast'),
@@ -92,8 +92,9 @@ one. Without them, the installed CLI prints the same text:
    that must be one specific number.
 4. Run one file: `npx e2e run tests/<feature>.e2e.ts`. Agent steps need a
    model in the config and authentication for its provider, such as a saved
-   subscription login or `AI_GATEWAY_API_KEY` for `gateway()`. A local
-   endpoint may need no key. Tests without agent steps need no model.
+   subscription login or, for `gateway()`, `AI_GATEWAY_API_KEY` or a linked
+   Vercel project. A local endpoint may need no key. Tests without agent
+   steps need no model.
 5. Read the failure: the reporter prints the error code, the message, and a
    code frame; `.e2e/report.json` has every step and artifact path. Fix the
    locator, the expectation, or the app. Never add a sleep.
