@@ -53,6 +53,6 @@ test.describe('canvas whiteboard', () => {
 
     await screen.tapAt(await onCanvas(web, CANVAS, SAVE_BUTTON));
     await expect.poll(() => pixelAt(web, SAVE_BUTTON_EDGE)).toEqual(INACTIVE);
-    expect(await countColor(web, BANNER_BAND, GREEN)).toBe(0);
+    await expect.poll(() => countColor(web, BANNER_BAND, RED)).toBeGreaterThan(0);
   });
 });

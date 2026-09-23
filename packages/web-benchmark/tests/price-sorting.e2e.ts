@@ -23,7 +23,7 @@ test.describe('price sorting', () => {
 
   test('low to high sorts by the original price, not the paid one (planted bug)', async ({ screen }) => {
     const sort = screen.getByLabel('Sort by');
-    await sort.selectOption('Price: Low to High');
+    await sort.selectOption({ value: 'price-asc' });
     await expect(sort).toHaveValue('price-asc');
     // Paid prices are socks 18, bottle 25, mug 12, lantern 54, backpack 49: a
     // correct sort opens with the $12 mug. The page sorts the struck prices.
@@ -47,7 +47,7 @@ test.describe('price sorting', () => {
       'Steel Water Bottle',
       'Merino Hiking Socks',
     ]);
-    await sort.selectOption({ index: 0 });
+    await sort.selectOption({ value: 'featured' });
     await expect(screen.getByTestId('product-list').getByRole('listitem').first()).toContainText(
       'Trail Backpack 24L',
     );

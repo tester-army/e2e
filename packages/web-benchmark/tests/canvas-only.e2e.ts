@@ -2,8 +2,6 @@ import { test } from '@e2edev/web';
 import { expect } from 'e2e';
 import { countColor, onCanvas, pixelAt } from './canvas.ts';
 
-// Everything is painted on one aria-hidden canvas: the shapes are tapped at
-// their canvas coordinates and the outcome is read back from the pixels.
 const CANVAS = { width: 480, height: 360 };
 const SQUARE = { x: 90, y: 210 };
 const CIRCLE = { x: 240, y: 210 };
@@ -23,7 +21,8 @@ test.describe('canvas only', () => {
 
   test('taps square, circle, then diamond at their pixel coordinates', async ({ screen, web }) => {
     await expect.poll(() => pixelAt(web, FIRST_DOT)).toEqual(GREY);
-    expect(await countColor(web, STATUS_BAND, GREEN)).toBe(0);
+    expect(await pixelAt(web, SECOND_DOT)).toEqual(GREY);
+    expect(await pixelAt(web, THIRD_DOT)).toEqual(GREY);
 
     await screen.tapAt(await onCanvas(web, CANVAS, SQUARE));
     await expect.poll(() => pixelAt(web, FIRST_DOT)).toEqual(GREEN);

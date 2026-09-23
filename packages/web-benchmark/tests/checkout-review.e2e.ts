@@ -18,5 +18,5 @@ test('shows a raw greeting token and an undefined delivery date (planted bug), y
 
   await screen.getByRole('button', { name: 'Place order - $123.00' }).tap();
   await expect(screen.getByTestId('success-message')).toHaveText('Order placed successfully');
-  await expect(screen.getByText('Order #10482', { exact: false })).toBeVisible();
+  await expect(screen.getByText(/Order #10482/)).toBeVisible();
 });

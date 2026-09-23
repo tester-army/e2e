@@ -1,5 +1,6 @@
 import { test } from '@e2edev/web';
 import { expect } from 'e2e';
+import { centerOf } from './support.ts';
 
 test.describe('kanban board', () => {
   test.beforeEach(async ({ app }) => {
@@ -23,12 +24,9 @@ test.describe('kanban board', () => {
   });
 
   test('a swipe along a path drags a card as well', async ({ screen }) => {
-    const card = await screen.getByTestId('card-fix-payment-bug').boundingBox();
-    const done = await screen.getByTestId('column-done').boundingBox();
-    if (card === null || done === null) throw new Error('card or column has no box');
     await screen.swipe({
-      from: { x: card.x + card.width / 2, y: card.y + card.height / 2 },
-      to: { x: done.x + done.width / 2, y: done.y + done.height / 2 },
+      from: await centerOf(screen.getByTestId('card-fix-payment-bug')),
+      to: await centerOf(screen.getByTestId('column-done')),
     });
     await expect(screen.getByTestId('column-done').getByText('Fix payment bug')).toBeVisible();
   });

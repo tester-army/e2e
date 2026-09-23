@@ -2,6 +2,7 @@ import { test } from '@e2edev/web';
 import type { Web } from '@e2edev/web';
 import { expect } from 'e2e';
 import type { Locator } from 'e2e';
+import { failure, siblingOf } from './support.ts';
 
 /**
  * The button whose own text node reads `text`. Each button here carries an
@@ -13,15 +14,6 @@ function buttonReading(web: Web, text: string): Locator {
   return web.locator(`xpath=//button[normalize-space(text())="${text}"]`);
 }
 
-/**
- * The input beside a visible label. The aria-labels and placeholders are
- * swapped between the two fields on purpose, so the label text next to a
- * field is the only thing that names it truthfully.
- */
-function fieldBeside(web: Web, label: string): Locator {
-  return web.locator(`xpath=//span[normalize-space(text())="${label}"]/following-sibling::input`);
-}
-
 test.describe('lying labels', () => {
   test.beforeEach(async ({ app }) => {
     await app.open('/e/lying-labels');
@@ -30,6 +22,14 @@ test.describe('lying labels', () => {
   test('the button whose accessible name says Pay now is the wrong one', async ({ screen }) => {
     await screen.getByRole('button', { name: 'Pay now' }).tap();
     await expect(screen.getByTestId('error-message')).toHaveText('You clicked the wrong action');
+  });
+
+  test('a text match for Pay now catches the decoy phrase too', async ({ screen }) => {
+    expect(await failure(() => screen.getByText(/Pay now/).tap())).toHaveProperty(
+      'code',
+      'LOCATOR_AMBIGUOUS',
+    );
+    await expect(screen.getByTestId('error-message')).toBeHidden();
   });
 
   test('the field whose accessible name says Amount is the wrong one', async ({ screen, web }) => {
@@ -43,8 +43,8 @@ test.describe('lying labels', () => {
 
   test('visible text drives the payment through', async ({ screen, web }) => {
     await buttonReading(web, 'Pay now').tap();
-    await fieldBeside(web, 'Amount').fill('42.50');
-    await expect(fieldBeside(web, 'Reference')).toHaveValue('');
+    await siblingOf(web, 'Amount', 'input').fill('42.50');
+    await expect(siblingOf(web, 'Reference', 'input')).toHaveValue('');
     await screen.getByText('Submit payment').tap();
     await expect(screen.getByTestId('success-message')).toHaveText('Payment sent');
   });

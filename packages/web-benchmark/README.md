@@ -72,6 +72,8 @@ Two things bite here:
 - Role names match exactly by default. The home page links are named after the
   scenario name and its description, so `getByRole('link', { name: 'Login
   Form', exact: false })` is the query that finds one. See `tests/smoke.e2e.ts`.
+  Elsewhere a partial text match is a RegExp, `getByText(/Order #10482/)`, and
+  `selectOption` names its option by `{ value }`, one spelling across the suite.
 - `reuseExisting` trusts whatever answers on the port. A dev server left
   running from another checkout serves that checkout's scenarios.
 

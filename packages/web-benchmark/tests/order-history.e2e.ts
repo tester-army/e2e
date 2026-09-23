@@ -20,7 +20,8 @@ test.describe('order history', () => {
   test('the orders tab never leaves its loading state (planted bug)', async ({ screen }) => {
     await screen.getByRole('button', { name: 'Orders' }).tap();
     const orders = screen.getByTestId('orders-panel');
-    await expect(orders).toHaveText('Loading your orders...');
+    // A negated matcher passes only after 1000 ms of continuous truth: the
+    // dwell that tells a stuck loading state from a slow one.
     await expect(orders.getByText('Loading your orders...')).not.toBeHidden();
     await expect(orders.getByRole('listitem')).toHaveCount(0);
 

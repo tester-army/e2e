@@ -17,7 +17,7 @@ test.describe('otp auto-advance', () => {
     await expect(box(screen, 0)).toHaveValue('4');
     await expect(box(screen, 1)).toBeFocused();
 
-    await box(screen, 1).pressSequentially('9302', { delay: 20 });
+    await box(screen, 1).pressSequentially('9302');
     await expect(box(screen, 4)).toHaveValue('2');
     await expect(box(screen, 5)).toBeFocused();
 

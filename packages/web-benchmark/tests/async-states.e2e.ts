@@ -1,5 +1,6 @@
 import { test } from '@e2edev/web';
 import { expect } from 'e2e';
+import { readCode } from './support.ts';
 
 test.describe('async states', () => {
   test.beforeEach(async ({ app, screen }) => {
@@ -17,8 +18,7 @@ test.describe('async states', () => {
     await screen.getByRole('button', { name: 'Send code' }).tap();
     const toast = screen.getByTestId('toast');
     await expect(toast).toHaveText(/^Your code is \d{4}$/);
-    const code = (await toast.textContent())?.match(/\d{4}/)?.[0] ?? '';
-    expect(code).toMatch(/^\d{4}$/);
+    const code = await readCode(toast, /\d{4}/);
 
     await screen.getByPlaceholder('Verification code').fill(code);
     await expect(verify).toBeEnabled();

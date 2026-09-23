@@ -6,8 +6,13 @@ test('accepts the terms once the button clears the sticky footer', async ({ app,
   await expect(screen.getByTestId('sticky-header')).toHaveText('Terms of Service');
   await expect(screen.getByTestId('success-message')).toBeHidden();
 
-  await screen.getByRole('button', { name: 'Accept terms' }).tap();
-
+  const accept = screen.getByRole('button', { name: 'Accept terms' });
+  await accept.scrollIntoView();
+  await accept.tap();
   await expect(screen.getByTestId('success-message')).toHaveText('Terms accepted');
-  await expect(screen.getByTestId('sticky-footer')).toBeVisible();
+
+  const button = await accept.boundingBox();
+  const footer = await screen.getByTestId('sticky-footer').boundingBox();
+  if (button === null || footer === null) throw new Error('the button or the footer has no box');
+  expect(button.y + button.height).toBeLessThanOrEqual(footer.y);
 });
