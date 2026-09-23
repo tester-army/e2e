@@ -78,19 +78,33 @@ jobs:
           path: ~/.agent-device
           key: agent-device-${{ runner.os }}-${{ hashFiles('packages/mobile/package.json') }}
       # `bootstatus -b` boots the device when it is not up yet and waits for it.
-      # The UDID pins the iOS target to this simulator (e2e.config.ts).
+      # The UDID pins the iOS target to this simulator (e2e.config.ts). The
+      # runtime is pinned too: the accessibility bridge reports control state
+      # differently from one iOS release to the next (on 26.2 a selected tab
+      # or radio carries no `selected`, and an empty field reports its
+      # placeholder as its value), and the suites are verified on 26.5. Bump
+      # IOS_RUNTIME on purpose, with a local run on that runtime first.
       - name: Boot a simulator
+        env:
+          IOS_RUNTIME: com.apple.CoreSimulator.SimRuntime.iOS-26-5
         run: |
           set -euo pipefail
-          UDID="$(xcrun simctl list devices available -j | node -e '
+          PICK="$(xcrun simctl list devices available -j | node -e '
             const payload = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
-            const devices = Object.entries(payload.devices)
+            const wanted = process.env.IOS_RUNTIME;
+            const major = wanted.replace(/-\d+$/, "-");
+            const rank = (runtime) => (runtime === wanted ? 0 : runtime.startsWith(major) ? 1 : 2);
+            const runtimes = Object.entries(payload.devices)
               .filter(([runtime]) => runtime.includes("SimRuntime.iOS-"))
-              .flatMap(([, list]) => list);
-            const pick = devices.find((d) => d.name === "iPhone 17 Pro") ?? devices.find((d) => d.name.startsWith("iPhone"));
-            if (!pick) process.exit(1);
-            process.stdout.write(pick.udid);
+              .sort(([a], [b]) => rank(a) - rank(b) || b.localeCompare(a, undefined, { numeric: true }));
+            for (const [runtime, list] of runtimes) {
+              const pick = list.find((d) => d.name === "iPhone 17 Pro") ?? list.find((d) => d.name.startsWith("iPhone"));
+              if (pick) { process.stdout.write(`${pick.udid} ${runtime} ${pick.name}`); process.exit(0); }
+            }
+            process.exit(1);
           ')"
+          UDID="${PICK%% *}"
+          echo "booting ${PICK#* } ($UDID)"
           xcrun simctl bootstatus "$UDID" -b
           echo "E2E_MOBILE_BENCHMARK_IOS_DEVICE=$UDID" >> "$GITHUB_ENV"
       - name: Run the suites
