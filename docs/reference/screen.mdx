@@ -28,7 +28,7 @@ export interface Screen {
   /** Scrolls until a locator resolves visibly or times out. */
   scrollUntilVisible(
     target: Locator,
-    options?: { direction?: ScrollDirection; timeout?: number },
+    options?: { direction?: ScrollDirection; momentum?: Momentum; timeout?: number },
   ): Promise<void>;
 }
 ```
@@ -93,7 +93,11 @@ Prefer it over `web.locator('p:visible')`, which ties the test to CSS.
 
 ## Refinement
 
-Refinement returns a new locator without querying the app.
+Refinement returns a new locator without querying the app. `hasText` with a
+string is a case-insensitive substring match over the match and its
+descendants, unlike a query text, which matches exactly; pass a RegExp for
+anything stricter. `has` keeps a match whose subtree resolves the inner
+locator.
 
 Throws `INVALID_LOCATOR` when `filter` gets neither `hasText` nor `has`, when
 `has` is not a runner locator, or when `nth` gets a negative or non-integer
@@ -140,10 +144,13 @@ swipe(options: SwipeOptions | SwipePathOptions): Promise<void>;
 ```
 
 Viewport-level gesture, in one of two shapes. `{ direction, momentum? }` is
-a scroll gesture on the screen. `{ from, to }` is a swipe along a path
-between two viewport points: a touch swipe on a device, a pointer drag on a
-document platform, which is what reveals a row action, dismisses a sheet,
-or drags a card between columns. Uses `config.actionTimeout`. Throws
+a scroll gesture on the screen; `momentum` is its fling strength, `'none'`
+by default: `'none'` a plain drag of half the surface, `'slow'` a short
+fling, `'fast'` a long one. How far each carries is the engine's.
+`{ from, to }` is a swipe along a path between two viewport points: a touch
+swipe on a device, a pointer drag on a document platform, which is what
+reveals a row action, dismisses a sheet, or drags a card between columns.
+Uses `config.actionTimeout`. Throws
 `ACTION_FAILED` when the gesture is rejected, `INVALID_ARGUMENT` for a mix
 of the two shapes or a coordinate off the plane, and `UNSUPPORTED_CAPABILITY`
 when the engine does not list `swipe` in its actions (a direction) or
@@ -164,7 +171,7 @@ await screen.swipe({
 ```ts
 scrollUntilVisible(
   target: Locator,
-  options?: { direction?: ScrollDirection; timeout?: number },
+  options?: { direction?: ScrollDirection; momentum?: Momentum; timeout?: number },
 ): Promise<void>;
 ```
 
@@ -172,10 +179,16 @@ scrollUntilVisible(
 | --- | --- | --- |
 | `target` | `Locator` | - |
 | `options.direction` | `ScrollDirection` | `'down'` |
+| `options.momentum` | `Momentum` | `'slow'`; the gesture of each step, as [`screen.swipe`](#screen-swipe) defines it. A longer step is faster but must not carry the target past the surface unseen, which is what a virtualized list does |
 | `options.timeout` | `number` | `30000`, its own default, not `config.actionTimeout` |
 
-Throws `INVALID_LOCATOR` for a non-runner locator, `LOCATOR_NOT_FOUND` when the
-deadline expires first.
+On `screen` each step is a viewport swipe. On a locator the step is a swipe
+of that node, so a feed or a table that is its own scroll container pages
+without the pointer having to hover it first:
+`screen.getByRole('feed').scrollUntilVisible(row)`.
+
+Throws `INVALID_LOCATOR` for a non-runner locator, `INVALID_ARGUMENT` for an
+option it does not take, `LOCATOR_NOT_FOUND` when the deadline expires first.
 
 ```ts
 await screen.scrollUntilVisible(screen.getByRole('button', { name: 'Accept' }));
@@ -490,7 +503,7 @@ export interface PressSequentiallyOptions extends ActionOptions {
 export interface SwipeOptions {
   /** Swipe direction. */
   direction: ScrollDirection;
-  /** Fling strength; default `none`. */
+  /** Fling strength; default `none`. The three values are defined under screen.swipe. */
   momentum?: Momentum;
   from?: never;
   to?: never;
@@ -535,7 +548,7 @@ export type SelectOption =
 /** A swipe or scroll direction. */
 export type ScrollDirection = 'up' | 'down' | 'left' | 'right';
 
-/** Fling strength of a swipe. */
+/** Fling strength of a swipe; defined under screen.swipe. */
 export type Momentum = 'none' | 'slow' | 'fast';
 ```
 
