@@ -39,18 +39,20 @@ test('modal flow confirms through the native alert', async ({ device, screen }) 
   await expect(screen.getByTestId('success-message')).toHaveText('Flow completed');
 });
 
-// Tab bar buttons carry the tab name plus position hints in their label,
-// and the active one the selected state.
+// Tab bar buttons carry the tab name plus position hints in their label.
+// The active tab shows in the content it reveals: its `selected` state only
+// reaches the tree through the simulator's accessibility bridge, which a CI
+// Mac does not always provide.
 test('bottom tabs act inside the last tab', async ({ device, screen }) => {
   await openScenario({ device, screen }, 'Bottom Tabs');
   await expect(screen.getByTestId('home-tab-content')).toBeVisible();
   const home = screen.getByRole('button', { name: /Home/ });
   const actions = screen.getByRole('button', { name: /Actions/ });
-  await expect(home).toBeSelected();
-  await expect(actions).not.toBeSelected();
+  await expect(home).toBeVisible();
+  await expect(screen.getByTestId('complete-action-button')).toHaveCount(0);
   await actions.tap();
-  await expect(actions).toBeSelected();
-  await expect(home).not.toBeSelected();
+  await expect(screen.getByTestId('complete-action-button')).toBeVisible();
+  await expect(screen.getByTestId('home-tab-content')).toHaveCount(0);
   await screen.getByTestId('complete-action-button').tap();
   await expect(screen.getByTestId('success-message')).toHaveText('Action completed');
 });
@@ -68,8 +70,8 @@ test('choice controls place the exact order', async ({ device, screen }) => {
   await openScenario({ device, screen }, 'Choice Controls');
   await expect(screen.getByTestId('place-order')).toBeDisabled();
   await screen.getByTestId('size-medium').tap();
-  await expect(screen.getByTestId('size-medium')).toBeSelected();
-  await expect(screen.getByTestId('size-small')).not.toBeSelected();
+  await expect(screen.getByTestId('size-medium')).toBeChecked();
+  await expect(screen.getByTestId('size-small')).not.toBeChecked();
   await screen.getByTestId('topping-cheese').tap();
   await screen.getByTestId('topping-olives').tap();
   await screen.getByTestId('rush-delivery').check();
@@ -158,7 +160,8 @@ test('async states: load, pull to refresh, claim through the toast', async ({ de
   // the content above, scoped to the scroll view so it spans most of it.
   await device.locator('role=ScrollView').swipe({ direction: 'up', momentum: 'fast' });
   await screen.getByTestId('claim-button').tap();
-  await expect(screen.getByTestId('toast')).toBeVisible();
+  // The toast is gone within a couple of seconds, shorter than a snapshot
+  // round trip on a slow machine; the message it leaves behind is the claim.
   await expect(screen.getByTestId('success-message')).toHaveText('Reward claimed');
 });
 

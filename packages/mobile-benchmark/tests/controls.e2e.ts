@@ -194,16 +194,20 @@ test.describe('control inventory', () => {
     },
   );
 
-  test('a radio group reports the selected option', async ({ screen }) => {
+  // A radio's state is `checked`: React Native spells it into the iOS value
+  // and Android reports it on the node. The `selected` trait beside it only
+  // reaches the tree through the simulator's accessibility bridge, which a
+  // CI Mac does not always provide, so it is not what a radio is read by.
+  test('a radio group reports the checked option', async ({ screen }) => {
     await showSection(screen, 'Toggles');
     const sizes = screen.getByLabel(/^(Small|Medium|Large)$/);
     await expect(sizes).toHaveCount(3);
-    await expect(screen.getByTestId('size-small')).toBeSelected();
-    await expect(screen.getByTestId('size-medium')).not.toBeSelected();
+    await expect(screen.getByTestId('size-small')).toBeChecked();
+    await expect(screen.getByTestId('size-medium')).not.toBeChecked();
 
     await screen.getByTestId('size-medium').tap();
-    await expect(screen.getByTestId('size-medium')).toBeSelected();
-    await expect(screen.getByTestId('size-small')).not.toBeSelected();
+    await expect(screen.getByTestId('size-medium')).toBeChecked();
+    await expect(screen.getByTestId('size-small')).not.toBeChecked();
     await expect(screen.getByTestId('size-status')).toHaveText('size: Medium');
   });
 
@@ -246,25 +250,28 @@ test.describe('control inventory', () => {
     await expect(screen.getByTestId('inventory-header')).toHaveAccessibleName(/heading$/);
   });
 
-  test('a tab row answers count, all, texts, filters, positions, and selection', async ({ screen }) => {
+  // Which tab is selected shows in the section it reveals. iOS gives a React
+  // Native tab no trait, and its `selected` state only reaches the tree
+  // through the simulator's accessibility bridge, which a CI Mac does not
+  // always provide; the section content is the same fact on every host.
+  test('a tab row answers count, all, texts, filters, positions, and switching', async ({ screen }) => {
     const tabs = screen.getByLabel(/^(Fields|Toggles|Gestures)$/);
     await expect(tabs).toHaveCount(3);
     expect(await tabs.count()).toBe(3);
     expect(await tabs.allTextContents()).toEqual(['Fields', 'Toggles', 'Gestures']);
     await expect(tabs).toHaveText(['Fields', 'Toggles', 'Gestures']);
     await expect(tabs).toContainText(['Fie', 'Tog', 'Ges']);
-    await expect(tabs.first()).toBeSelected();
-    await expect(tabs.last()).not.toBeSelected();
     await expect(tabs.first()).toContainText('Fiel');
+    await expect(screen.getByTestId('name-input')).toBeVisible();
+    await expect(screen.getByTestId('wifi-status')).toHaveCount(0);
 
     await tabs.nth(1).tap();
-    await expect(tabs.nth(1)).toBeSelected();
-    await expect(tabs.first()).not.toBeSelected();
     await expect(screen.getByTestId('wifi-status')).toBeVisible();
+    await expect(screen.getByTestId('name-input')).toHaveCount(0);
 
     await tabs.filter({ hasText: 'Gestures' }).tap();
-    await expect(screen.getByTestId('tab-gestures')).toBeSelected();
     await expect(screen.getByTestId('gesture-status')).toBeVisible();
+    await expect(screen.getByTestId('wifi-status')).toHaveCount(0);
 
     const each = await tabs.all();
     expect(each).toHaveLength(3);

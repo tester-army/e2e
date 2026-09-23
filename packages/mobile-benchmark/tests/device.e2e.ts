@@ -12,7 +12,13 @@ test.describe('permission prompt', () => {
     await openScenario({ device, screen }, 'Permission Prompt');
   });
 
-  test('allowing the system dialog enables the microphone', async ({ device, screen }) => {
+  const ALERT_PLATFORMS = process.env.CI === 'true' ? { platforms: ['android'] } : {};
+  // On the CI Mac (blacksmith-6vcpu-macos-26) the microphone alert makes the
+  // iOS runner's main thread overrun its watchdog on `device.alert`, on every
+  // run so far, and a wedged runner fails whatever follows; a Mac at a desk
+  // passes. In CI the test runs on Android only until agent-device's runner
+  // takes a system alert on that host.
+  test('allowing the system dialog enables the microphone', ALERT_PLATFORMS, async ({ device, screen }) => {
     await screen.getByTestId('request-permission').tap();
     await device.alert('accept');
     await expect(screen.getByTestId('success-message')).toHaveText('Microphone enabled');
