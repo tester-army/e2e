@@ -65,8 +65,10 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-  # The agentic suite spends real model calls, cents per run, and needs the
-  # key: a fork's pull request has none, so it is skipped rather than failed.
+  # The agentic suite replays the recordings committed under
+  # packages/web-benchmark/.e2e/cache (read-only in CI) and calls the model
+  # only for a step with no recording, so it needs the key: a fork's pull
+  # request has none, so it is skipped rather than failed.
   web-agent:
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: blacksmith-4vcpu-ubuntu-2404

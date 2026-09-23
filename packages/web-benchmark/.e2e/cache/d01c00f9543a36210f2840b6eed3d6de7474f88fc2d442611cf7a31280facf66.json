@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-23T08:54:42.057Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"Cancel order\"",
+        "target": {
+          "role": "button",
+          "name": "Cancel order",
+          "text": "Pay now"
+        }
+      },
+      {
+        "name": "tool",
+        "summary": "tool type (run-time value)"
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Discard draft\"",
+        "target": {
+          "role": "button",
+          "name": "Discard draft",
+          "text": "Submit payment"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20lying-labels",
+      "targetId": "web",
+      "instructionDigest": "75cac33ad209d332c191820f8b966e11e3b86f06d25432d913adf93fe369052d"
+    },
+    "summary": "Entered 42.50 into the field visibly labeled Amount, left Reference empty, and submitted using the visible Submit payment control. The page now shows “Payment sent.”",
+    "startPath": "/e/lying-labels",
+    "endPath": "/e/lying-labels",
+    "endAnchors": [
+      {
+        "text": "Payment sent",
+        "testId": "success-message"
+      }
+    ],
+    "endWaitMs": 11834
+  }
+}

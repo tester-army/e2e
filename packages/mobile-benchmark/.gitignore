@@ -42,7 +42,12 @@ yarn-error.*
 
 # e2e run output
 .e2e/artifacts/
-.e2e/cache/
+# `.e2e/cache/` is committed: the agentic suite replays it in CI and calls the
+# model only for a step with no recording. Re-record with `test:agent` and
+# commit the entries in the same pull request as the scenario change.
 .e2e/sessions/
 .e2e/report.json
 .e2e/ai-trace.json
+
+# CI build output of the app
+.build/

@@ -37,14 +37,18 @@ export async function openScenario(
       return false;
     }, { timeout: 60_000 })
     .toBe(true);
-  // The tap gets one more try when the home header stays, which is what a
-  // tap the list swallowed leaves behind.
+  // The scenario's navigation bar carries the route name as its identifier.
+  // The tap gets one more try when it did not open: the home header stays
+  // when the list swallowed it, and a tap that landed a row away opened a
+  // neighbour, which is popped first.
+  const title = device.locator(`role=NavigationBar id=${JSON.stringify(name)}`);
   const homeHeader = screen.getByTestId('Benchmark Examples');
   await row.tap();
   try {
-    await homeHeader.waitFor({ state: 'hidden', timeout: 3_000 });
+    await title.waitFor({ timeout: 3_000 });
   } catch {
+    if (!(await homeHeader.isVisible())) await device.back();
     await row.tap();
-    await homeHeader.waitFor({ state: 'hidden', timeout: 3_000 });
+    await title.waitFor({ timeout: 3_000 });
   }
 }

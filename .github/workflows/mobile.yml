@@ -1,0 +1,275 @@
+name: mobile
+
+# The mobile benchmark's deterministic suite on an iOS simulator and an Android
+# emulator, on every pull request: the second real engine the runner ships,
+# gated the way the web engine is by the testbed and the web benchmark.
+#
+# The Expo app is the expensive part (about twenty minutes of native build on
+# iOS). It is built once per native fingerprint (`@expo/fingerprint` hashes the
+# native inputs and nothing else) and kept in the actions cache; a hit gets its
+# JS bundle refreshed with `@expo/repack-app`, so a scenario or test change
+# reuses the cached binary and only a native change rebuilds. The shape follows
+# callstack/agent-device's test-app-build-cache. A repack that fails falls back
+# to the native build, so a job is never left without an app.
+#
+# The agentic suite runs after the deterministic one on the same booted
+# device. It replays the recordings committed under .e2e/cache (read-only in
+# CI) and calls the model only for a step with no recording, so it needs the
+# key: same-repository branches only, never a fork's pull request.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# The repository's own runs are not usage: the CLI sends no telemetry from CI here.
+env:
+  E2E_TELEMETRY_DISABLED: '1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ios:
+    runs-on: blacksmith-6vcpu-macos-26
+    timeout-minutes: 75
+    defaults:
+      run:
+        working-directory: packages/mobile-benchmark
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 26
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        working-directory: .
+      - name: Build
+        run: pnpm run build
+        working-directory: .
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          xcrun simctl list runtimes available
+      - name: Native fingerprint
+        id: fingerprint
+        run: |
+          set -euo pipefail
+          HASH="$(pnpm exec fingerprint fingerprint:generate --platform ios | jq -r '.hash')"
+          test -n "$HASH"
+          echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+      - name: Restore the simulator app
+        id: app-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: packages/mobile-benchmark/.build/ios
+          key: mobile-benchmark-ios-${{ steps.fingerprint.outputs.hash }}
+      # A hit is current on the native side only; the embedded JS may be older
+      # than the checkout. Swap in a bundle built from this source.
+      - name: Refresh the JS bundle of the cached app
+        id: repack
+        if: steps.app-cache.outputs.cache-hit == 'true'
+        run: |
+          set -euo pipefail
+          APP="$(find .build/ios -maxdepth 1 -type d -name '*.app' | head -1)"
+          OUT=".build/ios-repacked/$(basename "$APP")"
+          rm -rf .build/ios-repacked && mkdir -p .build/ios-repacked
+          if pnpm exec repack-app --platform ios --source-app "$APP" --output "$OUT"; then
+            rm -rf "$APP" && mv "$OUT" "$APP"
+            echo "result=ok" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::repack failed; building the app natively instead"
+            rm -rf .build/ios
+            echo "result=failed" >> "$GITHUB_OUTPUT"
+          fi
+      # `--device generic` builds for the simulator without booting one;
+      # Release embeds the bundle, so no Metro is needed at run time.
+      - name: Build the simulator app
+        if: steps.app-cache.outputs.cache-hit != 'true' || steps.repack.outputs.result == 'failed'
+        env:
+          CI: '1'
+        run: pnpm exec expo run:ios --configuration Release --device generic --no-bundler --output .build/ios
+      - name: Locate the app
+        id: app
+        run: |
+          set -euo pipefail
+          APP="$(find .build/ios -maxdepth 1 -type d -name '*.app' | head -1)"
+          test -n "$APP"
+          echo "path=$PWD/$APP" >> "$GITHUB_OUTPUT"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist"
+      # agent-device compiles its XCUITest runner on first use; keep it between runs.
+      - name: Restore the agent-device runner
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.agent-device
+          key: agent-device-${{ runner.os }}-${{ hashFiles('packages/mobile/package.json') }}
+      - name: Boot a simulator
+        run: |
+          set -euo pipefail
+          UDID="$(xcrun simctl list devices available -j | node -e '
+            const payload = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
+            const devices = Object.entries(payload.devices)
+              .filter(([runtime]) => runtime.includes("SimRuntime.iOS-"))
+              .flatMap(([, list]) => list);
+            const pick = devices.find((d) => d.name === "iPhone 17 Pro") ?? devices.find((d) => d.name.startsWith("iPhone"));
+            if (!pick) process.exit(1);
+            process.stdout.write(pick.udid);
+          ')"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          echo "booted $UDID"
+      - name: Require model credential
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+        run: |
+          if [ -z "$AI_GATEWAY_API_KEY" ]; then
+            echo "::error::AI_GATEWAY_API_KEY is not set for this repository; the agentic suite needs it for a step with no recording."
+            exit 1
+          fi
+      - name: Run the deterministic suite
+        env:
+          E2E_MOBILE_BENCHMARK_IOS_APP: ${{ steps.app.outputs.path }}
+        run: node node_modules/e2e/dist/cli/bin.js run --target ios-simulator
+      - name: Run the agentic suite
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+          E2E_MOBILE_BENCHMARK_IOS_APP: ${{ steps.app.outputs.path }}
+        run: node node_modules/e2e/dist/cli/bin.js run --config e2e.agent.config.ts --target ios-simulator --artifacts .e2e/agent/artifacts
+      - name: Upload report
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mobile-benchmark-ios
+          path: |
+            packages/mobile-benchmark/.e2e/report.json
+            packages/mobile-benchmark/.e2e/artifacts
+            packages/mobile-benchmark/.e2e/agent/report.json
+            packages/mobile-benchmark/.e2e/agent/artifacts
+          if-no-files-found: warn
+          retention-days: 7
+
+  android:
+    # x64 Blacksmith runners expose KVM, which the emulator needs.
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: packages/mobile-benchmark
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 26
+          cache: pnpm
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Enable KVM for the emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+        working-directory: .
+      - run: pnpm install --frozen-lockfile
+        working-directory: .
+      - name: Build
+        run: pnpm run build
+        working-directory: .
+      - name: Native fingerprint
+        id: fingerprint
+        run: |
+          set -euo pipefail
+          HASH="$(pnpm exec fingerprint fingerprint:generate --platform android | jq -r '.hash')"
+          test -n "$HASH"
+          echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+      - name: Restore the APK
+        id: app-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: packages/mobile-benchmark/.build/android
+          key: mobile-benchmark-android-${{ steps.fingerprint.outputs.hash }}
+      # The Release APK is signed with the debug keystore the template uses;
+      # repack-app ships the same keystore and signs the refreshed APK with it.
+      - name: Refresh the JS bundle of the cached APK
+        id: repack
+        if: steps.app-cache.outputs.cache-hit == 'true'
+        run: |
+          set -euo pipefail
+          APK=".build/android/benchmark.apk"
+          OUT=".build/android-repacked/benchmark.apk"
+          rm -rf .build/android-repacked && mkdir -p .build/android-repacked
+          if pnpm exec repack-app --platform android --source-app "$APK" --output "$OUT"; then
+            mv "$OUT" "$APK"
+            echo "result=ok" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::repack failed; building the APK natively instead"
+            rm -rf .build/android
+            echo "result=failed" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Set up Gradle
+        if: steps.app-cache.outputs.cache-hit != 'true' || steps.repack.outputs.result == 'failed'
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          # A fork's pull request must not write the shared Gradle cache.
+          cache-read-only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+      - name: Build the APK
+        if: steps.app-cache.outputs.cache-hit != 'true' || steps.repack.outputs.result == 'failed'
+        env:
+          CI: '1'
+        run: |
+          set -euo pipefail
+          pnpm exec expo prebuild --platform android --no-install
+          printf '\n%s\n' 'org.gradle.jvmargs=-Xmx4g' >> android/gradle.properties
+          (cd android && ./gradlew :app:assembleRelease)
+          mkdir -p .build/android
+          cp android/app/build/outputs/apk/release/app-release.apk .build/android/benchmark.apk
+      - name: Require model credential
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+        run: |
+          if [ -z "$AI_GATEWAY_API_KEY" ]; then
+            echo "::error::AI_GATEWAY_API_KEY is not set for this repository; the agentic suite needs it for a step with no recording."
+            exit 1
+          fi
+      - name: Run the deterministic suite, then the agentic one
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 36
+          arch: x86_64
+          target: google_apis
+          profile: pixel_7
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
+          disable-animations: true
+          working-directory: packages/mobile-benchmark
+          script: |
+            node node_modules/e2e/dist/cli/bin.js run --target android-emulator
+            if [ -n "$AI_GATEWAY_API_KEY" ]; then
+              node node_modules/e2e/dist/cli/bin.js run --config e2e.agent.config.ts --target android-emulator --artifacts .e2e/agent/artifacts
+            fi
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+          E2E_MOBILE_BENCHMARK_ANDROID_APP: ${{ github.workspace }}/packages/mobile-benchmark/.build/android/benchmark.apk
+      - name: Upload report
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mobile-benchmark-android
+          path: |
+            packages/mobile-benchmark/.e2e/report.json
+            packages/mobile-benchmark/.e2e/artifacts
+            packages/mobile-benchmark/.e2e/agent/report.json
+            packages/mobile-benchmark/.e2e/agent/artifacts
+          if-no-files-found: warn
+          retention-days: 7

@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-23T08:55:37.803Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"Accept\"",
+        "target": {
+          "role": "button",
+          "name": "Accept",
+          "testId": "accept-cookies"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Buy now\" in \"Wireless Headphones\"",
+        "target": {
+          "role": "button",
+          "name": "Buy now",
+          "testId": "buy-headphones",
+          "within": "Wireless Headphones"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20promo-storefront",
+      "targetId": "web",
+      "instructionDigest": "1bf3aabb828b9b084d447df3a78d1fa700b5b28b8d5847dcc5ffcb9b0ce3bd45"
+    },
+    "summary": "Accepted the cookie prompt, purchased Wireless Headphones, and verified the page shows “Order confirmed” with the product state changed to “Order confirmed”.",
+    "startPath": "/e/promo-storefront",
+    "endPath": "/e/promo-storefront",
+    "endAnchors": [
+      {
+        "text": "Order confirmed",
+        "testId": "success-message"
+      },
+      {
+        "text": "Jonas"
+      },
+      {
+        "text": "Amelia"
+      },
+      {
+        "role": "listitem",
+        "name": "Wireless Headphones$80.00 $40.00 50% OFFOrder confirmed",
+        "testId": "deal-headphones"
+      },
+      {
+        "text": "★★★★★ Great bass and the battery lasts all week."
+      },
+      {
+        "text": "★★★★ Comfortable fit, pairing was instant."
+      }
+    ],
+    "endWaitMs": 11191
+  }
+}

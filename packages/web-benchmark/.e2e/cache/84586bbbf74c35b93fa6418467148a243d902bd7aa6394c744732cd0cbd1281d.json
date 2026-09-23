@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-23T08:55:36.181Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"More actions for Launch Approval Draft\" in \"Launch Approval Draft\"",
+        "target": {
+          "role": "button",
+          "name": "More actions for Launch Approval Draft",
+          "text": "⋯",
+          "within": "Launch Approval Draft"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap menuitem \"Delete\" in \"Launch Approval Draft\"",
+        "target": {
+          "role": "menuitem",
+          "name": "Delete",
+          "within": "Launch Approval Draft"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Remove\" in \"Remove Playbook\"",
+        "target": {
+          "role": "button",
+          "name": "Remove",
+          "within": "Remove Playbook"
+        }
+      },
+      {
+        "name": "type",
+        "summary": "type \"Launch Approval Draft\" into searchbox \"Search playbooks\"",
+        "target": {
+          "role": "searchbox",
+          "name": "Search playbooks",
+          "placeholder": "Search"
+        },
+        "value": "Launch Approval Draft"
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20playbook-cleanup",
+      "targetId": "web",
+      "instructionDigest": "423676dde62142adee61619b5958db96013371bf84519c7e0441aaa32d6f9fce"
+    },
+    "summary": "Deleted the playbook \"Launch Approval Draft,\" confirmed its removal, and searched the exact name. The page shows: No playbooks match \"Launch Approval Draft.\"",
+    "startPath": "/e/playbook-cleanup",
+    "endPath": "/e/playbook-cleanup",
+    "endAnchors": [
+      {
+        "text": "No playbooks match \"Launch Approval Draft\".",
+        "testId": "success-message"
+      }
+    ],
+    "endWaitMs": 10095
+  }
+}

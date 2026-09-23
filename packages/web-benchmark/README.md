@@ -20,7 +20,12 @@ planted bug.
   `/e/<slug>`; the home page lists them all.
 - `e2e.config.ts` + `tests/`: the deterministic suite. Gates every PR
   (`benchmark.yml`); `@e2edev/github` posts each run as one pull request
-  comment.
+  comment. Every scenario has a deterministic twin, `tests/<slug>.e2e.ts`,
+  driven with locators and `expect` only: the floor the agentic suite must
+  match, so a red agentic run is the model, not the tools. A bug-book
+  scenario asserts what the page truly shows, planted bug included and named
+  in the title. A scenario the deterministic API cannot finish keeps its test
+  declared with `{ skip: '<reason>' }`, so the gap stays visible.
 - `e2e.agent.config.ts` + `tests-agent/`: the agentic suite, derived from the
   deterministic config. It gates every PR too. Each step spends real model
   calls (cents per run) and needs `AI_GATEWAY_API_KEY`. `scenarios.e2e.ts`
@@ -29,7 +34,11 @@ planted bug.
   scenarios the grammar cannot finish yet are declared and skipped with the
   reason. `planted-bugs.e2e.ts` asserts that an `agent.assert` of the correct
   behavior fails on a bug-book scenario, so a passing judgment there is a
-  missed bug.
+  missed bug. Its recordings under `.e2e/cache/` are committed: CI replays
+  them read-only and calls the model only for a step with no recording, so
+  the gate runs at deterministic speed. When a scenario or a step changes,
+  re-record locally with the `test:agent` command below and commit the
+  changed entries in the same pull request.
 
 ## Commands
 

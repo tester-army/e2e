@@ -243,20 +243,6 @@ line2  </textarea>
   <output id="file-name" aria-label="File name"></output>
 </body>
 </html>`,
-  // Rich-text editors: a bare contenteditable host named through
-  // aria-labelledby, and one that also carries the explicit role Playwright's
-  // role selector needs to find it.
-  '/editor': `<!doctype html>
-<html>
-<head><title>Editor</title></head>
-<body>
-  <h1>Editor</h1>
-  <span id="notes-label">Notes</span>
-  <div id="notes" contenteditable aria-labelledby="notes-label" data-testid="notes"><p><br></p></div>
-  <span id="message-label">Message</span>
-  <div id="message" contenteditable role="textbox" aria-labelledby="message-label" data-testid="message"><p><br></p></div>
-</body>
-</html>`,
   '/frame': `<!doctype html>
 <html>
 <head><title>Frame host</title></head>
@@ -737,6 +723,92 @@ ${rows}
 </html>`;
 }
 
+function escapeHtml(text: string): string {
+  return text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+}
+
+/**
+ * One record's page under a minted id, served for `/records/<id>` and
+ * `/drafts/<id>` alike. The id is whatever the caller put in the path, so a
+ * test can open the "same" screen under a fresh id on every run, as a step
+ * that edits the record a previous step created does. Trace cache route
+ * identity must read both ids as one route and the two prefixes as two.
+ * `?variant=renamed` relabels the only control, so a recording's first
+ * action has nothing to re-find.
+ */
+function renderRecord(kind: string, id: string, variant: string | null): string {
+  return `<!doctype html>
+<html>
+<head><title>Record</title></head>
+<body>
+  <h1>${escapeHtml(kind)} ${escapeHtml(id)}</h1>
+  <button onclick="document.getElementById('state').textContent = 'archived'">${variant === 'renamed' ? 'Retire' : 'Archive'}</button>
+  <output id="state" role="status" aria-label="Record state">open</output>
+</body>
+</html>`;
+}
+
+/**
+ * A create form whose submit navigates to the created record's page, the
+ * name percent-encoded in the path. `?variant=renamed` relabels the submit
+ * button, the shape of a UI change that lands mid-flow: the recorded typing
+ * still replays, the recorded tap no longer finds its target.
+ */
+function renderCompanyForm(variant: string | null): string {
+  const submit = variant === 'renamed' ? 'Save' : 'Create';
+  return `<!doctype html>
+<html>
+<head><title>New company</title></head>
+<body>
+  <h1>New company</h1>
+  <label for="company-name">Company name</label>
+  <input id="company-name" />
+  <button onclick="location.href = '/companies/' + encodeURIComponent(document.getElementById('company-name').value)">${submit}</button>
+</body>
+</html>`;
+}
+
+function renderCompany(name: string): string {
+  return `<!doctype html>
+<html>
+<head><title>Company</title></head>
+<body>
+  <h1>${escapeHtml(name)}</h1>
+  <output id="state" role="status" aria-label="Company state">created</output>
+  <a href="/companies/new">New company</a>
+</body>
+</html>`;
+}
+
+/**
+ * A search page whose results land in the query string as a form submission
+ * spells it (`?q=E2E+abc`). The results carry the text that changes on every
+ * visit: a record count that grows with the searches made so far, a timing in
+ * milliseconds, and a bare-number badge, beside one stable status line.
+ */
+function renderSearch(query: string | null, searches: number): string {
+  const results =
+    query === null
+      ? ''
+      : `  <h2>Results for ${escapeHtml(query)}</h2>
+  <p>${String(searches)} results in ${String(200 + ((searches * 137) % 700))}ms</p>
+  <span role="status">${String(searches)}</span>
+  <output role="status" aria-label="Search state">done</output>
+`;
+  return `<!doctype html>
+<html>
+<head><title>Search</title></head>
+<body>
+  <h1>Search</h1>
+  <form action="/search" method="get">
+    <label for="q">Query</label>
+    <input id="q" name="q" />
+    <button type="submit">Search</button>
+  </form>
+${results}</body>
+</html>`;
+}
+
 /**
  * A todo list the server keeps for the life of the fixture, the way an app
  * with a database shows the last run's data on the next run's first screen.
@@ -771,15 +843,110 @@ ${items}
 </html>`;
 }
 
+/**
+ * A list the server keeps for the life of the fixture app, the way an app
+ * with a database does: a run's first screen shows what the last run added.
+ * Adding goes through a GET form so the page needs no script.
+ */
+function renderTodoForm(todos: readonly string[], added: boolean): string {
+  const items = todos.map((todo) => `    <li>${escapeHtml(todo)}</li>`).join('\n');
+  return `<!doctype html>
+<html>
+<head><title>Todos</title></head>
+<body>
+  <h1>Todos</h1>
+  <form action="/todos" method="get">
+    <label for="add">New todo</label>
+    <input id="add" name="add" />
+    <button type="submit">Add</button>
+  </form>
+  <ul aria-label="Todos">
+${items}
+  </ul>
+  <output id="state" role="status" aria-label="Todo state">${added ? 'added' : 'idle'}</output>
+</body>
+</html>`;
+}
+
+/**
+ * Controls a recording can only re-find by their place: two fields named by
+ * placeholder alone, two textboxes with no name at all, and three buttons
+ * sharing one label outside any row or list item. `?variant=b` prepends a
+ * banner and swaps the two placeholder fields, so every node's id and
+ * rectangle move while the counts and the unnamed order stay.
+ */
+function renderTwinsForm(variant: string | null): string {
+  const moved = variant === 'b';
+  const nickname = '    <input placeholder="Nickname" />';
+  const motto = '    <input placeholder="Motto" />';
+  const rows = ['one', 'two', 'three']
+    .map((row, index) => `    <div><span>Row ${row}</span> <button onclick="pick(${String(index + 1)})">Add</button></div>`)
+    .join('\n');
+  return `<!doctype html>
+<html>
+<head><title>Twins form</title></head>
+<body>
+${moved ? '  <div role="note">Announcement: scheduled maintenance tonight</div>\n' : ''}  <h1>Twins form</h1>
+  <div>
+${moved ? `${motto}\n${nickname}` : `${nickname}\n${motto}`}
+  </div>
+  <div class="anon"><input /></div>
+  <div class="anon"><input /></div>
+${rows}
+  <button onclick="summarize()">Submit</button>
+  <output id="picked" role="status" aria-label="Picked">none</output>
+  <output id="summary" role="status" aria-label="Summary">empty</output>
+  <script>
+    function pick(row) {
+      document.getElementById('picked').textContent = String(row);
+    }
+    function summarize() {
+      const value = (selector) => document.querySelector(selector).value;
+      const anon = [...document.querySelectorAll('.anon input')].map((input) => input.value);
+      document.getElementById('summary').textContent =
+        'nickname=' + value('[placeholder="Nickname"]') + ' motto=' + value('[placeholder="Motto"]') +
+        ' first=' + anon[0] + ' second=' + anon[1] + ' picked=' + document.getElementById('picked').textContent;
+    }
+  </script>
+</body>
+</html>`;
+}
+
 /** Starts the fixture app on an ephemeral loopback port. */
 export async function startFixtureApp(): Promise<FixtureApp> {
-  const todos = new Set<string>();
+  let searches = 0;
+  const todos: string[] = [];
+  const todoSet = new Set<string>();
   const server: Server = createServer((request, response) => {
     const requested = new URL(request.url ?? '/', 'http://localhost');
     const pathname = requested.pathname;
+    const html = (body: string): void => {
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      response.end(body);
+    };
+    const record = /^\/(records|drafts)\/([^/]+)$/.exec(pathname);
+    if (record !== null) {
+      html(renderRecord(record[1] === 'records' ? 'Record' : 'Draft', decodeURIComponent(record[2]!), requested.searchParams.get('variant')));
+      return;
+    }
+    if (pathname === '/companies/new') {
+      html(renderCompanyForm(requested.searchParams.get('variant')));
+      return;
+    }
+    const company = /^\/companies\/([^/]+)$/.exec(pathname);
+    if (company !== null) {
+      html(renderCompany(decodeURIComponent(company[1]!)));
+      return;
+    }
+    if (pathname === '/search') {
+      const query = requested.searchParams.get('q');
+      if (query !== null) searches += 1;
+      html(renderSearch(query, searches));
+      return;
+    }
     if (pathname === '/todos') {
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-      response.end(renderTodos(todos));
+      response.end(renderTodos(todoSet));
       return;
     }
     if (pathname === '/api/todos' && request.method === 'POST') {
@@ -787,10 +954,20 @@ export async function startFixtureApp(): Promise<FixtureApp> {
       request.on('data', (chunk: Buffer) => chunks.push(chunk));
       request.on('end', () => {
         const todo = Buffer.concat(chunks).toString('utf8').trim();
-        if (todo !== '') todos.add(todo);
+        if (todo !== '') todoSet.add(todo);
         response.writeHead(200, { 'content-type': 'application/json' });
-        response.end(JSON.stringify([...todos]));
+        response.end(JSON.stringify([...todoSet]));
       });
+      return;
+    }
+    if (pathname === '/todos-form') {
+      const added = requested.searchParams.get('add');
+      if (added !== null && added !== '') todos.push(added);
+      html(renderTodoForm(todos, added !== null));
+      return;
+    }
+    if (pathname === '/twins-form') {
+      html(renderTwinsForm(requested.searchParams.get('variant')));
       return;
     }
     if (pathname === '/downloads') {

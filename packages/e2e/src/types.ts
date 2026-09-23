@@ -424,10 +424,14 @@ export interface Screen {
   tapAt(point: Point, options?: ActionOptions): Promise<void>;
   /** Performs a viewport-level swipe: in a direction, or along a path from one point to another. */
   swipe(options: SwipeOptions | SwipePathOptions): Promise<void>;
-  /** Scrolls until a locator resolves visibly or times out. */
+  /**
+   * Scrolls until a locator resolves visibly or times out: the viewport on
+   * `screen`, the node itself on a locator. `momentum` is the stride of each
+   * step, `slow` unless told otherwise.
+   */
   scrollUntilVisible(
     target: Locator,
-    options?: { direction?: ScrollDirection; timeout?: number },
+    options?: { direction?: ScrollDirection; momentum?: Momentum; timeout?: number },
   ): Promise<void>;
 }
 

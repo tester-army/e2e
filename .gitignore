@@ -4,10 +4,8 @@ dist/
 *.tsbuildinfo
 .e2e/artifacts/
 # Committing cache entries is opt-in: `e2e init` ignores `.e2e/cache/` and a
-# project removes that line to share replays. This repo's only caches come from
-# the testbed and the web benchmark (throwaway fixture apps), so no entry is
-# worth committing here.
-.e2e/cache/
+# project removes that line to share replays. The two benchmarks commit theirs
+# so their agentic suites replay in CI; the testbed ignores its own.
 .e2e/sessions/
 .e2e/report.json
 .e2e/ai-trace.json

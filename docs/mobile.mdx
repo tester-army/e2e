@@ -375,6 +375,7 @@ does not interrupt replay.
 | Playwright trace per attempt | No Playwright trace; screenshots mask secure fields |
 | `--video` writes a WebM screencast | `--video` writes an MP4 of the device screen with taps shown |
 | The cache anchors on the page path | The cache anchors on the location `<bundle id> / <screen title>`, the title read off the navigation bar |
+| `getByPlaceholder`, `getAttribute`, `toHaveAttribute` | Match nothing and read nothing. A device node carries no placeholder text and no attributes (agent-device reports only whether a hint is showing), so query a field by role and name, test id, or display value |
 
 <CardGroup cols={2}>
   <Card title="Mobile engine reference" icon="mobile-screen" href="/reference/mobile">

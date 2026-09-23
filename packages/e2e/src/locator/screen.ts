@@ -25,6 +25,7 @@ import type {
   TapOptions,
   TextMatch,
   TextMatchOptions,
+  Momentum,
 } from '../types.ts';
 import type { StepRecorder } from '../run/steps.ts';
 import { isNodeVisible, type LocatorEngine } from './engine.ts';
@@ -173,34 +174,39 @@ class ScreenImpl implements Screen {
 
   async scrollUntilVisible(
     target: Locator,
-    options?: { direction?: 'up' | 'down' | 'left' | 'right'; timeout?: number },
+    options?: { direction?: 'up' | 'down' | 'left' | 'right'; momentum?: Momentum; timeout?: number },
   ): Promise<void> {
     const internals = locatorInternals(target);
     if (internals === undefined) {
       throw new TestError('INVALID_LOCATOR', 'scrollUntilVisible requires an e2e locator');
     }
+    rejectUnknownOptions('scrollUntilVisible', options, ['direction', 'momentum', 'timeout']);
     const direction = options?.direction ?? 'down';
-    await this.context.steps.run(
-      'screen',
-      'screen.scrollUntilVisible',
-      describeExpression(internals.expression),
-      async () => {
-        const { engine } = this.context;
-        const deadline = engine.deadline(options?.timeout ?? 30_000);
-        for (;;) {
-          const { node } = await engine.tryRead(internals.expression, deadline);
-          if (isNodeVisible(node)) return;
-          if (deadline.expired()) {
-            throw new TestError(
-              'LOCATOR_NOT_FOUND',
-              `target did not become visible while scrolling: ${describeExpression(internals.expression)}`,
-            );
-          }
-          await engine.session.swipe(direction, 'slow', engine.operation());
-          await sleep(POLL_INTERVAL_MS, engine.signal);
+    const momentum = options?.momentum ?? 'slow';
+    // On `screen` the viewport scrolls; on a locator the node itself does, so
+    // a scroll container pages without the pointer having to hover it first.
+    const scope = this.scope;
+    const label =
+      scope === undefined
+        ? describeExpression(internals.expression)
+        : `${describeExpression(internals.expression)} within ${describeExpression(scope)}`;
+    await this.context.steps.run('screen', 'screen.scrollUntilVisible', label, async () => {
+      const { engine } = this.context;
+      const deadline = engine.deadline(options?.timeout ?? 30_000);
+      for (;;) {
+        const { node } = await engine.tryRead(internals.expression, deadline);
+        if (isNodeVisible(node)) return;
+        if (deadline.expired()) {
+          throw new TestError(
+            'LOCATOR_NOT_FOUND',
+            `target did not become visible while scrolling: ${label}`,
+          );
         }
-      },
-    );
+        if (scope === undefined) await engine.session.swipe(direction, momentum, engine.operation());
+        else await engine.perform(scope, { kind: 'swipe', direction, momentum });
+        await sleep(POLL_INTERVAL_MS, engine.signal);
+      }
+    });
   }
 }
 

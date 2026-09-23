@@ -8,7 +8,7 @@ import { mobile } from '@e2edev/mobile';
  * device (`pnpm ios` / `pnpm android` build and install it), or point
  * `E2E_MOBILE_BENCHMARK_IOS_APP` / `E2E_MOBILE_BENCHMARK_ANDROID_APP` at a
  * simulator `.app` or an `.apk` and the engine installs it once per worker.
- * Not part of CI: the runners have no simulator.
+ * CI does exactly that in `.github/workflows/mobile.yml`, one target per job.
  */
 const APP_ID = 'dev.e2e.benchmark';
 

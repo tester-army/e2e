@@ -174,11 +174,15 @@ export interface Web extends Expectable<WebExpectation> {
   setViewport(size: { width: number; height: number }): Promise<void>;
   /** Registers an attempt-scoped dialog handler and returns an unsubscribe function. */
   onDialog(handler: DialogHandler): Promise<() => Promise<void>>;
-  /** Runs a trigger and waits for its download. */
+  /**
+   * Runs a trigger and waits for its download. `path` is the artifact path a
+   * report shows; `absolutePath` is where the file is on disk, what
+   * `setInputFiles` takes to upload it back.
+   */
   waitForDownload(
     trigger: () => Promise<void>,
     options?: { timeout?: number },
-  ): Promise<{ path: string; suggestedFilename: string }>;
+  ): Promise<{ path: string; absolutePath: string; suggestedFilename: string }>;
   /** Viewport-level keyboard, for whatever has focus. */
   readonly keyboard: {
     /** Sends one key. */
@@ -454,7 +458,7 @@ export function createWebFixture(surface: PlaywrightSurface, context: EngineFixt
         const { relative, absolute } = surface.artifactPath('downloads', suggestedFilename, '');
         await download.saveAs(absolute);
         context.attachArtifact('download', relative);
-        return { path: relative, suggestedFilename };
+        return { path: relative, absolutePath: absolute, suggestedFilename };
       }, (cause, label) => {
         // The trigger is test code, so its errors keep their original classification.
         if (triggerFailure !== undefined && Object.is(cause, triggerFailure.cause)) throw cause;

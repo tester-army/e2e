@@ -93,7 +93,11 @@ Prefer it over `web.locator('p:visible')`, which ties the test to CSS.
 
 ## Refinement
 
-Refinement returns a new locator without querying the app.
+Refinement returns a new locator without querying the app. `hasText` with a
+string is a case-insensitive substring match over the match and its
+descendants, unlike a query text, which matches exactly; pass a RegExp for
+anything stricter. `has` keeps a match whose subtree resolves the inner
+locator.
 
 Throws `INVALID_LOCATOR` when `filter` gets neither `hasText` nor `has`, when
 `has` is not a runner locator, or when `nth` gets a negative or non-integer
@@ -164,7 +168,7 @@ await screen.swipe({
 ```ts
 scrollUntilVisible(
   target: Locator,
-  options?: { direction?: ScrollDirection; timeout?: number },
+  options?: { direction?: ScrollDirection; momentum?: Momentum; timeout?: number },
 ): Promise<void>;
 ```
 
@@ -172,10 +176,16 @@ scrollUntilVisible(
 | --- | --- | --- |
 | `target` | `Locator` | - |
 | `options.direction` | `ScrollDirection` | `'down'` |
+| `options.momentum` | `Momentum` | `'slow'`; the gesture of each step: `'none'` a plain drag of half the surface, `'slow'` a short fling, `'fast'` a long one. How far each carries is the engine's. A longer step is faster but must not carry the target past the surface unseen, which is what a virtualized list does |
 | `options.timeout` | `number` | `30000`, its own default, not `config.actionTimeout` |
 
-Throws `INVALID_LOCATOR` for a non-runner locator, `LOCATOR_NOT_FOUND` when the
-deadline expires first.
+On `screen` each step is a slow viewport swipe. On a locator the step is a
+slow swipe of that node, so a feed or a table that is its own scroll container
+pages without the pointer having to hover it first:
+`screen.getByRole('feed').scrollUntilVisible(row)`.
+
+Throws `INVALID_LOCATOR` for a non-runner locator, `INVALID_ARGUMENT` for an
+option it does not take, `LOCATOR_NOT_FOUND` when the deadline expires first.
 
 ```ts
 await screen.scrollUntilVisible(screen.getByRole('button', { name: 'Accept' }));

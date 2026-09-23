@@ -393,7 +393,10 @@ await web.setCookies([{ url: 'http://localhost:3000', name: 'tz', value: 'UTC' }
 A function handler must call `accept` or `dismiss`; one that does neither
 has the dialog dismissed and fails the next step with `APP_NOT_OPEN`, as an
 unhandled dialog does. `waitForDownload` registers the file as a `download`
-artifact and throws `ACTION_FAILED` when it does not complete in time.
+artifact and throws `ACTION_FAILED` when it does not complete in time. It
+resolves with `path` (the artifact path the report shows), `absolutePath`
+(the file on disk, what `setInputFiles` takes to upload it back), and
+`suggestedFilename`.
 
 ```ts
 /** A native dialog as a test's handler sees it. */
@@ -415,6 +418,7 @@ await off();
 const file = await web.waitForDownload(() =>
   screen.getByRole('link', { name: 'Export CSV' }).tap(),
 );
+await screen.getByLabel('Import').setInputFiles(file.absolutePath);
 ```
 
 ### keyboard and mouse
