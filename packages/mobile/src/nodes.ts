@@ -364,7 +364,8 @@ export function projectSnapshot(raw: readonly RawNode[], options: { readonly min
     const android = isAndroidClass(source.type);
     // The role React Native spelled into the value outranks the platform's
     // `Other`: it is the role the app declared, and iOS had no trait for it.
-    const spelled = android ? undefined : reactNativeValue(source.value);
+    // Only an `Other` carries that encoding; a native control's value is its own.
+    const spelled = android || kind !== 'other' ? undefined : reactNativeValue(source.value);
     const role = editableRole(spelled?.role ?? roleOf(kind, android, parent?.kind), source.editable);
     const editable = source.editable === true || (role !== undefined && TEXT_INPUT_ROLES.has(role));
     const value = spelled === undefined ? source.value : spelled.value;

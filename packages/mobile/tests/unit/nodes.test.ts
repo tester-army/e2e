@@ -302,6 +302,10 @@ describe('snapshot projection', () => {
     // Android never writes this shape; a value that happens to start with a word from the list is a value.
     const android = project([{ ref: 'e1', type: 'android.widget.TextView', label: 'Kind', value: 'checkbox, unchecked' }]);
     expect(android.index[0]?.node).toMatchObject({ role: 'text', value: 'checkbox, unchecked' });
+    // A native iOS control's value is content, whatever words it starts with: only an `Other` carries the encoding.
+    const field = project([{ ref: 'e1', type: 'TextField', label: 'Kind', value: 'checkbox, unchecked' }]);
+    expect(field.index[0]?.node).toMatchObject({ role: 'textbox', value: 'checkbox, unchecked' });
+    expect(field.index[0]?.node.states?.checked).toBeUndefined();
     expect(android.index[0]?.node.states).toBeUndefined();
   });
 
