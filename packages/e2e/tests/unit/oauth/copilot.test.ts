@@ -104,8 +104,8 @@ describe('Copilot requests', () => {
 
   it('names the login command when GitHub rejects the stored token, which has nothing to refresh it', async () => {
     const api = await serve((_request, response) => json(response, 401, { message: 'Bad credentials' }));
-    const store = new MemoryCredentialStore({ 'github-copilot': { access: 'gho_revoked', refresh: '', expires: 0 } });
-    const model = copilot('gpt-4.1', { store, baseURL: api.url });
+    vendor(api, { 'github-copilot': { access: 'gho_revoked', refresh: '', expires: 0 } });
+    const model = copilot('gpt-4.1');
     await expect(generateText({ model, prompt: 'color?' })).rejects.toMatchObject({
       code: 'LOGIN_REQUIRED',
       message: 'GitHub Copilot rejected the stored token (401: Bad credentials); run `npx e2e login github-copilot`',
