@@ -133,10 +133,13 @@ export class ObservationFeed {
    * Captures cache evidence in queue order. Before any action, its completed
    * capture can serve the executor's first look once. Every later capture
    * clears that handoff before starting, even when the later capture fails.
+   * A settled probe with `proveStable: false` still waits for the screen to
+   * leave the previous action's shape but skips the beat that proves the new
+   * shape holds still; replay asks for that after a fill.
    */
-  probe(settle: boolean): Promise<AgentObservation> {
+  probe(settle: boolean, options: { readonly proveStable?: boolean } = {}): Promise<AgentObservation> {
     return this.queue.run(async () => {
-      const observation = await this.observeNow(settle, false);
+      const observation = await this.observeNow(settle, false, options.proveStable === false ? 0 : undefined);
       if (this.accounting.metrics.actionSteps === 0) this.opening = observation;
       return observation;
     });
@@ -266,8 +269,8 @@ export class ObservationFeed {
     };
   }
 
-  /** One recorded observation; when `settle`, the captures loop inside it. */
-  private async observeNow(settle: boolean, pixels: boolean): Promise<AgentObservation> {
+  /** One recorded observation; when `settle`, the captures loop inside it, proving stability for `stableWaitMs` (the default when undefined). */
+  private async observeNow(settle: boolean, pixels: boolean, stableWaitMs?: number): Promise<AgentObservation> {
     this.opening = undefined;
     this.accounting.checkpoint();
     // A tainted viewport never captures pixels: the engine would mask what it
@@ -299,6 +302,7 @@ export class ObservationFeed {
               {
                 changedFrom,
                 changeWaitMs,
+                stableWaitMs,
                 changeShapeOf: changeShape,
                 transitional: isTransitionalObservation,
               },

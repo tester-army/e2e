@@ -117,11 +117,11 @@ Cancelling a run leaves the cache unchanged.
 | `no-entry` | No recording matches this step and its params. | The next verified pass records it. |
 | `retry` | Retries never replay. | Nothing. |
 | `invalid-entry` | The file is unreadable, over 1 MiB, or from another schema version. | `npx e2e cache clear`. |
-| `truncated` | More than 50 actions (consecutive identical scrolls count once), a typed value or URL over 4,096 characters or containing a registered secret, or a control with no usable description. | Split the step, or pass the secret as a `Secret`. |
+| `truncated` | More than 50 actions, which only a step whose `maxSteps` is raised above 50 can commit (the default budget of 25 ends the step first; consecutive identical scrolls count once), a typed value or URL over 4,096 characters or containing a registered secret, or a control with no usable description. | Split the step, or pass the secret as a `Secret`. |
 | `wrong-context` | The app was on another screen than when the step was recorded: a different route, not a different record, query, or fragment. | Open the same screen before the step. |
 | `target-not-found` | A recorded control did not appear within 15 seconds. | The UI changed. The next passing run re-records. |
 | `target-ambiguous` | The number of matching controls changed. A point tap recorded inside a control that now has look-alikes replays on the one the point lies in, when exactly one does. | Give repeated controls distinct names or use unique test data. |
-| `gap` | An action cannot be replayed: a mutating project tool, or a value the agent read off the screen (a code, a reference the app minted), typed after it was shown a screenshot, or reckoned from the date. A value the agent composed itself, or one from the instruction or `params`, replays. | The agent continues this part live. Put stable values in `params`. |
+| `gap` | An action cannot be replayed: a mutating project tool, or a value the agent read off the screen, typed after it was shown a screenshot, or reckoned from the date. Read off the screen means the whole name or text of a control, or a token with a digit in it (a code, a reference the app minted) shown as a word of its own; a plain word that also appears inside a sentence on screen does not count. A value the agent composed itself, or one from the instruction or `params`, replays. | The agent continues this part live. Put stable values in `params`. |
 | `action-failed` | The app rejected a replayed action. | Check the app. |
 | `action-uncertain` | A replayed action failed with an unknown commit state. The agent is told to check before acting again. | Check the app. |
 | `viewport-changed` | A bare-point tap was recorded on a viewport of another size. | Keep the viewport fixed. |
@@ -170,7 +170,9 @@ read-only in CI. `e2e explore` and `e2e mcp` do not use the cache. See the
 own and CI starts with none. To share replays, remove that line and commit
 the directory. CI stays `read-only` unless you set `cache: 'read-write'`.
 Treat committed entries as test data and review them in the pull request
-that re-recorded them.
+that re-recorded them. A step the cache replayed whole never rewrites its
+entry, so local runs leave a committed directory clean; only a recording, a
+hand-off the agent finished, or a changed action list writes a file.
 
 ## Inspect the cache
 

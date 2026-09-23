@@ -490,6 +490,27 @@ line2  </textarea>
   </script>
 </body>
 </html>`,
+  // Two fields named by nothing: the label sits in a sibling cell, so each is
+  // an unnamed textbox told from the other only by its position. The row text
+  // beside them is a plain word that a model may well type into them, and
+  // the status echoes what was typed so a deterministic check can follow.
+  '/row-fields': `<!doctype html>
+<html>
+<head><title>Row fields</title></head>
+<body>
+  <output id="filled" role="status" aria-label="Filled">nothing yet</output>
+  <table>
+    <tr><td>Row one</td><td><input type="text" oninput="render()" /></td></tr>
+    <tr><td>Row two</td><td><input type="text" oninput="render()" /></td></tr>
+  </table>
+  <script>
+    function render() {
+      const values = [...document.querySelectorAll('input')].map((input) => input.value);
+      document.getElementById('filled').textContent = values.every((value) => value !== '') ? values.join('+') : 'nothing yet';
+    }
+  </script>
+</body>
+</html>`,
   // An open shadow root: the panel and its button exist only in the shadow tree,
   // so a walk over light-DOM children alone cannot see them, while the slotted
   // heading is light DOM the component merely renders.

@@ -29,6 +29,13 @@ export interface StagedTraceWrite {
   readonly trace: ActionTrace;
   /** Index of the recording step in the attempt's step timeline. */
   readonly stepIndex: number;
+  /**
+   * True when `trace` is the stored entry the step replayed whole, not a new
+   * recording. A confirmed replay writes nothing: the entry stands as it is,
+   * and a rewrite would only move its `createdAt`, dirtying a committed cache
+   * directory on every run. An unconfirmed one is evicted like any other.
+   */
+  readonly replayed?: true;
 }
 
 export interface AgentCacheContext {
@@ -73,7 +80,9 @@ export interface AgentCacheContext {
  * a failure — or one that was never checked — re-records on the next pass
  * instead of replaying a poisoned state forever. The runner does not call
  * this for an interrupted attempt: interruption implicates nothing, so it
- * writes nothing and evicts nothing.
+ * writes nothing and evicts nothing. An entry a step replayed whole is
+ * staged too, so the same rule evicts it when nothing confirmed it; when
+ * something did, it is left exactly as it was found.
  */
 export async function flushStagedTraces(
   context: AgentCacheContext,
@@ -84,8 +93,8 @@ export async function flushStagedTraces(
   for (const write of staged) {
     const confirmed = write.stepIndex < lastVerifiedStepIndex;
     try {
-      if (confirmed) await context.store.write(write.keyHash, write.trace);
-      else await context.store.delete?.(write.keyHash);
+      if (!confirmed) await context.store.delete?.(write.keyHash);
+      else if (write.replayed !== true) await context.store.write(write.keyHash, write.trace);
     } catch {
       // The cache is disposable; a failed flush is a slower next run only.
     }

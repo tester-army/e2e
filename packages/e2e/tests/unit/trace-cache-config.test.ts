@@ -167,6 +167,20 @@ describe('flushStagedTraces', () => {
     expect(store.entries.has(KEY_B)).toBe(false);
   });
 
+  it('leaves a confirmed replayed entry exactly as stored and evicts an unconfirmed one', async () => {
+    const store = memoryStore();
+    const stored = JSON.stringify(buildTraceEntry(trace('replayed flow')));
+    store.entries.set(KEY_A, stored);
+    store.entries.set(KEY_B, stored);
+    const context = contextWith(store);
+    context.staged.push({ keyHash: KEY_A, trace: trace('replayed flow'), stepIndex: 1, replayed: true });
+    context.staged.push({ keyHash: KEY_B, trace: trace('replayed flow'), stepIndex: 3, replayed: true });
+    await flushStagedTraces(context, 2);
+    // The same bytes, createdAt included: a replay is not a rewrite.
+    expect(store.entries.get(KEY_A)).toBe(stored);
+    expect(store.entries.has(KEY_B)).toBe(false);
+  });
+
   it('claims distinct key hashes per occurrence of the same signature', () => {
     const context = contextWith(memoryStore());
     const first = context.claimKeyHash('act', 'open billing', undefined);

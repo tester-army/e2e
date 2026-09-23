@@ -419,12 +419,12 @@ describe('trace cache: nine flows record on the first run and replay without a m
     }
   });
 
-  it('records the start path with the minted id the recording run opened, and re-stages it with the replay\'s', () => {
+  it('records the start path with the minted id the recording run opened; a replay under another id leaves the entry as recorded', () => {
     const [entry] = recordedFor('archives a record');
     expect(entry!.payload.startPath).toBe('/records/1a2b3c4d5e6f');
     expect(entry!.payload.endAnchors).toContainEqual({ role: 'status', name: 'Record state', text: 'archived' });
-    const [restaged] = entriesFor(project, 'archives a record');
-    expect(restaged!.payload.startPath).toBe('/records/9f8e7d6c5b4a');
+    const [afterReplay] = entriesFor(project, 'archives a record');
+    expect(afterReplay!.payload).toEqual(entry!.payload);
   });
 
   it('records a placeholder-named field, unnamed twins by their place, and same-named buttons by position', () => {

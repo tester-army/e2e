@@ -1,7 +1,11 @@
 /** StepTraceSession: store resilience, staging anchors, replay postconditions, the write-side decision. */
 
+import { mkdtemp, readFile, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { AgentCacheContext } from '../../src/cache/context.ts';
+import { flushStagedTraces, type AgentCacheContext } from '../../src/cache/context.ts';
+import { FileTraceCacheStore, MAX_CACHE_WIRE_BYTES } from '../../src/cache/store.ts';
 import { buildTraceEntry, type ActionTrace, type TraceEntry } from '../../src/cache/trace.ts';
 import { recordedVerdictOf, StepTraceSession, type StepCacheHost, type StepCacheOptions } from '../../src/agent/step-cache.ts';
 import { AgentError } from '../../src/agent/error.ts';
@@ -83,10 +87,14 @@ function makeSession(cache: AgentCacheContext, host: StepCacheHost, overrides: P
 }
 
 /** A session whose host's grammar records into it, as the real dispatch's does. */
-function recordingSession(cache: AgentCacheContext, paths: (string | undefined)[]): StepTraceSession {
+function recordingSession(
+  cache: AgentCacheContext,
+  paths: (string | undefined)[],
+  screens: (readonly SemanticNode[])[] = [[]],
+): StepTraceSession {
   let session: StepTraceSession | undefined;
   const host: StepCacheHost = {
-    ...makeHost(paths),
+    ...makeHost(paths, screens),
     actions: {
       navigate: async (url: string) => session?.record({ name: 'navigate', url }),
     } as unknown as ExecutorActions,
@@ -525,15 +533,98 @@ describe('StepTraceSession', () => {
     expect(far.replayedPrefix?.stopReason).toBe('end-mismatch');
   }, 30_000);
 
-  it('re-stages the original verdict prose, not the replay wrapper', async () => {
+  it('never re-stages the entry it replayed whole, and reports the recorded verdict', async () => {
     const context = entryContext({ endPath: '/customers' });
-    const session = makeSession(context, makeHost(['/pricing', '/customers?utm=x', '/customers']));
+    let captures = 0;
+    const host = makeHost(['/pricing', '/customers?utm=x', '/customers']);
+    const counted = { ...host, observe: async () => { captures += 1; return host.observe(); }, observeSettled: async () => { captures += 1; return host.observeSettled(); } };
+    const session = makeSession(context, counted);
     const verdict = await session.begin();
     expect(verdict?.status).toBe('passed');
     expect(verdict?.summary).toContain('recorded verdict: opened the customers page');
     session.record({ name: 'navigate', url: '/customers' });
     await session.conclude('passed', verdict?.summary);
-    expect(context.staged[0]?.trace.summary).toBe('opened the customers page');
+    // The entry is staged as replayed, never as a recording: confirmed, it
+    // stands as it is; unconfirmed, it is evicted. The passing screen is
+    // never captured for it.
+    expect(context.staged).toEqual([{ keyHash: 'a'.repeat(64), trace: expect.objectContaining({ summary: 'opened the customers page' }), stepIndex: 1, replayed: true }]);
+    expect(captures).toBe(2);
+  });
+
+  it('reads the start capture for the first relocation instead of capturing the same screen again', async () => {
+    const upgrade: SemanticNode = { ref: { id: 'u', revision: 'r1' }, role: 'button', name: 'Upgrade' };
+    const context = entryContext({
+      actions: [{ name: 'tap', summary: 'tap button "Upgrade"', target: { role: 'button', name: 'Upgrade' } }],
+      startPath: '/pricing',
+      endPath: '/pricing',
+      endAnchors: [savedAnchor],
+    });
+    const log: string[] = [];
+    const host = makeHost(['/pricing', '/pricing'], [[upgrade], [upgrade, savedMarker]]);
+    const session = makeSession(context, {
+      ...host,
+      observe: async () => { log.push('raw'); return host.observe(); },
+      observeSettled: async (options) => { log.push(options?.proveStable === false ? 'settled-after-fill' : 'settled'); return host.observeSettled(); },
+      actions: { tap: async () => undefined } as unknown as ExecutorActions,
+    });
+    const verdict = await session.begin();
+    expect(verdict?.status).toBe('passed');
+    // One settled start capture serves the relocation; the end state is one raw look.
+    expect(log).toEqual(['settled', 'raw']);
+  });
+
+  it('leaves the entry file untouched across replays and rewrites it after a hand-off the executor healed', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'e2e-step-cache-'));
+    const store = new FileTraceCacheStore({ directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: true });
+    const context = (): AgentCacheContext => ({
+      mode: 'read-write',
+      store,
+      identity: { testId: 'tests/example.e2e.ts::step', targetId: 'web' },
+      replayEligible: true,
+      claimKeyHash: () => 'a'.repeat(64),
+      staged: [],
+    });
+    const file = join(directory, `${'a'.repeat(64)}.json`);
+    const snapshot = async () => ({ bytes: await readFile(file, 'utf8'), mtimeMs: (await stat(file)).mtimeMs });
+    const run = async (paths: string[], screens: (readonly SemanticNode[])[], lastVerifiedStepIndex = 5) => {
+      const current = context();
+      const session = recordingSession(current, paths, screens);
+      const verdict = await session.begin();
+      // On a miss the executor performs the flow itself; a replay's own
+      // navigate records through the host's grammar, as the real dispatch's does.
+      if (session.cacheInfo?.mode === 'missed') session.record({ name: 'navigate', url: '/customers' });
+      await session.conclude('passed', verdict?.summary ?? 'opened the customers page');
+      await flushStagedTraces(current, lastVerifiedStepIndex);
+      return session;
+    };
+
+    // The recording run: a miss, then the flow and its effect are written.
+    const recorded = await run(['/pricing', '/customers'], [[], [savedMarker]]);
+    expect(recorded.cacheInfo?.mode).toBe('missed');
+    const written = await snapshot();
+    expect(JSON.parse(written.bytes).payload.endAnchors).toEqual([savedAnchor]);
+
+    // Two replays in a row: the file's bytes and mtime never move.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const first = await run(['/pricing', '/customers'], [[savedMarker]]);
+    expect(first.cacheInfo?.mode).toBe('self-finalized');
+    expect(await snapshot()).toEqual(written);
+    const second = await run(['/pricing', '/customers'], [[savedMarker]]);
+    expect(second.cacheInfo?.mode).toBe('self-finalized');
+    expect(await snapshot()).toEqual(written);
+
+    // A hand-off the executor settled without acting re-records with the live anchors.
+    const renamed: SemanticNode = { ...savedMarker, text: 'stored' };
+    const healed = await run(['/pricing', '/customers', '/customers'], [[], [], [renamed]]);
+    expect(healed.replayedPrefix?.stopReason).toBe('end-mismatch');
+    const rewritten = await snapshot();
+    expect(rewritten.bytes).not.toBe(written.bytes);
+    expect(JSON.parse(rewritten.bytes).payload.endAnchors).toEqual([{ ...savedAnchor, text: 'stored' }]);
+
+    // A replay nothing verified afterwards is implicated like a recording would be: evicted.
+    const unconfirmed = await run(['/pricing', '/customers'], [[], [renamed]], 0);
+    expect(unconfirmed.cacheInfo?.mode).toBe('self-finalized');
+    await expect(stat(file)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('takes the step for the live progress on a hit, before the start-path probe, and hands it over only when the model must finish it', async () => {

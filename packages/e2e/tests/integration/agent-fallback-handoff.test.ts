@@ -178,15 +178,19 @@ describe('semantic fallback handoff', () => {
   it.each(['zero-actions', 'failed-capture', 'replayed-action'] as const)('hands off current evidence after replay with %s', async (scenario) => {
     let captures = 0;
     let actions = 0;
+    // Captures 1 and 2 are the settled start; the replay's first action reads
+    // that capture rather than looking again, so a replay that must end before
+    // any action loses its semantics (or its capture) on capture 2. After a
+    // replayed scroll the tap looks afresh, and that look is capture 3.
     const engine = defineEngine({
       name: 'replay-fixture', version: '1', spiVersion: 1, platform: 'fixture', actions: ['tap', 'swipe'],
       perform: async () => { actions += 1; },
       observe: async () => {
         captures += 1;
-        if (captures === 3 && scenario === 'failed-capture') {
+        if (captures === 2 && scenario === 'failed-capture') {
           throw new EngineError('OPERATION_TIMEOUT', 'replay observation failed', { retryable: false });
         }
-        if (captures > 2) return pixelSnapshot(captures);
+        if (captures > 2 || (captures === 2 && scenario === 'zero-actions')) return pixelSnapshot(captures);
         return {
           root: { ref: { id: 'root', revision: '' }, children: [{ ref: { id: 'save', revision: '' }, role: 'button', name: 'Save' }] },
           location: 'https://fixture.test/start', viewport: VIEWPORT,
@@ -199,11 +203,13 @@ describe('semantic fallback handoff', () => {
     const executor: StepExecutor = {
       name: 'replay-executor',
       async runStep(context) {
-        expect(captures).toBe(3);
+        expect(captures).toBe(scenario === 'replayed-action' ? 3 : 2);
         expect(actions).toBe(scenario === 'replayed-action' ? 1 : 0);
         expect(context.replayedPrefix?.replayedActions).toEqual(scenario === 'replayed-action' ? ['scrolled'] : undefined);
         const current = await context.observe({ tree: true });
-        const expectedCaptures = scenario === 'zero-actions' ? 3 : 4;
+        // A start capture that lost semantics still serves the executor's
+        // first look once; a start capture that failed leaves it a look of its own.
+        const expectedCaptures = scenario === 'zero-actions' ? 2 : scenario === 'failed-capture' ? 3 : 4;
         expect(captures).toBe(expectedCaptures);
         expect(current.treeUnavailable).toBe(true);
         expect(current.tree).toBeUndefined();

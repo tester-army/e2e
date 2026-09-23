@@ -46,7 +46,20 @@ export type ObservedScreen = {
 );
 
 /** The only capture variant that can establish trace targets or anchors. */
-type SemanticScreen = Extract<ObservedScreen, { kind: 'semantic' }>;
+export type SemanticScreen = Extract<ObservedScreen, { kind: 'semantic' }>;
+
+/** How much of the settle a look needs, given what the previous action could have set in motion. */
+export interface SettledLookOptions {
+  /**
+   * Whether the look must prove the new shape holds still: a second capture
+   * a beat after the first, equal in shape. False only after an action whose
+   * effect is confined to the node it acted on (a fill): the look still waits
+   * for the screen to leave the pre-action shape, and the relocation reads a
+   * capture taken after the action returned, but it spends no beat proving
+   * that a field's value stays typed.
+   */
+  readonly proveStable?: boolean;
+}
 
 /** What the replay engine needs from the dispatch, and nothing more. */
 export interface ReplayHost {
@@ -59,7 +72,7 @@ export interface ReplayHost {
    * lands on a screen still reacting to the previous one, and the pacing can
    * never drift from the executor-facing observe.
    */
-  observeSettled(): Promise<ObservedScreen>;
+  observeSettled(options?: SettledLookOptions): Promise<ObservedScreen>;
   /** The step's policed action grammar; targets are fresh-observation ids. */
   readonly actions: ExecutorActions;
   readonly signal: AbortSignal;
@@ -185,10 +198,19 @@ function planCall(action: RecordedAction, actions: ExecutorActions): PlannedCall
   }
 }
 
+export interface ReplayOptions {
+  /**
+   * The step's settled start capture. The first action's look reads it
+   * instead of capturing again: nothing has happened since it was taken.
+   */
+  readonly initial?: SemanticScreen;
+}
+
 /** Replays one trace until it completes or diverges. */
 export async function replayTrace(
   host: ReplayHost,
   trace: ActionTrace,
+  options: ReplayOptions = {},
 ): Promise<ReplayOutcome> {
   const summaries: string[] = [];
   const total = trace.actions.length;
@@ -197,10 +219,18 @@ export async function replayTrace(
     return { completed: false, executed: summaries.length, total, summaries, stopReason };
   };
 
+  let previous: RecordedAction | undefined;
   for (const action of trace.actions) {
     if (!host.traceEligible) return stop('action-failed');
     const planned = planCall(action, host.actions);
     if (planned.kind === 'gap') return stop('gap');
+    // The look before this action: the start capture serves the first one,
+    // and only an action that could have set the screen in motion makes the
+    // next look prove it holds still.
+    const look: Look = {
+      ...(previous === undefined && options.initial !== undefined ? { initial: options.initial } : {}),
+      proveStable: previous === undefined || mayTransition(previous),
+    };
     // Repeats of a folded scroll done before it failed moved the screen: the
     // hand-off counts them as executed, so the executor is not told the
     // screen is untouched.
@@ -210,7 +240,7 @@ export async function replayTrace(
     try {
       switch (planned.kind) {
         case 'targeted': {
-          const relocated = await relocate(host, planned.descriptor);
+          const relocated = await relocate(host, planned.descriptor, look);
           if (relocated.kind === 'failed') return stop(relocated.failure);
           await planned.invoke({ id: relocated.id });
           break;
@@ -220,15 +250,18 @@ export async function replayTrace(
           break;
         case 'scroll': {
           for (let index = 0; index < planned.times; index += 1) {
-            if (index > 0) await host.observeSettled();
-            const lost = await scrollOnce(host, planned);
+            // A scroll on a list is paced by the relocation before each
+            // repeat; a viewport scroll relocates nothing, so its later
+            // repeats take a settled look of their own, as the live loop did.
+            if (index > 0 && planned.descriptor === undefined) await host.observeSettled();
+            const lost = await scrollOnce(host, planned, index === 0 ? look : SETTLED_LOOK);
             if (lost !== undefined) return stop(lost, partial());
             repeated += 1;
           }
           break;
         }
         case 'point': {
-          const screen = await host.observeSettled();
+          const screen = await firstLook(host, look);
           if (screen.kind === 'pixels') return stop('action-failed');
           const { viewport } = screen;
           if (viewport.width !== planned.viewport.width || viewport.height !== planned.viewport.height) {
@@ -238,7 +271,7 @@ export async function replayTrace(
           break;
         }
         case 'within': {
-          const relocated = await relocate(host, planned.descriptor);
+          const relocated = await relocate(host, planned.descriptor, look);
           const box = boxWithin(relocated, planned);
           if (box === undefined) return stop(relocated.kind === 'failed' ? relocated.failure : 'target-not-found');
           await host.actions.tapAt({ x: box.x + planned.fx * box.width, y: box.y + planned.fy * box.height });
@@ -256,8 +289,20 @@ export async function replayTrace(
       return stop('action-failed', partial());
     }
     summaries.push(action.summary);
+    previous = action;
   }
   return { completed: true, executed: summaries.length, total, summaries };
+}
+
+/**
+ * Whether an action's effect can reach beyond the node it acted on. A fill
+ * changes its field's value and nothing else the next relocation reads; a
+ * tap, a key, a selection, a scroll, or a navigation can submit, open, move,
+ * or replace the screen, so the look after it must prove the screen holds
+ * still before the next action lands.
+ */
+function mayTransition(action: RecordedAction): boolean {
+  return action.name !== 'type' && action.name !== 'typeText' && action.name !== 'typeSecret';
 }
 
 /**
@@ -280,7 +325,7 @@ export async function verifyAnchors(
   try {
     const present = await pollSettled(host, ({ nodes }) =>
       anchorsPresent(anchors, nodes, host) ? true : undefined,
-      options.initial,
+      { ...(options.initial === undefined ? {} : { initial: options.initial }), proveStable: true },
     );
     if (present === true) return true;
     // The settling backoff covers a slow re-render; the recorded run may have
@@ -317,6 +362,7 @@ const END_WAIT_RESERVE_MS = 20_000;
 async function relocate(
   host: ReplayHost,
   descriptor: TraceTargetDescriptor,
+  look: Look,
 ): Promise<Relocated> {
   const options = { redact: host.redact };
   let last: Relocated = { kind: 'failed', failure: 'target-not-found' };
@@ -328,7 +374,7 @@ async function relocate(
     }
     const node = screen.nodes.get(result.id);
     return node === undefined ? undefined : { ...result, node };
-  });
+  }, look);
   return settled ?? last;
 }
 
@@ -366,12 +412,12 @@ function usableBox(rect: SemanticNode['rect']): Box | undefined {
  * One repeat of a folded scroll: on the re-found list, on the viewport for a
  * lost list that filled the screen, or the failure to hand the step off on.
  */
-async function scrollOnce(host: ReplayHost, planned: Extract<PlannedCall, { kind: 'scroll' }>): Promise<RelocationFailure | undefined> {
+async function scrollOnce(host: ReplayHost, planned: Extract<PlannedCall, { kind: 'scroll' }>, look: Look): Promise<RelocationFailure | undefined> {
   if (planned.descriptor === undefined) {
     await host.actions.scroll(planned.direction);
     return undefined;
   }
-  const relocated = await relocate(host, planned.descriptor);
+  const relocated = await relocate(host, planned.descriptor, look);
   if (relocated.kind === 'found') {
     await host.actions.scroll(planned.direction, { id: relocated.id });
     return undefined;
@@ -382,21 +428,42 @@ async function scrollOnce(host: ReplayHost, planned: Extract<PlannedCall, { kind
 }
 
 /**
+ * The first look of one poll: a screen already in hand, or how much settle
+ * a fresh capture needs.
+ */
+interface Look extends SettledLookOptions {
+  /** A settled screen nothing has happened to since it was captured; read instead of capturing. */
+  readonly initial?: SemanticScreen;
+  readonly proveStable: boolean;
+}
+
+/** A fresh look that proves the screen holds still, for a repeat of a scroll that moved it. */
+const SETTLED_LOOK: Look = { proveStable: true };
+
+/** The screen a poll starts from: the one in hand, or a capture settled as far as the look asks. */
+function firstLook(host: ReplayHost, look: Look): Promise<ObservedScreen> {
+  return look.initial === undefined ? host.observeSettled({ proveStable: look.proveStable }) : Promise.resolve(look.initial);
+}
+
+/**
  * Probes a settled observation, then re-probes fresh raw captures on a fixed
  * backoff until the probe answers or the wait runs out: a screen
  * mid-transition gets a few looks before replay gives the step up. The first
  * look settles because replay executes recorded actions far faster than the
  * run that recorded them; without that wait an action can land while the app
  * is still reacting to the previous one — a form mid-clear, a list mid-update
- * — and commit something the recorded run never did.
+ * — and commit something the recorded run never did. A screen the caller
+ * already settled (the step's start capture) is read as it is, and after a
+ * fill the look waits for the field to show its value without proving the
+ * screen holds still.
  */
 async function pollSettled<T>(
   host: ReplayHost,
   probe: (screen: SemanticScreen) => T | undefined,
-  initial?: SemanticScreen,
+  look: Look,
 ): Promise<T | undefined> {
   const startedMs = Date.now();
-  let screen = initial ?? await host.observeSettled();
+  let screen = await firstLook(host, look);
   for (let attempt = 0; ; attempt += 1) {
     if (screen.kind === 'pixels' || !host.traceEligible) return undefined;
     const answer = probe(screen);

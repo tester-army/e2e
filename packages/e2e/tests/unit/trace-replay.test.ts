@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { AgentError } from '../../src/agent/error.ts';
 import type { ExecutorActions } from '../../src/agent/executor.ts';
-import { replayTrace, verifyAnchors, type ReplayHost } from '../../src/agent/replay.ts';
+import { replayTrace, verifyAnchors, type ReplayHost, type SettledLookOptions } from '../../src/agent/replay.ts';
 import type { ActionTrace, RecordedAction } from '../../src/cache/trace.ts';
 import type { SemanticNode } from '../../src/engine/surface.ts';
 
@@ -27,7 +27,7 @@ function makeHost(options: {
   viewport?: { width: number; height: number };
   onAction?: (name: string, detail: unknown) => void | Promise<void>;
   remainingMs?: number;
-}): ReplayHost & { calls: string[]; observations: number } {
+}): ReplayHost & { calls: string[]; observations: number; settledLooks: SettledLookOptions[] } {
   const calls: string[] = [];
   const act = (name: string, detail?: unknown) => {
     calls.push(name);
@@ -54,13 +54,17 @@ function makeHost(options: {
     calls,
     traceEligible: true,
     observations: 0,
+    settledLooks: [] as SettledLookOptions[],
     observe: async () => {
       host.observations += 1;
       return screen(options.nodes ?? [upgrade, email], options.viewport);
     },
     // Settled looks come from the same source; `host.observe` is read at call
     // time so a test may swap the screen sequence in after construction.
-    observeSettled: () => host.observe(),
+    observeSettled: (look?: SettledLookOptions) => {
+      host.settledLooks.push(look ?? {});
+      return host.observe();
+    },
     actions,
     signal: new AbortController().signal,
     remainingMs: () => options.remainingMs ?? 60_000,
@@ -141,6 +145,48 @@ describe('replayTrace', () => {
     expect(outcome).toMatchObject({ completed: true, executed: 4, total: 4 });
     expect(host.calls).toEqual(['navigate', 'tap', 'type', 'scroll']);
     expect(outcome.summaries).toHaveLength(4);
+  });
+
+  it('reads the start capture for the first look instead of observing the same screen again', async () => {
+    const host = makeHost({});
+    const outcome = await replayTrace(host, trace([tapUpgrade]), { initial: screen([upgrade, email]) });
+    expect(outcome).toMatchObject({ completed: true, executed: 1 });
+    expect(host.calls).toEqual(['tap']);
+    expect(host.observations).toBe(0);
+  });
+
+  it('proves the screen holds still after an action that can move it, and skips that beat after a fill', async () => {
+    const host = makeHost({});
+    const outcome = await replayTrace(
+      host,
+      trace([
+        tapUpgrade,
+        { name: 'type', summary: 'type "x"', target: { role: 'textbox', name: 'Email' }, value: 'x' },
+        tapUpgrade,
+        { name: 'typeText', summary: 'type "y"', value: 'y', replace: false },
+        tapUpgrade,
+        { name: 'typeSecret', summary: 'fill secret', target: { role: 'textbox', name: 'Email' }, secret: 'password' },
+        tapUpgrade,
+        { name: 'select', summary: 'select "Pro"', target: { role: 'textbox', name: 'Email' }, value: 'Pro' },
+        tapUpgrade,
+      ]),
+    );
+    expect(outcome).toMatchObject({ completed: true, executed: 9 });
+    // The first look settles in full; the look after each tap or select does
+    // too; the look after each kind of fill waits for its value only. A
+    // typeText takes no look of its own, so the tap after it is the one
+    // that skips the beat.
+    expect(host.settledLooks.map((look) => look.proveStable)).toEqual([true, true, false, false, true, false, true, true]);
+  });
+
+  it('takes one look per repeat of a folded scroll on a list', async () => {
+    const list: SemanticNode = { ref: { id: 'g1', revision: 'r1' }, role: 'group', name: 'Rows 1 to 12', rect: { x: 0, y: 0, width: 390, height: 300 } };
+    const host = makeHost({ nodes: [list, email] });
+    const outcome = await replayTrace(host, trace([{ name: 'scroll', summary: 'scroll down x3', direction: 'down', target: { role: 'group', name: 'Rows 1 to 12' }, times: 3, spans: 0.3 }]));
+    expect(outcome).toMatchObject({ completed: true, executed: 1 });
+    expect(host.calls).toEqual(['scroll', 'scroll', 'scroll']);
+    expect(host.observations).toBe(3);
+    expect(host.settledLooks.map((look) => look.proveStable)).toEqual([true, true, true]);
   });
 
   it('ends the prefix at a gap without executing it', async () => {

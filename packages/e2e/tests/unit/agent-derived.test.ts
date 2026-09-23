@@ -39,13 +39,25 @@ describe('isDerivedValue', () => {
   it('treats a value the model composed itself as literal, so the flow replays', () => {
     expect(isDerivedValue('Jane Merchant', 'fill in the signup form with plausible details', undefined)).toBe(false);
     expect(isDerivedValue('jane@example.com', 'fill in the signup form', undefined, { shown: ['Step 1 of 3'] })).toBe(false);
-    expect(isDerivedValue('Jane', 'fill in the form', undefined, { shown: ['Welcome back, Jane'] })).toBe(true);
   });
 
-  it('matches shown text as whole tokens, never inside a longer word', () => {
+  it('treats a value as read off the screen when a node says exactly that, never a word inside a sentence', () => {
+    expect(isDerivedValue('Jane', 'fill in the form', undefined, { shown: ['Jane', 'Sign out'] })).toBe(true);
+    expect(isDerivedValue('Jane', 'fill in the form', undefined, { shown: ['  jane '] })).toBe(true);
+    expect(isDerivedValue('Jane', 'fill in the form', undefined, { shown: ['Welcome back, Jane'] })).toBe(false);
+    // The regression: a page listing "Row one" and "Row two" does not make
+    // the words the model typed into its fields the screen's data.
+    const rows = ['Row one', 'Row two', 'Filled'];
+    expect(isDerivedValue('one', 'fill the two fields', undefined, { shown: rows })).toBe(false);
+    expect(isDerivedValue('two', 'fill the two fields', undefined, { shown: rows })).toBe(false);
+  });
+
+  it('matches a data-shaped value as a whole token of shown text, never inside a longer one', () => {
     expect(isDerivedValue('123', 'pay with any CVC', undefined, { shown: ['CVC', 'Pay 10,99 US$', 'n20123'] })).toBe(false);
     expect(isDerivedValue('Jane', 'fill the form', undefined, { shown: ['Janet Leigh'] })).toBe(false);
     expect(isDerivedValue('123', 'enter the code', undefined, { shown: ['Your code is 123'] })).toBe(true);
+    expect(isDerivedValue('TK-4972', 'enter the reference', undefined, { shown: ['Reference: TK-4972.'] })).toBe(true);
+    expect(isDerivedValue('A1B2', 'enter the code', undefined, { shown: ['Code A1B2 expires soon'] })).toBe(true);
   });
 
   it('never treats an empty value as derived', () => {

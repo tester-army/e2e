@@ -6,7 +6,7 @@
  * Playwright observations and actions throughout.
  */
 
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
@@ -85,11 +85,18 @@ function readOnlyEntry(project: FixtureProject): { file: string; document: any }
   return { file, document: JSON.parse(readFileSync(file, 'utf8')) };
 }
 
+/** The one entry file's bytes and modification time, to prove a replay left it alone. */
+function entryFileState(project: FixtureProject): { bytes: string; mtimeMs: number } {
+  const { file } = readOnlyEntry(project);
+  return { bytes: readFileSync(file, 'utf8'), mtimeMs: statSync(file).mtimeMs };
+}
+
 describe('trace cache: record then zero-turn replay', () => {
   let app: FixtureApp;
   let project: FixtureProject;
   let firstRun: RunOutcome;
   let secondRun: RunOutcome;
+  let recordedFile: { bytes: string; mtimeMs: number };
   const first: ExecutorRecord = { calls: 0, prefixes: [] };
   const second: ExecutorRecord = { calls: 0, prefixes: [] };
 
@@ -105,6 +112,7 @@ describe('trace cache: record then zero-turn replay', () => {
       },
     });
     firstRun = await runExisting(project, options(first));
+    recordedFile = entryFileState(project);
     secondRun = await runExisting(project, options(second));
   }, 240_000);
 
@@ -148,12 +156,12 @@ describe('trace cache: record then zero-turn replay', () => {
     expect(step.metrics!.modelCalls).toBe(0);
     expect(step.metrics!.actionSteps).toBe(2);
     expect(step.explanation).toContain('zero-turn');
-    // The re-staged entry keeps the ORIGINAL verdict prose and its
-    // postcondition — a summary that nested the replay wrapper would grow on
-    // every run until the bound truncated it.
+    // A step the cache replayed whole never rewrites its entry: the file
+    // keeps its bytes and its modification time, so a committed cache
+    // directory stays clean across local runs.
+    expect(entryFileState(project)).toEqual(recordedFile);
     const { document } = readOnlyEntry(project);
     expect(document.payload.summary).toBe('the counter shows 2');
-    expect(document.payload.summary).not.toContain('recorded verdict');
     expect(document.payload.endPath).toBe('/');
   });
 
@@ -875,5 +883,91 @@ describe('trace cache: a replayed typed value is the flow\'s data on an app that
     } finally {
       fresh.cleanup();
     }
+  }, 240_000);
+});
+
+const ROW_FIELDS_SUITE = `import { test, expect } from 'e2e';
+
+test('fills both row fields', async ({ app, agent, screen }) => {
+  await app.open('/row-fields');
+  await agent.act('fill the two fields with short words of your choice');
+  await expect(screen.getByRole('status')).toHaveText('one+two');
+});
+`;
+
+/** Every node id whose observation line matches, in document order. */
+function nodeIdsFor(observedText: string, pattern: RegExp): string[] {
+  return observedText
+    .split('\n')
+    .filter((line) => pattern.test(line))
+    .map((line) => /#(\S+)/.exec(line)?.[1])
+    .filter((id): id is string => id !== undefined);
+}
+
+/**
+ * Types "one" and "two" into the two unnamed textboxes: words the model
+ * composed, which happen to appear inside the row labels beside the fields.
+ * No model.
+ */
+function rowWordsExecutor(record: ExecutorRecord): StepExecutor {
+  return {
+    name: 'row-words-executor',
+    version: 'test',
+    async runStep(context: StepExecutorContext) {
+      record.calls += 1;
+      record.prefixes.push(context.replayedPrefix);
+      const observation = await context.observe();
+      const [first, second] = nodeIdsFor(observation.text, /^\s*#\S+ textbox\b/);
+      await context.actions.type({ id: first! }, 'one');
+      await context.actions.type({ id: second! }, 'two');
+      return { status: 'passed' as const, summary: 'filled both fields' };
+    },
+  };
+}
+
+describe('trace cache: a composed word that appears on screen is not a run-time value', () => {
+  let app: FixtureApp;
+  let project: FixtureProject;
+  const records: ExecutorRecord[] = [];
+
+  const options = () => {
+    const record: ExecutorRecord = { calls: 0, prefixes: [] };
+    records.push(record);
+    return {
+      appUrl: app.url,
+      config: {
+        tests: 'tests/**/*.e2e.ts',
+        reporters: ['json'] as const,
+        agents: { default: rowWordsExecutor(record) },
+        cache: 'read-write' as const,
+      },
+    };
+  };
+
+  beforeAll(async () => {
+    app = await startFixtureApp();
+    project = createProject({ 'tests/rows.e2e.ts': ROW_FIELDS_SUITE });
+  }, 60_000);
+
+  afterAll(async () => {
+    project?.cleanup();
+    await app?.close();
+  });
+
+  it('records both fills verbatim and replays the whole step on the second run', async () => {
+    const first = await runExisting(project, options());
+    expect(first.exitCode).toBe(0);
+    const { document } = readOnlyEntry(project);
+    // "one" sits inside "Row one" on screen, and is still the model's own
+    // word: neither fill is recorded as a run-time value gap.
+    expect(document.payload.actions.map((action: { name: string }) => action.name)).toEqual(['type', 'type']);
+    expect(document.payload.actions.map((action: { value?: string }) => action.value)).toEqual(['one', 'two']);
+    expect(document.payload.endAnchors).toContainEqual({ role: 'status', name: 'Filled', text: 'one+two' });
+
+    const second = await runExisting(project, options());
+    expect(second.exitCode).toBe(0);
+    expect(records.at(-1)!.calls).toBe(0);
+    const step = resultByTitle(second, 'fills both row fields').attempts.at(-1)!.steps.find((s) => s.api === 'agent.act')!;
+    expect(step.cache).toEqual({ mode: 'self-finalized', replayedActions: 2, totalActions: 2 });
   }, 240_000);
 });

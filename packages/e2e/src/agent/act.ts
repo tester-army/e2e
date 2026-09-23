@@ -459,7 +459,7 @@ class ActDispatch {
     return {
       get traceEligible() { return feed.traceEligible; },
       observe: async () => screenOf(await this.feed.probe(false)),
-      observeSettled: async () => screenOf(await this.feed.probe(true)),
+      observeSettled: async (options) => screenOf(await this.feed.probe(true, options)),
       actions: this.dispatcher.actions,
       signal: this.accounting.signal,
       remainingMs: () => this.accounting.remainingMs(),

@@ -12,6 +12,13 @@
  * so the executor derives the value afresh from what it sees and remembers.
  * A value the model composed itself (a plausible name, an email, a note)
  * is the flow's data as much as a literal would be, and replays.
+ *
+ * "Read off the screen" is read narrowly: the value is the whole of what
+ * some node said (its name or its text, whitespace-normalized), or it is a
+ * data-shaped token (it carries a digit: a code, a count, a reference) that
+ * some node showed as a word of its own. A bare word inside a sentence is not
+ * the screen showing the value: "one" typed on a page that lists "Row one"
+ * is the model's own choice, and the recording replays it.
  */
 
 import type { JsonValue } from '../types.ts';
@@ -46,15 +53,27 @@ export function isDerivedValue(
   // Read off the screen (a code, a reference, a name the app minted) or
   // reckoned from the calendar: this run's data. Anything else the model
   // composed itself, and the next run's app takes it as readily.
+  const dataShaped = isDataShaped(needle);
   for (const text of evidence.shown ?? []) {
-    if (hasWord(normalize(text), needle)) return true;
+    const shown = normalize(text);
+    if (shown === needle || (dataShaped && hasWord(shown, needle))) return true;
   }
   return DATE_OR_TIME.test(value);
 }
 
 /**
- * Whether the text carries the value as a whole token: "Jane" inside
- * "Janet" is not the screen showing it.
+ * Whether a value looks like data rather than words: one token, no
+ * whitespace, with a digit in it. `TK-4972`, `123`, `n20123` qualify; `Jane`
+ * and `one` do not, so those count as read off the screen only when a node
+ * says exactly that and nothing more.
+ */
+function isDataShaped(needle: string): boolean {
+  return !/\s/u.test(needle) && /\p{N}/u.test(needle);
+}
+
+/**
+ * Whether the text carries the value as a whole token: "123" inside
+ * "n20123" is not the screen showing it.
  */
 function hasWord(text: string, needle: string): boolean {
   let from = 0;
