@@ -42,9 +42,17 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # One job per suite, each on its own Mac with two simulators: the
+  # deterministic suite and the agentic one take about as long as each other,
+  # so the gate's wall time is one of them, not their sum.
   ios:
+    name: ios ${{ matrix.suite }}
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [deterministic, agentic]
     runs-on: blacksmith-6vcpu-macos-26
-    timeout-minutes: 75
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: packages/mobile-benchmark
@@ -79,14 +87,15 @@ jobs:
         with:
           path: ~/.agent-device
           key: agent-device-${{ runner.os }}-${{ hashFiles('packages/mobile/package.json') }}
-      # `bootstatus -b` boots the device when it is not up yet and waits for it.
-      # The UDID pins the iOS target to this simulator (e2e.config.ts). The
-      # runtime is pinned too: the accessibility bridge reports control state
+      # `bootstatus -b` boots a device when it is not up yet and waits for it.
+      # Two simulators, the picked one and a clone of it, so the run drives
+      # two workers (e2e.config.ts reads the comma-separated UDIDs). The
+      # runtime is pinned: the accessibility bridge reports control state
       # differently from one iOS release to the next (on 26.2 a selected tab
       # or radio carries no `selected`, and an empty field reports its
       # placeholder as its value), and the suites are verified on 26.5. Bump
       # IOS_RUNTIME on purpose, with a local run on that runtime first.
-      - name: Boot a simulator
+      - name: Boot two simulators
         env:
           IOS_RUNTIME: com.apple.CoreSimulator.SimRuntime.iOS-26-5
         run: |
@@ -106,20 +115,22 @@ jobs:
             process.exit(1);
           ')"
           UDID="${PICK%% *}"
-          echo "booting ${PICK#* } ($UDID)"
+          SECOND="$(xcrun simctl clone "$UDID" "iPhone 17 Pro (2)")"
+          echo "booting ${PICK#* } ($UDID) and its clone ($SECOND)"
           xcrun simctl bootstatus "$UDID" -b
-          echo "E2E_MOBILE_BENCHMARK_IOS_DEVICE=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl bootstatus "$SECOND" -b
+          echo "E2E_MOBILE_BENCHMARK_IOS_DEVICE=$UDID,$SECOND" >> "$GITHUB_ENV"
       - name: Run the suites
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
           E2E_MOBILE_BENCHMARK_IOS_APP: ${{ steps.app.outputs.app-path }}
-        run: scripts/ci-run.sh ios-simulator
+        run: scripts/ci-run.sh ios-simulator ${{ matrix.suite }}
       - name: Upload report
         if: ${{ !cancelled() }}
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: mobile-benchmark-ios
+          name: mobile-benchmark-ios-${{ matrix.suite }}
           path: |
             packages/mobile-benchmark/.e2e/report.json
             packages/mobile-benchmark/.e2e/artifacts

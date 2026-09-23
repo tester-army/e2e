@@ -7,11 +7,14 @@
 # credential check comes after the deterministic run, so a missing key never
 # turns a green locator suite red.
 #
-#   scripts/ci-run.sh ios-simulator
-#   scripts/ci-run.sh android-emulator
+#   scripts/ci-run.sh ios-simulator               # both suites
+#   scripts/ci-run.sh ios-simulator deterministic  # one of them
+#   scripts/ci-run.sh android-emulator agentic
 set -eu
 
-target="${1:?usage: scripts/ci-run.sh <target>}"
+target="${1:?usage: scripts/ci-run.sh <target> [deterministic|agentic|both]}"
+suite="${2:-both}"
+case "$suite" in deterministic|agentic|both) ;; *) echo "unknown suite: $suite" >&2; exit 2 ;; esac
 e2e="node node_modules/e2e/dist/cli/bin.js"
 
 # The report and artifacts upload after the run, and the upload fails whenever
@@ -26,9 +29,12 @@ show_failures() {
   done
 }
 
-if ! $e2e run --target "$target"; then
+if [ "$suite" != "agentic" ] && ! $e2e run --target "$target"; then
   show_failures .e2e/artifacts
   exit 3
+fi
+if [ "$suite" = "deterministic" ]; then
+  exit 0
 fi
 
 if [ "${SAME_REPO:-}" != "true" ]; then
