@@ -119,7 +119,13 @@ export async function instrumentPhase<Value>(
  *
  * `cause` carries the failure that was being handled when the clock was found
  * to be out, so a step that timed out mid-operation still says what the
- * operation reported.
+ * operation reported, and decides the clock question when that failure is an
+ * operation timeout within one poll tick of the deadline: `boundedOperation`
+ * gave such an operation the deadline's remaining time, so its timer and the
+ * deadline mark one instant on two clocks, and the timer, on the event loop's
+ * clock, fires first under load while `Date.now()` still reads the deadline as
+ * a few milliseconds away. Running out of that budget is the step running out.
+ * An operation that times out on its own, with time to spare, keeps its code.
  */
 export function checkStepClock(options: {
   readonly signal: AbortSignal;
@@ -132,13 +138,18 @@ export function checkStepClock(options: {
   if (options.signal.aborted) {
     throw new AgentError('CANCELLED', `${options.api} was cancelled`, detail);
   }
-  if (options.deadline.expired()) {
+  if (options.deadline.expired() || timedOutAtDeadline(options.cause, options.deadline)) {
     throw new AgentError(
       'STEP_TIMEOUT',
       `${options.api} exceeded its ${options.timeoutMs} ms timeout`,
       detail,
     );
   }
+}
+
+/** True when `cause` is an operation timeout and the deadline is less than one poll tick away. */
+function timedOutAtDeadline(cause: unknown, deadline: Deadline): boolean {
+  return deadline.remaining() < POLL_INTERVAL_MS && asEngineError(cause)?.code === 'OPERATION_TIMEOUT';
 }
 
 /**

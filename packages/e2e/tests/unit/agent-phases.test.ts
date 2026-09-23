@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { instrumentPhase, retryingObserve } from '../../src/agent/phases.ts';
+import { checkStepClock, instrumentPhase, retryingObserve } from '../../src/agent/phases.ts';
 import type { Observation } from '../../src/engine/surface.ts';
+import { Deadline } from '../../src/internal/time.ts';
 import { StepRecorder } from '../../src/run/steps.ts';
 
 /**
@@ -81,5 +82,30 @@ describe('instrumentPhase', () => {
     const event = steps.all()[0]!.events.find((candidate) => candidate.kind === 'engine');
     expect(event?.status).toBe('failed');
     expect(event?.code).toBe('NOT_ACTIONABLE');
+  });
+});
+
+describe('checkStepClock', () => {
+  const check = (deadline: Deadline, cause: unknown) => () =>
+    checkStepClock({ signal: new AbortController().signal, deadline, api: 'agent.waitFor', timeoutMs: 3_000, cause });
+  const thrownBy = (fn: () => void): unknown => {
+    try {
+      fn();
+    } catch (error) {
+      return error;
+    }
+    return undefined;
+  };
+
+  it('reads an operation timeout within a poll tick of the deadline as the deadline, with the clock still short of it', () => {
+    const cause = foreignEngineError('OPERATION_TIMEOUT', false);
+    const error = thrownBy(check(new Deadline(50), cause));
+    expect(error).toMatchObject({ code: 'STEP_TIMEOUT', message: 'agent.waitFor exceeded its 3000 ms timeout' });
+    expect((error as Error).cause).toBe(cause);
+  });
+
+  it('leaves an operation timeout with time to spare, and any other failure, to the caller', () => {
+    expect(thrownBy(check(new Deadline(5_000), foreignEngineError('OPERATION_TIMEOUT', false)))).toBeUndefined();
+    expect(thrownBy(check(new Deadline(50), foreignEngineError('ENGINE_FAILURE', false)))).toBeUndefined();
   });
 });
