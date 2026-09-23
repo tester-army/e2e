@@ -31,6 +31,8 @@
   },
   "devDependencies": {
     "@e2edev/mobile": "workspace:*",
+    "@expo/fingerprint": "0.20.13",
+    "@expo/repack-app": "0.10.3",
     "@types/node": "26.6.2",
     "@types/react": "19.1.4",
     "ai": "7.0.107",

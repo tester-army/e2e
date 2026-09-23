@@ -37,14 +37,22 @@ export async function openScenario(
       return false;
     }, { timeout: 60_000 })
     .toBe(true);
-  // The tap gets one more try when the home header stays, which is what a
-  // tap the list swallowed leaves behind.
+  // A scenario is up once the home header is gone and its navigation bar,
+  // when it shows one, carries the route name as its identifier. The tap
+  // gets one more try when that is not so: the home header stays when the
+  // list swallowed the tap, and a tap that landed a row away opened a
+  // neighbour, which is popped first.
   const homeHeader = screen.getByTestId('Benchmark Examples');
+  const bars = device.locator('role=NavigationBar');
+  const title = device.locator(`role=NavigationBar id=${JSON.stringify(name)}`);
+  const opened = async (): Promise<boolean> =>
+    !(await homeHeader.isVisible()) && ((await bars.count()) === 0 || (await title.count()) === 1);
   await row.tap();
   try {
-    await homeHeader.waitFor({ state: 'hidden', timeout: 3_000 });
+    await expect.poll(opened, { timeout: 3_000 }).toBe(true);
   } catch {
+    if (!(await homeHeader.isVisible())) await device.back();
     await row.tap();
-    await homeHeader.waitFor({ state: 'hidden', timeout: 3_000 });
+    await expect.poll(opened, { timeout: 3_000 }).toBe(true);
   }
 }

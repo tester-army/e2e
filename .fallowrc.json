@@ -28,7 +28,9 @@
   "ignoreDependencies": [
     "e2e",
     "@e2edev/web",
-    "@openrouter/ai-sdk-provider"
+    "@openrouter/ai-sdk-provider",
+    "@expo/fingerprint",
+    "@expo/repack-app"
   ],
   "rules": {
     "unused-class-member": "warn",

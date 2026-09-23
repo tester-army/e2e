@@ -3,7 +3,7 @@ name: benchmark
 # The web benchmark is where the runner meets deliberately hard surfaces, so
 # its suites gate every pull request. Each suite posts one comment through
 # @e2edev/github (hence pull-requests: write) and edits it on rerun. The
-# mobile benchmark stays by hand: hosted macOS minutes are not in budget yet.
+# mobile benchmark has its own workflow, mobile.yml.
 #
 # A pull request from a fork runs with no secrets and a read-only token, as
 # GitHub grants on `pull_request`. The deterministic suite needs neither and
