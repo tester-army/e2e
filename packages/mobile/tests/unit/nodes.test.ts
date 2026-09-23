@@ -306,6 +306,10 @@ describe('snapshot projection', () => {
     const field = project([{ ref: 'e1', type: 'TextField', label: 'Kind', value: 'checkbox, unchecked' }]);
     expect(field.index[0]?.node).toMatchObject({ role: 'textbox', value: 'checkbox, unchecked' });
     expect(field.index[0]?.node.states?.checked).toBeUndefined();
+    // An empty field shows its placeholder, which XCTest reports as the value; the hint flag says it is empty.
+    const empty = project([{ ref: 'e1', type: 'TextField', label: 'Name field', value: 'Type your name', hintShowing: true }]);
+    expect(empty.index[0]?.node.role).toBe('textbox');
+    expect(empty.index[0]?.node.value).toBeUndefined();
     expect(android.index[0]?.node.states).toBeUndefined();
   });
 

@@ -20,6 +20,8 @@ export interface RawNode {
   readonly role?: string;
   readonly label?: string;
   readonly value?: string;
+  /** True while a text field shows its placeholder; the runner then reports the placeholder as the value. */
+  readonly hintShowing?: boolean;
   readonly identifier?: string;
   readonly rect?: Rect;
   readonly enabled?: boolean;
@@ -368,7 +370,9 @@ export function projectSnapshot(raw: readonly RawNode[], options: { readonly min
     const spelled = android || kind !== 'other' ? undefined : reactNativeValue(source.value);
     const role = editableRole(spelled?.role ?? roleOf(kind, android, parent?.kind), source.editable);
     const editable = source.editable === true || (role !== undefined && TEXT_INPUT_ROLES.has(role));
-    const value = spelled === undefined ? source.value : spelled.value;
+    // A field showing its hint is empty: XCTest reports the placeholder as the
+    // value of an empty text field, and the bridge flags that with hintShowing.
+    const value = source.hintShowing === true ? '' : spelled === undefined ? source.value : spelled.value;
     // iOS names a secure field by class; UIAutomator flags a password
     // `EditText` by attribute, the class being the plain one.
     const secure = SECURE_KINDS.has(kind) || source.password === true;
