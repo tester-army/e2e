@@ -72,10 +72,10 @@ descriptions and commit bodies; `git log` and `gh pr view` are the archive.
   self-contained hard-surface scenarios (shadow DOM, canvas, iframes, native
   dialogs, planted bugs) at `/e/<slug>`, copied from the tester-army web
   benchmark, plus the e2e suites written against them (`tests/` and
-  `tests-agent/` both gate PRs; the agentic one replays the committed
-  `.e2e/cache/` and spends model calls only on a step with no recording).
-  Scenario files are copies: keep diffs against
-  the source minimal so scenarios port both ways, and never fix a planted bug.
+  `tests-agent/` both gate PRs; the agentic one runs from its committed
+  recordings, see "Committed recordings" under Gotchas). Scenario files are
+  copies: keep diffs against the source minimal so scenarios port both ways,
+  and never fix a planted bug.
 - `packages/mobile-benchmark` (`@e2edev/mobile-benchmark`, private) — an Expo
   app of hard mobile surfaces (merged or hidden accessibility trees, native
   alerts over modals, keyboard-covered submits, virtualized lists, a WebView,
@@ -84,10 +84,9 @@ descriptions and commit bodies; `git log` and `gh pr view` are the archive.
   (`tests/` locators only, `tests-agent/` one `agent.act` per scenario).
   Both suites run in CI on an iOS simulator and an Android emulator
   (`.github/workflows/mobile.yml`; the Expo build is cached per native
-  fingerprint and its JS repacked on a hit); the agentic one replays the
-  committed `.e2e/cache/` and needs the model key only for a step with no
-  recording, so it runs for this repository's branches, not for a fork's
-  pull request. Scenario files are copies: keep
+  fingerprint and its JS repacked on a hit); the agentic one replays
+  committed recordings and calls the model for a step with none, see
+  "Committed recordings" under Gotchas. Scenario files are copies: keep
   diffs against the source minimal, and name no company a scenario was
   distilled from.
 - `docs/` (the Mintlify docs site; pages are the `.mdx` files under `docs/`,
@@ -222,6 +221,18 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
   locate cache are both gone, for example). Verify against `src/` before
   repeating or relying on any "not implemented yet" list — and fix the prose
   when you find it stale.
+- Committed recordings. The two benchmarks commit their agentic suites' trace
+  cache (`packages/web-benchmark/.e2e/cache/`,
+  `packages/mobile-benchmark/.e2e/cache/`; their `.gitignore`s leave it
+  tracked, the testbed's ignores its own, since fixture-app recordings are
+  worth nothing to anyone). CI replays the entries read-only and calls the
+  model for a step with no recording, so those suites gate a pull request at
+  deterministic speed and cost, for this repository's branches only: a fork's
+  pull request has no key. Re-record with the package's `test:agent` and
+  commit the changed entries in the same pull request as the scenario change.
+  The web benchmark's entries are in. The mobile benchmark's iOS entries are
+  recorded on a Mac; nobody has recorded on an Android emulator yet, so the
+  Android side spends model calls until an emulator recording is committed.
 - No implicit default model. One canonical model per slot: the one
   `createAgent({ model })` brought, else `agent.model`, serves `act`; the
   judgment calls (`assert`, `waitFor`, `extract`) use `judge` when one is
@@ -267,10 +278,14 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
     nothing here sandboxes them. Untrusted PR code belongs in an external
     sandbox with no secrets or write tokens.
 
-- CI (`.github/workflows/spec.yml`) runs lint, typecheck, the testbed, and the web benchmark on Node 26 and `pnpm test` on Node 22, 24, and 26; `mobile.yml` runs the mobile benchmark on an iOS simulator (Blacksmith macOS) and an Android emulator (KVM on x64 Linux). Every workflow pins actions by SHA; keep
-  new actions SHA-pinned. Every workflow runs on Blacksmith
-  (`runs-on: blacksmith-4vcpu-ubuntu-2404`), like the tester-army repos; keep
-  new jobs on that label.
+- CI: `.github/workflows/spec.yml` runs lint, typecheck, and the testbed on
+  Node 26 and `pnpm test` on Node 22, 24, and 26; `benchmark.yml` runs the
+  web benchmark's two suites; `mobile.yml` runs the mobile benchmark's on an
+  iOS simulator and an Android emulator (KVM on x64 Linux). Every workflow
+  pins actions by SHA; keep new actions SHA-pinned. Every job runs on
+  Blacksmith, like the tester-army repos. Linux jobs use
+  `blacksmith-4vcpu-ubuntu-2404` and macOS jobs `blacksmith-6vcpu-macos-26`;
+  keep new jobs on those labels.
 - Commits follow Conventional Commits; PRs are squash-merged with the number in
   the subject.
 - PR titles and bodies follow the `writing-pr` skill

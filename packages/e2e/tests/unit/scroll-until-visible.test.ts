@@ -176,6 +176,19 @@ describe('screen.scrollUntilVisible', () => {
     ]);
   });
 
+  it('on a locator, labels the step with the target, whose description carries the scope once', async () => {
+    const { screen, steps } = screenOver({ screens: [[], [TARGET]], resolve: feedScope });
+    const feed = screen.getByRole('list', { name: 'Feed' });
+    await feed.scrollUntilVisible(feed.getByText('Accept'));
+    expect(steps.all()).toEqual([
+      expect.objectContaining({
+        api: 'screen.scrollUntilVisible',
+        label: 'getByRole("list", name: "Feed") >> getByText("Accept")',
+        status: 'passed',
+      }),
+    ]);
+  });
+
   it('needs the swipe action only once it has to scroll: a visible target passes on an engine without one', async () => {
     const visible = screenOver({ screens: [[TARGET]], swipeable: false });
     await visible.screen.scrollUntilVisible(visible.screen.getByText('Accept'));

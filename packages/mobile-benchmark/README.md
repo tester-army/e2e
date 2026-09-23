@@ -42,10 +42,12 @@ from the directory it runs in.
 The deterministic suite runs in CI on every pull request (`.github/workflows/mobile.yml`):
 an iOS simulator on a macOS runner and an Android emulator on Linux, with the
 Expo build cached per native fingerprint and its JS bundle repacked on a hit.
-The agentic suite runs there too, for this repository's branches: it replays
-the recordings committed under `.e2e/cache/` and calls the model only for a
-step with no recording. Re-record locally (below) and commit the changed
-entries in the same pull request as the scenario change.
+The agentic suite runs there too, for this repository's branches. It replays
+the recordings committed under `.e2e/cache/` where they exist and calls the
+model for a step with none: the iOS entries are recorded on a Mac with
+`test:agent` (below) and committed in the same pull request as the scenario
+change; nobody has recorded on an Android emulator yet, so that side spends
+model calls until an emulator recording is committed.
 
 ## Running
 

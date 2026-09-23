@@ -12,12 +12,14 @@ import type {
   ActionOptions,
   LongPressOptions,
   Locator,
+  Momentum,
   Point,
   PressSequentiallyOptions,
   Role,
   RoleAlias,
   RoleOptions,
   Screen,
+  ScrollDirection,
   Secret,
   SelectOption,
   SwipeOptions,
@@ -25,7 +27,6 @@ import type {
   TapOptions,
   TextMatch,
   TextMatchOptions,
-  Momentum,
 } from '../types.ts';
 import type { StepRecorder } from '../run/steps.ts';
 import { isNodeVisible, type LocatorEngine } from './engine.ts';
@@ -174,7 +175,7 @@ class ScreenImpl implements Screen {
 
   async scrollUntilVisible(
     target: Locator,
-    options?: { direction?: 'up' | 'down' | 'left' | 'right'; momentum?: Momentum; timeout?: number },
+    options?: { direction?: ScrollDirection; momentum?: Momentum; timeout?: number },
   ): Promise<void> {
     const internals = locatorInternals(target);
     if (internals === undefined) {
@@ -183,15 +184,16 @@ class ScreenImpl implements Screen {
     rejectUnknownOptions('scrollUntilVisible', options, ['direction', 'momentum', 'timeout']);
     const direction = options?.direction ?? 'down';
     const momentum = options?.momentum ?? 'slow';
+    const { engine } = this.context;
     // On `screen` the viewport scrolls; on a locator the node itself does, so
     // a scroll container pages without the pointer having to hover it first.
     const scope = this.scope;
-    const label =
+    const swipeStep =
       scope === undefined
-        ? describeExpression(internals.expression)
-        : `${describeExpression(internals.expression)} within ${describeExpression(scope)}`;
+        ? () => engine.session.swipe(direction, momentum, engine.operation())
+        : () => engine.perform(scope, { kind: 'swipe', direction, momentum });
+    const label = describeExpression(internals.expression);
     await this.context.steps.run('screen', 'screen.scrollUntilVisible', label, async () => {
-      const { engine } = this.context;
       const deadline = engine.deadline(options?.timeout ?? 30_000);
       for (;;) {
         const { node } = await engine.tryRead(internals.expression, deadline);
@@ -202,8 +204,7 @@ class ScreenImpl implements Screen {
             `target did not become visible while scrolling: ${label}`,
           );
         }
-        if (scope === undefined) await engine.session.swipe(direction, momentum, engine.operation());
-        else await engine.perform(scope, { kind: 'swipe', direction, momentum });
+        await swipeStep();
         await sleep(POLL_INTERVAL_MS, engine.signal);
       }
     });
