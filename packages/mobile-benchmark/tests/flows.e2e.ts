@@ -9,11 +9,24 @@ import { expect, openScenario, test } from './fixtures.ts';
 
 test('text inputs unlock the submit button', async ({ device, screen }) => {
   await openScenario({ device, screen }, 'Text Input Variations');
+  const submit = screen.getByTestId('submit-button');
+  await expect(submit).toBeDisabled();
   await screen.getByTestId('username-input').fill('tester');
   await screen.getByTestId('pin-input').fill('1234');
   await screen.getByTestId('notes-input').fill('Notes long enough to count');
-  await screen.getByTestId('submit-button').tap();
+  await expect(submit).toBeEnabled();
+  await submit.tap();
   await expect(screen.getByTestId('success-message')).toHaveText('Form submitted');
+});
+
+// An iOS text field without an accessibility label reports its text as both
+// label and value; the value is kept, since it is what a test reads.
+test('filled text inputs report their values', async ({ device, screen }) => {
+  await openScenario({ device, screen }, 'Text Input Variations');
+  await screen.getByTestId('username-input').fill('tester');
+  await expect(screen.getByTestId('username-input')).toHaveValue('tester');
+  await screen.getByTestId('notes-input').fill('Notes long enough to count');
+  await expect(screen.getByTestId('notes-input')).toHaveValue('Notes long enough to count');
 });
 
 // The alert is the platform's own; it sits in the app's tree on both
@@ -26,11 +39,18 @@ test('modal flow confirms through the native alert', async ({ device, screen }) 
   await expect(screen.getByTestId('success-message')).toHaveText('Flow completed');
 });
 
-// Tab bar buttons carry the tab name plus position hints in their label.
+// Tab bar buttons carry the tab name plus position hints in their label,
+// and the active one the selected state.
 test('bottom tabs act inside the last tab', async ({ device, screen }) => {
   await openScenario({ device, screen }, 'Bottom Tabs');
   await expect(screen.getByTestId('home-tab-content')).toBeVisible();
-  await screen.getByRole('button', { name: /Actions/ }).tap();
+  const home = screen.getByRole('button', { name: /Home/ });
+  const actions = screen.getByRole('button', { name: /Actions/ });
+  await expect(home).toBeSelected();
+  await expect(actions).not.toBeSelected();
+  await actions.tap();
+  await expect(actions).toBeSelected();
+  await expect(home).not.toBeSelected();
   await screen.getByTestId('complete-action-button').tap();
   await expect(screen.getByTestId('success-message')).toHaveText('Action completed');
 });
@@ -46,10 +66,15 @@ test('error recovery retries, then confirms the delete', async ({ device, screen
 
 test('choice controls place the exact order', async ({ device, screen }) => {
   await openScenario({ device, screen }, 'Choice Controls');
+  await expect(screen.getByTestId('place-order')).toBeDisabled();
   await screen.getByTestId('size-medium').tap();
+  await expect(screen.getByTestId('size-medium')).toBeSelected();
+  await expect(screen.getByTestId('size-small')).not.toBeSelected();
   await screen.getByTestId('topping-cheese').tap();
   await screen.getByTestId('topping-olives').tap();
   await screen.getByTestId('rush-delivery').check();
+  await expect(screen.getByTestId('rush-delivery')).toBeChecked();
+  await expect(screen.getByTestId('place-order')).toBeEnabled();
   await screen.getByTestId('place-order').tap();
   await expect(screen.getByTestId('success-message')).toHaveText(
     'Order placed: Medium with Cheese, Olives (rush)',
@@ -84,19 +109,29 @@ test('product catalog adds exactly two of the right variant', async ({ device, s
   await expect(screen.getByTestId('success-message')).toHaveText('Order ready: 2 × Trail Mix 500 g');
 });
 
-// Long press and swipe reach step 3; neither `doubleTap()` nor two taps in a
-// row land inside the scenario's 300 ms double-tap window on iOS.
-test(
-  'gestures: long-press, swipe left, double-tap',
-  { skip: 'doubleTap does not register as a double tap in the 300 ms window on iOS' },
-  async ({ device, screen }) => {
+test('gestures: long-press, then swipe left', async ({ device, screen }) => {
   await openScenario({ device, screen }, 'Gestures');
   await screen.getByTestId('long-press-target').longPress({ duration: 1200 });
+  await expect(screen.getByText('Step 2 of 3')).toBeVisible();
   // `direction` is the scroll direction: content to the right comes into
   // view when the finger moves left.
   await screen.getByTestId('swipe-target').swipe({ direction: 'right', momentum: 'fast' });
-  await screen.getByTestId('double-tap-target').doubleTap();
-  await expect(screen.getByTestId('success-message')).toHaveText('All gestures completed');
+  await expect(screen.getByText('Step 3 of 3')).toBeVisible();
+});
+
+// `doubleTap()` is two presses 284 to 285 ms apart on iOS (controls.e2e.ts
+// counts the taps that arrive), against the scenario's 300 ms window.
+test(
+  'gestures: double-tap completes the flow',
+  {
+    skip: "agent-device 0.21.6's iOS runner lands the two presses of doubleTap() 284 to 285 ms apart and its double-tap gesture reaches a Pressable as one press; the scenario's 300 ms window has no margin, so the pair reads as two single taps on a loaded machine",
+  },
+  async ({ device, screen }) => {
+    await openScenario({ device, screen }, 'Gestures');
+    await screen.getByTestId('long-press-target').longPress({ duration: 1200 });
+    await screen.getByTestId('swipe-target').swipe({ direction: 'right', momentum: 'fast' });
+    await screen.getByTestId('double-tap-target').doubleTap();
+    await expect(screen.getByTestId('success-message')).toHaveText('All gestures completed');
   },
 );
 
@@ -128,9 +163,15 @@ test('async states: load, pull to refresh, claim through the toast', async ({ de
 });
 
 // Row 512 is about 40 screens down and scrollUntilVisible pages one screen
-// per swipe, so the test needs more than the default budget.
+// per swipe, so the test needs more than the default budget. Only the rows on
+// screen enter the tree, so the count is a screenful, never the 600 loaded.
 test('huge virtualized list reaches row 512', { timeout: 300_000 }, async ({ device, screen }) => {
   await openScenario({ device, screen }, 'Huge Virtualized List');
+  const rows = screen.getByTestId('huge-list').getByText(/^Row \d{4}$/);
+  await expect(rows.first()).toHaveText('Row 0001');
+  const onScreen = await rows.count();
+  expect(onScreen).toBeGreaterThan(0);
+  expect(onScreen).toBeLessThan(600);
   const target = screen.getByTestId('row-512');
   await screen.scrollUntilVisible(target, { direction: 'down', timeout: 240_000 });
   await target.tap();

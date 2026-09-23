@@ -6,6 +6,7 @@ import AsyncStates from "./Examples/AsyncStates";
 import BottomTabs from "./Examples/BottomTabs";
 import BrokenAccessibility from "./Examples/BrokenAccessibility";
 import ChoiceControls from "./Examples/ChoiceControls";
+import ControlInventory from "./Examples/ControlInventory";
 import DebouncedSearch from "./Examples/DebouncedSearch";
 import ErrorRecovery from "./Examples/ErrorRecovery";
 import FlattenedForm from "./Examples/FlattenedForm";
@@ -179,5 +180,11 @@ export const examples: Example[] = [
     description:
       "PassKit requires a billing address before authorizing — fill the in-sheet address form from vision, then pay.",
     platform: "ios",
+  },
+  {
+    component: ControlInventory,
+    name: "Control Inventory",
+    description:
+      "The deterministic contract surface: plain controls with every state exposed, one exercise per runner verb. Not a hard surface.",
   },
 ];

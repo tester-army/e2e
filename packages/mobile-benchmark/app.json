@@ -4,11 +4,12 @@
     "slug": "e2e-benchmark",
     "scheme": "e2e-benchmark",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
+      "userInterfaceStyle": "automatic",
       "bundleIdentifier": "dev.e2e.benchmark",
       "entitlements": {
         "com.apple.developer.in-app-payments": ["merchant.dev.e2e.benchmark"]

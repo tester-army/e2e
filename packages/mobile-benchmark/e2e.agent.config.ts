@@ -6,7 +6,9 @@ import base, { android, ios } from './e2e.config.ts';
 
 /**
  * Agentic suite against the same app and account as the deterministic one.
- * Each step spends real model calls and real device time, so it runs by hand:
+ * It runs in CI for this repository's branches (`mobile.yml`), replaying the
+ * recordings committed under `.e2e/cache/` and calling the model for a step
+ * with none. To record by hand, on a booted simulator or emulator:
  *
  *   AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/mobile-benchmark test:agent
  *

@@ -1,0 +1,181 @@
+name: mobile
+
+# The mobile benchmark on an iOS simulator and an Android emulator, on every
+# pull request: the second real engine the runner ships, gated the way the web
+# engine is by the testbed and the web benchmark.
+#
+# The Expo app is the expensive part (about twenty minutes of native build on
+# iOS). .github/actions/expo-app builds it once per native fingerprint and
+# otherwise refreshes the cached build's JS bundle, so only a native change
+# rebuilds.
+#
+# Each job runs packages/mobile-benchmark/scripts/ci-run.sh on the booted
+# device: the deterministic suite, then the agentic one for this repository's
+# branches. The agentic suite replays the recordings committed under
+# .e2e/cache, read-only in CI, and calls the model for a step with none. The
+# iOS entries are recorded on a Mac and committed with the scenario change;
+# nobody has recorded on an Android emulator yet, so that side spends model
+# calls until an emulator recording is committed.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  # The repository's own runs are not usage: the CLI sends no telemetry from CI here.
+  E2E_TELEMETRY_DISABLED: '1'
+  # A pull request from a fork runs with no secrets and a read-only token, as
+  # GitHub grants on `pull_request`: the agentic suite is skipped there and
+  # shared caches are restore-only. Never switch this workflow to
+  # `pull_request_target` to get the key onto fork branches: that hands the
+  # secret to untrusted code.
+  SAME_REPO: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ios:
+    runs-on: blacksmith-6vcpu-macos-26
+    timeout-minutes: 75
+    defaults:
+      run:
+        working-directory: packages/mobile-benchmark
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 26
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        working-directory: .
+      - name: Build
+        run: pnpm run build
+        working-directory: .
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          xcrun simctl list runtimes available
+      # `--device generic` builds for the simulator without booting one;
+      # Release embeds the bundle, so no Metro is needed at run time.
+      - name: Expo app
+        id: app
+        uses: ./.github/actions/expo-app
+        with:
+          platform: ios
+          app-glob: '*.app'
+          build-command: pnpm exec expo run:ios --configuration Release --device generic --no-bundler --output .build/ios
+      # agent-device compiles its XCUITest runner on first use; keep it between runs.
+      - name: Restore the agent-device runner
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.agent-device
+          key: agent-device-${{ runner.os }}-${{ hashFiles('packages/mobile/package.json') }}
+      # `bootstatus -b` boots the device when it is not up yet and waits for it.
+      # The UDID pins the iOS target to this simulator (e2e.config.ts).
+      - name: Boot a simulator
+        run: |
+          set -euo pipefail
+          UDID="$(xcrun simctl list devices available -j | node -e '
+            const payload = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
+            const devices = Object.entries(payload.devices)
+              .filter(([runtime]) => runtime.includes("SimRuntime.iOS-"))
+              .flatMap(([, list]) => list);
+            const pick = devices.find((d) => d.name === "iPhone 17 Pro") ?? devices.find((d) => d.name.startsWith("iPhone"));
+            if (!pick) process.exit(1);
+            process.stdout.write(pick.udid);
+          ')"
+          xcrun simctl bootstatus "$UDID" -b
+          echo "E2E_MOBILE_BENCHMARK_IOS_DEVICE=$UDID" >> "$GITHUB_ENV"
+      - name: Run the suites
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+          E2E_MOBILE_BENCHMARK_IOS_APP: ${{ steps.app.outputs.app-path }}
+        run: scripts/ci-run.sh ios-simulator
+      - name: Upload report
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mobile-benchmark-ios
+          path: |
+            packages/mobile-benchmark/.e2e/report.json
+            packages/mobile-benchmark/.e2e/artifacts
+            packages/mobile-benchmark/.e2e/agent/report.json
+            packages/mobile-benchmark/.e2e/agent/artifacts
+          if-no-files-found: warn
+          retention-days: 7
+
+  android:
+    # x64 Blacksmith runners expose KVM, which the emulator needs.
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 26
+          cache: pnpm
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Enable KVM for the emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm run build
+      # The Release APK is signed with the debug keystore the template uses;
+      # repack-app ships the same keystore and signs the refreshed APK with it.
+      - name: Expo app
+        id: app
+        uses: ./.github/actions/expo-app
+        with:
+          platform: android
+          app-glob: benchmark.apk
+          gradle-cache-read-only: ${{ env.SAME_REPO != 'true' }}
+          build-command: |
+            pnpm exec expo prebuild --platform android --no-install
+            printf '\n%s\n' 'org.gradle.jvmargs=-Xmx4g' >> android/gradle.properties
+            (cd android && ./gradlew :app:assembleRelease)
+            mkdir -p .build/android
+            cp android/app/build/outputs/apk/release/app-release.apk .build/android/benchmark.apk
+      # The runner starts each `script` line in its own shell, so the suites
+      # run through the one script both jobs share.
+      - name: Run the suites
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 36
+          arch: x86_64
+          target: google_apis
+          profile: pixel_7
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
+          disable-animations: true
+          working-directory: packages/mobile-benchmark
+          script: scripts/ci-run.sh android-emulator
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+          E2E_MOBILE_BENCHMARK_ANDROID_APP: ${{ steps.app.outputs.app-path }}
+      - name: Upload report
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mobile-benchmark-android
+          path: |
+            packages/mobile-benchmark/.e2e/report.json
+            packages/mobile-benchmark/.e2e/artifacts
+            packages/mobile-benchmark/.e2e/agent/report.json
+            packages/mobile-benchmark/.e2e/agent/artifacts
+          if-no-files-found: warn
+          retention-days: 7
