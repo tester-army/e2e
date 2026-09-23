@@ -41,7 +41,7 @@
     "fallow": "3.27.0",
     "oxlint": "1.83.0",
     "typescript": "7.0.2",
-    "zod": "4.6.1"
+    "zod": "4.6.5"
   },
   "packageManager": "pnpm@12.3.4"
 }
