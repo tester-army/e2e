@@ -45,7 +45,9 @@ test.describe('control inventory', () => {
     await expect(screen.getByTestId('name-echo')).toHaveText('name: Grace Hopper');
 
     await name.clear();
-    await expect(name).toHaveValue('');
+    // XCTest reports an empty field's placeholder as its value and flags
+    // nothing, so on a host without the simulator's accessibility bridge the
+    // echo is what says the field is empty.
     await expect(screen.getByTestId('name-echo')).toHaveText('name:');
     await name.press('Enter');
   });

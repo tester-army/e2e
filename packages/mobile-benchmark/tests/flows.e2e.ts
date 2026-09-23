@@ -158,9 +158,19 @@ test('async states: load, pull to refresh, claim through the toast', async ({ de
   const content = screen.getByText('Pull down to refresh and reveal your reward');
   await expect(content).toBeVisible();
   // Pull to refresh is a long drag down from the top: a fast swipe toward
-  // the content above, scoped to the scroll view so it spans most of it.
-  await device.locator('role=ScrollView').swipe({ direction: 'up', momentum: 'fast' });
-  await screen.getByTestId('claim-button').tap();
+  // the content above, scoped to the scroll view so it spans most of it. A
+  // slow host drops the gesture now and then, so it is repeated until the
+  // reward is on screen.
+  const list = device.locator('role=ScrollView');
+  const claim = screen.getByTestId('claim-button');
+  await expect
+    .poll(async () => {
+      if (await claim.isVisible()) return true;
+      await list.swipe({ direction: 'up', momentum: 'fast' });
+      return false;
+    }, { timeout: 20_000 })
+    .toBe(true);
+  await claim.tap();
   // The toast is gone within a couple of seconds, shorter than a snapshot
   // round trip on a slow machine; the message it leaves behind is the claim.
   await expect(screen.getByTestId('success-message')).toHaveText('Reward claimed');

@@ -16,8 +16,8 @@ test.describe('permission prompt', () => {
   // On the CI Mac (blacksmith-6vcpu-macos-26) the microphone alert makes the
   // iOS runner's main thread overrun its watchdog on `device.alert`, on every
   // run so far, and a wedged runner fails whatever follows; a Mac at a desk
-  // passes. In CI the test runs on Android only until agent-device's runner
-  // takes a system alert on that host.
+  // passes. In CI both alert tests run on Android only until agent-device's
+  // runner takes a system alert on that host.
   test('allowing the system dialog enables the microphone', ALERT_PLATFORMS, async ({ device, screen }) => {
     await screen.getByTestId('request-permission').tap();
     await device.alert('accept');
@@ -26,7 +26,7 @@ test.describe('permission prompt', () => {
 
   // Changing a permission terminates the app on iOS, so the grant made "in
   // settings" is picked up by a fresh visit rather than by Check again.
-  test('a denied prompt recovers once the permission is granted outside', async ({ device, screen }) => {
+  test('a denied prompt recovers once the permission is granted outside', ALERT_PLATFORMS, async ({ device, screen }) => {
     await screen.getByTestId('request-permission').tap();
     await device.alert('dismiss');
     await expect(screen.getByTestId('denied-banner')).toBeVisible();
