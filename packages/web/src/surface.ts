@@ -39,7 +39,7 @@ import { matchesText } from 'e2e/engine';
 import { classifyActionError, dispatchLocatorAction, dispatchPointerAction } from './actions.ts';
 import { BrowserConnection, connectCdp, type BrowserName } from './browser-connection.ts';
 import { AttemptSession, type StorageState } from './attempt-session.ts';
-import type { CdpEndpointResolver } from './cdp-recovery.ts';
+import type { CdpEndpointResolver, StackedPage } from './cdp-recovery.ts';
 import { LeasedBrowsers, type BrowserProvider } from './provider.ts';
 import { DialogRouter } from './dialogs.ts';
 import { ensureBrowsersInstalled } from './install.ts';
@@ -466,6 +466,21 @@ export class PlaywrightSurface {
   /** Creates the active page through the attempt's sole binding owner. */
   ensurePage(): Promise<Page> {
     return this.requireSession().ensurePage();
+  }
+
+  /** Makes a page the app opened the attempt's active page; see `AttemptSession.enterPopup`. */
+  enterPopup(popup: Page): Promise<StackedPage> {
+    return this.requireSession().enterPopup(popup);
+  }
+
+  /** Closes a popup entered through `enterPopup`; the page below it is the active page again. */
+  closePopup(popup: StackedPage): Promise<void> {
+    return this.requireSession().closePopup(popup);
+  }
+
+  /** The URL an entered popup shows now, or the last one it showed once it is gone. */
+  popupUrl(popup: StackedPage): string {
+    return (this.session?.pageOf(popup) ?? popup.page).url();
   }
 
   /**

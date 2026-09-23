@@ -80,7 +80,7 @@ use `agent.act` to perform sign-in from a goal.
 | `Actions.keyDown(CONTROL).sendKeys('a')` | `.press('ControlOrMeta+a')` |
 | `switchTo().frame()` | `web.frameLocator('#frame')` |
 | `switchTo().alert().accept()` | `web.onDialog('accept')` before the action |
-| `switchTo().window()` | No equivalent. Popups are unsupported |
+| `switchTo().window()` | `web.waitForPopup(() => trigger)` around the action that opens it; `popup.close()` switches back |
 | `executeScript` | `web.evaluate` |
 | `manage().addCookie` | `web.setCookies` |
 | `getScreenshotAs` | `app.screenshot('label')`, redacted |

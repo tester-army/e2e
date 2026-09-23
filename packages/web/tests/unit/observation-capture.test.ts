@@ -57,6 +57,7 @@ async function setup(stalled?: ReadStage) {
   const count = vi.fn(async () => 0);
   const page = {
     isClosed: vi.fn(() => false),
+    once: () => undefined,
     waitForLoadState: async () => undefined,
     viewportSize: () => ({ width: 100, height: 80 }),
     url: () => 'https://app.test',

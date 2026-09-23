@@ -75,6 +75,7 @@ const CLOSED_SHADOW = `<!doctype html>
 </body>
 </html>`;
 
+
 /**
  * A form that generates no box of its own, the way Shopify's one-page checkout
  * form is styled: `getClientRects()` is empty for it while every field paints.
@@ -226,8 +227,69 @@ const POINTER = `<!doctype html>
 </body>
 </html>`;
 
+/**
+ * A page that opens a second one three ways: `window.open` from a button, a
+ * link with `target="_blank"`, and a button that opens a blank window and
+ * writes into it, the way a verification-code flow does. The field and the
+ * counter are opener state a popup round trip must leave intact.
+ */
+const OPENER = `<!doctype html>
+<html>
+<head><title>Fixture Opener</title></head>
+<body>
+<h1>Opener</h1>
+<button id="open" onclick="window.open('/popup', '_blank'); document.getElementById('count').textContent = String(Number(document.getElementById('count').textContent) + 1)">Open window</button>
+<a id="link" href="/popup" target="_blank">Open link</a>
+<button id="write" onclick="const w = window.open('', '_blank'); w.document.write('<title>Written</title><h1>Written popup</h1><p id=code>TAB-88421</p>'); w.document.close();">Open written</button>
+<button id="nothing" onclick="document.getElementById('count').textContent = 'no window'">Open nothing</button>
+<button id="open-redirecting" onclick="window.open('/redirecting', '_blank')">Open redirecting</button>
+<label>Draft <input id="draft" value="kept"></label>
+<output id="count" aria-label="Opened">0</output>
+</body>
+</html>`;
+
+/** What the opener opens: its own title and heading, a confirm of its own, and a button that closes it from inside. */
+const POPUP = `<!doctype html>
+<html>
+<head><title>Fixture Popup</title></head>
+<body>
+<h1>Popup</h1>
+<button id="ask" onclick="document.getElementById('popup-answer').textContent = confirm('in the popup?') ? 'yes' : 'no'">Ask</button>
+<button id="self-close" onclick="window.close()">Close me</button>
+<output id="popup-answer" aria-label="Popup answer"></output>
+</body>
+</html>`;
+
+/** A popup that loads, then sends itself on to `/popup`, as an OAuth callback does. */
+const REDIRECTING = `<!doctype html>
+<html>
+<head><title>Fixture Redirecting</title></head>
+<body>
+<h1>Redirecting</h1>
+<script>setTimeout(() => location.replace('/popup'), 50);</script>
+</body>
+</html>`;
+
+
+/** One button per dialog kind; each writes what the dialog returned. */
+const DIALOGS = `<!doctype html>
+<html>
+<head><title>Fixture Dialogs</title></head>
+<body>
+<h1>Dialogs</h1>
+<button id="alert" onclick="alert('heads up'); document.getElementById('answer').textContent = 'alerted'">Alert</button>
+<button id="confirm" onclick="document.getElementById('answer').textContent = confirm('proceed?') ? 'confirmed' : 'declined'">Confirm</button>
+<button id="prompt" onclick="document.getElementById('answer').textContent = prompt('name?') ?? 'no name'">Prompt</button>
+<output id="answer" aria-label="Answer"></output>
+</body>
+</html>`;
+
 const PAGES: Readonly<Record<string, string>> = {
   '/': HOME,
+  '/opener': OPENER,
+  '/popup': POPUP,
+  '/redirecting': REDIRECTING,
+  '/dialogs': DIALOGS,
   '/pointer': POINTER,
   '/closed-shadow': CLOSED_SHADOW,
   '/contents': CONTENTS,

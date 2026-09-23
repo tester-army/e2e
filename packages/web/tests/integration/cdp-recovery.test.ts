@@ -192,6 +192,58 @@ describe('CDP session recovery', () => {
     }
   }, 60_000);
 
+  it('recovers the popup web.waitForPopup made active, not the tab that opened it', async () => {
+    const remote = await host();
+    const engine = await start({ cdpEndpoint: () => remote.endpoint, reconnectEndpoint: () => remote.endpoint });
+    try {
+      await engine.session!.open!(`${app.url}/opener`, operation());
+      const live = surfaceOf(engine)!;
+      const opener = live.page();
+      const web = webOf(engine);
+      const popup = await web.waitForPopup(() => opener.click('#open'));
+      expect(popup.url).toBe(`${app.url}/popup`);
+      const before = live.page();
+      expect(before).not.toBe(opener);
+      await before.context().browser()!.close();
+
+      expect((await engine.locate!(heading, operation()))[0]?.name).toBe('Popup');
+      const recovered = live.page();
+      expect(recovered).not.toBe(before);
+      expect(recovered.url()).toBe(`${app.url}/popup`);
+      expect(await web.title()).toBe('Fixture Popup');
+    } finally {
+      await engine.dispose!(cleanup());
+      await closeRemoteChrome(remote);
+    }
+  }, 60_000);
+
+  it('recovers the return path with the popup: close() after the reconnect lands on the recovered opener', async () => {
+    const remote = await host();
+    const engine = await start({ cdpEndpoint: () => remote.endpoint, reconnectEndpoint: () => remote.endpoint });
+    try {
+      await engine.session!.open!(`${app.url}/opener`, operation());
+      const live = surfaceOf(engine)!;
+      const opener = live.page();
+      await opener.fill('#draft', 'edited');
+      const web = webOf(engine);
+      const popup = await web.waitForPopup(() => opener.click('#open'));
+      await live.page().context().browser()!.close();
+
+      expect((await engine.locate!(heading, operation()))[0]?.name).toBe('Popup');
+      expect(popup.url).toBe(`${app.url}/popup`);
+      await popup.close();
+      const recovered = live.page();
+      expect(recovered).not.toBe(opener);
+      expect(recovered.url()).toBe(`${app.url}/opener`);
+      expect(await web.title()).toBe('Fixture Opener');
+      expect(await recovered.inputValue('#draft')).toBe('edited');
+      expect((await engine.locate!(heading, operation()))[0]?.name).toBe('Opener');
+    } finally {
+      await engine.dispose!(cleanup());
+      await closeRemoteChrome(remote);
+    }
+  }, 60_000);
+
   it('rejects a missing active target even when another tab has the same URL', async () => {
     const remote = await host();
     const engine = await start({ cdpEndpoint: () => remote.endpoint, reconnectEndpoint: () => remote.endpoint });

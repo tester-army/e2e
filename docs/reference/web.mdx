@@ -129,6 +129,10 @@ Recovery preserves the page's unsaved state, storage, the attempt's secret
 taint, and the agent ledger. Operations already dispatched
 are never retried. Dialog and route handlers are reattached. Video and trace
 recording resume, but a segment lost during the disconnect cannot be recovered.
+A popup `web.waitForPopup` made active is found again by its target, and so
+is every page under it, so `close()` on the popup after the reconnect returns
+to the recovered opener. A page of that stack that closed while disconnected
+leaves it; when none is left, recovery fails as above.
 Code using `surfaceOf(engine)` must read its accessors again after recovery;
 previously retained Playwright objects belong to the disconnected transport.
 
@@ -200,6 +204,11 @@ export interface Web extends Expectable<WebExpectation> {
     trigger: () => Promise<void>,
     options?: { timeout?: number },
   ): Promise<{ path: string; suggestedFilename: string }>;
+  /** Runs a trigger, waits for the page it opens to load, and makes that page the active one. */
+  waitForPopup(
+    trigger: () => Promise<void>,
+    options?: { timeout?: number },
+  ): Promise<WebPopup>;
   /** Viewport-level keyboard, for whatever has focus. */
   readonly keyboard: {
     /** Sends one key. */
@@ -228,7 +237,7 @@ export interface Web extends Expectable<WebExpectation> {
 | Member | Default timeout |
 | --- | --- |
 | `goto`, `reload`, `back`, `forward` | `config.timeout`, 120000 ms, the same budget `app.open()` uses; `{ timeout }` overrides, capped by the test deadline |
-| `waitForResponse`, `waitForDownload` | `config.actionTimeout`, 30000 ms; `{ timeout }` overrides, capped by the test deadline |
+| `waitForResponse`, `waitForDownload`, `waitForPopup` | `config.actionTimeout`, 30000 ms; `{ timeout }` overrides, capped by the test deadline |
 | `waitForURL` | `config.assertionTimeout`, 5000 ms |
 | `url`, `title`, `evaluate`, `route`, `unroute`, `cookies`, `setCookies`, `setViewport`, `onDialog`, `keyboard.*`, `mouse.*` | `config.actionTimeout`, 30000 ms, not overridable |
 
@@ -300,8 +309,8 @@ const flag = await web.evaluate(
 
 A route survives `app.restart()`, `app.clearState()`, and session restore.
 The handler must decide exactly once with `fulfill`, `continue`, or `abort`;
-deciding twice or not at all is `ACTION_FAILED`, as is a `waitForResponse`
-that nothing matches inside the deadline.
+deciding twice or not at all is `ACTION_FAILED`; a `waitForResponse` that
+nothing matches inside the deadline is `OPERATION_TIMEOUT`.
 
 ```ts
 await web.route('**/api/quote', async (route) => {
@@ -392,12 +401,20 @@ await web.setCookies([{ url: 'http://localhost:3000', name: 'tz', value: 'UTC' }
 
 A function handler must call `accept` or `dismiss`; one that does neither
 has the dialog dismissed and fails the next step with `APP_NOT_OPEN`, as an
-unhandled dialog does. `waitForDownload` registers the file as a `download`
-artifact and throws `ACTION_FAILED` when it does not complete in time.
+unhandled dialog does. `type` says which kind of dialog the handler holds,
+so it can route on the kind instead of the message text. Handlers are
+attempt-wide: a dialog a popup opens reaches the same handler.
+`waitForDownload` registers the file as a `download`
+artifact and throws `OPERATION_TIMEOUT` when it does not complete in time. It
+resolves with `path` (the artifact path the report shows), `absolutePath`
+(the file on disk, what `setInputFiles` takes to upload it back), and
+`suggestedFilename`.
 
 ```ts
 /** A native dialog as a test's handler sees it. */
 export interface Dialog {
+  /** Which `window` call opened it, or `beforeunload` for the leave-page prompt. */
+  readonly type: 'alert' | 'confirm' | 'prompt' | 'beforeunload';
   /** The dialog's text. */
   readonly message: string;
   /** Accepts the dialog once. */
@@ -408,14 +425,67 @@ export interface Dialog {
 ```
 
 ```ts
-const off = await web.onDialog('accept');
+const off = await web.onDialog((dialog) =>
+  dialog.type === 'prompt' ? dialog.accept('Ada') : dialog.accept(),
+);
 await screen.getByRole('button', { name: 'Delete' }).tap();
 await off();
 
 const file = await web.waitForDownload(() =>
   screen.getByRole('link', { name: 'Export CSV' }).tap(),
 );
+await screen.getByLabel('Import').setInputFiles(file.absolutePath);
 ```
+
+### Popups
+
+`waitForPopup` runs the trigger, waits for the next page the browser context
+opens (a `window.open`, a link with `target="_blank"`), waits for it to load,
+and makes it the attempt's active page. From then on `screen` queries and
+actions, `web.url()`, `web.title()`, `expect(web).toHaveURL` and
+`toHaveTitle`, agent observation, screenshots, the video recording, and
+dialog handlers follow the popup. `close()` closes it and makes the opener the
+active page again, with the opener's document and state as they were. A popup
+the app closes itself (`window.close()` after an OAuth redirect, say) returns
+to the opener on its own; `close()` is then a no-op. A trigger that opens no
+page is `OPERATION_TIMEOUT` when the wait runs out, and a page that opens while
+no wait is pending is left alone: the opener stays active and the page is
+closed with the attempt. Routes are context-wide and cover the popup without
+re-registration. A popup the app closes while the video records may lose its
+segment, which Playwright cannot flush for a page that is gone; the opener's
+recording resumes and `stopVideo` still collects.
+
+```ts
+/**
+ * A page the app opened in a second tab or window, made the attempt's active
+ * page by `web.waitForPopup`: `screen`, `web`, `expect(web)`, observation,
+ * and screenshots follow it until it closes.
+ */
+export interface WebPopup {
+  /** The popup's URL as it is now: it follows a redirect inside the popup and a CDP reconnect. */
+  readonly url: string;
+  /** Closes the popup; the page that opened it is the active page again. */
+  close(): Promise<void>;
+}
+```
+
+```ts
+const popup = await web.waitForPopup(() =>
+  screen.getByRole('button', { name: 'Open verification tab' }).tap(),
+);
+await expect(web).toHaveTitle('Verification');
+const code = await screen.getByText(/^TAB-\d+$/).textContent();
+await popup.close();
+await screen.getByPlaceholder('Verification code').fill(code!);
+```
+
+The popup's URL is the app's choice, like any click's destination, so it is
+not checked against the navigation rule; `app.open` and `web.goto` inside the
+popup are. The pages form a stack: a popup opened from a popup returns to
+that popup, then to the opener, and closing a popup under the active one
+takes it off that path while the active page stays. The agent has no verb of
+its own for switching tabs: an `act` step sees whichever page is active when
+it runs, so switch with `waitForPopup` and `close()` around it.
 
 ### keyboard and mouse
 
@@ -460,9 +530,9 @@ cannot reuse node IDs or publish handles over a newer observation.
 `WebOptions`, `WebConnectOptions`, `WebBasicAuth`, `BrowserName`,
 `BrowserProvider`, `BrowserProviderScope`, `BrowserRequest`, `BrowserLease`,
 `BrowserReleaseContext`, `PlaywrightLiveSurface`, `Web`, `FrameScreen`,
-`WebExpectation`, `WebRoute`, `WebResponse`, `Cookie`, `Dialog`, and
-`DialogHandler` are exported from the package for typing config helpers and
-fixtures.
+`WebExpectation`, `WebRoute`, `WebResponse`, `WebPopup`, `Cookie`, `Dialog`,
+and `DialogHandler` are exported from the package for typing config helpers
+and fixtures.
 
 ## expect(web)
 

@@ -26,6 +26,7 @@ async function setup() {
   const screenshot = vi.fn(async (_options: unknown) => Buffer.from([1, 2, 3]));
   const page = {
     isClosed: () => false,
+    once: () => undefined,
     waitForLoadState: async () => undefined,
     viewportSize: () => ({ width: 100, height: 80 }),
     url: () => 'https://app.test/current',
