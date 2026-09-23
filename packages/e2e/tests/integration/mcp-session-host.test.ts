@@ -26,7 +26,7 @@ describe('SessionHost', { timeout: 60_000 }, () => {
 
   const host = (fake: FakeEngineHandle, options: { headed?: boolean; idleMs?: number; ttlMs?: number } = {}) => {
     const config = resolveConfig(
-      { targets: [{ name: 'kiosk', platform: 'kiosk', engine: fake.engine }], credentials: { admin: { username: 'admin', password: 'pw' } } } as never,
+      { targets: [{ name: 'kiosk', platform: 'kiosk', engine: fake.engine }], credentials: { admin: { username: 'admin', password: 'kiosk-pw' } } } as never,
       { projectRoot: dir, env: {} },
     );
     return new SessionHost({
