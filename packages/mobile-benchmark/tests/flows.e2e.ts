@@ -170,10 +170,19 @@ test('async states: load, pull to refresh, claim through the toast', async ({ de
       return false;
     }, { timeout: 20_000 })
     .toBe(true);
-  await claim.tap();
   // The toast is gone within a couple of seconds, shorter than a snapshot
   // round trip on a slow machine; the message it leaves behind is the claim.
-  await expect(screen.getByTestId('success-message')).toHaveText('Reward claimed');
+  // A tap that lands while the refreshed content is still settling does
+  // nothing, so the claim is repeated until the message is up.
+  const claimed = screen.getByTestId('success-message');
+  await expect
+    .poll(async () => {
+      if (await claimed.isVisible()) return true;
+      if (await claim.isVisible()) await claim.tap();
+      return false;
+    }, { timeout: 20_000 })
+    .toBe(true);
+  await expect(claimed).toHaveText('Reward claimed');
 });
 
 // Row 512 is about 40 screens down and scrollUntilVisible pages one screen

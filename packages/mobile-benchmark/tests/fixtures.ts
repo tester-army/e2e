@@ -30,30 +30,32 @@ export async function openScenario(
   // the tree once it is fully on screen, so the drags are a quarter of the
   // list: shorter than any row, which no row can straddle at every stop.
   const list = device.locator('role=ScrollView');
-  await expect
-    .poll(async () => {
-      if (await row.isVisible()) return true;
-      await list.swipe({ direction: 'down', momentum: 'slow' });
-      return false;
-    }, { timeout: 60_000 })
-    .toBe(true);
   // A scenario is up once the home header is gone and its navigation bar,
   // when it shows one, carries the route name as its identifier. The tap
-  // gets one more try when that is not so: the home header stays when the
+  // gets two more tries when that is not so: the home header stays when the
   // list swallowed the tap, and a tap that landed a row away opened a
-  // neighbour, which is popped first. Five seconds a try: a push on a loaded
-  // machine ran past three.
+  // neighbour, which is popped first, after which the row is found again.
+  // Five seconds a try: a push on a loaded machine ran past three.
   const homeHeader = screen.getByTestId('Benchmark Examples');
   const bars = device.locator('role=NavigationBar');
   const title = device.locator(`role=NavigationBar id=${JSON.stringify(name)}`);
   const opened = async (): Promise<boolean> =>
     !(await homeHeader.isVisible()) && ((await bars.count()) === 0 || (await title.count()) === 1);
-  await row.tap();
-  try {
-    await expect.poll(opened, { timeout: 5_000 }).toBe(true);
-  } catch {
-    if (!(await homeHeader.isVisible())) await device.back();
+  for (let attempt = 0; ; attempt += 1) {
+    await expect
+      .poll(async () => {
+        if (await row.isVisible()) return true;
+        await list.swipe({ direction: 'down', momentum: 'slow' });
+        return false;
+      }, { timeout: 60_000 })
+      .toBe(true);
     await row.tap();
-    await expect.poll(opened, { timeout: 5_000 }).toBe(true);
+    try {
+      await expect.poll(opened, { timeout: 5_000 }).toBe(true);
+      return;
+    } catch (error) {
+      if (attempt === 2) throw error;
+      if (!(await homeHeader.isVisible())) await device.back();
+    }
   }
 }
