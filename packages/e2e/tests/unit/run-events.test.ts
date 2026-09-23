@@ -104,7 +104,9 @@ describe('createRunEventEmitter', () => {
     // Both promises are pending when the second event is emitted; both reject on the next tick.
     emit(fact(1));
     emit(fact(2));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    // Queued behind the two rejections in the same check phase, so it runs once they and their
+    // catch handlers have; a zero timer is not ordered against setImmediate and loses under load.
+    await new Promise((resolve) => setImmediate(resolve));
     emit(fact(3));
     expect(events).toHaveLength(3);
     expect(stderr.mock.calls.map((call) => String(call[0]))).toEqual([
