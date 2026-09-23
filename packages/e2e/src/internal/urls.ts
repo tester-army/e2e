@@ -148,7 +148,7 @@ export function resolveNavigationUrl(input: string, base: NormalizedBaseUrl | un
  * dependency: it is hundreds of kilobytes that change monthly, and this rule
  * only decides where configured credentials go and which frames count as
  * the app, never where a test may navigate. A longer entry wins over a
- * shorter one it ends with (`s3.amazonaws.com` over `amazonaws.com`).
+ * shorter one it ends with (`up.railway.app` over `railway.app`).
  */
 const SHARED_HOST_SUFFIXES: ReadonlySet<string> = new Set([
   'vercel.app',
@@ -167,8 +167,6 @@ const SHARED_HOST_SUFFIXES: ReadonlySet<string> = new Set([
   'azurewebsites.net',
   'azurestaticapps.net',
   'cloudfront.net',
-  'amazonaws.com',
-  's3.amazonaws.com',
   'web.app',
   'firebaseapp.com',
   'appspot.com',
@@ -181,13 +179,24 @@ const SHARED_HOST_SUFFIXES: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Suffixes under which every hostname is a deployment of its own. The
+ * provider nests service and region labels between the tenant's label and
+ * the suffix (`bucket.s3.eu-west-1.amazonaws.com`,
+ * `abc123.execute-api.us-east-1.amazonaws.com`,
+ * `name-1.us-east-1.elb.amazonaws.com`), so one label under the suffix would
+ * make a whole region one site.
+ */
+const PER_HOST_SUFFIXES: readonly string[] = ['amazonaws.com'];
+
+/**
  * The site a hostname belongs to: its registrable domain, approximated
  * without a public suffix list as the last two labels, or the last three
  * when the last is a two-letter country code and the one before it a short
  * second-level label (`example.co.uk`, `shop.com.au`). Under a shared
  * hosting suffix from `SHARED_HOST_SUFFIXES` the site is one label deeper
  * than the suffix, so two deployments of one host are two sites; the suffix
- * on its own is a site of its own. An IP literal or a single-label host such
+ * on its own is a site of its own. Under a suffix from `PER_HOST_SUFFIXES`
+ * the whole hostname is the site. An IP literal or a single-label host such
  * as `localhost` is a site of its own. Where the approximation errs it errs
  * narrow.
  */
@@ -196,6 +205,7 @@ export function siteOf(hostname: string): string {
   if (host.startsWith('[') || /^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return host;
   const labels = host.split('.');
   if (labels.length <= 2) return host;
+  if (PER_HOST_SUFFIXES.some((suffix) => host.endsWith(`.${suffix}`))) return host;
   const shared = sharedHostSuffixLength(labels);
   if (shared !== undefined) return labels.slice(-(shared + 1)).join('.');
   const tld = labels[labels.length - 1]!;

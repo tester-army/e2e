@@ -121,10 +121,22 @@ describe('siteOf and sameSite', () => {
 
   it('keeps the suffix itself as one site, and lets a longer listed suffix win over a shorter one', () => {
     expect(siteOf('vercel.app')).toBe('vercel.app');
+    expect(siteOf('railway.app')).toBe('railway.app');
+    expect(siteOf('up.railway.app')).toBe('up.railway.app');
+    expect(siteOf('myapp.railway.app')).toBe('myapp.railway.app');
+    expect(siteOf('myapp.up.railway.app')).toBe('myapp.up.railway.app');
+  });
+
+  it('reads every host under amazonaws.com as a site of its own, since service and region labels sit between the tenant and the suffix', () => {
     expect(siteOf('amazonaws.com')).toBe('amazonaws.com');
     expect(siteOf('s3.amazonaws.com')).toBe('s3.amazonaws.com');
     expect(siteOf('bucket.s3.amazonaws.com')).toBe('bucket.s3.amazonaws.com');
-    expect(siteOf('ec2-1-2-3-4.compute-1.amazonaws.com')).toBe('compute-1.amazonaws.com');
+    expect(siteOf('bucket.s3.eu-west-1.amazonaws.com')).toBe('bucket.s3.eu-west-1.amazonaws.com');
+    expect(siteOf('abc123.execute-api.us-east-1.amazonaws.com')).toBe('abc123.execute-api.us-east-1.amazonaws.com');
+    expect(siteOf('name-1.us-east-1.elb.amazonaws.com')).toBe('name-1.us-east-1.elb.amazonaws.com');
+    expect(siteOf('ec2-1-2-3-4.compute-1.amazonaws.com')).toBe('ec2-1-2-3-4.compute-1.amazonaws.com');
+    expect(sameSite('https://xyz789.execute-api.us-east-1.amazonaws.com/', siteOf('abc123.execute-api.us-east-1.amazonaws.com'))).toBe(false);
+    expect(sameSite('https://abc123.execute-api.us-east-1.amazonaws.com/v1', siteOf('abc123.execute-api.us-east-1.amazonaws.com'))).toBe(true);
   });
 
   it('reads a shared suffix ahead of the country-code rule, whichever way that rule would have cut', () => {
@@ -158,8 +170,6 @@ describe('siteOf and sameSite', () => {
     'azurewebsites.net',
     'azurestaticapps.net',
     'cloudfront.net',
-    'amazonaws.com',
-    's3.amazonaws.com',
     'web.app',
     'firebaseapp.com',
     'appspot.com',
