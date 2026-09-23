@@ -19,7 +19,8 @@ import type { JsonValue, Momentum, ScrollDirection, Secret } from '../types.ts';
 import { PROJECT_TOOL_EVENT_PREFIX } from './action-names.ts';
 import { containerKey, describeAction, type RecordableAction } from './actions.ts';
 import { describePosition } from '../cache/relocate.ts';
-import { isDerivedValue } from './derived.ts';
+import type { RecordedAction } from '../cache/trace.ts';
+import { derivedReason } from './derived.ts';
 import { AgentError } from './error.ts';
 import type { ExecutorActions, ExecutorTarget, PointHit, PointTapResult } from './executor.ts';
 import type { AgentContext } from './invocation.ts';
@@ -30,6 +31,7 @@ import { instrumentPhase, recordPolicyEvent } from './phases.ts';
 import { describePointHit, describePointTap, hitTest, type PointProse } from './point-tap.ts';
 import type { AgentObservation, SemanticAgentObservation } from './observation.ts';
 import { authorizeSecretFill } from './secrets.ts';
+import { SETTLE_AFTER } from './settle-policy.ts';
 import type { StepAccounting } from './step-accounting.ts';
 import type { StepTraceSession } from './step-cache.ts';
 
@@ -41,15 +43,6 @@ import type { StepTraceSession } from './step-cache.ts';
  * reported to the model as gone.
  */
 const MAX_STALE_RELOCATIONS = 2;
-
-/**
- * The change wait after a scroll or a mutating project tool. A scroll moves
- * nothing the tree records and a tool usually changes state the screen shows
- * only after a reload, so most of these change no shape at all and a long
- * wait is pure cost; a windowed list rendering its next rows, or a tool the
- * page reacts to, does so within a few hundred milliseconds.
- */
-const BRIEF_CHANGE_WAIT_MS = 500;
 
 /**
  * How far one grammar scroll moves. The engine's default flick is half the
@@ -220,9 +213,7 @@ export class ActionDispatcher {
         { api: this.accounting.api, kind: 'engine', phase: 'agent.action', name: `${PROJECT_TOOL_EVENT_PREFIX}${call.name}` },
         body,
       );
-      // A tool the page reacts to at once is read after the reaction; one
-      // whose effect shows only after a reload costs the brief wait, not two seconds.
-      if (call.mutates) this.feed.armChange(BRIEF_CHANGE_WAIT_MS);
+      if (call.mutates) this.armAfter('tool');
       return value;
     };
     return call.mutates ? this.queue.run(run) : run();
@@ -380,11 +371,7 @@ export class ActionDispatcher {
       this.accounting.checkpoint(cause);
       throw cause;
     }
-    // The effect may still be arriving: the next settled observation waits for
-    // the screen to leave the shape this action was resolved against. A secret
-    // fill leaves no visible trace and arms nothing; a scroll waits briefly for
-    // rows a windowed or lazy list renders.
-    if (name !== 'typeSecret') this.feed.armChange(name === 'scroll' ? BRIEF_CHANGE_WAIT_MS : undefined);
+    this.armAfter(action.name);
     const trace = this.options.trace();
     if (trace === undefined) return;
     // A typed value the step read off the screen (its tree, or a screenshot
@@ -393,18 +380,27 @@ export class ActionDispatcher {
     // than typing a value the app may not issue again. A value a replay
     // types is the recording's own data and stays: an app that kept the last
     // run's value shows it on the first screen, and no model chose it.
-    if (
-      !this.accounting.replayingTrace &&
-      (action.name === 'type' || action.name === 'typeText') &&
-      isDerivedValue(action.value, this.options.instruction, this.options.params, {
+    if (!this.accounting.replayingTrace && (action.name === 'type' || action.name === 'typeText')) {
+      const derived = derivedReason(action.value, this.options.instruction, this.options.params, {
         shown: this.feed.shownText(),
         pixels: this.feed.pixelsShown,
-      })
-    ) {
-      trace.recordGap('type (run-time value)');
-      return;
+      });
+      if (derived !== undefined) {
+        trace.recordDerivedGap(derived);
+        return;
+      }
     }
     trace.record(action);
+  }
+
+  /**
+   * Arms the change wait the action's settle policy asks for, so the next
+   * settled observation reads the screen after the effect rather than
+   * before. An action whose effect the tree cannot show arms nothing.
+   */
+  private armAfter(name: RecordedAction['name']): void {
+    const { changeWaitMs } = SETTLE_AFTER[name];
+    if (changeWaitMs !== undefined) this.feed.armChange(changeWaitMs);
   }
 
   /**

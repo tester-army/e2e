@@ -60,6 +60,7 @@ describe('prepareObservation', () => {
       async () => { captures += 1; return { kind: 'pixels' }; },
       () => undefined,
       { remainingMs: () => 10_000, signal: new AbortController().signal },
+      { stableWaitMs: 30 },
     );
     expect(result.kind).toBe('pixels');
     expect(captures).toBe(1);
@@ -340,7 +341,9 @@ describe('projectTree', () => {
 
 describe('settleObservation', () => {
   const clock = { remainingMs: () => 60_000, signal: new AbortController().signal };
-  const fast = { pollMs: 5, changeWaitMs: 150, stableWaitMs: 30 };
+  const fast = { pollMs: 5, stableWaitMs: 30 };
+  /** The pre-action shape and the window to leave it in. */
+  const leaving = { shape: 'old', waitMs: 150 };
 
   /** Captures the scripted values in order, then the last one forever. */
   function scripted(values: readonly string[]): { capture: () => Promise<string>; calls: () => number } {
@@ -353,14 +356,14 @@ describe('settleObservation', () => {
 
   it('waits for the screen to leave the pre-action shape before settling on it', async () => {
     const source = scripted(['old', 'old', 'old', 'new', 'new', 'new']);
-    const value = await settleObservation(source.capture, (v) => v, clock, { ...fast, changedFrom: 'old' });
+    const value = await settleObservation(source.capture, (v) => v, clock, { ...fast, changedFrom: leaving });
     expect(value).toBe('new');
   });
 
   it('returns the unchanged screen once the change wait runs out', async () => {
     const source = scripted(['old']);
     const started = Date.now();
-    const value = await settleObservation(source.capture, (v) => v, clock, { ...fast, changedFrom: 'old' });
+    const value = await settleObservation(source.capture, (v) => v, clock, { ...fast, changedFrom: leaving });
     expect(value).toBe('old');
     expect(Date.now() - started).toBeGreaterThanOrEqual(140);
   });
@@ -369,7 +372,7 @@ describe('settleObservation', () => {
     const source = scripted(['old', '', '', 'new', 'new']);
     const value = await settleObservation(source.capture, (v) => v, clock, {
       ...fast,
-      changedFrom: 'old',
+      changedFrom: leaving,
       transitional: (v) => v === '',
     });
     expect(value).toBe('new');

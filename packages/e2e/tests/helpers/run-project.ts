@@ -19,16 +19,21 @@ const { list, run } = (await import(builtRunnerModule)) as typeof import('../../
 const PACKAGE_ROOT = path.resolve(fileURLToPath(import.meta.url), '..', '..', '..');
 const TMP_ROOT = path.join(PACKAGE_ROOT, 'tests', 'tmp-projects');
 
+type Target = NonNullable<E2EConfig['targets']>[number];
+
 /**
- * The web target integration suites run against, its engine declaring the
- * fixture app's URL. The handle comes from the built playwright package, whose
- * `e2e` peer resolves to this package's dist, so the brand symbol is shared at
- * runtime even though the src/dist types differ.
+ * One web target on the fixture app at `url`. The handle comes from the built
+ * web package, whose `e2e` peer resolves to this package's dist, so the brand
+ * symbol is shared at runtime even though the src/dist types differ; this is
+ * the one place that difference is cast away.
  */
+export function webTarget(name: string, url: string): Target {
+  return { name, engine: web({ url }) as unknown as NonNullable<Target['engine']> };
+}
+
+/** The web target integration suites run against unless their config names its own. */
 function defaultTargets(appUrl: string): NonNullable<E2EConfig['targets']> {
-  return [{ name: 'web', engine: web({ url: appUrl }) }] as unknown as NonNullable<
-    E2EConfig['targets']
-  >;
+  return [webTarget('web', appUrl)];
 }
 
 export interface FixtureProject {
@@ -142,16 +147,17 @@ export async function runProjectWithConfigFile(
 }
 
 /**
- * Finds one result by test title. A miss names the titles the run did produce
- * and its run-level errors, since an empty run usually means collection failed
- * (a fixture importing a package that no longer exists, a config the resolver
- * refused) and the error says which.
+ * Finds one result by test title, and by repeat under `--repeat-each`. A miss
+ * names the titles the run did produce and its run-level errors, since an
+ * empty run usually means collection failed (a fixture importing a package
+ * that no longer exists, a config the resolver refused) and the error says
+ * which.
  */
-export function resultByTitle(outcome: RunOutcome, title: string) {
-  const result = outcome.results.find((candidate) => candidate.test.title === title);
+export function resultByTitle(outcome: RunOutcome, title: string, repeat = 0) {
+  const result = outcome.results.find((candidate) => candidate.test.title === title && candidate.repeat === repeat);
   if (result === undefined) {
     throw new Error(
-      `no result titled "${title}"; got: ${outcome.results.map((r) => r.test.title).join(', ')}; run errors: ${JSON.stringify(outcome.report.run.errors)}`,
+      `no result titled "${title}" (repeat ${String(repeat)}); got: ${outcome.results.map((r) => `${r.test.title}#${String(r.repeat)}`).join(', ')}; run errors: ${JSON.stringify(outcome.report.run.errors)}`,
     );
   }
   return result;

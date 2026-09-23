@@ -85,6 +85,7 @@ describe('traceCacheKeyHash', () => {
     ['params', { signature: traceCallSignature('act', 'open billing', { fast: true }) }],
     ['call index', { callIndex: 1 }],
     ['test', { testId: 'other test' }],
+    ['target', { target: { ...target, targetId: 'web-b' } }],
     ['driver minor', { target: { ...target, engineVersion: '1.62.0' } }],
     ['driver SPI version', { target: { ...target, spiVersion: 2 } }],
     ['policy version', { policyVersion: 'replay-policy/1' }],

@@ -3,7 +3,8 @@
 import { describe, expect, it } from 'vitest';
 import { AgentError } from '../../src/agent/error.ts';
 import type { ExecutorActions } from '../../src/agent/executor.ts';
-import { replayTrace, verifyAnchors, type ReplayHost } from '../../src/agent/replay.ts';
+import { replayTrace, verifyAnchors, type ObservedScreen, type ReplayHost } from '../../src/agent/replay.ts';
+import type { SettleMode } from '../../src/agent/settle-policy.ts';
 import type { ActionTrace, RecordedAction } from '../../src/cache/trace.ts';
 import type { SemanticNode } from '../../src/engine/surface.ts';
 
@@ -20,14 +21,25 @@ const tapUpgrade: RecordedAction = {
   target: { role: 'button', name: 'Upgrade' },
 };
 
+const typeEmail: RecordedAction = { name: 'type', summary: 'type "x"', target: { role: 'textbox', name: 'Email' }, value: 'x' };
+
 const VIEWPORT = { width: 1280, height: 720 };
+
+/** A host whose every look, however far it settles, reads `capture`; tests swap the screen sequence in through it. */
+type TestHost = ReplayHost & {
+  calls: string[];
+  observations: number;
+  /** How far each look asked to settle, in order. */
+  looks: SettleMode[];
+  capture: () => Promise<ObservedScreen>;
+};
 
 function makeHost(options: {
   nodes?: SemanticNode[];
   viewport?: { width: number; height: number };
   onAction?: (name: string, detail: unknown) => void | Promise<void>;
   remainingMs?: number;
-}): ReplayHost & { calls: string[]; observations: number } {
+}): TestHost {
   const calls: string[] = [];
   const act = (name: string, detail?: unknown) => {
     calls.push(name);
@@ -50,17 +62,21 @@ function makeHost(options: {
     pressKey: (key) => act('pressKey', key),
     dismissKeyboard: () => act('dismissKeyboard'),
   };
-  const host = {
+  const host: TestHost = {
     calls,
     traceEligible: true,
     observations: 0,
-    observe: async () => {
+    looks: [],
+    // `host.capture` is read at call time so a test may swap the screen
+    // sequence in after construction.
+    observe: (mode) => {
+      host.looks.push(mode);
+      return host.capture();
+    },
+    capture: async () => {
       host.observations += 1;
       return screen(options.nodes ?? [upgrade, email], options.viewport);
     },
-    // Settled looks come from the same source; `host.observe` is read at call
-    // time so a test may swap the screen sequence in after construction.
-    observeSettled: () => host.observe(),
     actions,
     signal: new AbortController().signal,
     remainingMs: () => options.remainingMs ?? 60_000,
@@ -97,7 +113,7 @@ describe('verifyAnchors', () => {
 
   it('treats a surface that cannot be observed as a mismatch, never as a step failure', async () => {
     const host = makeHost({});
-    host.observe = async () => {
+    host.capture = async () => {
       throw new Error('no surface to observe');
     };
     await expect(verifyAnchors(host, [savedAnchor])).resolves.toBe(false);
@@ -105,7 +121,7 @@ describe('verifyAnchors', () => {
 
   it('rethrows a runtime hard stop raised while looking', async () => {
     const host = makeHost({});
-    host.observe = async () => {
+    host.capture = async () => {
       throw new AgentError('STEP_TIMEOUT', 'out of time');
     };
     await expect(verifyAnchors(host, [savedAnchor])).rejects.toMatchObject({ code: 'STEP_TIMEOUT' });
@@ -114,7 +130,7 @@ describe('verifyAnchors', () => {
   it('waits out a slow effect before giving up', async () => {
     let shown = false;
     const host = makeHost({});
-    host.observe = async () => {
+    host.capture = async () => {
       host.observations += 1;
       // Present from the second look on: the effect landed after the last action.
       const list = host.observations >= 3 ? [upgrade, saved] : [upgrade];
@@ -134,13 +150,65 @@ describe('replayTrace', () => {
       trace([
         { name: 'navigate', summary: 'navigate to "/"', url: '/' },
         tapUpgrade,
-        { name: 'type', summary: 'type "x"', target: { role: 'textbox', name: 'Email' }, value: 'x' },
+        typeEmail,
         { name: 'scroll', summary: 'scroll down', direction: 'down' },
       ]),
     );
     expect(outcome).toMatchObject({ completed: true, executed: 4, total: 4 });
     expect(host.calls).toEqual(['navigate', 'tap', 'type', 'scroll']);
     expect(outcome.summaries).toHaveLength(4);
+  });
+
+  it('reads the start capture for the first look instead of observing the same screen again', async () => {
+    const host = makeHost({});
+    const outcome = await replayTrace(host, trace([tapUpgrade]), { initial: screen([upgrade, email]) });
+    expect(outcome).toMatchObject({ completed: true, executed: 1 });
+    expect(host.calls).toEqual(['tap']);
+    expect(host.observations).toBe(0);
+  });
+
+  it("settles each look as far as the previous action's policy asks: held still after a tap, after the change after a fill", async () => {
+    const host = makeHost({});
+    const outcome = await replayTrace(
+      host,
+      trace([
+        tapUpgrade,
+        typeEmail,
+        tapUpgrade,
+        { name: 'typeText', summary: 'type "y"', value: 'y', replace: false },
+        tapUpgrade,
+        { name: 'typeSecret', summary: 'fill secret', target: { role: 'textbox', name: 'Email' }, secret: 'password' },
+        tapUpgrade,
+        { name: 'select', summary: 'select "Pro"', target: { role: 'textbox', name: 'Email' }, value: 'Pro' },
+        tapUpgrade,
+      ]),
+    );
+    expect(outcome).toMatchObject({ completed: true, executed: 9 });
+    // The first look holds still; so does the look after each tap or select.
+    // The look after a typed fill waits for its value only, and a typeText
+    // takes no look of its own, so the tap after it is the one that reads
+    // the first post-change capture. A secret fill is masked out of the tree,
+    // so the look after it holds still: there is no change to wait for.
+    expect(host.looks).toEqual([
+      'held-still',
+      'held-still',
+      'after-change',
+      'after-change',
+      'held-still',
+      'held-still',
+      'held-still',
+      'held-still',
+    ]);
+  });
+
+  it('takes one look per repeat of a folded scroll on a list', async () => {
+    const list: SemanticNode = { ref: { id: 'g1', revision: 'r1' }, role: 'group', name: 'Rows 1 to 12', rect: { x: 0, y: 0, width: 390, height: 300 } };
+    const host = makeHost({ nodes: [list, email] });
+    const outcome = await replayTrace(host, trace([{ name: 'scroll', summary: 'scroll down x3', direction: 'down', target: { role: 'group', name: 'Rows 1 to 12' }, times: 3, spans: 0.3 }]));
+    expect(outcome).toMatchObject({ completed: true, executed: 1 });
+    expect(host.calls).toEqual(['scroll', 'scroll', 'scroll']);
+    expect(host.observations).toBe(3);
+    expect(host.looks).toEqual(['held-still', 'held-still', 'held-still']);
   });
 
   it('ends the prefix at a gap without executing it', async () => {
@@ -150,7 +218,29 @@ describe('replayTrace', () => {
       trace([tapUpgrade, { name: 'tool', summary: 'tool seed_cart' }, tapUpgrade]),
     );
     expect(outcome).toMatchObject({ completed: false, executed: 1, stopReason: 'gap' });
+    expect(outcome.derived).toBeUndefined();
     expect(host.calls).toEqual(['tap']);
+  });
+
+  it('names the rule behind a run-time value gap, so the report can cite it', async () => {
+    const outcome = await replayTrace(
+      makeHost({}),
+      trace([tapUpgrade, { name: 'tool', summary: 'tool type (run-time value)', derived: 'minted-token' }, typeEmail]),
+    );
+    expect(outcome).toMatchObject({ completed: false, executed: 1, stopReason: 'gap', derived: 'minted-token' });
+  });
+
+  it('hands off with action-failed when the look before the second action throws, leaving the first action done', async () => {
+    const host = makeHost({});
+    host.capture = async () => {
+      throw new Error('the surface went away');
+    };
+    const outcome = await replayTrace(host, trace([tapUpgrade, typeEmail]), { initial: screen([upgrade, email]) });
+    expect(outcome).toMatchObject({ completed: false, executed: 1, stopReason: 'action-failed' });
+    expect(outcome.summaries).toEqual(['tap button "Upgrade"']);
+    expect(host.calls).toEqual(['tap']);
+    // The first look was the start capture; the failed one was the fill's.
+    expect(host.looks).toEqual(['held-still']);
   });
 
   it('diverges with target-not-found when relocation never matches', async () => {
@@ -162,15 +252,17 @@ describe('replayTrace', () => {
   it('keeps looking while a positioned target is ambiguous, since a form still rendering shows fewer twins', async () => {
     const unnamed = (id: string): SemanticNode => ({ ref: { id, revision: 'r1' }, role: 'textbox' });
     const host = makeHost({ nodes: [unnamed('a')] });
-    let looks = 0;
-    host.observe = async () => {
-      looks += 1;
+    let captures = 0;
+    host.capture = async () => {
+      captures += 1;
       // The first look shows one unnamed textbox where the recording counted two; the form finishes rendering after that.
-      return screen(looks < 3 ? [unnamed('a')] : [unnamed('a'), unnamed('b')]);
+      return screen(captures < 3 ? [unnamed('a')] : [unnamed('a'), unnamed('b')]);
     };
     const outcome = await replayTrace(host, trace([{ name: 'type', summary: 'type "x" into textbox (2 of 2)', target: { role: 'textbox', position: { index: 1, of: 2 } }, value: 'x' }]));
     expect(outcome).toMatchObject({ completed: true, executed: 1 });
     expect(host.calls).toEqual(['type']);
+    // The retries between the backoff delays read the screen raw.
+    expect(host.looks).toEqual(['held-still', 'raw', 'raw']);
   });
 
   it('still diverges at once on ambiguity for a target with no recorded position', async () => {
@@ -339,11 +431,13 @@ describe('replayTrace: bare-point taps', () => {
     expect(resized).toMatchObject({ completed: false, executed: 0, stopReason: 'target-ambiguous' });
   });
 
-  it('repeats a folded scroll as many times as recorded', async () => {
+  it('repeats a folded viewport scroll as many times as recorded, with a settled look between repeats', async () => {
     const host = makeHost({});
     const outcome = await replayTrace(host, trace([{ name: 'scroll', summary: 'scroll down x4', direction: 'down', times: 4 }]));
     expect(outcome).toMatchObject({ completed: true, executed: 1 });
     expect(host.calls).toEqual(['scroll', 'scroll', 'scroll', 'scroll']);
+    // Nothing to relocate, so the first repeat takes no look; each later one holds still first.
+    expect(host.looks).toEqual(['held-still', 'held-still', 'held-still']);
   });
 
   it('scrolls the viewport when a list that filled the screen cannot be re-found', async () => {
@@ -358,7 +452,7 @@ describe('replayTrace: bare-point taps', () => {
   it('counts the repeats of a folded scroll that ran before a later one lost the list', async () => {
     const list: SemanticNode = { ref: { id: 'g1', revision: 'r1' }, role: 'group', name: 'Rows 1 to 12', rect: { x: 0, y: 0, width: 390, height: 300 } };
     const host = makeHost({ nodes: [list, email] });
-    host.observe = async () => {
+    host.capture = async () => {
       host.observations += 1;
       // The list leaves the tree after the first scroll.
       return screen(host.calls.includes('scroll') ? [email] : [list, email]);

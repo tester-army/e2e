@@ -9,6 +9,7 @@
  */
 
 import type { ResolvedCacheConfig } from '../config/resolve.ts';
+import { canonicalJson } from '../internal/ids.ts';
 import { REPLAY_POLICY_VERSION } from './relocate.ts';
 import {
   buildTraceCacheKey,
@@ -23,13 +24,22 @@ import { FileTraceCacheStore, MAX_CACHE_WIRE_BYTES, type TraceCacheStore } from 
 import type { ActionTrace } from './trace.ts';
 import type { JsonValue } from '../types.ts';
 
-/** One trace write held back until the attempt confirms or implicates it. */
-export interface StagedTraceWrite {
+/**
+ * One cache entry held back until the attempt confirms or implicates it: a
+ * recording to write, or an entry the step replayed whole to keep as it
+ * stands. A kept entry carries no payload, so the replay's expansion of it
+ * (every `unique()` slot filled with this run's value) can never be written;
+ * confirmed, the file keeps its bytes and `createdAt`, and a committed cache
+ * directory stays clean. Unconfirmed, both kinds are evicted alike.
+ */
+export type StagedTrace = {
   readonly keyHash: string;
-  readonly trace: ActionTrace;
-  /** Index of the recording step in the attempt's step timeline. */
+  /** Index of the step in the attempt's step timeline. */
   readonly stepIndex: number;
-}
+} & (
+  | { readonly kind: 'write'; readonly trace: ActionTrace }
+  | { readonly kind: 'keep' }
+);
 
 export interface AgentCacheContext {
   readonly mode: 'read-only' | 'read-write';
@@ -57,7 +67,24 @@ export interface AgentCacheContext {
    * flow reached the right state. The runner settles at attempt end via
    * `flushStagedTraces`.
    */
-  readonly staged: StagedTraceWrite[];
+  readonly staged: StagedTrace[];
+}
+
+/**
+ * Whether the store already holds this flow: the same actions, paths, anchors,
+ * executor, and provenance. The model's summary and the measured end wait
+ * differ on every live run, so a step that runs live each time (it types a
+ * value read off the screen) would otherwise rewrite an entry a committed
+ * cache directory carries, changing nothing a replay reads.
+ */
+async function holdsSameFlow(store: TraceCacheStore, keyHash: string, trace: ActionTrace): Promise<boolean> {
+  const existing = await store.read(keyHash);
+  return existing.status === 'hit' && flowOf(existing.entry.payload) === flowOf(trace);
+}
+
+function flowOf(trace: ActionTrace): string {
+  const { summary: _summary, endWaitMs: _endWaitMs, ...flow } = trace;
+  return canonicalJson(flow);
 }
 
 /**
@@ -73,7 +100,9 @@ export interface AgentCacheContext {
  * a failure — or one that was never checked — re-records on the next pass
  * instead of replaying a poisoned state forever. The runner does not call
  * this for an interrupted attempt: interruption implicates nothing, so it
- * writes nothing and evicts nothing.
+ * writes nothing and evicts nothing. An entry a step replayed whole is
+ * staged too, so the same rule evicts it when nothing confirmed it; when
+ * something did, it is left exactly as it was found.
  */
 export async function flushStagedTraces(
   context: AgentCacheContext,
@@ -81,11 +110,22 @@ export async function flushStagedTraces(
 ): Promise<void> {
   const staged = context.staged.splice(0);
   if (context.mode !== 'read-write') return;
-  for (const write of staged) {
-    const confirmed = write.stepIndex < lastVerifiedStepIndex;
+  for (const entry of staged) {
+    const confirmed = entry.stepIndex < lastVerifiedStepIndex;
     try {
-      if (confirmed) await context.store.write(write.keyHash, write.trace);
-      else await context.store.delete?.(write.keyHash);
+      switch (entry.kind) {
+        case 'write':
+          if (!confirmed) {
+            await context.store.delete?.(entry.keyHash);
+            break;
+          }
+          if (await holdsSameFlow(context.store, entry.keyHash, entry.trace)) break;
+          await context.store.write(entry.keyHash, entry.trace);
+          break;
+        case 'keep':
+          if (!confirmed) await context.store.delete?.(entry.keyHash);
+          break;
+      }
     } catch {
       // The cache is disposable; a failed flush is a slower next run only.
     }

@@ -14,7 +14,7 @@
 
 import { anchorsPresent } from '../cache/anchors.ts';
 import { MAIN_LIST_SHARE, relocateDescriptor, type RelocationFailure, type RelocationResult } from '../cache/relocate.ts';
-import type { ActionTrace, RecordedAction, TraceTargetDescriptor, TraceViewport } from '../cache/trace.ts';
+import type { ActionTrace, DerivedReason, RecordedAction, TraceTargetDescriptor, TraceViewport } from '../cache/trace.ts';
 import type { SemanticNode, ViewportPoint } from '../engine/surface.ts';
 import { hasCause } from '../internal/errors.ts';
 import { containsPoint, type Box } from '../internal/geometry.ts';
@@ -26,6 +26,7 @@ import {
   type ExecutorTarget,
   type ReplayHandOffReason,
 } from './executor.ts';
+import { SETTLE_AFTER, type SettleMode } from './settle-policy.ts';
 
 /** Backoff between looks at the screen while it settles. */
 const RETRY_DELAYS_MS = [100, 300, 600, 1_000, 3_000] as const;
@@ -46,20 +47,18 @@ export type ObservedScreen = {
 );
 
 /** The only capture variant that can establish trace targets or anchors. */
-type SemanticScreen = Extract<ObservedScreen, { kind: 'semantic' }>;
+export type SemanticScreen = Extract<ObservedScreen, { kind: 'semantic' }>;
 
 /** What the replay engine needs from the dispatch, and nothing more. */
 export interface ReplayHost {
   /** False once any capture in this step loses semantic evidence. */
   readonly traceEligible: boolean;
-  /** One raw capture, for the looks between retries. */
-  observe(): Promise<ObservedScreen>;
   /**
-   * One settled capture — the dispatch's own, so a replayed action never
-   * lands on a screen still reacting to the previous one, and the pacing can
-   * never drift from the executor-facing observe.
+   * One capture, settled as far as `mode` asks: the dispatch's own, so a
+   * replayed action never lands on a screen still reacting to the previous
+   * one, and the pacing can never drift from the executor-facing observe.
    */
-  observeSettled(): Promise<ObservedScreen>;
+  observe(mode: SettleMode): Promise<ObservedScreen>;
   /** The step's policed action grammar; targets are fresh-observation ids. */
   readonly actions: ExecutorActions;
   readonly signal: AbortSignal;
@@ -78,6 +77,14 @@ export interface ReplayOutcome {
   readonly stopReason?: ReplayHandOffReason;
   /** The action whose commit state is unknown, on `action-uncertain` only. */
   readonly uncertainAction?: string;
+  /** On a `gap` at a typed value: the rule that made the value this run's data. */
+  readonly derived?: DerivedReason;
+}
+
+/** The list a recorded scroll moved, and the share of the viewport it covered. */
+interface ScrolledList {
+  readonly descriptor: TraceTargetDescriptor;
+  readonly spans?: number;
 }
 
 /**
@@ -86,7 +93,7 @@ export interface ReplayOutcome {
  * assertions: a targeted plan cannot exist without its descriptor.
  */
 type PlannedCall =
-  | { readonly kind: 'gap' }
+  | { readonly kind: 'gap'; readonly derived?: DerivedReason }
   | {
       readonly kind: 'targeted';
       readonly descriptor: TraceTargetDescriptor;
@@ -95,18 +102,18 @@ type PlannedCall =
   | { readonly kind: 'free'; readonly invoke: () => Promise<void> }
   /**
    * A scroll, folded from its repeats, each replayed with a settled look
-   * between them as the live loop took. The list is re-found before every
-   * repeat, because a device renumbers its tree on each look and names a
-   * scroll view after its first visible row. A list that filled the screen
+   * between them as the live loop took. A scrolled list is re-found before
+   * every repeat, because a device renumbers its tree on each look and names
+   * a scroll view after its first visible row. A list that filled the screen
    * when recorded (`spans`) and cannot be re-found scrolls as the viewport,
    * which is what scrolling the main list does; a smaller region hands off.
+   * Without a list, the viewport itself is scrolled.
    */
   | {
       readonly kind: 'scroll';
       readonly direction: ScrollDirection;
-      readonly descriptor?: TraceTargetDescriptor;
-      readonly spans?: number;
       readonly times: number;
+      readonly list?: ScrolledList;
     }
   /** A bare point, replayed as given once the viewport is the recorded size. */
   | { readonly kind: 'point'; readonly point: ViewportPoint; readonly viewport: TraceViewport }
@@ -128,7 +135,7 @@ type PlannedCall =
 function planCall(action: RecordedAction, actions: ExecutorActions): PlannedCall {
   switch (action.name) {
     case 'tool':
-      return { kind: 'gap' };
+      return { kind: 'gap', ...(action.derived === undefined ? {} : { derived: action.derived }) };
     case 'tap':
       return { kind: 'targeted', descriptor: action.target, invoke: (t) => actions.tap(t) };
     case 'type':
@@ -159,9 +166,10 @@ function planCall(action: RecordedAction, actions: ExecutorActions): PlannedCall
       return {
         kind: 'scroll',
         direction: action.direction,
-        ...(action.target === undefined ? {} : { descriptor: action.target }),
-        ...(action.spans === undefined ? {} : { spans: action.spans }),
         times: action.times ?? 1,
+        ...(action.target === undefined
+          ? {}
+          : { list: { descriptor: action.target, ...(action.spans === undefined ? {} : { spans: action.spans }) } }),
       };
     case 'navigate':
       return { kind: 'free', invoke: () => actions.navigate(action.url) };
@@ -185,10 +193,19 @@ function planCall(action: RecordedAction, actions: ExecutorActions): PlannedCall
   }
 }
 
+export interface ReplayOptions {
+  /**
+   * The step's settled start capture. The first action's look reads it
+   * instead of capturing again: nothing has happened since it was taken.
+   */
+  readonly initial?: SemanticScreen;
+}
+
 /** Replays one trace until it completes or diverges. */
 export async function replayTrace(
   host: ReplayHost,
   trace: ActionTrace,
+  options: ReplayOptions = {},
 ): Promise<ReplayOutcome> {
   const summaries: string[] = [];
   const total = trace.actions.length;
@@ -197,10 +214,22 @@ export async function replayTrace(
     return { completed: false, executed: summaries.length, total, summaries, stopReason };
   };
 
+  let previous: RecordedAction | undefined;
   for (const action of trace.actions) {
     if (!host.traceEligible) return stop('action-failed');
     const planned = planCall(action, host.actions);
-    if (planned.kind === 'gap') return stop('gap');
+    if (planned.kind === 'gap') {
+      return { ...stop('gap'), ...(planned.derived === undefined ? {} : { derived: planned.derived }) };
+    }
+    // The look before this action: the start capture serves the first one;
+    // after that, the previous action's settle policy says how far a fresh
+    // capture settles.
+    const look: Look =
+      previous === undefined
+        ? options.initial === undefined
+          ? HELD_STILL
+          : { kind: 'in-hand', screen: options.initial }
+        : { kind: 'capture', settle: SETTLE_AFTER[previous.name].look };
     // Repeats of a folded scroll done before it failed moved the screen: the
     // hand-off counts them as executed, so the executor is not told the
     // screen is untouched.
@@ -210,7 +239,7 @@ export async function replayTrace(
     try {
       switch (planned.kind) {
         case 'targeted': {
-          const relocated = await relocate(host, planned.descriptor);
+          const relocated = await relocate(host, planned.descriptor, look);
           if (relocated.kind === 'failed') return stop(relocated.failure);
           await planned.invoke({ id: relocated.id });
           break;
@@ -219,16 +248,26 @@ export async function replayTrace(
           await planned.invoke();
           break;
         case 'scroll': {
+          if (planned.list === undefined) {
+            // A viewport scroll relocates nothing, so each later repeat takes
+            // a settled look of its own, as the live loop did between them.
+            for (let index = 0; index < planned.times; index += 1) {
+              if (index > 0) await host.observe('held-still');
+              await host.actions.scroll(planned.direction);
+              repeated += 1;
+            }
+            break;
+          }
+          // A scroll on a list is paced by the relocation before each repeat.
           for (let index = 0; index < planned.times; index += 1) {
-            if (index > 0) await host.observeSettled();
-            const lost = await scrollOnce(host, planned);
+            const lost = await scrollOnce(host, planned.direction, planned.list, index === 0 ? look : HELD_STILL);
             if (lost !== undefined) return stop(lost, partial());
             repeated += 1;
           }
           break;
         }
         case 'point': {
-          const screen = await host.observeSettled();
+          const screen = await firstLook(host, look);
           if (screen.kind === 'pixels') return stop('action-failed');
           const { viewport } = screen;
           if (viewport.width !== planned.viewport.width || viewport.height !== planned.viewport.height) {
@@ -238,7 +277,7 @@ export async function replayTrace(
           break;
         }
         case 'within': {
-          const relocated = await relocate(host, planned.descriptor);
+          const relocated = await relocate(host, planned.descriptor, look);
           const box = boxWithin(relocated, planned);
           if (box === undefined) return stop(relocated.kind === 'failed' ? relocated.failure : 'target-not-found');
           await host.actions.tapAt({ x: box.x + planned.fx * box.width, y: box.y + planned.fy * box.height });
@@ -256,6 +295,7 @@ export async function replayTrace(
       return stop('action-failed', partial());
     }
     summaries.push(action.summary);
+    previous = action;
   }
   return { completed: true, executed: summaries.length, total, summaries };
 }
@@ -280,7 +320,7 @@ export async function verifyAnchors(
   try {
     const present = await pollSettled(host, ({ nodes }) =>
       anchorsPresent(anchors, nodes, host) ? true : undefined,
-      options.initial,
+      options.initial === undefined ? HELD_STILL : { kind: 'in-hand', screen: options.initial },
     );
     if (present === true) return true;
     // The settling backoff covers a slow re-render; the recorded run may have
@@ -290,7 +330,7 @@ export async function verifyAnchors(
     const deadline = startedMs + Math.min(options.waitMs ?? 0, Math.max(0, host.remainingMs() - END_WAIT_RESERVE_MS));
     while (Date.now() < deadline && !host.signal.aborted) {
       await sleep(Math.min(END_WAIT_POLL_MS, deadline - Date.now()), host.signal);
-      const screen = await host.observe();
+      const screen = await host.observe('raw');
       if (screen.kind === 'pixels' || !host.traceEligible) return false;
       if (anchorsPresent(anchors, screen.nodes, host)) return true;
     }
@@ -317,6 +357,7 @@ const END_WAIT_RESERVE_MS = 20_000;
 async function relocate(
   host: ReplayHost,
   descriptor: TraceTargetDescriptor,
+  look: Look,
 ): Promise<Relocated> {
   const options = { redact: host.redact };
   let last: Relocated = { kind: 'failed', failure: 'target-not-found' };
@@ -328,7 +369,7 @@ async function relocate(
     }
     const node = screen.nodes.get(result.id);
     return node === undefined ? undefined : { ...result, node };
-  });
+  }, look);
   return settled ?? last;
 }
 
@@ -363,40 +404,60 @@ function usableBox(rect: SemanticNode['rect']): Box | undefined {
 }
 
 /**
- * One repeat of a folded scroll: on the re-found list, on the viewport for a
- * lost list that filled the screen, or the failure to hand the step off on.
+ * One repeat of a folded scroll on a list: on the re-found list, on the
+ * viewport for a lost list that filled the screen, or the failure to hand
+ * the step off on.
  */
-async function scrollOnce(host: ReplayHost, planned: Extract<PlannedCall, { kind: 'scroll' }>): Promise<RelocationFailure | undefined> {
-  if (planned.descriptor === undefined) {
-    await host.actions.scroll(planned.direction);
-    return undefined;
-  }
-  const relocated = await relocate(host, planned.descriptor);
+async function scrollOnce(host: ReplayHost, direction: ScrollDirection, list: ScrolledList, look: Look): Promise<RelocationFailure | undefined> {
+  const relocated = await relocate(host, list.descriptor, look);
   if (relocated.kind === 'found') {
-    await host.actions.scroll(planned.direction, { id: relocated.id });
+    await host.actions.scroll(direction, { id: relocated.id });
     return undefined;
   }
-  if ((planned.spans ?? 0) < MAIN_LIST_SHARE) return relocated.failure;
-  await host.actions.scroll(planned.direction);
+  if ((list.spans ?? 0) < MAIN_LIST_SHARE) return relocated.failure;
+  await host.actions.scroll(direction);
   return undefined;
 }
 
 /**
- * Probes a settled observation, then re-probes fresh raw captures on a fixed
+ * The screen a poll starts from: one already in hand, which nothing has
+ * happened to since it was captured, or a fresh capture settled as far as
+ * the previous action requires.
+ */
+type Look =
+  | { readonly kind: 'in-hand'; readonly screen: SemanticScreen }
+  | { readonly kind: 'capture'; readonly settle: SettleMode };
+
+/** A fresh look that proves the screen holds still: the first look of a replay without a start capture, and the look after an action that moved the screen. */
+const HELD_STILL: Look = { kind: 'capture', settle: 'held-still' };
+
+function firstLook(host: ReplayHost, look: Look): Promise<ObservedScreen> {
+  switch (look.kind) {
+    case 'in-hand':
+      return Promise.resolve(look.screen);
+    case 'capture':
+      return host.observe(look.settle);
+  }
+}
+
+/**
+ * Probes the first look, then re-probes fresh raw captures on a fixed
  * backoff until the probe answers or the wait runs out: a screen
  * mid-transition gets a few looks before replay gives the step up. The first
- * look settles because replay executes recorded actions far faster than the
- * run that recorded them; without that wait an action can land while the app
- * is still reacting to the previous one — a form mid-clear, a list mid-update
- * — and commit something the recorded run never did.
+ * look settles as far as the previous action's policy asks, because replay
+ * executes recorded actions far faster than the run that recorded them;
+ * without that wait an action can land while the app is still reacting to
+ * the previous one (a form mid-clear, a list mid-update) and commit
+ * something the recorded run never did. A screen the caller already settled
+ * (the step's start capture) is read as it is.
  */
 async function pollSettled<T>(
   host: ReplayHost,
   probe: (screen: SemanticScreen) => T | undefined,
-  initial?: SemanticScreen,
+  look: Look,
 ): Promise<T | undefined> {
   const startedMs = Date.now();
-  let screen = initial ?? await host.observeSettled();
+  let screen = await firstLook(host, look);
   for (let attempt = 0; ; attempt += 1) {
     if (screen.kind === 'pixels' || !host.traceEligible) return undefined;
     const answer = probe(screen);
@@ -408,7 +469,7 @@ async function pollSettled<T>(
       return undefined;
     }
     await sleep(delay, host.signal);
-    screen = await host.observe();
+    screen = await host.observe('raw');
   }
 }
 

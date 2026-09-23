@@ -16,6 +16,7 @@ import type { Report1Document } from './report/build.ts';
 
 export type { Momentum, ScrollDirection, SelectOption } from './engine/contract.ts';
 export type { CacheReadResult, TraceCacheStore } from './cache/store.ts';
+export type { DerivedReason } from './cache/trace.ts';
 export type { StepCacheInfo } from './run/steps.ts';
 export type {
   Credential,

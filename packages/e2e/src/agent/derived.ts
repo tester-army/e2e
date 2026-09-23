@@ -1,6 +1,6 @@
 /**
- * Whether a value the executor typed was derived at run time, so the trace
- * must not replay it.
+ * Whether a value the executor typed was derived at run time, and by which
+ * rule, so the trace must not replay it.
  *
  * A value the instruction or the params spell out — "Nimbus Paper Co", 4.25,
  * a param's string — is the step's literal input and replays verbatim. A
@@ -12,8 +12,30 @@
  * so the executor derives the value afresh from what it sees and remembers.
  * A value the model composed itself (a plausible name, an email, a note)
  * is the flow's data as much as a literal would be, and replays.
+ *
+ * Each rule answers with its own `DerivedReason`, so the report can say which
+ * one fired and each is pinned on its own:
+ *
+ * - `pixels`: the model was shown a screenshot this step, whose text the
+ *   tree does not list, so any value that is not literal may have been read
+ *   off the image.
+ * - `whole-node`: the value is the whole of what some node said (its name or
+ *   its text, whitespace-normalized).
+ * - `minted-token`: the value is data-shaped (one token, with a digit: a
+ *   code, a count, a reference) and some node showed it as a word of its own.
+ *   The digit is a glyph test standing in for provenance: "1" typed beside a
+ *   "Row 1" label is flagged too, and the executor runs that part live.
+ * - `date`: a date or a clock time, which the model reckons from today.
+ *
+ * A bare word inside a sentence is none of these: "one" typed on a page that
+ * lists "Row one" is the model's own choice, and the recording replays it.
+ * So is a name inside a greeting ("Jane" under "Welcome back, Jane"); when
+ * that name was in fact read off the screen, the replay types last run's
+ * value and self-finalizes, backstopped only when the value resurfaces in the
+ * end anchors.
  */
 
+import type { DerivedReason } from '../cache/trace.ts';
 import type { JsonValue } from '../types.ts';
 
 /** What the step showed the model, which a typed value may have been read off. */
@@ -32,29 +54,49 @@ export interface StepEvidence {
   readonly pixels?: boolean;
 }
 
-export function isDerivedValue(
+/**
+ * The rule that makes a typed value this run's data, or undefined for a
+ * value that replays: one the instruction or the params spell out, or one
+ * the model composed itself.
+ */
+export function derivedReason(
   value: string,
   instruction: string,
   params: Readonly<Record<string, JsonValue>> | undefined,
   evidence: StepEvidence = {},
-): boolean {
+): DerivedReason | undefined {
   const needle = normalize(value);
-  if (needle === '') return false;
-  if (normalize(instruction).includes(needle)) return false;
-  if (paramStrings(params).some((text) => normalize(text).includes(needle))) return false;
-  if (evidence.pixels === true) return true;
-  // Read off the screen (a code, a reference, a name the app minted) or
-  // reckoned from the calendar: this run's data. Anything else the model
-  // composed itself, and the next run's app takes it as readily.
+  if (needle === '' || isLiteral(needle, instruction, params)) return undefined;
+  if (evidence.pixels === true) return 'pixels';
+  const dataShaped = isDataShaped(needle);
+  let mintedToken = false;
   for (const text of evidence.shown ?? []) {
-    if (hasWord(normalize(text), needle)) return true;
+    const shown = normalize(text);
+    if (shown === needle) return 'whole-node';
+    if (dataShaped && hasWord(shown, needle)) mintedToken = true;
   }
-  return DATE_OR_TIME.test(value);
+  if (mintedToken) return 'minted-token';
+  return DATE_OR_TIME.test(value) ? 'date' : undefined;
+}
+
+/** Whether the instruction or a param spells the value out: the step's literal input, which replays verbatim. */
+function isLiteral(needle: string, instruction: string, params: Readonly<Record<string, JsonValue>> | undefined): boolean {
+  return normalize(instruction).includes(needle) || paramStrings(params).some((text) => normalize(text).includes(needle));
 }
 
 /**
- * Whether the text carries the value as a whole token: "Jane" inside
- * "Janet" is not the screen showing it.
+ * Whether a value looks like data rather than words: one token, no
+ * whitespace, with a digit in it. `TK-4972`, `123`, `n20123` qualify; `Jane`
+ * and `one` do not, so those count as read off the screen only when a node
+ * says exactly that and nothing more.
+ */
+function isDataShaped(needle: string): boolean {
+  return !/\s/u.test(needle) && /\p{N}/u.test(needle);
+}
+
+/**
+ * Whether the text carries the value as a whole token: "123" inside
+ * "n20123" is not the screen showing it.
  */
 function hasWord(text: string, needle: string): boolean {
   let from = 0;

@@ -26,11 +26,15 @@ import {
   MAX_TRACE_INPUT_CHARS,
   MAX_TRACE_SUMMARY_CHARS,
   type ActionTrace,
+  type DerivedReason,
   type RecordedAction,
   type ScrollAction,
   type TraceProvenance,
   type TraceTargetDescriptor,
 } from './trace.ts';
+
+/** The summary a run-time value gap records; the prose a project-tool gap would carry for a tool of that name. */
+const DERIVED_GAP_SUMMARY = 'tool type (run-time value)';
 
 export interface TraceRecorderOptions {
   /** The run's secret redactor; applied to every recorded string. */
@@ -75,6 +79,16 @@ export class TraceRecorder {
    */
   recordGap(toolName: string): void {
     this.push({ name: 'tool', summary: bound(`tool ${this.redact(toolName)}`, MAX_TRACE_SUMMARY_CHARS) });
+    this.lastActionAt = Date.now();
+  }
+
+  /**
+   * Records a fill whose value was this run's data as a gap, with the rule
+   * that said so (`agent/derived.ts`). Replay hands the step over before it,
+   * so the executor derives the value afresh, and the report can say why.
+   */
+  recordDerivedGap(reason: DerivedReason): void {
+    this.push({ name: 'tool', summary: DERIVED_GAP_SUMMARY, derived: reason });
     this.lastActionAt = Date.now();
   }
 

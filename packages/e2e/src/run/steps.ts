@@ -4,6 +4,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { isAgentError } from '../agent/error.ts';
 import type { ReplayHandOffReason } from '../agent/executor.ts';
 import type { TraceReplayMissReason } from '../cache/decide.ts';
+import type { DerivedReason } from '../cache/trace.ts';
 import { withAiTraceStep } from '../internal/ai-trace.ts';
 import { classifyError, serializeError, TestError, withHint, type SerializedError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
@@ -107,6 +108,11 @@ export interface StepCacheInfo {
   mode: 'self-finalized' | 'agent-concluded' | 'missed';
   /** The miss or hand-off reason token; absent on `self-finalized`. */
   reason?: TraceReplayMissReason | ReplayHandOffReason;
+  /**
+   * On a `gap` at a typed value: the rule that made the value this run's
+   * data rather than the flow's. Absent for a gap at a project tool.
+   */
+  derived?: DerivedReason;
   replayedActions: number;
   totalActions: number;
 }

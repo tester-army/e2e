@@ -206,11 +206,24 @@ export interface DismissKeyboardAction extends ActionBase {
 }
 
 /**
- * A project-tool mutation the grammar cannot reproduce — a gap that ends any
- * replay rather than silently skipping a state change.
+ * Why a typed value was this run's data rather than the flow's, by the rule
+ * that flagged it (`agent/derived.ts`): read off a screenshot, the whole name
+ * or text of a node, a token with a digit shown as a word of its own, or a
+ * date or time reckoned from today.
+ */
+export type DerivedReason = 'pixels' | 'whole-node' | 'minted-token' | 'date';
+
+const DERIVED_REASONS: ReadonlySet<string> = new Set<DerivedReason>(['pixels', 'whole-node', 'minted-token', 'date']);
+
+/**
+ * A gap that ends any replay rather than silently skipping what the grammar
+ * cannot reproduce: a project-tool mutation, or a fill whose value was this
+ * run's data, which carries the rule that said so. The wire name stays
+ * `tool` for both, as the entries already recorded spell it.
  */
 export interface ToolGapAction extends ActionBase {
   readonly name: 'tool';
+  readonly derived?: DerivedReason;
 }
 
 export type RecordedAction =
@@ -459,8 +472,11 @@ function readRecordedAction(document: unknown): RecordedAction | undefined {
     }
     case 'dismissKeyboard':
       return { name: 'dismissKeyboard', summary };
-    case 'tool':
-      return { name: 'tool', summary };
+    case 'tool': {
+      const derived = raw['derived'];
+      if (derived !== undefined && (typeof derived !== 'string' || !DERIVED_REASONS.has(derived))) return undefined;
+      return { name: 'tool', summary, ...(derived === undefined ? {} : { derived: derived as DerivedReason }) };
+    }
     default:
       return undefined;
   }
