@@ -1,33 +1,13 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-23T17:08:46.694Z",
+  "createdAt": "2026-09-23T19:20:47.249Z",
   "payload": {
     "actions": [
       {
         "name": "tapAt",
-        "summary": "tap the point (167, 449) on other \"Use tester@tester.army / <secret:benchm…\"",
+        "summary": "tap the point (187, 452) on other \"Use tester@tester.army / <secret:benchm…\"",
         "point": {
-          "x": 167,
-          "y": 449
-        },
-        "viewport": {
-          "width": 402,
-          "height": 874
-        },
-        "within": {
-          "target": {
-            "role": "other",
-            "name": "Use tester@tester.army / <secret:benchmark>, Email, Password, SIGN IN"
-          },
-          "fx": 0.4154,
-          "fy": 0.4393
-        }
-      },
-      {
-        "name": "tapAt",
-        "summary": "tap the point (171, 452) on other \"Use tester@tester.army / <secret:benchm…\"",
-        "point": {
-          "x": 171,
+          "x": 187,
           "y": 452
         },
         "viewport": {
@@ -39,20 +19,16 @@
             "role": "other",
             "name": "Use tester@tester.army / <secret:benchmark>, Email, Password, SIGN IN"
           },
-          "fx": 0.4254,
+          "fx": 0.4652,
           "fy": 0.4433
         }
       },
       {
-        "name": "tool",
-        "summary": "tool type (run-time value)"
-      },
-      {
         "name": "tapAt",
-        "summary": "tap the point (165, 528) on other \"Use tester@tester.army / <secret:benchm…\"",
+        "summary": "tap the point (131, 453) on other \"Use tester@tester.army / <secret:benchm…\"",
         "point": {
-          "x": 165,
-          "y": 528
+          "x": 131,
+          "y": 453
         },
         "viewport": {
           "width": 402,
@@ -63,16 +39,21 @@
             "role": "other",
             "name": "Use tester@tester.army / <secret:benchmark>, Email, Password, SIGN IN"
           },
-          "fx": 0.4104,
-          "fy": 0.5435
+          "fx": 0.3259,
+          "fy": 0.4446
         }
       },
       {
+        "name": "tool",
+        "summary": "tool type (run-time value)",
+        "derived": "pixels"
+      },
+      {
         "name": "tapAt",
-        "summary": "tap the point (172, 528) on other \"Use tester@tester.army / <secret:benchm…\"",
+        "summary": "tap the point (133, 530) on other \"Use tester@tester.army / <secret:benchm…\"",
         "point": {
-          "x": 172,
-          "y": 528
+          "x": 133,
+          "y": 530
         },
         "viewport": {
           "width": 402,
@@ -83,13 +64,14 @@
             "role": "other",
             "name": "Use tester@tester.army / <secret:benchmark>, Email, Password, SIGN IN"
           },
-          "fx": 0.4279,
-          "fy": 0.5435
+          "fx": 0.3308,
+          "fy": 0.5462
         }
       },
       {
         "name": "tool",
-        "summary": "tool type (run-time value)"
+        "summary": "tool type (run-time value)",
+        "derived": "pixels"
       },
       {
         "name": "tap",
@@ -139,7 +121,7 @@
       "targetId": "ios-simulator",
       "instructionDigest": "2ac57f8c28a31069613ffb9bbf8151a42ea8ceb4bb65d0ad6dcd9eea0b8a2755"
     },
-    "summary": "Used the hinted login credentials and dismissed the password-save prompt. The screen now displays “Logged in successfully.”",
+    "summary": "Entered the hinted email and password, submitted the form, and dismissed the password-save prompt. The screen now displays “Logged in successfully.”",
     "startPath": "dev.e2e.benchmark / Benchmark Examples",
     "endPath": "dev.e2e.benchmark / Benchmark Examples",
     "endAnchors": [
@@ -148,6 +130,6 @@
         "name": "Logged in successfully"
       }
     ],
-    "endWaitMs": 12777
+    "endWaitMs": 13078
   }
 }

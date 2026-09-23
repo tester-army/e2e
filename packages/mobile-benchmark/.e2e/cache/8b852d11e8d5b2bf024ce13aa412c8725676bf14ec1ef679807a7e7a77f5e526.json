@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-23T16:58:48.860Z",
+  "createdAt": "2026-09-23T19:16:16.973Z",
   "payload": {
     "actions": [
       {
@@ -11,7 +11,7 @@
           "role": "scroll-view",
           "name": "Scroll down and tap Item 137 to complete"
         },
-        "times": 9,
+        "times": 10,
         "spans": 0.8673
       },
       {
@@ -34,7 +34,7 @@
       "targetId": "ios-simulator",
       "instructionDigest": "240960ef8daa93f30d3183a42cf877c23681993025141766e480102a3eca2d75"
     },
-    "summary": "Scrolled the paginated list until Item 137 appeared and tapped it. The screen now displays “Found item 137.”",
+    "summary": "Scrolled until Item 137 was visible and tapped it. The screen now displays “Found item 137.”.",
     "startPath": "dev.e2e.benchmark / Benchmark Examples",
     "endPath": "dev.e2e.benchmark / Benchmark Examples",
     "endAnchors": [
@@ -48,6 +48,6 @@
         "testId": "success-message"
       }
     ],
-    "endWaitMs": 10316
+    "endWaitMs": 12206
   }
 }

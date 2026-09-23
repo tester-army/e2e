@@ -1,14 +1,64 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-23T17:07:12.007Z",
+  "createdAt": "2026-09-23T19:19:41.042Z",
   "payload": {
     "actions": [
       {
         "name": "tapAt",
-        "summary": "tap the point (182, 225) on other \"Create your benchmark account, First na…\"",
+        "summary": "tap the point (172, 227) on other \"Create your benchmark account, First na…\"",
+        "point": {
+          "x": 172,
+          "y": 227
+        },
+        "viewport": {
+          "width": 402,
+          "height": 874
+        },
+        "within": {
+          "target": {
+            "role": "other",
+            "name": "Create your benchmark account, First name, Last name, Email address, Set password, Passwords must contain a minimum of 8 characters. By signing up you confirm you have read the benchmark terms. This filler paragraph exists so the form spans roughly two screens and the scroll indicator reports multi…"
+          },
+          "fx": 0.4279,
+          "fy": 0.1464
+        }
+      },
+      {
+        "name": "tool",
+        "summary": "tool type (run-time value)",
+        "derived": "pixels"
+      },
+      {
+        "name": "tapAt",
+        "summary": "tap the point (172, 310) on other \"Create your benchmark account, First na…\"",
+        "point": {
+          "x": 172,
+          "y": 310
+        },
+        "viewport": {
+          "width": 402,
+          "height": 874
+        },
+        "within": {
+          "target": {
+            "role": "other",
+            "name": "Create your benchmark account, First name, Last name, Email address, Set password, Passwords must contain a minimum of 8 characters. By signing up you confirm you have read the benchmark terms. This filler paragraph exists so the form spans roughly two screens and the scroll indicator reports multi…"
+          },
+          "fx": 0.4279,
+          "fy": 0.2559
+        }
+      },
+      {
+        "name": "tool",
+        "summary": "tool type (run-time value)",
+        "derived": "pixels"
+      },
+      {
+        "name": "tapAt",
+        "summary": "tap the point (182, 394) on other \"Create your benchmark account, First na…\"",
         "point": {
           "x": 182,
-          "y": 225
+          "y": 394
         },
         "viewport": {
           "width": 402,
@@ -20,66 +70,19 @@
             "name": "Create your benchmark account, First name, Last name, Email address, Set password, Passwords must contain a minimum of 8 characters. By signing up you confirm you have read the benchmark terms. This filler paragraph exists so the form spans roughly two screens and the scroll indicator reports multi…"
           },
           "fx": 0.4527,
-          "fy": 0.1438
+          "fy": 0.3668
         }
       },
       {
         "name": "tool",
-        "summary": "tool type (run-time value)"
+        "summary": "tool type (run-time value)",
+        "derived": "pixels"
       },
       {
         "name": "tapAt",
-        "summary": "tap the point (182, 311) on other \"Create your benchmark account, First na…\"",
+        "summary": "tap the point (191, 478) on other \"Create your benchmark account, First na…\"",
         "point": {
-          "x": 182,
-          "y": 311
-        },
-        "viewport": {
-          "width": 402,
-          "height": 874
-        },
-        "within": {
-          "target": {
-            "role": "other",
-            "name": "Create your benchmark account, First name, Last name, Email address, Set password, Passwords must contain a minimum of 8 characters. By signing up you confirm you have read the benchmark terms. This filler paragraph exists so the form spans roughly two screens and the scroll indicator reports multi…"
-          },
-          "fx": 0.4527,
-          "fy": 0.2573
-        }
-      },
-      {
-        "name": "tool",
-        "summary": "tool type (run-time value)"
-      },
-      {
-        "name": "tapAt",
-        "summary": "tap the point (182, 395) on other \"Create your benchmark account, First na…\"",
-        "point": {
-          "x": 182,
-          "y": 395
-        },
-        "viewport": {
-          "width": 402,
-          "height": 874
-        },
-        "within": {
-          "target": {
-            "role": "other",
-            "name": "Create your benchmark account, First name, Last name, Email address, Set password, Passwords must contain a minimum of 8 characters. By signing up you confirm you have read the benchmark terms. This filler paragraph exists so the form spans roughly two screens and the scroll indicator reports multi…"
-          },
-          "fx": 0.4527,
-          "fy": 0.3681
-        }
-      },
-      {
-        "name": "tool",
-        "summary": "tool type (run-time value)"
-      },
-      {
-        "name": "tapAt",
-        "summary": "tap the point (182, 478) on other \"Create your benchmark account, First na…\"",
-        "point": {
-          "x": 182,
+          "x": 191,
           "y": 478
         },
         "viewport": {
@@ -91,31 +94,31 @@
             "role": "other",
             "name": "Create your benchmark account, First name, Last name, Email address, Set password, Passwords must contain a minimum of 8 characters. By signing up you confirm you have read the benchmark terms. This filler paragraph exists so the form spans roughly two screens and the scroll indicator reports multi…"
           },
-          "fx": 0.4527,
+          "fx": 0.4751,
           "fy": 0.4776
         }
       },
       {
         "name": "tool",
-        "summary": "tool type (run-time value)"
+        "summary": "tool type (run-time value)",
+        "derived": "pixels"
       },
       {
-        "name": "press",
-        "summary": "press \"Enter\" on button \"return\"",
+        "name": "tap",
+        "summary": "tap button \"return\"",
         "target": {
           "role": "button",
           "name": "return",
           "testId": "Return",
           "selector": "id=Return"
-        },
-        "key": "Enter"
+        }
       },
       {
         "name": "tapAt",
-        "summary": "tap the point (195, 757) on other \"Create your benchmark account, First na…\"",
+        "summary": "tap the point (200, 758) on other \"Create your benchmark account, First na…\"",
         "point": {
-          "x": 195,
-          "y": 757
+          "x": 200,
+          "y": 758
         },
         "viewport": {
           "width": 402,
@@ -126,8 +129,8 @@
             "role": "other",
             "name": "Create your benchmark account, First name, Last name, Email address, Set password, Passwords must contain a minimum of 8 characters. By signing up you confirm you have read the benchmark terms. This filler paragraph exists so the form spans roughly two screens and the scroll indicator reports multi…"
           },
-          "fx": 0.4851,
-          "fy": 0.8456
+          "fx": 0.4975,
+          "fy": 0.847
         }
       },
       {
@@ -148,7 +151,7 @@
       "targetId": "ios-simulator",
       "instructionDigest": "69b9f2ed2ba0afaf7980bfae60b2bdb26ebc89da1dbef86fd16dcc96fcaaf831"
     },
-    "summary": "Filled all registration fields with plausible values and submitted the form. The screen now displays “Account created.”",
+    "summary": "Filled the registration form with plausible name, email, and password values, submitted it, dismissed the password-save prompt, and verified the screen says “Account created.”.",
     "startPath": "dev.e2e.benchmark / Benchmark Examples",
     "endPath": "dev.e2e.benchmark / Benchmark Examples",
     "endAnchors": [
@@ -157,6 +160,6 @@
         "name": "Account created"
       }
     ],
-    "endWaitMs": 13778
+    "endWaitMs": 13122
   }
 }

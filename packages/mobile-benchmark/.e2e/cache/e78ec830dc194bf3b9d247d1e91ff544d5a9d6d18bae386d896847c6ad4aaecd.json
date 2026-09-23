@@ -1,8 +1,18 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-23T17:11:53.563Z",
+  "createdAt": "2026-09-23T19:22:55.569Z",
   "payload": {
     "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"Card\"",
+        "target": {
+          "role": "button",
+          "name": "Card",
+          "testId": "Card",
+          "selector": "id=Card"
+        }
+      },
       {
         "name": "tap",
         "summary": "tap button \"Card\"",
@@ -33,7 +43,8 @@
       },
       {
         "name": "tool",
-        "summary": "tool type (run-time value)"
+        "summary": "tool type (run-time value)",
+        "derived": "minted-token"
       },
       {
         "name": "tap",
@@ -53,7 +64,7 @@
       "targetId": "ios-simulator",
       "instructionDigest": "9fe23653d2cc3a36f7e741bcb65cdc35947faf70e0c9231de5686b94c50adafb"
     },
-    "summary": "Entered CVC 123 and billing postal code SW1A 1AA, then submitted the Stripe test card. The screen confirms “Stripe test payment completed” with card 4242 4242 4242 4242.",
+    "summary": "Entered the Stripe test card and billing details, then submitted payment. The screen confirms “Stripe test payment completed.”",
     "startPath": "dev.e2e.benchmark / Benchmark Examples",
     "endPath": "dev.e2e.benchmark / Benchmark Examples",
     "endAnchors": [
@@ -63,6 +74,6 @@
         "testId": "success-message"
       }
     ],
-    "endWaitMs": 23387
+    "endWaitMs": 16445
   }
 }

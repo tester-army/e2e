@@ -194,6 +194,7 @@ const SCENARIOS: readonly Scenario[] = [
     name: 'Sequential Onboarding',
     goal: 'complete the signup wizard with the email, name, and phone the screen asks for, dismissing the keyboard before each Continue',
     success: 'Onboarding complete',
+    gap: 'the third step keeps its Continue under the keyboard; the agent dismisses the keyboard and taps, and the wizard stays on step 3 in one run out of three, on a Mac and on CI alike, so the gate would flake on it until the tap after a keyboard dismissal is understood',
   },
   {
     name: 'Apple Pay',

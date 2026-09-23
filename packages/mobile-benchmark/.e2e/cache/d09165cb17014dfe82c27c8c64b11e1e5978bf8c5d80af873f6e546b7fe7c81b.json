@@ -1,8 +1,12 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-23T17:02:02.894Z",
+  "createdAt": "2026-09-23T19:18:23.299Z",
   "payload": {
     "actions": [
+      {
+        "name": "tool",
+        "summary": "tool swipe"
+      },
       {
         "name": "tool",
         "summary": "tool swipe"
@@ -31,7 +35,7 @@
       "targetId": "ios-simulator",
       "instructionDigest": "6c08e7e667c97fd4d0d060f62bd1f599dcd7e9ac5d67748a2ccb04da53922785"
     },
-    "summary": "Waited for the initial load, pulled down to refresh until the “Claim reward” control appeared, then tapped it. The screen now confirms “Reward claimed.”.",
+    "summary": "Waited for the initial loading screen to finish, pulled down to refresh, and tapped Claim reward. The screen now displays “Reward claimed.”",
     "startPath": "dev.e2e.benchmark / Benchmark Examples",
     "endPath": "dev.e2e.benchmark / Benchmark Examples",
     "endAnchors": [
@@ -57,6 +61,6 @@
         "testId": "success-message"
       }
     ],
-    "endWaitMs": 16209
+    "endWaitMs": 15560
   }
 }

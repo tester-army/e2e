@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-23T17:14:32.283Z",
+  "createdAt": "2026-09-23T19:26:00.742Z",
   "payload": {
     "actions": [
       {
@@ -33,13 +33,13 @@
       "targetId": "ios-simulator",
       "instructionDigest": "94f39431cf1ce1c380678b2d8ee27fb1e2a33fe296495a90c007ad4dc3f2ae45"
     },
-    "summary": "Started Apple Pay, selected Pay with Passcode to authorize the sheet, and verified the success message “Payment complete: $8.99.”.",
+    "summary": "The Apple Pay flow is complete; the current screen confirms “Payment complete: $8.99.”",
     "startPath": "dev.e2e.benchmark / Benchmark Examples",
-    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endPath": "dev.e2e.benchmark / Apple Pay",
     "endAnchors": [
       {
-        "role": "other",
-        "name": "Payment complete: $8.99"
+        "role": "navigation",
+        "testId": "Apple Pay"
       },
       {
         "role": "text",
@@ -47,6 +47,6 @@
         "testId": "success-message"
       }
     ],
-    "endWaitMs": 12803
+    "endWaitMs": 22492
   }
 }
