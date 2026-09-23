@@ -207,6 +207,24 @@ describe('StepTraceSession', () => {
     expect(session.replayedPrefix).toBeUndefined();
   });
 
+  it('misses a truncated entry without replaying any of its actions, so the executor runs from the top', async () => {
+    const tapUpgrade = { name: 'tap', summary: 'tap button "Upgrade"', target: { role: 'button', name: 'Upgrade' } } as const;
+    const context = entryContext({
+      actions: Array.from({ length: 50 }, () => tapUpgrade),
+      startPath: '/pricing',
+      truncated: true,
+    });
+    let taps = 0;
+    const session = makeSession(context, {
+      ...makeHost(['/pricing']),
+      actions: { tap: async () => { taps += 1; } } as unknown as ExecutorActions,
+    });
+    await expect(session.begin()).resolves.toBeUndefined();
+    expect(taps).toBe(0);
+    expect(session.replayedPrefix).toBeUndefined();
+    expect(session.cacheInfo).toEqual({ mode: 'missed', reason: 'truncated', replayedActions: 0, totalActions: 50 });
+  });
+
   it('degrades a hit that is not a trace-1 entry to a miss, whichever store returned it', async () => {
     const malformed = { schemaVersion: 'trace-1', payload: { actions: 'not a list' } } as unknown as TraceEntry;
     const session = makeSession(

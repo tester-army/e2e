@@ -1,11 +1,12 @@
 /**
- * A filled secret never leaves the runner in a trace. Through the real
- * Playwright engine: a credential filled by `screen.fill()` and one filled by
- * an executor's `typeSecret` each produce a trace whose every text entry is
- * redacted, labelled `complete`, and handed to the store already clean; an
- * attempt that filled no secret keeps its trace as recorded, labelled
- * `not-required`. Nothing under the project's `.e2e` directory holds the
- * plaintext afterwards.
+ * A filled secret never leaves the runner in a trace or in the cache. Through
+ * the real Playwright engine: a credential filled by `screen.fill()` and one
+ * filled by an executor's `typeSecret` each produce a trace whose every text
+ * entry is redacted, labelled `complete`, and handed to the store already
+ * clean; an attempt that filled no secret keeps its trace as recorded,
+ * labelled `not-required`. The executor's fill is recorded in the trace cache
+ * by the secret's name alone. Nothing under the project's `.e2e` directory
+ * holds the plaintext afterwards.
  */
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -16,19 +17,21 @@ import type { ArtifactStore, StoredArtifact } from '../../src/types.ts';
 import type { RunOutcome } from '../../src/run/runner.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { createProject, resultByTitle, runExisting, type FixtureProject } from '../helpers/run-project.ts';
+import { entriesFor, readEntries } from '../helpers/trace-cache.ts';
 
 const SECRET = 'trace-secret-Qx7#"&=2718';
 
-const SUITE = `import { test, credentials } from 'e2e';
+const SUITE = `import { test, expect, credentials } from 'e2e';
 
 test('fills through screen', async ({ app, screen }) => {
   await app.open();
   await screen.getByLabel('Password').fill(credentials.user('member').password);
 });
 
-test('fills through the executor', async ({ app, agent }) => {
+test('fills through the executor', async ({ app, agent, screen }) => {
   await app.open();
   await agent.act('enter the password', { params: { password: credentials.user('member').password } });
+  await expect(screen.getByLabel('Password')).toBeVisible();
 });
 
 test('fills nothing', async ({ app, screen }) => {
@@ -83,7 +86,7 @@ describe('trace secrecy', () => {
       config: {
         tests: 'tests/**/*.e2e.ts',
         reporters: ['json'] as const,
-        cache: 'off' as const,
+        cache: 'read-write' as const,
         artifacts: { kinds: ['screenshot', 'trace'], store },
         credentials: { member: { username: 'ada', password: SECRET } },
         agents: {
@@ -153,6 +156,19 @@ describe('trace secrecy', () => {
     expect(trace.path).toBeDefined();
     const entries = textEntries(readFileSync(path.join(project.dir, '.e2e', 'artifacts', trace.path!)));
     expect(entries.get('trace.trace')).toContain('plain text');
+  });
+
+  it('records the executor fill in the cache by the secret name alone, with no value', () => {
+    expect(readEntries(project)).toHaveLength(1);
+    const [entry] = entriesFor(project, 'fills through the executor');
+    expect(entry!.payload.actions).toEqual([
+      {
+        name: 'typeSecret',
+        summary: expect.stringContaining('member'),
+        target: expect.objectContaining({ role: 'textbox', name: 'Password' }),
+        secret: 'member',
+      },
+    ]);
   });
 
   it('leaves the plaintext nowhere under .e2e, in the report, or in what the store received', () => {
