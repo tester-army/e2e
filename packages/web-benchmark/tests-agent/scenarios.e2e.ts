@@ -31,7 +31,6 @@ const SCENARIOS: readonly Scenario[] = [
     slug: 'shadow-dom-form',
     goal: 'fill the form buried in the nested shadow roots and submit it to get access',
     success: 'Access granted',
-    gap: 'the observation walks open shadow roots only; a closed root hides its controls from the tree',
   },
   {
     slug: 'lying-labels',

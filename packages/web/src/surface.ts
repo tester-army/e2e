@@ -48,12 +48,8 @@ import { ROOT_NODE_ID, toSemanticNode } from './observation.ts';
 import { captureObservation } from './observation-capture.ts';
 import { maskOptions, secureFieldMasks } from './observe.ts';
 import { connectionAbort } from './operation-budget.ts';
-import {
-  CLOSED_SHADOW_ROOTS_INIT_SCRIPT,
-  readHandlesSemanticsFunction,
-  readManySemanticsFunction,
-  SECURE_FIELD_SELECTOR,
-} from './read-node.ts';
+import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT } from './closed-shadow.ts';
+import { readHandlesSemanticsFunction, readManySemanticsFunction, SECURE_FIELD_SELECTOR } from './read-node.ts';
 import { httpCredentials, installSiteHeaders, lowercaseNames } from './protected-app.ts';
 import { RefRegistry } from './refs.ts';
 import {

@@ -1,9 +1,9 @@
-/** Registers the closed-root masking selector in a CDP default context. */
+/** Registers the closed-root selector engines in a CDP default context; every locator and secure-field mask needs them. */
 
 import type { BrowserContext, Page } from 'playwright';
 import { EngineError } from 'e2e/engine';
 import { connectionAbort, type ConnectionBudget } from './operation-budget.ts';
-import { CLOSED_SHADOW_ROOTS_KEY, CLOSED_SHADOW_SELECTOR_ENGINE, CLOSED_SHADOW_SELECTOR_ENGINE_SOURCE } from './read-node.ts';
+import { CLOSED_SHADOW_ROOTS_KEY, CLOSED_SHADOW_SELECTOR_ENGINES } from './closed-shadow.ts';
 
 interface SelectorChannel {
   registerSelectorEngine(
@@ -17,7 +17,8 @@ interface SelectorChannel {
  * the persistent context returned by connectOverCDP. Its public register API
  * rejects an already registered name before reaching that context. Use the
  * same context channel as selectors.register, without allocating global names
- * on every reconnect. Missing channel support must prevent masked capture.
+ * on every reconnect. Missing channel support must fail the connection: every
+ * locator resolves through these engines and every masked capture relies on them.
  */
 export async function registerCdpSelectors(context: BrowserContext, budget: ConnectionBudget): Promise<void> {
   if (budget.signal.aborted) throw connectionAbort(budget.signal, 'CDP selector registration');
@@ -27,18 +28,20 @@ export async function registerCdpSelectors(context: BrowserContext, budget: Conn
   const channel: unknown = Reflect.get(context, '_channel');
   const register = channel !== null && typeof channel === 'object' ? Reflect.get(channel, 'registerSelectorEngine') : undefined;
   if (typeof register !== 'function') {
-    throw new EngineError('UNSUPPORTED_CAPABILITY', 'this Playwright version cannot install secure-field masks in the CDP context', { retryable: false });
+    throw new EngineError('UNSUPPORTED_CAPABILITY', 'this Playwright version cannot register selector engines in the CDP context; locators and secure-field masks need them', { retryable: false });
   }
-  try {
-    await (channel as SelectorChannel).registerSelectorEngine({ selectorEngine: {
-      name: CLOSED_SHADOW_SELECTOR_ENGINE,
-      source: `(${CLOSED_SHADOW_SELECTOR_ENGINE_SOURCE})(undefined)`,
-      contentScript: false,
-    } }, { timeout: budget.timeoutMs, signal: budget.signal });
-  } catch (cause) {
-    // A version that seeds CDP contexts already has our process-wide registration.
-    const duplicate = `"${CLOSED_SHADOW_SELECTOR_ENGINE}" selector engine has been already registered`;
-    if (!(cause instanceof Error) || !cause.message.endsWith(duplicate)) throw cause;
+  for (const { name, source } of CLOSED_SHADOW_SELECTOR_ENGINES) {
+    try {
+      await (channel as SelectorChannel).registerSelectorEngine({ selectorEngine: {
+        name,
+        source: `(${source})(undefined)`,
+        contentScript: false,
+      } }, { timeout: budget.timeoutMs, signal: budget.signal });
+    } catch (cause) {
+      // A version that seeds CDP contexts already has our process-wide registration.
+      const duplicate = `"${name}" selector engine has been already registered`;
+      if (!(cause instanceof Error) || !cause.message.endsWith(duplicate)) throw cause;
+    }
   }
 }
 
@@ -50,6 +53,6 @@ export async function requireCdpShadowTracking(page: Page, budget: ConnectionBud
   ));
   if (budget.signal.aborted) throw connectionAbort(budget.signal, 'CDP tracking verification');
   if (tracked.some((present) => !present)) {
-    throw new EngineError('ENGINE_FAILURE', 'CDP recovery failed: secure-field tracking is unavailable after a document changed while disconnected', { retryable: false });
+    throw new EngineError('ENGINE_FAILURE', 'CDP recovery failed: closed shadow root tracking is unavailable after a document changed while disconnected; locators and secure-field masks need it', { retryable: false });
   }
 }

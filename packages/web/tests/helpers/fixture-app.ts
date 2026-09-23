@@ -76,6 +76,55 @@ const CLOSED_SHADOW = `<!doctype html>
 </html>`;
 
 /**
+ * A gate form inside a closed shadow root, with every query kind represented:
+ * a hint paragraph and its hidden twin, a placeholder input carrying a test id,
+ * a labelled input with a value, a named button and its hidden twin, and two
+ * `Twin` buttons beside a third in the light DOM. Below the form an open root
+ * nests inside the closed one and a closed root inside that; a second host in
+ * the light DOM nests a closed root inside an open one. Submitting writes the
+ * verdict into the light DOM.
+ */
+const CLOSED_FORM = `<!doctype html>
+<html>
+<head><title>Fixture Closed Form</title></head>
+<body>
+<h1>Access</h1>
+<button type="button" data-testid="twin-light">Twin</button>
+<x-access></x-access>
+<x-side></x-side>
+<p id="status">locked</p>
+<script>
+  const root = document.querySelector('x-access').attachShadow({ mode: 'closed' });
+  root.innerHTML = [
+    '<p data-testid="hint">Access code hint: SHADOW-42</p>',
+    '<p hidden data-testid="hint-ghost">Access code hint: SHADOW-42</p>',
+    '<input placeholder="Access code" data-testid="code">',
+    '<label>Nickname <input name="nickname" value="ada"></label>',
+    '<button type="button" data-testid="submit">Submit</button>',
+    '<button type="button" hidden data-testid="submit-ghost">Submit</button>',
+    '<button type="button" data-testid="twin-a">Twin</button>',
+    '<button type="button" data-testid="twin-b">Twin</button>',
+    '<section aria-label="Advanced"><x-inner></x-inner></section>',
+  ].join('');
+  const submit = () => {
+    const code = root.querySelector('input').value;
+    document.getElementById('status').textContent = code === 'SHADOW-42' ? 'granted' : 'denied';
+  };
+  root.querySelector('[data-testid="submit"]').addEventListener('click', submit);
+  root.querySelector('input').addEventListener('keydown', (event) => { if (event.key === 'Enter') submit(); });
+  const inner = root.querySelector('x-inner').attachShadow({ mode: 'open' });
+  inner.innerHTML = '<button type="button">Open inside closed</button><x-deep></x-deep>';
+  const deep = inner.querySelector('x-deep').attachShadow({ mode: 'closed' });
+  deep.innerHTML = '<button type="button">Closed inside open</button>';
+  const side = document.querySelector('x-side').attachShadow({ mode: 'open' });
+  side.innerHTML = '<x-side-closed></x-side-closed>';
+  const sideClosed = side.querySelector('x-side-closed').attachShadow({ mode: 'closed' });
+  sideClosed.innerHTML = '<button type="button">Sidecar</button>';
+</script>
+</body>
+</html>`;
+
+/**
  * A form that generates no box of its own, the way Shopify's one-page checkout
  * form is styled: `getClientRects()` is empty for it while every field paints.
  */
@@ -226,10 +275,30 @@ const POINTER = `<!doctype html>
 </body>
 </html>`;
 
+/**
+ * One closed root whose host precedes a light-DOM match of the same query, so
+ * the reader's in-place order and the locators' light-first order differ.
+ */
+const CLOSED_ORDER = `<!doctype html>
+<html>
+<head><title>Fixture Closed Order</title></head>
+<body>
+<h1>Order</h1>
+<x-widget></x-widget>
+<button type="button">Beta</button>
+<script>
+  const root = document.querySelector('x-widget').attachShadow({ mode: 'closed' });
+  root.innerHTML = '<button type="button">Alpha</button>';
+</script>
+</body>
+</html>`;
+
 const PAGES: Readonly<Record<string, string>> = {
   '/': HOME,
   '/pointer': POINTER,
   '/closed-shadow': CLOSED_SHADOW,
+  '/closed-form': CLOSED_FORM,
+  '/closed-order': CLOSED_ORDER,
   '/contents': CONTENTS,
   '/closed-login': CLOSED_LOGIN,
   '/form': FORM,

@@ -2,7 +2,7 @@
 
 import type { Browser } from 'playwright';
 import { chromium, firefox, selectors, webkit } from 'playwright';
-import { CLOSED_SHADOW_SELECTOR_ENGINE, CLOSED_SHADOW_SELECTOR_ENGINE_SOURCE } from './read-node.ts';
+import { CLOSED_SHADOW_SELECTOR_ENGINES } from './closed-shadow.ts';
 
 export type BrowserName = 'chromium' | 'firefox' | 'webkit';
 
@@ -88,9 +88,12 @@ let selectorEngines: Promise<void> | undefined;
  */
 function registerSelectorEngines(): Promise<void> {
   // Playwright serializes a function argument with `toString()` and invokes it
-  // in the page, so the factory is materialized from its source here to keep the
-  // in-page code self-contained, the same way the reader is assembled.
-  const factory = new Function(`return ${CLOSED_SHADOW_SELECTOR_ENGINE_SOURCE};`)() as () => unknown;
-  selectorEngines ??= selectors.register(CLOSED_SHADOW_SELECTOR_ENGINE, factory);
+  // in the page, so each factory is materialized from its source here to keep
+  // the in-page code self-contained, the same way the reader is assembled.
+  selectorEngines ??= Promise.all(
+    CLOSED_SHADOW_SELECTOR_ENGINES.map(({ name, source }) =>
+      selectors.register(name, new Function(`return ${source};`)() as () => unknown),
+    ),
+  ).then(() => undefined);
   return selectorEngines;
 }

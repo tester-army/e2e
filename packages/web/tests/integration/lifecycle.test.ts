@@ -811,13 +811,14 @@ describe('web engine lifecycle', () => {
     });
   });
 
-  it('observes and acts inside a closed shadow root, which Playwright locators cannot reach', async () => {
+  it('observes, locates, and acts inside a closed shadow root, which Playwright alone cannot reach', async () => {
     const engine = web();
     await withAttempt(engine, app, artifactsDir, 'cs1', async () => {
       await engine.session!.open!(`${app.url}/closed-shadow`, operation('cs1'));
-      // The control exists only for the reader: a role query goes through
-      // Playwright, which stops at a closed root.
-      expect(await engine.locate!(byRole('button'), operation('cs1'))).toHaveLength(0);
+      // A role query searches the closed root the reader also walks, so the
+      // tree and the locator name the same control.
+      const located = await engine.locate!(byRole('button'), operation('cs1'));
+      expect(located.map((node) => node.name)).toEqual(['Checkout']);
 
       const snapshot = await engine.observe!(operation('cs1'));
       const checkout = [...walk(snapshot.root)].find((node) => node.role === 'button');
