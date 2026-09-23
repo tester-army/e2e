@@ -5,8 +5,9 @@ import base from './e2e.config.ts';
 
 /**
  * Agentic suite against the same app and account as the deterministic one.
- * It gates every PR alongside that suite (`benchmark.yml` passes the model key);
- * each step spends real model calls, cents per run. By hand:
+ * It gates every PR from this repository's branches alongside that suite
+ * (`benchmark.yml`), replaying the recordings committed under `.e2e/cache/`
+ * and calling the model for a step with none. To re-record by hand:
  *
  *   AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/web-benchmark test:agent
  *

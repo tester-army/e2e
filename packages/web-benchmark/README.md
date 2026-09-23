@@ -34,7 +34,11 @@ planted bug.
   scenarios the grammar cannot finish yet are declared and skipped with the
   reason. `planted-bugs.e2e.ts` asserts that an `agent.assert` of the correct
   behavior fails on a bug-book scenario, so a passing judgment there is a
-  missed bug.
+  missed bug. Its recordings under `.e2e/cache/` are committed: CI replays
+  them read-only and calls the model only for a step with no recording, so
+  the gate runs at deterministic speed. When a scenario or a step changes,
+  re-record locally with the `test:agent` command below and commit the
+  changed entries in the same pull request.
 
 ## Commands
 

@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-23T13:30:29.758Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap node \"Account\"",
+        "target": {
+          "text": "Account",
+          "testId": "menu-account"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap node \"Billing ›\"",
+        "target": {
+          "text": "Billing ›"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap node \"Redeem voucher\"",
+        "target": {
+          "text": "Redeem voucher"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20hover-menu",
+      "targetId": "web",
+      "instructionDigest": "4d2bd092cafaf0bdc40c9442fb592d58283fd7a946e7efb98e1142cffe3c07a3"
+    },
+    "summary": "Opened Account, followed Billing to Redeem voucher, and selected it. The page now shows “Voucher redeemed.”",
+    "startPath": "/e/hover-menu",
+    "endPath": "/e/hover-menu",
+    "endAnchors": [
+      {
+        "text": "Voucher redeemed",
+        "testId": "success-message"
+      }
+    ],
+    "endWaitMs": 10096
+  }
+}

@@ -72,9 +72,10 @@ descriptions and commit bodies; `git log` and `gh pr view` are the archive.
   self-contained hard-surface scenarios (shadow DOM, canvas, iframes, native
   dialogs, planted bugs) at `/e/<slug>`, copied from the tester-army web
   benchmark, plus the e2e suites written against them (`tests/` and
-  `tests-agent/` both gate PRs; the agentic one spends real model calls).
-  Scenario files are copies: keep diffs against
-  the source minimal so scenarios port both ways, and never fix a planted bug.
+  `tests-agent/` both gate PRs; the agentic one runs from its committed
+  recordings, see "Committed recordings" under Gotchas). Scenario files are
+  copies: keep diffs against the source minimal so scenarios port both ways,
+  and never fix a planted bug.
 - `packages/mobile-benchmark` (`@e2edev/mobile-benchmark`, private) — an Expo
   app of hard mobile surfaces (merged or hidden accessibility trees, native
   alerts over modals, keyboard-covered submits, virtualized lists, a WebView,
@@ -216,6 +217,14 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
   locate cache are both gone, for example). Verify against `src/` before
   repeating or relying on any "not implemented yet" list — and fix the prose
   when you find it stale.
+- Committed recordings. The web benchmark commits its agentic suite's trace
+  cache (`packages/web-benchmark/.e2e/cache/`; its `.gitignore` leaves it
+  tracked, the testbed's ignores its own, since fixture-app recordings are
+  worth nothing to anyone). CI replays the entries read-only and calls the
+  model for a step with no recording, so the suite gates a pull request at
+  deterministic speed and cost, for this repository's branches only: a fork's
+  pull request has no key. Re-record with `test:agent` and commit the changed
+  entries in the same pull request as the scenario change.
 - No implicit default model. One canonical model per slot: the one
   `createAgent({ model })` brought, else `agent.model`, serves `act`; the
   judgment calls (`assert`, `waitFor`, `extract`) use `judge` when one is

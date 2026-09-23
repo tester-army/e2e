@@ -1,0 +1,64 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-23T13:29:31.881Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "type",
+        "summary": "type \"tester@tester.army\" into textbox \"Email\"",
+        "target": {
+          "role": "textbox",
+          "name": "Email",
+          "testId": "email-input",
+          "placeholder": "Email"
+        },
+        "value": "tester@tester.army"
+      },
+      {
+        "name": "typeSecret",
+        "summary": "fill secret \"benchmark\" into textbox \"Password\"",
+        "target": {
+          "role": "textbox",
+          "name": "Password",
+          "testId": "password-input",
+          "placeholder": "Password",
+          "inputPurpose": "password"
+        },
+        "secret": "benchmark"
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Log in\"",
+        "target": {
+          "role": "button",
+          "name": "Log in",
+          "testId": "login-button"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/login-form.e2e.ts::act%20signs%20in%20with%20the%20benchmark%20account",
+      "targetId": "web",
+      "instructionDigest": "c26456300e1d572e5598b0d8d2584171681d80d8a20bef86bdda6e9d2c7f976e"
+    },
+    "summary": "Logged in with tester@tester.army and the benchmark password; the page shows “Logged in successfully” and a Log out button.",
+    "startPath": "/e/login-form",
+    "endPath": "/e/login-form",
+    "endAnchors": [
+      {
+        "text": "Logged in successfully",
+        "testId": "success-message"
+      },
+      {
+        "role": "button",
+        "name": "Log out",
+        "testId": "logout-button"
+      }
+    ],
+    "endWaitMs": 10103
+  }
+}

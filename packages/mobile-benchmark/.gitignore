@@ -42,7 +42,10 @@ yarn-error.*
 
 # e2e run output
 .e2e/artifacts/
-.e2e/cache/
+# .e2e/cache/ is not ignored: recordings committed there replay in CI (AGENTS.md, "Committed recordings").
 .e2e/sessions/
 .e2e/report.json
 .e2e/ai-trace.json
+
+# CI build output of the app
+.build/

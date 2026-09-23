@@ -1,0 +1,87 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-23T13:30:32.475Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "type",
+        "summary": "type \"4\" into textbox \"otp-input-0\"",
+        "target": {
+          "role": "textbox",
+          "testId": "otp-input-0",
+          "inputPurpose": "one-time-code"
+        },
+        "value": "4"
+      },
+      {
+        "name": "type",
+        "summary": "type \"9\" into textbox \"otp-input-1\"",
+        "target": {
+          "role": "textbox",
+          "testId": "otp-input-1",
+          "inputPurpose": "one-time-code"
+        },
+        "value": "9"
+      },
+      {
+        "name": "type",
+        "summary": "type \"3\" into textbox \"otp-input-2\"",
+        "target": {
+          "role": "textbox",
+          "testId": "otp-input-2",
+          "inputPurpose": "one-time-code"
+        },
+        "value": "3"
+      },
+      {
+        "name": "type",
+        "summary": "type \"0\" into textbox \"otp-input-3\"",
+        "target": {
+          "role": "textbox",
+          "testId": "otp-input-3",
+          "inputPurpose": "one-time-code"
+        },
+        "value": "0"
+      },
+      {
+        "name": "type",
+        "summary": "type \"2\" into textbox \"otp-input-4\"",
+        "target": {
+          "role": "textbox",
+          "testId": "otp-input-4",
+          "inputPurpose": "one-time-code"
+        },
+        "value": "2"
+      },
+      {
+        "name": "type",
+        "summary": "type \"7\" into textbox \"otp-input-5\"",
+        "target": {
+          "role": "textbox",
+          "testId": "otp-input-5",
+          "inputPurpose": "one-time-code"
+        },
+        "value": "7"
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20otp-auto-advance",
+      "targetId": "web",
+      "instructionDigest": "c878aa968fdbc93d377500f8aecb2f3b0ab701c37b7f9757f8d993f0fc87e109"
+    },
+    "summary": "Entered the displayed code 493027 into the six segmented inputs. The page now shows “Code verified.”",
+    "startPath": "/e/otp-auto-advance",
+    "endPath": "/e/otp-auto-advance",
+    "endAnchors": [
+      {
+        "text": "Code verified",
+        "testId": "success-message"
+      }
+    ],
+    "endWaitMs": 10521
+  }
+}

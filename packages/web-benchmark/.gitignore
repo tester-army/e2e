@@ -3,9 +3,7 @@ app/.next/
 # directory ran last; the app's tsconfig includes it once generated.
 app/next-env.d.ts
 .e2e/artifacts/
-# Committing cache entries is opt-in; the scenarios are throwaway fixtures, so
-# no replay here is worth sharing.
-.e2e/cache/
+# .e2e/cache/ is not ignored: recordings committed there replay in CI (AGENTS.md, "Committed recordings").
 .e2e/sessions/
 .e2e/report.json
 .e2e/ai-trace.json
