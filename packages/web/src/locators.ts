@@ -2,8 +2,32 @@
 
 import type { FrameLocator, Locator as PwLocator, Page } from 'playwright';
 import { EngineError, type LocatorExpression, type SemanticQuery, type TextPattern } from 'e2e/engine';
+import { SEARCH_ROOTS_SELECTOR_ENGINE } from './read-node.ts';
 
 type PwScope = Page | FrameLocator | PwLocator;
+
+/**
+ * The roots a semantic query searches: `scope` itself, then every closed
+ * shadow root recorded under it. Playwright's own selectors stop at a closed
+ * root, so a query composed onto `scope` alone would miss a control the reader
+ * lists there; composed onto these roots it matches inside with the very
+ * rules it applies outside. Nodes outside closed roots keep their order and
+ * come first; a closed root's matches follow, root by root.
+ */
+function searchRoots(scope: PwScope): PwLocator {
+  return scope.locator(`${SEARCH_ROOTS_SELECTOR_ENGINE}=`);
+}
+
+/**
+ * The elements a CSS selector list matches in `scope` and in every closed
+ * shadow root under it. Matched by the engine's own selector rather than
+ * `searchRoots(scope).locator(css)`: Playwright's CSS engine sorts a list's
+ * matches in DOM order through `shadowRoot`, which a closed root does not
+ * expose, and drops the ones it cannot place.
+ */
+function cssInSearchRoots(scope: PwScope, css: string): PwLocator {
+  return scope.locator(`${SEARCH_ROOTS_SELECTOR_ENGINE}=${css}`);
+}
 
 function patternToPw(pattern: TextPattern): string | RegExp {
   if (pattern.kind === 'regexp') return new RegExp(pattern.source, pattern.flags);
@@ -45,7 +69,11 @@ function escapeRegexForSelector(re: RegExp): string {
  */
 const ARIA_ROLE_BY_CONTRACT_ROLE: Readonly<Record<string, string>> = { image: 'img' };
 
+/** Every control that carries a current value: the candidates of a display-value query. */
+const VALUED_SELECTOR = 'input, textarea, select';
+
 function queryToPw(scope: PwScope, query: SemanticQuery, testIdAttribute: string): PwLocator {
+  const roots = searchRoots(scope);
   switch (query.kind) {
     case 'role': {
       if (query.value.kind !== 'string') {
@@ -66,19 +94,19 @@ function queryToPw(scope: PwScope, query: SemanticQuery, testIdAttribute: string
       if (states.pressed !== undefined) options.pressed = states.pressed;
       if (query.level !== undefined) options.level = query.level;
       const role = ARIA_ROLE_BY_CONTRACT_ROLE[query.value.value] ?? query.value.value;
-      return scope.getByRole(role as Parameters<Page['getByRole']>[0], options);
+      return roots.getByRole(role as Parameters<Page['getByRole']>[0], options);
     }
     case 'label':
-      return scope.getByLabel(patternToPw(query.value), { exact: patternExact(query.value) });
+      return roots.getByLabel(patternToPw(query.value), { exact: patternExact(query.value) });
     case 'placeholder':
-      return scope.getByPlaceholder(patternToPw(query.value), { exact: patternExact(query.value) });
+      return roots.getByPlaceholder(patternToPw(query.value), { exact: patternExact(query.value) });
     case 'text':
-      return scope.getByText(patternToPw(query.value), { exact: patternExact(query.value) });
+      return roots.getByText(patternToPw(query.value), { exact: patternExact(query.value) });
     case 'displayValue':
       // Candidate set; the surface filters by current value at locate time.
-      return scope.locator('input, textarea, select');
+      return cssInSearchRoots(scope, VALUED_SELECTOR);
     case 'testId':
-      return scope.locator(testIdSelector(testIdAttribute, query.value));
+      return roots.locator(testIdSelector(testIdAttribute, query.value));
   }
 }
 
@@ -182,6 +210,14 @@ const DISPLAY_VALUE_COMPOSITION_MESSAGE =
  * Projects a complete immutable expression onto a Playwright locator within
  * one scope. Frame cardinality is validated separately by the surface.
  *
+ * Every semantic query searches its scope and the closed shadow roots under
+ * it (see `searchRoots`), so a scope, a `has` filter, and an index reach
+ * across a closed boundary. Two compositions stay Playwright's own and stop
+ * at one: a `selector` expression is the platform's CSS or XPath, and
+ * `filter({ hasText })` reads an element's text as Playwright does, light DOM
+ * and open roots, so text inside a closed root does not count toward an
+ * element outside it.
+ *
  * A display-value query resolves to a candidate locator plus a value predicate
  * the surface applies once the candidates are read. Per-element filters
  * (`filter({ hasText, has })`) commute with that predicate, so they compose
@@ -203,13 +239,13 @@ function project(scope: PwScope, expression: LocatorExpression, testIdAttribute:
       const { query } = expression;
       const exactLabel = query.kind === 'label' && patternExact(query.value);
       const locator = exactLabel
-        ? inner.locator(LABELABLE_SELECTOR)
+        ? cssInSearchRoots(inner, LABELABLE_SELECTOR)
         : visibleQueryToPw(inner, query, testIdAttribute);
       return {
         locator,
         displayValue: query.kind === 'displayValue' ? query.value : null,
         name: exactLabel ? query.value : null,
-        composable: exactLabel ? inner.getByLabel(patternToPw(query.value), { exact: false }) : null,
+        composable: exactLabel ? searchRoots(inner).getByLabel(patternToPw(query.value), { exact: false }) : null,
         steps: [],
         visible: query.visible === true,
       };

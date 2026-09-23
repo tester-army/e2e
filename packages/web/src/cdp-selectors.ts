@@ -1,9 +1,9 @@
-/** Registers the closed-root masking selector in a CDP default context. */
+/** Registers the closed-root selector engines in a CDP default context. */
 
 import type { BrowserContext, Page } from 'playwright';
 import { EngineError } from 'e2e/engine';
 import { connectionAbort, type ConnectionBudget } from './operation-budget.ts';
-import { CLOSED_SHADOW_ROOTS_KEY, CLOSED_SHADOW_SELECTOR_ENGINE, CLOSED_SHADOW_SELECTOR_ENGINE_SOURCE } from './read-node.ts';
+import { CLOSED_SHADOW_ROOTS_KEY, CLOSED_SHADOW_SELECTOR_ENGINES } from './read-node.ts';
 
 interface SelectorChannel {
   registerSelectorEngine(
@@ -29,16 +29,18 @@ export async function registerCdpSelectors(context: BrowserContext, budget: Conn
   if (typeof register !== 'function') {
     throw new EngineError('UNSUPPORTED_CAPABILITY', 'this Playwright version cannot install secure-field masks in the CDP context', { retryable: false });
   }
-  try {
-    await (channel as SelectorChannel).registerSelectorEngine({ selectorEngine: {
-      name: CLOSED_SHADOW_SELECTOR_ENGINE,
-      source: `(${CLOSED_SHADOW_SELECTOR_ENGINE_SOURCE})(undefined)`,
-      contentScript: false,
-    } }, { timeout: budget.timeoutMs, signal: budget.signal });
-  } catch (cause) {
-    // A version that seeds CDP contexts already has our process-wide registration.
-    const duplicate = `"${CLOSED_SHADOW_SELECTOR_ENGINE}" selector engine has been already registered`;
-    if (!(cause instanceof Error) || !cause.message.endsWith(duplicate)) throw cause;
+  for (const { name, source } of CLOSED_SHADOW_SELECTOR_ENGINES) {
+    try {
+      await (channel as SelectorChannel).registerSelectorEngine({ selectorEngine: {
+        name,
+        source: `(${source})(undefined)`,
+        contentScript: false,
+      } }, { timeout: budget.timeoutMs, signal: budget.signal });
+    } catch (cause) {
+      // A version that seeds CDP contexts already has our process-wide registration.
+      const duplicate = `"${name}" selector engine has been already registered`;
+      if (!(cause instanceof Error) || !cause.message.endsWith(duplicate)) throw cause;
+    }
   }
 }
 

@@ -152,6 +152,10 @@ Rules:
 - `visible: true` drops nodes the page hides (a closed drawer, a prerendered
   duplicate) before the exactly-one rule. Reach for it when a query is
   ambiguous even though one element is on screen.
+- On the web, queries search open and closed shadow roots alike, so a control
+  a widget renders in a closed root resolves like any other. `web.locator(css)`,
+  `frameLocator`, and `filter({ hasText })` stop at a closed root; query the
+  text inside the root or filter with `has` instead.
 
 ```ts
 const row = screen.getByRole('listitem').filter({ hasText: 'Invoice 42' });

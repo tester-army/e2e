@@ -284,6 +284,13 @@ Reach for the frame's `locator` only when the control has no accessible
 name, label, placeholder, or test id; the [browser guide](/browser#reach-into-an-iframe)
 shows when that applies.
 
+Every `screen` query searches its scope and each closed shadow root the page
+attached under it, with Playwright's own role, name, text, label, and
+attribute matching and each node found once, so a control the observed tree
+lists inside a closed root resolves and takes actions and reads. `locator`,
+`frameLocator`, and `filter({ hasText })` keep Playwright's reach and stop at
+a closed root; the [browser guide](/browser#shadow-dom) has the details.
+
 ### evaluate
 
 The function runs in the page and cannot access variables from the test.

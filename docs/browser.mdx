@@ -305,6 +305,32 @@ sessions are billed while they run, so keep `workers` at what the suite can
 fill; `scope: 'attempt'` trades a session start per test for a browser no
 earlier test has touched.
 
+## Shadow DOM
+
+Queries search open and closed shadow roots alike. The engine records every
+closed root the page attaches with `attachShadow`, the reader walks them
+into the tree the agent sees and a failure prints, and `getByRole`,
+`getByLabel`, `getByPlaceholder`, `getByText`, `getByDisplayValue`, and
+`getByTestId` resolve inside them with the same matching rules as outside.
+Actions and reads on such a node work as on any other. A scope, a `has`
+filter, and `first`, `last`, and `nth` cross the boundary; matches outside a
+closed root come first, then each root's matches in order.
+
+```ts
+// The input and the button live in a closed shadow root a widget attached.
+await screen.getByPlaceholder('Access code').fill('SHADOW-42');
+await screen.getByRole('button', { name: 'Submit' }).tap();
+await expect(screen.getByText('Access granted')).toBeVisible();
+```
+
+Three things stop at a closed root: `web.locator(css)` and `frameLocator`,
+which are the platform's own selectors, and `filter({ hasText })`, which
+reads an element's text as Playwright does, so text inside a closed root
+does not count toward an element outside it. Query the text inside the root
+instead, or filter with `has`. A declarative
+`<template shadowrootmode="closed">` is parsed rather than attached and
+stays out of reach.
+
 ## Raw selectors
 
 Use `web.locator('css or xpath')` when role, label, and test-id queries
