@@ -175,41 +175,71 @@ describe('semantic fallback handoff', () => {
     }
   });
 
-  it.each(['zero-actions', 'failed-capture', 'replayed-action'] as const)('hands off current evidence after replay with %s', async (scenario) => {
+  const tapSave: RecordedAction = { name: 'tap', target: { role: 'button', name: 'Save' }, summary: 'saved' };
+  const scrollDown: RecordedAction = { name: 'scroll', direction: 'down', summary: 'scrolled' };
+
+  /**
+   * Three ways a replay ends on evidence it took itself. Captures 1 and 2 are
+   * the settled start, which the first action's look reads rather than
+   * looking again, so every scenario's failure lands on capture 3, the
+   * replay's first capture of its own: the relocation's retry look when the
+   * recorded control is not on the start screen (`zero-actions`), or the
+   * look before the tap that follows a replayed scroll.
+   */
+  const handOffs = {
+    'zero-actions': {
+      recorded: [{ ...tapSave, target: { role: 'button', name: 'Submit' }, summary: 'submitted' }],
+      failure: 'pixels',
+      prefix: undefined,
+      cache: { mode: 'missed', reason: 'target-not-found', replayedActions: 0, totalActions: 1 },
+    },
+    'failed-capture': {
+      recorded: [scrollDown, tapSave],
+      failure: 'throw',
+      prefix: ['scrolled'],
+      cache: { mode: 'agent-concluded', reason: 'action-failed', replayedActions: 1, totalActions: 2 },
+    },
+    'replayed-action': {
+      recorded: [scrollDown, tapSave],
+      failure: 'pixels',
+      prefix: ['scrolled'],
+      cache: { mode: 'agent-concluded', reason: 'target-not-found', replayedActions: 1, totalActions: 2 },
+    },
+  } as const;
+
+  it.each(Object.keys(handOffs) as (keyof typeof handOffs)[])('hands off current evidence after replay with %s', async (scenario) => {
+    const expected = handOffs[scenario];
     let captures = 0;
     let actions = 0;
-    // Captures 1 and 2 are the settled start; the replay's first action reads
-    // that capture rather than looking again, so a replay that must end before
-    // any action loses its semantics (or its capture) on capture 2. After a
-    // replayed scroll the tap looks afresh, and that look is capture 3.
     const engine = defineEngine({
       name: 'replay-fixture', version: '1', spiVersion: 1, platform: 'fixture', actions: ['tap', 'swipe'],
       perform: async () => { actions += 1; },
       observe: async () => {
         captures += 1;
-        if (captures === 2 && scenario === 'failed-capture') {
+        if (captures <= 2) {
+          return {
+            root: { ref: { id: 'root', revision: '' }, children: [{ ref: { id: 'save', revision: '' }, role: 'button', name: 'Save' }] },
+            location: 'https://fixture.test/start', viewport: VIEWPORT,
+          };
+        }
+        if (captures === 3 && expected.failure === 'throw') {
           throw new EngineError('OPERATION_TIMEOUT', 'replay observation failed', { retryable: false });
         }
-        if (captures > 2 || (captures === 2 && scenario === 'zero-actions')) return pixelSnapshot(captures);
-        return {
-          root: { ref: { id: 'root', revision: '' }, children: [{ ref: { id: 'save', revision: '' }, role: 'button', name: 'Save' }] },
-          location: 'https://fixture.test/start', viewport: VIEWPORT,
-        };
+        return pixelSnapshot(captures);
       },
     });
-    const recorded: RecordedAction[] = [{ name: 'tap', target: { role: 'button', name: 'Save' }, summary: 'saved' }];
-    if (scenario === 'replayed-action') recorded.unshift({ name: 'scroll', direction: 'down', summary: 'scrolled' });
-    const entry = buildTraceEntry({ actions: recorded, startPath: '/start', summary: 'saved', executor: { name: 'fixture' } });
+    const entry = buildTraceEntry({ actions: [...expected.recorded], startPath: '/start', summary: 'saved', executor: { name: 'fixture' } });
     const executor: StepExecutor = {
       name: 'replay-executor',
       async runStep(context) {
-        expect(captures).toBe(scenario === 'replayed-action' ? 3 : 2);
-        expect(actions).toBe(scenario === 'replayed-action' ? 1 : 0);
-        expect(context.replayedPrefix?.replayedActions).toEqual(scenario === 'replayed-action' ? ['scrolled'] : undefined);
+        expect(captures).toBe(3);
+        expect(actions).toBe(expected.prefix === undefined ? 0 : 1);
+        expect(context.replayedPrefix?.replayedActions).toEqual(expected.prefix);
         const current = await context.observe({ tree: true });
-        // A start capture that lost semantics still serves the executor's
-        // first look once; a start capture that failed leaves it a look of its own.
-        const expectedCaptures = scenario === 'zero-actions' ? 2 : scenario === 'failed-capture' ? 3 : 4;
+        // A look that lost semantics before any action still serves the
+        // executor's first look once; after an action, or after a look that
+        // threw, the executor takes a look of its own.
+        const expectedCaptures = scenario === 'zero-actions' ? 3 : 4;
         expect(captures).toBe(expectedCaptures);
         expect(current.treeUnavailable).toBe(true);
         expect(current.tree).toBeUndefined();
@@ -227,8 +257,11 @@ describe('semantic fallback handoff', () => {
     });
     try {
       expect(outcome.report.run.errors).toEqual([]);
-      expect(outcome.report.run.results[0]?.attempts[0]?.error).toBeUndefined();
+      const attempt = outcome.report.run.results[0]?.attempts[0];
+      expect(attempt?.error).toBeUndefined();
       expect(outcome.report.run.results[0]?.status).toBe('passed');
+      // The report says how far the replay got and why it stopped.
+      expect(attempt?.steps.find((step) => step.api === 'agent.act')?.cache).toEqual(expected.cache);
       assertValidReport(outcome.report);
     } finally {
       project.cleanup();

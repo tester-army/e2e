@@ -364,21 +364,8 @@ export function changeShape(observation: AgentObservation): string | undefined {
   return observationShape(observation);
 }
 
-/** Poll interval and ceiling for shape-stability settling. */
+/** Poll interval for shape-stability settling. */
 const SETTLE_POLL_MS = 75;
-const SETTLE_TIMEOUT_MS = 1_000;
-
-/**
- * How long a settle waits for the screen to move away from the shape an
- * action was resolved against before accepting that the action changed
- * nothing visible. A tap on a link starts a navigation that commits hundreds
- * of milliseconds later; a client-side route change swaps the document body
- * after a fetch; a submit renders its result after a round trip. Read too
- * early, the observation is the old page, stable and wrong, and a model
- * "repairs" what already worked. Bounded so a dead control costs one wait,
- * not the step.
- */
-const CHANGE_WAIT_MS = 2_000;
 
 /** What a settle loop needs from its step: the remaining clock and cancellation. */
 interface SettleClock {
@@ -386,14 +373,24 @@ interface SettleClock {
   readonly signal: AbortSignal;
 }
 
-/** Tunables of one settle; production callers take the defaults. */
+/**
+ * The shape the screen had when the preceding action was resolved, and how
+ * long to wait for the screen to leave it: the action's settle policy
+ * (`settle-policy.ts`) decides the window, armed once the action commits.
+ */
+export interface PendingChange {
+  readonly shape: string;
+  readonly waitMs: number;
+}
+
+/** The waits of one settle, decided by the caller; the loop itself keeps no defaults for them. */
 export interface SettleOptions<T> {
   /**
-   * The shape the screen had when the preceding action was resolved. The
-   * settle first waits, bounded, for the shape to differ from it, so an
-   * action's result is read after its effect rather than before.
+   * The pre-action shape to leave first, when an action is pending. The
+   * settle waits, bounded by its window, for the shape to differ from it, so
+   * an action's result is read after its effect rather than before.
    */
-  readonly changedFrom?: string | undefined;
+  readonly changedFrom?: PendingChange | undefined;
   /** The shape `changedFrom` is compared against; defaults to `shapeOf`. */
   readonly changeShapeOf?: ((value: T) => string | undefined) | undefined;
   /**
@@ -402,8 +399,12 @@ export interface SettleOptions<T> {
    * the change wait and never counts as stable while the change wait lasts.
    */
   readonly transitional?: ((value: T) => boolean) | undefined;
-  readonly changeWaitMs?: number | undefined;
-  readonly stableWaitMs?: number | undefined;
+  /**
+   * How long the loop proves the new shape holds still: captures a poll
+   * apart until two agree, or this runs out. Zero reads the first capture
+   * past the change wait as it is.
+   */
+  readonly stableWaitMs: number;
   readonly pollMs?: number | undefined;
 }
 
@@ -429,20 +430,18 @@ export async function settleObservation<T>(
   capture: () => Promise<T>,
   shapeOf: (value: T) => string | undefined,
   clock: SettleClock,
-  options: SettleOptions<T> = {},
+  options: SettleOptions<T>,
 ): Promise<T> {
   const pollMs = options.pollMs ?? SETTLE_POLL_MS;
-  const stableWaitMs = options.stableWaitMs ?? SETTLE_TIMEOUT_MS;
-  const changeWaitMs = options.changeWaitMs ?? CHANGE_WAIT_MS;
   const transitional = options.transitional ?? (() => false);
   let value = await capture();
   let shape = shapeOf(value);
   if (shape === undefined) return value;
   if (options.changedFrom !== undefined) {
     const changeShapeOf = options.changeShapeOf ?? shapeOf;
-    const changeDeadlineMs = Date.now() + changeWaitMs;
+    const changeDeadlineMs = Date.now() + options.changedFrom.waitMs;
     while (
-      (changeShapeOf(value) === options.changedFrom || transitional(value)) &&
+      (changeShapeOf(value) === options.changedFrom.shape || transitional(value)) &&
       Date.now() < changeDeadlineMs &&
       clock.remainingMs() > pollMs
     ) {
@@ -452,7 +451,7 @@ export async function settleObservation<T>(
       if (shape === undefined) return value;
     }
   }
-  const deadlineMs = Date.now() + stableWaitMs;
+  const deadlineMs = Date.now() + options.stableWaitMs;
   while (Date.now() < deadlineMs && clock.remainingMs() > pollMs) {
     await sleep(pollMs, clock.signal);
     value = await capture();

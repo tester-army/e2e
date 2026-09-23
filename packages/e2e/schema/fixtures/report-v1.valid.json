@@ -123,6 +123,13 @@
                   "contextBytes": 0,
                   "ledgerBytes": 0
                 },
+                "cache": {
+                  "mode": "missed",
+                  "reason": "gap",
+                  "derived": "minted-token",
+                  "replayedActions": 0,
+                  "totalActions": 2
+                },
                 "artifacts": [],
                 "turns": [
                   {
@@ -280,6 +287,13 @@
                   "observationBytes": 512,
                   "contextBytes": 0,
                   "ledgerBytes": 0
+                },
+                "cache": {
+                  "mode": "missed",
+                  "reason": "gap",
+                  "derived": "minted-token",
+                  "replayedActions": 0,
+                  "totalActions": 2
                 },
                 "artifacts": [],
                 "turns": [

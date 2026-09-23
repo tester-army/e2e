@@ -10,6 +10,7 @@ import { buildTraceEntry, type ActionTrace, type TraceEntry } from '../../src/ca
 import { recordedVerdictOf, StepTraceSession, type StepCacheHost, type StepCacheOptions } from '../../src/agent/step-cache.ts';
 import { AgentError } from '../../src/agent/error.ts';
 import type { ExecutorActions } from '../../src/agent/executor.ts';
+import type { SettleMode } from '../../src/agent/settle-policy.ts';
 import type { SemanticNode } from '../../src/engine/surface.ts';
 import type { JsonValue } from '../../src/types.ts';
 
@@ -61,7 +62,6 @@ function makeHost(
   };
   return {
     observe: nextScreen,
-    observeSettled: nextScreen,
     actions: { navigate: async () => undefined } as unknown as ExecutorActions,
     signal: new AbortController().signal,
     // Short enough that a missing anchor is not waited for across the backoff.
@@ -107,6 +107,13 @@ const noEntry = fakeContext(async () => {
   throw new Error('no entry');
 });
 
+/** The recording a staged entry would write; an entry staged to keep fails the test. */
+function stagedTrace(context: AgentCacheContext, index = 0): ActionTrace {
+  const staged = context.staged[index];
+  if (staged?.kind !== 'write') throw new Error(`expected a staged write at ${String(index)}, got ${staged?.kind ?? 'nothing'}`);
+  return staged.trace;
+}
+
 describe('recordedVerdictOf', () => {
   it('returns a summary the replay did not write as it is', () => {
     expect(recordedVerdictOf('opened the customers page')).toBe('opened the customers page');
@@ -131,7 +138,7 @@ describe('StepTraceSession', () => {
     const session = makeSession(cache, {
       ...host,
       get traceEligible() { return eligible; },
-      observeSettled: async () => { captures += 1; eligible = false; return { kind: 'pixels', path: '/pricing', viewport: { width: 1280, height: 720 } }; },
+      observe: async () => { captures += 1; eligible = false; return { kind: 'pixels', path: '/pricing', viewport: { width: 1280, height: 720 } }; },
       actions: { navigate: async () => { actions += 1; } } as unknown as ExecutorActions,
     });
     expect(await session.begin()).toBeUndefined();
@@ -260,7 +267,7 @@ describe('StepTraceSession', () => {
     staged.record({ name: 'navigate', url: '/billing' });
     await staged.conclude('passed', 'passed');
     expect(anchored.staged).toHaveLength(1);
-    expect(anchored.staged[0]?.trace.startPath).toBeUndefined();
+    expect(stagedTrace(anchored).startPath).toBeUndefined();
   });
 
   it('stages the delta between the starting and passing screens as end anchors', async () => {
@@ -286,8 +293,8 @@ describe('StepTraceSession', () => {
     await session.begin();
     session.record({ name: 'tap', node: { ...button, ref: { id: 'b', revision: 'r2' } } });
     await session.conclude('passed', 'saved the marker');
-    expect(context.staged[0]?.trace.endAnchors).toEqual([savedAnchor]);
-    expect(context.staged[0]?.trace.endPath).toBe('/storage');
+    expect(stagedTrace(context).endAnchors).toEqual([savedAnchor]);
+    expect(stagedTrace(context).endPath).toBe('/storage');
   });
 
   it('keys on the params with each unique() value as a placeholder, stages the recording with the slot, and fills it from the next call', async () => {
@@ -307,7 +314,7 @@ describe('StepTraceSession', () => {
     first.record({ name: 'navigate', url: '/companies/new?name=E2E-abc' });
     await first.conclude('passed', 'created E2E-abc on the pro plan');
     expect(keyed).toEqual([{ name: '{{param:/name}}', plan: 'pro' }]);
-    const staged = recording.staged[0]!.trace;
+    const staged = stagedTrace(recording);
     expect(staged.actions[0]).toMatchObject({ url: '/companies/new?name={{param:/name}}' });
     expect(staged.summary).toBe('created {{param:/name}} on the pro plan');
 
@@ -339,8 +346,8 @@ describe('StepTraceSession', () => {
     await session.begin();
     session.record({ name: 'navigate', url: '/customers' });
     await session.conclude('passed', 'opened customers');
-    expect(context.staged[0]?.trace.endAnchors).toEqual([savedAnchor]);
-    expect(context.staged[0]?.trace.endPath).toBe('/customers?ref=nav');
+    expect(stagedTrace(context).endAnchors).toEqual([savedAnchor]);
+    expect(stagedTrace(context).endPath).toBe('/customers?ref=nav');
   });
 
   it("self-finalizes on a created record's page whose minted id differs from the recording", async () => {
@@ -384,7 +391,7 @@ describe('StepTraceSession', () => {
     // The executor looked, agreed the step was done, and recorded nothing more.
     await session.conclude('passed', 'the customers page is open');
     expect(context.staged).toHaveLength(1);
-    expect(context.staged[0]?.trace.actions.map((action) => action.name)).toEqual(['navigate']);
+    expect(stagedTrace(context).actions.map((action) => action.name)).toEqual(['navigate']);
   });
 
   it('evicts instead of re-staging when the executor had to repair after an end-mismatch', async () => {
@@ -457,7 +464,7 @@ describe('StepTraceSession', () => {
     const context = fakeContext(async () => ({ status: 'miss' }));
     const blindHost: StepCacheHost = {
       ...makeHost(['/', '/billing']),
-      observeSettled: async () => {
+      observe: async () => {
         throw new Error('no surface to observe');
       },
     };
@@ -473,7 +480,7 @@ describe('StepTraceSession', () => {
     let looks = 0;
     const host: StepCacheHost = {
       ...makeHost(['/', '/billing']),
-      observeSettled: async () => {
+      observe: async () => {
         looks += 1;
         if (looks > 1) throw new Error('surface went away');
         return { kind: 'semantic', nodes: nodeMap([]), viewport: { width: 1280, height: 720 } };
@@ -493,7 +500,7 @@ describe('StepTraceSession', () => {
       let looks = 0;
       const host: StepCacheHost = {
         ...makeHost(['/', '/billing']),
-        observeSettled: async () => {
+        observe: async () => {
           looks += 1;
           if (when === 'baseline' || looks > 1) throw new AgentError('CANCELLED', 'the attempt was cancelled');
           return { kind: 'semantic', nodes: nodeMap([]), viewport: { width: 1280, height: 720 } };
@@ -551,21 +558,21 @@ describe('StepTraceSession', () => {
     expect(far.replayedPrefix?.stopReason).toBe('end-mismatch');
   }, 30_000);
 
-  it('never re-stages the entry it replayed whole, and reports the recorded verdict', async () => {
+  it('stages the entry it replayed whole to keep, never as a recording, and reports the recorded verdict', async () => {
     const context = entryContext({ endPath: '/customers' });
     let captures = 0;
     const host = makeHost(['/pricing', '/customers?utm=x', '/customers']);
-    const counted = { ...host, observe: async () => { captures += 1; return host.observe(); }, observeSettled: async () => { captures += 1; return host.observeSettled(); } };
+    const counted = { ...host, observe: async (mode: SettleMode) => { captures += 1; return host.observe(mode); } };
     const session = makeSession(context, counted);
     const verdict = await session.begin();
     expect(verdict?.status).toBe('passed');
     expect(verdict?.summary).toContain('recorded verdict: opened the customers page');
     session.record({ name: 'navigate', url: '/customers' });
     await session.conclude('passed', verdict?.summary);
-    // The entry is staged as replayed, never as a recording: confirmed, it
-    // stands as it is; unconfirmed, it is evicted. The passing screen is
-    // never captured for it.
-    expect(context.staged).toEqual([{ keyHash: 'a'.repeat(64), trace: expect.objectContaining({ summary: 'opened the customers page' }), stepIndex: 1, replayed: true }]);
+    // A kept entry carries no payload, so the replay's expansion of it can
+    // never be written: confirmed, the file stands as it is; unconfirmed, it
+    // is evicted. The passing screen is never captured for it.
+    expect(context.staged).toEqual([{ kind: 'keep', keyHash: 'a'.repeat(64), stepIndex: 1 }]);
     expect(captures).toBe(2);
   });
 
@@ -577,18 +584,17 @@ describe('StepTraceSession', () => {
       endPath: '/pricing',
       endAnchors: [savedAnchor],
     });
-    const log: string[] = [];
+    const log: SettleMode[] = [];
     const host = makeHost(['/pricing', '/pricing'], [[upgrade], [upgrade, savedMarker]]);
     const session = makeSession(context, {
       ...host,
-      observe: async () => { log.push('raw'); return host.observe(); },
-      observeSettled: async (options) => { log.push(options?.proveStable === false ? 'settled-after-fill' : 'settled'); return host.observeSettled(); },
+      observe: async (mode) => { log.push(mode); return host.observe(mode); },
       actions: { tap: async () => undefined } as unknown as ExecutorActions,
     });
     const verdict = await session.begin();
     expect(verdict?.status).toBe('passed');
     // One settled start capture serves the relocation; the end state is one raw look.
-    expect(log).toEqual(['settled', 'raw']);
+    expect(log).toEqual(['held-still', 'raw']);
   });
 
   it('leaves the entry file untouched across replays and rewrites it after a hand-off the executor healed', async () => {
@@ -656,7 +662,6 @@ describe('StepTraceSession', () => {
     const host: StepCacheHost = {
       ...makeHost([]),
       observe: capture,
-      observeSettled: capture,
       replaying: (active) => log.push(active ? 'cache' : 'model'),
     };
     const begin = async (context: AgentCacheContext, ...nextPaths: string[]) => {

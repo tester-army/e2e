@@ -27,11 +27,13 @@ import {
   projectTree,
   settleObservation,
   type AgentObservation,
+  type PendingChange,
   type SemanticAgentObservation,
 } from './observation.ts';
 import { observationByteBudget } from './observation-budget.ts';
 import type { OperationQueue } from './operation-queue.ts';
 import { instrumentPhase, recordPolicyEvent, retryingObserve } from './phases.ts';
+import { HELD_STILL_MS, type SettleMode } from './settle-policy.ts';
 import type { StepAccounting } from './step-accounting.ts';
 
 /**
@@ -77,16 +79,15 @@ export class ObservationFeed {
   /** The newest observations of the step, oldest first; see MAX_RECENT_OBSERVATIONS. */
   private readonly recent: SemanticAgentObservation[] = [];
   /**
-   * The screen shape the newest committed action was resolved against, kept
-   * until the next settled observation has waited for the screen to leave it.
-   * Armed by actions whose effect shows in the tree; a secret fill leaves no
-   * visible trace and a scroll moves nothing the tree records, so neither
-   * arms it. Without this, the observation after a tap on a link reads the
-   * old page, stable and wrong, and the model repairs what already worked.
+   * The screen shape the newest committed action was resolved against, with
+   * the window its settle policy allows, kept until the next settled
+   * observation has waited for the screen to leave it. Armed by actions whose
+   * effect shows in the tree (`SETTLE_AFTER`); a secret fill is masked out
+   * of every capture, so it arms nothing. Without this, the observation after
+   * a tap on a link reads the old page, stable and wrong, and the model
+   * repairs what already worked.
    */
-  private pendingChange: string | undefined;
-  /** The change wait the pending action asked for; undefined takes the default. */
-  private pendingChangeWaitMs: number | undefined;
+  private pendingChange: PendingChange | undefined;
   /** The last pixel decision recorded on this step: `allowed`, or the withheld reason. */
   private pixelsDecided: string | undefined;
   /** Why requested pixels did not become model input, when they did not. */
@@ -130,16 +131,14 @@ export class ObservationFeed {
   }
 
   /**
-   * Captures cache evidence in queue order. Before any action, its completed
-   * capture can serve the executor's first look once. Every later capture
-   * clears that handoff before starting, even when the later capture fails.
-   * A settled probe with `proveStable: false` still waits for the screen to
-   * leave the previous action's shape but skips the beat that proves the new
-   * shape holds still; replay asks for that after a fill.
+   * Captures cache evidence in queue order, settled as far as `mode` asks.
+   * Before any action, its completed capture can serve the executor's first
+   * look once. Every later capture clears that handoff before starting, even
+   * when the later capture fails.
    */
-  probe(settle: boolean, options: { readonly proveStable?: boolean } = {}): Promise<AgentObservation> {
+  probe(mode: SettleMode): Promise<AgentObservation> {
     return this.queue.run(async () => {
-      const observation = await this.observeNow(settle, false, options.proveStable === false ? 0 : undefined);
+      const observation = await this.observeNow(mode, false);
       if (this.accounting.metrics.actionSteps === 0) this.opening = observation;
       return observation;
     });
@@ -157,7 +156,7 @@ export class ObservationFeed {
       this.opening = undefined;
       const reusable = opening !== undefined && opening === this.newest && this.accounting.metrics.actionSteps === 0 &&
         (!pixels || opening.pixels !== undefined);
-      return this.view(reusable ? opening : await this.observeNow(true, pixels), options);
+      return this.view(reusable ? opening : await this.observeNow('held-still', pixels), options);
     });
   }
 
@@ -182,14 +181,14 @@ export class ObservationFeed {
   }
 
   /**
-   * Arms the change wait: the next settled observation waits for the screen
-   * to leave the newest observation's shape, for the default two seconds or
-   * the given brief window.
+   * Arms the change wait: the next settled observation waits up to `waitMs`
+   * for the screen to leave the newest observation's shape. Nothing is armed
+   * on a screen without a comparable shape.
    */
-  armChange(waitMs?: number): void {
+  armChange(waitMs: number): void {
     if (this.newest === undefined) return;
-    this.pendingChange = changeShape(this.newest);
-    this.pendingChangeWaitMs = waitMs;
+    const shape = changeShape(this.newest);
+    this.pendingChange = shape === undefined ? undefined : { shape, waitMs };
   }
 
   /**
@@ -269,49 +268,52 @@ export class ObservationFeed {
     };
   }
 
-  /** One recorded observation; when `settle`, the captures loop inside it, proving stability for `stableWaitMs` (the default when undefined). */
-  private async observeNow(settle: boolean, pixels: boolean, stableWaitMs?: number): Promise<AgentObservation> {
+  /** One recorded observation, settled as far as `mode` asks. */
+  private async observeNow(mode: SettleMode, pixels: boolean): Promise<AgentObservation> {
     this.opening = undefined;
     this.accounting.checkpoint();
     // A tainted viewport never captures pixels: the engine would mask what it
     // knows about, and the secret may be anywhere on screen by now.
     const capturePixels = pixels && !this.runtime.taint.value;
-    // A settled look consumes the pending change: it waits for the screen to
-    // leave the pre-action shape once, and later looks read the screen as is.
-    const changedFrom = settle ? this.pendingChange : undefined;
-    const changeWaitMs = settle ? this.pendingChangeWaitMs : undefined;
-    if (settle) {
-      this.pendingChange = undefined;
-      this.pendingChangeWaitMs = undefined;
-    }
     const observation = await instrumentPhase(
       this.runtime,
       { api: this.accounting.api, kind: 'observation', phase: 'agent.observe' },
-      () =>
-        settle
-          ? settleObservation(
-              () => this.capture(capturePixels),
-              observationShape,
-              {
-                remainingMs: () => this.accounting.remainingMs(),
-                // The step's own hard stop must interrupt a settle sleep too —
-                // the attempt signal alone would let settling outlive the step
-                // by one poll interval.
-                signal: this.accounting.signal,
-              },
-              {
-                changedFrom,
-                changeWaitMs,
-                stableWaitMs,
-                changeShapeOf: changeShape,
-                transitional: isTransitionalObservation,
-              },
-            )
-          : this.capture(capturePixels),
+      () => this.captureSettled(mode, capturePixels),
       observationDetail,
     );
     this.publish(observation);
     return observation;
+  }
+
+  /**
+   * One capture settled as far as `mode` asks. A raw look reads the screen
+   * as it is. A settled look consumes the pending change: it waits for the
+   * screen to leave the pre-action shape once, so later looks read the screen
+   * as is; held still, it then proves the new shape holds for a beat, while
+   * after-change reads the first post-change capture, which is all a fill's
+   * own field needs.
+   */
+  private captureSettled(mode: SettleMode, pixels: boolean): Promise<AgentObservation> {
+    if (mode === 'raw') return this.capture(pixels);
+    const changedFrom = this.pendingChange;
+    this.pendingChange = undefined;
+    return settleObservation(
+      () => this.capture(pixels),
+      observationShape,
+      {
+        remainingMs: () => this.accounting.remainingMs(),
+        // The step's own hard stop must interrupt a settle sleep too: the
+        // attempt signal alone would let settling outlive the step by one
+        // poll interval.
+        signal: this.accounting.signal,
+      },
+      {
+        changedFrom,
+        stableWaitMs: mode === 'held-still' ? HELD_STILL_MS : 0,
+        changeShapeOf: changeShape,
+        transitional: isTransitionalObservation,
+      },
+    );
   }
 
   /** Makes an observation the newest, remembers it among the recent ones, and books its size. */

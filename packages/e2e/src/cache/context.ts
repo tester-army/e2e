@@ -23,20 +23,22 @@ import { FileTraceCacheStore, MAX_CACHE_WIRE_BYTES, type TraceCacheStore } from 
 import type { ActionTrace } from './trace.ts';
 import type { JsonValue } from '../types.ts';
 
-/** One trace write held back until the attempt confirms or implicates it. */
-export interface StagedTraceWrite {
+/**
+ * One cache entry held back until the attempt confirms or implicates it: a
+ * recording to write, or an entry the step replayed whole to keep as it
+ * stands. A kept entry carries no payload, so the replay's expansion of it
+ * (every `unique()` slot filled with this run's value) can never be written;
+ * confirmed, the file keeps its bytes and `createdAt`, and a committed cache
+ * directory stays clean. Unconfirmed, both kinds are evicted alike.
+ */
+export type StagedTrace = {
   readonly keyHash: string;
-  readonly trace: ActionTrace;
-  /** Index of the recording step in the attempt's step timeline. */
+  /** Index of the step in the attempt's step timeline. */
   readonly stepIndex: number;
-  /**
-   * True when `trace` is the stored entry the step replayed whole, not a new
-   * recording. A confirmed replay writes nothing: the entry stands as it is,
-   * and a rewrite would only move its `createdAt`, dirtying a committed cache
-   * directory on every run. An unconfirmed one is evicted like any other.
-   */
-  readonly replayed?: true;
-}
+} & (
+  | { readonly kind: 'write'; readonly trace: ActionTrace }
+  | { readonly kind: 'keep' }
+);
 
 export interface AgentCacheContext {
   readonly mode: 'read-only' | 'read-write';
@@ -64,7 +66,7 @@ export interface AgentCacheContext {
    * flow reached the right state. The runner settles at attempt end via
    * `flushStagedTraces`.
    */
-  readonly staged: StagedTraceWrite[];
+  readonly staged: StagedTrace[];
 }
 
 /**
@@ -90,11 +92,18 @@ export async function flushStagedTraces(
 ): Promise<void> {
   const staged = context.staged.splice(0);
   if (context.mode !== 'read-write') return;
-  for (const write of staged) {
-    const confirmed = write.stepIndex < lastVerifiedStepIndex;
+  for (const entry of staged) {
+    const confirmed = entry.stepIndex < lastVerifiedStepIndex;
     try {
-      if (!confirmed) await context.store.delete?.(write.keyHash);
-      else if (write.replayed !== true) await context.store.write(write.keyHash, write.trace);
+      switch (entry.kind) {
+        case 'write':
+          if (confirmed) await context.store.write(entry.keyHash, entry.trace);
+          else await context.store.delete?.(entry.keyHash);
+          break;
+        case 'keep':
+          if (!confirmed) await context.store.delete?.(entry.keyHash);
+          break;
+      }
     } catch {
       // The cache is disposable; a failed flush is a slower next run only.
     }

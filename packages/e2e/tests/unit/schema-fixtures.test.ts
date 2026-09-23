@@ -68,6 +68,22 @@ describe.each(schemas)('%s schema', (name) => {
       judgment.explanation = 'visible in the screenshot';
       expect(validate(report)).toBe(true);
     });
+
+    it('lets only a gap name the rule that made a typed value run-time data', () => {
+      const report = readJson('fixtures', 'report-v1.valid.json') as {
+        run: { results: { attempts: { steps: { api: string; cache?: { mode: string; reason?: string; derived?: string } }[] }[] }[] };
+      };
+      const cache = report.run.results[0]!.attempts[0]!.steps.find((step) => step.api === 'agent.act')!.cache!;
+      expect(cache).toMatchObject({ reason: 'gap', derived: 'minted-token' });
+      expect(validate(report)).toBe(true);
+      cache.reason = 'target-not-found';
+      expect(validate(report)).toBe(false);
+      cache.reason = 'gap';
+      cache.derived = 'guessed';
+      expect(validate(report)).toBe(false);
+      delete cache.derived;
+      expect(validate(report)).toBe(true);
+    });
   }
 });
 

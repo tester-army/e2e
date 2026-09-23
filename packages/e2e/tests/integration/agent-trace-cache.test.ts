@@ -893,7 +893,7 @@ describe('trace cache: a replayed typed value is the flow\'s data on an app that
       expect(records.at(-1)!.calls).toBe(1);
       const actions = readOnlyEntry(fresh).entry.payload.actions;
       expect(actions.map((action) => action.name)).toEqual(['tool', 'tap']);
-      expect(actions[0]).toEqual({ name: 'tool', summary: 'tool type (run-time value)' });
+      expect(actions[0]).toEqual({ name: 'tool', summary: 'tool type (run-time value)', derived: 'whole-node' });
 
       const second = await runExisting(fresh, options());
       expect(second.exitCode).toBe(0);

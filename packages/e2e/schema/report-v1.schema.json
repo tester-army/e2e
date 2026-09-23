@@ -208,6 +208,7 @@
             "end-mismatch"
           ]
         },
+        "derived": { "enum": ["pixels", "whole-node", "minted-token", "date"] },
         "replayedActions": { "type": "integer", "minimum": 0 },
         "totalActions": { "type": "integer", "minimum": 0 }
       },
@@ -219,6 +220,10 @@
         {
           "if": { "properties": { "mode": { "enum": ["missed", "agent-concluded"] } } },
           "then": { "required": ["reason"] }
+        },
+        {
+          "if": { "required": ["derived"] },
+          "then": { "required": ["reason"], "properties": { "reason": { "const": "gap" } } }
         }
       ]
     },

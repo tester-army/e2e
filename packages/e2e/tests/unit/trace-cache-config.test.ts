@@ -140,9 +140,9 @@ describe('flushStagedTraces', () => {
     const store = memoryStore();
     store.entries.set(KEY_B, JSON.stringify(buildTraceEntry(trace('stale trailing flow'))));
     const context = contextWith(store);
-    context.staged.push({ keyHash: KEY_A, trace: trace('one'), stepIndex: 1 });
+    context.staged.push({ kind: 'write', keyHash: KEY_A, trace: trace('one'), stepIndex: 1 });
     // A trailing act nothing asserted on: the attempt passing is not a check.
-    context.staged.push({ keyHash: KEY_B, trace: trace('two'), stepIndex: 3 });
+    context.staged.push({ kind: 'write', keyHash: KEY_B, trace: trace('two'), stepIndex: 3 });
     await flushStagedTraces(context, 2);
     expect([...store.entries.keys()]).toEqual([KEY_A]);
     expect(context.staged).toHaveLength(0);
@@ -151,7 +151,7 @@ describe('flushStagedTraces', () => {
   it('writes nothing when no verification step ever passed', async () => {
     const store = memoryStore();
     const context = contextWith(store);
-    context.staged.push({ keyHash: KEY_A, trace: trace('unchecked'), stepIndex: 1 });
+    context.staged.push({ kind: 'write', keyHash: KEY_A, trace: trace('unchecked'), stepIndex: 1 });
     await flushStagedTraces(context, -1);
     expect(store.entries.size).toBe(0);
   });
@@ -160,21 +160,21 @@ describe('flushStagedTraces', () => {
     const store = memoryStore();
     store.entries.set(KEY_B, JSON.stringify(buildTraceEntry(trace('stale good flow'))));
     const context = contextWith(store);
-    context.staged.push({ keyHash: KEY_A, trace: trace('confirmed'), stepIndex: 1 });
-    context.staged.push({ keyHash: KEY_B, trace: trace('implicated'), stepIndex: 3 });
+    context.staged.push({ kind: 'write', keyHash: KEY_A, trace: trace('confirmed'), stepIndex: 1 });
+    context.staged.push({ kind: 'write', keyHash: KEY_B, trace: trace('implicated'), stepIndex: 3 });
     await flushStagedTraces(context, 3);
     expect(store.entries.has(KEY_A)).toBe(true);
     expect(store.entries.has(KEY_B)).toBe(false);
   });
 
-  it('leaves a confirmed replayed entry exactly as stored and evicts an unconfirmed one', async () => {
+  it('leaves a confirmed kept entry exactly as stored and evicts an unconfirmed one', async () => {
     const store = memoryStore();
     const stored = JSON.stringify(buildTraceEntry(trace('replayed flow')));
     store.entries.set(KEY_A, stored);
     store.entries.set(KEY_B, stored);
     const context = contextWith(store);
-    context.staged.push({ keyHash: KEY_A, trace: trace('replayed flow'), stepIndex: 1, replayed: true });
-    context.staged.push({ keyHash: KEY_B, trace: trace('replayed flow'), stepIndex: 3, replayed: true });
+    context.staged.push({ kind: 'keep', keyHash: KEY_A, stepIndex: 1 });
+    context.staged.push({ kind: 'keep', keyHash: KEY_B, stepIndex: 3 });
     await flushStagedTraces(context, 2);
     // The same bytes, createdAt included: a replay is not a rewrite.
     expect(store.entries.get(KEY_A)).toBe(stored);
