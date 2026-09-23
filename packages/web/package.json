@@ -54,7 +54,7 @@
     "playwright": ">=1.63.0 <2"
   },
   "devDependencies": {
-    "@types/node": "26.6.1",
+    "@types/node": "26.6.2",
     "e2e": "workspace:*",
     "@types/pngjs": "6.0.5",
     "pngjs": "7.0.0",

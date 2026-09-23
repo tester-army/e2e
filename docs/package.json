@@ -12,10 +12,10 @@
     "@e2edev/mobile": "workspace:*",
     "e2e": "workspace:*",
     "@e2edev/web": "workspace:*",
-    "@types/node": "26.6.1",
+    "@types/node": "26.6.2",
     "agent-device": "0.21.6",
-    "ai": "7.0.106",
-    "mint": "4.2.903",
+    "ai": "7.0.107",
+    "mint": "4.2.909",
     "playwright": "1.63.0",
     "typescript": "7.0.2"
   },
