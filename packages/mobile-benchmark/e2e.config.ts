@@ -8,7 +8,9 @@ import { mobile } from '@e2edev/mobile';
  * device (`pnpm ios` / `pnpm android` build and install it), or point
  * `E2E_MOBILE_BENCHMARK_IOS_APP` / `E2E_MOBILE_BENCHMARK_ANDROID_APP` at a
  * simulator `.app` or an `.apk` and the engine installs it once per worker.
- * Not part of CI: the runners have no simulator.
+ * CI does exactly that in `.github/workflows/mobile.yml`, one target per job,
+ * and pins the iOS target to the simulator it booted through
+ * `E2E_MOBILE_BENCHMARK_IOS_DEVICE`.
  */
 const APP_ID = 'dev.e2e.benchmark';
 
@@ -16,13 +18,16 @@ export const ios = mobile({
   platform: 'ios',
   app: APP_ID,
   appPath: process.env.E2E_MOBILE_BENCHMARK_IOS_APP,
+  device: process.env.E2E_MOBILE_BENCHMARK_IOS_DEVICE,
   identity: `${APP_ID}-ios`,
   session: 'e2e-mobile-benchmark-ios',
   // iOS reports a row's final frame from the first frame of a scroll, so a
   // tap right after a swipe lands on whatever is still passing under that
-  // frame. The home list and the pull-to-refresh bounce settle in about a
-  // second; the default budget is half that.
-  transition: 1_500,
+  // frame. A drag on the home list flings it up to three screens and takes
+  // over two seconds to come to rest on a loaded machine (a tap after 1.5 s
+  // opened the scenario five rows above the one it was aimed at); the
+  // default budget is half a second.
+  transition: 3_000,
 });
 
 export const android = mobile({

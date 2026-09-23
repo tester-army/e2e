@@ -1,0 +1,102 @@
+name: Expo app
+description: >-
+  Builds the mobile benchmark's Expo app for one platform, or reuses the build
+  the actions cache holds for the same native fingerprint with its JS bundle
+  refreshed from this checkout.
+
+# The Expo app is the expensive part of the mobile workflow (about twenty
+# minutes of native build on iOS). `@expo/fingerprint` hashes the native inputs
+# and nothing else, so the build is cached per fingerprint; a hit gets its JS
+# bundle swapped by `@expo/repack-app`, so a scenario or test change reuses the
+# cached binary and only a native change rebuilds. The shape follows
+# callstack/agent-device's test-app-build-cache. A repack that fails falls back
+# to the native build, so a job is never left without an app.
+
+inputs:
+  platform:
+    description: ios or android. Names the fingerprint, the cache key, and the .build/<platform> directory.
+    required: true
+  build-command:
+    description: Shell that builds the app into .build/<platform>; runs from the working directory on a cache miss or a failed repack.
+    required: true
+  app-glob:
+    description: Name of the built app directly under .build/<platform>, as a `find -name` pattern (an iOS `*.app` bundle, an Android `.apk`).
+    required: true
+  gradle-cache-read-only:
+    description: Android only. Restores Gradle's user home cache without saving it, for a fork's pull request.
+    required: false
+    default: 'false'
+  working-directory:
+    description: The Expo project.
+    required: false
+    default: packages/mobile-benchmark
+outputs:
+  app-path:
+    description: Absolute path of the built app.
+    value: ${{ steps.app.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Native fingerprint
+      id: fingerprint
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        PLATFORM: ${{ inputs.platform }}
+      run: |
+        set -euo pipefail
+        HASH="$(pnpm exec fingerprint fingerprint:generate --platform "$PLATFORM" | jq -r '.hash')"
+        test -n "$HASH"
+        echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+    - name: Restore the app
+      id: app-cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ inputs.working-directory }}/.build/${{ inputs.platform }}
+        key: mobile-benchmark-${{ inputs.platform }}-${{ steps.fingerprint.outputs.hash }}
+    # A hit is current on the native side only; the embedded JS may be older
+    # than the checkout. Swap in a bundle built from this source.
+    - name: Refresh the JS bundle of the cached app
+      id: repack
+      if: steps.app-cache.outputs.cache-hit == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        PLATFORM: ${{ inputs.platform }}
+        APP_GLOB: ${{ inputs.app-glob }}
+      run: |
+        set -euo pipefail
+        APP="$(find ".build/$PLATFORM" -maxdepth 1 -name "$APP_GLOB" | head -1)"
+        OUT=".build/$PLATFORM-repacked/$(basename "$APP")"
+        rm -rf ".build/$PLATFORM-repacked" && mkdir -p ".build/$PLATFORM-repacked"
+        if pnpm exec repack-app --platform "$PLATFORM" --source-app "$APP" --output "$OUT"; then
+          rm -rf "$APP" && mv "$OUT" "$APP"
+          echo "result=ok" >> "$GITHUB_OUTPUT"
+        else
+          echo "::warning::repack failed; building the app natively instead"
+          rm -rf ".build/$PLATFORM"
+          echo "result=failed" >> "$GITHUB_OUTPUT"
+        fi
+    - name: Set up Gradle
+      if: inputs.platform == 'android' && (steps.app-cache.outputs.cache-hit != 'true' || steps.repack.outputs.result == 'failed')
+      uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+      with:
+        cache-read-only: ${{ inputs.gradle-cache-read-only }}
+    - name: Build the app
+      if: steps.app-cache.outputs.cache-hit != 'true' || steps.repack.outputs.result == 'failed'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: ${{ inputs.build-command }}
+    - name: Locate the app
+      id: app
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        PLATFORM: ${{ inputs.platform }}
+        APP_GLOB: ${{ inputs.app-glob }}
+      run: |
+        set -euo pipefail
+        APP="$(find ".build/$PLATFORM" -maxdepth 1 -name "$APP_GLOB" | head -1)"
+        test -n "$APP"
+        echo "path=$PWD/$APP" >> "$GITHUB_OUTPUT"

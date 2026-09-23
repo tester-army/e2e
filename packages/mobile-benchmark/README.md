@@ -39,8 +39,15 @@ from the directory it runs in.
   harness cannot finish yet are declared with a `gap` and skip with that
   reason, so every run shows what is still missing.
 
-Neither suite runs in CI: the runners have no simulator, and every agentic
-step spends real model calls and real device time.
+The deterministic suite runs in CI on every pull request (`.github/workflows/mobile.yml`):
+an iOS simulator on a macOS runner and an Android emulator on Linux, with the
+Expo build cached per native fingerprint and its JS bundle repacked on a hit.
+The agentic suite runs there too, for this repository's branches. It replays
+the recordings committed under `.e2e/cache/` where they exist and calls the
+model for a step with none: the iOS entries are recorded on a Mac with
+`test:agent` (below) and committed in the same pull request as the scenario
+change; nobody has recorded on an Android emulator yet, so that side spends
+model calls until an emulator recording is committed.
 
 ## Running
 
