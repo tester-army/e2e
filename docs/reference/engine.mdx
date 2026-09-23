@@ -446,7 +446,9 @@ export interface EngineAttemptContext {
    * The redactor then replaces it with `<secret:name>` in model input, in
    * the report, and in the trace rewrite; the value itself never enters any
    * of them. Register a value as soon as the surface holds it, so a trace
-   * that recorded it is rewritten before it is kept.
+   * that recorded it is rewritten before it is kept. A runner older than
+   * this member provides none; an engine holding a value to register on
+   * such a runner refuses rather than sends it unredacted.
    */
   readonly registerSecret: (name: string, value: string) => void;
 }
@@ -986,9 +988,10 @@ Whenever the attempt's ledger holds a value (a filled secret, a configured
 static value, anything registered through `registerSecret`), the runner
 redacts every text entry in each trace archive. If redaction fails, it
 deletes the archives and records `TRACE_WITHHELD`. A `download` artifact is
-scanned as bytes: one holding a registered value is deleted and recorded
-without a path, with `ARTIFACT_WITHHELD`. Videos are unmasked and carry
-`redaction: 'incomplete'`.
+scanned as bytes when the attempt settles, against the ledger as it stands
+then: one holding a registered value is deleted and recorded without a path,
+with `ARTIFACT_WITHHELD`, and a clean one reaches the artifact store only
+after that scan. Videos are unmasked and carry `redaction: 'incomplete'`.
 
 ## Contributed fixtures
 

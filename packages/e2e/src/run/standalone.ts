@@ -23,6 +23,7 @@ import { createAttemptArtifacts } from './artifacts.ts';
 import { AttemptBudget } from './budget.ts';
 import { TargetExecutor, type ClosingRecord } from './execute.ts';
 import { createFixtures } from './fixtures.ts';
+import { sessionSecrecy } from './secrecy.ts';
 import type { EnginePrepareResult } from '../engine/index.ts';
 import { PreparedEngines, startDeclaredProcesses, validateEngine, type AppProcesses } from './provision.ts';
 import { SessionStore } from './sessions.ts';
@@ -128,6 +129,11 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
     projectRoot: config.projectRoot,
     ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
   });
+  const cleanupErrors: SerializedError[] = [];
+  const recordCleanupFailure = (cause: unknown): void => {
+    cleanupErrors.push(serializeError(classifyError(cause), { phase: 'cleanup' }));
+  };
+  let session: TargetSession;
   const artifacts = createAttemptArtifacts({
     artifactsRoot: options.artifactsRoot,
     segments: [target.name, 'sessions', attemptId],
@@ -135,12 +141,11 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
     currentStepId: () => steps.currentStepId,
     ...(config.artifactStore === undefined ? {} : { store: config.artifactStore }),
     identity: { runId, testId: `session:${target.name}`, attemptId },
+    // A download the live session saved is scanned at close against every
+    // value the session filled or restored by then.
+    ledger: () => sessionSecrecy(session, config.secrets).ledger,
+    onWithheld: () => (error) => cleanupErrors.push(serializeError(error)),
   });
-
-  const cleanupErrors: SerializedError[] = [];
-  const recordCleanupFailure = (cause: unknown): void => {
-    cleanupErrors.push(serializeError(classifyError(cause), { phase: 'cleanup' }));
-  };
   const teardownProcesses = async (): Promise<void> => {
     await finishEngines(recordCleanupFailure);
     await processes.stop(recordCleanupFailure);
@@ -152,7 +157,6 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
     releaseSecretRegistry(config);
   };
 
-  let session: TargetSession;
   try {
     session = await executor.launchSession(undefined, attemptId, artifacts.dir, signal);
   } catch (cause) {

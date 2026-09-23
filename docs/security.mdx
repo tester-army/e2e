@@ -152,10 +152,13 @@ hook; its console output reaches the runner's streams as written.
   pixels survives. A trace the runner cannot rewrite is deleted and the
   attempt records `TRACE_WITHHELD`. A trace from a session whose ledger is
   empty is kept as recorded and labelled `not-required`.
-- A download is scanned as bytes. One that holds a registered value, in any
-  form the redactor knows, is deleted and the attempt records
-  `ARTIFACT_WITHHELD`. A value the app compressed or otherwise transformed
-  inside the file (a zipped export, a PDF stream) is not found.
+- A download is scanned as bytes when the attempt settles, against the
+  ledger as it stands then, so a value that resolved after the file was
+  written counts. One that holds a registered value, in any form the redactor
+  knows, is deleted and the attempt records `ARTIFACT_WITHHELD`; a clean one
+  reaches the artifact store only after that scan. A value the app compressed
+  or otherwise transformed inside the file (a zipped export, a PDF stream) is
+  not found.
 - A video masks nothing and is labelled `redaction: "incomplete"`. It is
   never recorded unless you ask.
 - The browser engine registers the `headers` a protected preview needs and
@@ -214,7 +217,7 @@ path you configure.
 | `report.json` | The run record. Errors, reasoning excerpts, and action summaries pass the redactor. | complete |
 | `artifacts/.../*.png` | Screenshots. Secure fields are masked before screenshots are returned or saved as artifacts. | complete |
 | `artifacts/.../trace.zip` | Playwright trace, rewritten whenever the attempt's ledger holds a value. | not-required, complete, or deleted |
-| `artifacts/.../downloads/*` | Files the app served through `web.waitForDownload`, scanned for registered values; one that holds a value is deleted and the attempt records `ARTIFACT_WITHHELD`. | complete, or withheld |
+| `artifacts/.../downloads/*` | Files the app served through `web.waitForDownload`, scanned for registered values when the attempt settles; one that holds a value is deleted and the attempt records `ARTIFACT_WITHHELD`. | complete, or withheld |
 | `artifacts/.../*.webm`, `*.mp4` | Video, opt-in, kept for every attempt unless `retain: 'on-failure'`. | incomplete |
 | `artifacts/.../failure/screen.txt` | The redacted tree at the moment of failure. | complete |
 | `ai-trace.json` | Every model call, opt-in via `--ai-trace`. Prompts are the redacted ones the model saw; inline image bytes are replaced by their size. | as the prompt |
@@ -223,7 +226,7 @@ path you configure.
 | The path in `command.log` | Your app's stdout and stderr, verbatim. Must be inside the project root. | none |
 
 An `artifacts.store` receives each artifact's bytes as they are produced,
-after trace redaction and the download scan; a withheld file never reaches it. A `cache.store` receives every recorded entry and
+after trace redaction, and a download once the attempt's scan has cleared it; a withheld file never reaches it. A `cache.store` receives every recorded entry and
 supplies every replayed one; what comes back is validated again before use.
 
 ## Outbound connections

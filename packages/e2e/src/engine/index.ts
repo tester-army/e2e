@@ -517,7 +517,9 @@ export interface EngineAttemptContext {
    * The redactor then replaces it with `<secret:name>` in model input, in
    * the report, and in the trace rewrite; the value itself never enters any
    * of them. Register a value as soon as the surface holds it, so a trace
-   * that recorded it is rewritten before it is kept.
+   * that recorded it is rewritten before it is kept. A runner older than
+   * this member provides none; an engine holding a value to register on
+   * such a runner refuses rather than sends it unredacted.
    */
   readonly registerSecret: (name: string, value: string) => void;
 }

@@ -112,6 +112,14 @@ describe('appearsIn', () => {
     expect(new SecretLedger().appearsIn(Buffer.from('p@ss word'))).toBe(false);
   });
 
+  it('finds a value split across the pieces of a stream', () => {
+    const seen = ledger.byteScanner();
+    expect(seen(Buffer.from('id,total,key\n1,42,p@s'))).toBe(false);
+    expect(seen(Buffer.from('s word\n2,7,x'))).toBe(true);
+    expect(seen(Buffer.from('anything after'))).toBe(true);
+    expect(new SecretLedger().byteScanner()(Buffer.from('p@ss word'))).toBe(false);
+  });
+
   it('redacts the value as encodeURI spells it in a path', () => {
     expect(ledger.redact('/reset/p@ss%20word/done')).toBe('/reset/<secret:member>/done');
   });

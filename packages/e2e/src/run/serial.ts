@@ -1,6 +1,7 @@
 /** Serial-group execution: one shared session per group attempt. */
 
 import type { TargetSession } from '../engine/surface.ts';
+import type { SecretLedger } from '../internal/redact.ts';
 import {
   classifyError,
   ConfigurationError,
@@ -69,6 +70,8 @@ export interface SerialHost {
     sink: ArtifactSink,
     secondaryErrors: SerializedError[],
   ): Promise<void>;
+  /** The secret ledger of a session this host launched. */
+  ledger(session: TargetSession): SecretLedger;
   runAttempt(
     pair: TestTargetPair,
     registered: RegisteredTest,
@@ -190,6 +193,7 @@ async function runSerialAttempt(
     ...repeatSegment(first.repeat),
     `attempt-${attemptIndex}`,
   ];
+  let shared: SharedSerialSession;
   const artifacts = createAttemptArtifacts({
     artifactsRoot: host.artifactsRoot,
     segments: artifactSegments,
@@ -198,6 +202,7 @@ async function runSerialAttempt(
     // A group-owned artifact (the shared trace) is identified by the group,
     // the same identity its report path uses.
     identity: { runId: host.runId, testId: first.test.serialId ?? first.test.id, attemptId },
+    ledger: () => host.ledger(shared.session),
   });
   const record: SerialAttemptRecord = {
     id: attemptId,
@@ -221,7 +226,6 @@ async function runSerialAttempt(
     return record;
   }
 
-  let shared: SharedSerialSession;
   try {
     shared = {
       session: await host.launchSession(first.options.session, attemptId, artifacts.dir, host.interruptSignal),

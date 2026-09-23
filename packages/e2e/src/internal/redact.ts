@@ -204,9 +204,29 @@ export class SecretLedger {
    * holds a secret has to be withheld instead.
    */
   appearsIn(bytes: Uint8Array): boolean {
-    const { pattern } = this.compile();
-    if (pattern === undefined) return false;
-    return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('utf8').search(pattern) !== -1;
+    return this.byteScanner()(bytes);
+  }
+
+  /**
+   * `appearsIn` for bytes that arrive in pieces: feed them in order, and the
+   * answer is true once any registered value has occurred, across a piece
+   * boundary too, a multibyte character split between pieces included.
+   * Compiled against the ledger as it stands when created, so one file is
+   * judged by one set of values.
+   */
+  byteScanner(): (piece: Uint8Array) => boolean {
+    const { pattern, maxFormLength } = this.compile();
+    if (pattern === undefined) return () => false;
+    const decoder = new StringDecoder('utf8');
+    let tail = '';
+    let found = false;
+    return (piece) => {
+      if (found) return true;
+      const text = tail + decoder.write(Buffer.from(piece.buffer, piece.byteOffset, piece.byteLength));
+      found = text.search(pattern) !== -1;
+      tail = text.slice(Math.max(0, text.length - (maxFormLength - 1)));
+      return found;
+    };
   }
 
   /**

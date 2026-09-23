@@ -3,7 +3,8 @@
  * handed to the store as it lands, with its bytes, digest, and identity; the
  * store's reference is recorded; a failing store never surfaces; and without a
  * store the streaming measure path is unchanged. A download, the one kind
- * whose bytes come from the app, is scanned against the ledger first.
+ * whose bytes come from the app, is scanned against the ledger when the
+ * attempt settles, before the store sees it.
  */
 
 import { createHash } from 'node:crypto';
@@ -25,6 +26,8 @@ afterEach(() => {
   for (const dir of roots.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
+const NO_SECRETS = (): SecretLedger => new SecretLedger();
+
 function capturing(): ArtifactStore & { puts: StoredArtifact[] } {
   const puts: StoredArtifact[] = [];
   return {
@@ -41,6 +44,7 @@ describe('createAttemptArtifacts with an ArtifactStore', () => {
     const store = capturing();
     const artifacts = createAttemptArtifacts({
       artifactsRoot: root(),
+      ledger: NO_SECRETS,
       segments: ['web', 'test-1', 'attempt-0'],
       attemptId: 'att-1',
       currentStepId: () => 'step-3',
@@ -74,6 +78,7 @@ describe('createAttemptArtifacts with an ArtifactStore', () => {
     const store = capturing();
     const artifacts = createAttemptArtifacts({
       artifactsRoot: root(),
+      ledger: NO_SECRETS,
       segments: ['web', 'test-1', 'attempt-0'],
       attemptId: 'att-1',
       store,
@@ -107,6 +112,7 @@ describe('createAttemptArtifacts with an ArtifactStore', () => {
     const store = capturing();
     const artifacts = createAttemptArtifacts({
       artifactsRoot: root(),
+      ledger: NO_SECRETS,
       segments: ['web', 'group', 'attempt-0'],
       attemptId: 'member-private',
       store,
@@ -125,6 +131,7 @@ describe('createAttemptArtifacts with an ArtifactStore', () => {
   it('keeps the local record and omits ref when the store fails, without throwing', async () => {
     const artifacts = createAttemptArtifacts({
       artifactsRoot: root(),
+      ledger: NO_SECRETS,
       segments: ['web', 't', 'attempt-0'],
       attemptId: 'a',
       store: {
@@ -145,6 +152,7 @@ describe('createAttemptArtifacts with an ArtifactStore', () => {
   it('ignores an empty ref and never records a missing file', async () => {
     const artifacts = createAttemptArtifacts({
       artifactsRoot: root(),
+      ledger: NO_SECRETS,
       segments: ['web', 't', 'attempt-0'],
       attemptId: 'a',
       store: { put: async () => ({ ref: '' }) },
@@ -162,6 +170,7 @@ describe('createAttemptArtifacts with an ArtifactStore', () => {
   it('without a store measures by streaming and records no ref', async () => {
     const artifacts = createAttemptArtifacts({
       artifactsRoot: root(),
+      ledger: NO_SECRETS,
       segments: ['web', 't', 'attempt-0'],
       attemptId: 'a',
     });
@@ -180,7 +189,7 @@ describe('createAttemptArtifacts with an ArtifactStore', () => {
 describe('download scanning', () => {
   const SECRET = 'export-secret-Qx7#&=2718';
 
-  function scanning(options: { store?: ArtifactStore; ledger?: SecretLedger }) {
+  function scanning(options: { store?: ArtifactStore; ledger: SecretLedger }) {
     const withheld: { code: string; message: string }[] = [];
     const artifacts = createAttemptArtifacts({
       artifactsRoot: root(),
@@ -188,7 +197,7 @@ describe('download scanning', () => {
       attemptId: 'att-1',
       currentStepId: () => 'step-download',
       ...(options.store === undefined ? {} : { store: options.store }),
-      ...(options.ledger === undefined ? {} : { ledger: () => options.ledger! }),
+      ledger: () => options.ledger,
       onWithheld: () => (error) => withheld.push({ code: error.code, message: error.message }),
     });
     mkdirSync(path.join(artifacts.dir, 'downloads'));
@@ -248,24 +257,40 @@ describe('download scanning', () => {
     expect(existsSync(file)).toBe(true);
   });
 
-  it('labels a download incomplete when there is no ledger to scan against, and keeps it', async () => {
-    const { artifacts, withheld, file } = scanning({});
-    writeFileSync(file, 'id,total\n1,42\n');
-    artifacts.sink.register('download', 'downloads/001-report.csv');
-    await artifacts.settle();
-    expect(artifacts.records[0]).toMatchObject({ redaction: 'incomplete', path: 'web/test-1/attempt-0/downloads/001-report.csv' });
-    expect(withheld).toEqual([]);
-    expect(existsSync(file)).toBe(true);
-  });
-
-  it('scans against the ledger as it is at scan time, so a value registered after the attempt opened counts', async () => {
-    const ledger = new SecretLedger();
-    const { artifacts, withheld, file } = scanning({ ledger });
-    writeFileSync(file, SECRET);
-    ledger.register('late', SECRET);
+  it('streams a download without a store, so a value straddling a read boundary is found and a clean large file keeps its digest', async () => {
+    const boundary = 64 * 1024;
+    const { artifacts, withheld, file } = scanning({ ledger: new SecretLedger([['api', SECRET]]) });
+    writeFileSync(file, Buffer.concat([Buffer.alloc(boundary - 5, 0x61), Buffer.from(SECRET), Buffer.alloc(boundary, 0x62)]));
     artifacts.sink.register('download', 'downloads/001-report.csv');
     await artifacts.settle();
     expect(withheld.map((error) => error.code)).toEqual(['ARTIFACT_WITHHELD']);
+    expect(existsSync(file)).toBe(false);
+
+    const clean = scanning({ ledger: new SecretLedger([['api', SECRET]]) });
+    const body = Buffer.alloc(3 * boundary + 17, 0x63);
+    writeFileSync(clean.file, body);
+    clean.artifacts.sink.register('download', 'downloads/001-report.csv');
+    await clean.artifacts.settle();
+    expect(clean.artifacts.records[0]).toMatchObject({
+      redaction: 'complete',
+      size: body.byteLength,
+      sha256: createHash('sha256').update(body).digest('hex'),
+    });
+    expect(clean.withheld).toEqual([]);
+  });
+
+  it('scans when the attempt settles, against the ledger as it stands then, so a value registered after the download was written counts and the store never sees it', async () => {
+    const store = capturing();
+    const ledger = new SecretLedger();
+    const { artifacts, withheld, file } = scanning({ store, ledger });
+    writeFileSync(file, SECRET);
+    artifacts.sink.register('download', 'downloads/001-report.csv');
+    ledger.register('late', SECRET);
+    await artifacts.settle();
+    expect(withheld.map((error) => error.code)).toEqual(['ARTIFACT_WITHHELD']);
+    expect(artifacts.records[0]!.path).toBeUndefined();
+    expect(store.puts).toEqual([]);
+    expect(existsSync(file)).toBe(false);
   });
 });
 
@@ -273,6 +298,7 @@ describe('artifact redaction labels', () => {
   it('marks a trace registered without a verdict as incomplete, and takes the verdict when given', async () => {
     const artifacts = createAttemptArtifacts({
       artifactsRoot: root(),
+      ledger: NO_SECRETS,
       segments: ['web', 'test-1', 'attempt-0'],
       attemptId: 'att-1',
     });

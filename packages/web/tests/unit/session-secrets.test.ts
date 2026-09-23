@@ -34,6 +34,13 @@ describe('registerGateSecrets', () => {
     registerGateSecrets(register, undefined, undefined);
     expect(seen).toEqual([]);
   });
+
+  it('refuses a runner without the member when there is a value to register, and is quiet when there is none', () => {
+    expect(() => registerGateSecrets(undefined, { 'x-vercel-protection-bypass': TOKEN }, undefined)).toThrow(
+      /predates EngineAttemptContext\.registerSecret/,
+    );
+    expect(() => registerGateSecrets(undefined, { 'ngrok-skip-browser-warning': 'true' }, undefined)).not.toThrow();
+  });
 });
 
 describe('registerStateSecrets', () => {
@@ -51,6 +58,13 @@ describe('registerStateSecrets', () => {
       ['cookie.sid', TOKEN],
       ['storage.token', `${TOKEN}b`],
     ]);
+  });
+
+  it('refuses a runner without the member when a value is long enough to register, and is quiet otherwise', () => {
+    expect(() => registerStateSecrets(undefined, { cookies: [cookie('sid', TOKEN)], origins: [] })).toThrow(
+      /predates EngineAttemptContext\.registerSecret/,
+    );
+    expect(() => registerStateSecrets(undefined, { cookies: [cookie('theme', 'dark')], origins: [] })).not.toThrow();
   });
 
   it('registers a value one short of the floor nowhere', () => {

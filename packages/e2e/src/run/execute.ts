@@ -49,6 +49,7 @@ import { runWithRetries } from './retry.ts';
 import { runSerialUnit, type SerialHost, type SharedSerialSession } from './serial.ts';
 import { interruptedSkip, pairKey, pairResult, repeatSegment, unstartedResult } from './units.ts';
 import { processSecrets, registerEngineSecret, sessionSecrecy } from './secrecy.ts';
+import type { SecretLedger } from '../internal/redact.ts';
 import { SessionStaging, SessionStore, type SessionIdentity } from './sessions.ts';
 import { redactTraceArchives } from './trace-redaction.ts';
 import { StepRecorder, type StepProgress } from './steps.ts';
@@ -665,6 +666,11 @@ export class TargetExecutor implements SerialHost {
       record.cleanup = 'failed';
       secondaryErrors.push(serializeError(classifyError(cause), { phase: 'cleanup' }));
     }
+  }
+
+  /** The secret ledger of a session this executor launched (SerialHost). */
+  ledger(session: TargetSession): SecretLedger {
+    return sessionSecrecy(session, this.config.secrets).ledger;
   }
 
   /** Runs one attempt to completion (SerialHost). */
