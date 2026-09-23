@@ -170,9 +170,9 @@ function actModel(call: LoopCall) {
     return conclude('passed');
   }
   if (call.prompt.includes('hover the corner')) {
-    // The trigger is pinned at CSS (0..200, 0..30); its center (100, 15) is image (60, 9) at 0.6 image pixels per CSS pixel.
+    // The trigger is pinned at CSS (40..240, 40..70); its center (140, 55) is image (84, 33) at 0.6 image pixels per CSS pixel.
     if (calls === 0) return [{ toolName: 'screenshot', input: {} }];
-    if (calls === 1) return [{ toolName: 'hover_at', input: { x: 60, y: 9 } }];
+    if (calls === 1) return [{ toolName: 'hover_at', input: { x: 84, y: 33 } }];
     // In pixel mode the result is one JSON-encoded line, quotes escaped: the id is read right before the button's line.
     if (calls === 2) return [{ toolName: 'tap', input: { target: /#(\S+) button \\"Redeem\\"/.exec(call.lastToolResult)![1]! } }];
     return conclude('passed');
@@ -314,9 +314,9 @@ describe('agent.act grammar verbs', () => {
     expect(resultByTitle(outcome, 'hovers a bare point in the screenshot').status).toBe('passed');
     const actions = engineEvents('hovers a bare point in the screenshot');
     expect(actions.map((event) => event.name)).toEqual(['hoverAt', 'tap']);
-    expect(actions[0]!.detail).toMatch(/^hover over the point \(100, 15\)/);
+    expect(actions[0]!.detail).toMatch(/^hover over the point \(140, 55\)/);
     const [, , third] = turnsOf('hover the corner');
-    expect(third!.lastToolResult).toContain('Hovered over the point (100, 15); no listed control is there');
+    expect(third!.lastToolResult).toContain('Hovered over the point (140, 55); no listed control is there');
     expect(third!.lastToolResult).toMatch(/added #\S+ button \\"Redeem\\"/);
   });
 });
