@@ -142,7 +142,7 @@ describe('e2e init', () => {
   });
 
   it('hands back the prompted choices, a cancellation with what was chosen so far, and a failed install', async () => {
-    const cancel = Symbol('cancel');
+    const cancel: typeof clack.CANCEL_SYMBOL = clack.CANCEL_SYMBOL;
     vi.mocked(clack.select).mockResolvedValueOnce('mobile').mockResolvedValueOnce('none');
     vi.mocked(clack.multiselect).mockResolvedValueOnce(['.agents/skills']).mockResolvedValueOnce(cancel);
     expect(await init(dir)).toEqual({
@@ -323,7 +323,7 @@ describe('e2e init', () => {
   });
 
   it.each(['engine', 'gateway', 'endpoint', 'skill', 'mcp', 'files', 'install'])('leaves the directory untouched when cancelling at %s', async (stage) => {
-    const cancel = Symbol('cancel');
+    const cancel: typeof clack.CANCEL_SYMBOL = clack.CANCEL_SYMBOL;
     vi.mocked(clack.select)
       .mockResolvedValueOnce(stage === 'engine' ? cancel : 'web')
       .mockResolvedValueOnce(stage === 'gateway' ? cancel : 'openai-compatible');
