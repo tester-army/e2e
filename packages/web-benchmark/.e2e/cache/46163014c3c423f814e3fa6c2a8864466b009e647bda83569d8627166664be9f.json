@@ -1,11 +1,12 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-23T08:54:47.856Z",
+  "createdAt": "2026-09-23T10:41:44.550Z",
   "payload": {
     "actions": [
       {
         "name": "tool",
-        "summary": "tool type (run-time value)"
+        "summary": "tool type (run-time value)",
+        "derived": "whole-node"
       },
       {
         "name": "tap",
@@ -25,7 +26,7 @@
       "targetId": "web",
       "instructionDigest": "5ea16155d5cd3ee4fc67e7511534964bca91116fa0412e4523428844f9f85c15"
     },
-    "summary": "Read coupon code SAVE-1234 from the first frame, entered it in the checkout frame, and verified the page shows “Coupon applied.”",
+    "summary": "Read coupon code SAVE-1234 from the first frame, entered it in the checkout frame, and applied it. The page now shows “Coupon applied.”.",
     "startPath": "/e/iframe-form",
     "endPath": "/e/iframe-form",
     "endAnchors": [
@@ -34,6 +35,6 @@
         "testId": "success-message"
       }
     ],
-    "endWaitMs": 12475
+    "endWaitMs": 12152
   }
 }

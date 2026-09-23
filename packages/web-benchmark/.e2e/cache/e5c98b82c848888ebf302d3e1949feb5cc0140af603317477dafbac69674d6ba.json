@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-23T08:54:28.507Z",
+  "createdAt": "2026-09-23T10:41:34.170Z",
   "payload": {
     "actions": [
       {
@@ -44,7 +44,7 @@
       "targetId": "web",
       "instructionDigest": "7e6f99066c5bc180c1e5188150277917670b918eb0a9646ac967ef798648b455"
     },
-    "summary": "Added the address labeled \"{{param:/label}}\" with line \"7 Pine Way, Bend\". The new address appears in the saved addresses list and an \"Address saved\" confirmation is shown.",
+    "summary": "The address was saved successfully. The list now includes “{{param:/label}}” at “7 Pine Way, Bend,” and the screen shows an “Address saved” confirmation.",
     "startPath": "/e/saved-addresses",
     "endPath": "/e/saved-addresses",
     "endAnchors": [
@@ -57,13 +57,13 @@
       },
       {
         "role": "listitem",
-        "name": "{{param:/label}} 7 Pine Way, BendDelete",
+        "name": "{{param:/label}} 7 Pine Way, Bend Delete",
         "testId": "address-custom-2"
       },
       {
         "text": "7 Pine Way, Bend"
       }
     ],
-    "endWaitMs": 10142
+    "endWaitMs": 26200
   }
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-23T08:54:42.057Z",
+  "createdAt": "2026-09-23T10:41:38.953Z",
   "payload": {
     "actions": [
       {
@@ -14,7 +14,8 @@
       },
       {
         "name": "tool",
-        "summary": "tool type (run-time value)"
+        "summary": "tool type (run-time value)",
+        "derived": "pixels"
       },
       {
         "name": "tap",
@@ -35,7 +36,7 @@
       "targetId": "web",
       "instructionDigest": "75cac33ad209d332c191820f8b966e11e3b86f06d25432d913adf93fe369052d"
     },
-    "summary": "Entered 42.50 into the field visibly labeled Amount, left Reference empty, and submitted using the visible Submit payment control. The page now shows “Payment sent.”",
+    "summary": "Entered 42.50 in the field visibly labeled Amount, left the visibly labeled Reference field empty, and submitted using the control visibly labeled Submit payment. The page now displays “Payment sent.”.",
     "startPath": "/e/lying-labels",
     "endPath": "/e/lying-labels",
     "endAnchors": [
@@ -44,6 +45,6 @@
         "testId": "success-message"
       }
     ],
-    "endWaitMs": 11834
+    "endWaitMs": 12236
   }
 }
