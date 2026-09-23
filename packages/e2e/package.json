@@ -84,7 +84,7 @@
     "commander": "15.0.0",
     "picocolors": "1.1.1",
     "pngjs": "7.0.0",
-    "tsx": "4.23.13",
+    "tsx": "4.23.14",
     "zod": "4.6.1"
   },
   "peerDependencies": {
