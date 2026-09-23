@@ -74,7 +74,8 @@ export class LocatorEngine {
     );
   }
 
-  private operationWithin(deadline: Deadline): OperationContext {
+  /** An operation context bounded by a deadline a caller shares across steps, such as the swipes of one scroll. */
+  operationWithin(deadline: Deadline): OperationContext {
     return {
       signal: this.signal,
       timeoutMs: Math.max(1, deadline.remaining()),
@@ -302,7 +303,6 @@ export class LocatorEngine {
     action: LocatorAction | ((deadline: Deadline) => Promise<LocatorAction>),
     timeoutMs?: number,
   ): Promise<void> {
-    if (typeof action !== 'function') this.checkAction(action);
     await this.performUntil(expression, action, this.deadline(timeoutMs));
   }
 
@@ -409,12 +409,13 @@ export class LocatorEngine {
     }
   }
 
-  /** The action retry loop of `perform`, within a deadline a caller may share across steps. */
-  private async performUntil(
+  /** `perform` within a deadline a caller shares across steps, such as the swipes of one scroll. */
+  async performUntil(
     expression: LocatorExpression,
     action: LocatorAction | ((deadline: Deadline) => Promise<LocatorAction>),
     deadline: Deadline,
   ): Promise<void> {
+    if (typeof action !== 'function') this.checkAction(action);
     for (;;) {
       const ref = await this.resolveExactlyOne(expression, deadline);
       const resolved = typeof action === 'function' ? await action(deadline) : action;

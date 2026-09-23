@@ -100,8 +100,8 @@ anything stricter. `has` keeps a match whose subtree resolves the inner
 locator.
 
 Throws `INVALID_LOCATOR` when `filter` gets neither `hasText` nor `has`, when
-`has` is not a runner locator, or when `nth` gets a negative or non-integer
-index.
+`has` is not a runner locator or was made by another target's screen, or when
+`nth` gets a negative or non-integer index.
 
 ```ts
 const row = screen.getByRole('listitem').filter({ hasText: 'Invoice 42' });
@@ -180,15 +180,17 @@ scrollUntilVisible(
 | `target` | `Locator` | - |
 | `options.direction` | `ScrollDirection` | `'down'` |
 | `options.momentum` | `Momentum` | `'slow'`; the gesture of each step, as [`screen.swipe`](#screen-swipe) defines it. A longer step is faster but must not carry the target past the surface unseen, which is what a virtualized list does |
-| `options.timeout` | `number` | `30000`, its own default, not `config.actionTimeout` |
+| `options.timeout` | `number` | `30000`, its own default, not `config.actionTimeout`; it bounds the whole scroll, each swipe included |
 
 On `screen` each step is a viewport swipe. On a locator the step is a swipe
 of that node, so a feed or a table that is its own scroll container pages
 without the pointer having to hover it first:
 `screen.getByRole('feed').scrollUntilVisible(row)`.
 
-Throws `INVALID_LOCATOR` for a non-runner locator, `INVALID_ARGUMENT` for an
-option it does not take, `LOCATOR_NOT_FOUND` when the deadline expires first.
+Throws `INVALID_LOCATOR` for a non-runner locator or one made by another
+target's screen, `INVALID_ARGUMENT` for an option it does not take,
+`LOCATOR_NOT_FOUND` when the deadline expires first, a swipe it cut short
+included.
 
 ```ts
 await screen.scrollUntilVisible(screen.getByRole('button', { name: 'Accept' }));
@@ -317,7 +319,8 @@ export interface Locator extends Screen {
   keystrokes. The step records the locator, not the text, like `fill`.
 - `setInputFiles` paths resolve from the project root. An empty list or blank
   entry throws `INVALID_ARGUMENT`.
-- `dragTo` with a non-runner target throws `INVALID_LOCATOR`.
+- `dragTo` with a non-runner target, or one made by another target's screen,
+  throws `INVALID_LOCATOR`.
 - An action that may already have committed surfaces as `ACTION_FAILED` and
   is never repeated.
 

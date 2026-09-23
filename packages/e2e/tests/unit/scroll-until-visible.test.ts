@@ -2,14 +2,24 @@
  * `screen.scrollUntilVisible`: polls the target through the locator engine
  * and swipes the viewport between polls. What the engine sees is a slow swipe
  * in the requested direction, addressed to the observation root, repeated
- * until the target reads as visible or the deadline passes.
+ * until the target reads as visible or the deadline passes. Every swipe is
+ * bounded by that deadline. The target, like a `dragTo` target and a
+ * `filter({ has })` locator, has to come from the same target's screen.
  */
 
 import { describe, expect, it } from 'vitest';
-import type { LocatorAction, LocatorActionKind, LocatorExpression, NodeRef, SemanticNode } from '../../src/engine/surface.ts';
+import {
+  EngineError,
+  type LocatorAction,
+  type LocatorActionKind,
+  type LocatorExpression,
+  type NodeRef,
+  type OperationContext,
+  type SemanticNode,
+} from '../../src/engine/surface.ts';
 import { defineEngine } from '../../src/engine/index.ts';
 import { createEngineSession } from '../../src/engine/session.ts';
-import { Deadline } from '../../src/internal/time.ts';
+import { Deadline, sleep } from '../../src/internal/time.ts';
 import { LocatorEngine } from '../../src/locator/engine.ts';
 import { createScreen } from '../../src/locator/screen.ts';
 import { AttemptBudget } from '../../src/run/budget.ts';
@@ -44,6 +54,12 @@ interface ScrollScript {
   readonly swipeable?: boolean;
   /** Answers an expression itself, ahead of the current screen; a scope query resolves through it. */
   readonly resolve?: (expression: LocatorExpression) => readonly SemanticNode[] | undefined;
+  /** Every swipe hangs for the whole operation budget, then fails as an engine honouring `timeoutMs` does. */
+  readonly hang?: boolean;
+  /** The target name the session reports; default `fake`. */
+  readonly targetName?: string;
+  /** The action timeout of the locator engine; default 1000 ms. */
+  readonly actionTimeout?: number;
 }
 
 /** A screen over a fake engine that pages through `screens` one swipe at a time and logs every swipe. */
@@ -62,8 +78,14 @@ function screenOver(script: ScrollScript) {
       ? {}
       : {
           actions: SWIPE_ONLY,
-          perform: async (ref: NodeRef, action: LocatorAction) => {
+          perform: async (ref: NodeRef, action: LocatorAction, operation: OperationContext) => {
             if (action.kind !== 'swipe') throw new Error(`unexpected ${action.kind}`);
+            if (script.hang === true) {
+              await sleep(operation.timeoutMs);
+              throw new EngineError('OPERATION_TIMEOUT', `swipe exceeded ${operation.timeoutMs} ms`, {
+                retryable: false,
+              });
+            }
             swipes.push({ ref: ref.id, direction: action.direction, momentum: action.momentum });
           },
         }),
@@ -72,11 +94,11 @@ function screenOver(script: ScrollScript) {
   const signal = new AbortController().signal;
   const screen = createScreen({
     engine: new LocatorEngine({
-      session: createEngineSession({ engine, targetName: 'fake' }),
+      session: createEngineSession({ engine, targetName: script.targetName ?? 'fake' }),
       budget: new AttemptBudget(signal, new Deadline(10_000)),
       runId: 'run',
       attemptId: 'attempt',
-      actionTimeout: 1_000,
+      actionTimeout: script.actionTimeout ?? 1_000,
       assertionTimeout: 1_000,
     }),
     steps,
@@ -154,10 +176,34 @@ describe('screen.scrollUntilVisible', () => {
     ]);
   });
 
+  it('bounds a viewport swipe by its own deadline: a hung swipe is LOCATOR_NOT_FOUND within the scroll timeout, not the action timeout', async () => {
+    const { screen, steps } = screenOver({ screens: [[]], hang: true, actionTimeout: 5_000 });
+    const started = Date.now();
+    await expect(screen.scrollUntilVisible(screen.getByText('Accept'), { timeout: 250 })).rejects.toMatchObject({
+      code: 'LOCATOR_NOT_FOUND',
+      message: 'target did not become visible while scrolling: getByText("Accept")',
+      cause: expect.objectContaining({ code: 'OPERATION_TIMEOUT' }),
+    });
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(steps.all()).toEqual([
+      expect.objectContaining({ api: 'screen.scrollUntilVisible', status: 'failed' }),
+    ]);
+  });
+
+  it('bounds a locator swipe by the same deadline', async () => {
+    const { screen } = screenOver({ screens: [[]], hang: true, actionTimeout: 5_000, resolve: feedScope });
+    const started = Date.now();
+    await expect(
+      screen.getByRole('list', { name: 'Feed' }).scrollUntilVisible(screen.getByText('Accept'), { timeout: 250 }),
+    ).rejects.toMatchObject({ code: 'LOCATOR_NOT_FOUND' });
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
+
   it('rejects a target that is not an e2e locator before recording a step', async () => {
     const { screen, steps, swipes } = screenOver({ screens: [[TARGET]] });
     await expect(screen.scrollUntilVisible({} as unknown as Locator)).rejects.toMatchObject({
       code: 'INVALID_LOCATOR',
+      message: 'scrollUntilVisible requires an e2e locator',
     });
     expect(steps.all()).toEqual([]);
     expect(swipes).toEqual([]);
@@ -195,6 +241,54 @@ describe('screen.scrollUntilVisible', () => {
     const absent = screenOver({ screens: [[]], swipeable: false });
     await expect(absent.screen.scrollUntilVisible(absent.screen.getByText('Accept'))).rejects.toMatchObject({
       code: 'UNSUPPORTED_CAPABILITY',
+    });
+  });
+});
+
+describe("a locator made by another target's screen", () => {
+  const FOREIGN = "the one given belongs to another target's screen or another attempt";
+  const targets = () => ({
+    web: screenOver({ screens: [[TARGET]], targetName: 'web' }),
+    mobile: screenOver({ screens: [[TARGET]], targetName: 'mobile' }),
+  });
+
+  it('is refused by scrollUntilVisible before any step on either target', async () => {
+    const { web, mobile } = targets();
+    await expect(web.screen.scrollUntilVisible(mobile.screen.getByText('Accept'))).rejects.toMatchObject({
+      code: 'INVALID_LOCATOR',
+      message: `scrollUntilVisible requires a locator made by this screen; ${FOREIGN}`,
+    });
+    expect(web.steps.all()).toEqual([]);
+    expect(web.swipes).toEqual([]);
+    expect(mobile.swipes).toEqual([]);
+  });
+
+  it('is refused by dragTo', () => {
+    const { web, mobile } = targets();
+    expect(() => web.screen.getByText('Accept').dragTo(mobile.screen.getByText('Accept'))).toThrowError(
+      expect.objectContaining({
+        code: 'INVALID_LOCATOR',
+        message: `dragTo requires a locator made by this screen; ${FOREIGN}`,
+      }),
+    );
+    expect(web.steps.all()).toEqual([]);
+  });
+
+  it('is refused by filter({ has })', () => {
+    const { web, mobile } = targets();
+    expect(() => web.screen.getByRole('list').filter({ has: mobile.screen.getByText('Accept') })).toThrowError(
+      expect.objectContaining({
+        code: 'INVALID_LOCATOR',
+        message: `filter({ has }) requires a locator made by this screen; ${FOREIGN}`,
+      }),
+    );
+  });
+
+  it('is refused for a stale locator of the same target from an earlier attempt', async () => {
+    const current = screenOver({ screens: [[TARGET]] });
+    const earlier = screenOver({ screens: [[TARGET]] });
+    await expect(current.screen.scrollUntilVisible(earlier.screen.getByText('Accept'))).rejects.toMatchObject({
+      code: 'INVALID_LOCATOR',
     });
   });
 });

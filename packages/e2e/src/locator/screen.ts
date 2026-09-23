@@ -38,7 +38,7 @@ import {
   testIdQuery,
   textQuery,
 } from './expression.ts';
-import { POLL_INTERVAL_MS, pollCondition, sleep } from '../internal/time.ts';
+import { type Deadline, POLL_INTERVAL_MS, pollCondition, sleep } from '../internal/time.ts';
 
 export interface SecretResolver {
   /**
@@ -177,37 +177,61 @@ class ScreenImpl implements Screen {
     target: Locator,
     options?: { direction?: ScrollDirection; momentum?: Momentum; timeout?: number },
   ): Promise<void> {
-    const internals = locatorInternals(target);
-    if (internals === undefined) {
-      throw new TestError('INVALID_LOCATOR', 'scrollUntilVisible requires an e2e locator');
-    }
+    const internals = this.ownLocator(target, 'scrollUntilVisible');
     rejectUnknownOptions('scrollUntilVisible', options, ['direction', 'momentum', 'timeout']);
     const direction = options?.direction ?? 'down';
     const momentum = options?.momentum ?? 'slow';
     const { engine } = this.context;
     // On `screen` the viewport scrolls; on a locator the node itself does, so
     // a scroll container pages without the pointer having to hover it first.
+    // Every swipe is bounded by the scroll's own deadline, not the action timeout.
     const scope = this.scope;
-    const swipeStep =
+    const swipeStep = (deadline: Deadline) =>
       scope === undefined
-        ? () => engine.session.swipe(direction, momentum, engine.operation())
-        : () => engine.perform(scope, { kind: 'swipe', direction, momentum });
+        ? engine.session.swipe(direction, momentum, engine.operationWithin(deadline))
+        : engine.performUntil(scope, { kind: 'swipe', direction, momentum }, deadline);
     const label = describeExpression(internals.expression);
     await this.context.steps.run('screen', 'screen.scrollUntilVisible', label, async () => {
       const deadline = engine.deadline(options?.timeout ?? 30_000);
+      const notVisible = (cause?: unknown) =>
+        new TestError(
+          'LOCATOR_NOT_FOUND',
+          `target did not become visible while scrolling: ${label}`,
+          cause === undefined ? undefined : { cause },
+        );
       for (;;) {
         const { node } = await engine.tryRead(internals.expression, deadline);
         if (isNodeVisible(node)) return;
-        if (deadline.expired()) {
-          throw new TestError(
-            'LOCATOR_NOT_FOUND',
-            `target did not become visible while scrolling: ${label}`,
-          );
+        if (deadline.expired()) throw notVisible();
+        try {
+          await swipeStep(deadline);
+        } catch (cause) {
+          // A swipe cut by the scroll's deadline is the scroll timing out.
+          if (deadline.expired()) throw notVisible(cause);
+          throw cause;
         }
-        await swipeStep();
-        await sleep(POLL_INTERVAL_MS, engine.signal);
+        await sleep(Math.min(POLL_INTERVAL_MS, deadline.remaining()), engine.signal);
       }
     });
+  }
+
+  /**
+   * The internals of a locator this screen may resolve: an e2e locator made
+   * by this attempt's screen for the same target. One made elsewhere would be
+   * evaluated through this target's engine, so it is refused before any step.
+   */
+  protected ownLocator(candidate: unknown, api: string): LocatorInternals {
+    const internals = locatorInternals(candidate);
+    if (internals === undefined) {
+      throw new TestError('INVALID_LOCATOR', `${api} requires an e2e locator`);
+    }
+    if (internals.context !== this.context) {
+      throw new TestError(
+        'INVALID_LOCATOR',
+        `${api} requires a locator made by this screen; the one given belongs to another target's screen or another attempt`,
+      );
+    }
+    return internals;
   }
 }
 
@@ -371,10 +395,7 @@ class LocatorImpl extends ScreenImpl implements Locator {
   }
 
   dragTo(target: Locator, options?: ActionOptions): Promise<void> {
-    const internals = locatorInternals(target);
-    if (internals === undefined) {
-      throw new TestError('INVALID_LOCATOR', 'dragTo requires an e2e locator target');
-    }
+    const internals = this.ownLocator(target, 'dragTo');
     // The drop target resolves inside the retry, so a superseded target ref
     // is re-resolved along with the source instead of looping until timeout.
     return this.action('locator.dragTo', () =>
@@ -490,14 +511,8 @@ class LocatorImpl extends ScreenImpl implements Locator {
   }
 
   filter(options: { hasText?: TextMatch; has?: Locator }): Locator {
-    let hasExpression: LocatorExpression | undefined;
-    if (options.has !== undefined) {
-      const internals = locatorInternals(options.has);
-      if (internals === undefined) {
-        throw new TestError('INVALID_LOCATOR', 'filter({ has }) requires an e2e locator');
-      }
-      hasExpression = internals.expression;
-    }
+    const hasExpression =
+      options.has === undefined ? undefined : this.ownLocator(options.has, 'filter({ has })').expression;
     return new LocatorImpl(
       this.context,
       filterExpression(this.expression, {
