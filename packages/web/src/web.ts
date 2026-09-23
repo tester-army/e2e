@@ -12,7 +12,7 @@
  * says which URLs a test may open.
  */
 
-import type { Download, Route } from 'playwright';
+import type { Download, Page, Route } from 'playwright';
 import type { ActionOptions, Expectable, JsonValue, Locator, Screen, TextMatch } from 'e2e';
 import {
   Deadline,
@@ -73,6 +73,18 @@ export interface WebResponse {
   json<T = unknown>(): Promise<T>;
   /** Reads the response body as text. */
   text(): Promise<string>;
+}
+
+/**
+ * A page the app opened in a second tab or window, made the attempt's active
+ * page by `web.waitForPopup`: `screen`, `web`, `expect(web)`, observation,
+ * and screenshots follow it until it closes.
+ */
+export interface WebPopup {
+  /** The popup's URL once it loaded. */
+  readonly url: string;
+  /** Closes the popup; the page that opened it is the active page again. */
+  close(): Promise<void>;
 }
 
 export interface CookieFields {
@@ -183,6 +195,11 @@ export interface Web extends Expectable<WebExpectation> {
     trigger: () => Promise<void>,
     options?: { timeout?: number },
   ): Promise<{ path: string; absolutePath: string; suggestedFilename: string }>;
+  /** Runs a trigger, waits for the page it opens to load, and makes that page the active one. */
+  waitForPopup(
+    trigger: () => Promise<void>,
+    options?: { timeout?: number },
+  ): Promise<WebPopup>;
   /** Viewport-level keyboard, for whatever has focus. */
   readonly keyboard: {
     /** Sends one key. */
@@ -246,6 +263,7 @@ export function createWebFixture(surface: PlaywrightSurface, context: EngineFixt
   const currentTitle = () =>
     surface.guard(context.operation(), 'title', () => surface.requirePage().title());
   const expectation = createWebExpectation({ currentUrl, currentTitle, baseHref, deadlineFor, context });
+  const action: FixtureOperation = { kind: 'resource' };
 
   const web: Omit<Web, keyof Expectable<WebExpectation>> = {
     goto(url, options) {
@@ -465,6 +483,39 @@ export function createWebFixture(surface: PlaywrightSurface, context: EngineFixt
         return translatePwError(cause, label);
       });
     },
+    async waitForPopup(trigger, options) {
+      const operation = context.operation(options?.timeout);
+      let triggerFailure: { cause: unknown } | undefined;
+      return surface.guard(operation, 'popup', async (currentOperation) => {
+        surface.requirePage();
+        const deadline = new Deadline(currentOperation.timeoutMs);
+        // The context's next page, not the opener's: a link with a target or a
+        // frame's `window.open` lands there too, and the context owns pages.
+        const waiter: Promise<Page> = surface.requireContext()
+          .waitForEvent('page', { timeout: currentOperation.timeoutMs });
+        // The trigger may fail before the waiter settles; absorb its later rejection.
+        waiter.catch(() => undefined);
+        try {
+          await trigger();
+        } catch (cause) {
+          triggerFailure = { cause };
+          throw cause;
+        }
+        const popup = await waiter;
+        // Playwright reads a zero timeout as none; a spent budget must still fail.
+        await popup.waitForLoadState('load', { timeout: Math.max(1, deadline.remaining()) });
+        await surface.enterPopup(popup);
+        const handle: WebPopup = {
+          url: popup.url(),
+          close: () => surface.guard(context.operation(), 'popup.close', () => surface.closePopup(popup)),
+        };
+        return context.fixture('popup', handle, { close: action });
+      }, (cause, label) => {
+        // The trigger is test code, so its errors keep their original classification.
+        if (triggerFailure !== undefined && Object.is(cause, triggerFailure.cause)) throw cause;
+        return translatePwError(cause, label);
+      });
+    },
     keyboard: {
       press: (key) =>
         surface.guard(context.operation(), 'keyboard.press', () => surface.requirePage().keyboard.press(key)),
@@ -483,7 +534,6 @@ export function createWebFixture(surface: PlaywrightSurface, context: EngineFixt
     },
   };
 
-  const action: FixtureOperation = { kind: 'resource' };
   const navigationCall = { kind: 'resource', timeout: false } as const;
   const matchers: FixtureOperations<WebExpectation> = {
     toHaveURL: { kind: 'assertion', timeout: false, label: (expected) => String(expected) },
@@ -508,6 +558,7 @@ export function createWebFixture(surface: PlaywrightSurface, context: EngineFixt
     setViewport: action,
     onDialog: action,
     waitForDownload: { ...action, timeout: (_trigger, options) => options?.timeout },
+    waitForPopup: { ...action, timeout: (_trigger, options) => options?.timeout },
     keyboard: { press: { ...action, label: (key) => key }, type: { ...action, label: (text) => `${text.length} chars` } },
     mouse: { move: action, wheel: action, down: action, up: action },
   });

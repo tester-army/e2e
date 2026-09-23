@@ -8,10 +8,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { DialogRouter } from '../../src/dialogs.ts';
 import { ErrorLatch } from '../../src/support.ts';
 
-function fakeDialog(text = 'are you sure?') {
+function fakeDialog(text = 'are you sure?', type = 'confirm') {
   const accept = vi.fn(async (_text?: string) => undefined);
   const dismiss = vi.fn(async () => undefined);
-  const dialog = { type: () => 'confirm', message: () => text, accept, dismiss } as unknown as PwDialog;
+  const dialog = { type: () => type, message: () => text, accept, dismiss } as unknown as PwDialog;
   return { dialog, accept, dismiss };
 }
 
@@ -67,6 +67,26 @@ describe('DialogRouter', () => {
     await router.dispatch(custom.dialog);
     expect(seen).toEqual(['name?']);
     expect(custom.accept).toHaveBeenCalledWith('yes');
+  });
+
+  it('tells a handler which kind of dialog it holds, so it can route on the kind instead of the text', async () => {
+    const router = new DialogRouter();
+    const kinds: string[] = [];
+    router.add((dialog) => {
+      kinds.push(dialog.type);
+      return dialog.type === 'prompt' ? dialog.accept('ada') : dialog.type === 'confirm' ? dialog.accept() : dialog.dismiss();
+    });
+    const prompt = fakeDialog('name?', 'prompt');
+    const confirm = fakeDialog('sure?', 'confirm');
+    const alert = fakeDialog('heads up', 'alert');
+    const leaving = fakeDialog('', 'beforeunload');
+    for (const { dialog } of [prompt, confirm, alert, leaving]) await router.dispatch(dialog);
+    expect(kinds).toEqual(['prompt', 'confirm', 'alert', 'beforeunload']);
+    expect(prompt.accept).toHaveBeenCalledWith('ada');
+    expect(confirm.accept).toHaveBeenCalledWith(undefined);
+    expect(alert.dismiss).toHaveBeenCalledTimes(1);
+    expect(leaving.dismiss).toHaveBeenCalledTimes(1);
+    expect(() => router.throwPending()).not.toThrow();
   });
 
   it('dismisses a dialog its handler left undecided and latches INVALID_STATE naming the handler', async () => {

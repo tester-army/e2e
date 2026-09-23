@@ -267,6 +267,19 @@ test('dialogs are handled by registered handlers', async ({ app, web, screen }) 
   await dispose();
 });
 
+test('a dialog handler sees the kind of dialog it holds', async ({ app, web, screen }) => {
+  await app.open('/dialog');
+  const kinds: string[] = [];
+  const dispose = await web.onDialog((dialog) => {
+    kinds.push(dialog.type);
+    return dialog.type === 'confirm' ? dialog.accept() : dialog.dismiss();
+  });
+  await screen.getByRole('button', { name: 'Ask' }).tap();
+  await expect(screen.getByRole('status', { name: 'Answer' })).toHaveText('accepted');
+  expect(kinds).toEqual(['confirm']);
+  await dispose();
+});
+
 test('frame locators scope queries into iframes', async ({ app, web }) => {
   await app.open('/frame');
   const frame = web.frameLocator('#child');

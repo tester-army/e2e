@@ -59,7 +59,8 @@ await off();
 ```
 
 A function handler gets the dialog and must call `accept(text?)` or
-`dismiss()`.
+`dismiss()`. `dialog.type` says whether it is an `alert`, `confirm`,
+`prompt`, or `beforeunload`, and `dialog.message` carries its text.
 
 ## Download a file
 
@@ -72,6 +73,26 @@ const file = await web.waitForDownload(() =>
 The download is registered as a `download` artifact. `file.path` is relative to
 the attempt's artifact directory, not an absolute or project-relative file
 path.
+
+## Follow a popup
+
+A `window.open` or a `target="_blank"` link opens a second tab. Wrap the
+trigger in `web.waitForPopup` and the new page becomes the one `screen`,
+`web`, and `expect(web)` answer for; `close()` returns to the opener.
+
+```ts
+const popup = await web.waitForPopup(() =>
+  screen.getByRole('button', { name: 'Open verification tab' }).tap(),
+);
+await expect(web).toHaveTitle('Verification');
+const code = await screen.getByText(/^TAB-\d+$/).textContent();
+await popup.close();
+
+await screen.getByPlaceholder('Verification code').fill(code!);
+```
+
+A popup the app closes itself returns to the opener on its own. A tab that
+opens with no wait pending is ignored and closed with the attempt.
 
 ## Reach into an iframe
 

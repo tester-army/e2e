@@ -21,6 +21,7 @@ export type {
   RouteFulfillResponse,
   Web,
   WebExpectation,
+  WebPopup,
   WebResponse,
   WebRoute,
 } from './web.ts';

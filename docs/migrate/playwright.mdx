@@ -216,7 +216,7 @@ to do today.
 | `routeFromHAR()`, `routeWebSocket()` | not yet | `web` | missing |
 | `page.on('dialog')` | `web.onDialog('accept')`, or a handler that calls `accept` or `dismiss` | `web` | web only |
 | `page.waitForEvent('download')` | `web.waitForDownload(() => trigger)` | `web` | web only |
-| `page.waitForEvent('popup')`, `context.on('page')` | not yet; a window the app opens is not driven | `web` | missing |
+| `page.waitForEvent('popup')`, `context.on('page')` | `web.waitForPopup(() => trigger)`: the new page becomes the active one; `popup.close()` returns to the opener | `web` | web only |
 | `page.on('console')`, `page.on('pageerror')` | not yet; assert on what the page shows | `web` | missing |
 | `page.evaluate(fn, arg)` | `web.evaluate(fn, arg)`; JSON in and out, no handles | `web` | web only |
 | `page.exposeFunction()`, `addInitScript()`, `setExtraHTTPHeaders()`, `emulateMedia()`, `clock` | not yet | `web` | missing |

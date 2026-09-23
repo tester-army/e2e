@@ -40,6 +40,10 @@ export class AttemptSession {
   private state: SessionState = { kind: 'empty' };
   private generation = {};
   private observed = true;
+  /** The binding each open popup was entered over, so its closing can return there. */
+  private readonly openers = new Map<Page, SessionBinding>();
+  /** The return to an opener a popup's close event started, awaited by an explicit close. */
+  private returning: Promise<void> = Promise.resolve();
   private tracing = false;
   private traceSegments = 0;
   private traceParts: string[] = [];
@@ -80,6 +84,15 @@ export class AttemptSession {
   private invalidate(): void {
     this.generation = {};
     this.refs.clear();
+  }
+
+  /**
+   * Forgets every popup's return path where the pages themselves go: a
+   * restart, a replaced context or connection, the attempt's end. The close
+   * events those raise must not steer the binding under the transition.
+   */
+  private forgetPopups(): void {
+    this.openers.clear();
   }
 
   /** Opens a context for this attempt, publishing only after its handlers are installed. */
@@ -139,6 +152,7 @@ export class AttemptSession {
   ): Promise<void> {
     if (budget.signal.aborted) throw connectionAbort(budget.signal, 'connection');
     this.invalidate();
+    this.forgetPopups();
     const resumeTrace = recover && this.tracing;
     if (recover) this.tracing = false;
     const running = Promise.resolve().then(async () => {
@@ -199,10 +213,66 @@ export class AttemptSession {
     }
   }
 
+  /**
+   * Makes a page the app opened the attempt's active page: the one every
+   * query, action, capture, and recording reaches, and the target a CDP
+   * recovery looks for. The page it was entered over returns as the active
+   * page when the popup closes, whether the test closed it or the app did.
+   */
+  async enterPopup(popup: Page): Promise<void> {
+    const opener = this.current();
+    if (opener.page === null || opener.page.isClosed()) throw invalidState('no app page is open; call app.open() or web.goto() first');
+    if (popup.isClosed()) throw invalidState('the popup closed before it could be entered');
+    this.invalidate();
+    const token = this.token();
+    let identity = opener.identity;
+    if (identity !== undefined) {
+      await popup.setViewportSize(opener.page.viewportSize() ?? this.options.viewport);
+      identity = { ...identity, target: await targetIdentity(popup) };
+    }
+    this.check(token);
+    await this.video.pageOpened(popup);
+    this.check(token);
+    this.state = { kind: 'ready', binding: { ...opener, page: popup, ...(identity === undefined ? {} : { identity }) } };
+    this.openers.set(popup, opener);
+    popup.once('close', () => { this.returning = this.leavePopup(popup); });
+  }
+
+  /**
+   * Closes a popup entered through `enterPopup` after ending its recording
+   * segment, so the segment is flushed while the page can still do it; the
+   * opener is the active page again once this resolves.
+   */
+  async closePopup(popup: Page): Promise<void> {
+    if (this.state.kind === 'ready' && this.state.binding.page === popup) await this.video.pageClosing();
+    if (!popup.isClosed()) await popup.close();
+    await this.leavePopup(popup);
+    await this.returning;
+  }
+
+  /**
+   * Returns to the opener of a popup that closed, when the popup was still
+   * the active page and the opener is still open. A popup closed while
+   * another page was active, or one a transition already invalidated, has
+   * nothing to return to; neither has a transport drop, which closes every
+   * page of the context, the opener before the popup it opened, and must
+   * leave the popup as the target recovery looks for.
+   */
+  private async leavePopup(popup: Page): Promise<void> {
+    const opener = this.openers.get(popup);
+    this.openers.delete(popup);
+    if (opener === undefined || this.state.kind !== 'ready' || this.state.binding.page !== popup) return;
+    if (opener.page === null || opener.page.isClosed()) return;
+    this.invalidate();
+    this.state = { kind: 'ready', binding: opener };
+    await this.video.pageOpened(opener.page);
+  }
+
   /** Restarts the document while retaining this context's storage. */
   async restart(): Promise<void> {
     const binding = this.current();
     this.invalidate();
+    this.forgetPopups();
     const token = this.token();
     await this.video.pageClosing();
     const resume = this.video.isArmed ? await this.closeTraceSegment(binding.context) : false;
@@ -233,6 +303,7 @@ export class AttemptSession {
     this.state = { kind: 'closed' };
     this.lifetime.abort();
     this.invalidate();
+    this.forgetPopups();
     if (state.kind === 'pending') await withinCleanupBudget(state.work, budget);
     const binding = 'binding' in state ? state.binding : undefined;
     if (binding === undefined) return;

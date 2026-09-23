@@ -468,6 +468,16 @@ export class PlaywrightSurface {
     return this.requireSession().ensurePage();
   }
 
+  /** Makes a page the app opened the attempt's active page; see `AttemptSession.enterPopup`. */
+  enterPopup(popup: Page): Promise<void> {
+    return this.requireSession().enterPopup(popup);
+  }
+
+  /** Closes a popup entered through `enterPopup`; its opener is the active page again. */
+  closePopup(popup: Page): Promise<void> {
+    return this.requireSession().closePopup(popup);
+  }
+
   /**
    * The single entry of every operation: rethrows an error latched on an
    * unawaited path, refuses a cancelled operation, races `fn` against the

@@ -332,8 +332,9 @@ Import `test` from `@e2edev/web`. Prefer `app` and `screen`; use
 | `waitForResponse(pattern)` | Resolves with `{ status, headers, json(), text() }`. |
 | `cookies()`, `setCookies([...])` | Read and set cookies; a target is an http(s) URL or a domain. |
 | `setViewport({ width, height })` | Resize. |
-| `onDialog('accept' \| 'dismiss' \| handler)` | Returns an unsubscribe function. Register it before the tap that opens the dialog. |
+| `onDialog('accept' \| 'dismiss' \| handler)` | Returns an unsubscribe function. Register it before the tap that opens the dialog; a handler gets `{ type, message, accept(text?), dismiss() }`. |
 | `waitForDownload(() => trigger)` | Returns `{ path, suggestedFilename }`. |
+| `waitForPopup(() => trigger)` | The tab the trigger opens becomes the active page for `screen`, `web`, and `expect(web)`; returns `{ url, close() }`, and `close()` returns to the opener. |
 | `keyboard.press(key)`, `keyboard.type(text)`, `mouse.*` | Unfocused input. Prefer `locator.press` and `locator.fill`. |
 
 ```ts

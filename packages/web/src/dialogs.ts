@@ -10,6 +10,8 @@ import { ErrorLatch, message } from './support.ts';
 
 /** A native dialog as a test's handler sees it. */
 export interface Dialog {
+  /** Which `window` call opened it, or `beforeunload` for the leave-page prompt. */
+  readonly type: 'alert' | 'confirm' | 'prompt' | 'beforeunload';
   /** The dialog's text. */
   readonly message: string;
   /** Accepts the dialog once. */
@@ -19,6 +21,11 @@ export interface Dialog {
 }
 
 export type DialogHandler = 'accept' | 'dismiss' | ((dialog: Dialog) => void | Promise<void>);
+
+/** Playwright types `dialog.type()` as a string; the four it documents are the whole set. */
+function dialogType(dialog: PwDialog): Dialog['type'] {
+  return dialog.type() as Dialog['type'];
+}
 
 interface Registration {
   readonly handler: DialogHandler;
@@ -67,6 +74,7 @@ export class DialogRouter {
     }
     let decided = false;
     const publicDialog: Dialog = {
+      type: dialogType(dialog),
       message: dialog.message(),
       accept: async (text) => {
         decided = true;
