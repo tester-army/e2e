@@ -184,6 +184,37 @@ describe('locators inside closed shadow roots', () => {
     expect(hintParagraph).toHaveLength(1);
   });
 
+  it('matches a label an aria-labelledby id names in the control\'s own tree, in a closed root and an open one below it', async () => {
+    const observed = [...walk((await engine.observe!(op)).root)];
+    expect(observed.find((node) => node.testId === 'pin')).toMatchObject({ role: 'textbox', name: 'PIN' });
+    expect(observed.find((node) => node.testId === 'tone')).toMatchObject({ role: 'textbox', name: 'Tone' });
+
+    const pin = await locate(query({ kind: 'label', value: exact('PIN') }));
+    expect(pin.map((node) => node.testId)).toEqual(['pin']);
+    const pinLoosely = await locate(query({ kind: 'label', value: loose('pin') }));
+    expect(pinLoosely.map((node) => node.testId)).toEqual(['pin']);
+    const tone = await locate(query({ kind: 'label', value: exact('Tone') }));
+    expect(tone.map((node) => node.testId)).toEqual(['tone']);
+    const toneLoosely = await locate(query({ kind: 'label', value: loose('tone') }));
+    expect(toneLoosely.map((node) => node.testId)).toEqual(['tone']);
+  });
+
+  it('reports focus on the node that holds it, inside a closed root and inside an open root below it', async () => {
+    const focusedOf = async (testId: string) => (await locate(byTestId(testId)))[0]?.states?.['focused'];
+
+    const [pin] = await locate(byTestId('pin'));
+    await engine.perform!(pin!.ref, { kind: 'tap' }, op);
+    expect(await focusedOf('pin')).toBe(true);
+    expect(await focusedOf('code')).toBeUndefined();
+
+    const [tone] = await locate(byTestId('tone'));
+    await engine.perform!(tone!.ref, { kind: 'tap' }, op);
+    expect(await focusedOf('tone')).toBe(true);
+    expect(await focusedOf('pin')).toBeUndefined();
+    const focused = [...walk((await engine.observe!(op)).root)].filter((node) => node.states?.['focused'] === true);
+    expect(focused.map((node) => node.testId)).toEqual(['tone']);
+  });
+
   it('fills, presses, taps, and reads the nodes it located', async () => {
     const [code] = await locate(query({ kind: 'placeholder', value: exact('Access code') }));
     await engine.perform!(code!.ref, { kind: 'fill', value: 'WRONG-1', sensitive: false }, op);

@@ -232,6 +232,21 @@ describe('names from content and precedence', () => {
     }
   });
 
+  it('resolves an aria-labelledby id in the element\'s own shadow tree, not the document', async () => {
+    await page.setContent(`
+      <span id="l">Outside</span>
+      <x-host></x-host>
+      <script>
+        const root = document.querySelector('x-host').attachShadow({ mode: 'open' });
+        root.innerHTML = '<span id="l">Inside</span><button aria-labelledby="l" data-testid="inside">x</button>';
+      </script>
+    `);
+    const { tree } = await capture();
+    const byTestId = new Map(flatten(tree).map((node) => [node.testId, node]));
+    expect(byTestId.get('inside')).toMatchObject({ role: 'button', name: 'Inside' });
+    expect(await locatedTestId('button', 'Inside')).toBe('inside');
+  });
+
   it('follows a descendant reference in a name from content, once per element and never from inside another', async () => {
     await page.setContent(`
       <button data-testid="svg-reference"><svg aria-labelledby="t1" width="10" height="10"><title id="t1">Close</title></svg>Icon</button>

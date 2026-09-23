@@ -300,6 +300,17 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
   const isReferenceHidden = (el: Element): boolean => isHidden(el) || el.closest('[aria-hidden="true"]') !== null;
 
   /**
+   * The element an id names for `el`, looked up in `el`'s own tree: an IDREF
+   * resolves in the tree scope it is written in, so a shadow tree's ids are
+   * its own and `getElementById` on the document never sees them. A root of
+   * either kind answers for its tree once the reader holds the element.
+   */
+  const referencedElementOf = (el: Element, id: string): Element | null => {
+    const root = el.getRootNode();
+    return root instanceof Document || root instanceof DocumentFragment ? root.getElementById(id) : null;
+  };
+
+  /**
    * Each aria-labelledby target's contribution (accname 2B), in attribute
    * order, unnamed targets dropped; null when the element references nothing
    * that names it. A hidden target is read whole, as a screen reader reads it,
@@ -312,7 +323,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     if (ids === '') return null;
     const names: string[] = [];
     for (const id of ids.split(/\s+/)) {
-      const target = el.ownerDocument.getElementById(id);
+      const target = referencedElementOf(el, id);
       if (target === null) continue;
       const name = contentNameOf(target, nameStyleOf(target), {
         inReference: true,
@@ -522,6 +533,24 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
   ];
   const shadowRootOf = (el: Element): ShadowRoot | null =>
     el.shadowRoot ?? closedShadowRoots?.get(el) ?? null;
+
+  /**
+   * The element that holds focus, through every shadow root on the way.
+   * `document.activeElement` is retargeted to the outermost host and each
+   * root's `activeElement` names the next hop, so the chain is followed until
+   * a root holds no focus of its own; a closed root is reached through the
+   * record, as everywhere else in the reader.
+   */
+  const focusedElementOf = (doc: Document): Element | null => {
+    let active = doc.activeElement;
+    while (active !== null) {
+      const next = shadowRootOf(active)?.activeElement ?? null;
+      if (next === null) return active;
+      active = next;
+    }
+    return null;
+  };
+  const focusedElement = focusedElementOf(element.ownerDocument);
 
   const isHidden = (el: Element, style = styleOf(el)): boolean => {
     if (el.getAttribute('aria-hidden') === 'true') return true;
@@ -787,7 +816,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
         selected: selectedState,
         expanded: ariaExpanded === null ? null : ariaExpanded === 'true',
         pressed: ariaPressed === null ? null : ariaPressed === 'true',
-        focused: el.ownerDocument.activeElement === el,
+        focused: focusedElement === el,
         hidden: isHidden(el, style),
         secure,
       },

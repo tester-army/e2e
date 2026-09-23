@@ -78,11 +78,12 @@ const CLOSED_SHADOW = `<!doctype html>
 /**
  * A gate form inside a closed shadow root, with every query kind represented:
  * a hint paragraph and its hidden twin, a placeholder input carrying a test id,
- * a labelled input with a value, a named button and its hidden twin, and two
- * `Twin` buttons beside a third in the light DOM. Below the form an open root
- * nests inside the closed one and a closed root inside that; a second host in
- * the light DOM nests a closed root inside an open one. Submitting writes the
- * verdict into the light DOM.
+ * a labelled input with a value, an input named by `aria-labelledby`, a named
+ * button and its hidden twin, and two `Twin` buttons beside a third in the
+ * light DOM. Below the form an open root nests inside the closed one, with a
+ * button and a second `aria-labelledby` input, and a closed root inside that;
+ * a second host in the light DOM nests a closed root inside an open one.
+ * Submitting writes the verdict into the light DOM.
  */
 const CLOSED_FORM = `<!doctype html>
 <html>
@@ -100,6 +101,7 @@ const CLOSED_FORM = `<!doctype html>
     '<p hidden data-testid="hint-ghost">Access code hint: SHADOW-42</p>',
     '<input placeholder="Access code" data-testid="code">',
     '<label>Nickname <input name="nickname" value="ada"></label>',
+    '<span id="pin-label">PIN</span><input aria-labelledby="pin-label" data-testid="pin">',
     '<button type="button" data-testid="submit">Submit</button>',
     '<button type="button" hidden data-testid="submit-ghost">Submit</button>',
     '<button type="button" data-testid="twin-a">Twin</button>',
@@ -113,7 +115,7 @@ const CLOSED_FORM = `<!doctype html>
   root.querySelector('[data-testid="submit"]').addEventListener('click', submit);
   root.querySelector('input').addEventListener('keydown', (event) => { if (event.key === 'Enter') submit(); });
   const inner = root.querySelector('x-inner').attachShadow({ mode: 'open' });
-  inner.innerHTML = '<button type="button">Open inside closed</button><x-deep></x-deep>';
+  inner.innerHTML = '<button type="button">Open inside closed</button><span id="tone-label">Tone</span><input aria-labelledby="tone-label" data-testid="tone"><x-deep></x-deep>';
   const deep = inner.querySelector('x-deep').attachShadow({ mode: 'closed' });
   deep.innerHTML = '<button type="button">Closed inside open</button>';
   const side = document.querySelector('x-side').attachShadow({ mode: 'open' });

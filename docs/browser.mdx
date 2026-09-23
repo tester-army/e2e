@@ -291,7 +291,9 @@ closed root the page attaches with `attachShadow`, the reader walks them
 into the tree the agent sees and a failure prints, and `getByRole`,
 `getByLabel`, `getByPlaceholder`, `getByText`, `getByDisplayValue`, and
 `getByTestId` resolve inside them with the same matching rules as outside.
-Actions and reads on such a node work as on any other. A scope, a `has`
+Actions and reads on such a node work as on any other: `toBeFocused` sees
+focus inside a root, and `getByLabel` matches an `aria-labelledby` reference,
+whose id names an element in the control's own tree. A scope, a `has`
 filter, and `first`, `last`, and `nth` cross the boundary; matches outside a
 closed root come first, then each root's matches in order.
 
