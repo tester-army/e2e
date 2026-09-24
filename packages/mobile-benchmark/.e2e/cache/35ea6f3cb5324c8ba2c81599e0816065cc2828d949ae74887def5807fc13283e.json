@@ -1,0 +1,84 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-24T07:58:36.777Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tapAt",
+        "summary": "tap the point (749, 1420) on group",
+        "point": {
+          "x": 749,
+          "y": 1420
+        },
+        "viewport": {
+          "width": 1080,
+          "height": 2400
+        },
+        "within": {
+          "target": {
+            "role": "group"
+          },
+          "fx": 0.4898,
+          "fy": 0.483
+        }
+      },
+      {
+        "name": "tapAt",
+        "summary": "tap the point (331, 1420) on group",
+        "point": {
+          "x": 331,
+          "y": 1420
+        },
+        "viewport": {
+          "width": 1080,
+          "height": 2400
+        },
+        "within": {
+          "target": {
+            "role": "group"
+          },
+          "fx": 0.5034,
+          "fy": 0.483
+        }
+      },
+      {
+        "name": "tapAt",
+        "summary": "tap the point (540, 1420) on group",
+        "point": {
+          "x": 540,
+          "y": 1420
+        },
+        "viewport": {
+          "width": 1080,
+          "height": 2400
+        },
+        "within": {
+          "target": {
+            "role": "group"
+          },
+          "fx": 0.4976,
+          "fy": 0.4879
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Vision%20Only",
+      "targetId": "android-emulator",
+      "instructionDigest": "e950bf904a3587f9a1d42a4dc15c29517000d20a1e31c8bd896e96a9c6ebd6d1"
+    },
+    "summary": "Tapped the square, then circle, then diamond. The screen now displays “Sequence complete.”",
+    "startPath": "dev.e2e.benchmark",
+    "endPath": "dev.e2e.benchmark",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Sequence complete"
+      }
+    ],
+    "endWaitMs": 14572
+  }
+}

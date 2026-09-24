@@ -1,0 +1,51 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-24T08:00:33.842Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tool",
+        "summary": "tool type (run-time value)",
+        "derived": "pixels"
+      },
+      {
+        "name": "tool",
+        "summary": "tool type (run-time value)",
+        "derived": "pixels"
+      },
+      {
+        "name": "tap",
+        "summary": "tap group \"SIGN IN\" in \"Use tester@tester.army / <secret:benchm…\"",
+        "target": {
+          "role": "group",
+          "name": "SIGN IN",
+          "within": "Use tester@tester.army / <secret:benchmark>"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Flattened%20Login",
+      "targetId": "android-emulator",
+      "instructionDigest": "2ac57f8c28a31069613ffb9bbf8151a42ea8ceb4bb65d0ad6dcd9eea0b8a2755"
+    },
+    "summary": "Used the screenshot hint to sign in with tester@tester.army and <secret:benchmark>. The screen confirms “Logged in successfully.”.",
+    "startPath": "dev.e2e.benchmark",
+    "endPath": "dev.e2e.benchmark",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Logged in successfully"
+      },
+      {
+        "role": "group",
+        "name": "T-Mobile, one bar.",
+        "testId": "com.android.systemui:id/mobile_combo"
+      }
+    ],
+    "endWaitMs": 15063
+  }
+}

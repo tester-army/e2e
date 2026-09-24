@@ -1,0 +1,135 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-24T07:56:55.989Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "scroll",
+        "summary": "scroll down on group \"benchmark-list\" in \"Scroll down and tap Item 137 to complete\"",
+        "direction": "down",
+        "target": {
+          "role": "group",
+          "testId": "benchmark-list",
+          "selector": "id=benchmark-list",
+          "within": "Scroll down and tap Item 137 to complete"
+        },
+        "spans": 0.9125
+      },
+      {
+        "name": "scroll",
+        "summary": "scroll down on group \"benchmark-list\" in \"Item 14\"",
+        "direction": "down",
+        "target": {
+          "role": "group",
+          "testId": "benchmark-list",
+          "selector": "id=benchmark-list",
+          "within": "Item 14"
+        },
+        "spans": 0.9125
+      },
+      {
+        "name": "scroll",
+        "summary": "scroll down on group \"benchmark-list\" in \"Item 31\"",
+        "direction": "down",
+        "target": {
+          "role": "group",
+          "testId": "benchmark-list",
+          "selector": "id=benchmark-list",
+          "within": "Item 31"
+        },
+        "spans": 0.9125
+      },
+      {
+        "name": "scroll",
+        "summary": "scroll down on group \"benchmark-list\" in \"Item 44\"",
+        "direction": "down",
+        "target": {
+          "role": "group",
+          "testId": "benchmark-list",
+          "selector": "id=benchmark-list",
+          "within": "Item 44"
+        },
+        "spans": 0.9125
+      },
+      {
+        "name": "scroll",
+        "summary": "scroll down on group \"benchmark-list\" in \"Item 61\"",
+        "direction": "down",
+        "target": {
+          "role": "group",
+          "testId": "benchmark-list",
+          "selector": "id=benchmark-list",
+          "within": "Item 61"
+        },
+        "spans": 0.9125
+      },
+      {
+        "name": "scroll",
+        "summary": "scroll down on group \"benchmark-list\" in \"Item 74\"",
+        "direction": "down",
+        "target": {
+          "role": "group",
+          "testId": "benchmark-list",
+          "selector": "id=benchmark-list",
+          "within": "Item 74"
+        },
+        "spans": 0.9125
+      },
+      {
+        "name": "scroll",
+        "summary": "scroll down on group \"benchmark-list\" in \"Item 91\"",
+        "direction": "down",
+        "target": {
+          "role": "group",
+          "testId": "benchmark-list",
+          "selector": "id=benchmark-list",
+          "within": "Item 91"
+        },
+        "spans": 0.9125
+      },
+      {
+        "name": "scroll",
+        "summary": "scroll down on group \"benchmark-list\" in \"Item 105\"",
+        "direction": "down",
+        "target": {
+          "role": "group",
+          "testId": "benchmark-list",
+          "selector": "id=benchmark-list",
+          "within": "Item 105"
+        },
+        "spans": 0.9125
+      },
+      {
+        "name": "tap",
+        "summary": "tap group \"Item 137\" in \"Item 121\"",
+        "target": {
+          "role": "group",
+          "name": "Item 137",
+          "testId": "item-137",
+          "selector": "id=item-137",
+          "within": "Item 121"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Infinite%20Scroll%20List",
+      "targetId": "android-emulator",
+      "instructionDigest": "240960ef8daa93f30d3183a42cf877c23681993025141766e480102a3eca2d75"
+    },
+    "summary": "Scrolled the paginated list until Item 137 appeared and tapped it. The screen now shows “Found item 137.”.",
+    "startPath": "dev.e2e.benchmark",
+    "endPath": "dev.e2e.benchmark",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Found item 137",
+        "testId": "success-message"
+      }
+    ],
+    "endWaitMs": 11853
+  }
+}

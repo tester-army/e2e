@@ -1,0 +1,78 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-24T07:56:32.389Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "type",
+        "summary": "type \"tester@tester.army\" into textbox \"Email\" in \"Use tester@tester.army / <secret:benchm…\"",
+        "target": {
+          "role": "textbox",
+          "name": "Email",
+          "testId": "email-input",
+          "selector": "id=email-input",
+          "within": "Use tester@tester.army / <secret:benchmark>"
+        },
+        "value": "tester@tester.army"
+      },
+      {
+        "name": "typeSecret",
+        "summary": "fill secret \"benchmark\" into textbox \"Password\" in \"Use tester@tester.army / <secret:benchm…\"",
+        "target": {
+          "role": "textbox",
+          "name": "Password",
+          "testId": "password-input",
+          "selector": "id=password-input",
+          "inputPurpose": "password",
+          "within": "Use tester@tester.army / <secret:benchmark>"
+        },
+        "secret": "benchmark"
+      },
+      {
+        "name": "tap",
+        "summary": "tap group \"Log in\" in \"Use tester@tester.army / <secret:benchm…\"",
+        "target": {
+          "role": "group",
+          "name": "Log in",
+          "testId": "login-button",
+          "selector": "id=login-button",
+          "within": "Use tester@tester.army / <secret:benchmark>"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Login%20Form",
+      "targetId": "android-emulator",
+      "instructionDigest": "faf898a5790a0ed0790b7cf57f66838eaa92ae4cb5975ac34563020bbe5cc9a3"
+    },
+    "summary": "Entered tester@tester.army and the provided benchmark password, then tapped Log in. The screen confirms “Logged in successfully.”.",
+    "startPath": "dev.e2e.benchmark",
+    "endPath": "dev.e2e.benchmark",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Logged in successfully",
+        "testId": "success-message"
+      },
+      {
+        "role": "text",
+        "name": "Log out"
+      },
+      {
+        "role": "group",
+        "name": "T-Mobile, three bars.",
+        "testId": "com.android.systemui:id/mobile_combo"
+      },
+      {
+        "role": "group",
+        "name": "Log out",
+        "testId": "logout-button"
+      }
+    ],
+    "endWaitMs": 12844
+  }
+}

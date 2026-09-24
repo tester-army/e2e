@@ -1,0 +1,73 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-24T07:57:38.443Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "type",
+        "summary": "type \"tester\" into textbox \"username-input\" in \"Username (min 3 chars)\"",
+        "target": {
+          "role": "textbox",
+          "testId": "username-input",
+          "selector": "id=username-input",
+          "within": "Username (min 3 chars)"
+        },
+        "value": "tester"
+      },
+      {
+        "name": "type",
+        "summary": "type \"1234\" into textbox \"pin-input\" in \"Username (min 3 chars)\"",
+        "target": {
+          "role": "textbox",
+          "testId": "pin-input",
+          "selector": "id=pin-input",
+          "inputPurpose": "password",
+          "within": "Username (min 3 chars)"
+        },
+        "value": "1234"
+      },
+      {
+        "name": "type",
+        "summary": "type \"These are notes\" into textbox \"notes-input\" in \"Username (min 3 chars)\"",
+        "target": {
+          "role": "textbox",
+          "testId": "notes-input",
+          "selector": "id=notes-input",
+          "within": "Username (min 3 chars)"
+        },
+        "value": "These are notes"
+      },
+      {
+        "name": "tap",
+        "summary": "tap group \"Submit\" in \"Username (min 3 chars)\"",
+        "target": {
+          "role": "group",
+          "name": "Submit",
+          "testId": "submit-button",
+          "selector": "id=submit-button",
+          "within": "Username (min 3 chars)"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Text%20Input%20Variations",
+      "targetId": "android-emulator",
+      "instructionDigest": "fbc47cae1853b33f40b2f33da5fd5f41dfc811c660e7aecb291ad1d964757d21"
+    },
+    "summary": "Filled username \"tester\", PIN with four digits, and notes exceeding ten characters, then submitted. The screen now displays \"Form submitted.\".",
+    "startPath": "dev.e2e.benchmark",
+    "endPath": "dev.e2e.benchmark",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Form submitted",
+        "testId": "success-message"
+      }
+    ],
+    "endWaitMs": 11645
+  }
+}

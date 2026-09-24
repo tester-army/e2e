@@ -117,8 +117,12 @@ jobs:
           UDID="${PICK%% *}"
           SECOND="$(xcrun simctl clone "$UDID" "iPhone 17 Pro (2)")"
           echo "booting ${PICK#* } ($UDID) and its clone ($SECOND)"
-          xcrun simctl bootstatus "$UDID" -b
-          xcrun simctl bootstatus "$SECOND" -b
+          # Both boots start before either is waited on: one after the other
+          # took about 130 s on this runner.
+          xcrun simctl boot "$UDID"
+          xcrun simctl boot "$SECOND"
+          xcrun simctl bootstatus "$UDID"
+          xcrun simctl bootstatus "$SECOND"
           echo "E2E_MOBILE_BENCHMARK_IOS_DEVICE=$UDID,$SECOND" >> "$GITHUB_ENV"
       - name: Run the suites
         env:

@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-24T07:58:06.886Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tapAt",
+        "summary": "tap the point (634, 1355) on group",
+        "point": {
+          "x": 634,
+          "y": 1355
+        },
+        "viewport": {
+          "width": 1080,
+          "height": 2400
+        },
+        "within": {
+          "target": {
+            "role": "group"
+          },
+          "fx": 0.4966,
+          "fy": 0.5034
+        }
+      },
+      {
+        "name": "tool",
+        "summary": "tool type (run-time value)",
+        "derived": "pixels"
+      },
+      {
+        "name": "tap",
+        "summary": "tap group \"→\" in \"Enter the code 7291 and press the arrow\"",
+        "target": {
+          "role": "group",
+          "name": "→",
+          "within": "Enter the code 7291 and press the arrow"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Broken%20Accessibility",
+      "targetId": "android-emulator",
+      "instructionDigest": "39a6071dd8e903747ecddcc20ac06b4c62c7e399b90ef1a0c2e79a3bcb5c4e92"
+    },
+    "summary": "Tapped the green circle, entered code 7291, and pressed the arrow. The screen now displays “Access granted.”.",
+    "startPath": "dev.e2e.benchmark",
+    "endPath": "dev.e2e.benchmark",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Access granted"
+      },
+      {
+        "role": "group",
+        "name": "T-Mobile, no signal.",
+        "testId": "com.android.systemui:id/mobile_combo"
+      }
+    ],
+    "endWaitMs": 14558
+  }
+}

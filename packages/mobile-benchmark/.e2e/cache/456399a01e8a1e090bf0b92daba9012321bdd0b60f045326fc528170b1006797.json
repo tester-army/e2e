@@ -1,0 +1,59 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-24T07:57:25.541Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap group \"⏷, Actions\" in \"Home\"",
+        "target": {
+          "role": "group",
+          "name": "⏷, Actions",
+          "testId": "tab-actions",
+          "selector": "id=tab-actions",
+          "within": "Home"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap group \"Complete action\" in \"Actions\"",
+        "target": {
+          "role": "group",
+          "name": "Complete action",
+          "testId": "complete-action-button",
+          "selector": "id=complete-action-button",
+          "within": "Actions"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Bottom%20Tabs",
+      "targetId": "android-emulator",
+      "instructionDigest": "e537c4fc20970c63b73faeca0620f6f3aa5afdc8ad6e5b0964959e0f5762de45"
+    },
+    "summary": "Opened the Actions tab and tapped Complete action. The screen displays “Action completed.”.",
+    "startPath": "dev.e2e.benchmark",
+    "endPath": "dev.e2e.benchmark",
+    "endAnchors": [
+      {
+        "role": "group",
+        "name": "Actions"
+      },
+      {
+        "role": "text",
+        "name": "Action completed",
+        "testId": "success-message"
+      },
+      {
+        "role": "group",
+        "name": "T-Mobile, one bar.",
+        "testId": "com.android.systemui:id/mobile_combo"
+      }
+    ],
+    "endWaitMs": 14485
+  }
+}

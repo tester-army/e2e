@@ -1,0 +1,97 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-24T08:02:20.103Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap radio \"Medium\" in \"Order a Medium pizza with exactly Chees…\"",
+        "target": {
+          "role": "radio",
+          "name": "Medium",
+          "testId": "size-medium",
+          "selector": "id=size-medium",
+          "within": "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then…"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap checkbox \"Cheese\" in \"Order a Medium pizza with exactly Chees…\"",
+        "target": {
+          "role": "checkbox",
+          "name": "Cheese",
+          "testId": "topping-cheese",
+          "selector": "id=topping-cheese",
+          "within": "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then…"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap checkbox \"Olives\" in \"Order a Medium pizza with exactly Chees…\"",
+        "target": {
+          "role": "checkbox",
+          "name": "Olives",
+          "testId": "topping-olives",
+          "selector": "id=topping-olives",
+          "within": "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then…"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap switch \"rush-delivery\" in \"Order a Medium pizza with exactly Chees…\"",
+        "target": {
+          "role": "switch",
+          "testId": "rush-delivery",
+          "selector": "id=rush-delivery",
+          "within": "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then…"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap textbox \"Ring the doorbell twice\" in \"Order a Medium pizza with exactly Chees…\"",
+        "target": {
+          "role": "textbox",
+          "name": "Ring the doorbell twice",
+          "testId": "delivery-notes",
+          "selector": "id=delivery-notes",
+          "within": "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then…"
+        }
+      },
+      {
+        "name": "dismissKeyboard",
+        "summary": "dismiss the keyboard"
+      },
+      {
+        "name": "tap",
+        "summary": "tap group \"Place order\" in \"Order a Medium pizza with exactly Chees…\"",
+        "target": {
+          "role": "group",
+          "name": "Place order",
+          "testId": "place-order",
+          "selector": "id=place-order",
+          "within": "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then…"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Choice%20Controls",
+      "targetId": "android-emulator",
+      "instructionDigest": "e45bc3c8dfe206c28355448b56384192428222d9ab9b304cefdfa5b86f6da188"
+    },
+    "summary": "Selected Medium, checked only Cheese and Olives, enabled rush delivery, dismissed the keyboard, and placed the order. The confirmation reads: “Order placed: Medium with Cheese, Olives (rush).”.",
+    "startPath": "dev.e2e.benchmark",
+    "endPath": "dev.e2e.benchmark",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Order placed: Medium with Cheese, Olives (rush)",
+        "testId": "success-message"
+      }
+    ],
+    "endWaitMs": 11891
+  }
+}
