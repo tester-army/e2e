@@ -53,11 +53,6 @@
       {
         "role": "text",
         "name": "Access granted"
-      },
-      {
-        "role": "group",
-        "name": "T-Mobile, three bars.",
-        "testId": "com.android.systemui:id/mobile_combo"
       }
     ],
     "endWaitMs": 15214

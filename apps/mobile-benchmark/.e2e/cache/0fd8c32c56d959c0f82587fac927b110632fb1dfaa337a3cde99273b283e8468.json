@@ -51,11 +51,6 @@
         "role": "textbox",
         "name": "TA-BENCH-50",
         "testId": "coupon-input"
-      },
-      {
-        "role": "group",
-        "name": "T-Mobile, no signal.",
-        "testId": "com.android.systemui:id/mobile_combo"
       }
     ],
     "endWaitMs": 13341

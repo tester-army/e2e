@@ -77,11 +77,6 @@
       {
         "role": "text",
         "name": "Sequence complete"
-      },
-      {
-        "role": "group",
-        "name": "T-Mobile, no signal.",
-        "testId": "com.android.systemui:id/mobile_combo"
       }
     ],
     "endWaitMs": 14510

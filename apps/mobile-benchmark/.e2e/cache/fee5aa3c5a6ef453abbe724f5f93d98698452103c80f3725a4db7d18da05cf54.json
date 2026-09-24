@@ -64,11 +64,6 @@
       },
       {
         "role": "group",
-        "name": "T-Mobile, three bars.",
-        "testId": "com.android.systemui:id/mobile_combo"
-      },
-      {
-        "role": "group",
         "name": "Log out",
         "testId": "logout-button"
       }

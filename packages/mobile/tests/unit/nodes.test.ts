@@ -106,6 +106,39 @@ describe('snapshot projection', () => {
     expect(viewportOf([{ type: 'button' }])).toBeUndefined();
   });
 
+  it('leaves the Android status bar and navigation bar out, with their children, and keeps the app window', () => {
+    const systemui = 'com.android.systemui';
+    const projected = project([
+      { ref: '@e1', depth: 0, type: 'androidx.compose.ui.platform.ComposeView', bundleId: systemui, rect: { x: 0, y: 0, width: 1080, height: 63 } },
+      { ref: '@e2', depth: 1, type: 'android.widget.TextView', bundleId: systemui, label: '10:17', identifier: 'com.android.systemui:id/clock', rect: { x: 11, y: 2, width: 136, height: 58 } },
+      { ref: '@e3', depth: 1, type: 'android.widget.FrameLayout', bundleId: systemui, label: 'T-Mobile, three bars.', identifier: 'com.android.systemui:id/mobile_combo', rect: { x: 797, y: 2, width: 61, height: 58 } },
+      { ref: '@e4', depth: 0, type: 'android.widget.FrameLayout', bundleId: 'dev.e2e.benchmark', rect: { x: 0, y: 0, width: 1080, height: 2400 } },
+      { ref: '@e5', depth: 1, type: 'android.widget.TextView', bundleId: 'dev.e2e.benchmark', label: 'Hello', rect: { x: 0, y: 200, width: 1080, height: 60 } },
+      { ref: '@e6', depth: 0, type: 'android.widget.FrameLayout', bundleId: systemui, rect: { x: 0, y: 2274, width: 1080, height: 126 } },
+      { ref: '@e7', depth: 1, type: 'android.widget.ImageView', bundleId: systemui, label: 'Back', rect: { x: 100, y: 2290, width: 100, height: 100 } },
+    ]);
+    expect(projected.roots.map((root) => root.children?.map((child) => child.name))).toEqual([['Hello']]);
+    expect(projected.index.map((entry) => entry.node.name)).toEqual([undefined, 'Hello']);
+    expect(projected.viewport).toEqual({ width: 1080, height: 2400 });
+  });
+
+  it('keeps a systemui window that covers the screen, and every window on a platform that reports no package', () => {
+    const shade = project([
+      { ref: '@e1', depth: 0, type: 'android.widget.FrameLayout', bundleId: 'dev.e2e.benchmark', rect: { x: 0, y: 0, width: 1080, height: 2400 } },
+      { ref: '@e2', depth: 0, type: 'android.widget.FrameLayout', bundleId: 'com.android.systemui', rect: { x: 0, y: 0, width: 1080, height: 2400 } },
+      { ref: '@e3', depth: 1, type: 'android.widget.TextView', bundleId: 'com.android.systemui', label: 'No notifications', rect: { x: 0, y: 1000, width: 1080, height: 60 } },
+    ]);
+    expect(shade.roots).toHaveLength(2);
+    expect(shade.index.map((entry) => entry.node.name)).toContain('No notifications');
+
+    const ios = project([
+      { ref: '@e1', depth: 0, type: 'Window', rect: { x: 0, y: 0, width: 390, height: 844 } },
+      { ref: '@e2', depth: 0, type: 'Window', rect: { x: 0, y: 0, width: 390, height: 47 } },
+      { ref: '@e3', depth: 1, type: 'StaticText', label: '9:41', rect: { x: 20, y: 10, width: 60, height: 20 } },
+    ]);
+    expect(ios.roots).toHaveLength(2);
+  });
+
   it('normalizes XCTest PascalCase element types onto the same vocabulary', () => {
     const projected = project([
       { ref: 'e1', index: 0, depth: 0, type: 'Application', label: 'Settings', rect: { x: 0, y: 0, width: 390, height: 844 } },

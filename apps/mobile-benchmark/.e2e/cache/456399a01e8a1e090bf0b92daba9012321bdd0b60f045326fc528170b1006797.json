@@ -47,11 +47,6 @@
         "role": "text",
         "name": "Action completed",
         "testId": "success-message"
-      },
-      {
-        "role": "group",
-        "name": "T-Mobile, one bar.",
-        "testId": "com.android.systemui:id/mobile_combo"
       }
     ],
     "endWaitMs": 14485

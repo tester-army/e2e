@@ -53,11 +53,6 @@
         "role": "text",
         "name": "Flow completed",
         "testId": "success-message"
-      },
-      {
-        "role": "group",
-        "name": "T-Mobile, two bars.",
-        "testId": "com.android.systemui:id/mobile_combo"
       }
     ],
     "endWaitMs": 11600

@@ -42,11 +42,6 @@
       },
       {
         "role": "group",
-        "name": "T-Mobile, signal full.",
-        "testId": "com.android.systemui:id/mobile_combo"
-      },
-      {
-        "role": "group",
         "testId": "reward-scroll"
       }
     ],

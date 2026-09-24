@@ -54,11 +54,6 @@
         "role": "text",
         "name": "Draft deleted",
         "testId": "success-message"
-      },
-      {
-        "role": "group",
-        "name": "T-Mobile, signal full.",
-        "testId": "com.android.systemui:id/mobile_combo"
       }
     ],
     "endWaitMs": 11840

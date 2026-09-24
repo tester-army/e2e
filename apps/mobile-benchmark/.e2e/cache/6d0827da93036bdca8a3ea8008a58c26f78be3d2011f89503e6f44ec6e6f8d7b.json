@@ -49,11 +49,6 @@
       {
         "role": "text",
         "name": "Account created"
-      },
-      {
-        "role": "group",
-        "name": "T-Mobile, three bars.",
-        "testId": "com.android.systemui:id/mobile_combo"
       }
     ],
     "endWaitMs": 14560
