@@ -37,9 +37,16 @@ test.describe('login form', () => {
     await screen.getByTestId('password-input').press('Enter');
     await screen.getByTestId('login-button').tap();
     // Submitting a secure field makes iOS offer to save the password in a
-    // sheet hosted by Safari over the app. It is not an alert to the engine,
-    // but its buttons are in the tree.
-    await screen.getByRole('button', { name: 'Not Now' }).tap();
+    // sheet hosted by Safari over the app, a moment after the logged-in
+    // screen is up. It is not an alert to the engine, but its buttons are in
+    // the tree, and while it is up the app's are not. Android offers nothing,
+    // so the wait for the sheet is bounded.
+    const notNow = screen.getByRole('button', { name: 'Not Now' });
+    const offered = await notNow.waitFor({ timeout: 5_000 }).then(
+      () => true,
+      () => false,
+    );
+    if (offered) await notNow.tap();
     await expect(screen.getByTestId('success-message')).toHaveText('Logged in successfully');
 
     await screen.getByTestId('logout-button').tap();

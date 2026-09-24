@@ -49,9 +49,17 @@ const Tab = createBottomTabNavigator();
 export default function BottomTabs() {
   return (
     <Tab.Navigator>
-      <Tab.Screen name="Home" component={HomeTab} />
-      <Tab.Screen name="Feed" component={FeedTab} options={{ tabBarBadge: 3 }} />
-      <Tab.Screen name="Actions" component={ActionsTab} />
+      <Tab.Screen name="Home" component={HomeTab} options={{ tabBarButtonTestID: "tab-home" }} />
+      <Tab.Screen
+        name="Feed"
+        component={FeedTab}
+        options={{ tabBarBadge: 3, tabBarButtonTestID: "tab-feed" }}
+      />
+      <Tab.Screen
+        name="Actions"
+        component={ActionsTab}
+        options={{ tabBarButtonTestID: "tab-actions" }}
+      />
     </Tab.Navigator>
   );
 }

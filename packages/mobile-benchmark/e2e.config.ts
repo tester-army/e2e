@@ -44,6 +44,11 @@ export const android = mobile({
   appPath: process.env.E2E_MOBILE_BENCHMARK_ANDROID_APP,
   identity: `${APP_ID}-android`,
   session: 'e2e-mobile-benchmark-android',
+  // A control that arrived with the last action is found again once this
+  // budget has passed, so the budget only has to outlast the transition: the
+  // Modal Flow's modal slides in from below for about 700 ms on the emulator,
+  // longer on a loaded CI one, and the default half second ended inside it.
+  transition: 1_500,
 });
 
 export default {

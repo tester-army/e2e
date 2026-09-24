@@ -76,6 +76,7 @@ export default function AsyncStates() {
   return (
     <View style={styles.flex}>
       <ScrollView
+        testID="reward-scroll"
         contentContainerStyle={styles.container}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
       >

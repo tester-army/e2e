@@ -73,7 +73,7 @@ test('async states: load, pull to refresh, claim through the toast', async ({ de
   // the content above, scoped to the scroll view so it spans most of it. A
   // slow host drops the gesture now and then, so it is repeated until the
   // reward is on screen.
-  const list = device.locator('role=ScrollView');
+  const list = screen.getByTestId('reward-scroll');
   const claim = screen.getByTestId('claim-button');
   await expect
     .poll(async () => {
@@ -115,8 +115,10 @@ test('huge virtualized list reaches row 512', { timeout: 300_000 }, async ({ dev
 
 // The web page's semantics project into the native tree: the input is a
 // textbox, the checkbox a switch, the button a button, all named by their
-// labels.
-test('web view coupon form applies the code shown on the page', async ({ device, screen }) => {
+// labels. On Android the field and the checkbox reach the tree unnamed: their
+// `<label for>` is a labelled-by relation agent-device 0.21.6 does not carry,
+// so the flow runs on iOS until it does.
+test('web view coupon form applies the code shown on the page', { platforms: ['ios'] }, async ({ device, screen }) => {
   await openScenario({ device, screen }, 'WebView Accessibility');
   // The page renders after the native screen; its semantics reach the tree
   // a few seconds later on a loaded machine.

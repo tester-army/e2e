@@ -43,6 +43,7 @@ export default function ControlInventory() {
 
   return (
     <ScrollView
+      testID="inventory-scroll"
       contentContainerStyle={styles.container}
       keyboardShouldPersistTaps="handled"
       automaticallyAdjustKeyboardInsets

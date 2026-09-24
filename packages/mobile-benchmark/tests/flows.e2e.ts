@@ -31,24 +31,26 @@ test('filled text inputs report their values', async ({ device, screen }) => {
 });
 
 // The alert is the platform's own; it sits in the app's tree on both
-// platforms as buttons named after the RN `Alert` options.
+// platforms as buttons named after the RN `Alert` options, which Android's
+// dialog theme spells in capitals.
 test('modal flow confirms through the native alert', async ({ device, screen }) => {
   await openScenario({ device, screen }, 'Modal Flow');
   await screen.getByTestId('open-modal-button').tap();
   await screen.getByTestId('continue-button').tap();
-  await screen.getByRole('button', { name: 'Confirm' }).tap();
+  await screen.getByRole('button', { name: /^confirm$/i }).tap();
   await expect(screen.getByTestId('success-message')).toHaveText('Flow completed');
 });
 
-// Tab bar buttons carry the tab name plus position hints in their label.
-// The active tab shows in the content it reveals: its `selected` state only
+// The tab bar buttons carry the scenario's `tabBarButtonTestID`s: iOS labels
+// them "<name>, tab, n of m", Android joins the icon glyph and the name. The
+// active tab shows in the content it reveals: its `selected` state only
 // reaches the tree through the simulator's accessibility bridge, which a CI
 // Mac does not always provide.
 test('bottom tabs act inside the last tab', async ({ device, screen }) => {
   await openScenario({ device, screen }, 'Bottom Tabs');
   await expect(screen.getByTestId('home-tab-content')).toBeVisible();
-  const home = screen.getByRole('button', { name: /Home/ });
-  const actions = screen.getByRole('button', { name: /Actions/ });
+  const home = screen.getByTestId('tab-home');
+  const actions = screen.getByTestId('tab-actions');
   await expect(home).toBeVisible();
   await expect(screen.getByTestId('complete-action-button')).toHaveCount(0);
   await actions.tap();
@@ -76,8 +78,9 @@ test('choice controls place the exact order', async ({ device, screen }) => {
   await screen.getByTestId('size-medium').tap();
   await screen.getByTestId('topping-cheese').tap();
   await screen.getByTestId('topping-olives').tap();
-  await screen.getByTestId('rush-delivery').check();
-  await expect(screen.getByTestId('rush-delivery')).toBeChecked();
+  // `check` needs the `checked` state agent-device's Android snapshot lacks;
+  // the order line at the end says the switch is on.
+  await screen.getByTestId('rush-delivery').tap();
   await expect(screen.getByTestId('place-order')).toBeEnabled();
   await screen.getByTestId('place-order').tap();
   await expect(screen.getByTestId('success-message')).toHaveText(

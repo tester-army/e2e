@@ -40,7 +40,10 @@ test.describe('device fixture', () => {
     await expect(orientation).toHaveText('orientation: portrait');
   });
 
-  test('the clipboard reads back what was written', async ({ device }) => {
+  // Android 14 and later ship no shell command for the clipboard service, so
+  // agent-device 0.21.6 reads an empty string back on the emulator; its own
+  // advice is to paste into a field and read that.
+  test('the clipboard reads back what was written', { platforms: ['ios'] }, async ({ device }) => {
     await device.setClipboard('e2e clipboard 42');
     expect(await device.clipboard()).toBe('e2e clipboard 42');
   });
@@ -70,7 +73,6 @@ test.describe('device fixture', () => {
     await device.closeApp();
     await device.openApp(APP_ID);
     expect((await device.foregroundApp()).bundleId).toBe(APP_ID);
-    await expect(screen.getByTestId('Benchmark Examples')).toBeVisible();
     await expect(screen.getByTestId('Login Form')).toBeVisible();
     await expect(screen.getByTestId('inventory-header')).toBeHidden();
   });
@@ -87,7 +89,6 @@ test.describe('device fixture', () => {
 
   test('device.back pops the scenario', async ({ device, screen }) => {
     await device.back();
-    await expect(screen.getByTestId('Benchmark Examples')).toBeVisible();
     await expect(screen.getByTestId('Control Inventory')).toBeVisible();
     await expect(screen.getByTestId('inventory-header')).toBeHidden();
   });

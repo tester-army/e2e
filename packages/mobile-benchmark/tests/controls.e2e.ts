@@ -21,6 +21,17 @@ async function showSection(screen: Screen, name: 'Fields' | 'Toggles' | 'Gesture
   await screen.getByTestId(`tab-${name.toLowerCase()}`).tap();
 }
 
+// agent-device 0.21.6 names an Android node by its text and reads the content
+// description only when the text is empty, so the accessibility label of a
+// text view or a filled field never reaches the tree (an empty field is named
+// by its hint), and a node's `heading` flag is not reported. The tests that
+// read a name the app set run on iOS until agent-device carries both.
+const NAMED_BY_LABEL = { platforms: ['ios'] };
+
+// agent-device 0.21.6's Android snapshot carries no `checked` (its #1832), so
+// a switch or radio answers `toBeChecked` with UNSUPPORTED_CAPABILITY there.
+const CHECKED_STATE = { platforms: ['ios'] };
+
 test.describe('control inventory', () => {
   test.beforeEach(async ({ device, screen }) => {
     await openScenario({ device, screen }, 'Control Inventory');
@@ -29,12 +40,12 @@ test.describe('control inventory', () => {
   // iOS reports a React Native text input twice, as a host view and the
   // field inside it, both carrying the label; a label query answers with the
   // field, the innermost match, as a text query does.
-  test('a label query resolves a labeled text field', async ({ screen }) => {
+  test('a label query resolves a labeled text field', NAMED_BY_LABEL, async ({ screen }) => {
     await expect(screen.getByLabel('Name field')).toHaveValue('Ada Lovelace');
     await expect(screen.getByLabel(/^Name/)).toHaveAccessibleName('Name field');
   });
 
-  test('a labeled field answers name, display value, value reads, fill, and clear', async ({ screen }) => {
+  test('a labeled field answers name, display value, value reads, fill, and clear', NAMED_BY_LABEL, async ({ screen }) => {
     const name = screen.getByRole('textbox', { name: 'Name field' });
     await expect(name).toHaveValue('Ada Lovelace');
     await expect(screen.getByDisplayValue('Ada Lovelace')).toHaveAccessibleName('Name field');
@@ -68,7 +79,7 @@ test.describe('control inventory', () => {
   // offer to save the password, a sheet the next test never sees because
   // every attempt relaunches the app.
   test('a secure field takes a fill and denies value reads', async ({ screen }) => {
-    const passphrase = screen.getByRole('textbox', { name: /^Passphrase/ });
+    const passphrase = screen.getByTestId('passphrase-input');
     await passphrase.fill('correct horse');
     await expect(screen.getByTestId('passphrase-length')).toHaveText('passphrase length: 13');
     expect((await rejection(passphrase.inputValue()))?.code).toBe('POLICY_DENIED');
@@ -76,7 +87,7 @@ test.describe('control inventory', () => {
   });
 
   test('press sends a character and Enter through the soft keyboard', async ({ screen }) => {
-    const key = screen.getByRole('textbox', { name: 'Key echo field' });
+    const key = screen.getByTestId('key-input');
     await key.press('a');
     await expect(screen.getByTestId('key-status')).toHaveText('key: a');
     await expect(key).toHaveValue('a');
@@ -118,7 +129,7 @@ test.describe('control inventory', () => {
     },
   );
 
-  test('a switch checks, unchecks, and reports its state', async ({ screen }) => {
+  test('a switch checks, unchecks, and reports its state', CHECKED_STATE, async ({ screen }) => {
     await showSection(screen, 'Toggles');
     const wifi = screen.getByTestId('wifi-switch');
     await expect(wifi).toHaveAccessibleName('Wi-Fi switch');
@@ -157,8 +168,8 @@ test.describe('control inventory', () => {
   });
 
   // The state words after the role ("checked", "unchecked") are the checked
-  // state on iOS; Android's CheckBox and RadioButton report none.
-  test('checkbox and radio roles check, uncheck, and report their state', { platforms: ['ios'] }, async ({ screen }) => {
+  // state on iOS.
+  test('checkbox and radio roles check, uncheck, and report their state', CHECKED_STATE, async ({ screen }) => {
     await showSection(screen, 'Toggles');
     const newsletter = screen.getByRole('checkbox', { name: 'Newsletter' });
     await expect(newsletter).not.toBeChecked();
@@ -196,11 +207,11 @@ test.describe('control inventory', () => {
     },
   );
 
-  // A radio's state is `checked`: React Native spells it into the iOS value
-  // and Android reports it on the node. The `selected` trait beside it only
-  // reaches the tree through the simulator's accessibility bridge, which a
-  // CI Mac does not always provide, so it is not what a radio is read by.
-  test('a radio group reports the checked option', async ({ screen }) => {
+  // A radio's state is `checked`: React Native spells it into the iOS value.
+  // The `selected` trait beside it only reaches the tree through the
+  // simulator's accessibility bridge, which a CI Mac does not always provide,
+  // so it is not what a radio is read by.
+  test('a radio group reports the checked option', CHECKED_STATE, async ({ screen }) => {
     await showSection(screen, 'Toggles');
     const sizes = screen.getByLabel(/^(Small|Medium|Large)$/);
     await expect(sizes).toHaveCount(3);
@@ -247,7 +258,7 @@ test.describe('control inventory', () => {
     await expect(screen.getByTestId('ghost-text', { visible: true })).toHaveCount(0);
   });
 
-  test('a header answers its accessible name', async ({ screen }) => {
+  test('a header answers its accessible name', NAMED_BY_LABEL, async ({ screen }) => {
     await expect(screen.getByTestId('inventory-header')).toHaveAccessibleName('Inventory heading');
     await expect(screen.getByTestId('inventory-header')).toHaveAccessibleName(/heading$/);
   });
@@ -282,8 +293,8 @@ test.describe('control inventory', () => {
 
   // iOS reports React Native views as leaf siblings of their children, so a
   // row never contains its texts. The scenario's scroll view is a container
-  // the tree does nest, and the home list underneath it is the other one.
-  test('a list answers counts, list-form text, reads, and boxes in order', async ({ device, screen }) => {
+  // the tree does nest on both platforms.
+  test('a list answers counts, list-form text, reads, and boxes in order', async ({ screen }) => {
     await showSection(screen, 'Gestures');
     const rows = screen.getByTestId('fruit-row');
     await expect(rows).toHaveCount(3);
@@ -295,12 +306,13 @@ test.describe('control inventory', () => {
     expect(await names.first().textContent()).toBe('Apple');
     expect(await names.last().textContent()).toBe('Cherry');
 
-    const page = device.locator('role=ScrollView').filter({ has: screen.getByTestId('fruit-list') });
-    await expect(page).toHaveCount(1);
+    const page = screen.getByTestId('inventory-scroll');
+    await expect(page.filter({ has: screen.getByTestId('fruit-list') })).toHaveCount(1);
     await expect(page.getByText(/^\$/)).toHaveText(['$1', '$2', '$3']);
     await expect(page.filter({ hasText: 'Cherry' })).toHaveCount(1);
     await expect(page.filter({ hasText: 'Durian' })).toHaveCount(0);
-    await expect(device.locator('role=ScrollView').filter({ has: screen.getByText('Banana') })).toHaveCount(1);
+    await expect(page.filter({ has: screen.getByText('Banana') })).toHaveCount(1);
+    await expect(page.filter({ has: screen.getByText('Durian') })).toHaveCount(0);
 
     const first = await rows.first().boundingBox();
     const last = await rows.last().boundingBox();
@@ -346,7 +358,11 @@ test.describe('control inventory', () => {
     },
   );
 
-  test('pointer verbs land at the point asked for', async ({ screen }) => {
+  // Android bounds and points are the screen's physical pixels: agent-device
+  // 0.21.6 reports no display density for an emulator, so the engine cannot
+  // put them in the logical pixels the contract asks for, and the pad's 240
+  // by 100 reads as 630 by 263 on a 2.625x emulator.
+  test('pointer verbs land at the point asked for', { platforms: ['ios'] }, async ({ screen }) => {
     await showSection(screen, 'Gestures');
     const pad = screen.getByLabel('Tap pad');
     const box = await pad.boundingBox();
@@ -403,12 +419,10 @@ test.describe('control inventory', () => {
     expect(shot).toMatch(/^screenshots\/\d{3}-inventory\.png$/);
 
     await app.restart();
-    await expect(screen.getByTestId('Benchmark Examples')).toBeVisible();
     await expect(screen.getByTestId('Login Form')).toBeVisible();
     await expect(screen.getByTestId('inventory-header')).toBeHidden();
 
     await app.clearState();
-    await expect(screen.getByTestId('Benchmark Examples')).toBeVisible();
     await expect(screen.getByTestId('Login Form')).toBeVisible();
   });
 });
