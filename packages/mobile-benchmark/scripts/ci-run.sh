@@ -29,8 +29,29 @@ show_failures() {
   done
 }
 
-if [ "$suite" != "agentic" ] && ! $e2e run --target "$target"; then
-  show_failures .e2e/artifacts
+# The suites drive agent-device's runtime on a shared CI machine, and that
+# runtime has episodes of its own (#502): a daemon replaced as unreachable in
+# the middle of a run, a runner that overruns its watchdog, a fill the Android
+# helper cannot verify on a slow emulator. A test that fails is run once more
+# in a second pass, alone, once the episode has passed; the first pass's
+# failure screens stay in the log for the record. `--last-failed` reads the
+# report the first pass wrote, so the second pass takes the same arguments.
+run_suite() {
+  artifacts="$1"
+  shift
+  if $e2e run "$@"; then
+    return 0
+  fi
+  show_failures "$artifacts"
+  echo "::warning::tests failed; rerunning the failed ones once (agent-device runtime episodes, #502)"
+  if $e2e run "$@" --last-failed; then
+    return 0
+  fi
+  show_failures "$artifacts"
+  return 1
+}
+
+if [ "$suite" != "agentic" ] && ! run_suite .e2e/artifacts --target "$target"; then
   exit 3
 fi
 if [ "$suite" = "deterministic" ]; then
@@ -45,7 +66,6 @@ if [ -z "${AI_GATEWAY_API_KEY:-}" ]; then
   echo "::error::AI_GATEWAY_API_KEY is not set for this repository; the agentic suite needs it for a step with no recording."
   exit 1
 fi
-if ! $e2e run --config e2e.agent.config.ts --target "$target" --artifacts .e2e/agent/artifacts; then
-  show_failures .e2e/agent/artifacts
+if ! run_suite .e2e/agent/artifacts --config e2e.agent.config.ts --target "$target" --artifacts .e2e/agent/artifacts; then
   exit 3
 fi
