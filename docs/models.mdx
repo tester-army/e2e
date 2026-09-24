@@ -126,11 +126,14 @@ Vercel CLI is signed in and that `.vercel/project.json` exists.
 
 Give agents different names to use different models:
 
-```ts title="Agent config fragment"
-agents: {
-  default: createAgent({ model: gateway('openai/gpt-6-luna-fast') }),
-  careful: createAgent({ model: gateway('anthropic/claude-sonnet-5') }),
-},
+```ts title="e2e.config.ts"
+export default {
+  targets: [{ engine: web({ url: 'http://localhost:3000' }) }],
+  agents: {
+    default: createAgent({ model: gateway('openai/gpt-6-luna-fast') }),
+    careful: createAgent({ model: gateway('anthropic/claude-sonnet-5') }),
+  },
+} satisfies E2EConfig;
 ```
 
 Run with `npx e2e run --agent careful`, or

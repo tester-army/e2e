@@ -12,10 +12,12 @@ when the run ends.
 Import `web` from `@e2edev/web` and put this in the exported
 config object:
 
-```ts title="Config fragment"
-targets: [{
-  engine: web({ url: process.env.APP_URL ?? 'http://localhost:3000' }),
-}],
+```ts title="e2e.config.ts"
+export default {
+  targets: [{
+    engine: web({ url: process.env.APP_URL ?? 'http://localhost:3000' }),
+  }],
+} satisfies E2EConfig;
 ```
 
 `app.open('/path')` resolves against `url`. This config reads `APP_URL`, so
