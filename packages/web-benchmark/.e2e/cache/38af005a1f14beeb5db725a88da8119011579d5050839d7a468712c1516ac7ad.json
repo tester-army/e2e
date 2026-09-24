@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-24T19:35:10.785Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "upload",
+        "summary": "upload \"fixtures/attachment.txt\", \"fixtures/second.txt\" to textbox \"Attachments\" in \"Files\"",
+        "target": {
+          "role": "textbox",
+          "name": "Attachments",
+          "within": "Files"
+        },
+        "paths": [
+          "fixtures/attachment.txt",
+          "fixtures/second.txt"
+        ]
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/control-inventory.e2e.ts::control%20inventory::upload%20attaches%20the%20named%20project%20files",
+      "targetId": "web",
+      "instructionDigest": "6eb8c4cb34d6623811808727d85db0d55946be5724f0cdc01b3c633db3d6f44d"
+    },
+    "summary": "Attached both fixtures/attachment.txt and fixtures/second.txt to the Attachments input. The Attachments state now shows “attachment.txt, second.txt.”.",
+    "startPath": "/e/control-inventory",
+    "endPath": "/e/control-inventory",
+    "endAnchors": [
+      {
+        "role": "status",
+        "name": "Attachments state",
+        "text": "attachment.txt, second.txt"
+      }
+    ],
+    "endWaitMs": 11856
+  }
+}

@@ -75,7 +75,10 @@ descriptions and commit bodies; `git log` and `gh pr view` are the archive.
   `tests-agent/` both gate PRs; the agentic one runs from its committed
   recordings, see "Committed recordings" under Gotchas). Scenario files are
   copies: keep diffs against the source minimal so scenarios port both ways,
-  and never fix a planted bug.
+  and never fix a planted bug. The one exception is Control Inventory, ours
+  like the mobile benchmark's: plain controls, one exercise per agent verb the
+  hard scenarios never reach, with one agentic test per verb in
+  `tests-agent/control-inventory.e2e.ts`.
 - `packages/mobile-benchmark` (`@e2edev/mobile-benchmark`, private) — an Expo
   app of hard mobile surfaces (merged or hidden accessibility trees, native
   alerts over modals, keyboard-covered submits, virtualized lists, a WebView,

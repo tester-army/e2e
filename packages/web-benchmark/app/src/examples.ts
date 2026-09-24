@@ -6,6 +6,7 @@ import CanvasWhiteboard from "./Examples/CanvasWhiteboard";
 import CartTotals from "./Examples/CartTotals";
 import CheckoutReview from "./Examples/CheckoutReview";
 import ContextMenuTrap from "./Examples/ContextMenuTrap";
+import ControlInventory from "./Examples/ControlInventory";
 import CssContentUi from "./Examples/CssContentUi";
 import DatePicker from "./Examples/DatePicker";
 import DebouncedSearch from "./Examples/DebouncedSearch";
@@ -349,5 +350,12 @@ export const examples: Example[] = [
     slug: "gift-card-purchase",
     name: "Gift Card Purchase",
     description: "Pick a gift card amount, enter a recipient, and complete the purchase.",
+  },
+  {
+    component: ControlInventory,
+    slug: "control-inventory",
+    name: "Control Inventory",
+    description:
+      "The deterministic contract surface: plain controls with every state exposed, one exercise per agent verb. Not a hard surface.",
   },
 ];

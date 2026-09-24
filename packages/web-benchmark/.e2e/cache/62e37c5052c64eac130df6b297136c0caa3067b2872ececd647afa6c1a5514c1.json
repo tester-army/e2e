@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-24T19:35:07.241Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "secondaryTap",
+        "summary": "secondary-tap listitem \"report.pdf\" in \"Files\"",
+        "target": {
+          "role": "listitem",
+          "name": "report.pdf",
+          "within": "Files"
+        }
+      },
+      {
+        "name": "secondaryTap",
+        "summary": "secondary-tap node \"report.pdf\"",
+        "target": {
+          "text": "report.pdf"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap menuitem \"Rename\" in \"report.pdf\"",
+        "target": {
+          "role": "menuitem",
+          "name": "Rename",
+          "within": "report.pdf"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/control-inventory.e2e.ts::control%20inventory::a%20right-click%20opens%20the%20file%20menu%20and%20Rename%20renames%20the%20file",
+      "targetId": "web",
+      "instructionDigest": "cb3da13c69639f87ac80d3bd6fa2b908c9df0bbbda211433bdc779611d4909fe"
+    },
+    "summary": "Right-clicked report.pdf to open its context menu, selected Rename, and verified the file is now summary.pdf with the status “report.pdf renamed to summary.pdf.”",
+    "startPath": "/e/control-inventory",
+    "endPath": "/e/control-inventory",
+    "endAnchors": [
+      {
+        "role": "status",
+        "name": "File state",
+        "text": "report.pdf renamed to summary.pdf"
+      },
+      {
+        "text": "summary.pdf"
+      },
+      {
+        "role": "listitem",
+        "name": "summary.pdf"
+      }
+    ],
+    "endWaitMs": 12011
+  }
+}
