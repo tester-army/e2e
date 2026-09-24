@@ -235,6 +235,8 @@ const ANDROID_ROLE_MAP: Readonly<Record<string, string>> = {
   'web-view': 'document',
   'recycler-view': 'list',
   'list-view': 'list',
+  // React Native's `FlatList` and any view with `accessibilityRole="list"`.
+  'abs-list-view': 'list',
   'grid-view': 'list',
   'scroll-view': 'group',
   'view-group': 'group',

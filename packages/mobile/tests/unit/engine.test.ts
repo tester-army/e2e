@@ -1398,8 +1398,10 @@ describe('deterministic actions', () => {
     // Two looks at the screen: the second is the one the action resolves from, the first stands for the screen before the launch.
     await observed(h, 'About');
     await h.engine.perform!((await observed(h, 'Back')).ref, { kind: 'tap' }, test());
+    const looks = h.fake.methods().filter((method) => method === 'capture.snapshot').length;
     await tapsAtOnce(h, await observed(h, 'About'), { ref: '@e4' });
-    expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(3);
+    // The observation the tap resolves from is the only new look: nothing is waited out or found again.
+    expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(looks + 1);
   });
 
   it('gives a control that came with the last action the transition budget before acting on it', async () => {
@@ -1419,6 +1421,35 @@ describe('deterministic actions', () => {
     await h.engine.perform!(submit.ref, { kind: 'tap' }, test());
     expect(Date.now() - startedAt).toBeGreaterThanOrEqual(100);
     expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e11' });
+  });
+
+  it('acts on a control that came with the last action where a fresh snapshot lists it once the budget has passed', async () => {
+    const h = harness({ transition: 120 });
+    await openAttempt(h);
+    await h.engine.perform!((await observed(h, 'Back')).ref, { kind: 'tap' }, test());
+    // Android reports a sliding modal's frames in flight: the button is first
+    // seen below the screen, and lands on it with a new ref by the time the
+    // budget has passed.
+    const submit = (y: number, ref: string) => ({
+      ...SETTINGS_SNAPSHOT,
+      nodes: [
+        ...SETTINGS_NODES,
+        { ref, index: 10, parentIndex: 0, depth: 1, type: 'android.widget.Button', label: 'Submit', identifier: 'submit', rect: { x: 0, y, width: 390, height: 44 } },
+      ],
+    });
+    h.fake.respond('capture.snapshot', () => submit(2000, '@e11'));
+    const inFlight = await observed(h, 'Submit');
+    h.fake.respond('capture.snapshot', () => submit(600, '@e42'));
+    await h.engine.perform!(inFlight.ref, { kind: 'tap' }, test());
+    expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e42' });
+
+    // A control the fresh snapshot no longer lists is acted on as it was.
+    await h.engine.perform!((await observed(h, 'Back')).ref, { kind: 'tap' }, test());
+    h.fake.respond('capture.snapshot', () => submit(600, '@e42'));
+    const landed = await observed(h, 'Submit');
+    h.fake.respond('capture.snapshot', () => SETTINGS_SNAPSHOT);
+    await h.engine.perform!(landed.ref, { kind: 'tap' }, test());
+    expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e42' });
   });
 
   it('gives a control that moved with the last action the budget too, and skips it once the budget has elapsed', async () => {

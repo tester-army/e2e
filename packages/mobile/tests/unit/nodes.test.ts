@@ -203,6 +203,7 @@ describe('snapshot projection', () => {
       { ref: 'e9', index: 8, parentIndex: 0, depth: 1, type: 'androidx.appcompat.widget.Toolbar' },
       { ref: 'e10', index: 9, parentIndex: 0, depth: 1, type: 'android.widget.NumberPicker' },
       { ref: 'e11', index: 10, parentIndex: 0, depth: 1, type: 'android.widget.TabWidget' },
+      { ref: 'e12', index: 11, parentIndex: 0, depth: 1, type: 'android.widget.AbsListView', identifier: 'fruit-list' },
     ]);
     expect(projected.index.map((entry) => entry.kind)).toEqual([
       'frame-layout',
@@ -216,6 +217,7 @@ describe('snapshot projection', () => {
       'toolbar',
       'number-picker',
       'tab-widget',
+      'abs-list-view',
     ]);
     expect(projected.index.map((entry) => entry.node.role)).toEqual([
       'group',
@@ -229,6 +231,7 @@ describe('snapshot projection', () => {
       'toolbar',
       'spinbutton',
       'tablist',
+      'list',
     ]);
   });
 

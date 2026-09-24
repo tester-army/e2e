@@ -126,13 +126,14 @@ interface NodeBinding {
 
 /**
  * How long a control that appeared or moved with the last action is given to
- * finish arriving before a test acts on it. Accessibility frames come from
- * the model layer, which jumps to the final position the moment a transition
- * starts, so the tree cannot tell a sliding control from a landed one; a
- * modal or pushed screen keeps sliding for about half a second after the
- * action that opened it, and a tap at a point the control has not reached
- * yet lands on whatever is behind it. Controls that were already on screen
- * at the same place before the action are acted on at once.
+ * finish arriving before a test acts on it. The tree cannot tell a sliding
+ * control from a landed one: iOS reports the final frame the moment a
+ * transition starts, Android the frame in flight, so a modal or pushed screen
+ * keeps sliding for about half a second after the action that opened it and
+ * a tap aimed from either frame lands on whatever is behind the control.
+ * Once the budget has passed the control is found again in a fresh
+ * snapshot. Controls that were already on screen at the same place before
+ * the action are acted on at once.
  */
 const DEFAULT_TRANSITION_MS = 500;
 
@@ -755,20 +756,25 @@ export class AgentDeviceSurface {
 
   /**
    * Lets a control that came with the last action finish arriving before a
-   * test acts on it. A control already present at the same place in the
-   * snapshot the last action was resolved from is not in transition and is
-   * acted on at once; anything else waits out the remainder of the
-   * transition budget since that action. Nothing is observed here: the
-   * budget is the only signal, because the tree reports final frames.
+   * test acts on it, and answers the binding to act on. A control already
+   * present at the same place in the snapshot the last action was resolved
+   * from is not in transition and is acted on at once; anything else waits
+   * out the remainder of the transition budget since that action and is then
+   * found again in a fresh snapshot. The budget is the only signal that the
+   * transition is over, since the tree cannot tell a sliding control from a
+   * landed one; the fresh snapshot is where the control landed. Android
+   * reports a window's frames while it slides in, so a ref resolved
+   * mid-flight would send the action where the control was: below the
+   * screen, for a modal rising from the bottom.
    */
-  private async awaitTransition(entry: NodeBinding, operation: OperationContext): Promise<void> {
+  private async settled(entry: NodeBinding, operation: OperationContext): Promise<NodeBinding> {
     const since = Date.now() - this.lastActionAt;
     const remaining = this.transitionMs - since;
-    if (remaining <= 0) return;
+    if (remaining <= 0) return entry;
     const before = this.indexBeforeAction;
     if (before !== undefined) {
       const prior = this.refind(entry, before);
-      if (prior !== undefined && sameRect(prior.node.rect, entry.node.rect)) return;
+      if (prior !== undefined && sameRect(prior.node.rect, entry.node.rect)) return entry;
     }
     await sleep(remaining, operation.signal);
     // The sleep resolves on abort; the action behind it must not go out once
@@ -776,6 +782,14 @@ export class AgentDeviceSurface {
     if (operation.signal.aborted) {
       throw new EngineError('CANCELLED', 'transition wait cancelled', { retryable: false });
     }
+    return this.relocated(entry, operation);
+  }
+
+  /** The same control in a fresh snapshot; the binding as it was when the snapshot no longer lists it. */
+  private async relocated(entry: NodeBinding, operation: OperationContext): Promise<NodeBinding> {
+    const projected = this.project(await this.snapshotOrEmpty(operation, false));
+    const found = this.refind(entry, projected.index);
+    return found === undefined ? entry : this.bind(found, projected.index);
   }
 
   /**
@@ -820,56 +834,56 @@ export class AgentDeviceSurface {
     }
     const before = this.latestIndex;
     const run = async (): Promise<unknown> => {
-      if (deterministic) await this.awaitTransition(entry, operation);
+      const target = deterministic ? await this.settled(entry, operation) : entry;
       switch (action.kind) {
         case 'tap':
-          return client.interactions.press({ ...this.actionTarget(entry, true), ...settle });
+          return client.interactions.press({ ...this.actionTarget(target, true), ...settle });
         case 'focus':
           // A touch surface focuses by tapping, and a tap on anything but an
           // editable field activates it; focus is offered for fields only.
-          if (entry.node.role !== 'textbox') {
-            throw unsupported(`agent-device can only focus editable fields; node ${entry.id} is ${entry.node.role ?? 'unknown'}`);
+          if (target.node.role !== 'textbox') {
+            throw unsupported(`agent-device can only focus editable fields; node ${target.id} is ${target.node.role ?? 'unknown'}`);
           }
-          return client.interactions.press({ ...this.actionTarget(entry), ...settle });
+          return client.interactions.press({ ...this.actionTarget(target), ...settle });
         case 'doubleTap':
-          return client.interactions.press({ ...this.actionTarget(entry), count: 2, ...settle });
+          return client.interactions.press({ ...this.actionTarget(target), count: 2, ...settle });
         case 'longPress':
           return client.interactions.longPress({
-            ...this.actionTarget(entry),
+            ...this.actionTarget(target),
             ...settle,
             ...(action.durationMs === undefined ? {} : { durationMs: action.durationMs }),
           });
         case 'hover':
-          return client.interactions.hover(this.actionTarget(entry));
+          return client.interactions.hover(this.actionTarget(target));
         case 'fill':
           // oxlint-disable-next-line unicorn/no-array-fill-with-reference-type -- agent-device fill, not Array#fill
-          return client.interactions.fill({ ...this.actionTarget(entry), text: action.value, ...settle });
+          return client.interactions.fill({ ...this.actionTarget(target), text: action.value, ...settle });
         case 'clear':
           // oxlint-disable-next-line unicorn/no-array-fill-with-reference-type -- agent-device fill, not Array#fill
-          return client.interactions.fill({ ...this.actionTarget(entry), text: '', ...settle });
+          return client.interactions.fill({ ...this.actionTarget(target), text: '', ...settle });
         case 'check':
         case 'uncheck': {
           const wanted = action.kind === 'check';
-          const checked = entry.node.states?.checked;
+          const checked = target.node.states?.checked;
           // A toggle whose state the tree does not expose (Android switches)
           // cannot be set, only flipped; flipping blind could undo a correct state.
           if (checked === undefined) {
-            throw unsupported(`agent-device cannot read whether node ${entry.id} is checked; tap it instead`);
+            throw unsupported(`agent-device cannot read whether node ${target.id} is checked; tap it instead`);
           }
           if (checked === wanted) return undefined;
-          return client.interactions.press({ ...this.actionTarget(entry, true), ...settle });
+          return client.interactions.press({ ...this.actionTarget(target, true), ...settle });
         }
         case 'press':
-          return this.pressKey(client, entry, action.key, settle);
+          return this.pressKey(client, target, action.key, settle);
         case 'swipe': {
-          const rect = entry.node.rect;
-          if (rect === undefined) throw notActionable(`node ${entry.id} has no bounds to swipe within`);
+          const rect = target.node.rect;
+          if (rect === undefined) throw notActionable(`node ${target.id} has no bounds to swipe within`);
           return client.interactions.swipe(swipeWithin(rect, action.direction, action.momentum));
         }
         case 'dragTo': {
           const destination = this.resolveRef(action.target);
           return client.interactions.drag({
-            source: this.actionTarget(entry).ref,
+            source: this.actionTarget(target).ref,
             destination: this.actionTarget(destination).ref,
           });
         }
