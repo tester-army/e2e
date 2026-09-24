@@ -139,7 +139,14 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  # One job per suite here too, each with its own emulator, for the same
+  # reason: the gate's wall time is the longer suite, not both.
   android:
+    name: android ${{ matrix.suite }}
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [deterministic, agentic]
     # x64 Blacksmith runners expose KVM, which the emulator needs.
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 60
@@ -181,9 +188,9 @@ jobs:
             (cd android && ./gradlew :app:assembleRelease)
             mkdir -p .build/android
             cp android/app/build/outputs/apk/release/app-release.apk .build/android/benchmark.apk
-      # The runner starts each `script` line in its own shell, so the suites
-      # run through the one script both jobs share.
-      - name: Run the suites
+      # The runner starts each `script` line in its own shell, so the suite
+      # runs through the one script both platforms share.
+      - name: Run the suite
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 36
@@ -193,7 +200,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
           disable-animations: true
           working-directory: packages/mobile-benchmark
-          script: scripts/ci-run.sh android-emulator
+          script: scripts/ci-run.sh android-emulator ${{ matrix.suite }}
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
           E2E_MOBILE_BENCHMARK_ANDROID_APP: ${{ steps.app.outputs.app-path }}
@@ -202,7 +209,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: mobile-benchmark-android
+          name: mobile-benchmark-android-${{ matrix.suite }}
           path: |
             packages/mobile-benchmark/.e2e/report.json
             packages/mobile-benchmark/.e2e/artifacts
