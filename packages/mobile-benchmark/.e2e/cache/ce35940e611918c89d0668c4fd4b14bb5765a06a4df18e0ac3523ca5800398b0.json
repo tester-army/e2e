@@ -1,0 +1,64 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-24T19:32:21.870Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "longPress",
+        "summary": "long-press other \"Hold me\"",
+        "target": {
+          "role": "other",
+          "name": "Hold me",
+          "testId": "long-press-target",
+          "selector": "id=long-press-target"
+        }
+      },
+      {
+        "name": "tool",
+        "summary": "tool swipe"
+      },
+      {
+        "name": "tool",
+        "summary": "tool swipe"
+      },
+      {
+        "name": "tool",
+        "summary": "tool swipe"
+      },
+      {
+        "name": "doubleTap",
+        "summary": "double-tap other \"Double-tap me\"",
+        "target": {
+          "role": "other",
+          "name": "Double-tap me",
+          "testId": "double-tap-target",
+          "selector": "id=double-tap-target"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Gestures",
+      "targetId": "ios-simulator",
+      "instructionDigest": "548193505ec38bc1149592fdc74a267de461a8b29e29f4e7a168b20807a81a11"
+    },
+    "summary": "Continued from the current screen, swiped the card left, then double-tapped the last target. The screen now displays “All gestures completed.”",
+    "startPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "endAnchors": [
+      {
+        "role": "other",
+        "name": "All gestures completed"
+      },
+      {
+        "role": "text",
+        "name": "All gestures completed",
+        "testId": "success-message"
+      }
+    ],
+    "endWaitMs": 12743
+  }
+}

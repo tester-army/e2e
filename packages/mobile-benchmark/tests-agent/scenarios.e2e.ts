@@ -111,10 +111,12 @@ const SCENARIOS: readonly Scenario[] = [
     pixels: true,
   },
   {
+    // The card is a plain View the tree does not list, so the swipe goes
+    // through the device tool pack, a gap in the recording: replay performs
+    // the long press and hands the swipe and the double tap to the model.
     name: 'Gestures',
     goal: 'long-press the first target, swipe the card left, then double-tap the last target',
     success: 'All gestures completed',
-    gap: 'long-press and double-tap have no grammar verb; only the device tool pack swipes',
   },
   {
     name: 'Async States',
@@ -131,7 +133,7 @@ const SCENARIOS: readonly Scenario[] = [
     goal: 'scroll to Row 0512 and tap it; the list has 600 rows of equal height and off-screen rows are not in the tree, so scroll many screens at a time',
     success: 'Found Row 0512',
     maxSteps: 80,
-    gap: 'the agent scrolls blind: iOS renumbers the rows on every observation, the scroll target goes stale around row 460 of 512, and the loop guard stops the step; a scroll to a named node is #486',
+    gap: 'the agent scrolls blind: iOS renumbers the rows on every observation, the scroll target goes stale around row 460 of 512, and the loop guard stops the step; the device engine declares no scrollIntoView, so scroll_to is not offered on a device',
   },
   {
     name: 'Flattened Registration Form',
