@@ -456,9 +456,37 @@ function createApp(environment: AttemptEnvironment, engine: LocatorEngine, taint
       await openAt(target.app.base.href, deadline.remaining());
     });
 
+  /**
+   * `app.open()` on a target with no URL and no `navigate`, a device: it
+   * launches the pinned app fresh, the way Maestro's `launchApp` does, and is
+   * what a test calls before it looks at the screen. A path has nowhere to
+   * go there; a link goes through `device.openLink`.
+   */
+  const launchPinnedApp = (openPath: string | undefined): Promise<void> =>
+    steps.run('app', 'app.open', '', async () => {
+      if (openPath !== undefined) {
+        throw new ConfigurationError(
+          'APP_URL_REQUIRED',
+          `app.open("${openPath}") needs an app URL and target "${target.name}" has none: on a device app.open() launches the pinned app, and a link goes through device.openLink`,
+        );
+      }
+      try {
+        await engine.session.app.restart(engine.operation(config.timeout));
+      } catch (cause) {
+        if ((cause as { code?: unknown }).code !== 'UNSUPPORTED_CAPABILITY') throw cause;
+        throw new ConfigurationError(
+          'UNSUPPORTED_CAPABILITY',
+          `app.open() has no app to launch on target "${target.name}": pin one with the engine's app or appPath option, or bring one up with device.openApp`,
+        );
+      }
+    });
+
   return {
     baseUrl: target.app.base?.href,
-    open: (openPath?: string) => navigate('app.open', openPath ?? '/', openPath),
+    open: (openPath?: string) =>
+      target.app.base === undefined && !engine.session.verbs.has('navigate')
+        ? launchPinnedApp(openPath)
+        : navigate('app.open', openPath ?? '/', openPath),
     restart: () => steer('app.restart', (operation) => engine.session.app.restart(operation)),
     clearState: () => steer('app.clearState', (operation) => engine.session.app.reset(operation)),
     async back(): Promise<void> {

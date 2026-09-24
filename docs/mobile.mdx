@@ -5,7 +5,8 @@ description: Set up a simulator or emulator target, write a device test, and kno
 
 `@e2edev/mobile` runs tests on iOS simulators and Android emulators.
 Tests use the same `agent`, `screen`, and `expect` APIs as browser tests.
-Each attempt starts in the configured app.
+A test launches the configured app with `app.open()`, as a Maestro flow does
+with `launchApp`; between tests the app stays where the last one left it.
 
 ## Set up
 
@@ -369,7 +370,7 @@ does not interrupt replay.
 
 | On the web | On a device |
 | --- | --- |
-| `app.open('/path')` and the agent's `navigate` verb | No app URL. The attempt starts in the pinned `app`, `device.openLink(url)` opens a deep link or web link into it, and there is no `navigate` |
+| `app.open('/path')` and the agent's `navigate` verb | No app URL. `app.open()` launches the pinned `app` fresh, `device.openLink(url)` opens a deep link or web link into it, and there is no `navigate` |
 | `test.setup` saves a session, `session:` restores it | Not available. A simulator has no portable session snapshot; sign in per test or seed the app |
 | Secret input | `type_secret` and `screen.getByLabel(...).fill(secret)` fill declared secrets into secure fields |
 | Playwright trace per attempt | No Playwright trace; screenshots mask secure fields |

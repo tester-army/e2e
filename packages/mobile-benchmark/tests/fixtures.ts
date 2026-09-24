@@ -4,16 +4,16 @@
  */
 
 import type { Device } from '@e2edev/mobile';
-import type { Screen } from 'e2e';
+import type { App, Screen } from 'e2e';
 import { expect } from 'e2e';
 
 export { test } from '@e2edev/mobile';
 export { expect } from 'e2e';
 
 /**
- * Every attempt opens the app on its home list, two columns of compact rows
- * with every scenario on screen (`src/App.tsx`), so a scenario is one tap
- * away and never scrolled to. A row is found by its label, "<name>. " and
+ * Launches the app fresh, on its home list, and opens one scenario from it.
+ * The list is two columns of compact rows with every scenario on screen
+ * (`src/App.tsx`), so a scenario is one tap away and never scrolled to. A row is found by its label, "<name>. " and
  * the description: its test id is the name too, which the iOS navigation bar
  * takes as its identifier once the scenario is up. A scenario is up once its
  * row has left the tree (both platforms drop the list when a screen is
@@ -24,9 +24,10 @@ export { expect } from 'e2e';
  * or a neighbour opened, which is popped first.
  */
 export async function openScenario(
-  { device, screen }: { device: Device; screen: Screen },
+  { app, device, screen }: { app: App; device: Device; screen: Screen },
   name: string,
 ): Promise<void> {
+  await app.open();
   const row = screen.getByLabel(`${name}. `, { exact: false });
   await expect(row).toBeVisible();
   const shown = name === 'Bottom Tabs' ? screen.getByTestId('home-tab-content') : screen.getByText(name);

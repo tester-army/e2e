@@ -27,18 +27,21 @@ export interface MobileOptions {
   /** Platform the target's device runs. */
   readonly platform: MobilePlatform;
   /**
-   * App opened fresh at the start of every attempt: a bundle id, a package
-   * name, or a display name agent-device resolves (`Settings`). Without it the
-   * surface observes whatever is in the foreground, and `app.restart()` and
-   * `app.clearState()` are not available. A link is `INVALID_CONFIG`: a test
-   * opens one with `device.openLink`.
+   * App the worker brings up once in `prepare` and `app.open()` launches
+   * fresh: a bundle id, a package name, or a display name agent-device
+   * resolves (`Settings`). An attempt launches nothing on its own, so a test
+   * starts where the last one ended and calls `app.open()` when it wants
+   * the app fresh, as a Maestro flow calls `launchApp`. Without it the
+   * surface observes whatever is in the foreground, and `app.open()`,
+   * `app.restart()`, and `app.clearState()` are not available. A link is
+   * `INVALID_CONFIG`: a test opens one with `device.openLink`.
    */
   readonly app?: string | undefined;
   /**
    * Build to install on the device once per worker, before the first attempt:
    * an iOS `.app` bundle or an Android `.apk`, resolved against the project
    * root (the config's directory). Without `app`, the installed bundle id or
-   * package becomes the app opened fresh at the start of every attempt.
+   * package becomes the app `app.open()` launches.
    */
   readonly appPath?: string | undefined;
   /**

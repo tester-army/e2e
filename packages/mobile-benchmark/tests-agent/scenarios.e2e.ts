@@ -10,7 +10,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Device } from '@e2edev/mobile';
-import type { Agent, AgentParam, Screen } from 'e2e';
+import type { Agent, AgentParam, App, Screen } from 'e2e';
 import { credentials } from 'e2e';
 import { expect, openScenario, test } from '../tests/fixtures.ts';
 
@@ -186,7 +186,7 @@ const SCENARIOS: readonly Scenario[] = [
   },
   // On Android the sheet is Stripe's Compose UI: the agent fills the card,
   // expiry, and CVC, but the postal-code field takes no input from
-  // agent-device 0.21.6's fill and Pay stays disabled, on every run.
+  // agent-device 0.21.13's fill and Pay stays disabled, on every run.
   {
     name: 'Stripe PaymentSheet',
     goal: 'open the checkout and pay with the Stripe test card 4242 4242 4242 4242, any future expiry, any CVC',
@@ -223,10 +223,10 @@ const SCENARIOS: readonly Scenario[] = [
 
 async function complete(
   scenario: Scenario,
-  { agent, device, screen }: { agent: Agent; device: Device; screen: Screen },
+  { agent, app, device, screen }: { agent: Agent; app: App; device: Device; screen: Screen },
 ): Promise<void> {
   scenario.prepare?.();
-  await openScenario({ device, screen }, scenario.name);
+  await openScenario({ app, device, screen }, scenario.name);
   const instruction = scenario.pixels === true
     ? `Complete this scenario as the screen instructs: ${scenario.goal}. The screen lists nothing useful; take a screenshot and work from it.`
     : `Complete this scenario as the screen instructs: ${scenario.goal}`;

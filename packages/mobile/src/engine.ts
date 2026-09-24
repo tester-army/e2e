@@ -42,8 +42,9 @@ export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
       dismiss: (operation) => surface.dismissKeyboard(operation),
     },
     app: declaredApp(surface.options),
-    // No `open`: a device app has no URL to open. Relaunching the pinned app
-    // is the device's "recreate the context", so restart and reset need one.
+    // No `open`: a device app has no URL to open, so the runner serves
+    // `app.open()` with `restart`, the fresh launch of the pinned app, which
+    // is also the device's "recreate the context"; restart and reset need one.
     session: {
       back: (operation) => surface.back(operation),
       ...(surface.managesApp
@@ -66,7 +67,7 @@ export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
   return handle;
 }
 
-/** Creates one agent-device engine: one device session per worker, one fresh app launch per attempt. */
+/** Creates one agent-device engine: one device session per worker; a test launches the pinned app with `app.open()`. */
 export function mobile(options: MobileOptions): EngineHandle {
   const factory: ClientFactory = (session, connection) =>
     createAgentDeviceClient(

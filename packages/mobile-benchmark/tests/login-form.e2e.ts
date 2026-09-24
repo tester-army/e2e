@@ -7,9 +7,9 @@ test.describe('login form', () => {
   // "valid" value below comes from here; only the invalid ones are literals.
   let account: Credential;
 
-  test.beforeEach(async ({ device, screen }) => {
+  test.beforeEach(async ({ app, device, screen }) => {
     account = credentials.user('benchmark');
-    await openScenario({ device, screen }, 'Login Form');
+    await openScenario({ app, device, screen }, 'Login Form');
   });
 
   // With the keyboard open, iOS spends the first tap on dismissing it, and

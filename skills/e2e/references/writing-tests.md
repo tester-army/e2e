@@ -36,7 +36,8 @@ and that check is what lets the trace cache replay the step on later runs.
 submit above or a sign-in form. Files match the config `tests` glob, default
 `tests/**/*.e2e.ts`. Every test starts from clean state: a fresh browser
 context and no page open, so a test calls `app.open()` first (here in
-`beforeEach`).
+`beforeEach`). On a device `app.open()` takes no path and launches the pinned
+app fresh; a test that skips it starts where the previous test left the app.
 
 ## Registration
 

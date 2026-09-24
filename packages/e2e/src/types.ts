@@ -520,7 +520,11 @@ export interface App {
    * engine declares no `url`.
    */
   readonly baseUrl: string | undefined;
-  /** Opens the app: the declared URL, a path relative to it, or any absolute http(s) URL. */
+  /**
+   * Opens the app: the declared URL, a path relative to it, or any absolute
+   * http(s) URL. On a device target, which has no URL, it launches the pinned
+   * app fresh and takes no path.
+   */
   open(path?: string): Promise<void>;
   /**
    * Recreates the execution context while preserving persisted state, then

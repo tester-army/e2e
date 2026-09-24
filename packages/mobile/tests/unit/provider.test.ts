@@ -138,6 +138,7 @@ describe('device provider', () => {
     await boot(h.engine, 'ios', 0);
     expect(h.fake.methods().filter((method) => method === 'apps.install')).toEqual([]);
     await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir: '', signal: new AbortController().signal });
+    await h.engine.session!.restart!({ signal: new AbortController().signal, timeoutMs: 30_000, runId: 'run-1', attemptId: 'a1', origin: 'test' });
     expect(h.fake.lastArgs('apps.open')).toMatchObject({ app: 'com.example.app', device: 'sim-0', relaunch: true });
   });
 

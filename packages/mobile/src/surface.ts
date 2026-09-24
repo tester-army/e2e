@@ -279,7 +279,7 @@ export class AgentDeviceSurface {
     return this.options.app !== undefined || this.options.appPath !== undefined;
   }
 
-  /** The app opened fresh per attempt: the `app` option, else the build `appPath` installed. */
+  /** The app `app.open()` launches: the `app` option, else the build `appPath` installed. */
   get pinnedApp(): string | undefined {
     return pinnedApp(this.options, this.installedApp);
   }
@@ -367,12 +367,13 @@ export class AgentDeviceSurface {
       throw invalidState('an attempt is already running on this agent-device engine');
     }
     await this.settleInflight(context.signal);
+    // Nothing is launched here: the app is where the last test, or the
+    // worker's `prepare`, left it, and a test that wants it fresh calls
+    // `app.open()`, which is `restart` below. The bindings are forgotten, the
+    // screen is not, so a control still in place is acted on at once.
     this.attempt = { artifactsDir: context.artifactsDir, screenshots: 0, video: undefined };
     this.generation = new Map();
     this.located.clear();
-    const app = this.pinnedApp;
-    if (app === undefined) return;
-    await this.openApp(app, true, context.signal);
   }
 
   async endAttempt(context: EngineCleanupContext): Promise<void> {

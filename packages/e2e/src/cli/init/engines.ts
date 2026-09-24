@@ -67,21 +67,24 @@ test('app opens', async ({ app, web }) => {
       example: `import { test } from '@e2edev/mobile';
 import { expect } from 'e2e';
 
-test('Settings opens', async ({ screen }) => {
+test('Settings opens', async ({ app, screen }) => {
+  await app.open();
   await expect(${ios ? "screen.getByRole('button', { name: 'General' })" : "screen.getByText('Network & internet')"}).toBeVisible();
 });
 `,
       aiExample: ios
         ? `
 // With the model key in the environment, uncomment:
-// test('the agent opens General', async ({ agent, device }) => {
+// test('the agent opens General', async ({ agent, app, device }) => {
+//   await app.open();
 //   await agent.act('open General settings');
 //   await expect(device.locator('role=NavigationBar id=General')).toBeVisible();
 // });
 `
         : `
 // With the model key in the environment, uncomment:
-// test('the agent opens Network settings', async ({ agent, device }) => {
+// test('the agent opens Network settings', async ({ agent, app, device }) => {
+//   await app.open();
 //   await agent.act('open Network & internet settings');
 //   await expect(device.locator('id=com.android.settings:id/collapsing_toolbar')).toHaveText('Network & internet');
 // });

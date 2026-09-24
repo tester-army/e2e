@@ -15,7 +15,11 @@ export interface App {
    * engine declares no `url`.
    */
   readonly baseUrl: string | undefined;
-  /** Opens the app: the declared URL, a path relative to it, or any absolute http(s) URL. */
+  /**
+   * Opens the app: the declared URL, a path relative to it, or any absolute
+   * http(s) URL. On a device target, which has no URL, it launches the pinned
+   * app fresh and takes no path.
+   */
   open(path?: string): Promise<void>;
   /**
    * Recreates the execution context while preserving persisted state, then
@@ -39,7 +43,7 @@ timeout. They do not accept per-call timeout options.
 
 | Method | Timeout | Throws |
 | --- | --- | --- |
-| `open(path?)` | `config.timeout`, 120000 ms | `APP_URL_REQUIRED` when the engine declares no `url`, `POLICY_DENIED` for a `file:`, `data:`, or `javascript:` URL, `APP_UNREACHABLE`, `ACTION_FAILED`, `UNSUPPORTED_CAPABILITY` without `session.open` |
+| `open(path?)` | `config.timeout`, 120000 ms | `APP_URL_REQUIRED` for a path when the engine declares no `url`, `POLICY_DENIED` for a `file:`, `data:`, or `javascript:` URL, `APP_UNREACHABLE`, `ACTION_FAILED`, `UNSUPPORTED_CAPABILITY` without `session.open` on a target with a URL or without `session.restart` on one without (a device launches its pinned app) |
 | `restart()` | `config.timeout`, 120000 ms | `ACTION_FAILED`, `ENGINE_FAILURE`, `UNSUPPORTED_CAPABILITY` without `session.restart` |
 | `clearState()` | `config.timeout`, 120000 ms | `ACTION_FAILED`, `ENGINE_FAILURE`, `UNSUPPORTED_CAPABILITY` without `session.reset` |
 | `back()` | `config.actionTimeout`, 30000 ms | `APP_NOT_OPEN`, `ACTION_FAILED`, `UNSUPPORTED_CAPABILITY` without `session.back` |

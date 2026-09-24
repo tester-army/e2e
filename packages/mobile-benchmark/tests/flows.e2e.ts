@@ -8,8 +8,8 @@
 import { expect, openScenario, test } from './fixtures.ts';
 
 
-test('text inputs unlock the submit button', async ({ device, screen }) => {
-  await openScenario({ device, screen }, 'Text Input Variations');
+test('text inputs unlock the submit button', async ({ app, device, screen }) => {
+  await openScenario({ app, device, screen }, 'Text Input Variations');
   const submit = screen.getByTestId('submit-button');
   await expect(submit).toBeDisabled();
   await screen.getByTestId('username-input').fill('tester');
@@ -22,8 +22,8 @@ test('text inputs unlock the submit button', async ({ device, screen }) => {
 
 // An iOS text field without an accessibility label reports its text as both
 // label and value; the value is kept, since it is what a test reads.
-test('filled text inputs report their values', async ({ device, screen }) => {
-  await openScenario({ device, screen }, 'Text Input Variations');
+test('filled text inputs report their values', async ({ app, device, screen }) => {
+  await openScenario({ app, device, screen }, 'Text Input Variations');
   await screen.getByTestId('username-input').fill('tester');
   await expect(screen.getByTestId('username-input')).toHaveValue('tester');
   await screen.getByTestId('notes-input').fill('Notes long enough to count');
@@ -33,8 +33,8 @@ test('filled text inputs report their values', async ({ device, screen }) => {
 // The alert is the platform's own; it sits in the app's tree on both
 // platforms as buttons named after the RN `Alert` options, which Android's
 // dialog theme spells in capitals.
-test('modal flow confirms through the native alert', async ({ device, screen }) => {
-  await openScenario({ device, screen }, 'Modal Flow');
+test('modal flow confirms through the native alert', async ({ app, device, screen }) => {
+  await openScenario({ app, device, screen }, 'Modal Flow');
   await screen.getByTestId('open-modal-button').tap();
   await screen.getByTestId('continue-button').tap();
   await screen.getByRole('button', { name: /^confirm$/i }).tap();
@@ -46,8 +46,8 @@ test('modal flow confirms through the native alert', async ({ device, screen }) 
 // active tab shows in the content it reveals: its `selected` state only
 // reaches the tree through the simulator's accessibility bridge, which a CI
 // Mac does not always provide.
-test('bottom tabs act inside the last tab', async ({ device, screen }) => {
-  await openScenario({ device, screen }, 'Bottom Tabs');
+test('bottom tabs act inside the last tab', async ({ app, device, screen }) => {
+  await openScenario({ app, device, screen }, 'Bottom Tabs');
   await expect(screen.getByTestId('home-tab-content')).toBeVisible();
   const home = screen.getByTestId('tab-home');
   const actions = screen.getByTestId('tab-actions');
@@ -60,8 +60,8 @@ test('bottom tabs act inside the last tab', async ({ device, screen }) => {
   await expect(screen.getByTestId('success-message')).toHaveText('Action completed');
 });
 
-test('error recovery retries, then confirms the delete', async ({ device, screen }) => {
-  await openScenario({ device, screen }, 'Error Recovery');
+test('error recovery retries, then confirms the delete', async ({ app, device, screen }) => {
+  await openScenario({ app, device, screen }, 'Error Recovery');
   await expect(screen.getByTestId('error-banner')).toBeVisible();
   await screen.getByTestId('retry-button').tap();
   await screen.getByTestId('delete-draft').tap();
@@ -69,8 +69,8 @@ test('error recovery retries, then confirms the delete', async ({ device, screen
   await expect(screen.getByTestId('success-message')).toHaveText('Draft deleted');
 });
 
-test('choice controls place the exact order', async ({ device, screen }) => {
-  await openScenario({ device, screen }, 'Choice Controls');
+test('choice controls place the exact order', async ({ app, device, screen }) => {
+  await openScenario({ app, device, screen }, 'Choice Controls');
   await expect(screen.getByTestId('place-order')).toBeDisabled();
   // The scenario's radios carry only `selected`, which reaches the tree
   // through the simulator's accessibility bridge alone; the order line at the
@@ -90,8 +90,8 @@ test('choice controls place the exact order', async ({ device, screen }) => {
 
 // The results list keeps the default keyboardShouldPersistTaps, so a tap
 // with the keyboard open only dismisses it; Return blurs the field first.
-test('debounced search selects the target once results arrive', async ({ device, screen }) => {
-  await openScenario({ device, screen }, 'Debounced Search');
+test('debounced search selects the target once results arrive', async ({ app, device, screen }) => {
+  await openScenario({ app, device, screen }, 'Debounced Search');
   await screen.getByTestId('search-input').fill('benchmark target');
   await screen.getByTestId('search-input').press('Enter');
   await screen.getByTestId('result-Benchmark Target').tap();

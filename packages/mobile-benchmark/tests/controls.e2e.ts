@@ -21,20 +21,20 @@ async function showSection(screen: Screen, name: 'Fields' | 'Toggles' | 'Gesture
   await screen.getByTestId(`tab-${name.toLowerCase()}`).tap();
 }
 
-// agent-device 0.21.6 names an Android node by its text and reads the content
+// agent-device 0.21.13 names an Android node by its text and reads the content
 // description only when the text is empty, so the accessibility label of a
 // text view or a filled field never reaches the tree (an empty field is named
 // by its hint), and a node's `heading` flag is not reported. The tests that
 // read a name the app set run on iOS until agent-device carries both.
 const NAMED_BY_LABEL = { platforms: ['ios'] };
 
-// agent-device 0.21.6's Android snapshot carries no `checked` (its #1832), so
+// agent-device 0.21.13's Android snapshot carries no `checked` (its #1832), so
 // a switch or radio answers `toBeChecked` with UNSUPPORTED_CAPABILITY there.
 const CHECKED_STATE = { platforms: ['ios'] };
 
 test.describe('control inventory', () => {
-  test.beforeEach(async ({ device, screen }) => {
-    await openScenario({ device, screen }, 'Control Inventory');
+  test.beforeEach(async ({ app, device, screen }) => {
+    await openScenario({ app, device, screen }, 'Control Inventory');
   });
 
   // iOS reports a React Native text input twice, as a host view and the
@@ -66,7 +66,7 @@ test.describe('control inventory', () => {
   test(
     'a placeholder query and attribute reads find the field',
     {
-      skip: 'agent-device 0.21.6 snapshot nodes carry no placeholder text (only a hintShowing flag) and no attributes, so getByPlaceholder, getAttribute, and toHaveAttribute answer nothing on a device',
+      skip: 'agent-device 0.21.13 snapshot nodes carry no placeholder text (only a hintShowing flag) and no attributes, so getByPlaceholder, getAttribute, and toHaveAttribute answer nothing on a device',
     },
     async ({ screen }) => {
       await expect(screen.getByPlaceholder('Type your name')).toHaveValue('Ada Lovelace');
@@ -113,21 +113,19 @@ test.describe('control inventory', () => {
     await expect(status).toHaveText('focus: none');
   });
 
-  test(
-    'toBeFocused follows the focus',
-    {
-      skip: "agent-device 0.21.6's iOS runner reads XCUIElementSnapshot hasFocus (the tvOS focus engine), never hasKeyboardFocus, so a text field with the keyboard up carries no focused flag and `is focused` answers false",
-    },
-    async ({ screen }) => {
-      await screen.getByRole('button', { name: 'Show focus fields' }).tap();
-      const first = screen.getByRole('textbox', { name: 'Autofocus field' });
-      const second = screen.getByRole('textbox', { name: 'Second field' });
-      await expect(first).toBeFocused();
-      await second.focus();
-      await expect(second).toBeFocused();
-      await expect(first).not.toBeFocused();
-    },
-  );
+  // agent-device 0.21.13's iOS runner reads XCUIElementSnapshot hasFocus (the
+  // tvOS focus engine), never hasKeyboardFocus, so an iOS text field with the
+  // keyboard up carries no focused flag and `is focused` answers false there;
+  // Android reports the focused field.
+  test('toBeFocused follows the focus', { platforms: ['android'] }, async ({ screen }) => {
+    await screen.getByRole('button', { name: 'Show focus fields' }).tap();
+    const first = screen.getByRole('textbox', { name: 'Autofocus field' });
+    const second = screen.getByRole('textbox', { name: 'Second field' });
+    await expect(first).toBeFocused();
+    await second.focus();
+    await expect(second).toBeFocused();
+    await expect(first).not.toBeFocused();
+  });
 
   test('a switch checks, unchecks, and reports its state', CHECKED_STATE, async ({ screen }) => {
     await showSection(screen, 'Toggles');
@@ -200,7 +198,7 @@ test.describe('control inventory', () => {
   test(
     'a tab role answers getByRole',
     {
-      skip: 'React Native 0.86 gives the tab role no UIKit trait and, unlike checkbox and radio, spells nothing into the accessibility value on the new architecture, so an iOS tab is an Other carrying only the selected trait',
+      skip: 'React Native 0.86 gives the tab role no UIKit trait and, unlike checkbox and radio, spells nothing into the accessibility value on the new architecture, so an iOS tab is an Other carrying only the selected trait; on Android it is a plain View whose role description agent-device does not carry',
     },
     async ({ screen }) => {
       await expect(screen.getByRole('tab')).toHaveCount(3);
@@ -326,7 +324,7 @@ test.describe('control inventory', () => {
   test(
     'a row contains its texts',
     {
-      skip: 'React Native flattens a plain View into the iOS accessibility tree: XCTest reports a View with a testID as a leaf beside its children, so filter({ has }) and a query scoped to it match nothing; only ScrollView, TextInput, and Text hosts nest',
+      skip: 'React Native flattens a plain View out of the accessibility tree on both platforms: XCTest and the Android helper report a View with a testID as a leaf beside its children, so filter({ has }) and a query scoped to it match nothing; only ScrollView, TextInput, and Text hosts nest',
     },
     async ({ screen }) => {
       await showSection(screen, 'Gestures');
@@ -345,21 +343,20 @@ test.describe('control inventory', () => {
   // double-tap gesture reaches a Pressable as one press. The app prints how
   // many taps arrived and how far apart, so a pair that missed the window
   // shows what the device delivered.
-  test(
-    'a double tap lands inside the 300 ms window',
-    {
-      skip: "agent-device 0.21.6's iOS runner lands two presses 284 to 285 ms apart (its XCTest tap cadence: press --count 2; 401 ms with --interval-ms 120) and its --double-tap gesture reaches a Pressable as one press, so the scenario's 300 ms window has no margin and reads the pair as two single taps on a loaded machine",
-    },
-    async ({ screen }) => {
-      await showSection(screen, 'Gestures');
-      await screen.getByRole('button', { name: 'Double-tap me' }).doubleTap();
-      await expect(screen.getByTestId('tap-count')).toContainText('2 taps');
-      await expect(screen.getByTestId('gesture-status')).toHaveText('gesture: double tap');
-    },
-  );
+  // agent-device 0.21.13's iOS runner lands two presses 284 to 285 ms apart
+  // (its XCTest tap cadence: press --count 2; 401 ms with --interval-ms 120)
+  // and its --double-tap gesture reaches a Pressable as one press, so on iOS
+  // the scenario's 300 ms window has no margin and reads the pair as two
+  // single taps on a loaded machine. Android lands the pair inside it.
+  test('a double tap lands inside the 300 ms window', { platforms: ['android'] }, async ({ screen }) => {
+    await showSection(screen, 'Gestures');
+    await screen.getByRole('button', { name: 'Double-tap me' }).doubleTap();
+    await expect(screen.getByTestId('tap-count')).toContainText('2 taps');
+    await expect(screen.getByTestId('gesture-status')).toHaveText('gesture: double tap');
+  });
 
   // Android bounds and points are the screen's physical pixels: agent-device
-  // 0.21.6 reports no display density for an emulator, so the engine cannot
+  // 0.21.13 reports no display density for an emulator, so the engine cannot
   // put them in the logical pixels the contract asks for, and the pad's 240
   // by 100 reads as 630 by 263 on a 2.625x emulator.
   test('pointer verbs land at the point asked for', { platforms: ['ios'] }, async ({ screen }) => {

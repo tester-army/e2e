@@ -552,6 +552,44 @@ describe('app steering hooks', () => {
     await fixtures.app.clearState();
     expect(calls).toEqual(['restart', 'reset']);
   });
+
+  /** A device: no address, no `open`, a pinned app `restart` launches fresh. */
+  function device(pinned = true) {
+    const calls: string[] = [];
+    const engine = defineEngine({
+      name: 'fake', version: '1', spiVersion: 1,
+      observe: async () => snapshot([]),
+      session: pinned ? { restart: async () => { calls.push('restart'); } } : {},
+    });
+    return { engine, calls };
+  }
+
+  it('app.open() on a device launches the pinned app fresh through restart, as one app.open step', async () => {
+    const { engine, calls } = device();
+    const { fixtures, steps } = runtime(engine);
+    await fixtures.app.open();
+    expect(calls).toEqual(['restart']);
+    expect(steps.all().map((step) => [step.api, step.status])).toEqual([['app.open', 'passed']]);
+  });
+
+  it('app.open(path) on a device is APP_URL_REQUIRED and names device.openLink', async () => {
+    const { engine, calls } = device();
+    const { fixtures } = runtime(engine);
+    await expect(fixtures.app.open('/orders')).rejects.toMatchObject({
+      code: 'APP_URL_REQUIRED',
+      message: expect.stringContaining('device.openLink'),
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it('app.open() on a device without a pinned app is UNSUPPORTED_CAPABILITY and names the app option', async () => {
+    const { engine } = device(false);
+    const { fixtures } = runtime(engine);
+    await expect(fixtures.app.open()).rejects.toMatchObject({
+      code: 'UNSUPPORTED_CAPABILITY',
+      message: expect.stringContaining('appPath'),
+    });
+  });
 });
 
 describe('coordinate input', () => {

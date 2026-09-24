@@ -39,9 +39,11 @@ afterEach(() => {
   rmSync(artifactsDir, { recursive: true, force: true });
 });
 
+/** Boots, starts an attempt, and launches the pinned app the way a test's `app.open()` does. */
 async function openAttempt(h: Harness, attemptId = 'a1'): Promise<void> {
   await boot(h.engine);
   await h.engine.startAttempt!({ attemptId, artifactsDir, signal: new AbortController().signal });
+  if (h.engine.session?.restart !== undefined) await h.engine.session.restart(operation());
 }
 
 /** The observed node with this name, from a fresh observation. */
@@ -98,7 +100,7 @@ describe('manifest', () => {
 });
 
 describe('lifecycle', () => {
-  it('boots once per init under a session named after the target and worker slot, opens the app fresh per attempt, and closes on dispose', async () => {
+  it('boots once per init under a session named after the target and worker slot, launches the app only when asked, and closes on dispose', async () => {
     const h = harness();
     await openAttempt(h);
     expect(h.sessions).toEqual(['e2e-ios-simulator-0']);
@@ -108,8 +110,9 @@ describe('lifecycle', () => {
 
     await h.engine.endAttempt!(cleanup());
     await h.engine.endAttempt!(cleanup());
+    // An attempt launches nothing on its own: the app is where the last test left it.
     await h.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal });
-    expect(h.fake.methods().filter((m) => m === 'apps.open')).toHaveLength(2);
+    expect(h.fake.methods().filter((m) => m === 'apps.open')).toHaveLength(1);
 
     await h.engine.dispose!(cleanup());
     expect(h.fake.methods().at(-1)).toBe('sessions.close');
@@ -136,6 +139,7 @@ describe('lifecycle', () => {
     expect(first.sessions).toEqual(['e2e-ios-0']);
     expect(first.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios', device: 'iPhone 17' });
     await first.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal });
+    await first.engine.session!.restart!(operation());
     expect(first.fake.lastArgs('apps.open')).toEqual({ app: 'Settings', platform: 'ios', device: 'iPhone 17', relaunch: true });
 
     const second = harness({ device: pool, session: 'qa' });
@@ -924,6 +928,7 @@ describe('session hooks, viewport swipe, location, artifacts', () => {
       expect(opened).toBe(false);
       finishCapture!();
       await next;
+      await h.engine.session!.restart!(operation());
       expect(opened).toBe(true);
       expect(temporaryFilesRemoved).toBe(true);
       expect(existsSync(path.join(artifactsDir, 'screenshots'))).toBe(false);
@@ -933,7 +938,7 @@ describe('session hooks, viewport swipe, location, artifacts', () => {
     }
   });
 
-  it('waits for an abandoned command to settle before the next attempt opens anything', async () => {
+  it('waits for an abandoned command to settle before the next attempt starts and its launch goes out', async () => {
     const h = harness();
     let release: (() => void) | undefined;
     let settled = false;
@@ -965,6 +970,7 @@ describe('session hooks, viewport swipe, location, artifacts', () => {
     expect(nextDone).toBe(false);
     release!();
     await next;
+    await h.engine.session!.restart!(operation());
     expect(openedAfterSettle).toBe(true);
 
     // A command that never settles fails the launch within its budget instead of racing it.

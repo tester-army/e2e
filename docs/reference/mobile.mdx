@@ -46,8 +46,9 @@ export default {
 
 Create an engine for each platform you test. Use `platforms: ['ios']` or
 `platforms: ['android']` on tests with platform-specific labels or operations.
-Each attempt opens the configured app automatically; `app.open()` is
-unavailable on device targets.
+`app.open()` launches the configured app fresh; an attempt launches nothing
+on its own, so a test starts where the previous one left the app. `app.open`
+takes no path on a device: a link goes through `device.openLink`.
 
 ```ts
 /**
@@ -58,18 +59,21 @@ export interface MobileOptions {
   /** Platform the target's device runs. */
   readonly platform: MobilePlatform;
   /**
-   * App opened fresh at the start of every attempt: a bundle id, a package
-   * name, or a display name agent-device resolves (`Settings`). Without it the
-   * surface observes whatever is in the foreground, and `app.restart()` and
-   * `app.clearState()` are not available. A link is `INVALID_CONFIG`: a test
-   * opens one with `device.openLink`.
+   * App the worker brings up once in `prepare` and `app.open()` launches
+   * fresh: a bundle id, a package name, or a display name agent-device
+   * resolves (`Settings`). An attempt launches nothing on its own, so a test
+   * starts where the last one ended and calls `app.open()` when it wants
+   * the app fresh, as a Maestro flow calls `launchApp`. Without it the
+   * surface observes whatever is in the foreground, and `app.open()`,
+   * `app.restart()`, and `app.clearState()` are not available. A link is
+   * `INVALID_CONFIG`: a test opens one with `device.openLink`.
    */
   readonly app?: string | undefined;
   /**
    * Build to install on the device once per worker, before the first attempt:
    * an iOS `.app` bundle or an Android `.apk`, resolved against the project
    * root (the config's directory). Without `app`, the installed bundle id or
-   * package becomes the app opened fresh at the start of every attempt.
+   * package becomes the app `app.open()` launches.
    */
   readonly appPath?: string | undefined;
   /**
@@ -130,9 +134,9 @@ leases hosted devices; see [Hosted devices](/mobile#hosted-devices) for the
 Devices boot in `prepare`, once per run and before the run's clock starts, so
 a cold boot on CI is never charged against `launchTimeout`. agent-device
 commands take no abort signal, so a timed-out command keeps running on the
-device; the next attempt waits for it to settle. Each attempt relaunches
-`app` when one is pinned; without it the model opens apps with the `open_app`
-tool.
+device; the next attempt waits for it to settle. `prepare` brings the pinned
+`app` up once per worker, and `app.open()` relaunches it fresh whenever a
+test asks; without a pinned app the model opens apps with the `open_app` tool.
 
 The engine declares one worker per configured device. With no `device`,
 `prepare` uses the booted devices it finds, capped by the run's slots, and
@@ -160,7 +164,7 @@ export default {
 
 | Contract member | On a device |
 | --- | --- |
-| `observe` | The accessibility tree with rects. iOS: `Button` is `button`, `TextField` and `SearchField` are `textbox`, `SecureTextField` is a secure `textbox`, `Cell` is `listitem`, `StaticText` is `text`, `Switch` is `switch` with `checked`, `TabBar` and `SegmentedControl` are `tablist` and the buttons inside them `tab`, `ProgressIndicator` is `progressbar`, `ActivityIndicator` is `status`, `Stepper` is `spinbutton`, `Toolbar`, `Menu`, and `RadioGroup` are `toolbar`, `menu`, and `radiogroup`. Android: `TextView` is `text`, `EditText` is `textbox` and one UIAutomator flags as `password` is a secure `textbox` like `SecureTextField`, `Switch` and `CheckBox` keep their roles without a `checked` state, layouts are `group`, `RecyclerView` and `AbsListView` (React Native's `FlatList`) are `list`, `TabLayout` and `BottomNavigationView` are `tablist` with their items as `tab`, `ProgressBar` is `progressbar`, `NumberPicker` is `spinbutton`, `Toolbar` and `RadioGroup` keep their names. Any other type is kept verbatim in lower case (`picker-wheel`), so it answers no vocabulary role, unless the platform reports it editable, which makes it a `textbox`. React Native on iOS has no trait for `checkbox`, `radio`, and a few other roles and spells the role and state into the accessibility value instead (`checkbox, unchecked`, `radio button, checked`); such a node takes that role, `checked` and `expanded` from the state words, and reports only what follows them as its value. An iOS field keeps a value equal to its label (an unlabeled field is named by its text); Android's echo of a text view's label as its value is dropped. The accessibility identifier (iOS) or resource id (Android) is the node's `testId`. Two Android facts are agent-device 0.21.6's, not the platform's: a node is named by its text and by its content description only when the text is empty, so a labeled text view or a filled field is named by what it shows and an empty field by its hint; and `rect` and every point are the screen's physical pixels, since no display density is reported. Pixels on request, with every secure node's bounds painted black. |
+| `observe` | The accessibility tree with rects. iOS: `Button` is `button`, `TextField` and `SearchField` are `textbox`, `SecureTextField` is a secure `textbox`, `Cell` is `listitem`, `StaticText` is `text`, `Switch` is `switch` with `checked`, `TabBar` and `SegmentedControl` are `tablist` and the buttons inside them `tab`, `ProgressIndicator` is `progressbar`, `ActivityIndicator` is `status`, `Stepper` is `spinbutton`, `Toolbar`, `Menu`, and `RadioGroup` are `toolbar`, `menu`, and `radiogroup`. Android: `TextView` is `text`, `EditText` is `textbox` and one UIAutomator flags as `password` is a secure `textbox` like `SecureTextField`, `Switch` and `CheckBox` keep their roles without a `checked` state, layouts are `group`, `RecyclerView` and `AbsListView` (React Native's `FlatList`) are `list`, `TabLayout` and `BottomNavigationView` are `tablist` with their items as `tab`, `ProgressBar` is `progressbar`, `NumberPicker` is `spinbutton`, `Toolbar` and `RadioGroup` keep their names. Any other type is kept verbatim in lower case (`picker-wheel`), so it answers no vocabulary role, unless the platform reports it editable, which makes it a `textbox`. React Native on iOS has no trait for `checkbox`, `radio`, and a few other roles and spells the role and state into the accessibility value instead (`checkbox, unchecked`, `radio button, checked`); such a node takes that role, `checked` and `expanded` from the state words, and reports only what follows them as its value. An iOS field keeps a value equal to its label (an unlabeled field is named by its text); Android's echo of a text view's label as its value is dropped. The accessibility identifier (iOS) or resource id (Android) is the node's `testId`. Two Android facts are agent-device 0.21.13's, not the platform's: a node is named by its text and by its content description only when the text is empty, so a labeled text view or a filled field is named by what it shows and an empty field by its hint; and `rect` and every point are the screen's physical pixels, since no display density is reported. Pixels on request, with every secure node's bounds painted black. |
 | `perform` | `tap`, `doubleTap`, `longPress`, `fill`, `clear`, `hover`, `check`, `uncheck`, `press` (`Enter` or one character), `swipe`, `dragTo`, and `focus` on editable fields. A tap on a `switch` or `checkbox` lands on its innermost control, since UIKit reports a settings row as one labelled switch with the real toggle as a child. `check` and `uncheck` need a `checked` state, which Android switches lack and a React Native checkbox or radio on iOS has. `doubleTap` is two presses, 284 to 285 ms apart on iOS (the cadence of agent-device's XCTest tap): agent-device's own double-tap gesture reaches a React Native `Pressable` as one press. A detector with a window of 300 ms or less can read the pair as two single taps. `selectOption`, `setInputFiles`, `scrollIntoView`, and `secondaryTap` are not declared. |
 | `locate` | Every `screen` query. Text and label queries answer with the innermost match, since a device echoes both up the tree (a React Native input is a host view and the field inside it, both labelled). |
 | `app` | `identity` from the pinned `app`, else `appPath`; no `url`. |

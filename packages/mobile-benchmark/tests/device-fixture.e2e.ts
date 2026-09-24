@@ -10,8 +10,8 @@ import { expect, openScenario, test } from './fixtures.ts';
 const APP_ID = 'dev.e2e.benchmark';
 
 test.describe('device fixture', () => {
-  test.beforeEach(async ({ device, screen }) => {
-    await openScenario({ device, screen }, 'Control Inventory');
+  test.beforeEach(async ({ app, device, screen }) => {
+    await openScenario({ app, device, screen }, 'Control Inventory');
   });
 
   // Only the iOS build follows the system appearance (`ios.userInterfaceStyle`
@@ -41,7 +41,7 @@ test.describe('device fixture', () => {
   });
 
   // Android 14 and later ship no shell command for the clipboard service, so
-  // agent-device 0.21.6 reads an empty string back on the emulator; its own
+  // agent-device 0.21.13 reads an empty string back on the emulator; its own
   // advice is to paste into a field and read that.
   test('the clipboard reads back what was written', { platforms: ['ios'] }, async ({ device }) => {
     await device.setClipboard('e2e clipboard 42');
@@ -56,16 +56,14 @@ test.describe('device fixture', () => {
     await expect(screen.getByTestId('inventory-header')).toBeVisible();
   });
 
-  test(
-    'foregroundApp sees the home screen after home()',
-    {
-      skip: "agent-device 0.21.6's iOS appstate answers from the session (source: session, surface: app) and refuses a device selector without one (SESSION_NOT_FOUND: iOS appstate requires an active session on the target device), so home() leaves foregroundApp() naming the pinned app",
-    },
-    async ({ device }) => {
-      await device.home();
-      expect((await device.foregroundApp()).bundleId).not.toBe(APP_ID);
-    },
-  );
+  // agent-device 0.21.13's iOS appstate answers from the session (source:
+  // session, surface: app) and refuses a device selector without one, so on
+  // iOS home() leaves foregroundApp() naming the pinned app; Android reads
+  // the device's foreground activity.
+  test('foregroundApp sees the home screen after home()', { platforms: ['android'] }, async ({ device }) => {
+    await device.home();
+    expect((await device.foregroundApp()).bundleId).not.toBe(APP_ID);
+  });
 
   // The close names the app, so agent-device terminates it before ending the
   // session; a bare close would leave it running and openApp would resume it here.
