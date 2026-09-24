@@ -36,22 +36,10 @@ function stream(options: { tty?: boolean; columns?: number; depth?: number } = {
 }
 
 describe('wordmarkBanner', () => {
-  it('draws the wordmark at rest in the terminal foreground, ending in a blank line', () => {
-    const banner = wordmarkBanner(stream());
-    expect(stripVTControlCharacters(banner)).toBe(`${REST.join('\n')}\n\n`);
-    // The site sets the word in white on dark; the terminal's own foreground is that on any theme, and no orange stays.
-    expect(banner).toContain(`${ESC}[39m`);
-    expect(banner).not.toContain('38;');
-    expect(banner.split('\n').filter((line) => line !== '').every((line) => line.endsWith(`${ESC}[0m`))).toBe(true);
-  });
-
-  it('keeps the foreground at every color depth, and prints bare blocks without colors', () => {
-    for (const depth of [8, 4]) {
-      const banner = wordmarkBanner(stream({ depth }));
-      expect(banner).toContain(`${ESC}[39m`);
-      expect(banner).not.toContain('38;');
+  it('draws the wordmark at rest as plain quadrant blocks in the terminal foreground, with no styling at any color depth', () => {
+    for (const depth of [24, 8, 4, 1]) {
+      expect(wordmarkBanner(stream({ depth }))).toBe(`${REST.join('\n')}\n`);
     }
-    expect(wordmarkBanner(stream({ depth: 1 }))).toBe(`${REST.join('\n')}\n\n`);
   });
 
   it('is empty when the output is not a terminal, or a terminal too narrow for it', () => {
@@ -80,7 +68,7 @@ describe('playWordmark', () => {
     for (const options of [{ env: { CI: 'true' } }, { env: { TERM: 'dumb' } }, { env: {}, motion: false }]) {
       const out = stream({ depth: 1 });
       await playWordmark(out, options);
-      expect(out.writes).toEqual([`${REST.join('\n')}\n\n`]);
+      expect(out.writes).toEqual([`${REST.join('\n')}\n`]);
     }
   });
 
@@ -96,18 +84,15 @@ describe('playWordmark', () => {
     expect(out.writes.at(-1)).toBe(`${ESC}[?25h`);
     const paints = out.writes.slice(1, -1);
     expect(paints.length).toBeGreaterThan(10);
-    // Every paint is one synchronized update; every paint after the first erases the thirteen board rows of the one before.
+    // Every paint is one synchronized update; every paint after the first erases the eleven board rows of the one before.
     expect(paints.every((paint) => paint.startsWith(`${ESC}[?2026h`) && paint.endsWith(`${ESC}[?2026l`))).toBe(true);
-    expect(paints.slice(1).every((paint) => paint.startsWith(`${ESC}[?2026h${ESC}[13A${ESC}[0J`))).toBe(true);
+    expect(paints.slice(1).every((paint) => paint.startsWith(`${ESC}[?2026h${ESC}[11A${ESC}[0J`))).toBe(true);
     const first = stripVTControlCharacters(paints[0]!);
-    expect(first.split('\n')).toHaveLength(14);
-    // Pieces fall in the brand orange; the full floor row, and later the settled word, take the terminal's own foreground.
-    expect(paints.some((paint) => paint.includes(`${ESC}[38;2;255;128;1m`))).toBe(true);
-    expect(paints.some((paint) => paint.includes(`${ESC}[39m`))).toBe(true);
-    // The last paint replaces the thirteen rows with the ten at rest, in the foreground, and a blank line.
-    expect(paints.at(-1)!.startsWith(`${ESC}[?2026h${ESC}[13A${ESC}[0J`)).toBe(true);
-    expect(paints.at(-1)).toContain(`${ESC}[39m`);
-    expect(paints.at(-1)).not.toContain('38;');
-    expect(stripVTControlCharacters(paints.at(-1)!)).toBe(`${REST.join('\n')}\n\n`);
+    expect(first.split('\n')).toHaveLength(12);
+    // Pieces in flight and the floor row are dim; nothing is ever colored.
+    expect(paints.some((paint) => paint.includes(`${ESC}[2m`))).toBe(true);
+    expect(paints.every((paint) => !paint.includes('38;') && !paint.includes(`${ESC}[39m`))).toBe(true);
+    // The last paint leaves the word where it landed: the row it dropped from, blank, then the ten rows at rest, unstyled.
+    expect(paints.at(-1)).toBe(`${ESC}[?2026h${ESC}[11A${ESC}[0J\n${REST.join('\n')}\n${ESC}[?2026l`);
   });
 });

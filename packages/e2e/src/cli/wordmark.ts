@@ -1,12 +1,12 @@
 /**
  * The e2e wordmark: `e2e` set in Stack Sans Notch, the TesterArmy display
  * face, drawn in quadrant blocks in the terminal's own foreground the way the
- * site sets it in white on dark, with the brand orange as the accent. On a
- * terminal that can show it the letters drop in as orange blocks, the way the
- * pi installer builds its mark: the pieces stack on a floor row, the row fills, flashes, and clears,
- * the word drops into place, pulses twice, and settles into the foreground.
- * Where motion does not belong it is printed at rest, and output that is not
- * a terminal never sees it.
+ * site sets it in white on dark. On a terminal that can show it the letters
+ * drop in as blocks, the way the pi installer builds its mark: dim pieces fall
+ * and turn solid as they land on a dim floor row, the row fills, flashes, and
+ * clears, the word drops into place and pulses twice. Where motion does not
+ * belong it is printed at rest, and output that is not a terminal never sees
+ * it.
  */
 
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -14,6 +14,8 @@ import { envFlag } from '../internal/env.ts';
 
 const ESC = '\u001b';
 const RESET = `${ESC}[0m`;
+const DIM = `${ESC}[2m`;
+const SOLID = `${ESC}[22m`;
 const SYNC_START = `${ESC}[?2026h`;
 const SYNC_END = `${ESC}[?2026l`;
 const HIDE_CURSOR = `${ESC}[?25l`;
@@ -56,13 +58,11 @@ const BITMAP_WIDTH_PX = BITMAP[0]!.length;
 /** Columns the wordmark takes; a narrower terminal gets no wordmark. */
 const WORDMARK_WIDTH = BITMAP_WIDTH_PX / PIXELS_PER_CELL;
 const WORDMARK_PX = BITMAP.length;
-/** Pixel rows above the word a piece falls through before it enters. */
-const HEADROOM_PX = 4;
-/** The floor row the pieces stack on, taken away by the clear. */
+/** The floor row the pieces stack on, taken away by the clear; the word then drops into it. */
 const FLOOR_PX = 2;
-/** Pixel rows of the board while the pieces fall: headroom, word, floor. */
-const BOARD_PX = HEADROOM_PX + WORDMARK_PX + FLOOR_PX;
-const FLOOR_TOP = HEADROOM_PX + WORDMARK_PX;
+/** Pixel rows of the board: the word, then the floor. Pieces enter from above the board, clipped. */
+const BOARD_PX = WORDMARK_PX + FLOOR_PX;
+const FLOOR_TOP = WORDMARK_PX;
 /** Each glyph falls as three pieces, cut along these pixel rows of the bitmap, top to bottom. */
 const BANDS: readonly (readonly [top: number, bottom: number])[] = [
   [0, 5],
@@ -71,14 +71,13 @@ const BANDS: readonly (readonly [top: number, bottom: number])[] = [
 ];
 
 const FRAME_MS = 33;
-/** One piece starts falling every `STAGGER_MS`; each takes `FALL_MS` and glows for `GLOW_MS` on landing. */
+/** One piece starts falling every `STAGGER_MS`; each takes `FALL_MS`. */
 const STAGGER_MS = 60;
 const FALL_MS = 240;
-const GLOW_MS = 90;
 /** The full floor row flashes twice, clears, and the word drops one row over two frames. */
 const ROW_FLASH_MS = 70;
 const DROP_MS = 2 * FRAME_MS;
-/** The settled word pulses twice between orange and the terminal's own foreground, and stays in the foreground. */
+/** The settled word pulses twice. */
 const PULSE_MS = 90;
 
 interface Pixel {
@@ -93,12 +92,12 @@ interface Piece {
   readonly start: number;
 }
 
-/** The glyph's lit pixels between two bitmap rows, placed on the board. */
+/** The glyph's lit pixels between two bitmap rows. */
 function glyphPixels(glyph: string, top: number, bottom: number): Pixel[] {
   const pixels: Pixel[] = [];
   for (let y = top; y <= bottom; y++) {
     for (let x = 0; x < BITMAP_WIDTH_PX; x++) {
-      if (BITMAP[y]![x] === glyph) pixels.push({ x, y: y + HEADROOM_PX });
+      if (BITMAP[y]![x] === glyph) pixels.push({ x, y });
     }
   }
   return pixels;
@@ -153,15 +152,8 @@ const SETTLED_AT = DROP_AT + DROP_MS;
 const PULSE_AT = SETTLED_AT + 250;
 const DURATION_MS = PULSE_AT + 3 * PULSE_MS;
 
-type Rgb = readonly [red: number, green: number, blue: number];
-/** A lit pixel: the brand orange, or the terminal's own foreground. */
-type Cell = Rgb | 'foreground';
-
-/** The brand orange (docs.json), the color of a piece in flight and of the accents. */
-const ORANGE: Rgb = [0xff, 0x80, 0x01];
-
-/** How colors are written: what the stream's color depth allows. */
-type Palette = 'truecolor' | 'ansi256' | 'ansi16' | 'none';
+/** A lit pixel: solid, in the terminal's foreground, or dim while it is scaffolding or in flight. */
+type Cell = 'solid' | 'dim';
 
 /** What the wordmark needs from an output stream; `process.stdout` and `process.stderr` qualify. */
 export interface WordmarkStream {
@@ -179,50 +171,19 @@ function easeOutCubic(t: number): number {
   return 1 - (1 - t) ** 3;
 }
 
-/** `cell` moved toward white by `amount` in [0, 1]; the terminal's foreground stays what it is. */
-function brighten(cell: Cell, amount: number): Cell {
-  if (cell === 'foreground') return cell;
-  return [
-    Math.round(Math.min(255, cell[0] + (255 - cell[0]) * amount)),
-    Math.round(Math.min(255, cell[1] + (255 - cell[1]) * amount)),
-    Math.round(Math.min(255, cell[2] + (255 - cell[2]) * amount)),
-  ];
-}
-
-/** The xterm 256-color cube levels. */
-const CUBE_LEVELS = [0, 95, 135, 175, 215, 255] as const;
-
-function nearestCubeLevel(channel: number): number {
-  let best = 0;
-  for (let level = 1; level < CUBE_LEVELS.length; level++) {
-    if (Math.abs(CUBE_LEVELS[level]! - channel) < Math.abs(CUBE_LEVELS[best]! - channel)) best = level;
-  }
-  return best;
-}
-
-/** The SGR sequence that paints `cell` in `palette`; empty when the palette has no colors. */
-function sgr(cell: Cell, palette: Palette): string {
-  if (palette === 'none') return '';
-  if (cell === 'foreground') return `${ESC}[39m`;
-  switch (palette) {
-    case 'truecolor':
-      return `${ESC}[38;2;${cell[0]};${cell[1]};${cell[2]}m`;
-    case 'ansi256':
-      return `${ESC}[38;5;${16 + 36 * nearestCubeLevel(cell[0]) + 6 * nearestCubeLevel(cell[1]) + nearestCubeLevel(cell[2])}m`;
-    case 'ansi16':
-      return (cell[0] + cell[1] + cell[2]) / 3 > 215 ? `${ESC}[93m` : `${ESC}[33m`;
-  }
-}
-
 /** The quadrant block for each set of lit pixels in a cell: bit 1 upper left, 2 upper right, 4 lower left, 8 lower right. */
 const QUADRANTS = [' ', '▘', '▝', '▀', '▖', '▌', '▞', '▛', '▗', '▚', '▐', '▜', '▄', '▙', '▟', '█'] as const;
 
-/** Pixels to terminal cells: two by two pixels make one quadrant block, painted in runs of one color. */
-function cells(grid: readonly (readonly (Cell | undefined)[])[], palette: Palette): string[] {
+/**
+ * Pixels to terminal cells: two by two pixels make one quadrant block. Solid
+ * cells carry no styling at all, so the word at rest is plain text in the
+ * terminal's foreground; dim runs are marked when `styled`.
+ */
+function cells(grid: readonly (readonly (Cell | undefined)[])[], styled: boolean): string[] {
   const lines: string[] = [];
   for (let y = 0; y < grid.length; y += PIXELS_PER_CELL) {
     let line = '';
-    let current = '';
+    let current: Cell = 'solid';
     for (let x = 0; x < BITMAP_WIDTH_PX; x += PIXELS_PER_CELL) {
       const quad = [grid[y]![x], grid[y]![x + 1], grid[y + 1]?.[x], grid[y + 1]?.[x + 1]];
       const cell = quad.find((pixel) => pixel !== undefined);
@@ -230,14 +191,13 @@ function cells(grid: readonly (readonly (Cell | undefined)[])[], palette: Palett
         line += ' ';
         continue;
       }
-      const code = sgr(cell, palette);
-      if (code !== current) {
-        line += code;
-        current = code;
+      if (styled && cell !== current) {
+        line += cell === 'dim' ? DIM : SOLID;
+        current = cell;
       }
       line += QUADRANTS[quad.reduce<number>((bits, pixel, index) => (pixel === undefined ? bits : bits | (1 << index)), 0)]!;
     }
-    lines.push(current === '' ? line.trimEnd() : `${line.trimEnd()}${RESET}`);
+    lines.push(line.includes(ESC) ? `${line.trimEnd()}${RESET}` : line.trimEnd());
   }
   return lines;
 }
@@ -248,63 +208,47 @@ function pulsing(elapsed: number, at: number, period: number, count: number): bo
   return beat >= 0 && beat < 2 * count - 1 && beat % 2 === 0;
 }
 
-/** How far a glow that started at `at` has faded: 1 at the start, 0 once `GLOW_MS` have passed or before it started. */
-function glow(elapsed: number, at: number): number {
-  const since = elapsed - at;
-  return since >= 0 && since < GLOW_MS ? 1 - since / GLOW_MS : 0;
-}
-
 /**
- * The board `elapsed` milliseconds into the drop: the headroom, word, and
- * floor rows, with orange pieces in flight above the ones that landed, a
- * landed piece glowing briefly, the floor row flashing and clearing once
- * full, the word dropping into the cleared row, and the settled word pulsing
- * into the foreground, where it stays.
+ * The board `elapsed` milliseconds into the drop: the word rows and the floor
+ * row, with dim pieces in flight above the solid ones that landed, the dim
+ * floor row flashing solid and clearing once full, the word dropping into the
+ * cleared row, and the settled word pulsing dim twice.
  */
-function frame(elapsed: number, palette: Palette): string[] {
+function frame(elapsed: number, styled: boolean): string[] {
   const grid: (Cell | undefined)[][] = Array.from({ length: BOARD_PX }, () => Array.from({ length: BITMAP_WIDTH_PX }, () => undefined));
   const cleared = elapsed >= CLEAR_AT;
   const dropped = elapsed < DROP_AT ? 0 : Math.min(FLOOR_PX, Math.floor((elapsed - DROP_AT) / FRAME_MS) + 1);
+  const floorSolid = pulsing(elapsed, ROW_FLASH_AT, ROW_FLASH_MS, 2);
   for (const piece of PIECES) {
     if (elapsed < piece.start) continue;
     const bottom = Math.max(...piece.pixels.map((pixel) => pixel.y));
     const progress = Math.min(1, (elapsed - piece.start) / FALL_MS);
-    const offset = Math.round(lerp(HEADROOM_PX - 1 - bottom, 0, easeOutCubic(progress)));
-    const landing = glow(elapsed, piece.start + FALL_MS);
+    const offset = Math.round(lerp(-1 - bottom, 0, easeOutCubic(progress)));
+    const landed = progress >= 1;
     for (const pixel of piece.pixels) {
-      if (cleared && pixel.y >= FLOOR_TOP) continue;
+      const floor = pixel.y >= FLOOR_TOP;
+      if (cleared && floor) continue;
       const row = grid[pixel.y + offset + dropped];
       if (row === undefined) continue;
-      row[pixel.x] = landing > 0 ? brighten(ORANGE, 0.55 * landing) : ORANGE;
+      row[pixel.x] = landed && (!floor || floorSolid) ? 'solid' : 'dim';
     }
   }
-  if (pulsing(elapsed, ROW_FLASH_AT, ROW_FLASH_MS, 2)) {
-    for (let y = FLOOR_TOP; y < BOARD_PX; y++) grid[y] = grid[y]!.map((cell) => (cell === undefined ? undefined : 'foreground'));
-  }
-  const settling = glow(elapsed, SETTLED_AT);
-  const foreground = elapsed >= DURATION_MS || pulsing(elapsed, PULSE_AT, PULSE_MS, 2);
-  if (settling > 0 || foreground) {
+  if (pulsing(elapsed, PULSE_AT, PULSE_MS, 2)) {
     for (const row of grid) {
-      for (let x = 0; x < BITMAP_WIDTH_PX; x++) {
-        const cell = row[x];
-        if (cell !== undefined) row[x] = foreground ? 'foreground' : brighten(cell, 0.4 * settling);
-      }
+      for (let x = 0; x < BITMAP_WIDTH_PX; x++) if (row[x] !== undefined) row[x] = 'dim';
     }
   }
-  return cells(grid, palette);
+  return cells(grid, styled);
 }
 
-/** The wordmark at rest: the word rows in the foreground, where the word came to rest after the drop, and a blank line under them. */
-function rest(palette: Palette): string[] {
-  return [...frame(DURATION_MS, palette).slice((HEADROOM_PX + FLOOR_PX) / PIXELS_PER_CELL), ''];
+/** The wordmark at rest: the word rows alone, plain, where the word came to rest after the drop. */
+function rest(): string[] {
+  return frame(DURATION_MS, false).slice(FLOOR_PX / PIXELS_PER_CELL);
 }
 
-function paletteOf(stream: WordmarkStream): Palette {
-  const depth = stream.getColorDepth?.() ?? 1;
-  if (depth >= 24) return 'truecolor';
-  if (depth >= 8) return 'ansi256';
-  if (depth >= 4) return 'ansi16';
-  return 'none';
+/** Whether the stream shows styling at all; `NO_COLOR` and a dumb terminal report a depth of one. */
+function styledOn(stream: WordmarkStream): boolean {
+  return (stream.getColorDepth?.() ?? 1) > 1;
 }
 
 /** The wordmark is for a terminal at least two columns wider than itself; a terminal of unknown width counts as 80 columns, like the reporters do. */
@@ -318,12 +262,12 @@ function animates(env: NodeJS.ProcessEnv): boolean {
 }
 
 /**
- * The wordmark at rest as text to print above the help, ending in a blank
- * line; empty when `stream` is not a terminal wide enough for it.
+ * The wordmark at rest as text to print above the help; empty when `stream`
+ * is not a terminal wide enough for it.
  */
 export function wordmarkBanner(stream: WordmarkStream): string {
   if (!fits(stream)) return '';
-  return `${rest(paletteOf(stream)).join('\n')}\n`;
+  return `${rest().join('\n')}\n`;
 }
 
 export interface PlayWordmarkOptions {
@@ -334,19 +278,19 @@ export interface PlayWordmarkOptions {
 }
 
 /**
- * Plays the drop on `stream` and resolves with the wordmark at rest on the
- * screen, a blank line under it, and the cursor restored. Where motion does
- * not belong the wordmark is printed at rest at once; a stream that is not a
- * wide enough terminal gets nothing. Ctrl-C during the drop restores the
- * cursor and exits 130, as an interrupted run does.
+ * Plays the drop on `stream` and resolves with the word at rest on the
+ * screen, where it landed, and the cursor restored. Where motion does not
+ * belong the wordmark is printed at rest at once; a stream that is not a wide
+ * enough terminal gets nothing. Ctrl-C during the drop restores the cursor
+ * and exits 130, as an interrupted run does.
  */
 export async function playWordmark(stream: WordmarkStream, options: PlayWordmarkOptions = {}): Promise<void> {
   if (!fits(stream)) return;
-  const palette = paletteOf(stream);
   if (options.motion === false || !animates(options.env ?? process.env)) {
-    stream.write(`${rest(palette).join('\n')}\n`);
+    stream.write(`${rest().join('\n')}\n`);
     return;
   }
+  const styled = styledOn(stream);
   let rows = 0;
   const paint = (lines: readonly string[]): void => {
     let payload = SYNC_START;
@@ -364,10 +308,11 @@ export async function playWordmark(stream: WordmarkStream, options: PlayWordmark
   try {
     const started = performance.now();
     for (let elapsed = 0; elapsed < DURATION_MS; elapsed = performance.now() - started) {
-      paint(frame(elapsed, palette));
+      paint(frame(elapsed, styled));
       await sleep(FRAME_MS);
     }
-    paint(rest(palette));
+    // The word stays where it landed: the row it dropped from stays blank above it, so nothing moves.
+    paint(frame(DURATION_MS, styled));
   } finally {
     process.off('SIGINT', interrupted);
     stream.write(SHOW_CURSOR);
