@@ -26,6 +26,7 @@ import { runLogin, runLogout, runModels, type LoginFlags } from '../oauth/cli.ts
 import { SignalLadder } from './signals.ts';
 import { skillTopics } from './skill.ts';
 import { telemetry as telemetryCommand, TELEMETRY_ACTIONS, type TelemetryAction } from './telemetry.ts';
+import { wordmarkBanner } from './wordmark.ts';
 
 /**
  * Help text always carries color; commander strips it when the stream it
@@ -317,7 +318,11 @@ function createProgram(version: string, telemetry: Telemetry): Command {
       styleSubcommandTerm: pc.cyan,
       styleArgumentTerm: pc.cyan,
     })
-    .addHelpText('before', `${pc.bold(`e2e v${version}`)} ${pc.dim('·')} an open framework for agentic end-to-end testing\n`)
+    .addHelpText(
+      'before',
+      ({ error }) =>
+        `${wordmarkBanner(error ? process.stderr : process.stdout)}${pc.bold(`e2e v${version}`)} ${pc.dim('·')} an open framework for agentic end-to-end testing\n`,
+    )
     .addHelpText(
       'after',
       [

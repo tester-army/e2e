@@ -26,6 +26,7 @@ import { findRegisteredMcpFiles, MCP_LOCATIONS, planMcpRegistration } from './in
 import { addDependencies, addScripts, describeManifestError, readPackage, serializePackage } from './init/package.ts';
 import { createScaffold, type ScaffoldModel } from './init/scaffold.ts';
 import { MISSING_SKILL_MESSAGE, readSkillFiles } from './skill.ts';
+import { playWordmark } from './wordmark.ts';
 import type { InitOutcome, InitResult } from '../telemetry/events.ts';
 
 export interface InitOptions {
@@ -74,6 +75,8 @@ type GatewayChoice = GatewayId | 'none';
  * symlink.
  */
 export async function init(cwd: string, options: InitOptions = {}): Promise<InitOutcome & { readonly exitCode: number }> {
+  // The wordmark drops in above the wizard, at rest when --yes asked for no questions; a terminal is the one place it shows.
+  if (options.interactive !== false) await playWordmark(process.stdout, { motion: options.yes !== true });
   clack.intro(options.directory === undefined ? 'e2e init' : `e2e init ${options.directory}`);
   // Filled in as the choices are made; every return hands them back with how the run ended.
   const facts: { -readonly [Key in keyof Omit<InitOutcome, 'result'>]: InitOutcome[Key] } = {
