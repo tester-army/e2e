@@ -9,13 +9,14 @@ name: mobile
 # otherwise refreshes the cached build's JS bundle, so only a native change
 # rebuilds.
 #
-# Each job runs packages/mobile-benchmark/scripts/ci-run.sh on the booted
-# device: the deterministic suite, then the agentic one for this repository's
-# branches. The agentic suite replays the recordings committed under
-# .e2e/cache, read-only in CI, and calls the model for a step with none. The
-# iOS entries are recorded on a Mac and committed with the scenario change;
-# nobody has recorded on an Android emulator yet, so that side spends model
-# calls until an emulator recording is committed.
+# One job per platform and suite. Each runs `e2e run` for its target on the
+# booted device and, when a test fails, runs the failed tests once more with
+# `--last-failed` before the job goes red (agent-device's runtime has episodes
+# of its own on a shared machine, #502). The agentic suite replays the
+# recordings committed under .e2e/cache, read-only in CI, and calls the model
+# for a step with none, so it runs for this repository's branches only. Both
+# platforms' entries are recorded on a Mac (an iPhone 17 Pro simulator, a
+# 1080x2400 emulator) and committed with the scenario change.
 on:
   pull_request:
   push:
@@ -124,11 +125,32 @@ jobs:
           xcrun simctl bootstatus "$UDID"
           xcrun simctl bootstatus "$SECOND"
           echo "E2E_MOBILE_BENCHMARK_IOS_DEVICE=$UDID,$SECOND" >> "$GITHUB_ENV"
-      - name: Run the suites
+      # A test that fails gets a second pass, alone, with the tests that
+      # passed left out (`--last-failed` reads the report the first pass
+      # wrote). agent-device's runtime has episodes of its own on a shared CI
+      # machine (#502: a daemon replaced as unreachable mid-run, a runner that
+      # overruns its watchdog), and the same tests pass on a Mac every time.
+      # The agentic suite replays the committed recordings and calls the model
+      # for a step with none, so it runs for this repository's branches only:
+      # a fork's pull request has no key.
+      - name: Run the suite
+        if: ${{ matrix.suite == 'deterministic' || env.SAME_REPO == 'true' }}
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
           E2E_MOBILE_BENCHMARK_IOS_APP: ${{ steps.app.outputs.app-path }}
-        run: scripts/ci-run.sh ios-simulator ${{ matrix.suite }}
+          E2E_RUN: node node_modules/e2e/dist/cli/bin.js run --target ios-simulator ${{ matrix.suite == 'agentic' && '--config e2e.agent.config.ts --artifacts .e2e/agent/artifacts' || '' }}
+        run: $E2E_RUN || $E2E_RUN --last-failed
+      # The artifact upload below fails whenever the repository's quota is
+      # full, so the failure evidence goes into the log as well.
+      - name: Failure screens
+        if: ${{ failure() }}
+        run: |
+          find .e2e -path '*/failure/*' -name screen.txt | sort | head -n 12 | while read -r screen; do
+            echo "::group::$screen"
+            head -c 8000 "$screen"
+            echo
+            echo "::endgroup::"
+          done
       - name: Upload report
         if: ${{ !cancelled() }}
         continue-on-error: true
@@ -188,9 +210,12 @@ jobs:
             (cd android && ./gradlew :app:assembleRelease)
             mkdir -p .build/android
             cp android/app/build/outputs/apk/release/app-release.apk .build/android/benchmark.apk
-      # The runner starts each `script` line in its own shell, so the suite
-      # runs through the one script both platforms share.
+      # The emulator lives for this step only (the action terminates it when
+      # the step ends) and runs each `script` line in its own shell, so the
+      # suite and its second pass over the failed tests are one line. Same
+      # rerun and same fork rule as the iOS job.
       - name: Run the suite
+        if: ${{ matrix.suite == 'deterministic' || env.SAME_REPO == 'true' }}
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 36
@@ -200,10 +225,21 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
           disable-animations: true
           working-directory: packages/mobile-benchmark
-          script: scripts/ci-run.sh android-emulator ${{ matrix.suite }}
+          script: $E2E_RUN || $E2E_RUN --last-failed
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
           E2E_MOBILE_BENCHMARK_ANDROID_APP: ${{ steps.app.outputs.app-path }}
+          E2E_RUN: node node_modules/e2e/dist/cli/bin.js run --target android-emulator ${{ matrix.suite == 'agentic' && '--config e2e.agent.config.ts --artifacts .e2e/agent/artifacts' || '' }}
+      - name: Failure screens
+        if: ${{ failure() }}
+        working-directory: packages/mobile-benchmark
+        run: |
+          find .e2e -path '*/failure/*' -name screen.txt | sort | head -n 12 | while read -r screen; do
+            echo "::group::$screen"
+            head -c 8000 "$screen"
+            echo
+            echo "::endgroup::"
+          done
       - name: Upload report
         if: ${{ !cancelled() }}
         continue-on-error: true
