@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { runsFromCheckout } from '../../src/telemetry/checkout.ts';
 import { EVENT_CLI_SESSION, EVENT_RUN_COMPLETED, runCompletedEvent } from '../../src/telemetry/events.ts';
 import { POSTHOG_HOST, POSTHOG_PROJECT_KEY } from '../../src/telemetry/posthog.ts';
 import { collectEnvironment, fleetName, statedIdentity } from '../../src/telemetry/environment.ts';
@@ -68,6 +69,18 @@ function create(overrides: Partial<TelemetryOptions> = {}) {
 }
 
 describe('Telemetry', () => {
+  it('is off in a source checkout of the repository: no notice, no events, and the reason names it', async () => {
+    const { telemetry, output, sent } = create({ checkout: true });
+    expect(telemetry.enabled).toBe(false);
+    expect(telemetry.disabledBy).toBe('checkout');
+    telemetry.notice();
+    telemetry.session('run');
+    telemetry.endSession(0);
+    await telemetry.flush();
+    expect(output).toEqual([]);
+    expect(sent.calls).toEqual([]);
+  });
+
   it('is on by default, prints the notice once, and sends one batch with identity and environment', async () => {
     const { telemetry, output, sent, configDir } = create();
     expect(telemetry.enabled).toBe(true);
@@ -449,5 +462,16 @@ describe('Telemetry', () => {
     prompt.telemetry.session('run', []);
     await prompt.telemetry.flush();
     expect(prompt.sent.calls[0]!.body.batch[0]!.properties['project_id']).toBe('f'.repeat(64));
+  });
+});
+
+describe('runsFromCheckout', () => {
+  it('is true for the repository build and false under any node_modules, or for a URL that is not a file', () => {
+    expect(runsFromCheckout('file:///Users/dev/e2e/packages/e2e/dist/cli/index.js')).toBe(true);
+    expect(runsFromCheckout('file:///home/dev/app/node_modules/e2e/dist/cli/index.js')).toBe(false);
+    expect(runsFromCheckout('file:///home/dev/app/node_modules/.pnpm/e2e@0.15.0/node_modules/e2e/dist/cli/index.js')).toBe(false);
+    expect(runsFromCheckout('file:///Users/dev/.npm/_npx/1a2b/node_modules/e2e/dist/cli/index.js')).toBe(false);
+    expect(runsFromCheckout('file:///C:/Users/dev/AppData/Roaming/npm/node_modules/e2e/dist/cli/index.js')).toBe(false);
+    expect(runsFromCheckout('data:text/javascript,export%20default%201')).toBe(false);
   });
 });

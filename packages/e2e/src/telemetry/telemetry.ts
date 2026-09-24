@@ -7,11 +7,11 @@
  * fails because of it. Telemetry is a CLI concern only: the runner never
  * constructs this class.
  *
- * Off means off at every step. `E2E_TELEMETRY_DISABLED`, `DO_NOT_TRACK`, an
- * `e2e telemetry disable`, or a preferences directory that cannot be written
- * each stop events from being queued, and `flush` reads the preferences file
- * again before sending, so a choice saved from another terminal while the
- * command ran wins too. `E2E_TELEMETRY_DEBUG` prints every event to stderr
+ * Off means off at every step. `E2E_TELEMETRY_DISABLED`, `DO_NOT_TRACK`, a
+ * source checkout of the repository, an `e2e telemetry disable`, or a
+ * preferences directory that cannot be written each stop events from being
+ * queued, and `flush` reads the preferences file again before sending, so a
+ * choice saved from another terminal while the command ran wins too. `E2E_TELEMETRY_DEBUG` prints every event to stderr
  * instead of sending it, so anyone can read exactly what would have left the
  * machine.
  *
@@ -40,12 +40,14 @@ export const NOTICE_VERSION = 2;
 /** The longest a flush may hold the process; the project lookup and the request share it. */
 const DEFAULT_FLUSH_MS = 2_000;
 
-export type TelemetryDisabledBy = 'E2E_TELEMETRY_DISABLED' | 'DO_NOT_TRACK' | 'preference' | 'store';
+export type TelemetryDisabledBy = 'E2E_TELEMETRY_DISABLED' | 'DO_NOT_TRACK' | 'checkout' | 'preference' | 'store';
 
 export interface TelemetryOptions {
   /** The e2e version, sent with every event. */
   readonly version: string;
   readonly env?: NodeJS.ProcessEnv;
+  /** Whether the CLI runs from a source checkout of the repository, where nothing is sent; false when absent. */
+  readonly checkout?: boolean;
   /** The project directory the command runs in; hashed into the project id, never sent. */
   readonly cwd?: string;
   /** Where the preferences file lives; the platform default when absent. */
@@ -85,6 +87,7 @@ export class Telemetry {
   private readonly fetchImpl: typeof fetch;
   private readonly write: (text: string) => void;
   private readonly projectId: typeof anonymousProjectId;
+  private readonly checkout: boolean;
   /** The fleet or CI vendor that stands in for the machine; undefined when the preferences file is the identity. */
   private readonly statedId: string | undefined;
   /** The store once `store()` opened it, whether or not the file could exist. */
@@ -105,6 +108,7 @@ export class Telemetry {
     this.fetchImpl = options.fetch ?? fetch;
     this.write = options.write ?? ((text) => void process.stderr.write(text));
     this.projectId = options.projectId ?? anonymousProjectId;
+    this.checkout = options.checkout ?? false;
     this.statedId = statedIdentity(this.env);
   }
 
@@ -118,6 +122,7 @@ export class Telemetry {
   get disabledBy(): TelemetryDisabledBy | undefined {
     if (envFlag(this.env, 'E2E_TELEMETRY_DISABLED')) return 'E2E_TELEMETRY_DISABLED';
     if (envFlag(this.env, 'DO_NOT_TRACK')) return 'DO_NOT_TRACK';
+    if (this.checkout) return 'checkout';
     if (this.statedId !== undefined) return undefined;
     const store: TelemetryStore | undefined = this.store();
     if (store === undefined) return 'store';

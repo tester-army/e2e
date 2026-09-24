@@ -13,6 +13,7 @@ import { explore, STEP_BOUNDS, TIMEOUT_BOUNDS } from '../explore/index.ts';
 import { BUILTIN_REPORTERS, isBuiltinReporter } from '../report/builtin.ts';
 import { bounded } from '../report/format.ts';
 import type { BuiltinReporter } from '../types.ts';
+import { runsFromCheckout } from '../telemetry/checkout.ts';
 import { initCompletedEvent, runCompletedEvent, USAGE_ERROR_CODE } from '../telemetry/events.ts';
 import { Telemetry } from '../telemetry/telemetry.ts';
 import { cache, type CacheCommand } from './cache.ts';
@@ -766,7 +767,8 @@ function createProgram(version: string, telemetry: Telemetry): Command {
 /** CLI entry invoked by the bin wrapper. */
 export async function main(argv: readonly string[]): Promise<void> {
   const version = packageVersion(import.meta.url, '../../package.json', '0.0.0');
-  const telemetry = new Telemetry({ version });
+  // Working on e2e itself is not usage: the CLI run from the repository sends nothing.
+  const telemetry = new Telemetry({ version, checkout: runsFromCheckout(import.meta.url) });
   const program = createProgram(version, telemetry);
   try {
     await program.parseAsync([...argv]);

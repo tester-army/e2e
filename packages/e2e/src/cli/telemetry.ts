@@ -11,6 +11,7 @@ export const TELEMETRY_ACTIONS: readonly TelemetryAction[] = ['status', 'enable'
 const REASONS: Readonly<Record<TelemetryDisabledBy, string>> = {
   E2E_TELEMETRY_DISABLED: 'E2E_TELEMETRY_DISABLED is set',
   DO_NOT_TRACK: 'DO_NOT_TRACK is set',
+  checkout: 'running from a source checkout of e2e',
   preference: 'switched off with e2e telemetry disable',
   store: 'the preferences directory is not writable',
 };

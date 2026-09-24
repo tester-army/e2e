@@ -11,6 +11,8 @@ const runMock = vi.hoisted(() => vi.fn());
 const listMock = vi.hoisted(() => vi.fn());
 const initMock = vi.hoisted(() => vi.fn());
 
+// The suite runs from the repository; these tests cover an installed CLI, where telemetry is on.
+vi.mock('../../src/telemetry/checkout.ts', () => ({ runsFromCheckout: () => false }));
 vi.mock('../../src/run/runner.ts', () => ({
   run: runMock,
   list: listMock,
