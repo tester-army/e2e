@@ -72,27 +72,31 @@ describe('playWordmark', () => {
     }
   });
 
-  it('drops the pieces in over two seconds or so, repainting in place, flashing the cleared row, and leaves the wordmark at rest with the cursor shown', async () => {
+  it('writes the word in over a second or so, repainting in place with a dim edge behind the pen, and leaves it at rest with the cursor shown', async () => {
     const out = stream();
     const started = performance.now();
     await playWordmark(out, { env: {} });
     const elapsed = performance.now() - started;
-    expect(elapsed).toBeGreaterThan(1500);
-    expect(elapsed).toBeLessThan(4000);
+    expect(elapsed).toBeGreaterThan(1000);
+    expect(elapsed).toBeLessThan(3000);
 
     expect(out.writes[0]).toBe(`${ESC}[?25l`);
     expect(out.writes.at(-1)).toBe(`${ESC}[?25h`);
     const paints = out.writes.slice(1, -1);
     expect(paints.length).toBeGreaterThan(10);
-    // Every paint is one synchronized update; every paint after the first erases the eleven board rows of the one before.
+    // Every paint is one synchronized update of the ten word rows; every paint after the first erases the one before.
     expect(paints.every((paint) => paint.startsWith(`${ESC}[?2026h`) && paint.endsWith(`${ESC}[?2026l`))).toBe(true);
-    expect(paints.slice(1).every((paint) => paint.startsWith(`${ESC}[?2026h${ESC}[11A${ESC}[0J`))).toBe(true);
+    expect(paints.slice(1).every((paint) => paint.startsWith(`${ESC}[?2026h${ESC}[10A${ESC}[0J`))).toBe(true);
     const first = stripVTControlCharacters(paints[0]!);
-    expect(first.split('\n')).toHaveLength(12);
-    // Pieces in flight and the floor row are dim; nothing is ever colored.
+    expect(first.split('\n')).toHaveLength(11);
+    // The ink just behind the pen is dim; nothing is ever colored.
     expect(paints.some((paint) => paint.includes(`${ESC}[2m`))).toBe(true);
     expect(paints.every((paint) => !paint.includes('38;') && !paint.includes(`${ESC}[39m`))).toBe(true);
-    // The last paint leaves the word where it landed: the row it dropped from, blank, then the ten rows at rest, unstyled.
-    expect(paints.at(-1)).toBe(`${ESC}[?2026h${ESC}[11A${ESC}[0J\n${REST.join('\n')}\n${ESC}[?2026l`);
+    // The first e is written before the last one starts: at a quarter of the way the left glyph has ink and the right one none.
+    const quarter = stripVTControlCharacters(paints[Math.floor(paints.length / 4)]!).split('\n');
+    expect(quarter.some((line) => /\S/u.test(line.slice(0, 15)))).toBe(true);
+    expect(quarter.every((line) => line.slice(38).trim() === '')).toBe(true);
+    // The last paint is the word at rest, unstyled, in place.
+    expect(paints.at(-1)).toBe(`${ESC}[?2026h${ESC}[10A${ESC}[0J${REST.join('\n')}\n${ESC}[?2026l`);
   });
 });

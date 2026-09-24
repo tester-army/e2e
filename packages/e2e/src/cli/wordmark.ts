@@ -2,11 +2,11 @@
  * The e2e wordmark: `e2e` set in Stack Sans Notch, the TesterArmy display
  * face, drawn in quadrant blocks in the terminal's own foreground the way the
  * site sets it in white on dark. On a terminal that can show it the letters
- * drop in as blocks, the way the pi installer builds its mark: dim pieces fall
- * and turn solid as they land on a dim floor row, the row fills, flashes, and
- * clears, the word drops into place and pulses twice. Where motion does not
- * belong it is printed at rest, and output that is not a terminal never sees
- * it.
+ * are written the way a pen writes them: each `e` from the crossbar around
+ * the bowl to its tail, the `2` over its arc, down the diagonal, and along the
+ * base, with a dim edge of wet ink ahead of the solid stroke. Where motion
+ * does not belong it is printed at rest, and output that is not a terminal
+ * never sees it.
  */
 
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -25,8 +25,8 @@ const SHOW_CURSOR = `${ESC}[?25h`;
  * The word as pixels: Stack Sans Notch at weight 400, rasterized twenty
  * pixels tall with two pixels per terminal column, a pixel lit when at least
  * half of it is covered, the glyphs set four columns apart. Each lit pixel
- * names its glyph, so the pieces fall letter by letter. A terminal cell holds
- * two pixel rows and two pixel columns, drawn as a quadrant block.
+ * names its glyph, so each letter is written on its own. A terminal cell
+ * holds two pixel rows and two pixel columns, drawn as a quadrant block.
  */
 const BITMAP: readonly string[] = [
   '...............................................222222222222...............................................',
@@ -50,7 +50,6 @@ const BITMAP: readonly string[] = [
   '......1111111111111111111....................2222222222222222222222..............3333333333333333333......',
   '..........11111111111........................222222222222222222222...................33333333333..........',
 ];
-const GLYPHS = ['1', '2', '3'] as const;
 
 /** Pixel columns per terminal column, and pixel rows per terminal row. */
 const PIXELS_PER_CELL = 2;
@@ -58,101 +57,124 @@ const BITMAP_WIDTH_PX = BITMAP[0]!.length;
 /** Columns the wordmark takes; a narrower terminal gets no wordmark. */
 const WORDMARK_WIDTH = BITMAP_WIDTH_PX / PIXELS_PER_CELL;
 const WORDMARK_PX = BITMAP.length;
-/** The floor row the pieces stack on, taken away by the clear; the word then drops into it. */
-const FLOOR_PX = 2;
-/** Pixel rows of the board: the word, then the floor. Pieces enter from above the board, clipped. */
-const BOARD_PX = WORDMARK_PX + FLOOR_PX;
-const FLOOR_TOP = WORDMARK_PX;
-/** Each glyph falls as three pieces, cut along these pixel rows of the bitmap, top to bottom. */
-const BANDS: readonly (readonly [top: number, bottom: number])[] = [
-  [0, 5],
-  [6, 13],
-  [14, 19],
-];
 
 const FRAME_MS = 33;
-/** One piece starts falling every `STAGGER_MS`; each takes `FALL_MS`. */
-const STAGGER_MS = 60;
-const FALL_MS = 240;
-/** The full floor row flashes twice, clears, and the word drops one row over two frames. */
-const ROW_FLASH_MS = 70;
-const DROP_MS = 2 * FRAME_MS;
-/** The settled word pulses twice. */
-const PULSE_MS = 90;
+/** How fast the pen travels along a letter, in bitmap pixels per second. */
+const PEN_PX_PER_SECOND = 200;
+/** The next letter starts when this much of the previous one is written. */
+const NEXT_LETTER_AT = 0.85;
+/** The share of a letter's path, just behind the pen, that is still wet: drawn dim. */
+const WET_INK = 0.07;
 
-interface Pixel {
-  readonly x: number;
-  readonly y: number;
-}
+type Point = readonly [x: number, y: number];
 
-interface Piece {
-  /** The piece's pixels on the board, at their landed position before the clear. */
-  readonly pixels: readonly Pixel[];
-  /** Milliseconds into the drop when the piece starts to fall. */
-  readonly start: number;
-}
-
-/** The glyph's lit pixels between two bitmap rows. */
-function glyphPixels(glyph: string, top: number, bottom: number): Pixel[] {
-  const pixels: Pixel[] = [];
-  for (let y = top; y <= bottom; y++) {
-    for (let x = 0; x < BITMAP_WIDTH_PX; x++) {
-      if (BITMAP[y]![x] === glyph) pixels.push({ x, y });
-    }
-  }
-  return pixels;
-}
-
-/** The columns a glyph spans, inclusive. */
-function glyphSpan(glyph: string): readonly [left: number, right: number] {
-  const columns = BITMAP.flatMap((row) => [...row].flatMap((cell, x) => (cell === glyph ? [x] : [])));
-  return [Math.min(...columns), Math.max(...columns)];
-}
-
-/** The floor row under the columns `left` through `right`. */
-function floorPixels(left: number, right: number): Pixel[] {
-  const pixels: Pixel[] = [];
-  for (let y = FLOOR_TOP; y < BOARD_PX; y++) {
-    for (let x = left; x <= right; x++) pixels.push({ x, y });
-  }
-  return pixels;
+/** Points along an ellipse from one angle to another, degrees counterclockwise from the right, in pixel coordinates with y down. */
+function arc(cx: number, cy: number, rx: number, ry: number, from: number, to: number): Point[] {
+  const steps = 60;
+  return Array.from({ length: steps + 1 }, (_, step) => {
+    const angle = ((from + ((to - from) * step) / steps) * Math.PI) / 180;
+    return [cx + rx * Math.cos(angle), cy - ry * Math.sin(angle)];
+  });
 }
 
 /**
- * Every piece in drop order. The letters build up together, one band round
- * at a time from the bottom, each bottom piece carrying its glyph's stretch
- * of the floor; last come the fillers for the gaps between the letters,
- * which complete the floor row.
+ * The pen's path for each glyph, on the bitmap above: the `e` writes its
+ * crossbar left to right, then sweeps from the right side over the top, down
+ * the left, and around to the tail; the `2` sweeps its arc from the left over
+ * the top to the right, runs the diagonal down to the bottom left, and draws
+ * the base left to right.
  */
-const PIECES: readonly Piece[] = (() => {
-  const spans = GLYPHS.map(glyphSpan);
-  const pieces: Pixel[][] = [];
-  for (let band = BANDS.length - 1; band >= 0; band--) {
-    const [top, bottom] = BANDS[band]!;
-    GLYPHS.forEach((glyph, index) => {
-      const pixels = glyphPixels(glyph, top, bottom);
-      if (band === BANDS.length - 1) pixels.push(...floorPixels(...spans[index]!));
-      if (pixels.length > 0) pieces.push(pixels);
-    });
+const PATHS: Readonly<Record<string, readonly Point[]>> = {
+  1: letterE(0),
+  2: letter2(38),
+  3: letterE(75),
+};
+
+function letterE(left: number): Point[] {
+  return [[left + 5, 11], [left + 29, 11], ...arc(left + 14.5, 11.75, 14.5, 7.75, 0, 330)];
+}
+
+function letter2(left: number): Point[] {
+  return [...arc(left + 14, 6, 14, 6, 195, -40), [left + 2, 17], [left, 18], [left + 28, 18]];
+}
+
+interface PathSample {
+  readonly x: number;
+  readonly y: number;
+  /** Distance along the path from its start. */
+  readonly along: number;
+}
+
+/** The path sampled about once per pixel of travel, with its total length. */
+function sample(path: readonly Point[]): { readonly samples: readonly PathSample[]; readonly length: number } {
+  const samples: PathSample[] = [];
+  let length = 0;
+  for (let index = 0; index < path.length - 1; index++) {
+    const [ax, ay] = path[index]!;
+    const [bx, by] = path[index + 1]!;
+    const distance = Math.hypot(bx - ax, by - ay);
+    const steps = Math.max(1, Math.ceil(distance));
+    for (let step = 0; step < steps; step++) {
+      const u = step / steps;
+      samples.push({ x: ax + (bx - ax) * u, y: ay + (by - ay) * u, along: length + distance * u });
+    }
+    length += distance;
   }
-  for (let index = 1; index < spans.length; index++) {
-    const left = spans[index - 1]![1] + 1;
-    const right = spans[index]![0] - 1;
-    if (left <= right) pieces.push(floorPixels(left, right));
+  const [lastX, lastY] = path[path.length - 1]!;
+  samples.push({ x: lastX, y: lastY, along: length });
+  return { samples, length };
+}
+
+interface InkPixel {
+  readonly x: number;
+  readonly y: number;
+  readonly glyph: string;
+  /** How far along its letter's path, in [0, 1], the pen is when it reaches this pixel. */
+  readonly at: number;
+}
+
+interface Letter {
+  readonly glyph: string;
+  /** Milliseconds into the writing when the pen starts this letter, and how long it takes. */
+  readonly start: number;
+  readonly duration: number;
+}
+
+/**
+ * Every lit pixel with the moment its letter's pen reaches it: the nearest
+ * point of the path, by distance along the path. Letters are written in
+ * order, each starting as the previous one nears its end.
+ */
+const { PIXELS, LETTERS, DURATION_MS } = (() => {
+  const pixels: InkPixel[] = [];
+  const letters: Letter[] = [];
+  let start = 0;
+  for (const glyph of Object.keys(PATHS)) {
+    const { samples, length } = sample(PATHS[glyph]!);
+    for (let y = 0; y < WORDMARK_PX; y++) {
+      for (let x = 0; x < BITMAP_WIDTH_PX; x++) {
+        if (BITMAP[y]![x] !== glyph) continue;
+        let nearest = Number.POSITIVE_INFINITY;
+        let along = 0;
+        for (const point of samples) {
+          const distance = (point.x - (x + 0.5)) ** 2 + (point.y - (y + 0.5)) ** 2;
+          if (distance < nearest) {
+            nearest = distance;
+            along = point.along;
+          }
+        }
+        pixels.push({ x, y, glyph, at: along / length });
+      }
+    }
+    const duration = (length / PEN_PX_PER_SECOND) * 1000;
+    letters.push({ glyph, start, duration });
+    start += duration * NEXT_LETTER_AT;
   }
-  return pieces.map((pixels, position) => ({ pixels, start: position * STAGGER_MS }));
+  const last = letters[letters.length - 1]!;
+  return { PIXELS: pixels as readonly InkPixel[], LETTERS: letters as readonly Letter[], DURATION_MS: last.start + last.duration };
 })();
 
-/** The drop, as milliseconds from its start: when the last piece lands, when the floor flashes, clears, and the word drops and pulses. */
-const LANDED_AT = PIECES[PIECES.length - 1]!.start + FALL_MS;
-const ROW_FLASH_AT = LANDED_AT + 150;
-const CLEAR_AT = ROW_FLASH_AT + 3 * ROW_FLASH_MS;
-const DROP_AT = CLEAR_AT + 90;
-const SETTLED_AT = DROP_AT + DROP_MS;
-const PULSE_AT = SETTLED_AT + 250;
-const DURATION_MS = PULSE_AT + 3 * PULSE_MS;
-
-/** A lit pixel: solid, in the terminal's foreground, or dim while it is scaffolding or in flight. */
+/** A lit pixel: solid ink, or dim while it is still wet just behind the pen. */
 type Cell = 'solid' | 'dim';
 
 /** What the wordmark needs from an output stream; `process.stdout` and `process.stderr` qualify. */
@@ -161,14 +183,6 @@ export interface WordmarkStream {
   readonly columns?: number | undefined;
   write(text: string): unknown;
   getColorDepth?(): number;
-}
-
-function lerp(from: number, to: number, t: number): number {
-  return from + (to - from) * t;
-}
-
-function easeOutCubic(t: number): number {
-  return 1 - (1 - t) ** 3;
 }
 
 /** The quadrant block for each set of lit pixels in a cell: bit 1 upper left, 2 upper right, 4 lower left, 8 lower right. */
@@ -202,48 +216,24 @@ function cells(grid: readonly (readonly (Cell | undefined)[])[], styled: boolean
   return lines;
 }
 
-/** Whether `elapsed` falls in an on beat of `count` pulses of `period` from `at`: on, off, on, ... */
-function pulsing(elapsed: number, at: number, period: number, count: number): boolean {
-  const beat = Math.floor((elapsed - at) / period);
-  return beat >= 0 && beat < 2 * count - 1 && beat % 2 === 0;
-}
-
 /**
- * The board `elapsed` milliseconds into the drop: the word rows and the floor
- * row, with dim pieces in flight above the solid ones that landed, the dim
- * floor row flashing solid and clearing once full, the word dropping into the
- * cleared row, and the settled word pulsing dim twice.
+ * The word `elapsed` milliseconds into the writing: every pixel the pens
+ * have reached, solid, with the stretch just behind each pen still dim.
  */
 function frame(elapsed: number, styled: boolean): string[] {
-  const grid: (Cell | undefined)[][] = Array.from({ length: BOARD_PX }, () => Array.from({ length: BITMAP_WIDTH_PX }, () => undefined));
-  const cleared = elapsed >= CLEAR_AT;
-  const dropped = elapsed < DROP_AT ? 0 : Math.min(FLOOR_PX, Math.floor((elapsed - DROP_AT) / FRAME_MS) + 1);
-  const floorSolid = pulsing(elapsed, ROW_FLASH_AT, ROW_FLASH_MS, 2);
-  for (const piece of PIECES) {
-    if (elapsed < piece.start) continue;
-    const bottom = Math.max(...piece.pixels.map((pixel) => pixel.y));
-    const progress = Math.min(1, (elapsed - piece.start) / FALL_MS);
-    const offset = Math.round(lerp(-1 - bottom, 0, easeOutCubic(progress)));
-    const landed = progress >= 1;
-    for (const pixel of piece.pixels) {
-      const floor = pixel.y >= FLOOR_TOP;
-      if (cleared && floor) continue;
-      const row = grid[pixel.y + offset + dropped];
-      if (row === undefined) continue;
-      row[pixel.x] = landed && (!floor || floorSolid) ? 'solid' : 'dim';
-    }
-  }
-  if (pulsing(elapsed, PULSE_AT, PULSE_MS, 2)) {
-    for (const row of grid) {
-      for (let x = 0; x < BITMAP_WIDTH_PX; x++) if (row[x] !== undefined) row[x] = 'dim';
-    }
+  const grid: (Cell | undefined)[][] = Array.from({ length: WORDMARK_PX }, () => Array.from({ length: BITMAP_WIDTH_PX }, () => undefined));
+  const progress = new Map(LETTERS.map((letter) => [letter.glyph, (elapsed - letter.start) / letter.duration]));
+  for (const pixel of PIXELS) {
+    const pen = progress.get(pixel.glyph)!;
+    if (pixel.at > pen) continue;
+    grid[pixel.y]![pixel.x] = pixel.at > pen - WET_INK ? 'dim' : 'solid';
   }
   return cells(grid, styled);
 }
 
-/** The wordmark at rest: the word rows alone, plain, where the word came to rest after the drop. */
+/** The wordmark at rest: the word rows, plain. */
 function rest(): string[] {
-  return frame(DURATION_MS, false).slice(FLOOR_PX / PIXELS_PER_CELL);
+  return frame(DURATION_MS, false);
 }
 
 /** Whether the stream shows styling at all; `NO_COLOR` and a dumb terminal report a depth of one. */
@@ -278,11 +268,11 @@ export interface PlayWordmarkOptions {
 }
 
 /**
- * Plays the drop on `stream` and resolves with the word at rest on the
- * screen, where it landed, and the cursor restored. Where motion does not
- * belong the wordmark is printed at rest at once; a stream that is not a wide
- * enough terminal gets nothing. Ctrl-C during the drop restores the cursor
- * and exits 130, as an interrupted run does.
+ * Writes the word on `stream` and resolves with it at rest on the screen and
+ * the cursor restored. Where motion does not belong the wordmark is printed
+ * at rest at once; a stream that is not a wide enough terminal gets nothing.
+ * Ctrl-C during the writing restores the cursor and exits 130, as an
+ * interrupted run does.
  */
 export async function playWordmark(stream: WordmarkStream, options: PlayWordmarkOptions = {}): Promise<void> {
   if (!fits(stream)) return;
@@ -311,8 +301,7 @@ export async function playWordmark(stream: WordmarkStream, options: PlayWordmark
       paint(frame(elapsed, styled));
       await sleep(FRAME_MS);
     }
-    // The word stays where it landed: the row it dropped from stays blank above it, so nothing moves.
-    paint(frame(DURATION_MS, styled));
+    paint(rest());
   } finally {
     process.off('SIGINT', interrupted);
     stream.write(SHOW_CURSOR);
