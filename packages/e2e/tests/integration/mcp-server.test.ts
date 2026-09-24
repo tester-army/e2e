@@ -152,6 +152,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
       expect.stringMatching(/^- long_press \{target\}: Press one node and hold: only for a control with a long-press menu or action\.$/),
       expect.stringMatching(/^- right_click \{target\}: Right-click one node to open its context menu, and only for that\.$/),
       expect.stringMatching(/^- hover \{target\}: Move the pointer over one node without clicking/),
+      expect.stringMatching(/^- scroll_to \{target\}: Scroll until one listed node is inside the viewport/),
       expect.stringMatching(/^- type \{target\?, value, replace\?\}: Type a plain-text value into one input node, or into whatever has focus when target is omitted\.$/),
       expect.stringMatching(/^- press \{target\?, key\}: /),
       expect.stringMatching(/^- select \{target, value\}: /),
@@ -159,7 +160,6 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
       expect.stringMatching(/^- drag \{target, to\}: Drag one node and drop it on another/),
       expect.stringMatching(/^- upload \{target, files\}: Attach one or more files to a file input node\.$/),
       expect.stringMatching(/^- scroll \{direction, target\?, times\?\}: /),
-      expect.stringMatching(/^- scroll_to \{target\}: Scroll until one listed node is inside the viewport/),
       expect.stringMatching(/^- navigate \{url\}: /),
       expect.stringMatching(/^- back: Go back one step/),
       expect.stringMatching(/^- screenshot: Attach a screenshot of the current viewport.* \[read-only\]$/),
@@ -186,7 +186,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     const unknown = await invoke('tools', { tool: 'teleport' });
     expect(unknown.isError).toBe(true);
     expect(unknown.text).toContain('UNKNOWN_TOOL');
-    expect(unknown.text).toContain('tools: observe, tap, double_tap, long_press, right_click, hover, type');
+    expect(unknown.text).toContain('tools: observe, tap, double_tap, long_press, right_click, hover, scroll_to, type');
 
     const unique = await call('locate', { role: 'button', name: 'Increment' });
     expect(unique.isError, unique.text).toBe(false);

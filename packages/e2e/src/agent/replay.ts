@@ -14,7 +14,7 @@
 
 import { anchorsPresent } from '../cache/anchors.ts';
 import { MAIN_LIST_SHARE, relocateDescriptor, type RelocationFailure, type RelocationResult } from '../cache/relocate.ts';
-import type { ActionTrace, DerivedReason, RecordedAction, TraceTargetDescriptor, TraceViewport } from '../cache/trace.ts';
+import { isNodeAction, type ActionTrace, type DerivedReason, type RecordedAction, type TraceTargetDescriptor, type TraceViewport } from '../cache/trace.ts';
 import type { SemanticNode, ViewportPoint } from '../engine/surface.ts';
 import { hasCause } from '../internal/errors.ts';
 import { containsPoint, type Box } from '../internal/geometry.ts';
@@ -139,16 +139,10 @@ type PlannedCall =
 type PointInvoke = (point: ViewportPoint) => Promise<unknown>;
 
 function planCall(action: RecordedAction, actions: ExecutorActions): PlannedCall {
+  if (isNodeAction(action)) return { kind: 'targeted', descriptor: action.target, invoke: (t) => actions[action.name](t) };
   switch (action.name) {
     case 'tool':
       return { kind: 'gap', ...(action.derived === undefined ? {} : { derived: action.derived }) };
-    case 'tap':
-    case 'doubleTap':
-    case 'longPress':
-    case 'secondaryTap':
-    case 'hover':
-    case 'scrollTo':
-      return { kind: 'targeted', descriptor: action.target, invoke: (t) => actions[action.name](t) };
     case 'check':
       return { kind: 'targeted', descriptor: action.target, invoke: (t) => actions.check(t, action.checked) };
     case 'upload':
@@ -375,14 +369,7 @@ const END_WAIT_POLL_MS = 1_000;
 /** Step clock kept back from that wait, so a hand-off still has room to act. */
 const END_WAIT_RESERVE_MS = 20_000;
 
-/**
- * Relocates one descriptor against the settling screen. A missing target is
- * worth another look. So is ambiguity for a descriptor that recorded its
- * position among twins: a form still rendering shows fewer of them than the
- * recording counted, and the count catches up. Ambiguity for a descriptor
- * without a position never retries — two matching nodes will not become one
- * by waiting, and acting on either would be a guess.
- */
+/** Relocates one descriptor against the settling screen, looking again while `retryable` says the failure may pass. */
 async function relocate(
   host: ReplayHost,
   descriptor: TraceTargetDescriptor,
@@ -394,7 +381,7 @@ async function relocate(
     const result = relocateDescriptor(descriptor, screen.nodes, options);
     if (result.kind === 'failed') {
       last = result.failure === 'target-not-found' ? result : { ...result, screen };
-      return result.failure === 'target-not-found' || descriptor.position !== undefined ? undefined : last;
+      return retryable(result.failure, descriptor) ? undefined : last;
     }
     const node = screen.nodes.get(result.id);
     return node === undefined ? undefined : { ...result, node };
@@ -418,16 +405,30 @@ async function relocatePair(
 ): Promise<{ readonly kind: 'found'; readonly source: string; readonly destination: string } | { readonly kind: 'failed'; readonly failure: RelocationFailure }> {
   const options = { redact: host.redact };
   let last: RelocationFailure = 'target-not-found';
+  const failed = (descriptor: TraceTargetDescriptor, failure: RelocationFailure) => {
+    last = failure;
+    return retryable(failure, descriptor) ? undefined : { kind: 'failed' as const, failure };
+  };
   const settled = await pollSettled(host, (screen) => {
     const from = relocateDescriptor(source, screen.nodes, options);
+    if (from.kind === 'failed') return failed(source, from.failure);
     const to = relocateDescriptor(destination, screen.nodes, options);
-    if (from.kind === 'found' && to.kind === 'found') return { kind: 'found' as const, source: from.id, destination: to.id };
-    const [failed, descriptor] = from.kind === 'failed' ? [from, source] : [to as Extract<RelocationResult, { kind: 'failed' }>, destination];
-    last = failed.failure;
-    const retry = failed.failure === 'target-not-found' || descriptor.position !== undefined;
-    return retry ? undefined : { kind: 'failed' as const, failure: failed.failure };
+    if (to.kind === 'failed') return failed(destination, to.failure);
+    return { kind: 'found' as const, source: from.id, destination: to.id };
   }, look);
   return settled ?? { kind: 'failed', failure: last };
+}
+
+/**
+ * Whether a failed relocation is worth another look. A missing target is: the
+ * screen may still be settling. So is ambiguity for a descriptor that recorded
+ * its position among twins: a form still rendering shows fewer of them than
+ * the recording counted, and the count catches up. Ambiguity for a descriptor
+ * without a position never is: two matching nodes will not become one by
+ * waiting, and acting on either would be a guess.
+ */
+function retryable(failure: RelocationFailure, descriptor: TraceTargetDescriptor): boolean {
+  return failure === 'target-not-found' || descriptor.position !== undefined;
 }
 
 /** A relocation with the node it found, or with the screen its look-alikes are on, for a replay that needs boxes. */

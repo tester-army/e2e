@@ -7,6 +7,7 @@
  * screenshot are scaled into the observation's CSS pixels first.
  */
 
+import type { PointActionName } from '../cache/trace.ts';
 import type { SemanticNode, ViewportPoint, ViewportSize } from '../engine/surface.ts';
 import { clamp, clampToViewport, containsPoint } from '../internal/geometry.ts';
 import type { ExecutorPixels } from './executor.ts';
@@ -108,19 +109,26 @@ export interface PointProse {
   readonly observation: Pick<AgentObservation, 'text'>;
 }
 
-/** How each point verb reads back to the model, past tense. */
-const POINT_VERB_PAST: Readonly<Record<'tap' | 'hover', string>> = { tap: 'Tapped', hover: 'Hovered over' };
+/**
+ * The point verbs: the node verb each resolves onto when a listed control
+ * sits under the point, and how each reads back to the model. The one place
+ * the pairing lives; the tools, the dispatcher, and the prose read it.
+ */
+export const POINT_VERBS: Readonly<Record<PointActionName, { readonly node: 'tap' | 'hover'; readonly did: string }>> = {
+  tapAt: { node: 'tap', did: 'Tapped' },
+  hoverAt: { node: 'hover', did: 'Hovered over' },
+};
 
 /** What one point action did, for the model that named the point. */
 export function describePointAction(
   input: PointProse & {
-    readonly verb: 'tap' | 'hover';
+    readonly verb: PointActionName;
     readonly point: ViewportPoint;
     readonly control: SemanticNode | undefined;
     readonly under: SemanticNode | undefined;
   },
 ): string {
-  const did = POINT_VERB_PAST[input.verb];
+  const { did } = POINT_VERBS[input.verb];
   const at = `(${String(input.point.x)}, ${String(input.point.y)})`;
   if (input.control !== undefined) {
     return `${did} ${describeNode(input, input.control)}, the control at ${at}.`;

@@ -109,7 +109,7 @@ describe('imagePointToViewport', () => {
 describe('describePointAction', () => {
   it('names the control the point resolved to, by the line the model already reads', () => {
     const text = describePointAction({
-      verb: 'tap',
+      verb: 'tapAt',
       point: { x: 50, y: 30 },
       control: screen.nodes.get('n2'),
       under: screen.nodes.get('n2'),
@@ -120,7 +120,7 @@ describe('describePointAction', () => {
 
   it('says a bare point landed on nothing listed, with what sits under it', () => {
     const text = describePointAction({
-      verb: 'tap',
+      verb: 'tapAt',
       point: { x: 640, y: 120 },
       control: undefined,
       under: screen.nodes.get('n5'),
@@ -131,7 +131,7 @@ describe('describePointAction', () => {
 
   it('reads a hover the same way, in its own words', () => {
     const text = describePointAction({
-      verb: 'hover',
+      verb: 'hoverAt',
       point: { x: 640, y: 120 },
       control: undefined,
       under: screen.nodes.get('n5'),

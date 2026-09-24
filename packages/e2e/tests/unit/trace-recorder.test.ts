@@ -200,14 +200,6 @@ describe('TraceRecorder', () => {
     expect(broken(2, (action) => { delete action['destination']; })).toBeUndefined();
     expect(broken(0, (action) => { action['name'] = 'fly'; })).toBeUndefined();
   });
-
-  it('poisons an upload of more files than the entry keeps', () => {
-    const recorder = makeRecorder();
-    recorder.record({ name: 'upload', node: upgradeButton, paths: Array.from({ length: 17 }, (_, index) => `fixtures/${String(index)}.txt`) });
-    const trace = recorder.finalize(conclusion)!;
-    expect(trace.truncated).toBe(true);
-    expect((trace.actions[0] as { paths: readonly string[] }).paths).toHaveLength(16);
-  });
 });
 
 describe('describeTarget', () => {

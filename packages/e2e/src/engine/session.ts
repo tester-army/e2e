@@ -82,31 +82,35 @@ function normalize(cause: unknown, label: string): never {
   });
 }
 
-/** Grammar verbs, by the action kind (or hook) that honors each. */
-const VERBS_BY_ACTION: Readonly<Partial<Record<LocatorActionKind, readonly GrammarVerb[]>>> = {
-  tap: ['tap'],
-  doubleTap: ['doubleTap'],
-  longPress: ['longPress'],
-  secondaryTap: ['secondaryTap'],
-  hover: ['hover'],
-  fill: ['type', 'typeSecret'],
-  press: ['press'],
-  selectOption: ['select'],
-  scrollIntoView: ['scrollTo'],
-  setInputFiles: ['upload'],
-  dragTo: ['drag'],
-  swipe: ['scroll'],
-};
+/**
+ * The action kinds an engine must declare for each kind-derived grammar
+ * verb. `check` sets a state rather than flipping one, so it needs both
+ * directions; `fill` unlocks the plain and the secret fill alike.
+ */
+const KINDS_BY_VERB: readonly (readonly [GrammarVerb, readonly LocatorActionKind[]])[] = [
+  ['tap', ['tap']],
+  ['doubleTap', ['doubleTap']],
+  ['longPress', ['longPress']],
+  ['secondaryTap', ['secondaryTap']],
+  ['hover', ['hover']],
+  ['type', ['fill']],
+  ['typeSecret', ['fill']],
+  ['press', ['press']],
+  ['select', ['selectOption']],
+  ['check', ['check', 'uncheck']],
+  ['scroll', ['swipe']],
+  ['scrollTo', ['scrollIntoView']],
+  ['drag', ['dragTo']],
+  ['upload', ['setInputFiles']],
+];
 
 /** The grammar verbs an engine declaration can honor. */
 function declaredVerbs(engine: EngineHandle | undefined): ReadonlySet<GrammarVerb> {
   const verbs = new Set<GrammarVerb>();
   const kinds = new Set(engine?.actions ?? []);
-  for (const kind of kinds) {
-    for (const verb of VERBS_BY_ACTION[kind] ?? []) verbs.add(verb);
+  for (const [verb, required] of KINDS_BY_VERB) {
+    if (required.every((kind) => kinds.has(kind))) verbs.add(verb);
   }
-  // `check` sets a state rather than flipping one, so it needs both directions.
-  if (kinds.has('check') && kinds.has('uncheck')) verbs.add('check');
   if (engine?.pointerActions?.includes('tap') === true) verbs.add('tapAt');
   if (engine?.pointerActions?.includes('hover') === true) verbs.add('hoverAt');
   if (engine?.session?.back !== undefined) verbs.add('back');

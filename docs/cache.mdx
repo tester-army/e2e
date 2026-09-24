@@ -120,11 +120,11 @@ Cancelling a run leaves the cache unchanged.
 | `truncated` | More than 50 actions, which only a step whose `maxSteps` is raised above 50 can commit (the default budget of 25 ends the step first; consecutive identical scrolls count once), a typed value or URL over 4,096 characters or containing a registered secret, or a control with no usable description. | Split the step, or pass the secret as a `Secret`. |
 | `wrong-context` | The app was on another screen than when the step was recorded: a different route, not a different record, query, or fragment. | Open the same screen before the step. |
 | `target-not-found` | A recorded control did not appear within 15 seconds. | The UI changed. The next passing run re-records. |
-| `target-ambiguous` | The number of matching controls changed. A point tap recorded inside a control that now has look-alikes replays on the one the point lies in, when exactly one does. | Give repeated controls distinct names or use unique test data. |
+| `target-ambiguous` | The number of matching controls changed. A point tap or hover recorded inside a control that now has look-alikes replays on the one the point lies in, when exactly one does. | Give repeated controls distinct names or use unique test data. |
 | `gap` | An action cannot be replayed: a mutating project tool, or a value the agent read off the screen, typed after it was shown a screenshot, or reckoned from the date. Read off the screen means the whole name or text of a control (`whole-node`), or a token with a digit in it (a code, a reference the app minted) shown as a word of its own (`minted-token`); a plain word that also appears inside a sentence on screen does not count. For a value, `step.cache.derived` names the rule: `whole-node`, `minted-token`, `date`, or `pixels`. A value the agent composed itself, or one from the instruction or `params`, replays. | The agent continues this part live. Put stable values in `params`. |
 | `action-failed` | The app rejected a replayed action. | Check the app. |
 | `action-uncertain` | A replayed action failed with an unknown commit state. The agent is told to check before acting again. | Check the app. |
-| `viewport-changed` | A bare-point tap was recorded on a viewport of another size. | Keep the viewport fixed. |
+| `viewport-changed` | A bare-point tap or hover was recorded on a viewport of another size. | Keep the viewport fixed. |
 | `end-mismatch` | Every action ran, but the recorded path or a control that should have appeared did not come back. | Leftover data from an earlier run, a banner that comes and goes, or a regression. |
 
 A stop before any action ran is a miss. After replay starts, it is a

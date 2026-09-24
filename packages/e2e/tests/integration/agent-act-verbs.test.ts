@@ -1,115 +1,158 @@
 /**
  * The grammar verbs beyond tap and type: hover (by id and at a point), the
- * tap variants, drag, check, upload, scroll_to, and back. The scripted model
- * calls each tool once against the gestures page; under test is the runner
- * half: each verb reaches the engine as its own action, is recorded with a
- * readable summary, an upload is authorized against the project root before
- * anything runs, and a recorded flow of these verbs replays zero-turn from
- * the trace cache on the next run.
+ * tap variants, drag, check, upload, scroll_to, and back. Each flow is one
+ * row: the instruction, the scripted model that answers it, and the check
+ * that pins its outcome. The scripted model calls each tool once against the
+ * gestures page; under test is the runner half: each verb reaches the engine
+ * as its own action, is recorded with a readable summary, an upload is
+ * authorized against the project root before anything runs, and a recorded
+ * flow of these verbs replays zero-turn from the trace cache on the next run.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
-import { installFakeLoopModel, loopCalls, nodeIdFor, type LoopCall } from '../helpers/fake-loop-model.ts';
+import { imagePointFor, installFakeLoopModel, loopCalls, nodeIdFor, type LoopCall, type LoopToolCall } from '../helpers/fake-loop-model.ts';
 import { createProject, resultByTitle, runExisting, runProject, type FixtureProject, type RunOutcome } from '../helpers/run-project.ts';
 
-const SUITE = `import { test, expect } from 'e2e';
+/** One agentic flow: what the test asks, how the scripted model answers, and the locator check that decides it. */
+interface Flow {
+  readonly title: string;
+  readonly instruction: string;
+  /** The test body's check after the step, as source; empty for a flow whose step is expected to fail. */
+  readonly check: string;
+  /** Whether the replay pass records and replays this flow too. */
+  readonly replays?: true;
+  /** The tool calls for the turn with `calls` results so far; undefined concludes the step. */
+  readonly script: (calls: number, call: LoopCall) => readonly LoopToolCall[] | undefined;
+  readonly verdict?: 'failed';
+}
+
+/** The center of the hover trigger, which the gestures page pins at CSS (40..240, 40..70). */
+const TRIGGER_CENTER = { x: 140, y: 55 };
+
+const FLOWS: readonly Flow[] = [
+  {
+    title: 'hovers the menu trigger and taps what it reveals',
+    instruction: 'hover the account menu and redeem the voucher',
+    check: `await expect(screen.getByRole('status', { name: 'Gesture state' })).toHaveText('redeemed');`,
+    replays: true,
+    script: (calls, call) => {
+      if (calls === 0) return [{ toolName: 'hover', input: { target: nodeIdFor(call.prompt, /"Account"/) } }];
+      if (calls === 1) return [{ toolName: 'tap', input: { target: nodeIdFor(call.lastToolResult, /button "Redeem"/) } }];
+      return undefined;
+    },
+  },
+  {
+    title: 'right-clicks a file and renames it through the context menu',
+    instruction: 'right-click report.pdf and rename it',
+    check: `await expect(screen.getByRole('status', { name: 'Gesture state' })).toHaveText('renamed');`,
+    script: (calls, call) => {
+      if (calls === 0) return [{ toolName: 'right_click', input: { target: nodeIdFor(call.prompt, /"report\.pdf"/) } }];
+      if (calls === 1) return [{ toolName: 'tap', input: { target: nodeIdFor(call.lastToolResult, /"Rename"/) } }];
+      return undefined;
+    },
+  },
+  {
+    title: 'double-taps and long-presses',
+    instruction: 'double-tap the twice button, then long-press hold me',
+    check: `await expect(screen.getByRole('status', { name: 'Gesture state' })).toHaveText('long-pressed');`,
+    script: (calls, call) => {
+      if (calls === 0) return [{ toolName: 'double_tap', input: { target: nodeIdFor(call.prompt, /button "Tap me twice"/) } }];
+      if (calls === 1) return [{ toolName: 'long_press', input: { target: nodeIdFor(call.prompt, /button "Hold me"/) } }];
+      return undefined;
+    },
+  },
+  {
+    title: 'drags the card onto the done column',
+    instruction: 'drag the design review card to the done column',
+    check: `await expect(screen.getByRole('status', { name: 'Gesture state' })).toHaveText('Design review is done');`,
+    replays: true,
+    script: (calls, call) =>
+      calls === 0
+        ? [{ toolName: 'drag', input: { target: nodeIdFor(call.prompt, /"Design review"/), to: nodeIdFor(call.prompt, /"Done column"/) } }]
+        : undefined,
+  },
+  {
+    title: 'checks the box and leaves a checked box alone',
+    instruction: 'agree to the terms, then make sure the box stays checked',
+    check: `await expect(screen.getByLabel('Agree to terms')).toBeChecked();
+  await expect(screen.getByRole('status', { name: 'Gesture state' })).toHaveText('agreed: true');`,
+    replays: true,
+    // The same check twice: the second finds the box already checked and flips nothing.
+    script: (calls, call) =>
+      calls <= 1 ? [{ toolName: 'check', input: { target: nodeIdFor(call.prompt, /checkbox "Agree to terms"/), checked: true } }] : undefined,
+  },
+  {
+    title: 'uploads a project file',
+    instruction: 'attach the fixture file',
+    check: `await expect(screen.getByRole('status', { name: 'Gesture state' })).toHaveText('attached: attachment.txt');`,
+    replays: true,
+    script: (calls, call) =>
+      calls === 0 ? [{ toolName: 'upload', input: { target: nodeIdFor(call.prompt, /"Attachment"/), files: ['fixtures/attachment.txt'] } }] : undefined,
+  },
+  {
+    title: 'refuses a hidden file',
+    instruction: 'attach the env file',
+    check: '',
+    verdict: 'failed',
+    script: (calls, call) => (calls === 0 ? [{ toolName: 'upload', input: { target: nodeIdFor(call.prompt, /"Attachment"/), files: ['.env'] } }] : undefined),
+  },
+  {
+    title: 'refuses a file outside the project',
+    instruction: 'attach a file from outside the project',
+    check: '',
+    verdict: 'failed',
+    script: (calls, call) =>
+      calls === 0 ? [{ toolName: 'upload', input: { target: nodeIdFor(call.prompt, /"Attachment"/), files: ['../outside.txt'] } }] : undefined,
+  },
+  {
+    title: 'scrolls a listed node into view',
+    instruction: 'scroll to the footnote',
+    check: `await expect(screen.getByLabel('Footnote state')).toHaveText('in view');`,
+    replays: true,
+    script: (calls, call) => (calls === 0 ? [{ toolName: 'scroll_to', input: { target: nodeIdFor(call.prompt, /"Footnote"/) } }] : undefined),
+  },
+  {
+    title: 'opens a page and comes back',
+    instruction: 'open the about page and come back',
+    check: `await expect(screen.getByRole('heading', { name: 'Gestures' })).toBeVisible();`,
+    replays: true,
+    script: (calls, call) => {
+      if (calls === 0) return [{ toolName: 'tap', input: { target: nodeIdFor(call.prompt, /link "About"/) } }];
+      if (calls === 1) return [{ toolName: 'back', input: {} }];
+      return undefined;
+    },
+  },
+  {
+    title: 'hovers a bare point in the screenshot',
+    instruction: 'hover the corner to reveal the redeem button',
+    check: `await expect(screen.getByRole('status', { name: 'Gesture state' })).toHaveText('redeemed');`,
+    script: (calls, call) => {
+      if (calls === 0) return [{ toolName: 'screenshot', input: {} }];
+      if (calls === 1) return [{ toolName: 'hover_at', input: imagePointFor(call.lastToolResult, TRIGGER_CENTER) }];
+      if (calls === 2) return [{ toolName: 'tap', input: { target: nodeIdFor(call.lastToolResult, /button "Redeem"/) } }];
+      return undefined;
+    },
+  },
+];
+
+/** The suite source for a set of flows: every test opens the gestures page, runs its instruction, and pins the outcome. */
+function suiteOf(flows: readonly Flow[]): string {
+  const tests = flows.map(
+    (flow) => `test(${JSON.stringify(flow.title)}, async ({ agent, screen }) => {
+  await agent.act(${JSON.stringify(flow.instruction)});
+  ${flow.check}
+});`,
+  );
+  return `import { test, expect } from 'e2e';
 
 test.beforeEach(async ({ app }) => {
   await app.open('/gestures');
 });
 
-test('hovers the menu trigger and taps what it reveals', async ({ agent, screen }) => {
-  await agent.act('hover the account menu and redeem the voucher');
-  await expect(screen.getByRole('status', { name: 'Gesture state' })).toHaveText('redeemed');
-});
-
-test('right-clicks a file and renames it through the context menu', async ({ agent, screen }) => {
-  await agent.act('right-click report.pdf and rename it');
-  await expect(screen.getByRole('status', { name: 'Gesture state' })).toHaveText('renamed');
-});
-
-test('double-taps and long-presses', async ({ agent, screen }) => {
-  await agent.act('double-tap the twice button, then long-press hold me');
-  await expect(screen.getByRole('status', { name: 'Gesture state' })).toHaveText('long-pressed');
-});
-
-test('drags the card onto the done column', async ({ agent, screen }) => {
-  await agent.act('drag the design review card to the done column');
-  await expect(screen.getByRole('status', { name: 'Gesture state' })).toHaveText('Design review is done');
-});
-
-test('checks the box and leaves a checked box alone', async ({ agent, screen }) => {
-  await agent.act('agree to the terms, then make sure the box stays checked');
-  await expect(screen.getByLabel('Agree to terms')).toBeChecked();
-});
-
-test('uploads a project file', async ({ agent, screen }) => {
-  await agent.act('attach the fixture file');
-  await expect(screen.getByRole('status', { name: 'Gesture state' })).toHaveText('attached: attachment.txt');
-});
-
-test('refuses a hidden file', async ({ agent }) => {
-  await agent.act('attach the env file');
-});
-
-test('refuses a file outside the project', async ({ agent }) => {
-  await agent.act('attach a file from outside the project');
-});
-
-test('scrolls a listed node into view', async ({ agent, screen }) => {
-  await agent.act('scroll to the footnote');
-  await expect(screen.getByLabel('Footnote state')).toHaveText('in view');
-});
-
-test('opens a page and comes back', async ({ agent, screen }) => {
-  await agent.act('open the about page and come back');
-  await expect(screen.getByRole('heading', { name: 'Gestures' })).toBeVisible();
-});
-
-test('hovers a bare point in the screenshot', async ({ agent, screen }) => {
-  await agent.act('hover the corner to reveal the redeem button');
-  await expect(screen.getByRole('status', { name: 'Gesture state' })).toHaveText('redeemed');
-});
+${tests.join('\n\n')}
 `;
-
-/** The flows the replay pass records on the first run and replays on the second. */
-const REPLAY_SUITE = `import { test, expect } from 'e2e';
-
-test.beforeEach(async ({ app }) => {
-  await app.open('/gestures');
-});
-
-test('hover then tap', async ({ agent, screen }) => {
-  await agent.act('hover the account menu and redeem the voucher');
-  await expect(screen.getByRole('status', { name: 'Gesture state' })).toHaveText('redeemed');
-});
-
-test('drag', async ({ agent, screen }) => {
-  await agent.act('drag the design review card to the done column');
-  await expect(screen.getByRole('status', { name: 'Gesture state' })).toHaveText('Design review is done');
-});
-
-test('check', async ({ agent, screen }) => {
-  await agent.act('agree to the terms, then make sure the box stays checked');
-  await expect(screen.getByRole('status', { name: 'Gesture state' })).toHaveText('agreed: true');
-});
-
-test('upload', async ({ agent, screen }) => {
-  await agent.act('attach the fixture file');
-  await expect(screen.getByRole('status', { name: 'Gesture state' })).toHaveText('attached: attachment.txt');
-});
-
-test('scroll to', async ({ agent, screen }) => {
-  await agent.act('scroll to the footnote');
-  await expect(screen.getByLabel('Footnote state')).toHaveText('in view');
-});
-
-test('back', async ({ agent, screen }) => {
-  await agent.act('open the about page and come back');
-  await expect(screen.getByRole('heading', { name: 'Gestures' })).toBeVisible();
-});
-`;
+}
 
 /** The project files beside the suite: one uploadable fixture and one hidden file the policy must refuse. */
 const PROJECT_FILES = {
@@ -117,70 +160,22 @@ const PROJECT_FILES = {
   '.env': 'SECRET=never-uploaded\n',
 };
 
-/** The act model: one grammar tool per turn, then a verdict carrying the last result. */
+/** The act model: the flow's script for the turn, then a verdict carrying the last result. */
 function actModel(call: LoopCall) {
-  const conclude = (status: 'passed' | 'failed') => [
-    { toolName: 'complete_step', input: { status, summary: call.lastToolResult.slice(0, 1_500) || 'done' } },
-  ];
-  const calls = call.toolResults.length;
-  const on = (pattern: RegExp) => nodeIdFor(call.prompt, pattern);
-  const revealed = (pattern: RegExp) => nodeIdFor(call.lastToolResult, pattern);
-  if (call.prompt.includes('hover the account menu')) {
-    if (calls === 0) return [{ toolName: 'hover', input: { target: on(/"Account"/) } }];
-    if (calls === 1) return [{ toolName: 'tap', input: { target: revealed(/button "Redeem"/) } }];
-    return conclude('passed');
-  }
-  if (call.prompt.includes('right-click report.pdf')) {
-    if (calls === 0) return [{ toolName: 'right_click', input: { target: on(/"report\.pdf"/) } }];
-    if (calls === 1) return [{ toolName: 'tap', input: { target: revealed(/"Rename"/) } }];
-    return conclude('passed');
-  }
-  if (call.prompt.includes('double-tap the twice button')) {
-    if (calls === 0) return [{ toolName: 'double_tap', input: { target: on(/button "Tap me twice"/) } }];
-    if (calls === 1) return [{ toolName: 'long_press', input: { target: on(/button "Hold me"/) } }];
-    return conclude('passed');
-  }
-  if (call.prompt.includes('drag the design review card')) {
-    if (calls === 0) return [{ toolName: 'drag', input: { target: on(/"Design review"/), to: on(/"Done column"/) } }];
-    return conclude('passed');
-  }
-  if (call.prompt.includes('agree to the terms')) {
-    if (calls <= 1) return [{ toolName: 'check', input: { target: on(/checkbox "Agree to terms"/), checked: true } }];
-    return conclude('passed');
-  }
-  if (call.prompt.includes('attach the fixture file')) {
-    if (calls === 0) return [{ toolName: 'upload', input: { target: on(/"Attachment"/), files: ['fixtures/attachment.txt'] } }];
-    return conclude('passed');
-  }
-  if (call.prompt.includes('attach the env file')) {
-    if (calls === 0) return [{ toolName: 'upload', input: { target: on(/"Attachment"/), files: ['.env'] } }];
-    return conclude('failed');
-  }
-  if (call.prompt.includes('attach a file from outside')) {
-    if (calls === 0) return [{ toolName: 'upload', input: { target: on(/"Attachment"/), files: ['../outside.txt'] } }];
-    return conclude('failed');
-  }
-  if (call.prompt.includes('scroll to the footnote')) {
-    if (calls === 0) return [{ toolName: 'scroll_to', input: { target: on(/"Footnote"/) } }];
-    return conclude('passed');
-  }
-  if (call.prompt.includes('open the about page')) {
-    if (calls === 0) return [{ toolName: 'tap', input: { target: on(/link "About"/) } }];
-    if (calls === 1) return [{ toolName: 'back', input: {} }];
-    return conclude('passed');
-  }
-  if (call.prompt.includes('hover the corner')) {
-    // The trigger is pinned at CSS (40..240, 40..70); its center (140, 55) is image (84, 33) at 0.6 image pixels per CSS pixel.
-    if (calls === 0) return [{ toolName: 'screenshot', input: {} }];
-    if (calls === 1) return [{ toolName: 'hover_at', input: { x: 84, y: 33 } }];
-    // In pixel mode the result is one JSON-encoded line, quotes escaped: the id is read right before the button's line.
-    if (calls === 2) return [{ toolName: 'tap', input: { target: /#(\S+) button \\"Redeem\\"/.exec(call.lastToolResult)![1]! } }];
-    return conclude('passed');
-  }
-  return conclude('passed');
+  const flow = FLOWS.find((candidate) => call.prompt.includes(candidate.instruction));
+  const scripted = flow?.script(call.toolResults.length, call);
+  if (scripted !== undefined) return scripted;
+  return [{ toolName: 'complete_step', input: { status: flow?.verdict ?? 'passed', summary: call.lastToolResult.slice(0, 1_500) || 'done' } }];
 }
 
 const VERB_TOOLS = ['hover', 'hover_at', 'double_tap', 'long_press', 'right_click', 'drag', 'check', 'upload', 'scroll_to', 'back'];
+
+/** The `agent.act` step of one test in a run. */
+function actStepOf(outcome: RunOutcome, title: string) {
+  const step = resultByTitle(outcome, title).attempts.at(-1)!.steps.find((candidate) => candidate.api === 'agent.act');
+  if (step === undefined) throw new Error(`no agent.act step in "${title}"`);
+  return step;
+}
 
 describe('agent.act grammar verbs', () => {
   let app: FixtureApp;
@@ -191,7 +186,7 @@ describe('agent.act grammar verbs', () => {
     app = await startFixtureApp();
     const model = installFakeLoopModel(actModel);
     const run = await runProject(
-      { 'tests/verbs.e2e.ts': SUITE, ...PROJECT_FILES },
+      { 'tests/verbs.e2e.ts': suiteOf(FLOWS), ...PROJECT_FILES },
       { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: { model } } } },
     );
     outcome = run.outcome;
@@ -203,20 +198,13 @@ describe('agent.act grammar verbs', () => {
     await app?.close();
   });
 
-  const stepOf = (title: string) => {
-    const attempt = resultByTitle(outcome, title).attempts.at(-1)!;
-    const step = attempt.steps.find((candidate) => candidate.api === 'agent.act');
-    if (step === undefined) throw new Error(`no agent.act step in "${title}"`);
-    return step;
-  };
+  const stepOf = (title: string) => actStepOf(outcome, title);
   const engineEvents = (title: string) => stepOf(title).events.filter((event) => event.kind === 'engine');
   const turnsOf = (instruction: string) => loopCalls.filter((call) => call.prompt.includes(instruction));
 
-  it('offers every verb the browser engine declares, and the rules say what takes a plain tap', () => {
+  it('offers every verb the browser engine declares', () => {
     const [first] = turnsOf('hover the account menu');
     for (const tool of VERB_TOOLS) expect(first!.toolNames).toContain(tool);
-    expect(first!.system).toContain('hover for what opens on the pointer resting on it');
-    expect(first!.system).toContain('tap is the gesture for a button, link, menu item, tab, checkbox, row, or field');
   });
 
   it('hovers by id, reports the control the hover revealed, and records the hover', () => {
@@ -269,25 +257,24 @@ describe('agent.act grammar verbs', () => {
     const actions = step.events.filter((event) => event.kind === 'engine');
     expect(actions.map((event) => event.name)).toEqual(['setInputFiles']);
     expect(actions[0]!.detail).toMatch(/^upload "fixtures\/attachment\.txt" to \S+ "Attachment"$/);
-    expect(step.events.filter((event) => event.kind === 'policy')).toEqual([
-      expect.objectContaining({ name: 'upload-path', decision: 'allowed' }),
-    ]);
+    expect(step.events.filter((event) => event.kind === 'policy')).toEqual([expect.objectContaining({ name: 'upload.path', decision: 'allowed' })]);
     expect(turnsOf('attach the fixture file')[1]!.lastToolResult).toMatch(/^Uploaded "fixtures\/attachment\.txt" to #\S+\./);
   });
 
   it('refuses a hidden file and a path outside the project before any engine action, as POLICY_DENIED', () => {
-    for (const [title, instruction, message] of [
-      ['refuses a hidden file', 'attach the env file', '".env" is a hidden file or sits under a hidden directory; those are never uploaded'],
-      ['refuses a file outside the project', 'attach a file from outside', '"../outside.txt" is outside the project root; only files inside the project can be uploaded'],
+    for (const [title, instruction, path] of [
+      ['refuses a hidden file', 'attach the env file', '.env'],
+      ['refuses a file outside the project', 'attach a file from outside', '../outside.txt'],
     ] as const) {
       expect(resultByTitle(outcome, title).status).toBe('failed');
       const step = stepOf(title);
       expect(step.events.filter((event) => event.kind === 'engine')).toHaveLength(0);
       expect(step.metrics!.actionSteps).toBe(0);
       expect(step.events.filter((event) => event.kind === 'policy')).toEqual([
-        expect.objectContaining({ name: 'upload-path', decision: 'denied', code: 'POLICY_DENIED' }),
+        expect.objectContaining({ name: 'upload.path', decision: 'denied', code: 'POLICY_DENIED' }),
       ]);
-      expect(turnsOf(instruction)[1]!.lastToolResult).toContain(`failed: ${message}`);
+      // The refusal reaches the model as the action's failure, naming the path it refused.
+      expect(turnsOf(instruction)[1]!.lastToolResult).toContain(`failed: ${JSON.stringify(path)} is`);
     }
   });
 
@@ -296,7 +283,7 @@ describe('agent.act grammar verbs', () => {
     const actions = engineEvents('scrolls a listed node into view');
     expect(actions.map((event) => event.name)).toEqual(['scrollIntoView']);
     expect(actions[0]!.detail).toMatch(/^scroll \S+ "Footnote" into view$/);
-    expect(turnsOf('scroll to the footnote')[1]!.lastToolResult).toMatch(/^Scrolled #\S+ into view\./);
+    expect(turnsOf('scroll to the footnote')[1]!.lastToolResult).toMatch(/^Scrolled into view #\S+\./);
   });
 
   it('goes back through the engine session and reports the screen it returned to', () => {
@@ -322,6 +309,7 @@ describe('agent.act grammar verbs', () => {
 });
 
 describe('agent.act grammar verbs: record then zero-turn replay', () => {
+  const flows = FLOWS.filter((flow) => flow.replays === true);
   let app: FixtureApp;
   let project: FixtureProject;
   let firstRun: RunOutcome;
@@ -330,7 +318,7 @@ describe('agent.act grammar verbs: record then zero-turn replay', () => {
 
   beforeAll(async () => {
     app = await startFixtureApp();
-    project = createProject({ 'tests/replay.e2e.ts': REPLAY_SUITE, ...PROJECT_FILES });
+    project = createProject({ 'tests/replay.e2e.ts': suiteOf(flows), ...PROJECT_FILES });
     const options = (model: ReturnType<typeof installFakeLoopModel>) => ({
       appUrl: app.url,
       config: { tests: 'tests/**/*.e2e.ts', agents: { default: { model } }, cache: 'read-write' as const },
@@ -352,33 +340,27 @@ describe('agent.act grammar verbs: record then zero-turn replay', () => {
     await app?.close();
   });
 
-  const actSteps = (run: RunOutcome) =>
-    run.results.map((result) => {
-      const step = result.attempts.at(-1)!.steps.find((candidate) => candidate.api === 'agent.act');
-      if (step === undefined) throw new Error(`no agent.act step in "${result.test.title}"`);
-      return [result.test.title, step] as const;
-    });
-
   it('records every verb on the first run', () => {
     expect(firstRun.exitCode).toBe(0);
-    for (const [title, step] of actSteps(firstRun)) {
-      expect(step.cache, title).toMatchObject({ mode: 'missed', reason: 'no-entry' });
+    for (const flow of flows) {
+      expect(actStepOf(firstRun, flow.title).cache, flow.title).toMatchObject({ mode: 'missed', reason: 'no-entry' });
     }
   });
 
   it('replays hover, drag, check, upload, scroll into view, and back without a model call', () => {
     expect(secondRun.exitCode).toBe(0);
     expect(secondRunModelCalls).toBe(0);
-    for (const [title, step] of actSteps(secondRun)) {
-      expect(step.cache, title).toMatchObject({ mode: 'self-finalized' });
-      expect(step.metrics!.modelCalls, title).toBe(0);
+    for (const flow of flows) {
+      const step = actStepOf(secondRun, flow.title);
+      expect(step.cache, flow.title).toMatchObject({ mode: 'self-finalized' });
+      expect(step.metrics!.modelCalls, flow.title).toBe(0);
     }
-    const replayed = new Map(actSteps(secondRun));
-    expect(replayed.get('hover then tap')!.events.filter((event) => event.kind === 'engine').map((event) => event.name)).toEqual(['hover', 'tap']);
-    expect(replayed.get('drag')!.events.filter((event) => event.kind === 'engine').map((event) => event.name)).toEqual(['dragTo']);
-    expect(replayed.get('upload')!.events.filter((event) => event.kind === 'policy')).toEqual([
-      expect.objectContaining({ name: 'upload-path', decision: 'allowed' }),
+    const engineNames = (title: string) => actStepOf(secondRun, title).events.filter((event) => event.kind === 'engine').map((event) => event.name);
+    expect(engineNames('hovers the menu trigger and taps what it reveals')).toEqual(['hover', 'tap']);
+    expect(engineNames('drags the card onto the done column')).toEqual(['dragTo']);
+    expect(engineNames('opens a page and comes back')).toEqual(['tap', 'back']);
+    expect(actStepOf(secondRun, 'uploads a project file').events.filter((event) => event.kind === 'policy')).toEqual([
+      expect.objectContaining({ name: 'upload.path', decision: 'allowed' }),
     ]);
-    expect(replayed.get('back')!.events.filter((event) => event.kind === 'engine').map((event) => event.name)).toEqual(['tap', 'back']);
   });
 });

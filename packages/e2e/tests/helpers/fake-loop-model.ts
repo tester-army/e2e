@@ -164,12 +164,26 @@ function collectToolResults(prompt: readonly RawMessage[]): string[] {
   return results;
 }
 
-/** Finds the observed node id on the first line matching a pattern. */
+/**
+ * Finds the observed node id on the first line matching a pattern. A tool
+ * result in pixel mode is one JSON-encoded line (text beside an image), so
+ * its escaped quotes and newlines are unescaped first.
+ */
 export function nodeIdFor(observedText: string, pattern: RegExp): string {
-  for (const line of observedText.split('\n')) {
+  for (const line of observedText.replaceAll('\\n', '\n').replaceAll('\\"', '"').split('\n')) {
     if (!pattern.test(line)) continue;
     const id = /#(\S+)/.exec(line)?.[1];
     if (id !== undefined) return id;
   }
   throw new Error(`no observed node matching ${String(pattern)} in:\n${observedText}`);
+}
+
+/**
+ * A CSS-pixel point as the model would name it in the latest screenshot,
+ * read off the `Screenshot attached` note the result carries: `(0.6 per CSS
+ * pixel)` when the image is scaled, no note when it is not.
+ */
+export function imagePointFor(resultText: string, css: { readonly x: number; readonly y: number }): { x: number; y: number } {
+  const scale = Number(/\((\d+(?:\.\d+)?) per CSS pixel\)/.exec(resultText)?.[1] ?? '1');
+  return { x: Math.round(css.x * scale), y: Math.round(css.y * scale) };
 }

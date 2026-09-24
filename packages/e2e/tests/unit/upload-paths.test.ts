@@ -1,7 +1,8 @@
 /**
  * The upload policy: a model-named path reaches the engine only when it is a
  * regular file inside the project root and not hidden. Everything else fails
- * closed, with the code that says whether the path was refused or merely wrong.
+ * closed, with the code that says whether the path was refused or merely
+ * wrong, and every refusal and the final allow is recorded on the step.
  */
 
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -29,46 +30,51 @@ afterAll(() => {
   rmSync(path.dirname(root), { recursive: true, force: true });
 });
 
-const code = (run: () => unknown): string | undefined => {
+/** Runs the policy against a recording host; returns the code it threw and what it recorded. */
+function authorize(paths: unknown): { code: string | undefined; recorded: string[]; resolved?: readonly string[] } {
+  const recorded: string[] = [];
+  const host = { recordPolicy: (name: string, decision: string, code?: string) => void recorded.push([name, decision, code].filter(Boolean).join(' ')) };
   try {
-    run();
-    return undefined;
+    return { code: undefined, recorded, resolved: authorizeUploadPaths(host, paths, root).resolved };
   } catch (error) {
-    return (error as { code?: string }).code;
+    return { code: (error as { code?: string }).code, recorded };
   }
-};
+}
 
 describe('authorizeUploadPaths', () => {
-  it('resolves project-relative paths to regular files inside the root and keeps them as given', () => {
-    const authorized = authorizeUploadPaths(['fixtures/a.txt'], root);
+  it('resolves project-relative paths to regular files inside the root, keeps them as given, and records the allow', () => {
+    const recorded: string[] = [];
+    const host = { recordPolicy: (name: string, decision: string) => void recorded.push(`${name} ${decision}`) };
+    const authorized = authorizeUploadPaths(host, ['fixtures/a.txt'], root);
     expect(authorized.given).toEqual(['fixtures/a.txt']);
     expect(authorized.resolved).toEqual([path.join(root, 'fixtures', 'a.txt')]);
+    expect(recorded).toEqual(['upload.path allowed']);
   });
 
-  it('refuses a path that leaves the project, by dots or by a symlink', () => {
-    expect(code(() => authorizeUploadPaths(['../outside.txt'], root))).toBe('POLICY_DENIED');
-    expect(code(() => authorizeUploadPaths([outside], root))).toBe('POLICY_DENIED');
-    expect(code(() => authorizeUploadPaths(['fixtures/link.txt'], root))).toBe('POLICY_DENIED');
+  it('refuses a path that leaves the project, by dots or by a symlink, and records the refusal', () => {
+    for (const given of ['../outside.txt', outside, 'fixtures/link.txt']) {
+      expect(authorize([given])).toMatchObject({ code: 'POLICY_DENIED', recorded: ['upload.path denied POLICY_DENIED'] });
+    }
   });
 
   it('refuses hidden files and anything under a hidden directory', () => {
-    expect(code(() => authorizeUploadPaths(['.env'], root))).toBe('POLICY_DENIED');
-    expect(code(() => authorizeUploadPaths(['fixtures/.hidden/b.txt'], root))).toBe('POLICY_DENIED');
+    expect(authorize(['.env']).code).toBe('POLICY_DENIED');
+    expect(authorize(['fixtures/.hidden/b.txt']).code).toBe('POLICY_DENIED');
   });
 
-  it('reports a missing file or a directory as a wrong argument, not a policy refusal', () => {
-    expect(code(() => authorizeUploadPaths(['fixtures/missing.txt'], root))).toBe('INVALID_ARGUMENT');
-    expect(code(() => authorizeUploadPaths(['fixtures'], root))).toBe('INVALID_ARGUMENT');
+  it('reports a missing file or a directory as a wrong argument, not a policy refusal, recording nothing', () => {
+    expect(authorize(['fixtures/missing.txt'])).toEqual({ code: 'INVALID_ARGUMENT', recorded: [] });
+    expect(authorize(['fixtures'])).toEqual({ code: 'INVALID_ARGUMENT', recorded: [] });
   });
 
   it('requires a non-empty list of non-empty strings, bounded', () => {
-    expect(code(() => authorizeUploadPaths([], root))).toBe('INVALID_ARGUMENT');
-    expect(code(() => authorizeUploadPaths(['fixtures/a.txt', ''], root))).toBe('INVALID_ARGUMENT');
-    expect(code(() => authorizeUploadPaths('fixtures/a.txt', root))).toBe('INVALID_ARGUMENT');
-    expect(code(() => authorizeUploadPaths(Array.from({ length: 17 }, () => 'fixtures/a.txt'), root))).toBe('INVALID_ARGUMENT');
+    expect(authorize([]).code).toBe('INVALID_ARGUMENT');
+    expect(authorize(['fixtures/a.txt', '']).code).toBe('INVALID_ARGUMENT');
+    expect(authorize('fixtures/a.txt').code).toBe('INVALID_ARGUMENT');
+    expect(authorize(Array.from({ length: 17 }, () => 'fixtures/a.txt')).code).toBe('INVALID_ARGUMENT');
   });
 
   it('checks every path before any is accepted', () => {
-    expect(code(() => authorizeUploadPaths(['fixtures/a.txt', '.env'], root))).toBe('POLICY_DENIED');
+    expect(authorize(['fixtures/a.txt', '.env'])).toMatchObject({ code: 'POLICY_DENIED', recorded: ['upload.path denied POLICY_DENIED'] });
   });
 });

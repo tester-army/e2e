@@ -16,7 +16,7 @@
  * state. A poisoned trace still documents what happened; it never replays.
  */
 
-import { describeAction, type RecordableAction } from '../agent/actions.ts';
+import { describeAction, type DescribedAction, type RecordableAction } from '../agent/actions.ts';
 import {
   bound,
   DESCRIPTOR_FIELDS,
@@ -25,7 +25,7 @@ import {
   MAX_TRACE_END_WAIT_MS,
   MAX_TRACE_INPUT_CHARS,
   MAX_TRACE_SUMMARY_CHARS,
-  MAX_TRACE_UPLOAD_PATHS,
+  isNodeAction,
   type ActionTrace,
   type DerivedReason,
   type RecordedAction,
@@ -68,8 +68,7 @@ export class TraceRecorder {
 
   /** Records one committed grammar action. */
   record(action: RecordableAction): void {
-    const { target, summary, destination } = describeAction(action, this.redact);
-    this.push(this.toRecorded(action, target, summary, destination));
+    this.push(this.toRecorded(action, describeAction(action, this.redact)));
     this.lastActionAt = Date.now();
   }
 
@@ -158,12 +157,7 @@ export class TraceRecorder {
    * whose poisoning marks the trace non-replayable when a value cannot be
    * kept whole.
    */
-  private toRecorded(
-    action: RecordableAction,
-    target: TraceTargetDescriptor | undefined,
-    summary: string,
-    destination: TraceTargetDescriptor | undefined,
-  ): RecordedAction {
+  private toRecorded(action: RecordableAction, { target, summary, destination }: DescribedAction): RecordedAction {
     // A targeted commit whose node yields no durable descriptor cannot be
     // re-found; the trace stays honest by poisoning instead of guessing.
     const require = (descriptor: TraceTargetDescriptor | undefined): TraceTargetDescriptor => {
@@ -172,23 +166,12 @@ export class TraceRecorder {
       return { role: 'unknown' };
     };
     const requireTarget = (): TraceTargetDescriptor => require(target);
+    if (isNodeAction(action)) return { name: action.name, summary, target: requireTarget() };
     switch (action.name) {
-      case 'tap':
-      case 'doubleTap':
-      case 'longPress':
-      case 'secondaryTap':
-      case 'hover':
-      case 'scrollTo':
-        return { name: action.name, summary, target: requireTarget() };
       case 'check':
         return { name: 'check', summary, target: requireTarget(), checked: action.checked };
-      case 'upload': {
-        // More files than the entry format keeps is a script, not a form;
-        // the trace documents it and never replays it.
-        if (action.paths.length > MAX_TRACE_UPLOAD_PATHS) this.truncated = true;
-        const paths = action.paths.slice(0, MAX_TRACE_UPLOAD_PATHS).map((path) => this.verbatim(path));
-        return { name: 'upload', summary, target: requireTarget(), paths };
-      }
+      case 'upload':
+        return { name: 'upload', summary, target: requireTarget(), paths: action.paths.map((path) => this.verbatim(path)) };
       case 'drag':
         return { name: 'drag', summary, target: requireTarget(), destination: require(destination) };
       case 'back':

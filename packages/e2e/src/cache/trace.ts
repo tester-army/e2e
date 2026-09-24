@@ -51,7 +51,27 @@ export const MAX_TRACE_ANCHORS = 8;
 /** Longest a replay waits for the recorded end state to return. */
 export const MAX_TRACE_END_WAIT_MS = 120_000;
 
-const SCROLL_DIRECTIONS: ReadonlySet<string> = new Set(['up', 'down', 'left', 'right']);
+/** A membership test over a closed list of names, typed as the names themselves: the read sites need no cast. */
+function oneOf<T extends string>(values: readonly T[]): (value: unknown) => value is T {
+  const set: ReadonlySet<unknown> = new Set(values);
+  return (value): value is T => set.has(value);
+}
+
+const isScrollDirection = oneOf(['up', 'down', 'left', 'right'] as const satisfies readonly ScrollDirection[]);
+
+/**
+ * Reads every item, or nothing: one item this runner cannot read makes the
+ * whole list unreadable, so an entry is replayed verbatim or not at all.
+ */
+function each<T, U>(items: readonly T[], read: (item: T) => U | undefined): U[] | undefined {
+  const out: U[] = [];
+  for (const item of items) {
+    const value = read(item);
+    if (value === undefined) return undefined;
+    out.push(value);
+  }
+  return out;
+}
 
 /** The shape of a SHA-256 digest in hex, as `instructionDigest` writes it. */
 const SHA256_HEX = /^[a-f0-9]{64}$/u;
@@ -111,16 +131,20 @@ interface ActionBase {
 }
 
 /** The verbs that act on one node and carry no input: tap and its variants, hover, scroll into view. */
-export type NodeActionName = 'tap' | 'doubleTap' | 'longPress' | 'secondaryTap' | 'hover' | 'scrollTo';
+const NODE_ACTION_NAMES = ['tap', 'doubleTap', 'longPress', 'secondaryTap', 'hover', 'scrollTo'] as const;
 
-const NODE_ACTION_NAMES: ReadonlySet<string> = new Set<NodeActionName>([
-  'tap',
-  'doubleTap',
-  'longPress',
-  'secondaryTap',
-  'hover',
-  'scrollTo',
-]);
+export type NodeActionName = (typeof NODE_ACTION_NAMES)[number];
+
+const isNodeActionName = oneOf(NODE_ACTION_NAMES);
+
+/**
+ * Whether an action is one of the node verbs. The every-layer switches over
+ * an action union (prose, recording, templating, replay) take these six
+ * through one branch, so the list is spelled once, here.
+ */
+export function isNodeAction<A extends { readonly name: string }>(action: A): action is Extract<A, { readonly name: NodeActionName }> {
+  return isNodeActionName(action.name);
+}
 
 export interface NodeAction extends ActionBase {
   readonly name: NodeActionName;
@@ -261,7 +285,7 @@ export interface DismissKeyboardAction extends ActionBase {
  */
 export type DerivedReason = 'pixels' | 'whole-node' | 'minted-token' | 'date';
 
-const DERIVED_REASONS: ReadonlySet<string> = new Set<DerivedReason>(['pixels', 'whole-node', 'minted-token', 'date']);
+const isDerivedReason = oneOf(['pixels', 'whole-node', 'minted-token', 'date'] as const satisfies readonly DerivedReason[]);
 
 /**
  * A gap that ends any replay rather than silently skipping what the grammar
@@ -410,24 +434,16 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
   let endAnchors: TraceTargetDescriptor[] | undefined;
   if (anchorsRaw !== undefined) {
     if (!Array.isArray(anchorsRaw) || anchorsRaw.length > MAX_TRACE_ANCHORS) return undefined;
-    endAnchors = [];
-    for (const entry of anchorsRaw) {
-      const descriptor = readDescriptor(entry);
-      if (descriptor === undefined) return undefined;
-      endAnchors.push(descriptor);
-    }
+    endAnchors = each(anchorsRaw, readDescriptor);
+    if (endAnchors === undefined) return undefined;
   }
 
   const actionsRaw = raw['actions'];
   if (!Array.isArray(actionsRaw) || actionsRaw.length === 0 || actionsRaw.length > MAX_TRACE_ACTIONS) {
     return undefined;
   }
-  const actions: RecordedAction[] = [];
-  for (const entry of actionsRaw) {
-    const action = readRecordedAction(entry);
-    if (action === undefined) return undefined;
-    actions.push(action);
-  }
+  const actions = each(actionsRaw, readRecordedAction);
+  if (actions === undefined) return undefined;
 
   return {
     actions,
@@ -455,9 +471,9 @@ function readRecordedAction(document: unknown): RecordedAction | undefined {
   if (summary === undefined) return undefined;
 
   const name = raw['name'];
-  if (typeof name === 'string' && NODE_ACTION_NAMES.has(name)) {
+  if (isNodeActionName(name)) {
     const target = readDescriptor(raw['target']);
-    return target === undefined ? undefined : { name: name as NodeActionName, summary, target };
+    return target === undefined ? undefined : { name, summary, target };
   }
   switch (name) {
     case 'type': {
@@ -504,7 +520,7 @@ function readRecordedAction(document: unknown): RecordedAction | undefined {
     }
     case 'scroll': {
       const direction = raw['direction'];
-      if (typeof direction !== 'string' || !SCROLL_DIRECTIONS.has(direction)) return undefined;
+      if (!isScrollDirection(direction)) return undefined;
       const target = raw['target'] === undefined ? undefined : readDescriptor(raw['target']);
       if (raw['target'] !== undefined && target === undefined) return undefined;
       const times = raw['times'];
@@ -514,7 +530,7 @@ function readRecordedAction(document: unknown): RecordedAction | undefined {
       return {
         name: 'scroll',
         summary,
-        direction: direction as ScrollDirection,
+        direction,
         ...(target === undefined ? {} : { target }),
         ...(times === undefined ? {} : { times }),
         ...(spans === undefined ? {} : { spans }),
@@ -548,8 +564,8 @@ function readRecordedAction(document: unknown): RecordedAction | undefined {
       return { name: 'dismissKeyboard', summary };
     case 'tool': {
       const derived = raw['derived'];
-      if (derived !== undefined && (typeof derived !== 'string' || !DERIVED_REASONS.has(derived))) return undefined;
-      return { name: 'tool', summary, ...(derived === undefined ? {} : { derived: derived as DerivedReason }) };
+      if (derived !== undefined && !isDerivedReason(derived)) return undefined;
+      return { name: 'tool', summary, ...(derived === undefined ? {} : { derived }) };
     }
     default:
       return undefined;
@@ -631,19 +647,17 @@ function mapActionText(action: RecordedAction, map: TraceTextMap): RecordedActio
   if (summary === undefined) return undefined;
   const withSummary = <A extends RecordedAction>(next: A): A => (summary === next.summary ? next : { ...next, summary });
   const target = (descriptor: TraceTargetDescriptor) => mapDescriptorText(descriptor, map);
+  /** An action whose only text beyond the summary is its target. */
+  const targetOnly = <A extends RecordedAction & { readonly target: TraceTargetDescriptor }>(targeted: A): A | undefined => {
+    const mapped = target(targeted.target);
+    return mapped === undefined ? undefined : withSummary({ ...targeted, target: mapped });
+  };
+  if (isNodeAction(action)) return targetOnly(action);
   switch (action.name) {
-    case 'tap':
-    case 'doubleTap':
-    case 'longPress':
-    case 'secondaryTap':
-    case 'hover':
-    case 'scrollTo':
     case 'typeSecret':
     case 'press':
-    case 'check': {
-      const mapped = target(action.target);
-      return mapped === undefined ? undefined : withSummary({ ...action, target: mapped });
-    }
+    case 'check':
+      return targetOnly(action);
     case 'type':
     case 'select': {
       const mapped = target(action.target);
@@ -655,13 +669,8 @@ function mapActionText(action: RecordedAction, map: TraceTextMap): RecordedActio
       // `unique()` must be re-resolved from each run's value, or the replay
       // would upload the recording run's file.
       const mapped = target(action.target);
-      const paths: string[] = [];
-      for (const path of action.paths) {
-        const value = map(path);
-        if (value === undefined) return undefined;
-        paths.push(value);
-      }
-      return mapped === undefined ? undefined : withSummary({ ...action, target: mapped, paths });
+      const paths = each(action.paths, map);
+      return mapped === undefined || paths === undefined ? undefined : withSummary({ ...action, target: mapped, paths });
     }
     case 'drag': {
       const mapped = target(action.target);
@@ -704,12 +713,8 @@ function mapActionText(action: RecordedAction, map: TraceTextMap): RecordedActio
  * `undefined` from `map` makes the whole result `undefined`.
  */
 export function mapTraceText(trace: ActionTrace, map: TraceTextMap): ActionTrace | undefined {
-  const actions: RecordedAction[] = [];
-  for (const action of trace.actions) {
-    const mapped = mapActionText(action, map);
-    if (mapped === undefined) return undefined;
-    actions.push(mapped);
-  }
+  const actions = each(trace.actions, (action) => mapActionText(action, map));
+  if (actions === undefined) return undefined;
   const summary = map(trace.summary);
   const startPath = trace.startPath === undefined ? undefined : map(trace.startPath);
   const endPath = trace.endPath === undefined ? undefined : map(trace.endPath);
@@ -729,13 +734,7 @@ export function mapTraceText(trace: ActionTrace, map: TraceTextMap): ActionTrace
 }
 
 function mapDescriptors(descriptors: readonly TraceTargetDescriptor[], map: TraceTextMap): TraceTargetDescriptor[] | undefined {
-  const out: TraceTargetDescriptor[] = [];
-  for (const descriptor of descriptors) {
-    const mapped = mapDescriptorText(descriptor, map);
-    if (mapped === undefined) return undefined;
-    out.push(mapped);
-  }
-  return out;
+  return each(descriptors, (descriptor) => mapDescriptorText(descriptor, map));
 }
 
 function readDescriptor(document: unknown): TraceTargetDescriptor | undefined {
@@ -793,13 +792,7 @@ function readBoundedText(value: unknown, maxChars: number): string | undefined {
 /** One to `MAX_TRACE_UPLOAD_PATHS` verbatim paths, each a replay input like a typed value. */
 function readInputPaths(value: unknown): readonly string[] | undefined {
   if (!Array.isArray(value) || value.length === 0 || value.length > MAX_TRACE_UPLOAD_PATHS) return undefined;
-  const paths: string[] = [];
-  for (const entry of value) {
-    const path = readInputText(entry);
-    if (path === undefined) return undefined;
-    paths.push(path);
-  }
-  return paths;
+  return each(value, readInputText);
 }
 
 /** Verbatim replay input: bounded but never trimmed — whitespace can be the value. */

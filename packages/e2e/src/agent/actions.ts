@@ -12,6 +12,7 @@
 import type { SemanticNode, ViewportPoint, ViewportSize } from '../engine/surface.ts';
 import {
   bound,
+  isNodeAction,
   MAX_TRACE_DESCRIPTOR_CHARS,
   MAX_TRACE_SUMMARY_CHARS,
   type NodeActionName,
@@ -22,8 +23,6 @@ import {
 import { sanitizeText } from '../internal/errors.ts';
 import { normalizeText } from '../internal/text.ts';
 import type { ScrollDirection } from '../types.ts';
-
-export type { NodeActionName, PointActionName };
 
 /** One committed grammar action, addressed by the node it actually ran against. */
 export type RecordableAction =
@@ -147,17 +146,17 @@ export interface DescribedAction {
    */
   readonly summary: string;
   /** Where a drag was dropped, described like its target; only a drag has one. */
-  readonly destination?: TraceTargetDescriptor | undefined;
+  readonly destination?: TraceTargetDescriptor;
 }
 
-/** The verb of each node action as its prose reads: `tap button "Save"`, `hover over link "Account"`. */
-const NODE_ACTION_PROSE: Readonly<Record<NodeActionName, string>> = {
-  tap: 'tap',
-  doubleTap: 'double-tap',
-  longPress: 'long-press',
-  secondaryTap: 'secondary-tap',
-  hover: 'hover over',
-  scrollTo: 'scroll into view',
+/** How each node action reads, around the node it acted on: `tap button "Save"`, `scroll link "Terms" into view`. */
+const NODE_ACTION_PROSE: Readonly<Record<NodeActionName, (where: string) => string>> = {
+  tap: (where) => `tap ${where}`,
+  doubleTap: (where) => `double-tap ${where}`,
+  longPress: (where) => `long-press ${where}`,
+  secondaryTap: (where) => `secondary-tap ${where}`,
+  hover: (where) => `hover over ${where}`,
+  scrollTo: (where) => `scroll ${where} into view`,
 };
 
 /** How each point verb reads: `tap the point (x, y)`, `hover over the point (x, y)`. */
@@ -178,15 +177,8 @@ export function describeAction(
   const where = describeForSummary(target);
   const safe = (value: string) => quote(redact(sanitizeText(value)));
   const prose = (() => {
+    if (isNodeAction(action)) return NODE_ACTION_PROSE[action.name](where);
     switch (action.name) {
-      case 'tap':
-      case 'doubleTap':
-      case 'longPress':
-      case 'secondaryTap':
-      case 'hover':
-        return `${NODE_ACTION_PROSE[action.name]} ${where}`;
-      case 'scrollTo':
-        return `scroll ${where} into view`;
       case 'type':
         return `type ${safe(action.value)} into ${where}`;
       case 'typeSecret':

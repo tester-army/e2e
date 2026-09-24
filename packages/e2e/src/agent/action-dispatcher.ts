@@ -16,17 +16,10 @@ import { requireKey } from '../internal/keys.ts';
 import { clampToViewport, requireFinitePoint, viewportShare } from '../internal/geometry.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
 import type { JsonValue, Momentum, ScrollDirection, Secret } from '../types.ts';
-import { PROJECT_TOOL_EVENT_PREFIX } from './action-names.ts';
-import {
-  containerKey,
-  describeAction,
-  type NodeActionName,
-  type Placement,
-  type PointActionName,
-  type RecordableAction,
-} from './actions.ts';
+import { PROJECT_TOOL_EVENT_PREFIX, type GrammarActionName } from './action-names.ts';
+import { containerKey, describeAction, type Placement, type RecordableAction } from './actions.ts';
 import { describePosition } from '../cache/relocate.ts';
-import type { RecordedAction } from '../cache/trace.ts';
+import type { NodeActionName, PointActionName, RecordedAction } from '../cache/trace.ts';
 import { derivedReason } from './derived.ts';
 import { AgentError } from './error.ts';
 import type { ExecutorActions, ExecutorTarget, PointHit, PointTapResult } from './executor.ts';
@@ -35,7 +28,7 @@ import type { ObservationFeed, Resolved } from './observation-feed.ts';
 import { resolveScrollTarget } from './scroll-target.ts';
 import type { OperationQueue } from './operation-queue.ts';
 import { instrumentPhase, recordPolicyEvent } from './phases.ts';
-import { describePointAction, describePointHit, hitTest, type PointProse } from './point-tap.ts';
+import { describePointAction, describePointHit, hitTest, POINT_VERBS, type PointProse } from './point-tap.ts';
 import type { AgentObservation, SemanticAgentObservation } from './observation.ts';
 import { authorizeSecretFill } from './secrets.ts';
 import { SETTLE_AFTER } from './settle-policy.ts';
@@ -59,21 +52,15 @@ const MAX_STALE_RELOCATIONS = 2;
  */
 const SCROLL_MOMENTUM: Momentum = 'slow';
 
-/** The action kinds that take nothing but a node. */
-type NodeActionKind = Extract<LocatorActionKind, 'tap' | 'doubleTap' | 'longPress' | 'secondaryTap' | 'hover' | 'scrollIntoView'>;
-
 /** The engine action each node verb performs; also the name its engine event carries. */
-const NODE_ACTION_KINDS: Readonly<Record<NodeActionName, NodeActionKind>> = {
+const NODE_ACTION_KINDS = {
   tap: 'tap',
   doubleTap: 'doubleTap',
   longPress: 'longPress',
   secondaryTap: 'secondaryTap',
   hover: 'hover',
   scrollTo: 'scrollIntoView',
-};
-
-/** The node verb each point verb resolves onto when a listed control sits under the point. */
-const POINT_NODE_VERBS: Readonly<Record<PointActionName, 'tap' | 'hover'>> = { tapAt: 'tap', hoverAt: 'hover' };
+} as const satisfies Record<NodeActionName, LocatorActionKind & GrammarActionName>;
 
 export interface ActionDispatcherOptions {
   readonly instruction: string;
@@ -103,7 +90,7 @@ export class ActionDispatcher {
     private readonly options: ActionDispatcherOptions,
   ) {
     this.actions = {
-      tap: (target) => this.tap(target),
+      tap: (target) => this.nodeVerb('tap', target),
       doubleTap: (target) => this.nodeVerb('doubleTap', target),
       longPress: (target) => this.nodeVerb('longPress', target),
       secondaryTap: (target) => this.nodeVerb('secondaryTap', target),
@@ -171,8 +158,8 @@ export class ActionDispatcher {
       const observation = this.feed.requireLatest();
       const clamped = clampToViewport(point, observation.viewport);
       // The control is reported whatever the engine can do with it: the verb
-      // the executor calls next is gated on its own action kind, and only
-      // `tapAt` needs to ignore a listed control when node taps are missing.
+      // the executor calls next is gated on its own action kind, and only a
+      // point verb needs to ignore a listed control when its node verb is missing.
       const hit = hitTest(observation, clamped);
       return Promise.resolve({
         point: clamped,
@@ -181,11 +168,6 @@ export class ActionDispatcher {
         summary: describePointHit({ point: clamped, control: hit.control, under: hit.under, ...this.prose(observation) }),
       });
     });
-  }
-
-  /** The tap verb: one committed tap on a resolved node. */
-  tap(target: ExecutorTarget): Promise<void> {
-    return this.nodeVerb('tap', target);
   }
 
   /** One node verb that carries nothing but its target: a tap or one of its variants, a hover, a scroll into view. */
@@ -204,14 +186,14 @@ export class ActionDispatcher {
    */
   private pointVerb(verb: PointActionName, point: ViewportPoint): Promise<PointTapResult> {
     requireFinitePoint(point, verb);
-    const nodeVerb = POINT_NODE_VERBS[verb];
+    const nodeVerb = POINT_VERBS[verb].node;
     return this.queue.run(async () => {
       const observation = this.feed.requireLatest();
       const clamped = clampToViewport(point, observation.viewport);
       const hit = hitTest(observation, clamped);
       // An engine without the node verb gets the bare point even under a listed control.
       const control = this.verbs.has(nodeVerb) ? hit.control : undefined;
-      const summary = describePointAction({ verb: nodeVerb, point: clamped, control, under: hit.under, ...this.prose(observation) });
+      const summary = describePointAction({ verb, point: clamped, control, under: hit.under, ...this.prose(observation) });
       if (control !== undefined) {
         const target = { id: control.ref.id };
         await this.runActionNow(nodeVerb, () => this.targeted(this.feed.resolve(target), (node) => this.performNode(nodeVerb, node)));
@@ -302,32 +284,18 @@ export class ActionDispatcher {
   private drag(source: ExecutorTarget, destination: ExecutorTarget): Promise<void> {
     return this.commitTargeted('dragTo', source, async (node) => {
       const dropped = this.feed.resolve(destination);
-      const redact = this.runtime.redact;
-      const within = containerKey(dropped.node.ref.id, dropped.observation.nodes, dropped.observation.parents, redact);
-      const position = describePosition(dropped.node, within, dropped.observation.nodes, { redact });
-      const placement: Placement = {
-        ...(within === undefined ? {} : { within }),
-        ...(position === undefined ? {} : { position }),
-      };
       await this.session.perform(node.ref, { kind: 'dragTo', target: dropped.node.ref }, this.accounting.actionOperation());
-      return { name: 'drag', node, destination: { node: dropped.node, ...placement } };
+      return { name: 'drag', node, destination: { node: dropped.node, ...this.placementOf(dropped) } };
     });
   }
 
   /**
    * Attaches files to a file input. The paths are authorized against the
-   * project root before the node is resolved, as a policy decision the step
-   * records; the trace keeps them as given and replay authorizes them again.
+   * project root before the node is resolved, each decision recorded on the
+   * step; the trace keeps them as given and replay authorizes them again.
    */
   private upload(target: ExecutorTarget, paths: readonly string[]): Promise<void> {
-    let authorized;
-    try {
-      authorized = authorizeUploadPaths(paths, this.runtime.config.projectRoot);
-    } catch (cause) {
-      if (cause instanceof AgentError) recordPolicyEvent(this.runtime.steps, 'upload-path', 'denied', cause.code);
-      throw cause;
-    }
-    recordPolicyEvent(this.runtime.steps, 'upload-path', 'allowed');
+    const authorized = authorizeUploadPaths(this.policyHost(), paths, this.runtime.config.projectRoot);
     return this.commitTargeted('setInputFiles', target, async (node) => {
       await this.session.perform(node.ref, { kind: 'setInputFiles', paths: authorized.resolved }, this.accounting.actionOperation());
       return { name: 'upload', node, paths: authorized.given };
@@ -433,12 +401,7 @@ export class ActionDispatcher {
       );
     }
     await this.commitTargeted('typeSecret', target, async (node) => {
-      const plaintext = await authorizeSecretFill(
-        { recordPolicy: (policy, decision, code) => recordPolicyEvent(this.runtime.steps, policy, decision, code) },
-        this.runtime,
-        secret,
-        node,
-      );
+      const plaintext = await authorizeSecretFill(this.policyHost(), this.runtime, secret, node);
       await this.session.perform(
         node.ref,
         { kind: 'fill', value: plaintext, sensitive: true },
@@ -457,11 +420,11 @@ export class ActionDispatcher {
    * event's `detail` prose derives from it in a pure hook, and the dispatcher
    * writes it to the trace cache after the phase settles.
    */
-  private runAction(name: string, body: () => Promise<RecordableAction>): Promise<void> {
+  private runAction(name: GrammarActionName, body: () => Promise<RecordableAction>): Promise<void> {
     return this.queue.run(() => this.runActionNow(name, body));
   }
 
-  private async runActionNow(name: string, body: () => Promise<RecordableAction>): Promise<void> {
+  private async runActionNow(name: GrammarActionName, body: () => Promise<RecordableAction>): Promise<void> {
     this.accounting.reserveAction();
     const redact = this.runtime.redact;
     let action: RecordableAction;
@@ -517,7 +480,7 @@ export class ActionDispatcher {
    * descriptor that matches nothing or several nodes fails the action instead.
    */
   private commitTargeted(
-    name: string,
+    name: GrammarActionName,
     target: ExecutorTarget,
     perform: (node: SemanticNode) => Promise<RecordableAction>,
   ): Promise<void> {
@@ -535,21 +498,10 @@ export class ActionDispatcher {
     perform: (node: SemanticNode, observation: SemanticAgentObservation) => Promise<RecordableAction>,
   ): Promise<RecordableAction> {
     let { node, observation } = resolved;
-    const redact = this.runtime.redact;
     for (let relocations = 0; ; relocations += 1) {
-      // The container the node sits in is captured with it: that is what
-      // tells this row's "Delete" from the next row's when the flow replays.
-      const within = containerKey(node.ref.id, observation.nodes, observation.parents, redact);
-      // When the description still matches several controls, the position among
-      // them is recorded too; a replay that finds the same number picks the same one.
-      const position = describePosition(node, within, observation.nodes, { redact });
+      const placement = this.placementOf({ node, observation });
       try {
-        const action = await perform(node, observation);
-        return {
-          ...action,
-          ...(within === undefined ? {} : { within }),
-          ...(position === undefined ? {} : { position }),
-        };
+        return { ...(await perform(node, observation)), ...placement };
       } catch (cause) {
         if (asEngineError(cause)?.code !== 'NODE_STALE') throw cause;
         const relocated = relocations < MAX_STALE_RELOCATIONS ? await this.feed.relocate(node) : undefined;
@@ -563,4 +515,27 @@ export class ActionDispatcher {
       }
     }
   }
+
+  /**
+   * Where a node sat when it was acted on, for the trace: the container it
+   * sits in (that is what tells this row's "Delete" from the next row's when
+   * the flow replays) and, when the description still matches several
+   * controls, its position among them, so a replay that finds the same
+   * number picks the same one.
+   */
+  private placementOf({ node, observation }: Resolved): Placement {
+    const redact = this.runtime.redact;
+    const within = containerKey(node.ref.id, observation.nodes, observation.parents, redact);
+    const position = describePosition(node, within, observation.nodes, { redact });
+    return {
+      ...(within === undefined ? {} : { within }),
+      ...(position === undefined ? {} : { position }),
+    };
+  }
+
+  /** The seam a policy records its decisions through, onto this step's events. */
+  private policyHost() {
+    return { recordPolicy: (policy: string, decision: 'allowed' | 'denied', code?: string) => recordPolicyEvent(this.runtime.steps, policy, decision, code) };
+  }
+
 }

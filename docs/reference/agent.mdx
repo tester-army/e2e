@@ -115,8 +115,8 @@ it, and is refused with `POLICY_DENIED` when it lies outside the project
 (through a symlink too) or names a hidden file or a file under a hidden
 directory such as `.env`, `.git`, or `.e2e`. A path that names no regular
 file is `INVALID_ARGUMENT`, an ordinary action failure the model reads and
-corrects. Every decision is a `policy` event named `upload-path` on the
-step. Nothing reaches the engine until every path passed.
+corrects. Every refusal and the final allow is a `policy` event named
+`upload.path` on the step. Nothing reaches the engine until every path passed.
 
 The tap variants are separate tools rather than an option on `tap` on
 purpose: offered as an optional `kind`, a model filled it on ordinary

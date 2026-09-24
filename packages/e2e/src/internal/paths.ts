@@ -28,17 +28,19 @@ export function realpathOfExisting(target: string): string {
 }
 
 /**
- * Whether `target` is a path strictly below the project root once both are
- * resolved through the filesystem: an in-project symlink pointing outside is
- * rejected, a symlinked project root still counts as the root, and a name
- * that merely starts with `..` (`..logs/out.log`) is an ordinary entry.
+ * `target` relative to the project root once both are resolved through the
+ * filesystem, or undefined when it is not strictly below the root: an
+ * in-project symlink pointing outside is refused, a symlinked project root
+ * still counts as the root, and a name that merely starts with `..`
+ * (`..logs/out.log`) is an ordinary entry.
  */
-export function insideProjectRoot(projectRoot: string, target: string): boolean {
+export function relativeToProjectRoot(projectRoot: string, target: string): string | undefined {
   const relative = path.relative(realpathOfExisting(projectRoot), realpathOfExisting(target));
-  return (
-    relative !== '' &&
-    relative !== '..' &&
-    !relative.startsWith(`..${path.sep}`) &&
-    !path.isAbsolute(relative)
-  );
+  const inside = relative !== '' && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+  return inside ? relative : undefined;
+}
+
+/** Whether `target` is a path strictly below the project root; see `relativeToProjectRoot`. */
+export function insideProjectRoot(projectRoot: string, target: string): boolean {
+  return relativeToProjectRoot(projectRoot, target) !== undefined;
 }

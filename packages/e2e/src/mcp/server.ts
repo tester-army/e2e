@@ -35,7 +35,7 @@ export interface ServeOptions {
 }
 
 const INSTRUCTIONS = `e2e is a local-first end-to-end test runner; this server drives an e2e project's app (its e2e.config.ts) live.
-Call open_session (optionally with a target and a config path) to get a session, its tool catalog, and the first observation. Then call {tool, args} runs any catalog tool: observe, tap, double_tap, long_press, right_click, hover, type, press, select, check, scroll, scroll_to, drag, upload, navigate, back, type_secret, locate, screenshot, and the project's own tools; tools lists them, tools {tool} shows one tool's arguments. close_session when done.
+Call open_session (optionally with a target and a config path) to get a session, its tool catalog, and the first observation. Then call {tool, args} runs any catalog tool: observe, the grammar its engine honors, type_secret, locate, screenshot, and the project's own tools; tools lists them, tools {tool} shows one tool's arguments. close_session when done.
 Write deterministic tests (tests/*.e2e.ts) from what you saw and run them with the CLI: npx e2e run <file>. Resources e2e://guide and e2e://guide/{topic} hold the writing guide.`;
 
 type LogLevel = 'info' | 'warning' | 'error';
