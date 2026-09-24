@@ -211,6 +211,13 @@ function transitionMs(transition: MobileOptions['transition']): number {
   return budget;
 }
 
+/** Resolves the `launch` option: true when every attempt starts the app afresh. */
+function launchesEveryAttempt(launch: MobileOptions['launch']): boolean {
+  if (launch === undefined || launch === 'attempt') return true;
+  if (launch === 'once') return false;
+  throw new ConfigurationError('INVALID_CONFIG', "mobile: `launch` must be 'attempt' or 'once'");
+}
+
 /** Resolves the `settle` option: the default window, a custom one, or no wait at all. */
 function settleOptions(settle: MobileOptions['settle']): SettleOptions {
   if (settle === false) return {};
@@ -256,6 +263,9 @@ export class AgentDeviceSurface {
   private latestIndex: readonly ProjectedNode[] | undefined;
   /** Budget a control that came with the last action gets to finish arriving; see DEFAULT_TRANSITION_MS. */
   private readonly transitionMs: number;
+  private readonly launchEveryAttempt: boolean;
+  /** Whether this worker has launched the pinned app yet; with `launch: 'once'` the launches after the first only foreground it. */
+  private launchedOnce = false;
   /**
    * The screen's logical size as last learned from a snapshot with geometry
    * or from the device itself, so a snapshot without geometry (an empty
@@ -272,6 +282,7 @@ export class AgentDeviceSurface {
     this.pool = new DevicePool(options, createClient);
     this.settleOptions = settleOptions(options.settle);
     this.transitionMs = transitionMs(options.transition);
+    this.launchEveryAttempt = launchesEveryAttempt(options.launch);
   }
 
   /** Whether the manifest declares app restart and state clearing. */
@@ -372,7 +383,8 @@ export class AgentDeviceSurface {
     this.located.clear();
     const app = this.pinnedApp;
     if (app === undefined) return;
-    await this.openApp(app, true, context.signal);
+    await this.openApp(app, this.launchEveryAttempt || !this.launchedOnce, context.signal);
+    this.launchedOnce = true;
   }
 
   async endAttempt(context: EngineCleanupContext): Promise<void> {

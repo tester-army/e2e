@@ -30,6 +30,12 @@ export const ios = mobile({
   device: iosDevices === undefined || iosDevices.length !== 1 ? iosDevices : iosDevices[0],
   identity: `${APP_ID}-ios`,
   session: 'e2e-mobile-benchmark-ios',
+  // Every attempt launches the app afresh (the `launch` default). Measured
+  // against `launch: 'once'` with the fixture popping back to the home list:
+  // the pop and the transition budget the first tap then pays cost as much as
+  // the launch, 308 s against 279 s on two simulators, 400 s against 402 s on
+  // the emulator, and a test that does not go through the fixture inherits
+  // the previous test's screen.
   // A control that just moved waits this long to come to rest before a tap;
   // an unmoved one is tapped at once, so the budget costs only after a
   // scroll. iOS reports a row's final frame from the first frame of a fling,

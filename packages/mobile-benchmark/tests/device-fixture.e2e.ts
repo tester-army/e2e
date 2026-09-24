@@ -5,9 +5,7 @@
  * and `foregroundApp` says which app is in front.
  */
 
-import { expect, openScenario, test } from './fixtures.ts';
-
-const APP_ID = 'dev.e2e.benchmark';
+import { APP_ID, expect, openScenario, test } from './fixtures.ts';
 
 test.describe('device fixture', () => {
   test.beforeEach(async ({ device, screen }) => {
