@@ -490,6 +490,26 @@ describe('replayTrace: bare-point taps', () => {
     expect(points).toEqual([{ x: 300, y: 100 }]);
   });
 
+  it('taps the recorded point when several nested look-alikes hold it, as a host view and the view inside it do', async () => {
+    const host: SemanticNode = { ref: { id: 'h', revision: 'r1' }, role: 'group', name: 'Form', rect: { x: 0, y: 0, width: 400, height: 200 } };
+    const inner: SemanticNode = { ref: { id: 'i', revision: 'r1' }, role: 'group', name: 'Form', rect: { x: 10, y: 10, width: 380, height: 180 } };
+    const within = { target: { role: 'group', name: 'Form' }, fx: 0.75, fy: 0.3 };
+    const points: unknown[] = [];
+    const nested = makeHost({ nodes: [host, inner], onAction: (name, detail) => void (name === 'tapAt' && points.push(detail)) });
+    const outcome = await replayTrace(nested, trace([{ ...pin, within }]));
+    expect(outcome).toMatchObject({ completed: true, executed: 1 });
+    expect(points).toEqual([{ x: 300, y: 60 }]);
+    // An anonymous container among its kind, the merged tree of a screen built for pixels, is the same case.
+    const groups: SemanticNode[] = [
+      { ref: { id: 'a', revision: 'r1' }, role: 'group', rect: { x: 0, y: 0, width: 400, height: 400 } },
+      { ref: { id: 'b', revision: 'r1' }, role: 'group', rect: { x: 0, y: 0, width: 400, height: 100 } },
+      { ref: { id: 'c', revision: 'r1' }, role: 'group', rect: { x: 0, y: 300, width: 400, height: 100 } },
+    ];
+    const anonymous = await replayTrace(makeHost({ nodes: groups, onAction: (name, detail) => void (name === 'tapAt' && points.push(detail)) }), trace([{ ...pin, within: { target: { role: 'group' }, fx: 0.75, fy: 0.6 } }]));
+    expect(anonymous).toMatchObject({ completed: true, executed: 1 });
+    expect(points).toEqual([{ x: 300, y: 60 }, { x: 300, y: 60 }]);
+  });
+
   it('hands off among look-alikes when the point settles nothing or the viewport changed', async () => {
     const left: SemanticNode = { ref: { id: 'a', revision: 'r1' }, role: 'img', name: 'Map', rect: { x: 0, y: 0, width: 200, height: 200 } };
     const right: SemanticNode = { ref: { id: 'b', revision: 'r1' }, role: 'img', name: 'Map', rect: { x: 200, y: 0, width: 200, height: 200 } };

@@ -17,6 +17,7 @@
  */
 
 import { describeAction, type DescribedAction, type RecordableAction } from '../agent/actions.ts';
+import { isRelocatableDescriptor } from './relocate.ts';
 import {
   bound,
   DESCRIPTOR_FIELDS,
@@ -213,10 +214,13 @@ export class TraceRecorder {
       case 'hoverAt': {
         // The point replays as given on a same-sized viewport. When a listed
         // node with a durable descriptor contained it, its place inside that
-        // node's box is kept too, so replay can follow the node instead.
+        // node's box is kept too, so replay can follow the node instead. An
+        // anonymous container, a group among groups on a screen merged into
+        // one accessibility node, could not be re-found and is not kept: the
+        // point alone is the honest record.
         const box = action.under?.rect;
         const within =
-          target === undefined || box === undefined || box.width <= 0 || box.height <= 0
+          target === undefined || !isRelocatableDescriptor(target) || box === undefined || box.width <= 0 || box.height <= 0
             ? undefined
             : { target, fx: fraction((action.point.x - box.x) / box.width), fy: fraction((action.point.y - box.y) / box.height) };
         return {

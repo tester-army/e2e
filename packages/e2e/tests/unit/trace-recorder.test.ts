@@ -251,6 +251,15 @@ describe('TraceRecorder: bare-point taps', () => {
     expect(trace?.truncated).toBeUndefined();
   });
 
+  it('records a point under an anonymous container by the viewport alone, since a group among groups cannot be re-found', () => {
+    const recorder = makeRecorder();
+    const merged: SemanticNode = { ref: { id: 'g1', revision: 'r1' }, role: 'group', rect: { x: 0, y: 0, width: 1280, height: 720 } };
+    recorder.record({ name: 'tapAt', point: { x: 400, y: 260 }, viewport, under: merged });
+    const trace = recorder.finalize({ ...conclusion, startPath: '/canvas' });
+    expect(trace?.actions[0]).toEqual({ name: 'tapAt', summary: 'tap the point (400, 260) on group', point: { x: 400, y: 260 }, viewport });
+    expect(trace?.truncated).toBeUndefined();
+  });
+
   it('records a point on nothing listed by the viewport alone, and reads it back', () => {
     const recorder = makeRecorder();
     recorder.record({ name: 'tapAt', point: { x: 300, y: 60 }, viewport });

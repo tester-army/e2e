@@ -13,7 +13,7 @@
  */
 
 import { anchorsPresent } from '../cache/anchors.ts';
-import { MAIN_LIST_SHARE, relocateDescriptor, type RelocationFailure, type RelocationResult } from '../cache/relocate.ts';
+import { isRelocatableDescriptor, MAIN_LIST_SHARE, relocateDescriptor, type RelocationFailure, type RelocationResult } from '../cache/relocate.ts';
 import { isNodeAction, type ActionTrace, type DerivedReason, type RecordedAction, type TraceTargetDescriptor, type TraceViewport } from '../cache/trace.ts';
 import type { SemanticNode, ViewportPoint } from '../engine/surface.ts';
 import { hasCause } from '../internal/errors.ts';
@@ -129,8 +129,9 @@ type PlannedCall =
       readonly fy: number;
       /**
        * The recorded point and its viewport: among look-alikes of the node,
-       * the one the point lies in on a viewport of the same size is it. The
-       * bare point is never acted on on its own.
+       * the one the point lies in on a viewport of the same size is it, and
+       * when several nested ones hold it the point itself is acted on. The
+       * bare point is never acted on once the node is gone.
        */
       readonly point: ViewportPoint;
       readonly viewport: TraceViewport;
@@ -206,7 +207,9 @@ function planCall(action: RecordedAction, actions: ExecutorActions): PlannedCall
     case 'tapAt':
     case 'hoverAt': {
       const invoke: PointInvoke = (point) => actions[action.name](point);
-      return action.within === undefined
+      // A container the recorder kept before it learned to leave anonymous
+      // ones out cannot be re-found; the point stands on its own, as recorded.
+      return action.within === undefined || !isRelocatableDescriptor(action.within.target)
         ? { kind: 'point', point: action.point, viewport: action.viewport, invoke }
         : {
             kind: 'within',
@@ -323,9 +326,9 @@ export async function replayTrace(
         }
         case 'within': {
           const relocated = await relocate(host, planned.descriptor, look);
-          const box = boxWithin(relocated, planned);
-          if (box === undefined) return stop(relocated.kind === 'failed' ? relocated.failure : 'target-not-found');
-          await planned.invoke({ x: box.x + planned.fx * box.width, y: box.y + planned.fy * box.height });
+          const at = placeWithin(relocated, planned);
+          if (at === undefined) return stop(relocated.kind === 'failed' ? relocated.failure : 'target-not-found');
+          await planned.invoke(at);
           break;
         }
       }
@@ -460,14 +463,19 @@ type Relocated =
   | (Extract<RelocationResult, { failure: 'target-ambiguous' }> & { readonly screen: SemanticScreen });
 
 /**
- * The live box a recorded point is placed in: the re-found node's, or among
- * the visible look-alikes the one that contains the recorded point on a
- * viewport of the recorded size, as the hit test that recorded it skipped
+ * Where a recorded point lands on the live screen: its place inside the
+ * re-found node's box, or among the visible look-alikes inside the one that
+ * contains the recorded point on a viewport of the recorded size, as the hit
+ * test that recorded it skipped
  * hidden nodes. Undefined when the node is gone or has no box, or the point
  * settles nothing: tapping the bare point could press whatever now sits there.
  */
-function boxWithin(relocated: Relocated, planned: Extract<PlannedCall, { kind: 'within' }>): Box | undefined {
-  if (relocated.kind === 'found') return usableBox(relocated.node.rect);
+function placeWithin(relocated: Relocated, planned: Extract<PlannedCall, { kind: 'within' }>): ViewportPoint | undefined {
+  const inside = (box: Box): ViewportPoint => ({ x: box.x + planned.fx * box.width, y: box.y + planned.fy * box.height });
+  if (relocated.kind === 'found') {
+    const box = usableBox(relocated.node.rect);
+    return box === undefined ? undefined : inside(box);
+  }
   if (relocated.failure !== 'target-ambiguous') return undefined;
   const { viewport, nodes } = relocated.screen;
   if (viewport.width !== planned.viewport.width || viewport.height !== planned.viewport.height) return undefined;
@@ -475,8 +483,14 @@ function boxWithin(relocated: Relocated, planned: Extract<PlannedCall, { kind: '
     .map((id) => nodes.get(id))
     .filter((node): node is SemanticNode => node !== undefined && node.states?.hidden !== true)
     .map((node) => usableBox(node.rect))
-    .filter((box) => box !== undefined && containsPoint(box, planned.point));
-  return containing.length === 1 ? containing[0] : undefined;
+    .filter((box): box is Box => box !== undefined && containsPoint(box, planned.point));
+  if (containing.length === 1) return inside(containing[0]!);
+  // Several look-alikes hold the point: a host view and the view inside it,
+  // a group inside a group, an anonymous container among its kind. They
+  // cannot be disjoint, since one point lies in all of them, so whichever is
+  // the recorded node, the recorded point on a viewport of the recorded size
+  // names the same pixel, and it is acted on as a bare point would be.
+  return containing.length > 1 ? planned.point : undefined;
 }
 
 function usableBox(rect: SemanticNode['rect']): Box | undefined {

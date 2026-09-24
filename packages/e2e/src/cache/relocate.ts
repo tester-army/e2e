@@ -83,7 +83,7 @@ function isAnonymous(descriptor: TraceTargetDescriptor): boolean {
   );
 }
 
-function isRelocatableDescriptor(descriptor: TraceTargetDescriptor): boolean {
+export function isRelocatableDescriptor(descriptor: TraceTargetDescriptor): boolean {
   return isAnonymous(descriptor) ? descriptor.role !== undefined && descriptor.position !== undefined : true;
 }
 
