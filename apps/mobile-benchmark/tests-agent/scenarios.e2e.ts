@@ -128,12 +128,15 @@ const SCENARIOS: readonly Scenario[] = [
     goal: 'search for Benchmark Target and select exactly that result once it loads',
     success: 'Selected Benchmark Target',
   },
+  // Android only: scroll_to by text pages the list as one action and the
+  // step replays. On iOS every page waits out a fling of a few seconds, the
+  // row is over forty pages down, and the step runs past its timeout.
   {
     name: 'Huge Virtualized List',
-    goal: 'scroll to Row 0512 and tap it; the list has 600 rows of equal height and off-screen rows are not in the tree, so scroll many screens at a time',
+    goal: 'scroll to Row 0512 and tap it; the list has 600 rows and off-screen rows are not in the tree',
     success: 'Found Row 0512',
     maxSteps: 80,
-    gap: 'the agent scrolls blind: iOS renumbers the rows on every observation, the scroll target goes stale around row 460 of 512, and the loop guard stops the step; the device engine declares no scrollIntoView, so scroll_to is not offered on a device',
+    platforms: ['android'],
   },
   {
     name: 'Flattened Registration Form',

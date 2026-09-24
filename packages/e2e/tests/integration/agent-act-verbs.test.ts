@@ -113,6 +113,14 @@ const FLOWS: readonly Flow[] = [
     script: (calls, call) => (calls === 0 ? [{ toolName: 'scroll_to', input: { target: nodeIdFor(call.prompt, /"Footnote"/) } }] : undefined),
   },
   {
+    title: 'pages a windowed list to a row it has not rendered',
+    instruction: 'scroll the ledger to the golden row',
+    check: `await expect(screen.getByLabel('Ledger state')).toHaveText('golden in view');`,
+    replays: true,
+    script: (calls, call) =>
+      calls === 0 ? [{ toolName: 'scroll_to', input: { text: 'Row 333', target: nodeIdFor(call.prompt, /list "Ledger"/) } }] : undefined,
+  },
+  {
     title: 'opens a page and comes back',
     instruction: 'open the about page and come back',
     check: `await expect(screen.getByRole('heading', { name: 'Gestures' })).toBeVisible();`,
@@ -284,6 +292,18 @@ describe('agent.act grammar verbs', () => {
     expect(actions.map((event) => event.name)).toEqual(['scrollIntoView']);
     expect(actions[0]!.detail).toMatch(/^scroll \S+ "Footnote" into view$/);
     expect(turnsOf('scroll to the footnote')[1]!.lastToolResult).toMatch(/^Scrolled into view #\S+\./);
+  });
+
+  it('pages a windowed list to a row by its text as one action, and brings it into view', () => {
+    expect(resultByTitle(outcome, 'pages a windowed list to a row it has not rendered').status).toBe('passed');
+    const step = stepOf('pages a windowed list to a row it has not rendered');
+    const actions = step.events.filter((event) => event.kind === 'engine');
+    expect(actions.map((event) => event.name)).toEqual(['scrollUntil']);
+    expect(actions[0]!.detail).toMatch(/^scroll down on list "Ledger" until "Row 333" shows \(\d+ screens\)$/);
+    // Forty-odd pages of the list, one action of the budget.
+    expect(step.metrics!.actionSteps).toBe(1);
+    expect(turnsOf('scroll the ledger')[1]!.lastToolResult).toMatch(/^Scrolled down until "Row 333" was in view\./);
+    expect(turnsOf('scroll the ledger')[1]!.lastToolResult).toMatch(/Row 333 · Golden/);
   });
 
   it('goes back through the engine session and reports the screen it returned to', () => {

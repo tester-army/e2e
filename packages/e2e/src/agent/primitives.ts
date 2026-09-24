@@ -13,7 +13,7 @@ import type { StepResult, Tool, ToolSet } from 'ai';
 import { z } from 'zod';
 import type { NodeActionName, PointActionName } from '../cache/trace.ts';
 import type { ViewportPoint } from '../engine/surface.ts';
-import { hasCause } from '../internal/errors.ts';
+import { hasCause, TestError } from '../internal/errors.ts';
 import type { AgentErrorCode } from '../types.ts';
 import { isRuntimeHardStop, BLOCKABLE_CODES, type StepExecutorContext, type StepVerdict } from './executor.ts';
 import { cacheTokenFields, readCost } from './model/sdk.ts';
@@ -48,6 +48,8 @@ const MAX_VERDICT_SUMMARY_CHARS = 2_000;
 
 /** Screens one scroll call may move; a windowed list of thousands of rows still needs a better verb. */
 const MAX_SCROLL_TIMES = 20;
+/** Longest text `scroll_to` pages toward; a row label, never a paragraph. */
+const MAX_SCROLL_TO_TEXT_CHARS = 200;
 
 /**
  * Keys whose whole effect is where the focus or the caret sits, which the
@@ -292,14 +294,6 @@ const NODE_VERBS: readonly {
     description:
       'Move the pointer over one node without clicking: opens what reacts to the pointer resting on it, such as a menu, a flyout, a tooltip, or a control revealed on mouse-over. The result reports what appeared. In a nested menu, hover each level in turn and then tap the item while it is open.',
   },
-  {
-    verb: 'scrollTo',
-    tool: 'scroll_to',
-    lead: 'Scrolled into view',
-    description:
-      'Scroll until one listed node is inside the viewport: for a target the screen lists but that sits above or below what is shown (a button past the fold, a row far down a long page). Prefer it to blind scrolling whenever the node has an id.',
-    expectChange: false,
-  },
 ];
 
 /**
@@ -476,17 +470,66 @@ export function createGrammarTools(
     tools['scroll'] = verbs.has('tap')
       ? screenTool({
           description:
-            'Scroll the viewport, or one scrollable node when target is given. The result reports the rows that came into or left the tree.',
+            'Scroll the viewport, or one scrollable node when target is given, by a screen or a few. The result reports the rows that came into or left the tree. For a row far down a long or windowed list, prefer scroll_to with the row\'s text: it pages until the row shows, as one action.',
           inputSchema: z.object({ direction, target: target.optional(), times }),
           execute: ({ direction: way, target: id, times: count }) =>
             acting(scrolled(way, count ?? 1), () => scrolling(way, id, count ?? 1), { expectChange: false }),
         })
       : screenTool({
-          description: 'Scroll the viewport. The result reports the rows that came into or left the tree.',
+          description: 'Scroll the viewport by a screen or a few. The result reports the rows that came into or left the tree. For a row far down a long list, prefer scroll_to with the row\'s text: it pages until the row shows, as one action.',
           inputSchema: z.object({ direction, times }),
           execute: ({ direction: way, times: count }) =>
             acting(scrolled(way, count ?? 1), () => scrolling(way, undefined, count ?? 1), { expectChange: false }),
         });
+  }
+  // scroll_to reaches a node the screen lists (by id, through the engine's
+  // scrollIntoView) or one it does not list yet (by text, paging a list
+  // screen by screen). One tool, since the model's question is the same:
+  // get this thing into view. With text, target is the list to page, the
+  // word the scroll tool uses for the node it scrolls; a first model given a
+  // separate list field kept putting the list in target. Each form is
+  // offered only with its verb.
+  if (verbs.has('scrollTo') || verbs.has('scrollUntil')) {
+    const byNode = verbs.has('scrollTo');
+    const byText = verbs.has('scrollUntil');
+    const text = z
+      .string()
+      .min(1)
+      .max(MAX_SCROLL_TO_TEXT_CHARS)
+      .describe('The visible text of the node to reach, or a distinctive part of it, e.g. "Row 4322". The list is paged screen by screen until a node reading it is in view; the node need not be listed yet.');
+    const direction = z.enum(['up', 'down', 'left', 'right']).optional().describe('Which way to page for text; down by default.');
+    const shape = byNode && byText
+      ? z
+          .object({
+            target: target.optional().describe('Without text, the listed node to bring into view. With text, the list to page; the viewport when omitted.'),
+            text: text.optional(),
+            direction,
+          })
+          .refine((input) => input.target !== undefined || input.text !== undefined, { message: 'give target, text, or both' })
+      : byNode
+        ? z.object({ target })
+        : z.object({ text, direction, target: target.optional().describe('Node id of the list to page; the viewport when omitted.') });
+    const description = byNode && byText
+      ? 'Scroll until a node is inside the viewport. With target alone, one listed node the screen shows above or below the fold (a button past the fold, a row far down the page). With text, a node the screen does not list yet: the list named by target (or the viewport) is paged screen by screen until a node reading that text shows, as one action however far, for a row deep in a long or windowed list. Prefer either to blind scrolling.'
+      : byNode
+        ? 'Scroll until one listed node is inside the viewport: for a target the screen lists but that sits above or below what is shown (a button past the fold, a row far down a long page). Prefer it to blind scrolling whenever the node has an id.'
+        : 'Scroll until a node reading the given text is inside the viewport: the list named by target (or the viewport) is paged screen by screen until it shows, as one action however far, for a row deep in a long or windowed list the screen does not list yet. Prefer it to blind scrolling whenever you know what the target reads.';
+    tools['scroll_to'] = screenTool({
+      description,
+      inputSchema: shape,
+      execute: (input: { target?: string | undefined; text?: string | undefined; direction?: 'up' | 'down' | 'left' | 'right' | undefined }) => {
+        const { target: id, text: reading, direction: way } = input;
+        if (reading !== undefined) {
+          return acting(
+            `Scrolled ${way ?? 'down'} until ${JSON.stringify(reading)} was in view.`,
+            () => context.actions.scrollUntil(reading, way ?? 'down', id === undefined ? undefined : { id }),
+            { expectChange: false },
+          );
+        }
+        if (id !== undefined) return acting(`Scrolled into view #${id}.`, () => context.actions.scrollTo({ id }), { expectChange: false });
+        throw new TestError('INVALID_ARGUMENT', 'scroll_to takes a listed node id as target, a text to reach, or both');
+      },
+    });
   }
   if (verbs.has('navigate')) {
     tools['navigate'] = screenTool({

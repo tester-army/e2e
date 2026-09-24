@@ -47,6 +47,16 @@ export type RecordableAction =
       /** The share of the viewport the node covered when scrolled, 0 to 1 (`ScrollAction.spans`). */
       readonly spans?: number;
     } & Placement)
+  /** A list paged until a node reading `text` showed; the list as last paged, or none for the viewport. */
+  | ({
+      readonly name: 'scrollUntil';
+      readonly text: string;
+      readonly direction: ScrollDirection;
+      readonly node?: SemanticNode;
+      readonly spans?: number;
+      /** How many pages it took; in the summary, never in the trace, since a replay pages for itself. */
+      readonly screens: number;
+    } & Placement)
   | { readonly name: 'navigate'; readonly url: string }
   | { readonly name: 'back' }
   /** Keyboard input to whatever held focus, with no node resolved. */
@@ -195,6 +205,12 @@ export function describeAction(
         return `drag ${where} to ${describeForSummary(destination)}`;
       case 'scroll':
         return target === undefined ? `scroll ${action.direction}` : `scroll ${action.direction} on ${where}`;
+      case 'scrollUntil': {
+        const pages = action.screens === 0 ? 'already there' : `${String(action.screens)} ${action.screens === 1 ? 'screen' : 'screens'}`;
+        return target === undefined
+          ? `scroll ${action.direction} until ${safe(action.text)} shows (${pages})`
+          : `scroll ${action.direction} on ${where} until ${safe(action.text)} shows (${pages})`;
+      }
       case 'navigate':
         return `navigate to ${safe(action.url)}`;
       case 'back':

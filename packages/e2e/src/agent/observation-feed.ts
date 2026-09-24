@@ -260,6 +260,24 @@ export class ObservationFeed {
     return node === undefined ? undefined : { node, observation };
   }
 
+  /**
+   * One capture taken inside a queued action body, settled as far as `mode`
+   * asks and published as the newest screen: what a verb that pages through a
+   * list reads between its pages. Direct rather than queued, like
+   * `relocate`, since the queue is held by this very caller.
+   */
+  async look(mode: SettleMode): Promise<AgentObservation> {
+    this.accounting.checkpoint();
+    const observation = await instrumentPhase(
+      this.runtime,
+      { api: this.accounting.api, kind: 'observation', phase: 'agent.observe', name: 'page' },
+      () => this.captureSettled(mode, false),
+      observationDetail,
+    );
+    this.publish(observation);
+    return observation;
+  }
+
   /** The step's pixel record for the report. */
   visionReport(): Pick<StepAgentDetails, 'visionInput' | 'visionDegraded'> {
     return {

@@ -370,7 +370,8 @@ current attempt's engine.
 
 The grammar verbs need no tool pack: the engine's declared actions give the
 agent `tap`, `double_tap`, `long_press`, `hover`, `type`, `press`, `check`,
-`scroll`, `drag`, and `back`; there is no `right_click`, `scroll_to`, or
+`scroll`, `drag`, `scroll_to` by `text` (paging the list until a row reading it
+is drawn), and `back`; there is no `right_click`, `scroll_to` by node id, or
 `upload` on a device. Point actions can tap controls absent from the
 accessibility tree. `type_secret` is offered when the step declares a secret.
 

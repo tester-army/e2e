@@ -117,6 +117,8 @@ type PlannedCall =
     }
   /** A drag whose two nodes are re-found on one screen before the drag joins them. */
   | { readonly kind: 'drag'; readonly source: TraceTargetDescriptor; readonly destination: TraceTargetDescriptor }
+  /** A list paged until a text showed: on the re-found list, on the viewport for a lost list that filled the screen, else a hand-off. */
+  | { readonly kind: 'scrollUntil'; readonly text: string; readonly direction: ScrollDirection; readonly list?: ScrolledList }
   /** A bare point, replayed as given once the viewport is the recorded size. */
   | { readonly kind: 'point'; readonly point: ViewportPoint; readonly viewport: TraceViewport; readonly invoke: PointInvoke }
   /** A bare point placed inside a re-found node's live box. */
@@ -180,6 +182,15 @@ function planCall(action: RecordedAction, actions: ExecutorActions): PlannedCall
         kind: 'scroll',
         direction: action.direction,
         times: action.times ?? 1,
+        ...(action.target === undefined
+          ? {}
+          : { list: { descriptor: action.target, ...(action.spans === undefined ? {} : { spans: action.spans }) } }),
+      };
+    case 'scrollUntil':
+      return {
+        kind: 'scrollUntil',
+        text: action.text,
+        direction: action.direction,
         ...(action.target === undefined
           ? {}
           : { list: { descriptor: action.target, ...(action.spans === undefined ? {} : { spans: action.spans }) } }),
@@ -281,6 +292,17 @@ export async function replayTrace(
             if (lost !== undefined) return stop(lost, partial());
             repeated += 1;
           }
+          break;
+        }
+        case 'scrollUntil': {
+          if (planned.list === undefined) {
+            await host.actions.scrollUntil(planned.text, planned.direction);
+            break;
+          }
+          const relocated = await relocate(host, planned.list.descriptor, look);
+          if (relocated.kind === 'found') await host.actions.scrollUntil(planned.text, planned.direction, { id: relocated.id });
+          else if ((planned.list.spans ?? 0) >= MAIN_LIST_SHARE) await host.actions.scrollUntil(planned.text, planned.direction);
+          else return stop(relocated.failure);
           break;
         }
         case 'drag': {

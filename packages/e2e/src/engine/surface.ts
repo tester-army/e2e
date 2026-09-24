@@ -51,6 +51,8 @@ export type GrammarVerb =
   | 'scroll'
   /** Brings one listed node into the viewport (`scrollIntoView`). */
   | 'scrollTo'
+  /** Pages a list until a node reading a text is in view (`swipe`), for a row the tree has not listed yet. */
+  | 'scrollUntil'
   | 'drag'
   | 'upload'
   | 'navigate'

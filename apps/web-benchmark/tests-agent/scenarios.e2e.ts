@@ -52,9 +52,8 @@ const SCENARIOS: readonly Scenario[] = [
   },
   {
     slug: 'virtualized-table',
-    goal: 'scroll the windowed table until the Golden Row is rendered, then claim it',
+    goal: 'scroll the windowed table until the Golden Row (row 4322) is rendered, then claim it',
     success: 'Golden Row claimed',
-    gap: 'row 4322 of 5000 is hundreds of screens down; scroll moves one screen at a time',
   },
   {
     slug: 'overlay-trap',

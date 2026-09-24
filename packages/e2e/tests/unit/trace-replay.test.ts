@@ -58,6 +58,7 @@ function makeHost(options: {
     check: (t, checked) => act('check', { t, checked }),
     drag: (source, destination) => act('drag', { source, destination }),
     scrollTo: (t) => act('scrollTo', t),
+    scrollUntil: (text, direction, list) => act('scrollUntil', { text, direction, list }),
     upload: (t, paths) => act('upload', { t, paths }),
     scroll: (direction, t) => act('scroll', { direction, t }),
     navigate: (url) => act('navigate', url),
@@ -497,6 +498,24 @@ describe('replayTrace: bare-point taps', () => {
     expect(off).toMatchObject({ completed: false, executed: 0, stopReason: 'target-ambiguous' });
     const resized = await replayTrace(makeHost({ nodes: [left, right], viewport: { width: 390, height: 844 } }), trace([{ ...pin, within }]));
     expect(resized).toMatchObject({ completed: false, executed: 0, stopReason: 'target-ambiguous' });
+  });
+
+  it('pages to a text on the viewport, on the re-found list, on the viewport for a lost list that filled the screen, and hands off for a lost small one', async () => {
+    const calls: unknown[] = [];
+    const list: SemanticNode = { ref: { id: 'l', revision: 'r1' }, role: 'list', name: 'Ledger', rect: { x: 0, y: 0, width: 1280, height: 200 } };
+    const host = makeHost({ nodes: [list], onAction: (name, detail) => void (name === 'scrollUntil' && calls.push(detail)) });
+    const viewport = await replayTrace(host, trace([{ name: 'scrollUntil', summary: 'scroll down until "Row 333" shows', text: 'Row 333', direction: 'down' }]));
+    expect(viewport).toMatchObject({ completed: true, executed: 1 });
+    const onList = await replayTrace(host, trace([{ name: 'scrollUntil', summary: 's', text: 'Row 333', direction: 'down', target: { role: 'list', name: 'Ledger' }, spans: 0.3 }]));
+    expect(onList).toMatchObject({ completed: true, executed: 1 });
+    expect(calls).toEqual([
+      { text: 'Row 333', direction: 'down', list: undefined },
+      { text: 'Row 333', direction: 'down', list: { id: 'l' } },
+    ]);
+    const lostFull = await replayTrace(makeHost({ nodes: [] }), trace([{ name: 'scrollUntil', summary: 's', text: 'Row 333', direction: 'down', target: { role: 'list', name: 'Ledger' }, spans: 0.9 }]));
+    expect(lostFull).toMatchObject({ completed: true, executed: 1 });
+    const lostSmall = await replayTrace(makeHost({ nodes: [] }), trace([{ name: 'scrollUntil', summary: 's', text: 'Row 333', direction: 'down', target: { role: 'list', name: 'Ledger' }, spans: 0.3 }]));
+    expect(lostSmall).toMatchObject({ completed: false, executed: 0, stopReason: 'target-not-found' });
   });
 
   it('repeats a folded viewport scroll as many times as recorded, with a settled look between repeats', async () => {

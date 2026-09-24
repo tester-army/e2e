@@ -218,7 +218,7 @@ The agent offers the model only what `actions` declares: `tap` needs the
 `longPress`, and `secondaryTap`; `hover` needs `hover`; `type` and `type_secret` need `fill`;
 `press` needs `press`; `select` needs `selectOption`; `check` needs both
 `check` and `uncheck`, since it sets a state rather than flipping one;
-`scroll` needs `swipe`; `scroll_to` needs `scrollIntoView`; `drag` needs
+`scroll` and `scroll_to({ text })` need `swipe`; `scroll_to({ target })` needs `scrollIntoView`; `drag` needs
 `dragTo`; `upload` needs `setInputFiles`; `navigate` needs `session.open`;
 `back` needs `session.back`; `tap_at` and `hover_at` need the `tap` or
 `hover` kind in `actions` or in `pointerActions`. `clear` and `focus` unlock

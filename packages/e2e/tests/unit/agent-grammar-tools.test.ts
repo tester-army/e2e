@@ -64,6 +64,27 @@ describe('the grammar tools have closed schemas', () => {
     }
   });
 
+  it('scroll_to takes a listed node, a text to reach, or a text with the list to page, never nothing; a device gets the text form alone', () => {
+    const full = schemaOf(createGrammarTools(fakeExecutorContext().context), 'scroll_to');
+    expect(full.safeParse({ text: 'Row 4322', direction: 'down', target: 'n6' }).success).toBe(true);
+    expect(full.safeParse({ text: 'Row 4322' }).success).toBe(true);
+    expect(full.safeParse({}).success).toBe(false);
+    expect(full.safeParse({ text: 'x'.repeat(201) }).success).toBe(false);
+    expect(full.safeParse({ text: 'Row 4322', list: 'n6' }).success).toBe(false);
+    expectClosed(full, { text: 'Row 4322' }, 'scroll_to');
+
+    const device = createGrammarTools(fakeExecutorContext({ verbs: ['tap', 'scroll', 'scrollUntil'] }).context);
+    const byText = schemaOf(device, 'scroll_to');
+    expect(byText.safeParse({ text: 'Row 0512' }).success).toBe(true);
+    expect(byText.safeParse({ text: 'Row 0512', target: 'n3' }).success).toBe(true);
+    expect(byText.safeParse({ target: 'n1' }).success).toBe(false);
+    expectClosed(byText, { text: 'Row 0512', direction: 'down' }, 'scroll_to');
+
+    const byNode = schemaOf(createGrammarTools(fakeExecutorContext({ verbs: ['tap', 'scrollTo'] }).context), 'scroll_to');
+    expect(byNode.safeParse({ text: 'Row 0512' }).success).toBe(false);
+    expectClosed(byNode, { target: 'n1' }, 'scroll_to');
+  });
+
   it('closes the keyboard-only shapes too: type and press without a target, scroll without one', () => {
     const tools = createGrammarTools(fakeExecutorContext({ verbs: ['typeText', 'pressKey', 'scroll'] }).context);
     expect(Object.keys(tools).toSorted()).toEqual(['observe', 'press', 'press_at', 'screenshot', 'scroll', 'type', 'type_at']);

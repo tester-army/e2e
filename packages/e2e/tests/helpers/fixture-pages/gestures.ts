@@ -35,6 +35,10 @@ export const GESTURE_PAGES: Record<string, PageRenderer> = {
   <label for="attachment">Attachment</label>
   <input id="attachment" type="file" multiple />
 
+  <p>Page the ledger down to Row 333 and stop there.</p>
+  <div id="ledger" role="list" aria-label="Ledger" style="position:relative;height:200px;overflow:auto;border:1px solid #000"><div id="ledger-spacer"></div></div>
+  <output aria-label="Ledger state">golden out of view</output>
+
   <div style="height:3000px"></div>
   <p id="footnote">Footnote</p>
   <output aria-label="Footnote state">out of view</output>
@@ -62,6 +66,28 @@ export const GESTURE_PAGES: Record<string, PageRenderer> = {
     document.getElementById('attachment').addEventListener('change', (event) => {
       state.textContent = 'attached: ' + Array.from(event.target.files, (file) => file.name).join(', ');
     });
+    // A windowed list: 400 rows of 40 px exist as data, and only the rows
+    // inside the container's scrolled window are in the DOM, so the golden
+    // row is nowhere in the tree until the list is paged down to it.
+    const ROWS = 400, ROW_PX = 40, GOLDEN = 333;
+    const ledger = document.getElementById('ledger');
+    document.getElementById('ledger-spacer').style.height = ROWS * ROW_PX + 'px';
+    const ledgerState = document.querySelector('output[aria-label="Ledger state"]');
+    const renderLedger = () => {
+      for (const row of ledger.querySelectorAll('[role="listitem"]')) row.remove();
+      const first = Math.floor(ledger.scrollTop / ROW_PX);
+      const last = Math.min(ROWS, Math.ceil((ledger.scrollTop + ledger.clientHeight) / ROW_PX));
+      for (let index = first; index < last; index += 1) {
+        const row = document.createElement('div');
+        row.setAttribute('role', 'listitem');
+        row.style.cssText = 'position:absolute;left:0;right:0;height:' + ROW_PX + 'px;top:' + index * ROW_PX + 'px';
+        row.textContent = index === GOLDEN ? 'Row ' + GOLDEN + ' · Golden' : 'Row ' + index;
+        ledger.appendChild(row);
+      }
+      ledgerState.textContent = first <= GOLDEN && GOLDEN < last ? 'golden in view' : 'golden out of view';
+    };
+    ledger.addEventListener('scroll', renderLedger);
+    renderLedger();
     const footnoteState = document.querySelector('output[aria-label="Footnote state"]');
     new IntersectionObserver((entries) => {
       footnoteState.textContent = entries[0].isIntersecting ? 'in view' : 'out of view';

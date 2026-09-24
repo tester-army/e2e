@@ -100,6 +100,7 @@ const KINDS_BY_VERB: readonly (readonly [GrammarVerb, readonly LocatorActionKind
   ['check', ['check', 'uncheck']],
   ['scroll', ['swipe']],
   ['scrollTo', ['scrollIntoView']],
+  ['scrollUntil', ['swipe']],
   ['drag', ['dragTo']],
   ['upload', ['setInputFiles']],
 ];

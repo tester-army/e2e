@@ -108,6 +108,18 @@ describe('TraceRecorder', () => {
     recorder.record({ name: 'scroll', direction: 'down', node: list, spans: 0.6 });
     recorder.record({ name: 'scroll', direction: 'down', node: list, spans: 0.4 });
     expect(recorder.finalize(conclusion)?.actions[0]).toMatchObject({ name: 'scroll', times: 2, spans: 0.4 });
+
+    const paged = makeRecorder();
+    paged.record({ name: 'scrollUntil', text: 'Row 4322', direction: 'down', node: list, spans: 0.6, screens: 7 });
+    paged.record({ name: 'scrollUntil', text: 'Row 12', direction: 'up', screens: 1 });
+    const trace = paged.finalize(conclusion)!;
+    expect(trace.actions).toEqual([
+      expect.objectContaining({ name: 'scrollUntil', text: 'Row 4322', direction: 'down', spans: 0.6, target: { role: 'group', name: 'Rows' } }),
+      { name: 'scrollUntil', summary: 'scroll up until "Row 12" shows (1 screen)', text: 'Row 12', direction: 'up' },
+    ]);
+    expect(trace.actions[0]!.summary).toBe('scroll down on group "Rows" until "Row 4322" shows (7 screens)');
+    const entry = readTraceEntry(JSON.parse(JSON.stringify(buildTraceEntry(trace))));
+    expect(entry?.payload.actions).toEqual(trace.actions);
     const mixed = makeRecorder();
     mixed.record({ name: 'scroll', direction: 'down', node: list, spans: 0.6 });
     mixed.record({ name: 'scroll', direction: 'down', node: list });

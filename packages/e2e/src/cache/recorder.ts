@@ -192,6 +192,15 @@ export class TraceRecorder {
           ...(target === undefined ? {} : { target }),
           ...(action.spans === undefined ? {} : { spans: fraction(action.spans) }),
         };
+      case 'scrollUntil':
+        return {
+          name: 'scrollUntil',
+          summary,
+          text: this.verbatim(action.text),
+          direction: action.direction,
+          ...(target === undefined ? {} : { target }),
+          ...(action.spans === undefined ? {} : { spans: fraction(action.spans) }),
+        };
       case 'navigate':
         return { name: 'navigate', summary, url: this.verbatim(action.url) };
       case 'typeText':

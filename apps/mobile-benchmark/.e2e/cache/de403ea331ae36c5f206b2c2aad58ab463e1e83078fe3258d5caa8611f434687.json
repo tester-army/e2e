@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-09-24T23:04:51.910Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "scrollUntil",
+        "summary": "scroll down until \"Row 0512\" shows (55 screens)",
+        "text": "Row 0512",
+        "direction": "down"
+      },
+      {
+        "name": "tap",
+        "summary": "tap group \"Row 0512\" in \"Row 0500\"",
+        "target": {
+          "role": "group",
+          "name": "Row 0512",
+          "testId": "row-512",
+          "selector": "id=row-512",
+          "within": "Row 0500"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20Huge%20Virtualized%20List",
+      "targetId": "android-emulator",
+      "instructionDigest": "0cbf462391106879e99df44b824d6b362b915d99d44a02d241309ec3d4bf4041"
+    },
+    "summary": "The current screen displays “Found Row 0512,” confirming the requested row tap took effect.",
+    "startPath": "dev.e2e.benchmark",
+    "endPath": "dev.e2e.benchmark",
+    "endAnchors": [
+      {
+        "role": "text",
+        "name": "Found Row 0512",
+        "testId": "success-message"
+      },
+      {
+        "role": "group",
+        "name": "T-Mobile, no signal.",
+        "testId": "com.android.systemui:id/mobile_combo"
+      }
+    ],
+    "endWaitMs": 26713
+  }
+}

@@ -218,6 +218,16 @@ export interface ScrollAction extends ActionBase {
   readonly spans?: number;
 }
 
+/** A list paged until a node reading `text` showed; `target` is the list as last paged, absent for the viewport. */
+export interface ScrollUntilAction extends ActionBase {
+  readonly name: 'scrollUntil';
+  readonly text: string;
+  readonly direction: ScrollDirection;
+  readonly target?: TraceTargetDescriptor;
+  /** As `ScrollAction.spans`. */
+  readonly spans?: number;
+}
+
 export interface NavigateAction extends ActionBase {
   readonly name: 'navigate';
   readonly url: string;
@@ -308,6 +318,7 @@ export type RecordedAction =
   | UploadAction
   | DragAction
   | ScrollAction
+  | ScrollUntilAction
   | NavigateAction
   | BackAction
   | PointAction
@@ -536,6 +547,23 @@ function readRecordedAction(document: unknown): RecordedAction | undefined {
         ...(spans === undefined ? {} : { spans }),
       };
     }
+    case 'scrollUntil': {
+      const text = readInputText(raw['text']);
+      const direction = raw['direction'];
+      if (text === undefined || !isScrollDirection(direction)) return undefined;
+      const target = raw['target'] === undefined ? undefined : readDescriptor(raw['target']);
+      if (raw['target'] !== undefined && target === undefined) return undefined;
+      const spans = raw['spans'];
+      if (spans !== undefined && (typeof spans !== 'number' || !(spans >= 0 && spans <= 1))) return undefined;
+      return {
+        name: 'scrollUntil',
+        summary,
+        text,
+        direction,
+        ...(target === undefined ? {} : { target }),
+        ...(spans === undefined ? {} : { spans }),
+      };
+    }
     case 'navigate': {
       const url = readInputText(raw['url']);
       return url === undefined ? undefined : { name: 'navigate', summary, url };
@@ -681,6 +709,13 @@ function mapActionText(action: RecordedAction, map: TraceTextMap): RecordedActio
       if (action.target === undefined) return withSummary(action);
       const mapped = target(action.target);
       return mapped === undefined ? undefined : withSummary({ ...action, target: mapped });
+    }
+    case 'scrollUntil': {
+      const text = map(action.text);
+      if (text === undefined) return undefined;
+      if (action.target === undefined) return withSummary({ ...action, text });
+      const mapped = target(action.target);
+      return mapped === undefined ? undefined : withSummary({ ...action, text, target: mapped });
     }
     case 'navigate': {
       const url = map(action.url);

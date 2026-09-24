@@ -42,6 +42,7 @@ export function fakeExecutorContext(options: FakeExecutorContextOptions = {}): F
     check: refuse('check'),
     drag: refuse('drag'),
     scrollTo: refuse('scrollTo'),
+    scrollUntil: refuse('scrollUntil'),
     upload: refuse('upload'),
     scroll: refuse('scroll'),
     navigate: refuse('navigate'),

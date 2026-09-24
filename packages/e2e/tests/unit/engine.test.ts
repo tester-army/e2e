@@ -388,6 +388,7 @@ describe('createEngineSession', () => {
       'press',
       'scroll',
       'scrollTo',
+      'scrollUntil',
       'secondaryTap',
       'select',
       'tap',
@@ -400,7 +401,7 @@ describe('createEngineSession', () => {
     expect(verbs({ actions: ['fill'], perform })).toEqual(['type', 'typeSecret']);
     expect(verbs({ actions: ['press'], perform })).toEqual(['press']);
     expect(verbs({ actions: ['selectOption'], perform })).toEqual(['select']);
-    expect(verbs({ actions: ['swipe'], perform })).toEqual(['scroll']);
+    expect(verbs({ actions: ['swipe'], perform })).toEqual(['scroll', 'scrollUntil']);
     expect(verbs({ actions: ['hover', 'dragTo', 'scrollIntoView', 'setInputFiles'], perform })).toEqual(['drag', 'hover', 'scrollTo', 'upload']);
     // `check` sets a state, so it needs both directions; `clear` and `focus` unlock nothing for the agent.
     expect(verbs({ actions: ['check', 'uncheck'], perform })).toEqual(['check']);

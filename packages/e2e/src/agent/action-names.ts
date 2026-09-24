@@ -19,6 +19,7 @@ export const GRAMMAR_ACTION_NAMES = [
   'pressKey',
   'scroll',
   'scrollIntoView',
+  'scrollUntil',
   'secondaryTap',
   'selectOption',
   'setInputFiles',

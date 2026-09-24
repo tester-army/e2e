@@ -91,6 +91,8 @@ export const SETTLE_AFTER: Record<RecordedAction['name'], SettleAfter> = {
   scroll: { changeWaitMs: BRIEF_CHANGE_WAIT_MS, look: 'held-still' },
   // Scrolling a node into view moves nothing the tree records, like a scroll.
   scrollTo: { changeWaitMs: BRIEF_CHANGE_WAIT_MS, look: 'held-still' },
+  // A list paged to a row settles between its pages; the last page is a scroll.
+  scrollUntil: { changeWaitMs: BRIEF_CHANGE_WAIT_MS, look: 'held-still' },
   navigate: { changeWaitMs: FULL_CHANGE_WAIT_MS, look: 'held-still' },
   back: { changeWaitMs: FULL_CHANGE_WAIT_MS, look: 'held-still' },
   tapAt: { changeWaitMs: FULL_CHANGE_WAIT_MS, look: 'held-still' },

@@ -187,6 +187,16 @@ export interface ExecutorActions {
   /** Brings one listed node into the viewport (`scrollTo` in `target.verbs`). */
   scrollTo(target: ExecutorTarget): Promise<void>;
   /**
+   * Pages the viewport, or one list, screen by screen in `direction` until a
+   * visible node whose name or text reads `text` is inside the viewport,
+   * then brings it in when the engine can (`scrollUntil` in
+   * `target.verbs`): for a row deep in a long or windowed list that the
+   * tree does not list until it is drawn. One action however many screens
+   * it takes, up to eight hundred; gives up as `LOCATOR_NOT_FOUND` when the
+   * screen stops moving or the cap is reached.
+   */
+  scrollUntil(text: string, direction: ScrollDirection, list?: ExecutorTarget): Promise<void>;
+  /**
    * Attaches files to a file input. Paths are taken relative to the project
    * root and authorized by the harness before the engine sees them: a file
    * outside the project, under a hidden directory, or absent is refused
