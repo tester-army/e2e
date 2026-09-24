@@ -118,9 +118,12 @@ const SCENARIOS: readonly Scenario[] = [
     goal: 'long-press the first target, swipe the card left, then double-tap the last target',
     success: 'All gestures completed',
   },
+  // "Scroll up" names the grammar verb the recording replays; a free-form
+  // swipe from the device tool pack is a gap in the trace, and the model
+  // reached for it when told to pull.
   {
     name: 'Async States',
-    goal: 'wait for the screen to load, pull to refresh, then claim the reward',
+    goal: 'wait for the screen to load, scroll up on the reward area to refresh it, then claim the reward',
     success: 'Reward claimed',
   },
   {
@@ -138,12 +141,20 @@ const SCENARIOS: readonly Scenario[] = [
     maxSteps: 80,
     platforms: ['android'],
   },
+  // The values are spelled out so the recording replays: a value the model
+  // composes after a screenshot is treated as read off the image and is a
+  // gap in the trace, while one the goal names is the step's literal input.
+  // The password is not the declared credential's, which the model would
+  // see redacted.
   {
     name: 'Flattened Registration Form',
-    goal: 'fill every field of the registration form with plausible values and sign up until it says Account created',
+    goal: 'fill the registration form with first name Ada, last name Lovelace, email ada@example.com, and password Lovelace1815, then sign up until it says Account created',
     success: 'Account created',
     pixels: true,
   },
+  // The account is read off the screenshot, so the typed values are a gap in
+  // the recording by design and the model runs that part live: a secret can
+  // only be typed into a listed field, and this screen lists none.
   {
     name: 'Flattened Login',
     goal: 'log in with the email and password the screen shows as a hint',
@@ -194,16 +205,24 @@ const SCENARIOS: readonly Scenario[] = [
   // agent-device 0.21.13's fill and Pay stays disabled, on every run.
   {
     name: 'Stripe PaymentSheet',
-    goal: 'open the checkout and pay with the Stripe test card 4242 4242 4242 4242, any future expiry, any CVC',
+    // Expiry and CVC are named so the recording replays: "any CVC" had the
+    // model type the 123 the screen shows, a value read off the screen and so
+    // a gap in the trace.
+    goal: 'open the checkout and pay with the Stripe test card 4242 4242 4242 4242, expiry 12/34, CVC 123',
     success: 'Stripe test payment completed',
     maxSteps: 40,
     platforms: ['ios'],
   },
+  // Android only: on iOS the fields the open keyboard covers stay covered
+  // after the keyboard is dismissed (agent-device cannot dismiss the iOS
+  // keyboard, and a tap while it is up only closes it), so the wizard stays
+  // on its step in two runs out of three, on a Mac and on CI alike. Android
+  // passed three live runs in a row.
   {
     name: 'Sequential Onboarding',
     goal: 'complete the signup wizard with the email, name, and phone the screen asks for, dismissing the keyboard before each Continue',
     success: 'Onboarding complete',
-    gap: 'the third step keeps its Continue under the keyboard; the agent dismisses the keyboard and taps, and the wizard stays on step 3 in one run out of three, on a Mac and on CI alike, so the gate would flake on it until the tap after a keyboard dismissal is understood',
+    platforms: ['android'],
   },
   {
     name: 'Apple Pay',

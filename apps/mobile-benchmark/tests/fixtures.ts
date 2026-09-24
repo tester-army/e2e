@@ -36,8 +36,10 @@ export async function openScenario(
   const shown = name === 'Bottom Tabs' ? screen.getByTestId('home-tab-content') : screen.getByText(name);
   const opened = async (): Promise<boolean> => (await row.isHidden()) && (await shown.isVisible());
   await row.tap();
+  // Ten seconds: a screen that boots a payment SDK takes a while to push on
+  // a loaded CI Mac, and a pop in the middle of it leaves the list behind.
   try {
-    await expect.poll(opened, { timeout: 5_000 }).toBe(true);
+    await expect.poll(opened, { timeout: 10_000 }).toBe(true);
   } catch {
     if (await row.isHidden()) {
       await device.back();
