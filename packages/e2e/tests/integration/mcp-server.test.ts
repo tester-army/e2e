@@ -152,7 +152,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
       expect.stringMatching(/^- long_press \{target\}: Press one node and hold: only for a control with a long-press menu or action\.$/),
       expect.stringMatching(/^- right_click \{target\}: Right-click one node to open its context menu, and only for that\.$/),
       expect.stringMatching(/^- hover \{target\}: Move the pointer over one node without clicking/),
-      expect.stringMatching(/^- scroll_to \{target\}: Scroll until one listed node is inside the viewport/),
+      expect.stringMatching(/^- scroll_to \{target\?, text\?, direction\?\}: Scroll until a node is inside the viewport/),
       expect.stringMatching(/^- type \{target\?, value, replace\?\}: Type a plain-text value into one input node, or into whatever has focus when target is omitted\.$/),
       expect.stringMatching(/^- press \{target\?, key\}: /),
       expect.stringMatching(/^- select \{target, value\}: /),

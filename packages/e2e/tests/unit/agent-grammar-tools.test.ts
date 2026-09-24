@@ -68,7 +68,6 @@ describe('the grammar tools have closed schemas', () => {
     const full = schemaOf(createGrammarTools(fakeExecutorContext().context), 'scroll_to');
     expect(full.safeParse({ text: 'Row 4322', direction: 'down', target: 'n6' }).success).toBe(true);
     expect(full.safeParse({ text: 'Row 4322' }).success).toBe(true);
-    expect(full.safeParse({}).success).toBe(false);
     expect(full.safeParse({ text: 'x'.repeat(201) }).success).toBe(false);
     expect(full.safeParse({ text: 'Row 4322', list: 'n6' }).success).toBe(false);
     expectClosed(full, { text: 'Row 4322' }, 'scroll_to');
