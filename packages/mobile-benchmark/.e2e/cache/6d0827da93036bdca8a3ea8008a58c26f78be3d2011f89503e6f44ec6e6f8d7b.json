@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-24T08:00:01.447Z",
+  "createdAt": "2026-09-24T11:17:51.813Z",
   "payload": {
     "actions": [
       {
@@ -25,10 +25,11 @@
       },
       {
         "name": "tap",
-        "summary": "tap text \"CREATE ACCOUNT\"",
+        "summary": "tap group \"CREATE ACCOUNT\" in \"Create your benchmark account\"",
         "target": {
-          "role": "text",
-          "name": "CREATE ACCOUNT"
+          "role": "group",
+          "name": "CREATE ACCOUNT",
+          "within": "Create your benchmark account"
         }
       }
     ],
@@ -41,7 +42,7 @@
       "targetId": "android-emulator",
       "instructionDigest": "69b9f2ed2ba0afaf7980bfae60b2bdb26ebc89da1dbef86fd16dcc96fcaaf831"
     },
-    "summary": "Filled all registration fields with plausible values and submitted the form. The screen now displays “Account created.”.",
+    "summary": "Filled all four registration fields with plausible values and tapped CREATE ACCOUNT. The screen now displays “Account created.”",
     "startPath": "dev.e2e.benchmark",
     "endPath": "dev.e2e.benchmark",
     "endAnchors": [
@@ -55,6 +56,6 @@
         "testId": "com.android.systemui:id/mobile_combo"
       }
     ],
-    "endWaitMs": 14698
+    "endWaitMs": 14560
   }
 }

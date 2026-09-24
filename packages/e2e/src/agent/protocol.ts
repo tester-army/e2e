@@ -22,8 +22,8 @@ const JUDGMENT_VERDICTS: readonly JudgmentVerdict[] = ['holds', 'fails', 'inconc
 
 interface JudgmentResponse {
   readonly protocolVersion: 'agent-judgment-2';
-  readonly verdict: JudgmentVerdict;
   readonly explanation: string;
+  readonly verdict: JudgmentVerdict;
 }
 
 export type ProtocolValidation<T> =
@@ -32,14 +32,20 @@ export type ProtocolValidation<T> =
 
 const EXPLANATION_MAX_LENGTH = 8192;
 
+/**
+ * The explanation comes before the verdict on purpose: providers that emit
+ * structured output in schema order then make the model reason before it
+ * decides, and a verdict written first was seen to contradict the reasoning
+ * that followed it.
+ */
 export const JUDGMENT_SCHEMA: JSONSchema7 = {
   type: 'object',
   additionalProperties: false,
-  required: ['protocolVersion', 'verdict', 'explanation'],
+  required: ['protocolVersion', 'explanation', 'verdict'],
   properties: {
     protocolVersion: { type: 'string', enum: ['agent-judgment-2'] },
-    verdict: { type: 'string', enum: [...JUDGMENT_VERDICTS] },
     explanation: { type: 'string', maxLength: EXPLANATION_MAX_LENGTH },
+    verdict: { type: 'string', enum: [...JUDGMENT_VERDICTS] },
   },
 };
 

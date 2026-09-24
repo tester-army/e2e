@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-24T07:58:36.777Z",
+  "createdAt": "2026-09-24T11:16:14.394Z",
   "payload": {
     "actions": [
       {
@@ -70,15 +70,20 @@
       "targetId": "android-emulator",
       "instructionDigest": "e950bf904a3587f9a1d42a4dc15c29517000d20a1e31c8bd896e96a9c6ebd6d1"
     },
-    "summary": "Tapped the square, then circle, then diamond. The screen now displays “Sequence complete.”",
+    "summary": "Tapped the square, circle, and diamond in the instructed order. The screen now displays “Sequence complete.”.",
     "startPath": "dev.e2e.benchmark",
     "endPath": "dev.e2e.benchmark",
     "endAnchors": [
       {
         "role": "text",
         "name": "Sequence complete"
+      },
+      {
+        "role": "group",
+        "name": "T-Mobile, no signal.",
+        "testId": "com.android.systemui:id/mobile_combo"
       }
     ],
-    "endWaitMs": 14572
+    "endWaitMs": 14510
   }
 }

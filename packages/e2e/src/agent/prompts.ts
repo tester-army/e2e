@@ -148,7 +148,9 @@ export const JUDGMENT_REQUEST = [
   'Decide whether the instruction is true for the observation right now.',
   'Answer "holds" only when the observation shows it is true, and "fails" only when the observation shows it is false.',
   'Answer "inconclusive" when the observation does not contain enough evidence to decide either way: the relevant part is not on screen, is still loading, or cannot be read. Never guess.',
-  'Respond with { "protocolVersion": "agent-judgment-2", "verdict": "holds" | "fails" | "inconclusive", "explanation": <short reason grounded in the observation> }.',
+  'Quotation marks in the instruction delimit the words to look for; the marks themselves, their style (straight or curly), and the punctuation around them are not part of those words, so text that reads the same holds.',
+  'Write the explanation first and let the verdict follow from it: the two must agree.',
+  'Respond with { "protocolVersion": "agent-judgment-2", "explanation": <short reason grounded in the observation>, "verdict": "holds" | "fails" | "inconclusive" }.',
 ].join('\n');
 
 /** Request text for structured extraction. */

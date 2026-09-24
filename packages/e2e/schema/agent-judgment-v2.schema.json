@@ -4,10 +4,10 @@
   "title": "e2e agent-judgment-2 response",
   "type": "object",
   "additionalProperties": false,
-  "required": ["protocolVersion", "verdict", "explanation"],
+  "required": ["protocolVersion", "explanation", "verdict"],
   "properties": {
     "protocolVersion": { "const": "agent-judgment-2" },
-    "verdict": { "enum": ["holds", "fails", "inconclusive"] },
-    "explanation": { "type": "string", "maxLength": 8192 }
+    "explanation": { "type": "string", "maxLength": 8192 },
+    "verdict": { "enum": ["holds", "fails", "inconclusive"] }
   }
 }

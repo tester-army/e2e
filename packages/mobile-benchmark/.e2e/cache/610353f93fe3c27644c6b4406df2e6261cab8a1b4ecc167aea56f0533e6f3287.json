@@ -1,14 +1,14 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-24T07:58:06.886Z",
+  "createdAt": "2026-09-24T11:14:47.539Z",
   "payload": {
     "actions": [
       {
         "name": "tapAt",
-        "summary": "tap the point (634, 1355) on group",
+        "summary": "tap the point (634, 1358) on group",
         "point": {
           "x": 634,
-          "y": 1355
+          "y": 1358
         },
         "viewport": {
           "width": 1080,
@@ -19,7 +19,7 @@
             "role": "group"
           },
           "fx": 0.4966,
-          "fy": 0.5034
+          "fy": 0.5238
         }
       },
       {
@@ -56,10 +56,10 @@
       },
       {
         "role": "group",
-        "name": "T-Mobile, no signal.",
+        "name": "T-Mobile, three bars.",
         "testId": "com.android.systemui:id/mobile_combo"
       }
     ],
-    "endWaitMs": 14558
+    "endWaitMs": 15214
   }
 }
