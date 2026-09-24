@@ -184,11 +184,15 @@ const SCENARIOS: readonly Scenario[] = [
     goal: 'order a Medium pizza with exactly Cheese and Olives, enable rush delivery, dismiss the keyboard, and place the order',
     success: 'Order placed: Medium with Cheese, Olives (rush)',
   },
+  // On Android the sheet is Stripe's Compose UI: the agent fills the card,
+  // expiry, and CVC, but the postal-code field takes no input from
+  // agent-device 0.21.6's fill and Pay stays disabled, on every run.
   {
     name: 'Stripe PaymentSheet',
     goal: 'open the checkout and pay with the Stripe test card 4242 4242 4242 4242, any future expiry, any CVC',
     success: 'Stripe test payment completed',
     maxSteps: 40,
+    platforms: ['ios'],
   },
   {
     name: 'Sequential Onboarding',
