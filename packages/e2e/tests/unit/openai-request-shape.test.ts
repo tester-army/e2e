@@ -9,7 +9,8 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import { generateText } from 'ai';
 import { describe, expect, it } from 'vitest';
-import { promptCacheHints, promptCacheKey, type CacheModelRef } from '../../src/agent/model/prompt-cache.ts';
+import { promptCacheKey, providerHints, type ProviderModelRef } from '../../src/agent/model/provider-hints.ts';
+import type { ProviderOptions } from '../../src/types.ts';
 
 const RESPONSE = {
   id: 'resp_1',
@@ -46,10 +47,10 @@ function capturingProvider() {
   return { bodies, openai: createOpenAI({ apiKey: 'test-key', fetch }) };
 }
 
-async function send(base: Record<string, Record<string, unknown>> | undefined): Promise<Record<string, unknown>> {
+async function send(base: ProviderOptions | undefined): Promise<Record<string, unknown>> {
   const { bodies, openai } = capturingProvider();
   const model = openai('gpt-6-luna');
-  const hints = promptCacheHints(model as CacheModelRef);
+  const hints = providerHints(model as ProviderModelRef);
   const providerOptions = hints.providerOptions(base, 'rules');
   await generateText({
     model,

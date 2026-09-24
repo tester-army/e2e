@@ -16,10 +16,10 @@ import type { LanguageModel, ModelMessage, StepResult, ToolSet } from 'ai';
 import { asSdkLanguageModel, loadAiSdk, type AiSdk, type SdkLanguageModel } from './ai-sdk.ts';
 import { withHint } from '../internal/errors.ts';
 import type { ProviderOptions } from '../types.ts';
-import { isAbort, providerHint, TRANSPORT_RETRIES } from './model/sdk.ts';
+import { failureHint, isAbort, TRANSPORT_RETRIES } from './model/sdk.ts';
 import { isContextOverflow } from './model/overflow.ts';
 import { isForcedToolChoiceRejected } from './model/tool-choice.ts';
-import { promptCacheHints, type CacheModelRef, type PromptCacheHints } from './model/prompt-cache.ts';
+import { providerHints, type ProviderHints, type ProviderModelRef } from './model/provider-hints.ts';
 import { isScreenOutput, toolResultTexts } from './screen-update.ts';
 import { compactScreenHistory } from './transcript-compaction.ts';
 import { AgentError, isAgentError } from './error.ts';
@@ -195,8 +195,8 @@ class LoopRun {
   private readonly maxTurns: number;
   /** Remaining step time under which the loop forces a verdict. */
   private readonly clockWindDownMs: number;
-  /** Prompt-cache hints for the model's provider; a no-op for providers without any. */
-  private readonly cache: PromptCacheHints;
+  /** Request hints for the model's provider; a no-op for providers without any. */
+  private readonly hints: ProviderHints;
   /** The history the last request went out with, for shrinking after an overflow. */
   private lastRequest: ModelMessage[] | undefined;
   /** Turns spent by earlier generate calls of this step; nonzero only after an overflow retry. */
@@ -219,7 +219,7 @@ class LoopRun {
     private readonly model: LanguageModel,
   ) {
     this.toolChoice = typeof model === 'object' && FREE_TOOL_CHOICE_MODELS.has(model) ? 'auto' : 'required';
-    this.cache = promptCacheHints(model as CacheModelRef);
+    this.hints = providerHints(model as ProviderModelRef);
     // Capped, never raised: the harness budget is the ceiling for any turns
     // setting, so the loop cannot spend past what the step was given.
     this.maxTurns = Math.min(
@@ -297,7 +297,7 @@ class LoopRun {
         }
         throw new AgentError(
           'MODEL_PROVIDER_FAILED',
-          withHint(`the model provider failed: ${message}`, providerHint(cause)),
+          withHint(`the model provider failed: ${message}`, failureHint(cause)),
           { cause },
         );
       }
@@ -318,13 +318,13 @@ class LoopRun {
 
   private buildLoop(tools: ToolSet) {
     const system = this.instructions();
-    const providerOptions = this.cache.providerOptions(
+    const providerOptions = this.hints.providerOptions(
       this.options.providerOptions ?? this.context.providerOptions,
       system,
     );
     return new this.ai.ToolLoopAgent({
       model: this.model,
-      instructions: this.cache.instructions(system),
+      instructions: this.hints.instructions(system),
       tools,
       toolChoice: this.toolChoice,
       ...(providerOptions === undefined ? {} : { providerOptions: providerOptions as never }),
@@ -529,7 +529,7 @@ class LoopRun {
     // The cache breakpoint rides on the newest message, whatever the turn
     // added; the history the SDK carries forward keeps it there until the
     // next turn moves it again.
-    const outgoing = this.cache.markLatest(prepared);
+    const outgoing = this.hints.markLatest(prepared);
     this.lastRequest = outgoing;
     // A model that rejects forced choices is offered the conclusion tool
     // alone under `auto`; the notices above already tell it to call it.

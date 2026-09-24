@@ -1,54 +1,33 @@
 /**
- * Provider request hints: what a request carries so the provider serves the
+ * Provider request hints: what a request carries, per provider, so the
  * repeated prefix (system prompt, tool definitions, the conversation so far)
- * from its cache instead of reading it again at full price, and so the
- * conversation itself never depends on state the provider kept.
+ * is served from the provider's cache, and so no turn depends on state the
+ * provider kept.
  *
  * Anthropic caches only up to an explicit breakpoint, so the system prompt
  * carries one (it covers the tool definitions ahead of it) and the newest
  * message carries the other: the next turn's request then matches everything
- * up to it. OpenAI (and Azure OpenAI) caches prefixes on its own and takes a
- * routing key; one key per system prompt sends every call of a run to the
- * same cache. Those requests also carry `store: false`: the runner never
- * reads a response back from the provider, and with storage on the AI SDK
- * replays a reasoning model's earlier turns by reference, which an
- * organization with zero data retention, where nothing is stored, rejects
- * on the second turn of every step. Without storage the SDK asks for the
- * reasoning as encrypted content and replays it inline, and the prompt cache
- * keeps working. Other providers get nothing extra, and the request is
- * exactly what it was.
+ * up to it. OpenAI-shaped providers (OpenAI, Azure OpenAI) cache prefixes on
+ * their own and take a routing key, one per system prompt, so every call of
+ * a run addresses the same cache. Their requests also carry `store: false`:
+ * the runner never reads a response back, and with storage on the AI SDK
+ * replays a reasoning model's earlier turns by item id, which an organization
+ * with zero data retention has never stored. Without storage the reasoning
+ * travels inline as encrypted content and the cache still hits. Other
+ * providers get nothing extra, and the request is exactly what it was.
  */
 
 import { createHash } from 'node:crypto';
 import type { ModelMessage, SystemModelMessage } from 'ai';
 import type { ProviderOptions } from '../../types.ts';
 
-export type CacheFamily = 'anthropic' | 'openai' | 'azure';
-
-/** What the hints need to know about the model: the provider and model id the SDK reports. */
-export interface CacheModelRef {
+/** What the hints read off a model: the provider and model id the SDK reports. */
+export interface ProviderModelRef {
   readonly provider?: string | undefined;
   readonly modelId?: string | undefined;
 }
 
-/**
- * The provider family a model routes to. A gateway model names its upstream
- * in the model id (`anthropic/claude-…`); a direct provider names it in the
- * provider (`anthropic.messages`, `openai.responses`, `azure.responses`).
- */
-export function cacheFamily(model: CacheModelRef | undefined): CacheFamily | undefined {
-  const provider = (model?.provider ?? '').toLowerCase();
-  const modelId = (model?.modelId ?? '').toLowerCase();
-  if (modelId.startsWith('anthropic/') || provider.startsWith('anthropic')) return 'anthropic';
-  if (modelId.startsWith('openai/') || provider.startsWith('openai')) return 'openai';
-  if (provider.startsWith('azure')) return 'azure';
-  return undefined;
-}
-
-const ANTHROPIC_BREAKPOINT = { cacheControl: { type: 'ephemeral' } } as const;
-
-export interface PromptCacheHints {
-  readonly family: CacheFamily | undefined;
+export interface ProviderHints {
   /** The system prompt as the request's instructions, carrying a breakpoint where the provider needs one. */
   instructions(system: string): string | SystemModelMessage;
   /**
@@ -65,24 +44,48 @@ export interface PromptCacheHints {
   markLatest(messages: ModelMessage[]): ModelMessage[];
 }
 
+const ANTHROPIC_BREAKPOINT = { cacheControl: { type: 'ephemeral' } } as const;
+
 /** The hints for one model; a no-op for providers without a cache the request can address. */
-export function promptCacheHints(model: CacheModelRef | undefined): PromptCacheHints {
-  const family = cacheFamily(model);
+export function providerHints(model: ProviderModelRef | undefined): ProviderHints {
+  const anthropic = speaksAnthropic(model);
+  const openai = openaiOptionsKey(model);
   return {
-    family,
     instructions: (system) =>
-      family === 'anthropic'
-        ? { role: 'system', content: system, providerOptions: { anthropic: ANTHROPIC_BREAKPOINT } }
-        : system,
-    providerOptions: (base, system) => {
-      if (family !== 'openai' && family !== 'azure') return base;
-      return {
-        ...base,
-        [family]: { promptCacheKey: promptCacheKey(system), store: false, ...base?.[family] },
-      };
-    },
-    markLatest: (messages) => (family === 'anthropic' ? moveBreakpoint(messages) : messages),
+      anthropic ? { role: 'system', content: system, providerOptions: { anthropic: ANTHROPIC_BREAKPOINT } } : system,
+    providerOptions: (base, system) =>
+      openai === undefined
+        ? base
+        : { ...base, [openai]: { promptCacheKey: promptCacheKey(system), store: false, ...base?.[openai] } },
+    markLatest: (messages) => (anthropic ? moveBreakpoint(messages) : messages),
   };
+}
+
+/**
+ * A gateway model names its upstream in the model id (`anthropic/claude-…`);
+ * a direct provider names it in the provider (`anthropic.messages`).
+ */
+function speaksAnthropic(model: ProviderModelRef | undefined): boolean {
+  return idPrefix(model, 'anthropic/') || providerPrefix(model, 'anthropic');
+}
+
+/**
+ * The provider-options key of an OpenAI-shaped model, which is how the AI
+ * SDK keys them too: `openai` for OpenAI itself (`openai.responses`, or
+ * `openai/gpt-…` through a gateway), `azure` for Azure OpenAI.
+ */
+function openaiOptionsKey(model: ProviderModelRef | undefined): 'openai' | 'azure' | undefined {
+  if (idPrefix(model, 'openai/') || providerPrefix(model, 'openai')) return 'openai';
+  if (providerPrefix(model, 'azure')) return 'azure';
+  return undefined;
+}
+
+function idPrefix(model: ProviderModelRef | undefined, prefix: string): boolean {
+  return (model?.modelId ?? '').toLowerCase().startsWith(prefix);
+}
+
+function providerPrefix(model: ProviderModelRef | undefined, prefix: string): boolean {
+  return (model?.provider ?? '').toLowerCase().startsWith(prefix);
 }
 
 /** A stable key for one system prompt, so every call sharing the prefix routes alike. */
