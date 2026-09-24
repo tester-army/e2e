@@ -46,14 +46,17 @@ export default function ControlInventory() {
   const openedDetails = useRef(false);
   const footnoteRef = useRef<HTMLParagraphElement>(null);
 
+  // The view follows the URL: once after mount, so a details link opens on
+  // details, and on every history move, which is how Back returns here.
   useEffect(() => {
-    const onPopState = () => {
+    const syncView = () => {
       const next = viewFromLocation();
       setView(next);
       if (next === "inventory" && openedDetails.current) setReturned(true);
     };
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
+    syncView();
+    window.addEventListener("popstate", syncView);
+    return () => window.removeEventListener("popstate", syncView);
   }, []);
 
   useEffect(() => {
