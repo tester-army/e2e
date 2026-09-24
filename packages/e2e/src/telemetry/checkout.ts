@@ -4,18 +4,18 @@
  * sends no telemetry.
  */
 
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 /**
- * True when `moduleUrl`, the CLI's own module, sits outside every
- * `node_modules` directory. Each install puts the package under one: a
- * project's `node_modules/e2e`, pnpm's `node_modules/.pnpm/...`, a global
- * npm or npx cache, Yarn's zip cache. The checkout's `packages/e2e/dist`
- * has none on its path. A URL that is not a file counts as installed.
+ * True when the source of the CLI sits next to `moduleUrl`, the CLI's own
+ * module: `src/cli/index.ts` two directories up, where the checkout keeps it
+ * beside `dist`. No install ships `src`, wherever the package is unpacked,
+ * so the marker is positive. A URL that is not a file counts as installed.
  */
 export function runsFromCheckout(moduleUrl: string): boolean {
   try {
-    return !fileURLToPath(moduleUrl).split(/[\\/]/u).includes('node_modules');
+    return existsSync(fileURLToPath(new URL('../../src/cli/index.ts', moduleUrl)));
   } catch {
     return false;
   }

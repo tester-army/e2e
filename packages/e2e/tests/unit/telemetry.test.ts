@@ -1,6 +1,7 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runsFromCheckout } from '../../src/telemetry/checkout.ts';
 import { EVENT_CLI_SESSION, EVENT_RUN_COMPLETED, runCompletedEvent } from '../../src/telemetry/events.ts';
@@ -466,12 +467,22 @@ describe('Telemetry', () => {
 });
 
 describe('runsFromCheckout', () => {
-  it('is true for the repository build and false under any node_modules, or for a URL that is not a file', () => {
-    expect(runsFromCheckout('file:///Users/dev/e2e/packages/e2e/dist/cli/index.js')).toBe(true);
-    expect(runsFromCheckout('file:///home/dev/app/node_modules/e2e/dist/cli/index.js')).toBe(false);
-    expect(runsFromCheckout('file:///home/dev/app/node_modules/.pnpm/e2e@0.15.0/node_modules/e2e/dist/cli/index.js')).toBe(false);
-    expect(runsFromCheckout('file:///Users/dev/.npm/_npx/1a2b/node_modules/e2e/dist/cli/index.js')).toBe(false);
-    expect(runsFromCheckout('file:///C:/Users/dev/AppData/Roaming/npm/node_modules/e2e/dist/cli/index.js')).toBe(false);
+  it('is true only where the CLI source sits beside the build: this repository, not an install or an unpacked package', () => {
+    // The real thing: this test runs from the checkout, whose src/cli/index.ts is two directories up from dist/cli or src/cli.
+    expect(runsFromCheckout(new URL('../../dist/cli/index.js', import.meta.url).href)).toBe(true);
+    expect(runsFromCheckout(new URL('../../src/cli/index.ts', import.meta.url).href)).toBe(true);
+    // A package installed under node_modules, or unpacked anywhere else, ships dist without src.
+    const root = tempDir();
+    for (const packageDir of ['node_modules/e2e', 'node_modules/.pnpm/e2e@0.15.0/node_modules/e2e', 'opt/e2e']) {
+      const dist = path.join(root, packageDir, 'dist', 'cli');
+      mkdirSync(dist, { recursive: true });
+      writeFileSync(path.join(dist, 'index.js'), '', 'utf8');
+      expect(runsFromCheckout(pathToFileURL(path.join(dist, 'index.js')).href)).toBe(false);
+    }
+    // The same layout with the source beside it is a checkout, wherever it lives.
+    mkdirSync(path.join(root, 'opt', 'e2e', 'src', 'cli'), { recursive: true });
+    writeFileSync(path.join(root, 'opt', 'e2e', 'src', 'cli', 'index.ts'), '', 'utf8');
+    expect(runsFromCheckout(pathToFileURL(path.join(root, 'opt', 'e2e', 'dist', 'cli', 'index.js')).href)).toBe(true);
     expect(runsFromCheckout('data:text/javascript,export%20default%201')).toBe(false);
   });
 });
