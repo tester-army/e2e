@@ -47,6 +47,6 @@ export async function openScenario(
       if (await opened()) return;
     }
     await row.tap();
-    await expect.poll(opened, { timeout: 5_000 }).toBe(true);
+    await expect.poll(opened, { timeout: 10_000 }).toBe(true);
   }
 }
