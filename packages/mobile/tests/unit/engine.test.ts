@@ -98,23 +98,6 @@ describe('manifest', () => {
 });
 
 describe('lifecycle', () => {
-  it('with launch once, relaunches the app for a worker\'s first attempt only and brings it to the front after that', async () => {
-    const h = harness({ launch: 'once' });
-    await openAttempt(h);
-    expect(h.fake.lastArgs('apps.open')).toEqual({ app: 'Settings', platform: 'ios', relaunch: true });
-    await h.engine.endAttempt!(cleanup());
-    await h.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal });
-    expect(h.fake.lastArgs('apps.open')).toEqual({ app: 'Settings', platform: 'ios' });
-    expect(h.fake.methods().filter((m) => m === 'apps.open')).toHaveLength(2);
-    // The fresh start stays available on request.
-    await h.engine.session!.restart!(operation());
-    expect(h.fake.lastArgs('apps.open')).toEqual({ app: 'Settings', platform: 'ios', relaunch: true });
-  });
-
-  it('rejects a launch mode it does not know', () => {
-    expect(() => harness({ launch: 'sometimes' as 'once' })).toThrow(/`launch` must be 'attempt' or 'once'/);
-  });
-
   it('boots once per init under a session named after the target and worker slot, opens the app fresh per attempt, and closes on dispose', async () => {
     const h = harness();
     await openAttempt(h);

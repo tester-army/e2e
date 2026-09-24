@@ -10,8 +10,6 @@ import { expect } from 'e2e';
 export { test } from '@e2edev/mobile';
 export { expect } from 'e2e';
 
-export const APP_ID = 'dev.e2e.benchmark';
-
 /**
  * Every attempt opens the app on its home list, two columns of compact rows
  * with every scenario on screen (`src/App.tsx`), so a scenario is one tap

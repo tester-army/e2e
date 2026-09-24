@@ -46,9 +46,8 @@ export default {
 
 Create an engine for each platform you test. Use `platforms: ['ios']` or
 `platforms: ['android']` on tests with platform-specific labels or operations.
-Each attempt opens the configured app automatically, fresh by default or
-launched once per worker with `launch: 'once'`; `app.open()` is unavailable on
-device targets.
+Each attempt opens the configured app automatically; `app.open()` is
+unavailable on device targets.
 
 ```ts
 /**
@@ -59,29 +58,18 @@ export interface MobileOptions {
   /** Platform the target's device runs. */
   readonly platform: MobilePlatform;
   /**
-   * App opened at the start of every attempt (see `launch`): a bundle id, a
-   * package name, or a display name agent-device resolves (`Settings`).
-   * Without it the surface observes whatever is in the foreground, and
-   * `app.restart()` and `app.clearState()` are not available. A link is
-   * `INVALID_CONFIG`: a test opens one with `device.openLink`.
+   * App opened fresh at the start of every attempt: a bundle id, a package
+   * name, or a display name agent-device resolves (`Settings`). Without it the
+   * surface observes whatever is in the foreground, and `app.restart()` and
+   * `app.clearState()` are not available. A link is `INVALID_CONFIG`: a test
+   * opens one with `device.openLink`.
    */
   readonly app?: string | undefined;
-  /**
-   * When the app is launched. `attempt` (default) opens it fresh at the
-   * start of every attempt, so no test inherits another's state. `once`
-   * launches it when a worker's first attempt starts and only brings it to
-   * the foreground after that (launching again if it is gone), so a test
-   * starts where the last one ended and takes the app to the screen it
-   * needs, as a Maestro flow does; that saves the launch and the cold first
-   * observation, two to three seconds per test. `app.restart()` is the fresh
-   * start on request.
-   */
-  readonly launch?: 'attempt' | 'once' | undefined;
   /**
    * Build to install on the device once per worker, before the first attempt:
    * an iOS `.app` bundle or an Android `.apk`, resolved against the project
    * root (the config's directory). Without `app`, the installed bundle id or
-   * package becomes the app opened at the start of every attempt.
+   * package becomes the app opened fresh at the start of every attempt.
    */
   readonly appPath?: string | undefined;
   /**
@@ -143,8 +131,8 @@ Devices boot in `prepare`, once per run and before the run's clock starts, so
 a cold boot on CI is never charged against `launchTimeout`. agent-device
 commands take no abort signal, so a timed-out command keeps running on the
 device; the next attempt waits for it to settle. Each attempt relaunches
-`app` when one is pinned, or only brings it to the front with `launch: 'once'`;
-without an app the model opens apps with the `open_app` tool.
+`app` when one is pinned; without it the model opens apps with the `open_app`
+tool.
 
 The engine declares one worker per configured device. With no `device`,
 `prepare` uses the booted devices it finds, capped by the run's slots, and
