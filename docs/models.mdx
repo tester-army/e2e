@@ -162,6 +162,34 @@ const agent = createAgent({
 });
 ```
 
+## Data retention and compliance
+
+Model input is the redacted screen, the step instruction, and the
+screenshots the agent asks for. e2e reads nothing back from the provider
+after a response, so a run needs no state kept on the provider's side.
+
+**OpenAI and Azure OpenAI.** Every request carries `store: false` and a
+prompt cache key. The provider keeps no copy of the conversation, a
+reasoning model's earlier turns travel inline as encrypted content, and the
+prompt cache still serves the repeated prefix. Organizations with zero data
+retention need no configuration. To keep stored responses, set `store` in
+`providerOptions`; the key is `azure` for Azure OpenAI:
+
+```ts title="Agent setup"
+const agent = createAgent({
+  model: openai('gpt-6-luna'),
+  providerOptions: { openai: { store: true } },
+});
+```
+
+**Anthropic under a BAA.** Agent steps use the Messages API with tool use,
+prompt caching, images, and structured outputs, all eligible under
+Anthropic's HIPAA readiness. The agreement covers `api.anthropic.com` only:
+call it directly with `@ai-sdk/anthropic` rather than through a gateway or
+OpenRouter, and leave `judge` unset so one agreement covers every request.
+Anthropic's Covered Models require 30-day retention and are not offered to
+organizations with zero data retention.
+
 ## What fails, and where
 
 | Problem | Code | Fix |
@@ -170,6 +198,7 @@ const agent = createAgent({
 | The built-in agent has no model | `MODEL_UNAVAILABLE` | Set `createAgent({ model })` or `agents.<name>.model`. |
 | Authentication fails on the first model call | `MODEL_PROVIDER_FAILED` | Check the provider's API key or the linked Vercel project, or run `npx e2e login` for a subscription. |
 | The `ai` package is missing | `MODEL_UNAVAILABLE` | Run `npm install -D ai`. |
+| A step's second turn fails with `Item with id 'rs_…' not found` | `MODEL_PROVIDER_FAILED` | Leave `store` off in `providerOptions`, the default, or call OpenAI directly instead of through a gateway. |
 
 If both `createAgent` and the surrounding agent options set `model`, they
 must name the same provider and model. The same rule applies to `judge`;

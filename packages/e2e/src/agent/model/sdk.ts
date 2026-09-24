@@ -295,7 +295,7 @@ function translateModelError(
   if (APICallError.isInstance(cause)) {
     return new AgentError(
       'MODEL_PROVIDER_FAILED',
-      withHint(`model provider failed: ${cause.message}`, credentialHint(cause)),
+      withHint(`model provider failed: ${cause.message}`, providerHint(cause)),
       { cause },
     );
   }
@@ -307,16 +307,24 @@ function translateModelError(
 }
 
 /**
+ * The remedy a provider failure points at, when its shape names one: a
+ * rejected credential, or a conversation the provider kept no state for.
+ * Requires the SDK to be loaded, which every caller has done by the time a
+ * provider call has failed.
+ */
+export function providerHint(cause: unknown): string {
+  const failure = unwrapRetry(cause);
+  if (!(failure instanceof Error)) return '';
+  return credentialHint(failure) || statelessHint(failure);
+}
+
+/**
  * A rejected credential is named for what it is. The model instance owns its
  * credential, read from the provider package's own variable
  * (`AI_GATEWAY_API_KEY`, `OPENROUTER_API_KEY`, ...) or passed at
  * construction, so the runner can only say that the provider refused it.
- * Requires the SDK to be loaded, which every caller has done by the time a
- * provider call has failed.
  */
-export function credentialHint(cause: unknown): string {
-  const failure = unwrapRetry(cause);
-  if (!(failure instanceof Error)) return '';
+function credentialHint(failure: Error): string {
   // Gateways raise their own authentication error classes and a raw provider
   // an APICallError; both carry the HTTP status, so that is what is read.
   const statusCode = (failure as { statusCode?: unknown }).statusCode;
@@ -326,6 +334,19 @@ export function credentialHint(cause: unknown): string {
     /unauthenticated|unauthorized|authentication/i.test(`${failure.name} ${failure.message}`);
   if (!rejected) return '';
   return 'the provider rejected the credential the model instance was created with: check the variable the provider package reads, or the key passed at construction';
+}
+
+/**
+ * OpenAI's Responses API replays a reasoning model's earlier turns by item
+ * id when responses are stored; an organization with zero data retention
+ * stores none, whatever the request said, and the second turn of a step
+ * fails with an item it cannot find. The runner sends `store: false` so the
+ * reasoning travels inline; the failure survives only when a caller turned
+ * storage back on or a gateway dropped the option.
+ */
+function statelessHint(failure: Error): string {
+  if (!/not persisted when .?store.? is set to false|item with id .+ not found/i.test(failure.message)) return '';
+  return 'the provider kept no earlier turn to refer back to: leave store off in the agent providerOptions (the default) so the model replays its reasoning inline, or call the provider directly instead of through a gateway';
 }
 
 /**

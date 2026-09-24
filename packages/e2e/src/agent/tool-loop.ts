@@ -16,7 +16,7 @@ import type { LanguageModel, ModelMessage, StepResult, ToolSet } from 'ai';
 import { asSdkLanguageModel, loadAiSdk, type AiSdk, type SdkLanguageModel } from './ai-sdk.ts';
 import { withHint } from '../internal/errors.ts';
 import type { ProviderOptions } from '../types.ts';
-import { credentialHint, isAbort, TRANSPORT_RETRIES } from './model/sdk.ts';
+import { isAbort, providerHint, TRANSPORT_RETRIES } from './model/sdk.ts';
 import { isContextOverflow } from './model/overflow.ts';
 import { isForcedToolChoiceRejected } from './model/tool-choice.ts';
 import { promptCacheHints, type CacheModelRef, type PromptCacheHints } from './model/prompt-cache.ts';
@@ -297,7 +297,7 @@ class LoopRun {
         }
         throw new AgentError(
           'MODEL_PROVIDER_FAILED',
-          withHint(`the model provider failed: ${message}`, credentialHint(cause)),
+          withHint(`the model provider failed: ${message}`, providerHint(cause)),
           { cause },
         );
       }

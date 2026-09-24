@@ -1,21 +1,29 @@
 /**
- * Prompt-cache hints: what a request carries so the provider can serve the
+ * Provider request hints: what a request carries so the provider serves the
  * repeated prefix (system prompt, tool definitions, the conversation so far)
- * from its cache instead of reading it again at full price.
+ * from its cache instead of reading it again at full price, and so the
+ * conversation itself never depends on state the provider kept.
  *
  * Anthropic caches only up to an explicit breakpoint, so the system prompt
  * carries one (it covers the tool definitions ahead of it) and the newest
  * message carries the other: the next turn's request then matches everything
- * up to it. OpenAI caches prefixes on its own and takes a routing key; one
- * key per system prompt sends every call of a run to the same cache. Other
- * providers get nothing extra, and the request is exactly what it was.
+ * up to it. OpenAI (and Azure OpenAI) caches prefixes on its own and takes a
+ * routing key; one key per system prompt sends every call of a run to the
+ * same cache. Those requests also carry `store: false`: the runner never
+ * reads a response back from the provider, and with storage on the AI SDK
+ * replays a reasoning model's earlier turns by reference, which an
+ * organization with zero data retention, where nothing is stored, rejects
+ * on the second turn of every step. Without storage the SDK asks for the
+ * reasoning as encrypted content and replays it inline, and the prompt cache
+ * keeps working. Other providers get nothing extra, and the request is
+ * exactly what it was.
  */
 
 import { createHash } from 'node:crypto';
 import type { ModelMessage, SystemModelMessage } from 'ai';
 import type { ProviderOptions } from '../../types.ts';
 
-export type CacheFamily = 'anthropic' | 'openai';
+export type CacheFamily = 'anthropic' | 'openai' | 'azure';
 
 /** What the hints need to know about the model: the provider and model id the SDK reports. */
 export interface CacheModelRef {
@@ -26,13 +34,14 @@ export interface CacheModelRef {
 /**
  * The provider family a model routes to. A gateway model names its upstream
  * in the model id (`anthropic/claude-…`); a direct provider names it in the
- * provider (`anthropic.messages`, `openai.responses`).
+ * provider (`anthropic.messages`, `openai.responses`, `azure.responses`).
  */
 export function cacheFamily(model: CacheModelRef | undefined): CacheFamily | undefined {
   const provider = (model?.provider ?? '').toLowerCase();
   const modelId = (model?.modelId ?? '').toLowerCase();
   if (modelId.startsWith('anthropic/') || provider.startsWith('anthropic')) return 'anthropic';
   if (modelId.startsWith('openai/') || provider.startsWith('openai')) return 'openai';
+  if (provider.startsWith('azure')) return 'azure';
   return undefined;
 }
 
@@ -44,7 +53,8 @@ export interface PromptCacheHints {
   instructions(system: string): string | SystemModelMessage;
   /**
    * Request-level provider options: the caller's own, plus a prompt-cache
-   * routing key where the provider takes one. The caller's values win.
+   * routing key and `store: false` where the provider takes them. The
+   * caller's values win.
    */
   providerOptions(base: ProviderOptions | undefined, system: string): ProviderOptions | undefined;
   /**
@@ -65,10 +75,10 @@ export function promptCacheHints(model: CacheModelRef | undefined): PromptCacheH
         ? { role: 'system', content: system, providerOptions: { anthropic: ANTHROPIC_BREAKPOINT } }
         : system,
     providerOptions: (base, system) => {
-      if (family !== 'openai') return base;
+      if (family !== 'openai' && family !== 'azure') return base;
       return {
         ...base,
-        openai: { promptCacheKey: promptCacheKey(system), ...base?.['openai'] },
+        [family]: { promptCacheKey: promptCacheKey(system), store: false, ...base?.[family] },
       };
     },
     markLatest: (messages) => (family === 'anthropic' ? moveBreakpoint(messages) : messages),

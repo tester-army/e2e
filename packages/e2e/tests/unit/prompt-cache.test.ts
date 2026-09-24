@@ -10,6 +10,7 @@ describe('cacheFamily', () => {
     [{ provider: 'anthropic.messages', modelId: 'claude-sonnet-4-5' }, 'anthropic'],
     [{ provider: 'gateway', modelId: 'openai/gpt-5.6-luna-fast' }, 'openai'],
     [{ provider: 'openai.responses', modelId: 'gpt-4o' }, 'openai'],
+    [{ provider: 'azure.responses', modelId: 'my-deployment' }, 'azure'],
     [{ provider: 'gateway', modelId: 'google/gemini-3-flash' }, undefined],
     [{ provider: 'mock-provider', modelId: 'mock-model' }, undefined],
     [undefined, undefined],
@@ -64,14 +65,16 @@ describe('promptCacheHints for Anthropic', () => {
 describe('promptCacheHints for OpenAI', () => {
   const hints = promptCacheHints({ provider: 'gateway', modelId: 'openai/gpt-5.6-luna-fast' });
 
-  it('routes with a key derived from the system prompt and lets the caller override it', () => {
+  it('routes with a key derived from the system prompt, stores nothing, and lets the caller override both', () => {
     expect(hints.instructions('rules')).toBe('rules');
-    expect(hints.providerOptions(undefined, 'rules')).toEqual({ openai: { promptCacheKey: promptCacheKey('rules') } });
-    expect(hints.providerOptions({ openai: { reasoningEffort: 'low' } }, 'rules')).toEqual({
-      openai: { promptCacheKey: promptCacheKey('rules'), reasoningEffort: 'low' },
+    expect(hints.providerOptions(undefined, 'rules')).toEqual({
+      openai: { promptCacheKey: promptCacheKey('rules'), store: false },
     });
-    expect(hints.providerOptions({ openai: { promptCacheKey: 'mine' } }, 'rules')).toEqual({
-      openai: { promptCacheKey: 'mine' },
+    expect(hints.providerOptions({ openai: { reasoningEffort: 'low' } }, 'rules')).toEqual({
+      openai: { promptCacheKey: promptCacheKey('rules'), store: false, reasoningEffort: 'low' },
+    });
+    expect(hints.providerOptions({ openai: { promptCacheKey: 'mine', store: true } }, 'rules')).toEqual({
+      openai: { promptCacheKey: 'mine', store: true },
     });
     expect(promptCacheKey('rules')).toBe(promptCacheKey('rules'));
     expect(promptCacheKey('rules')).not.toBe(promptCacheKey('other rules'));
@@ -80,6 +83,16 @@ describe('promptCacheHints for OpenAI', () => {
   it('does not touch the messages', () => {
     const messages: ModelMessage[] = [{ role: 'user', content: 'step' }];
     expect(hints.markLatest(messages)).toBe(messages);
+  });
+});
+
+describe('promptCacheHints for Azure OpenAI', () => {
+  it('sends the same request options under the azure key', () => {
+    const hints = promptCacheHints({ provider: 'azure.responses', modelId: 'my-deployment' });
+    expect(hints.instructions('rules')).toBe('rules');
+    expect(hints.providerOptions({ azure: { reasoningEffort: 'low' } }, 'rules')).toEqual({
+      azure: { promptCacheKey: promptCacheKey('rules'), store: false, reasoningEffort: 'low' },
+    });
   });
 });
 

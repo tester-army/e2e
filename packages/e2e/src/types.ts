@@ -1087,7 +1087,11 @@ export interface AgentConfig {
    * different value on both is `INVALID_CONFIG`.
    */
   context?: string;
-  /** Provider options every model call carries, e.g. a reasoning effort. */
+  /**
+   * Provider options every model call carries, e.g. a reasoning effort.
+   * OpenAI and Azure OpenAI calls also carry `store: false` and a prompt
+   * cache key unless set here.
+   */
   providerOptions?: ProviderOptions;
 }
 
