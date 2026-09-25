@@ -19,6 +19,26 @@ export type ClientFactory = (session: string, connection?: DeviceConnection) => 
 
 export type MobilePlatform = 'ios' | 'android';
 
+/** Permissions agent-device can grant, deny, or reset on an app. */
+export type DevicePermission =
+  | 'camera'
+  | 'microphone'
+  | 'photos'
+  | 'contacts'
+  | 'notifications'
+  | 'calendar'
+  | 'location'
+  | 'reminders'
+  | 'motion'
+  | 'siri'
+  | 'media-library';
+
+/** A permission's state: held, refused, or not asked for yet, so the OS asks again. */
+export type PermissionState = 'grant' | 'deny' | 'reset';
+
+/** Permissions an app holds when it launches, by name. */
+export type LaunchPermissions = Readonly<Partial<Record<DevicePermission, PermissionState>>>;
+
 /**
  * Options of the device engine. Every optional value also accepts `undefined`,
  * so values read straight from `process.env` need no conditional spread.
@@ -100,4 +120,28 @@ export interface MobileOptions {
    * transitions.
    */
   readonly transition?: number | undefined;
+  /**
+   * Arguments the pinned app is launched with on every fresh launch this
+   * engine performs: `app.open()`, `app.restart()`, `app.clearState()`, and
+   * the warm-up in `prepare`. iOS hands them to the app process
+   * (`ProcessInfo.processInfo.arguments`); Android appends them to
+   * `am start`, so `['--ez', 'e2e', 'true']` is a boolean intent extra. A
+   * foreground-only `device.openApp` passes none, and
+   * `device.openApp(app, { launchArguments })` launches any app with its
+   * own. Maestro's `launchApp: { arguments }`, Detox's `launchArgs`.
+   */
+  readonly launchArguments?: readonly string[] | undefined;
+  /**
+   * Permissions the pinned app holds on every fresh launch this engine
+   * performs: `app.open()`, `app.restart()`, and `app.clearState()`, which
+   * resets them along with the app's data. Each is granted, denied, or reset
+   * (the OS asks again) before the app starts, since iOS terminates a running
+   * app whose permission changed and Android one whose permission was
+   * revoked. `deny` is a recorded refusal on iOS, where the app is told no
+   * without a prompt, and a revocation on Android, where the OS asks again
+   * when the app requests the permission. A foreground-only `device.openApp`
+   * leaves them alone; `device.openApp(app, { permissions })` presets any
+   * app's. Maestro's `launchApp: { permissions }`.
+   */
+  readonly permissions?: LaunchPermissions | undefined;
 }

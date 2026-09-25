@@ -16,12 +16,13 @@ while migrating one spec at a time.
 | Detox (`.detoxrc.js`) | e2e |
 | --- | --- |
 | `apps.<name>.binaryPath` | `mobile({ appPath })`, installed once per worker |
-| `apps.<name>.bundleId` | `mobile({ app: 'com.example.app' })`, opened fresh per attempt |
+| `apps.<name>.bundleId` | `mobile({ app: 'com.example.app' })`, the app `app.open()` launches |
 | `devices.<name>.device.type` | `mobile({ device: 'iPhone 17' })` |
 | `configurations` | `targets`, one engine per platform |
 | Jest config, `maxWorkers` | `workers`, one per device |
 | `detox build` | Your normal build. No Detox framework, no `detox build` step |
-| `device.launchApp({ permissions })` | `device.setPermission(...)` inside the test |
+| `device.launchApp({ permissions })` | `permissions` on the engine, set before every fresh launch, or `device.openApp(app, { relaunch: true, permissions })` for one; `grant`, `deny`, `reset` for `YES`, `NO`, `unset` |
+| `device.launchApp({ launchArgs })` | `launchArguments` on the engine, or `device.openApp(app, { relaunch: true, launchArguments })` for one; a list of strings the platform launch command takes, not a map |
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -64,8 +65,8 @@ test('shows the home screen', async ({ agent, screen }) => {
 });
 ```
 
-The engine opens the configured app before each attempt. The password comes
-from [configured credentials](/authentication).
+`app.open()` launches the configured app fresh; nothing launches on its own.
+The password comes from [configured credentials](/authentication).
 
 ## API map
 

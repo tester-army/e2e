@@ -124,7 +124,37 @@ export interface MobileOptions {
    * acted on immediately. Raise this for slower transitions.
    */
   readonly transition?: number | undefined;
+  /**
+   * Arguments the pinned app is launched with on every fresh launch this
+   * engine performs: `app.open()`, `app.restart()`, `app.clearState()`, and
+   * the warm-up in `prepare`. iOS hands them to the app process
+   * (`ProcessInfo.processInfo.arguments`); Android appends them to
+   * `am start`, so `['--ez', 'e2e', 'true']` is a boolean intent extra. A
+   * foreground-only `device.openApp` passes none, and
+   * `device.openApp(app, { launchArguments })` launches any app with its
+   * own. Maestro's `launchApp: { arguments }`, Detox's `launchArgs`.
+   */
+  readonly launchArguments?: readonly string[] | undefined;
+  /**
+   * Permissions the pinned app holds on every fresh launch this engine
+   * performs: `app.open()`, `app.restart()`, and `app.clearState()`, which
+   * resets them along with the app's data. Each is granted, denied, or reset
+   * (the OS asks again) before the app starts, since iOS terminates a running
+   * app whose permission changed and Android one whose permission was
+   * revoked. `deny` is a recorded refusal on iOS, where the app is told no
+   * without a prompt, and a revocation on Android, where the OS asks again
+   * when the app requests the permission. A foreground-only `device.openApp`
+   * leaves them alone; `device.openApp(app, { permissions })` presets any
+   * app's. Maestro's `launchApp: { permissions }`.
+   */
+  readonly permissions?: LaunchPermissions | undefined;
 }
+
+/** A permission's state: held, refused, or not asked for yet, so the OS asks again. */
+export type PermissionState = 'grant' | 'deny' | 'reset';
+
+/** Permissions an app holds when it launches, by name. */
+export type LaunchPermissions = Readonly<Partial<Record<DevicePermission, PermissionState>>>;
 ```
 
 An empty `device` list is `INVALID_CONFIG`. A `device` provider object
@@ -137,6 +167,17 @@ commands take no abort signal, so a timed-out command keeps running on the
 device; the next attempt waits for it to settle. `prepare` brings the pinned
 `app` up once per worker, and `app.open()` relaunches it fresh whenever a
 test asks; without a pinned app the model opens apps with the `open_app` tool.
+
+`launchArguments` and `permissions` ride every fresh launch of the pinned
+app: `app.open()`, `app.restart()`, and `app.clearState()`, which resets the
+permissions with the data. The permissions are set before the app starts,
+since iOS terminates a running app whose permission changed and Android one
+whose permission was revoked; agent-device sets them on the app its session
+is on, so a worker's first such launch, or the first after `device.closeApp`,
+brings the session onto the app with a foreground open first. The warm-up
+passes the arguments and touches no permission.
+`device.openApp(app, { relaunch: true, launchArguments, permissions })` does
+the same for one launch of any app.
 
 The engine declares one worker per configured device. With no `device`,
 `prepare` uses the booted devices it finds, capped by the run's slots, and
@@ -168,7 +209,7 @@ export default {
 | `perform` | `tap`, `doubleTap`, `longPress`, `fill`, `clear`, `hover`, `check`, `uncheck`, `press` (`Enter` or one character), `swipe`, `dragTo`, and `focus` on editable fields. A tap on a `switch` or `checkbox` lands on its innermost control, since UIKit reports a settings row as one labelled switch with the real toggle as a child. `check` and `uncheck` need a `checked` state, which Android switches lack and a React Native checkbox or radio on iOS has. `doubleTap` is two presses, 284 to 285 ms apart on iOS (the cadence of agent-device's XCTest tap): agent-device's own double-tap gesture reaches a React Native `Pressable` as one press. A detector with a window of 300 ms or less can read the pair as two single taps. `selectOption`, `setInputFiles`, `scrollIntoView`, and `secondaryTap` are not declared. |
 | `locate` | Every `screen` query. Text and label queries answer with the innermost match, since a device echoes both up the tree (a React Native input is a host view and the field inside it, both labelled). |
 | `app` | `identity` from the pinned `app`, else `appPath`; no `url`. |
-| `session` | `back`; `restart` and `reset` when `app` or `appPath` is pinned. No `open`, so `app.open()` and the agent's `navigate` verb are unavailable; `device.openLink(url)` opens a deep link or web link instead. |
+| `session` | `back`; `restart` and `reset` when `app` or `appPath` is pinned. No `open`: `app.open()` takes no path and the runner serves it with `restart`, the fresh launch of the pinned app; the agent's `navigate` verb is unavailable, and `device.openLink(url)` opens a deep link or web link. |
 | `artifacts` | Redacted screenshots under `screenshots/NNN-<label>.png`; a screenshot that cannot be redacted fails instead of being written. Video with `--video` as `video/video.mp4`. No traces. |
 | `location` | `<bundle id> / <screen title>`, the trace cache's anchor. The title is the navigation bar's on iOS and the toolbar's on Android. |
 | `state` | Not declared. `test.setup` and `session:` are unavailable. |
@@ -177,9 +218,9 @@ export default {
 
 A step recorded on `com.apple.Preferences / General` replays only when
 Settings is on General again. A mutating project-tool call such as
-`open_app` ends a replay. Pin `app` so attempts start on the same screen,
-and switch apps through the `device` fixture between steps rather than inside
-one.
+`open_app` ends a replay. Pin `app` and call `app.open()` first, so steps
+start on the same screen, and switch apps through the `device` fixture
+between steps rather than inside one.
 
 ## Device
 
@@ -197,7 +238,7 @@ export interface Device {
   /** Toggles airplane mode. */
   setAirplaneMode(enabled: boolean): Promise<void>;
   /** Grants, denies, or resets one permission for the open app. */
-  setPermission(permission: DevicePermission, state: 'grant' | 'deny' | 'reset'): Promise<void>;
+  setPermission(permission: DevicePermission, state: PermissionState): Promise<void>;
   /** Sets the simulated location. */
   setLocation(coordinates: { latitude: number; longitude: number }): Promise<void>;
   /** Turns simulated location off. */
@@ -219,10 +260,13 @@ export interface Device {
   installApp(appPath: string, options?: InstallAppOptions): Promise<InstalledApp>;
   /**
    * Brings an app to the foreground by bundle id, package, or display name;
-   * `relaunch` restarts it fresh. A link is `INVALID_ARGUMENT` (`file:`,
-   * `data:`, and `javascript:` are `POLICY_DENIED`): `openLink` opens one.
+   * `relaunch` restarts it fresh. `launchArguments` and `permissions` apply
+   * to this launch alone; the engine's configured ones apply to a `relaunch`
+   * of the pinned app, and to no foreground-only open. A link is
+   * `INVALID_ARGUMENT` (`file:`, `data:`, and `javascript:` are
+   * `POLICY_DENIED`): `openLink` opens one.
    */
-  openApp(app: string, options?: { relaunch?: boolean }): Promise<void>;
+  openApp(app: string, options?: OpenAppOptions): Promise<void>;
   /**
    * Opens a deep link (`myapp://orders/42`) or a web link (`https://...`)
    * into `app` (default: the pinned app), which the session observes
@@ -240,6 +284,13 @@ export interface Device {
    * `foregroundApp` is `APP_NOT_OPEN`.
    */
   closeApp(): Promise<void>;
+  /**
+   * Resets the simulator's keychain, every app's, since simctl has no
+   * per-app reset: what `app.clearState()` leaves behind (a session token, a
+   * Firebase sign-in). iOS simulator only; Android is
+   * `UNSUPPORTED_CAPABILITY`. Launch the app afterwards to see it signed out.
+   */
+  clearKeychain(): Promise<void>;
   /**
    * The app the session is on. iOS answers from the session, not the
    * device, so it names the app the session opened even after `home()`;
@@ -270,7 +321,25 @@ export interface Device {
   setClipboard(text: string): Promise<void>;
 }
 
-/** Permissions agent-device can grant, deny, or reset on an open app. */
+/** How `device.openApp` launches an app. */
+export interface OpenAppOptions {
+  /** Terminate the app first, so it starts fresh; without it a running app is brought forward as it is. */
+  readonly relaunch?: boolean;
+  /**
+   * Arguments this launch hands the app: its process arguments on iOS,
+   * `am start` arguments on Android. Replaces the engine's `launchArguments`
+   * for a relaunch of the pinned app.
+   */
+  readonly launchArguments?: readonly string[];
+  /**
+   * Permissions the app holds before this launch, each granted, denied, or
+   * reset. Replaces the engine's `permissions` for a relaunch of the pinned
+   * app.
+   */
+  readonly permissions?: LaunchPermissions;
+}
+
+/** Permissions agent-device can grant, deny, or reset on an app. */
 export type DevicePermission =
   | 'camera'
   | 'microphone'
@@ -319,8 +388,16 @@ const { app } = await device.installApp('./build/MyApp.app', { reinstall: true }
 await device.openApp(app);
 ```
 
+`clearKeychain` resets the simulator's keychain, which `app.clearState()`
+leaves alone: simctl resets the whole simulator's, so every app on it loses
+its keychain-backed credentials. iOS only; on Android it is
+`UNSUPPORTED_CAPABILITY` before any device command. Launch the app afterwards
+to see it signed out.
+
 `openApp` brings an app to the foreground by bundle id, package, or display
-name (`Settings`); `relaunch: true` restarts it fresh. It takes no link:
+name (`Settings`); `relaunch: true` restarts it fresh, and `launchArguments`
+and `permissions` apply to that launch alone (the engine's own apply to a
+`relaunch` of the pinned app). It takes no link:
 agent-device opens any `scheme:rest` string as a URL, so a link is refused
 before the device sees it. A `file:`, `data:`, or `javascript:` link is
 `POLICY_DENIED`, the rule every navigation follows; any other link is

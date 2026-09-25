@@ -56,13 +56,15 @@ Options:
 | Option | Meaning |
 | --- | --- |
 | `platform` | `'ios'` or `'android'`. |
-| `app` | Bundle id, package, or display name opened fresh at the start of every attempt. Also unlocks `app.restart()` and `app.clearState()`. |
-| `appPath` | An iOS `.app` bundle or Android `.apk` installed once per worker before the first attempt, resolved against the project root. Without `app`, the installed bundle id or package is the app opened per attempt. |
+| `app` | Bundle id, package, or display name `app.open()` launches fresh; an attempt launches nothing on its own. Also unlocks `app.restart()` and `app.clearState()`. |
+| `appPath` | An iOS `.app` bundle or Android `.apk` installed once per worker before the first attempt, resolved against the project root. Without `app`, the installed bundle id or package is the app `app.open()` launches. |
 | `device` | Simulator or emulator name or UDID. A list is a pool: one worker per entry, worker slot `n` driving the `n`th. Omitted, every booted device of the platform is the pool, as many as the run has slots. |
 | `session` | agent-device session name, before the worker slot: slot `n` drives its device under `<session>-<n>`, `e2e-<target name>-<n>` by default. One run per session at a time. |
 | `snapshot` | `'full'` (default, includes static text) or `'interactive'` (actionable nodes only). |
 | `settle` | For agent actions: milliseconds the UI must hold still after an action before the agent observes again, default `150`; `false` skips the wait. A test's own steps never settle; `expect` verifies their outcome. |
 | `transition` | For a test's steps: milliseconds a control that appeared or moved with the last action gets to finish arriving before it is acted on, default `500`. Controls already in place before the action are acted on at once. |
+| `launchArguments` | Arguments every fresh launch of the pinned app carries (`app.open()`, `app.restart()`, `app.clearState()`, the warm-up): the process arguments on iOS, `am start` arguments on Android. |
+| `permissions` | Permissions the pinned app holds on every fresh launch, `{ camera: 'grant', location: 'deny', notifications: 'reset' }`, set before the app starts and put back after `app.clearState()` reset them. |
 
 Every optional value also accepts `undefined`, so a config passes
 `device: process.env.E2E_DEVICE` or `appPath: process.env.E2E_APP_PATH`
@@ -99,7 +101,8 @@ toolbar on Android. The app identity is part of the location, so two apps with
 a "General" screen never share an anchor. A step recorded on
 `com.apple.Preferences / General` replays only when that app is on that
 screen again, and a flow that stays within tap, type, and scroll replays with
-zero model calls. Pin `app` so every attempt starts on the same screen, and
+zero model calls. Pin `app` and call `app.open()` first, so steps start on
+the same screen, and
 prefer the grammar over the `open_app` tool inside a step: a tool call is a
 replay gap.
 
@@ -123,9 +126,9 @@ test('shows the version offline in dark mode', async ({ agent, device, screen })
 
 Methods: `setNetwork`, `setAirplaneMode`, `setPermission`, `setLocation`,
 `clearLocation`, `setAppearance`, `setOrientation`, `setBiometrics`,
-`enrollBiometrics`, `installApp`, `openApp`, `closeApp`, `foregroundApp`,
-`home`, `back`, `alert`, `dismissKeyboard`, `clipboard`, `setClipboard`, and
-the `locator` accessor.
+`enrollBiometrics`, `installApp`, `openApp`, `closeApp`, `clearKeychain`,
+`foregroundApp`, `home`, `back`, `alert`, `dismissKeyboard`, `clipboard`,
+`setClipboard`, and the `locator` accessor.
 
 `installApp(appPath, { app, reinstall })` puts a build on the device from a
 test, for upgrade and fresh-install paths the `appPath` option cannot express.

@@ -26,7 +26,7 @@ export interface DeviceRequest {
   readonly slot: number;
   /** Devices the run acquires for this target, in all. */
   readonly slots: number;
-  /** The `app` option: the bundle id or package the engine opens fresh per attempt, when the config names one. */
+  /** The `app` option: the bundle id or package `app.open()` launches, when the config names one. */
   readonly app?: string | undefined;
   /**
    * The build the engine would install, resolved to an absolute path, when
@@ -77,7 +77,7 @@ export interface DeviceLease extends SlotBinding {
   /**
    * Bundle id or package of the app the provider installed from the
    * request's `appPath`, and only then: with it the engine installs nothing
-   * and, without an `app` option, opens this app fresh per attempt. A lease
+   * and, without an `app` option, `app.open()` launches this app. A lease
    * reporting one for a request without `appPath` fails the run.
    */
   readonly installedApp?: string | undefined;

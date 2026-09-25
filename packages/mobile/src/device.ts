@@ -7,21 +7,8 @@
 
 import type { EngineFixtureContext, Locator } from 'e2e/engine';
 import { linkLabel, linkTarget } from './links.ts';
-import type { AgentDeviceSurface, InstallAppOptions, InstalledApp } from './surface.ts';
-
-/** Permissions agent-device can grant, deny, or reset on an open app. */
-export type DevicePermission =
-  | 'camera'
-  | 'microphone'
-  | 'photos'
-  | 'contacts'
-  | 'notifications'
-  | 'calendar'
-  | 'location'
-  | 'reminders'
-  | 'motion'
-  | 'siri'
-  | 'media-library';
+import type { DevicePermission, PermissionState } from './options.ts';
+import type { AgentDeviceSurface, InstallAppOptions, InstalledApp, OpenAppOptions } from './surface.ts';
 
 /** Orientations `setOrientation` accepts. */
 export type DeviceOrientation = 'portrait' | 'portrait-upside-down' | 'landscape-left' | 'landscape-right';
@@ -46,7 +33,7 @@ export interface Device {
   /** Toggles airplane mode. */
   setAirplaneMode(enabled: boolean): Promise<void>;
   /** Grants, denies, or resets one permission for the open app. */
-  setPermission(permission: DevicePermission, state: 'grant' | 'deny' | 'reset'): Promise<void>;
+  setPermission(permission: DevicePermission, state: PermissionState): Promise<void>;
   /** Sets the simulated location. */
   setLocation(coordinates: { latitude: number; longitude: number }): Promise<void>;
   /** Turns simulated location off. */
@@ -66,8 +53,13 @@ export interface Device {
    * binary and keeps its data. Resolves to the identity to `openApp` it by.
    */
   installApp(appPath: string, options?: InstallAppOptions): Promise<InstalledApp>;
-  /** Brings an app to the foreground; `relaunch` restarts it fresh. */
-  openApp(app: string, options?: { relaunch?: boolean }): Promise<void>;
+  /**
+   * Brings an app to the foreground; `relaunch` restarts it fresh.
+   * `launchArguments` and `permissions` apply to this launch alone; the
+   * engine's configured ones apply to a `relaunch` of the pinned app, and
+   * to no foreground-only open.
+   */
+  openApp(app: string, options?: OpenAppOptions): Promise<void>;
   /**
    * Opens a deep link (`myapp://orders/42`) or a web link (`https://...`)
    * into `app` (default: the pinned app), which the session observes
@@ -85,6 +77,13 @@ export interface Device {
    * `foregroundApp` is `APP_NOT_OPEN`.
    */
   closeApp(): Promise<void>;
+  /**
+   * Resets the simulator's keychain, every app's, since simctl has no
+   * per-app reset: what `app.clearState()` leaves behind (a session token, a
+   * Firebase sign-in). iOS simulator only; Android is
+   * `UNSUPPORTED_CAPABILITY`. Launch the app afterwards to see it signed out.
+   */
+  clearKeychain(): Promise<void>;
   /**
    * The app the session is on. iOS answers from the session, not the
    * device, so it names the app the session opened even after `home()`;
@@ -176,13 +175,16 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Engine
       return surface.installApp(appPath, options ?? {}, context.signal);
     },
     async openApp(app, options) {
-      await surface.openApp(app, options?.relaunch === true, context.signal);
+      await surface.openApp(app, options ?? {}, context.signal);
     },
     async openLink(url, options) {
       await surface.openLink(linkTarget(url), options?.app, context.signal);
     },
     async closeApp() {
       await surface.closeApp(context.signal);
+    },
+    async clearKeychain() {
+      await surface.clearKeychain(context.signal);
     },
     async foregroundApp() {
       const state = await surface.command('device.foregroundApp', (client) => client.command.appState({}), context.signal);
@@ -231,6 +233,7 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Engine
     openApp: { ...action, label: (app) => linkLabel(app) },
     openLink: { ...action, label: (url) => linkLabel(url) },
     closeApp: action,
+    clearKeychain: action,
     foregroundApp: action,
     home: action,
     back: action,

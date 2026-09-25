@@ -199,6 +199,12 @@ describe('lifecycle', () => {
     expect(single.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios', device: 'iPhone 16e' });
   });
 
+  it('warms each device with the configured launch arguments, so an app the warm-up starts runs as a test launch would', async () => {
+    const h = harness({ device: 'iPhone 16e', launchArguments: ['-e2e', 'YES'] });
+    await h.engine.prepare!({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: () => undefined });
+    expect(h.fake.lastArgs('apps.open')).toEqual({ app: 'Settings', platform: 'ios', device: 'iPhone 16e', launchArgs: ['-e2e', 'YES'] });
+  });
+
   it('logs a runner that does not warm up in prepare instead of failing the run; a device that cannot boot does fail it', async () => {
     const h = harness({ device: 'iPhone 16e' });
     h.fake.respond('apps.open', () => {
@@ -1364,6 +1370,85 @@ describe('device fixture', () => {
     expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
       ['apps.open', { app: 'com.apple.mobilesafari', platform: 'ios' }],
     ]);
+  });
+
+  it('presets the configured permissions and passes the launch arguments on every fresh launch of the pinned app, and on no other open', async () => {
+    const h = harness({ app: 'com.example.app', launchArguments: ['-e2e', 'YES'], permissions: { camera: 'grant', location: 'deny' } });
+    h.fake.respond('apps.open', () => ({ session: 's', appName: 'Example', appBundleId: 'com.example.app', identifiers: {} }));
+    await boot(h.engine);
+    await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal });
+    const device = fixture(h);
+    const before = h.fake.calls.length;
+    await h.engine.session!.restart!(operation());
+    await h.engine.session!.restart!(operation());
+    await h.engine.session!.reset!(operation());
+    await device.openApp('com.example.app');
+    await device.openApp('com.other', { relaunch: true });
+    await device.closeApp();
+    await h.engine.session!.restart!(operation());
+    const open = (extra: Record<string, unknown>): [string, unknown] => ['apps.open', { platform: 'ios', ...extra }];
+    const permission = (name: string, state: string): [string, unknown] => ['settings.update', { setting: 'permission', permission: name, state }];
+    const fresh = open({ app: 'com.example.app', relaunch: true, launchArgs: ['-e2e', 'YES'] });
+    expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
+      // This worker has opened nothing in its session yet: a foreground open puts the session on the app first.
+      open({ app: 'com.example.app' }),
+      permission('camera', 'grant'),
+      permission('location', 'deny'),
+      fresh,
+      // The session is on the app now, so the permissions go straight in.
+      permission('camera', 'grant'),
+      permission('location', 'deny'),
+      fresh,
+      // A state clear resets the permissions with the data; they are put back before the relaunch.
+      ['settings.update', { setting: 'clear-app-state', state: 'clear', app: 'com.example.app' }],
+      permission('camera', 'grant'),
+      permission('location', 'deny'),
+      fresh,
+      // A foreground-only open, and another app, take none of the engine's options.
+      open({ app: 'com.example.app' }),
+      open({ app: 'com.other', relaunch: true }),
+      ['apps.close', { app: 'com.example.app' }],
+      // The close ended the session: the next launch brings it back onto the app first.
+      open({ app: 'com.example.app' }),
+      permission('camera', 'grant'),
+      permission('location', 'deny'),
+      fresh,
+    ]);
+  });
+
+  it('launches any app with its own arguments and permissions, moving the session onto it first', async () => {
+    const h = harness();
+    await openAttempt(h);
+    const device = fixture(h);
+    const before = h.fake.calls.length;
+    await device.openApp('com.other', { relaunch: true, launchArguments: ['--reset-onboarding'], permissions: { photos: 'reset' } });
+    // The session is on that app now, so a second preset needs no foreground open; no arguments and an empty map send nothing.
+    await device.openApp('com.other', { launchArguments: [], permissions: { photos: 'reset' } });
+    await device.openApp('com.other', { permissions: {} });
+    expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
+      ['apps.open', { platform: 'ios', app: 'com.other' }],
+      ['settings.update', { setting: 'permission', permission: 'photos', state: 'reset' }],
+      ['apps.open', { platform: 'ios', app: 'com.other', relaunch: true, launchArgs: ['--reset-onboarding'] }],
+      ['settings.update', { setting: 'permission', permission: 'photos', state: 'reset' }],
+      ['apps.open', { platform: 'ios', app: 'com.other' }],
+      ['apps.open', { platform: 'ios', app: 'com.other' }],
+    ]);
+  });
+
+  it('resets the simulator keychain on iOS and refuses on Android before any device command', async () => {
+    const ios = harness();
+    await openAttempt(ios);
+    const before = ios.fake.calls.length;
+    await fixture(ios).clearKeychain();
+    expect(ios.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
+      ['settings.update', { setting: 'reset-keychain', state: 'clear' }],
+    ]);
+
+    const android = harness({ platform: 'android', app: 'com.example.app' });
+    await openAttempt(android);
+    const count = android.fake.calls.length;
+    await expect(fixture(android).clearKeychain()).rejects.toMatchObject({ code: 'UNSUPPORTED_CAPABILITY' });
+    expect(android.fake.calls.length).toBe(count);
   });
 
   it('labels openApp and openLink steps without the link query, so a magic-link token never enters the report', () => {

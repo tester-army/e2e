@@ -216,8 +216,9 @@ export class DevicePool {
   }
 
   /**
-   * Boots every bound device and opens the pinned app on it once, so its
-   * automation runner is up. One slot after another, on purpose: workers
+   * Boots every bound device and opens the pinned app on it once, with the
+   * configured launch arguments, so its automation runner is up. One slot
+   * after another, on purpose: workers
    * booting at once in `init` contend for the host and the daemon, and one
    * cold boot pushes the others past `launchTimeout`. Each slot warms under
    * the session its worker resumes. A device that cannot boot ends the run
@@ -241,8 +242,10 @@ export class DevicePool {
       await runCommand('boot', () => client.devices.boot(where), info.signal, at);
       const app = pinnedApp(this.options, binding.installedApp);
       if (app === undefined) continue;
+      const launchArguments = this.options.launchArguments;
+      const launch = launchArguments === undefined || launchArguments.length === 0 ? {} : { launchArgs: [...launchArguments] };
       try {
-        await runCommand(`open ${app}`, () => client.apps.open({ app, ...where }), info.signal, at);
+        await runCommand(`open ${app}`, () => client.apps.open({ app, ...where, ...launch }), info.signal, at);
       } catch (cause) {
         if (info.signal.aborted || isRunnerFailure(cause)) throw cause;
         info.log(`${label}: automation runner not warmed up (${message(cause)}); the first attempt starts it`);

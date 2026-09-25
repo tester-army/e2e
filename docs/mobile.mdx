@@ -38,7 +38,7 @@ count toward `launchTimeout`.
 ## Point at your app
 
 Replace `Settings` with your app's bundle id or package name. Setting `app`
-opens it at the start of each attempt and enables `app.restart()` and
+gives `app.open()` an app to launch and enables `app.restart()` and
 `app.clearState()`. Add `appPath` to install a build first:
 
 ```ts
@@ -53,8 +53,35 @@ The build is installed once per worker. Use an `.app` bundle for iOS or an
 `.apk` for Android. Optional values accept `undefined`, so environment
 variables can be passed directly.
 
-Without `app`, the engine uses whichever app is in the foreground. Set it
-when possible so attempts start consistently and cached steps can replay.
+Without `app`, the engine observes whichever app is in the foreground and
+`app.open()` has nothing to launch. Set it when possible so tests start
+consistently and cached steps can replay.
+
+### Launch arguments and permissions
+
+`launchArguments` reach the app on every fresh launch the engine performs
+(`app.open()`, `app.restart()`, `app.clearState()`): the process arguments on
+iOS, `am start` arguments on Android. `permissions` are set before each of
+those launches, so the app starts holding them and no system prompt appears;
+`app.clearState()` puts them back after it reset them with the data. `deny`
+differs by platform: iOS records the refusal and the app is told no without
+a prompt, Android revokes the permission and the OS asks again when the app
+requests it.
+
+```ts
+mobile({
+  platform: 'ios',
+  app: 'com.example.app',
+  launchArguments: ['-e2e', 'YES'],
+  permissions: { camera: 'grant', notifications: 'deny', location: 'reset' },
+})
+```
+
+One test launches with its own through `device.openApp`:
+
+```ts
+await device.openApp('com.example.app', { relaunch: true, permissions: { camera: 'deny' } });
+```
 
 ## Several devices
 
@@ -328,6 +355,10 @@ routes:
 await device.openLink('myapp://orders/42');
 await expect(screen.getByText('Order #42')).toBeVisible();
 ```
+
+`device.clearKeychain()` resets the simulator's keychain, which
+`app.clearState()` leaves alone, so a stored session token is gone on the
+next launch. iOS only; Android has no keychain to reset.
 
 Every method is in the [mobile engine reference](/reference/mobile#device).
 

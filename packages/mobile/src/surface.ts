@@ -52,7 +52,7 @@ import {
   type ProjectedSnapshot,
   type RawNode,
 } from './nodes.ts';
-import type { AgentDeviceClient, MobileOptions, ClientFactory } from './options.ts';
+import type { AgentDeviceClient, ClientFactory, DevicePermission, LaunchPermissions, MobileOptions, PermissionState } from './options.ts';
 import { maskPng } from './png.ts';
 import { deviceLabel, pinnedApp, type SlotBinding } from './bindings.ts';
 import { assertAppId, assertConfiguredApp } from './links.ts';
@@ -87,6 +87,24 @@ export interface InstalledApp {
   /** The bundle id or package to open the app by. */
   readonly app: string;
   readonly bundleId?: string;
+}
+
+/** How `device.openApp` launches an app. */
+export interface OpenAppOptions {
+  /** Terminate the app first, so it starts fresh; without it a running app is brought forward as it is. */
+  readonly relaunch?: boolean;
+  /**
+   * Arguments this launch hands the app: its process arguments on iOS,
+   * `am start` arguments on Android. Replaces the engine's `launchArguments`
+   * for a relaunch of the pinned app.
+   */
+  readonly launchArguments?: readonly string[];
+  /**
+   * Permissions the app holds before this launch, each granted, denied, or
+   * reset. Replaces the engine's `permissions` for a relaunch of the pinned
+   * app.
+   */
+  readonly permissions?: LaunchPermissions;
 }
 
 /** The install fields this engine reads off agent-device's response. */
@@ -257,6 +275,13 @@ export class AgentDeviceSurface {
   private readonly located = new Map<string, NodeBinding>();
   private idCounter = 0;
   private appIdentity: string | undefined;
+  /**
+   * The app this surface last opened in its agent-device session, and so the
+   * app a permission command there acts on. Undefined before this worker
+   * opened anything (the warm-up in `prepare` ran in another process) and
+   * once `closeApp` ended the session.
+   */
+  private sessionApp: string | undefined;
   /** The app the build `appPath` installed, once `init` has, itself or through a lease. */
   private installedApp: string | undefined;
   /** Where relative build paths resolve; the run's project root once init has told us. */
@@ -476,6 +501,7 @@ export class AgentDeviceSurface {
     this.generation = new Map();
     this.located.clear();
     this.appIdentity = undefined;
+    this.sessionApp = undefined;
     this.installedApp = undefined;
     this.knownViewport = undefined;
     if (client === undefined) return;
@@ -488,8 +514,21 @@ export class AgentDeviceSurface {
    * open it as a URL, and `openLink` is the path that carries the
    * navigation rule.
    */
-  async openApp(app: string, relaunch: boolean, signal: AbortSignal): Promise<void> {
+  async openApp(app: string, options: OpenAppOptions, signal: AbortSignal): Promise<void> {
     assertAppId(app);
+    const relaunch = options.relaunch === true;
+    // The engine's own launch options belong to a fresh launch of the pinned
+    // app. A foreground-only open of a running app takes no arguments, and a
+    // permission change there would terminate the app it means to keep.
+    const configured = relaunch && app === this.pinnedApp;
+    const launchArguments = options.launchArguments ?? (configured ? this.options.launchArguments : undefined);
+    const permissions = options.permissions ?? (configured ? this.options.permissions : undefined);
+    if (permissions !== undefined) await this.presetPermissions(app, permissions, signal);
+    await this.open(app, relaunch, launchArguments, signal);
+  }
+
+  /** One `open` of an app, remembered as the session's app and as the screen's replacement. */
+  private async open(app: string, relaunch: boolean, launchArguments: readonly string[] | undefined, signal: AbortSignal): Promise<void> {
     const result = await this.command(
       `open ${app}`,
       (client) =>
@@ -497,10 +536,35 @@ export class AgentDeviceSurface {
           app,
           ...this.selection(),
           ...(relaunch ? { relaunch: true } : {}),
+          ...(launchArguments === undefined || launchArguments.length === 0 ? {} : { launchArgs: [...launchArguments] }),
         }),
       signal,
     );
+    this.sessionApp = app;
     this.launched(result.appBundleId ?? result.appName ?? app);
+  }
+
+  /**
+   * Puts an app's permissions in place before it launches. agent-device sets
+   * a permission on the app its session is on, so a session on another app,
+   * or on none yet, is first brought onto this one with a foreground open.
+   * Before the launch, never after: iOS terminates a running app whose
+   * permission changed, and Android one whose permission was revoked, so a
+   * change after the launch would leave the test on no screen.
+   */
+  private async presetPermissions(app: string, permissions: LaunchPermissions, signal: AbortSignal): Promise<void> {
+    const entries = Object.entries(permissions).filter(
+      (entry): entry is [DevicePermission, PermissionState] => entry[1] !== undefined,
+    );
+    if (entries.length === 0) return;
+    if (this.sessionApp !== app) await this.open(app, false, undefined, signal);
+    for (const [permission, state] of entries) {
+      await this.command(
+        `permission ${permission} ${state}`,
+        (client) => client.settings.update({ setting: 'permission', permission, state }),
+        signal,
+      );
+    }
   }
 
   /**
@@ -533,6 +597,7 @@ export class AgentDeviceSurface {
         }),
       signal,
     );
+    this.sessionApp = target;
     this.launched(result.appBundleId ?? (target === undefined ? undefined : (result.appName ?? target)));
   }
 
@@ -569,6 +634,7 @@ export class AgentDeviceSurface {
   async closeApp(signal: AbortSignal): Promise<void> {
     const app = this.appIdentity ?? this.pinnedApp;
     await this.command('device.closeApp', (client) => client.apps.close(app === undefined ? {} : { app }), signal);
+    this.sessionApp = undefined;
     this.screenReplaced();
   }
 
@@ -1100,7 +1166,7 @@ export class AgentDeviceSurface {
   async restart(operation: OperationContext): Promise<void> {
     const app = this.pinnedApp;
     if (app === undefined) throw unsupported('app.restart needs the engine option `app` or `appPath`');
-    await this.openApp(app, true, operation.signal);
+    await this.openApp(app, { relaunch: true }, operation.signal);
   }
 
   /** Clears the pinned app's persisted state and relaunches it: the device equivalent of a fresh context. */
@@ -1112,7 +1178,23 @@ export class AgentDeviceSurface {
       (client) => client.settings.update({ setting: 'clear-app-state', state: 'clear', app }),
       operation.signal,
     );
-    await this.openApp(app, true, operation.signal);
+    await this.openApp(app, { relaunch: true }, operation.signal);
+  }
+
+  /**
+   * Resets the simulator's keychain through agent-device. simctl resets the
+   * whole simulator's, not one app's, and only a simulator has one to reset:
+   * Android is refused before any device command.
+   */
+  async clearKeychain(signal: AbortSignal): Promise<void> {
+    if (this.options.platform !== 'ios') {
+      throw unsupported('device.clearKeychain resets an iOS simulator keychain; Android has none to reset');
+    }
+    await this.command(
+      'device.clearKeychain',
+      (client) => client.settings.update({ setting: 'reset-keychain', state: 'clear' }),
+      signal,
+    );
   }
 
   /**

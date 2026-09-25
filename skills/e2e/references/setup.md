@@ -274,9 +274,12 @@ export default {
 } satisfies E2EConfig;
 ```
 
-- `app` is a bundle id, package name, or display name opened fresh per
-  attempt. `appPath` installs a `.app` or `.apk` once per worker; without
-  `app`, the installed bundle is the one opened.
+- `app` is a bundle id, package name, or display name `app.open()` launches
+  fresh; an attempt launches nothing on its own. `appPath` installs a `.app`
+  or `.apk` once per worker; without `app`, the installed bundle is the one
+  launched. `launchArguments` and `permissions` ride every fresh launch of
+  it: the arguments reach the app process (iOS) or `am start` (Android), the
+  permissions are set before the app starts.
 - One worker per device. With no `device`, every booted simulator or
   emulator of the platform is the pool, as many as `workers` allows, so
   booting four simulators runs the files four at a time with no config. A
@@ -294,7 +297,8 @@ export default {
 - `screen`, `expect`, `app`, and `agent` work unchanged. Import `test` from
   `@e2edev/mobile` to type the `device` fixture (`setAppearance`,
   `setNetwork`, `setPermission`, `installApp`, `openLink('myapp://...')`,
-  `locator('role=... id=...')`, and more). Portable suites declare
+  `clearKeychain`, `locator('role=... id=...')`, and more). Portable suites
+  declare
   `requires: ['device']`.
 - No `state` capability: `test.setup` and `session` are unavailable on a
   device. Sign in within each test using `screen` actions or `agent.act`.

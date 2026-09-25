@@ -35,8 +35,8 @@ export interface ExploreBodyOptions {
   readonly stepTimeoutMs: number;
   /**
    * Whether to open the app first. `app.open()` needs a target with a declared
-   * URL; a device target without one is already showing the app when the
-   * attempt starts.
+   * URL; a device target without one is explored where the last test, or the
+   * run's warm-up, left the app.
    */
   readonly openApp: boolean;
   /**
