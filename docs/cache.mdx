@@ -50,6 +50,11 @@ Typed values replay as recorded, even when an earlier run left the same
 value on screen. Secret fills resolve the current value by name and run
 through authorization again.
 
+After an action, the wait for a visible change starts when the action
+finishes. Time spent capturing the screen counts toward that wait. Replay
+still checks that consecutive captures agree after actions that can move or
+replace the screen.
+
 ## What must match
 
 A cache entry belongs to a specific test, target, instruction, and set of

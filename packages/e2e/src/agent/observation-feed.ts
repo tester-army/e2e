@@ -181,14 +181,14 @@ export class ObservationFeed {
   }
 
   /**
-   * Arms the change wait: the next settled observation waits up to `waitMs`
-   * for the screen to leave the newest observation's shape. Nothing is armed
-   * on a screen without a comparable shape.
+   * Gives the screen `waitMs` from this completed action to leave the newest
+   * observation's shape. Captures and time before the next observation count
+   * toward the window. Nothing is armed without a comparable shape.
    */
   armChange(waitMs: number): void {
     if (this.newest === undefined) return;
     const shape = changeShape(this.newest);
-    this.pendingChange = shape === undefined ? undefined : { shape, waitMs };
+    this.pendingChange = shape === undefined ? undefined : { shape, deadlineMs: Date.now() + waitMs };
   }
 
   /**

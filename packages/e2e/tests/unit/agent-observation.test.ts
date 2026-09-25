@@ -1,4 +1,4 @@
-import { assert, describe, expect, it } from 'vitest';
+import { assert, describe, expect, it, vi } from 'vitest';
 import type { Observation, SemanticNode } from '../../src/engine/surface.ts';
 import { interactiveNodeCount, observationShape, prepareObservation, settleObservation } from '../../src/agent/observation.ts';
 import { createRedactor } from '../../src/internal/redact.ts';
@@ -368,7 +368,7 @@ describe('settleObservation', () => {
   const clock = { remainingMs: () => 60_000, signal: new AbortController().signal };
   const fast = { pollMs: 5, stableWaitMs: 30 };
   /** The pre-action shape and the window to leave it in. */
-  const leaving = { shape: 'old', waitMs: 150 };
+  const leaving = () => ({ shape: 'old', deadlineMs: Date.now() + 150 });
 
   /** Captures the scripted values in order, then the last one forever. */
   function scripted(values: readonly string[]): { capture: () => Promise<string>; calls: () => number } {
@@ -381,14 +381,14 @@ describe('settleObservation', () => {
 
   it('waits for the screen to leave the pre-action shape before settling on it', async () => {
     const source = scripted(['old', 'old', 'old', 'new', 'new', 'new']);
-    const value = await settleObservation(source.capture, (v) => v, clock, { ...fast, changedFrom: leaving });
+    const value = await settleObservation(source.capture, (v) => v, clock, { ...fast, changedFrom: leaving() });
     expect(value).toBe('new');
   });
 
   it('returns the unchanged screen once the change wait runs out', async () => {
     const source = scripted(['old']);
     const started = Date.now();
-    const value = await settleObservation(source.capture, (v) => v, clock, { ...fast, changedFrom: leaving });
+    const value = await settleObservation(source.capture, (v) => v, clock, { ...fast, changedFrom: leaving() });
     expect(value).toBe('old');
     expect(Date.now() - started).toBeGreaterThanOrEqual(140);
   });
@@ -397,7 +397,7 @@ describe('settleObservation', () => {
     const source = scripted(['old', '', '', 'new', 'new']);
     const value = await settleObservation(source.capture, (v) => v, clock, {
       ...fast,
-      changedFrom: leaving,
+      changedFrom: leaving(),
       transitional: (v) => v === '',
     });
     expect(value).toBe('new');
@@ -408,6 +408,48 @@ describe('settleObservation', () => {
     const value = await settleObservation(source.capture, (v) => v, clock, fast);
     expect(value).toBe('b');
     expect(source.calls()).toBe(3);
+  });
+
+  it('counts a slow first capture toward the change window, then still checks stability', async () => {
+    vi.useFakeTimers();
+    try {
+      const started = Date.now();
+      let captures = 0;
+      const pending = settleObservation(async () => {
+        captures += 1;
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        return 'old';
+      }, (value) => value, clock, {
+        changedFrom: { shape: 'old', deadlineMs: started + 500 },
+        stableWaitMs: 1_000,
+        pollMs: 100,
+      });
+      await vi.runAllTimersAsync();
+      expect(await pending).toBe('old');
+      expect(Date.now() - started).toBe(1_400);
+      expect(captures).toBe(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps a fresh stability check when the action window expired before observation', async () => {
+    vi.useFakeTimers();
+    try {
+      const started = Date.now();
+      const source = scripted(['old', 'new', 'new']);
+      const pending = settleObservation(source.capture, (value) => value, clock, {
+        changedFrom: { shape: 'old', deadlineMs: started - 1 },
+        stableWaitMs: 1_000,
+        pollMs: 100,
+      });
+      await vi.runAllTimersAsync();
+      expect(await pending).toBe('new');
+      expect(Date.now() - started).toBe(200);
+      expect(source.calls()).toBe(3);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

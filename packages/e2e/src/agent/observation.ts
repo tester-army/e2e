@@ -384,13 +384,13 @@ interface SettleClock {
 }
 
 /**
- * The shape the screen had when the preceding action was resolved, and how
- * long to wait for the screen to leave it: the action's settle policy
+ * The shape the screen had when the preceding action was resolved, and
+ * the deadline for the screen to leave it: the action's settle policy
  * (`settle-policy.ts`) decides the window, armed once the action commits.
  */
 export interface PendingChange {
   readonly shape: string;
-  readonly waitMs: number;
+  readonly deadlineMs: number;
 }
 
 /** The waits of one settle, decided by the caller; the loop itself keeps no defaults for them. */
@@ -449,10 +449,9 @@ export async function settleObservation<T>(
   if (shape === undefined) return value;
   if (options.changedFrom !== undefined) {
     const changeShapeOf = options.changeShapeOf ?? shapeOf;
-    const changeDeadlineMs = Date.now() + options.changedFrom.waitMs;
     while (
       (changeShapeOf(value) === options.changedFrom.shape || transitional(value)) &&
-      Date.now() < changeDeadlineMs &&
+      Date.now() < options.changedFrom.deadlineMs &&
       clock.remainingMs() > pollMs
     ) {
       await sleep(pollMs, clock.signal);
