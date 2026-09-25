@@ -1,5 +1,6 @@
 import type { E2EConfig } from 'e2e';
 import { mobile } from '@e2edev/mobile';
+import { github } from '@e2edev/github';
 
 /**
  * Deterministic suite against the benchmark app on an iOS simulator and an
@@ -10,9 +11,14 @@ import { mobile } from '@e2edev/mobile';
  * simulator `.app` or an `.apk` and the engine installs it once per worker.
  * CI does exactly that in `.github/workflows/mobile.yml`, one target per job,
  * and pins the iOS target to the simulator it booted through
- * `E2E_MOBILE_BENCHMARK_IOS_DEVICE`.
+ * `E2E_MOBILE_BENCHMARK_IOS_DEVICE`. There the GitHub reporter posts each
+ * job's run as one pull request comment named by
+ * `E2E_MOBILE_BENCHMARK_COMMENT` (`ios`, `android agent`, ...), the way the
+ * web benchmark's `key` names its two; unset, as on a Mac, nothing is posted.
  */
 const APP_ID = 'dev.e2e.benchmark';
+
+const comment = process.env.E2E_MOBILE_BENCHMARK_COMMENT;
 
 /**
  * The simulators the iOS target drives: the UDIDs in
@@ -62,6 +68,7 @@ export default {
   // One worker per simulator in the pool; an engine with fewer devices
   // narrows its own target. Each worker slot drives its own session.
   workers: Math.max(1, iosDevices?.length ?? 1),
+  reporters: ['list', github(comment === undefined ? {} : { key: comment })],
   credentials: {
     // The Login Form and Flattened Login scenarios' hardcoded account; the
     // Login Form screen prints it as a hint.

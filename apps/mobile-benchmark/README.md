@@ -48,6 +48,9 @@ model for a step with none: the iOS entries are recorded on a Mac with
 `test:agent` (below) and committed in the same pull request as the scenario
 change; nobody has recorded on an Android emulator yet, so that side spends
 model calls until an emulator recording is committed.
+Each job posts its run to the pull request as one comment (`e2e ios: 44
+passed`, `e2e android agent: ...`) through `@e2edev/github`, like the web
+benchmark's two; a second pass over failed tests posts as `ios retry`.
 
 ## Running
 

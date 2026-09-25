@@ -30,6 +30,7 @@
     "react-native-webview": "13.16.1"
   },
   "devDependencies": {
+    "@e2edev/github": "workspace:*",
     "@e2edev/mobile": "workspace:*",
     "@expo/fingerprint": "0.20.13",
     "@expo/repack-app": "0.10.3",

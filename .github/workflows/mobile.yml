@@ -17,6 +17,14 @@ name: mobile
 # for a step with none, so it runs for this repository's branches only. Both
 # platforms' entries are recorded on a Mac (an iPhone 17 Pro simulator, a
 # 1080x2400 emulator) and committed with the scenario change.
+#
+# Each job posts its run to the pull request as one comment through
+# @e2edev/github (hence pull-requests: write), named `ios`, `ios agent`,
+# `android`, or `android agent` by E2E_MOBILE_BENCHMARK_COMMENT, the way
+# benchmark.yml names the web ones. The second pass over the failed tests
+# posts under its own name (`ios retry`): the page lists only the tests a run
+# selected, so reusing the first pass's name would replace its failures with
+# the retry's few passes.
 on:
   pull_request:
   push:
@@ -35,6 +43,7 @@ env:
 
 permissions:
   contents: read
+  pull-requests: write
   # The Expo app action deletes a cached build its repack step proved broken.
   actions: write
 
@@ -137,9 +146,11 @@ jobs:
         if: ${{ matrix.suite == 'deterministic' || env.SAME_REPO == 'true' }}
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
           E2E_MOBILE_BENCHMARK_IOS_APP: ${{ steps.app.outputs.app-path }}
+          E2E_MOBILE_BENCHMARK_COMMENT: ios${{ matrix.suite == 'agentic' && ' agent' || '' }}
           E2E_RUN: node node_modules/e2e/dist/cli/bin.js run --target ios-simulator ${{ matrix.suite == 'agentic' && '--config e2e.agent.config.ts --artifacts .e2e/agent/artifacts' || '' }}
-        run: $E2E_RUN || $E2E_RUN --last-failed
+        run: $E2E_RUN || E2E_MOBILE_BENCHMARK_COMMENT="$E2E_MOBILE_BENCHMARK_COMMENT retry" $E2E_RUN --last-failed
       # The artifact upload below fails whenever the repository's quota is
       # full, so the failure evidence goes into the log as well.
       - name: Failure screens
@@ -225,10 +236,12 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
           disable-animations: true
           working-directory: apps/mobile-benchmark
-          script: $E2E_RUN || $E2E_RUN --last-failed
+          script: $E2E_RUN || E2E_MOBILE_BENCHMARK_COMMENT="$E2E_MOBILE_BENCHMARK_COMMENT retry" $E2E_RUN --last-failed
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
           E2E_MOBILE_BENCHMARK_ANDROID_APP: ${{ steps.app.outputs.app-path }}
+          E2E_MOBILE_BENCHMARK_COMMENT: android${{ matrix.suite == 'agentic' && ' agent' || '' }}
           E2E_RUN: node node_modules/e2e/dist/cli/bin.js run --target android-emulator ${{ matrix.suite == 'agentic' && '--config e2e.agent.config.ts --artifacts .e2e/agent/artifacts' || '' }}
       - name: Failure screens
         if: ${{ failure() }}

@@ -199,6 +199,9 @@ importers:
         specifier: 13.16.1
         version: 13.16.1(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)
     devDependencies:
+      '@e2edev/github':
+        specifier: workspace:*
+        version: link:../../packages/github
       '@e2edev/mobile':
         specifier: workspace:*
         version: link:../../packages/mobile
