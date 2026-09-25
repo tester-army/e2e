@@ -10,6 +10,7 @@
  * `init`, and `finish` releases what the source acquired.
  */
 
+import path from 'node:path';
 import {
   ConfigurationError,
   EngineError,
@@ -21,6 +22,7 @@ import {
 } from 'e2e/engine';
 import { bindingsVariable, decodeBindings, deviceLabel, encodeBindings, pinnedApp, type DeviceSource, type SlotBinding } from './bindings.ts';
 import { isRunnerFailure, message, runCommand } from './errors.ts';
+import { installedApp, type RawInstallResult } from './install.ts';
 import type { AgentDeviceClient, MobileOptions, MobilePlatform, ClientFactory } from './options.ts';
 import { asDeviceProvider, LeasedDevices } from './provider.ts';
 
@@ -245,21 +247,51 @@ export class DevicePool {
       this.retain(info.targetName, client);
       info.log(`booting ${label} (${slot + 1} of ${bindings.length})`);
       await runCommand('boot', () => client.devices.boot(where), info.signal, at);
-      const app = pinnedApp(this.options, binding.installedApp);
+      const installed = binding.installedApp ?? (await this.install(client, where, info, label, at));
+      const bound = installed === undefined ? binding : { ...binding, installedApp: installed };
+      const app = pinnedApp(this.options, installed);
       if (app === undefined) {
-        warmed.push(binding);
+        warmed.push(bound);
         continue;
       }
       try {
         await runCommand(`open ${app}`, () => client.apps.open({ app, ...where }), info.signal, at);
-        warmed.push({ ...binding, sessionApp: app });
+        warmed.push({ ...bound, sessionApp: app });
       } catch (cause) {
         if (info.signal.aborted || isRunnerFailure(cause)) throw cause;
         info.log(`${label}: automation runner not warmed up (${message(cause)}); the first attempt starts it`);
-        warmed.push(binding);
+        warmed.push(bound);
       }
     }
     return warmed;
+  }
+
+  /**
+   * Installs the build `appPath` names on a slot's device, here in `prepare`
+   * rather than in the worker's `init`, so the install and the automation
+   * runner's first launch of it are paid before the run's clock starts, not
+   * by the first test on the device. A build that does not install fails the
+   * run here, as it would in `init`. Resolves to the identity to open the app
+   * by; undefined without a build to install.
+   */
+  private async install(
+    client: AgentDeviceClient,
+    where: DeviceSelection,
+    info: EnginePrepareInfo,
+    label: string,
+    at: string,
+  ): Promise<string | undefined> {
+    const appPath = this.options.appPath;
+    if (appPath === undefined) return undefined;
+    const resolved = path.resolve(info.projectRoot, appPath);
+    info.log(`installing ${appPath} on ${label}`);
+    const result = (await runCommand(
+      `install ${resolved}`,
+      () => client.apps.install({ ...where, ...(this.options.app === undefined ? {} : { app: this.options.app }), appPath: resolved }),
+      info.signal,
+      at,
+    )) as RawInstallResult;
+    return installedApp(result).app;
   }
 
   /** Holds a warm-up client for `finish`, before its first command: a boot that fails still opened the session. */

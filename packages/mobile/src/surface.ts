@@ -39,7 +39,8 @@ import {
   ConfigurationError,
   TestError,
 } from 'e2e/engine';
-import { isSnapshotPresentationFailure, runCommand, staleOr } from './errors.ts';
+import { isNoSessionApp, isSnapshotPresentationFailure, runCommand, staleOr } from './errors.ts';
+import { installedApp, type InstalledApp, type RawInstallResult } from './install.ts';
 import { pointerInteraction } from './actions.ts';
 import { resolveExpression } from './locate.ts';
 import {
@@ -83,12 +84,6 @@ export interface InstallAppOptions {
 }
 
 /** What an install put on the device, as agent-device identified it. */
-export interface InstalledApp {
-  /** The bundle id or package to open the app by. */
-  readonly app: string;
-  readonly bundleId?: string;
-}
-
 /** How `device.openApp` launches an app. */
 export interface OpenAppOptions {
   /** Terminate the app first, so it starts fresh; without it a running app is brought forward as it is. */
@@ -105,14 +100,6 @@ export interface OpenAppOptions {
    * app.
    */
   readonly permissions?: LaunchPermissions;
-}
-
-/** The install fields this engine reads off agent-device's response. */
-interface RawInstallResult {
-  readonly app: string;
-  readonly appId?: string;
-  readonly bundleId?: string;
-  readonly package?: string;
 }
 
 /** The snapshot fields this engine reads off agent-device's response. */
@@ -562,13 +549,35 @@ export class AgentDeviceSurface {
     );
     if (entries.length === 0) return;
     if (this.sessionApp !== app) await this.open(app, false, undefined, signal);
-    for (const [permission, state] of entries) {
-      await this.command(
-        `permission ${permission} ${state}`,
-        (client) => client.settings.update({ setting: 'permission', permission, state }),
-        signal,
-      );
+    for (const [permission, state] of entries) await this.permission(permission, state, signal);
+  }
+
+  /**
+   * One permission change for `device.setPermission`: on the app the session
+   * is on, which is what agent-device acts on. With none known here (nothing
+   * opened yet, `closeApp`, a worker resumed on a bare session) the pinned
+   * app is brought to the foreground first. agent-device's own refusal, met
+   * when its session lost the app since (a failed attempt left it on none),
+   * gets the same foreground open and the command once more.
+   */
+  async setPermission(permission: DevicePermission, state: PermissionState, signal: AbortSignal): Promise<void> {
+    const app = this.pinnedApp;
+    if (this.sessionApp === undefined && app !== undefined) await this.open(app, false, undefined, signal);
+    try {
+      await this.permission(permission, state, signal);
+    } catch (cause) {
+      if (signal.aborted || app === undefined || !isNoSessionApp(cause)) throw cause;
+      await this.open(app, false, undefined, signal);
+      await this.permission(permission, state, signal);
     }
+  }
+
+  private async permission(permission: DevicePermission, state: PermissionState, signal: AbortSignal): Promise<void> {
+    await this.command(
+      `permission ${permission} ${state}`,
+      (client) => client.settings.update({ setting: 'permission', permission, state }),
+      signal,
+    );
   }
 
   /**
@@ -662,8 +671,7 @@ export class AgentDeviceSurface {
           : client.apps.install({ ...selection, ...(app === undefined ? {} : { app }), appPath: resolved }),
       signal,
     )) as RawInstallResult;
-    const identity = result.bundleId ?? result.package ?? result.appId;
-    return { app: identity ?? result.app, ...(identity === undefined ? {} : { bundleId: identity }) };
+    return installedApp(result);
   }
 
   private async snapshot(signal: AbortSignal, interactiveOnly: boolean): Promise<RawSnapshot> {

@@ -70,10 +70,12 @@ export interface MobileOptions {
    */
   readonly app?: string | undefined;
   /**
-   * Build to install on the device once per worker, before the first attempt:
-   * an iOS `.app` bundle or an Android `.apk`, resolved against the project
-   * root (the config's directory). Without `app`, the installed bundle id or
-   * package becomes the app `app.open()` launches.
+   * Build to install on each device the run drives, in `prepare` before the
+   * run's clock starts: an iOS `.app` bundle or an Android `.apk`, resolved
+   * against the project root (the config's directory). A worker without a
+   * `prepare` (a host opening one attempt) installs it in `init`. Without
+   * `app`, the installed bundle id or package becomes the app `app.open()`
+   * launches.
    */
   readonly appPath?: string | undefined;
   /**
@@ -167,9 +169,10 @@ leases hosted devices; see [Hosted devices](/mobile#hosted-devices) for the
 Devices boot in `prepare`, once per run and before the run's clock starts, so
 a cold boot on CI is never charged against `launchTimeout`. agent-device
 commands take no abort signal, so a timed-out command keeps running on the
-device; the next attempt waits for it to settle. `prepare` brings the pinned
-`app` up once per worker, and `app.open()` relaunches it fresh whenever a
-test asks; without a pinned app the model opens apps with the `open_app` tool.
+device; the next attempt waits for it to settle. `prepare` installs the build
+`appPath` names and brings the pinned `app` up once per device, so the
+automation runner's first launch is paid before the first test, and
+`app.open()` relaunches it fresh whenever a test asks; without a pinned app the model opens apps with the `open_app` tool.
 
 `launchArguments` and `permissions` ride every fresh launch of the pinned
 app: `app.open()`, `app.restart()`, and `app.clearState()`, which resets the
@@ -244,11 +247,16 @@ export interface Device {
   setNetwork(state: 'online' | 'offline'): Promise<void>;
   /** Toggles airplane mode. */
   setAirplaneMode(enabled: boolean): Promise<void>;
-  /** Grants, denies, or resets one permission for the open app. */
+  /**
+   * Grants, denies, or resets one permission for the pinned app, brought to
+   * the foreground first when the session is on no app. A change terminates
+   * a running app on iOS, a revoke one on Android, so it goes before the
+   * `app.open()` a test starts with.
+   */
   setPermission(permission: DevicePermission, state: PermissionState): Promise<void>;
-  /** Sets the simulated location. */
+  /** Sets the simulated location, switching location services on first on Android. */
   setLocation(coordinates: { latitude: number; longitude: number }): Promise<void>;
-  /** Turns simulated location off. */
+  /** Turns simulated location off; on Android that is location services off, until the next `setLocation`. */
   clearLocation(): Promise<void>;
   /** Sets the system appearance. */
   setAppearance(mode: 'light' | 'dark'): Promise<void>;

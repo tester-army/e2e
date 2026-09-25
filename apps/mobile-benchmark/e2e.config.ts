@@ -8,7 +8,8 @@ import { github } from '@e2edev/github';
  * each test taps into its own scenario first. The app must already be on the
  * device (`pnpm ios` / `pnpm android` build and install it), or point
  * `E2E_MOBILE_BENCHMARK_IOS_APP` / `E2E_MOBILE_BENCHMARK_ANDROID_APP` at a
- * simulator `.app` or an `.apk` and the engine installs it once per worker.
+ * simulator `.app` or an `.apk` and the engine installs it on each device
+ * before the run starts.
  * CI does exactly that in `.github/workflows/mobile.yml`, one target per job,
  * and pins the iOS target to the simulator it booted through
  * `E2E_MOBILE_BENCHMARK_IOS_DEVICE`. There the GitHub reporter posts each

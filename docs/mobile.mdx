@@ -49,7 +49,8 @@ mobile({
 })
 ```
 
-The build is installed once per worker. Use an `.app` bundle for iOS or an
+The build is installed on each device the run drives before the run starts, and
+the worker that resumes the device installs nothing. Use an `.app` bundle for iOS or an
 `.apk` for Android. Optional values accept `undefined`, so environment
 variables can be passed directly.
 

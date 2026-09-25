@@ -15,9 +15,13 @@ name: mobile
 # `--last-failed` before the job goes red (agent-device's runtime has episodes
 # of its own on a shared machine, #502). The agentic suite replays the
 # recordings committed under .e2e/cache, read-only in CI, and calls the model
-# for a step with none, so it runs for this repository's branches only. Both
-# platforms' entries are recorded on a Mac (an iPhone 17 Pro simulator, a
-# 1080x2400 emulator) and committed with the scenario change.
+# for a step with none, so it runs for this repository's branches only, and
+# not for Dependabot's, whose runs get no secrets either. Both platforms'
+# entries are recorded on a Mac (an iPhone 17 Pro simulator, a 1080x2400
+# emulator) and committed with the scenario change.
+#
+# A job uploads its report and artifacts when it fails; a green run has its
+# comment, and the artifact quota is shared with every workflow here.
 #
 # Each job posts its run to the pull request as one comment through
 # @e2edev/github (hence pull-requests: write), named `ios`, `ios agent`,
@@ -48,6 +52,10 @@ env:
   # `pull_request_target` to get the key onto fork branches: that hands the
   # secret to untrusted code.
   SAME_REPO: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+  # Dependabot's pull requests come from this repository but run with
+  # Dependabot's secrets, which hold no model key: the agentic suite would
+  # fail every step without a recording. It runs for everyone else's.
+  AGENTIC: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]') }}
 
 permissions:
   contents: read
@@ -173,7 +181,7 @@ jobs:
       # for a step with none, so it runs for this repository's branches only:
       # a fork's pull request has no key.
       - name: Run the suite
-        if: ${{ env.SUITE == 'deterministic' || env.SAME_REPO == 'true' }}
+        if: ${{ env.SUITE == 'deterministic' || env.AGENTIC == 'true' }}
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
@@ -193,7 +201,7 @@ jobs:
             echo "::endgroup::"
           done
       - name: Upload report
-        if: ${{ !cancelled() }}
+        if: ${{ failure() }}
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -269,7 +277,7 @@ jobs:
       # suite and its second pass over the failed tests are one line. Same
       # rerun and same fork rule as the iOS job.
       - name: Run the suite
-        if: ${{ env.SUITE == 'deterministic' || env.SAME_REPO == 'true' }}
+        if: ${{ env.SUITE == 'deterministic' || env.AGENTIC == 'true' }}
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 36
@@ -297,7 +305,7 @@ jobs:
             echo "::endgroup::"
           done
       - name: Upload report
-        if: ${{ !cancelled() }}
+        if: ${{ failure() }}
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

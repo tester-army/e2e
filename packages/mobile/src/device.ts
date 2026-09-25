@@ -8,7 +8,8 @@
 import type { EngineFixtureContext, Locator } from 'e2e/engine';
 import { linkLabel, linkTarget } from './links.ts';
 import type { DevicePermission, PermissionState } from './options.ts';
-import type { AgentDeviceSurface, InstallAppOptions, InstalledApp, OpenAppOptions } from './surface.ts';
+import type { InstalledApp } from './install.ts';
+import type { AgentDeviceSurface, InstallAppOptions, OpenAppOptions } from './surface.ts';
 
 /** Orientations `setOrientation` accepts. */
 export type DeviceOrientation = 'portrait' | 'portrait-upside-down' | 'landscape-left' | 'landscape-right';
@@ -32,11 +33,16 @@ export interface Device {
   setNetwork(state: 'online' | 'offline'): Promise<void>;
   /** Toggles airplane mode. */
   setAirplaneMode(enabled: boolean): Promise<void>;
-  /** Grants, denies, or resets one permission for the open app. */
+  /**
+   * Grants, denies, or resets one permission for the pinned app, brought to
+   * the foreground first when the session is on no app. A change terminates
+   * a running app on iOS, a revoke one on Android, so it goes before the
+   * `app.open()` a test starts with.
+   */
   setPermission(permission: DevicePermission, state: PermissionState): Promise<void>;
-  /** Sets the simulated location. */
+  /** Sets the simulated location, switching location services on first on Android. */
   setLocation(coordinates: { latitude: number; longitude: number }): Promise<void>;
-  /** Turns simulated location off. */
+  /** Turns simulated location off; on Android that is location services off, until the next `setLocation`. */
   clearLocation(): Promise<void>;
   /** Sets the system appearance. */
   setAppearance(mode: 'light' | 'dark'): Promise<void>;
@@ -124,13 +130,19 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Engine
       );
     },
     async setPermission(permission, state) {
-      await surface.command(
-        'device.setPermission',
-        (client) => client.settings.update({ setting: 'permission', permission, state }),
-        context.signal,
-      );
+      await surface.setPermission(permission, state, context.signal);
     },
     async setLocation({ latitude, longitude }) {
+      // Android reads a fix only while location services are on, and
+      // `clearLocation` switched them off for good on the emulator (the
+      // setting outlives the app); iOS has no such switch.
+      if (surface.options.platform === 'android') {
+        await surface.command(
+          'device.setLocation',
+          (client) => client.settings.update({ setting: 'location', state: 'on' }),
+          context.signal,
+        );
+      }
       await surface.command(
         'device.setLocation',
         (client) => client.settings.update({ setting: 'location', state: 'set', latitude, longitude }),

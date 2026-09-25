@@ -118,9 +118,8 @@ test.describe('device fixture', () => {
 
   // A read returns the provider's last fix, which lags a new one by a moment,
   // so each read is repeated until the app prints the position that was set.
-  // On Android clearLocation switches location services off, and the
-  // emulator keeps that until they are switched back on
-  // (`adb shell settings put secure location_mode 3`); a CI emulator is fresh.
+  // On Android clearLocation switches location services off and the emulator
+  // keeps that across runs; setLocation switches them back on first.
   test('setLocation and clearLocation change what the app reads', async ({ device, screen }) => {
     await screen.getByTestId('tab-device').tap();
     // Granted up front, so the read never waits on the system's permission dialog.

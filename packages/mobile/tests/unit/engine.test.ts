@@ -176,13 +176,31 @@ describe('lifecycle', () => {
     expect(h.fake.calls[2]!.args).toEqual({ platform: 'ios', device: 'iPhone 17 Pro' });
     expect(lines).toEqual(['booting iPhone 17 (1 of 2)', 'booting iPhone 17 Pro (2 of 2)']);
 
-    // Without a pinned app there is nothing to open; a build `appPath` installs in init, so it boots only too.
+    // Without a pinned app there is nothing to open, so it boots only.
     const bare = harness({ device: 'iPhone 16e' }, false);
     await bare.engine.prepare!({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: () => undefined });
     expect(bare.fake.methods()).toEqual(['devices.boot']);
+    // A build `appPath` is installed here, before the run's clock starts, and the worker then installs nothing.
     const build = harness({ device: 'iPhone 16e', appPath: 'build/App.app' });
-    await build.engine.prepare!({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: () => undefined });
-    expect(build.fake.methods()).toEqual(['devices.boot']);
+    build.fake.respond('apps.install', () => ({ app: 'Settings', appPath: '/project/build/App.app', platform: 'ios', bundleId: 'com.apple.Preferences', identifiers: {} }));
+    const buildLines: string[] = [];
+    const prepared = await build.engine.prepare!({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: (line) => buildLines.push(line) });
+    expect(build.fake.methods()).toEqual(['devices.boot', 'apps.install', 'apps.open']);
+    expect(build.fake.lastArgs('apps.install')).toEqual({ platform: 'ios', device: 'iPhone 16e', app: 'Settings', appPath: path.join(PROJECT_ROOT, 'build/App.app') });
+    expect(buildLines).toEqual(['booting iPhone 16e (1 of 1)', 'installing build/App.app on iPhone 16e']);
+    const buildEnv = prepared?.env ?? {};
+    expect(buildEnv[poolVariableIn(buildEnv, 'IOS')]).toBe(JSON.stringify([{ device: 'iPhone 16e', installedApp: 'com.apple.Preferences', sessionApp: 'Settings' }]));
+    await boot(build.engine, 'ios', 0, buildEnv);
+    expect(build.fake.methods().filter((m) => m === 'apps.install')).toHaveLength(1);
+    // A build that does not install fails the run in prepare, as it would in init.
+    const broken = harness({ device: 'iPhone 16e', appPath: 'missing.app' });
+    broken.fake.respond('apps.install', () => {
+      throw new Error('no such file: missing.app');
+    });
+    await expect(
+      broken.engine.prepare!({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: () => undefined }),
+    ).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
+    expect(broken.fake.methods()).toEqual(['devices.boot', 'apps.install']);
 
     const single = harness({ device: 'iPhone 16e', session: 'qa' });
     expect(single.engine.workers).toBe(1);
@@ -1313,6 +1331,55 @@ describe('device fixture', () => {
       ['command.keyboard', { action: 'dismiss' }],
       ['command.clipboard', { action: 'read' }],
       ['command.clipboard', { action: 'write', text: 'x' }],
+    ]);
+  });
+
+  it('brings the pinned app to the foreground before a permission change when the session is on no app', async () => {
+    // Nothing opened in this worker yet: the open goes first, as a foreground open, then the change.
+    const h = harness();
+    await boot(h.engine);
+    await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal });
+    const before = h.fake.calls.length;
+    await fixture(h).setPermission('microphone', 'reset');
+    expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
+      ['apps.open', { app: 'Settings', platform: 'ios' }],
+      ['settings.update', { setting: 'permission', permission: 'microphone', state: 'reset' }],
+    ]);
+
+    // The session lost its app since the open (a failed attempt left it on none): agent-device's refusal gets one open and one more try.
+    let refusals = 0;
+    h.fake.respond('settings.update', () => {
+      if (refusals++ === 0) throw new Error('permission setting requires an active app in session');
+      return {};
+    });
+    const again = h.fake.calls.length;
+    await fixture(h).setPermission('microphone', 'grant');
+    expect(h.fake.calls.slice(again).map((call) => call.method)).toEqual(['settings.update', 'apps.open', 'settings.update']);
+
+    // Any other refusal, and a refusal met again after the open, propagate.
+    h.fake.respond('settings.update', () => {
+      throw new Error('permission setting requires an active app in session');
+    });
+    await expect(fixture(h).setPermission('camera', 'deny')).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
+    h.fake.respond('settings.update', () => {
+      throw new Error('permission camera is not known');
+    });
+    const other = h.fake.calls.length;
+    await expect(fixture(h).setPermission('camera', 'deny')).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
+    expect(h.fake.calls.slice(other).map((call) => call.method)).toEqual(['settings.update']);
+  });
+
+  it('switches Android location services on before a fix, since clearLocation leaves them off', async () => {
+    const h = harness({ platform: 'android', app: 'com.android.settings' });
+    await openAttempt(h);
+    const before = h.fake.calls.length;
+    const device = fixture(h);
+    await device.setLocation({ latitude: 52.2297, longitude: 21.0122 });
+    await device.clearLocation();
+    expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
+      ['settings.update', { setting: 'location', state: 'on' }],
+      ['settings.update', { setting: 'location', state: 'set', latitude: 52.2297, longitude: 21.0122 }],
+      ['settings.update', { setting: 'location', state: 'off' }],
     ]);
   });
 
