@@ -159,6 +159,8 @@ export interface TargetSession {
   captureState?(operation: OperationContext): Promise<EngineState>;
   /** Replaces current app state with an immutable captured state. */
   restoreState?(state: EngineState, operation: OperationContext): Promise<void>;
+  /** Rethrows a failure the engine collected on a path no step awaited; a no-op without the hook. */
+  settle(operation: OperationContext): Promise<void>;
   /** Ends the attempt's isolation within the operation's budget. Idempotent. */
   close(operation: OperationContext): Promise<void>;
 }

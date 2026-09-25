@@ -16,6 +16,7 @@ import { installFakeModel, judgment } from '../helpers/fake-model.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { resultByTitle, runProject } from '../helpers/run-project.ts';
 import type { E2EConfig } from '../../src/index.ts';
+import { TestError } from '../../src/engine/index.ts';
 
 const APP_URL = FAKE_APP_URL;
 
@@ -345,6 +346,29 @@ test('flaky against engine', { retries: 1 }, async ({ app }) => {
       expect(attempt.cleanup).toBe('failed');
       expect(attempt.secondaryErrors.some((error) => error.phase === 'cleanup')).toBe(true);
       expect(outcome.exitCode).toBe(0);
+      project.cleanup();
+    },
+    60_000,
+  );
+
+  it(
+    'a failure settleAttempt throws after the body is the verdict, with its own code',
+    async () => {
+      const fake = createFakeEngine({
+        onSettleAttempt() {
+          throw new TestError('ASSERTION_FAILED', 'a callback the body left running failed');
+        },
+      });
+      const { outcome, project } = await runProject(
+        { 'tests/settle-fail.e2e.ts': PASSING_TEST },
+        { appUrl: APP_URL, config: engineConfig(fake.engine) },
+      );
+      const result = resultByTitle(outcome, 'taps a node');
+      expect(result.status).toBe('failed');
+      const attempt = result.attempts[0]!;
+      expect(attempt.error).toMatchObject({ code: 'ASSERTION_FAILED', phase: 'body' });
+      expect(attempt.cleanup).toBe('complete');
+      expect(outcome.exitCode).toBe(1);
       project.cleanup();
     },
     60_000,

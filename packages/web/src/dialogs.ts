@@ -6,7 +6,7 @@
 
 import type { Dialog as PwDialog } from 'playwright';
 import { EngineError } from 'e2e/engine';
-import { ErrorLatch, message } from './support.ts';
+import { ErrorLatch, isClassified, message } from './support.ts';
 
 /** A native dialog as a test's handler sees it. */
 export interface Dialog {
@@ -51,8 +51,14 @@ export class DialogRouter {
     this.latch.throwPending();
   }
 
-  /** Routes one native dialog to the newest registered handler. */
-  async dispatch(dialog: PwDialog): Promise<void> {
+  /** Routes one native dialog to the newest registered handler; the attempt end waits for it. */
+  dispatch(dialog: PwDialog): Promise<void> {
+    const work = this.route(dialog);
+    this.latch.track(work);
+    return work;
+  }
+
+  private async route(dialog: PwDialog): Promise<void> {
     const handler = this.registrations.at(-1)?.handler;
     if (handler === undefined) {
       this.latch.latch(
@@ -97,11 +103,15 @@ export class DialogRouter {
         }
       }
     } catch (cause) {
+      // A failed assertion or a policy refusal keeps its code; only an
+      // unclassified throw is the engine's to name.
       this.latch.latch(
-        new EngineError('ENGINE_FAILURE', `dialog handler failed: ${message(cause)}`, {
-          retryable: false,
-          cause,
-        }),
+        isClassified(cause)
+          ? cause
+          : new EngineError('ENGINE_FAILURE', `dialog handler failed: ${message(cause)}`, {
+              retryable: false,
+              cause,
+            }),
       );
     }
   }

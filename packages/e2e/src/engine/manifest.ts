@@ -34,6 +34,7 @@ const KNOWN_KEYS = [
   'finish',
   'init',
   'startAttempt',
+  'settleAttempt',
   'endAttempt',
   'dispose',
 ] as const satisfies readonly (keyof Engine)[];
@@ -69,6 +70,7 @@ const FUNCTION_MEMBERS = [
   'finish',
   'init',
   'startAttempt',
+  'settleAttempt',
   'endAttempt',
   'dispose',
 ] as const;

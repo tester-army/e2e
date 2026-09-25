@@ -84,6 +84,8 @@ export interface FakeEngineBehavior {
   onStartAttempt?(context: EngineAttemptContext, attemptIndex: number): void | Promise<void>;
   /** Throw to fail attempt close. */
   onEndAttempt?(attemptIndex: number): void | Promise<void>;
+  /** Declares `settleAttempt`, called with the current attempt index; throw to hand the attempt a late failure. */
+  onSettleAttempt?(attemptIndex: number): void | Promise<void>;
   /** Throw to fail worker-end disposal. */
   onDispose?(): void | Promise<void>;
   /** Throw to fail navigation (app.open); backs `session.open`. */
@@ -240,6 +242,13 @@ export function createFakeEngine(behavior: FakeEngineBehavior = {}): FakeEngineH
       if (behavior.scene !== undefined) scenes.set(context.attemptId, createScene(behavior.scene, location));
       await behavior.onStartAttempt?.(context, index);
     },
+    ...(behavior.onSettleAttempt === undefined
+      ? {}
+      : {
+          async settleAttempt() {
+            await behavior.onSettleAttempt?.(current);
+          },
+        }),
     async endAttempt() {
       const index = current;
       openAttempts -= 1;

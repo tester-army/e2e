@@ -405,6 +405,23 @@ test('forbidden URL schemes are refused', async ({ app }) => {
   await app.open('javascript:alert(1)');
 });
 
+test('a route handler assertion that no step follows', async ({ app, web }) => {
+  await web.route('**/api/flags', async (route) => {
+    await route.fulfill({ json: { betaBoard: true } });
+    expect(route.request.method).toBe('POST');
+  });
+  await app.open('/flags');
+});
+
+test('a dialog handler assertion that no step follows', async ({ app, web, screen }) => {
+  await app.open('/dialog');
+  await web.onDialog(async (dialog) => {
+    await dialog.accept();
+    expect(dialog.message).toBe('Are you sure?');
+  });
+  await screen.getByRole('button', { name: 'Ask' }).tap();
+});
+
 test('a step call without await', async ({ app }) => {
   app.open();
 });
@@ -521,6 +538,18 @@ describe('web platform integration', () => {
     expect(attempt.error).toMatchObject({ code: 'ERROR', message: 'the body gave up' });
     expect(attempt.secondaryErrors.map((error) => error.code)).toEqual(['STEP_NOT_AWAITED']);
     expect(attempt.steps[0]).toMatchObject({ api: 'app.open', status: 'failed', error: { code: 'STEP_NOT_AWAITED' } });
+    expect(outcome.report.run.errors.map((error) => error.code)).toEqual([]);
+  });
+
+  it.each([
+    ['route', 'a route handler assertion that no step follows'],
+    ['dialog', 'a dialog handler assertion that no step follows'],
+  ])('fails a %s handler assertion at the attempt end when no step follows it', (_kind, title) => {
+    const result = resultByTitle(outcome, title);
+    expect(result.status).toBe('failed');
+    const attempt = result.attempts[0]!;
+    expect(attempt.error).toMatchObject({ code: 'ASSERTION_FAILED', phase: 'body' });
+    expect(attempt.cleanup).toBe('complete');
     expect(outcome.report.run.errors.map((error) => error.code)).toEqual([]);
   });
 

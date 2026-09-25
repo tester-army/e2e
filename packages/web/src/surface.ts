@@ -387,6 +387,16 @@ export class PlaywrightSurface {
   }
 
   /**
+   * Waits for a route or dialog handler still running, then rethrows the
+   * error one of them latched after the last step, so it fails this attempt
+   * instead of the next one's first operation. The latch itself is replaced
+   * by `startAttempt`, after this ran.
+   */
+  settleAttempt(context: EngineCleanupContext): Promise<void> {
+    return this.latch.settle(context);
+  }
+
+  /**
    * Retires the owner before awaiting cleanup; late work cannot reach the
    * next attempt. A browser leased for the attempt is released after its
    * connection closes, whether or not the close succeeded.

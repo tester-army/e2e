@@ -318,7 +318,10 @@ is known: `url`, `status`, and `headers` are always readable, and a body the
 browser could not read (a connection reset short of the declared
 `Content-Length`, a request the page aborted, or a redirect, whose body the
 browser never keeps) rejects `text()` and `json()` with `ACTION_FAILED`
-instead of an empty string. A genuinely empty body reads as `''`.
+instead of an empty string. A genuinely empty body reads as `''`. A handler
+that throws (a failed `expect` on the request, say) fails the next step with
+that error, or the attempt at its end when no step follows; a handler still
+running then gets the cleanup budget to finish.
 
 ```ts
 await web.route('**/api/quote', async (route) => {
@@ -409,7 +412,10 @@ await web.setCookies([{ url: 'http://localhost:3000', name: 'tz', value: 'UTC' }
 
 A function handler must call `accept` or `dismiss`; one that does neither
 has the dialog dismissed and fails the next step with `APP_NOT_OPEN`, as an
-unhandled dialog does. `waitForDownload` registers the file as a `download`
+unhandled dialog does. One that throws fails the next step, or the attempt at
+its end when no step follows, with its error: a failed `expect` stays
+`ASSERTION_FAILED`, an unclassified throw is `ENGINE_FAILURE`.
+`waitForDownload` registers the file as a `download`
 artifact and throws `ACTION_FAILED` when it does not complete in time.
 
 ```ts

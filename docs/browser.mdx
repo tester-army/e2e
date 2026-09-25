@@ -36,8 +36,10 @@ await app.open('/checkout');
 await expect(screen.getByText('$42.00')).toBeVisible();
 ```
 
-Each handler must call exactly one of `fulfill`, `continue`, or `abort`.
-To inspect a real response, start waiting before the action that sends it:
+Each handler must call exactly one of `fulfill`, `continue`, or `abort`. An
+`expect` that fails inside the handler fails the test, at the next step or at
+the end of the test when nothing follows. To inspect a real response, start
+waiting before the action that sends it:
 
 ```ts
 const [response] = await Promise.all([

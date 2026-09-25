@@ -1,7 +1,7 @@
 /** Shared error translation, filename, and swipe helpers for the Playwright engine. */
 
 import type { ElementHandle, Locator as PwLocator, Mouse, Page } from 'playwright';
-import { EngineError, type Momentum, type ScrollDirection, type ViewportPoint, type ViewportSize } from 'e2e/engine';
+import { EngineError, withinCleanupBudget, type EngineCleanupContext, type Momentum, type ScrollDirection, type ViewportPoint, type ViewportSize } from 'e2e/engine';
 import { ConfigurationError, InfrastructureError, TestError } from 'e2e/engine';
 
 export const DEFAULT_VIEWPORT = { width: 1280, height: 720 } as const;
@@ -203,15 +203,30 @@ export function cancelled(text: string): EngineError {
 /**
  * Holds one error raised on a path nobody awaits - a native dialog nobody
  * handled, a route handler that broke its contract - until the next step
- * enters the surface, which then fails with the real cause. Rethrows once:
- * the failure belongs to the step that observes it, not to every later one.
+ * enters the surface, which then fails with the real cause, or until the
+ * attempt settles when no step follows. Rethrows once: the failure belongs
+ * to the step that observes it, not to every later one.
  */
 export class ErrorLatch {
   private pending: Error | null = null;
+  private readonly running = new Set<Promise<void>>();
 
   /** Latches an error; the first one wins until it is thrown. */
   latch(error: Error): void {
     this.pending ??= error;
+  }
+
+  /** Tracks one unawaited path until it settles, so `settle` can wait for it. Its own rejection is the caller's to latch. */
+  track(work: Promise<void>): void {
+    const tracked: Promise<void> = work.then(() => undefined, () => undefined);
+    this.running.add(tracked);
+    void tracked.then(() => this.running.delete(tracked));
+  }
+
+  /** Waits, within the budget, for tracked paths still running, then rethrows the latched error once. */
+  async settle(budget: EngineCleanupContext): Promise<void> {
+    if (this.running.size > 0) await withinCleanupBudget(Promise.all(this.running), budget);
+    this.throwPending();
   }
 
   /** Rethrows the latched error once, if any. */

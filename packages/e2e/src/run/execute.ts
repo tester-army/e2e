@@ -590,6 +590,21 @@ export class TargetExecutor implements SerialHost {
     return session;
   }
 
+  /**
+   * Collects a failure the engine holds from a path no step awaited, within
+   * the cleanup budget; the interrupt is the one thing that cuts it short.
+   * The error is the test's, thrown as it was so `classifyError` keeps its
+   * code: `lifecycle` would name every non-engine error an engine failure.
+   */
+  private settleAttempt(session: TargetSession, attemptId: string): Promise<void> {
+    return withScopedBudget(
+      this.config.cleanupTimeout,
+      this.interruptSignal,
+      () => new InfrastructureError('CLEANUP_TIMEOUT', 'settling the attempt timed out'),
+      (signal) => session.settle(this.op(attemptId, this.config.cleanupTimeout, signal)),
+    );
+  }
+
   /** Ends one attempt's isolation within the cleanup budget. */
   private endAttempt(session: TargetSession, attemptId: string): Promise<void> {
     return this.lifecycle(
@@ -1027,6 +1042,11 @@ export class TargetExecutor implements SerialHost {
       if (lateSoft !== undefined) {
         secondaryErrors.push(serializeError(lateSoft, { phase: 'body', projectRoot: this.config.projectRoot, redact }));
       }
+      // A callback the surface ran for the body (a request interceptor, a
+      // dialog handler) fails on a path no step awaits; one that failed after
+      // the last step is collected here, so it is the verdict instead of the
+      // next attempt's surprise.
+      await this.settleAttempt(session, attemptId).catch((cause: unknown) => recordFailure(cause, 'body'));
 
       phase = 'afterEach';
       // Each teardown gets its own cleanup budget: a body that timed out or
@@ -1051,6 +1071,7 @@ export class TargetExecutor implements SerialHost {
           recordFailure(cause, 'afterEach');
         }
       }
+      await this.settleAttempt(session, attemptId).catch((cause: unknown) => recordFailure(cause, 'afterEach'));
     } catch (cause) {
       recordFailure(cause, phase);
     } finally {

@@ -166,6 +166,15 @@ export interface Engine {
   /** Before each attempt: set up per-test isolation. */
   startAttempt?(context: EngineAttemptContext): Promise<void>;
   /**
+   * After the body has settled, and again after teardown, before the verdict,
+   * within the cleanup budget: report a failure that landed on a path no step
+   * awaited (a callback the surface ran for the test: a request interceptor,
+   * a native dialog handler). Wait for one still running, then throw its
+   * error; the attempt fails with it the way a step would, an error already
+   * classified keeping its code. MUST report each failure once.
+   */
+  settleAttempt?(context: EngineCleanupContext): Promise<void>;
+  /**
    * After each attempt, within the cleanup budget: tear that isolation down.
    * MUST be idempotent, and safe to call after a failed `startAttempt`.
    */
@@ -290,6 +299,7 @@ export interface EngineKeyboard {
 | `finish(info)` | `cleanupTimeout`, shared by every prepared target, never cut short by an interrupt; failure is a cleanup run error |
 | `init(info)` | `launchTimeout`; failure is infrastructure |
 | `startAttempt(context)` | `launchTimeout`; on failure or timeout `context.signal` aborts and `endAttempt` runs |
+| `settleAttempt(context)` | `cleanupTimeout`, after the body and again after teardown; a thrown error is the attempt's failure and keeps its code |
 | `endAttempt(context)` | `cleanupTimeout`; failure marks cleanup failed, the test keeps its status |
 | `dispose(context)` | `cleanupTimeout`; failure is a run error |
 
@@ -447,7 +457,7 @@ export interface EngineAttemptContext {
 }
 
 /**
- * Budget of one cleanup hook (`endAttempt`, `dispose`). `signal` aborts when
+ * Budget of one cleanup hook (`settleAttempt`, `endAttempt`, `dispose`). `signal` aborts when
  * the budget is exhausted, so a hook that cannot finish in time stops instead
  * of running on into the next attempt's setup.
  */

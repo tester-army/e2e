@@ -90,6 +90,7 @@ export function web(options: WebOptions = {}): EngineHandle {
     finish: (info) => surface.finish(info),
     init: (info) => surface.init(info),
     startAttempt: (context) => surface.startAttempt(context),
+    settleAttempt: (context) => surface.settleAttempt(context),
     endAttempt: (context) => surface.endAttempt(context),
     dispose: (context) => surface.dispose(context),
     observe: (operation, observeOptions) => surface.observe(operation, observeOptions),
