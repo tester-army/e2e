@@ -12,7 +12,9 @@
       "userInterfaceStyle": "automatic",
       "bundleIdentifier": "dev.e2e.benchmark",
       "entitlements": {
-        "com.apple.developer.in-app-payments": ["merchant.dev.e2e.benchmark"]
+        "com.apple.developer.in-app-payments": [
+          "merchant.dev.e2e.benchmark"
+        ]
       }
     },
     "android": {
@@ -36,6 +38,18 @@
         "expo-audio",
         {
           "microphonePermission": "The benchmark records voice notes to gate permission handling."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "The benchmark reads the device position to gate location handling."
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "The benchmark unlocks a vault with Face ID to gate biometric prompts."
         }
       ],
       [

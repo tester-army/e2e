@@ -3,6 +3,7 @@ import type { ComponentType } from "react";
 import ApplePay from "./Examples/ApplePay";
 import ApplePayBillingAddress from "./Examples/ApplePayBillingAddress";
 import AsyncStates from "./Examples/AsyncStates";
+import BiometricLock from "./Examples/BiometricLock";
 import BottomTabs from "./Examples/BottomTabs";
 import BrokenAccessibility from "./Examples/BrokenAccessibility";
 import ChoiceControls from "./Examples/ChoiceControls";
@@ -14,8 +15,10 @@ import FlattenedLogin from "./Examples/FlattenedLogin";
 import Gestures from "./Examples/Gestures";
 import HugeVirtualizedList from "./Examples/HugeVirtualizedList";
 import InfiniteScrollList from "./Examples/InfiniteScrollList";
+import LocationReader from "./Examples/LocationReader";
 import LoginForm from "./Examples/LoginForm";
 import ModalFlow from "./Examples/ModalFlow";
+import NetworkStatus from "./Examples/NetworkStatus";
 import PermissionPrompt from "./Examples/PermissionPrompt";
 import PhotoPicker from "./Examples/PhotoPicker";
 import ProductCatalog from "./Examples/ProductCatalog";
@@ -186,5 +189,23 @@ export const examples: Example[] = [
     name: "Control Inventory",
     description:
       "The deterministic contract surface: plain controls with every state exposed, one exercise per runner verb. Not a hard surface.",
+  },
+  {
+    component: NetworkStatus,
+    name: "Network Status",
+    description:
+      "The device fixture's network surface: connection type and reachability as the OS reports them, for setNetwork and setAirplaneMode. Not a hard surface.",
+  },
+  {
+    component: LocationReader,
+    name: "Location Reader",
+    description:
+      "The device fixture's location surface: ask for location access, read the position once, print it, for setLocation and clearLocation. Not a hard surface.",
+  },
+  {
+    component: BiometricLock,
+    name: "Biometric Lock",
+    description:
+      "The device fixture's biometric surface: a vault behind the OS biometric prompt, outside the a11y tree, for enrollBiometrics and setBiometrics. Not a hard surface.",
   },
 ];

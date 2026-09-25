@@ -21,7 +21,9 @@ export { expect } from 'e2e';
  * own header shows the route name, on iOS in the navigation bar and on
  * Android in the toolbar; Bottom Tabs, the one route without a header, shows
  * its home tab instead. The tap gets one more try when the list swallowed it
- * or a neighbour opened, which is popped first.
+ * or a neighbour opened, which is popped first. The list gets longer than
+ * the assertion budget to appear: a debug build fetches its bundle from
+ * Metro, and on the emulator that cold start runs about ten seconds.
  */
 export async function openScenario(
   { app, device, screen }: { app: App; device: Device; screen: Screen },
@@ -29,7 +31,7 @@ export async function openScenario(
 ): Promise<void> {
   await app.open();
   const row = screen.getByLabel(`${name}. `, { exact: false });
-  await expect(row).toBeVisible();
+  await expect(row).toBeVisible({ timeout: 20_000 });
   const shown = name === 'Bottom Tabs' ? screen.getByTestId('home-tab-content') : screen.getByText(name);
   const opened = async (): Promise<boolean> => (await row.isHidden()) && (await shown.isVisible());
   await row.tap();

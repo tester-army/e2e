@@ -27,6 +27,19 @@ from the directory it runs in.
   screen.
 - `modules/apple-pay-lab`: the local Expo module (PassKit, iOS only) behind
   the two Apple Pay scenarios.
+- Network Status, Location Reader, and Biometric Lock are not hard surfaces:
+  each prints what the OS reports (expo-network, expo-location,
+  expo-local-authentication) so the `device` fixture's `setNetwork`,
+  `setAirplaneMode`, `setLocation`, `clearLocation`, `enrollBiometrics`, and
+  `setBiometrics` have something to be read back from, like Control
+  Inventory does for the runner verbs. `tests/device-fixture.e2e.ts` covers
+  them and declares, with the reason, what the tooling cannot do yet: on the
+  iOS simulator agent-device's wifi and airplane settings only override the
+  status bar, its Face ID goes through a `simctl biometric` subcommand the
+  installed Xcode has to declare (Xcode 27.0 does not), and on Android
+  `clearLocation` turns location services off for the whole emulator with
+  no fixture verb to turn them back on, so that test restores them through
+  adb.
 - `e2e.config.ts` + `tests/`: the deterministic suite, locators only.
 - `e2e.agent.config.ts` + `tests-agent/`: the agentic suite, derived from the
   deterministic config. One `agent.act` per scenario with the catalog
@@ -77,7 +90,10 @@ node node_modules/e2e/dist/cli/bin.js run tests/login-form.e2e.ts --target ios-s
 ```
 
 Android note: the Android Gradle Plugin's prefab step fails on very new JDKs
-(observed on JDK 26). Build with JDK 17 through 21.
+(observed on JDK 26). Build with JDK 17 through 21. A debug build fetches its
+bundle from Metro and cold-starts in about ten seconds on the emulator; a
+suite that reopens the app per test is more reliable against a release build
+(`npx expo run:android --variant release`), which is what CI runs.
 
 ## Scenario contract
 
