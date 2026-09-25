@@ -24,6 +24,20 @@
     "appIdentity": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "createdAt": { "$ref": "#/$defs/timestamp" },
     "expiresAt": { "$ref": "#/$defs/timestamp" },
+    "secrecy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tainted", "names"],
+      "properties": {
+        "tainted": { "type": "boolean" },
+        "names": {
+          "type": "array",
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 256 }
+        }
+      }
+    },
     "state": {
       "type": "object",
       "additionalProperties": false,

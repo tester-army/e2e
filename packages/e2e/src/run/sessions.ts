@@ -8,6 +8,7 @@ import type { EngineSpiVersion, EngineState } from '../engine/surface.ts';
 import { writeFileAtomic } from '../internal/atomic-write.ts';
 import { ConfigurationError, E2EError } from '../internal/errors.ts';
 import { canonicalJson, timestamp } from '../internal/ids.ts';
+import type { SavedSecrecy } from './secrecy.ts';
 
 const MAX_SESSION_AGE_MS = 24 * 60 * 60 * 1000;
 
@@ -30,6 +31,8 @@ interface SessionEnvelope {
   appIdentity: string;
   createdAt: string;
   expiresAt: string;
+  /** Authenticated, never encrypted: which secrets the payload carries values for, and whether the saving session was tainted. */
+  secrecy?: { tainted: boolean; names: string[] };
   state: {
     format: string;
     version: number;
@@ -40,17 +43,29 @@ interface SessionEnvelope {
   };
 }
 
+/** What one saved session holds once decrypted. */
+export interface SavedSession {
+  readonly state: EngineState;
+  readonly secrecy: SavedSecrecy;
+}
+
+/** The encrypted payload: the engine's state data beside the secret values the envelope names. */
+interface SessionPayload {
+  data: unknown;
+  secrets: [string, string][];
+}
+
 /**
  * Collects states saved by one setup attempt and owns the setup session
  * contract: each declared name saved exactly once, nothing undeclared.
  */
 export class SessionStaging {
-  private readonly staged = new Map<string, EngineState>();
+  private readonly staged = new Map<string, SavedSession>();
 
   constructor(private readonly declared: readonly string[]) {}
 
-  /** Stages one captured state, rejecting duplicate or undeclared names. */
-  stage(name: string, state: EngineState): void {
+  /** Stages one captured state with the secrecy of the session it came from, rejecting duplicate or undeclared names. */
+  stage(name: string, state: EngineState, secrecy: SavedSecrecy): void {
     if (this.staged.has(name)) {
       throw new E2EError('test', 'SESSION_CONTRACT', `session "${name}" saved twice`);
     }
@@ -61,7 +76,7 @@ export class SessionStaging {
         `session "${name}" was not declared by this setup test`,
       );
     }
-    this.staged.set(name, state);
+    this.staged.set(name, { state, secrecy });
   }
 
   /** Declared names the attempt finished without saving. */
@@ -69,7 +84,7 @@ export class SessionStaging {
     return this.declared.filter((name) => !this.staged.has(name));
   }
 
-  entries(): IterableIterator<[string, EngineState]> {
+  entries(): IterableIterator<[string, SavedSession]> {
     return this.staged.entries();
   }
 }
@@ -79,7 +94,7 @@ export class SessionStore {
   private readonly key: Buffer;
   private readonly directory: string;
   /** Decrypted states by target and name; see `load`. */
-  private readonly loaded = new Map<string, Promise<EngineState>>();
+  private readonly loaded = new Map<string, Promise<SavedSession>>();
 
   private constructor(
     private readonly runId: string,
@@ -123,8 +138,14 @@ export class SessionStore {
     );
   }
 
-  /** Encrypts and atomically persists one captured engine state. */
-  async save(name: string, identity: SessionIdentity, state: EngineState): Promise<void> {
+  /**
+   * Encrypts and atomically persists one captured engine state. The secret
+   * values the saving session learned ride inside the ciphertext, beside the
+   * state they may be stored in, so the session that restores it redacts
+   * them too; the envelope names them and carries the taint in the clear,
+   * authenticated.
+   */
+  async save(name: string, identity: SessionIdentity, { state, secrecy }: SavedSession): Promise<void> {
     this.ensureDirectory();
     const createdAt = timestamp();
     let expiresAt = new Date(Date.now() + MAX_SESSION_AGE_MS).toISOString();
@@ -153,6 +174,7 @@ export class SessionStore {
       appIdentity: identity.appIdentity,
       createdAt,
       expiresAt,
+      secrecy: { tainted: secrecy.tainted, names: [...new Set(secrecy.secrets.map(([secretName]) => secretName))] },
       state: {
         format: state.format,
         version: state.version,
@@ -164,7 +186,8 @@ export class SessionStore {
     const aad = Buffer.from(canonicalJson(envelopeWithoutCipher), 'utf8');
     const cipher = createCipheriv('aes-256-gcm', this.key, iv);
     cipher.setAAD(aad);
-    const plaintext = Buffer.from(JSON.stringify(state.data), 'utf8');
+    const payload: SessionPayload = { data: state.data, secrets: secrecy.secrets.map(([secretName, value]) => [secretName, value]) };
+    const plaintext = Buffer.from(JSON.stringify(payload), 'utf8');
     const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
     const tag = cipher.getAuthTag();
 
@@ -187,7 +210,7 @@ export class SessionStore {
    * decrypted state is memoized per store: a worker running many consumers
    * of one session reads and decrypts its file once.
    */
-  async load(name: string, identity: SessionIdentity): Promise<EngineState> {
+  async load(name: string, identity: SessionIdentity): Promise<SavedSession> {
     const memoKey = `${identity.targetId}\u0000${name}`;
     const cached = this.loaded.get(memoKey);
     if (cached !== undefined) return cached;
@@ -201,7 +224,7 @@ export class SessionStore {
     }
   }
 
-  private async loadUncached(name: string, identity: SessionIdentity): Promise<EngineState> {
+  private async loadUncached(name: string, identity: SessionIdentity): Promise<SavedSession> {
     let rawText: string;
     try {
       rawText = await readFile(this.filePath(identity.targetId, name), 'utf8');
@@ -251,11 +274,15 @@ export class SessionStore {
         cause,
       });
     }
+    const payload = parsePayload(plaintext.toString('utf8'), name);
     return {
-      format: envelope.state.format,
-      version: envelope.state.version,
-      data: JSON.parse(plaintext.toString('utf8')),
-      expiresAt: envelope.expiresAt,
+      state: {
+        format: envelope.state.format,
+        version: envelope.state.version,
+        data: payload.data,
+        expiresAt: envelope.expiresAt,
+      },
+      secrecy: { secrets: payload.secrets, tainted: envelope.secrecy?.tainted === true },
     };
   }
 
@@ -310,4 +337,22 @@ function parseEnvelope(rawText: string, name: string): SessionEnvelope {
     throw new ConfigurationError('SESSION_INVALID', `session "${name}" has an unexpected shape`);
   }
   return parsed as SessionEnvelope;
+}
+
+/** Parses an authenticated payload; one this runner did not write is SESSION_INVALID. */
+function parsePayload(text: string, name: string): SessionPayload {
+  const parsed = JSON.parse(text) as { data?: unknown; secrets?: unknown } | null;
+  const secrets = parsed?.secrets;
+  if (
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    !('data' in parsed) ||
+    !Array.isArray(secrets) ||
+    !secrets.every(
+      (entry) => Array.isArray(entry) && entry.length === 2 && entry.every((part) => typeof part === 'string'),
+    )
+  ) {
+    throw new ConfigurationError('SESSION_INVALID', `session "${name}" has an unexpected payload`);
+  }
+  return parsed as SessionPayload;
 }

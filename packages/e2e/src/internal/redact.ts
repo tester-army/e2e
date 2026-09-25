@@ -190,6 +190,11 @@ export class SecretLedger {
   /** Bound so it can be handed out as a plain function. */
   readonly redact = (text: string): string => this.compile().redact(text);
 
+  /** Every registered name and value, in registration order. */
+  entries(): readonly (readonly [string, string])[] {
+    return this.values.map(([name, value]) => [name, value] as const);
+  }
+
   /** The most text one registered value can match in any spelling; a piece shorter than this holds at most part of one occurrence. */
   get maxFormLength(): number {
     return this.compile().maxFormLength;

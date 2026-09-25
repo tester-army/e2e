@@ -164,7 +164,13 @@ hook; its console output reaches the runner's streams as written.
 ## Sessions
 
 Saved sessions contain authentication state. They are encrypted and last
-for one run.
+for one run. A session also carries the secret values the setup test resolved
+from a provider before saving it, inside the same ciphertext, and whether a
+secret was filled on it. The test that restores the session redacts those
+values and keeps its pixels withheld, so a stored token the app echoes back
+never reaches a failure message, a report, or the model. The envelope names
+the secrets in the clear, authenticated; the values are never written
+unencrypted.
 
 | Property | Value |
 | --- | --- |

@@ -11,6 +11,10 @@
   },
   "appIdentity": "0000000000000000000000000000000000000000000000000000000000000000",
   "createdAt": "2026-07-24T12:00:00Z",
+  "secrecy": {
+    "tainted": "yes",
+    "names": ["password", "password"]
+  },
   "state": {
     "format": "playwright-state",
     "version": 1,

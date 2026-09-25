@@ -48,7 +48,7 @@ import { isFailedStatus } from './records.ts';
 import { runWithRetries } from './retry.ts';
 import { runSerialUnit, type SerialHost, type SharedSerialSession } from './serial.ts';
 import { interruptedSkip, pairKey, pairResult, repeatSegment, unstartedResult } from './units.ts';
-import { processSecrets, sessionSecrecy } from './secrecy.ts';
+import { adoptSecrecy, carriedSecrecy, processSecrets, sessionSecrecy } from './secrecy.ts';
 import { SessionStaging, SessionStore, type SessionIdentity } from './sessions.ts';
 import { redactTraceArchives } from './trace-redaction.ts';
 import { StepRecorder, type StepProgress } from './steps.ts';
@@ -510,8 +510,8 @@ export class TargetExecutor implements SerialHost {
             );
             return attempt;
           }
-          for (const [name, state] of staging.entries()) {
-            await this.options.sessionStore.save(name, this.sessionIdentity, state);
+          for (const [name, saved] of staging.entries()) {
+            await this.options.sessionStore.save(name, this.sessionIdentity, saved);
           }
         }
         return attempt;
@@ -558,9 +558,13 @@ export class TargetExecutor implements SerialHost {
         );
       }
       if (sessionName !== undefined) {
-        const state = await this.options.sessionStore.load(sessionName, this.sessionIdentity);
+        const saved = await this.options.sessionStore.load(sessionName, this.sessionIdentity);
+        // The values the saving session learned come back with its state, so
+        // a stored value the app echoes is redacted here too, and its taint
+        // keeps the viewport withheld: the state may put the value on screen.
+        adoptSecrecy(sessionSecrecy(session, this.config.secrets), saved.secrecy);
         await launch('restoring the session', (launchSignal) =>
-          session.restoreState!(state, launchOp(launchSignal)),
+          session.restoreState!(saved.state, launchOp(launchSignal)),
         );
       }
       // A recording the run asked for starts here, when the engine has it. A
@@ -881,7 +885,11 @@ export class TargetExecutor implements SerialHost {
               const state = await session.captureState(
                 this.op(attemptId, this.config.actionTimeout, attemptAbort.signal),
               );
-              context.staging.stage(name, state);
+              context.staging.stage(
+                name,
+                state,
+                carriedSecrecy(sessionSecrecy(session, this.config.secrets), this.config.secrets),
+              );
             };
       const { fixtures } = createFixtures({
         config: this.config,

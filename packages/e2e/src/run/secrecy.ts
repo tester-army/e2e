@@ -57,3 +57,38 @@ export function sessionSecrecy(
   }
   return secrecy;
 }
+
+/** What a saved session carries of the secrecy of the attempt that saved it. */
+export interface SavedSecrecy {
+  /** Name and value pairs the saving session learned beyond the static config values; travels only inside the encrypted payload. */
+  readonly secrets: readonly (readonly [string, string])[];
+  /** Whether a secret was filled on the saving session, so its viewport, and any state restored from it, may carry one. */
+  readonly tainted: boolean;
+}
+
+/**
+ * The secrecy a session envelope carries: the provider-resolved values the
+ * session learned, which the consumer's session cannot learn again on its
+ * own, and the taint. Static config values are left out; every session
+ * registers those itself.
+ */
+export function carriedSecrecy(
+  secrecy: SessionSecrecy,
+  secrets: ResolvedConfig['secrets'],
+): SavedSecrecy {
+  return {
+    secrets: secrecy.ledger
+      .entries()
+      .filter(([name, value]) => secrets.get(name)?.value !== value),
+    tainted: secrecy.taint.value,
+  };
+}
+
+/** Seeds a restored session's secrecy with what the saving session knew, so a value the restored state echoes back is still redacted and withheld. */
+export function adoptSecrecy(secrecy: SessionSecrecy, saved: SavedSecrecy): void {
+  for (const [name, value] of saved.secrets) {
+    secrecy.ledger.register(name, value);
+    processSecrets.register(name, value);
+  }
+  if (saved.tainted) secrecy.taint.value = true;
+}
