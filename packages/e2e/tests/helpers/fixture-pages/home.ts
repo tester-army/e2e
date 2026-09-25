@@ -51,8 +51,9 @@ export const HOME_PAGES: Record<string, PageRenderer> = {
     <li data-testid="item">Item Beta</li>
     <li data-testid="item">Item Gamma</li>
   </ul>
-  <span>Duplicated</span>
-  <span>Duplicated</span>
+  <span class="dup">Duplicated</span>
+  <span class="dup">Duplicated</span>
+  <div id="blank-card" class="">Blank</div>
 
   <input id="prefilled" aria-label="Prefilled" value="hello-value" />
   <textarea id="notes" aria-label="Notes">line1
@@ -65,6 +66,13 @@ line2  </textarea>
       late.textContent = 'Late arrival';
       document.body.appendChild(late);
     }, 400);
+    setTimeout(() => {
+      const card = document.createElement('div');
+      card.id = 'late-card';
+      card.className = 'card late';
+      card.textContent = 'Late card';
+      document.body.appendChild(card);
+    }, 600);
   </script>
 </body>
 </html>`),

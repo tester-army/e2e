@@ -150,6 +150,12 @@ export interface WebExpectation {
 A relative `toHaveURL` string resolves against the base URL and matches
 exactly after normalization; a `RegExp` tests the full URL.
 
+`toHaveClass` polls for the node too: a target that matches nothing yet is one
+more poll, not a failure, until the assertion timeout runs out. An ambiguous
+target still fails at once with `LOCATOR_AMBIGUOUS`. It reads the `class`
+attribute, so `''` matches `class=""` and not an element with no `class`
+attribute at all; Playwright's `toHaveClass('')` accepts both.
+
 ```ts
 await expect(web).toHaveURL('/dashboard');
 await expect(web).toHaveTitle(/Dashboard/);

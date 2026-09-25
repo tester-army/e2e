@@ -168,7 +168,7 @@ to do today.
 | a positive matcher on several matches | `LOCATOR_AMBIGUOUS` at once; narrow with `filter`, `first`, or `{ visible: true }` | `expect` | by design |
 | `toBeAttached()` | the same; passes on a hidden match too | `expect` | same |
 | `toBeEmpty()`, `toBeInViewport()`, `toBeEditable()`, `toHaveRole()`, `toHaveAccessibleDescription()` | not yet | `expect` | missing |
-| `expect(locator).toHaveClass(cls)` | `expect(web).toHaveClass(locator, cls)`; a DOM fact is asserted through `web` | `web` | web only |
+| `expect(locator).toHaveClass(cls)` | `expect(web).toHaveClass(locator, cls)`; a DOM fact is asserted through `web`; reads the `class` attribute, so `''` matches `class=""` and not a missing attribute | `web` | web only |
 | `toHaveCSS()`, `toHaveId()`, `toHaveJSProperty()`, `toContainClass()`, `toHaveValues()` | not yet; `web.evaluate` plus a value matcher | `web` | missing |
 | `expect(page).toHaveURL()`, `toHaveTitle()` | `expect(web).toHaveURL()`, `toHaveTitle()` | `web` | web only |
 | `toHaveScreenshot()`, `toMatchSnapshot()` | not yet; `agent.assert('...', { vision: true })` is a judgment, not a pixel diff | `expect` | missing |

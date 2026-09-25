@@ -225,15 +225,38 @@ export class ErrorLatch {
 }
 
 /**
+ * The runner error classes as their `name` reads. A project loads this engine
+ * from its config file in one module realm (tsx) while the runner's core runs
+ * in another, so a runner error reaching the engine is often a `TestError`
+ * from a copy of `e2e` this module never imported: `instanceof` says no while
+ * `name` and `code` still tell the truth.
+ */
+const CLASSIFIED_NAMES: ReadonlySet<string> = new Set([
+  'EngineError',
+  'TestError',
+  'ConfigurationError',
+  'InfrastructureError',
+]);
+
+/**
  * True for an error that already carries its classification: an `EngineError`
- * from any module copy, or a runner error (policy, validation, timeout). Those
+ * or a runner error (policy, validation, timeout) from any module copy. Those
  * must cross the boundary untouched; re-wrapping one would turn a
  * `POLICY_DENIED` into an infrastructure failure.
  */
 export function isClassified(cause: unknown): cause is Error {
   if (cause instanceof EngineError || cause instanceof TestError) return true;
   if (cause instanceof ConfigurationError || cause instanceof InfrastructureError) return true;
-  return cause instanceof Error && cause.name === 'EngineError';
+  return cause instanceof Error && CLASSIFIED_NAMES.has(cause.name);
+}
+
+/**
+ * True for a `TestError` carrying `code`, from this module copy or another.
+ * A matcher that reads a node it may be early for asks this before deciding
+ * whether the miss is one more poll or the assertion's failure.
+ */
+export function isTestErrorCode(cause: unknown, code: string): cause is Error & { readonly code: string } {
+  return cause instanceof Error && cause.name === 'TestError' && (cause as { code?: unknown }).code === code;
 }
 
 /**

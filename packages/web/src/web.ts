@@ -31,7 +31,7 @@ import {
   type TextPattern,
 } from 'e2e/engine';
 import type { DialogHandler } from './dialogs.ts';
-import { message as causeMessage, translatePwError } from './support.ts';
+import { isTestErrorCode, message as causeMessage, translatePwError } from './support.ts';
 import { compileEvaluation } from './evaluation.ts';
 import { routePatternMatches, routePatternsEqual, toRoutePattern } from './route-pattern.ts';
 import type { PlaywrightSurface } from './surface.ts';
@@ -575,7 +575,7 @@ function createWebExpectation(deps: ExpectationDeps, negated = false): WebExpect
             const normalized = value.trim().split(/\s+/).join(' ');
             return matchesText(normalized, pattern);
           } catch (error) {
-            if (error instanceof TestError) return undefined;
+            if (isTestErrorCode(error, 'LOCATOR_NOT_FOUND')) return undefined;
             throw error;
           }
         },
@@ -585,7 +585,7 @@ function createWebExpectation(deps: ExpectationDeps, negated = false): WebExpect
             if (value === null) return 'no class attribute';
             return `class ${JSON.stringify(value)}`;
           } catch (error) {
-            if (error instanceof TestError) return 'no node';
+            if (isTestErrorCode(error, 'LOCATOR_NOT_FOUND')) return 'no node';
             throw error;
           }
         },
