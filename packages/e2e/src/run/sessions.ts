@@ -113,7 +113,7 @@ export class SessionStore {
   }
 
   private filePath(targetId: string, name: string): string {
-    return path.join(this.directory, `${targetId}--${name}.json`);
+    return path.join(this.directory, `${fileNamePart(targetId)}--${fileNamePart(name)}.json`);
   }
 
   /** Encrypts and atomically persists one captured engine state. */
@@ -256,6 +256,22 @@ export class SessionStore {
   cleanup(): void {
     rmSync(this.directory, { recursive: true, force: true });
   }
+}
+
+/**
+ * Encodes one component of a session file name so the `--` between target
+ * and session name is unambiguous: every character outside `[A-Za-z0-9_]`,
+ * `-` and `.` included, becomes `%XX`. Target `a--b` with session `c` and
+ * target `a` with session `b--c` are two files, and no part can carry a path
+ * separator or a `..` segment.
+ */
+function fileNamePart(value: string): string {
+  return Array.from(Buffer.from(value, 'utf8'), (byte) => {
+    const char = String.fromCharCode(byte);
+    return /[A-Za-z0-9_]/.test(char)
+      ? char
+      : `%${byte.toString(16).toUpperCase().padStart(2, '0')}`;
+  }).join('');
 }
 
 /** Parses an envelope file, classifying a corrupt or truncated one as SESSION_INVALID. */
