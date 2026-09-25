@@ -21,7 +21,10 @@ export { expect } from 'e2e';
  * own header shows the route name, on iOS in the navigation bar and on
  * Android in the toolbar; Bottom Tabs, the one route without a header, shows
  * its home tab instead. The tap gets one more try when the list swallowed it
- * or a neighbour opened, which is popped first.
+ * or a neighbour opened, which is popped first. A sheet the scenario itself
+ * presents on entry (Stripe's PaymentSheet, within the budget on a fast
+ * runner) hides the header the same way; back dismisses it, and the scenario
+ * is up once the header shows.
  */
 export async function openScenario(
   { app, device, screen }: { app: App; device: Device; screen: Screen },
@@ -36,7 +39,11 @@ export async function openScenario(
   try {
     await expect.poll(opened, { timeout: 5_000 }).toBe(true);
   } catch {
-    if (await row.isHidden()) await device.back();
+    if (await row.isHidden()) {
+      await device.back();
+      await expect.poll(async () => (await row.isVisible()) || (await opened()), { timeout: 5_000 }).toBe(true);
+      if (await opened()) return;
+    }
     await row.tap();
     await expect.poll(opened, { timeout: 5_000 }).toBe(true);
   }
