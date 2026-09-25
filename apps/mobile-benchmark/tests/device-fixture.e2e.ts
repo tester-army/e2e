@@ -119,20 +119,24 @@ test.describe('device fixture', () => {
   // A read returns the provider's last fix, which lags a new one by a moment,
   // so each read is repeated until the app prints the position that was set.
   // On Android clearLocation switches location services off and the emulator
-  // keeps that across runs; setLocation switches them back on first.
+  // keeps that across runs; setLocation switches them back on first, and the
+  // first fix after that takes the emulator's provider a while to produce.
   test('setLocation and clearLocation change what the app reads', async ({ device, screen }) => {
     await screen.getByTestId('tab-device').tap();
     // Granted up front, so the read never waits on the system's permission dialog.
     await device.setPermission('location', 'grant');
     const read = screen.getByTestId('read-location');
     const status = screen.getByTestId('location-status');
+    // A read in flight is left to finish: the poll only looks, and asks for
+    // another read once the last one has answered. An assertion inside the
+    // poll would hold it for the assertion's own budget instead.
     const readsBack = async (expected: RegExp): Promise<void> => {
       await expect
         .poll(async () => {
-          await read.tap();
-          await expect(status).not.toHaveText('location: reading');
-          return (await status.allTextContents())[0] ?? '';
-        }, { timeout: 20_000 })
+          const text = (await status.allTextContents())[0] ?? '';
+          if (text !== 'location: reading' && !expected.test(text)) await read.tap();
+          return text;
+        }, { timeout: 60_000 })
         .toMatch(expected);
     };
     try {
