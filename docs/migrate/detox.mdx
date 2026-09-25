@@ -15,7 +15,7 @@ while migrating one spec at a time.
 
 | Detox (`.detoxrc.js`) | e2e |
 | --- | --- |
-| `apps.<name>.binaryPath` | `mobile({ appPath })`, installed on each device before the run |
+| `apps.<name>.binaryPath` | `mobile({ appPath })` plus one `device.installApp()` per device in a fixture; the engine installs nothing on its own |
 | `apps.<name>.bundleId` | `mobile({ app: 'com.example.app' })`, the app `app.open()` launches |
 | `devices.<name>.device.type` | `mobile({ device: 'iPhone 17' })` |
 | `configurations` | `targets`, one engine per platform |

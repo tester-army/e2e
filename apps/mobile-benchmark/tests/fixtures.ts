@@ -1,14 +1,57 @@
 /**
  * The suite's `test`: the one `@e2edev/mobile` exports, typed with the
- * engine's contributed `device` fixture. `expect` is `e2e`'s.
+ * engine's contributed `device` fixture, plus the `build` fixture that puts
+ * the app on the device. `expect` is `e2e`'s.
  */
 
 import type { Device } from '@e2edev/mobile';
+import { test as base } from '@e2edev/mobile';
 import type { App, Screen } from 'e2e';
 import { expect } from 'e2e';
 
-export { test } from '@e2edev/mobile';
 export { expect } from 'e2e';
+
+/** The build each platform's target runs against, when the run brings one; the config hands the same path to the engine as `appPath`. */
+const BUILDS: Readonly<Record<string, string | undefined>> = {
+  ios: process.env.E2E_MOBILE_BENCHMARK_IOS_APP,
+  android: process.env.E2E_MOBILE_BENCHMARK_ANDROID_APP,
+};
+
+/**
+ * One install per worker, which is one per device: the promise is kept on
+ * `globalThis` because the runner re-imports this module for every retry,
+ * serial group, and setup test, so module state would start over with it.
+ */
+const INSTALLS = Symbol.for('e2e.mobile-benchmark.installs');
+type Installs = Map<string, Promise<unknown>>;
+
+function installs(): Installs {
+  const holder = globalThis as { [INSTALLS]?: Installs };
+  holder[INSTALLS] ??= new Map();
+  return holder[INSTALLS];
+}
+
+/**
+ * `build`: installs the platform's build on this worker's device before its
+ * first test, and nothing when the run names none (the app is already on the
+ * device). The engine installs nothing on its own, so this is where the
+ * suite says it; the step shows in the first test's report.
+ */
+export const test = base.extend<{ build: undefined }>({
+  build: async ({ device, platform }, use) => {
+    const build = BUILDS[platform];
+    if (build !== undefined) {
+      const pending = installs();
+      let install = pending.get(platform);
+      if (install === undefined) {
+        install = device.installApp(build);
+        pending.set(platform, install);
+      }
+      await install;
+    }
+    await use(undefined);
+  },
+});
 
 /**
  * Launches the app fresh, on its home list, and opens one scenario from it.

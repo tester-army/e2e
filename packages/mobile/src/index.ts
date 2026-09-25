@@ -12,8 +12,7 @@ export { mobile } from './engine.ts';
 export type { DevicePermission, LaunchPermissions, MobileOptions, MobilePlatform, PermissionState } from './options.ts';
 export type { DeviceClientConfig, DeviceConnection, DeviceDaemon } from './bindings.ts';
 export type { DeviceLease, DeviceProvider, DeviceReleaseContext, DeviceRequest } from './provider.ts';
-export type { InstalledApp } from './install.ts';
-export type { InstallAppOptions, OpenAppOptions } from './surface.ts';
+export type { InstallAppOptions, InstalledApp, OpenAppOptions } from './surface.ts';
 export type { BiometricSensor, Device, DeviceOrientation, ForegroundApp } from './device.ts';
 
 /**

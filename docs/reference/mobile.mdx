@@ -70,12 +70,12 @@ export interface MobileOptions {
    */
   readonly app?: string | undefined;
   /**
-   * Build to install on each device the run drives, in `prepare` before the
-   * run's clock starts: an iOS `.app` bundle or an Android `.apk`, resolved
-   * against the project root (the config's directory). A worker without a
-   * `prepare` (a host opening one attempt) installs it in `init`. Without
-   * `app`, the installed bundle id or package becomes the app `app.open()`
-   * launches.
+   * The build the suite runs against: an iOS `.app` bundle or an Android
+   * `.apk`, resolved against the project root (the config's directory). The
+   * engine installs nothing on its own: `device.installApp()` with no path
+   * installs it, once per device, where the suite says so, and a device
+   * provider installs it on the device it leases. Without `app`, the
+   * installed bundle id or package becomes the app `app.open()` launches.
    */
   readonly appPath?: string | undefined;
   /**
@@ -169,10 +169,11 @@ leases hosted devices; see [Hosted devices](/mobile#hosted-devices) for the
 Devices boot in `prepare`, once per run and before the run's clock starts, so
 a cold boot on CI is never charged against `launchTimeout`. agent-device
 commands take no abort signal, so a timed-out command keeps running on the
-device; the next attempt waits for it to settle. `prepare` installs the build
-`appPath` names and brings the pinned `app` up once per device, so the
-automation runner's first launch is paid before the first test, and
-`app.open()` relaunches it fresh whenever a test asks; without a pinned app the model opens apps with the `open_app` tool.
+device; the next attempt waits for it to settle. `prepare` brings the pinned
+`app` up once per device when it is installed, so the automation runner's
+first launch is paid before the first test; a build the suite installs itself
+comes up with the first `app.open()`, which relaunches it fresh whenever a
+test asks; without a pinned app the model opens apps with the `open_app` tool.
 
 `launchArguments` and `permissions` ride every fresh launch of the pinned
 app: `app.open()`, `app.restart()`, and `app.clearState()`, which resets the
@@ -268,11 +269,15 @@ export interface Device {
   enrollBiometrics(sensor: 'faceid' | 'touchid', enrolled: boolean): Promise<void>;
   /**
    * Installs a build (an iOS `.app` bundle or an Android `.apk`, resolved
-   * against the project root) on the device. `reinstall: true` removes
-   * the app first so it starts with no data; a plain install replaces the
-   * binary and keeps its data. Resolves to the identity to `openApp` it by.
+   * against the project root) on the device; without a path, the engine's
+   * `appPath`. The engine installs nothing on its own, so a suite that runs
+   * against a build calls this once per device, in a fixture or a test.
+   * `reinstall: true` removes the app first so it starts with no data; a
+   * plain install replaces the binary and keeps its data. Resolves to the
+   * identity to `openApp` it by, which becomes the app `app.open()` launches
+   * when the engine's build is installed and no `app` is pinned.
    */
-  installApp(appPath: string, options?: InstallAppOptions): Promise<InstalledApp>;
+  installApp(appPath?: string, options?: InstallAppOptions): Promise<InstalledApp>;
   /**
    * Brings an app to the foreground by bundle id, package, or display name;
    * `relaunch` restarts it fresh. `launchArguments` and `permissions` apply
@@ -393,7 +398,7 @@ iOS reads the session, not the device: agent-device's `appstate` has no
 device-level answer there, so after `home()` it still names the app the
 session opened. Android reads the device's foreground activity.
 
-`installApp` installs a build from inside a test, for upgrade paths. A plain
+`installApp` installs a build from inside a test or a fixture: the run's build once per device (no path installs `appPath`), or another build for an upgrade path. A plain
 install keeps the app's data; `reinstall: true` removes the app named by
 `app` (default: the pinned app) first. It resolves to the id to `openApp`
 the build by.

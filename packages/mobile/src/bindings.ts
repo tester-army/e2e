@@ -76,11 +76,11 @@ export function deviceLabel(binding: Pick<SlotBinding, 'device' | 'deviceId'> | 
 
 /**
  * The app a slot's `app.open()` launches, and its warm-up opens once: the
- * `app` option, else the app the build `appPath` installed. `undefined`
- * while a build still awaits its install in `init`.
+ * `app` option, else the app the build `appPath` installed, once the suite's
+ * `device.installApp()` (or a device provider) has. `undefined` with a build
+ * nobody has installed and no `app`.
  */
 export function pinnedApp(options: Pick<MobileOptions, 'app' | 'appPath'>, installedApp: string | undefined): string | undefined {
-  if (options.appPath !== undefined && installedApp === undefined) return undefined;
   return options.app ?? installedApp;
 }
 

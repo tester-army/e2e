@@ -8,8 +8,7 @@
 import type { EngineFixtureContext, Locator } from 'e2e/engine';
 import { linkLabel, linkTarget } from './links.ts';
 import type { DevicePermission, PermissionState } from './options.ts';
-import type { InstalledApp } from './install.ts';
-import type { AgentDeviceSurface, InstallAppOptions, OpenAppOptions } from './surface.ts';
+import type { AgentDeviceSurface, InstallAppOptions, InstalledApp, OpenAppOptions } from './surface.ts';
 
 /** Orientations `setOrientation` accepts. */
 export type DeviceOrientation = 'portrait' | 'portrait-upside-down' | 'landscape-left' | 'landscape-right';
@@ -54,11 +53,15 @@ export interface Device {
   enrollBiometrics(sensor: 'faceid' | 'touchid', enrolled: boolean): Promise<void>;
   /**
    * Installs a build (an iOS `.app` bundle or an Android `.apk`, resolved
-   * against the project root) on the device. `reinstall: true` removes
-   * the app first so it starts with no data; a plain install replaces the
-   * binary and keeps its data. Resolves to the identity to `openApp` it by.
+   * against the project root) on the device; without a path, the engine's
+   * `appPath`. The engine installs nothing on its own, so a suite that runs
+   * against a build calls this once per device, in a fixture or a test.
+   * `reinstall: true` removes the app first so it starts with no data; a
+   * plain install replaces the binary and keeps its data. Resolves to the
+   * identity to `openApp` it by, which becomes the app `app.open()` launches
+   * when the engine's build is installed and no `app` is pinned.
    */
-  installApp(appPath: string, options?: InstallAppOptions): Promise<InstalledApp>;
+  installApp(appPath?: string, options?: InstallAppOptions): Promise<InstalledApp>;
   /**
    * Brings an app to the foreground; `relaunch` restarts it fresh.
    * `launchArguments` and `permissions` apply to this launch alone; the
@@ -241,7 +244,7 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Engine
     setOrientation: { ...action, label: (orientation) => orientation },
     setBiometrics: action,
     enrollBiometrics: action,
-    installApp: { ...action, label: (appPath) => appPath },
+    installApp: { ...action, label: (appPath) => appPath ?? surface.options.appPath ?? 'appPath' },
     openApp: { ...action, label: (app) => linkLabel(app) },
     openLink: { ...action, label: (url) => linkLabel(url) },
     closeApp: action,

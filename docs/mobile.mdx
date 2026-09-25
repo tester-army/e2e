@@ -49,8 +49,9 @@ mobile({
 })
 ```
 
-The build is installed on each device the run drives before the run starts, and
-the worker that resumes the device installs nothing. Use an `.app` bundle for iOS or an
+The engine installs nothing on its own: `appPath` names the build, and the
+suite installs it where it says so, once per device, with `device.installApp()`
+(no path installs `appPath`), for example in a fixture every test takes. Use an `.app` bundle for iOS or an
 `.apk` for Android. Optional values accept `undefined`, so environment
 variables can be passed directly.
 
@@ -344,7 +345,7 @@ await expect(device.locator('role=NavigationBar id=About')).toBeVisible();
 await device.locator('id=SW_VERSION_SPECIFIER role=Button').tap();
 ```
 
-Use `device.installApp` within a test to check upgrades or fresh installs:
+Use `device.installApp` within a test to check upgrades or fresh installs; with no path it installs the engine's `appPath`:
 
 ```ts
 const { app } = await device.installApp('./build/MyApp.app', { reinstall: true });

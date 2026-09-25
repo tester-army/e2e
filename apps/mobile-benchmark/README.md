@@ -69,7 +69,7 @@ AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/mobile-benchmark test:agent
 The configs pin the app by bundle id (`dev.e2e.benchmark`) and expect it
 installed. To install a build first, point `E2E_MOBILE_BENCHMARK_IOS_APP` at
 a simulator `.app` or `E2E_MOBILE_BENCHMARK_ANDROID_APP` at an `.apk`; the
-engine installs it once per worker. `eas build --profile benchmark` produces
+`build` fixture in `tests/fixtures.ts` installs it once per device. `eas build --profile benchmark` produces
 both (link your own EAS project first with `eas init`).
 
 Run one target or one file at a time from the package directory while

@@ -275,9 +275,11 @@ export default {
 ```
 
 - `app` is a bundle id, package name, or display name `app.open()` launches
-  fresh; an attempt launches nothing on its own. `appPath` installs a `.app`
-  or `.apk` once per worker; without `app`, the installed bundle is the one
-  launched. `launchArguments` and `permissions` ride every fresh launch of
+  fresh; an attempt launches nothing on its own. `appPath` names the `.app`
+  or `.apk` the suite runs against; the engine installs nothing on its own,
+  so a fixture every test takes calls `device.installApp()` once per device
+  (no path installs `appPath`). Without `app`, the installed bundle is the
+  one launched. `launchArguments` and `permissions` ride every fresh launch of
   it: the arguments reach the app process (iOS) or `am start` (Android), the
   permissions are set before the app starts.
 - One worker per device. With no `device`, every booted simulator or

@@ -40,7 +40,6 @@ import {
   TestError,
 } from 'e2e/engine';
 import { isNoSessionApp, isSnapshotPresentationFailure, runCommand, staleOr } from './errors.ts';
-import { installedApp, type InstalledApp, type RawInstallResult } from './install.ts';
 import { pointerInteraction, DEFAULT_LONG_PRESS_MS } from './actions.ts';
 import { resolveExpression } from './locate.ts';
 import {
@@ -84,6 +83,23 @@ export interface InstallAppOptions {
 }
 
 /** What an install put on the device, as agent-device identified it. */
+export interface InstalledApp {
+  /** The bundle id or package to open the app by. */
+  readonly app: string;
+  readonly bundleId?: string;
+}
+
+/** Why nothing is pinned with `appPath` alone: the install is the suite's. */
+const UNINSTALLED_BUILD = 'the build `appPath` names installed first with `device.installApp()`';
+
+/** The install fields this engine reads off agent-device's response. */
+interface RawInstallResult {
+  readonly app: string;
+  readonly appId?: string;
+  readonly bundleId?: string;
+  readonly package?: string;
+}
+
 /** How `device.openApp` launches an app. */
 export interface OpenAppOptions {
   /** Terminate the app first, so it starts fresh; without it a running app is brought forward as it is. */
@@ -396,11 +412,10 @@ export class AgentDeviceSurface {
     this.where = `session ${session}${label === undefined ? '' : ` on ${label}`}`;
     this.client ??= this.createClient(session, binding);
     await this.command('boot', (client) => client.devices.boot(this.selection()), info.signal);
-    if (this.options.appPath === undefined) return;
-    // A provider that installed the build itself says so on the binding; the worker then installs nothing.
-    this.installedApp =
-      binding?.installedApp ??
-      (await this.installApp(this.options.appPath, this.options.app === undefined ? {} : { app: this.options.app }, info.signal)).app;
+    // Nothing is installed here: a device provider that installed the build
+    // from `appPath` says so on the binding, and otherwise the suite installs
+    // it where it wants to, with `device.installApp()`.
+    this.installedApp = binding?.installedApp;
   }
 
   async startAttempt(context: EngineAttemptContext): Promise<void> {
@@ -656,10 +671,13 @@ export class AgentDeviceSurface {
    * named by `options.app` (else the pinned app) first, so the build starts
    * with no data; a plain install replaces the binary and keeps its data.
    */
-  async installApp(appPath: string, options: InstallAppOptions, signal: AbortSignal): Promise<InstalledApp> {
-    const resolved = path.resolve(this.projectRoot, appPath);
+  async installApp(appPath: string | undefined, options: InstallAppOptions, signal: AbortSignal): Promise<InstalledApp> {
+    const build = appPath ?? this.options.appPath;
+    if (build === undefined) throw invalidState('installApp needs a build: pass a path, or name one with the engine option `appPath`');
+    const resolved = path.resolve(this.projectRoot, build);
     const selection = this.selection();
-    const app = options.app ?? (options.reinstall === true ? this.pinnedApp : undefined);
+    const engineBuild = appPath === undefined || (this.options.appPath !== undefined && resolved === path.resolve(this.projectRoot, this.options.appPath));
+    const app = options.app ?? (engineBuild ? this.options.app : undefined) ?? (options.reinstall === true ? this.pinnedApp : undefined);
     if (options.reinstall === true && app === undefined) {
       throw invalidState('reinstall needs an app: pass `app`, or pin one with the engine option `app` or `appPath`');
     }
@@ -671,7 +689,11 @@ export class AgentDeviceSurface {
           : client.apps.install({ ...selection, ...(app === undefined ? {} : { app }), appPath: resolved }),
       signal,
     )) as RawInstallResult;
-    return installedApp(result);
+    const identity = result.bundleId ?? result.package ?? result.appId;
+    const installed: InstalledApp = { app: identity ?? result.app, ...(identity === undefined ? {} : { bundleId: identity }) };
+    // The engine's own build, installed: without `app`, this is what `app.open()` launches from here on.
+    if (engineBuild) this.installedApp = installed.app;
+    return installed;
   }
 
   private async snapshot(signal: AbortSignal, interactiveOnly: boolean): Promise<RawSnapshot> {
@@ -1173,14 +1195,14 @@ export class AgentDeviceSurface {
 
   async restart(operation: OperationContext): Promise<void> {
     const app = this.pinnedApp;
-    if (app === undefined) throw unsupported('app.restart needs the engine option `app` or `appPath`');
+    if (app === undefined) throw unsupported(`app.restart needs the engine option \`app\`, or ${UNINSTALLED_BUILD}`);
     await this.openApp(app, { relaunch: true }, operation.signal);
   }
 
   /** Clears the pinned app's persisted state and relaunches it: the device equivalent of a fresh context. */
   async reset(operation: OperationContext): Promise<void> {
     const app = this.pinnedApp;
-    if (app === undefined) throw unsupported('app.clearState needs the engine option `app` or `appPath`');
+    if (app === undefined) throw unsupported(`app.clearState needs the engine option \`app\`, or ${UNINSTALLED_BUILD}`);
     await this.command(
       'clear app state',
       (client) => client.settings.update({ setting: 'clear-app-state', state: 'clear', app }),

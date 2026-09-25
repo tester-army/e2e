@@ -58,10 +58,12 @@ export interface MobileOptions {
    */
   readonly app?: string | undefined;
   /**
-   * Build to install on the device once per worker, before the first attempt:
-   * an iOS `.app` bundle or an Android `.apk`, resolved against the project
-   * root (the config's directory). Without `app`, the installed bundle id or
-   * package becomes the app `app.open()` launches.
+   * The build the suite runs against: an iOS `.app` bundle or an Android
+   * `.apk`, resolved against the project root (the config's directory). The
+   * engine installs nothing on its own: `device.installApp()` with no path
+   * installs it, once per device, where the suite says so, and a device
+   * provider installs it on the device it leases. Without `app`, the
+   * installed bundle id or package becomes the app `app.open()` launches.
    */
   readonly appPath?: string | undefined;
   /**

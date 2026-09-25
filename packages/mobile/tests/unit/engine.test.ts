@@ -176,31 +176,19 @@ describe('lifecycle', () => {
     expect(h.fake.calls[2]!.args).toEqual({ platform: 'ios', device: 'iPhone 17 Pro' });
     expect(lines).toEqual(['booting iPhone 17 (1 of 2)', 'booting iPhone 17 Pro (2 of 2)']);
 
-    // Without a pinned app there is nothing to open, so it boots only.
+    // Without a pinned app there is nothing to open, so it boots only; so does
+    // a build `appPath` nobody has installed and no `app`, since the engine
+    // installs nothing on its own and the suite's `device.installApp()` comes
+    // later. A pinned `app` is opened whether or not its build is on yet.
     const bare = harness({ device: 'iPhone 16e' }, false);
     await bare.engine.prepare!({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: () => undefined });
     expect(bare.fake.methods()).toEqual(['devices.boot']);
-    // A build `appPath` is installed here, before the run's clock starts, and the worker then installs nothing.
-    const build = harness({ device: 'iPhone 16e', appPath: 'build/App.app' });
-    build.fake.respond('apps.install', () => ({ app: 'Settings', appPath: '/project/build/App.app', platform: 'ios', bundleId: 'com.apple.Preferences', identifiers: {} }));
-    const buildLines: string[] = [];
-    const prepared = await build.engine.prepare!({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: (line) => buildLines.push(line) });
-    expect(build.fake.methods()).toEqual(['devices.boot', 'apps.install', 'apps.open']);
-    expect(build.fake.lastArgs('apps.install')).toEqual({ platform: 'ios', device: 'iPhone 16e', app: 'Settings', appPath: path.join(PROJECT_ROOT, 'build/App.app') });
-    expect(buildLines).toEqual(['booting iPhone 16e (1 of 1)', 'installing build/App.app on iPhone 16e']);
-    const buildEnv = prepared?.env ?? {};
-    expect(buildEnv[poolVariableIn(buildEnv, 'IOS')]).toBe(JSON.stringify([{ device: 'iPhone 16e', installedApp: 'com.apple.Preferences', sessionApp: 'Settings' }]));
-    await boot(build.engine, 'ios', 0, buildEnv);
-    expect(build.fake.methods().filter((m) => m === 'apps.install')).toHaveLength(1);
-    // A build that does not install fails the run in prepare, as it would in init.
-    const broken = harness({ device: 'iPhone 16e', appPath: 'missing.app' });
-    broken.fake.respond('apps.install', () => {
-      throw new Error('no such file: missing.app');
-    });
-    await expect(
-      broken.engine.prepare!({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: () => undefined }),
-    ).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
-    expect(broken.fake.methods()).toEqual(['devices.boot', 'apps.install']);
+    const build = harness({ device: 'iPhone 16e', appPath: 'build/App.app' }, false);
+    await build.engine.prepare!({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: () => undefined });
+    expect(build.fake.methods()).toEqual(['devices.boot']);
+    const pinnedBuild = harness({ device: 'iPhone 16e', appPath: 'build/App.app' });
+    await pinnedBuild.engine.prepare!({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: () => undefined });
+    expect(pinnedBuild.fake.methods()).toEqual(['devices.boot', 'apps.open']);
 
     const single = harness({ device: 'iPhone 16e', session: 'qa' });
     expect(single.engine.workers).toBe(1);
@@ -442,7 +430,7 @@ describe('lifecycle', () => {
     expect(h.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios' });
   });
 
-  it('installs the build once per init and opens what it installed when no app is pinned', async () => {
+  it('installs nothing on its own; device.installApp() with no path installs the engine build and pins what it installed', async () => {
     const h = harness({ appPath: './build/App.app' }, false);
     h.fake.respond('apps.install', () => ({
       app: './build/App.app',
@@ -452,28 +440,34 @@ describe('lifecycle', () => {
       identifiers: {},
     }));
     expect(Object.keys(h.engine.session!).toSorted()).toEqual(['back', 'reset', 'restart']);
-    await openAttempt(h);
-    expect(h.fake.methods()).toEqual(['devices.boot', 'apps.install', 'apps.open']);
+    await boot(h.engine);
+    await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal });
+    expect(h.fake.methods()).toEqual(['devices.boot']);
+
+    const signal = new AbortController().signal;
+    expect(await h.surface.installApp(undefined, {}, signal)).toEqual({ app: 'com.example.app', bundleId: 'com.example.app' });
     expect(h.fake.lastArgs('apps.install')).toEqual({ platform: 'ios', appPath: '/project/build/App.app' });
+    // From here on the installed bundle is the pinned app: app.open() launches it, reset clears it.
+    await h.engine.session!.restart!(operation());
     expect(h.fake.lastArgs('apps.open')).toEqual({ app: 'com.example.app', platform: 'ios', relaunch: true });
-
-    await h.engine.endAttempt!(cleanup());
-    await h.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal });
-    expect(h.fake.methods().filter((m) => m === 'apps.install')).toHaveLength(1);
-
     await h.engine.session!.reset!(operation());
     expect(h.fake.lastArgs('settings.update')).toEqual({ setting: 'clear-app-state', state: 'clear', app: 'com.example.app' });
+    expect(h.fake.methods().filter((m) => m === 'apps.install')).toHaveLength(1);
 
-    // A new worker installs again: the build on the device is the worker's.
-    await h.engine.dispose!(cleanup());
-    await openAttempt(h);
-    expect(h.fake.methods().filter((m) => m === 'apps.install')).toHaveLength(2);
+    // A build named by path that is the engine's own counts the same; another path pins nothing.
+    await h.surface.installApp('build/App.app', {}, signal);
+    expect(h.fake.lastArgs('apps.install')).toEqual({ platform: 'ios', appPath: '/project/build/App.app' });
+    await h.surface.installApp('other/Other.app', {}, signal);
+    expect(h.fake.lastArgs('apps.install')).toEqual({ platform: 'ios', appPath: '/project/other/Other.app' });
+    expect(h.surface.pinnedApp).toBe('com.example.app');
   });
 
-  it('installs under the pinned app and device, and keeps opening the pinned app', async () => {
+  it('installs the engine build under the pinned app and device, and keeps opening the pinned app', async () => {
     const h = harness({ app: 'com.example.app', appPath: '/builds/app.apk', device: 'Pixel 8', platform: 'android' });
     h.fake.respond('apps.install', () => ({ app: 'com.example.app', appPath: '/builds/app.apk', platform: 'android', identifiers: {} }));
     await openAttempt(h);
+    expect(h.fake.methods()).toEqual(['devices.boot', 'apps.open']);
+    await h.surface.installApp(undefined, {}, new AbortController().signal);
     expect(h.fake.lastArgs('apps.install')).toEqual({
       platform: 'android',
       device: 'Pixel 8',
@@ -483,12 +477,16 @@ describe('lifecycle', () => {
     expect(h.fake.lastArgs('apps.open')).toEqual({ app: 'com.example.app', platform: 'android', device: 'Pixel 8', relaunch: true });
   });
 
-  it('fails init when the install fails, before anything is opened', async () => {
+  it('refuses installApp() without a build, and reports a build that does not install as the install step', async () => {
+    const none = harness();
+    await openAttempt(none);
+    await expect(none.surface.installApp(undefined, {}, new AbortController().signal)).rejects.toMatchObject({ code: 'INVALID_STATE' });
     const h = harness({ appPath: './missing.app' }, false);
     h.fake.respond('apps.install', () => {
       throw new Error('no such file: missing.app');
     });
-    await expect(openAttempt(h)).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
+    await boot(h.engine);
+    await expect(h.surface.installApp(undefined, {}, new AbortController().signal)).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
     expect(h.fake.methods()).toEqual(['devices.boot', 'apps.install']);
   });
 

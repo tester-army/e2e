@@ -115,19 +115,19 @@ describe('device provider', () => {
     expect(cloud.released).toHaveLength(2);
   });
 
-  it('asks the provider for the resolved build and installs it on the leased device in prepare when the lease did not', async () => {
+  it('asks the provider for the resolved build and leaves the install to the suite when the lease did not', async () => {
     const cloud = provider();
     const h = harness({ device: cloud.impl, appPath: 'build/App.app' });
-    h.fake.respond('apps.install', () => ({ app: 'Settings', appPath: path.join(PROJECT_ROOT, 'build/App.app'), platform: 'ios', identifiers: {} }));
     const result = await h.engine.prepare!(prepareInfo({}, 1));
     expect(cloud.acquired[0]!.appPath).toBe(path.join(PROJECT_ROOT, 'build/App.app'));
-    // The build is not on the device yet: warm-up installs it, then opens it.
-    expect(h.fake.methods()).toEqual(['devices.boot', 'apps.install', 'apps.open']);
-    expect(h.fake.lastArgs('apps.install')).toMatchObject({ device: 'sim-0', app: 'Settings', appPath: path.join(PROJECT_ROOT, 'build/App.app') });
+    // The lease installed nothing: warm-up still opens the pinned app (a build not on the device fails that open, which is logged), and the worker installs nothing.
+    expect(h.fake.methods()).toEqual(['devices.boot', 'apps.open']);
     const handed = result?.env ?? {};
     const worker = harness({ device: cloud.impl, appPath: 'build/App.app' });
     await boot(worker.engine, 'ios', 0, handed);
     expect(worker.fake.methods()).toEqual(['devices.boot']);
+    await worker.surface.installApp(undefined, {}, new AbortController().signal);
+    expect(worker.fake.lastArgs('apps.install')).toMatchObject({ device: 'sim-0', app: 'Settings', appPath: path.join(PROJECT_ROOT, 'build/App.app') });
   });
 
   it('skips the build install when the lease says the provider installed it, and opens that app', async () => {
