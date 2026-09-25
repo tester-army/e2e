@@ -29,7 +29,7 @@ import type {
   TextMatchOptions,
 } from '../types.ts';
 import type { StepRecorder } from '../run/steps.ts';
-import { isNodeVisible, type LocatorEngine } from './engine.ts';
+import { attributeOf, isNodeVisible, type LocatorEngine } from './engine.ts';
 import {
   describeExpression,
   filterExpression,
@@ -439,7 +439,7 @@ class LocatorImpl extends ScreenImpl implements Locator {
 
   async getAttribute(name: string): Promise<string | null> {
     const node = await this.readGuarded();
-    return node.attributes?.[name] ?? null;
+    return attributeOf(node, name);
   }
 
   async isVisible(): Promise<boolean> {

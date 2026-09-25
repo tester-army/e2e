@@ -55,6 +55,10 @@ test('deterministic queries and reads', async ({ app, screen, web }) => {
   expect(await web.locator('#class-card').getAttribute('class')).toBe('card active');
   expect(await screen.getByLabel('Readonly').getAttribute('readonly')).toBe('');
   expect(await web.locator('#fixture-image').getAttribute('src')).toBe('/fixture.png');
+  expect(await web.locator('#class-card').getAttribute('constructor')).toBe('own');
+  expect(await screen.getByTestId('items').getAttribute('constructor')).toBeNull();
+  expect(await screen.getByTestId('items').getAttribute('toString')).toBeNull();
+  expect(await screen.getByTestId('items').getAttribute('__proto__')).toBeNull();
 });
 
 test('role vocabulary: tabs, menus, progress, toolbars, images', async ({ app, screen }) => {
@@ -123,6 +127,10 @@ test('actions and state', async ({ app, screen, web }) => {
   await expect(screen.getByLabel('Readonly')).toHaveAttribute('readonly');
   await expect(web.locator('#class-card')).toHaveAttribute('class', /active/);
   await expect(screen.getByLabel('Readonly')).not.toHaveAttribute('hidden');
+  await expect(web.locator('#class-card')).toHaveAttribute('constructor', 'own');
+  await expect(screen.getByLabel('Readonly')).not.toHaveAttribute('constructor');
+  await expect(screen.getByLabel('Readonly')).not.toHaveAttribute('toString');
+  await expect(screen.getByLabel('Readonly')).not.toHaveAttribute('__proto__');
 
   await screen.getByLabel('Focus target').focus();
   await expect(screen.getByLabel('Focus target')).toBeFocused();

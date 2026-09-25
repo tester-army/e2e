@@ -19,7 +19,7 @@ export const HOME_PAGES: Record<string, PageRenderer> = {
   <label for="readonly">Readonly</label>
   <input id="readonly" readonly value="read-only value" />
 
-  <div id="class-card" class="card active" data-extra="node-only">Card</div>
+  <div id="class-card" class="card active" data-extra="node-only" constructor="own">Card</div>
   <img id="fixture-image" src="/fixture.png" alt="Fixture" />
 
   <label for="focus-target">Focus target</label>

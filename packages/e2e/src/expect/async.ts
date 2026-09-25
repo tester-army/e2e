@@ -12,7 +12,7 @@ import {
 } from '../internal/text.ts';
 import { isValueControl } from '../internal/roles.ts';
 import { Deadline, pollCondition } from '../internal/time.ts';
-import { isNodeVisible } from '../locator/engine.ts';
+import { attributeOf, isNodeVisible } from '../locator/engine.ts';
 import { describeExpression } from '../locator/expression.ts';
 import type { LocatorInternals } from '../locator/screen.ts';
 import type { AsyncExpectation, TextMatch } from '../types.ts';
@@ -342,8 +342,8 @@ class AsyncExpectationImpl implements AsyncExpectation {
         name: 'toHaveAttribute',
         predicate: (sample) => {
           if (sample.node === null) return false;
-          const attribute = sample.node.attributes?.[name];
-          return attribute !== undefined && (pattern === undefined || matchesText(attribute, pattern));
+          const attribute = attributeOf(sample.node, name);
+          return attribute !== null && (pattern === undefined || matchesText(attribute, pattern));
         },
         describeExpected:
           pattern === undefined
@@ -351,8 +351,8 @@ class AsyncExpectationImpl implements AsyncExpectation {
             : `attribute "${name}" ${describePattern(pattern)}`,
         observed: (sample) => {
           if (sample.node === null) return 'no node';
-          const attribute = sample.node.attributes?.[name];
-          return attribute === undefined
+          const attribute = attributeOf(sample.node, name);
+          return attribute === null
             ? `attribute "${name}" absent`
             : `attribute "${name}" ${JSON.stringify(attribute)}`;
         },

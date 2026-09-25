@@ -29,6 +29,18 @@ export function isNodeVisible(node: SemanticNode | null): node is SemanticNode {
 }
 
 /**
+ * The value of a node attribute, `null` when the node carries none by that
+ * name. Only own entries count: the map arrives as a plain object, so a
+ * lookup by name alone would answer `Object.prototype` members like
+ * `constructor` or `toString` for an attribute the element never had.
+ */
+export function attributeOf(node: SemanticNode, name: string): string | null {
+  const attributes = node.attributes;
+  if (attributes === undefined || !Object.hasOwn(attributes, name)) return null;
+  return attributes[name] ?? null;
+}
+
+/**
  * What a frame the engine reports missing means to a resolve: `wait` treats
  * it like a node that is not there yet, `empty` answers zero matches.
  */

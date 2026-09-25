@@ -787,7 +787,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
       inputPurpose = 'password';
     } else if (autocomplete === 'one-time-code') inputPurpose = 'one-time-code';
 
-    const attributes: Record<string, string> = {};
+    const attributes: Record<string, string> = Object.create(null);
     for (const attribute of Array.from(el.attributes)) {
       if (
         projection.attributes === null ||
