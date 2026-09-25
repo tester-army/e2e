@@ -12,7 +12,6 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap');
 
-/* DM Mono 500 is TesterArmy's button face; only the sidebar banner uses it. */
 @font-face {
   font-family: 'DM Mono';
   src: url('https://tester.army/fonts/dm-mono-latin-500-normal.woff2') format('woff2');
@@ -25,7 +24,6 @@
   --e2e-ink: rgb(23 23 23);
   --e2e-muted: rgb(115 115 115);
   --e2e-hairline: rgb(232 232 232);
-  /* TesterArmy's PixelButton: --ta-orange-300 on --ta-grey-500, same in both themes. */
   --e2e-ta-orange: rgb(255 128 1);
   --e2e-ta-orange-ink: rgb(22 22 22);
 }
@@ -60,17 +58,8 @@ body {
   font-weight: 500;
 }
 
-/* A global Mintlify anchor is the real, persistent TesterArmy link. Turn only
-   that link into the sidebar card; generated copy keeps the navigation item
-   semantic. Mintlify renders it as `<a><div><svg/></div>{anchor}</a>`: the
-   bare text node is the title, the anchor's ::after is the pitch, and the icon
-   wrapper div is restyled into the button (its ::before the label).
-   Grid `order` puts the button last; the anonymous text item stays at 0.
-
-   The link is matched by its `utm_campaign` tag, the one part of the href in
-   docs.json that names this placement, so the rest of the URL can change
-   without touching this file. Everything about the card nests under this one
-   selector. */
+/* Mintlify renders the global anchor as `<a><div><svg/></div>{anchor}</a>`:
+   the text node is the title, ::after the pitch, the div the button. */
 a[href*='utm_campaign=docs_sidebar_banner'] {
   display: none;
   justify-items: start;
@@ -96,13 +85,6 @@ a[href*='utm_campaign=docs_sidebar_banner'] {
     line-height: 1.5;
   }
 
-  /* The button: TesterArmy's PixelButton (apps/website/components/landing/
-     pixel-button.tsx), orange tone. A fill with a one-unit column of squares on
-     each side: at rest the left column fills its bottom two units and the right
-     column its top and bottom; on hover the two columns swap in one step, with
-     no easing. The ::before already carries the label, so the squares are
-     background layers rather than pseudo-elements: the middle fill, then the
-     column squares, each one gradient sized and placed in units. */
   & > div {
     --e2e-pixel-unit: 12px;
     --e2e-pixel-fill: linear-gradient(var(--e2e-ta-orange), var(--e2e-ta-orange));
@@ -115,8 +97,7 @@ a[href*='utm_campaign=docs_sidebar_banner'] {
     margin-top: 0.375rem;
     padding: 0 calc(var(--e2e-pixel-unit) + 0.75rem);
     box-sizing: border-box;
-    /* Mintlify's hover handler writes an inline `background` on the icon
-       wrapper; only `!important` outranks an inline style. */
+    /* !important beats the inline background Mintlify sets on hover. */
     background:
       var(--e2e-pixel-fill) center / calc(100% - var(--e2e-pixel-unit) * 2) 100% no-repeat,
       var(--e2e-pixel-fill) left bottom / var(--e2e-pixel-unit) calc(var(--e2e-pixel-unit) * 2) no-repeat,
@@ -154,8 +135,6 @@ a[href*='utm_campaign=docs_sidebar_banner'] {
     outline-offset: 2px;
   }
 
-  /* Mintlify's table of contents becomes the right rail at its `xl` breakpoint;
-     the card shows only there, below it. */
   @media (min-width: 1280px) {
     display: grid;
     position: fixed;
@@ -166,8 +145,6 @@ a[href*='utm_campaign=docs_sidebar_banner'] {
     width: 16.5rem;
     margin: 0;
 
-    /* Anchor the card to the table of contents itself, so it follows the final
-       right-rail link on pages with a longer or shorter heading list. */
     @supports (anchor-name: --e2e-table-of-contents) and (position-anchor: --e2e-table-of-contents) {
       position-anchor: --e2e-table-of-contents;
       top: calc(anchor(bottom) + 0.5rem);
@@ -178,11 +155,7 @@ a[href*='utm_campaign=docs_sidebar_banner'] {
 }
 
 @media (min-width: 1280px) {
-  /* The anchor stacks inside `#sidebar` (`z-20`), and the table-of-contents
-     column `#content-side-layout` (`z-21`) spans the viewport height, so the
-     card was painted under it and unreachable by the pointer. Lift the sidebar
-     one above the rail, still under the `z-30` navbar; the two columns never
-     overlap, so nothing else moves. */
+  /* Above the z-21 TOC column so the card is clickable, below the z-30 navbar. */
   #sidebar {
     z-index: 22;
   }
@@ -198,8 +171,6 @@ a[href*='utm_campaign=docs_sidebar_banner'] {
   }
 }
 
-/* The hidden card's list is still the first child, so Mintlify keeps the first
-   group's top margin. */
 ul:has(> li > a[href*='utm_campaign=docs_sidebar_banner']) + * {
   margin-top: 0 !important;
 }
