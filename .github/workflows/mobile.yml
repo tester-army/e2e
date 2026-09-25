@@ -20,8 +20,9 @@ name: mobile
 # entries are recorded on a Mac (an iPhone 17 Pro simulator, a 1080x2400
 # emulator) and committed with the scenario change.
 #
-# A job uploads its report and artifacts when it fails; a green run has its
-# comment, and the artifact quota is shared with every workflow here.
+# A job uploads its report from every run, and its artifacts (screens,
+# traces, video) only when it fails: the quota is shared with every workflow
+# here, and the report alone says what the first attempt of a flaky test met.
 #
 # Each job posts its run to the pull request as one comment through
 # @e2edev/github (hence pull-requests: write), named `ios`, `ios agent`,
@@ -200,16 +201,28 @@ jobs:
             echo
             echo "::endgroup::"
           done
+      # The report is small and says what the first attempt of a flaky test
+      # met, so it is kept from every run; the artifacts (screens, traces,
+      # video) only from a red one, since the quota is shared.
       - name: Upload report
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mobile-benchmark-ios-${{ env.SUITE }}-report
+          path: |
+            apps/mobile-benchmark/.e2e/report.json
+            apps/mobile-benchmark/.e2e/agent/report.json
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Upload artifacts
         if: ${{ failure() }}
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: mobile-benchmark-ios-${{ env.SUITE }}
           path: |
-            apps/mobile-benchmark/.e2e/report.json
             apps/mobile-benchmark/.e2e/artifacts
-            apps/mobile-benchmark/.e2e/agent/report.json
             apps/mobile-benchmark/.e2e/agent/artifacts
           if-no-files-found: warn
           retention-days: 7
@@ -305,15 +318,24 @@ jobs:
             echo "::endgroup::"
           done
       - name: Upload report
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mobile-benchmark-android-${{ env.SUITE }}-report
+          path: |
+            apps/mobile-benchmark/.e2e/report.json
+            apps/mobile-benchmark/.e2e/agent/report.json
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Upload artifacts
         if: ${{ failure() }}
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: mobile-benchmark-android-${{ env.SUITE }}
           path: |
-            apps/mobile-benchmark/.e2e/report.json
             apps/mobile-benchmark/.e2e/artifacts
-            apps/mobile-benchmark/.e2e/agent/report.json
             apps/mobile-benchmark/.e2e/agent/artifacts
           if-no-files-found: warn
           retention-days: 7

@@ -179,7 +179,8 @@ describe('lifecycle', () => {
     // Without a pinned app there is nothing to open, so it boots only; so does
     // a build `appPath` nobody has installed and no `app`, since the engine
     // installs nothing on its own and the suite's `device.installApp()` comes
-    // later. A pinned `app` is opened whether or not its build is on yet.
+    // later. A pinned `app` whose build is not on yet is not opened either,
+    // and the log says why.
     const bare = harness({ device: 'iPhone 16e' }, false);
     await bare.engine.prepare!({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: () => undefined });
     expect(bare.fake.methods()).toEqual(['devices.boot']);
@@ -187,8 +188,10 @@ describe('lifecycle', () => {
     await build.engine.prepare!({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: () => undefined });
     expect(build.fake.methods()).toEqual(['devices.boot']);
     const pinnedBuild = harness({ device: 'iPhone 16e', appPath: 'build/App.app' });
-    await pinnedBuild.engine.prepare!({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: () => undefined });
-    expect(pinnedBuild.fake.methods()).toEqual(['devices.boot', 'apps.open']);
+    const pinnedLines: string[] = [];
+    await pinnedBuild.engine.prepare!({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: (line) => pinnedLines.push(line) });
+    expect(pinnedBuild.fake.methods()).toEqual(['devices.boot']);
+    expect(pinnedLines[1]).toMatch(/Settings awaits the suite's device.installApp\(\)/);
 
     const single = harness({ device: 'iPhone 16e', session: 'qa' });
     expect(single.engine.workers).toBe(1);

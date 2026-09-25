@@ -120,8 +120,8 @@ describe('device provider', () => {
     const h = harness({ device: cloud.impl, appPath: 'build/App.app' });
     const result = await h.engine.prepare!(prepareInfo({}, 1));
     expect(cloud.acquired[0]!.appPath).toBe(path.join(PROJECT_ROOT, 'build/App.app'));
-    // The lease installed nothing: warm-up still opens the pinned app (a build not on the device fails that open, which is logged), and the worker installs nothing.
-    expect(h.fake.methods()).toEqual(['devices.boot', 'apps.open']);
+    // The lease installed nothing: the build is not on the device, so warm-up boots only, and the worker installs nothing.
+    expect(h.fake.methods()).toEqual(['devices.boot']);
     const handed = result?.env ?? {};
     const worker = harness({ device: cloud.impl, appPath: 'build/App.app' });
     await boot(worker.engine, 'ios', 0, handed);

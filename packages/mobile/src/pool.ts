@@ -250,6 +250,13 @@ export class DevicePool {
         warmed.push(binding);
         continue;
       }
+      // A build the suite installs itself is not on the device yet, so there
+      // is nothing to open: the first attempt installs it and starts the runner.
+      if (this.options.appPath !== undefined && binding.installedApp === undefined) {
+        info.log(`${label}: ${app} awaits the suite's device.installApp(); the first attempt starts the automation runner`);
+        warmed.push(binding);
+        continue;
+      }
       try {
         await runCommand(`open ${app}`, () => client.apps.open({ app, ...where }), info.signal, at);
         warmed.push({ ...binding, sessionApp: app });
