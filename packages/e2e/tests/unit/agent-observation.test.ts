@@ -451,6 +451,45 @@ describe('settleObservation', () => {
       vi.useRealTimers();
     }
   });
+
+  it('does not treat matching empty navigation captures as stable after the action deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      const started = Date.now();
+      const source = scripted(['', '', 'new', 'new']);
+      const pending = settleObservation(source.capture, (value) => value, clock, {
+        changedFrom: { shape: 'old', deadlineMs: started - 1 },
+        transitional: (value) => value === '',
+        stableWaitMs: 1_000,
+        pollMs: 100,
+      });
+      await vi.runAllTimersAsync();
+      expect(await pending).toBe('new');
+      expect(Date.now() - started).toBe(300);
+      expect(source.calls()).toBe(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('bounds the stability check when navigation stays empty after the action deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      const started = Date.now();
+      const source = scripted(['']);
+      const pending = settleObservation(source.capture, (value) => value, clock, {
+        changedFrom: { shape: 'old', deadlineMs: started - 1 },
+        transitional: (value) => value === '',
+        stableWaitMs: 1_000,
+        pollMs: 100,
+      });
+      await vi.runAllTimersAsync();
+      expect(await pending).toBe('');
+      expect(Date.now() - started).toBe(1_000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('interactiveNodeCount', () => {

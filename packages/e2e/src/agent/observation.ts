@@ -468,7 +468,7 @@ export async function settleObservation<T>(
     if (next === undefined) return value;
     const stable = next === shape;
     shape = next;
-    if (stable) break;
+    if (stable && !transitional(value)) break;
   }
   return value;
 }
