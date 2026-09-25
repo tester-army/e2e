@@ -66,16 +66,19 @@ export function result(input: {
   readonly skip?: ReportResult['skip'];
   readonly serialGroupId?: string;
   readonly selected?: boolean;
+  /** Which `--repeat-each` run this is; the id tells repeats apart the way the runner's does. */
+  readonly repeat?: number;
 }): ReportResult {
   const titlePath = typeof input.title === 'string' ? [input.title] : [...input.title];
   const file = input.file ?? 'tests/example.e2e.ts';
   const target = input.target ?? 'web';
   return {
     ...BASE_RESULT,
-    // One id per test and target, the way the runner names a result, so a fold by id tells them apart.
-    id: `${testId(file, titlePath)}@${target}`,
+    // One id per test, target, and repeat, the way the runner names a result, so a fold by id tells them apart.
+    id: `${testId(file, titlePath)}@${target}${input.repeat === undefined || input.repeat === 0 ? '' : `#${input.repeat}`}`,
     testId: testId(file, titlePath),
     titlePath,
+    repeat: input.repeat ?? 0,
     file,
     source: { file, line: input.line ?? 3, column: 1 },
     targetId: target,

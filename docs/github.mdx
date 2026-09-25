@@ -130,8 +130,11 @@ its own would shrink the comment to the few tests it ran again. The reporter
 folds the rerun into the run it selected from instead: the tests the rerun
 left out keep their results from the first pass, a test that failed and then
 passed shows as flaky with both passes' attempts, a test that failed twice
-stays failed, and the counts cover the whole suite. The comment ends up
-saying what the job's status says.
+stays failed, and the counts cover the whole suite. A `--repeat-each` first
+pass folds its repeats into the rerun's one result; a serial group's members
+keep the first pass's attempts. The comment ends up saying what the job's
+status says, and stays red when another filter kept a failed test out of the
+rerun, since it still lists that failure.
 
 ## Matrix jobs
 
