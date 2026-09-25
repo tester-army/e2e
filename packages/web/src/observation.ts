@@ -141,11 +141,14 @@ async function captureInto(
     },
   }), (handle) => scope.own(handle));
   // Property handles would keep earlier captures alive after their parent is disposed.
-  const { nodes, ids, truncated: walkTruncated } = await scope.read(() => captured.evaluate((observation) => ({
+  // The metadata is JSON data. Sending one string avoids Playwright recursively
+  // encoding every field of every node across the protocol.
+  const metadata = await scope.read(() => captured.evaluate((observation) => JSON.stringify({
     nodes: observation.nodes,
     ids: observation.ids,
     truncated: observation.truncated,
   })));
+  const { nodes, ids, truncated: walkTruncated } = JSON.parse(metadata) as Omit<ReturnType<typeof readDocumentSemanticsFunction>, 'elements'>;
   if (!Array.isArray(ids) || ids.length !== nodes.length) {
     throw new EngineError('ENGINE_FAILURE', 'observation ids do not align with its nodes', {
       retryable: false,

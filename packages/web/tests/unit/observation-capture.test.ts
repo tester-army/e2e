@@ -42,7 +42,7 @@ function document(stalled?: ReadStage) {
     dispose: vi.fn(async () => undefined),
     evaluate: vi.fn(async () => {
       await checkpoint('metadata');
-      return { nodes: [{ ...raw, ...(stalled === 'frame' ? { frameSelector: '#child' } : {}) }], ids: ['n1'], truncated: false };
+      return JSON.stringify({ nodes: [{ ...raw, ...(stalled === 'frame' ? { frameSelector: '#child' } : {}) }], ids: ['n1'], truncated: false });
     }),
     getProperty: vi.fn(async () => { await checkpoint('elements'); return elements; }),
   };
