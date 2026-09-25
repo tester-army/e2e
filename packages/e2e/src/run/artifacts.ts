@@ -5,9 +5,11 @@ import { createReadStream, mkdirSync } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
+import { writeFileAtomic } from '../internal/atomic-write.ts';
 import type { ArtifactStore } from '../types.ts';
 import type { ArtifactRegistration, ArtifactSink } from './fixtures.ts';
 import type { ArtifactRecord } from './records.ts';
+import type { SessionSecrecy } from './secrecy.ts';
 
 /**
  * How much of each kind the runner masked, unless the registration says. A
@@ -15,15 +17,24 @@ import type { ArtifactRecord } from './records.ts';
  * secret redactor. A recording masks nothing: a secure field renders its own
  * dots, but anything else the screen showed is in the frames. A trace is
  * decided per attempt by whoever stops it (see `redactTraceArchives`): one
- * registered without that verdict was not rewritten, and says so.
+ * registered without that verdict was not rewritten, and says so. A download
+ * is whatever the app served, bytes the runner did not write and does not
+ * rewrite: it is `incomplete` unless the sink scanned it (see
+ * `redactDownload`), so a store exporting only vouched-for artifacts holds it
+ * back.
  */
 const REDACTION_BY_KIND: Readonly<Record<ArtifactRecord['kind'], ArtifactRecord['redaction']>> = {
   screenshot: 'complete',
   trace: 'incomplete',
   video: 'incomplete',
-  download: 'complete',
+  download: 'incomplete',
   log: 'complete',
 };
+
+/** Media types whose bytes are text the secret redactor can rewrite. */
+function isTextLike(mediaType: string): boolean {
+  return mediaType.startsWith('text/') || mediaType === 'application/json';
+}
 
 export interface AttemptArtifacts {
   /** Absolute attempt artifact directory, created eagerly. */
@@ -58,6 +69,13 @@ export function createAttemptArtifacts(options: {
   /** Host store every artifact is handed to once complete; undefined keeps files local only. */
   store?: ArtifactStore;
   /**
+   * The secrecy of the session the attempt runs on, read when a download is
+   * registered; undefined (no session open yet) leaves every download as
+   * served. Once a secret was filled on the session, a text-like download is
+   * rewritten through its ledger before it is hashed or stored.
+   */
+  secrecy?: () => SessionSecrecy | undefined;
+  /**
    * Report identity handed to the store with each artifact. `attemptId` is
    * the attempt the REPORT files the artifact under; a serial member's
    * artifacts land on the group attempt's record, so its store identity is the
@@ -88,8 +106,12 @@ export function createAttemptArtifacts(options: {
       };
       records.push(record);
       const reportPath = path.posix.join(...options.segments, relativePath);
+      const secrecy = kind === 'download' && registration?.redaction === undefined ? options.secrecy?.() : undefined;
       pending.push(
         (async () => {
+          if (secrecy?.taint.value && isTextLike(record.mediaType)) {
+            record.redaction = await redactDownload(absolute, secrecy);
+          }
           // Without a store the file is streamed for its size and digest only;
           // with one it is read whole, since the store needs the bytes anyway,
           // and hashed from that same buffer. A file that never appeared is
@@ -118,6 +140,7 @@ export function createAttemptArtifacts(options: {
               size: record.size,
               sha256: record.sha256,
               path: reportPath,
+              redaction: record.redaction,
               runId: options.identity?.runId ?? '',
               testId: options.identity?.testId ?? '',
               attemptId: options.identity?.attemptId ?? options.attemptId,
@@ -140,6 +163,25 @@ export function createAttemptArtifacts(options: {
   };
 
   return { dir, records, sink, settle };
+}
+
+/**
+ * Rewrites a text-like download through the session's ledger, the way a
+ * trace's text entries are, and returns the redaction the record can claim:
+ * `complete` once every registered value is gone from it, changed or not, and
+ * `incomplete` when the file is not UTF-8 text or cannot be read or written,
+ * in which case it is left as served.
+ */
+async function redactDownload(absolute: string, secrecy: SessionSecrecy): Promise<ArtifactRecord['redaction']> {
+  try {
+    const bytes = await readFile(absolute);
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    const redacted = secrecy.ledger.redact(text);
+    if (redacted !== text) await writeFileAtomic(absolute, redacted);
+    return 'complete';
+  } catch {
+    return 'incomplete';
+  }
 }
 
 /** Size and SHA-256 of one file, streamed; undefined when it cannot be read. */
@@ -181,5 +223,8 @@ function mediaTypeFor(relativePath: string): string {
   if (relativePath.endsWith('.webm')) return 'video/webm';
   if (relativePath.endsWith('.mp4')) return 'video/mp4';
   if (relativePath.endsWith('.txt')) return 'text/plain';
+  if (relativePath.endsWith('.csv')) return 'text/csv';
+  if (relativePath.endsWith('.json')) return 'application/json';
+  if (relativePath.endsWith('.html') || relativePath.endsWith('.htm')) return 'text/html';
   return 'application/octet-stream';
 }

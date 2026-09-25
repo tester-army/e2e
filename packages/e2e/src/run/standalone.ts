@@ -25,6 +25,7 @@ import { TargetExecutor, type ClosingRecord } from './execute.ts';
 import { createFixtures } from './fixtures.ts';
 import type { EnginePrepareResult } from '../engine/index.ts';
 import { PreparedEngines, startDeclaredProcesses, validateEngine, type AppProcesses } from './provision.ts';
+import { sessionSecrecy } from './secrecy.ts';
 import { SessionStore } from './sessions.ts';
 import { StepRecorder, type StepProgress } from './steps.ts';
 import { WorkerModels } from './worker-models.ts';
@@ -128,12 +129,14 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
     projectRoot: config.projectRoot,
     ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
   });
+  let session: TargetSession | undefined;
   const artifacts = createAttemptArtifacts({
     artifactsRoot: options.artifactsRoot,
     segments: [target.name, 'sessions', attemptId],
     attemptId,
     currentStepId: () => steps.currentStepId,
     ...(config.artifactStore === undefined ? {} : { store: config.artifactStore }),
+    secrecy: () => (session === undefined ? undefined : sessionSecrecy(session, config.secrets)),
     identity: { runId, testId: `session:${target.name}`, attemptId },
   });
 
@@ -152,7 +155,6 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
     releaseSecretRegistry(config);
   };
 
-  let session: TargetSession;
   try {
     session = await executor.launchSession(undefined, attemptId, artifacts.dir, signal);
   } catch (cause) {

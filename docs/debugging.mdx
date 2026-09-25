@@ -98,7 +98,9 @@ Artifacts land under `.e2e/artifacts/`, one directory per attempt:
 - **Playwright traces** when the `trace` artifact kind is enabled and capture
   succeeds. Open a trace with `npx playwright show-trace <file>`.
 - **Downloads** saved through `web.waitForDownload`, recorded with kind
-  `download`.
+  `download`. They are the app's bytes: `redaction: "incomplete"` unless a
+  secret was filled on the session and the file is text, which the runner
+  rewrites and marks `complete`.
 - **Videos** and **agent transcripts** when you ask for them; see below.
 
 After a secret fill, the runner withholds screenshots from agent calls and

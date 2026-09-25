@@ -69,6 +69,14 @@ const RESPONDERS: Record<string, Responder> = {
     });
     response.end('id,total\n1,42\n');
   },
+  '/echo.csv': (request, response) => {
+    const value = new URL(request.url ?? '/', 'http://localhost').searchParams.get('value') ?? '';
+    response.writeHead(200, {
+      'content-type': 'text/csv',
+      'content-disposition': 'attachment; filename="export.csv"',
+    });
+    response.end(`id,key\n1,${value}\n`);
+  },
   '/api/flags': (_request, response) => {
     response.writeHead(200, { 'content-type': 'application/json' });
     response.end(JSON.stringify({ betaBoard: false }));

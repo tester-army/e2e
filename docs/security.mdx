@@ -151,6 +151,11 @@ hook; its console output reaches the runner's streams as written.
   deleted and the attempt records `TRACE_WITHHELD`.
 - A video masks nothing and is labelled `redaction: "incomplete"`. It is
   never recorded unless you ask.
+- A download is what the app served. After a secret fill on the session, a
+  text download (`text/*` or JSON by file extension) is rewritten through
+  the ledger, the way trace text is, and labelled `redaction: "complete"`.
+  Any other download, a binary or one from a session no secret was filled
+  on, is kept as served and labelled `redaction: "incomplete"`.
 - The `headers` a protected preview needs are recorded in the trace as
   request headers. Share that trace as you would the bypass secret.
 - `command.log` and service logs are captured as the process writes them.
@@ -199,6 +204,7 @@ path you configure.
 | `artifacts/.../*.png` | Screenshots. Secure fields are masked before screenshots are returned or saved as artifacts. | complete |
 | `artifacts/.../trace.zip` | Playwright trace, rewritten after a secret fill. | not-required, complete, or deleted |
 | `artifacts/.../*.webm`, `*.mp4` | Video, opt-in, kept for every attempt unless `retain: 'on-failure'`. | incomplete |
+| `artifacts/.../downloads/*` | Files the app served through a download. Text ones are rewritten after a secret fill; the rest are kept as served. | complete or incomplete |
 | `artifacts/.../failure/screen.txt` | The redacted tree at the moment of failure. | complete |
 | `ai-trace.json` | Every model call, opt-in via `--ai-trace`. Prompts are the redacted ones the model saw; inline image bytes are replaced by their size. | as the prompt |
 | `sessions/<runId>/` | Encrypted sessions, deleted at cleanup. | encrypted |
@@ -206,8 +212,10 @@ path you configure.
 | The path in `command.log` | Your app's stdout and stderr, verbatim. Must be inside the project root. | none |
 
 An `artifacts.store` receives each artifact's bytes as they are produced,
-after trace redaction. A `cache.store` receives every recorded entry and
-supplies every replayed one; what comes back is validated again before use.
+after trace and download redaction, with the `redaction` label the report
+records, so a store can export only what the runner vouches for. A
+`cache.store` receives every recorded entry and supplies every replayed one;
+what comes back is validated again before use.
 
 ## Outbound connections
 

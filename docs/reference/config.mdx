@@ -365,7 +365,9 @@ engine cannot produce fails before collection with `UNSUPPORTED_ARTIFACT`.
 `store` receives every artifact once it is complete on disk and returns a
 reference the report records as `ref` beside the local path. A failed `put`
 never fails the run. Each worker constructs its own store from the config
-module.
+module. `redaction` is the report's label: a store that exports only what
+the runner vouches for keeps back an `incomplete` artifact, a video or a
+download the runner did not rewrite.
 
 ```ts
 /** One produced artifact, handed to `store.put` once it is complete on disk. */
@@ -377,6 +379,8 @@ export interface StoredArtifact {
   readonly sha256: string;
   /** Report-relative path with `/` separators, stable across runs of the same test. */
   readonly path: string;
+  /** How much of the file the runner masked, as the report records it. */
+  readonly redaction: 'complete' | 'not-required' | 'incomplete';
   readonly runId: string;
   readonly testId: string;
   readonly attemptId: string;

@@ -529,7 +529,10 @@ describe('web platform integration', () => {
     expect(waitStep?.artifacts).toHaveLength(1);
     const tapStep = attempt.steps.find((step) => step.api === 'locator.tap');
     expect(tapStep?.artifacts ?? []).toHaveLength(0);
-    expect(attempt.artifacts.find((artifact) => artifact.kind === 'download')?.path).toContain('downloads/');
+    const download = attempt.artifacts.find((artifact) => artifact.kind === 'download');
+    expect(download?.path).toContain('downloads/');
+    // Bytes the app served, not rewritten by the runner: the record says so.
+    expect(download).toMatchObject({ redaction: 'incomplete', mediaType: 'text/csv' });
   });
 
   it('records steps and screenshot artifacts on attempts', () => {

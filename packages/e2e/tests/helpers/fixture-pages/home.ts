@@ -215,4 +215,18 @@ line2  </textarea>
     '<!doctype html><html><head><title>Downloads</title></head><body><h1>Downloads</h1>' +
       '<a href="/report.csv" download>Download report</a></body></html>',
   ),
+  // An export that carries what the form was filled with: the link downloads
+  // a CSV echoing the key field, the way an app's export includes its data.
+  '/exports': constant(`<!doctype html><html><head><title>Exports</title></head><body>
+  <h1>Exports</h1>
+  <label for="export-key">Export key</label>
+  <input id="export-key" type="password" autocomplete="off" />
+  <a id="export" href="/echo.csv" download>Download export</a>
+  <script>
+    document.getElementById('export').addEventListener('click', () => {
+      const key = document.getElementById('export-key').value;
+      document.getElementById('export').href = '/echo.csv?value=' + encodeURIComponent(key);
+    });
+  </script>
+</body></html>`),
 };

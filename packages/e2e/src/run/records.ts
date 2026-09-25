@@ -29,7 +29,10 @@ export interface ArtifactRecord {
    * rewritten out of its text, and `not-required` when no secret was filled
    * on its session; a video is `incomplete`, since a recording masks nothing
    * (a secure field renders its own dots, but anything else the screen
-   * showed is in the frames), and is kept as it is. report-1 also admits an
+   * showed is in the frames), and is kept as it is; a download is
+   * `incomplete` too, bytes the app served and the runner did not rewrite,
+   * unless a secret was filled on the session and the file is text the
+   * ledger was run over, which makes it `complete`. report-1 also admits an
    * `incomplete` artifact without a `path`, one its producer withheld; this
    * runner never writes one.
    */

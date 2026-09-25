@@ -21,7 +21,8 @@ import { entriesFor, readEntries } from '../helpers/trace-cache.ts';
 
 const SECRET = 'trace-secret-Qx7#"&=2718';
 
-const SUITE = `import { test, expect, credentials } from 'e2e';
+const SUITE = `import { test } from '@e2edev/web';
+import { expect, credentials } from 'e2e';
 
 test('fills through screen', async ({ app, screen }) => {
   await app.open();
@@ -37,6 +38,17 @@ test('fills through the executor', async ({ app, agent, screen }) => {
 test('fills nothing', async ({ app, screen }) => {
   await app.open();
   await screen.getByLabel('Focus target').fill('plain text');
+});
+
+test('downloads after a fill', async ({ app, screen, web }) => {
+  await app.open('/exports');
+  await screen.getByLabel('Export key').fill(credentials.user('member').password);
+  await web.waitForDownload(() => screen.getByRole('link', { name: 'Download export' }).tap());
+});
+
+test('downloads without a fill', async ({ app, screen, web }) => {
+  await app.open('/downloads');
+  await web.waitForDownload(() => screen.getByRole('link', { name: 'Download report' }).tap());
 });
 `;
 
@@ -156,6 +168,25 @@ describe('trace secrecy', () => {
     expect(trace.path).toBeDefined();
     const entries = textEntries(readFileSync(path.join(project.dir, '.e2e', 'artifacts', trace.path!)));
     expect(entries.get('trace.trace')).toContain('plain text');
+  });
+
+  it('downloads after a fill: a text download is rewritten, labelled complete, and stored clean', () => {
+    const attempt = resultByTitle(outcome, 'downloads after a fill').attempts[0]!;
+    const download = attempt.artifacts.find((artifact) => artifact.kind === 'download')!;
+    expect(download).toMatchObject({ redaction: 'complete', mediaType: 'text/csv' });
+    const onDisk = readFileSync(path.join(project.dir, '.e2e', 'artifacts', download.path!), 'utf8');
+    expect(onDisk).toBe('id,key\n1,<secret:member>\n');
+    const put = store.puts.find((stored) => stored.path === download.path)!;
+    expect(put).toMatchObject({ kind: 'download', redaction: 'complete', sha256: download.sha256 });
+    expect(Buffer.from(put.bytes).toString('utf8')).toBe(onDisk);
+  });
+
+  it('downloads without a fill: the file is kept as served and labelled incomplete', () => {
+    const attempt = resultByTitle(outcome, 'downloads without a fill').attempts[0]!;
+    const download = attempt.artifacts.find((artifact) => artifact.kind === 'download')!;
+    expect(download).toMatchObject({ redaction: 'incomplete', mediaType: 'text/csv' });
+    expect(readFileSync(path.join(project.dir, '.e2e', 'artifacts', download.path!), 'utf8')).toBe('id,total\n1,42\n');
+    expect(store.puts.find((stored) => stored.path === download.path)).toMatchObject({ redaction: 'incomplete' });
   });
 
   it('records the executor fill in the cache by the secret name alone, with no value', () => {

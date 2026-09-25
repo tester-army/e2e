@@ -996,6 +996,13 @@ export interface StoredArtifact {
   readonly sha256: string;
   /** Report-relative path with `/` separators. */
   readonly path: string;
+  /**
+   * How much of the file the runner masked, as the report records it. A
+   * `download` is `incomplete` unless the runner rewrote it as text after a
+   * secret fill; a store that exports only what the runner vouches for reads
+   * this rather than the kind.
+   */
+  readonly redaction: 'complete' | 'not-required' | 'incomplete';
   readonly runId: string;
   readonly testId: string;
   readonly attemptId: string;

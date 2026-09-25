@@ -781,6 +781,7 @@ export class TargetExecutor implements SerialHost {
       attemptId,
       currentStepId: () => steps.currentStepId,
       ...(this.config.artifactStore === undefined ? {} : { store: this.config.artifactStore }),
+      secrecy: () => (openSession === null ? undefined : sessionSecrecy(openSession, this.config.secrets)),
       // A serial member's artifacts are filed under the group attempt in the
       // report, so that is the attempt a store must see for them.
       identity: { runId: this.options.runId, testId: pair.test.id, attemptId: shared?.attemptId ?? attemptId },
