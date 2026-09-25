@@ -148,9 +148,8 @@ const NOT_ARIA_HIDDEN = ':scope:not([aria-hidden="true"])';
  * semantic `hidden` state also makes. An indexed, filtered, or scoping visible
  * query therefore never selects or retains a node that state calls hidden.
  * The surface additionally holds a terminal query to the batch-read `hidden`
- * state, so a direct query agrees with `toBeVisible()` even at the margin
- * where the two predicates differ (a zero-size element with a layout rect is
- * hidden to Playwright and shown to the semantic read).
+ * state, which reads the same box, style, and `details` facts Playwright's
+ * predicate does, so a direct query agrees with `toBeVisible()`.
  */
 function visibleQueryToPw(scope: PwScope, query: SemanticQuery, testIdAttribute: string): PwLocator {
   return narrowedToVisible(queryToPw(scope, query, testIdAttribute), query);

@@ -44,6 +44,11 @@ export const HOME_PAGES: Record<string, PageRenderer> = {
     <button>Fenced action</button>
   </fieldset>
   <div hidden>Hidden content</div>
+  <svg data-testid="hidden-svg" width="40" height="40" style="visibility:hidden"><rect width="40" height="40"></rect></svg>
+  <div data-testid="zero-box" style="width:0;height:0;overflow:hidden"><span>Clipped away</span></div>
+  <details><summary>Folded</summary><button>Inside folded details</button></details>
+  <div data-testid="empty-contents" style="display:contents"></div>
+  <div data-testid="painted-contents" style="display:contents"><span>Laid out by contents</span></div>
   <button aria-expanded="false" id="menu" onclick="this.setAttribute('aria-expanded', this.getAttribute('aria-expanded') === 'true' ? 'false' : 'true')">Menu</button>
 
   <ul data-testid="items">

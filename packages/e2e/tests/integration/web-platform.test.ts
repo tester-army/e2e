@@ -45,6 +45,16 @@ test('deterministic queries and reads', async ({ app, screen, web }) => {
   await expect(screen.getByText('Never rendered')).not.toBeAttached();
   expect(await screen.getByText('Hidden content').isHidden()).toBe(true);
   expect(await screen.getByText('Never rendered').isHidden()).toBe(true);
+  await expect(screen.getByTestId('hidden-svg')).toBeHidden();
+  await expect(screen.getByTestId('zero-box')).toBeHidden();
+  await expect(screen.getByRole('button', { name: 'Inside folded details' })).toBeHidden();
+  await expect(screen.getByTestId('empty-contents')).toBeHidden();
+  await expect(screen.getByTestId('painted-contents')).toBeVisible();
+  expect(await screen.getByTestId('hidden-svg').isVisible()).toBe(false);
+  expect(await screen.getByTestId('zero-box').isVisible()).toBe(false);
+  expect(await screen.getByRole('button', { name: 'Inside folded details' }).isVisible()).toBe(false);
+  expect(await screen.getByTestId('empty-contents').isVisible()).toBe(false);
+  expect(await screen.getByTestId('painted-contents').isVisible()).toBe(true);
   expect(await screen.getByRole('button', { name: 'Disabled action' }).isDisabled()).toBe(true);
   expect(await screen.getByRole('button', { name: 'Increment' }).isDisabled()).toBe(false);
 

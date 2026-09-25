@@ -49,9 +49,17 @@ async function rolesByTestId(): Promise<Map<string, SemanticNode>> {
 
 const PIXEL = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAAAAAAALAAAAAABAAEAAAIBRAA7';
 
+/**
+ * An empty block lays out to no height and is hidden, to the reader as to
+ * Playwright; the role fixtures below are about roles, so their empty
+ * elements get a box.
+ */
+const EMPTY_BOXES = '[data-testid]:empty { min-width: 1px; min-height: 1px }';
+
 describe('role mapping', () => {
   it('reports ARIA img as image, alongside the img element', async () => {
     await page.setContent(`
+      <style>${EMPTY_BOXES}</style>
       <img src="${PIXEL}" alt="Logo" data-testid="picture">
       <div role="img" aria-label="Chart" data-testid="drawn"></div>
       <svg role="img" aria-label="Icon" width="10" height="10" data-testid="vector"></svg>
@@ -69,6 +77,7 @@ describe('role mapping', () => {
 
   it('passes the composite widget roles through from role attributes and names their items from content', async () => {
     await page.setContent(`
+      <style>${EMPTY_BOXES}</style>
       <div role="tablist" aria-label="Filter" data-testid="tablist">
         <button role="tab" aria-selected="true" data-testid="tab">All</button>
       </div>
@@ -135,6 +144,7 @@ describe('role mapping', () => {
 
   it('derives the vocabulary roles from HTML semantics the way HTML-AAM does', async () => {
     await page.setContent(`
+      <style>${EMPTY_BOXES}</style>
       <header data-testid="page-header">Site</header>
       <nav data-testid="nav"></nav>
       <main data-testid="main">

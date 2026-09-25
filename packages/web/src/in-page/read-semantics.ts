@@ -269,16 +269,16 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     readonly visited: Set<Element>;
   }
 
+  /** Computed style of any element, SVG included, or undefined in a document with no view. */
+  const styleOf = (el: Element): CSSStyleDeclaration | undefined =>
+    el.ownerDocument.defaultView?.getComputedStyle(el);
+
   /** A walk from the top, with the elements that may not contribute again already visited. */
   const nameWalk = (visited: readonly Element[]): NameWalk => ({
     inReference: false,
     hiddenAllowed: false,
     visited: new Set(visited),
   });
-
-  /** Computed style of any element, SVG included: what the name computation's hidden and block tests read. */
-  const nameStyleOf = (el: Element): CSSStyleDeclaration | undefined =>
-    el.ownerDocument.defaultView?.getComputedStyle(el);
 
   /** True for a subtree the name computation drops: aria-hidden, or hidden by style as innerText leaves it out. */
   const isNameHidden = (el: Element, style: CSSStyleDeclaration | undefined): boolean =>
@@ -325,7 +325,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     for (const id of ids.split(/\s+/)) {
       const target = referencedElementOf(el, id);
       if (target === null) continue;
-      const name = contentNameOf(target, nameStyleOf(target), {
+      const name = contentNameOf(target, styleOf(target), {
         inReference: true,
         hiddenAllowed: isReferenceHidden(target),
         visited: walk.visited,
@@ -379,7 +379,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
         continue;
       }
       if (!(child instanceof Element)) continue;
-      const style = nameStyleOf(child);
+      const style = styleOf(child);
       const token = contentNameOf(child, style, walk);
       const block = child.tagName === 'BR' || (style?.display ?? 'inline') !== 'inline';
       out += block ? ` ${token} ` : token;
@@ -395,7 +395,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    * is inside it.
    */
   const nameTextOf = (el: Element): string => {
-    if (isNameHidden(el, nameStyleOf(el))) return '';
+    if (isNameHidden(el, styleOf(el))) return '';
     if (NAME_OPAQUE_TAGS.has(el.tagName)) return '';
     return childrenNameOf(el, nameWalk([el])).replace(/\s+/g, ' ').trim();
   };
@@ -520,10 +520,6 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     return null;
   };
 
-  /** Computed style, or undefined for a node the view cannot style. */
-  const styleOf = (el: Element): CSSStyleDeclaration | undefined =>
-    el instanceof HTMLElement ? el.ownerDocument.defaultView?.getComputedStyle(el) : undefined;
-
   /**
    * Closed shadow roots the context's init script recorded, when it ran in this
    * document. Same literal as `CLOSED_SHADOW_ROOTS_KEY`; the reader cannot import it.
@@ -573,18 +569,63 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     return text === '' ? null : text;
   };
 
+  /** True for a text node that lays out to a box a person can see. */
+  const isVisibleText = (node: Node): boolean => {
+    const range = node.ownerDocument!.createRange();
+    range.selectNode(node);
+    const rect = range.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  };
+
+  /**
+   * True for content a closed `<details>` folds away: anything under it that
+   * is not in its `<summary>`. The nearest of the two decides, so a summary's
+   * own controls stay visible while the closed body's do not.
+   */
+  const isInClosedDetails = (el: Element): boolean => {
+    const nearest = el.closest('details,summary');
+    return nearest !== null && nearest !== el && nearest instanceof HTMLDetailsElement && !nearest.open;
+  };
+
+  /**
+   * The visibility Playwright's `toBeHidden` reads, so a semantic `hidden`
+   * state and the platform's own filter agree: `aria-hidden` on the element,
+   * `display: none` or a `visibility` other than `visible` on any element (an
+   * SVG included), content a closed `<details>` folds away, and a box with no
+   * width or no height. `display: contents` generates no box of its own while
+   * every child still paints (Shopify's one-page checkout form is one), so
+   * such an element is shown when some child element or text is, and hidden
+   * when nothing under it is.
+   */
   const isHidden = (el: Element, style = styleOf(el)): boolean => {
     if (el.getAttribute('aria-hidden') === 'true') return true;
-    if (!(el instanceof HTMLElement)) return el.getClientRects().length === 0;
-    if (style !== undefined && (style.visibility === 'hidden' || style.display === 'none')) {
+    if (style === undefined) return true;
+    if (style.display === 'contents') {
+      for (let child = el.firstChild; child !== null; child = child.nextSibling) {
+        if (child instanceof Element && !isHidden(child)) return false;
+        if (child.nodeType === Node.TEXT_NODE && isVisibleText(child)) return false;
+      }
       return true;
     }
-    // `display: contents` generates no box of its own while every child still
-    // paints (Shopify's one-page checkout form is one), so an empty rect list
-    // says nothing about what a person sees; the children decide for themselves.
-    if (style !== undefined && style.display === 'contents') return false;
-    return el.getClientRects().length === 0;
+    if (style.display === 'none' || style.visibility !== 'visible') return true;
+    if (isInClosedDetails(el)) return true;
+    const rect = el.getBoundingClientRect();
+    return !(rect.width > 0 && rect.height > 0);
   };
+
+  /**
+   * The part of `isHidden` that holds for everything under the element too,
+   * which is what lets the tree walk stop there. A box with no size is not in
+   * it: a zero-height `<html>` or wrapper still shows the fixed, absolute, and
+   * overflowing descendants laid out past its edges, so the walk goes on
+   * through it and only the element itself stays unlisted.
+   */
+  const hidesSubtree = (el: Element, style: CSSStyleDeclaration | undefined): boolean =>
+    el.getAttribute('aria-hidden') === 'true' ||
+    style === undefined ||
+    style.display === 'none' ||
+    (style.display !== 'contents' && style.visibility !== 'visible') ||
+    isInClosedDetails(el);
 
   /** Smallest side, in CSS pixels, an empty box must have to be worth reporting. */
   const MIN_BOX_SIDE = 12;
@@ -954,7 +995,8 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     // Read once and share: `isHidden` and the empty-box test both need it, and
     // this walk already pays one `getComputedStyle` per node.
     const style = styleOf(el);
-    if (isHidden(el, style)) return;
+    if (hidesSubtree(el, style)) return;
+    const hidden = isHidden(el, style);
 
     // Iframes are emitted as boundary nodes and never entered: their content
     // lives in another document, which the engine captures per frame and
@@ -977,7 +1019,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     let nextParent = parent;
     // An empty painted rectangle carries no semantics to be "interesting" by and
     // is still something a person sees and aims at; `roleOf` names it `box`.
-    if (isInteresting(el) || isVisibleEmptyBox(el)) {
+    if (!hidden && (isInteresting(el) || isVisibleEmptyBox(el))) {
       if (nodes.length >= maxNodes) {
         truncated = true;
         return;
@@ -1018,7 +1060,9 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     }
   };
 
-  include(element, -1);
+  // The root is the document the screen shows, listed whatever its own box: a
+  // page of fixed controls leaves `<html>` with no height of its own.
+  nodes[include(element, -1)]!.states.hidden = false;
   for (const child of Array.from(element.children)) walk(child, 0);
 
   return { nodes, elements, ids, truncated } as SemanticResult<Mode>;
