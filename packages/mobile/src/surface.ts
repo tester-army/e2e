@@ -41,7 +41,7 @@ import {
 } from 'e2e/engine';
 import { isNoSessionApp, isSnapshotPresentationFailure, runCommand, staleOr } from './errors.ts';
 import { installedApp, type InstalledApp, type RawInstallResult } from './install.ts';
-import { pointerInteraction } from './actions.ts';
+import { pointerInteraction, DEFAULT_LONG_PRESS_MS } from './actions.ts';
 import { resolveExpression } from './locate.ts';
 import {
   isWithin,
@@ -954,11 +954,7 @@ export class AgentDeviceSurface {
         case 'doubleTap':
           return client.interactions.press({ ...this.actionTarget(target), count: 2, ...settle });
         case 'longPress':
-          return client.interactions.longPress({
-            ...this.actionTarget(target),
-            ...settle,
-            ...(action.durationMs === undefined ? {} : { durationMs: action.durationMs }),
-          });
+          return client.interactions.longPress({ ...this.actionTarget(target), ...settle, durationMs: action.durationMs ?? DEFAULT_LONG_PRESS_MS });
         case 'hover':
           return client.interactions.hover(this.actionTarget(target));
         case 'fill':

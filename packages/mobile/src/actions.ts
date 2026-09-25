@@ -11,6 +11,16 @@ import { unsupported } from './support.ts';
  * declared kind one node cannot take (`check` on a toggle whose state is
  * unknown, `focus` on anything but a field).
  */
+/**
+ * How long a `longPress` holds when the caller names no duration: the agent's
+ * `long_press` tool and a test's bare `longPress()`. agent-device's own
+ * default is under half a second, shorter than a React Native `Pressable`'s
+ * `delayLongPress` of 500 ms, let alone the longer thresholds apps set, so a
+ * default hold there registers as a tap. One second clears them the way
+ * Detox's default does; a test that needs more passes `duration`.
+ */
+export const DEFAULT_LONG_PRESS_MS = 1_000;
+
 export const DEVICE_ACTIONS: readonly LocatorActionKind[] = [
   'tap',
   'doubleTap',
@@ -59,11 +69,7 @@ export function pointerInteraction(
     case 'doubleTap':
       return client.interactions.press({ ...at, count: 2, ...settle });
     case 'longPress':
-      return client.interactions.longPress({
-        ...at,
-        ...settle,
-        ...(action.durationMs === undefined ? {} : { durationMs: action.durationMs }),
-      });
+      return client.interactions.longPress({ ...at, ...settle, durationMs: action.durationMs ?? DEFAULT_LONG_PRESS_MS });
     case 'swipeTo':
       return client.interactions.swipe({ from: at, to: { x: action.target.x, y: action.target.y } });
     case 'secondaryTap':
