@@ -7,7 +7,7 @@ let browser: Browser;
 beforeAll(async () => { browser = await chromium.launch(); });
 afterAll(async () => { await browser.close(); });
 
-it.each(['stringify', 'bound-stringify', 'object-toJSON', 'array-toJSON'] as const)('captures live refs when the page overrides %s', async (override) => {
+it.each(['stringify', 'bound-stringify', 'object-toJSON', 'array-toJSON', 'function-toString'] as const)('captures live refs when the page overrides %s', async (override) => {
   const page = await browser.newPage();
   const handles = new Map<string, ElementHandle<Element>>();
   try {
@@ -18,6 +18,9 @@ it.each(['stringify', 'bound-stringify', 'object-toJSON', 'array-toJSON'] as con
       else if (kind === 'bound-stringify') {
         // oxlint-disable-next-line no-extra-bind -- Bound replacements stringify like anonymous native functions.
         JSON.stringify = (() => 'not JSON').bind(null);
+      } else if (kind === 'function-toString') {
+        // oxlint-disable-next-line no-extend-native -- Serializer detection must survive application overrides too.
+        Function.prototype.toString = () => { throw new Error('disabled'); };
       } else {
         // oxlint-disable-next-line no-extend-native -- The fixture reproduces application prototype overrides.
         Object.defineProperty(kind === 'object-toJSON' ? Object.prototype : Array.prototype, 'toJSON', {

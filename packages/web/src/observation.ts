@@ -147,13 +147,17 @@ async function captureInto(
     const data = { nodes: observation.nodes, ids: observation.ids, truncated: observation.truncated };
     // Application serializers may transform valid metadata as well as throw.
     // Keep Playwright's structured transfer when the page changes JSON behavior.
-    if (
-      typeof JSON.stringify !== 'function' ||
-      !/^function stringify\(\)\s*\{\s*\[native code\]\s*\}$/.test(Function.prototype.toString.call(JSON.stringify)) ||
-      'toJSON' in Object.prototype ||
-      'toJSON' in Array.prototype
-    ) return data;
-    return JSON.stringify(data);
+    try {
+      if (
+        typeof JSON.stringify === 'function' &&
+        /^function stringify\(\)\s*\{\s*\[native code\]\s*\}$/.test(Function.prototype.toString.call(JSON.stringify)) &&
+        !('toJSON' in Object.prototype) &&
+        !('toJSON' in Array.prototype)
+      ) return JSON.stringify(data);
+    } catch {
+      // A page can also replace the intrinsics used to detect its serializer.
+    }
+    return data;
   }));
   const decoded = typeof metadata === 'string'
     ? JSON.parse(metadata) as Omit<ReturnType<typeof readDocumentSemanticsFunction>, 'elements'>
