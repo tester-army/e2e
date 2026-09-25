@@ -468,7 +468,7 @@ export async function settleObservation<T>(
     if (next === undefined) return value;
     const stable = next === shape;
     shape = next;
-    if (stable && !transitional(value)) break;
+    if (stable && (options.changedFrom === undefined || !transitional(value))) break;
   }
   return value;
 }
@@ -479,7 +479,7 @@ export async function settleObservation<T>(
  * the new one arriving. Acting or judging on it would be acting on nothing.
  */
 export function isTransitionalObservation(observation: AgentObservation): boolean {
-  return observation.kind === 'semantic' && observation.nodes.size <= 1;
+  return observation.kind === 'semantic' && observation.tree.role === 'document' && observation.nodes.size <= 1;
 }
 
 function indexNodes(

@@ -1,6 +1,6 @@
 import { assert, describe, expect, it, vi } from 'vitest';
 import type { Observation, SemanticNode } from '../../src/engine/surface.ts';
-import { interactiveNodeCount, observationShape, prepareObservation, settleObservation } from '../../src/agent/observation.ts';
+import { interactiveNodeCount, isTransitionalObservation, observationShape, prepareObservation, settleObservation } from '../../src/agent/observation.ts';
 import { createRedactor } from '../../src/internal/redact.ts';
 
 function node(id: string, extra: Partial<SemanticNode> = {}): SemanticNode {
@@ -410,6 +410,16 @@ describe('settleObservation', () => {
     expect(source.calls()).toBe(3);
   });
 
+  it('accepts a stable empty screen when no action is pending', async () => {
+    const source = scripted(['', '', 'new']);
+    const value = await settleObservation(source.capture, (v) => v, clock, {
+      ...fast,
+      transitional: (v) => v === '',
+    });
+    expect(value).toBe('');
+    expect(source.calls()).toBe(2);
+  });
+
   it('counts a slow first capture toward the change window, then still checks stability', async () => {
     vi.useFakeTimers();
     try {
@@ -489,6 +499,16 @@ describe('settleObservation', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('isTransitionalObservation', () => {
+  it('recognizes an empty document without treating a lone control as an empty screen', () => {
+    const prepare = (tree: SemanticNode) => prepareObservation(observation(tree), { redact: NO_REDACT, maxBytes: 4_096 });
+    expect(isTransitionalObservation(prepare(node('root', { role: 'document' })))).toBe(true);
+    expect(isTransitionalObservation(prepare(node('root', { role: 'button', name: 'Continue' })))).toBe(false);
+    expect(isTransitionalObservation(prepare(node('root', { role: 'textbox', name: 'Password', states: { secure: true } })))).toBe(false);
+    expect(isTransitionalObservation(prepare(node('root', { role: 'document', children: [node('child', { role: 'text', text: 'Ready' })] })))).toBe(false);
   });
 });
 
