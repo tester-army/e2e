@@ -8,6 +8,7 @@
  * teardown, before the session closes.
  */
 
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -58,6 +59,20 @@ const WRONG_EXPECTATION_TEST = `import { test, expect } from 'e2e';
 test('expects the wrong count', async ({ app, screen }) => {
   await app.open('/');
   await expect(screen.getByRole('button')).toHaveCount(2, { timeout: 200 });
+});
+`;
+
+/** Two ids that once shared an artifact directory: the space in the first title percent-encodes to `%20`, and both `%20` and `_20` sanitize to `_20`. */
+const COLLIDING_TITLES_TEST = `import { test } from 'e2e';
+
+test('artifact a', async ({ app, screen }) => {
+  await app.open('/');
+  await screen.getByRole('button', { name: 'Submit now' }).tap();
+});
+
+test('artifact_20a', async ({ app, screen }) => {
+  await app.open('/');
+  await screen.getByRole('button', { name: 'Submit now' }).tap();
 });
 `;
 
@@ -151,6 +166,35 @@ describe('failure evidence', () => {
         expect(attempt.failure?.screenshot).toBeUndefined();
         expect(attempt.failure?.candidates).toBeUndefined();
         expect(fake.operations.some((operation) => operation.method.startsWith('artifacts.screenshot('))).toBe(false);
+      } finally {
+        project.cleanup();
+      }
+    },
+    30_000,
+  );
+
+  it(
+    'keeps the evidence of two tests whose ids sanitize to the same directory name apart, each report digest matching its file',
+    async () => {
+      const fake = createFakeEngine({ artifacts: true, locate: () => [] });
+      const { outcome, project } = await runProject({ 'tests/collide.e2e.ts': COLLIDING_TITLES_TEST }, { appUrl: FAKE_APP_URL, config: fakeConfig(fake) });
+      try {
+        assertValidReport(outcome.report);
+        const evidence = ['artifact a', 'artifact_20a'].map((title) => {
+          const attempt = reported(outcome, title).attempts.at(-1)!;
+          expect(attempt.status).toBe('failed');
+          const screen = attempt.artifacts.find((artifact) => artifact.id === attempt.failure?.screen)!;
+          const shot = attempt.artifacts.find((artifact) => artifact.id === attempt.failure?.screenshot)!;
+          return { screen, shot };
+        });
+        const [first, second] = evidence as [(typeof evidence)[number], (typeof evidence)[number]];
+        expect(first.screen.path).not.toBe(second.screen.path);
+        expect(first.shot.path).not.toBe(second.shot.path);
+        for (const artifact of [first.screen, first.shot, second.screen, second.shot]) {
+          const file = path.join(project.dir, '.e2e', 'artifacts', artifact.path!);
+          expect(existsSync(file)).toBe(true);
+          expect(createHash('sha256').update(readFileSync(file)).digest('hex')).toBe(artifact.sha256);
+        }
       } finally {
         project.cleanup();
       }

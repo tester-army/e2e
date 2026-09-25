@@ -743,8 +743,8 @@ describe('markdownReporter', () => {
     const pages = readdirSync(path.join(root, '.e2e', 'failures'));
     expect(pages).toHaveLength(1);
     const [name] = pages;
-    // The file and title as one path segment, cut to length, then the result id's first characters.
-    expect(name).toMatch(/^tests_members\.e2e\.ts-members-an_email_invitation_is_accepted_by_the_invited_account_only-[A-Za-z0-9-]{1,8}\.md$/);
+    // The file and title as one path segment (rewritten into the safe alphabet, so it ends in the segment digest), then the result id's first characters.
+    expect(name).toMatch(/^tests_members\.e2e\.ts-members-an_email_invitation_is_accepted_by_the_invited_account_only-[0-9a-f]{8}-[A-Za-z0-9-]{1,8}\.md$/);
     const summary = readFileSync(path.join(root, '.e2e', 'summary.md'), 'utf8');
     expect(summary).toContain(`Details: \`.e2e/failures/${name}\``);
     const text = readFileSync(path.join(root, '.e2e', 'failures', name!), 'utf8');
