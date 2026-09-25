@@ -485,12 +485,29 @@ function placeWithin(relocated: Relocated, planned: Extract<PlannedCall, { kind:
     .map((node) => usableBox(node.rect))
     .filter((box): box is Box => box !== undefined && containsPoint(box, planned.point));
   if (containing.length === 1) return inside(containing[0]!);
-  // Several look-alikes hold the point: a host view and the view inside it,
-  // a group inside a group, an anonymous container among its kind. They
-  // cannot be disjoint, since one point lies in all of them, so whichever is
-  // the recorded node, the recorded point on a viewport of the recorded size
-  // names the same pixel, and it is acted on as a bare point would be.
-  return containing.length > 1 ? planned.point : undefined;
+  // Several look-alikes hold the point and nest: a host view and the view
+  // inside it, a group inside a group, an anonymous container among its
+  // kind. Whichever of them is the recorded node, the recorded point on a
+  // viewport of the recorded size names the same pixel, and it is acted on
+  // as a bare point would be. Siblings that merely overlap under the point
+  // (two same-named controls stacked, and which one is on top may have
+  // changed) stay ambiguous and hand off.
+  return containing.length > 1 && nested(containing) ? planned.point : undefined;
+}
+
+/** Whether the boxes form one chain of containers, each holding the next smaller one, rather than siblings that overlap. */
+function nested(boxes: readonly Box[]): boolean {
+  const byArea = boxes.toSorted((a, b) => a.width * a.height - b.width * b.height);
+  return byArea.every((box, index) => index === 0 || containsBox(box, byArea[index - 1]!));
+}
+
+function containsBox(outer: Box, inner: Box): boolean {
+  return (
+    inner.x >= outer.x &&
+    inner.y >= outer.y &&
+    inner.x + inner.width <= outer.x + outer.width &&
+    inner.y + inner.height <= outer.y + outer.height
+  );
 }
 
 function usableBox(rect: SemanticNode['rect']): Box | undefined {

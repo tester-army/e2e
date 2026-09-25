@@ -510,6 +510,16 @@ describe('replayTrace: bare-point taps', () => {
     expect(points).toEqual([{ x: 300, y: 60 }, { x: 300, y: 60 }]);
   });
 
+  it('hands off when the look-alikes holding the point merely overlap instead of nesting, since the one on top may have changed', async () => {
+    const lower: SemanticNode = { ref: { id: 'a', revision: 'r1' }, role: 'img', name: 'Map', rect: { x: 0, y: 0, width: 320, height: 200 } };
+    const upper: SemanticNode = { ref: { id: 'b', revision: 'r1' }, role: 'img', name: 'Map', rect: { x: 280, y: 0, width: 200, height: 200 } };
+    const within = { target: { role: 'img', name: 'Map' }, fx: 0.5, fy: 0.5 };
+    const host = makeHost({ nodes: [lower, upper] });
+    const outcome = await replayTrace(host, trace([{ ...pin, within }]));
+    expect(outcome).toMatchObject({ completed: false, executed: 0, stopReason: 'target-ambiguous' });
+    expect(host.calls).not.toContain('tapAt');
+  });
+
   it('hands off among look-alikes when the point settles nothing or the viewport changed', async () => {
     const left: SemanticNode = { ref: { id: 'a', revision: 'r1' }, role: 'img', name: 'Map', rect: { x: 0, y: 0, width: 200, height: 200 } };
     const right: SemanticNode = { ref: { id: 'b', revision: 'r1' }, role: 'img', name: 'Map', rect: { x: 200, y: 0, width: 200, height: 200 } };
