@@ -105,7 +105,7 @@ describe('the grammar tools have closed schemas', () => {
     const contradictory = { status: 'passed', summary: 'done', errorCode: 'ACTION_FAILED' };
     expect(schema.safeParse(contradictory).success).toBe(true);
     const options = { toolCallId: 'verdict', messages: [], context: undefined };
-    expect(await passed.tool.execute!(contradictory, options)).toBe('Step concluded; dropped errorCode ACTION_FAILED on a passed verdict.');
+    expect(await passed.tool.execute!(contradictory, options)).toBe('Step concluded as passed; the errorCode ACTION_FAILED you sent does not apply to a passed verdict and was ignored.');
     expect(passed.verdict()).toEqual({ status: 'passed', summary: 'done' });
     const failed = createVerdictTool();
     expect(await failed.tool.execute!({ status: 'failed', summary: 'done', errorCode: 'ACTION_FAILED' }, options)).toBe('Step concluded.');

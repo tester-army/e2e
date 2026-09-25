@@ -393,7 +393,7 @@ describe('tool calls outside the vocabulary', () => {
       expect(step.metrics!.modelCalls).toBe(2);
       const verdictTurn = step.turns!.at(-1)!;
       expect(verdictTurn.calls).toEqual(['complete_step({"status":"passed","summary":"the counter shows 1","errorCode":"ACTION_FAILED"})']);
-      expect(verdictTurn.outcome).toBe('[complete_step] Step concluded; dropped errorCode ACTION_FAILED on a passed verdict.');
+      expect(verdictTurn.outcome).toBe('[complete_step] Step concluded as passed; the errorCode ACTION_FAILED you sent does not apply to a passed verdict and was ignored.');
     } finally {
       project.cleanup();
     }

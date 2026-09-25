@@ -185,7 +185,7 @@ export function createVerdictTool(): VerdictTool {
           : { errorCode: input.errorCode }),
       };
       return input.status === 'passed' && input.errorCode !== undefined
-        ? `Step concluded; dropped errorCode ${input.errorCode} on a passed verdict.`
+        ? `Step concluded as passed; the errorCode ${input.errorCode} you sent does not apply to a passed verdict and was ignored.`
         : 'Step concluded.';
     },
   });
