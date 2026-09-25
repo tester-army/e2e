@@ -1093,6 +1093,28 @@ describe('device fixture', () => {
       expect(h.fake.calls.filter((call) => call.method === 'interactions.swipe')).toHaveLength(1);
     });
 
+    it('retries a sparse capture instead of reading it as a dismissed keyboard', async () => {
+      const h = harness();
+      await openAttempt(h);
+      await observed(h, 'Back');
+      const device = fixture(h);
+      h.fake.respond('command.keyboard', NO_DISMISS_KEY);
+      const sparse = { nodes: [{ ref: '@e1', type: 'application' }], snapshotQuality: { state: 'sparse' } };
+      captures(h, [KEYBOARD_UP, sparse, KEYBOARD_UP, KEYBOARD_GONE]);
+      const before = h.fake.calls.length;
+      await device.dismissKeyboard();
+      // The sparse tree after the first drag is retried, not trusted: the keyboard it hid is still up, so the second drag follows.
+      expect(h.fake.methods().slice(before)).toEqual([
+        'command.keyboard',
+        'capture.snapshot',
+        'interactions.swipe',
+        'capture.snapshot',
+        'capture.snapshot',
+        'interactions.swipe',
+        'capture.snapshot',
+      ]);
+    });
+
     it('presses Continue on the simulator typing tip before it drags', async () => {
       const h = harness();
       await openAttempt(h);

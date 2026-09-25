@@ -329,12 +329,7 @@ export class AgentDeviceSurface {
    */
   async command<T>(label: string, run: (client: AgentDeviceClient) => Promise<T>, signal?: AbortSignal): Promise<T> {
     const client = this.requireClient();
-    const startedAt = Date.now();
-    try {
-      return await runCommand(label, () => this.track(run(client)), signal ?? new AbortController().signal, this.where);
-    } finally {
-      console.error(`[timing] ${label} ${Date.now() - startedAt}ms`);
-    }
+    return runCommand(label, () => this.track(run(client)), signal ?? new AbortController().signal, this.where);
   }
 
   /**
@@ -601,12 +596,12 @@ export class AgentDeviceSurface {
     return { app: identity ?? result.app, ...(identity === undefined ? {} : { bundleId: identity }) };
   }
 
-  private async snapshot(operation: OperationContext, interactiveOnly: boolean): Promise<RawSnapshot> {
+  private async snapshot(signal: AbortSignal, interactiveOnly: boolean): Promise<RawSnapshot> {
     let last: RawSnapshot = {};
     for (const backoffMs of SPARSE_RETRY_BACKOFF_MS) {
-      if (backoffMs > 0) await sleep(backoffMs, operation.signal);
-      if (operation.signal.aborted) throw new EngineError('CANCELLED', 'snapshot cancelled', { retryable: false });
-      last = await this.capture(operation, interactiveOnly);
+      if (backoffMs > 0) await sleep(backoffMs, signal);
+      if (signal.aborted) throw new EngineError('CANCELLED', 'snapshot cancelled', { retryable: false });
+      last = await this.capture(signal, interactiveOnly);
       if (last.appBundleId !== undefined || last.appName !== undefined) {
         this.appIdentity = last.appBundleId ?? last.appName;
       }
@@ -621,13 +616,13 @@ export class AgentDeviceSurface {
    * malformed graph). The check is per capture and a capture is a read, so
    * the retry is safe; a second failure is the runner's and propagates.
    */
-  private async capture(operation: OperationContext, interactiveOnly: boolean): Promise<RawSnapshot> {
+  private async capture(signal: AbortSignal, interactiveOnly: boolean): Promise<RawSnapshot> {
     const take = (): Promise<RawSnapshot> =>
-      this.command('snapshot', (client) => client.capture.snapshot({ interactiveOnly }), operation.signal) as Promise<RawSnapshot>;
+      this.command('snapshot', (client) => client.capture.snapshot({ interactiveOnly }), signal) as Promise<RawSnapshot>;
     try {
       return await take();
     } catch (cause) {
-      if (operation.signal.aborted || !isSnapshotPresentationFailure(cause)) throw cause;
+      if (signal.aborted || !isSnapshotPresentationFailure(cause)) throw cause;
       return take();
     }
   }
@@ -639,7 +634,7 @@ export class AgentDeviceSurface {
    */
   private async snapshotOrEmpty(operation: OperationContext, interactiveOnly: boolean): Promise<RawSnapshot> {
     try {
-      return await this.snapshot(operation, interactiveOnly);
+      return await this.snapshot(operation.signal, interactiveOnly);
     } catch (cause) {
       if (!this.managesApp && cause instanceof EngineError && cause.code === 'INVALID_STATE') return { nodes: [] };
       throw cause;
@@ -1052,10 +1047,12 @@ export class AgentDeviceSurface {
    * your typing" tip, which sits over a keyboard the first time it appears,
    * goes through its Continue button first. A drag is a guess about what sits
    * at the centre, so the sequence stops the moment the keyboard is gone, and
-   * a keyboard that outlives both drags fails naming what does work.
+   * a keyboard that outlives both drags fails naming what does work. Each
+   * look is the observation's own capture, sparse-tree retries included: a
+   * one-node tree has no keys and would pass for a dismissed keyboard.
    */
   private async dismissKeyboardByGesture(signal: AbortSignal): Promise<void> {
-    let raw = await this.dismissKeyboardTip(await this.captureForKeyboard(signal), signal);
+    let raw = await this.dismissKeyboardTip(await this.snapshot(signal, false), signal);
     if (!keyboardShowing(raw)) return;
     const projected = projectSnapshot(raw.nodes ?? [], { mintId: () => 'keyboard' });
     const viewport = await this.viewportFor(projected, signal);
@@ -1066,7 +1063,7 @@ export class AgentDeviceSurface {
     ];
     for (const to of drags) {
       await this.command('keyboard.dismiss', (client) => client.interactions.swipe({ from: centre, to }), signal);
-      raw = await this.captureForKeyboard(signal);
+      raw = await this.snapshot(signal, false);
       if (!keyboardShowing(raw)) return;
     }
     throw new EngineError(
@@ -1090,15 +1087,7 @@ export class AgentDeviceSurface {
     const button = nodes.find((node) => node.label === 'Continue' && node.rect !== undefined && node.rect.y > tipTop);
     if (button?.rect === undefined) return raw;
     await this.command('keyboard.dismiss', (client) => client.interactions.press(centreOf(button.rect!)), signal);
-    return await this.captureForKeyboard(signal);
-  }
-
-  /** One full capture, read only for its keyboard fact and the keyboard's own elements. */
-  private async captureForKeyboard(signal: AbortSignal): Promise<RawSnapshot> {
-    const raw = (await this.command('snapshot', (client) => client.capture.snapshot({ interactiveOnly: false }), signal)) as RawSnapshot;
-    const keys = (raw.nodes ?? []).filter((n) => KEYBOARD_TYPES.has((n.type ?? '').toLowerCase()));
-    console.error(`[timing] keyboard fact ${JSON.stringify(raw.keyboard)} keys=${keys.length} nodes=${(raw.nodes ?? []).length} types=${[...new Set(keys.map((k) => k.type))].join(',')}`);
-    return raw;
+    return await this.snapshot(signal, false);
   }
 
   async back(operation: OperationContext): Promise<void> {
