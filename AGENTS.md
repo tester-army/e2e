@@ -31,6 +31,9 @@ descriptions and commit bodies; `git log` and `gh pr view` are the archive.
 
 ## Layout
 
+`packages/` holds what publishes to npm; `apps/` holds the private apps and
+suites that consume the built packages the way a user would.
+
 - `packages/e2e` — the published `e2e` package: SDK surface, runner, CLI,
   `e2e/engine` contract. Core knows the contract and never an engine's
   internals: no `Web`, `browser`, `page`, `route`, or `playwright` noun lives in
@@ -62,13 +65,13 @@ descriptions and commit bodies; `git log` and `gh pr view` are the archive.
   `e2e/engine` only: the semantics every engine must reproduce
   (error taxonomy, text and URL matching, assertion polling, JSON-value rules)
   are exported there, and there is no `e2e/internal` subpath.
-- `packages/testbed` (`@e2edev/testbed`, private) — dogfood project that
+- `apps/testbed` (`@e2edev/testbed`, private) — dogfood project that
   consumes the **built** packages like a real user would: the playground app
   where every runner feature (sessions, routes, downloads, frames, uploads,
   serial groups, the executor seams, verdict edge cases, the reporter under
   stress, `explore`) has a deterministic test. Hard UI surfaces belong to the
   benchmarks, not here.
-- `packages/web-benchmark` (`@e2edev/web-benchmark`, private) — a Next.js app of
+- `apps/web-benchmark` (`@e2edev/web-benchmark`, private) — a Next.js app of
   self-contained hard-surface scenarios (shadow DOM, canvas, iframes, native
   dialogs, planted bugs) at `/e/<slug>`, copied from the tester-army web
   benchmark, plus the e2e suites written against them (`tests/` and
@@ -79,7 +82,7 @@ descriptions and commit bodies; `git log` and `gh pr view` are the archive.
   like the mobile benchmark's: plain controls, one exercise per agent verb the
   hard scenarios never reach, with one agentic test per verb in
   `tests-agent/control-inventory.e2e.ts`.
-- `packages/mobile-benchmark` (`@e2edev/mobile-benchmark`, private) — an Expo
+- `apps/mobile-benchmark` (`@e2edev/mobile-benchmark`, private) — an Expo
   app of hard mobile surfaces (merged or hidden accessibility trees, native
   alerts over modals, keyboard-covered submits, virtualized lists, a WebView,
   OS permission and payment sheets), copied from the tester-army mobile
@@ -191,11 +194,11 @@ agents: `npx skills add tester-army/unbox-ai`). Start wide, then drill:
 
 ```bash
 AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed test:agent -- --ai-trace --no-cache
-npx unbox-ai runs packages/testbed/.e2e/ai-trace.json            # one line per agent step
-npx unbox-ai summary packages/testbed/.e2e/ai-trace.json --run 3 # one step: turns, tokens, caching
-npx unbox-ai tools packages/testbed/.e2e/ai-trace.json --run 3   # what the agent called, and how often
-npx unbox-ai event packages/testbed/.e2e/ai-trace.json 2 --run 3 # one turn's new messages
-npx unbox-ai compare packages/testbed/.e2e/ai-trace.json --run 3 --run 4 --trajectory
+npx unbox-ai runs apps/testbed/.e2e/ai-trace.json            # one line per agent step
+npx unbox-ai summary apps/testbed/.e2e/ai-trace.json --run 3 # one step: turns, tokens, caching
+npx unbox-ai tools apps/testbed/.e2e/ai-trace.json --run 3   # what the agent called, and how often
+npx unbox-ai event apps/testbed/.e2e/ai-trace.json 2 --run 3 # one turn's new messages
+npx unbox-ai compare apps/testbed/.e2e/ai-trace.json --run 3 --run 4 --trajectory
 ```
 
 This is how to debug an agentic step: a wrong node id, a loop guard firing, a
@@ -225,8 +228,8 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
   repeating or relying on any "not implemented yet" list — and fix the prose
   when you find it stale.
 - Committed recordings. The two benchmarks commit their agentic suites' trace
-  cache (`packages/web-benchmark/.e2e/cache/`,
-  `packages/mobile-benchmark/.e2e/cache/`; their `.gitignore`s leave it
+  cache (`apps/web-benchmark/.e2e/cache/`,
+  `apps/mobile-benchmark/.e2e/cache/`; their `.gitignore`s leave it
   tracked, the testbed's ignores its own, since fixture-app recordings are
   worth nothing to anyone). CI replays the entries read-only and calls the
   model for a step with no recording, so those suites gate a pull request at

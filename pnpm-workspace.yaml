@@ -1,5 +1,6 @@
 packages:
   - packages/*
+  - apps/*
   - docs
 
 # pnpm 12 refuses versions published less than a day ago by default. Exact pins

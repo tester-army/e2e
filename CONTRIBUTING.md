@@ -37,13 +37,15 @@ Fix the prose when you find it stale.
 
 ## Development workflow
 
-This project is a pnpm monorepo containing:
+This project is a pnpm monorepo. `packages/` holds what publishes to npm,
+`apps/` the private apps and suites that consume the built packages:
 
 - `packages/e2e`: the published `e2e` package (SDK, runner, CLI, engine contract)
 - `packages/web`: the published `@e2edev/web` browser engine
 - `packages/mobile`: the published `@e2edev/mobile` mobile engine
-- `packages/testbed`: private dogfood suite that consumes the built packages
-- `packages/web-benchmark`: private Next.js app of hard-surface scenarios plus the e2e suites written against them
+- `apps/testbed`: private dogfood suite that consumes the built packages
+- `apps/web-benchmark`: private Next.js app of hard-surface scenarios plus the e2e suites written against them
+- `apps/mobile-benchmark`: private Expo app of hard mobile surfaces plus the e2e suites written against them
 - `docs/`: the docs site, built with [Mintlify](https://mintlify.com)
 - `skills/e2e/`: the agent skill shipped with the package and installed by `e2e init`
 
@@ -109,10 +111,10 @@ If your change affects `e2e`, `@e2edev/web`, or
 pnpm changeset
 ```
 
-Changes limited to the testbed, the web benchmark, docs, or CI don't need one.
-`@e2edev/testbed` and `@e2edev/web-benchmark` are private and skipped entirely
-(`privatePackages: false`), so they never get a version bump, a changelog, or a
-git tag. Never hand-edit a package `version` or
+Changes limited to the apps (testbed, web benchmark, mobile benchmark), docs,
+or CI don't need one. Everything under `apps/` is private and skipped entirely
+(`privatePackages: false`), so none gets a version bump, a changelog, or a git
+tag. Never hand-edit a package `version` or
 `CHANGELOG.md`; `changesets/action` owns both.
 
 ## Releases

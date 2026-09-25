@@ -1,6 +1,6 @@
 # @e2edev/testbed
 
-Dogfood workspace for the [`e2e`](../e2e) runner: a real project consuming the
+Dogfood workspace for the [`e2e`](../../packages/e2e) runner: a real project consuming the
 built `e2e` package exactly like a user would, against playground apps we
 control. This is where every runner feature has a deterministic test. Hard UI
 surfaces live in the benchmarks (`web-benchmark`, `mobile-benchmark`), not

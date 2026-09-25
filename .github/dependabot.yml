@@ -13,7 +13,7 @@ updates:
         dependency-type: development
         patterns:
           - '*'
-    # packages/mobile-benchmark tracks Expo SDK 57; these move together by hand with `npx expo install --fix`.
+    # apps/mobile-benchmark tracks Expo SDK 57; these move together by hand with `npx expo install --fix`.
     ignore:
       - dependency-name: expo
       - dependency-name: 'expo-*'

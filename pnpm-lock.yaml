@@ -138,6 +138,141 @@ importers:
         specifier: 4.6.1
         version: 4.6.1
 
+  apps/mobile-benchmark:
+    dependencies:
+      '@react-navigation/bottom-tabs':
+        specifier: 7.19.2
+        version: 7.19.2(@react-navigation/native@7.4.1(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3))(react-native-safe-area-context@5.7.0(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3))(react-native-screens@4.26.2(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)
+      '@react-navigation/native':
+        specifier: 7.4.1
+        version: 7.4.1(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)
+      '@react-navigation/native-stack':
+        specifier: 7.19.2
+        version: 7.19.2(@react-navigation/native@7.4.1(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3))(react-native-safe-area-context@5.7.0(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3))(react-native-screens@4.26.2(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)
+      '@stripe/stripe-react-native':
+        specifier: 0.64.0
+        version: 0.64.0(expo@57.0.22)(react-native-webview@13.16.1(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)
+      expo:
+        specifier: 57.0.22
+        version: 57.0.22(@babel/core@7.29.7(supports-color@8.1.1))(@expo/dom-webview@57.0.1)(react-dom@19.3.0(react@19.2.3))(react-native-webview@13.16.1(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
+      expo-audio:
+        specifier: 57.0.5
+        version: 57.0.5(expo-asset@57.0.17(expo@57.0.22)(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2))(expo@57.0.22)(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)
+      expo-image-picker:
+        specifier: 57.0.19
+        version: 57.0.19(expo@57.0.22)
+      expo-modules-core:
+        specifier: 57.0.18
+        version: 57.0.18(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)
+      react:
+        specifier: 19.2.3
+        version: 19.2.3
+      react-native:
+        specifier: 0.86.2
+        version: 0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1)
+      react-native-safe-area-context:
+        specifier: 5.7.0
+        version: 5.7.0(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)
+      react-native-screens:
+        specifier: 4.26.2
+        version: 4.26.2(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)
+      react-native-webview:
+        specifier: 13.16.1
+        version: 13.16.1(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)
+    devDependencies:
+      '@e2edev/mobile':
+        specifier: workspace:*
+        version: link:../../packages/mobile
+      '@expo/fingerprint':
+        specifier: 0.20.13
+        version: 0.20.13(supports-color@8.1.1)
+      '@expo/repack-app':
+        specifier: 0.10.3
+        version: 0.10.3
+      '@types/node':
+        specifier: 26.6.2
+        version: 26.6.2
+      '@types/react':
+        specifier: 19.1.4
+        version: 19.1.4
+      ai:
+        specifier: 7.0.107
+        version: 7.0.107(zod@4.6.1)
+      e2e:
+        specifier: workspace:*
+        version: link:../../packages/e2e
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
+  apps/testbed:
+    dependencies:
+      '@e2edev/web':
+        specifier: workspace:*
+        version: link:../../packages/web
+      e2e:
+        specifier: workspace:*
+        version: link:../../packages/e2e
+    devDependencies:
+      '@ai-sdk/devtools':
+        specifier: 1.0.22
+        version: 1.0.22
+      '@types/node':
+        specifier: 26.6.2
+        version: 26.6.2
+      ai:
+        specifier: 7.0.107
+        version: 7.0.107(zod@4.6.1)
+      playwright:
+        specifier: 1.63.0
+        version: 1.63.0
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      zod:
+        specifier: 4.6.1
+        version: 4.6.1
+
+  apps/web-benchmark:
+    dependencies:
+      '@e2edev/web':
+        specifier: workspace:*
+        version: link:../../packages/web
+      e2e:
+        specifier: workspace:*
+        version: link:../../packages/e2e
+      next:
+        specifier: 16.3.5
+        version: 16.3.5(@babel/core@7.29.7(supports-color@8.1.1))(@types/node@26.6.2)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      react:
+        specifier: 19.3.0
+        version: 19.3.0
+      react-dom:
+        specifier: 19.3.0
+        version: 19.3.0(react@19.3.0)
+    devDependencies:
+      '@e2edev/github':
+        specifier: workspace:*
+        version: link:../../packages/github
+      '@types/node':
+        specifier: 26.6.2
+        version: 26.6.2
+      '@types/react':
+        specifier: 19.3.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: 19.3.0
+        version: 19.3.0(@types/react@19.3.0)
+      ai:
+        specifier: 7.0.107
+        version: 7.0.107(zod@4.6.1)
+      playwright:
+        specifier: 1.63.0
+        version: 1.63.0
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
   docs:
     devDependencies:
       '@e2edev/mobile':
@@ -284,101 +419,6 @@ importers:
         specifier: 5.0.1
         version: 5.0.1(@types/node@26.6.2)(vite@8.1.5(@types/node@26.6.2)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
 
-  packages/mobile-benchmark:
-    dependencies:
-      '@react-navigation/bottom-tabs':
-        specifier: 7.19.2
-        version: 7.19.2(@react-navigation/native@7.4.1(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3))(react-native-safe-area-context@5.7.0(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3))(react-native-screens@4.26.2(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)
-      '@react-navigation/native':
-        specifier: 7.4.1
-        version: 7.4.1(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)
-      '@react-navigation/native-stack':
-        specifier: 7.19.2
-        version: 7.19.2(@react-navigation/native@7.4.1(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3))(react-native-safe-area-context@5.7.0(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3))(react-native-screens@4.26.2(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)
-      '@stripe/stripe-react-native':
-        specifier: 0.64.0
-        version: 0.64.0(expo@57.0.22)(react-native-webview@13.16.1(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)
-      expo:
-        specifier: 57.0.22
-        version: 57.0.22(@babel/core@7.29.7(supports-color@8.1.1))(@expo/dom-webview@57.0.1)(react-dom@19.3.0(react@19.2.3))(react-native-webview@13.16.1(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2)
-      expo-audio:
-        specifier: 57.0.5
-        version: 57.0.5(expo-asset@57.0.17(expo@57.0.22)(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)(supports-color@8.1.1)(typescript@7.0.2))(expo@57.0.22)(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)
-      expo-image-picker:
-        specifier: 57.0.19
-        version: 57.0.19(expo@57.0.22)
-      expo-modules-core:
-        specifier: 57.0.18
-        version: 57.0.18(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)
-      react:
-        specifier: 19.2.3
-        version: 19.2.3
-      react-native:
-        specifier: 0.86.2
-        version: 0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1)
-      react-native-safe-area-context:
-        specifier: 5.7.0
-        version: 5.7.0(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)
-      react-native-screens:
-        specifier: 4.26.2
-        version: 4.26.2(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)
-      react-native-webview:
-        specifier: 13.16.1
-        version: 13.16.1(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)
-    devDependencies:
-      '@e2edev/mobile':
-        specifier: workspace:*
-        version: link:../mobile
-      '@expo/fingerprint':
-        specifier: 0.20.13
-        version: 0.20.13(supports-color@8.1.1)
-      '@expo/repack-app':
-        specifier: 0.10.3
-        version: 0.10.3
-      '@types/node':
-        specifier: 26.6.2
-        version: 26.6.2
-      '@types/react':
-        specifier: 19.1.4
-        version: 19.1.4
-      ai:
-        specifier: 7.0.107
-        version: 7.0.107(zod@4.6.1)
-      e2e:
-        specifier: workspace:*
-        version: link:../e2e
-      typescript:
-        specifier: 7.0.2
-        version: 7.0.2
-
-  packages/testbed:
-    dependencies:
-      '@e2edev/web':
-        specifier: workspace:*
-        version: link:../web
-      e2e:
-        specifier: workspace:*
-        version: link:../e2e
-    devDependencies:
-      '@ai-sdk/devtools':
-        specifier: 1.0.22
-        version: 1.0.22
-      '@types/node':
-        specifier: 26.6.2
-        version: 26.6.2
-      ai:
-        specifier: 7.0.107
-        version: 7.0.107(zod@4.6.1)
-      playwright:
-        specifier: 1.63.0
-        version: 1.63.0
-      typescript:
-        specifier: 7.0.2
-        version: 7.0.2
-      zod:
-        specifier: 4.6.1
-        version: 4.6.1
-
   packages/web:
     devDependencies:
       '@types/node':
@@ -402,46 +442,6 @@ importers:
       vitest:
         specifier: 5.0.1
         version: 5.0.1(@types/node@26.6.2)(vite@8.1.5(@types/node@26.6.2)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
-
-  packages/web-benchmark:
-    dependencies:
-      '@e2edev/web':
-        specifier: workspace:*
-        version: link:../web
-      e2e:
-        specifier: workspace:*
-        version: link:../e2e
-      next:
-        specifier: 16.3.5
-        version: 16.3.5(@babel/core@7.29.7(supports-color@8.1.1))(@types/node@26.6.2)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      react:
-        specifier: 19.3.0
-        version: 19.3.0
-      react-dom:
-        specifier: 19.3.0
-        version: 19.3.0(react@19.3.0)
-    devDependencies:
-      '@e2edev/github':
-        specifier: workspace:*
-        version: link:../github
-      '@types/node':
-        specifier: 26.6.2
-        version: 26.6.2
-      '@types/react':
-        specifier: 19.3.0
-        version: 19.3.0
-      '@types/react-dom':
-        specifier: 19.3.0
-        version: 19.3.0(@types/react@19.3.0)
-      ai:
-        specifier: 7.0.107
-        version: 7.0.107(zod@4.6.1)
-      playwright:
-        specifier: 1.63.0
-        version: 1.63.0
-      typescript:
-        specifier: 7.0.2
-        version: 7.0.2
 
 packages:
 

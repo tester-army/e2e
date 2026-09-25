@@ -72,7 +72,7 @@ Run one target or one file at a time from the package directory while
 authoring:
 
 ```bash
-cd packages/mobile-benchmark
+cd apps/mobile-benchmark
 node node_modules/e2e/dist/cli/bin.js run tests/login-form.e2e.ts --target ios-simulator
 ```
 

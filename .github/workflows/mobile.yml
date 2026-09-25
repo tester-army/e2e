@@ -56,7 +56,7 @@ jobs:
     timeout-minutes: 60
     defaults:
       run:
-        working-directory: packages/mobile-benchmark
+        working-directory: apps/mobile-benchmark
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
@@ -158,10 +158,10 @@ jobs:
         with:
           name: mobile-benchmark-ios-${{ matrix.suite }}
           path: |
-            packages/mobile-benchmark/.e2e/report.json
-            packages/mobile-benchmark/.e2e/artifacts
-            packages/mobile-benchmark/.e2e/agent/report.json
-            packages/mobile-benchmark/.e2e/agent/artifacts
+            apps/mobile-benchmark/.e2e/report.json
+            apps/mobile-benchmark/.e2e/artifacts
+            apps/mobile-benchmark/.e2e/agent/report.json
+            apps/mobile-benchmark/.e2e/agent/artifacts
           if-no-files-found: warn
           retention-days: 7
 
@@ -224,7 +224,7 @@ jobs:
           profile: pixel_7
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
           disable-animations: true
-          working-directory: packages/mobile-benchmark
+          working-directory: apps/mobile-benchmark
           script: $E2E_RUN || $E2E_RUN --last-failed
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
@@ -232,7 +232,7 @@ jobs:
           E2E_RUN: node node_modules/e2e/dist/cli/bin.js run --target android-emulator ${{ matrix.suite == 'agentic' && '--config e2e.agent.config.ts --artifacts .e2e/agent/artifacts' || '' }}
       - name: Failure screens
         if: ${{ failure() }}
-        working-directory: packages/mobile-benchmark
+        working-directory: apps/mobile-benchmark
         run: |
           find .e2e -path '*/failure/*' -name screen.txt | sort | head -n 12 | while read -r screen; do
             echo "::group::$screen"
@@ -247,9 +247,9 @@ jobs:
         with:
           name: mobile-benchmark-android-${{ matrix.suite }}
           path: |
-            packages/mobile-benchmark/.e2e/report.json
-            packages/mobile-benchmark/.e2e/artifacts
-            packages/mobile-benchmark/.e2e/agent/report.json
-            packages/mobile-benchmark/.e2e/agent/artifacts
+            apps/mobile-benchmark/.e2e/report.json
+            apps/mobile-benchmark/.e2e/artifacts
+            apps/mobile-benchmark/.e2e/agent/report.json
+            apps/mobile-benchmark/.e2e/agent/artifacts
           if-no-files-found: warn
           retention-days: 7

@@ -63,7 +63,7 @@ stopped. Run one file at a time from the package directory:
 
 ```bash
 pnpm --filter @e2edev/web-benchmark dev
-cd packages/web-benchmark
+cd apps/web-benchmark
 node node_modules/e2e/dist/cli/bin.js run tests/login-form.e2e.ts --headed
 ```
 

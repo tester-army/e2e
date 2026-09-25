@@ -60,13 +60,13 @@ jobs:
         with:
           name: web-benchmark-web
           path: |
-            packages/web-benchmark/.e2e/report.json
-            packages/web-benchmark/.e2e/artifacts
+            apps/web-benchmark/.e2e/report.json
+            apps/web-benchmark/.e2e/artifacts
           if-no-files-found: warn
           retention-days: 7
 
   # The agentic suite runs from the recordings committed under
-  # packages/web-benchmark/.e2e/cache (AGENTS.md, "Committed recordings") and
+  # apps/web-benchmark/.e2e/cache (AGENTS.md, "Committed recordings") and
   # needs the key for a step with none: a fork's pull request has no key, so
   # it is skipped rather than failed.
   web-agent:
@@ -110,7 +110,7 @@ jobs:
         with:
           name: web-benchmark-web-agent
           path: |
-            packages/web-benchmark/.e2e/report.json
-            packages/web-benchmark/.e2e/artifacts
+            apps/web-benchmark/.e2e/report.json
+            apps/web-benchmark/.e2e/artifacts
           if-no-files-found: warn
           retention-days: 7

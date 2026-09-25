@@ -32,7 +32,7 @@ inputs:
   working-directory:
     description: The Expo project.
     required: false
-    default: packages/mobile-benchmark
+    default: apps/mobile-benchmark
 outputs:
   app-path:
     description: Absolute path of the built app.
