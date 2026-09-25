@@ -167,18 +167,18 @@ class AsyncExpectationImpl implements AsyncExpectation {
     return spec.evaluableNode?.(sample.node) ?? true;
   }
 
-  /** The refusal a value matcher polls with; text and name matchers have none. */
-  private valueRefusal(def: TextMatcherDef): Pick<MatcherSpec, 'refuse'> {
-    return def.field === 'value' ? { refuse: (sample) => this.refuseSecureValue(sample) } : {};
+  /** The refusal a value or text matcher polls with; the name matcher has none, a name is never withheld. */
+  private secureRefusal(def: TextMatcherDef): Pick<MatcherSpec, 'refuse'> {
+    return def.field === 'name' ? {} : { refuse: (sample) => this.refuseSecure(sample) };
   }
 
   /**
-   * A value matcher never judges a secure field. The engine withholds its
-   * value, so a missing value there is redacted, not empty: judged against
-   * `''`, a filled password field would pass as cleared. Denied like
-   * `inputValue()`, with the same code and message.
+   * A value or text matcher never judges a secure field. The engine withholds
+   * both there, so a missing value or text is redacted, not empty: judged
+   * against `''`, a filled password field would pass as cleared. Denied like
+   * `inputValue()` and `textContent()`, with the same code and message.
    */
-  private refuseSecureValue(sample: Sample): void {
+  private refuseSecure(sample: Sample): void {
     const nodes = sample.node === null ? sample.nodes : [sample.node];
     if (nodes.some((node) => node.states?.secure === true)) {
       throw new ConfigurationError(
@@ -227,7 +227,7 @@ class AsyncExpectationImpl implements AsyncExpectation {
     return this.poll(
       {
         name,
-        ...this.valueRefusal(def),
+        ...this.secureRefusal(def),
         evaluableNode: (node) => readField(def, node) !== undefined,
         predicate: (sample) => {
           const actual = sample.node === null ? undefined : readField(def, sample.node);
@@ -263,7 +263,7 @@ class AsyncExpectationImpl implements AsyncExpectation {
     return this.poll(
       {
         name,
-        ...this.valueRefusal(def),
+        ...this.secureRefusal(def),
         wholeSet: 'read',
         predicate: (sample) =>
           sample.nodes.length === patterns.length &&

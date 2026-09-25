@@ -131,6 +131,21 @@ test('a negated toHaveValue on a secure field is denied', async ({ app, screen }
   await expect(screen.getByLabel('Password')).not.toHaveValue('');
 });
 
+test('toHaveText on a secure field is denied', async ({ app, screen }) => {
+  await app.open('/');
+  await expect(screen.getByLabel('Password')).toHaveText('');
+});
+
+test('a negated toHaveText on a secure field is denied', async ({ app, screen }) => {
+  await app.open('/');
+  await expect(screen.getByLabel('Password')).not.toHaveText('');
+});
+
+test('the list form of toHaveText over a secure field is denied', async ({ app, screen }) => {
+  await app.open('/');
+  await expect(screen.getByRole('textbox')).toHaveText(['', '', '', '']);
+});
+
 test('toHaveAttribute fails on an absent attribute', async ({ app, screen }) => {
   await app.open('/');
   await expect(screen.getByTestId('card')).toHaveAttribute('hidden', fast);
@@ -192,10 +207,13 @@ const FAILURES: [string, ...string[]][] = [
   ['a negated matcher fails while the condition holds', 'expect.not.toBeVisible failed', 'expected: not visible', 'observed: default states (match count 1)'],
 ];
 
-/** The value matchers a secure field refuses, negated too. */
+/** The value and text matchers a secure field refuses, negated and in list form too. */
 const SECURE_DENIALS = [
   'toHaveValue on a secure field is denied',
   'a negated toHaveValue on a secure field is denied',
+  'toHaveText on a secure field is denied',
+  'a negated toHaveText on a secure field is denied',
+  'the list form of toHaveText over a secure field is denied',
 ];
 
 const TITLES = [
@@ -238,7 +256,7 @@ describe('scripted engine: expect(locator) matchers', () => {
     }
   });
 
-  it('refuses to judge a secure field with POLICY_DENIED, negated too', () => {
+  it('refuses to judge a secure field with POLICY_DENIED, negated and in list form too', () => {
     for (const title of SECURE_DENIALS) {
       const attempt = failed(run.outcome, title, 'POLICY_DENIED', 'reading values from a secure field is denied');
       expect(attempt.error?.category, title).toBe('configuration');

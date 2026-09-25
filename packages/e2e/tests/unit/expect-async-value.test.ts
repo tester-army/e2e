@@ -75,9 +75,13 @@ describe('toHaveValue', () => {
     };
     await vexpect(expectFixture(locator).toHaveValue('')).rejects.toMatchObject(denied);
     await vexpect(expectFixture(locator).not.toHaveValue('')).rejects.toMatchObject(denied);
+    await vexpect(expectFixture(locator).toHaveText('')).rejects.toMatchObject(denied);
+    await vexpect(expectFixture(locator).not.toHaveText('')).rejects.toMatchObject(denied);
+    await vexpect(expectFixture(locator).toContainText('')).rejects.toMatchObject(denied);
+    await vexpect(expectFixture(locator).toHaveText([''])).rejects.toMatchObject(denied);
   });
 
-  it('still reads a secure field for states, name, and text matchers', async () => {
+  it('still reads a secure field for state and name matchers', async () => {
     const secure: SemanticNode = {
       ref: { id: 'node-1', revision: '' },
       role: 'textbox',

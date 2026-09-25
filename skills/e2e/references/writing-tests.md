@@ -242,9 +242,9 @@ expect.soft(await screen.getByTestId('tax').textContent()).toBe('$8.00');  // ke
 
 `toHaveText` compares the whole normalized text; `toContainText` a
 substring or a RegExp; `toHaveValue` compares a form control's value as it
-is, whitespace included, and fails on a node that has none; on a secure
-field such as a password input it is `POLICY_DENIED`, never a comparison
-against `''`. Both text matchers take a list to check every match at once:
+is, whitespace included, and fails on a node that has none. On a secure
+field such as a password input all three are `POLICY_DENIED`, never a
+comparison against `''`. Both text matchers take a list to check every match at once:
 `toHaveText(['Alpha', /^Beta/])` needs exactly two matches with those texts
 in order. `toBeAttached` waits for a match to exist, hidden or not. A failed
 matcher is `ASSERTION_FAILED`, exit code 1.
