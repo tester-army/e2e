@@ -20,7 +20,7 @@
 
 import path from 'node:path';
 import { collapseText } from '../internal/text.ts';
-import type { Report1Document, ReportError, ReportExplore, ReportExploreFinding, ReportResult, ReportStep } from './build.ts';
+import type { Report1Document, ReportError, ReportExplore, ReportExploreFinding, ReportResult, ReportStep, ReportTarget } from './build.ts';
 import { ENDED_TEXT, orderFindings, SEVERITY_WORDS, stepCountParts } from './explore-text.ts';
 import { formatCost, formatTokens, repeatSuffix, statusBucket, tally, type Counters } from './format.ts';
 import {
@@ -164,44 +164,44 @@ function spendLine(run: ReportRun, entries: readonly Entry[]): string | undefine
   return parts.join(' · ');
 }
 
-/** The artifact paths as the reader finds them: under `artifactsDir` when given, else as the report keeps them, capped. */
-function evidencePaths(sorted: readonly ReportArtifact[], dir: string | undefined, label: (artifact: ReportArtifact, file: string) => string): string[] {
-  const files = sorted.flatMap((artifact) => (artifact.path === undefined ? [] : [{ artifact, file: dir === undefined ? artifact.path : path.posix.join(dir, artifact.path) }]));
-  const shown = files.slice(0, MAX_EVIDENCE_PATHS).map(({ artifact, file }) => label(artifact, file));
+/** `screenshot \`.e2e/artifacts/web/.../001-failure.png\``: each file as the reader finds it under `artifactsDir`, capped. */
+function evidencePaths(sorted: readonly ReportArtifact[], dir: string): string[] {
+  const files = sorted.flatMap((artifact) => (artifact.path === undefined ? [] : [{ artifact, file: path.posix.join(dir, artifact.path) }]));
+  const shown = files.slice(0, MAX_EVIDENCE_PATHS).map(({ artifact, file }) => `${artifact.kind} ${code(file)}`);
   if (files.length > shown.length) shown.push(`and ${files.length - shown.length} more`);
   return shown;
 }
 
 /**
- * Where the evidence is: the kinds linked to the run's artifacts when there is
- * a URL, followed by each file's path inside what was uploaded, so the reader
- * can find it in the download; listed as paths under `artifactsDir` when the
- * reader has the files; and named by kind otherwise. Paths are POSIX, as the
- * report keeps them.
+ * Where the evidence is: each kind linked to the run's artifacts when there
+ * is a URL (the upload keeps one directory per test, named after it, so the
+ * reader finds the files without their paths spelled out); listed as paths
+ * under `artifactsDir` when the reader has the files; and named by kind
+ * otherwise. Paths are POSIX, as the report keeps them.
  */
 function evidence(artifacts: readonly ReportArtifact[], options: MarkdownReportOptions): string {
   if (artifacts.length === 0) return '';
   const sorted = artifacts.toSorted((a, b) => KIND_RANK[a.kind] - KIND_RANK[b.kind]);
-  const named = [...new Set(sorted.map((artifact) => artifact.kind))].join(', ');
-  if (options.artifactsUrl !== undefined) {
-    const paths = evidencePaths(sorted, options.artifactsDir, (_, file) => code(file));
-    return paths.length === 0 ? link(named, options.artifactsUrl) : `${link(named, options.artifactsUrl)}: ${paths.join(', ')}`;
-  }
-  const shown = options.artifactsDir === undefined ? [] : evidencePaths(sorted, options.artifactsDir, (artifact, file) => `${artifact.kind} ${code(file)}`);
-  return shown.length === 0 ? named : shown.join(', ');
+  const kinds = [...new Set(sorted.map((artifact) => artifact.kind))];
+  const url = options.artifactsUrl;
+  if (url !== undefined) return kinds.map((kind) => link(kind, url)).join(', ');
+  const shown = options.artifactsDir === undefined ? [] : evidencePaths(sorted, options.artifactsDir);
+  return shown.length === 0 ? kinds.join(', ') : shown.join(', ');
 }
 
 // --- a test that did not pass ---
 
 /**
- * `at step 6 of 6: \`expect.toBeHidden\` \`getByRole(...)\`, after 15.1s and 12
+ * `at step 6 of 6: \`expect.toBeHidden getByRole(...)\`, after 15.1s and 12
  * model calls`: where a failure happened, how long the step ran, and what
- * the agent spent on it.
+ * the agent spent on it. A step that is not the agent's reads as the one
+ * call it was; an agent step's label is the sentence the author wrote.
  */
 function stepClause(steps: readonly ReportStep[], at: { index: number; step: FailedStep }): string {
   const calls = modelCalls(at.step);
   const spent = calls === 0 ? '' : ` and ${plural(calls, 'model call')}`;
-  return `at step ${at.index + 1} of ${steps.length}: ${code(at.step.api, MAX_ID_CHARS)} ${stepLabel(at.step, MAX_PATH_CHARS)}, after ${formatDuration(at.step.durationMs)}${spent}`;
+  const call = at.step.kind === 'agent' ? `${code(at.step.api, MAX_ID_CHARS)} ${stepLabel(at.step, MAX_PATH_CHARS)}` : code(`${at.step.api} ${at.step.label}`, MAX_PATH_CHARS);
+  return `at step ${at.index + 1} of ${steps.length}: ${call}, after ${formatDuration(at.step.durationMs)}${spent}`;
 }
 
 /** `**CODE** (phase)`: how the error names itself. */
@@ -238,12 +238,13 @@ function runErrorLine(error: ReportError): string {
 
 /**
  * One block per test that failed or was flaky, in paragraphs the eye can
- * rest between: the title; one lead sentence naming the error and the step
- * it happened at; what the error and the agent said, quoted; the facts as a
- * list (expected and observed, whether every attempt failed alike, the last
- * turns, the screen); and the line to look at with the evidence. The file
- * is named once, in the source link. The steps before the failed one are
- * not retold: the lead says where in the flow it was, and the trace has the
+ * rest between: the title, with the line to look at and the target right
+ * under it, where the reader looks first; one lead sentence naming the
+ * error and the step it happened at; what the error and the agent said,
+ * quoted; the facts as a list (expected and observed, whether every attempt
+ * failed alike, the last turns, the screen); and the evidence. The file is
+ * named once, in the source link. The steps before the failed one are not
+ * retold: the lead says where in the flow it was, and the trace has the
  * rest. A flaky test's story is its last failed attempt, not the retry that
  * passed.
  */
@@ -258,13 +259,11 @@ function failureBlock({ result, final }: Entry, manyTargets: boolean, options: M
   const facts = [...detailLines(error), ...(alike === undefined ? [] : [alike]), ...lastTurnLines(at?.step), ...screenLines(told)];
   const where = evidence(evidenceOf(told), options);
   const page = options.failurePages?.get(result.id);
-  const tail = [
-    sourceText(failureSource(result, told), options.sourceUrl),
-    ...(where === '' ? [] : [`Evidence: ${where}`]),
-    ...(page === undefined ? [] : [`Details: ${code(page, MAX_PATH_CHARS)}`]),
-  ];
+  const about = [sourceText(failureSource(result, told), options.sourceUrl), ...(manyTargets ? [cell(result.targetId, MAX_ID_CHARS)] : [])];
+  const tail = [...(where === '' ? [] : [`Evidence: ${where}`]), ...(page === undefined ? [] : [`Details: ${code(page, MAX_PATH_CHARS)}`])];
   const paragraphs = [
-    `**${ICON[kind]} ${testName(result, manyTargets)}**`,
+    // Two trailing spaces: a hard break, so the title and its line stay two lines wherever the page is rendered.
+    `**${ICON[kind]} ${testName(result)}**  \n${about.join(' · ')}`,
     lead,
     quotedWords(error, at?.step).join('\n'),
     facts.map((fact) => `- ${fact}`).join('\n'),
@@ -278,10 +277,9 @@ function fileLabel(file: string, target: string, manyTargets: boolean): string {
   return `${cell(file, MAX_PATH_CHARS)}${manyTargets ? ` (${cell(target, MAX_ID_CHARS)})` : ''}`;
 }
 
-/** `suite › title (target)`. */
-function testName(result: ReportResult, manyTargets: boolean): string {
-  const title = result.titlePath.map((part) => cell(part, MAX_TITLE_CHARS)).join(' › ');
-  return `${title}${repeatSuffix(result.repeat)}${manyTargets ? ` (${cell(result.targetId, MAX_ID_CHARS)})` : ''}`;
+/** `suite › title`. */
+function testName(result: ReportResult): string {
+  return `${result.titlePath.map((part) => cell(part, MAX_TITLE_CHARS)).join(' › ')}${repeatSuffix(result.repeat)}`;
 }
 
 /**
@@ -331,11 +329,11 @@ function row(cells: readonly string[]): string {
   return `| ${cells.join(' | ')} |`;
 }
 
-/** `⚠️ | title (1 failed attempt first) | 1 step · 4 calls | 3.4s`: one test's row, how it ended noted when it did not simply pass. */
-function testRow({ result, final }: Entry, manyTargets: boolean, withAgent: boolean): string {
+/** `⚠️ | title (1 failed attempt first) | 1 step · 4 calls | 3.4s`: one test's row, how it ended noted when it did not simply pass. The file's row above names the target. */
+function testRow({ result, final }: Entry, withAgent: boolean): string {
   const skipped = result.status === 'skipped';
   const note = skipped ? `skipped: ${cell(result.skip?.reason ?? 'skipped')}` : result.status === 'flaky' ? `${plural(final.failedAttempts, 'failed attempt')} first` : '';
-  const name = `${testName(result, manyTargets)}${note === '' ? '' : ` (${note})`}`;
+  const name = `${testName(result)}${note === '' ? '' : ` (${note})`}`;
   return row([ICON[statusBucket(result.status)], name, ...(withAgent ? [agentCell(final.final.steps)] : []), skipped ? '' : formatDuration(final.durationMs)]);
 }
 
@@ -363,7 +361,7 @@ function allTests(groups: readonly FileGroup[], total: number, manyTargets: bool
     if (budget === 0) break;
     const shown = group.entries.slice(0, budget);
     budget -= shown.length;
-    lines.push(fileRow(group, manyTargets, withAgent), ...shown.map((entry) => testRow(entry, manyTargets, withAgent)));
+    lines.push(fileRow(group, manyTargets, withAgent), ...shown.map((entry) => testRow(entry, withAgent)));
   }
   if (total > MAX_LISTED_TESTS) lines.push(row(['', `and ${total - MAX_LISTED_TESTS} more`, ...(withAgent ? [''] : []), '']));
   // A file that ran on several targets is one file, however many groups it has.
@@ -372,14 +370,25 @@ function allTests(groups: readonly FileGroup[], total: number, manyTargets: bool
   return [['<details>', `<summary>${summary}</summary>`, '', lines.join('\n'), '</details>'].join('\n')];
 }
 
+/**
+ * The targets the page speaks of: the ones a selected result ran on. A run
+ * that selected one of several configured targets (`--target android`) is
+ * about that one, and names it nowhere but the footer.
+ */
+function ranTargets(run: ReportRun, selected: readonly ReportResult[]): readonly ReportTarget[] {
+  const ran = new Set(selected.map((result) => result.targetId));
+  const targets = run.targets.filter((target) => ran.has(target.id));
+  return targets.length === 0 ? run.targets : targets;
+}
+
 /** `<sub>e2e 0.13.0 · 2m 15s · web · run artifacts</sub>`: one line of small print. */
-function footer(run: ReportRun, options: MarkdownReportOptions): string[] {
+function footer(run: ReportRun, targets: readonly ReportTarget[], options: MarkdownReportOptions): string[] {
   const duration = formatDuration(Date.parse(run.finishedAt) - Date.parse(run.startedAt));
-  const shown = run.targets.slice(0, MAX_FOOTER_TARGETS).map((target) => cell(target.id, MAX_ID_CHARS));
-  if (run.targets.length > shown.length) shown.push(`and ${run.targets.length - shown.length} more`);
+  const shown = targets.slice(0, MAX_FOOTER_TARGETS).map((target) => cell(target.id, MAX_ID_CHARS));
+  if (targets.length > shown.length) shown.push(`and ${targets.length - shown.length} more`);
   const parts = [`e2e ${cell(run.runner.version, MAX_ID_CHARS)}`, duration];
-  if (run.targets.length === 1) parts.push(shown[0] ?? '');
-  else if (run.targets.length > 1) parts.push(`${plural(run.targets.length, 'target')} (${shown.join(', ')})`);
+  if (targets.length === 1) parts.push(shown[0] ?? '');
+  else if (targets.length > 1) parts.push(`${plural(targets.length, 'target')} (${shown.join(', ')})`);
   if (options.artifactsUrl !== undefined) parts.push(link('run artifacts', options.artifactsUrl));
   return [`<sub>${parts.join(' · ')}</sub>`];
 }
@@ -471,7 +480,8 @@ export function renderMarkdownReport(report: Report1Document, options: MarkdownR
   // document written before results carried the flag is all selected.
   const selected = run.results.filter((result) => result.selected !== false);
   const entries: Entry[] = selected.map((result) => ({ result, final: outcome(result, serialGroups) }));
-  const manyTargets = run.targets.length > 1;
+  const targets = ranTargets(run, selected);
+  const manyTargets = targets.length > 1;
 
   const errors = run.errors.slice(0, MAX_RUN_ERRORS).map(runErrorLine);
   if (run.errors.length > errors.length) errors.push(`> and ${run.errors.length - errors.length} more`);
@@ -502,7 +512,7 @@ export function renderMarkdownReport(report: Report1Document, options: MarkdownR
           explore.summary === undefined ? [] : ['**Assessment**', '', cell(explore.summary, MAX_ASSESSMENT_CHARS)],
         ];
   const body = joinSections(sections);
-  return fit(head, body.length === 0 ? [] : [...body, ''], footer(run, options));
+  return fit(head, body.length === 0 ? [] : [...body, ''], footer(run, targets, options));
 }
 
 /** Where a result's page goes under `failures/`: the file and title, made a path segment, made unique by the result id. */

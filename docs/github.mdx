@@ -48,10 +48,10 @@ jobs:
           path: .e2e/artifacts
 ```
 
-Upload artifacts even when a retry passes. Each failure's evidence link opens
-the run's Artifacts section and names the file's path inside the upload
-(`web/tests_billing.e2e.ts__upgrades/attempt-0/screenshot-3.png`), so keep
-`path: .e2e/artifacts` and the paths line up with the download. A project that
+Upload artifacts even when a retry passes. Each failure's evidence links open
+the run's Artifacts section; inside the download, every test has a directory
+named after it (`web/tests_billing.e2e.ts__upgrades/attempt-0/`), so keep
+`path: .e2e/artifacts` and the download lines up with the report. A project that
 sits below the checkout root, such as `packages/e2e-tests`, gets source links
 under that path: the reporter finds the checkout root as the nearest directory holding `.git`, inside `GITHUB_WORKSPACE`, so a checkout placed with `actions/checkout`'s `path` input resolves too.
 
@@ -61,28 +61,31 @@ under that path: the reporter finds the checkout root as the nearest directory h
 ### 🔴 e2e: 1 failed, 1 flaky, 3 passed, 1 skipped
 9 agent steps · 4 replayed from cache · 31 model calls · 128k tokens (62% cached) · $0.31
 
-**🔴 billing › upgrades to Pro**
+**🔴 billing › upgrades to Pro**  
+[tests/billing.e2e.ts:12](https://github.com/acme/shop/blob/1a2b3c/tests/billing.e2e.ts#L12)
 
 **ASSERTION_FAILED** at step 4 of 6: `agent.act` "Pick the Pro plan and pay", after 38.0s and 12 model calls
 
 > expected heading "Your cart" to be visible
 > The Pay button opened a page that still shows the Free plan.
 
+- Failed the same way on both attempts: **ASSERTION_FAILED** at step 4.
 - Turn 9: `tap({"target":"n41"})` → Screen changed: /checkout/plan. New: #n50 heading "Free plan"
 - Screen: `/checkout/plan`
 
-[tests/billing.e2e.ts:12](https://github.com/acme/shop/blob/1a2b3c/tests/billing.e2e.ts#L12) · Evidence: [screenshot, video, trace](https://github.com/acme/shop/actions/runs/123#artifacts): `web/tests_billing.e2e.ts__upgrades/attempt-0/screenshot-3.png`, `web/tests_billing.e2e.ts__upgrades/attempt-0/video/video.webm`, `web/tests_billing.e2e.ts__upgrades/attempt-0/trace.zip`
+Evidence: [screenshot](https://github.com/acme/shop/actions/runs/123#artifacts), [video](https://github.com/acme/shop/actions/runs/123#artifacts), [trace](https://github.com/acme/shop/actions/runs/123#artifacts)
 
 <details>
 <summary>⚠️ 1 flaky test passed on a retry</summary>
 
-**⚠️ invite a member by email**
+**⚠️ invite a member by email**  
+[tests/team.e2e.ts:21](https://github.com/acme/shop/blob/1a2b3c/tests/team.e2e.ts#L21)
 
 **STEP_TIMEOUT** at step 3 of 3: `agent.waitFor` "the invitation email", after 30.0s
 
 > the invitation email took too long
 
-[tests/team.e2e.ts:21](https://github.com/acme/shop/blob/1a2b3c/tests/team.e2e.ts#L21) · Evidence: [screenshot, trace](https://github.com/acme/shop/actions/runs/123#artifacts): `web/tests_team.e2e.ts__invite/attempt-0/screenshot-2.png`, `web/tests_team.e2e.ts__invite/attempt-0/trace.zip`
+Evidence: [screenshot](https://github.com/acme/shop/actions/runs/123#artifacts), [trace](https://github.com/acme/shop/actions/runs/123#artifacts)
 </details>
 
 <details>

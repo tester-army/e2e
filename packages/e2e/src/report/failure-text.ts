@@ -119,10 +119,22 @@ export function attemptsLine(result: ReportResult, final: Outcome): string | und
   if (first === undefined || final.attempts.length < 2 || failed.length < 2) return undefined;
   const where = (step: number | undefined): string => (step === undefined ? '' : ` at step ${step + 1}`);
   const count = failed.length === final.attempts.length ? (failed.length === 2 ? 'both attempts' : `all ${failed.length} attempts`) : plural(failed.length, 'attempt');
-  if (failed.every((attempt) => attempt.code === first.code && attempt.step === first.step)) {
+  // Consecutive attempts that failed alike are one run: `at step 8, then at step 20 (3 times)`.
+  const runs: { code: string; step: number | undefined; count: number }[] = [];
+  for (const attempt of failed) {
+    const last = runs.at(-1);
+    if (last !== undefined && last.code === attempt.code && last.step === attempt.step) last.count += 1;
+    else runs.push({ ...attempt, count: 1 });
+  }
+  if (runs.length === 1) {
     return `Failed the same way on ${count}: **${first.code}**${where(first.step)}.${result.status === 'flaky' ? ' The retry that passed is the exception.' : ''}`;
   }
-  return `Failed differently on ${count}: ${failed.map((attempt) => `**${attempt.code}**${where(attempt.step)}`).join(', then ')}.`;
+  const told = runs.map((run, index) => {
+    const named = index === 0 || run.code !== runs[index - 1]?.code;
+    const place = `${named ? `**${run.code}**` : ''}${where(run.step)}`.trimStart();
+    return run.count === 1 ? place : `${place} (${run.count} times)`;
+  });
+  return `Failed on ${count}: ${told.join(', then ')}.`;
 }
 
 /**

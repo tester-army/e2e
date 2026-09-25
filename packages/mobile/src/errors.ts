@@ -55,8 +55,12 @@ function details(cause: unknown): Record<string, unknown> {
  */
 function withHint(cause: unknown, text: string): string {
   const hint = details(cause).hint;
-  return typeof hint === 'string' && hint.trim() !== '' ? `${text} Hint: ${hint.trim()}` : text;
+  if (typeof hint !== 'string' || hint.trim() === '' || CLI_ADVICE.test(hint)) return text;
+  return `${text} Hint: ${hint.trim()}`;
 }
+
+/** agent-device's generic hint (`Check command arguments and run --help`) is CLI advice, and stays out too. */
+const CLI_ADVICE = /--help|command arguments/i;
 
 const NO_SESSION_PATTERN =
   /no active (?:app )?session|requires an active session|session\b.*\bnot found|open an app first|no app (?:is )?open/i;

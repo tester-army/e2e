@@ -91,6 +91,13 @@ describe('error translation', () => {
     expect(translateError(new AppError('COMMAND_FAILED', 'plain'), 'boot').message).toBe('boot failed: plain');
   });
 
+  it("drops agent-device's generic CLI advice, which helps neither the model nor the run page", () => {
+    const advised = new AppError('COMMAND_FAILED', 'permission setting requires an active app in session', {
+      hint: 'Check command arguments and run --help for usage examples.',
+    });
+    expect(translateError(advised, 'device.setPermission').message).toBe('device.setPermission failed: permission setting requires an active app in session');
+  });
+
   it('turns an AbortError into CANCELLED', () => {
     const abort = new Error('aborted');
     abort.name = 'AbortError';

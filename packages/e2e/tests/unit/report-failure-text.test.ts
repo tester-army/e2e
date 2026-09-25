@@ -55,7 +55,15 @@ describe('attemptsLine', () => {
     const differing = result({
       attempts: [failed({ error: reportError({ code: 'LOCATOR_NOT_FOUND' }), steps: [step({ index: 0, status: 'failed' })] }), failed()],
     });
-    expect(attemptsLine(differing, outcome(differing, NO_GROUPS))).toBe('Failed differently on both attempts: **LOCATOR_NOT_FOUND** at step 1, then **ASSERTION_FAILED** at step 2.');
+    expect(attemptsLine(differing, outcome(differing, NO_GROUPS))).toBe('Failed on both attempts: **LOCATOR_NOT_FOUND** at step 1, then **ASSERTION_FAILED** at step 2.');
+  });
+
+  it('folds consecutive attempts that failed alike into one run, and names the code only when it changes', () => {
+    const early = failed({ steps: [step({ index: 0, status: 'failed' })] });
+    const drifted = result({ attempts: [early, failed(), failed(), failed()] });
+    expect(attemptsLine(drifted, outcome(drifted, NO_GROUPS))).toBe('Failed on all 4 attempts: **ASSERTION_FAILED** at step 1, then at step 2 (3 times).');
+    const mixed = result({ attempts: [failed({ error: reportError({ code: 'LOCATOR_NOT_FOUND' }) }), failed({ error: reportError({ code: 'LOCATOR_NOT_FOUND' }) }), failed()] });
+    expect(attemptsLine(mixed, outcome(mixed, NO_GROUPS))).toBe('Failed on all 3 attempts: **LOCATOR_NOT_FOUND** at step 2 (2 times), then **ASSERTION_FAILED** at step 2.');
   });
 
   it('tells a flaky test its failures agreed, and ignores an attempt that never reached the test', () => {
