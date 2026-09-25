@@ -129,6 +129,30 @@ describe('reportRun', () => {
     expect(body).not.toMatch(/[^`]#12\b/);
   });
 
+  it('folds a --last-failed rerun into the run it selected from, so the comment shows the whole suite with the recovered test flaky', async () => {
+    const d = deps({ ...actionsEnv, GITHUB_TOKEN: 'ghs' });
+    const failedAttempt = attempt({ status: 'failed', error: { code: 'ASSERTION_FAILED', message: 'no cart' } });
+    const firstPass = report({
+      status: 'failed',
+      results: [
+        result({ title: 'steady', status: 'passed', attempts: [attempt()] }),
+        result({ title: 'recovers', status: 'failed', attempts: [failedAttempt] }),
+      ],
+    });
+    const rerun = report({
+      results: [
+        result({ title: 'steady', status: 'skipped', selected: false, skip: { cause: 'filtered', reason: 'did not fail in the last run' } }),
+        result({ title: 'recovers', status: 'passed', attempts: [attempt()] }),
+      ],
+    });
+    await reportRun(finished(rerun, firstPass), signal, {}, d.deps);
+    const body = postedBody(d.calls);
+    expect(body).toContain('### 🟢 e2e: 1 flaky, 1 passed');
+    expect(body).toContain('1 flaky test passed on a retry');
+    expect(body).toContain('recovers (1 failed attempt first)');
+    expect(body).toContain('| 🟢 | steady |');
+  });
+
   it('adds the key to the marker, encoded, so matrix replicas keep their own comments', async () => {
     const d = deps({ ...actionsEnv, GITHUB_TOKEN: 'ghs' });
     await reportRun(failedRun, signal, { key: 'firefox --> 2' }, d.deps);

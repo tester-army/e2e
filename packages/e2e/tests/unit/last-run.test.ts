@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { resultId } from '../../src/internal/ids.ts';
-import { readLastFailed } from '../../src/run/last-run.ts';
+import { lastFailedIds, readLastRun } from '../../src/run/last-run.ts';
 
 let dir: string;
 
@@ -28,8 +28,9 @@ function report(results: readonly Record<string, unknown>[]): string {
 }
 
 const idOf = (testId: string) => resultId(testId, 'web', 'default');
+const readLastFailed = async (file: string): Promise<ReadonlySet<string>> => lastFailedIds(await readLastRun(file));
 
-describe('readLastFailed', () => {
+describe('readLastRun and lastFailedIds', () => {
   it('collects the ids of the results that did not pass or that the run never carried out', async () => {
     const ids = await readLastFailed(
       reportFile(
@@ -63,7 +64,7 @@ describe('readLastFailed', () => {
   it('is NO_LAST_RUN when no report exists, with the path and the way out', async () => {
     dir = mkdtempSync(path.join(os.tmpdir(), 'e2e-last-run-'));
     const missing = path.join(dir, 'report.json');
-    await expect(readLastFailed(missing)).rejects.toMatchObject({
+    await expect(readLastRun(missing)).rejects.toMatchObject({
       code: 'NO_LAST_RUN',
       category: 'configuration',
       message: `--last-failed needs the report of a previous run, and none is at ${missing}; run once without the flag first`,
@@ -71,7 +72,7 @@ describe('readLastFailed', () => {
   });
 
   it('is NO_LAST_RUN when the file is not JSON or not a report-1 document', async () => {
-    await expect(readLastFailed(reportFile('{'))).rejects.toMatchObject({
+    await expect(readLastRun(reportFile('{'))).rejects.toMatchObject({
       code: 'NO_LAST_RUN',
       message: expect.stringMatching(/^--last-failed found no report in .*report\.json: /u),
     });
@@ -84,7 +85,7 @@ describe('readLastFailed', () => {
       '{"schemaVersion":"report-1","run":{"results":[{"id":"a"}]}}',
       '{"schemaVersion":"report-1","run":{"results":[{"id":"a","status":"skipped","skip":"later"}]}}',
     ]) {
-      await expect(readLastFailed(reportFile(content)), content).rejects.toMatchObject({
+      await expect(readLastRun(reportFile(content)), content).rejects.toMatchObject({
         code: 'NO_LAST_RUN',
         message: expect.stringMatching(/^--last-failed needs a report-1 document at .*report\.json, which holds something else; run once without the flag to write one$/u),
       });

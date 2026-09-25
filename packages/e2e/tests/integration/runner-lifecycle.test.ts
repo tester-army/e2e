@@ -5,6 +5,7 @@ import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { resultId } from '../../src/internal/ids.ts';
 import { createProject, listProject, resultByTitle, runExisting, runProject, type RunOutcome } from '../helpers/run-project.ts';
+import type { FinishedRun } from '../../src/index.ts';
 
 describe('runner lifecycle', () => {
   let app: FixtureApp;
@@ -716,9 +717,25 @@ test('breaks the second time', async () => {
       expect(paths.every((artifactPath) => artifactPath.includes('/repeat-1/'))).toBe(true);
       expect(outcome.report.run.summary).toMatchObject({ selected: 6, executed: 6, passed: 4, failed: 2 });
 
-      // Only the breaking test failed, on its later repeats; the rerun names it once and runs it once.
-      const rerun = await runExisting(project, { appUrl: app.url, runOptions: { lastFailed: true } });
+      // Only the breaking test failed, on its later repeats; the rerun names it once and runs it once,
+      // and hands its reporters the report it selected from.
+      let handed: FinishedRun | undefined;
+      const rerun = await runExisting(project, {
+        appUrl: app.url,
+        runOptions: { lastFailed: true },
+        config: {
+          reporters: [
+            {
+              name: 'capture',
+              onRunFinished: async (run) => {
+                handed = run;
+              },
+            },
+          ],
+        },
+      });
       expect(rerun.results.filter((result) => result.selected).map((result) => result.test.title)).toEqual(['breaks the second time']);
+      expect(handed?.lastRun?.run.id).toBe(outcome.report.run.id);
 
       const invalid = await runExisting(project, { appUrl: app.url, runOptions: { repeatEach: 0 } });
       expect(invalid.exitCode).toBe(2);

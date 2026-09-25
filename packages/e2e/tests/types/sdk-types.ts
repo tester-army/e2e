@@ -158,6 +158,7 @@ if (runEvent.type === 'step') {
 declare const finishedRun: FinishedRun;
 finishedRun.status satisfies RunStatus;
 finishedRun.exitCode satisfies RunExitCode;
+finishedRun.lastRun satisfies FinishedRun['report'] | undefined;
 // @ts-expect-error the run status is a closed union
 'skipped' satisfies RunStatus;
 // @ts-expect-error the exit codes are the closed set a run ends with

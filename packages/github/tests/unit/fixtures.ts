@@ -65,18 +65,23 @@ export function result(input: {
   readonly attempts?: readonly ReportAttempt[];
   readonly skip?: ReportResult['skip'];
   readonly serialGroupId?: string;
+  readonly selected?: boolean;
 }): ReportResult {
   const titlePath = typeof input.title === 'string' ? [input.title] : [...input.title];
   const file = input.file ?? 'tests/example.e2e.ts';
+  const target = input.target ?? 'web';
   return {
     ...BASE_RESULT,
+    // One id per test and target, the way the runner names a result, so a fold by id tells them apart.
+    id: `${testId(file, titlePath)}@${target}`,
     testId: testId(file, titlePath),
     titlePath,
     file,
     source: { file, line: input.line ?? 3, column: 1 },
-    targetId: input.target ?? 'web',
+    targetId: target,
     status: input.status,
     attempts: input.attempts ?? [],
+    ...(input.selected === undefined ? {} : { selected: input.selected }),
     ...(input.skip === undefined ? {} : { skip: input.skip }),
     ...(input.serialGroupId === undefined ? {} : { serialGroupId: input.serialGroupId }),
   };
@@ -113,7 +118,7 @@ export function report(
   };
 }
 
-export function finished(document: Report): FinishedRun {
+export function finished(document: Report, lastRun?: Report): FinishedRun {
   return {
     report: document,
     status: document.run.status,
@@ -122,5 +127,6 @@ export function finished(document: Report): FinishedRun {
     reportPath: '/work/app/.e2e/report.json',
     artifactsRoot: '/work/app/.e2e/artifacts',
     aiTracePath: undefined,
+    ...(lastRun === undefined ? {} : { lastRun }),
   };
 }

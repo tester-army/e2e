@@ -5,7 +5,8 @@ description: The @e2edev/github reporter posts one comment per run from GitHub A
 
 `@e2edev/github` posts test results as a pull request comment, including
 failures, source links, and links to workflow artifacts. Reruns update the
-same comment. The reporter also writes the results to the job summary.
+same comment, and a `--last-failed` rerun updates it as one run. The reporter
+also writes the results to the job summary.
 
 ## Setup
 
@@ -111,6 +112,26 @@ links nowhere.
 
 The built-in `markdown` reporter writes the same summary to
 `.e2e/summary.md`.
+
+## Rerunning the failed tests
+
+A step that gives failed tests a second chance keeps one comment for both
+passes:
+
+```yaml
+      - name: Run e2e
+        run: npx e2e run || npx e2e run --last-failed
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+```
+
+The rerun's own report lists the tests it left out as unselected, which on
+its own would shrink the comment to the few tests it ran again. The reporter
+folds the rerun into the run it selected from instead: the tests the rerun
+left out keep their results from the first pass, a test that failed and then
+passed shows as flaky with both passes' attempts, a test that failed twice
+stays failed, and the counts cover the whole suite. The comment ends up
+saying what the job's status says.
 
 ## Matrix jobs
 

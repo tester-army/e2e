@@ -1125,6 +1125,12 @@ export interface FinishedRun {
   readonly artifactsRoot: string;
   /** Where `--ai-trace` wrote the run's model calls, when it was requested. */
   readonly aiTracePath: string | undefined;
+  /**
+   * The report `--last-failed` selected from, when the run was given that
+   * flag: the run before this one, whose tests that did not fail were left
+   * out here. A reporter that keeps one place current folds this run into it.
+   */
+  readonly lastRun?: Report;
 }
 
 /** Rows a reporter hands back for the terminal summary: a label and its text, a URL or a path. */

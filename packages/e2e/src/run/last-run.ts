@@ -34,16 +34,12 @@ function noLastRun(message: string, cause?: unknown): ConfigurationError {
 }
 
 /**
- * The result ids of the previous run's tests that did not pass, read from the
- * report the run before wrote where this run will write its own: failed,
- * timed out, interrupted, or skipped because a setup, a serial predecessor,
- * a hook, or the worker failed. An explicit skip and a filtered test passed
- * in the sense that matters here: nothing to run again. The ids are
- * `resultId(testId, target, agent)`, so a test is named per target and agent
- * whichever of its `--repeat-each` runs did not pass. A missing or unreadable
- * report is `NO_LAST_RUN`.
+ * The previous run's report, read from where this run will write its own. It
+ * is what `--last-failed` selects from, and reporters receive it as
+ * `FinishedRun.lastRun` so one can fold the rerun into it. A missing or
+ * unreadable report is `NO_LAST_RUN`.
  */
-export async function readLastFailed(reportPath: string): Promise<ReadonlySet<string>> {
+export async function readLastRun(reportPath: string): Promise<Report1Document> {
   let text: string;
   try {
     text = await readFile(reportPath, 'utf8');
@@ -62,6 +58,18 @@ export async function readLastFailed(reportPath: string): Promise<ReadonlySet<st
   if (!isReport(document)) {
     throw noLastRun(`--last-failed needs a report-1 document at ${reportPath}, which holds something else; run once without the flag to write one`);
   }
+  return document;
+}
+
+/**
+ * The result ids of a report's tests that did not pass: failed, timed out,
+ * interrupted, or skipped because a setup, a serial predecessor, a hook, or
+ * the worker failed. An explicit skip and a filtered test passed in the sense
+ * that matters here: nothing to run again. The ids are
+ * `resultId(testId, target, agent)`, so a test is named per target and agent
+ * whichever of its `--repeat-each` runs did not pass.
+ */
+export function lastFailedIds(document: Report1Document): ReadonlySet<string> {
   return new Set(document.run.results.filter(didNotPass).map((result) => resultId(result.testId, result.targetId, result.agent)));
 }
 

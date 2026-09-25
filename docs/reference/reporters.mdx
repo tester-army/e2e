@@ -46,6 +46,7 @@ interface FinishedRun {
   readonly reportPath: string | undefined; // absent when the write failed
   readonly artifactsRoot: string;          // what the report's artifact paths are relative to
   readonly aiTracePath: string | undefined;
+  readonly lastRun?: Report;               // with --last-failed, the report the rerun selected from
 }
 
 type ReporterSummary = readonly { label: string; text: string }[];
@@ -155,6 +156,11 @@ One Ctrl-C still lets reporters finish. A second Ctrl-C stops waiting for them.
 The second argument is an `AbortSignal` that aborts when the budget runs out
 or the run is forced to stop. Hand it to every request and timer, or an
 abandoned reporter keeps the CLI alive after the run has ended.
+
+With `--last-failed`, `lastRun` is the report the rerun selected from. The
+rerun's own report lists the tests it left out as unselected, so a reporter
+that keeps one place current, the way `@e2edev/github` keeps a pull request
+comment, folds the rerun into `lastRun` to show both runs as one.
 
 The rows a reporter resolves with print under the `list` summary in the same
 layout as `Report`; the `json` reporter does not carry them:

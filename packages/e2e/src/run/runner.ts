@@ -39,7 +39,7 @@ import type { ResultRecord, RunError, SerialGroupRecord } from './records.ts';
 import { runUnits } from './scheduler.ts';
 import { buildWorkPlans, plannedSlots, type TargetWorkPlan } from './units.ts';
 import { SessionStore } from './sessions.ts';
-import { readLastFailed } from './last-run.ts';
+import { lastFailedIds, readLastRun } from './last-run.ts';
 import { childProcessSpawner } from './worker/handle.ts';
 import { setSecretRegistry } from '../secrets.ts';
 import { withAbort } from '../internal/time.ts';
@@ -212,7 +212,7 @@ export async function list(options: ListOptions = {}): Promise<{ pairs: ListedPa
   const selection = select(
     collection,
     config,
-    await selectionFilters(options, config),
+    (await selectionInputs(options, config)).filters,
     options.passWithNoTests !== undefined ? { passWithNoTests: options.passWithNoTests } : {},
   );
   const pairs: ListedPair[] = [];
@@ -450,6 +450,10 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     }
   };
 
+  // The report `--last-failed` selected from, once collection has read it;
+  // reporters get it beside this run's report to fold the rerun into it.
+  let lastRun: Report1Document | undefined;
+
   const finish = async (): Promise<RunOutcome> => {
     const aiTracePath = loaded.config === undefined ? undefined : await writeAiTrace(loaded.config);
     // One document: what is written is what the reporters and the outcome
@@ -494,6 +498,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             ? path.resolve(cwd, options.artifactsDir ?? path.join('.e2e', 'artifacts'))
             : resolveArtifactsRoot(loaded.config, options.artifactsDir),
         aiTracePath,
+        ...(lastRun === undefined ? {} : { lastRun }),
       },
       options.reporterTimeout ?? REPORTER_TIMEOUT_MS,
       forceController.signal,
@@ -566,11 +571,13 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             options.tests === undefined
               ? await collect(config, options.files)
               : collectInMemory(config.projectRoot, options.tests.file, options.tests.registration);
+          const inputs = await selectionInputs(options, config);
+          lastRun = inputs.lastRun;
           const selection = repeatEach(
             select(
               collection,
               config,
-              await selectionFilters(options, config),
+              inputs.filters,
               options.passWithNoTests !== undefined ? { passWithNoTests: options.passWithNoTests } : {},
             ),
             options.repeatEach ?? 1,
@@ -855,16 +862,23 @@ function workerEnvFor(plans: readonly TargetWorkPlan[], env: NodeJS.ProcessEnv):
   };
 }
 
+/** The selection filters the options ask for, and the report `--last-failed` read them from. */
+interface SelectionInputs {
+  readonly filters: SelectionFilters;
+  readonly lastRun: Report1Document | undefined;
+}
+
 /**
  * The selection filters the options ask for. `--last-failed` reads the
  * previous run's report here, before collection is judged, so a missing
- * report is a collection-phase failure like any other selection error.
+ * report is a collection-phase failure like any other selection error; the
+ * report itself reaches the reporters as `FinishedRun.lastRun`.
  */
-async function selectionFilters(options: ListOptions, config: ResolvedConfig): Promise<SelectionFilters> {
-  const lastFailed =
-    options.lastFailed === true ? await readLastFailed(reportSibling(config, options.artifactsDir, 'report.json')) : undefined;
-  return {
-    ...(lastFailed !== undefined ? { lastFailed } : {}),
+async function selectionInputs(options: ListOptions, config: ResolvedConfig): Promise<SelectionInputs> {
+  const lastRun =
+    options.lastFailed === true ? await readLastRun(reportSibling(config, options.artifactsDir, 'report.json')) : undefined;
+  const filters: SelectionFilters = {
+    ...(lastRun !== undefined ? { lastFailed: lastFailedIds(lastRun) } : {}),
     ...(options.shard !== undefined ? { shard: options.shard } : {}),
     ...(options.tags !== undefined ? { tags: options.tags } : {}),
     ...(options.tagMode !== undefined ? { tagMode: options.tagMode } : {}),
@@ -873,6 +887,7 @@ async function selectionFilters(options: ListOptions, config: ResolvedConfig): P
     ...(options.grepInvert !== undefined ? { grepInvert: options.grepInvert } : {}),
     ...(options.targetIds !== undefined ? { targetIds: options.targetIds } : {}),
   };
+  return { filters, lastRun };
 }
 
 /**

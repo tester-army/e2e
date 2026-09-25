@@ -3,6 +3,7 @@ import { appendFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { renderMarkdownReport, type FinishedRun, type MarkdownReportOptions, type Reporter, type ReporterSummary } from 'e2e';
 import { detectActions, type ActionsContext, type ActionsDeps } from './actions.ts';
+import { foldLastRun } from './merge.ts';
 import { upsertComment } from './post.ts';
 
 const SUMMARY_LABEL = 'GitHub';
@@ -35,9 +36,12 @@ export interface ReportDeps extends ActionsDeps {
  * ```
  *
  * On GitHub Actions it writes the run to the job summary and, for a pull
- * request, posts or updates one comment. Everything it reads (the token, the
- * event, the repository) is read when the run finishes, never when the config
- * loads, so constructing it has no side effects.
+ * request, posts or updates one comment. A `--last-failed` rerun updates it
+ * as one run: the tests the rerun left out keep the results of the run it
+ * selected from, and a test that failed and then passed reads as flaky.
+ * Everything it reads (the token, the event, the repository) is read when the
+ * run finishes, never when the config loads, so constructing it has no side
+ * effects.
  */
 export function github(options: GitHubOptions = {}): Reporter {
   return {
@@ -157,9 +161,12 @@ export async function reportRun(
   if (context === undefined) return [{ label: SUMMARY_LABEL, text: 'not posted: not running on GitHub Actions' }];
 
   // One page for both places; the comment carries the marker a rerun finds it by.
-  // Evidence links land on the run page's Artifacts section, where the job's
-  // upload-artifact step put the files; the page names each file's path inside it.
-  const page = renderMarkdownReport(run.report, {
+  // A rerun over the failed tests is folded into the run it selected from, so
+  // the page keeps the whole suite. Evidence links land on the run page's
+  // Artifacts section, where the job's upload-artifact step put the files;
+  // the page names each file's path inside it.
+  const report = run.lastRun === undefined ? run.report : foldLastRun(run.report, run.lastRun);
+  const page = renderMarkdownReport(report, {
     artifactsUrl: `${context.runUrl}#artifacts`,
     sourceUrl: sourceUrl(context, run.projectRoot, deps),
     title: options.key,
