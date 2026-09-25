@@ -8,6 +8,7 @@ import {
   expandTrace,
   paramPointer,
   templateParams,
+  templatesCollide,
   templateText,
   templateTrace,
   type ParamTemplate,
@@ -150,19 +151,27 @@ describe('templateTrace and expandTrace', () => {
     expect(expandTrace(recorded, [])).toBeUndefined();
   });
 
-  it('templates inputs, descriptors, anchors, and summaries, and expands them with another run\'s value', () => {
+  it('templates inputs, descriptors, anchors, and action summaries, and expands them with another run\'s value', () => {
     const recorded = templateTrace(trace('E2E abc Company'), name('E2E abc Company'))!;
     expect(recorded.actions[1]).toMatchObject({ value: '{{param:/name}}', summary: 'type "{{param:/name}}" into textbox "Name"' });
     expect(recorded.actions[3]).toMatchObject({ target: { role: 'option', name: '{{param:/name}}', within: '{{param:/name}}' } });
     expect(recorded.endAnchors).toEqual([{ role: 'heading', name: '{{param:/name}}' }]);
-    expect(recorded.summary).toBe('created {{param:/name}}');
     // Secrets and keys are never text a parameter produced.
     expect(recorded.actions[2]).toEqual(trace('E2E abc Company').actions[2]);
     expect(recorded.actions[4]).toEqual(trace('E2E abc Company').actions[4]);
 
-    expect(expandTrace(recorded, name('E2E xyz Company'))).toEqual(trace('E2E xyz Company'));
+    expect(expandTrace(recorded, name('E2E xyz Company'))).toEqual({ ...trace('E2E xyz Company'), summary: 'created E2E abc Company' });
     expect(expandTrace(recorded, [{ pointer: '/title', value: 'E2E xyz Company' }])).toBeUndefined();
     expect(expandTrace(recorded, [])).toBeUndefined();
+  });
+
+  it('keeps the verdict summary as recorded: prose about the recording run, not a replay input', () => {
+    const recorded = templateTrace({ ...trace('Daily'), summary: 'set the title to Daily and left the daily frequency unchanged' }, [{ pointer: '/title', value: 'Daily' }])!;
+    expect(recorded.summary).toBe('set the title to Daily and left the daily frequency unchanged');
+    expect(recorded.actions[1]).toMatchObject({ value: '{{param:/title}}' });
+    // An entry recorded before this rule still fills its summary slot at replay.
+    const older: ActionTrace = { ...recorded, summary: 'created {{param:/title}}' };
+    expect(expandTrace(older, [{ pointer: '/title', value: 'Weekly' }])?.summary).toBe('created Weekly');
   });
 
   it('leaves a trace without templates untouched and expands it as a no-op', () => {
@@ -185,6 +194,24 @@ describe('templateTrace and expandTrace', () => {
     // One value is the other's encoded form.
     const aliased = [...name('Acme Corp'), { pointer: '/slug', value: 'Acme%20Corp' }];
     expect(templateTrace(trace('Acme Corp'), aliased)).toBeUndefined();
+  });
+
+  it('reports a unique() value that another param spells, in any of its spellings, as a collision', () => {
+    const title = [{ pointer: '/title', value: 'Daily' }];
+    // The repro: a run-unique title that happened to equal the plain choice.
+    expect(templatesCollide({ title: 'Daily', frequency: 'Daily' }, title)).toBe(true);
+    // Spelled inside a plain value, at any depth, and as a number.
+    expect(templatesCollide({ title: 'Daily', plan: { label: 'Daily digest' } }, title)).toBe(true);
+    expect(templatesCollide({ id: '42', tags: [7, 42] }, [{ pointer: '/id', value: '42' }])).toBe(true);
+    // A plain value that is the encoded form of the marked one.
+    expect(templatesCollide({ q: 'a b', path: '/x/a%20b' }, [{ pointer: '/q', value: 'a b' }])).toBe(true);
+    // Two marked params with one spelling collide as before.
+    expect(templatesCollide({ name: 'Acme', slug: 'Acme' }, [{ pointer: '/name', value: 'Acme' }, { pointer: '/slug', value: 'Acme' }])).toBe(true);
+    // Distinct values do not, nor does a plain value spelled inside the marked one.
+    expect(templatesCollide({ title: 'Cabin xyz', frequency: 'Daily' }, [{ pointer: '/title', value: 'Cabin xyz' }])).toBe(false);
+    expect(templatesCollide({ label: 'Pine Way', street: 'Way' }, [{ pointer: '/label', value: 'Pine Way' }])).toBe(false);
+    expect(templatesCollide({ title: 'Daily' }, title)).toBe(false);
+    expect(templatesCollide(undefined, [])).toBe(false);
   });
 
   it('spells the form encoding as a form submission does, and skips the encodings of a value that has none', () => {

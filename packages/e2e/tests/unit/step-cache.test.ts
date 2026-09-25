@@ -316,7 +316,7 @@ describe('StepTraceSession', () => {
     expect(keyed).toEqual([{ name: '{{param:/name}}', plan: 'pro' }]);
     const staged = stagedTrace(recording);
     expect(staged.actions[0]).toMatchObject({ url: '/companies/new?name={{param:/name}}' });
-    expect(staged.summary).toBe('created {{param:/name}} on the pro plan');
+    expect(staged.summary).toBe('created E2E-abc on the pro plan');
 
     // The next run claims the same key and replays the entry with its own value.
     const replayed: AgentCacheContext = {
@@ -331,13 +331,38 @@ describe('StepTraceSession', () => {
       templates: [{ pointer: '/name', value: 'E2E-xyz' }],
     });
     const verdict = await second.begin();
-    expect(verdict?.summary).toContain('created E2E-xyz on the pro plan');
+    expect(verdict?.summary).toContain('recorded verdict: created E2E-abc on the pro plan');
     expect(keyed[1]).toEqual(keyed[0]);
 
     // A call that did not mark the param cannot fill the slot: a miss, never a literal placeholder on screen.
     const unmarked = makeSession(entryContext(staged), makeHost(['/companies']), { params: { name: 'E2E-xyz', plan: 'pro' } });
     expect(await unmarked.begin()).toBeUndefined();
     expect(unmarked.cacheInfo).toMatchObject({ mode: 'missed' });
+  });
+
+  it('records nothing when a unique() value is spelled by another param, and says so in the step detail', async () => {
+    const context = fakeContext(noEntry.store.read);
+    const session = makeSession(context, makeHost(['/reminders', '/reminders/7']), {
+      params: { title: 'Daily', frequency: 'Daily' },
+      templates: [{ pointer: '/title', value: 'Daily' }],
+    });
+    await session.begin();
+    session.record({ name: 'navigate', url: '/reminders/new?title=Daily&frequency=Daily' });
+    await session.conclude('passed', 'created the Daily reminder');
+    expect(context.staged).toEqual([]);
+    expect(session.cacheInfo).toMatchObject({ mode: 'missed', notRecorded: 'param-collision' });
+
+    // The same call with a title of its own records, and the detail carries no such note.
+    const clean = fakeContext(noEntry.store.read);
+    const other = makeSession(clean, makeHost(['/reminders', '/reminders/8']), {
+      params: { title: 'Water plants', frequency: 'Daily' },
+      templates: [{ pointer: '/title', value: 'Water plants' }],
+    });
+    await other.begin();
+    other.record({ name: 'navigate', url: '/reminders/new?title=Water+plants&frequency=Daily' });
+    await other.conclude('passed', 'created the reminder');
+    expect(stagedTrace(clean).actions[0]).toMatchObject({ url: '/reminders/new?title={{param:/title|form}}&frequency=Daily' });
+    expect(other.cacheInfo).not.toHaveProperty('notRecorded');
   });
 
   it('records the new screen as anchors for a step that moved to another pathname', async () => {

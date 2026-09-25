@@ -292,6 +292,7 @@
                   "mode": "missed",
                   "reason": "gap",
                   "derived": "minted-token",
+                  "notRecorded": "param-collision",
                   "replayedActions": 0,
                   "totalActions": 2
                 },

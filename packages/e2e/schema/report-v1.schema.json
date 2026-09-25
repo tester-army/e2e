@@ -209,6 +209,7 @@
           ]
         },
         "derived": { "enum": ["pixels", "whole-node", "minted-token", "date"] },
+        "notRecorded": { "enum": ["param-collision"] },
         "replayedActions": { "type": "integer", "minimum": 0 },
         "totalActions": { "type": "integer", "minimum": 0 }
       },
@@ -224,6 +225,10 @@
         {
           "if": { "required": ["derived"] },
           "then": { "required": ["reason"], "properties": { "reason": { "const": "gap" } } }
+        },
+        {
+          "if": { "required": ["notRecorded"] },
+          "then": { "properties": { "mode": { "enum": ["missed", "agent-concluded"] } } }
         }
       ]
     },

@@ -18,7 +18,7 @@ import { decideTraceReplay, opensWithNavigate, type TraceReplayMissReason } from
 import { compareRoutes, routeOf } from '../cache/route.ts';
 import { instructionDigest } from '../cache/identity.ts';
 import { TraceRecorder } from '../cache/recorder.ts';
-import { expandTrace, templateParams, templateTrace, type ParamTemplate } from '../cache/template.ts';
+import { expandTrace, templateParams, templatesCollide, templateTrace, type ParamTemplate } from '../cache/template.ts';
 import { readTraceEntry, type ActionTrace, type DerivedReason, type TraceEntry } from '../cache/trace.ts';
 import { sleep } from '../internal/time.ts';
 import type { StepCacheInfo } from '../run/steps.ts';
@@ -452,7 +452,12 @@ export class StepTraceSession {
     if (trace.startPath === undefined && !opensWithNavigate(trace)) return;
     // Stored with a slot where each `unique()` value appeared, so the next
     // run's values — a fresh timestamped name — replay the same flow. A
-    // recording that cannot be templated safely is not written at all.
+    // recording that cannot be templated safely is not written at all; when
+    // the reason is the params themselves, the report says so.
+    if (templatesCollide(this.options.params, this.options.templates)) {
+      if (this.info !== undefined) this.info = { ...this.info, notRecorded: 'param-collision' };
+      return;
+    }
     const templated = templateTrace(trace, this.options.templates);
     if (templated === undefined) return;
     this.cache.staged.push({ kind: 'write', keyHash: this.keyHash, trace: templated, stepIndex: this.options.stepIndex });

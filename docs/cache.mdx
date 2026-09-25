@@ -79,6 +79,16 @@ Use `unique()` for data the flow enters or checks. Keep choices that change
 the flow, such as a plan name, as ordinary params. The substitution covers
 the value as a URL spells it too, `%20` in a path or `+` in a search query.
 
+The recording is text with no note of which param each value came from, so
+a `unique()` value must be told apart from the other params. When it equals
+another param's value, is spelled inside one, or is one's URL-encoded form
+(a run-unique title that happens to read `Daily` next to `frequency:
+'Daily'`), the step runs and passes as usual but is not recorded, and
+`step.cache.notRecorded` in the report reads `param-collision`. The next
+run, with a value of its own, records it. The recorded verdict summary is
+kept as the model wrote it during the recording run; only inputs, control
+descriptors, paths, and anchors carry the substitution.
+
 For preview URLs that change on each deploy, set
 [`identity`](/reference/config#the-app-under-test) to keep the same cache
 identity. On devices, replay uses the

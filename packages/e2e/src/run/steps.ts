@@ -113,6 +113,13 @@ export interface StepCacheInfo {
    * data rather than the flow's. Absent for a gap at a project tool.
    */
   derived?: DerivedReason;
+  /**
+   * Why a passing step that ran live was still not recorded, when the cause
+   * is the call itself: `param-collision` when a `unique()` value equals, is
+   * spelled inside, or is the encoded form of another param's value, so the
+   * recording could not tell which param a recorded input came from.
+   */
+  notRecorded?: 'param-collision';
   replayedActions: number;
   totalActions: number;
 }

@@ -84,6 +84,23 @@ describe.each(schemas)('%s schema', (name) => {
       delete cache.derived;
       expect(validate(report)).toBe(true);
     });
+
+    it('lets a missed or handed-off step say why it was not recorded, with a closed reason', () => {
+      const report = readJson('fixtures', 'report-v1.valid.json') as {
+        run: { results: { attempts: { steps: { api: string; cache?: { mode: string; reason?: string; notRecorded?: string } }[] }[] }[] };
+      };
+      const steps = report.run.results.flatMap((result) => result.attempts.flatMap((attempt) => attempt.steps));
+      const cache = steps.find((step) => step.cache?.notRecorded !== undefined)!.cache!;
+      expect(cache).toMatchObject({ mode: 'missed', notRecorded: 'param-collision' });
+      expect(validate(report)).toBe(true);
+      cache.notRecorded = 'guessed';
+      expect(validate(report)).toBe(false);
+      cache.notRecorded = 'param-collision';
+      cache.mode = 'self-finalized';
+      delete cache.reason;
+      delete (cache as { derived?: string }).derived;
+      expect(validate(report)).toBe(false);
+    });
   }
 });
 

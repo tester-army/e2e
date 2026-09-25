@@ -273,7 +273,9 @@ state no longer matches, the live agent continues from the current screen.
   `step.cache.reason` says why: `no-entry`, `wrong-context`,
   `target-not-found`, `target-ambiguous`, `end-mismatch`, and so on.
 - A step that records no actions creates no entry and skips the cache's
-  end-state observation.
+  end-state observation. A step whose `unique()` value equals, is spelled
+  inside, or is the encoded form of another param's value is not recorded
+  either; `step.cache.notRecorded` reads `param-collision`.
 - The wait for a visible change starts when the action finishes, so screen
   capture time counts toward it. Replay still compares consecutive captures
   after actions that can move or replace the screen. Empty navigation
