@@ -1,0 +1,135 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import type { Page } from 'playwright';
+import type { EngineFixtureContext } from 'e2e/engine';
+import { PlaywrightSurface } from '../../src/surface.ts';
+import { createWebFixture, type Web } from '../../src/web.ts';
+
+/**
+ * One origin with a body for every outcome `waitForResponse` reports: a full
+ * JSON body, a genuinely empty body under 200 and 204, and a body cut short
+ * by a connection reset before the declared `Content-Length` was sent. The
+ * fragment is flushed before the reset so the browser has seen the headers
+ * and reports the response rather than an empty reply.
+ */
+function startBodyServer(): Promise<{ server: Server; url: string }> {
+  const server = createServer((request, response) => {
+    switch (request.url) {
+      case '/':
+        response.writeHead(200, { 'content-type': 'text/html' });
+        response.end('<!doctype html><title>Bodies</title><h1>Bodies</h1>');
+        return;
+      case '/api/full':
+        response.writeHead(200, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ ok: true }));
+        return;
+      case '/api/empty':
+        response.writeHead(200, { 'content-type': 'text/plain', 'content-length': '0' });
+        response.end();
+        return;
+      case '/api/no-content':
+        response.writeHead(204);
+        response.end();
+        return;
+      case '/api/cut':
+        response.writeHead(200, { 'content-type': 'application/json', 'content-length': '1000' });
+        response.write('{"partial":', () => {
+          setTimeout(() => response.socket?.destroy(), 50);
+        });
+        return;
+      default:
+        response.writeHead(404);
+        response.end();
+    }
+  });
+  return new Promise((resolve) => {
+    server.listen(0, '127.0.0.1', () => {
+      const { port } = server.address() as AddressInfo;
+      resolve({ server, url: `http://127.0.0.1:${port}` });
+    });
+  });
+}
+
+describe('web.waitForResponse bodies', () => {
+  const surface = new PlaywrightSurface({});
+  const artifactsDir = mkdtempSync(path.join(tmpdir(), 'e2e-wait-for-response-'));
+  const signal = new AbortController().signal;
+  let server: Server;
+  let origin: string;
+  let page: Page;
+  let web: Web;
+
+  beforeAll(async () => {
+    ({ server, url: origin } = await startBodyServer());
+    await surface.init({ runId: 'responses', targetName: 'web', projectRoot: process.cwd(),
+      app: {}, env: {}, headed: false, workerSlot: 0, signal, log: () => undefined });
+  });
+
+  beforeEach(async () => {
+    await surface.startAttempt({ attemptId: 'responses', artifactsDir, signal });
+    page = await surface.ensurePage();
+    await page.goto(`${origin}/`);
+    web = createWebFixture(surface, {
+      operation: () => ({ signal, timeoutMs: 5_000, runId: 'responses', attemptId: 'responses', origin: 'test' }),
+      expectable: (target: object) => target,
+      fixture: (_name: string, target: object) => target,
+    } as unknown as EngineFixtureContext);
+  });
+
+  afterEach(async () => {
+    await surface.endAttempt({ signal, timeoutMs: 5_000 });
+  });
+
+  afterAll(async () => {
+    await surface.dispose({ signal, timeoutMs: 5_000 });
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    rmSync(artifactsDir, { recursive: true, force: true });
+  });
+
+  /**
+   * Fires one page-side fetch that reads its body the way an app does and
+   * returns the response `waitForResponse` observed for it.
+   */
+  async function observe(pathname: string) {
+    const [response] = await Promise.all([
+      web.waitForResponse(`**${pathname}`),
+      page.evaluate(
+        (url) => fetch(url).then((reply) => reply.text()).catch(() => undefined),
+        `${origin}${pathname}`,
+      ),
+    ]);
+    return response;
+  }
+
+  it('reads a full body as text and JSON', async () => {
+    const response = await observe('/api/full');
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe('{"ok":true}');
+    await expect(response.json()).resolves.toEqual({ ok: true });
+  });
+
+  it.each([
+    ['/api/empty', 200],
+    ['/api/no-content', 204],
+  ])('resolves a genuinely empty body at %s to an empty string', async (pathname, status) => {
+    const response = await observe(pathname);
+    expect(response.status).toBe(status);
+    await expect(response.text()).resolves.toBe('');
+  });
+
+  it('keeps the status of a body the connection cut short and rejects reading it', async () => {
+    const response = await observe('/api/cut');
+    expect(response.status).toBe(200);
+    expect(response.url).toBe(`${origin}/api/cut`);
+    expect(response.headers['content-length']).toBe('1000');
+    await expect(response.text()).rejects.toMatchObject({
+      code: 'ACTION_FAILED',
+      message: 'waitForResponse: response body could not be read: net::ERR_CONTENT_LENGTH_MISMATCH',
+    });
+    await expect(response.json()).rejects.toMatchObject({ code: 'ACTION_FAILED' });
+  });
+});

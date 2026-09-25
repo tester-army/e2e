@@ -12,7 +12,7 @@
  * says which URLs a test may open.
  */
 
-import type { Download, Route } from 'playwright';
+import type { Download, Response, Route } from 'playwright';
 import type { ActionOptions, Expectable, JsonValue, Locator, Screen, TextMatch } from 'e2e';
 import {
   Deadline,
@@ -69,10 +69,34 @@ export interface WebResponse {
   readonly status: number;
   /** Response headers, lower-cased names. */
   readonly headers: Readonly<Record<string, string>>;
-  /** Parses the response body as JSON. */
+  /** Parses the response body as JSON; rejects with `ACTION_FAILED` when the body could not be read. */
   json<T = unknown>(): Promise<T>;
-  /** Reads the response body as text. */
+  /** Reads the response body as text; rejects with `ACTION_FAILED` when the body could not be read. */
   text(): Promise<string>;
+}
+
+/**
+ * Reads the body once the response is known and keeps the outcome: a body
+ * that arrived decodes to text on every call, a body the browser could not
+ * read rejects every call with `ACTION_FAILED` naming the cause. Swallowing
+ * that failure would hand the test an empty string the server never sent,
+ * indistinguishable from a real empty body. The browser reports the reason
+ * on the request (`net::ERR_CONTENT_LENGTH_MISMATCH` for a connection cut
+ * short of the declared length, `net::ERR_ABORTED` for a body the page never
+ * consumed), and the protocol error behind the read is the fallback.
+ */
+async function readResponseBody(response: Response): Promise<() => Promise<string>> {
+  try {
+    const text = new TextDecoder().decode(await response.body());
+    return () => Promise.resolve(text);
+  } catch (cause) {
+    const reason = response.request().failure()?.errorText ?? causeMessage(cause);
+    const error = new TestError(
+      'ACTION_FAILED',
+      `waitForResponse: response body could not be read: ${reason}`,
+    );
+    return () => Promise.reject(error);
+  }
 }
 
 export interface CookieFields {
@@ -373,14 +397,13 @@ export function createWebFixture(surface: PlaywrightSurface, context: EngineFixt
           (candidate) => routePatternMatches(wirePattern, candidate.url()),
           { timeout: currentOperation.timeoutMs },
         );
-        const body = await response.body().catch(() => Buffer.alloc(0));
-        const decoder = new TextDecoder();
+        const body = await readResponseBody(response);
         return {
           url: response.url(),
           status: response.status(),
           headers: response.headers(),
-          json: async <T = unknown>() => JSON.parse(decoder.decode(body)) as T,
-          text: async () => decoder.decode(body),
+          json: async <T = unknown>() => JSON.parse(await body()) as T,
+          text: body,
         };
       });
     },
