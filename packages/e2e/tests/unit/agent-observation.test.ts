@@ -223,13 +223,14 @@ describe('disambiguating attributes', () => {
     expect(lines[4]).toBe(' #n5 textbox "Email"');
   });
 
-  it('renders the selected text of a focused field after its value, never for a secure one', () => {
+  it('renders the selected text of a focused field verbatim after its value, a lone space included, never for a secure one', () => {
     const tree = node('n1', {
       children: [
         node('n2', { role: 'textbox', value: 'release approved', selection: 'approved', states: { focused: true } }),
         node('n3', { role: 'textbox', value: 'two\nlines', selection: 'two\nli', states: { focused: true } }),
         node('n4', { role: 'textbox', name: 'Password', value: 'hunter2', selection: 'hunter2', states: { focused: true, secure: true } }),
         node('n5', { role: 'textbox', value: 'caret only', selection: '' }),
+        node('n6', { role: 'textbox', value: 'alpha beta', selection: ' ', states: { focused: true } }),
       ],
     });
     const lines = prepareObservation(observation(tree), {
@@ -238,9 +239,10 @@ describe('disambiguating attributes', () => {
     }).text.split('\n');
 
     expect(lines[1]).toBe(' #n2 textbox value="release approved" selection="approved" [focused]');
-    expect(lines[2]).toBe(' #n3 textbox value="two\\nlines" selection="two li" [focused]');
+    expect(lines[2]).toBe(' #n3 textbox value="two\\nlines" selection="two\\nli" [focused]');
     expect(lines[3]).toBe(' #n4 textbox "Password" value=<secure> [focused secure]');
     expect(lines[4]).toBe(' #n5 textbox value="caret only"');
+    expect(lines[5]).toBe(' #n6 textbox value="alpha beta" selection=" " [focused]');
   });
 });
 

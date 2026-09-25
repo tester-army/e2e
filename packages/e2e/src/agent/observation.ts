@@ -298,10 +298,10 @@ export function formatNode(
     parts.push(`value=${JSON.stringify(redact(node.value))}`);
   }
   // What a Shift+Arrow press selected: without it the model extends a
-  // selection blind and cannot tell one word from its neighbour.
-  const selection = node.selection === undefined ? '' : collapseText(node.selection);
-  if (selection !== '' && node.states?.secure !== true) {
-    parts.push(`selection=${JSON.stringify(redact(selection))}`);
+  // selection blind and cannot tell one word from its neighbour. Rendered
+  // verbatim (escaped), since a selected space or newline is a selection too.
+  if (node.selection !== undefined && node.selection !== '' && node.states?.secure !== true) {
+    parts.push(`selection=${JSON.stringify(redact(node.selection))}`);
   }
   if (node.inputPurpose !== undefined && node.inputPurpose !== 'none') {
     parts.push(`purpose=${node.inputPurpose}`);

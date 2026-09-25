@@ -450,10 +450,13 @@ export function createGrammarTools(
       .describe(`Press the key this many times in this one call, 1 to ${String(MAX_PRESS_TIMES)}; default 1. Use more to extend a selection or move a caret several steps at once.`);
     const pressed = (key: string, count: number, where: string) =>
       count === 1 ? `Pressed ${key} ${where}.` : `Pressed ${key} ${String(count)} times ${where}.`;
-    // Each repeat is one recorded action against the budget, as a scroll repeat is.
+    // Each repeat is one recorded action against the budget, as a scroll repeat
+    // is. The first press addresses the node; the rest go to whatever has focus,
+    // since a targeted press refocuses the node first and a repeated Tab would
+    // start over from it instead of walking on.
     const pressing = async (key: string, id: string | undefined, count: number): Promise<void> => {
       for (let repeat = 0; repeat < count; repeat += 1) {
-        if (id === undefined) await context.actions.pressKey(key);
+        if (id === undefined || (repeat > 0 && verbs.has('pressKey'))) await context.actions.pressKey(key);
         else await context.actions.press({ id }, key);
       }
     };

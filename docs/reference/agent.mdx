@@ -97,7 +97,7 @@ acted on. A verb the engine does not declare is not offered.
 | `hover({ target })` | `hover` | Moves the pointer over one node without pressing: hover menus, flyouts, tooltips, controls revealed on mouse-over. |
 | `type({ target?, value, replace? })` | `fill`; without `target`, `keyboard` | Replaces the node's value; without a target, types into whatever has focus. |
 | `type_secret({ target, name })` | `fill` | Fills a secret declared in the step's params. Offered only when the step declares one. |
-| `press({ target?, key, times? })` | `press`; without `target`, `keyboard` | Sends one key to a node or to the focused control, up to 20 times in one call; each press is one action. |
+| `press({ target?, key, times? })` | `press`; without `target`, `keyboard` | Sends one key to a node or to the focused control, up to 20 times in one call. Each press is one action; with a target, the first press addresses the node and the rest go to whatever has focus, so a repeated `Tab` walks on. |
 | `select({ target, value })` | `selectOption` | Picks an option by its visible label. |
 | `check({ target, checked? })` | `check` and `uncheck` | Sets a checkbox, switch, or radio to a state (`true` by default). A control already in that state is left alone, unlike a tap, which flips it. |
 | `scroll({ direction, target?, times? })` | `swipe` | Scrolls the viewport or one scrollable node, up to 20 screens per call. |
