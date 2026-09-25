@@ -658,26 +658,39 @@ describe('ServiceStack', () => {
   it('stops starting services once the signal aborts and still tears down what started', async () => {
     const log = path.join(dir, 'log');
     const controller = new AbortController();
-    const services = stack([
+    const services = new ServiceStack(
+      resolveServices(
+        [
+          {
+            name: 'a',
+            executable: process.execPath,
+            args: ['-e', logStep(log, 'up:a')],
+            waitForExit: true,
+            teardown: { executable: process.execPath, args: ['-e', logStep(log, 'down:a')] },
+          },
+          {
+            name: 'b',
+            executable: process.execPath,
+            args: ['-e', 'setInterval(() => {}, 1000)'],
+            waitForExit: true,
+            shutdownTimeout: 1_000,
+          },
+          {
+            name: 'never',
+            executable: process.execPath,
+            args: ['-e', logStep(log, 'up:never')],
+            waitForExit: true,
+          },
+        ],
+        dir,
+      ),
+      dir,
       {
-        executable: process.execPath,
-        args: ['-e', logStep(log, 'up:a')],
-        waitForExit: true,
-        teardown: { executable: process.execPath, args: ['-e', logStep(log, 'down:a')] },
+        starting: (label) => {
+          if (label === 'service "b"') controller.abort();
+        },
       },
-      {
-        executable: process.execPath,
-        args: ['-e', 'setInterval(() => {}, 1000)'],
-        waitForExit: true,
-        shutdownTimeout: 1_000,
-      },
-      {
-        executable: process.execPath,
-        args: ['-e', logStep(log, 'up:never')],
-        waitForExit: true,
-      },
-    ]);
-    setTimeout(() => controller.abort(), 300);
+    );
     await services.start(controller.signal);
     expect(await stopAll(services)).toEqual([]);
     expect(readLog(log)).toEqual(['up:a', 'down:a']);
