@@ -608,6 +608,22 @@ describe('e2e init', () => {
     expect(output()).not.toContain('Linked');
   });
 
+  it.skipIf(!symlinks)('keeps an earlier copy in .claude/skills whose SKILL.md is a symlink, and leaves that link alone', async () => {
+    writeCopy('.agents/skills');
+    writeCopy('.claude/skills');
+    const mine = path.join(dir, 'mine.md');
+    writeFileSync(mine, 'mine\n');
+    const linked = path.join(dir, '.claude/skills/e2e/SKILL.md');
+    rmSync(linked);
+    symlinkSync(path.join('..', '..', '..', 'mine.md'), linked);
+    expect((await init(dir, { yes: true })).exitCode).toBe(0);
+    expect(output()).toContain(`Symlink, not touching: .claude/skills/e2e/ (.claude/skills/e2e/SKILL.md -> ${realpathSync(mine)})`);
+    expect(output()).not.toContain('Linked');
+    expect(lstatSync(path.join(dir, '.claude/skills/e2e')).isDirectory()).toBe(true);
+    expect(lstatSync(linked).isSymbolicLink()).toBe(true);
+    expect(read('mine.md')).toBe('mine\n');
+  });
+
   it.skipIf(!symlinks)('needs no link when .claude/skills already leads to .agents/skills', async () => {
     mkdirSync(path.join(dir, '.agents/skills'), { recursive: true });
     mkdirSync(path.join(dir, '.claude'));

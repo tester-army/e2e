@@ -204,12 +204,16 @@ function leadsTo(link: string, canonical: string): boolean {
     && realpathOfExisting(path.resolve(path.dirname(link), readlinkSync(link))) === destination;
 }
 
-/** Whether the directory holds nothing but files the bundle ships, so a link to another copy loses nothing. */
+/**
+ * Whether the directory holds nothing but regular files the bundle ships, so a
+ * link to another copy loses nothing. A symlink inside is a link to respect
+ * under the copy rules, never a file to drop.
+ */
 function holdsOnlyBundled(root: string, bundled: readonly SkillFile[]): boolean {
   const shipped = bundled.map((file) => file.relative);
   return readdirSync(root, { recursive: true, withFileTypes: true }).every((entry) => {
     const relative = posixRelative(root, path.join(entry.parentPath, entry.name));
-    return entry.isDirectory() ? shipped.some((file) => file.startsWith(`${relative}/`)) : shipped.includes(relative);
+    return entry.isDirectory() ? shipped.some((file) => file.startsWith(`${relative}/`)) : entry.isFile() && shipped.includes(relative);
   });
 }
 
