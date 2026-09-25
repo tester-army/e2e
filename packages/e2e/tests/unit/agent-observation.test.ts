@@ -1,6 +1,6 @@
 import { assert, describe, expect, it, vi } from 'vitest';
 import type { Observation, SemanticNode } from '../../src/engine/surface.ts';
-import { interactiveNodeCount, isTransitionalObservation, observationShape, prepareObservation, settleObservation } from '../../src/agent/observation.ts';
+import { changeShape, interactiveNodeCount, isTransitionalObservation, observationShape, prepareObservation, settleObservation } from '../../src/agent/observation.ts';
 import { createRedactor } from '../../src/internal/redact.ts';
 
 function node(id: string, extra: Partial<SemanticNode> = {}): SemanticNode {
@@ -500,6 +500,35 @@ describe('settleObservation', () => {
       vi.useRealTimers();
     }
   });
+
+  it('settles a changed canvas from matching permitted screenshots instead of waiting out both windows', async () => {
+    vi.useFakeTimers();
+    try {
+      const started = Date.now();
+      const prepare = (data: number) => prepareObservation({
+        ...observation(node('root', { role: 'screen' }), {
+          data: new Uint8Array([data]), mediaType: 'image/png', width: 1, height: 1, scale: 1,
+        }),
+        redaction: { secureNodeCount: 0, maskedRegionCount: 0 },
+      }, { redact: NO_REDACT, maxBytes: 4_096 });
+      const before = prepare(1);
+      const after = prepare(2);
+      const capture = vi.fn(async () => after);
+      const pending = settleObservation(capture, observationShape, clock, {
+        changedFrom: { shape: changeShape(before)!, deadlineMs: started + 2_000 },
+        changeShapeOf: changeShape,
+        transitional: isTransitionalObservation,
+        stableWaitMs: 1_000,
+        pollMs: 100,
+      });
+      await vi.runAllTimersAsync();
+      expect(await pending).toBe(after);
+      expect(capture).toHaveBeenCalledTimes(2);
+      expect(Date.now() - started).toBe(100);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('isTransitionalObservation', () => {
@@ -509,6 +538,12 @@ describe('isTransitionalObservation', () => {
     expect(isTransitionalObservation(prepare(node('root', { role: 'button', name: 'Continue' })))).toBe(false);
     expect(isTransitionalObservation(prepare(node('root', { role: 'textbox', name: 'Password', states: { secure: true } })))).toBe(false);
     expect(isTransitionalObservation(prepare(node('root', { role, children: [node('child', { role: 'text', text: 'Ready' })] })))).toBe(false);
+    const unproven = observation(node('root', { role }), {
+      data: new Uint8Array([1]), mediaType: 'image/png', width: 1, height: 1, scale: 1,
+    });
+    const withheld = prepareObservation(unproven, { redact: NO_REDACT, maxBytes: 4_096 });
+    expect(withheld.pixels).toBeUndefined();
+    expect(isTransitionalObservation(withheld)).toBe(true);
   });
 });
 

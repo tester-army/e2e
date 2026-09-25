@@ -277,7 +277,8 @@ state no longer matches, the live agent continues from the current screen.
 - The wait for a visible change starts when the action finishes, so screen
   capture time counts toward it. Replay still compares consecutive captures
   after actions that can move or replace the screen. Empty navigation
-  captures keep polling within the stability window.
+  captures without permitted screenshot evidence keep polling within the
+  stability window.
 - `e2e init` gitignores `.e2e/cache/`; committing entries is opt-in. Remove
   that line to share replays with CI and teammates (CI stays `read-only`
   unless `cache: 'read-write'` is set explicitly).

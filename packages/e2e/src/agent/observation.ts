@@ -474,12 +474,13 @@ export async function settleObservation<T>(
 }
 
 /**
- * Whether an observation shows a screen in transition: nothing but the
- * document, screen, or window root, between the old content being torn down and the
- * new content arriving. Acting or judging on it would be acting on nothing.
+ * Whether an observation shows a screen in transition: only an empty root,
+ * with no permitted screenshot to describe content absent from the tree.
+ * A canvas can have an empty tree while its pixels show the action's effect.
  */
 export function isTransitionalObservation(observation: AgentObservation): boolean {
   return observation.kind === 'semantic' &&
+    observation.pixels === undefined &&
     (observation.tree.role === 'document' || observation.tree.role === 'screen' || observation.tree.role === 'window') &&
     observation.nodes.size <= 1;
 }
