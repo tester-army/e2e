@@ -1,9 +1,10 @@
-/** Registers the closed-root selector engines in a CDP default context; every locator and secure-field mask needs them. */
+/** Registers the engine's selector engines in a CDP default context; every locator and secure-field mask needs them. */
 
 import type { BrowserContext, Page } from 'playwright';
 import { EngineError } from 'e2e/engine';
 import { connectionAbort, type ConnectionBudget } from './operation-budget.ts';
-import { CLOSED_SHADOW_ROOTS_KEY, CLOSED_SHADOW_SELECTOR_ENGINES } from './closed-shadow.ts';
+import { CLOSED_SHADOW_ROOTS_KEY } from './closed-shadow.ts';
+import { SELECTOR_ENGINES } from './selector-engines.ts';
 
 interface SelectorChannel {
   registerSelectorEngine(
@@ -30,7 +31,7 @@ export async function registerCdpSelectors(context: BrowserContext, budget: Conn
   if (typeof register !== 'function') {
     throw new EngineError('UNSUPPORTED_CAPABILITY', 'this Playwright version cannot register selector engines in the CDP context; locators and secure-field masks need them', { retryable: false });
   }
-  for (const { name, source } of CLOSED_SHADOW_SELECTOR_ENGINES) {
+  for (const { name, source } of SELECTOR_ENGINES) {
     try {
       await (channel as SelectorChannel).registerSelectorEngine({ selectorEngine: {
         name,

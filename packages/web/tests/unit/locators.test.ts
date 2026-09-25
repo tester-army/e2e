@@ -67,7 +67,7 @@ const textbox: LocatorExpression = {
 };
 
 describe('projectExpression', () => {
-  it('projects an exact label query onto labelable candidates with a label predicate, and composes loosely', () => {
+  it('projects an exact label query onto labelable candidates with a label predicate, and composes exactly', () => {
     const label: LocatorExpression = {
       kind: 'query',
       query: { kind: 'label', value: { kind: 'string', value: 'Display name', exact: true } },
@@ -78,14 +78,22 @@ describe('projectExpression', () => {
     expect(chainOf(projected.locator)).toEqual([
       'locator(e2e-roots=button, input:not([type="hidden"]), textarea, select, meter, output, progress, [aria-label], [aria-labelledby])',
     ]);
-    expect(projected.composable === null ? null : chainOf(projected.composable)).toEqual([ROOTS, 'label(Display name)']);
+    // Composition keeps the exact predicate: the label engine runs the reader in the page, with the reader's options.
+    const EXACT_LABEL = `locator(e2e-label=${JSON.stringify({
+      value: 'Display name',
+      testIdAttribute: 'data-testid',
+      secureFieldSelector: 'input[type="password" i]',
+    })})`;
+    expect(projected.composable === null ? null : chainOf(projected.composable)).toEqual([EXACT_LABEL]);
     // A position waits for the predicate and also narrows the composable locator.
     const firstLabel: LocatorExpression = { kind: 'index', source: label, index: 'first' };
     const first = projectExpression(page, firstLabel);
     expect(first.steps).toEqual([{ kind: 'index', index: 'first' }]);
-    expect(first.composable === null ? null : chainOf(first.composable)).toEqual([ROOTS, 'label(Display name)', 'first']);
+    expect(first.composable === null ? null : chainOf(first.composable)).toEqual([EXACT_LABEL, 'first']);
     const scoped = projectExpression(page, { ...textbox, scope: firstLabel } as LocatorExpression);
-    expect(chainOf(scoped.locator)).toEqual([ROOTS, 'label(Display name)', 'first', ROOTS, 'role(textbox)']);
+    expect(chainOf(scoped.locator)).toEqual([EXACT_LABEL, 'first', ROOTS, 'role(textbox)']);
+    const rows = projectExpression(page, { kind: 'filter', source: textbox, has: label });
+    expect(chainOf(rows.locator)).toEqual([ROOTS, 'role(textbox)', `filter(has=${EXACT_LABEL})`]);
     // A substring label query keeps Playwright's own matching.
     const loose = projectExpression(page, {
       kind: 'query',

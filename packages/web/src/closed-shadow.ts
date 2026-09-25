@@ -63,7 +63,8 @@ export const CLOSED_SHADOW_SELECTOR_ENGINE = 'e2e-closed';
 export const SEARCH_ROOTS_SELECTOR_ENGINE = 'e2e-roots';
 
 /**
- * In-page helpers both selector engines below are built on, as source: the
+ * In-page helpers the selector engines below and the label engine
+ * (`label-selector.ts`) are built on, as source: the
  * closed roots the init script recorded under a query root (the root's own,
  * when it is a closed host, and every one below through open and closed
  * roots alike), and the elements a CSS selector matches in one tree and the
@@ -74,7 +75,7 @@ export const SEARCH_ROOTS_SELECTOR_ENGINE = 'e2e-roots';
  * element is skipped; every locator resolution runs this, so a page without
  * closed roots must pay nothing for the reach.
  */
-const CLOSED_SHADOW_HELPERS_SOURCE = `
+export const CLOSED_SHADOW_HELPERS_SOURCE = `
   const roots = globalThis[Symbol.for(${JSON.stringify(CLOSED_SHADOW_ROOTS_KEY)})];
   const tracked = roots instanceof WeakMap;
   const closedRootsUnder = (root, out) => {
@@ -141,7 +142,7 @@ const SEARCH_ROOTS_SELECTOR_ENGINE_SOURCE = `() => {${CLOSED_SHADOW_HELPERS_SOUR
   return { queryAll, query: (root, selector) => queryAll(root, selector)[0] ?? null };
 }`;
 
-/** Every selector engine the web engine registers, in a launched browser and in a CDP context alike. */
+/** The two closed-root selector engines; `selector-engines.ts` lists them with the label engine for registration. */
 export const CLOSED_SHADOW_SELECTOR_ENGINES: readonly { readonly name: string; readonly source: string }[] = [
   { name: CLOSED_SHADOW_SELECTOR_ENGINE, source: CLOSED_SHADOW_SELECTOR_ENGINE_SOURCE },
   { name: SEARCH_ROOTS_SELECTOR_ENGINE, source: SEARCH_ROOTS_SELECTOR_ENGINE_SOURCE },

@@ -3,6 +3,8 @@
 import type { FrameLocator, Locator as PwLocator, Page } from 'playwright';
 import { EngineError, type LocatorExpression, type SemanticQuery, type TextPattern } from 'e2e/engine';
 import { SEARCH_ROOTS_SELECTOR_ENGINE } from './closed-shadow.ts';
+import { exactLabelSelector, LABELABLE_SELECTOR } from './label-selector.ts';
+import { SECURE_FIELD_SELECTOR } from './read-node.ts';
 
 type PwScope = Page | FrameLocator | PwLocator;
 
@@ -13,11 +15,6 @@ function patternToPw(pattern: TextPattern): string | RegExp {
 
 function patternExact(pattern: TextPattern): boolean {
   return pattern.kind === 'string' ? pattern.exact : false;
-}
-
-/** The same pattern as a substring match; a RegExp has no exactness to loosen. */
-function loosened(pattern: TextPattern): TextPattern {
-  return pattern.kind === 'string' ? { ...pattern, exact: false } : pattern;
 }
 
 /**
@@ -50,14 +47,6 @@ function escapeRegexForSelector(re: RegExp): string {
  * `image` query has to go back to `img` to match it.
  */
 const ARIA_ROLE_BY_CONTRACT_ROLE: Readonly<Record<string, string>> = { image: 'img' };
-
-/**
- * Every control `getByLabel` can name: labelable form controls plus anything
- * carrying its own label attributes. The candidates of an exact label query;
- * the surface keeps those whose labels match.
- */
-const LABELABLE_SELECTOR =
-  'button, input:not([type="hidden"]), textarea, select, meter, output, progress, [aria-label], [aria-labelledby]';
 
 /** Every control that carries a current value: the candidates of a display-value query. */
 const VALUED_SELECTOR = 'input, textarea, select';
@@ -192,10 +181,11 @@ export interface ProjectedLocator {
   /**
    * The Playwright locator to compose with as a scope or `has` filter, for a
    * projection whose own predicate lives outside Playwright's chain. An exact
-   * label query composes through Playwright's substring label match, which
-   * accepts every control the predicate would and some it would not; that is
-   * the one place the predicate is approximated. Null for a display-value
-   * projection, which has no such equivalent and is rejected instead.
+   * label query composes through the `e2e-label` selector engine, which runs
+   * the same reader on the same candidates inside the page, so a `has` filter
+   * keeps the row the label names and no row whose label merely contains it.
+   * Null for a display-value projection, which has no such equivalent and is
+   * rejected instead.
    */
   readonly composable: PwLocator | null;
   /**
@@ -250,13 +240,17 @@ function project(scope: PwScope, expression: LocatorExpression, testIdAttribute:
           ? scope
           : requireComposable(project(scope, expression.scope, testIdAttribute));
       const { query } = expression;
-      const exactLabel = query.kind === 'label' && patternExact(query.value);
+      const exactLabel = query.kind === 'label' && query.value.kind === 'string' && query.value.exact ? query.value : null;
       return {
         locator: visibleQueryToPw(inner, query, testIdAttribute),
         displayValue: query.kind === 'displayValue' ? query.value : null,
-        name: exactLabel ? query.value : null,
-        // The substring label query of the same table row: Playwright's own chain accepts it.
-        composable: exactLabel ? queryToPw(inner, { ...query, value: loosened(query.value) }, testIdAttribute) : null,
+        name: exactLabel,
+        composable:
+          exactLabel === null
+            ? null
+            : inner.locator(
+                exactLabelSelector({ value: exactLabel.value, testIdAttribute, secureFieldSelector: SECURE_FIELD_SELECTOR }),
+              ),
         steps: [],
         visible: query.visible === true,
       };
