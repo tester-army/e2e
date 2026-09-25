@@ -408,25 +408,33 @@ function DeviceSection() {
   const network = useNetworkState();
   const [location, setLocation] = useState("location: not read");
   const [biometrics, setBiometrics] = useState("biometrics: idle");
+  const readRef = useRef(0);
 
   /**
    * Reads the current position once permission is granted and prints it to
-   * four decimals, the precision a fixture sets it with.
+   * four decimals, the precision a fixture sets it with. Only the newest read
+   * reports: an older one finishing last would print a fix the fixture has
+   * since moved.
    */
   const readLocation = async () => {
-    setLocation("location: reading");
+    readRef.current += 1;
+    const read = readRef.current;
+    const report = (text: string) => {
+      if (readRef.current === read) setLocation(text);
+    };
+    report("location: reading");
     try {
       const permission = await Location.requestForegroundPermissionsAsync();
       if (permission.status !== "granted") {
-        setLocation("location: permission denied");
+        report("location: permission denied");
         return;
       }
       // Highest accuracy reads the GPS provider, the one an emulator's fix feeds;
       // Android otherwise offers Google's "Location Accuracy" dialog over the app on the first read.
       const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest, mayShowUserSettingsDialog: false });
-      setLocation(`location: ${position.coords.latitude.toFixed(4)}, ${position.coords.longitude.toFixed(4)}`);
+      report(`location: ${position.coords.latitude.toFixed(4)}, ${position.coords.longitude.toFixed(4)}`);
     } catch (error) {
-      setLocation(`location: unavailable (${error instanceof Error ? error.message : String(error)})`);
+      report(`location: unavailable (${error instanceof Error ? error.message : String(error)})`);
     }
   };
 
