@@ -235,15 +235,16 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<Init
 
   if (!options.yes) {
     const actions = [
-      ...files.map((file) => `${file.existing ? 'update' : 'create'} ${file.relative}`),
+      ...files.map((file) => `${file.existing ? 'Update' : 'Create'} ${file.relative}`),
       ...skillInstalls.map((install) => install.kind === 'link'
-        ? `link ${install.relative} -> ${install.target}${linkReplaces(install, 'replacing')}`
-        : `${install.links.length > 0 ? 'replace' : install.existing ? 'update' : 'create'} ${install.relative}/`),
-      ...mcpRegistrations.map((registration) => `${registration.existing ? 'update' : 'create'} ${registration.relative}`),
-      ...(missingIgnore.length > 0 ? ['update .gitignore'] : []),
+        ? `Link ${install.relative} -> ${install.target}${linkReplaces(install, 'replacing')}`
+        : `${install.links.length > 0 ? 'Replace' : install.existing ? 'Update' : 'Create'} ${install.relative}/`),
+      ...mcpRegistrations.map((registration) => `${registration.existing ? 'Update' : 'Create'} ${registration.relative}`),
+      ...(missingIgnore.length > 0 ? ['Update .gitignore'] : []),
     ];
-    const message = actions.join(', ');
-    const proceed = await clack.confirm({ message: `${message.charAt(0).toUpperCase()}${message.slice(1)}?` });
+    // One change per line: a dozen paths in one sentence is unreadable.
+    clack.log.info(['Changes:', ...actions.map((action) => `  - ${action}`)].join('\n'));
+    const proceed = await clack.confirm({ message: 'Apply these changes?' });
     if (isCancelled(proceed) || !proceed) return cancel();
   }
 

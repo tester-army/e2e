@@ -531,7 +531,8 @@ describe('e2e init', () => {
       required: false,
     }));
     expect(read('.mcp.json')).toContain('"e2e"');
-    expect(clack.confirm).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('create .claude/skills/e2e/') }));
+    expect(output()).toContain('  - Create .claude/skills/e2e/');
+    expect(clack.confirm).toHaveBeenCalledWith(expect.objectContaining({ message: 'Apply these changes?' }));
     expect(existsSync(path.join(dir, '.agents/skills'))).toBe(false);
     expect(output()).toContain('Created .claude/skills/e2e/');
     const reference = path.join(dir, '.claude/skills/e2e/references/setup.md');
@@ -560,9 +561,10 @@ describe('e2e init', () => {
   it.skipIf(!symlinks)('links .claude/skills/e2e to the copy in .agents/skills when both are chosen, and a second run has nothing to do', async () => {
     vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     expect((await init(dir)).exitCode).toBe(0);
-    expect(clack.confirm).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      message: expect.stringContaining('create .agents/skills/e2e/, link .claude/skills/e2e -> ../../.agents/skills/e2e, create .mcp.json'),
-    }));
+    expect(output()).toContain('  - Create .agents/skills/e2e/\n');
+    expect(output()).toContain('  - Link .claude/skills/e2e -> ../../.agents/skills/e2e\n');
+    expect(output()).toContain('  - Create .mcp.json\n');
+    expect(clack.confirm).toHaveBeenNthCalledWith(1, expect.objectContaining({ message: 'Apply these changes?' }));
     const link = path.join(dir, '.claude/skills/e2e');
     expect(lstatSync(link).isSymbolicLink()).toBe(true);
     expect(readlinkSync(link)).toBe('../../.agents/skills/e2e');
@@ -585,9 +587,8 @@ describe('e2e init', () => {
     expect((await init(dir)).exitCode).toBe(0);
     // Both directories hold the skill, so the locations are not asked again.
     expect(clack.multiselect).not.toHaveBeenCalledWith(expect.objectContaining({ message: 'Install the e2e skill for coding agents?' }));
-    expect(clack.confirm).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      message: expect.stringContaining('link .claude/skills/e2e -> ../../.agents/skills/e2e (replacing the copy)'),
-    }));
+    expect(output()).toContain('  - Link .claude/skills/e2e -> ../../.agents/skills/e2e (replacing the copy)\n');
+    expect(clack.confirm).toHaveBeenNthCalledWith(1, expect.objectContaining({ message: 'Apply these changes?' }));
     const link = path.join(dir, '.claude/skills/e2e');
     expect(lstatSync(link).isSymbolicLink()).toBe(true);
     expect(readlinkSync(link)).toBe('../../.agents/skills/e2e');
@@ -804,7 +805,8 @@ describe('e2e init', () => {
         vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
         expect((await init(dir)).exitCode).toBe(0);
         expect(clack.confirm).toHaveBeenNthCalledWith(4, question);
-        expect(clack.confirm).toHaveBeenNthCalledWith(5, expect.objectContaining({ message: 'Replace .claude/skills/e2e/?' }));
+        expect(output()).toContain('  - Replace .claude/skills/e2e/');
+        expect(clack.confirm).toHaveBeenNthCalledWith(5, expect.objectContaining({ message: 'Apply these changes?' }));
         expect(lstatSync(path.join(dir, '.claude/skills/e2e')).isSymbolicLink()).toBe(false);
         expect(read('.claude/skills/e2e/SKILL.md')).toMatch(/^---\nname: e2e\n/);
         expect(read('.claude/skills/e2e/references/setup.md')).toContain('# Setting up e2e');
@@ -840,12 +842,9 @@ describe('e2e init', () => {
         message: `Replace the symlink .claude/skills/e2e -> ${path.join(dir, 'gone', 'e2e')} with a link to ../../.agents/skills/e2e?`,
         initialValue: false,
       });
-      expect(clack.confirm).toHaveBeenNthCalledWith(
-        2,
-        expect.objectContaining({
-          message: expect.stringContaining('create .agents/skills/e2e/, link .claude/skills/e2e -> ../../.agents/skills/e2e (replacing the symlink)'),
-        }),
-      );
+      expect(output()).toContain('  - Create .agents/skills/e2e/\n');
+      expect(output()).toContain('  - Link .claude/skills/e2e -> ../../.agents/skills/e2e (replacing the symlink)\n');
+      expect(clack.confirm).toHaveBeenNthCalledWith(2, expect.objectContaining({ message: 'Apply these changes?' }));
       expect(readlinkSync(link)).toBe('../../.agents/skills/e2e');
       expect(read('.claude/skills/e2e/SKILL.md')).toMatch(/^---\nname: e2e\n/);
       expect(read('.claude/skills/e2e/references/setup.md')).toContain('# Setting up e2e');

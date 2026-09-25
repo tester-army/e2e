@@ -769,7 +769,7 @@ describe('e2e telemetry', () => {
   it('does not print the notice before e2e init, and still prints it before the next command', async () => {
     await invoke('init', '--yes');
     expect(written(stderrSpy)).not.toContain('e2e collects anonymous usage telemetry');
-    expect(printedEvents().map((event) => event.properties['command'])).toEqual(['init']);
+    expect(printedEvents().filter((event) => event.event === 'e2e_cli_session').map((event) => event.properties['command'])).toEqual(['init']);
     await invoke('list');
     expect(written(stderrSpy)).toContain('e2e collects anonymous usage telemetry');
   });
