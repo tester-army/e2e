@@ -135,7 +135,7 @@ export interface MobileOptions {
    * select a build mode change what the app is: give each mode its own
    * `identity` so their recordings stay apart.
    * `device.openApp(app, { launchArguments })` launches any app with its
-   * own. Maestro's `launchApp: { arguments }`, Detox's `launchArgs`.
+   * own.
    */
   readonly launchArguments?: readonly string[] | undefined;
   /**
@@ -148,7 +148,7 @@ export interface MobileOptions {
    * without a prompt, and a revocation on Android, where the OS asks again
    * when the app requests the permission. A foreground-only `device.openApp`
    * leaves them alone; `device.openApp(app, { permissions })` presets any
-   * app's. Maestro's `launchApp: { permissions }`.
+   * app's.
    */
   readonly permissions?: LaunchPermissions | undefined;
 }

@@ -34,7 +34,7 @@ const farm = {
 ({ platform: 'ios', settle: true }) satisfies MobileOptions;
 // @ts-expect-error the transition budget is a number of milliseconds.
 ({ platform: 'ios', transition: '500ms' }) satisfies MobileOptions;
-// @ts-expect-error a permission is granted, denied, or reset; Maestro's `allow` is `grant`.
+// @ts-expect-error a permission is granted, denied, or reset; there is no `allow`.
 ({ platform: 'ios', permissions: { camera: 'allow' } }) satisfies MobileOptions;
 // @ts-expect-error only a permission agent-device names.
 ({ platform: 'ios', permissions: { bluetooth: 'grant' } }) satisfies MobileOptions;
