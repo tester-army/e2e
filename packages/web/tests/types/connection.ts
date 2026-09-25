@@ -30,5 +30,7 @@ import type { BrowserLease, BrowserProvider, WebConnectOptions, WebOptions } fro
 ({ headers: { 'x-vercel-protection-bypass': 1 } }) satisfies WebOptions;
 // @ts-expect-error a viewport is a width and a height.
 ({ viewport: { width: 1280 } }) satisfies WebOptions;
+// `null` follows the window instead of emulating a size.
+({ viewport: null }) satisfies WebOptions;
 // @ts-expect-error the test id attribute is one attribute name.
 ({ testIdAttribute: ['data-qa', 'data-test'] }) satisfies WebOptions;

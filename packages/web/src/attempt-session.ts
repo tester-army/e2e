@@ -13,7 +13,8 @@ export type StorageState = Exclude<NonNullable<BrowserContextOptions['storageSta
 
 interface SessionOptions {
   readonly artifactsDir: string;
-  readonly viewport: ViewportSize;
+  /** The emulated page size, or `null` to follow the window. */
+  readonly viewport: ViewportSize | null;
   readonly contextOptions: BrowserContextOptions;
   readonly acquire: (signal: AbortSignal) => Promise<Browser>;
   readonly configure: (context: BrowserContext) => Promise<void>;
@@ -150,7 +151,8 @@ export class AttemptSession {
         if (budget.signal.aborted) throw connectionAbort(budget.signal, 'connection');
         await this.options.configure(candidate.context);
         if (recover && candidate.page !== null) {
-          await candidate.page.setViewportSize(previous?.page?.viewportSize() ?? this.options.viewport);
+          const size = previous?.page?.viewportSize() ?? this.options.viewport;
+          if (size !== null) await candidate.page.setViewportSize(size);
           await this.video.pageOpened(candidate.page);
         }
         if (resumeTrace) await candidate.context.tracing.start(TRACE_OPTIONS);
@@ -185,7 +187,7 @@ export class AttemptSession {
     try {
       let identity = binding.identity;
       if (identity !== undefined) {
-        await page.setViewportSize(this.options.viewport);
+        if (this.options.viewport !== null) await page.setViewportSize(this.options.viewport);
         identity = { ...identity, target: await targetIdentity(page) };
       }
       this.check(token);

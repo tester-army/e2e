@@ -6,7 +6,7 @@ import { CaptureScope } from './capture-scope.ts';
 import { captureDocument, ROOT_NODE_ID } from './observation.ts';
 import { capturePixels } from './observe.ts';
 import { RefRegistry, type CapturedObservation } from './refs.ts';
-import { cancelled, DEFAULT_VIEWPORT, type ActionTarget } from './support.ts';
+import { cancelled, currentViewport, type ActionTarget } from './support.ts';
 
 /** Shared node budget across the main document and its frames. */
 const MAX_OBSERVED_NODES = 3_000;
@@ -37,7 +37,7 @@ export async function captureObservation(
       timeout: Math.max(1, settleDeadline - Date.now()),
     })).catch(() => undefined);
     if (operation.signal.aborted) throw cancelled('observe cancelled');
-    const viewport = page.viewportSize() ?? DEFAULT_VIEWPORT;
+    const viewport = await currentViewport(page);
     const semanticDeadline = options?.pixelFallback === true
       ? deadline - Math.min(PIXEL_FALLBACK_RESERVE_MS, (deadline - Date.now()) / 4)
       : deadline;
@@ -73,7 +73,7 @@ export async function captureObservation(
       generation.clear();
       if (options?.pixelFallback !== true || !(cause instanceof EngineError) || cause.code !== 'OPERATION_TIMEOUT') throw cause;
       await pixelCapture;
-      const fallbackViewport = page.viewportSize() ?? DEFAULT_VIEWPORT;
+      const fallbackViewport = await currentViewport(page);
       const pixels = await capturePixels(page, {
         ...operation, timeoutMs: deadline - Date.now(),
       }, fallbackViewport);

@@ -34,6 +34,23 @@ the selected test-target pairs with `npx e2e list`.
 Targets with the same `command` share one app process. Every retry starts
 at the target's configured size.
 
+## Fill the window
+
+`viewport: null` emulates no size. The page fills the browser window, and
+the agent, screenshots, and the recording use the window's size, measured
+in the page. Use it in a headed run or with a hosted browser whose live
+view shows the whole window, where a fixed 1280 by 720 renders in one
+corner of it:
+
+```ts title="e2e.config.ts"
+{ name: 'window', engine: web({ ...app, viewport: null }) }
+```
+
+The size then comes from the browser: Playwright's own launch opens a small
+window, a hosted browser the window its service was asked for, minus the tab
+strip and toolbar in headed mode. `web.setViewport` inside a test fixes a
+size for the rest of the attempt as usual.
+
 ## Resize inside a test
 
 `web.setViewport` resizes the page for the rest of the attempt:
@@ -96,8 +113,8 @@ It does not emulate touch, color scheme, or reduced-motion preferences.
 Use the [device engine](/mobile) for tests on a simulator or emulator.
 
 A `--video` recording on a Playwright target is sized to the viewport the
-attempt started with. A resize mid-attempt does not change the recording's
-dimensions.
+attempt started with, the window's size under `viewport: null`. A resize
+mid-attempt does not change the recording's dimensions.
 
 <CardGroup cols={2}>
   <Card title="Working with the browser" icon="globe" href="/browser">

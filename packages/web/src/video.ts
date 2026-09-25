@@ -7,7 +7,7 @@
  * state reset) ends its segment first, since Playwright writes nothing for a
  * screencast whose page closed under it, and the next page the attempt opens
  * starts the next segment. Each segment is captured at the attempt's viewport
- * size and carries the instant it began, so a consumer can place step
+ * size (the window's, measured when the page starts it, under `viewport: null`) and carries the instant it began, so a consumer can place step
  * timestamps on it. The first segment is `video/video.webm`; later ones are
  * `video/video-part<n>.webm`. Without a recording, every hook here is a no-op.
  */
@@ -16,7 +16,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { Page } from 'playwright';
 import { EngineError, type VideoSegment, type ViewportSize } from 'e2e/engine';
-import { message } from './support.ts';
+import { currentViewport, message } from './support.ts';
 
 /** One segment in progress: the page it records and where its file lands. */
 interface Segment {
@@ -27,7 +27,7 @@ interface Segment {
 }
 
 export class VideoRecorder {
-  private readonly viewport: ViewportSize;
+  private readonly viewport: ViewportSize | null;
   /** Set by `arm`, cleared by `stop`; pages the attempt opens in between start segments. */
   private armed = false;
   private current: Segment | null = null;
@@ -39,7 +39,7 @@ export class VideoRecorder {
   private lost: { readonly relative: string; readonly cause: unknown } | undefined;
 
   constructor(
-    viewport: ViewportSize,
+    viewport: ViewportSize | null,
     private readonly artifactsDir: string,
   ) {
     this.viewport = viewport;
@@ -103,9 +103,10 @@ export class VideoRecorder {
     const relative = path.posix.join('video', `${name}.webm`);
     const absolute = path.join(this.artifactsDir, relative);
     mkdirSync(path.dirname(absolute), { recursive: true });
+    const size = this.viewport ?? await currentViewport(page);
     await page.screencast.start({
       path: absolute,
-      size: { width: this.viewport.width, height: this.viewport.height },
+      size: { width: size.width, height: size.height },
     });
     this.current = { page, relative, absolute, startedAt: new Date().toISOString() };
   }

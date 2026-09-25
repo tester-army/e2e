@@ -1,10 +1,21 @@
 /** Shared error translation, filename, and swipe helpers for the Playwright engine. */
 
 import type { ElementHandle, Locator as PwLocator, Mouse, Page } from 'playwright';
-import { EngineError, type Momentum, type ScrollDirection, type ViewportPoint } from 'e2e/engine';
+import { EngineError, type Momentum, type ScrollDirection, type ViewportPoint, type ViewportSize } from 'e2e/engine';
 import { ConfigurationError, InfrastructureError, TestError } from 'e2e/engine';
 
 export const DEFAULT_VIEWPORT = { width: 1280, height: 720 } as const;
+
+/**
+ * The page's viewport in CSS pixels: the emulated size when one is set, else
+ * the window's, measured in the page, since `viewport: null` follows the
+ * window and Playwright then reports no size of its own.
+ */
+export async function currentViewport(page: Page): Promise<ViewportSize> {
+  const emulated = page.viewportSize();
+  if (emulated !== null) return emulated;
+  return page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
+}
 
 interface Point {
   x: number;
@@ -108,7 +119,7 @@ export async function performPointerDrag(
   // that has to hold.
   await asActionable(source).hover({ timeout });
   const page = await targetPage(source);
-  const viewport = page.viewportSize() ?? DEFAULT_VIEWPORT;
+  const viewport = await currentViewport(page);
   let from = await targetBoundingBox(source, timeout);
   let to = await targetBoundingBox(destination, timeout);
 
@@ -312,12 +323,12 @@ export function staleOr(cause: unknown, operation: string): Error {
   return translatePwError(cause, operation);
 }
 
-export function performViewportSwipe(
+export async function performViewportSwipe(
   page: Page,
   direction: ScrollDirection,
   momentum: Momentum,
 ): Promise<void> {
-  const viewport = page.viewportSize() ?? DEFAULT_VIEWPORT;
+  const viewport = await currentViewport(page);
   const distance = swipeDistance(
     direction === 'up' || direction === 'down' ? viewport.height : viewport.width,
     momentum,

@@ -36,8 +36,13 @@ export interface WebOptions extends EngineAppDeclaration {
    * provider implies chromium and excludes `connect`.
    */
   readonly browser?: BrowserName | BrowserProvider;
-  /** Initial viewport of every attempt's page; default 1280 by 720. */
-  readonly viewport?: ViewportSize;
+  /**
+   * Initial viewport of every attempt's page; default 1280 by 720. `null`
+   * emulates no size: the page fills the browser window, whatever size the
+   * window has (a hosted browser's live view, a headed run), and
+   * `web.setViewport` still fixes one for the rest of the attempt.
+   */
+  readonly viewport?: ViewportSize | null;
   /**
    * Attach to a remote browser over CDP instead of launching locally. Requires
    * the chromium browser (the default). Wired by a hosted-browser engine.

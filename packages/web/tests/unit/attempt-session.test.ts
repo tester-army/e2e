@@ -53,9 +53,10 @@ function session(options: {
   used?: Set<string>;
   configure?: () => Promise<void>;
   artifactsDir?: string;
+  viewport?: { width: number; height: number } | null;
 } = {}) {
   return new AttemptSession({
-    artifactsDir: options.artifactsDir ?? tmpdir(), viewport: { width: 320, height: 200 }, contextOptions: {},
+    artifactsDir: options.artifactsDir ?? tmpdir(), viewport: options.viewport === undefined ? { width: 320, height: 200 } : options.viewport, contextOptions: {},
     acquire: async () => { throw new Error('persistent attempts never acquire the shared browser'); },
     configure: options.configure ?? (async () => undefined),
     persistent: { provision: options.provision ?? (() => 'provisioned'), reconnect: options.reconnect ?? (() => 'existing'), usedContexts: options.used ?? new Set() },
@@ -85,6 +86,20 @@ describe('AttemptSession', () => {
     await expect.poll(() => old.close.mock.calls.length).toBeGreaterThan(1);
     expect(next.current().browser).toBe(current.browser);
     await next.close(cleanup());
+  });
+
+  it('leaves the persistent page at the window size under viewport: null', async () => {
+    const current = remote('current');
+    vi.mocked(connectCdp).mockResolvedValue(current.browser);
+    const setViewportSize = vi.fn(async () => undefined);
+    const active = target('page');
+    (active.page as unknown as { setViewportSize: unknown }).setViewportSize = setViewportSize;
+    current.pages.push(active.page);
+    const owner = session({ viewport: null });
+    await owner.start(new AbortController().signal);
+    await owner.ensurePage();
+    expect(setViewportSize).not.toHaveBeenCalled();
+    await owner.close(cleanup());
   });
 
   it('does not attach an endpoint that resolves after disposal', async () => {

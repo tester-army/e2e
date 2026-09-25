@@ -786,6 +786,25 @@ describe('web engine lifecycle', () => {
     });
   });
 
+  it('follows the window under viewport: null, reports the measured size, and swipes by it', async () => {
+    const engine = web({ viewport: null });
+    await withAttempt(engine, app, artifactsDir, 'w1', async () => {
+      await engine.session!.open!(`${app.url}/form`, operation('w1'));
+      const page = surfaceOf(engine)!.page();
+      expect(page.viewportSize()).toBeNull();
+      const measured = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+      expect(measured.width).toBeGreaterThan(0);
+      const snapshot = await engine.observe!(operation('w1'), { pixels: true });
+      expect(snapshot.viewport).toEqual(measured);
+      expect(snapshot.pixels).toBeDefined();
+
+      await page.setContent('<div style="height: 5000px">tall</div>');
+      await engine.perform!(snapshot.root.ref, { kind: 'swipe', direction: 'down' }, operation('w1'));
+      await page.waitForFunction(() => window.scrollY > 0);
+      expect(await page.evaluate(() => window.scrollY)).toBe(Math.round(measured.height / 2));
+    });
+  });
+
   it('reports the configured test-id attribute as testId, on observed and located nodes alike', async () => {
     const engine = web({ testIdAttribute: 'data-qa' });
     const byTestId = (value: string): LocatorExpression => ({

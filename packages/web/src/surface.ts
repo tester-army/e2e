@@ -143,8 +143,13 @@ export interface WebOptions extends EngineAppDeclaration {
    * provider implies chromium and excludes `connect`.
    */
   readonly browser?: BrowserName | BrowserProvider;
-  /** Initial viewport of every attempt's page; default 1280 by 720. */
-  readonly viewport?: ViewportSize;
+  /**
+   * Initial viewport of every attempt's page; default 1280 by 720. `null`
+   * emulates no size: the page fills the browser window, whatever size the
+   * window has (a hosted browser's live view, a headed run), and
+   * `web.setViewport` still fixes one for the rest of the attempt.
+   */
+  readonly viewport?: ViewportSize | null;
   /**
    * Attach to a remote browser over CDP instead of launching locally. Requires
    * the chromium browser (the default). Wired by a hosted-browser engine.
@@ -197,7 +202,7 @@ export class PlaywrightSurface {
   private readonly leases: LeasedBrowsers | undefined;
   private session: AttemptSession | undefined;
   private readonly usedContexts = new Set<string>();
-  private readonly viewport: ViewportSize;
+  private readonly viewport: ViewportSize | null;
   /** Injected request headers, names lowercased so they replace the browser's own of the same name. */
   private readonly headers: Readonly<Record<string, string>> | undefined;
   private readonly basicAuth: WebBasicAuth | undefined;
@@ -218,7 +223,7 @@ export class PlaywrightSurface {
     this.browserName = typeof options.browser === 'string' ? options.browser : 'chromium';
     this.leases = typeof options.browser === 'object' && options.browser !== null ? new LeasedBrowsers(options.browser) : undefined;
     this.connect = options.connect;
-    this.viewport = options.viewport ?? DEFAULT_VIEWPORT;
+    this.viewport = options.viewport === undefined ? DEFAULT_VIEWPORT : options.viewport;
     this.headers = options.headers === undefined ? undefined : lowercaseNames(options.headers);
     this.basicAuth = options.basicAuth;
     this.testIdAttribute = options.testIdAttribute ?? DEFAULT_TEST_ID_ATTRIBUTE;
