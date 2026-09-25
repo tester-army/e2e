@@ -143,12 +143,22 @@ async function captureInto(
   // Property handles would keep earlier captures alive after their parent is disposed.
   // The metadata is JSON data. Sending one string avoids Playwright recursively
   // encoding every field of every node across the protocol.
-  const metadata = await scope.read(() => captured.evaluate((observation) => JSON.stringify({
-    nodes: observation.nodes,
-    ids: observation.ids,
-    truncated: observation.truncated,
-  })));
-  const { nodes, ids, truncated: walkTruncated } = JSON.parse(metadata) as Omit<ReturnType<typeof readDocumentSemanticsFunction>, 'elements'>;
+  const metadata = await scope.read(() => captured.evaluate((observation) => {
+    const data = { nodes: observation.nodes, ids: observation.ids, truncated: observation.truncated };
+    // Application serializers may transform valid metadata as well as throw.
+    // Keep Playwright's structured transfer when the page changes JSON behavior.
+    if (
+      typeof JSON.stringify !== 'function' ||
+      !/^function stringify\(\)\s*\{\s*\[native code\]\s*\}$/.test(Function.prototype.toString.call(JSON.stringify)) ||
+      'toJSON' in Object.prototype ||
+      'toJSON' in Array.prototype
+    ) return data;
+    return JSON.stringify(data);
+  }));
+  const decoded = typeof metadata === 'string'
+    ? JSON.parse(metadata) as Omit<ReturnType<typeof readDocumentSemanticsFunction>, 'elements'>
+    : metadata;
+  const { nodes, ids, truncated: walkTruncated } = decoded;
   if (!Array.isArray(ids) || ids.length !== nodes.length) {
     throw new EngineError('ENGINE_FAILURE', 'observation ids do not align with its nodes', {
       retryable: false,

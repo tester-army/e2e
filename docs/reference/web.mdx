@@ -466,7 +466,8 @@ observation budget, capped at two seconds, for the screenshot. The deadline
 covers the page walk, metadata and element readback, and nested frames.
 Semantic metadata crosses the Playwright connection as one JSON string to
 reduce serialization overhead. Actions still use the live element handles
-captured with that metadata.
+captured with that metadata. Pages that replace `JSON.stringify` or add
+`toJSON` methods to object or array prototypes use structured transfer.
 Cleanup does not wait for stalled protocol replies. An abandoned reader
 cannot reuse node IDs or publish handles over a newer observation.
 
