@@ -373,7 +373,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    */
   const childrenNameOf = (el: Element, walk: NameWalk): string => {
     let out = '';
-    for (const child of Array.from(el.childNodes)) {
+    for (const child of contentChildrenOf(el)) {
       if (child.nodeType === 3) {
         out += child.nodeValue ?? '';
         continue;
@@ -385,6 +385,23 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
       out += block ? ` ${token} ` : token;
     }
     return out;
+  };
+
+  /**
+   * The nodes a name from content reads under an element, in the order the
+   * page composes them: a `<slot>` reads what is assigned to it, and a host
+   * reads its light children (a slotted one skipped, its slot reads it) and
+   * then its shadow tree, so `<button>` whose text lives behind a shadow root
+   * is named by that text as Playwright's role selector names it.
+   */
+  const contentChildrenOf = (el: Element): ChildNode[] => {
+    if (el instanceof HTMLSlotElement) {
+      const assigned = el.assignedNodes();
+      if (assigned.length > 0) return assigned as ChildNode[];
+    }
+    const own = Array.from(el.childNodes).filter((child) => (child as ChildNode & { assignedSlot?: unknown }).assignedSlot == null);
+    const shadow = shadowRootOf(el);
+    return shadow === null ? own : own.concat(Array.from(shadow.childNodes));
   };
 
   /**
@@ -401,6 +418,35 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
   };
 
   const NAME_OPAQUE_TAGS: ReadonlySet<string> = new Set(['TEXTAREA', 'SELECT', 'INPUT', 'SCRIPT', 'STYLE']);
+
+  /**
+   * Roles named from their content (accname 2F, the list Playwright's role
+   * selector uses), plus `listitem`, `status`, and `alert`, which the tree
+   * has always named so a list row or a message reads as one line.
+   */
+  const NAME_FROM_CONTENT_ROLES: ReadonlySet<string> = new Set([
+    'button',
+    'cell',
+    'checkbox',
+    'columnheader',
+    'gridcell',
+    'heading',
+    'link',
+    'menuitem',
+    'menuitemcheckbox',
+    'menuitemradio',
+    'option',
+    'radio',
+    'row',
+    'rowheader',
+    'switch',
+    'tab',
+    'tooltip',
+    'treeitem',
+    'listitem',
+    'status',
+    'alert',
+  ]);
 
   /** HTML-AAM: the child element that names its parent when nothing ARIA does. */
   const NAMING_CHILD_TAGS: Readonly<Record<string, string>> = { fieldset: 'legend', figure: 'figcaption', table: 'caption' };
@@ -455,27 +501,16 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
       const text = caption === undefined ? '' : nameTextOf(caption);
       if (text !== '') return text;
     }
+    if (el instanceof HTMLInputElement && (el.type === 'button' || el.type === 'submit' || el.type === 'reset')) {
+      if (el.value.trim() !== '') return el.value.trim();
+      // HTML-AAM: a submit or reset button with no value reads its default label.
+      if (el.type === 'submit') return 'Submit';
+      if (el.type === 'reset') return 'Reset';
+    }
     const role = implicitRole(el);
-    if (
-      role === 'button' ||
-      role === 'link' ||
-      role === 'heading' ||
-      role === 'tab' ||
-      role === 'menuitem' ||
-      role === 'menuitemcheckbox' ||
-      role === 'menuitemradio' ||
-      role === 'treeitem' ||
-      role === 'tooltip' ||
-      role === 'option' ||
-      role === 'listitem' ||
-      role === 'status' ||
-      role === 'alert'
-    ) {
+    if (role !== null && NAME_FROM_CONTENT_ROLES.has(role)) {
       const text = nameTextOf(el);
       if (text !== '') return text;
-    }
-    if (el instanceof HTMLInputElement && (el.type === 'button' || el.type === 'submit')) {
-      if (el.value.trim() !== '') return el.value.trim();
     }
     const title = el.getAttribute('title');
     if (title !== null && title.trim() !== '') return title.trim();

@@ -573,7 +573,13 @@ and `<details>` are `group`, `<input type="number">` is `spinbutton`,
 are `form` and `region` only when they carry an `aria-label`,
 `aria-labelledby`, or `title`. A `<legend>`, `<figcaption>`, or `<caption>`
 names its fieldset, figure, or table, so `toHaveAccessibleName` reads what
-`getByRole('group', { name })` matched. `<menu>` is a `list`; only `role="menu"` is a
+`getByRole('group', { name })` matched. A role accname names from content (a
+button, link, heading, tab, menu item, option, checkbox, radio, switch, cell,
+row or column header, row, tree item, tooltip) is named by its descendants, a
+custom element's shadow tree included, so `getByRole('checkbox', { name })`
+and `toHaveAccessibleName(name)` agree on a `<div role="checkbox">`. An
+`<input type="submit">` or `type="reset"` with no `value` reads `Submit` or
+`Reset`. `<menu>` is a `list`; only `role="menu"` is a
 `menu`. A device engine maps the platform types it has (a tab bar or segmented
 control is a `tablist`, a progress indicator a `progressbar`, a stepper a
 `spinbutton`) and keeps any other type verbatim, so a role with no native

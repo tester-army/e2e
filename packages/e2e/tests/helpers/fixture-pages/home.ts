@@ -95,6 +95,14 @@ line2  </textarea>
   <form aria-label="Sign in"><input aria-label="User" /></form>
   <hr />
   <article aria-label="First post"><p>Body</p></article>
+  <div role="switch" aria-checked="false" tabindex="0">Dark mode</div>
+  <table><tr><th scope="col">Plan</th><td>Monthly</td></tr></table>
+  <x-button role="button" tabindex="0"></x-button>
+  <input type="reset" value="Clear form" />
+  <input type="reset" />
+  <script>
+    document.querySelector('x-button').attachShadow({ mode: 'open' }).innerHTML = '<span>Shadow action</span>';
+  </script>
 </body>
 </html>`),
   '/about': constant(`<!doctype html>

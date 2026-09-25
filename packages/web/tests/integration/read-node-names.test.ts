@@ -144,8 +144,8 @@ const PIXEL = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAAAAAAALAAAAAA
 
 describe('names from content and precedence', () => {
   /** The test id of the one element Playwright's role selector resolves for this role and exact name. */
-  async function locatedTestId(role: 'button' | 'link' | 'textbox', name: string): Promise<string | null> {
-    return page.getByRole(role, { name, exact: true }).getAttribute('data-testid');
+  async function locatedTestId(role: string, name: string): Promise<string | null> {
+    return page.getByRole(role as Parameters<Page['getByRole']>[0], { name, exact: true }).getAttribute('data-testid');
   }
 
   it('names a control from its descendants the way the role selector does: aria-label, alt, content, then title', async () => {
@@ -278,6 +278,52 @@ describe('names from content and precedence', () => {
     for (const [testId, name] of cases) {
       expect(byTestId.get(testId), testId).toMatchObject({ role: 'button', name });
       expect(await locatedTestId('button', name), name).toBe(testId);
+    }
+  });
+
+  it('names every role accname allows from content, a shadow tree included, and a reset input by its value or default', async () => {
+    await page.setContent(`
+      <div role="checkbox" aria-checked="false" data-testid="checkbox">Remember me</div>
+      <span role="radio" aria-checked="true" data-testid="radio">Monthly</span>
+      <div role="switch" aria-checked="false" data-testid="switch">Dark mode</div>
+      <table>
+        <tr><th data-testid="columnheader">Price</th><th scope="row" data-testid="rowheader">Ada</th><td data-testid="cell">42</td></tr>
+      </table>
+      <div role="grid"><div role="row" data-testid="row"><div role="gridcell" data-testid="gridcell">A1</div></div></div>
+      <x-button role="button" tabindex="0" data-testid="custom-button"><span slot="icon">*</span></x-button>
+      <x-label role="button" tabindex="0" data-testid="slotted-button">Slotted</x-label>
+      <input type="reset" value="Clear" data-testid="reset-value">
+      <input type="reset" data-testid="reset-default">
+      <input type="submit" data-testid="submit-default">
+      <button data-testid="plain">Plain</button>
+      <input type="submit" value="Send" data-testid="submit-value">
+      <script>
+        document.querySelector('x-button').attachShadow({ mode: 'open' }).innerHTML = '<slot name="icon"></slot><span>Custom</span>';
+        document.querySelector('x-label').attachShadow({ mode: 'open' }).innerHTML = '<b>[</b><slot></slot><b>]</b>';
+      </script>
+    `);
+    const { tree } = await capture();
+    const byTestId = new Map(flatten(tree).map((node) => [node.testId, node]));
+    const cases: readonly [testId: string, role: string, name: string][] = [
+      ['checkbox', 'checkbox', 'Remember me'],
+      ['radio', 'radio', 'Monthly'],
+      ['switch', 'switch', 'Dark mode'],
+      ['columnheader', 'columnheader', 'Price'],
+      ['rowheader', 'rowheader', 'Ada'],
+      ['cell', 'cell', '42'],
+      ['row', 'row', 'A1'],
+      ['gridcell', 'gridcell', 'A1'],
+      ['custom-button', 'button', '* Custom'],
+      ['slotted-button', 'button', '[ Slotted ]'],
+      ['reset-value', 'button', 'Clear'],
+      ['reset-default', 'button', 'Reset'],
+      ['submit-default', 'button', 'Submit'],
+      ['plain', 'button', 'Plain'],
+      ['submit-value', 'button', 'Send'],
+    ];
+    for (const [testId, role, name] of cases) {
+      expect(byTestId.get(testId), testId).toMatchObject({ role, name });
+      expect(await locatedTestId(role, name), name).toBe(testId);
     }
   });
 });

@@ -95,6 +95,22 @@ test('role vocabulary: tabs, menus, progress, toolbars, images', async ({ app, s
   await expect(screen.getByRole('form', { name: 'Sign in' }).getByRole('textbox')).toHaveCount(1);
   await expect(screen.getByRole('separator')).toHaveCount(1);
   await expect(screen.getByRole('article', { name: 'First post' })).toHaveText('Body');
+
+  // Name from content for the roles accname allows, the same name on both
+  // sides: the role query resolves it and the reader reports it.
+  const named: readonly [role: string, name: string][] = [
+    ['switch', 'Dark mode'],
+    ['columnheader', 'Plan'],
+    ['cell', 'Monthly'],
+    ['button', 'Shadow action'],
+    ['button', 'Clear form'],
+    ['button', 'Reset'],
+  ];
+  for (const [role, name] of named) {
+    const control = screen.getByRole(role as 'button', { name, exact: true });
+    await expect(control).toHaveCount(1);
+    await expect(control).toHaveAccessibleName(name);
+  }
 });
 
 test('actions and state', async ({ app, screen, web }) => {
