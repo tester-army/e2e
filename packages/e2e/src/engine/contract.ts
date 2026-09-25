@@ -135,6 +135,12 @@ export interface SemanticNode {
   /** Current input value; never reported for a secure field. */
   readonly value?: string;
   /**
+   * Text selected inside the node, for the focused field or editing host
+   * whose selection the platform reports; absent when the selection is
+   * collapsed, and never reported for a secure field. Cut at `OBSERVED_TEXT_LIMIT`.
+   */
+  readonly selection?: string;
+  /**
    * The node's test id, when the platform gives it one: the value of the
    * project's test-id attribute on a document platform, an accessibility
    * identifier on iOS, a resource id on Android, an automation id on a

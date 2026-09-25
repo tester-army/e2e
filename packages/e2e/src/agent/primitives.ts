@@ -50,6 +50,8 @@ const MAX_VERDICT_SUMMARY_CHARS = 2_000;
 const MAX_SCROLL_TIMES = 20;
 /** Longest text `scroll_to` pages toward; a row label, never a paragraph. */
 const MAX_SCROLL_TO_TEXT_CHARS = 200;
+/** Presses one `press` call may repeat: a selection of a word, a caret moved a few steps. */
+const MAX_PRESS_TIMES = 20;
 
 /**
  * Keys whose whole effect is where the focus or the caret sits, which the
@@ -437,20 +439,42 @@ export function createGrammarTools(
   }
   if (verbs.has('press') || verbs.has('pressKey')) {
     const both = verbs.has('press') && verbs.has('pressKey');
+    const selecting =
+      ' Shift with an arrow key extends the selection in a field one step per press, and the screen then shows the selected text as selection="...".';
+    const times = z
+      .number()
+      .int()
+      .min(1)
+      .max(MAX_PRESS_TIMES)
+      .optional()
+      .describe(`Press the key this many times in this one call, 1 to ${String(MAX_PRESS_TIMES)}; default 1. Use more to extend a selection or move a caret several steps at once.`);
+    const pressed = (key: string, count: number, where: string) =>
+      count === 1 ? `Pressed ${key} ${where}.` : `Pressed ${key} ${String(count)} times ${where}.`;
+    // Each repeat is one recorded action against the budget, as a scroll repeat is.
+    const pressing = async (key: string, id: string | undefined, count: number): Promise<void> => {
+      for (let repeat = 0; repeat < count; repeat += 1) {
+        if (id === undefined) await context.actions.pressKey(key);
+        else await context.actions.press({ id }, key);
+      }
+    };
     tools['press'] = screenTool({
-      description: both
-        ? 'Send one key (e.g. "Enter", "Escape", "Tab") to one node, or to whatever has focus when target is omitted.'
-        : verbs.has('press')
-          ? 'Send one key (e.g. "Enter", "Escape", "Tab") to one node.'
-          : 'Send one key (e.g. "Enter", "Escape", "Tab") to whatever has focus.',
+      description:
+        (both
+          ? 'Send one key (e.g. "Enter", "Escape", "Tab") to one node, or to whatever has focus when target is omitted.'
+          : verbs.has('press')
+            ? 'Send one key (e.g. "Enter", "Escape", "Tab") to one node.'
+            : 'Send one key (e.g. "Enter", "Escape", "Tab") to whatever has focus.') + selecting,
       inputSchema: z.object({
         target: both ? target.optional() : verbs.has('press') ? target : z.undefined().optional(),
         key: z.string().min(1).max(64),
+        times,
       }),
-      execute: ({ target: id, key }) =>
-        id === undefined
-          ? acting(`Pressed ${key} on the focused field.`, () => context.actions.pressKey(key), { expectChange: !movesFocusOnly(key) })
-          : acting(`Pressed ${key} on #${id}.`, () => context.actions.press({ id }, key), { expectChange: !movesFocusOnly(key) }),
+      execute: ({ target: id, key, times: count }) =>
+        acting(
+          pressed(key, count ?? 1, id === undefined ? 'on the focused field' : `on #${id}`),
+          () => pressing(key, id, count ?? 1),
+          { expectChange: !movesFocusOnly(key) },
+        ),
     });
   }
   if (verbs.has('dismissKeyboard')) {

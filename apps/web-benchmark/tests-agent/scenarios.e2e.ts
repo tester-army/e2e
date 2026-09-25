@@ -114,7 +114,6 @@ const SCENARIOS: readonly Scenario[] = [
     slug: 'rich-text-editor',
     goal: 'type "release approved" into the editor, make exactly the word approved bold, and check the document',
     success: 'Document approved',
-    gap: 'selecting text inside a contenteditable needs a selection verb; press moves the caret one key at a time',
   },
   {
     slug: 'playbook-cleanup',

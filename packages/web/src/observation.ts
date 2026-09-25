@@ -332,6 +332,7 @@ export function toSemanticNode(
     ...(raw.name !== null ? { name: raw.name } : {}),
     ...(raw.text !== null ? { text: raw.text } : {}),
     ...(raw.value !== null ? { value: raw.value } : {}),
+    ...(raw.selection !== null ? { selection: raw.selection } : {}),
     ...(raw.testId !== null ? { testId: raw.testId } : {}),
     inputPurpose: raw.inputPurpose,
     states,

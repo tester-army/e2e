@@ -237,8 +237,8 @@ export function interactiveNodeCount(observation: Pick<ExecutorObservation, 'tex
 
 /**
  * Projects the raw tree onto the executor-facing node shape: the same
- * redaction the text serialization applies, field by field, and no value at
- * all for a secure node. Selectors stay behind — they are relocation
+ * redaction the text serialization applies, field by field, and no value or
+ * selection at all for a secure node. Selectors stay behind — they are relocation
  * material for the trace cache, not something a brain reasons about.
  */
 export function projectTree(node: SemanticNode, redact: (text: string) => string): ExecutorNode {
@@ -253,6 +253,7 @@ export function projectTree(node: SemanticNode, redact: (text: string) => string
     ...(node.name === undefined ? {} : { name: redact(node.name) }),
     ...(node.text === undefined ? {} : { text: redact(node.text) }),
     ...(node.value === undefined || secure ? {} : { value: redact(node.value) }),
+    ...(node.selection === undefined || secure ? {} : { selection: redact(node.selection) }),
     ...(node.inputPurpose === undefined ? {} : { inputPurpose: node.inputPurpose }),
     ...(node.states === undefined ? {} : { states: node.states }),
     ...(attributes === undefined ? {} : { attributes }),
@@ -268,7 +269,7 @@ export function projectTree(node: SemanticNode, redact: (text: string) => string
 const MAX_INDENT_DEPTH = 10;
 
 /**
- * Renders one node as `#id role "name" text="..." [states]`. Role-less text
+ * Renders one node as `#id role "name" text="..." value="..." selection="..." [states]`. Role-less text
  * holders omit the role token entirely: on a large screen they are half the
  * lines, and the model needs their text, not a filler word.
  */
@@ -295,6 +296,12 @@ export function formatNode(
     parts.push('value=<secure>');
   } else if (node.value !== undefined && node.value !== '') {
     parts.push(`value=${JSON.stringify(redact(node.value))}`);
+  }
+  // What a Shift+Arrow press selected: without it the model extends a
+  // selection blind and cannot tell one word from its neighbour.
+  const selection = node.selection === undefined ? '' : collapseText(node.selection);
+  if (selection !== '' && node.states?.secure !== true) {
+    parts.push(`selection=${JSON.stringify(redact(selection))}`);
   }
   if (node.inputPurpose !== undefined && node.inputPurpose !== 'none') {
     parts.push(`purpose=${node.inputPurpose}`);

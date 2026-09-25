@@ -154,7 +154,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
       expect.stringMatching(/^- hover \{target\}: Move the pointer over one node without clicking/),
       expect.stringMatching(/^- scroll_to \{target\?, text\?, direction\?\}: Scroll until a node is inside the viewport/),
       expect.stringMatching(/^- type \{target\?, value, replace\?\}: Type a plain-text value into one input node, or into whatever has focus when target is omitted\.$/),
-      expect.stringMatching(/^- press \{target\?, key\}: /),
+      expect.stringMatching(/^- press \{target\?, key, times\?\}: /),
       expect.stringMatching(/^- select \{target, value\}: /),
       expect.stringMatching(/^- check \{target, checked\?\}: Set a checkbox, switch, or radio to a state/),
       expect.stringMatching(/^- drag \{target, to\}: Drag one node and drop it on another/),

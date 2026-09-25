@@ -33,6 +33,8 @@ export interface RawNodeData {
   labels: string[] | null;
   text: string | null;
   value: string | null;
+  /** Text selected inside the focused field or editing host; null when unfocused, collapsed, or secure. */
+  selection: string | null;
   inputPurpose: 'username' | 'password' | 'one-time-code' | 'generic-secret' | 'none';
   states: {
     checked: boolean | null;

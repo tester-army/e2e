@@ -21,7 +21,7 @@ const ACCEPTED: Readonly<Record<string, Record<string, unknown>>> = {
   hover: { target: 'n1' },
   type: { target: 'n1', value: 'ada' },
   type_secret: { target: 'n1', name: 'admin' },
-  press: { target: 'n1', key: 'Enter' },
+  press: { target: 'n1', key: 'Shift+ArrowLeft', times: 8 },
   select: { target: 'n1', value: 'Pro' },
   check: { target: 'n1', checked: false },
   scroll: { direction: 'down', times: 2 },

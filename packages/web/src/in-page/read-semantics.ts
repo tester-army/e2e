@@ -552,6 +552,27 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
   };
   const focusedElement = focusedElementOf(element.ownerDocument);
 
+  /**
+   * The text selected inside a focused field: the slice between an input's or
+   * textarea's selection ends, or the document selection when it lies within
+   * an editing host. Null for a collapsed caret, so a node with no selection
+   * reads exactly as before.
+   */
+  const selectedTextOf = (el: Element): string | null => {
+    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+      const start = el.selectionStart;
+      const end = el.selectionEnd;
+      if (start === null || end === null || start === end) return null;
+      return el.value.slice(Math.min(start, end), Math.max(start, end));
+    }
+    if (!isEditingHost(el)) return null;
+    const selection = el.ownerDocument.getSelection();
+    if (selection === null || selection.rangeCount === 0 || selection.isCollapsed) return null;
+    if (!el.contains(selection.getRangeAt(0).commonAncestorContainer)) return null;
+    const text = selection.toString();
+    return text === '' ? null : text;
+  };
+
   const isHidden = (el: Element, style = styleOf(el)): boolean => {
     if (el.getAttribute('aria-hidden') === 'true') return true;
     if (!(el instanceof HTMLElement)) return el.getClientRects().length === 0;
@@ -753,6 +774,11 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     // type, so this node's `secure` flag and the screenshot mask agree by
     // construction.
     const secure = el.matches(options.secureFieldSelector);
+    let selection: string | null = null;
+    if (focusedElement === el && !secure) {
+      selection = selectedTextOf(el);
+      if (selection !== null && projection.textLimit !== null) selection = selection.slice(0, projection.textLimit);
+    }
 
     let inputPurpose: RawNodeData['inputPurpose'] = 'none';
     if (secure) inputPurpose = 'password';
@@ -809,6 +835,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
       labels,
       text,
       value: secure ? null : value,
+      selection,
       inputPurpose,
       states: {
         checked,

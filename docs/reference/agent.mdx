@@ -97,7 +97,7 @@ acted on. A verb the engine does not declare is not offered.
 | `hover({ target })` | `hover` | Moves the pointer over one node without pressing: hover menus, flyouts, tooltips, controls revealed on mouse-over. |
 | `type({ target?, value, replace? })` | `fill`; without `target`, `keyboard` | Replaces the node's value; without a target, types into whatever has focus. |
 | `type_secret({ target, name })` | `fill` | Fills a secret declared in the step's params. Offered only when the step declares one. |
-| `press({ target?, key })` | `press`; without `target`, `keyboard` | Sends one key to a node or to the focused control. |
+| `press({ target?, key, times? })` | `press`; without `target`, `keyboard` | Sends one key to a node or to the focused control, up to 20 times in one call; each press is one action. |
 | `select({ target, value })` | `selectOption` | Picks an option by its visible label. |
 | `check({ target, checked? })` | `check` and `uncheck` | Sets a checkbox, switch, or radio to a state (`true` by default). A control already in that state is left alone, unlike a tap, which flips it. |
 | `scroll({ direction, target?, times? })` | `swipe` | Scrolls the viewport or one scrollable node, up to 20 screens per call. |
@@ -117,6 +117,14 @@ directory such as `.env`, `.git`, or `.e2e`. A path that names no regular
 file is `INVALID_ARGUMENT`, an ordinary action failure the model reads and
 corrects. Every refusal and the final allow is a `policy` event named
 `upload.path` on the step. Nothing reaches the engine until every path passed.
+
+The screen the model reads lists the text selected inside the focused field
+as `selection="..."` after its value, when the engine reports one: the web
+engine does for an input, a textarea, and a `contenteditable` editor, and a
+secure field reports none. A `press` of `Shift+ArrowLeft` shows what it
+selected, and `times` presses the key several times in one call, so the
+agent extends a selection to exactly the word it wants in one more turn
+before it formats or replaces it.
 
 The tap variants are separate tools rather than an option on `tap` on
 purpose: offered as an optional `kind`, a model filled it on ordinary

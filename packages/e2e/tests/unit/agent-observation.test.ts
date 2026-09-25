@@ -222,6 +222,26 @@ describe('disambiguating attributes', () => {
     expect(lines[3]).toBe(' #n4 textbox placeholder="you@example.test"');
     expect(lines[4]).toBe(' #n5 textbox "Email"');
   });
+
+  it('renders the selected text of a focused field after its value, never for a secure one', () => {
+    const tree = node('n1', {
+      children: [
+        node('n2', { role: 'textbox', value: 'release approved', selection: 'approved', states: { focused: true } }),
+        node('n3', { role: 'textbox', value: 'two\nlines', selection: 'two\nli', states: { focused: true } }),
+        node('n4', { role: 'textbox', name: 'Password', value: 'hunter2', selection: 'hunter2', states: { focused: true, secure: true } }),
+        node('n5', { role: 'textbox', value: 'caret only', selection: '' }),
+      ],
+    });
+    const lines = prepareObservation(observation(tree), {
+      redact: NO_REDACT,
+      maxBytes: 4_096,
+    }).text.split('\n');
+
+    expect(lines[1]).toBe(' #n2 textbox value="release approved" selection="approved" [focused]');
+    expect(lines[2]).toBe(' #n3 textbox value="two\\nlines" selection="two li" [focused]');
+    expect(lines[3]).toBe(' #n4 textbox "Password" value=<secure> [focused secure]');
+    expect(lines[4]).toBe(' #n5 textbox value="caret only"');
+  });
 });
 
 describe('observation byte budget', () => {
@@ -297,7 +317,7 @@ describe('observationShape', () => {
 });
 
 describe('projectTree', () => {
-  it('redacts names, text, values, and attributes, and drops secure values and selectors', async () => {
+  it('redacts names, text, values, selections, and attributes, and drops secure values, secure selections, and selectors', async () => {
     const { projectTree } = await import('../../src/agent/observation.ts');
     const redact = (text: string): string => text.replaceAll('hunter2', '<password>');
     const tree = node('root', {
@@ -307,9 +327,11 @@ describe('projectTree', () => {
           role: 'textbox',
           name: 'Password',
           value: 'hunter2',
+          selection: 'hunter2',
           states: { secure: true, focused: true },
           selector: 'input[name=password]',
         }),
+        node('n3', { role: 'textbox', value: 'hunter2 stays', selection: 'hunter2' }),
         node('n2', {
           role: 'link',
           name: 'hunter2 profile',
@@ -325,6 +347,7 @@ describe('projectTree', () => {
       role: 'document',
       children: [
         { id: 'n1', role: 'textbox', name: 'Password', states: { secure: true, focused: true } },
+        { id: 'n3', role: 'textbox', value: '<password> stays', selection: '<password>' },
         {
           id: 'n2',
           role: 'link',

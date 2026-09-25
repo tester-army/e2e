@@ -99,6 +99,7 @@ export interface ExecutorNode {
   readonly name?: string;
   readonly text?: string;
   readonly value?: string;
+  readonly selection?: string;
   readonly inputPurpose?: SemanticNode['inputPurpose'];
   readonly states?: SemanticNode['states'];
   readonly attributes?: Readonly<Record<string, string>>;
