@@ -580,8 +580,11 @@ control is a `tablist`, a progress indicator a `progressbar`, a stepper a
 widget, such as `tooltip` or `figure`, matches nothing on a phone.
 
 A `contenteditable` editing host, the root a TipTap, ProseMirror, Lexical, or
-Slate editor renders into, is a `textbox` whose value is its text (and, while
-it has focus, whose `selection` is the text selected inside it), named by its
+Slate editor renders into, is a `textbox` whose value is its text as rendered,
+spaces and newlines included, so `toHaveValue` and `inputValue()` read a
+`white-space: pre-wrap` editor like a textarea; an editor holding only the
+`<p><br></p>` an empty document renders reads as `''` (and, while it has
+focus, whose `selection` is the text selected inside it). It is named by its
 `aria-label`, `aria-placeholder`, or the `data-placeholder` its editor paints;
 the blocks inside it are content, not textboxes. The tag does not matter (an
 `<article contenteditable>` is the editor, not an article), while a native

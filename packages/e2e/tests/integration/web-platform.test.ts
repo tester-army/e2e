@@ -324,6 +324,17 @@ test('contenteditable hosts are textboxes: reached by label, filled, and read as
   await expect(screen.getByLabel('Message')).toHaveValue('Hi');
 });
 
+test('an editor value keeps the whitespace it renders, and an empty editor reads as empty', async ({ app, screen }) => {
+  await app.open('/editor');
+  const code = screen.getByLabel('Code');
+  await expect(code).toHaveValue('  keep spaces  ');
+  await expect(code).not.toHaveValue('keep spaces');
+  expect(await code.inputValue()).toBe('  keep spaces  ');
+  const notes = screen.getByLabel('Notes');
+  await expect(notes).toHaveValue('');
+  expect(await notes.inputValue()).toBe('');
+});
+
 test('nested frame locators resolve each frame inside the one before it', async ({ app, web }) => {
   await app.open('/frame-nested');
   const inner = web.frameLocator('#outer').frameLocator('#child');

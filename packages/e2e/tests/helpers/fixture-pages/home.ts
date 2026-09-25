@@ -182,6 +182,8 @@ line2  </textarea>
   <div id="notes" contenteditable aria-labelledby="notes-label" data-testid="notes"><p><br></p></div>
   <span id="message-label">Message</span>
   <div id="message" contenteditable role="textbox" aria-labelledby="message-label" data-testid="message"><p><br></p></div>
+  <span id="code-label">Code</span>
+  <div id="code" contenteditable style="white-space: pre-wrap" aria-labelledby="code-label" data-testid="code">  keep spaces  </div>
 </body>
 </html>`),
   '/dialog': constant(`<!doctype html>

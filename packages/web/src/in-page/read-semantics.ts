@@ -797,10 +797,13 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
       selectedState = el.selected;
       value = el.value;
     } else if (isEditingHost(el)) {
-      // An editor's document is its value, as a textarea's text is: trimmed,
-      // since an empty editor renders `<p><br></p>` and innerText reads that
-      // as a newline, and cut like text in the model-bound projection.
-      value = textOf(el).trim();
+      // An editor's document is its value, as a textarea's text is: kept as
+      // rendered, spaces and newlines included, except that an empty editor
+      // renders `<p><br></p>`, which innerText reads as a newline, so a
+      // whitespace-only document is an empty value. Cut like text in the
+      // model-bound projection.
+      const text = textOf(el);
+      value = text.trim() === '' ? '' : text;
       if (projection.textLimit !== null) value = value.slice(0, projection.textLimit);
     }
     // A native control's state is the control's, as Playwright reads it: a
