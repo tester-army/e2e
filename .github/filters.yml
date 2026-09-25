@@ -1,0 +1,34 @@
+# What a change has to touch before a benchmark suite can see it. Read by
+# dorny/paths-filter in the `changes` job of benchmark.yml and mobile.yml,
+# which skip their suites when nothing here changed. A skipped job satisfies
+# the ruleset's required checks; a workflow-level `paths:` filter would leave
+# them pending and block the merge.
+#
+# The suites run the built packages, so a runner change reaches both, an
+# engine change one. A package's own tests never reach a benchmark: `dist` is
+# built from `src/` only. Every list includes this file and its workflow, so a
+# change to the gate runs what it gates.
+runner: &runner
+  - 'packages/e2e/**'
+  - '!packages/*/tests/**'
+  - '!**/*.md'
+  - 'package.json'
+  - 'pnpm-lock.yaml'
+  - 'pnpm-workspace.yaml'
+  - 'tsconfig.base.json'
+  - 'scripts/**'
+  - '.github/filters.yml'
+
+web:
+  - *runner
+  - 'packages/web/**'
+  - 'packages/github/**'
+  - 'apps/web-benchmark/**'
+  - '.github/workflows/benchmark.yml'
+
+mobile:
+  - *runner
+  - 'packages/mobile/**'
+  - 'apps/mobile-benchmark/**'
+  - '.github/workflows/mobile.yml'
+  - '.github/actions/expo-app/**'

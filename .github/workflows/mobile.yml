@@ -1,8 +1,9 @@
 name: mobile
 
 # The mobile benchmark on an iOS simulator and an Android emulator, on every
-# pull request: the second real engine the runner ships, gated the way the web
-# engine is by the testbed and the web benchmark.
+# pull request that can reach it (the `changes` job says which): the second
+# real engine the runner ships, gated the way the web engine is by the
+# testbed and the web benchmark.
 #
 # The Expo app is the expensive part (about twenty minutes of native build on
 # iOS). .github/actions/expo-app builds it once per native fingerprint and
@@ -35,6 +36,8 @@ env:
 
 permissions:
   contents: read
+  # The `changes` job lists a pull request's files.
+  pull-requests: read
   # The Expo app action deletes a cached build its repack step proved broken.
   actions: write
 
@@ -43,11 +46,34 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Skips the suites when the change reaches neither the runner, the engine,
+  # nor the benchmark app (.github/filters.yml says what does, and why a skip
+  # rather than a workflow-level `paths:` filter). The gate fails toward
+  # running: a manual dispatch runs the suites, and so does a run whose
+  # detection failed.
+  changes:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 5
+    outputs:
+      mobile: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.mobile == 'true' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # A pull request's files come from the API; a push to main is diffed
+      # against the commit before it, which the action fetches itself.
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        if: ${{ github.event_name != 'workflow_dispatch' }}
+        with:
+          filters: .github/filters.yml
+          predicate-quantifier: some-with-excludes
+
   # One job per suite, each on its own Mac with two simulators: the
   # deterministic suite and the agentic one take about as long as each other,
   # so the gate's wall time is one of them, not their sum.
   ios:
     name: ios ${{ matrix.suite }}
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.mobile == 'true') }}
     strategy:
       fail-fast: false
       matrix:
@@ -169,6 +195,8 @@ jobs:
   # reason: the gate's wall time is the longer suite, not both.
   android:
     name: android ${{ matrix.suite }}
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.mobile == 'true') }}
     strategy:
       fail-fast: false
       matrix:
