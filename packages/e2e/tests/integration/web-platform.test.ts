@@ -217,6 +217,18 @@ test('secure fields refuse value reads', async ({ app, screen }) => {
   await screen.getByLabel('Password').inputValue();
 });
 
+test('toHaveValue never judges a secure field', async ({ app, screen }) => {
+  await app.open();
+  await screen.getByLabel('Password').fill('marker-9b1f');
+  await expect(screen.getByLabel('Password')).toHaveValue('');
+});
+
+test('toHaveValue reads a plain field that holds the same marker', async ({ app, screen }) => {
+  await app.open();
+  await screen.getByLabel('Email').fill('marker-9b1f');
+  await expect(screen.getByLabel('Email')).toHaveValue('', { timeout: 500 });
+});
+
 test('acting before open fails with APP_NOT_OPEN', async ({ screen }) => {
   await screen.getByRole('button', { name: 'Increment' }).tap({ timeout: 500 });
 });
@@ -499,6 +511,20 @@ describe('web platform integration', () => {
     const result = resultByTitle(outcome, 'secure fields refuse value reads');
     expect(result.status).toBe('failed');
     expect(result.attempts[0]!.error?.code).toBe('POLICY_DENIED');
+  });
+
+  it('denies toHaveValue on a filled password field with POLICY_DENIED, never judging it empty', () => {
+    // The engine withholds a secure field's value, so the matcher must not
+    // read the gap as '' and pass a filled password field as cleared.
+    const result = resultByTitle(outcome, 'toHaveValue never judges a secure field');
+    expect(result.status).toBe('failed');
+    expect(result.attempts[0]!.error?.code).toBe('POLICY_DENIED');
+    expect(result.attempts[0]!.error?.message).toContain('reading values from a secure field is denied');
+    expect(JSON.stringify(result)).not.toContain('marker-9b1f');
+    const control = resultByTitle(outcome, 'toHaveValue reads a plain field that holds the same marker');
+    expect(control.status).toBe('failed');
+    expect(control.attempts[0]!.error?.code).toBe('ASSERTION_FAILED');
+    expect(control.attempts[0]!.error?.message).toContain('observed: value "marker-9b1f"');
   });
 
   it('fails a body that returns before a step it started finished with STEP_NOT_AWAITED', () => {

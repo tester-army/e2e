@@ -60,6 +60,35 @@ describe('toHaveValue', () => {
     });
   });
 
+  it('refuses to judge a secure field, whose value is withheld, negated or not', async () => {
+    const secure: SemanticNode = {
+      ref: { id: 'node-1', revision: '' },
+      role: 'textbox',
+      name: 'Password',
+      states: { secure: true },
+    };
+    const locator = createScreenFixture([secure]).getByRole('textbox');
+    const denied = {
+      code: 'POLICY_DENIED',
+      category: 'configuration',
+      message: 'reading values from a secure field is denied: getByRole("textbox")',
+    };
+    await vexpect(expectFixture(locator).toHaveValue('')).rejects.toMatchObject(denied);
+    await vexpect(expectFixture(locator).not.toHaveValue('')).rejects.toMatchObject(denied);
+  });
+
+  it('still reads a secure field for states, name, and text matchers', async () => {
+    const secure: SemanticNode = {
+      ref: { id: 'node-1', revision: '' },
+      role: 'textbox',
+      name: 'Password',
+      states: { secure: true, focused: true },
+    };
+    const locator = createScreenFixture([secure]).getByRole('textbox');
+    await expectFixture(locator).toBeFocused();
+    await expectFixture(locator).toHaveAccessibleName('Password');
+  });
+
   it('leaves toHaveAccessibleName normalized like text', async () => {
     const button: SemanticNode = { ref: { id: 'node-1', revision: '' }, role: 'button', name: ' Save  now ' };
     const locator = createScreenFixture([button]).getByRole('button');

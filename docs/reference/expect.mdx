@@ -60,7 +60,11 @@ an empty editor reads as `''`. A control the
 platform reports without a value, such as a cleared field on a device, reads
 as `''`. A node whose role carries no value, such as a heading or a link,
 never satisfies `toHaveValue`, negated or not; the message reads
-`no value (not a form control)`.
+`no value (not a form control)`. A secure field, such as a password input,
+is never judged: the engine withholds its value, so `toHaveValue` throws
+`POLICY_DENIED` there like `inputValue()`, negated or in list form too,
+instead of reading the withheld value as `''` and passing a filled password
+field as cleared. Assert the outcome of the fill, not the field.
 
 ## Locator matchers
 

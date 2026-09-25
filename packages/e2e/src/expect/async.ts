@@ -1,7 +1,7 @@
 /** Runner-owned polling locator assertions. */
 
 import type { SemanticNode } from '../engine/surface.ts';
-import { TestError } from '../internal/errors.ts';
+import { ConfigurationError, TestError } from '../internal/errors.ts';
 import {
   normalizeText,
   compareText,
@@ -39,6 +39,12 @@ interface MatcherSpec {
    * heading is not a pass.
    */
   readonly evaluableNode?: (node: SemanticNode) => boolean;
+  /**
+   * Refuses a sample the matcher must not judge at all; what it throws ends
+   * the poll, negated or not, before the predicate or the failure message
+   * reads the sample.
+   */
+  readonly refuse?: (sample: Sample) => void;
   readonly predicate: (sample: Sample) => boolean;
   readonly describeExpected: string;
   readonly observed: (sample: Sample) => string;
@@ -125,6 +131,7 @@ class AsyncExpectationImpl implements AsyncExpectation {
         evaluate: async () => {
           const sample = await this.sample(spec, deadline);
           lastSample = sample;
+          spec.refuse?.(sample);
           if (!this.conditionEvaluable(spec, sample)) return undefined;
           return spec.predicate(sample);
         },
@@ -158,6 +165,27 @@ class AsyncExpectationImpl implements AsyncExpectation {
     if (spec.wholeSet !== undefined) return true;
     if (sample.node === null) return spec.evaluableWithoutNode === true;
     return spec.evaluableNode?.(sample.node) ?? true;
+  }
+
+  /** The refusal a value matcher polls with; text and name matchers have none. */
+  private valueRefusal(def: TextMatcherDef): Pick<MatcherSpec, 'refuse'> {
+    return def.field === 'value' ? { refuse: (sample) => this.refuseSecureValue(sample) } : {};
+  }
+
+  /**
+   * A value matcher never judges a secure field. The engine withholds its
+   * value, so a missing value there is redacted, not empty: judged against
+   * `''`, a filled password field would pass as cleared. Denied like
+   * `inputValue()`, with the same code and message.
+   */
+  private refuseSecureValue(sample: Sample): void {
+    const nodes = sample.node === null ? sample.nodes : [sample.node];
+    if (nodes.some((node) => node.states?.secure === true)) {
+      throw new ConfigurationError(
+        'POLICY_DENIED',
+        `reading values from a secure field is denied: ${this.label}`,
+      );
+    }
   }
 
   private async sample(spec: MatcherSpec, deadline: Deadline): Promise<Sample> {
@@ -199,6 +227,7 @@ class AsyncExpectationImpl implements AsyncExpectation {
     return this.poll(
       {
         name,
+        ...this.valueRefusal(def),
         evaluableNode: (node) => readField(def, node) !== undefined,
         predicate: (sample) => {
           const actual = sample.node === null ? undefined : readField(def, sample.node);
@@ -234,6 +263,7 @@ class AsyncExpectationImpl implements AsyncExpectation {
     return this.poll(
       {
         name,
+        ...this.valueRefusal(def),
         wholeSet: 'read',
         predicate: (sample) =>
           sample.nodes.length === patterns.length &&

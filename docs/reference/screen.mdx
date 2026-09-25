@@ -342,8 +342,8 @@ await screen.getByLabel('City').pressSequentially('War', { delay: 50 });
 `config.actionTimeout`, and throws `LOCATOR_NOT_FOUND` on timeout.
 
 `textContent`, `inputValue`, `getAttribute`, and `allTextContents` throw
-`POLICY_DENIED` on a secure field. `isEnabled`, `isDisabled`, `isChecked`,
-and `boundingBox` are allowed there.
+`POLICY_DENIED` on a secure field, and so does `expect(locator).toHaveValue`.
+`isEnabled`, `isDisabled`, `isChecked`, and `boundingBox` are allowed there.
 
 `isHidden` is `!isVisible()` and `isDisabled` is `!isEnabled()`, with the
 same strictness: `isHidden` is `true` for zero matches, `isDisabled` is

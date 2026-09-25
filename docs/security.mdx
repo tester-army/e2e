@@ -58,7 +58,7 @@ A tool call that breaks a rule fails with `POLICY_DENIED`:
 | Navigation to `file:`, `data:`, or `javascript:` | These URL schemes are forbidden. |
 | A malformed URL | Nothing is repaired. |
 | A `Secret` reaching a JSON sink | Handles carry no value, and no value may be serialized. |
-| Reading a value from a secure field | Assert the outcome, not the secret. |
+| Reading a value from a secure field, with `inputValue()` or `toHaveValue` | Assert the outcome, not the secret. A withheld value is redacted, not empty. |
 | `type_secret` with an undeclared name | Only secrets in the step's params can be filled. |
 | `type_secret` into a disabled or non-editable node | Sinks are `textbox`, `searchbox`, and `combobox`. |
 | A password into a field that is not a password field | Purpose must match; a generic secret fills any editable input. |
