@@ -1,3 +1,5 @@
+<img src="https://github.com/user-attachments/assets/fb0587cc-568e-4ea2-b2ef-19766829af1e" alt="e2e" width="100%" />
+
 # e2e
 
 Agentic end-to-end testing framework for any app.
