@@ -475,12 +475,12 @@ export async function settleObservation<T>(
 
 /**
  * Whether an observation shows a screen in transition: nothing but the
- * document or screen root, between the old content being torn down and the
+ * document, screen, or window root, between the old content being torn down and the
  * new content arriving. Acting or judging on it would be acting on nothing.
  */
 export function isTransitionalObservation(observation: AgentObservation): boolean {
   return observation.kind === 'semantic' &&
-    (observation.tree.role === 'document' || observation.tree.role === 'screen') &&
+    (observation.tree.role === 'document' || observation.tree.role === 'screen' || observation.tree.role === 'window') &&
     observation.nodes.size <= 1;
 }
 
