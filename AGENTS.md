@@ -293,8 +293,11 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
   neither the runner, the engine, nor the benchmark app, and a manual
   dispatch always runs them. Skipped satisfies the ruleset's required
   checks; a workflow-level `paths:` filter would leave them pending, so
-  never gate those workflows that way. A new build input or benchmark
-  dependency goes into `filters.yml` in the same change. Every workflow
+  never gate those workflows that way. The mobile suites are four named
+  jobs sharing steps through YAML anchors, not a matrix: a skipped matrix
+  job reports under its unexpanded name and the required check never
+  arrives. A new build input or benchmark dependency goes into
+  `filters.yml` in the same change. Every workflow
   pins actions by SHA; keep new actions SHA-pinned. Every job runs on
   Blacksmith, like the tester-army repos. Linux jobs use
   `blacksmith-4vcpu-ubuntu-2404` and macOS jobs `blacksmith-6vcpu-macos-26`;
