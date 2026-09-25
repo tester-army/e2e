@@ -1008,6 +1008,125 @@ describe('device fixture', () => {
     return h.engine.fixtures!['device']!(context) as Device;
   }
 
+  describe('dismissing a keyboard that has no dismiss key', () => {
+    const NO_DISMISS_KEY = () => {
+      throw new AppError(
+        'UNSUPPORTED_OPERATION',
+        'Unable to dismiss the iOS keyboard: the keyboard exposes no dismiss key, and background taps are never attempted',
+      );
+    };
+    const KEYBOARD_UP = { ...SETTINGS_SNAPSHOT, keyboard: { kind: 'visible', frame: { x: 0, y: 583, width: 390, height: 261 } } };
+    const KEYBOARD_GONE = { ...SETTINGS_SNAPSHOT, keyboard: { kind: 'absent' } };
+    /** Answers the captures the dismissal takes, in order, then the last one forever. */
+    const captures = (h: Harness, snapshots: readonly unknown[]) => {
+      let taken = 0;
+      h.fake.respond('capture.snapshot', () => snapshots[Math.min(taken++, snapshots.length - 1)]);
+    };
+
+    it('drags at the centre of the screen the way a user does, and stops once the keyboard is gone', async () => {
+      const h = harness();
+      await openAttempt(h);
+      await observed(h, 'Back');
+      const device = fixture(h);
+      h.fake.respond('command.keyboard', NO_DISMISS_KEY);
+      captures(h, [KEYBOARD_UP, KEYBOARD_GONE]);
+      const before = h.fake.calls.length;
+      await device.dismissKeyboard();
+      expect(h.fake.methods().slice(before)).toEqual([
+        'command.keyboard',
+        'capture.snapshot',
+        'interactions.swipe',
+        'capture.snapshot',
+      ]);
+      // The viewport is 390 by 844: a short horizontal drag from the centre, 3 percent of the width.
+      expect(h.fake.lastArgs('interactions.swipe')).toEqual({
+        from: { x: 195, y: 422 },
+        to: { x: expect.closeTo(183.3, 2), y: 422 },
+      });
+    });
+
+    it('tries a vertical drag when the horizontal one left the keyboard up', async () => {
+      const h = harness();
+      await openAttempt(h);
+      await observed(h, 'Back');
+      const device = fixture(h);
+      h.fake.respond('command.keyboard', NO_DISMISS_KEY);
+      captures(h, [KEYBOARD_UP, KEYBOARD_UP, KEYBOARD_GONE]);
+      await device.dismissKeyboard();
+      const swipes = h.fake.calls.filter((call) => call.method === 'interactions.swipe').map((call) => call.args);
+      expect(swipes).toEqual([
+        { from: { x: 195, y: 422 }, to: { x: expect.closeTo(183.3, 2), y: 422 } },
+        { from: { x: 195, y: 422 }, to: { x: 195, y: expect.closeTo(396.68, 2) } },
+      ]);
+    });
+
+    it('fails naming the alternatives when both drags leave the keyboard up', async () => {
+      const h = harness();
+      await openAttempt(h);
+      await observed(h, 'Back');
+      const device = fixture(h);
+      h.fake.respond('command.keyboard', NO_DISMISS_KEY);
+      captures(h, [KEYBOARD_UP]);
+      await expect(device.dismissKeyboard()).rejects.toMatchObject({
+        code: 'UNSUPPORTED_CAPABILITY',
+        message: expect.stringMatching(/stayed up through a horizontal and a vertical drag.*Done or close control.*Enter/s),
+      });
+      expect(h.fake.calls.filter((call) => call.method === 'interactions.swipe')).toHaveLength(2);
+    });
+
+    it('reads the keyboard off its own elements when the capture carries no keyboard fact', async () => {
+      const h = harness();
+      await openAttempt(h);
+      await observed(h, 'Back');
+      const device = fixture(h);
+      h.fake.respond('command.keyboard', NO_DISMISS_KEY);
+      const withKeys = {
+        ...SETTINGS_SNAPSHOT,
+        nodes: [
+          ...SETTINGS_NODES,
+          { ref: '@e20', index: 10, parentIndex: 0, depth: 1, type: 'Keyboard', rect: { x: 0, y: 583, width: 390, height: 261 } },
+          { ref: '@e21', index: 11, parentIndex: 10, depth: 2, type: 'Key', label: 'q', rect: { x: 2, y: 600, width: 36, height: 44 } },
+        ],
+      };
+      captures(h, [withKeys, SETTINGS_SNAPSHOT]);
+      await device.dismissKeyboard();
+      expect(h.fake.calls.filter((call) => call.method === 'interactions.swipe')).toHaveLength(1);
+    });
+
+    it('presses Continue on the simulator typing tip before it drags', async () => {
+      const h = harness();
+      await openAttempt(h);
+      await observed(h, 'Back');
+      const device = fixture(h);
+      h.fake.respond('command.keyboard', NO_DISMISS_KEY);
+      const withTip = {
+        ...KEYBOARD_UP,
+        nodes: [
+          ...SETTINGS_NODES,
+          { ref: '@e30', index: 10, parentIndex: 0, depth: 1, type: 'static-text', label: 'Speed up your typing by sliding your finger across the letters to compose a word.', rect: { x: 20, y: 600, width: 350, height: 60 } },
+          { ref: '@e31', index: 11, parentIndex: 0, depth: 1, type: 'button', label: 'Continue', rect: { x: 95, y: 700, width: 200, height: 44 } },
+        ],
+      };
+      captures(h, [withTip, KEYBOARD_GONE]);
+      const before = h.fake.calls.length;
+      await device.dismissKeyboard();
+      expect(h.fake.methods().slice(before)).toEqual(['command.keyboard', 'capture.snapshot', 'interactions.press', 'capture.snapshot']);
+      expect(h.fake.lastArgs('interactions.press')).toEqual({ x: 195, y: 722 });
+    });
+
+    it('leaves any other refusal to the caller', async () => {
+      const h = harness();
+      await openAttempt(h);
+      await observed(h, 'Back');
+      const device = fixture(h);
+      h.fake.respond('command.keyboard', () => {
+        throw new AppError('COMMAND_FAILED', 'the runner is busy');
+      });
+      await expect(device.dismissKeyboard()).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
+      expect(h.fake.calls.filter((call) => call.method === 'interactions.swipe')).toHaveLength(0);
+    });
+  });
+
   it('counts a back, home, alert, keyboard, or rotation as an action, so a control that arrives with it waits out the transition budget', async () => {
     const h = harness({ transition: 120 });
     await openAttempt(h);

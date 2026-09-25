@@ -202,7 +202,7 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Engine
       await surface.screenCommand('device.alert', (client) => client.command.alert({ action }), context.signal);
     },
     async dismissKeyboard() {
-      await surface.screenCommand('device.dismissKeyboard', (client) => client.command.keyboard({ action: 'dismiss' }), context.signal);
+      await surface.dismissKeyboard(context.signal);
     },
     async clipboard() {
       const result = await surface.command(

@@ -254,11 +254,14 @@ export interface Device {
   /** Accepts or dismisses the visible system alert. */
   alert(action: 'accept' | 'dismiss'): Promise<void>;
   /**
-   * Dismisses the soft keyboard. An iPhone keyboard has no dismiss key, and
-   * agent-device never taps outside the keyboard on its behalf, so on iOS
-   * this fails with `UNSUPPORTED_CAPABILITY` when no dismiss key is shown;
-   * the message names the alternatives (the app's own Done control, or
-   * pressing return).
+   * Dismisses the soft keyboard: the keyboard's own dismiss key where it has
+   * one (Android, iPad), else the way a user does it on an iPhone, a short
+   * drag at the centre of the screen that a scroll view turns into a
+   * dismissal, horizontal first and vertical second, stopping as soon as the
+   * keyboard is gone. The simulator's "Speed up your typing" tip goes through
+   * its Continue button first. A keyboard that outlives both drags fails with
+   * `UNSUPPORTED_CAPABILITY`; the message names the alternatives (the app's
+   * own Done or close control, or pressing Enter on the field).
    */
   dismissKeyboard(): Promise<void>;
   /** Reads the clipboard. */

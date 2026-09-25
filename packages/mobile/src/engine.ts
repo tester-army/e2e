@@ -39,7 +39,7 @@ export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
     keyboard: {
       type: (text, keyboardOptions, operation) => surface.typeText(text, keyboardOptions, operation),
       press: (key, operation) => surface.pressFocusedKey(key, operation),
-      dismiss: (operation) => surface.dismissKeyboard(operation),
+      dismiss: (operation) => surface.dismissKeyboard(operation.signal),
     },
     app: declaredApp(surface.options),
     // No `open`: a device app has no URL to open, so the runner serves

@@ -68,6 +68,7 @@ import {
   swipeWithin,
   unsupported,
   type Rect,
+  type Point,
 } from './support.ts';
 
 /** How `installApp` puts a build on the device. */
@@ -103,6 +104,32 @@ interface RawSnapshot {
   readonly appName?: string;
   readonly appBundleId?: string;
   readonly snapshotQuality?: { readonly state?: string };
+  /** The keyboard band the capture's producer measured: `visible` with its frame, `absent`, or that it could not look. */
+  readonly keyboard?: { readonly kind: string; readonly frame?: Rect };
+}
+
+/** Platform element types that are the soft keyboard or one of its keys, as agent-device names them. */
+const KEYBOARD_TYPES: ReadonlySet<string> = new Set(['keyboard', 'key']);
+
+/**
+ * How far the dismissing drag travels, as a share of the viewport: short
+ * enough that a list under the finger barely moves, long enough for a scroll
+ * view to read it as a drag and let go of the keyboard. The same ratio
+ * Maestro's `hideKeyboard` uses.
+ */
+const KEYBOARD_DRAG_RATIO = 0.03;
+
+/**
+ * Whether a capture shows the soft keyboard: the band its producer measured
+ * when it measured one, else a keyboard or key element in the tree, the probe
+ * Maestro's `hideKeyboard` uses. A capture that says nothing either way
+ * counts as no keyboard: a drag on a guess costs more than a keyboard a later
+ * tap refuses against by name.
+ */
+function keyboardShowing(raw: RawSnapshot): boolean {
+  if (raw.keyboard?.kind === 'visible') return true;
+  if (raw.keyboard?.kind === 'absent') return false;
+  return (raw.nodes ?? []).some((node) => KEYBOARD_TYPES.has((node.type ?? '').toLowerCase()));
 }
 
 /**
@@ -302,7 +329,12 @@ export class AgentDeviceSurface {
    */
   async command<T>(label: string, run: (client: AgentDeviceClient) => Promise<T>, signal?: AbortSignal): Promise<T> {
     const client = this.requireClient();
-    return runCommand(label, () => this.track(run(client)), signal ?? new AbortController().signal, this.where);
+    const startedAt = Date.now();
+    try {
+      return await runCommand(label, () => this.track(run(client)), signal ?? new AbortController().signal, this.where);
+    } finally {
+      console.error(`[timing] ${label} ${Date.now() - startedAt}ms`);
+    }
   }
 
   /**
@@ -633,10 +665,10 @@ export class AgentDeviceSurface {
    * the harness measures every rect and point against the viewport, so an
    * invented one would misplace every tap.
    */
-  private async viewportFor(projected: ProjectedSnapshot, operation: OperationContext): Promise<ViewportSize> {
+  private async viewportFor(projected: ProjectedSnapshot, signal: AbortSignal): Promise<ViewportSize> {
     const known = projected.viewport ?? this.knownViewport;
     if (known !== undefined) return known;
-    const probed = await this.probeViewport(operation.signal);
+    const probed = await this.probeViewport(signal);
     if (probed === undefined) {
       throw new EngineError(
         'ENGINE_FAILURE',
@@ -658,7 +690,7 @@ export class AgentDeviceSurface {
     const raw = await this.snapshotOrEmpty(operation, this.options.snapshot === 'interactive');
     const projected = this.project(raw);
     this.generation = new Map(projected.index.map((entry) => [entry.id, this.bind(entry, projected.index)]));
-    const viewport = await this.viewportFor(projected, operation);
+    const viewport = await this.viewportFor(projected, operation.signal);
     const location = screenLocation(raw.appBundleId ?? raw.appName ?? this.appIdentity, screenTitle(projected));
     const capture = options?.pixels === true ? await this.capturePixels(operation, projected, viewport) : undefined;
     return {
@@ -987,11 +1019,86 @@ export class AgentDeviceSurface {
     this.markAction(before);
   }
 
-  /** Hides the soft keyboard, so a control it covered can be reached. */
-  async dismissKeyboard(operation: OperationContext): Promise<void> {
+  /**
+   * Hides the soft keyboard, so a control it covered can be reached.
+   * agent-device presses the keyboard's own dismiss key and refuses when the
+   * keyboard has none (an iPhone), because a touch outside the keyboard is a
+   * guess about the screen it never makes on a caller's behalf. The engine
+   * makes that guess, the way a user does and Maestro's `hideKeyboard` does,
+   * in {@link dismissKeyboardByGesture}.
+   */
+  async dismissKeyboard(signal: AbortSignal): Promise<void> {
     const before = this.latestIndex;
-    await this.command('keyboard.dismiss', (client) => client.command.keyboard({ action: 'dismiss' }), operation.signal);
+    try {
+      await this.command('keyboard.dismiss', (client) => client.command.keyboard({ action: 'dismiss' }), signal);
+    } catch (cause) {
+      if (!(cause instanceof EngineError && cause.code === 'UNSUPPORTED_CAPABILITY')) throw cause;
+      await this.dismissKeyboardByGesture(signal);
+    }
     this.markAction(before);
+  }
+
+  /**
+   * A keyboard with no dismiss key goes the way a user sends it away: a short
+   * drag at the centre of the screen, which a scroll view turns into a
+   * dismissal, each followed by a fresh look at whether the keyboard is still
+   * there. Horizontal first: on a vertical scroll view it is no scroll, so
+   * React Native's scroll view takes it as the touch outside the keyboard
+   * that dismisses by default, where a vertical drag scrolls the content and
+   * dismisses only under `keyboardDismissMode="on-drag"`. Vertical second,
+   * for the scroll views that dismiss on a drag alone. Maestro's
+   * `hideKeyboard` drags in the other order, and on a React Native screen
+   * that costs a drag plus the settle after it. The simulator's "Speed up
+   * your typing" tip, which sits over a keyboard the first time it appears,
+   * goes through its Continue button first. A drag is a guess about what sits
+   * at the centre, so the sequence stops the moment the keyboard is gone, and
+   * a keyboard that outlives both drags fails naming what does work.
+   */
+  private async dismissKeyboardByGesture(signal: AbortSignal): Promise<void> {
+    let raw = await this.dismissKeyboardTip(await this.captureForKeyboard(signal), signal);
+    if (!keyboardShowing(raw)) return;
+    const projected = projectSnapshot(raw.nodes ?? [], { mintId: () => 'keyboard' });
+    const viewport = await this.viewportFor(projected, signal);
+    const centre = { x: viewport.width / 2, y: viewport.height / 2 };
+    const drags: readonly Point[] = [
+      { x: centre.x - viewport.width * KEYBOARD_DRAG_RATIO, y: centre.y },
+      { x: centre.x, y: centre.y - viewport.height * KEYBOARD_DRAG_RATIO },
+    ];
+    for (const to of drags) {
+      await this.command('keyboard.dismiss', (client) => client.interactions.swipe({ from: centre, to }), signal);
+      raw = await this.captureForKeyboard(signal);
+      if (!keyboardShowing(raw)) return;
+    }
+    throw new EngineError(
+      'UNSUPPORTED_CAPABILITY',
+      'keyboard dismissal failed: the keyboard has no dismiss key and stayed up through a horizontal and a vertical drag at the centre of the screen. Tap the app\'s own Done or close control, or press Enter on the field when submitting is what you want.',
+      { retryable: false },
+    );
+  }
+
+  /**
+   * The simulator shows a "Speed up your typing" tip over the keyboard the
+   * first time it appears; its Continue button is the only way past it, and
+   * Maestro's `hideKeyboard` presses it too. Answers the capture after the
+   * press, or the one given when no tip is showing.
+   */
+  private async dismissKeyboardTip(raw: RawSnapshot, signal: AbortSignal): Promise<RawSnapshot> {
+    const nodes = raw.nodes ?? [];
+    const tip = nodes.find((node) => (node.label ?? node.value ?? '').startsWith('Speed up your typing'));
+    if (tip?.rect === undefined) return raw;
+    const tipTop = tip.rect.y;
+    const button = nodes.find((node) => node.label === 'Continue' && node.rect !== undefined && node.rect.y > tipTop);
+    if (button?.rect === undefined) return raw;
+    await this.command('keyboard.dismiss', (client) => client.interactions.press(centreOf(button.rect!)), signal);
+    return await this.captureForKeyboard(signal);
+  }
+
+  /** One full capture, read only for its keyboard fact and the keyboard's own elements. */
+  private async captureForKeyboard(signal: AbortSignal): Promise<RawSnapshot> {
+    const raw = (await this.command('snapshot', (client) => client.capture.snapshot({ interactiveOnly: false }), signal)) as RawSnapshot;
+    const keys = (raw.nodes ?? []).filter((n) => KEYBOARD_TYPES.has((n.type ?? '').toLowerCase()));
+    console.error(`[timing] keyboard fact ${JSON.stringify(raw.keyboard)} keys=${keys.length} nodes=${(raw.nodes ?? []).length} types=${[...new Set(keys.map((k) => k.type))].join(',')}`);
+    return raw;
   }
 
   async back(operation: OperationContext): Promise<void> {

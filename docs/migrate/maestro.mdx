@@ -115,7 +115,7 @@ says whether the call exists: `same`, `renamed`, `device only`, `by design`
 | `inputText` | `screen.getByTestId('field').fill('text')` | `screen` | renamed |
 | `inputRandomEmail`, `inputRandomText`, `faker` | `unique()` around a value in `act` params so the cache still replays; any npm faker for the rest | `test` | renamed |
 | `eraseText` | `.clear()` | `screen` | renamed |
-| `hideKeyboard` | `device.dismissKeyboard()`; on iOS it fails when no dismiss key is shown | `device` | device only |
+| `hideKeyboard` | `device.dismissKeyboard()`, the same dismiss key or centre drag Maestro uses; fails only when the keyboard outlives both drags | `device` | renamed |
 | `pressKey: Enter` | `.press('Enter')` on the field | `screen` | renamed |
 | `pressKey: Home`, `back` | `device.home()`, `device.back()` | `device` | device only |
 | `pressKey: lock`, `power`, `volume up`, TV remote keys | not yet | `device` | missing |

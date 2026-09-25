@@ -3,7 +3,6 @@
  * OS permission dialog, and a keyboard that covers the control to tap next.
  */
 
-import type { Screen } from 'e2e';
 import { expect, openScenario, test } from './fixtures.ts';
 
 test.describe('permission prompt', () => {
@@ -38,32 +37,26 @@ test.describe('permission prompt', () => {
   });
 });
 
-/**
- * The wizard keeps the keyboard up on Return (`submitBehavior="submit"`) and
- * an iPhone keyboard has no dismiss key, so the keyboard goes the way a user
- * sends it away: a tap on the step's title, which the wizard's scroll view
- * turns into a dismissal.
- */
-async function dismissKeyboardByTapping(screen: Screen, title: string): Promise<void> {
-  await screen.getByText(title).tap();
-}
-
-// Every step auto-focuses its field, so the keyboard covers Continue from the
-// start; the success screen echoes the values, so a stray key press fails it.
+// Every step auto-focuses its field and keeps the keyboard up on Return
+// (`submitBehavior="submit"`), so the keyboard covers Continue from the start
+// and `device.dismissKeyboard()` is the way past it: the dismiss key on
+// Android and iPad, a short drag on an iPhone, which the wizard's scroll view
+// turns into a dismissal. The success screen echoes the values, so a stray key
+// press fails it.
 test('sequential onboarding echoes the exact values', async ({ app, device, screen }) => {
   await openScenario({ app, device, screen }, 'Sequential Onboarding');
   await screen.getByTestId('email-input').fill('jane@example.com');
-  await dismissKeyboardByTapping(screen, 'Step 1 of 3');
+  await device.dismissKeyboard();
   await screen.getByTestId('continue-button').tap();
 
   await screen.getByTestId('first-name-input').fill('Jane');
-  await dismissKeyboardByTapping(screen, 'Step 2 of 3');
+  await device.dismissKeyboard();
   await screen.getByTestId('last-name-input').fill('Merchant');
-  await dismissKeyboardByTapping(screen, 'Step 2 of 3');
+  await device.dismissKeyboard();
   await screen.getByTestId('continue-button').tap();
 
   await screen.getByTestId('phone-input').fill('0612435678');
-  await dismissKeyboardByTapping(screen, 'Step 3 of 3');
+  await device.dismissKeyboard();
   await screen.getByTestId('continue-button').tap();
 
   await expect(screen.getByTestId('success-message')).toHaveText('Onboarding complete');
@@ -75,7 +68,7 @@ test('sequential onboarding echoes the exact values', async ({ app, device, scre
 test('onboarding rejects a malformed email before advancing', async ({ app, device, screen }) => {
   await openScenario({ app, device, screen }, 'Sequential Onboarding');
   await screen.getByTestId('email-input').fill('jane');
-  await dismissKeyboardByTapping(screen, 'Step 1 of 3');
+  await device.dismissKeyboard();
   await screen.getByTestId('continue-button').tap();
   await expect(screen.getByTestId('step-error')).toHaveText('Enter a valid email address');
   await expect(screen.getByTestId('onboarding-step-email')).toBeVisible();
