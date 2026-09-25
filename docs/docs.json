@@ -10,6 +10,13 @@
   },
   "logo": "/logo.png",
   "favicon": "/favicon.png",
+  "seo": {
+    "metatags": {
+      "og:image": "https://e2e.tester.army/docs/og.png",
+      "twitter:image": "https://e2e.tester.army/docs/og.png",
+      "twitter:card": "summary_large_image"
+    }
+  },
   "fonts": {
     "heading": {
       "family": "Geist",
