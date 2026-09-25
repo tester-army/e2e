@@ -584,9 +584,13 @@ export class ActionDispatcher {
   /**
    * Arms the change wait the action's settle policy asks for, so the next
    * settled observation reads the screen after the effect rather than
-   * before. An action whose effect the tree cannot show arms nothing.
+   * before. Scrolling to text already settled its final page unless the
+   * engine then scrolled that node into view: waiting for another change
+   * would wait against the destination screen. An action whose effect the
+   * tree cannot show arms nothing.
    */
   private armAfter(name: RecordedAction['name']): void {
+    if (name === 'scrollUntil' && !this.verbs.has('scrollTo')) return;
     const { changeWaitMs } = SETTLE_AFTER[name];
     if (changeWaitMs !== undefined) this.feed.armChange(changeWaitMs);
   }

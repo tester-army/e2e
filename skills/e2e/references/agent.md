@@ -124,6 +124,9 @@ outside it or hidden such as `.env` is `POLICY_DENIED`); `back` to return.
 A device offers no `right_click`, `scroll_to` by node id, or `upload`. Name the file
 in `params` and the target the way the screen names it; the agent picks the
 verb.
+Scrolling to text settles each page. On a device, the next observation
+checks stability without waiting for another scroll effect, during live
+execution and replay.
 When an action closes an on-screen keyboard, the result says so: on a touch
 screen that tap was often spent on closing it, so act on the control again
 before concluding.

@@ -109,6 +109,11 @@ acted on. A verb the engine does not declare is not offered.
 | `observe()` | | Looks again and reports what changed since the last screen the model received. |
 | `dismiss_keyboard()` | `keyboard.dismiss` | Hides an on-screen keyboard. Device engines only. |
 
+`scroll_to({ text })` waits for each scrolled screen to settle. On a device,
+the next observation checks stability without waiting for a second scroll
+effect. Engines with `scrollIntoView` still wait for the final adjustment
+that brings the matched node into view. Replay follows the same rule.
+
 `upload` takes the model's path but the runner decides. Each path is
 resolved against the project root the way `locator.setInputFiles` resolves
 it, and is refused with `POLICY_DENIED` when it lies outside the project
