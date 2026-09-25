@@ -731,6 +731,54 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     return isVisibleEmptyBox(el) ? 'box' : null;
   };
 
+  /**
+   * The roles WAI-ARIA 1.2 lets `aria-disabled` apply to, the same list
+   * Playwright's `toBeDisabled` consults. Widgets and the composites that hold
+   * them; a plain container or text takes no disabled state.
+   */
+  const ARIA_DISABLED_ROLES = [
+    'application', 'button', 'composite', 'gridcell', 'group', 'input', 'link', 'menuitem', 'scrollbar',
+    'separator', 'tab', 'checkbox', 'columnheader', 'combobox', 'grid', 'listbox', 'menu', 'menubar',
+    'menuitemcheckbox', 'menuitemradio', 'option', 'radio', 'radiogroup', 'row', 'rowheader', 'searchbox',
+    'select', 'slider', 'spinbutton', 'switch', 'tablist', 'textbox', 'toolbar', 'tree', 'treegrid', 'treeitem',
+  ];
+
+  /** The parent `aria-disabled` inherits across: the tree parent, or the host at a shadow root. */
+  const parentOrHostOf = (el: Element): Element | null => {
+    if (el.parentElement !== null) return el.parentElement;
+    const root = el.getRootNode();
+    return root instanceof ShadowRoot ? root.host : null;
+  };
+
+  /**
+   * What the nearest `aria-disabled` on the element or above it says
+   * (WAI-ARIA: the state applies to every descendant), across shadow
+   * boundaries, `false` cutting the chain. Memoized so a subtree under one
+   * disabled ancestor costs one walk, not one per node.
+   */
+  const ariaDisabledInChain = memoized((el: Element): boolean => {
+    const attribute = (el.getAttribute('aria-disabled') ?? '').toLowerCase();
+    if (attribute === 'true') return true;
+    if (attribute === 'false') return false;
+    const parent = parentOrHostOf(el);
+    return parent === null ? false : ariaDisabledInChain(parent);
+  });
+
+  /**
+   * The disabled state a person meets, not the attribute the element carries.
+   * `:disabled` is the browser's answer for a form control: its own attribute,
+   * a disabled fieldset above it (except inside that fieldset's first legend),
+   * a disabled optgroup. An `aria-disabled="true"` on the element counts for
+   * any role; inherited from an ancestor, it reaches the roles the state
+   * applies to, as Playwright reads it.
+   */
+  const isDisabled = (el: Element): boolean => {
+    if (el.matches(':disabled')) return true;
+    if (el.getAttribute('aria-disabled') === 'true') return true;
+    const role = implicitRole(el);
+    return role !== null && ARIA_DISABLED_ROLES.indexOf(role) !== -1 && ariaDisabledInChain(el);
+  };
+
   const describe = (el: Element, style = styleOf(el)): RawNodeData => {
     const tag = el.tagName.toLowerCase();
     const autocomplete = (el.getAttribute('autocomplete') ?? '').toLowerCase();
@@ -760,13 +808,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     const ariaSelected = el.getAttribute('aria-selected');
     if (ariaSelected !== null) selectedState = ariaSelected === 'true';
 
-    const disabled =
-      ((el instanceof HTMLInputElement ||
-        el instanceof HTMLTextAreaElement ||
-        el instanceof HTMLSelectElement ||
-        el instanceof HTMLButtonElement) &&
-        el.disabled) ||
-      el.getAttribute('aria-disabled') === 'true';
+    const disabled = isDisabled(el);
 
     const ariaExpanded = el.getAttribute('aria-expanded');
     const ariaPressed = el.getAttribute('aria-pressed');

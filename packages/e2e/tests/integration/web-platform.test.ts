@@ -50,6 +50,10 @@ test('deterministic queries and reads', async ({ app, screen, web }) => {
 
   await expect(screen.getByRole('button', { name: 'Disabled action' })).toBeDisabled();
   await expect(screen.getByRole('button', { name: 'Increment' })).toBeEnabled();
+  expect(await screen.getByRole('button', { name: 'Fenced action' }).isDisabled()).toBe(true);
+  expect(await screen.getByRole('button', { name: 'Legend action' }).isDisabled()).toBe(false);
+  await expect(screen.getByRole('button', { name: 'Fenced action' })).toBeDisabled();
+  await expect(screen.getByRole('button', { name: 'Legend action' })).toBeEnabled();
 
   expect(await screen.getByTestId('items').getAttribute('class')).toBeNull();
   expect(await web.locator('#class-card').getAttribute('class')).toBe('card active');

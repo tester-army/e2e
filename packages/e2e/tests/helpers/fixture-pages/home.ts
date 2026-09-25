@@ -39,6 +39,10 @@ export const HOME_PAGES: Record<string, PageRenderer> = {
   </select>
 
   <button disabled>Disabled action</button>
+  <fieldset disabled>
+    <legend>Fenced <button>Legend action</button></legend>
+    <button>Fenced action</button>
+  </fieldset>
   <div hidden>Hidden content</div>
   <button aria-expanded="false" id="menu" onclick="this.setAttribute('aria-expanded', this.getAttribute('aria-expanded') === 'true' ? 'false' : 'true')">Menu</button>
 
