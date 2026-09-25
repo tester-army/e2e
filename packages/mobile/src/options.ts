@@ -122,11 +122,14 @@ export interface MobileOptions {
   readonly transition?: number | undefined;
   /**
    * Arguments the pinned app is launched with on every fresh launch this
-   * engine performs: `app.open()`, `app.restart()`, `app.clearState()`, and
-   * the warm-up in `prepare`. iOS hands them to the app process
-   * (`ProcessInfo.processInfo.arguments`); Android appends them to
-   * `am start`, so `['--ez', 'e2e', 'true']` is a boolean intent extra. A
-   * foreground-only `device.openApp` passes none, and
+   * engine performs: `app.open()`, `app.restart()`, and `app.clearState()`.
+   * iOS hands them to the app process (`ProcessInfo.processInfo.arguments`);
+   * Android appends them to `am start`, so `['--ez', 'e2e', 'true']` is a
+   * boolean intent extra. The warm-up in `prepare` and a foreground-only
+   * `device.openApp` pass none: an app already running keeps its process
+   * arguments, and `app.open()` relaunches it with them. Arguments that
+   * select a build mode change what the app is: give each mode its own
+   * `identity` so their recordings stay apart.
    * `device.openApp(app, { launchArguments })` launches any app with its
    * own. Maestro's `launchApp: { arguments }`, Detox's `launchArgs`.
    */

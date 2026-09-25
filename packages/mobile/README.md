@@ -63,7 +63,7 @@ Options:
 | `snapshot` | `'full'` (default, includes static text) or `'interactive'` (actionable nodes only). |
 | `settle` | For agent actions: milliseconds the UI must hold still after an action before the agent observes again, default `150`; `false` skips the wait. A test's own steps never settle; `expect` verifies their outcome. |
 | `transition` | For a test's steps: milliseconds a control that appeared or moved with the last action gets to finish arriving before it is acted on, default `500`. Controls already in place before the action are acted on at once. |
-| `launchArguments` | Arguments every fresh launch of the pinned app carries (`app.open()`, `app.restart()`, `app.clearState()`, the warm-up): the process arguments on iOS, `am start` arguments on Android. |
+| `launchArguments` | Arguments every fresh launch of the pinned app carries (`app.open()`, `app.restart()`, `app.clearState()`): the process arguments on iOS, `am start` arguments on Android. The warm-up passes none. |
 | `permissions` | Permissions the pinned app holds on every fresh launch, `{ camera: 'grant', location: 'deny', notifications: 'reset' }`, set before the app starts and put back after `app.clearState()` reset them. |
 
 Every optional value also accepts `undefined`, so a config passes

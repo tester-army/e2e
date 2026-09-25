@@ -126,11 +126,14 @@ export interface MobileOptions {
   readonly transition?: number | undefined;
   /**
    * Arguments the pinned app is launched with on every fresh launch this
-   * engine performs: `app.open()`, `app.restart()`, `app.clearState()`, and
-   * the warm-up in `prepare`. iOS hands them to the app process
-   * (`ProcessInfo.processInfo.arguments`); Android appends them to
-   * `am start`, so `['--ez', 'e2e', 'true']` is a boolean intent extra. A
-   * foreground-only `device.openApp` passes none, and
+   * engine performs: `app.open()`, `app.restart()`, and `app.clearState()`.
+   * iOS hands them to the app process (`ProcessInfo.processInfo.arguments`);
+   * Android appends them to `am start`, so `['--ez', 'e2e', 'true']` is a
+   * boolean intent extra. The warm-up in `prepare` and a foreground-only
+   * `device.openApp` pass none: an app already running keeps its process
+   * arguments, and `app.open()` relaunches it with them. Arguments that
+   * select a build mode change what the app is: give each mode its own
+   * `identity` so their recordings stay apart.
    * `device.openApp(app, { launchArguments })` launches any app with its
    * own. Maestro's `launchApp: { arguments }`, Detox's `launchArgs`.
    */
@@ -172,10 +175,14 @@ test asks; without a pinned app the model opens apps with the `open_app` tool.
 app: `app.open()`, `app.restart()`, and `app.clearState()`, which resets the
 permissions with the data. The permissions are set before the app starts,
 since iOS terminates a running app whose permission changed and Android one
-whose permission was revoked; agent-device sets them on the app its session
-is on, so a worker's first such launch, or the first after `device.closeApp`,
-brings the session onto the app with a foreground open first. The warm-up
-passes the arguments and touches no permission.
+whose permission was revoked. agent-device sets them on the app its session
+is on, and only an open puts a session on an app: the warm-up's open in
+`prepare` does that under the session the worker resumes, so a worker's
+launches set them straight away. A run without `prepare`, the first launch
+after `device.closeApp`, and an app the session has not opened get one
+foreground open first; that open is the one process start no permission can
+precede, and the relaunch after it has them. The warm-up passes no launch
+argument and touches no permission.
 `device.openApp(app, { relaunch: true, launchArguments, permissions })` does
 the same for one launch of any app.
 

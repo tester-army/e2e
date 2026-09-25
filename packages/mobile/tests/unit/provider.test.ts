@@ -92,8 +92,8 @@ describe('device provider', () => {
     const handed = result?.env ?? {};
     const variable = poolVariableIn(handed, 'IOS');
     expect(JSON.parse(handed[variable]!)).toEqual([
-      { device: 'sim-0', daemon: { baseUrl: 'https://0.example', authToken: 'token-0' } },
-      { device: 'sim-1', daemon: { baseUrl: 'https://1.example', authToken: 'token-1' } },
+      { device: 'sim-0', daemon: { baseUrl: 'https://0.example', authToken: 'token-0' }, sessionApp: 'Settings' },
+      { device: 'sim-1', daemon: { baseUrl: 'https://1.example', authToken: 'token-1' }, sessionApp: 'Settings' },
     ]);
 
     // A child worker reads its binding from the environment and drives that daemon and device.
@@ -191,7 +191,7 @@ describe('device provider', () => {
     const h = harness({ device: bookkeeping });
     const result = await h.engine.prepare!(prepareInfo({}, 1));
     const handed = result?.env ?? {};
-    expect(JSON.parse(handed[poolVariableIn(handed, 'IOS')]!)).toEqual([{ daemon: { baseUrl: 'https://d.example' } }]);
+    expect(JSON.parse(handed[poolVariableIn(handed, 'IOS')]!)).toEqual([{ daemon: { baseUrl: 'https://d.example' }, sessionApp: 'Settings' }]);
     await h.engine.finish!(finishInfo());
     expect(releasedLeases).toEqual(acquiredLeases);
   });
@@ -217,12 +217,12 @@ describe('device provider', () => {
     const handed = result?.env ?? {};
     const variable = poolVariableIn(handed, 'IOS');
     expect(JSON.parse(handed[variable]!)).toEqual([
-      { client: scope },
-      { daemon: { baseUrl: 'https://1.example' }, client: { providerOsVersion: '18.0' } },
+      { client: scope, sessionApp: 'Settings' },
+      { daemon: { baseUrl: 'https://1.example' }, client: { providerOsVersion: '18.0' }, sessionApp: 'Settings' },
     ]);
     const worker = harness({ device: scoped });
     await boot(worker.engine, 'ios', 0, { [variable]: handed[variable] });
-    expect(worker.connections).toEqual([{ client: scope }]);
+    expect(worker.connections.map((connection) => connection?.client)).toEqual([scope]);
   });
 
   it('refuses a lease that names neither a daemon nor client configuration, or a client with reserved keys, and still releases it', async () => {

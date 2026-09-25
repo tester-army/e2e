@@ -276,10 +276,11 @@ export class AgentDeviceSurface {
   private idCounter = 0;
   private appIdentity: string | undefined;
   /**
-   * The app this surface last opened in its agent-device session, and so the
-   * app a permission command there acts on. Undefined before this worker
-   * opened anything (the warm-up in `prepare` ran in another process) and
-   * once `closeApp` ended the session.
+   * The app this worker's agent-device session is on, and so the app a
+   * permission command there acts on: what the warm-up in `prepare` opened
+   * under the session this worker resumed, then whatever this surface last
+   * opened. Undefined while nothing has been opened in the session, and once
+   * `closeApp` ended it.
    */
   private sessionApp: string | undefined;
   /** The app the build `appPath` installed, once `init` has, itself or through a lease. */
@@ -402,6 +403,7 @@ export class AgentDeviceSurface {
     this.projectRoot = info.projectRoot;
     const binding = this.pool.binding(info.targetName, info.workerSlot, info.env);
     this.device = binding;
+    this.sessionApp = binding?.sessionApp;
     const session = this.pool.session(info.targetName, info.workerSlot);
     const label = deviceLabel(binding);
     this.where = `session ${session}${label === undefined ? '' : ` on ${label}`}`;
@@ -547,8 +549,10 @@ export class AgentDeviceSurface {
   /**
    * Puts an app's permissions in place before it launches. agent-device sets
    * a permission on the app its session is on, so a session on another app,
-   * or on none yet, is first brought onto this one with a foreground open.
-   * Before the launch, never after: iOS terminates a running app whose
+   * or on none yet, is first brought onto this one with a foreground open;
+   * the warm-up in `prepare` did that for the pinned app under the session
+   * this worker resumed, so its first launch needs none. Before the launch,
+   * never after: iOS terminates a running app whose
    * permission changed, and Android one whose permission was revoked, so a
    * change after the launch would leave the test on no screen.
    */
