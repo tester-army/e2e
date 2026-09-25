@@ -405,8 +405,8 @@ export interface SettleOptions<T> {
   readonly changeShapeOf?: ((value: T) => string | undefined) | undefined;
   /**
    * Whether a capture is a screen in transition rather than a screen: an
-   * empty document between two pages, say. Such a capture never satisfies
-   * the change wait and never counts as stable while the change wait lasts.
+   * empty document between two pages, say. After an action, such a capture
+   * satisfies neither the change wait nor the subsequent stability check.
    */
   readonly transitional?: ((value: T) => boolean) | undefined;
   /**
@@ -475,11 +475,13 @@ export async function settleObservation<T>(
 
 /**
  * Whether an observation shows a screen in transition: nothing but the
- * document itself, as a page reads between the old body being torn down and
- * the new one arriving. Acting or judging on it would be acting on nothing.
+ * document or screen root, between the old content being torn down and the
+ * new content arriving. Acting or judging on it would be acting on nothing.
  */
 export function isTransitionalObservation(observation: AgentObservation): boolean {
-  return observation.kind === 'semantic' && observation.tree.role === 'document' && observation.nodes.size <= 1;
+  return observation.kind === 'semantic' &&
+    (observation.tree.role === 'document' || observation.tree.role === 'screen') &&
+    observation.nodes.size <= 1;
 }
 
 function indexNodes(

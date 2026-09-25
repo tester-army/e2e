@@ -503,12 +503,12 @@ describe('settleObservation', () => {
 });
 
 describe('isTransitionalObservation', () => {
-  it('recognizes an empty document without treating a lone control as an empty screen', () => {
+  it.each(['document', 'screen'])('recognizes an empty %s without treating a lone control as an empty screen', (role) => {
     const prepare = (tree: SemanticNode) => prepareObservation(observation(tree), { redact: NO_REDACT, maxBytes: 4_096 });
-    expect(isTransitionalObservation(prepare(node('root', { role: 'document' })))).toBe(true);
+    expect(isTransitionalObservation(prepare(node('root', { role })))).toBe(true);
     expect(isTransitionalObservation(prepare(node('root', { role: 'button', name: 'Continue' })))).toBe(false);
     expect(isTransitionalObservation(prepare(node('root', { role: 'textbox', name: 'Password', states: { secure: true } })))).toBe(false);
-    expect(isTransitionalObservation(prepare(node('root', { role: 'document', children: [node('child', { role: 'text', text: 'Ready' })] })))).toBe(false);
+    expect(isTransitionalObservation(prepare(node('root', { role, children: [node('child', { role: 'text', text: 'Ready' })] })))).toBe(false);
   });
 });
 
