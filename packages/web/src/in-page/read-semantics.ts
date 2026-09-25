@@ -755,10 +755,18 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
       value = textOf(el).trim();
       if (projection.textLimit !== null) value = value.slice(0, projection.textLimit);
     }
-    const ariaChecked = el.getAttribute('aria-checked');
-    if (ariaChecked !== null) checked = ariaChecked === 'true';
-    const ariaSelected = el.getAttribute('aria-selected');
-    if (ariaSelected !== null) selectedState = ariaSelected === 'true';
+    // A native control's state is the control's, as Playwright reads it: a
+    // stale aria-checked on a checkbox or aria-selected on an option says
+    // nothing about what the browser will submit. ARIA fills in only where the
+    // element has no native state.
+    if (checked === null) {
+      const ariaChecked = el.getAttribute('aria-checked');
+      if (ariaChecked !== null) checked = ariaChecked === 'true';
+    }
+    if (selectedState === null) {
+      const ariaSelected = el.getAttribute('aria-selected');
+      if (ariaSelected !== null) selectedState = ariaSelected === 'true';
+    }
 
     const disabled =
       ((el instanceof HTMLInputElement ||
