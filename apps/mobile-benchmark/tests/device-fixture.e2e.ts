@@ -91,30 +91,80 @@ test.describe('device fixture', () => {
     await expect(screen.getByTestId('inventory-header')).toBeHidden();
   });
 
-  test(
-    'setNetwork and setAirplaneMode change what the app sees',
-    { skip: 'the app has no network status surface; expo-network is not a dependency' },
-    async ({ device }) => {
+  // The Device section prints what the device tells the app: the network
+  // state (expo-network), a position read on demand (expo-location), and the
+  // outcome of a biometric prompt (expo-local-authentication).
+
+  // Android only: on an iOS simulator agent-device's network settings paint
+  // the status bar's indicator and the app keeps its connection, so only the
+  // emulator, whose radios agent-device switches, shows the app a change.
+  test('setNetwork and setAirplaneMode change what the app sees', { platforms: ['android'] }, async ({ device, screen }) => {
+    await screen.getByTestId('tab-device').tap();
+    const network = screen.getByTestId('network-state');
+    await expect(network).toHaveText('network: connected');
+    try {
       await device.setNetwork('offline');
+      await expect(network).toHaveText('network: disconnected');
+      await device.setNetwork('online');
+      await expect(network).toHaveText('network: connected');
       await device.setAirplaneMode(true);
-    },
-  );
+      await expect(network).toHaveText('network: disconnected');
+    } finally {
+      await device.setAirplaneMode(false);
+      await device.setNetwork('online');
+    }
+    await expect(network).toHaveText('network: connected');
+  });
 
-  test(
-    'setLocation and clearLocation change what the app reads',
-    { skip: 'the app has no location surface; expo-location is not a dependency' },
-    async ({ device }) => {
+  // A read returns the provider's last fix, which lags a new one by a moment,
+  // so each read is repeated until the app prints the position that was set.
+  // On Android clearLocation switches location services off, and the
+  // emulator keeps that until they are switched back on
+  // (`adb shell settings put secure location_mode 3`); a CI emulator is fresh.
+  test('setLocation and clearLocation change what the app reads', async ({ device, screen }) => {
+    await screen.getByTestId('tab-device').tap();
+    // Granted up front, so the read never waits on the system's permission dialog.
+    await device.setPermission('location', 'grant');
+    const read = screen.getByTestId('read-location');
+    const status = screen.getByTestId('location-status');
+    const readsBack = async (expected: RegExp): Promise<void> => {
+      await expect
+        .poll(async () => {
+          await read.tap();
+          await expect(status).not.toHaveText('location: reading');
+          return (await status.allTextContents())[0] ?? '';
+        }, { timeout: 20_000 })
+        .toMatch(expected);
+    };
+    try {
       await device.setLocation({ latitude: 52.2297, longitude: 21.0122 });
+      await readsBack(/^location: 52\.2297, 21\.0122$/);
+      await device.setLocation({ latitude: 37.7749, longitude: -122.4194 });
+      await readsBack(/^location: 37\.7749, -122\.4194$/);
+    } finally {
       await device.clearLocation();
-    },
-  );
+    }
+    // Android has no provider left and errors; iOS clears the simulated fix together with the app's authorization.
+    await readsBack(/^location: (unavailable|permission denied)/);
+  });
 
+  // The Device section has the prompt, but neither device can answer it from
+  // the outside yet: agent-device 0.21.13 refuses Face ID simulation on the
+  // iOS 26 runtime, and the emulator's fingerprint answers only once a lock
+  // screen and a fingerprint are enrolled by hand.
   test(
     'enrollBiometrics and setBiometrics answer a biometric prompt',
-    { skip: 'the app has no biometric prompt; expo-local-authentication is not a dependency' },
-    async ({ device }) => {
+    {
+      skip: 'agent-device 0.21.13 refuses Face ID simulation on the iOS 26 runtime ("not supported on this simulator runtime"), and the emulator fingerprint needs a lock screen and an enrolled finger first',
+    },
+    async ({ device, screen }) => {
+      await screen.getByTestId('tab-device').tap();
+      const status = screen.getByTestId('biometrics-status');
       await device.enrollBiometrics('faceid', true);
+      await screen.getByTestId('unlock-biometrics').tap();
+      await expect(status).toHaveText('biometrics: authenticating');
       await device.setBiometrics('faceid', 'match');
+      await expect(status).toHaveText('biometrics: unlocked');
     },
   );
 });

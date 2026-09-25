@@ -1,3 +1,6 @@
+import * as LocalAuthentication from "expo-local-authentication";
+import * as Location from "expo-location";
+import { useNetworkState } from "expo-network";
 import { useEffect, useRef, useState } from "react";
 import {
   type GestureResponderEvent,
@@ -14,7 +17,7 @@ import {
   View,
 } from "react-native";
 
-const SECTIONS = ["Fields", "Toggles", "Gestures"] as const;
+const SECTIONS = ["Fields", "Toggles", "Gestures", "Device"] as const;
 type Section = (typeof SECTIONS)[number];
 const SIZES = ["Small", "Medium", "Large"] as const;
 const FRUITS = [
@@ -33,7 +36,7 @@ const formatPoint = (x: number, y: number) => `${Math.round(x)},${Math.round(y)}
 /**
  * The deterministic contract surface: plain controls with every state exposed
  * through accessibility props, so each runner verb has a device exercise. Not
- * a hard surface. Three sections behind a tab row keep every control on
+ * a hard surface. Four sections behind a tab row keep every control on
  * screen without scrolling; the header and the environment lines stay above.
  */
 export default function ControlInventory() {
@@ -84,6 +87,7 @@ export default function ControlInventory() {
       {section === "Fields" && <FieldsSection />}
       {section === "Toggles" && <TogglesSection />}
       {section === "Gestures" && <GesturesSection />}
+      {section === "Device" && <DeviceSection />}
     </ScrollView>
   );
 }
@@ -391,6 +395,79 @@ function GesturesSection() {
           </View>
         ))}
       </View>
+    </View>
+  );
+}
+
+/**
+ * What the device tells the app: the network state as it changes, the
+ * position a button reads, and a biometric prompt a button raises. Each line
+ * is the readback for one `device` fixture method that has no other surface.
+ */
+function DeviceSection() {
+  const network = useNetworkState();
+  const [location, setLocation] = useState("location: not read");
+  const [biometrics, setBiometrics] = useState("biometrics: idle");
+
+  /**
+   * Reads the current position once permission is granted and prints it to
+   * four decimals, the precision a fixture sets it with.
+   */
+  const readLocation = async () => {
+    setLocation("location: reading");
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== "granted") {
+        setLocation("location: permission denied");
+        return;
+      }
+      // Highest accuracy reads the GPS provider, the one an emulator's fix feeds;
+      // Android otherwise offers Google's "Location Accuracy" dialog over the app on the first read.
+      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest, mayShowUserSettingsDialog: false });
+      setLocation(`location: ${position.coords.latitude.toFixed(4)}, ${position.coords.longitude.toFixed(4)}`);
+    } catch (error) {
+      setLocation(`location: unavailable (${error instanceof Error ? error.message : String(error)})`);
+    }
+  };
+
+  /**
+   * Raises the biometric prompt and prints its outcome; without an enrolled
+   * sensor there is no prompt to raise.
+   */
+  const unlock = async () => {
+    setBiometrics("biometrics: authenticating");
+    try {
+      if (!(await LocalAuthentication.isEnrolledAsync())) {
+        setBiometrics("biometrics: not enrolled");
+        return;
+      }
+      const result = await LocalAuthentication.authenticateAsync({ disableDeviceFallback: true, cancelLabel: "Cancel" });
+      setBiometrics(result.success ? "biometrics: unlocked" : `biometrics: failed (${result.error})`);
+    } catch {
+      setBiometrics("biometrics: unavailable");
+    }
+  };
+
+  const connected = network.isConnected === undefined ? "unknown" : network.isConnected ? "connected" : "disconnected";
+  return (
+    <View style={styles.section}>
+      <Text testID="network-state" style={styles.status}>
+        network: {connected}
+      </Text>
+      <View style={styles.row}>
+        <TouchableOpacity testID="read-location" accessibilityRole="button" style={styles.button} onPress={() => void readLocation()}>
+          <Text style={styles.buttonText}>Read location</Text>
+        </TouchableOpacity>
+        <TouchableOpacity testID="unlock-biometrics" accessibilityRole="button" style={styles.button} onPress={() => void unlock()}>
+          <Text style={styles.buttonText}>Unlock with biometrics</Text>
+        </TouchableOpacity>
+      </View>
+      <Text testID="location-status" style={styles.status}>
+        {location}
+      </Text>
+      <Text testID="biometrics-status" style={styles.status}>
+        {biometrics}
+      </Text>
     </View>
   );
 }

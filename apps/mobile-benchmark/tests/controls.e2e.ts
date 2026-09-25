@@ -201,7 +201,7 @@ test.describe('control inventory', () => {
       skip: 'React Native 0.86 gives the tab role no UIKit trait and, unlike checkbox and radio, spells nothing into the accessibility value on the new architecture, so an iOS tab is an Other carrying only the selected trait; on Android it is a plain View whose role description agent-device does not carry',
     },
     async ({ screen }) => {
-      await expect(screen.getByRole('tab')).toHaveCount(3);
+      await expect(screen.getByRole('tab')).toHaveCount(4);
     },
   );
 
