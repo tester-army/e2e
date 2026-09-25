@@ -4,16 +4,12 @@
   "name": "e2e",
   "description": "An open framework for agentic end-to-end testing.",
   "colors": {
-    "primary": "#ff8001",
-    "light": "#ffb56c",
-    "dark": "#b55b01"
+    "primary": "#171717",
+    "light": "#fafafa",
+    "dark": "#171717"
   },
-  "logo": {
-    "light": "/logo.png",
-    "dark": "/logo.png",
-    "href": "/"
-  },
-  "favicon": "/favicon.ico",
+  "logo": "/logo.png",
+  "favicon": "/favicon.png",
   "fonts": {
     "heading": {
       "family": "Geist",
@@ -24,7 +20,14 @@
     }
   },
   "appearance": {
-    "default": "system"
+    "default": "dark",
+    "strict": true
+  },
+  "background": {
+    "color": {
+      "light": "#ffffff",
+      "dark": "#0a0a0a"
+    }
   },
   "styling": {
     "codeblocks": {

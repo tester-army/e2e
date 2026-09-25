@@ -1,19 +1,26 @@
 /*
- * TesterArmy design system on Mintlify.
+ * e2e on Mintlify: one foreground on paper, no accent color.
  *
- * docs.json carries the palette (orange-300 as the accent, orange-100 in dark
- * mode, orange-500 in light mode) and the Geist type. This file adds what the
- * config cannot express: square corners, text weight capped at medium, the
- * orange rule over the page title, hairlines above every h2, and Geist Mono in
- * code. Mintlify includes every .css file next to docs.json on every page.
+ * docs.json carries the palette (near-white on near-black; the site is dark
+ * only, `appearance.strict`) and the Geist type. This file adds what the
+ * config cannot express: square corners, text weight capped at medium, a
+ * foreground rule over the page title, hairlines above every h2, neutral code
+ * surfaces and callouts, and Geist Mono in code. The light values stay so a
+ * light mode needs no CSS work, only a dark logo. Mintlify includes every
+ * .css file next to docs.json on every page.
  */
 
 @import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap');
 
 :root {
-  --ta-orange-300: rgb(255 128 1);
-  --ta-grey-50: rgb(232 232 232);
-  --ta-grey-400: rgb(78 78 78);
+  --e2e-ink: rgb(23 23 23);
+  --e2e-hairline: rgb(232 232 232);
+}
+
+.dark {
+  --e2e-ink: rgb(250 250 250);
+  --e2e-hairline: rgb(78 78 78);
+  --e2e-surface: rgb(23 23 23);
 }
 
 body {
@@ -21,13 +28,13 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Square corners everywhere, like every TesterArmy surface. Mintlify is
-   Tailwind-built, so the rounded utilities are the one place radii come from. */
+/* Square corners everywhere. Mintlify is Tailwind-built, so the rounded
+   utilities are the one place radii come from. */
 [class*='rounded'] {
   border-radius: 0 !important;
 }
 
-/* Text weight caps at medium. Emphasis reads through color, not weight. */
+/* Text weight caps at medium. Emphasis reads through contrast, not weight. */
 #content h1,
 #content h2,
 #content h3,
@@ -44,20 +51,16 @@ body {
   letter-spacing: -0.01em;
 }
 
-/* The page title sits under an orange rule, the way section numbers do on tester.army. */
+/* The page title sits under a rule in the foreground color. */
 #page-title {
   padding-top: 1rem;
-  border-top: 2px solid var(--ta-orange-300);
+  border-top: 2px solid var(--e2e-ink);
 }
 
 /* A hairline above every h2 separates sections. */
 #content h2 {
   padding-top: 1rem;
-  border-top: 1px solid var(--ta-grey-50);
-}
-
-.dark #content h2 {
-  border-top-color: var(--ta-grey-400);
+  border-top: 1px solid var(--e2e-hairline);
 }
 
 /* Code renders in Geist Mono; the GitHub light/dark themes follow the color scheme (styling.codeblocks). */
@@ -66,6 +69,30 @@ pre,
 kbd,
 samp {
   font-family: 'Geist Mono', ui-monospace, monospace;
+}
+
+/* The code surface is the page's own grey, not the GitHub theme's blue-grey.
+   Mintlify paints it from `html.dark .code-block-background`; the `body` in the
+   selector is what outranks that rule. */
+html.dark body .code-block-background {
+  background-color: var(--e2e-surface) !important;
+}
+
+/* The fade behind a code block's floating copy button ends in that same grey. */
+html.dark body .code-block-fade-overlay {
+  background-image: linear-gradient(to right, transparent, var(--e2e-surface) 50%) !important;
+}
+
+/* Callouts are a hairline box in the foreground color; the icon tells a note
+   from a warning, not a hue. */
+#content .callout {
+  background-color: transparent !important;
+  border-color: var(--e2e-hairline) !important;
+}
+
+#content .callout,
+#content .callout * {
+  color: var(--e2e-ink) !important;
 }
 
 /* The assistant panel takes the table-of-contents column. Without a cap the
