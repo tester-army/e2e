@@ -36,6 +36,7 @@ export const GESTURE_PAGES: Record<string, PageRenderer> = {
   <input id="attachment" type="file" multiple />
 
   <p>Page the ledger down to Row 333 and stop there.</p>
+  <span>Jump to Row 333</span>
   <div id="ledger" role="list" aria-label="Ledger" style="position:relative;height:200px;overflow:auto;border:1px solid #000"><div id="ledger-spacer"></div></div>
   <output aria-label="Ledger state">golden out of view</output>
 
@@ -80,6 +81,7 @@ export const GESTURE_PAGES: Record<string, PageRenderer> = {
       for (let index = first; index < last; index += 1) {
         const row = document.createElement('div');
         row.setAttribute('role', 'listitem');
+        row.setAttribute('aria-label', 'Ledger row');
         row.style.cssText = 'position:absolute;left:0;right:0;height:' + ROW_PX + 'px;top:' + index * ROW_PX + 'px';
         row.textContent = index === GOLDEN ? 'Row ' + GOLDEN + ' · Golden' : 'Row ' + index;
         ledger.appendChild(row);

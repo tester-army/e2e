@@ -29,6 +29,7 @@ import { resolveScrollTarget } from './scroll-target.ts';
 import type { OperationQueue } from './operation-queue.ts';
 import { instrumentPhase, recordPolicyEvent } from './phases.ts';
 import { describePointAction, describePointHit, hitTest, POINT_VERBS, type PointProse } from './point-tap.ts';
+import { nodeReading, normalizeReading, readingShape } from './reading.ts';
 import type { AgentObservation, SemanticAgentObservation } from './observation.ts';
 import { authorizeSecretFill } from './secrets.ts';
 import { SETTLE_AFTER } from './settle-policy.ts';
@@ -428,7 +429,10 @@ export class ActionDispatcher {
       let still = 0;
       let within = list;
       for (let screens = 0; ; screens += 1) {
-        const found = observation.kind === 'semantic' ? nodeReading(observation, needle) : undefined;
+        // Only the list being paged is read while it is on screen; once it is
+        // gone the whole screen is, as the paging itself falls back to the viewport.
+        const scope = within === undefined || observation.kind !== 'semantic' ? undefined : observation.nodes.get(within.id);
+        const found = observation.kind === 'semantic' ? nodeReading(observation, needle, scope) : undefined;
         if (found !== undefined) {
           // An engine that can bring a node in does, whatever the box says: a
           // windowed list renders a row a little before it is visible. One
@@ -656,53 +660,9 @@ export class ActionDispatcher {
 
 }
 
-/** A reading for matching: lower-cased, whitespace runs collapsed, trimmed. */
-function normalizeReading(text: string): string {
-  return text.toLowerCase().replace(/\s+/gu, ' ').trim();
-}
-
-/**
- * How much longer than the text a label may run and still be the node that
- * reads it: a row label with a suffix ("Row 4322 - Golden Row"), never the
- * sentence that mentions the row ("Scroll to Row 0512 and tap it"), which
- * would end the paging on the very screen that gives the instruction.
- */
-const READING_SLACK = 24;
-
-/**
- * The visible node whose name or text reads `needle`: the label is the
- * text, or holds it within a label not much longer (`READING_SLACK`, or
- * three times the text). The shortest such label wins, since a device echoes
- * a row's text up into its container and the row itself is the node to reach.
- */
-function nodeReading(observation: SemanticAgentObservation, needle: string): SemanticNode | undefined {
-  const longest = Math.max(needle.length * 3, needle.length + READING_SLACK);
-  let best: { node: SemanticNode; length: number } | undefined;
-  for (const node of observation.nodes.values()) {
-    if (node.states?.hidden === true) continue;
-    for (const label of [node.name, node.text]) {
-      if (label === undefined) continue;
-      const reading = normalizeReading(label);
-      if (reading.length > longest || !reading.includes(needle)) continue;
-      if (best === undefined || reading.length < best.length) best = { node, length: reading.length };
-    }
-  }
-  return best?.node;
-}
-
 /** Whether a box lies at least partly inside the viewport; a node without a box counts as shown. */
 function isInViewport(rect: SemanticNode['rect'], viewport: { readonly width: number; readonly height: number }): boolean {
   if (rect === undefined) return true;
   return rect.x < viewport.width && rect.y < viewport.height && rect.x + rect.width > 0 && rect.y + rect.height > 0;
 }
 
-/** What a screen reads and where, for telling a page that moved from one that did not. */
-function readingShape(observation: SemanticAgentObservation): string {
-  const lines: string[] = [];
-  for (const node of observation.nodes.values()) {
-    const label = node.name ?? node.text;
-    if (label === undefined) continue;
-    lines.push(`${label}@${node.rect === undefined ? '' : `${String(Math.round(node.rect.x))},${String(Math.round(node.rect.y))}`}`);
-  }
-  return lines.join('\n');
-}
