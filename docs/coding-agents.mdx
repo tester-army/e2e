@@ -16,10 +16,11 @@ npx e2e init
 | Path | Used by |
 | --- | --- |
 | `.agents/skills/e2e/` | Agents that read `.agents/skills` |
-| `.claude/skills/e2e/` | Claude Code |
+| `.claude/skills/e2e/` | Claude Code; a symlink to `.agents/skills/e2e/` when both are installed |
 
-Both directories contain `SKILL.md` and topic references. Run `init` again
-after upgrading e2e to refresh them.
+The copy holds `SKILL.md` and topic references; the link is the layout
+`npx skills add` produces, so one copy serves every agent. Run `init` again
+after upgrading e2e to refresh it.
 
 Without `init`, `npx skills add tester-army/e2e` installs the skill from the
 repository, and `npx e2e guide [topic]` prints it from the

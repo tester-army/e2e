@@ -1,6 +1,6 @@
 /** The `e2e init` step that installs the bundled skill for coding agents. */
 
-import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync, type Stats } from 'node:fs';
+import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, realpathSync, type Stats } from 'node:fs';
 import path from 'node:path';
 import { insideProjectRoot, realpathOfExisting } from '../../internal/paths.ts';
 import { MISSING_SKILL_MESSAGE, SKILL_NAME, type SkillFile } from '../skill.ts';
@@ -10,16 +10,21 @@ interface SkillLocation {
   readonly dir: string;
   /** The agents that read it, shown as the prompt hint. */
   readonly hint: string;
+  /**
+   * The location whose copy this one links to when both are chosen, so one
+   * copy serves every agent: the layout `npx skills add` produces.
+   */
+  readonly linksTo?: string;
 }
 
 /** Where project skills live: most agents read `.agents/skills`; Claude Code reads `.claude/skills`. */
-export const SKILL_LOCATIONS = [
+export const SKILL_LOCATIONS: readonly SkillLocation[] = [
   { dir: '.agents/skills', hint: 'Codex, Cursor, Copilot, Gemini CLI, OpenCode, Zed, and most other agents' },
-  { dir: '.claude/skills', hint: 'Claude Code' },
-] as const satisfies readonly SkillLocation[];
+  { dir: '.claude/skills', hint: 'Claude Code, as a symlink into .agents/skills when both are chosen', linksTo: '.agents/skills' },
+];
 
 /** A symlink on the way to a skill file. */
-export interface SkillLink {
+interface SkillLink {
   /** Project-relative path of the link with `/` separators, e.g. `.claude/skills/e2e`. */
   readonly relative: string;
   /** Absolute path the link leads to; the path as written when it dangles. */
@@ -27,18 +32,17 @@ export interface SkillLink {
 }
 
 /** An entry a write cannot pass: a directory where a bundled file goes, or a file where its directory goes. */
-export interface SkillObstacle {
+interface SkillObstacle {
   /** Path relative to the skill directory with `/` separators, e.g. `SKILL.md`. */
   readonly relative: string;
   readonly kind: 'directory' | 'file';
 }
 
-export interface SkillInstall {
+interface SkillInstallBase {
   /** Project-relative skill directory, e.g. `.agents/skills/e2e`. */
   readonly relative: string;
-  /** True when the directory already held a copy, so the write is an update. */
+  /** True when the directory already holds a copy: a copy updates it, a link replaces it. */
   readonly existing: boolean;
-  readonly files: readonly { readonly absolute: string; readonly content: string }[];
   /**
    * The symlinks between the project root and the files, each once, plus any
    * file that resolves outside the project without one. Init never writes
@@ -50,12 +54,37 @@ export interface SkillInstall {
   readonly obstacles: readonly SkillObstacle[];
 }
 
+/** The bundled files, written into the skill directory. */
+interface SkillCopy extends SkillInstallBase {
+  readonly kind: 'copy';
+  readonly files: readonly { readonly absolute: string; readonly content: string }[];
+}
+
+/** A symlink standing in for the skill directory, leading to the copy in another location. */
+interface SkillSymlink extends SkillInstallBase {
+  readonly kind: 'link';
+  /** The link as written, relative to its parent with `/` separators: `../../.agents/skills/e2e`. */
+  readonly target: string;
+}
+
+export type SkillInstall = SkillCopy | SkillSymlink;
+
 /**
  * Known locations that hold a copy of the skill. The directory is the marker,
  * not `SKILL.md`, so a copy that lost files is repaired rather than ignored.
  */
 export function findInstalledSkillDirs(cwd: string): string[] {
   return SKILL_LOCATIONS.map((location) => location.dir).filter((dir) => existsSync(path.join(cwd, dir, SKILL_NAME)));
+}
+
+/** The chosen directories split into the ones written as a copy and the ones linked to a copy among them. */
+export function splitSkillDirs(dirs: readonly string[]): { copies: string[]; links: { dir: string; linksTo: string }[] } {
+  const links = SKILL_LOCATIONS.flatMap((location) =>
+    location.linksTo !== undefined && dirs.includes(location.dir) && dirs.includes(location.linksTo)
+      ? [{ dir: location.dir, linksTo: location.linksTo }]
+      : [],
+  );
+  return { copies: dirs.filter((dir) => !links.some((link) => link.dir === dir)), links };
 }
 
 /**
@@ -77,9 +106,54 @@ export function planSkillInstall(cwd: string, dirs: readonly string[], bundled: 
     const current = links.length === 0 && obstacles.length === 0
       && files.every((file) => currentContent(file.absolute) === file.content);
     if (current) continue;
-    installs.push({ relative: `${dir}/${SKILL_NAME}`, existing: existsSync(root), files, links, obstacles });
+    installs.push({ kind: 'copy', relative: `${dir}/${SKILL_NAME}`, existing: existsSync(root), files, links, obstacles });
   }
   return installs;
+}
+
+/**
+ * Whether a directory holds the copy once the planned writes are done: its
+ * plan goes ahead, or nothing was planned because the copy is current.
+ */
+export function holdsCopyAfter(dir: string, planned: readonly SkillInstall[], going: readonly SkillInstall[]): boolean {
+  const relative = `${dir}/${SKILL_NAME}`;
+  return going.some((install) => install.relative === relative) || !planned.some((install) => install.relative === relative);
+}
+
+/**
+ * Plans `dir` as a symlink to the copy in `canonicalDir`, which `ready` says
+ * this run leaves in place. Nothing is planned for an entry that already
+ * leads there, the link itself or a linked parent. A copy holding only
+ * bundled files is replaced by the link, since the copy it leads to has the
+ * same content; one holding anything else, like a location whose copy is not
+ * ready, is planned as a copy like any other. A symlink leading elsewhere,
+ * or one on the way, is planned with what was met, for the caller to skip or
+ * replace.
+ */
+export function planSkillLink(
+  cwd: string,
+  dir: string,
+  canonicalDir: string,
+  bundled: readonly SkillFile[],
+  ready: boolean,
+): SkillInstall | undefined {
+  const link = path.join(cwd, dir, SKILL_NAME);
+  const canonical = path.join(cwd, canonicalDir, SKILL_NAME);
+  if (ready && leadsTo(link, canonical)) return undefined;
+  const entry = lstatOrUndefined(link);
+  const linkable = entry === undefined || entry.isSymbolicLink() || (entry.isDirectory() && holdsOnlyBundled(link, bundled));
+  if (!ready || !linkable) return planSkillInstall(cwd, [dir], bundled)[0];
+  const blocker = firstBlocker(cwd, path.dirname(link), 'directory')
+    ?? (entry?.isSymbolicLink() ? { kind: 'link' as const, absolute: link } : undefined);
+  const found = describeBlocker(cwd, link, link, blocker);
+  return {
+    kind: 'link',
+    relative: `${dir}/${SKILL_NAME}`,
+    existing: entry?.isDirectory() === true,
+    target: posixRelative(path.dirname(link), canonical),
+    links: found !== undefined && 'link' in found ? [found.link] : [],
+    obstacles: found !== undefined && 'obstacle' in found ? [found.obstacle] : [],
+  };
 }
 
 /**
@@ -117,6 +191,28 @@ function currentContent(absolute: string): string | undefined {
   }
 }
 
+/**
+ * Whether `link` already leads to `canonical`: it resolves there through the
+ * filesystem, a linked parent included, or it is a symlink written to point
+ * there whose target does not exist yet.
+ */
+function leadsTo(link: string, canonical: string): boolean {
+  const destination = realpathOfExisting(canonical);
+  if (realpathOfExisting(link) === destination) return true;
+  const entry = lstatOrUndefined(link);
+  return entry?.isSymbolicLink() === true
+    && realpathOfExisting(path.resolve(path.dirname(link), readlinkSync(link))) === destination;
+}
+
+/** Whether the directory holds nothing but files the bundle ships, so a link to another copy loses nothing. */
+function holdsOnlyBundled(root: string, bundled: readonly SkillFile[]): boolean {
+  const shipped = bundled.map((file) => file.relative);
+  return readdirSync(root, { recursive: true, withFileTypes: true }).every((entry) => {
+    const relative = posixRelative(root, path.join(entry.parentPath, entry.name));
+    return entry.isDirectory() ? shipped.some((file) => file.startsWith(`${relative}/`)) : shipped.includes(relative);
+  });
+}
+
 type Blocker = { readonly kind: 'link' | SkillObstacle['kind']; readonly absolute: string };
 
 /**
@@ -125,35 +221,50 @@ type Blocker = { readonly kind: 'link' | SkillObstacle['kind']; readonly absolut
  * not inspected), a file that resolves outside the project without one, and
  * the entries a write cannot pass.
  */
-function findBlockers(cwd: string, root: string, files: readonly string[]): Pick<SkillInstall, 'links' | 'obstacles'> {
-  const links = new Map<string, string>();
-  const obstacles = new Map<string, SkillObstacle['kind']>();
+function findBlockers(cwd: string, root: string, files: readonly string[]): Pick<SkillInstallBase, 'links' | 'obstacles'> {
+  const links = new Map<string, SkillLink>();
+  const obstacles = new Map<string, SkillObstacle>();
   for (const file of files) {
-    const blocker = firstBlocker(cwd, file);
-    if (blocker === undefined) {
-      if (!insideProjectRoot(cwd, file)) links.set(file, realpathOfExisting(file));
-    } else if (blocker.kind === 'link') {
-      links.set(blocker.absolute, linkTarget(blocker.absolute));
-    } else {
-      obstacles.set(blocker.absolute, blocker.kind);
-    }
+    const found = describeBlocker(cwd, root, file, firstBlocker(cwd, file, 'file'));
+    if (found === undefined) continue;
+    if ('link' in found) links.set(found.link.relative, found.link);
+    else obstacles.set(found.obstacle.relative, found.obstacle);
   }
-  return {
-    links: [...links].map(([absolute, target]) => ({ relative: posixRelative(cwd, absolute), target })),
-    obstacles: [...obstacles].map(([absolute, kind]) => ({ relative: posixRelative(root, absolute), kind })),
-  };
+  return { links: [...links.values()], obstacles: [...obstacles.values()] };
 }
 
-/** The first entry from the project root down to `file` that a write cannot go through as planned. */
-function firstBlocker(cwd: string, file: string): Blocker | undefined {
-  const segments = path.relative(cwd, file).split(path.sep);
+/**
+ * A blocker as the plan spells it: a symlink with where it leads, the entry
+ * a write cannot pass relative to the skill directory, or, with no blocker
+ * on the path, `file` itself when it resolves outside the project.
+ */
+function describeBlocker(
+  cwd: string,
+  root: string,
+  file: string,
+  blocker: Blocker | undefined,
+): { link: SkillLink } | { obstacle: SkillObstacle } | undefined {
+  if (blocker === undefined) {
+    if (insideProjectRoot(cwd, file)) return undefined;
+    return { link: { relative: posixRelative(cwd, file), target: realpathOfExisting(file) } };
+  }
+  if (blocker.kind === 'link') return { link: { relative: posixRelative(cwd, blocker.absolute), target: linkTarget(blocker.absolute) } };
+  return { obstacle: { relative: posixRelative(root, blocker.absolute), kind: blocker.kind } };
+}
+
+/**
+ * The first entry from the project root down to `target`, wanted as a file
+ * or as a directory, that a write cannot go through as planned.
+ */
+function firstBlocker(cwd: string, target: string, wants: 'file' | 'directory'): Blocker | undefined {
+  const segments = path.relative(cwd, target).split(path.sep);
   let current = cwd;
   for (const [index, segment] of segments.entries()) {
     current = path.join(current, segment);
     const entry = lstatOrUndefined(current);
     if (entry === undefined) return undefined;
     if (entry.isSymbolicLink()) return { kind: 'link', absolute: current };
-    const wantsFile = index === segments.length - 1;
+    const wantsFile = wants === 'file' && index === segments.length - 1;
     if (wantsFile && entry.isDirectory()) return { kind: 'directory', absolute: current };
     if (!wantsFile && !entry.isDirectory()) return { kind: 'file', absolute: current };
   }

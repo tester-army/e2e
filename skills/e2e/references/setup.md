@@ -34,8 +34,8 @@ without AI. It also offers to install this skill, register the MCP server
 for your coding agent, and install dependencies.
 
 `--yes` accepts Playwright and Vercel AI Gateway, installs the skill in
-`.agents/skills/` and `.claude/skills/`, and registers MCP in `.mcp.json` and
-`.cursor/mcp.json`. It skips dependency installation.
+`.agents/skills/` with `.claude/skills/e2e` a symlink to it, and registers MCP
+in `.mcp.json` and `.cursor/mcp.json`. It skips dependency installation.
 
 Init adds dependencies and a `test:e2e` script to `package.json`, writes
 `e2e.config.ts` and `tests/example.e2e.ts`, and updates `.gitignore`.

@@ -2,7 +2,7 @@
 
 import * as clack from '@clack/prompts';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { detectPackageManager, execCommand, runScriptCommand } from '../internal/package-manager.ts';
@@ -11,9 +11,12 @@ import {
   describeLinks,
   describeObstacles,
   findInstalledSkillDirs,
+  holdsCopyAfter,
   planSkillInstall,
+  planSkillLink,
   replaceableLinks,
   SKILL_LOCATIONS,
+  splitSkillDirs,
   type SkillInstall,
 } from './init/agent-skill.ts';
 import { isLoopbackHost } from '../internal/urls.ts';
@@ -175,26 +178,20 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<Init
   );
   if (isCancelled(skillDirs)) return cancel();
   facts.skill = skillDirs.length > 0;
+  const { copies, links } = splitSkillDirs(skillDirs);
+  const plannedCopies = planSkillInstall(cwd, copies, bundledSkill);
   const skillInstalls: SkillInstall[] = [];
-  for (const planned of planSkillInstall(cwd, skillDirs, bundledSkill)) {
-    if (planned.obstacles.length > 0) {
-      clack.log.warn(`Broken, not touching: ${describeObstacles(planned)}`);
-      continue;
-    }
-    if (planned.links.length === 0) {
-      skillInstalls.push(planned);
-      continue;
-    }
-    if (options.yes || !replaceableLinks(planned)) {
-      clack.log.warn(`Symlink, not touching: ${describeLinks(planned)}`);
-      continue;
-    }
-    const replace = await clack.confirm({
-      message: `Replace the symlink ${describeLinks(planned)} with a copy of the skill?`,
-      initialValue: false,
-    });
-    if (isCancelled(replace)) return cancel();
-    if (replace) skillInstalls.push(planned);
+  for (const planned of plannedCopies) {
+    const proceed = await confirmSkillInstall(planned, options.yes);
+    if (isCancelled(proceed)) return cancel();
+    if (proceed) skillInstalls.push(planned);
+  }
+  for (const { dir, linksTo } of links) {
+    const planned = planSkillLink(cwd, dir, linksTo, bundledSkill, holdsCopyAfter(linksTo, plannedCopies, skillInstalls));
+    if (planned === undefined) continue;
+    const proceed = await confirmSkillInstall(planned, options.yes);
+    if (isCancelled(proceed)) return cancel();
+    if (proceed) skillInstalls.push(planned);
   }
 
   const mcpFiles = await chooseLocations(
@@ -239,7 +236,9 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<Init
   if (!options.yes) {
     const actions = [
       ...files.map((file) => `${file.existing ? 'update' : 'create'} ${file.relative}`),
-      ...skillInstalls.map((install) => `${install.links.length > 0 ? 'replace' : install.existing ? 'update' : 'create'} ${install.relative}/`),
+      ...skillInstalls.map((install) => install.kind === 'link'
+        ? `link ${install.relative} -> ${install.target}${linkReplaces(install, 'replacing')}`
+        : `${install.links.length > 0 ? 'replace' : install.existing ? 'update' : 'create'} ${install.relative}/`),
       ...mcpRegistrations.map((registration) => `${registration.existing ? 'update' : 'create'} ${registration.relative}`),
       ...(missingIgnore.length > 0 ? ['update .gitignore'] : []),
     ];
@@ -267,6 +266,14 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<Init
   }
   for (const skill of skillInstalls) {
     for (const link of skill.links) unlinkSync(path.join(cwd, link.relative));
+    if (skill.kind === 'link') {
+      const absolute = path.join(cwd, skill.relative);
+      if (skill.existing) rmSync(absolute, { recursive: true });
+      mkdirSync(path.dirname(absolute), { recursive: true });
+      symlinkSync(skill.target, absolute, process.platform === 'win32' ? 'junction' : 'dir');
+      clack.log.success(`Linked ${skill.relative} -> ${skill.target}${linkReplaces(skill, 'replaced')}`);
+      continue;
+    }
     for (const file of skill.files) {
       mkdirSync(path.dirname(file.absolute), { recursive: true });
       writeFileSync(file.absolute, file.content, 'utf8');
@@ -344,6 +351,32 @@ function validateEndpoint(value: string | undefined): string | undefined {
   }
   if (parsed.protocol === 'https:' || (parsed.protocol === 'http:' && isLoopbackHost(parsed.hostname))) return undefined;
   return 'Must use HTTPS unless the host is loopback';
+}
+
+/**
+ * Whether a planned skill write goes ahead. An entry a write cannot pass, or
+ * a symlink init would write through, is skipped with a warning naming it; a
+ * linked skill directory is replaced when the user agrees, never under
+ * `--yes`. The cancel symbol when the user leaves the question.
+ */
+async function confirmSkillInstall(planned: SkillInstall, yes: boolean | undefined): Promise<boolean | symbol> {
+  if (planned.obstacles.length > 0) {
+    clack.log.warn(`Broken, not touching: ${describeObstacles(planned)}`);
+    return false;
+  }
+  if (planned.links.length === 0) return true;
+  if (yes || !replaceableLinks(planned)) {
+    clack.log.warn(`Symlink, not touching: ${describeLinks(planned)}`);
+    return false;
+  }
+  const replacement = planned.kind === 'link' ? `a link to ${planned.target}` : 'a copy of the skill';
+  return clack.confirm({ message: `Replace the symlink ${describeLinks(planned)} with ${replacement}?`, initialValue: false });
+}
+
+/** What a link takes the place of, for the summary (`replacing`) and the success line (`replaced`); empty when nothing is there. */
+function linkReplaces(install: SkillInstall, verb: 'replacing' | 'replaced'): string {
+  const what = install.links.length > 0 ? 'the symlink' : install.existing ? 'the copy' : undefined;
+  return what === undefined ? '' : ` (${verb} ${what})`;
 }
 
 /** Cancellation is only reachable before the first write, so nothing needs undoing. */

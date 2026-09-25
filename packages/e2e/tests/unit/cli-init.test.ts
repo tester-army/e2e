@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  readlinkSync,
   realpathSync,
   rmSync,
   symlinkSync,
@@ -49,6 +50,15 @@ function output(): string {
 /** Reads one file from the throwaway project. */
 function read(file: string): string {
   return readFileSync(path.join(dir, file), 'utf8');
+}
+
+/** Writes the bundled skill into `<location>/e2e` as an earlier init left it, every file holding `content` when given. */
+function writeCopy(location: string, content?: string): void {
+  for (const file of readSkillFiles()) {
+    const absolute = path.join(dir, location, 'e2e', file.relative);
+    mkdirSync(path.dirname(absolute), { recursive: true });
+    writeFileSync(absolute, content ?? file.content);
+  }
 }
 
 /** A completed `spawnSync` result with the given exit status. */
@@ -547,6 +557,71 @@ describe('e2e init', () => {
     expect(output()).toContain('Updated .agents/skills/e2e/');
   });
 
+  it.skipIf(!symlinks)('links .claude/skills/e2e to the copy in .agents/skills when both are chosen, and a second run has nothing to do', async () => {
+    vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    expect((await init(dir)).exitCode).toBe(0);
+    expect(clack.confirm).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      message: expect.stringContaining('create .agents/skills/e2e/, link .claude/skills/e2e -> ../../.agents/skills/e2e, create .mcp.json'),
+    }));
+    const link = path.join(dir, '.claude/skills/e2e');
+    expect(lstatSync(link).isSymbolicLink()).toBe(true);
+    expect(readlinkSync(link)).toBe('../../.agents/skills/e2e');
+    expect(realpathSync(link)).toBe(realpathSync(path.join(dir, '.agents/skills/e2e')));
+    expect(read('.claude/skills/e2e/SKILL.md')).toBe(read('.agents/skills/e2e/SKILL.md'));
+    expect(output()).toContain('Created .agents/skills/e2e/');
+    expect(output()).toContain('Linked .claude/skills/e2e -> ../../.agents/skills/e2e');
+    expect(output()).not.toContain('(replaced');
+
+    stdoutSpy.mockClear();
+    expect((await init(dir, { yes: true })).result).toBe('already-initialized');
+    expect(lstatSync(link).isSymbolicLink()).toBe(true);
+    expect(output()).not.toContain('Linked');
+  });
+
+  it.skipIf(!symlinks)('replaces an earlier copy in .claude/skills with the link when it holds only shipped files', async () => {
+    writeCopy('.agents/skills');
+    writeCopy('.claude/skills', 'stale\n');
+    vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    expect((await init(dir)).exitCode).toBe(0);
+    // Both directories hold the skill, so the locations are not asked again.
+    expect(clack.multiselect).not.toHaveBeenCalledWith(expect.objectContaining({ message: 'Install the e2e skill for coding agents?' }));
+    expect(clack.confirm).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      message: expect.stringContaining('link .claude/skills/e2e -> ../../.agents/skills/e2e (replacing the copy)'),
+    }));
+    const link = path.join(dir, '.claude/skills/e2e');
+    expect(lstatSync(link).isSymbolicLink()).toBe(true);
+    expect(readlinkSync(link)).toBe('../../.agents/skills/e2e');
+    expect(read('.claude/skills/e2e/SKILL.md')).toMatch(/^---\nname: e2e\n/);
+    expect(output()).toContain('Linked .claude/skills/e2e -> ../../.agents/skills/e2e (replaced the copy)');
+    expect(output()).not.toContain('Updated .agents/skills/e2e/');
+  });
+
+  it('keeps an earlier copy in .claude/skills that holds other files, and refreshes it', async () => {
+    writeCopy('.agents/skills');
+    writeCopy('.claude/skills', 'stale\n');
+    writeFileSync(path.join(dir, '.claude/skills/e2e/notes.md'), 'mine\n');
+    expect((await init(dir, { yes: true })).exitCode).toBe(0);
+    expect(lstatSync(path.join(dir, '.claude/skills/e2e')).isDirectory()).toBe(true);
+    expect(read('.claude/skills/e2e/notes.md')).toBe('mine\n');
+    expect(read('.claude/skills/e2e/SKILL.md')).toMatch(/^---\nname: e2e\n/);
+    expect(output()).toContain('Updated .claude/skills/e2e/');
+    expect(output()).not.toContain('Linked');
+  });
+
+  it.skipIf(!symlinks)('needs no link when .claude/skills already leads to .agents/skills', async () => {
+    mkdirSync(path.join(dir, '.agents/skills'), { recursive: true });
+    mkdirSync(path.join(dir, '.claude'));
+    symlinkSync(path.join('..', '.agents', 'skills'), path.join(dir, '.claude/skills'), 'dir');
+    expect((await init(dir, { yes: true })).exitCode).toBe(0);
+    expect(read('.agents/skills/e2e/SKILL.md')).toMatch(/^---\nname: e2e\n/);
+    expect(readdirSync(path.join(dir, '.agents/skills'))).toEqual(['e2e']);
+    expect(lstatSync(path.join(dir, '.agents/skills/e2e')).isDirectory()).toBe(true);
+    expect(lstatSync(path.join(dir, '.claude/skills')).isSymbolicLink()).toBe(true);
+    expect(output()).toContain('Created .agents/skills/e2e/');
+    expect(output()).not.toContain('Linked');
+    expect(output()).not.toContain('not touching');
+  });
+
   it('fails before any prompt or write when the package lacks its skill files', async () => {
     vi.mocked(readSkillFiles).mockReturnValueOnce([]);
     expect((await init(dir)).exitCode).toBe(2);
@@ -739,25 +814,62 @@ describe('e2e init', () => {
       expect(clack.confirm).not.toHaveBeenCalled();
     });
 
-    it('is replaced with a copy when it dangles and the user agrees', async () => {
+    it('is replaced with the link when it dangles beside a chosen .agents/skills and the user agrees', async () => {
       mkdirSync(path.join(dir, '.claude/skills'), { recursive: true });
       const link = path.join(dir, '.claude/skills/e2e');
       symlinkSync(path.join('..', '..', 'gone', 'e2e'), link, 'dir');
       vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
       expect((await init(dir)).exitCode).toBe(0);
       expect(clack.confirm).toHaveBeenNthCalledWith(1, {
-        message: `Replace the symlink .claude/skills/e2e -> ${path.join(dir, 'gone', 'e2e')} with a copy of the skill?`,
+        message: `Replace the symlink .claude/skills/e2e -> ${path.join(dir, 'gone', 'e2e')} with a link to ../../.agents/skills/e2e?`,
         initialValue: false,
       });
       expect(clack.confirm).toHaveBeenNthCalledWith(
         2,
-        expect.objectContaining({ message: expect.stringContaining('create .agents/skills/e2e/, replace .claude/skills/e2e/') }),
+        expect.objectContaining({
+          message: expect.stringContaining('create .agents/skills/e2e/, link .claude/skills/e2e -> ../../.agents/skills/e2e (replacing the symlink)'),
+        }),
       );
-      expect(lstatSync(link).isSymbolicLink()).toBe(false);
+      expect(readlinkSync(link)).toBe('../../.agents/skills/e2e');
       expect(read('.claude/skills/e2e/SKILL.md')).toMatch(/^---\nname: e2e\n/);
       expect(read('.claude/skills/e2e/references/setup.md')).toContain('# Setting up e2e');
       expect(existsSync(path.join(dir, 'gone'))).toBe(false);
-      expect(output()).toContain('Replaced .claude/skills/e2e/');
+      expect(output()).toContain('Linked .claude/skills/e2e -> ../../.agents/skills/e2e (replaced the symlink)');
+    });
+
+    it('is left alone under --yes beside a copy in .agents/skills, and the warning names it', async () => {
+      const elsewhere = mkdtempSync(path.join(os.tmpdir(), 'e2e-init-elsewhere-'));
+      try {
+        const target = path.join(elsewhere, 'e2e');
+        linkSkill('.claude/skills', target);
+        writeCopy('.agents/skills');
+        expect((await init(dir, { yes: true })).exitCode).toBe(0);
+        expect(output()).toContain(`Symlink, not touching: .claude/skills/e2e -> ${realpathSync(target)}`);
+        expect(output()).not.toContain('Linked');
+        expect(lstatSync(path.join(dir, '.claude/skills/e2e')).isSymbolicLink()).toBe(true);
+        untouched(target);
+        expect(clack.confirm).not.toHaveBeenCalled();
+      } finally {
+        rmSync(elsewhere, { recursive: true, force: true });
+      }
+    });
+
+    it('gets a copy in .claude/skills when the .agents/skills copy is left alone', async () => {
+      const elsewhere = mkdtempSync(path.join(os.tmpdir(), 'e2e-init-elsewhere-'));
+      try {
+        const target = path.join(elsewhere, 'e2e');
+        linkSkill('.agents/skills', target);
+        writeCopy('.claude/skills', 'stale\n');
+        expect((await init(dir, { yes: true })).exitCode).toBe(0);
+        expect(output()).toContain(`Symlink, not touching: .agents/skills/e2e -> ${realpathSync(target)}`);
+        expect(lstatSync(path.join(dir, '.claude/skills/e2e')).isDirectory()).toBe(true);
+        expect(read('.claude/skills/e2e/SKILL.md')).toMatch(/^---\nname: e2e\n/);
+        expect(output()).toContain('Updated .claude/skills/e2e/');
+        expect(output()).not.toContain('Linked');
+        untouched(target);
+      } finally {
+        rmSync(elsewhere, { recursive: true, force: true });
+      }
     });
 
     it('is skipped without a question when a parent is the link', async () => {
