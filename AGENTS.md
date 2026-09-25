@@ -287,7 +287,14 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
 - CI: `.github/workflows/spec.yml` runs lint, typecheck, and the testbed on
   Node 26 and `pnpm test` on Node 22, 24, and 26; `benchmark.yml` runs the
   web benchmark's two suites; `mobile.yml` runs the mobile benchmark's on an
-  iOS simulator and an Android emulator (KVM on x64 Linux). Every workflow
+  iOS simulator and an Android emulator (KVM on x64 Linux). The two
+  benchmark workflows gate on paths: a `changes` job (dorny/paths-filter
+  over `.github/filters.yml`) skips the suites when the change reaches
+  neither the runner, the engine, nor the benchmark app, and a manual
+  dispatch always runs them. Skipped satisfies the ruleset's required
+  checks; a workflow-level `paths:` filter would leave them pending, so
+  never gate those workflows that way. A new build input or benchmark
+  dependency goes into `filters.yml` in the same change. Every workflow
   pins actions by SHA; keep new actions SHA-pinned. Every job runs on
   Blacksmith, like the tester-army repos. Linux jobs use
   `blacksmith-4vcpu-ubuntu-2404` and macOS jobs `blacksmith-6vcpu-macos-26`;

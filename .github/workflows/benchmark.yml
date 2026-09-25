@@ -1,9 +1,10 @@
 name: benchmark
 
 # The web benchmark is where the runner meets deliberately hard surfaces, so
-# its suites gate every pull request. Each suite posts one comment through
-# @e2edev/github (hence pull-requests: write) and edits it on rerun. The
-# mobile benchmark has its own workflow, mobile.yml.
+# its suites gate every pull request that can reach them (the `changes` job
+# says which). Each suite posts one comment through @e2edev/github (hence
+# pull-requests: write) and edits it on rerun. The mobile benchmark has its
+# own workflow, mobile.yml.
 #
 # A pull request from a fork runs with no secrets and a read-only token, as
 # GitHub grants on `pull_request`. The deterministic suite needs neither and
@@ -31,7 +32,30 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Skips the suites when the change reaches neither the runner, the engine,
+  # nor the benchmark app (.github/filters.yml says what does, and why a skip
+  # rather than a workflow-level `paths:` filter). The gate fails toward
+  # running: a manual dispatch runs the suites, and so does a run whose
+  # detection failed.
+  changes:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 5
+    outputs:
+      web: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.web == 'true' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # A pull request's files come from the API; a push to main is diffed
+      # against the commit before it, which the action fetches itself.
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        if: ${{ github.event_name != 'workflow_dispatch' }}
+        with:
+          filters: .github/filters.yml
+          predicate-quantifier: some-with-excludes
+
   web:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.web == 'true') }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
     steps:
@@ -70,7 +94,11 @@ jobs:
   # needs the key for a step with none: a fork's pull request has no key, so
   # it is skipped rather than failed.
   web-agent:
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    needs: changes
+    if: >-
+      ${{ !cancelled()
+        && (needs.changes.result != 'success' || needs.changes.outputs.web == 'true')
+        && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
     name: web agent
