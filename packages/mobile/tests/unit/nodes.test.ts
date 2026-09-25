@@ -139,6 +139,33 @@ describe('snapshot projection', () => {
     expect(ios.roots).toHaveLength(2);
   });
 
+  it('keeps a compact systemui popup at an edge, controls included, while the full-width bar beside it goes', () => {
+    const systemui = 'com.android.systemui';
+    const projected = project([
+      { ref: '@e1', depth: 0, type: 'androidx.compose.ui.platform.ComposeView', bundleId: systemui, rect: { x: 0, y: 0, width: 1080, height: 63 } },
+      { ref: '@e2', depth: 1, type: 'android.widget.TextView', bundleId: systemui, label: '10:17', rect: { x: 11, y: 2, width: 136, height: 58 } },
+      { ref: '@e3', depth: 0, type: 'android.widget.FrameLayout', bundleId: systemui, rect: { x: 80, y: 0, width: 920, height: 180 } },
+      { ref: '@e4', depth: 1, type: 'android.widget.Button', bundleId: systemui, label: 'Reply', rect: { x: 700, y: 100, width: 200, height: 60 } },
+      { ref: '@e5', depth: 0, type: 'android.widget.FrameLayout', bundleId: 'dev.e2e.benchmark', rect: { x: 0, y: 0, width: 1080, height: 2400 } },
+      { ref: '@e6', depth: 1, type: 'android.widget.TextView', bundleId: 'dev.e2e.benchmark', label: 'Hello', rect: { x: 0, y: 200, width: 1080, height: 60 } },
+    ]);
+    expect(projected.roots).toHaveLength(2);
+    expect(projected.index.map((entry) => entry.node.name)).toContain('Reply');
+    expect(projected.index.map((entry) => entry.node.name)).not.toContain('10:17');
+  });
+
+  it('reads the screen off the largest window, so a bar that is a window itself still goes', () => {
+    const systemui = 'com.android.systemui';
+    const projected = project([
+      { ref: '@e1', depth: 0, type: 'Window', bundleId: systemui, rect: { x: 0, y: 0, width: 1080, height: 63 } },
+      { ref: '@e2', depth: 1, type: 'android.widget.TextView', bundleId: systemui, label: '10:17', rect: { x: 11, y: 2, width: 136, height: 58 } },
+      { ref: '@e3', depth: 0, type: 'Window', bundleId: 'dev.e2e.benchmark', rect: { x: 0, y: 0, width: 1080, height: 2400 } },
+      { ref: '@e4', depth: 1, type: 'android.widget.TextView', bundleId: 'dev.e2e.benchmark', label: 'Hello', rect: { x: 0, y: 200, width: 1080, height: 60 } },
+    ]);
+    expect(projected.viewport).toEqual({ width: 1080, height: 2400 });
+    expect(projected.roots.map((root) => root.children?.map((child) => child.name))).toEqual([['Hello']]);
+  });
+
   it('normalizes XCTest PascalCase element types onto the same vocabulary', () => {
     const projected = project([
       { ref: 'e1', index: 0, depth: 0, type: 'Application', label: 'Settings', rect: { x: 0, y: 0, width: 390, height: 844 } },

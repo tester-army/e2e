@@ -347,6 +347,7 @@ function parentPositions(raw: readonly RawNode[]): (number | undefined)[] {
 /** The package that owns Android's system bars, and the share of the screen a bar stays under. */
 const SYSTEM_UI_PACKAGE = 'com.android.systemui';
 const SYSTEM_BAR_MAX_SHARE = 0.25;
+const SYSTEM_BAR_MIN_WIDTH_SHARE = 0.9;
 
 /**
  * Whether a top-level element is one of Android's system bars: the status
@@ -357,12 +358,14 @@ const SYSTEM_BAR_MAX_SHARE = 0.25;
  * every replay of a recording off to the model once the emulator read
  * "signal full". The notification shade, quick settings, and a system dialog
  * are systemui windows too, but they cover the screen instead of hugging an
- * edge, and stay.
+ * edge, and stay. So does a heads-up notification or any other compact
+ * systemui popup: a bar spans the screen edge to edge, a popup sits inset
+ * from the sides, and its controls are worth acting on.
  */
 function isSystemBar(node: RawNode, screen: ViewportSize | undefined): boolean {
   if (node.bundleId !== SYSTEM_UI_PACKAGE || node.rect === undefined || screen === undefined) return false;
-  const { y, height } = node.rect;
-  if (height >= screen.height * SYSTEM_BAR_MAX_SHARE) return false;
+  const { y, width, height } = node.rect;
+  if (height >= screen.height * SYSTEM_BAR_MAX_SHARE || width < screen.width * SYSTEM_BAR_MIN_WIDTH_SHARE) return false;
   return y <= 0 || y + height >= screen.height;
 }
 
@@ -472,10 +475,16 @@ function quoteTerm(value: string): string {
  * snapshot with no geometry at all.
  */
 export function viewportOf(raw: readonly RawNode[]): ViewportSize | undefined {
-  const screen = raw.find((node) => SCREEN_KINDS.has(kindOf(node)) && node.rect !== undefined);
-  if (screen?.rect !== undefined && screen.rect.width > 0 && screen.rect.height > 0) {
-    return { width: screen.rect.width, height: screen.rect.height };
+  // The largest window, not the first: a system bar can be a window too, and
+  // a 63-pixel screen would keep every bar as "too tall to be a bar".
+  let screen: ViewportSize | undefined;
+  for (const node of raw) {
+    if (!SCREEN_KINDS.has(kindOf(node)) || node.rect === undefined) continue;
+    const { width, height } = node.rect;
+    if (width <= 0 || height <= 0) continue;
+    if (screen === undefined || width * height > screen.width * screen.height) screen = { width, height };
   }
+  if (screen !== undefined) return screen;
   let width = 0;
   let height = 0;
   for (const node of raw) {
