@@ -766,6 +766,14 @@ describe('e2e telemetry', () => {
     expect(printedEvents().map((event) => event.properties['command'])).toEqual(['telemetry']);
   });
 
+  it('does not print the notice before e2e init, and still prints it before the next command', async () => {
+    await invoke('init', '--yes');
+    expect(written(stderrSpy)).not.toContain('e2e collects anonymous usage telemetry');
+    expect(printedEvents().map((event) => event.properties['command'])).toEqual(['init']);
+    await invoke('list');
+    expect(written(stderrSpy)).toContain('e2e collects anonymous usage telemetry');
+  });
+
   it('records the run event from the report the run returned, with the flag names only', async () => {
     runMock.mockResolvedValue({ exitCode: 1, report: sampleReport() });
     await invoke('run', '--workers', '3', '--headed', 'tests/secret.e2e.ts');

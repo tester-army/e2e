@@ -343,11 +343,13 @@ function createProgram(version: string, telemetry: Telemetry): Command {
   // for product failures and 2 for CLI errors, so exits are decided in main.
   program.exitOverride();
   // Every command that runs is one session. The notice precedes the first
-  // of them on a machine, except `telemetry` itself: that is where someone
-  // who read the notice goes to act on it.
+  // of them on a machine, with two exceptions: `init`, whose prompts and
+  // summary are a newcomer's first sight of the CLI and should not open with a
+  // disclaimer, and `telemetry` itself, where someone who read the notice goes
+  // to act on it.
   program.hook('preAction', (_program, actionCommand) => {
     const command = commandPath(actionCommand);
-    if (command !== 'telemetry') telemetry.notice();
+    if (command !== 'init' && command !== 'telemetry') telemetry.notice();
     telemetry.session(command, usedFlags(actionCommand));
   });
 

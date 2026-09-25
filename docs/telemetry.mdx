@@ -143,5 +143,7 @@ which also lists every other outbound connection a run can make.
 ## The notice
 
 The first command prints a notice on stderr explaining how to opt out.
-It leaves `--reporter json` output intact. The notice appears again after a
+`e2e init` is exempt, so a scaffold starts with its prompts rather than a
+disclaimer; the first command after it prints the notice. It leaves
+`--reporter json` output intact. The notice appears again after a
 material change to the data collected.
