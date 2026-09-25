@@ -56,7 +56,7 @@ test.describe('device fixture', () => {
     await expect(screen.getByTestId('inventory-header')).toBeVisible();
   });
 
-  // agent-device 0.21.13's iOS appstate answers from the session (source:
+  // agent-device 0.21.15's iOS appstate answers from the session (source:
   // session, surface: app) and refuses a device selector without one, so on
   // iOS home() leaves foregroundApp() naming the pinned app; Android reads
   // the device's foreground activity.

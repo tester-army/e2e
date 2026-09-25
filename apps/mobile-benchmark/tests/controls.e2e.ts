@@ -21,17 +21,6 @@ async function showSection(screen: Screen, name: 'Fields' | 'Toggles' | 'Gesture
   await screen.getByTestId(`tab-${name.toLowerCase()}`).tap();
 }
 
-// agent-device 0.21.13 names an Android node by its text and reads the content
-// description only when the text is empty, so the accessibility label of a
-// text view or a filled field never reaches the tree (an empty field is named
-// by its hint), and a node's `heading` flag is not reported. The tests that
-// read a name the app set run on iOS until agent-device carries both.
-const NAMED_BY_LABEL = { platforms: ['ios'] };
-
-// agent-device 0.21.13's Android snapshot carries no `checked` (its #1832), so
-// a switch or radio answers `toBeChecked` with UNSUPPORTED_CAPABILITY there.
-const CHECKED_STATE = { platforms: ['ios'] };
-
 test.describe('control inventory', () => {
   test.beforeEach(async ({ app, device, screen }) => {
     await openScenario({ app, device, screen }, 'Control Inventory');
@@ -40,12 +29,12 @@ test.describe('control inventory', () => {
   // iOS reports a React Native text input twice, as a host view and the
   // field inside it, both carrying the label; a label query answers with the
   // field, the innermost match, as a text query does.
-  test('a label query resolves a labeled text field', NAMED_BY_LABEL, async ({ screen }) => {
+  test('a label query resolves a labeled text field', async ({ screen }) => {
     await expect(screen.getByLabel('Name field')).toHaveValue('Ada Lovelace');
     await expect(screen.getByLabel(/^Name/)).toHaveAccessibleName('Name field');
   });
 
-  test('a labeled field answers name, display value, value reads, fill, and clear', NAMED_BY_LABEL, async ({ screen }) => {
+  test('a labeled field answers name, display value, value reads, fill, and clear', async ({ screen }) => {
     const name = screen.getByRole('textbox', { name: 'Name field' });
     await expect(name).toHaveValue('Ada Lovelace');
     await expect(screen.getByDisplayValue('Ada Lovelace')).toHaveAccessibleName('Name field');
@@ -63,17 +52,14 @@ test.describe('control inventory', () => {
     await name.press('Enter');
   });
 
-  test(
-    'a placeholder query and attribute reads find the field',
-    {
-      skip: 'agent-device 0.21.13 snapshot nodes carry no placeholder text (only a hintShowing flag) and no attributes, so getByPlaceholder, getAttribute, and toHaveAttribute answer nothing on a device',
-    },
-    async ({ screen }) => {
-      await expect(screen.getByPlaceholder('Type your name')).toHaveValue('Ada Lovelace');
-      await expect(screen.getByTestId('name-input')).toHaveAttribute('placeholder', 'Type your name');
-      expect(await screen.getByTestId('name-input').getAttribute('placeholder')).toBe('Type your name');
-    },
-  );
+  // agent-device 0.21.15 carries an Android field's hint as its placeholder,
+  // showing or not; its iOS runner reports only whether the placeholder is
+  // showing, and the node gets it in the next release (its #2961).
+  test('a placeholder query and attribute reads find the field', { platforms: ['android'] }, async ({ screen }) => {
+    await expect(screen.getByPlaceholder('Type your name')).toHaveValue('Ada Lovelace');
+    await expect(screen.getByTestId('name-input')).toHaveAttribute('placeholder', 'Type your name');
+    expect(await screen.getByTestId('name-input').getAttribute('placeholder')).toBe('Type your name');
+  });
 
   // The keyboard stays up on purpose: Return on a secure field makes iOS
   // offer to save the password, a sheet the next test never sees because
@@ -113,7 +99,7 @@ test.describe('control inventory', () => {
     await expect(status).toHaveText('focus: none');
   });
 
-  // agent-device 0.21.13's iOS runner reads XCUIElementSnapshot hasFocus (the
+  // agent-device 0.21.15's iOS runner reads XCUIElementSnapshot hasFocus (the
   // tvOS focus engine), never hasKeyboardFocus, so an iOS text field with the
   // keyboard up carries no focused flag and `is focused` answers false there;
   // Android reports the focused field.
@@ -127,7 +113,7 @@ test.describe('control inventory', () => {
     await expect(first).not.toBeFocused();
   });
 
-  test('a switch checks, unchecks, and reports its state', CHECKED_STATE, async ({ screen }) => {
+  test('a switch checks, unchecks, and reports its state', async ({ screen }) => {
     await showSection(screen, 'Toggles');
     const wifi = screen.getByTestId('wifi-switch');
     await expect(wifi).toHaveAccessibleName('Wi-Fi switch');
@@ -167,7 +153,7 @@ test.describe('control inventory', () => {
 
   // The state words after the role ("checked", "unchecked") are the checked
   // state on iOS.
-  test('checkbox and radio roles check, uncheck, and report their state', CHECKED_STATE, async ({ screen }) => {
+  test('checkbox and radio roles check, uncheck, and report their state', async ({ screen }) => {
     await showSection(screen, 'Toggles');
     const newsletter = screen.getByRole('checkbox', { name: 'Newsletter' });
     await expect(newsletter).not.toBeChecked();
@@ -195,21 +181,20 @@ test.describe('control inventory', () => {
     await expect(screen.getByTestId('size-status')).toHaveText('size: Medium');
   });
 
-  test(
-    'a tab role answers getByRole',
-    {
-      skip: 'React Native 0.86 gives the tab role no UIKit trait and, unlike checkbox and radio, spells nothing into the accessibility value on the new architecture, so an iOS tab is an Other carrying only the selected trait; on Android it is a plain View whose role description agent-device does not carry',
-    },
-    async ({ screen }) => {
-      await expect(screen.getByRole('tab')).toHaveCount(4);
-    },
-  );
+  // React Native 0.86 gives the tab role no UIKit trait and, unlike checkbox
+  // and radio, spells nothing into the accessibility value on the new
+  // architecture, so an iOS tab is an Other carrying only the selected trait.
+  // On Android it is a plain View whose role description (`Tab`) agent-device
+  // 0.21.14 carries and the engine reads.
+  test('a tab role answers getByRole', { platforms: ['android'] }, async ({ screen }) => {
+    await expect(screen.getByRole('tab')).toHaveCount(4);
+  });
 
   // A radio's state is `checked`: React Native spells it into the iOS value.
   // The `selected` trait beside it only reaches the tree through the
   // simulator's accessibility bridge, which a CI Mac does not always provide,
   // so it is not what a radio is read by.
-  test('a radio group reports the checked option', CHECKED_STATE, async ({ screen }) => {
+  test('a radio group reports the checked option', async ({ screen }) => {
     await showSection(screen, 'Toggles');
     const sizes = screen.getByLabel(/^(Small|Medium|Large)$/);
     await expect(sizes).toHaveCount(3);
@@ -256,7 +241,7 @@ test.describe('control inventory', () => {
     await expect(screen.getByTestId('ghost-text', { visible: true })).toHaveCount(0);
   });
 
-  test('a header answers its accessible name', NAMED_BY_LABEL, async ({ screen }) => {
+  test('a header answers its accessible name', async ({ screen }) => {
     await expect(screen.getByTestId('inventory-header')).toHaveAccessibleName('Inventory heading');
     await expect(screen.getByTestId('inventory-header')).toHaveAccessibleName(/heading$/);
   });
@@ -356,9 +341,9 @@ test.describe('control inventory', () => {
   });
 
   // Android bounds and points are the screen's physical pixels: agent-device
-  // 0.21.13 reports no display density for an emulator, so the engine cannot
-  // put them in the logical pixels the contract asks for, and the pad's 240
-  // by 100 reads as 630 by 263 on a 2.625x emulator.
+  // 0.21.15 reports the emulator's display density in its snapshot metadata,
+  // but rects and points stay physical pixels and the engine does not scale
+  // them yet, so the pad's 240 by 100 reads as 630 by 263 on a 2.625x emulator.
   test('pointer verbs land at the point asked for', { platforms: ['ios'] }, async ({ screen }) => {
     await showSection(screen, 'Gestures');
     const pad = screen.getByLabel('Tap pad');

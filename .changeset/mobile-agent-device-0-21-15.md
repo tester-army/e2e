@@ -1,0 +1,5 @@
+---
+'@e2edev/mobile': patch
+---
+
+agent-device 0.21.15, and the engine reads what its snapshots now carry. An Android node is named by the content description its app set and keeps its text as `text`, so `getByLabel`, `toHaveAccessibleName`, and `getByRole('textbox', { name })` find a labeled text view or a filled field by its label on Android as on iOS, where before the label never reached the tree. A view React Native marks as a header is a `heading`, and the role description React Native writes for `tab`, `tablist`, and `radiogroup` gives the node that role. A switch, checkbox, or radio button carries the `checked` state the device reports, so `toBeChecked`, `check()`, and `uncheck()` work on Android instead of refusing. A field's hint is its `placeholder` attribute, showing or not, so `getByPlaceholder`, `getAttribute('placeholder')`, and `toHaveAttribute` answer on Android. From agent-device itself: an Android `app.open` returns once the launched app is readable, and a fill's verification samples until a deadline instead of three fixed points, which ends the `Android fill verification failed` seen only on a slow CI emulator.

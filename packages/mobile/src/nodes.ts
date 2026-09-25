@@ -22,6 +22,19 @@ export interface RawNode {
   readonly value?: string;
   /** True while a text field shows its placeholder; the runner then reports the placeholder as the value. */
   readonly hintShowing?: boolean;
+  /**
+   * Android's content description when it differs from `label`: the
+   * accessible name an app set beside visible text (agent-device 0.21.14+).
+   */
+  readonly contentDescription?: string;
+  /** The field's placeholder text, showing or not (Android, agent-device 0.21.15+). */
+  readonly placeholder?: string;
+  /** The checked state of a checkable control; absent for one that cannot be checked or an older helper. */
+  readonly checked?: boolean;
+  /** The accessibility heading flag an app set on the node (Android). */
+  readonly heading?: boolean;
+  /** The localized role description an app set beside the native class, verbatim (`Tab`, `Tab List`). */
+  readonly roleDescription?: string;
   readonly identifier?: string;
   readonly rect?: Rect;
   readonly enabled?: boolean;
@@ -291,6 +304,24 @@ function roleOf(kind: string, android: boolean, parentKind: string | undefined):
 }
 
 /**
+ * The role an app declared beside the platform's class: Android's heading
+ * flag (React Native's `accessibilityRole="header"`), else the localized role
+ * description React Native writes for the roles Android has no class for
+ * (`Tab`, `Tab List`, `Radio Group`), read through the words it spells into
+ * an iOS value. Undefined when neither names a contract role.
+ */
+function describedRole(source: RawNode): string | undefined {
+  if (source.heading === true) return 'heading';
+  if (source.roleDescription === undefined) return undefined;
+  return REACT_NATIVE_ROLE_DESCRIPTIONS[source.roleDescription.toLowerCase()];
+}
+
+/** The string itself, or undefined for an absent or empty one. */
+function nonEmpty(value: string | undefined): string | undefined {
+  return value === undefined || value === '' ? undefined : value;
+}
+
+/**
  * A node the platform reports as editable takes typed text whatever its
  * class, so a custom input view, or a class the maps do not know, is a
  * `textbox` rather than its verbatim kind; a role that already takes text
@@ -399,7 +430,7 @@ export function projectSnapshot(raw: readonly RawNode[], options: { readonly min
     // `Other`: it is the role the app declared, and iOS had no trait for it.
     // Only an `Other` carries that encoding; a native control's value is its own.
     const spelled = android || kind !== 'other' ? undefined : reactNativeValue(source.value);
-    const role = editableRole(spelled?.role ?? roleOf(kind, android, parent?.kind), source.editable);
+    const role = editableRole(spelled?.role ?? describedRole(source) ?? roleOf(kind, android, parent?.kind), source.editable);
     const editable = source.editable === true || (role !== undefined && TEXT_INPUT_ROLES.has(role));
     // A field showing its hint is empty: XCTest reports the placeholder as the
     // value of an empty text field, and the bridge flags that with hintShowing.
@@ -407,7 +438,7 @@ export function projectSnapshot(raw: readonly RawNode[], options: { readonly min
     // iOS names a secure field by class; UIAutomator flags a password
     // `EditText` by attribute, the class being the plain one.
     const secure = SECURE_KINDS.has(kind) || source.password === true;
-    const checked = spelled?.states.checked ?? checkedOf(role, value);
+    const checked = spelled?.states.checked ?? source.checked ?? checkedOf(role, value);
     const states = {
       ...(source.enabled === false ? { disabled: true } : {}),
       ...(source.selected === true ? { selected: true } : {}),
@@ -417,7 +448,10 @@ export function projectSnapshot(raw: readonly RawNode[], options: { readonly min
       ...(checked === undefined ? {} : { checked }),
       ...(spelled?.states.expanded === undefined ? {} : { expanded: spelled.states.expanded }),
     };
-    const identifier = source.identifier === undefined || source.identifier === '' ? undefined : source.identifier;
+    const identifier = nonEmpty(source.identifier);
+    const label = nonEmpty(source.label);
+    const name = nonEmpty(source.contentDescription) ?? label;
+    const placeholder = nonEmpty(source.placeholder);
     const projected: { node: SemanticNode | undefined } = { node: undefined };
     const entry: ProjectedNode = {
       id,
@@ -434,10 +468,14 @@ export function projectSnapshot(raw: readonly RawNode[], options: { readonly min
     const node: SemanticNode = {
       ref: { id, revision: '' },
       ...(role === undefined ? {} : { role }),
-      // A device label is both the node's accessible name and its visible
-      // text, so `toHaveText` and `getByText` read the same string; the model
-      // rendering elides `text` whenever it equals `name`, so this costs nothing.
-      ...(source.label === undefined || source.label === '' ? {} : { name: source.label, text: source.label }),
+      // A device label is the node's visible text and, unless the platform
+      // carries an accessible name beside it, its name too: Android names a
+      // node by its text and reports the content description an app set
+      // beside visible text separately, so a labeled text view or a filled
+      // field answers `getByLabel` by that description and `getByText` by
+      // what it shows. The model rendering elides `text` whenever it equals `name`.
+      ...(name === undefined ? {} : { name }),
+      ...(label === undefined ? {} : { text: label }),
       // A secure field's value is never observed; the tree carries that it is
       // secure, not what it holds. Android echoes a text view's label as its
       // value, which would render every line twice, so that echo is dropped;
@@ -448,6 +486,7 @@ export function projectSnapshot(raw: readonly RawNode[], options: { readonly min
         : { value }),
       ...(secure ? { inputPurpose: 'password' as const } : {}),
       ...(Object.keys(states).length === 0 ? {} : { states }),
+      ...(placeholder === undefined ? {} : { attributes: { placeholder } }),
       // The accessibility identifier (iOS) or resource id (Android) is the node's test id.
       ...(identifier === undefined ? {} : { testId: identifier }),
       ...(source.rect === undefined ? {} : { rect: { ...source.rect } }),

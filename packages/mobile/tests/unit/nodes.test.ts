@@ -295,6 +295,35 @@ describe('snapshot projection', () => {
     ]);
   });
 
+  it('names an Android node by its content description, keeps its text, and reads heading, role description, checked, and placeholder', () => {
+    const projected = project([
+      { ref: 'e1', index: 0, depth: 0, type: 'android.widget.FrameLayout' },
+      { ref: 'e2', index: 1, parentIndex: 0, depth: 1, type: 'android.widget.TextView', label: 'Plain controls, every state exposed', contentDescription: 'Inventory heading', heading: true, identifier: 'inventory-header' },
+      { ref: 'e3', index: 2, parentIndex: 0, depth: 1, type: 'android.view.View', roleDescription: 'Tab List' },
+      { ref: 'e4', index: 3, parentIndex: 2, depth: 2, type: 'android.view.View', label: 'Fields', roleDescription: 'Tab', selected: true },
+      { ref: 'e5', index: 4, parentIndex: 0, depth: 1, type: 'android.widget.EditText', label: 'Ada Lovelace', value: 'Ada Lovelace', contentDescription: 'Name field', placeholder: 'Type your name', editable: true },
+      { ref: 'e6', index: 5, parentIndex: 0, depth: 1, type: 'android.widget.EditText', label: 'Type your name', value: 'Type your name', contentDescription: 'Name field', placeholder: 'Type your name', hintShowing: true, editable: true },
+      { ref: 'e7', index: 6, parentIndex: 0, depth: 1, type: 'android.widget.Switch', label: 'Wi-Fi switch', checked: false },
+      { ref: 'e8', index: 7, parentIndex: 0, depth: 1, type: 'android.widget.RadioButton', label: 'Medium', checked: true },
+      { ref: 'e9', index: 8, parentIndex: 0, depth: 1, type: 'android.view.View', label: 'Plain', roleDescription: 'Link' },
+      { ref: 'e10', index: 9, parentIndex: 0, depth: 1, type: 'android.widget.TextView', label: 'Total', contentDescription: '' },
+    ]);
+    const [, header, tablist, tab, filled, empty, toggle, radio, plain, total] = projected.index.map((entry) => entry.node);
+    expect(header).toMatchObject({ role: 'heading', name: 'Inventory heading', text: 'Plain controls, every state exposed', testId: 'inventory-header' });
+    expect(tablist?.role).toBe('tablist');
+    expect(tab).toMatchObject({ role: 'tab', name: 'Fields', text: 'Fields', states: { selected: true } });
+    expect(filled).toMatchObject({ role: 'textbox', name: 'Name field', text: 'Ada Lovelace', value: 'Ada Lovelace', attributes: { placeholder: 'Type your name' } });
+    // An empty field shows its hint as its text; the hint flag says it holds nothing.
+    expect(empty).toMatchObject({ role: 'textbox', name: 'Name field', text: 'Type your name', attributes: { placeholder: 'Type your name' } });
+    expect(empty?.value).toBeUndefined();
+    expect(toggle).toMatchObject({ role: 'switch', name: 'Wi-Fi switch', states: { checked: false } });
+    expect(radio).toMatchObject({ role: 'radio', states: { checked: true } });
+    // A role description outside the vocabulary leaves the class role; an empty description leaves the label as the name.
+    expect(plain).toMatchObject({ role: 'group', name: 'Plain' });
+    expect(total).toMatchObject({ role: 'text', name: 'Total', text: 'Total' });
+    expect(total?.attributes).toBeUndefined();
+  });
+
   it('reads the role and state React Native spells into an iOS accessibility value, and reports the rest as the value', () => {
     const projected = project([
       { ref: 'e1', index: 0, depth: 0, type: 'Application', label: 'Benchmark' },
