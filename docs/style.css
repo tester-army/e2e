@@ -76,7 +76,7 @@ a[href*='utm_campaign=docs_sidebar_banner'] {
   justify-items: start;
   gap: 0.375rem;
   margin-block: 0.5rem;
-  padding: 0.875rem 0;
+  padding: 1.75rem 0 0.875rem;
   position: relative;
   color: var(--e2e-ink) !important;
   border-top: 1px solid var(--e2e-hairline);
