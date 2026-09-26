@@ -122,6 +122,18 @@ describe('snapshot projection', () => {
     expect(projected.viewport).toEqual({ width: 1080, height: 2400 });
   });
 
+  it('leaves out status icons agent-device reports as top-level nodes of their own, and keeps a wide popup in the same band', () => {
+    const systemui = 'com.android.systemui';
+    const projected = project([
+      { ref: '@e1', parentIndex: undefined, type: 'android.widget.TextView', bundleId: systemui, label: '11:25', identifier: 'com.android.systemui:id/clock', rect: { x: 47, y: 47, width: 125, height: 43 } },
+      { ref: '@e2', type: 'android.widget.ImageView', bundleId: systemui, label: 'Android System notification: ', rect: { x: 172, y: 1, width: 58, height: 135 } },
+      { ref: '@e3', type: 'android.widget.FrameLayout', bundleId: systemui, label: 'T-Mobile, two bars.', identifier: 'com.android.systemui:id/mobile_combo', rect: { x: 930, y: 39, width: 39, height: 58 } },
+      { ref: '@e4', type: 'android.widget.FrameLayout', bundleId: systemui, label: 'Download complete', rect: { x: 40, y: 20, width: 1000, height: 150 } },
+      { ref: '@e5', type: 'android.widget.FrameLayout', bundleId: 'dev.e2e.benchmark', rect: { x: 0, y: 0, width: 1080, height: 2400 } },
+    ]);
+    expect(projected.roots.map((root) => root.name)).toEqual(['Download complete', undefined]);
+  });
+
   it('keeps a systemui window that covers the screen, and every window on a platform that reports no package', () => {
     const shade = project([
       { ref: '@e1', depth: 0, type: 'android.widget.FrameLayout', bundleId: 'dev.e2e.benchmark', rect: { x: 0, y: 0, width: 1080, height: 2400 } },

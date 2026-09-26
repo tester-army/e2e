@@ -379,6 +379,9 @@ function parentPositions(raw: readonly RawNode[]): (number | undefined)[] {
 const SYSTEM_UI_PACKAGE = 'com.android.systemui';
 const SYSTEM_BAR_MAX_SHARE = 0.25;
 const SYSTEM_BAR_MIN_WIDTH_SHARE = 0.9;
+/** The screen edge band a status icon sits in, and the width share it stays under. */
+const STATUS_ICON_BAND_SHARE = 0.08;
+const STATUS_ICON_MAX_WIDTH_SHARE = 0.5;
 
 /**
  * Whether a top-level element is one of Android's system bars: the status
@@ -392,10 +395,18 @@ const SYSTEM_BAR_MIN_WIDTH_SHARE = 0.9;
  * edge, and stay. So does a heads-up notification or any other compact
  * systemui popup: a bar spans the screen edge to edge, a popup sits inset
  * from the sides, and its controls are worth acting on.
+ *
+ * agent-device 0.21.15 reports the status bar's icons (clock, signal,
+ * battery, a notification icon) as top-level nodes of their own rather than
+ * children of one bar, so a narrow systemui node lying wholly inside the edge
+ * band is the bar too. A popup is wide, and stays.
  */
 function isSystemBar(node: RawNode, screen: ViewportSize | undefined): boolean {
   if (node.bundleId !== SYSTEM_UI_PACKAGE || node.rect === undefined || screen === undefined) return false;
   const { y, width, height } = node.rect;
+  const band = screen.height * STATUS_ICON_BAND_SHARE;
+  const inEdgeBand = y + height <= band || y >= screen.height - band;
+  if (inEdgeBand && width < screen.width * STATUS_ICON_MAX_WIDTH_SHARE) return true;
   if (height >= screen.height * SYSTEM_BAR_MAX_SHARE || width < screen.width * SYSTEM_BAR_MIN_WIDTH_SHARE) return false;
   return y <= 0 || y + height >= screen.height;
 }
