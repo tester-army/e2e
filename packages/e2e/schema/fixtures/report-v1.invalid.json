@@ -57,6 +57,18 @@
           }
         ]
       }
+    ],
+    "errors": [
+      {
+        "category": "test",
+        "code": "HOOK_FAILED",
+        "message": "afterAll failed: teardown broke",
+        "retryable": false,
+        "phase": "afterAll",
+        "scopeId": "file",
+        "file": "/abs/tests/example.e2e.ts",
+        "targetId": ""
+      }
     ]
   }
 }
