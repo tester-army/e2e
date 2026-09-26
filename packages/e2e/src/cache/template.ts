@@ -156,17 +156,19 @@ function spellingsDistinct(templates: readonly ParamTemplate[]): boolean {
   return true;
 }
 
-/** The string and number leaves of the params that no template marked, as text. */
-function literalLeaves(params: Readonly<Record<string, JsonValue>> | undefined, templates: readonly ParamTemplate[]): string[] {
+/** The scalar leaves of the params that no template marked, as the text a recording would spell them in. */
+function literalLeaves(params: Readonly<Record<string, JsonValue>> | undefined, templates: readonly ParamTemplate[]): ParamTemplate[] {
   const pointers = new Set(templates.map((template) => template.pointer));
-  const out: string[] = [];
+  const out: ParamTemplate[] = [];
   const walk = (value: JsonValue, pointer: string): void => {
     if (pointers.has(pointer)) return;
-    if (typeof value === 'string' || typeof value === 'number') {
-      out.push(String(value));
-    } else if (value !== null && typeof value === 'object') {
-      if (isJsonArray(value)) value.forEach((item, index) => walk(item, paramPointer(pointer, index)));
-      else for (const [key, item] of Object.entries(value)) walk(item, paramPointer(pointer, key));
+    if (value === null) return;
+    if (typeof value !== 'object') {
+      out.push({ pointer, value: String(value) });
+    } else if (isJsonArray(value)) {
+      value.forEach((item, index) => walk(item, paramPointer(pointer, index)));
+    } else {
+      for (const [key, item] of Object.entries(value)) walk(item, paramPointer(pointer, key));
     }
   };
   walk(params ?? {}, '');
@@ -179,13 +181,16 @@ function literalLeaves(params: Readonly<Record<string, JsonValue>> | undefined, 
  * inside an unmarked one. The recording is text with no provenance, so a
  * `select` of the unmarked choice `Daily` that ran while the marked title
  * happened to be `Daily` would be stored as the title's slot and replay the
- * next run's title as the choice. Such a step is not recorded.
+ * next run's title as the choice. Such a step is not recorded. Unmarked
+ * values are compared in every spelling a recording can give them too: a
+ * URL spells the choice `a b` as `a%20b`, which a marked `a%20b` would claim.
  */
 export function templatesCollide(params: Readonly<Record<string, JsonValue>> | undefined, templates: readonly ParamTemplate[]): boolean {
   if (templates.length === 0) return false;
   if (!spellingsDistinct(templates)) return true;
-  const literals = literalLeaves(params, templates);
-  return spellings(templates).some((spelling) => literals.some((literal) => literal.includes(spelling.text)));
+  const marked = spellings(templates);
+  const literal = spellings(literalLeaves(params, templates));
+  return literal.some((plain) => marked.some((slot) => plain.text.includes(slot.text)));
 }
 
 /**

@@ -203,8 +203,15 @@ describe('templateTrace and expandTrace', () => {
     // Spelled inside a plain value, at any depth, and as a number.
     expect(templatesCollide({ title: 'Daily', plan: { label: 'Daily digest' } }, title)).toBe(true);
     expect(templatesCollide({ id: '42', tags: [7, 42] }, [{ pointer: '/id', value: '42' }])).toBe(true);
-    // A plain value that is the encoded form of the marked one.
+    // A plain value that is the encoded form of the marked one, and the other way round: a URL
+    // spells the plain choice `a b` as `a%20b`, which a marked `a%20b` would claim.
     expect(templatesCollide({ q: 'a b', path: '/x/a%20b' }, [{ pointer: '/q', value: 'a b' }])).toBe(true);
+    expect(templatesCollide({ title: 'a%20b', choice: 'a b' }, [{ pointer: '/title', value: 'a%20b' }])).toBe(true);
+    expect(templatesCollide({ title: 'a+b', choice: 'a b' }, [{ pointer: '/title', value: 'a+b' }])).toBe(true);
+    expect(templatesCollide({ title: 'acme-co', name: 'Acme Co' }, [{ pointer: '/title', value: 'acme-co' }])).toBe(true);
+    // A boolean flag spelled in a URL as `true`.
+    expect(templatesCollide({ title: 'true', enabled: true }, [{ pointer: '/title', value: 'true' }])).toBe(true);
+    expect(templatesCollide({ title: 'true', enabled: false, note: null }, [{ pointer: '/title', value: 'true' }])).toBe(false);
     // Two marked params with one spelling collide as before.
     expect(templatesCollide({ name: 'Acme', slug: 'Acme' }, [{ pointer: '/name', value: 'Acme' }, { pointer: '/slug', value: 'Acme' }])).toBe(true);
     // Distinct values do not, nor does a plain value spelled inside the marked one.
