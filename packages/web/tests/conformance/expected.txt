@@ -44,12 +44,7 @@ axe: implicit-role | axe role | #32 #target | ours banner | theirs none | Bug: a
 axe: implicit-role | axe role | #36 #target | ours none | theirs img | Bug: an img with alt="" that is focusable or carries a global ARIA attribute keeps the img role (presentational-role conflict resolution); the tree drops it
 axe: implicit-role | axe role | #37 #target | ours none | theirs img | Bug: an img with alt="" that is focusable or carries a global ARIA attribute keeps the img role (presentational-role conflict resolution); the tree drops it
 axe: implicit-role | axe role | #5 #target | ours none | theirs link | An <area> outside a <map> renders no box, so the tree has no node for it
-axe: implicit-role | axe role | #51 #target | ours textbox | theirs combobox | Bug: an input with a list attribute is a combobox (HTML-AAM), as Playwright getByRole reads it; the tree reads a text field
-axe: implicit-role | axe role | #58 #target | ours searchbox | theirs combobox | Bug: an input with a list attribute is a combobox (HTML-AAM), as Playwright getByRole reads it; the tree reads a text field
 axe: implicit-role | axe role | #62 #target | ours region | theirs none | The tree gives a form or section its landmark role when a title names it; axe and Playwright require aria-label or aria-labelledby
-axe: implicit-role | axe role | #65 #target | ours combobox | theirs listbox | Bug: a select with size above 1 is a listbox (HTML-AAM), as Playwright reads it; the tree reads combobox
-axe: implicit-role | axe role | #69 #target | ours cell | theirs gridcell | Bug: a cell of a grid is a gridcell; the tree reads cell
-axe: implicit-role | axe role | #70 #target | ours cell | theirs gridcell | Bug: a cell of a grid is a gridcell; the tree reads cell
 axe: implicit-role | axe role | #75 #target | ours columnheader | theirs rowheader | Known gap from #553: a scope-less <th> in a row of data cells is a rowheader; the tree reads columnheader
 axe: implicit-role | axe role | #76 #target | ours columnheader | theirs rowheader | Known gap from #553: a scope-less <th> in a row of data cells is a rowheader; the tree reads columnheader
 axe: implicit-role | axe role | #77 #target | ours columnheader | theirs rowheader | Known gap from #553: a scope-less <th> in a row of data cells is a rowheader; the tree reads columnheader

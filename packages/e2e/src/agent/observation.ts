@@ -206,6 +206,7 @@ export const INTERACTIVE_ROLES: ReadonlySet<string> = new Set([
   'textbox',
   'searchbox',
   'combobox',
+  'listbox',
   'checkbox',
   'radio',
   'switch',
