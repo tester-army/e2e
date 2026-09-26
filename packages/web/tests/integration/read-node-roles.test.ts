@@ -245,6 +245,8 @@ describe('contenteditable editing hosts', () => {
       <div contenteditable aria-label="Empty" data-testid="empty"><p><br></p></div>
       <div contenteditable style="white-space: pre-wrap" aria-label="Empty pre" data-testid="empty-pre"><p><br></p></div>
       <div contenteditable aria-label="Blank" data-testid="blank"></div>
+      <div contenteditable style="white-space: pre-wrap" aria-label="Slate" data-testid="slate"><div><span>﻿<br></span></div></div>
+      <div contenteditable style="white-space: pre-wrap" aria-label="Slate lines" data-testid="slate-lines"><div><span>hi</span></div><div><span>﻿<br></span></div></div>
       <input aria-label="Field" value="  keep spaces  " data-testid="field">
     `);
     const nodes = await rolesByTestId();
@@ -256,6 +258,8 @@ describe('contenteditable editing hosts', () => {
     expect(nodes.get('empty')?.value).toBe('');
     expect(nodes.get('empty-pre')?.value).toBe('');
     expect(nodes.get('blank')?.value).toBe('');
+    expect(nodes.get('slate')?.value).toBe('');
+    expect(nodes.get('slate-lines')?.value).toBe('hi\n\n');
     expect(nodes.get('field')?.value).toBe('  keep spaces  ');
   });
 
