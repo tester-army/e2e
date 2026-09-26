@@ -220,6 +220,32 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
   actions under `.e2e/cache/`), the Playwright trace artifact, and this AI
   trace. Say which.
 
+## Cross-checking the web engine's tree
+
+`packages/web/tests/integration/crosscheck.test.ts` reads every node of the
+web engine's semantic tree against two oracles on the same page: Chrome's
+accessibility tree over CDP (role, name, checked, disabled, expanded,
+selected, pressed, heading level, and interactive nodes the tree left out)
+and Playwright's `getByRole(role, { name, exact })` round trip. It runs on the
+fixture pages in `tests/crosscheck/fixtures.ts` under `pnpm test`, and on
+every web-benchmark scenario in `benchmark.yml` or locally:
+
+```bash
+pnpm --filter @e2edev/web-benchmark run build && pnpm --filter @e2edev/web-benchmark run start &
+CROSSCHECK_BENCHMARK_URL=http://127.0.0.1:4280 pnpm --filter @e2edev/web exec vitest run tests/integration/crosscheck.test.ts
+```
+
+- Every disagreement must be listed in `tests/crosscheck/expected.txt` with a
+  reason; a new one fails, and so does a listed one that stopped happening.
+  `E2E_CROSSCHECK_UPDATE=1` rewrites the file keeping the reasons and marks
+  new lines `TODO`, which fails until someone writes one. Review its diff: a
+  removed line is a fix, an added one a change in what the model reads.
+- Deliberate vocabulary choices (a `listitem` named from content, `box`, an
+  editor host as `textbox`, Chrome's own role names) are policies at the top
+  of `tests/crosscheck/crosscheck.ts`, each with its reason, not lines.
+- A reader change (`src/in-page/read-semantics.ts`) runs it before the PR.
+  A bug in that family starts as a fixture page line here.
+
 ## Gotchas
 
 - Status prose drifts. `packages/e2e/README.md` and the docs pages can claim

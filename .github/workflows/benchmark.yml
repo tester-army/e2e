@@ -75,6 +75,16 @@ jobs:
           # The reporter posts the comment with the job's token.
           GITHUB_TOKEN: ${{ github.token }}
         run: pnpm --filter @e2edev/web-benchmark run test
+      # The engine's tree against Chrome's accessibility tree and Playwright's
+      # getByRole on every scenario, against the disagreements committed in
+      # packages/web/tests/crosscheck/expected.txt. `test` built the app.
+      - name: Cross-check the tree
+        env:
+          CROSSCHECK_BENCHMARK_URL: http://127.0.0.1:4280
+        run: |
+          pnpm --filter @e2edev/web-benchmark run start > /tmp/benchmark-app.log 2>&1 &
+          for _ in $(seq 1 60); do curl -sf "$CROSSCHECK_BENCHMARK_URL" > /dev/null && break; sleep 1; done
+          pnpm --filter @e2edev/web exec vitest run --project integration tests/integration/crosscheck.test.ts
       # The comment is the result; the artifact is evidence for it. A storage
       # quota that refuses the upload must not turn a green suite red.
       - name: Upload report
