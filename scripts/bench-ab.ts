@@ -177,8 +177,13 @@ function runOnce(root: string, suite: string, runArgs: readonly string[], outDir
       const text = Buffer.concat(stdout).toString('utf8');
       writeFileSync(path.join(outDir, 'report.json'), text);
       rmSync(artifacts, { recursive: true, force: true });
-      if (code !== 0 && code !== 1) fail(`e2e run exited ${code} in ${appDir}\n${runErrors(text)}${stderr}`);
-      resolve(sampleFromReport(JSON.parse(text) as ReportDocument, wallMs));
+      const errors = runErrors(text);
+      // Exit 1 is failed tests, which compare like any others; a run-level
+      // error or a run that attempted nothing measured no test at all.
+      if ((code !== 0 && code !== 1) || errors !== '') fail(`e2e run exited ${code} in ${appDir}\n${errors}${stderr}`);
+      const sample = sampleFromReport(JSON.parse(text) as ReportDocument, wallMs);
+      if (![...sample.cases.values()].some((entry) => entry.durationMs > 0)) fail(`e2e run attempted no test in ${appDir}\n${stderr}`);
+      resolve(sample);
     });
   });
 }
@@ -221,7 +226,8 @@ const cores = os.cpus().length;
 if (os.loadavg()[0]! > cores / 2) log(`load average ${os.loadavg()[0]!.toFixed(1)} on ${cores} cores; timings will be noisy`);
 
 const outRoot = path.resolve(options.out ?? path.join(os.tmpdir(), 'e2e-bench-ab', 'runs', new Date().toISOString().replaceAll(':', '-')));
-mkdirSync(outRoot, { recursive: true });
+// Reports are redacted, but they carry the app's screens; keep them the user's own.
+mkdirSync(outRoot, { recursive: true, mode: 0o700 });
 const random = seededRandom(seed);
 const base: Sample[] = [];
 const head: Sample[] = [];
