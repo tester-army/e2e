@@ -592,6 +592,40 @@ describe('app steering hooks', () => {
   });
 });
 
+describe('check and uncheck options', () => {
+  function toggle() {
+    const performed: string[] = [];
+    const node = { ref: { id: 'agree', revision: '' }, role: 'checkbox', name: 'Agree' };
+    const engine = defineEngine({
+      name: 'fake', version: '1', spiVersion: 1,
+      observe: async () => snapshot([node]),
+      locate: async () => [node],
+      actions: ['check', 'uncheck'],
+      perform: async (_ref, action) => { performed.push(action.kind); },
+    });
+    return { engine, performed };
+  }
+
+  it.each(['check', 'uncheck'] as const)('%s rejects an unknown option before any engine call or step', (api) => {
+    const { engine, performed } = toggle();
+    const { fixtures, steps } = runtime(engine);
+    expect(() => fixtures.screen.getByLabel('Agree')[api]({ trial: true } as never)).toThrow(
+      expect.objectContaining({ code: 'INVALID_ARGUMENT', message: `${api} options has no key "trial"; it takes timeout` }),
+    );
+    expect(performed).toEqual([]);
+    expect(steps.all()).toEqual([]);
+  });
+
+  it('checks and unchecks with a timeout or no options', async () => {
+    const { engine, performed } = toggle();
+    const { fixtures, steps } = runtime(engine);
+    await fixtures.screen.getByLabel('Agree').check();
+    await fixtures.screen.getByLabel('Agree').uncheck({ timeout: 1_000 });
+    expect(performed).toEqual(['check', 'uncheck']);
+    expect(steps.all().map((step) => step.api)).toEqual(['locator.check', 'locator.uncheck']);
+  });
+});
+
 describe('coordinate input', () => {
   const box = { x: 100, y: 200, width: 50, height: 20 };
   function pointer(options: { rect?: false; hidden?: true; scrollIntoView?: false } = {}) {

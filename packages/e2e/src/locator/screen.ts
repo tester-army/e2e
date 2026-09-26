@@ -364,12 +364,14 @@ class LocatorImpl extends ScreenImpl implements Locator {
   }
 
   check(options?: ActionOptions): Promise<void> {
+    rejectUnknownOptions('check', options, ['timeout']);
     return this.action('locator.check', () =>
       this.context.engine.perform(this.expression, { kind: 'check' }, options?.timeout),
     );
   }
 
   uncheck(options?: ActionOptions): Promise<void> {
+    rejectUnknownOptions('uncheck', options, ['timeout']);
     return this.action('locator.uncheck', () =>
       this.context.engine.perform(this.expression, { kind: 'uncheck' }, options?.timeout),
     );

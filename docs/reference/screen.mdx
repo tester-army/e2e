@@ -317,6 +317,9 @@ export interface Locator extends Screen {
   where the platform has them. A `Secret` is a type error and
   `INVALID_ARGUMENT` at runtime: a secret is filled, never typed as
   keystrokes. The step records the locator, not the text, like `fill`.
+- `check` and `uncheck` take only `{ timeout }`. Any other key, Playwright's
+  `trial` included, throws `INVALID_ARGUMENT` before the node is resolved,
+  so the control is never touched.
 - `setInputFiles` paths resolve from the project root. An empty list or blank
   entry throws `INVALID_ARGUMENT`.
 - `dragTo` with a non-runner target, or one made by another target's screen,

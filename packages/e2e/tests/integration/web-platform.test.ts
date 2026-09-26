@@ -171,6 +171,42 @@ test('actions and state', async ({ app, screen, web }) => {
   await expect(web).not.toHaveClass(web.locator('#class-card'), 'card inactive');
 });
 
+test('check and uncheck refuse an unknown option and leave the box untouched', async ({ app, screen, web }) => {
+  await app.open();
+  await web.evaluate(() => {
+    const box = document.querySelector('#notifications')!;
+    Object.assign(window, { toggles: 0 });
+    for (const type of ['input', 'change', 'click']) {
+      box.addEventListener(type, () => Object.assign(window, { toggles: (window as never as { toggles: number }).toggles + 1 }));
+    }
+  });
+  const toggles = () => web.evaluate(() => (window as never as { toggles: number }).toggles);
+  const box = screen.getByLabel('Notifications');
+  const refused = async (call: () => Promise<void>) => {
+    try {
+      await call();
+    } catch (error) {
+      if ((error as { code?: string }).code === 'INVALID_ARGUMENT') return;
+      throw error;
+    }
+    throw new Error('an unknown option was accepted');
+  };
+
+  await refused(() => box.check({ trial: true } as never));
+  await expect(box).not.toBeChecked();
+  expect(await toggles()).toBe(0);
+  await box.check();
+  await expect(box).toBeChecked();
+  expect(await toggles()).toBe(3);
+
+  await refused(() => box.uncheck({ trial: true } as never));
+  await expect(box).toBeChecked();
+  expect(await toggles()).toBe(3);
+  await box.uncheck();
+  await expect(box).not.toBeChecked();
+  expect(await toggles()).toBe(6);
+});
+
 test('class assertions report the observed class on failure', async ({ app, web }) => {
   await app.open();
   try {
@@ -442,6 +478,7 @@ describe('web platform integration', () => {
       'a textarea value compares raw',
       'role vocabulary: tabs, menus, progress, toolbars, images',
       'actions and state',
+      'check and uncheck refuse an unknown option and leave the box untouched',
       'assertions poll until the app settles',
       'web navigation, urls, and titles',
       'routes intercept and fulfill',
