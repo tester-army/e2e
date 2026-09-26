@@ -30,6 +30,7 @@ export const FIXTURE_PAGES: readonly FixturePage[] = [
       <select aria-label="Toppings" multiple><option>Cheese</option><option selected>Olives</option></select>
       <select aria-label="Shade" size="3"><option>Red</option><option selected>Green</option><option>Blue</option></select>
       <input aria-label="Destination" list="cities"><datalist id="cities"><option>Oslo</option><option>Lima</option></datalist>
+      <input type="custom" aria-label="Origin" list="cities">
       <input type="hidden" value="secret">
     `,
   },
@@ -120,6 +121,8 @@ export const FIXTURE_PAGES: readonly FixturePage[] = [
       </table>
       <div role="grid" aria-label="Seats"><div role="row"><div role="gridcell">A1</div><div role="gridcell">A2</div></div></div>
       <table role="grid" aria-label="Schedule"><tr><td>Monday</td><td>Tuesday</td></tr></table>
+      <table role=" grid" aria-label="Roster"><tr><td>Ada</td><td>Grace</td></tr></table>
+      <div role=" button" tabindex="0">Padded role</div>
       <ul><li>First</li><li>Second <button>Remove</button></li></ul>
       <ol><li>Step one</li></ol>
       <menu><li>Menu entry</li></menu>
