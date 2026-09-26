@@ -287,6 +287,15 @@ sessions are billed while they run, so keep `workers` at what the suite can
 fill; `scope: 'attempt'` trades a session start per test for a browser no
 earlier test has touched.
 
+## Inert content
+
+An element with the `inert` attribute takes no input, and browsers hide it
+from assistive technology. The engine leaves it and everything under it out
+of the tree the agent sees and a failure prints, the way Chrome's
+accessibility tree does, so an agent never aims at a control behind an open
+drawer. Locators still find it and `toBeVisible` still passes, as in
+Playwright: the content paints, it just ignores clicks and typing.
+
 ## Shadow DOM
 
 Queries search open and closed shadow roots alike. The engine records every

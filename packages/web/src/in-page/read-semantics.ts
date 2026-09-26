@@ -671,10 +671,14 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    * which is what lets the tree walk stop there. A box with no size is not in
    * it: a zero-height `<html>` or wrapper still shows the fixed, absolute, and
    * overflowing descendants laid out past its edges, so the walk goes on
-   * through it and only the element itself stays unlisted.
+   * through it and only the element itself stays unlisted. An `inert`
+   * subtree takes no input and is hidden from assistive technology, as
+   * Chrome's tree drops it, though it still paints: listing it would hand
+   * the agent controls that ignore every action.
    */
   const hidesSubtree = (el: Element, style: CSSStyleDeclaration | undefined): boolean =>
     el.getAttribute('aria-hidden') === 'true' ||
+    el.hasAttribute('inert') ||
     style === undefined ||
     style.display === 'none' ||
     (style.display !== 'contents' && style.visibility !== 'visible') ||

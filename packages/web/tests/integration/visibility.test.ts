@@ -127,3 +127,17 @@ describe('the tree walk through a box with no size', () => {
     expect(nodes.filter((node) => node.role === 'combobox').map((node) => node.name)).toEqual(['Shown']);
   });
 });
+
+describe('an inert subtree', () => {
+  it('leaves the tree, as Chrome drops it, while Playwright still calls it visible', async () => {
+    await page.setContent(`
+      <main inert><h2>Behind the drawer</h2><button id="inert-save">Save</button></main>
+      <button>Close drawer</button>
+    `);
+    const names = (await captureTree()).map((node) => node.name).filter((name) => name !== undefined);
+    expect(names).toContain('Close drawer');
+    expect(names).not.toContain('Save');
+    expect(names).not.toContain('Behind the drawer');
+    expect(await hiddenOf('#inert-save')).toEqual({ reader: false, playwright: false });
+  });
+});
