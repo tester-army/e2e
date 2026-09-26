@@ -380,8 +380,9 @@ class LocatorImpl extends ScreenImpl implements Locator {
     return this.perform('uncheck', { kind: 'uncheck' }, options);
   }
 
-  selectOption(value: SelectOption, options?: ActionOptions): Promise<void> {
-    return this.perform('selectOption', { kind: 'selectOption', value }, options);
+  async selectOption(value: SelectOption, options?: ActionOptions): Promise<void> {
+    requireSelectOption(value);
+    await this.perform('selectOption', { kind: 'selectOption', value }, options);
   }
 
   focus(options?: ActionOptions): Promise<void> {
@@ -511,6 +512,7 @@ class LocatorImpl extends ScreenImpl implements Locator {
   }
 
   filter(options: { hasText?: TextMatch; has?: Locator }): Locator {
+    requireFilterOptions(options);
     const hasExpression =
       options.has === undefined ? undefined : this.ownLocator(options.has, 'filter({ has })').expression;
     return new LocatorImpl(
@@ -553,6 +555,50 @@ function requirePoint(point: Point | undefined, what: string): Point {
     throw new TestError('INVALID_ARGUMENT', `${what} requires a point { x, y } of non-negative numbers`);
   }
   return at;
+}
+
+/**
+ * Refuses a filter options bag carrying a key other than `hasText` and `has`.
+ * `filter` builds its expression from those two alone, so any other key
+ * (`hasNot`, `hasNotText`, `visible`) would drop out silently and widen the
+ * match, even beside a supported key.
+ */
+function requireFilterOptions(options: unknown): void {
+  if (typeof options !== 'object' || options === null || Array.isArray(options)) {
+    throw new TestError('INVALID_LOCATOR', 'filter() options must be a plain object');
+  }
+  const unknown = Object.keys(options).filter((key) => key !== 'hasText' && key !== 'has');
+  if (unknown.length === 0) return;
+  throw new TestError(
+    'INVALID_LOCATOR',
+    `filter() has no ${unknown.length === 1 ? 'option' : 'options'} ${unknown.map((key) => `"${key}"`).join(', ')}; it takes hasText and has`,
+  );
+}
+
+/**
+ * Refuses a `selectOption` value that is not one option: a label string or an
+ * object with exactly one of `label`, `value`, or a nonnegative integer
+ * `index`. An engine maps the value field by field, so an array or a
+ * mixed object would select an option the test did not name.
+ */
+function requireSelectOption(value: unknown): void {
+  if (Array.isArray(value)) {
+    throw new TestError(
+      'INVALID_ARGUMENT',
+      'selectOption takes one option per call; an array of options is not supported',
+    );
+  }
+  if (typeof value === 'string') return;
+  if (typeof value === 'object' && value !== null) {
+    const entries = Object.entries(value);
+    const [key, field] = entries[0] ?? [];
+    if (entries.length === 1 && (key === 'label' || key === 'value') && typeof field === 'string') return;
+    if (entries.length === 1 && key === 'index' && Number.isInteger(field) && field >= 0) return;
+  }
+  throw new TestError(
+    'INVALID_ARGUMENT',
+    'selectOption takes a label string or exactly one of { label }, { value }, { index } with a nonnegative integer index',
+  );
 }
 
 /** A point as the report shows it. */

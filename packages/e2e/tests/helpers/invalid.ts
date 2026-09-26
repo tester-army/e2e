@@ -3,6 +3,6 @@
  * `invalid<Locator>({})`, `invalid<ScrollOptions>({ speed: 'fast' })`. The one
  * place a test lies to the compiler, so the lie is named where it happens.
  */
-export function invalid<T>(value: object): T {
+export function invalid<T>(value: unknown): T {
   return value as unknown as T;
 }

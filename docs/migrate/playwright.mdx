@@ -115,7 +115,7 @@ to do today.
 | `getByTitle` | not yet; the node carries no title | `web` | missing |
 | `getByRole(role, { includeHidden })` | a role query never matches a hidden node; `{ visible: true }` on the other queries drops hidden twins | `screen` | by design |
 | `locator.filter({ hasText, has })` | the same | `screen` | same |
-| `filter({ hasNot, hasNotText })` | not yet; a positive filter or `nth` | `screen` | missing |
+| `filter({ hasNot, hasNotText })` | not yet; a positive filter or `nth`. `INVALID_LOCATOR`, alone or beside `hasText` or `has` | `screen` | missing |
 | `first()`, `last()`, `nth(i)` | the same | `screen` | same |
 | `locator.and(other)`, `locator.or(other)` | not yet | `screen` | missing |
 | `locator.count()` | the same | `screen` | same |
@@ -139,7 +139,7 @@ to do today.
 | `pressSequentially(text, { delay })` | the same; keystrokes through the platform keyboard, a `Secret` is refused | `screen` | same |
 | `press(key)` | the same; modifiers join with `+`, see the [key grammar](/reference/engine#keys) | `screen` | same |
 | `clear()`, `check()`, `uncheck()`, `focus()`, `hover()`, `selectOption()`, `setInputFiles()`, `dragTo()` | the same | `screen` | same |
-| `selectOption(['a', 'b'])` | not yet; one option per call | `screen` | missing |
+| `selectOption(['a', 'b'])` | not yet; one option per call. An array is `INVALID_ARGUMENT` | `screen` | missing |
 | `setInputFiles({ name, buffer })` | not yet; paths only, resolved from the project root | `screen` | missing |
 | `scrollIntoViewIfNeeded()` | `scrollIntoView()` | `screen` | renamed |
 | `locator.textContent()`, `innerText()` | `textContent()`, whitespace normalized | `screen` | same |

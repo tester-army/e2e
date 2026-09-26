@@ -100,8 +100,10 @@ anything stricter. `has` keeps a match whose subtree resolves the inner
 locator.
 
 Throws `INVALID_LOCATOR` when `filter` gets neither `hasText` nor `has`, when
-`has` is not a runner locator or was made by another target's screen, or when
-`nth` gets a negative or non-integer index.
+it gets any other key, even beside them (`hasNot`, `hasNotText`, and
+`visible` are not filters here), when `has` is not a runner locator or was
+made by another target's screen, or when `nth` gets a negative or
+non-integer index.
 
 ```ts
 const row = screen.getByRole('listitem').filter({ hasText: 'Invoice 42' });
@@ -618,5 +620,8 @@ or `data-placeholder` (Quill) stays. Anchor a test on a label or a test id, not
 on the placeholder.
 
 
-For `selectOption`, pass exactly one of `label`, `value`, or `index`. `value`
-matches the option's value attribute, which is what the form submits.
+For `selectOption`, pass a label string or exactly one of `label`, `value`,
+or `index`. `value` matches the option's value attribute, which is what the
+form submits. One option per call: an array, an object with more than one of
+those keys, or a negative or fractional `index` fails with `INVALID_ARGUMENT`
+before the engine acts.

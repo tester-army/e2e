@@ -38,6 +38,13 @@ export const HOME_PAGES: Record<string, PageRenderer> = {
     <option value="team">Team</option>
   </select>
 
+  <label for="digest">Digest</label>
+  <select id="digest" multiple>
+    <option value="daily">Daily</option>
+    <option value="weekly">Weekly</option>
+    <option value="monthly">Monthly</option>
+  </select>
+
   <button disabled>Disabled action</button>
   <fieldset disabled>
     <legend>Fenced <button>Legend action</button></legend>

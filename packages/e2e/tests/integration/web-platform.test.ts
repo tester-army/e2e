@@ -207,6 +207,31 @@ test('check and uncheck refuse an unknown option and leave the box untouched', a
   await expect(box).toHaveAttribute('data-events', '6');
 });
 
+test('unsupported filter and selectOption shapes fail before acting', async ({ app, screen, web }) => {
+  await app.open();
+  const code = async (call: () => unknown) => {
+    try {
+      await call();
+    } catch (error) {
+      return (error as { code?: string }).code;
+    }
+    return 'no error';
+  };
+  const digest = () =>
+    web.evaluate(() => [...document.querySelector<HTMLSelectElement>('#digest')!.selectedOptions].map((option) => option.value));
+
+  const mixed = { hasText: 'Item', hasNotText: 'Alpha' } as unknown as { hasText: string };
+  expect(await code(() => screen.getByTestId('item').filter(mixed).first().textContent())).toBe('INVALID_LOCATOR');
+  await expect(screen.getByTestId('item').filter({ hasText: 'Item' })).toHaveCount(3);
+  await expect(screen.getByTestId('item').filter({ hasText: 'Item' }).first()).toHaveText('Item Alpha');
+
+  const several = ['daily', 'weekly'] as unknown as string;
+  expect(await code(() => screen.getByLabel('Digest').selectOption(several))).toBe('INVALID_ARGUMENT');
+  expect(await digest()).toEqual([]);
+  await screen.getByLabel('Digest').selectOption({ value: 'weekly' });
+  expect(await digest()).toEqual(['weekly']);
+});
+
 test('class assertions report the observed class on failure', async ({ app, web }) => {
   await app.open();
   try {
@@ -546,6 +571,7 @@ describe('web platform integration', () => {
       'role vocabulary: tabs, menus, progress, toolbars, images',
       'actions and state',
       'check and uncheck refuse an unknown option and leave the box untouched',
+      'unsupported filter and selectOption shapes fail before acting',
       'assertions poll until the app settles',
       'web navigation, urls, and titles',
       'routes intercept and fulfill',

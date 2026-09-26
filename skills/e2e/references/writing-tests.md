@@ -150,7 +150,8 @@ Rules:
   `toHaveText` and `toContainText`, and the set reads `count()`, `all()`,
   and `allTextContents()` are the exceptions.
 - Narrow with `filter({ hasText })`, `filter({ has: locator })`, `first()`,
-  `last()`, `nth(i)`, or by scoping under another locator.
+  `last()`, `nth(i)`, or by scoping under another locator. `filter` takes no
+  other key: `hasNot` and `hasNotText` fail with `INVALID_LOCATOR`.
 - `visible: true` drops nodes the page hides (a closed drawer, a prerendered
   duplicate) before the exactly-one rule. Reach for it when a query is
   ambiguous even though one element is on screen.
@@ -174,7 +175,8 @@ Each action resolves one node, waits for it to be actionable within
 `tap()` (alias `click()`), `doubleTap()`, `longPress({ duration? })`,
 `fill(value | Secret)`, `pressSequentially(text, { delay? })`, `clear()`,
 `press(key)`, `check()`, `uncheck()`,
-`selectOption(label | { label } | { value } | { index })`, `focus()`, `hover()`,
+`selectOption(label | { label } | { value } | { index })` (one option; an
+array is `INVALID_ARGUMENT`), `focus()`, `hover()`,
 `setInputFiles(paths)` (relative to the project root), `dragTo(locator)`,
 `scrollIntoView()`, `swipe({ direction, momentum? })`.
 
