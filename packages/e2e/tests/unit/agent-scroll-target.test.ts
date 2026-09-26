@@ -25,7 +25,7 @@ function observationOf(tree: SemanticNode) {
     viewport: { width: 402, height: 874 },
     redaction: { secureNodeCount: 0, maskedRegionCount: 0 },
   };
-  const result = prepareObservation(raw, { redact: (text) => text, maxBytes: 65_536 });
+  const result = prepareObservation(raw, { redact: (text) => text, redactCut: (text) => text, maxBytes: 65_536 });
   assert(result.kind === 'semantic');
   return result;
 }

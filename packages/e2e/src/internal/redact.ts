@@ -26,6 +26,8 @@ export function createRedactor(
 
 interface Compiled {
   readonly redact: (text: string) => string;
+  /** `redact` for text cut short at a length limit; see `SecretLedger.redactCut`. */
+  readonly redactCut: (text: string) => string;
   /** Every occurrence of every value, leftmost first and never overlapping: the matches `redact` rewrites. Absent with no values. */
   readonly pattern: RegExp | undefined;
   /** The most text one occurrence can span; a piece shorter than this holds at most part of one. */
@@ -49,7 +51,14 @@ const MARKER_NAME = /^[A-Za-z0-9_.-]*$/;
 function compile(values: readonly (readonly [string, string])[]): Compiled {
   const entries = values.filter(([, value]) => value.length > 0).toSorted((a, b) => b[1].length - a[1].length);
   if (entries.length === 0) {
-    return { redact: (text) => text, pattern: undefined, maxFormLength: 0, maxMarkerLength: 0, spansLines: false };
+    return {
+      redact: (text) => text,
+      redactCut: (text) => text,
+      pattern: undefined,
+      maxFormLength: 0,
+      maxMarkerLength: 0,
+      spansLines: false,
+    };
   }
   const markers = entries.map(([name]) => `${MARKER_OPEN}${name}>`);
   const known = markerPattern(entries.map(([name]) => name));
@@ -60,9 +69,27 @@ function compile(values: readonly (readonly [string, string])[]): Compiled {
       const matched = rest.slice(0, markers.length).findIndex((group) => group !== undefined);
       return markers[matched] ?? '';
     });
+  // `split` on a capturing pattern returns the markers at the odd indexes; those pass through untouched.
+  const redact = (text: string): string =>
+    text.split(known).map((piece, index) => (index % 2 === 1 ? piece : rewrite(piece))).join('');
+  const redactCut = (text: string): string => {
+    const redacted = redact(text);
+    // Only what follows the last marker can end in a value cut short.
+    const tail = redacted.split(known).at(-1) ?? '';
+    let cut = 0;
+    let marker = '';
+    entries.forEach(([, value], index) => {
+      const length = leadingPartAtEnd(tail, value);
+      if (length > cut) {
+        cut = length;
+        marker = markers[index] ?? '';
+      }
+    });
+    return cut === 0 ? redacted : `${redacted.slice(0, redacted.length - cut)}${marker}`;
+  };
   return {
-    // `split` on a capturing pattern returns the markers at the odd indexes; those pass through untouched.
-    redact: (text) => text.split(known).map((piece, index) => (index % 2 === 1 ? piece : rewrite(piece))).join(''),
+    redact,
+    redactCut,
     pattern,
     maxFormLength: Math.max(...patterns.map(({ maxLength }) => maxLength)),
     maxMarkerLength: Math.max(...markers.map((marker) => marker.length)),
@@ -140,6 +167,14 @@ function unicodeEscapes(ch: string): string[] {
   return [escape(hex4), escape((unit) => hex4(unit).toUpperCase())];
 }
 
+/** The length of the longest leading part of `value`, short of the whole, that `text` ends with; 0 when it ends with none. */
+function leadingPartAtEnd(text: string, value: string): number {
+  for (let length = Math.min(text.length, value.length - 1); length > 0; length -= 1) {
+    if (text.endsWith(value.slice(0, length))) return length;
+  }
+  return 0;
+}
+
 function literal(text: string): string {
   return [...text].map(escapeRegexpChar).join('');
 }
@@ -194,6 +229,16 @@ export class SecretLedger {
   entries(): readonly (readonly [string, string])[] {
     return this.values.map(([name, value]) => [name, value] as const);
   }
+
+  /**
+   * `redact` for text cut short at a length limit, as an engine cuts an
+   * observed name or text: a value the cut stopped partway through leaves
+   * its leading part at the end, which no whole-value match sees, so the
+   * longest such part becomes that value's marker too, down to one
+   * character. Matched as the value is written: the cut falls on text as the
+   * engine read it, before any serializer spells it. Bound like `redact`.
+   */
+  readonly redactCut = (text: string): string => this.compile().redactCut(text);
 
   /** The most text one registered value can match in any spelling; a piece shorter than this holds at most part of one occurrence. */
   get maxFormLength(): number {

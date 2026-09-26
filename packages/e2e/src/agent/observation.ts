@@ -1,5 +1,6 @@
 /** Observation capture, redaction, and model serialization. */
 
+import { OBSERVED_NAME_LIMIT, OBSERVED_TEXT_LIMIT } from '../engine/contract.ts';
 import type { Observation, SemanticNode, ViewportSize } from '../engine/surface.ts';
 import { collapseText } from '../internal/text.ts';
 import { sleep } from '../internal/time.ts';
@@ -56,12 +57,15 @@ interface AgentObservationMetadata {
  * Pixels whose masking the engine cannot prove (fewer masked regions than
  * secure nodes) are withheld before they reach a model or disk; the semantic
  * tree never carries secure values. Registered secret values are additionally
- * replaced by their stable secret name.
+ * replaced by their stable secret name, and so is the leading part of one a
+ * field the engine cut at its limit ends with.
  */
 export function prepareObservation(
   observation: Observation,
   options: {
     redact: (text: string) => string;
+    /** `redact` for a field cut at its observed limit (`SecretLedger.redactCut`). */
+    redactCut: (text: string) => string;
     maxBytes: number;
     /** Grants pixel-only evidence; omit when this consumer cannot use it. */
     pixelsAllowed?: boolean;
@@ -88,9 +92,10 @@ export function prepareObservation(
       pixels: pixels.cleared,
     };
   }
+  const tree = redactCutFields(observation.tree, options.redactCut);
   const nodes = new Map<string, SemanticNode>();
   const parents = new Map<string, string>();
-  indexNodes(observation.tree, nodes, parents);
+  indexNodes(tree, nodes, parents);
 
   const redact = options.redact;
   const lines: string[] = [];
@@ -118,7 +123,7 @@ export function prepareObservation(
     lines.push(line);
     for (const child of node.children ?? []) emit(child, depth + 1);
   };
-  emit(observation.tree, 0);
+  emit(tree, 0);
   const marker = markerFor(cutByBudget);
   if (marker !== undefined) lines.push(marker);
   const truncated = marker !== undefined;
@@ -135,10 +140,42 @@ export function prepareObservation(
     bytes: textBytes,
     nodes,
     parents,
-    tree: observation.tree,
+    tree,
     truncated,
     ...(pixels.cleared === undefined ? {} : { pixels: pixels.cleared }),
     ...(pixels.withheld === undefined ? {} : { pixelsWithheld: pixels.withheld }),
+  };
+}
+
+/**
+ * The tree with every field that reaches its observed limit, and so was cut
+ * there, passed through `redactCut` before any consumer reads it: a secret
+ * the cut stopped partway through leaves a leading part at the end that no
+ * whole-value redaction matches. A shorter field is whole and left to
+ * `redact`; a subtree with nothing cut is returned as it is.
+ */
+function redactCutFields(node: SemanticNode, redactCut: (text: string) => string): SemanticNode {
+  const cut = (text: string | undefined, limit: number): string | undefined =>
+    text === undefined || text.length < limit ? text : redactCut(text);
+  const name = cut(node.name, OBSERVED_NAME_LIMIT);
+  const text = cut(node.text, OBSERVED_TEXT_LIMIT);
+  const value = cut(node.value, OBSERVED_TEXT_LIMIT);
+  const selection = cut(node.selection, OBSERVED_TEXT_LIMIT);
+  const children = node.children?.map((child) => redactCutFields(child, redactCut));
+  const unchanged =
+    name === node.name &&
+    text === node.text &&
+    value === node.value &&
+    selection === node.selection &&
+    (children ?? []).every((child, index) => child === node.children?.[index]);
+  if (unchanged) return node;
+  return {
+    ...node,
+    ...(name === undefined ? {} : { name }),
+    ...(text === undefined ? {} : { text }),
+    ...(value === undefined ? {} : { value }),
+    ...(selection === undefined ? {} : { selection }),
+    ...(children === undefined ? {} : { children }),
   };
 }
 

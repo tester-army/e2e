@@ -1,7 +1,8 @@
 import { assert, describe, expect, it, vi } from 'vitest';
 import type { Observation, SemanticNode } from '../../src/engine/surface.ts';
 import { changeShape, interactiveNodeCount, isTransitionalObservation, observationShape, prepareObservation, settleObservation } from '../../src/agent/observation.ts';
-import { createRedactor } from '../../src/internal/redact.ts';
+import { OBSERVED_NAME_LIMIT, OBSERVED_TEXT_LIMIT } from '../../src/engine/contract.ts';
+import { SecretLedger } from '../../src/internal/redact.ts';
 
 function node(id: string, extra: Partial<SemanticNode> = {}): SemanticNode {
   return { ref: { id, revision: 'r1' }, ...extra };
@@ -31,7 +32,7 @@ describe('prepareObservation', () => {
       viewport: { width: 2, height: 2 }, pixels,
       redaction: { secureNodeCount: 1, maskedRegionCount: 0 },
     };
-    const prepare = (raw: Observation, pixelsAllowed = true) => prepareObservation(raw, { redact: NO_REDACT, maxBytes: 4_096, pixelsAllowed });
+    const prepare = (raw: Observation, pixelsAllowed = true) => prepareObservation(raw, { redact: NO_REDACT, redactCut: NO_REDACT, maxBytes: 4_096, pixelsAllowed });
     expect(() => prepare(unavailable)).toThrow(/proven-masked screenshot/);
     const proven = { ...unavailable, redaction: { secureNodeCount: 1, maskedRegionCount: 1 } };
     const prepared = prepare(proven);
@@ -48,7 +49,7 @@ describe('prepareObservation', () => {
   });
 
   it('keeps the whole address after the origin as the path, fragment included, for the route check to read', () => {
-    const at = (location: string) => prepareObservation({ ...observation(node('root')), location }, { redact: NO_REDACT, maxBytes: 4_096, pixelsAllowed: true }).path;
+    const at = (location: string) => prepareObservation({ ...observation(node('root')), location }, { redact: NO_REDACT, redactCut: NO_REDACT, maxBytes: 4_096, pixelsAllowed: true }).path;
     expect(at('https://app.example.test/companies?search=a#/orders/42')).toBe('/companies?search=a#/orders/42');
     expect(at('https://app.example.test/companies#top')).toBe('/companies#top');
     expect(at('Settings')).toBe('Settings');
@@ -69,6 +70,7 @@ describe('prepareObservation', () => {
     const pixels = { data: new Uint8Array(4), mediaType: 'image/png' as const, width: 2, height: 2, scale: 1 };
     const prepared = prepareObservation(observation(node('root'), pixels), {
       redact: NO_REDACT,
+      redactCut: NO_REDACT,
       maxBytes: 4_096,
     });
     // One secure node, zero masked regions: the image is not provably redacted.
@@ -89,6 +91,7 @@ describe('prepareObservation', () => {
     });
     const prepared = prepareObservation(observation(tree), {
       redact: NO_REDACT,
+      redactCut: NO_REDACT,
       maxBytes: 4_096,
     });
     expect(prepared.text.split('\n')).toEqual([
@@ -116,6 +119,7 @@ describe('prepareObservation', () => {
     });
     const prepared = prepareObservation(observation(tree), {
       redact: NO_REDACT,
+      redactCut: NO_REDACT,
       maxBytes: 4_096,
     });
     expect(prepared.text).toContain('value=<secure>');
@@ -130,12 +134,43 @@ describe('prepareObservation', () => {
         node('n3', { role: 'textbox', name: 'hunter2', value: 'hunter2' }),
       ],
     });
+    const ledger = new SecretLedger([['member', 'hunter2']]);
     const prepared = prepareObservation(observation(tree), {
-      redact: createRedactor(new Map([['member', 'hunter2']])),
+      redact: ledger.redact,
+      redactCut: ledger.redactCut,
       maxBytes: 4_096,
     });
     expect(prepared.text).not.toContain('hunter2');
     expect(prepared.text).toContain('<secret:member>');
+  });
+
+  it('redacts the leading part of a secret a field cut at its limit ends with, and leaves a cut plain value and a whole field alone', () => {
+    const secret = 'cut-secret-Kq7ZrT2mWx9pLd4sNv8bHc3jFg6yQa1eUo5iRk0tYw2zXn7uM';
+    const ledger = new SecretLedger([['apiKey', secret]]);
+    const cutText = (tail: string): string => `${'0'.repeat(OBSERVED_TEXT_LIMIT - tail.length)}${tail}`;
+    const kept = secret.slice(0, 59);
+    const tree = node('n1', {
+      children: [
+        node('n2', { role: 'paragraph', text: cutText(kept) }),
+        node('n3', { role: 'button', name: `${'0'.repeat(OBSERVED_NAME_LIMIT - 40)}${secret.slice(0, 40)}` }),
+        node('n4', { role: 'textbox', value: cutText(secret.slice(0, 20)), selection: cutText(secret.slice(0, 12)) }),
+        node('n5', { role: 'paragraph', text: cutText('plain-control-plain') }),
+        node('n6', { role: 'paragraph', text: `whole ${secret.slice(0, 20)}` }),
+      ],
+    });
+    const prepared = prepareObservation(observation(tree), { redact: ledger.redact, redactCut: ledger.redactCut, maxBytes: 16_384 });
+    assert(prepared.kind === 'semantic');
+    const cutLines = prepared.text.split('\n').filter((line) => /#n[234] /.test(line));
+    expect(cutLines).toHaveLength(3);
+    for (const line of cutLines) expect(line).not.toContain(secret.slice(0, 12));
+    expect(cutLines.join('\n').match(/<secret:apiKey>/g)).toHaveLength(4);
+    expect(prepared.nodes.get('n2')?.text).toBe(`${'0'.repeat(OBSERVED_TEXT_LIMIT - kept.length)}<secret:apiKey>`);
+    expect(JSON.stringify(['n2', 'n3', 'n4'].map((id) => prepared.nodes.get(id)))).not.toContain(secret.slice(0, 12));
+    expect(prepared.tree.children?.[0]).toBe(prepared.nodes.get('n2'));
+    expect(prepared.nodes.get('n5')?.text).toBe(cutText('plain-control-plain'));
+    // A field under its limit was not cut, so a fragment inside it is only app text.
+    expect(prepared.nodes.get('n6')?.text).toBe(`whole ${secret.slice(0, 20)}`);
+    expect(prepared.nodes.get('n6')).toBe(tree.children?.[4]);
   });
 
   it('truncates at the byte limit while keeping the root and flagging truncation', () => {
@@ -144,6 +179,7 @@ describe('prepareObservation', () => {
     );
     const prepared = prepareObservation(observation(node('n1', { role: 'document', children })), {
       redact: NO_REDACT,
+      redactCut: NO_REDACT,
       maxBytes: 256,
     });
     assert(prepared.kind === 'semantic');
@@ -157,7 +193,7 @@ describe('prepareObservation', () => {
     const tree = node('n1', { role: 'document', children: [node('n2', { role: 'button', name: 'One' })] });
     const prepared = prepareObservation(
       { ...observation(tree), truncated: true },
-      { redact: NO_REDACT, maxBytes: 4_096 },
+      { redact: NO_REDACT, redactCut: NO_REDACT, maxBytes: 4_096 },
     );
     assert(prepared.kind === 'semantic');
     expect(prepared.truncated).toBe(true);
@@ -176,7 +212,7 @@ describe('prepareObservation', () => {
     );
     const prepared = prepareObservation(
       { ...observation(node('n1', { role: 'document', children })), truncated: true },
-      { redact: NO_REDACT, maxBytes: 256 },
+      { redact: NO_REDACT, redactCut: NO_REDACT, maxBytes: 256 },
     );
     assert(prepared.kind === 'semantic');
     expect(prepared.truncated).toBe(true);
@@ -188,7 +224,7 @@ describe('prepareObservation', () => {
   it('keeps the root even when it alone exceeds the limit', () => {
     const prepared = prepareObservation(
       observation(node('n1', { role: 'document', name: 'x'.repeat(500) })),
-      { redact: NO_REDACT, maxBytes: 1_024 },
+      { redact: NO_REDACT, redactCut: NO_REDACT, maxBytes: 1_024 },
     );
     expect(prepared.text).toContain('#n1 document');
   });
@@ -196,7 +232,7 @@ describe('prepareObservation', () => {
   it('collapses whitespace and strips control characters from app text', () => {
     const prepared = prepareObservation(
       observation(node('n1', { role: 'status', text: 'line\u0007one\n   two  ' })),
-      { redact: NO_REDACT, maxBytes: 4_096 },
+      { redact: NO_REDACT, redactCut: NO_REDACT, maxBytes: 4_096 },
     );
     expect(prepared.text).toContain('text="line\uFFFDone two"');
   });
@@ -214,6 +250,7 @@ describe('disambiguating attributes', () => {
     });
     const lines = prepareObservation(observation(tree), {
       redact: NO_REDACT,
+      redactCut: NO_REDACT,
       maxBytes: 4_096,
     }).text.split('\n');
 
@@ -235,6 +272,7 @@ describe('disambiguating attributes', () => {
     });
     const lines = prepareObservation(observation(tree), {
       redact: NO_REDACT,
+      redactCut: NO_REDACT,
       maxBytes: 4_096,
     }).text.split('\n');
 
@@ -256,7 +294,7 @@ describe('observation byte budget', () => {
     for (const maxBytes of [200, 512, 2_048, 4_096]) {
       const prepared = prepareObservation(
         observation(node('n1', { role: 'document', children })),
-        { redact: NO_REDACT, maxBytes },
+        { redact: NO_REDACT, redactCut: NO_REDACT, maxBytes },
       );
       expect(prepared.bytes).toBeLessThanOrEqual(maxBytes);
       assert(prepared.kind === 'semantic');
@@ -510,7 +548,7 @@ describe('settleObservation', () => {
           data: new Uint8Array([data]), mediaType: 'image/png', width: 1, height: 1, scale: 1,
         }),
         redaction: { secureNodeCount: 0, maskedRegionCount: 0 },
-      }, { redact: NO_REDACT, maxBytes: 4_096 });
+      }, { redact: NO_REDACT, redactCut: NO_REDACT, maxBytes: 4_096 });
       const before = prepare(1);
       const after = prepare(2);
       const capture = vi.fn(async () => after);
@@ -533,7 +571,7 @@ describe('settleObservation', () => {
 
 describe('isTransitionalObservation', () => {
   it.each(['document', 'screen', 'window'])('recognizes an empty %s without treating a lone control as an empty screen', (role) => {
-    const prepare = (tree: SemanticNode) => prepareObservation(observation(tree), { redact: NO_REDACT, maxBytes: 4_096 });
+    const prepare = (tree: SemanticNode) => prepareObservation(observation(tree), { redact: NO_REDACT, redactCut: NO_REDACT, maxBytes: 4_096 });
     expect(isTransitionalObservation(prepare(node('root', { role })))).toBe(true);
     expect(isTransitionalObservation(prepare(node('root', { role: 'button', name: 'Continue' })))).toBe(false);
     expect(isTransitionalObservation(prepare(node('root', { role: 'textbox', name: 'Password', states: { secure: true } })))).toBe(false);
@@ -541,7 +579,7 @@ describe('isTransitionalObservation', () => {
     const unproven = observation(node('root', { role }), {
       data: new Uint8Array([1]), mediaType: 'image/png', width: 1, height: 1, scale: 1,
     });
-    const withheld = prepareObservation(unproven, { redact: NO_REDACT, maxBytes: 4_096 });
+    const withheld = prepareObservation(unproven, { redact: NO_REDACT, redactCut: NO_REDACT, maxBytes: 4_096 });
     expect(withheld.pixels).toBeUndefined();
     expect(isTransitionalObservation(withheld)).toBe(true);
   });

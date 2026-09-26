@@ -1088,7 +1088,11 @@ dispatch.
 `LOCATOR_ACTION_KINDS`, `POINTER_ACTION_KINDS`, `KEY_MODIFIERS`,
 `KEY_NAMES`, `parseKey`, `ENGINE_ERROR_CODES`, `RETRYABLE_ENGINE_ERROR_CODES`,
 `OBSERVED_NAME_LIMIT` and `OBSERVED_TEXT_LIMIT` are exported from
-`e2e/engine`. The `selector` expression kind carries a
+`e2e/engine`. An observed `name` or `text` whose length reaches its limit
+was cut at exactly that limit; a `value` or `selection` an engine cuts uses
+the text limit. Keep the start and cut the end: the runner redacts the
+leading part of a secret that a field at its limit ends with, which a
+whole-value match cannot see. The `selector` expression kind carries a
 platform-native selector string; `frame` scopes a query into a nested
 document.
 

@@ -108,6 +108,8 @@ export interface AgentContext {
   readonly secrets: SecretResolver;
   /** The attempt's live redactor (SecretLedger); sees values the moment they exist. */
   readonly redact: (text: string) => string;
+  /** The same ledger's redaction for text an engine cut at a length limit. */
+  readonly redactCut: (text: string) => string;
   /** Set once any secret is filled; the viewport stays pixel-tainted after. */
   readonly taint: { value: boolean };
   readonly artifacts: ArtifactSink;
@@ -224,6 +226,7 @@ export class Invocation {
         const raw = await this.captureObservation(pixels);
         const prepared = prepareObservation(raw, {
           redact: this.runtime.redact,
+          redactCut: this.runtime.redactCut,
           maxBytes: this.observationByteBudget(),
           pixelsAllowed: this.options.vision !== false && !this.runtime.taint.value,
         });

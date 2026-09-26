@@ -384,6 +384,7 @@ export class ObservationFeed {
     }
     const prepared = prepareObservation(raw, {
       redact: this.runtime.redact,
+      redactCut: this.runtime.redactCut,
       maxBytes: this.byteBudget(pixels || raw.kind === 'pixels'),
       pixelsAllowed: !this.runtime.taint.value,
     });

@@ -278,4 +278,27 @@ line2  </textarea>
     });
   </script>
 </body></html>`),
+  // Echoes the Source field after filler long enough that an observation's
+  // text (512) and name (256) limits cut the value's last character, next to
+  // a plain value placed the same way.
+  '/echo-cut': constant(`<!doctype html>
+<html>
+<head><title>Echo cut</title></head>
+<body>
+  <label for="source">Source</label>
+  <input id="source" />
+  <p id="echo"></p>
+  <button id="echo-name">Echo</button>
+  <p id="control"></p>
+  <script>
+    const filler = (length) => '0123456789'.repeat(60).slice(0, length);
+    const echo = (value) => {
+      document.getElementById('echo').textContent = filler(512 - value.length + 1) + value;
+      document.getElementById('echo-name').setAttribute('aria-label', filler(256 - value.length + 1) + value);
+    };
+    document.getElementById('source').addEventListener('input', (event) => echo(event.target.value));
+    document.getElementById('control').textContent = filler(512 - 59) + 'plain-control-'.repeat(5);
+  </script>
+</body>
+</html>`),
 };

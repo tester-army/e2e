@@ -52,12 +52,12 @@ export async function captureFailureEvidence(options: FailureEvidenceOptions): P
   const signal = AbortSignal.any([options.interrupt, timeout]);
   if (signal.aborted) return finish(evidence);
   const operation = options.operation(signal, EVIDENCE_TIMEOUT_MS);
-  const redact = options.secrecy.ledger.redact;
+  const { redact, redactCut } = options.secrecy.ledger;
 
   let observation: AgentObservation | undefined;
   try {
     const raw = await options.session.observe(operation);
-    observation = prepareObservation(raw, { redact, maxBytes: options.config.limits.maxObservationBytes });
+    observation = prepareObservation(raw, { redact, redactCut, maxBytes: options.config.limits.maxObservationBytes });
   } catch {
     // The session may be gone with the failure (a crashed page, a closed app).
   }

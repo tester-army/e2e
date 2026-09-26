@@ -145,6 +145,46 @@ describe('markers', () => {
   });
 });
 
+describe('redactCut', () => {
+  const SECRET = 'cut-secret-Kq7ZrT2mWx9pLd4sNv8bHc3jFg6yQa1eUo5iRk0tYw2zXn7uM';
+
+  it('rewrites the leading part of a value the cut stopped inside, down to one character', () => {
+    const ledger = new SecretLedger([['apiKey', SECRET]]);
+    for (const kept of [59, 40, 8, 1]) {
+      const cut = `receipt ${SECRET.slice(0, kept)}`;
+      expect(ledger.redact(cut)).toBe(cut);
+      expect(ledger.redactCut(cut)).toBe('receipt <secret:apiKey>');
+    }
+  });
+
+  it('still rewrites whole values, and the fragment after the last one', () => {
+    const ledger = new SecretLedger([['member', 'hunter2']]);
+    expect(ledger.redactCut('hunter2 then hunter2 then hun')).toBe('<secret:member> then <secret:member> then <secret:member>');
+    expect(ledger.redactCut('hunter2hunt')).toBe('<secret:member><secret:member>');
+  });
+
+  it('leaves a cut plain value, a fragment not at the end, and a text ending in a marker as they are', () => {
+    const ledger = new SecretLedger([['member', 'hunter2']]);
+    expect(ledger.redactCut('plain-control-plain-control-pla')).toBe('plain-control-plain-control-pla');
+    expect(ledger.redactCut('hunt the snark')).toBe('hunt the snark');
+    expect(ledger.redactCut('pw hunter2')).toBe('pw <secret:member>');
+    expect(ledger.redactCut('pw <secret:member>')).toBe('pw <secret:member>');
+  });
+
+  it('rewrites the longest fragment any value leaves at the end', () => {
+    const ledger = new SecretLedger([
+      ['short', 'ab-xyz'],
+      ['long', 'cab-long-value'],
+    ]);
+    expect(ledger.redactCut('text cab-')).toBe('text <secret:long>');
+    expect(ledger.redactCut('text ab-')).toBe('text <secret:short>');
+  });
+
+  it('changes nothing with no value registered', () => {
+    expect(new SecretLedger().redactCut('anything at all')).toBe('anything at all');
+  });
+});
+
 describe('StreamRedactor', () => {
   const secret = 'synthetic-stream-secret-2718';
   const ledger = (): SecretLedger => new SecretLedger([['token', secret]]);
