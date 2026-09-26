@@ -51,13 +51,15 @@ immediately with `LOCATOR_AMBIGUOUS`. `toBeHidden`, negated visibility, and
 negated `toBeAttached` accept zero matches.
 
 Text comparison is normalized: leading and trailing whitespace is trimmed and
-each run of whitespace collapses to one space. A `TextMatch` string matches
-exactly; a `RegExp` uses its own source and flags; anything else, such as a
-predicate function, is `INVALID_ARGUMENT`. `toHaveValue` is the
-exception: a form control's value is compared as it is, newlines and trailing
-spaces included, and the failure message prints it that way; a
-`contenteditable` editor's value is its rendered text, kept the same way, and
-an empty editor reads as `''`. A control the
+each run of whitespace collapses to one space. `toHaveText` and
+`toContainText` read the same rendered text as
+[`textContent()`](/reference/screen#locator-reads), `innerText` on the web.
+A `TextMatch` string matches exactly; a `RegExp` uses its own source and
+flags; anything else, such as a predicate function, is `INVALID_ARGUMENT`.
+`toHaveValue` is the exception: a form control's value is compared as it is,
+newlines and trailing spaces included, and the failure message prints it that
+way; a `contenteditable` editor's value is its rendered text, kept the same
+way, and an empty editor reads as `''`. A control the
 platform reports without a value, such as a cleared field on a device, reads
 as `''`. A node whose role carries no value, such as a heading or a link,
 never satisfies `toHaveValue`, negated or not; the message reads
@@ -111,7 +113,8 @@ export interface AsyncExpectation {
 }
 ```
 
-A missing `checked`, `selected`, or `expanded` state counts as `false`; a node
+A missing `checked`, `selected`, or `expanded` state counts as `false`, so
+`.not.toBeChecked()` passes on a button or a heading; a node
 is enabled unless it reports `disabled`. On the web, `disabled` is the state
 the browser applies, not the attribute alone: a control inside a
 `<fieldset disabled>` is disabled unless it sits in that fieldset's first

@@ -135,7 +135,11 @@ the agent sees and takes `fill`; address one from a test with `getByLabel` or
 `getByTestId`, or give the host `role="textbox"` for `getByRole`, which
 resolves through Playwright's role selector.
 
-Text matching is exact by default after whitespace normalization, and
+Text matching is exact by default after whitespace normalization: the whole
+string, case-sensitive, for a `getByRole` name, `getByLabel`,
+`getByPlaceholder`, and `getByText` alike, so `getByRole('button', { name:
+'Save' })` misses `Save changes` (Playwright would match it). A query that
+misses makes a negated assertion pass, so check it with a positive one.
 `getByText` and `getByLabel` return the innermost match: a container that
 echoes its child's text or label (an iOS Text host view around its
 StaticText, a TextInput host view around its field) does not count twice.
@@ -200,7 +204,12 @@ Reads resolve once and do not retry: `textContent()`, `inputValue()`,
 `getAttribute(name)`, `isVisible()`, `isHidden()`, `isEnabled()`,
 `isDisabled()`, `isChecked()`, `boundingBox()`, `count()`. `all()` gives one
 `nth(i)` locator per current match and `allTextContents()` every match's
-text; both are `[]` for zero matches. `waitFor({ state?: 'visible' |
+text; both are `[]` for zero matches. Text is the rendered text,
+whitespace collapsed: on the web what `innerText` reads, so CSS
+`text-transform` applies, `display: none` descendants drop out, and `<br>`
+is a space; `toHaveText` reads the same. `isChecked()` is `false` on a node
+with no checked state (a button, a heading) rather than an error, so query
+checkable controls by role. `waitFor({ state?: 'visible' |
 'hidden', timeout? })` waits for a state. When a value has to settle, use
 `expect` instead of a read. Reading a password field's value or
 attributes is `POLICY_DENIED`, and so is `toHaveAttribute` on one, negated

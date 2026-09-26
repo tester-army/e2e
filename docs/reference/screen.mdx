@@ -53,6 +53,12 @@ match. Use [`expect`](/reference/expect) to wait.
 
 Every query returns a `Locator` synchronously and performs no work.
 
+A string passed to `getByRole` as `name`, `getByLabel`, `getByPlaceholder`,
+`getByText`, or `getByDisplayValue` matches the whole text, case-sensitive,
+after whitespace normalization: `getByRole('button', { name: 'Save' })` does
+not match `Save changes`. `{ exact: false }` makes it a case-insensitive
+substring match, and a `RegExp` matches as written.
+
 `getByTestId` matches the node's `testId`: on the web the value of the
 engine's test-id attribute (`web({ testIdAttribute })`, default
 `data-testid`), on a device the accessibility identifier or resource id.
@@ -347,6 +353,14 @@ await screen.getByLabel('City').pressSequentially('War', { delay: 50 });
 
 `waitFor` defaults `state` to `'visible'` and `timeout` to
 `config.actionTimeout`, and throws `LOCATOR_NOT_FOUND` on timeout.
+
+`textContent` and `allTextContents` return the node's rendered text with
+whitespace collapsed to single spaces. On the web that is what `innerText`
+reads, not the DOM's `textContent`: CSS `text-transform` applies,
+`display: none` descendants are left out, and a `<br>` reads as a space.
+
+`isChecked` is `false` on a node with no checked state, such as a button or
+a heading; it does not throw.
 
 `textContent`, `inputValue`, `getAttribute`, and `allTextContents` throw
 `POLICY_DENIED` on a secure field, and so do `expect(locator).toHaveValue`,

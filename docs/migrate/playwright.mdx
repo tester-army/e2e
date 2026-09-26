@@ -109,7 +109,7 @@ to do today.
 | Playwright | e2e | Lives in | Status |
 | --- | --- | --- | --- |
 | `page.getByRole`, `getByLabel`, `getByText`, `getByTestId`, `getByPlaceholder` | the same on `screen` | `screen` | same |
-| `getByText('Save')` | matches exactly; `{ exact: false }` for Playwright's substring match | `screen` | by design |
+| `getByRole(role, { name })`, `getByLabel`, `getByPlaceholder`, `getByText` with a string | matches the whole string, case-sensitive; `{ exact: false }` for Playwright's substring match, see [By design](#by-design) | `screen` | by design |
 | `getByRole('img')` | the same; `img` is an alias of `image`, so engines, the trace cache, and reports see `image` | `screen` | same |
 | `getByAltText(alt)` | `getByRole('image', { name: alt })` | `screen` | renamed |
 | `getByTitle` | not yet; the node carries no title | `web` | missing |
@@ -142,8 +142,10 @@ to do today.
 | `selectOption(['a', 'b'])` | not yet; one option per call. An array is `INVALID_ARGUMENT` | `screen` | missing |
 | `setInputFiles({ name, buffer })` | not yet; paths only, resolved from the project root | `screen` | missing |
 | `scrollIntoViewIfNeeded()` | `scrollIntoView()` | `screen` | renamed |
-| `locator.textContent()`, `innerText()` | `textContent()`, whitespace normalized | `screen` | same |
-| `inputValue()`, `getAttribute()`, `isVisible()`, `isEnabled()`, `isChecked()`, `boundingBox()` | the same | `screen` | same |
+| `locator.innerText()` | `textContent()`, whitespace collapsed to single spaces | `screen` | renamed |
+| `locator.textContent()` | returns the rendered text, what `innerText()` reads, not the DOM's `textContent`; `web.evaluate` for the raw DOM text | `screen` | by design |
+| `inputValue()`, `getAttribute()`, `isVisible()`, `isEnabled()`, `boundingBox()` | the same | `screen` | same |
+| `isChecked()` | the same on a checkbox, radio, or `aria-checked` node; `false` on any other node, where Playwright throws | `screen` | by design |
 | `isHidden()`, `isDisabled()` | the same | `screen` | same |
 | `isEditable()` | not yet | `screen` | missing |
 | `waitFor({ state: 'visible' })`, `'hidden'` | the same | `screen` | same |
@@ -162,8 +164,10 @@ to do today.
 
 | Playwright | e2e | Lives in | Status |
 | --- | --- | --- | --- |
-| `expect(locator).toBeVisible()`, `toBeHidden()`, `toBeEnabled()`, `toBeDisabled()`, `toBeChecked()`, `toBeFocused()` | the same | `expect` | same |
-| `toHaveText()`, `toContainText()`, `toHaveValue()`, `toHaveAttribute()`, `toHaveCount()`, `toHaveAccessibleName()` | the same | `expect` | same |
+| `expect(locator).toBeVisible()`, `toBeHidden()`, `toBeEnabled()`, `toBeDisabled()`, `toBeFocused()` | the same | `expect` | same |
+| `toBeChecked()` | the same on a checkable node; on any other node `.not.toBeChecked()` passes, where Playwright throws | `expect` | by design |
+| `toHaveText()`, `toContainText()` | compare the rendered text, as `{ useInnerText: true }` does in Playwright | `expect` | by design |
+| `toHaveValue()`, `toHaveAttribute()`, `toHaveCount()`, `toHaveAccessibleName()` | the same | `expect` | same |
 | `toHaveText(['a', 'b'])`, `toContainText([...])` on several matches | the same: `toHaveText` needs the count to match, `toContainText` an ordered subsequence | `expect` | same |
 | `toHaveAttribute('aria-selected', 'true')`, `'aria-expanded'` | `toBeSelected()`, `toBeExpanded()` | `expect` | renamed |
 | a positive matcher on several matches | `LOCATOR_AMBIGUOUS` at once; narrow with `filter`, `first`, or `{ visible: true }` | `expect` | by design |
@@ -280,9 +284,52 @@ to do today.
 
 These differ from Playwright on purpose and will stay that way.
 
-- `getByText` is exact. A substring match on `Save` also hits `Save as
-  draft`, and a test that passes on the wrong node is worse than one that
-  fails. Pass `{ exact: false }` or a `RegExp` when you mean a fragment.
+- A string name is exact. `getByRole` names, `getByLabel`,
+  `getByPlaceholder`, and `getByText` match the whole string, case-sensitive,
+  after whitespace normalization. A substring match on `Save` also hits
+  `Save as draft`, and a test that passes on the wrong node is worse than
+  one that fails. Pass `{ exact: false }` or a `RegExp` when you mean a
+  fragment. A query that misses matches nothing, so a negated assertion on
+  it passes: check the query with a positive assertion first.
+  `filter({ hasText })` stays a case-insensitive substring match, as in
+  Playwright.
+
+  ```ts
+  // <button>Save changes</button>, <label>Email address <input></label>
+  screen.getByRole('button', { name: 'Save' });                  // no match
+  screen.getByRole('button', { name: 'Save', exact: false });    // matches
+  screen.getByRole('button', { name: 'save changes' });          // no match, case differs
+  screen.getByLabel('Email');                                    // no match
+  screen.getByLabel('Email address');                            // matches
+  ```
+- Text reads are rendered text. On the web, `textContent()`,
+  `allTextContents()`, `toHaveText`, and `toContainText` read what
+  `innerText` returns, with whitespace collapsed to single spaces: CSS
+  `text-transform` applies, `display: none` descendants drop out, and a
+  `<br>` becomes a space. Playwright's `textContent()` and `toHaveText` read
+  the DOM's `textContent` unless `useInnerText` is set. Queries still match
+  the source text, as Playwright's do: the exact `getByText('Draft')` finds
+  the first node below, `getByText('DRAFT')` does not. Read the raw DOM text
+  with `web.evaluate` when a test needs it.
+
+  ```ts
+  // <span data-testid="tag" style="text-transform: uppercase">Draft</span>
+  // <p data-testid="total">Total <span style="display: none">debug</span>42</p>
+  // <p data-testid="address">Line one<br>Line two</p>
+  await expect(screen.getByTestId('tag')).toHaveText('DRAFT');              // Playwright: 'Draft'
+  await expect(screen.getByTestId('total')).toHaveText('Total 42');         // Playwright: 'Total debug42'
+  await expect(screen.getByTestId('address')).toHaveText('Line one Line two'); // Playwright: 'Line oneLine two'
+  ```
+- A node with no checked state is unchecked. `isChecked()` is `false` and
+  `.not.toBeChecked()` passes on a button, heading, or text input, where
+  Playwright throws `Not a checkbox or radio button`. A checkbox that is
+  replaced by a plain button therefore still satisfies an unchecked
+  assertion found by test id. Query checkable controls by role so the query
+  fails when the control changes kind.
+
+  ```ts
+  await expect(screen.getByRole('checkbox', { name: 'Subscribe' })).not.toBeChecked();
+  ```
 - One match or `LOCATOR_AMBIGUOUS`. An action, read, or assertion on several
   matches fails at once, `isVisible()` included. Playwright's `isVisible()`
   reads the first match silently; here a second match is usually a hidden
@@ -319,7 +366,9 @@ These differ from Playwright on purpose and will stay that way.
 | Navigation timeout | none | 120 s, the test budget; `web.goto(url, { timeout })` overrides one call |
 | Retries | 0 | 1 in CI, 0 locally |
 | Trace | `off` (`on-first-retry` in the scaffolded config) | on for every attempt; no retain policy |
-| `getByText` | case-insensitive substring | exact |
+| `getByRole` name, `getByLabel`, `getByPlaceholder`, `getByText` | case-insensitive substring | exact |
+| Text read by `textContent()`, `toHaveText` | DOM `textContent` | rendered text, as `innerText` |
+| `isChecked()`, `toBeChecked()` on a node that is not checkable | throws | unchecked |
 | `isVisible()` on several matches | the first match, no error | `LOCATOR_AMBIGUOUS` |
 
 ## What to migrate first
