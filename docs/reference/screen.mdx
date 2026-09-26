@@ -573,7 +573,10 @@ and `<details>` are `group`, `<input type="number">` is `spinbutton`,
 naming a `<datalist>` is a `combobox`, a `<td>` of a `role="grid"` table is a
 `gridcell`,
 `<thead>` and `<tbody>` are `rowgroup`, `<th scope="row">` is `rowheader`,
-`<figure>` is `figure`, `<article>` is `article`, and `<form>` and `<section>`
+`<figure>` is `figure`, `<article>` is `article`, `<header>` and `<footer>` are
+`banner` and `contentinfo` only outside sectioning content or an element with
+a sectioning role (`article`, `complementary`, `main`, `navigation`, `region`),
+and `<form>` and `<section>`
 are `form` and `region` only when they carry an `aria-label`,
 `aria-labelledby`, or `title`. A `<legend>`, `<figcaption>`, or `<caption>`
 names its fieldset, figure, or table, so `toHaveAccessibleName` reads what

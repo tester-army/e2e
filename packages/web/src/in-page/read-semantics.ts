@@ -112,11 +112,18 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
   const hasOwnName = (el: Element): boolean =>
     ['aria-label', 'aria-labelledby', 'title'].some((attribute) => (el.getAttribute(attribute) ?? '').trim() !== '');
 
+  const SECTIONING_SCOPE = [
+    'article', 'aside', 'main', 'nav', 'section',
+    ...['article', 'complementary', 'main', 'navigation', 'region'].map((role) => `[role~="${role}"]`),
+  ].join(', ');
+
   /**
    * True when a `<header>` or `<footer>` is the page's, not an article's or a
    * section's: only then is it the `banner` or `contentinfo` landmark.
+   * HTML-AAM scopes it to sectioning content and to the ARIA roles that stand
+   * for it, so a `<div role="article">` scopes it like an `<article>`.
    */
-  const isPageLevel = (el: Element): boolean => el.closest('article, aside, main, nav, section') === null;
+  const isPageLevel = (el: Element): boolean => el.closest(SECTIONING_SCOPE) === null;
 
   /**
    * The root of a contenteditable region: editable itself, under a parent that
