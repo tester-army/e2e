@@ -316,8 +316,9 @@ deciding twice or not at all is `ACTION_FAILED`, as is a `waitForResponse`
 that nothing matches inside the deadline. The response resolves once its body
 is known: `url`, `status`, and `headers` are always readable, and a body the
 browser could not read (a connection reset short of the declared
-`Content-Length`) rejects `text()` and `json()` with `ACTION_FAILED` instead
-of an empty string. A genuinely empty body reads as `''`.
+`Content-Length`, a request the page aborted, or a redirect, whose body the
+browser never keeps) rejects `text()` and `json()` with `ACTION_FAILED`
+instead of an empty string. A genuinely empty body reads as `''`.
 
 ```ts
 await web.route('**/api/quote', async (route) => {

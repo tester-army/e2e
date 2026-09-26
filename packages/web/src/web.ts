@@ -82,8 +82,9 @@ export interface WebResponse {
  * that failure would hand the test an empty string the server never sent,
  * indistinguishable from a real empty body. The browser reports the reason
  * on the request (`net::ERR_CONTENT_LENGTH_MISMATCH` for a connection cut
- * short of the declared length, `net::ERR_ABORTED` for a body the page never
- * consumed), and the protocol error behind the read is the fallback.
+ * short of the declared length, `net::ERR_ABORTED` for a request the page
+ * aborted), and the protocol error behind the read is the fallback, as for a
+ * redirect, whose body the browser never keeps.
  */
 async function readResponseBody(response: Response): Promise<() => Promise<string>> {
   try {

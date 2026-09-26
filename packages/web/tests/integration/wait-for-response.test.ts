@@ -11,10 +11,11 @@ import { createWebFixture, type Web } from '../../src/web.ts';
 
 /**
  * One origin with a body for every outcome `waitForResponse` reports: a full
- * JSON body, a genuinely empty body under 200 and 204, and a body cut short
- * by a connection reset before the declared `Content-Length` was sent. The
- * fragment is flushed before the reset so the browser has seen the headers
- * and reports the response rather than an empty reply.
+ * JSON body, a genuinely empty body under 200 and 204, a redirect whose body
+ * the browser drops, and a body cut short by a connection reset before the
+ * declared `Content-Length` was sent. The fragment is flushed before the
+ * reset so the browser has seen the headers and reports the response rather
+ * than an empty reply.
  */
 function startBodyServer(): Promise<{ server: Server; url: string }> {
   const server = createServer((request, response) => {
@@ -34,6 +35,10 @@ function startBodyServer(): Promise<{ server: Server; url: string }> {
       case '/api/no-content':
         response.writeHead(204);
         response.end();
+        return;
+      case '/api/redirect':
+        response.writeHead(302, { location: '/api/full', 'content-type': 'text/plain' });
+        response.end('moved');
         return;
       case '/api/cut':
         response.writeHead(200, { 'content-type': 'application/json', 'content-length': '1000' });
@@ -131,5 +136,14 @@ describe('web.waitForResponse bodies', () => {
       message: 'waitForResponse: response body could not be read: net::ERR_CONTENT_LENGTH_MISMATCH',
     });
     await expect(response.json()).rejects.toMatchObject({ code: 'ACTION_FAILED' });
+  });
+
+  it('keeps the status of a redirect and rejects reading its body', async () => {
+    const response = await observe('/api/redirect');
+    expect(response.status).toBe(302);
+    await expect(response.text()).rejects.toMatchObject({
+      code: 'ACTION_FAILED',
+      message: expect.stringContaining('Response body is unavailable for redirect responses'),
+    });
   });
 });
