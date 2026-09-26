@@ -97,9 +97,9 @@ export type SemanticMode =
       textLimit: number;
     };
 
-/** Result of one read, selected by the mode discriminant. */
+/** Result of one read, selected by the mode discriminant; a node read of a detached element is null. */
 export type SemanticResult<Mode extends SemanticMode> = Mode extends { kind: 'node' }
-  ? RawNodeData
+  ? RawNodeData | null
   : RawObservation;
 
 /** Options for a single-node read, shared by `evaluate` and `evaluateAll` callers. */
@@ -137,7 +137,7 @@ export const readManySemanticsFunction = new Function(
   'elements',
   'options',
   `return elements.map((element) => (${readSemanticsFunction.toString()})(element, options));`,
-) as (elements: Element[], options: NodeReadOptions) => RawNodeData[];
+) as (elements: Element[], options: NodeReadOptions) => (RawNodeData | null)[];
 
 /**
  * Reads every handle the caller already holds in one round trip, so what is
@@ -150,4 +150,4 @@ export const readHandlesSemanticsFunction = new Function(
   '_first',
   'arg',
   `return arg.elements.map((element) => (${readSemanticsFunction.toString()})(element, arg.options));`,
-) as (first: Element, arg: { elements: Element[]; options: NodeReadOptions }) => RawNodeData[];
+) as (first: Element, arg: { elements: Element[]; options: NodeReadOptions }) => (RawNodeData | null)[];

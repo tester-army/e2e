@@ -49,7 +49,7 @@ import { captureObservation } from './observation-capture.ts';
 import { maskOptions, secureFieldMasks } from './observe.ts';
 import { connectionAbort } from './operation-budget.ts';
 import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT } from './closed-shadow.ts';
-import { readHandlesSemanticsFunction, readManySemanticsFunction, SECURE_FIELD_SELECTOR } from './read-node.ts';
+import { readHandlesSemanticsFunction, readManySemanticsFunction, SECURE_FIELD_SELECTOR, type RawNodeData } from './read-node.ts';
 import { httpCredentials, installSiteHeaders, lowercaseNames } from './protected-app.ts';
 import { RefRegistry } from './refs.ts';
 import {
@@ -561,13 +561,23 @@ export class PlaywrightSurface {
           displayValue !== null || name !== null
             ? ((await projected.locator.elementHandles()) as ElementHandle<Element>[])
             : null;
+        /** Disposes every handle this locate took, on the paths that hand none of them out. */
+        const releaseHandles = (): void => {
+          for (const handle of handles ?? []) void handle.dispose().catch(() => undefined);
+        };
         const first = handles?.[0];
-        const raws =
+        const reads =
           handles === null
             ? await projected.locator.evaluateAll(readManySemanticsFunction, readOptions)
             : first === undefined
               ? []
               : await first.evaluate(readHandlesSemanticsFunction, { elements: handles, options: readOptions });
+        // A match the page replaced between the query and the read comes back null; re-resolve the set.
+        const raws = reads.filter((raw): raw is RawNodeData => raw !== null);
+        if (raws.length !== reads.length) {
+          releaseHandles();
+          throw new EngineError('NODE_STALE', 'a match was replaced while it was read', { retryable: true });
+        }
         const candidates = raws
           .map((raw, index) => ({ raw, index }))
           .filter(({ raw }) => !(projected.visible && raw.states.hidden));
@@ -592,11 +602,11 @@ export class PlaywrightSurface {
                   (await projected.locator.nth(index).filter(options).count()) > 0,
               );
         if (currentOperation.signal.aborted) {
-          for (const handle of handles ?? []) void handle.dispose().catch(() => undefined);
+          releaseHandles();
           throw cancelled('locate cancelled');
         }
         try { session.check(token); } catch (cause) {
-          for (const handle of handles ?? []) void handle.dispose().catch(() => undefined);
+          releaseHandles();
           throw cause;
         }
         if (handles !== null) {

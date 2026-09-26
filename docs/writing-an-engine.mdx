@@ -183,7 +183,11 @@ Use `info.env` for spawned processes. Return environment additions from
 an expression. Assign ids that stay unique for the UI's lifetime and keep
 the root id stable. The runner assigns revisions and checks staleness.
 When `perform` receives `{ id, revision }`, look up the id and throw
-`NODE_STALE` if the node no longer exists.
+`NODE_STALE` if the node no longer exists. When a match leaves the UI while
+`locate` reads it, throw a retryable `NODE_STALE` too, never a node read from
+what is gone: a removed element reports no size, and a node read from it would
+pass `toBeHidden` while its replacement is on screen. The runner re-resolves
+within the caller's deadline.
 
 Limit snapshot size if the platform can return an unbounded tree. Set
 `truncated` when the limit cuts off nodes so the runner knows the listing
