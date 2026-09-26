@@ -114,10 +114,17 @@ The redactor matches each registered value character by character, in every
 spelling a serializer gives a character: as is; JSON-escaped once or twice,
 including `\uXXXX` escapes in either hex case; as an HTML character
 reference, named, decimal, or hex; percent-encoded in either hex case,
-with `+` for a space; and a double quote doubled, as CSV writes it. It
-retains old values after a secret rotates, and never rewrites a marker it
-wrote, so text that passes it twice reads as text that passed once. Secret
-values are excluded from cache entries, model input, and reports.
+with `+` for a space; and a double quote doubled, as CSV writes it. Each
+character also matches in either case, including full and locale-specific
+mappings (`ß` as `SS`, `i` as `İ`), so a value a CSS `text-transform`
+upper-cases, lower-cases, or capitalizes is still caught. A whitespace run
+inside the value also matches the one space a text reader collapses it to, and
+a value with whitespace at either end also matches trimmed, so a multi-line
+value shown as one line is caught too. Redaction only rewrites what the runner
+reports; assertions still compare the text the page shows. It retains old
+values after a secret rotates, and never rewrites a marker it wrote, so text
+that passes it twice reads as text that passed once. Secret values are
+excluded from cache entries, model input, and reports.
 
 A static value shorter than 6 characters (code points) is `INVALID_CONFIG`,
 and a provider returning one fails the fill. Every occurrence of a value
@@ -142,6 +149,10 @@ hook; its console output reaches the runner's streams as written.
   a hash, is a different string and passes through.
 - A value the app renders in another Unicode normalization form, decomposed
   accents where the secret has composed ones, passes through.
+- A whitespace run in the value stands for one whitespace character, so text
+  that widens it to several, or drops it, passes through. A value that is
+  shorter than 6 characters once trimmed is only matched with its edge
+  whitespace.
 - A value spread over several nodes, one character per cell as a PIN pad
   shows it, is not one string in the tree and passes through.
 - A Playwright trace from a tainted session is rewritten before it is kept.

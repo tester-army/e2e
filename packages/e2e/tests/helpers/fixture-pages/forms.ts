@@ -224,6 +224,31 @@ export const FORM_PAGES: Record<string, PageRenderer> = {
   </script>
 </body>
 </html>`),
+  // A page that echoes what was typed, as a profile page shows a saved token:
+  // as typed, under CSS case transforms, and in a <pre> that keeps line
+  // breaks, so a reader's transformed or collapsed text holds the value in a
+  // form other than the one filled.
+  '/echo': constant(`<!doctype html>
+<html>
+<head><title>Echo</title></head>
+<body>
+  <label>Token <input id="token" type="text" oninput="render()" /></label>
+  <label>Note <textarea id="note" oninput="render()"></textarea></label>
+  <p data-testid="plain">nothing yet</p>
+  <p data-testid="upper" style="text-transform: uppercase">nothing yet</p>
+  <p data-testid="lower" style="text-transform: lowercase">nothing yet</p>
+  <pre data-testid="note-echo">nothing yet</pre>
+  <script>
+    function render() {
+      const token = document.getElementById('token').value;
+      for (const id of ['plain', 'upper', 'lower']) {
+        document.querySelector('[data-testid="' + id + '"]').textContent = token;
+      }
+      document.querySelector('[data-testid="note-echo"]').textContent = document.getElementById('note').value;
+    }
+  </script>
+</body>
+</html>`),
   '/unanchored': constant(UNANCHORED_PAGE),
   '/repeats': (_state, url) => renderRepeats(url.searchParams.get('reverse') === '1'),
   '/twins-form': (_state, url) => renderTwinsForm(url.searchParams.get('variant')),

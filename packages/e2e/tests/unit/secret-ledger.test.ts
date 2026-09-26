@@ -89,14 +89,89 @@ describe('encoded forms', () => {
     expect(new SecretLedger([['path', 'a/b/c']]).redact('{"p":"a\\/b\\/c"}')).toBe('{"p":"<secret:path>"}');
   });
 
-  it('spells letters one way only: a value differing in case is not the secret', () => {
-    expect(new SecretLedger([['plain', 'Hunter2']]).redact('hunter2 HUNTER2 Hunter2')).toBe('hunter2 HUNTER2 <secret:plain>');
-  });
-
   it('measures the longest spelling a registered value can take', () => {
     expect(new SecretLedger().maxFormLength).toBe(0);
     expect(new SecretLedger([['plain', 'hunter2']]).maxFormLength).toBe(7);
     expect(new SecretLedger([['quoted', 'a"b']]).maxFormLength).toBe(1 + '\\\\u0022'.length + 1);
+  });
+});
+
+describe('case-transformed forms', () => {
+  const hex = 'Tok-9f3aC0DeB1e7';
+
+  it('redacts the value upper-cased, lower-cased, and capitalized, as CSS text-transform renders it', () => {
+    const ledger = new SecretLedger([['token', hex]]);
+    expect(ledger.redact(`plain ${hex}`)).toBe('plain <secret:token>');
+    expect(ledger.redact(`upper ${hex.toUpperCase()}`)).toBe('upper <secret:token>');
+    expect(ledger.redact(`lower ${hex.toLowerCase()}`)).toBe('lower <secret:token>');
+    expect(ledger.redact('capitalized Tok-9f3ac0deb1e7')).toBe('capitalized <secret:token>');
+  });
+
+  it('redacts full Unicode case mappings, locale-specific ones, and a sigma lower-cased at the end of a word', () => {
+    const ledger = new SecretLedger([
+      ['german', 'straße-ǆungla'],
+      ['turkish', 'kilit-sifre'],
+      ['greek', 'ΚΛΕΙΔΙΣ-77'],
+    ]);
+    expect(ledger.redact('STRASSE-ǄUNGLA Strasse-ǅungla')).toBe('<secret:german> <secret:german>');
+    expect(ledger.redact('KİLİT-SİFRE')).toBe('<secret:turkish>');
+    expect(ledger.redact('κλειδις-77 κλειδισ-77 Κλειδις-77 κλειδι-77')).toBe(
+      '<secret:greek> <secret:greek> <secret:greek> κλειδι-77',
+    );
+  });
+
+  it('redacts a case variant in its encoded spellings', () => {
+    const ledger = new SecretLedger([['accent', 'café-crème-42']]);
+    expect(ledger.redact('CAF&#201;-CR&#xC8;ME-42')).toBe('<secret:accent>');
+    expect(ledger.redact('{"v":"CAF\\u00C9-CR\\u00c8ME-42"}')).toBe('{"v":"<secret:accent>"}');
+  });
+
+  it('leaves text that differs in more than case alone', () => {
+    const ledger = new SecretLedger([['token', hex]]);
+    expect(ledger.redact('TOK-9F3AC0DEB1E8 tok 9f3ac0deb1e7')).toBe('TOK-9F3AC0DEB1E8 tok 9f3ac0deb1e7');
+  });
+});
+
+describe('whitespace-normalized forms', () => {
+  const note = 'first line 4417\nsecond  line\tQx';
+
+  it('redacts a multi-line value with each whitespace run collapsed to one space, as a text reader shows it', () => {
+    const ledger = new SecretLedger([['note', note]]);
+    expect(ledger.redact(`<pre>${note}</pre>`)).toBe('<pre><secret:note></pre>');
+    expect(ledger.redact('text "first line 4417 second line Qx"')).toBe('text "<secret:note>"');
+    expect(ledger.redact(JSON.stringify({ actual: 'first line 4417 second line Qx' }))).toBe('{"actual":"<secret:note>"}');
+    expect(ledger.redact(JSON.stringify({ actual: note }))).toBe('{"actual":"<secret:note>"}');
+  });
+
+  it('matches one Unicode whitespace character, and the space in its encoded spellings, for a run', () => {
+    const ledger = new SecretLedger([['phrase', 'correct horse battery']]);
+    expect(ledger.redact('correct horse battery')).toBe('<secret:phrase>');
+    expect(ledger.redact('?q=correct+horse%20battery')).toBe('?q=<secret:phrase>');
+    expect(ledger.redact('correct horse\nbattery')).toBe('<secret:phrase>');
+  });
+
+  it('redacts a value with leading or trailing whitespace trimmed, and keeps the edge whitespace the text has', () => {
+    const ledger = new SecretLedger([['padded', '  padded-secret-99\n']]);
+    expect(ledger.redact('value: padded-secret-99.')).toBe('value: <secret:padded>.');
+    expect(ledger.redact('x  padded-secret-99\ny')).toBe('x<secret:padded>y');
+  });
+
+  it('adds no trimmed form shorter than the shortest secret, so it cannot take ordinary text', () => {
+    const ledger = new SecretLedger([['short', '     ab']]);
+    expect(ledger.redact('ab cab')).toBe('ab cab');
+    expect(ledger.redact('x     ab')).toBe('x<secret:short>');
+  });
+
+  it('leaves whitespace runs the value does not have, and a value whose words are glued together', () => {
+    const ledger = new SecretLedger([['phrase', 'correct horse battery']]);
+    expect(ledger.redact('correct  horse battery correcthorse battery')).toBe('correct  horse battery correcthorse battery');
+  });
+
+  it('holds a value whose whitespace a line break can stand for across lines of a stream', () => {
+    const stream = new StreamRedactor(new SecretLedger([['phrase', 'correct horse battery']]));
+    const first = stream.push('said correct\n');
+    expect(first).toBe('');
+    expect(first + stream.push('horse battery\n') + stream.flush()).toBe('said <secret:phrase>\n');
   });
 });
 
@@ -214,7 +289,7 @@ describe('StreamRedactor', () => {
   });
 
   describe('a marker split across writes', () => {
-    const short = (): SecretLedger => new SecretLedger([['apiKey', 'api000']]);
+    const short = (): SecretLedger => new SecretLedger([['apiKey', 'apq000']]);
 
     it('holds an unfinished marker until it closes, so no piece of it is redacted on its own', () => {
       const stream = new StreamRedactor(short());

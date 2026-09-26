@@ -1,6 +1,7 @@
 /** Runner-side secret redaction. */
 
 import { StringDecoder } from 'node:string_decoder';
+import { MIN_SECRET_LENGTH, secretLength } from '../config/secrets.ts';
 import { escapeRegexpChar } from './regexp.ts';
 
 /**
@@ -42,9 +43,12 @@ const MARKER_NAME = /^[A-Za-z0-9_.-]*$/;
 
 /**
  * One pattern over every non-empty value, longest value first. A value
- * matches character by character, each in any spelling a serializer gives it,
- * so one pattern covers a JSON body, a serialized page, a URL, and the raw
- * value alike, and a mixed or unusual spelling needs no form of its own.
+ * matches character by character, each in any case and in any spelling a
+ * serializer gives it, so one pattern covers a JSON body, a serialized page, a
+ * URL, the raw value, and the value as a text reader or a CSS `text-transform`
+ * shows it alike, and a mixed or unusual spelling needs no form of its own.
+ * The `i` flag folds what the per-character case forms leave out: a sigma
+ * lower-cased at the end of a word, a titlecase digraph.
  */
 function compile(values: readonly (readonly [string, string])[]): Compiled {
   const entries = values.filter(([, value]) => value.length > 0).toSorted((a, b) => b[1].length - a[1].length);
@@ -54,7 +58,7 @@ function compile(values: readonly (readonly [string, string])[]): Compiled {
   const markers = entries.map(([name]) => `${MARKER_OPEN}${name}>`);
   const known = markerPattern(entries.map(([name]) => name));
   const patterns = entries.map(([, value]) => valuePattern(value));
-  const pattern = new RegExp(patterns.map(({ source }) => `(${source})`).join('|'), 'g');
+  const pattern = new RegExp(patterns.map(({ source }) => `(${source})`).join('|'), 'gi');
   const rewrite = (text: string): string =>
     text.replace(pattern, (_occurrence: string, ...rest: unknown[]) => {
       const matched = rest.slice(0, markers.length).findIndex((group) => group !== undefined);
@@ -66,7 +70,7 @@ function compile(values: readonly (readonly [string, string])[]): Compiled {
     pattern,
     maxFormLength: Math.max(...patterns.map(({ maxLength }) => maxLength)),
     maxMarkerLength: Math.max(...markers.map((marker) => marker.length)),
-    spansLines: entries.some(([, value]) => value.includes('\n')),
+    spansLines: entries.some(([, value]) => value.includes('\n') || /\s/.test(value.trim())),
   };
 }
 
@@ -76,16 +80,90 @@ function markerPattern(names: readonly string[]): RegExp {
   return new RegExp(`(<secret:(?:${alternatives})>)`);
 }
 
-/** The source matching `value` in every spelling, and the most text one match of it can span. */
-function valuePattern(value: string): { source: string; maxLength: number } {
+interface Pattern {
+  readonly source: string;
+  /** The most text one match can span. */
+  readonly maxLength: number;
+}
+
+/**
+ * The source matching `value` in every spelling, and the most text one match
+ * of it can span. A whitespace run inside the value also matches the one
+ * character a reader collapses it to (`normalizeText`), and a value with
+ * whitespace at either end also matches trimmed, as the reader trims it,
+ * unless trimming leaves it shorter than a secret may be.
+ */
+function valuePattern(value: string): Pattern {
+  const whole = runsPattern(value);
+  const trimmed = value.trim();
+  if (trimmed === value || secretLength(trimmed) < MIN_SECRET_LENGTH) return whole;
+  return { source: `${whole.source}|${runsPattern(trimmed).source}`, maxLength: whole.maxLength };
+}
+
+/** `text` character by character, each whitespace run between two other characters matching as `whitespaceRun` reads it. */
+function runsPattern(text: string): Pattern {
+  const pieces = text.split(/(\s+)/);
   let source = '';
   let maxLength = 0;
-  for (const ch of value) {
-    const options = spellings(ch);
-    source += `(?:${options.map(literal).join('|')})`;
-    maxLength += options[0]?.length ?? 1;
+  pieces.forEach((piece, index) => {
+    const inner = index % 2 === 1 && pieces[index - 1] !== '' && pieces[index + 1] !== '';
+    const part = inner ? whitespaceRun(piece) : sequence(piece);
+    source += part.source;
+    maxLength += part.maxLength;
+  });
+  return { source, maxLength };
+}
+
+/**
+ * A whitespace run: as written, or as the one character normalization leaves
+ * of it, a space in any of its spellings or any other whitespace character.
+ */
+function whitespaceRun(run: string): Pattern {
+  const written = sequence(run);
+  const space = spellings(' ');
+  return {
+    source: `(?:${written.source}|${space.map(literal).join('|')}|\\s)`,
+    maxLength: Math.max(written.maxLength, space[0]?.length ?? 1),
+  };
+}
+
+/** `text` character by character, each in every case form and spelling. */
+function sequence(text: string): Pattern {
+  let source = '';
+  let maxLength = 0;
+  for (const ch of text) {
+    const forms = caseForms(ch).map((form) => {
+      const options = [...form].map(spellings);
+      return {
+        source: options.map((option) => `(?:${option.map(literal).join('|')})`).join(''),
+        maxLength: options.reduce((sum, option) => sum + (option[0]?.length ?? 1), 0),
+      };
+    });
+    source += forms.length === 1 ? forms[0]!.source : `(?:${forms.map((form) => form.source).join('|')})`;
+    maxLength += Math.max(...forms.map((form) => form.maxLength));
   }
   return { source, maxLength };
+}
+
+/** Locales whose case mappings differ from the default: the dotted and dotless i of Turkish and Azeri, Lithuanian's retained dot. */
+const CASE_LOCALES = ['tr', 'az', 'lt'];
+
+/**
+ * The strings one character can become when text is upper- or lower-cased,
+ * longest first: the character itself, the full mappings, so `ß` is also
+ * `SS`, and the locale-specific ones a `lang` attribute selects, so `i` is
+ * also `İ`. Each form is spelled on its own, so a case variant's character
+ * reference or escape is covered too.
+ */
+function caseForms(ch: string): string[] {
+  return [
+    ...new Set([
+      ch,
+      ch.toUpperCase(),
+      ch.toLowerCase(),
+      ...CASE_LOCALES.flatMap((locale) => [ch.toLocaleUpperCase(locale), ch.toLocaleLowerCase(locale)]),
+    ]),
+  ].toSorted((a, b) => b.length - a.length);
 }
 
 const NAMED_REFERENCES: Readonly<Record<string, readonly string[]>> = {
