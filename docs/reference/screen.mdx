@@ -343,7 +343,7 @@ await screen.getByLabel('City').pressSequentially('War', { delay: 50 });
 
 `textContent`, `inputValue`, `getAttribute`, and `allTextContents` throw
 `POLICY_DENIED` on a secure field, and so do `expect(locator).toHaveValue`,
-`toHaveText`, and `toContainText`.
+`toHaveText`, `toContainText`, and `toHaveAttribute`.
 `isEnabled`, `isDisabled`, `isChecked`, and `boundingBox` are allowed there.
 
 `isHidden` is `!isVisible()` and `isDisabled` is `!isEnabled()`, with the

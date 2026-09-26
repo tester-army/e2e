@@ -40,11 +40,12 @@ interface MatcherSpec {
    */
   readonly evaluableNode?: (node: SemanticNode) => boolean;
   /**
-   * Refuses a sample the matcher must not judge at all; what it throws ends
-   * the poll, negated or not, before the predicate or the failure message
-   * reads the sample.
+   * The matcher reads what an engine withholds on a secure field, its value,
+   * text, or attributes; a name is never withheld. A secure node in the sample
+   * is denied like the locator getters, negated or not, before the predicate
+   * or the failure message reads it: withheld is redacted, not empty or absent.
    */
-  readonly refuse?: (sample: Sample) => void;
+  readonly readsWithheld?: boolean;
   readonly predicate: (sample: Sample) => boolean;
   readonly describeExpected: string;
   readonly observed: (sample: Sample) => string;
@@ -131,7 +132,9 @@ class AsyncExpectationImpl implements AsyncExpectation {
         evaluate: async () => {
           const sample = await this.sample(spec, deadline);
           lastSample = sample;
-          spec.refuse?.(sample);
+          if (spec.readsWithheld === true) {
+            denySecureRead(sample.node === null ? sample.nodes : [sample.node], this.label);
+          }
           if (!this.conditionEvaluable(spec, sample)) return undefined;
           return spec.predicate(sample);
         },
@@ -165,18 +168,6 @@ class AsyncExpectationImpl implements AsyncExpectation {
     if (spec.wholeSet !== undefined) return true;
     if (sample.node === null) return spec.evaluableWithoutNode === true;
     return spec.evaluableNode?.(sample.node) ?? true;
-  }
-
-  /**
-   * The refusal a value or text matcher polls with: the engine withholds both
-   * on a secure field, and judged against `''`, a filled password field would
-   * pass as cleared. The name matcher has none, a name is never withheld.
-   */
-  private secureRefusal(def: TextMatcherDef): Pick<MatcherSpec, 'refuse'> {
-    if (def.field === 'name') return {};
-    return {
-      refuse: (sample) => denySecureRead(sample.node === null ? sample.nodes : [sample.node], this.label),
-    };
   }
 
   private async sample(spec: MatcherSpec, deadline: Deadline): Promise<Sample> {
@@ -218,7 +209,7 @@ class AsyncExpectationImpl implements AsyncExpectation {
     return this.poll(
       {
         name,
-        ...this.secureRefusal(def),
+        readsWithheld: def.field !== 'name',
         evaluableNode: (node) => readField(def, node) !== undefined,
         predicate: (sample) => {
           const actual = sample.node === null ? undefined : readField(def, sample.node);
@@ -254,7 +245,7 @@ class AsyncExpectationImpl implements AsyncExpectation {
     return this.poll(
       {
         name,
-        ...this.secureRefusal(def),
+        readsWithheld: def.field !== 'name',
         wholeSet: 'read',
         predicate: (sample) =>
           sample.nodes.length === patterns.length &&
@@ -361,6 +352,7 @@ class AsyncExpectationImpl implements AsyncExpectation {
     return this.poll(
       {
         name: 'toHaveAttribute',
+        readsWithheld: true,
         predicate: (sample) => {
           if (sample.node === null) return false;
           const attribute = attributeOf(sample.node, name);

@@ -117,7 +117,11 @@ the browser applies, not the attribute alone: a control inside a
 `<legend>`, and `aria-disabled="true"` on an ancestor disables the widgets
 below it until an `aria-disabled="false"` cuts the chain, the same reading
 Playwright's `toBeDisabled` gives. `toHaveAttribute(name, value)`
-compares like `toHaveText`, after normalization.
+compares like `toHaveText`, after normalization. On a secure field, such as a
+password input, `toHaveAttribute` throws `POLICY_DENIED` like
+`getAttribute()`, for every attribute name and negated too: the field's
+`value` attribute is withheld, so reading it as absent would pass
+`not.toHaveAttribute('value')` on a password field that has one.
 
 `toBeAttached` passes once one match exists, hidden or shown, where
 `toBeVisible` needs a shown one. Negated, it passes once nothing matches.

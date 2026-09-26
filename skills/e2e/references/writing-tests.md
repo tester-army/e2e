@@ -200,8 +200,9 @@ Reads resolve once and do not retry: `textContent()`, `inputValue()`,
 `nth(i)` locator per current match and `allTextContents()` every match's
 text; both are `[]` for zero matches. `waitFor({ state?: 'visible' |
 'hidden', timeout? })` waits for a state. When a value has to settle, use
-`expect` instead of a read. Reading a password field's value is
-`POLICY_DENIED`.
+`expect` instead of a read. Reading a password field's value or
+attributes is `POLICY_DENIED`, and so is `toHaveAttribute` on one, negated
+too.
 
 ```ts
 for (const row of await screen.getByRole('row').all()) {

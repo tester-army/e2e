@@ -41,8 +41,9 @@ export function attributeOf(node: SemanticNode, name: string): string | null {
 }
 
 /**
- * Denies reading a value or text when any node is a secure field: the engine
- * withholds both there, so what reads as missing is redacted, not empty.
+ * Denies reading a value, text, or attribute when any node is a secure field:
+ * the engine withholds them there, so what reads as missing is redacted, not
+ * empty or absent.
  */
 export function denySecureRead(nodes: readonly SemanticNode[], label: string): void {
   if (nodes.some((node) => node.states?.secure === true)) {

@@ -211,6 +211,27 @@ test('a textarea value is never normalized to match', async ({ app, screen }) =>
   await expect(screen.getByLabel('Notes')).toHaveValue('line1 line2');
 });
 
+test('toHaveAttribute reads the value attribute of plain fields', async ({ app, screen }) => {
+  await app.open('/value-attributes');
+  await expect(screen.getByLabel('Plain')).toHaveAttribute('value', 'marker-5e0c');
+  await expect(screen.getByLabel('Blank')).not.toHaveAttribute('value');
+});
+
+test('toHaveAttribute never judges a secure field', async ({ app, screen }) => {
+  await app.open('/value-attributes');
+  await expect(screen.getByLabel('Secret')).toHaveAttribute('value');
+});
+
+test('a negated toHaveAttribute never judges a secure field', async ({ app, screen }) => {
+  await app.open('/value-attributes');
+  await expect(screen.getByLabel('Secret')).not.toHaveAttribute('value');
+});
+
+test('a negated toHaveAttribute fails on a plain field that holds the same marker', async ({ app, screen }) => {
+  await app.open('/value-attributes');
+  await expect(screen.getByLabel('Plain')).not.toHaveAttribute('value', { timeout: 500 });
+});
+
 test('secure fields refuse value reads', async ({ app, screen }) => {
   await app.open();
   await screen.getByLabel('Password').fill('hunter2');
@@ -452,6 +473,7 @@ describe('web platform integration', () => {
     const shouldPass = [
       'deterministic queries and reads',
       'a textarea value compares raw',
+      'toHaveAttribute reads the value attribute of plain fields',
       'role vocabulary: tabs, menus, progress, toolbars, images',
       'actions and state',
       'assertions poll until the app settles',
@@ -505,6 +527,22 @@ describe('web platform integration', () => {
     expect(result.status).toBe('failed');
     expect(result.attempts[0]!.error?.code).toBe('ASSERTION_FAILED');
     expect(result.attempts[0]!.error?.message).toContain('observed: value "line1\\n\\nline2  "');
+  });
+
+  it('denies toHaveAttribute on a password field that has a value attribute with POLICY_DENIED, negated too', () => {
+    // The engine withholds a secure field's value attribute, so the matcher
+    // must not read the gap as absent and pass the negated form.
+    for (const title of ['toHaveAttribute never judges a secure field', 'a negated toHaveAttribute never judges a secure field']) {
+      const result = resultByTitle(outcome, title);
+      expect(result.status, title).toBe('failed');
+      expect(result.attempts[0]!.error?.code, title).toBe('POLICY_DENIED');
+      expect(result.attempts[0]!.error?.message, title).toContain('reading values from a secure field is denied');
+      expect(JSON.stringify(result), title).not.toContain('marker-5e0c');
+    }
+    const control = resultByTitle(outcome, 'a negated toHaveAttribute fails on a plain field that holds the same marker');
+    expect(control.status).toBe('failed');
+    expect(control.attempts[0]!.error?.code).toBe('ASSERTION_FAILED');
+    expect(control.attempts[0]!.error?.message).toContain('observed: attribute "value" "marker-5e0c"');
   });
 
   it('denies secure value reads with POLICY_DENIED', () => {

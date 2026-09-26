@@ -249,6 +249,17 @@ line2  </textarea>
   </script>
 </body>
 </html>`),
+  // One `value` attribute on a password input, the same on a text input, and
+  // a text input without one.
+  '/value-attributes': constant(`<!doctype html>
+<html>
+<head><title>Value attributes</title></head>
+<body>
+  <input aria-label="Secret" type="password" value="marker-5e0c" />
+  <input aria-label="Plain" type="text" value="marker-5e0c" />
+  <input aria-label="Blank" type="text" />
+</body>
+</html>`),
   '/downloads': constant(
     '<!doctype html><html><head><title>Downloads</title></head><body><h1>Downloads</h1>' +
       '<a href="/report.csv" download>Download report</a></body></html>',

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { SemanticNode } from '../../src/engine/surface.ts';
 import { expect as expectFixture } from '../../src/expect/index.ts';
 import { createScreenFixture } from '../helpers/screen-fixture.ts';
 
@@ -17,6 +18,47 @@ describe('attribute and focus expectations', () => {
     await expectFixture(locator).toHaveAttribute('class', /active/);
     await expectFixture(locator).not.toHaveAttribute('hidden');
     await expectFixture(locator).toBeFocused();
+  });
+
+  it('refuses to judge an attribute of a secure field, whose value attribute is withheld, negated or not', async () => {
+    const secure: SemanticNode = {
+      ref: { id: 'node-1', revision: '' },
+      role: 'textbox',
+      name: 'Password',
+      attributes: { type: 'password' },
+      states: { secure: true },
+    };
+    const locator = createScreenFixture([secure]).getByRole('textbox');
+    const denied = {
+      code: 'POLICY_DENIED',
+      category: 'configuration',
+      message: 'reading values from a secure field is denied: getByRole("textbox")',
+    };
+    await expect(locator.getAttribute('value')).rejects.toMatchObject(denied);
+    await expect(expectFixture(locator).toHaveAttribute('value')).rejects.toMatchObject(denied);
+    await expect(expectFixture(locator).not.toHaveAttribute('value')).rejects.toMatchObject(denied);
+    await expect(expectFixture(locator).toHaveAttribute('value', 'synthetic')).rejects.toMatchObject(denied);
+    await expect(expectFixture(locator).not.toHaveAttribute('value', 'synthetic')).rejects.toMatchObject(denied);
+    await expect(expectFixture(locator).toHaveAttribute('type', 'password')).rejects.toMatchObject(denied);
+  });
+
+  it('still judges the value attribute of a plain field and of one without it', async () => {
+    const screen = createScreenFixture([
+      { ref: { id: 'node-1', revision: '' }, role: 'textbox', name: 'Plain', attributes: { value: 'synthetic' } },
+      { ref: { id: 'node-2', revision: '' }, role: 'textbox', name: 'Blank', attributes: {} },
+    ]);
+    const plain = screen.getByRole('textbox', { name: 'Plain' });
+    const blank = screen.getByRole('textbox', { name: 'Blank' });
+    await expectFixture(plain).toHaveAttribute('value', 'synthetic');
+    await expectFixture(blank).not.toHaveAttribute('value');
+    await expect(expectFixture(plain).not.toHaveAttribute('value', { timeout: 50 })).rejects.toMatchObject({
+      code: 'ASSERTION_FAILED',
+      message: expect.stringContaining('observed: attribute "value" "synthetic"'),
+    });
+    await expect(expectFixture(blank).toHaveAttribute('value', { timeout: 50 })).rejects.toMatchObject({
+      code: 'ASSERTION_FAILED',
+      message: expect.stringContaining('observed: attribute "value" absent'),
+    });
   });
 });
 
