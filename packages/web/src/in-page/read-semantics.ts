@@ -392,16 +392,24 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    * page composes them: a `<slot>` reads what is assigned to it, and a host
    * reads its light children (a slotted one skipped, its slot reads it) and
    * then its shadow tree, so `<button>` whose text lives behind a shadow root
-   * is named by that text as Playwright's role selector names it.
+   * is named by that text as Playwright's role selector names it. Which light
+   * children are slotted is read from the root's slots, not from each child's
+   * `assignedSlot`: a closed root hides that property from the outside while
+   * the tracked root's slots still list their assigned nodes.
    */
   const contentChildrenOf = (el: Element): ChildNode[] => {
     if (el instanceof HTMLSlotElement) {
       const assigned = el.assignedNodes();
       if (assigned.length > 0) return assigned as ChildNode[];
     }
-    const own = Array.from(el.childNodes).filter((child) => (child as ChildNode & { assignedSlot?: unknown }).assignedSlot == null);
     const shadow = shadowRootOf(el);
-    return shadow === null ? own : own.concat(Array.from(shadow.childNodes));
+    if (shadow === null) return Array.from(el.childNodes);
+    const slotted = new Set<Node>();
+    for (const slot of Array.from(shadow.querySelectorAll('slot'))) {
+      for (const node of slot.assignedNodes()) slotted.add(node);
+    }
+    const own = Array.from(el.childNodes).filter((child) => !slotted.has(child));
+    return own.concat(Array.from(shadow.childNodes));
   };
 
   /**

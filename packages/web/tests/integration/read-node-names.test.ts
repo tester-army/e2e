@@ -3,6 +3,7 @@
 import { chromium, type Browser, type ElementHandle, type Page } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { SemanticNode } from 'e2e/engine';
+import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT } from '../../src/closed-shadow.ts';
 import { captureDocument } from '../../src/observation.ts';
 
 let browser: Browser;
@@ -282,6 +283,9 @@ describe('names from content and precedence', () => {
   });
 
   it('names every role accname allows from content, a shadow tree included, and a reset input by its value or default', async () => {
+    // The init script that records closed roots runs on a navigation; setContent alone is none.
+    await page.addInitScript(CLOSED_SHADOW_ROOTS_INIT_SCRIPT);
+    await page.goto('about:blank');
     await page.setContent(`
       <div role="checkbox" aria-checked="false" data-testid="checkbox">Remember me</div>
       <span role="radio" aria-checked="true" data-testid="radio">Monthly</span>
@@ -292,6 +296,7 @@ describe('names from content and precedence', () => {
       <div role="grid"><div role="row" data-testid="row"><div role="gridcell" data-testid="gridcell">A1</div></div></div>
       <x-button role="button" tabindex="0" data-testid="custom-button"><span slot="icon">*</span></x-button>
       <x-label role="button" tabindex="0" data-testid="slotted-button">Slotted</x-label>
+      <x-action role="button" tabindex="0" data-testid="closed-slotted-button">Save</x-action>
       <input type="reset" value="Clear" data-testid="reset-value">
       <input type="reset" data-testid="reset-default">
       <input type="submit" data-testid="submit-default">
@@ -300,6 +305,7 @@ describe('names from content and precedence', () => {
       <script>
         document.querySelector('x-button').attachShadow({ mode: 'open' }).innerHTML = '<slot name="icon"></slot><span>Custom</span>';
         document.querySelector('x-label').attachShadow({ mode: 'open' }).innerHTML = '<b>[</b><slot></slot><b>]</b>';
+        document.querySelector('x-action').attachShadow({ mode: 'closed' }).innerHTML = '<b>[</b><slot></slot><b>]</b>';
       </script>
     `);
     const { tree } = await capture();
@@ -325,5 +331,10 @@ describe('names from content and precedence', () => {
       expect(byTestId.get(testId), testId).toMatchObject({ role, name });
       expect(await locatedTestId(role, name), name).toBe(testId);
     }
+    // A closed root's slot lists its assigned nodes while the light child's
+    // `assignedSlot` reads null from outside, so the slotted text is read once,
+    // at the slot. Playwright's role selector cannot see a closed root and
+    // names the host "Save", so there is no locator to compare against.
+    expect(byTestId.get('closed-slotted-button')).toMatchObject({ role: 'button', name: '[ Save ]' });
   });
 });
