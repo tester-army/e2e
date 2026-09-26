@@ -140,4 +140,20 @@ describe('an inert subtree', () => {
     expect(names).not.toContain('Behind the drawer');
     expect(await hiddenOf('#inert-save')).toEqual({ reader: false, playwright: false });
   });
+
+  it('lists nothing under an inert document root, and nothing slotted into an inert slot of a closed root', async () => {
+    await page.setContent('<!doctype html><html inert><body><button>Whole page</button></body></html>');
+    expect((await captureTree()).filter((node) => node.role === 'button')).toEqual([]);
+    await page.setContent(`
+      <inert-slot><button>Slotted</button></inert-slot>
+      <button>Outside</button>
+      <script>
+        customElements.define('inert-slot', class extends HTMLElement {
+          connectedCallback() { this.attachShadow({ mode: 'closed' }).innerHTML = '<div inert><slot></slot></div>'; }
+        });
+      </script>
+    `);
+    const buttons = (await captureTree()).filter((node) => node.role === 'button').map((node) => node.name);
+    expect(buttons).toEqual(['Outside']);
+  });
 });

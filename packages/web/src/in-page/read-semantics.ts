@@ -671,18 +671,28 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    * which is what lets the tree walk stop there. A box with no size is not in
    * it: a zero-height `<html>` or wrapper still shows the fixed, absolute, and
    * overflowing descendants laid out past its edges, so the walk goes on
-   * through it and only the element itself stays unlisted. An `inert`
-   * subtree takes no input and is hidden from assistive technology, as
-   * Chrome's tree drops it, though it still paints: listing it would hand
-   * the agent controls that ignore every action.
+   * through it and only the element itself stays unlisted. An inert element
+   * is in it too (`isInert`).
    */
   const hidesSubtree = (el: Element, style: CSSStyleDeclaration | undefined): boolean =>
     el.getAttribute('aria-hidden') === 'true' ||
-    el.hasAttribute('inert') ||
+    isInert(el, style) ||
     style === undefined ||
     style.display === 'none' ||
     (style.display !== 'contents' && style.visibility !== 'visible') ||
     isInClosedDetails(el);
+
+  /**
+   * Inert content takes no input and is hidden from assistive technology, as
+   * Chrome's tree drops it, though it still paints: listing it would hand the
+   * agent controls that ignore every action. Chromium computes the inherited
+   * `interactivity: inert`, which follows the flat tree, so a light child
+   * slotted into an inert slot of a closed root counts; the attribute covers a
+   * browser that does not compute it. A modal dialog's inertness of the rest
+   * of the page is not in the style and stays listed.
+   */
+  const isInert = (el: Element, style: CSSStyleDeclaration | undefined): boolean =>
+    el.hasAttribute('inert') || style?.getPropertyValue('interactivity') === 'inert';
 
   /** Smallest side, in CSS pixels, an empty box must have to be worth reporting. */
   const MIN_BOX_SIDE = 12;
@@ -1131,6 +1141,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
   // The root is the document the screen shows, listed whatever its own box: a
   // page of fixed controls leaves `<html>` with no height of its own.
   nodes[include(element, -1)]!.states.hidden = false;
+  if (isInert(element, styleOf(element))) return { nodes, elements, ids, truncated } as SemanticResult<Mode>;
   for (const child of Array.from(element.children)) walk(child, 0);
 
   return { nodes, elements, ids, truncated } as SemanticResult<Mode>;

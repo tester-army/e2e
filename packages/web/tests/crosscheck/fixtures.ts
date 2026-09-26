@@ -151,6 +151,7 @@ export const FIXTURE_PAGES: readonly FixturePage[] = [
       <div hidden><button>Hidden attribute</button></div>
       <button style="position:absolute;left:-9999px">Off screen</button>
       <div inert><button>Inert</button></div>
+      <button>Save <span inert>draft</span></button>
       <button>Shown</button>
     `,
   },
