@@ -21,12 +21,13 @@ interface FakeStream extends WordmarkStream {
   readonly writes: string[];
 }
 
-function stream(options: { tty?: boolean; columns?: number; depth?: number } = {}): FakeStream {
+function stream(options: { tty?: boolean; columns?: number; rows?: number; depth?: number } = {}): FakeStream {
   const writes: string[] = [];
   return {
     writes,
     isTTY: options.tty ?? true,
     columns: options.columns ?? 100,
+    rows: options.rows ?? 40,
     write(text: string) {
       writes.push(text);
       return true;
@@ -53,9 +54,11 @@ describe('wordmarkBanner', () => {
 
 describe('playWordmark', () => {
   const sigintListeners = process.listenerCount('SIGINT');
+  const sigtermListeners = process.listenerCount('SIGTERM');
 
   afterEach(() => {
     expect(process.listenerCount('SIGINT')).toBe(sigintListeners);
+    expect(process.listenerCount('SIGTERM')).toBe(sigtermListeners);
   });
 
   it('writes nothing to a stream that is not a terminal', async () => {
@@ -70,6 +73,12 @@ describe('playWordmark', () => {
       await playWordmark(out, options);
       expect(out.writes).toEqual([`${REST.join('\n')}\n`]);
     }
+  });
+
+  it('prints the wordmark at rest on a terminal too short to repaint it in place', async () => {
+    const short = stream({ rows: 10 });
+    await playWordmark(short, { env: {} });
+    expect(short.writes).toEqual([`${REST.join('\n')}\n`]);
   });
 
   it('writes the word in over a second or so, repainting in place with a dim edge behind the pen, and leaves it at rest with the cursor shown', async () => {

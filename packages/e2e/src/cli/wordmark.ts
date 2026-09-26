@@ -57,6 +57,8 @@ const BITMAP_WIDTH_PX = BITMAP[0]!.length;
 /** Columns the wordmark takes; a narrower terminal gets no wordmark. */
 const WORDMARK_WIDTH = BITMAP_WIDTH_PX / PIXELS_PER_CELL;
 const WORDMARK_PX = BITMAP.length;
+/** Terminal rows the wordmark takes. */
+const WORDMARK_ROWS = WORDMARK_PX / PIXELS_PER_CELL;
 
 const FRAME_MS = 33;
 /** How fast the pen travels along a letter, in bitmap pixels per second. */
@@ -181,6 +183,7 @@ type Cell = 'solid' | 'dim';
 export interface WordmarkStream {
   readonly isTTY?: boolean | undefined;
   readonly columns?: number | undefined;
+  readonly rows?: number | undefined;
   write(text: string): unknown;
   getColorDepth?(): number;
 }
@@ -246,9 +249,14 @@ function fits(stream: WordmarkStream): boolean {
   return stream.isTTY === true && (stream.columns || 80) >= WORDMARK_WIDTH + 2;
 }
 
-/** Motion is for a person at a terminal: not for CI, whose terminal is a log, and not for a dumb terminal. */
-function animates(env: NodeJS.ProcessEnv): boolean {
-  return !envFlag(env, 'CI') && env.TERM !== 'dumb';
+/**
+ * Motion is for a person at a terminal: not for CI, whose terminal is a log,
+ * not for a dumb terminal, and not for a screen too short to repaint the word
+ * in place, where the cursor cannot climb back over rows that scrolled away.
+ * A terminal of unknown height counts as 24 rows.
+ */
+function animates(stream: WordmarkStream, env: NodeJS.ProcessEnv): boolean {
+  return !envFlag(env, 'CI') && env.TERM !== 'dumb' && (stream.rows || 24) > WORDMARK_ROWS;
 }
 
 /**
@@ -271,12 +279,12 @@ export interface PlayWordmarkOptions {
  * Writes the word on `stream` and resolves with it at rest on the screen and
  * the cursor restored. Where motion does not belong the wordmark is printed
  * at rest at once; a stream that is not a wide enough terminal gets nothing.
- * Ctrl-C during the writing restores the cursor and exits 130, as an
- * interrupted run does.
+ * Ctrl-C or SIGTERM during the writing restores the cursor and exits 130,
+ * as an interrupted run does.
  */
 export async function playWordmark(stream: WordmarkStream, options: PlayWordmarkOptions = {}): Promise<void> {
   if (!fits(stream)) return;
-  if (options.motion === false || !animates(options.env ?? process.env)) {
+  if (options.motion === false || !animates(stream, options.env ?? process.env)) {
     stream.write(`${rest().join('\n')}\n`);
     return;
   }
@@ -294,6 +302,7 @@ export async function playWordmark(stream: WordmarkStream, options: PlayWordmark
     process.exit(130);
   };
   process.once('SIGINT', interrupted);
+  process.once('SIGTERM', interrupted);
   stream.write(HIDE_CURSOR);
   try {
     const started = performance.now();
@@ -304,6 +313,7 @@ export async function playWordmark(stream: WordmarkStream, options: PlayWordmark
     paint(rest());
   } finally {
     process.off('SIGINT', interrupted);
+    process.off('SIGTERM', interrupted);
     stream.write(SHOW_CURSOR);
   }
 }
