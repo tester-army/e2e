@@ -53,6 +53,11 @@ describe('translatePwError', () => {
     const foreign = foreignTestError('LOCATOR_AMBIGUOUS');
     expect(translatePwError(foreign, 'read')).toBe(foreign);
   });
+
+  it('maps a timeout to a non-retryable OPERATION_TIMEOUT', () => {
+    const error = translatePwError(pwTimeout('waiting for locator'), 'observe');
+    expect(error).toMatchObject({ code: 'OPERATION_TIMEOUT', retryable: false });
+  });
 });
 
 describe('isTestErrorCode', () => {
@@ -73,11 +78,6 @@ describe('isTestErrorCode', () => {
     expect(isTestErrorCode(engine, 'NODE_STALE')).toBe(false);
     expect(isTestErrorCode(new ConfigurationError('LOCATOR_NOT_FOUND', 'config says'), 'LOCATOR_NOT_FOUND')).toBe(false);
     expect(isTestErrorCode('LOCATOR_NOT_FOUND', 'LOCATOR_NOT_FOUND')).toBe(false);
-  });
-
-  it('maps a timeout to a non-retryable OPERATION_TIMEOUT', () => {
-    const error = translatePwError(pwTimeout('waiting for locator'), 'observe');
-    expect(error).toMatchObject({ code: 'OPERATION_TIMEOUT', retryable: false });
   });
 });
 
