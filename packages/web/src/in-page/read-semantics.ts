@@ -135,8 +135,8 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
 
   const implicitRole = memoized((el: Element): string | null => {
     const explicit = el.getAttribute('role');
-    if (explicit !== null && explicit !== '') {
-      const first = explicit.split(/\s+/)[0] ?? null;
+    if (explicit !== null && explicit.trim() !== '') {
+      const first = explicit.trim().split(/\s+/)[0] ?? null;
       // The vocabulary spells ARIA's `img` as `image`.
       return first === 'img' ? 'image' : first;
     }
@@ -217,7 +217,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
       // A grid's cells are the interactive kind, as Playwright reads them.
       case 'td': {
         const table = el.closest('table');
-        const tableRole = table?.getAttribute('role')?.split(/\s+/)[0];
+        const tableRole = table?.getAttribute('role')?.trim().split(/\s+/)[0];
         return tableRole === 'grid' || tableRole === 'treegrid' ? 'gridcell' : 'cell';
       }
       case 'th': {
@@ -231,7 +231,8 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
       case 'input':
         // HTML-AAM: a text field with suggestions from a datalist is a combobox.
         // `list` resolves the attribute to a datalist element, null for anything else.
-        if ((el as HTMLInputElement).list !== null && ['', 'text', 'search', 'tel', 'url', 'email'].indexOf(type) !== -1) return 'combobox';
+        // The `type` property, not the attribute: a type the browser does not know is `text`.
+        if ((el as HTMLInputElement).list !== null && ['text', 'search', 'tel', 'url', 'email'].indexOf((el as HTMLInputElement).type) !== -1) return 'combobox';
         switch (type) {
           case 'button':
           case 'submit':
