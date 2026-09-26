@@ -19,11 +19,26 @@ function reportFile(content: string): string {
   return file;
 }
 
-/** A report whose results each name a test by `id` as their test id, on target `web` as agent `default`. */
-function report(results: readonly Record<string, unknown>[]): string {
+/**
+ * A report whose results each name a test by `id` as their test id and title,
+ * in `tests/a.e2e.ts` on target `web` as agent `default`, selected, unless a
+ * result says otherwise.
+ */
+function report(results: readonly Record<string, unknown>[], errors: readonly Record<string, unknown>[] = []): string {
   return JSON.stringify({
     schemaVersion: 'report-1',
-    run: { results: results.map((result) => ({ ...result, testId: result['id'], targetId: 'web', agent: 'default' })) },
+    run: {
+      results: results.map((result) => ({
+        testId: result['id'],
+        titlePath: [result['id']],
+        file: 'tests/a.e2e.ts',
+        targetId: 'web',
+        agent: 'default',
+        selected: true,
+        ...result,
+      })),
+      errors,
+    },
   });
 }
 
@@ -61,6 +76,39 @@ describe('readLastRun and lastFailedIds', () => {
     expect([...repeated]).toEqual([idOf('a')]);
   });
 
+  it('names every selected test in the scope of a failed suite hook, and nothing outside it', async () => {
+    const results = [
+      { id: 'in-scope', titlePath: ['teardown', 'in-scope'], status: 'passed' },
+      { id: 'nested', titlePath: ['teardown', 'inner', 'nested'], status: 'passed' },
+      { id: 'prefix-sibling', titlePath: ['teardown-other', 'prefix-sibling'], status: 'passed' },
+      { id: 'file-scope', titlePath: ['file-scope'], status: 'passed' },
+      { id: 'other-file', file: 'tests/b.e2e.ts', titlePath: ['teardown', 'other-file'], status: 'passed' },
+      { id: 'other-target', targetId: 'mobile', titlePath: ['teardown', 'other-target'], status: 'passed' },
+      { id: 'unselected', titlePath: ['teardown', 'unselected'], status: 'skipped', selected: false, skip: { cause: 'filtered', reason: 'grep' } },
+    ];
+    const afterAll = { code: 'HOOK_FAILED', phase: 'afterAll', scopeId: 'teardown', file: 'tests/a.e2e.ts', targetId: 'web' };
+    expect([...(await readLastFailed(reportFile(report(results, [afterAll]))))]).toEqual(['in-scope', 'nested'].map(idOf));
+
+    const fileScope = { ...afterAll, phase: 'beforeAll', scopeId: 'file' };
+    expect([...(await readLastFailed(reportFile(report(results, [fileScope]))))]).toEqual(
+      ['in-scope', 'nested', 'prefix-sibling', 'file-scope'].map(idOf),
+    );
+
+    // Control: a run error that is not a suite hook's selects nothing more.
+    const cleanup = { code: 'CLEANUP_TIMEOUT', phase: 'cleanup' };
+    expect((await readLastFailed(reportFile(report(results, [cleanup])))).size).toBe(0);
+  });
+
+  it('names every selected test for a failed suite hook whose scope the report does not say', async () => {
+    const results = [
+      { id: 'a', status: 'passed' },
+      { id: 'b', file: 'tests/b.e2e.ts', status: 'passed' },
+      { id: 'unselected', status: 'skipped', selected: false, skip: { cause: 'filtered', reason: 'grep' } },
+    ];
+    const unscoped = { code: 'HOOK_FAILED', phase: 'afterAll', scopeId: 'file' };
+    expect([...(await readLastFailed(reportFile(report(results, [unscoped]))))]).toEqual(['a', 'b'].map(idOf));
+  });
+
   it('is NO_LAST_RUN when no report exists, with the path and the way out', async () => {
     dir = mkdtempSync(path.join(os.tmpdir(), 'e2e-last-run-'));
     const missing = path.join(dir, 'report.json');
@@ -84,6 +132,8 @@ describe('readLastRun and lastFailedIds', () => {
       '{"schemaVersion":"report-1","run":{"results":[null]}}',
       '{"schemaVersion":"report-1","run":{"results":[{"id":"a"}]}}',
       '{"schemaVersion":"report-1","run":{"results":[{"id":"a","status":"skipped","skip":"later"}]}}',
+      '{"schemaVersion":"report-1","run":{"results":[]}}',
+      '{"schemaVersion":"report-1","run":{"results":[],"errors":[{"phase":1}]}}',
     ]) {
       await expect(readLastRun(reportFile(content)), content).rejects.toMatchObject({
         code: 'NO_LAST_RUN',

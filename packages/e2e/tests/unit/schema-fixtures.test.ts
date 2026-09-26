@@ -48,6 +48,17 @@ describe.each(schemas)('%s schema', (name) => {
       }
     });
 
+    it('lets a suite hook failure name its file and target, the file project-relative', () => {
+      const report = readJson('fixtures', 'report-v1.valid.json') as { run: { errors: Record<string, unknown>[] } };
+      const hook = { category: 'test', code: 'HOOK_FAILED', message: 'afterAll failed: teardown broke', retryable: false, phase: 'afterAll', scopeId: 'file' };
+      report.run.errors = [{ ...hook, file: 'tests/example.e2e.ts', targetId: 'web' }];
+      expect(validate(report)).toBe(true);
+      for (const bad of [{ file: '/abs/example.e2e.ts' }, { file: '../example.e2e.ts' }, { targetId: '' }]) {
+        report.run.errors = [{ ...hook, file: 'tests/example.e2e.ts', targetId: 'web', ...bad }];
+        expect(validate(report)).toBe(false);
+      }
+    });
+
     it('requires judgment evidence after a model call, while allowing capture failures before one', () => {
       const report = readJson('fixtures', 'report-v1.valid.json') as {
         run: { results: { attempts: { steps: { api: string; status: string; metrics: { modelCalls: number }; observationRevision?: string; explanation?: string }[] }[] }[] };

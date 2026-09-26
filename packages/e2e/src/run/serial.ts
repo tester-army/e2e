@@ -17,7 +17,7 @@ import { createAttemptArtifacts, sanitizePathSegment } from './artifacts.ts';
 import type { AttemptContext, ClosingRecord } from './execute.ts';
 import type { ArtifactSink } from './fixtures.ts';
 import type { StepRecord } from './steps.ts';
-import { findRegistered, type Realm, RealmManager } from './realm.ts';
+import { findRegistered, type FileRef, type Realm, RealmManager } from './realm.ts';
 import type { AttemptRecord, ResultRecord, ResultStatus, SerialAttemptRecord, SerialGroupRecord, SerialMemberRecord, FailedStatus } from './records.ts';
 import { isFailedStatus } from './records.ts';
 import { runWithRetries } from './retry.ts';
@@ -91,7 +91,7 @@ export interface SerialHost {
 export async function runSerialUnit(
   host: SerialHost,
   members: readonly TestTargetPair[],
-  absolutePath: string,
+  file: FileRef,
 ): Promise<SerialGroupRecord> {
   const first = members[0]!;
   const serialId = first.test.serialId!;
@@ -123,7 +123,7 @@ export async function runSerialUnit(
     first.options.retries + 1,
     host.interruptSignal,
     async (attemptIndex) => {
-      const attempt = await runSerialAttempt(host, members, absolutePath, attemptIndex);
+      const attempt = await runSerialAttempt(host, members, file, attemptIndex);
       group.attempts.push(attempt);
       for (const member of attempt.members) memberFinalStatus.set(member.testId, member);
       // A beforeAll failure is not retry-eligible: the
@@ -175,7 +175,7 @@ export async function runSerialUnit(
 async function runSerialAttempt(
   host: SerialHost,
   members: readonly TestTargetPair[],
-  absolutePath: string,
+  file: FileRef,
   attemptIndex: number,
 ): Promise<SerialAttemptRecord> {
   const attemptId = uuidv7();
@@ -213,7 +213,7 @@ async function runSerialAttempt(
 
   let realm: Realm;
   try {
-    realm = await host.realms.create(absolutePath);
+    realm = await host.realms.create(file);
   } catch (cause) {
     record.status = 'failed';
     record.error = serializeError(classifyError(cause), { phase: 'collection' });

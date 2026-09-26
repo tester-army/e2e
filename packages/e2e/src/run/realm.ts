@@ -11,7 +11,7 @@ import {
 import { DebugTrace } from '../internal/debug.ts';
 import { titlePathKey } from '../internal/ids.ts';
 import { withTimeout } from '../internal/time.ts';
-import type { CollectedTest } from '../collect/collect.ts';
+import type { CollectedFile, CollectedTest } from '../collect/collect.ts';
 import {
   collectModule,
   groupChain,
@@ -34,7 +34,12 @@ import type { RunError } from './records.ts';
  */
 type Scope = GroupNode | undefined;
 
+/** The test module a realm imports: the project-relative path its results carry, and where it is on disk. */
+export type FileRef = Pick<CollectedFile, 'file' | 'absolutePath'>;
+
 export interface Realm {
+  /** The project-relative test file, which a hook failure names so a rerun can find its scope's tests. */
+  file: string;
   registration: ModuleRegistration;
   /** Registered tests by title-path key, for per-attempt lookup. */
   testsByKey: ReadonlyMap<string, RegisteredTest>;
@@ -92,15 +97,15 @@ export class RealmManager {
   }
 
   /** Re-imports one test module in a fresh realm. */
-  async create(absolutePath: string): Promise<Realm> {
+  async create(file: FileRef): Promise<Realm> {
     this.realmCounter += 1;
     const registration = await this.debug.time('realm.import', () =>
       collectModule(
-        () => importModule(absolutePath, `${this.options.targetName}-${this.realmCounter}`),
-        absolutePath,
+        () => importModule(file.absolutePath, `${this.options.targetName}-${this.realmCounter}`),
+        file.absolutePath,
       ),
     );
-    return this.adopt(registration);
+    return this.adopt(registration, file);
   }
 
   /**
@@ -108,10 +113,10 @@ export class RealmManager {
    * realm. The worker imports every unit's file once to resolve its pairs;
    * adopting that import saves the second, identical one per unit.
    */
-  adopt(registration: ModuleRegistration): Realm {
+  adopt(registration: ModuleRegistration, file: FileRef): Realm {
     const testsByKey = new Map<string, RegisteredTest>();
     for (const test of registration.tests) testsByKey.set(titlePathKey(test.titlePath), test);
-    return { registration, testsByKey, entered: new Map() };
+    return { file: file.file, registration, testsByKey, entered: new Map() };
   }
 
   /**
@@ -144,7 +149,7 @@ export class RealmManager {
           const error = classifyError(cause);
           failed = serializeError(
             new E2EError('test', 'HOOK_FAILED', `beforeAll failed: ${error.message}`, { cause }),
-            { phase: 'beforeAll', scopeId: scopeId(scope) },
+            this.hookScope(realm, scope, 'beforeAll'),
           );
           this.options.runErrors.push({ error: failed });
           break;
@@ -188,7 +193,7 @@ export class RealmManager {
           const error = classifyError(cause);
           const failed = serializeError(
             new E2EError('test', 'HOOK_FAILED', `afterAll failed: ${error.message}`, { cause }),
-            { phase: 'afterAll', scopeId: scopeId(scope) },
+            this.hookScope(realm, scope, 'afterAll'),
           );
           this.options.runErrors.push({ error: failed });
           failure ??= failed;
@@ -201,6 +206,15 @@ export class RealmManager {
   /** Closes every entered scope: the realm ends here. */
   async leave(realm: Realm): Promise<void> {
     await this.leaveFinished(realm, []);
+  }
+
+  /**
+   * Where a suite hook failed: its phase, and the scope, file, and target
+   * whose tests `--last-failed` runs again, since a hook failure is a run
+   * error that no test result carries.
+   */
+  private hookScope(realm: Realm, scope: Scope, phase: 'beforeAll' | 'afterAll') {
+    return { phase, scopeId: scopeId(scope), file: realm.file, targetId: this.options.targetName };
   }
 
   /** One scope's hooks of one kind, in declaration order. */

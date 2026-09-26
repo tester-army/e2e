@@ -63,6 +63,8 @@
           "enum": ["config", "collection", "launch", "beforeAll", "beforeEach", "body", "afterEach", "afterAll", "cleanup", "report"]
         },
         "scopeId": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "file": { "$ref": "#/$defs/relativePath" },
+        "targetId": { "type": "string", "minLength": 1 },
         "source": { "$ref": "#/$defs/source" },
         "details": {
           "type": "object",

@@ -23,7 +23,6 @@ import { canonicalDigest, timestamp, uuidv7 } from '../internal/ids.ts';
 import { obj } from '../internal/objects.ts';
 import { Deadline, NEVER_ABORTS, withAbort, withScopedBudget, withTimeout } from '../internal/time.ts';
 import { createAgentCacheContext, flushStagedTraces } from '../cache/context.ts';
-import type { CollectedFile } from '../collect/collect.ts';
 import type { ModuleRegistration, RegisteredTest } from '../collect/registry.ts';
 import type { TestTargetPair } from '../collect/select.ts';
 import type { ArtifactStore } from '../types.ts';
@@ -36,7 +35,7 @@ import { captureFailureEvidence } from './failure-evidence.ts';
 import { createFixtures, type ArtifactSink } from './fixtures.ts';
 import { publishAttempt } from '../expect/attempt.ts';
 import { SoftFailures } from '../expect/soft.ts';
-import { findRegistered, RealmManager, runHook, type Realm } from './realm.ts';
+import { findRegistered, RealmManager, runHook, type FileRef, type Realm } from './realm.ts';
 import type {
   AttemptRecord,
   ResultRecord,
@@ -107,9 +106,6 @@ export interface ClosingRecord {
   readonly status: AttemptRecord['status'];
   cleanup: AttemptRecord['cleanup'];
 }
-
-/** The file-path slice of a collected file that unit execution needs. */
-export type FileRef = Pick<CollectedFile, 'file' | 'absolutePath'>;
 
 /** How one attempt acquires its session and session-staging hooks. */
 export type AttemptContext =
@@ -327,7 +323,7 @@ export class TargetExecutor implements SerialHost {
     const executedSerialUnits = new Set<string>();
     const ordered = filePairs.toSorted((a, b) => a.test.declarationIndex - b.test.declarationIndex);
     let realm: Realm | null =
-      freshRegistration === undefined ? null : this.realms.adopt(freshRegistration);
+      freshRegistration === undefined ? null : this.realms.adopt(freshRegistration, file);
     for (const [index, pair] of ordered.entries()) {
       // One serial unit per agent the group runs as: its members are the
       // group's pairs under that agent, in declaration order. The unit
@@ -350,7 +346,7 @@ export class TargetExecutor implements SerialHost {
         // sharing ends here, afterAll included.
         if (realm !== null) await this.realms.leave(realm);
         realm = null;
-        await runSerialUnit(this, members, file.absolutePath);
+        await runSerialUnit(this, members, file);
         continue;
       }
       this.pairStarted(pair);
@@ -396,7 +392,7 @@ export class TargetExecutor implements SerialHost {
       pair.options.retries + 1,
       this.interruptSignal,
       async (attemptIndex) => {
-        if (realm === null) realm = await this.realms.create(file.absolutePath);
+        if (realm === null) realm = await this.realms.create(file);
         const registered = findRegistered(realm, pair.test);
         if (registered === undefined) {
           this.recordDisappeared(
@@ -466,7 +462,7 @@ export class TargetExecutor implements SerialHost {
   /** Runs one setup pair to completion, persisting staged sessions on success. */
   async runSetupUnit(pair: TestTargetPair, freshRegistration?: ModuleRegistration): Promise<void> {
     this.pairStarted(pair);
-    const absolutePath = path.resolve(this.config.projectRoot, pair.test.file);
+    const file: FileRef = { file: pair.test.file, absolutePath: path.resolve(this.config.projectRoot, pair.test.file) };
     const attempts: AttemptRecord[] = [];
     let hookFailure: SerializedError | undefined;
 
@@ -476,8 +472,8 @@ export class TargetExecutor implements SerialHost {
       async (attemptIndex) => {
         const realm =
           attemptIndex === 0 && freshRegistration !== undefined
-            ? this.realms.adopt(freshRegistration)
-            : await this.realms.create(absolutePath);
+            ? this.realms.adopt(freshRegistration, file)
+            : await this.realms.create(file);
         const registered = findRegistered(realm, pair.test);
         if (registered === undefined) {
           this.recordDisappeared(`setup ${pair.test.id} disappeared on re-import`);

@@ -6,6 +6,7 @@ import { resultId } from '../internal/ids.ts';
 import type { Report1Document } from '../report/build.ts';
 
 type ReportResult = Report1Document['run']['results'][number];
+type ReportError = Report1Document['run']['errors'][number];
 
 /** Skips that stand for a test the run could not carry out, as opposed to one it chose not to. */
 const UNDELIVERED_SKIPS = new Set<NonNullable<ReportResult['skip']>['cause']>([
@@ -27,6 +28,21 @@ function didNotPass(result: ReportResult): boolean {
     default:
       return false;
   }
+}
+
+/**
+ * Whether a failed suite hook covered a result: same file and target, and a
+ * describe chain inside the hook's scope. A hook failure is a run error no
+ * result carries, so a test whose body passed there still has to run again.
+ * An error that names no file or target covers every test, since nothing
+ * narrower is known to be safe.
+ */
+function inHookScope(result: ReportResult, error: ReportError): boolean {
+  if (error.file === undefined || error.targetId === undefined || error.scopeId === undefined) return true;
+  if (result.file !== error.file || result.targetId !== error.targetId) return false;
+  if (error.scopeId === 'file') return true;
+  const groups = result.titlePath.slice(0, -1).join(' \u203a ');
+  return groups === error.scopeId || groups.startsWith(`${error.scopeId} \u203a `);
 }
 
 function noLastRun(message: string, cause?: unknown): ConfigurationError {
@@ -64,13 +80,18 @@ export async function readLastRun(reportPath: string): Promise<Report1Document> 
 /**
  * The result ids of a report's tests that did not pass: failed, timed out,
  * interrupted, or skipped because a setup, a serial predecessor, a hook, or
- * the worker failed. An explicit skip and a filtered test passed in the sense
- * that matters here: nothing to run again. The ids are
- * `resultId(testId, target, agent)`, so a test is named per target and agent
- * whichever of its `--repeat-each` runs did not pass.
+ * the worker failed, and every selected test in the scope of a `beforeAll` or
+ * `afterAll` that failed, until a run where that hook passes. An explicit
+ * skip and a filtered test passed in the sense that matters here: nothing to
+ * run again. The ids are `resultId(testId, target, agent)`, so a test is
+ * named per target and agent whichever of its `--repeat-each` runs did not
+ * pass.
  */
 export function lastFailedIds(document: Report1Document): ReadonlySet<string> {
-  return new Set(document.run.results.filter(didNotPass).map((result) => resultId(result.testId, result.targetId, result.agent)));
+  const hookFailures = document.run.errors.filter((error) => error.phase === 'beforeAll' || error.phase === 'afterAll');
+  const rerun = (result: ReportResult): boolean =>
+    didNotPass(result) || (result.selected && hookFailures.some((error) => inHookScope(result, error)));
+  return new Set(document.run.results.filter(rerun).map((result) => resultId(result.testId, result.targetId, result.agent)));
 }
 
 /**
@@ -80,8 +101,14 @@ export function lastFailedIds(document: Report1Document): ReadonlySet<string> {
  */
 function isReport(value: unknown): value is Report1Document {
   if (typeof value !== 'object' || value === null) return false;
-  const document = value as { schemaVersion?: unknown; run?: { results?: unknown } };
-  return document.schemaVersion === 'report-1' && Array.isArray(document.run?.results) && document.run.results.every(isResult);
+  const document = value as { schemaVersion?: unknown; run?: { results?: unknown; errors?: unknown } };
+  return (
+    document.schemaVersion === 'report-1' &&
+    Array.isArray(document.run?.results) &&
+    document.run.results.every(isResult) &&
+    Array.isArray(document.run.errors) &&
+    document.run.errors.every(isError)
+  );
 }
 
 function isResult(value: unknown): value is ReportResult {
@@ -91,6 +118,14 @@ function isResult(value: unknown): value is ReportResult {
   return (
     typeof result.id === 'string' &&
     typeof result.status === 'string' &&
+    typeof result.file === 'string' &&
+    Array.isArray(result.titlePath) &&
     (skip === undefined || (typeof skip === 'object' && skip !== null && typeof skip.cause === 'string'))
   );
+}
+
+function isError(value: unknown): value is ReportError {
+  if (typeof value !== 'object' || value === null) return false;
+  const error = value as Partial<Record<keyof ReportError, unknown>>;
+  return (['phase', 'scopeId', 'file', 'targetId'] as const).every((key) => error[key] === undefined || typeof error[key] === 'string');
 }

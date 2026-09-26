@@ -125,8 +125,10 @@ implemented yet.
 ## Rerunning failures
 
 `--last-failed` runs only the tests the previous run did not pass, read from
-`.e2e/report.json` before the new run overwrites it. Locally it is the loop
-after a red run:
+`.e2e/report.json` before the new run overwrites it. A `beforeAll` or
+`afterAll` that failed brings back every test in its describe or file on that
+target, even one whose body passed, until a run where the hook passes. Locally it is
+the loop after a red run:
 
 ```bash
 npx e2e run

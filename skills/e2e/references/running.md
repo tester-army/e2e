@@ -23,7 +23,7 @@ npx e2e telemetry [disable|enable] # anonymous usage telemetry: status, or the s
 | `--tag <tags>` | Tag filter, comma-separated or repeated: any of the tags, or every one with `--tag-mode all`. An empty `--target`, `--tag`, or `--agent` value is a usage error, exit 2. |
 | `--exclude-tag <tags>` | Leave out tests carrying any of these tags, whatever else selected them. |
 | `--grep <pattern>`, `--grep-invert <pattern>` | Keep, or leave out, tests whose title matches a regular expression: the describe titles and the test title joined by spaces (`checkout pays`), not the file or the tags. Bare pattern, or `'/pattern/i'` for flags; repeat for alternatives. |
-| `--last-failed` | Only the tests the previous run did not pass, read from `.e2e/report.json`. No report is `NO_LAST_RUN`, exit 2: run once without the flag first. |
+| `--last-failed` | Only the tests the previous run did not pass, read from `.e2e/report.json`, and every test in the scope of a failed `beforeAll` or `afterAll`. No report is `NO_LAST_RUN`, exit 2: run once without the flag first. |
 | `--shard <index/total>` | One contiguous slice of the selected tests (`--shard 2/3`), cut after every other filter; serial groups stay together and each shard brings its own setup tests. Same command per CI job with a different index. |
 | `--headed` | Visible browser or simulator when the engine supports it. |
 | `--agent <names>` | Run unpinned tests as other configured agents (`agents.<name>`), comma-separated or repeated; several names run each such test once per agent. Default is `agents.default`. |

@@ -150,6 +150,10 @@ export interface ReportError {
   retryable: boolean;
   phase?: ErrorPhase | undefined;
   scopeId?: string | undefined;
+  /** A suite hook failure's test file, project-relative, the way its tests' results name it. */
+  file?: string | undefined;
+  /** A suite hook failure's target: with `file` and `scopeId`, the tests a rerun has to verify again. */
+  targetId?: string | undefined;
   /** Structured facts beside the message: an assertion's expected and observed, a locator's role and name. */
   details?: ErrorDetails | undefined;
   /** The line in the test file the failure unwound through. */
