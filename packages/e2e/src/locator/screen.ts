@@ -104,13 +104,6 @@ export function createLocator(context: ScreenContext, expression: LocatorExpress
 }
 
 /**
- * The least of a scroll's budget worth one more swipe. Below it the swipe
- * could only run out of time, so the scroll ends as not visible instead of
- * dispatching a gesture whose budget is already spent.
- */
-const MIN_SWIPE_BUDGET_MS = POLL_INTERVAL_MS;
-
-/**
  * Whether a swipe failed because the operation budget it was given ran out:
  * the engine's `OPERATION_TIMEOUT` as a viewport swipe raises it, or wrapped
  * as the `ACTION_FAILED` the locator engine translates it into.
@@ -219,15 +212,15 @@ class ScreenImpl implements Screen {
       for (;;) {
         const { node } = await engine.tryRead(internals.expression, deadline);
         if (isNodeVisible(node)) return;
-        if (deadline.remaining() < MIN_SWIPE_BUDGET_MS) throw notVisible();
+        if (deadline.expired()) throw notVisible();
         try {
           await swipeStep(deadline);
         } catch (cause) {
           // A swipe cut by the scroll's deadline is the scroll timing out. The
           // engine's timer can wake a millisecond before this clock reads the
-          // deadline, so a swipe that ran out of the budget the deadline left
-          // it is the deadline too, whichever timer fired first.
-          if (deadline.expired() || (timedOut(cause) && deadline.remaining() < MIN_SWIPE_BUDGET_MS)) {
+          // deadline, so a swipe that ran out of its budget within a poll
+          // interval of the deadline is the deadline too, whichever timer fired first.
+          if (deadline.expired() || (timedOut(cause) && deadline.remaining() < POLL_INTERVAL_MS)) {
             throw notVisible(cause);
           }
           throw cause;

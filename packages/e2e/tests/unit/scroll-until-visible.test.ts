@@ -181,13 +181,10 @@ describe('screen.scrollUntilVisible', () => {
     });
   });
 
-  it('dispatches no swipe once the budget left is too short for one, and fails as LOCATOR_NOT_FOUND', async () => {
+  it('still swipes with less than a poll interval of the budget left', async () => {
     const { screen, swipes } = scrollScreen({ screens: [[], [TARGET]] });
-    await expect(screen.scrollUntilVisible(screen.getByText('Accept'), { timeout: 50 })).rejects.toMatchObject({
-      code: 'LOCATOR_NOT_FOUND',
-      message: 'target did not become visible while scrolling: getByText("Accept")',
-    });
-    expect(swipes).toEqual([]);
+    await screen.scrollUntilVisible(screen.getByText('Accept'), { timeout: 50 });
+    expect(swipes).toEqual([{ ref: 'root', direction: 'down', momentum: 'slow' }]);
   });
 
   it('keeps an engine timeout far from the deadline as the action failure it is', async () => {
