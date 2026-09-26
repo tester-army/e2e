@@ -41,6 +41,16 @@ export function attributeOf(node: SemanticNode, name: string): string | null {
 }
 
 /**
+ * Denies reading a value or text when any node is a secure field: the engine
+ * withholds both there, so what reads as missing is redacted, not empty.
+ */
+export function denySecureRead(nodes: readonly SemanticNode[], label: string): void {
+  if (nodes.some((node) => node.states?.secure === true)) {
+    throw new ConfigurationError('POLICY_DENIED', `reading values from a secure field is denied: ${label}`);
+  }
+}
+
+/**
  * What a frame the engine reports missing means to a resolve: `wait` treats
  * it like a node that is not there yet, `empty` answers zero matches.
  */

@@ -3,7 +3,7 @@
 import nodePath from 'node:path';
 import type { LocatorExpression, SemanticNode } from '../engine/surface.ts';
 import { locatorBrand, secretBrand } from '../internal/brands.ts';
-import { asEngineError, ConfigurationError, TestError } from '../internal/errors.ts';
+import { asEngineError, TestError } from '../internal/errors.ts';
 import { requireFinitePoint } from '../internal/geometry.ts';
 import { rejectUnknownOptions } from '../internal/options.ts';
 import { realmSlot } from '../internal/realm-slot.ts';
@@ -29,7 +29,7 @@ import type {
   TextMatchOptions,
 } from '../types.ts';
 import type { StepRecorder } from '../run/steps.ts';
-import { attributeOf, isNodeVisible, type LocatorEngine } from './engine.ts';
+import { attributeOf, denySecureRead, isNodeVisible, type LocatorEngine } from './engine.ts';
 import {
   describeExpression,
   filterExpression,
@@ -496,12 +496,7 @@ class LocatorImpl extends ScreenImpl implements Locator {
 
   async allTextContents(): Promise<string[]> {
     const nodes = await this.context.engine.readAllNow(this.expression);
-    if (nodes.some((node) => node.states?.secure === true)) {
-      throw new ConfigurationError(
-        'POLICY_DENIED',
-        `reading values from a secure field is denied: ${this.label}`,
-      );
-    }
+    denySecureRead(nodes, this.label);
     return nodes.map((node) => normalizeText(node.text ?? ''));
   }
 
@@ -551,12 +546,7 @@ class LocatorImpl extends ScreenImpl implements Locator {
 
   private async readGuarded(guardSecure = true): Promise<SemanticNode> {
     const node = await this.context.engine.read(this.expression);
-    if (guardSecure && node.states?.secure === true) {
-      throw new ConfigurationError(
-        'POLICY_DENIED',
-        `reading values from a secure field is denied: ${this.label}`,
-      );
-    }
+    if (guardSecure) denySecureRead([node], this.label);
     return node;
   }
 }

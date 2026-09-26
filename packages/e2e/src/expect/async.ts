@@ -1,7 +1,7 @@
 /** Runner-owned polling locator assertions. */
 
 import type { SemanticNode } from '../engine/surface.ts';
-import { ConfigurationError, TestError } from '../internal/errors.ts';
+import { TestError } from '../internal/errors.ts';
 import {
   normalizeText,
   compareText,
@@ -12,7 +12,7 @@ import {
 } from '../internal/text.ts';
 import { isValueControl } from '../internal/roles.ts';
 import { Deadline, pollCondition } from '../internal/time.ts';
-import { attributeOf, isNodeVisible } from '../locator/engine.ts';
+import { attributeOf, denySecureRead, isNodeVisible } from '../locator/engine.ts';
 import { describeExpression } from '../locator/expression.ts';
 import type { LocatorInternals } from '../locator/screen.ts';
 import type { AsyncExpectation, TextMatch } from '../types.ts';
@@ -167,25 +167,16 @@ class AsyncExpectationImpl implements AsyncExpectation {
     return spec.evaluableNode?.(sample.node) ?? true;
   }
 
-  /** The refusal a value or text matcher polls with; the name matcher has none, a name is never withheld. */
-  private secureRefusal(def: TextMatcherDef): Pick<MatcherSpec, 'refuse'> {
-    return def.field === 'name' ? {} : { refuse: (sample) => this.refuseSecure(sample) };
-  }
-
   /**
-   * A value or text matcher never judges a secure field. The engine withholds
-   * both there, so a missing value or text is redacted, not empty: judged
-   * against `''`, a filled password field would pass as cleared. Denied like
-   * `inputValue()` and `textContent()`, with the same code and message.
+   * The refusal a value or text matcher polls with: the engine withholds both
+   * on a secure field, and judged against `''`, a filled password field would
+   * pass as cleared. The name matcher has none, a name is never withheld.
    */
-  private refuseSecure(sample: Sample): void {
-    const nodes = sample.node === null ? sample.nodes : [sample.node];
-    if (nodes.some((node) => node.states?.secure === true)) {
-      throw new ConfigurationError(
-        'POLICY_DENIED',
-        `reading values from a secure field is denied: ${this.label}`,
-      );
-    }
+  private secureRefusal(def: TextMatcherDef): Pick<MatcherSpec, 'refuse'> {
+    if (def.field === 'name') return {};
+    return {
+      refuse: (sample) => denySecureRead(sample.node === null ? sample.nodes : [sample.node], this.label),
+    };
   }
 
   private async sample(spec: MatcherSpec, deadline: Deadline): Promise<Sample> {
