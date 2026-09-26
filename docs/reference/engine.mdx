@@ -877,10 +877,6 @@ export class ConfigurationError extends Error {}   // POLICY_DENIED, APP_URL_REQ
 export class InfrastructureError extends Error {}  // the surface itself failed: BROWSER_INSTALL_FAILED, ...
 ```
 
-`isForeignE2EError(value)` is true for one of these created by another copy
-of the runner module, which `instanceof` misses; an engine that passes a
-classified error through unchanged checks both.
-
 ## Shared semantics
 
 Use these helpers to keep behavior consistent across engines:
