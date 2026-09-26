@@ -1,6 +1,6 @@
 import { assert, describe, expect, it, vi } from 'vitest';
 import type { Observation, SemanticNode } from '../../src/engine/surface.ts';
-import { changeShape, interactiveNodeCount, isTransitionalObservation, observationShape, prepareObservation, settleObservation } from '../../src/agent/observation.ts';
+import { changeShape, interactiveNodeCount, isTransitionalObservation, observationShape, prepareObservation, projectTree, settleObservation } from '../../src/agent/observation.ts';
 import { OBSERVED_NAME_LIMIT, OBSERVED_TEXT_LIMIT } from '../../src/engine/contract.ts';
 import { SecretLedger } from '../../src/internal/redact.ts';
 
@@ -164,7 +164,9 @@ describe('prepareObservation', () => {
     const cutLines = prepared.text.split('\n').filter((line) => /#n[234] /.test(line));
     expect(cutLines).toHaveLength(3);
     for (const line of cutLines) expect(line).not.toContain(secret.slice(0, 12));
-    expect(cutLines.join('\n').match(/<secret:apiKey>/g)).toHaveLength(4);
+    // The textbox's value holds the secret, so its selection is withheld rather than redacted.
+    expect(cutLines.join('\n').match(/<secret:apiKey>/g)).toHaveLength(3);
+    expect(prepared.nodes.get('n4')?.selection).toBeUndefined();
     expect(prepared.nodes.get('n2')?.text).toBe(`${'0'.repeat(OBSERVED_TEXT_LIMIT - kept.length)}<secret:apiKey>`);
     expect(JSON.stringify(['n2', 'n3', 'n4'].map((id) => prepared.nodes.get(id)))).not.toContain(secret.slice(0, 12));
     expect(prepared.tree.children?.[0]).toBe(prepared.nodes.get('n2'));
@@ -285,6 +287,54 @@ describe('disambiguating attributes', () => {
     expect(lines[4]).toBe(' #n5 textbox value="caret only"');
     expect(lines[5]).toBe(' #n6 textbox value="alpha beta" selection=" " [focused]');
   });
+
+  it('withholds the selection of a plain field that holds a registered secret, everywhere the tree goes', () => {
+    const secret = 'plain-secret-Kq7ZrT2mWx9pLd4sNv8bHc3jFg6yQa1eUo5iRk0tYw2zXn7u';
+    const fragment = secret.slice(5, 45);
+    const tree = node('n1', {
+      children: [
+        node('n2', { role: 'textbox', name: 'Token', value: secret, selection: fragment, states: { focused: true } }),
+        node('n3', { role: 'textbox', name: 'Note', value: 'release approved', selection: 'approved' }),
+        node('n4', { role: 'textbox', name: 'Rich', text: `key ${secret}`, selection: fragment }),
+      ],
+    });
+    const ledger = new SecretLedger([['member', secret]]);
+    const prepared = prepareObservation(observation(tree), { redact: ledger.redact, redactCut: ledger.redactCut, maxBytes: 4_096 });
+    assert(prepared.kind === 'semantic');
+
+    expect(prepared.text.split('\n').slice(1)).toEqual([
+      ' #n2 textbox "Token" value="<secret:member>" [focused]',
+      ' #n3 textbox "Note" value="release approved" selection="approved"',
+      ' #n4 textbox "Rich" text="key <secret:member>"',
+    ]);
+    expect(prepared.nodes.get('n2')?.selection).toBeUndefined();
+    expect(prepared.nodes.get('n4')?.selection).toBeUndefined();
+    expect(prepared.nodes.get('n3')?.selection).toBe('approved');
+    expect(JSON.stringify(projectTree(prepared.tree, ledger.redact))).not.toContain(fragment);
+  });
+
+  it('withholds the selection of a field cut at its limit that may hold a secret the cut hides', () => {
+    const secret = 'plain-secret-Kq7ZrT2mWx9pLd4sNv8bHc3jFg6yQa1eUo5iRk0tYw2zXn7u';
+    const filler = 'lorem ipsum. '.repeat(50);
+    const cut = (tail: string): string => `${filler.slice(0, OBSERVED_TEXT_LIMIT - tail.length)}${tail}`;
+    const tree = node('n1', {
+      children: [
+        node('n2', { role: 'textbox', value: cut(secret.slice(0, 30)), selection: secret.slice(5, 25) }),
+        node('n3', { role: 'textbox', value: cut(''), selection: secret.slice(5, 45) }),
+        node('n4', { role: 'textbox', value: cut(''), selection: 'ipsum' }),
+      ],
+    });
+    const ledger = new SecretLedger([['member', secret]]);
+    const prepared = prepareObservation(observation(tree), { redact: ledger.redact, redactCut: ledger.redactCut, maxBytes: 4_096 });
+    assert(prepared.kind === 'semantic');
+
+    // The value ends in the start of the secret, cut short there.
+    expect(prepared.nodes.get('n2')?.selection).toBeUndefined();
+    // Nothing shown holds a secret, but the selection is not in what is shown: it came from the cut-off rest.
+    expect(prepared.nodes.get('n3')?.selection).toBeUndefined();
+    expect(prepared.nodes.get('n4')?.selection).toBe('ipsum');
+    expect(prepared.text).not.toContain(secret.slice(13, 25));
+  });
 });
 
 describe('observation byte budget', () => {
@@ -360,8 +410,7 @@ describe('observationShape', () => {
 });
 
 describe('projectTree', () => {
-  it('redacts names, text, values, selections, and attributes, and drops secure values, secure selections, and selectors', async () => {
-    const { projectTree } = await import('../../src/agent/observation.ts');
+  it('redacts names, text, values, selections, and attributes, and drops secure values, secure selections, and selectors', () => {
     const redact = (text: string): string => text.replaceAll('hunter2', '<password>');
     const tree = node('root', {
       role: 'document',

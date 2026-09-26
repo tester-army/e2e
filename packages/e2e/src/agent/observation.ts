@@ -2,6 +2,7 @@
 
 import { OBSERVED_NAME_LIMIT, OBSERVED_TEXT_LIMIT } from '../engine/contract.ts';
 import type { Observation, SemanticNode, ViewportSize } from '../engine/surface.ts';
+import type { SecretLedger } from '../internal/redact.ts';
 import { collapseText } from '../internal/text.ts';
 import { sleep } from '../internal/time.ts';
 import type { VisionDegradation } from '../run/steps.ts';
@@ -58,7 +59,8 @@ interface AgentObservationMetadata {
  * secure nodes) are withheld before they reach a model or disk; the semantic
  * tree never carries secure values. Registered secret values are additionally
  * replaced by their stable secret name, and so is the leading part of one a
- * field the engine cut at its limit ends with.
+ * field the engine cut at its limit ends with. A field holding one keeps no
+ * selection, as a secure field keeps none.
  */
 export function prepareObservation(
   observation: Observation,
@@ -92,7 +94,7 @@ export function prepareObservation(
       pixels: pixels.cleared,
     };
   }
-  const tree = redactCutFields(observation.tree, options.redactCut);
+  const tree = protectSecrets(observation.tree, options);
   const nodes = new Map<string, SemanticNode>();
   const parents = new Map<string, string>();
   indexNodes(tree, nodes, parents);
@@ -155,26 +157,46 @@ const CUT_FIELDS = [
   ['selection', OBSERVED_TEXT_LIMIT],
 ] as const;
 
+type Redaction = Pick<SecretLedger, 'redact' | 'redactCut'>;
+
 /**
- * The tree with every field exactly as long as its observed limit, and so
- * possibly cut there, passed through `redactCut` before any consumer reads
- * it: a secret the cut stopped partway through leaves a leading part at the
- * end that no whole-value redaction matches. A shorter field is whole, and so
- * is a longer one (a native input's value, which no engine cuts); both are
- * left to `redact`. A subtree with nothing cut is returned as it is.
+ * The tree with what whole-value redaction misses taken out, before any
+ * consumer reads it. Every field exactly as long as its observed limit, and
+ * so possibly cut there, passes through `redactCut`: a secret the cut stopped
+ * partway through leaves a leading part at the end that no whole value
+ * matches. A shorter field is whole, and so is a longer one (a native input's
+ * value, which no engine cuts); both are left to `redact`. A selection that
+ * may show part of a secret is dropped, as a secure field's is. A subtree
+ * with nothing changed is returned as it is.
  */
-function redactCutFields(node: SemanticNode, redactCut: (text: string) => string): SemanticNode {
+function protectSecrets(node: SemanticNode, redaction: Redaction): SemanticNode {
+  const withhold = node.selection !== undefined && selectionMayHoldSecret(node, node.selection, redaction);
   const changed: { -readonly [Field in (typeof CUT_FIELDS)[number][0]]?: string } = {};
   for (const [field, limit] of CUT_FIELDS) {
     const text = node[field];
-    if (text?.length !== limit) continue;
-    const redacted = redactCut(text);
+    if (text?.length !== limit || (withhold && field === 'selection')) continue;
+    const redacted = redaction.redactCut(text);
     if (redacted !== text) changed[field] = redacted;
   }
-  const children = node.children?.map((child) => redactCutFields(child, redactCut));
+  const children = node.children?.map((child) => protectSecrets(child, redaction));
   const sameChildren = (children ?? []).every((child, index) => child === node.children?.[index]);
-  if (Object.keys(changed).length === 0 && sameChildren) return node;
-  return { ...node, ...changed, ...(children === undefined ? {} : { children }) };
+  if (!withhold && Object.keys(changed).length === 0 && sameChildren) return node;
+  const { selection: _selection, ...withoutSelection } = node;
+  return { ...(withhold ? withoutSelection : node), ...changed, ...(children === undefined ? {} : { children }) };
+}
+
+/**
+ * Whether a node's selection may show part of a secret, which no whole-value
+ * match sees in it: its value or text holds one, whole or cut short at the
+ * end; or one of them was cut and the selection lies in neither, so it may
+ * come from the cut-off rest, which the runner never sees. The page never
+ * learns the secrets: the check is redaction changing the field.
+ */
+function selectionMayHoldSecret(node: SemanticNode, selection: string, redaction: Redaction): boolean {
+  const fields = [node.value, node.text].filter((text) => text !== undefined);
+  const cut = (text: string): boolean => text.length === OBSERVED_TEXT_LIMIT;
+  if (fields.some((text) => (cut(text) ? redaction.redactCut(text) : redaction.redact(text)) !== text)) return true;
+  return fields.some(cut) && !fields.some((text) => text.includes(selection));
 }
 
 /**

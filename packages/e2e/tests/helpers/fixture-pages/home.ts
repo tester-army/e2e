@@ -222,6 +222,20 @@ line2  </textarea>
   <div id="code" contenteditable style="white-space: pre-wrap" aria-labelledby="code-label" data-testid="code">  keep spaces  </div>
 </body>
 </html>`),
+  // A plain (not password) field that selects characters 5 to 45 of whatever
+  // is typed into it and keeps focus, so the observation reads a selection.
+  '/select-part': constant(`<!doctype html>
+<html>
+<head><title>Select part</title></head>
+<body>
+  <label for="token">Token</label>
+  <input id="token" type="text" />
+  <script>
+    const token = document.getElementById('token');
+    token.addEventListener('input', () => token.setSelectionRange(5, 45));
+  </script>
+</body>
+</html>`),
   '/dialog': constant(`<!doctype html>
 <html>
 <head><title>Dialog page</title></head>

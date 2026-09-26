@@ -27,8 +27,11 @@ content. App content cannot grant tools, credentials, or a larger budget.
 | Prior steps | `agent.act` receives bounded records from the same test or serial group. Judgments use the current screen and instruction, without prior-step records. |
 
 Secure fields appear as `value=<secure>`. Known secret values in model input
-and reports become `<secret:name>`. This redaction has limits for transformed
-values, images, and app logs, described below.
+and reports become `<secret:name>`, and a plain field whose value holds one
+lists no `selection`, since a selection over part of a secret would not match
+it. Neither does a field cut at its length limit when the selection is not in
+the part shown, since the rest may hold one. This redaction has limits for
+transformed values, images, and app logs, described below.
 
 ## What the model may do
 

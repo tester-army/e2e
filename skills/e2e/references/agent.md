@@ -106,8 +106,9 @@ On an engine with a keyboard (browser and device), `type` and `press` also
 take no target and reach whatever has focus: `tap_at` a field the tree does
 not list, then `type` without a target; a device adds `dismiss_keyboard`.
 `press` takes `times` to repeat a key up to 20 times in one call, and the
-screen lists the focused field's selected text as `selection="..."`, so a
-repeated `Shift+ArrowLeft` selects exactly one word with visible feedback.
+screen lists the focused field's selected text as `selection="..."` (never
+for a field holding a secret), so a repeated `Shift+ArrowLeft` selects
+exactly one word with visible feedback.
 Use the point tools for a canvas, a game, or a native screen without
 accessibility exposure. Once a secret has been filled in the attempt no
 screenshot leaves the runner and the pixel tools leave the vocabulary, so

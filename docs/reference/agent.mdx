@@ -126,10 +126,13 @@ corrects. Every refusal and the final allow is a `policy` event named
 The screen the model reads lists the text selected inside the focused field
 as `selection="..."` after its value, when the engine reports one: the web
 engine does for an input, a textarea, and a `contenteditable` editor, and a
-secure field reports none. A `press` of `Shift+ArrowLeft` shows what it
-selected, and `times` presses the key several times in one call, so the
-agent extends a selection to exactly the word it wants in one more turn
-before it formats or replaces it.
+secure field reports none. The runner drops it from a field whose value or
+text holds a registered secret, and from a field cut at its length limit when
+the selection is not in the part shown, so selected characters of a secret
+never reach the model. A `press` of `Shift+ArrowLeft` shows what it selected, and
+`times` presses the key several times in one call, so the agent extends a
+selection to exactly the word it wants in one more turn before it formats or
+replaces it.
 
 The tap variants are separate tools rather than an option on `tap` on
 purpose: offered as an optional `kind`, a model filled it on ordinary
