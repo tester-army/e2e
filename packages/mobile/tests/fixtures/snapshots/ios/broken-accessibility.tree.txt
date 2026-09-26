@@ -1,0 +1,8 @@
+screen
+  application "e2e Benchmark"
+    other "Benchmark Examples"
+      navigation "Benchmark Examples" #Broken Accessibility
+        button "Benchmark Examples" #BackButton
+        text "Broken Accessibility"
+      other "Tap the green circle to continue"
+        other

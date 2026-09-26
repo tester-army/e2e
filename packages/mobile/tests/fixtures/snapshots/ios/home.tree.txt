@@ -1,0 +1,36 @@
+screen
+  application "e2e Benchmark"
+    other "Benchmark Examples"
+      navigation "Benchmark Examples" #Benchmark Examples
+        text "Benchmark Examples"
+      other "Vertical scroll bar, 1 page"
+        other "Login Form. Fill credentials, handle validation errors, reach the logged-in state."
+          scroll-view
+            other
+              other #Login Form
+              other "Infinite Scroll List. Scroll a paginated list until a target item deep in the list is found." #Infinite Scroll List
+              other "Modal Flow. Open a modal, confirm a native alert, and land on the success state." #Modal Flow
+              other "Bottom Tabs. Navigate between tabs and complete an action on the last tab." #Bottom Tabs
+              other "Text Input Variations. Fill secure, multiline, and numeric inputs to unlock the submit button." #Text Input Variations
+              other "Broken Accessibility. Whole screen merged into one a11y node (accessible=true) — snapshot is useless, vision required." #Broken Accessibility
+              other "Vision Only. A11y tree fully hidden like a canvas-rendered (Flutter-style) app — pure pixel-driven flow." #Vision Only
+              other "Gestures. Long-press, swipe left, and double-tap targets in sequence." #Gestures
+              other "Async States. Wait out a loading screen, pull to refresh, and catch a transient toast." #Async States
+              other "Debounced Search. Type into a debounced search field, wait for async results, select the target." #Debounced Search
+              other "Huge Virtualized List. 600 preloaded virtualized rows — the target sits ~28,000px down and off-screen rows never enter the a11y tree, so the agent must size long scroll jumps from the scroll extent." #Huge Virtualized List
+              other "Flattened Registration Form. Multi-field registration form merged into one a11y node (accessible=true) — fields must be focused from vision and typed into via focused typing." #Flattened Registration Form
+              other "Flattened Login. Login form merged into one a11y node (accessible=true) - credentials must be filled from vision via focused fill, success visible only in pixels." #Flattened Login
+              other "Sticky Chrome Target. Accept button ~3 screens down in a non-virtualized scroll (present as an off-screen ref) under a sticky footer — tapping it must scroll it clear of the footer." #Sticky Chrome Target
+              other "WebView Accessibility. Read a coupon code inside a WebView, fill the web form, accept the terms, and apply it." #WebView Accessibility
+              other "Permission Prompt. Trigger the microphone permission request and handle the OS dialog to reach the granted state." #Permission Prompt
+              other "Photo Picker. Open the system photo picker (outside the app a11y tree), select the seeded receipt photo, land back with it attached." #Photo Picker
+              other "Product Catalog. Disambiguate near-identical cards, drill into Trail Mix 500 g, set quantity 2, add to cart, review it." #Product Catalog
+              other "Error Recovery. Recover from a failed load via retry, then delete a draft through a destructive-confirm modal." #Error Recovery
+              other "Choice Controls. Select the exact size, toppings, and switch combination, dismiss the keyboard, place the order." #Choice Controls
+              other "Stripe PaymentSheet. Complete Stripe's SDK-provided test-mode PaymentSheet while native focus, keyboard, and field refs shift." #Stripe PaymentSheet
+              other "Sequential Onboarding. Multi-step signup wizard where each step auto-focuses a field, so the keyboard covers the Continue button (and the second name field) from the moment the screen opens — occluded taps land on keyboard keys and corrupt the values, and the success screen echoes them exactly." #Sequential Onboarding
+              other "Apple Pay. Start an Apple Pay payment and authorize it inside the out-of-process PassKit sheet." #Apple Pay
+              other "Apple Pay Billing Address. PassKit requires a billing address before authorizing — fill the in-sheet address form from vision, then pay." #Apple Pay Billing Address
+              other "Control Inventory. The deterministic contract surface: plain controls with every state exposed, one exercise per runner verb. Not a hard surface." #Control Inventory
+            other "Vertical scroll bar, 1 page" value="0%"
+            other "Horizontal scroll bar, 1 page" value="0%"

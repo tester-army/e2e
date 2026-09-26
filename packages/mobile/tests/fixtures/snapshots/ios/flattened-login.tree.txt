@@ -1,0 +1,8 @@
+screen
+  application "e2e Benchmark"
+    other "Benchmark Examples"
+      navigation "Benchmark Examples" #Flattened Login
+        button "Benchmark Examples" #BackButton
+        text "Flattened Login"
+      other "Use tester@tester.army / benchmark123, Email, Password, SIGN IN"
+        other

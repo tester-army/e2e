@@ -1,0 +1,36 @@
+screen
+  application "e2e Benchmark"
+    window "Vertical scroll bar, 1 page"
+      other "Close"
+        other "Close"
+          other "TEST"
+            other "TEST"
+              other "TEST"
+                text "TEST"
+            button "Close" #UIButton.Close
+          scroll-view "Pay 10,99 US$"
+            other "Pay 10,99 US$"
+              other "Select payment method"
+                other "Select payment method"
+                  other "Select payment method"
+                    text "Select payment method"
+                    text "Saved"
+                    other "Visa ending in 4 2 4 2" #•••• 4242
+                      button "Visa ending in 4 2 4 2" [selected] #•••• 4242
+                      button "View more" #View more
+                    text "New payment method"
+                    other "New card" #New card
+                      button "New card" #New card
+                    other "Crypto" #Crypto
+                      button "Crypto" #Crypto
+                    other "Cash App Pay" #Cash App Pay
+                      button "Cash App Pay" #Cash App Pay
+                    other "Amazon Pay" #Amazon Pay
+                      button "Amazon Pay" #Amazon Pay
+                    other "Alipay" #Alipay
+                      button "Alipay" #Alipay
+                button "Pay 10,99 US$"
+                  image #icon_lock
+                  image #icon_plus
+            other "Vertical scroll bar, 1 page" value="0%"
+            other "Horizontal scroll bar, 1 page" value="0%"

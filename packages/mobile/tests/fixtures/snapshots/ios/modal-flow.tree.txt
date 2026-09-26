@@ -1,0 +1,9 @@
+screen
+  application "e2e Benchmark"
+    other "Benchmark Examples"
+      navigation "Benchmark Examples" #Modal Flow
+        button "Benchmark Examples" #BackButton
+        text "Modal Flow"
+      other "Open modal"
+        other "Open modal"
+          other "Open modal" #open-modal-button

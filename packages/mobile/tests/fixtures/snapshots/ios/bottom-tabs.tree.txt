@@ -1,0 +1,14 @@
+screen
+  application "e2e Benchmark"
+    other "Home, tab, 1 of 3"
+      other "Home"
+        other "Home"
+          other "Home"
+            text "Home"
+        text "Home" #home-tab-content
+          text "Home"
+        text "Go to the Actions tab and press the button there."
+      other "Home, tab, 1 of 3"
+        button "Home, tab, 1 of 3" [selected] #tab-home
+        button "Feed, tab, 2 of 3" #tab-feed
+        button "Actions, tab, 3 of 3" #tab-actions

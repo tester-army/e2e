@@ -1,0 +1,48 @@
+screen
+  text "11:26 PM" text="11:26" #com.android.systemui:id/clock
+  image "Android System notification: "
+  image "Wifi signal full." #com.android.systemui:id/wifi_signal
+  group "T-Mobile, signal full." #com.android.systemui:id/mobile_combo
+    image #com.android.systemui:id/mobile_signal
+  group "Battery charging, 100 percent." #com.android.systemui:id/battery
+    image
+  group
+    group
+      group
+        group #dev.e2e.benchmark:id/action_bar_root
+          group #android:id/content
+            group
+              group
+                group
+                  group
+                    group
+                      group
+                        button "Navigate up"
+                        text "Choice Controls"
+                    group
+                      group
+                        group
+                          group
+                            text "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then place the order (dismiss the keyboard first)."
+                            text "Size"
+                            radio "Small" #size-small
+                              text "Small"
+                            radio "Medium" #size-medium
+                              text "Medium"
+                            radio "Large" #size-large
+                              text "Large"
+                            text "Toppings"
+                            checkbox "Cheese" #topping-cheese
+                              text "Cheese"
+                            checkbox "Olives" #topping-olives
+                              text "Olives"
+                            checkbox "Mushrooms" #topping-mushrooms
+                              text "Mushrooms"
+                            checkbox "Onions" #topping-onions
+                              text "Onions"
+                            text "Rush delivery"
+                            switch #rush-delivery
+                            text "Delivery notes"
+                            textbox "Ring the doorbell twice" #delivery-notes placeholder="Ring the doorbell twice"
+                            group "Place order" [disabled] #place-order
+                              text "Place order"

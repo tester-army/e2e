@@ -1,0 +1,219 @@
+{
+  "nodes": [
+    {
+      "index": 0,
+      "type": "Application",
+      "enabled": true,
+      "rect": {
+        "x": 0,
+        "height": 874,
+        "width": 402,
+        "y": 0
+      },
+      "hittable": false,
+      "label": "e2e Benchmark",
+      "depth": 0,
+      "ref": "e1"
+    },
+    {
+      "index": 1,
+      "type": "Other",
+      "enabled": true,
+      "rect": {
+        "x": 0,
+        "height": 874,
+        "width": 402,
+        "y": 0
+      },
+      "parentIndex": 0,
+      "hittable": true,
+      "label": "Home, tab, 1 of 3",
+      "depth": 1,
+      "ref": "e2"
+    },
+    {
+      "index": 2,
+      "type": "Other",
+      "enabled": true,
+      "rect": {
+        "x": 0,
+        "height": 791,
+        "width": 402,
+        "y": 0
+      },
+      "parentIndex": 1,
+      "hittable": true,
+      "label": "Home",
+      "depth": 2,
+      "ref": "e3"
+    },
+    {
+      "index": 3,
+      "type": "Other",
+      "enabled": true,
+      "rect": {
+        "x": 0,
+        "height": 100.66666412353516,
+        "width": 402,
+        "y": 0
+      },
+      "parentIndex": 2,
+      "hittable": true,
+      "label": "Home",
+      "depth": 3,
+      "ref": "e4"
+    },
+    {
+      "index": 4,
+      "type": "Other",
+      "enabled": true,
+      "rect": {
+        "x": 177.3333282470703,
+        "height": 38.666664123535156,
+        "width": 47.333343505859375,
+        "y": 62
+      },
+      "parentIndex": 3,
+      "hittable": true,
+      "label": "Home",
+      "depth": 4,
+      "ref": "e5"
+    },
+    {
+      "index": 5,
+      "type": "StaticText",
+      "enabled": true,
+      "rect": {
+        "x": 177.3333282470703,
+        "height": 20.333335876464844,
+        "width": 47.333343505859375,
+        "y": 71
+      },
+      "parentIndex": 4,
+      "hittable": true,
+      "label": "Home",
+      "depth": 5,
+      "ref": "e6"
+    },
+    {
+      "index": 6,
+      "enabled": true,
+      "type": "StaticText",
+      "rect": {
+        "x": 173.3333282470703,
+        "height": 24,
+        "width": 55,
+        "y": 422.00000762939453
+      },
+      "parentIndex": 2,
+      "hittable": true,
+      "label": "Home",
+      "depth": 3,
+      "identifier": "home-tab-content",
+      "ref": "e7"
+    },
+    {
+      "index": 7,
+      "depth": 4,
+      "enabled": true,
+      "rect": {
+        "x": 173.3333282470703,
+        "height": 24,
+        "width": 55,
+        "y": 422.00000762939453
+      },
+      "type": "StaticText",
+      "parentIndex": 6,
+      "label": "Home",
+      "hittable": true,
+      "ref": "e8"
+    },
+    {
+      "index": 8,
+      "depth": 3,
+      "enabled": true,
+      "rect": {
+        "x": 52.66666793823242,
+        "height": 15.666656494140625,
+        "width": 296.66668701171875,
+        "y": 454.00000762939453
+      },
+      "type": "StaticText",
+      "parentIndex": 2,
+      "label": "Go to the Actions tab and press the button there.",
+      "hittable": true,
+      "ref": "e9"
+    },
+    {
+      "index": 9,
+      "depth": 2,
+      "enabled": true,
+      "rect": {
+        "x": 0,
+        "height": 83,
+        "width": 402,
+        "y": 791
+      },
+      "type": "Other",
+      "parentIndex": 1,
+      "label": "Home, tab, 1 of 3",
+      "hittable": true,
+      "ref": "e10"
+    },
+    {
+      "hittable": true,
+      "depth": 3,
+      "enabled": true,
+      "rect": {
+        "x": 0,
+        "height": 48.66668701171875,
+        "width": 134,
+        "y": 791.3333333432674
+      },
+      "type": "Button",
+      "identifier": "tab-home",
+      "selected": true,
+      "parentIndex": 9,
+      "label": "Home, tab, 1 of 3",
+      "index": 10,
+      "ref": "e11"
+    },
+    {
+      "hittable": true,
+      "depth": 3,
+      "enabled": true,
+      "rect": {
+        "x": 134,
+        "height": 48.66668701171875,
+        "width": 134,
+        "y": 791.3333333432674
+      },
+      "type": "Button",
+      "identifier": "tab-feed",
+      "parentIndex": 9,
+      "label": "Feed, tab, 2 of 3",
+      "index": 11,
+      "ref": "e12"
+    },
+    {
+      "hittable": true,
+      "depth": 3,
+      "enabled": true,
+      "rect": {
+        "x": 268,
+        "height": 48.66668701171875,
+        "width": 134,
+        "y": 791.3333333432674
+      },
+      "type": "Button",
+      "identifier": "tab-actions",
+      "parentIndex": 9,
+      "label": "Actions, tab, 3 of 3",
+      "index": 12,
+      "ref": "e13"
+    }
+  ],
+  "truncated": false,
+  "appName": "dev.e2e.benchmark",
+  "appBundleId": "dev.e2e.benchmark"
+}

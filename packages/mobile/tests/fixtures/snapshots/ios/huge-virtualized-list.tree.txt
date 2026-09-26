@@ -1,0 +1,27 @@
+screen
+  application "e2e Benchmark"
+    other "Benchmark Examples"
+      navigation "Benchmark Examples" #Huge Virtualized List
+        button "Benchmark Examples" #BackButton
+        text "Huge Virtualized List"
+      other "Vertical scroll bar, 45 pages"
+        other "Row 0001" #huge-list
+          scroll-view "All 600 rows are loaded. Scroll to Row 0512 and tap it."
+            other
+              other
+                text
+              other "Row 0001" #row-1
+              other "Row 0002" #row-2
+              other "Row 0003" #row-3
+              other "Row 0004" #row-4
+              other "Row 0005" #row-5
+              other "Row 0006" #row-6
+              other "Row 0007" #row-7
+              other "Row 0008" #row-8
+              other "Row 0009" #row-9
+              other "Row 0010" #row-10
+              other "Row 0011" #row-11
+              other "Row 0012" #row-12
+              other "Row 0013" #row-13
+            other "Vertical scroll bar, 45 pages" value="0%"
+            other "Horizontal scroll bar, 1 page" value="0%"

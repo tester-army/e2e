@@ -1,0 +1,11 @@
+screen
+  application "e2e Benchmark"
+    other "Benchmark Examples"
+      navigation "Benchmark Examples" #Error Recovery
+        button "Benchmark Examples" #BackButton
+        text "Error Recovery"
+      other "Network error: could not load drafts"
+        other
+          other #error-banner
+          text
+          other "Retry" #retry-button

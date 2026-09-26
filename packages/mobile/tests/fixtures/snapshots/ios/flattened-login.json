@@ -1,0 +1,120 @@
+{
+  "nodes": [
+    {
+      "hittable": false,
+      "enabled": true,
+      "index": 0,
+      "label": "e2e Benchmark",
+      "type": "Application",
+      "depth": 0,
+      "rect": {
+        "width": 402,
+        "x": 0,
+        "y": 0,
+        "height": 874
+      },
+      "ref": "e1"
+    },
+    {
+      "hittable": true,
+      "enabled": true,
+      "index": 1,
+      "label": "Benchmark Examples",
+      "type": "Other",
+      "depth": 1,
+      "parentIndex": 0,
+      "rect": {
+        "width": 402,
+        "x": 0,
+        "y": 0,
+        "height": 874
+      },
+      "ref": "e2"
+    },
+    {
+      "hittable": true,
+      "enabled": true,
+      "index": 2,
+      "label": "Benchmark Examples",
+      "type": "NavigationBar",
+      "depth": 2,
+      "identifier": "Flattened Login",
+      "parentIndex": 1,
+      "rect": {
+        "width": 402,
+        "x": 0,
+        "y": 62,
+        "height": 54
+      },
+      "ref": "e3"
+    },
+    {
+      "hittable": true,
+      "enabled": true,
+      "index": 3,
+      "label": "Benchmark Examples",
+      "type": "Button",
+      "depth": 3,
+      "identifier": "BackButton",
+      "parentIndex": 2,
+      "rect": {
+        "width": 219.66666666666666,
+        "x": 16.00000000000001,
+        "y": 62,
+        "height": 44
+      },
+      "ref": "e4"
+    },
+    {
+      "hittable": true,
+      "enabled": true,
+      "index": 4,
+      "label": "Flattened Login",
+      "type": "StaticText",
+      "depth": 3,
+      "parentIndex": 2,
+      "rect": {
+        "width": 123,
+        "x": 247.66666666666669,
+        "y": 73.66666666666666,
+        "height": 20.66666666666667
+      },
+      "ref": "e5"
+    },
+    {
+      "hittable": true,
+      "enabled": true,
+      "index": 5,
+      "label": "Use tester@tester.army / benchmark123, Email, Password, SIGN IN",
+      "type": "Other",
+      "depth": 2,
+      "parentIndex": 1,
+      "rect": {
+        "width": 402,
+        "x": 0,
+        "y": 0,
+        "height": 874
+      },
+      "ref": "e6"
+    },
+    {
+      "hittable": true,
+      "enabled": true,
+      "index": 6,
+      "type": "Other",
+      "depth": 3,
+      "parentIndex": 5,
+      "rect": {
+        "width": 402,
+        "x": 0,
+        "y": 116,
+        "height": 758
+      },
+      "ref": "e7",
+      "inheritsLabel": true
+    }
+  ],
+  "truncated": false,
+  "appName": "dev.e2e.benchmark",
+  "appBundleId": "dev.e2e.benchmark"
+}

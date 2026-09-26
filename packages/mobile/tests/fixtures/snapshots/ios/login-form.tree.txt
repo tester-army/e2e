@@ -1,0 +1,12 @@
+screen
+  application "e2e Benchmark"
+    other "Benchmark Examples"
+      navigation "Benchmark Examples" #Login Form
+        button "Benchmark Examples" #BackButton
+        text "Login Form"
+      other "Use tester@tester.army / benchmark123"
+        other
+          text
+          textbox #email-input placeholder="Email"
+          textbox [secure] #password-input placeholder="Password"
+          other "Log in" #login-button

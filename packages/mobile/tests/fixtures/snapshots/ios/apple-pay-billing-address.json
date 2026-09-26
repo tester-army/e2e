@@ -1,0 +1,217 @@
+{
+  "nodes": [
+    {
+      "hittable": false,
+      "index": 0,
+      "enabled": true,
+      "label": "e2e Benchmark",
+      "type": "Application",
+      "depth": 0,
+      "rect": {
+        "height": 874,
+        "width": 402,
+        "x": 0,
+        "y": 0
+      },
+      "ref": "e1"
+    },
+    {
+      "hittable": true,
+      "index": 1,
+      "enabled": true,
+      "label": "Benchmark Examples",
+      "type": "Other",
+      "depth": 1,
+      "parentIndex": 0,
+      "rect": {
+        "height": 874,
+        "width": 402,
+        "x": 0,
+        "y": 0
+      },
+      "ref": "e2"
+    },
+    {
+      "hittable": true,
+      "index": 2,
+      "enabled": true,
+      "label": "Benchmark Examples",
+      "type": "NavigationBar",
+      "depth": 2,
+      "identifier": "Apple Pay Billing Address",
+      "parentIndex": 1,
+      "rect": {
+        "height": 54,
+        "width": 402,
+        "x": 0,
+        "y": 62
+      },
+      "ref": "e3"
+    },
+    {
+      "hittable": true,
+      "index": 3,
+      "enabled": true,
+      "label": "Benchmark Examples",
+      "type": "Button",
+      "depth": 3,
+      "identifier": "BackButton",
+      "parentIndex": 2,
+      "rect": {
+        "height": 44,
+        "width": 44,
+        "x": 16,
+        "y": 62
+      },
+      "ref": "e4"
+    },
+    {
+      "hittable": true,
+      "index": 4,
+      "enabled": true,
+      "label": "Apple Pay Billing Address",
+      "type": "StaticText",
+      "depth": 3,
+      "parentIndex": 2,
+      "rect": {
+        "height": 20.66666666666667,
+        "width": 201.66666666666663,
+        "x": 100,
+        "y": 73.66666666666666
+      },
+      "ref": "e5"
+    },
+    {
+      "hittable": true,
+      "index": 5,
+      "enabled": true,
+      "label": "Order summary",
+      "type": "Other",
+      "depth": 2,
+      "parentIndex": 1,
+      "rect": {
+        "height": 874,
+        "width": 402,
+        "x": 0,
+        "y": 0
+      },
+      "ref": "e6"
+    },
+    {
+      "hittable": true,
+      "index": 6,
+      "enabled": true,
+      "label": "Order summary",
+      "type": "Other",
+      "depth": 3,
+      "parentIndex": 5,
+      "rect": {
+        "y": 116,
+        "width": 402,
+        "height": 758,
+        "x": 0
+      },
+      "ref": "e7"
+    },
+    {
+      "hittable": true,
+      "depth": 4,
+      "rect": {
+        "y": 372.3333435058594,
+        "width": 156,
+        "height": 26.33331298828125,
+        "x": 123
+      },
+      "enabled": true,
+      "type": "StaticText",
+      "parentIndex": 6,
+      "label": "Order summary",
+      "index": 7,
+      "ref": "e8"
+    },
+    {
+      "hittable": true,
+      "depth": 4,
+      "rect": {
+        "y": 431.3333339691162,
+        "width": 321.33331298828125,
+        "height": 18,
+        "x": 40.33333396911621
+      },
+      "enabled": true,
+      "type": "StaticText",
+      "parentIndex": 6,
+      "label": "Trail Mix 500 g — $6.99",
+      "index": 8,
+      "ref": "e9"
+    },
+    {
+      "hittable": true,
+      "depth": 4,
+      "rect": {
+        "y": 455.3333320617676,
+        "width": 321.33331298828125,
+        "height": 18,
+        "x": 40.33333396911621
+      },
+      "enabled": true,
+      "type": "StaticText",
+      "parentIndex": 6,
+      "label": "Rush delivery — $2.00",
+      "index": 9,
+      "ref": "e10"
+    },
+    {
+      "hittable": true,
+      "depth": 4,
+      "rect": {
+        "y": 483.33333587646484,
+        "width": 321.33331298828125,
+        "height": 19.333343505859375,
+        "x": 40.33333396911621
+      },
+      "enabled": true,
+      "type": "StaticText",
+      "parentIndex": 6,
+      "label": "Total — $8.99",
+      "index": 10,
+      "ref": "e11"
+    },
+    {
+      "hittable": true,
+      "depth": 4,
+      "rect": {
+        "y": 534.6666564941406,
+        "width": 350.3333435058594,
+        "height": 17,
+        "x": 25.66666603088379
+      },
+      "enabled": true,
+      "type": "StaticText",
+      "parentIndex": 6,
+      "label": "A billing address is required to complete this payment.",
+      "index": 11,
+      "ref": "e12"
+    },
+    {
+      "hittable": true,
+      "depth": 4,
+      "rect": {
+        "y": 568,
+        "width": 354,
+        "height": 49.666656494140625,
+        "x": 24
+      },
+      "enabled": true,
+      "type": "Other",
+      "identifier": "apple-pay-button",
+      "parentIndex": 6,
+      "label": "Buy with Apple Pay",
+      "index": 12,
+      "ref": "e13"
+    }
+  ],
+  "truncated": false,
+  "appName": "dev.e2e.benchmark",
+  "appBundleId": "dev.e2e.benchmark"
+}

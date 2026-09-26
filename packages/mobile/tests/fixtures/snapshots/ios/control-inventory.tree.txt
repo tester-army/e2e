@@ -1,0 +1,38 @@
+screen
+  application "e2e Benchmark"
+    other "Benchmark Examples"
+      navigation "Benchmark Examples" #Control Inventory
+        button "Benchmark Examples" #BackButton
+        text "Control Inventory"
+      other "Vertical scroll bar, 1 page"
+        other "Inventory heading" #inventory-scroll
+          scroll-view "Inventory heading"
+            other "Inventory heading"
+              text "Inventory heading" #inventory-header
+                text "Inventory heading"
+              text "scheme: light" #color-scheme
+                text "scheme: light"
+              text "orientation: portrait" #orientation
+                text "orientation: portrait"
+              text "402x874" #window-size
+                text "402x874"
+              other #section-tabs
+              other "Fields" [selected] #tab-fields
+              other "Toggles" #tab-toggles
+              other "Gestures" #tab-gestures
+              other "Device" #tab-device
+              other "Name field"
+                textbox "Name field" value="Ada Lovelace" #name-input placeholder="Type your name"
+              text "name: Ada Lovelace" #name-echo
+                text "name: Ada Lovelace"
+              other "Passphrase field"
+                textbox "Passphrase field" [secure] #passphrase-input placeholder="Passphrase"
+              text "passphrase length: 0" #passphrase-length
+                text "passphrase length: 0"
+              other "Key echo field"
+                textbox "Key echo field" #key-input placeholder="Key echo"
+              text "key: none" #key-status
+                text "key: none"
+              button "Show focus fields" #show-focus-fields
+            other "Vertical scroll bar, 1 page" value="0%"
+            other "Horizontal scroll bar, 1 page" value="0%"

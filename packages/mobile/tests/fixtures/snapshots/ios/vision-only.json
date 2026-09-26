@@ -1,0 +1,88 @@
+{
+  "nodes": [
+    {
+      "enabled": true,
+      "label": "e2e Benchmark",
+      "rect": {
+        "y": 0,
+        "width": 402,
+        "x": 0,
+        "height": 874
+      },
+      "index": 0,
+      "type": "Application",
+      "depth": 0,
+      "hittable": false,
+      "ref": "e1"
+    },
+    {
+      "enabled": true,
+      "parentIndex": 0,
+      "label": "Benchmark Examples",
+      "rect": {
+        "y": 0,
+        "width": 402,
+        "x": 0,
+        "height": 874
+      },
+      "index": 1,
+      "type": "Other",
+      "depth": 1,
+      "hittable": true,
+      "ref": "e2"
+    },
+    {
+      "hittable": true,
+      "identifier": "Vision Only",
+      "parentIndex": 1,
+      "label": "Benchmark Examples",
+      "rect": {
+        "y": 62,
+        "width": 402,
+        "x": 0,
+        "height": 54
+      },
+      "index": 2,
+      "type": "NavigationBar",
+      "depth": 2,
+      "enabled": true,
+      "ref": "e3"
+    },
+    {
+      "hittable": true,
+      "identifier": "BackButton",
+      "parentIndex": 2,
+      "label": "Benchmark Examples",
+      "rect": {
+        "y": 62,
+        "width": 219.66666666666666,
+        "x": 16.00000000000001,
+        "height": 44
+      },
+      "index": 3,
+      "type": "Button",
+      "depth": 3,
+      "enabled": true,
+      "ref": "e4"
+    },
+    {
+      "enabled": true,
+      "parentIndex": 2,
+      "label": "Vision Only",
+      "rect": {
+        "y": 73.66666666666666,
+        "width": 89.66666666666669,
+        "x": 247.66666666666669,
+        "height": 20.66666666666667
+      },
+      "index": 4,
+      "type": "StaticText",
+      "depth": 3,
+      "hittable": true,
+      "ref": "e5"
+    }
+  ],
+  "truncated": false,
+  "appName": "dev.e2e.benchmark",
+  "appBundleId": "dev.e2e.benchmark"
+}

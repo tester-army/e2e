@@ -310,6 +310,25 @@ calls the model. A load average above half the cores is warned about; shared
 CI runners are too noisy for wall-time verdicts, so trust the behavior and
 counter sections there. The harness's statistics have unit tests under
 `scripts/bench-ab/` (`pnpm test:scripts`).
+## Golden device trees
+
+`packages/mobile/tests/fixtures/snapshots/{ios,android}/` holds raw
+agent-device snapshots of the mobile benchmark's home list and every
+scenario's first screen, captured from a real simulator and emulator, beside
+the tree each one projects to (`<scenario>.tree.txt`: role, name, text,
+value, states, test id, attributes, one node per line, no geometry).
+`tests/unit/captured-snapshots.test.ts` projects them the way `observe` does
+under `pnpm test`, so a change to `src/nodes.ts` shows up as a diff of the
+trees, on both platforms, without a device.
+
+- After a reader change, `E2E_GOLDEN_UPDATE=1 pnpm --filter @e2edev/mobile
+  exec vitest run tests/unit/captured-snapshots.test.ts` rewrites the trees;
+  the diff is what the model and the locators now read. Review it like code.
+- Re-capture after an agent-device bump or an app change, with the current
+  build installed (`pnpm ios` / `pnpm android` in the app), one platform at a
+  time: `pnpm --filter @e2edev/mobile-benchmark run capture:snapshots
+  --target ios-simulator` (or `android-emulator`), then update the trees. A
+  bump that changes the snapshot shape is exactly what this catches.
 
 ## Gotchas
 

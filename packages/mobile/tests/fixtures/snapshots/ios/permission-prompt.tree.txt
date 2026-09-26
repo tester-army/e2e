@@ -1,0 +1,11 @@
+screen
+  application "e2e Benchmark"
+    other "Benchmark Examples"
+      navigation "Benchmark Examples" #Permission Prompt
+        button "Benchmark Examples" #BackButton
+        text "Permission Prompt"
+      other "Voice notes"
+        other "Voice notes"
+          text "Voice notes"
+          text "Recording voice notes requires microphone access. Allow the permission when the system asks."
+          other "Enable microphone" #request-permission

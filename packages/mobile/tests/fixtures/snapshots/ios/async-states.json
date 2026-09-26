@@ -1,0 +1,170 @@
+{
+  "nodes": [
+    {
+      "index": 0,
+      "enabled": true,
+      "type": "Application",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 402,
+        "height": 874
+      },
+      "hittable": false,
+      "label": "e2e Benchmark",
+      "depth": 0,
+      "ref": "e1"
+    },
+    {
+      "index": 1,
+      "enabled": true,
+      "type": "Other",
+      "rect": {
+        "height": 874,
+        "width": 402,
+        "x": 0,
+        "y": 0
+      },
+      "parentIndex": 0,
+      "hittable": true,
+      "label": "Benchmark Examples",
+      "depth": 1,
+      "ref": "e2"
+    },
+    {
+      "index": 2,
+      "enabled": true,
+      "type": "NavigationBar",
+      "rect": {
+        "height": 54,
+        "width": 402,
+        "x": 0,
+        "y": 62
+      },
+      "parentIndex": 1,
+      "hittable": true,
+      "label": "Benchmark Examples",
+      "depth": 2,
+      "identifier": "Async States",
+      "ref": "e3"
+    },
+    {
+      "index": 3,
+      "enabled": true,
+      "type": "Button",
+      "rect": {
+        "height": 44,
+        "width": 219.66666666666666,
+        "x": 16.00000000000001,
+        "y": 62
+      },
+      "parentIndex": 2,
+      "hittable": true,
+      "label": "Benchmark Examples",
+      "depth": 3,
+      "identifier": "BackButton",
+      "ref": "e4"
+    },
+    {
+      "index": 4,
+      "enabled": true,
+      "type": "StaticText",
+      "rect": {
+        "height": 20.66666666666667,
+        "width": 104.33333333333331,
+        "x": 247.66666666666663,
+        "y": 73.66666666666666
+      },
+      "parentIndex": 2,
+      "hittable": true,
+      "label": "Async States",
+      "depth": 3,
+      "ref": "e5"
+    },
+    {
+      "index": 5,
+      "enabled": true,
+      "type": "Other",
+      "rect": {
+        "height": 874,
+        "width": 402,
+        "x": 0,
+        "y": 0
+      },
+      "parentIndex": 1,
+      "hittable": true,
+      "label": "Loading…",
+      "depth": 2,
+      "ref": "e6"
+    },
+    {
+      "index": 6,
+      "enabled": true,
+      "type": "Other",
+      "rect": {
+        "height": 758,
+        "width": 402,
+        "x": 0,
+        "y": 116
+      },
+      "parentIndex": 5,
+      "hittable": true,
+      "label": "In progress",
+      "depth": 3,
+      "ref": "e7"
+    },
+    {
+      "hittable": true,
+      "depth": 4,
+      "rect": {
+        "height": 36,
+        "width": 36,
+        "x": 183,
+        "y": 462.6666564941406
+      },
+      "enabled": true,
+      "type": "Other",
+      "identifier": "initial-loading",
+      "parentIndex": 6,
+      "label": "In progress",
+      "index": 7,
+      "ref": "e8"
+    },
+    {
+      "hittable": true,
+      "depth": 5,
+      "rect": {
+        "height": 36,
+        "width": 36,
+        "x": 183,
+        "y": 462.6666564941406
+      },
+      "enabled": true,
+      "type": "ActivityIndicator",
+      "parentIndex": 7,
+      "label": "In progress",
+      "value": "1",
+      "index": 8,
+      "ref": "e9"
+    },
+    {
+      "index": 9,
+      "depth": 4,
+      "rect": {
+        "height": 17,
+        "width": 62.666656494140625,
+        "x": 169.6666717529297,
+        "y": 510.3333435058594
+      },
+      "enabled": true,
+      "type": "StaticText",
+      "parentIndex": 6,
+      "label": "Loading…",
+      "hittable": true,
+      "ref": "e10"
+    }
+  ],
+  "truncated": false,
+  "appName": "dev.e2e.benchmark",
+  "appBundleId": "dev.e2e.benchmark"
+}

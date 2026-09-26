@@ -1,0 +1,528 @@
+{
+  "nodes": [
+    {
+      "index": 0,
+      "type": "android.widget.TextView",
+      "label": "11:25",
+      "value": "11:25",
+      "contentDescription": "11:25 PM",
+      "identifier": "com.android.systemui:id/clock",
+      "bundleId": "com.android.systemui",
+      "rect": {
+        "x": 47,
+        "y": 47,
+        "width": 125,
+        "height": 43
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "depth": 0,
+      "ref": "e1"
+    },
+    {
+      "index": 1,
+      "type": "android.widget.ImageView",
+      "label": "Android System notification: ",
+      "bundleId": "com.android.systemui",
+      "rect": {
+        "x": 172,
+        "y": 1,
+        "width": 58,
+        "height": 135
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "depth": 0,
+      "ref": "e2"
+    },
+    {
+      "index": 2,
+      "type": "android.widget.ImageView",
+      "label": "Wifi signal full.",
+      "identifier": "com.android.systemui:id/wifi_signal",
+      "bundleId": "com.android.systemui",
+      "rect": {
+        "x": 891,
+        "y": 48,
+        "width": 39,
+        "height": 39
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "depth": 0,
+      "ref": "e3"
+    },
+    {
+      "index": 3,
+      "type": "android.widget.FrameLayout",
+      "label": "T-Mobile, one bar.",
+      "identifier": "com.android.systemui:id/mobile_combo",
+      "bundleId": "com.android.systemui",
+      "rect": {
+        "x": 930,
+        "y": 39,
+        "width": 39,
+        "height": 58
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "depth": 0,
+      "ref": "e4"
+    },
+    {
+      "index": 4,
+      "type": "android.widget.ImageView",
+      "identifier": "com.android.systemui:id/mobile_signal",
+      "bundleId": "com.android.systemui",
+      "rect": {
+        "x": 930,
+        "y": 48,
+        "width": 39,
+        "height": 39
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "depth": 1,
+      "parentIndex": 3,
+      "ref": "e5"
+    },
+    {
+      "index": 5,
+      "type": "android.widget.LinearLayout",
+      "label": "Battery charging, 100 percent.",
+      "identifier": "com.android.systemui:id/battery",
+      "bundleId": "com.android.systemui",
+      "rect": {
+        "x": 985,
+        "y": 51,
+        "width": 20,
+        "height": 34
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "depth": 0,
+      "ref": "e6"
+    },
+    {
+      "index": 6,
+      "type": "android.widget.ImageView",
+      "bundleId": "com.android.systemui",
+      "rect": {
+        "x": 985,
+        "y": 51,
+        "width": 20,
+        "height": 34
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "depth": 1,
+      "parentIndex": 5,
+      "ref": "e7"
+    },
+    {
+      "index": 7,
+      "type": "android.widget.FrameLayout",
+      "bundleId": "dev.e2e.benchmark",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 1080,
+        "height": 2400
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "depth": 0,
+      "ref": "e8"
+    },
+    {
+      "index": 8,
+      "type": "android.widget.LinearLayout",
+      "bundleId": "dev.e2e.benchmark",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 1080,
+        "height": 2400
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "depth": 1,
+      "parentIndex": 7,
+      "ref": "e9"
+    },
+    {
+      "index": 9,
+      "type": "android.widget.FrameLayout",
+      "bundleId": "dev.e2e.benchmark",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 1080,
+        "height": 2400
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "depth": 2,
+      "parentIndex": 8,
+      "ref": "e10"
+    },
+    {
+      "index": 10,
+      "type": "android.widget.LinearLayout",
+      "identifier": "dev.e2e.benchmark:id/action_bar_root",
+      "bundleId": "dev.e2e.benchmark",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 1080,
+        "height": 2400
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "depth": 3,
+      "parentIndex": 9,
+      "ref": "e11"
+    },
+    {
+      "index": 11,
+      "type": "android.widget.FrameLayout",
+      "identifier": "android:id/content",
+      "bundleId": "dev.e2e.benchmark",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 1080,
+        "height": 2400
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "depth": 4,
+      "parentIndex": 10,
+      "ref": "e12"
+    },
+    {
+      "index": 12,
+      "type": "android.widget.FrameLayout",
+      "bundleId": "dev.e2e.benchmark",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 1080,
+        "height": 2400
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "depth": 5,
+      "parentIndex": 11,
+      "ref": "e13"
+    },
+    {
+      "index": 13,
+      "type": "android.view.ViewGroup",
+      "bundleId": "dev.e2e.benchmark",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 1080,
+        "height": 2400
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "depth": 6,
+      "parentIndex": 12,
+      "ref": "e14"
+    },
+    {
+      "index": 14,
+      "type": "android.view.ViewGroup",
+      "bundleId": "dev.e2e.benchmark",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 1080,
+        "height": 2400
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "depth": 7,
+      "parentIndex": 13,
+      "ref": "e15"
+    },
+    {
+      "index": 15,
+      "type": "android.widget.ScrollView",
+      "bundleId": "dev.e2e.benchmark",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 1080,
+        "height": 2400
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "depth": 8,
+      "parentIndex": 14,
+      "ref": "e16"
+    },
+    {
+      "index": 16,
+      "type": "android.widget.LinearLayout",
+      "bundleId": "dev.e2e.benchmark",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 1080,
+        "height": 283
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "depth": 9,
+      "parentIndex": 15,
+      "ref": "e17"
+    },
+    {
+      "index": 17,
+      "type": "android.view.ViewGroup",
+      "bundleId": "dev.e2e.benchmark",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 1080,
+        "height": 283
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "depth": 10,
+      "parentIndex": 16,
+      "ref": "e18"
+    },
+    {
+      "index": 18,
+      "type": "android.widget.ImageButton",
+      "label": "Navigate up",
+      "bundleId": "dev.e2e.benchmark",
+      "rect": {
+        "x": 0,
+        "y": 136,
+        "width": 147,
+        "height": 147
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "hittable": true,
+      "depth": 11,
+      "parentIndex": 17,
+      "ref": "e19"
+    },
+    {
+      "index": 19,
+      "type": "android.widget.TextView",
+      "label": "Debounced Search",
+      "value": "Debounced Search",
+      "bundleId": "dev.e2e.benchmark",
+      "rect": {
+        "x": 189,
+        "y": 174,
+        "width": 446,
+        "height": 71
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "depth": 11,
+      "parentIndex": 17,
+      "ref": "e20"
+    },
+    {
+      "index": 20,
+      "type": "android.view.ViewGroup",
+      "bundleId": "dev.e2e.benchmark",
+      "rect": {
+        "x": 0,
+        "y": 283,
+        "width": 1080,
+        "height": 2117
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "depth": 9,
+      "parentIndex": 15,
+      "ref": "e21"
+    },
+    {
+      "index": 21,
+      "type": "android.view.ViewGroup",
+      "bundleId": "dev.e2e.benchmark",
+      "rect": {
+        "x": 0,
+        "y": 283,
+        "width": 1080,
+        "height": 2117
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "depth": 10,
+      "parentIndex": 20,
+      "ref": "e22"
+    },
+    {
+      "index": 22,
+      "type": "android.widget.TextView",
+      "label": "Search for and select \"Benchmark Target\"",
+      "value": "Search for and select \"Benchmark Target\"",
+      "bundleId": "dev.e2e.benchmark",
+      "rect": {
+        "x": 42,
+        "y": 325,
+        "width": 996,
+        "height": 47
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "depth": 11,
+      "parentIndex": 21,
+      "ref": "e23"
+    },
+    {
+      "index": 23,
+      "type": "android.widget.EditText",
+      "label": "Search…",
+      "value": "Search…",
+      "identifier": "search-input",
+      "bundleId": "dev.e2e.benchmark",
+      "rect": {
+        "x": 42,
+        "y": 403,
+        "width": 996,
+        "height": 116
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": true,
+      "password": false,
+      "hintShowing": true,
+      "placeholder": "Search…",
+      "visibleToUser": true,
+      "hittable": true,
+      "depth": 11,
+      "parentIndex": 21,
+      "ref": "e24"
+    },
+    {
+      "index": 24,
+      "type": "android.widget.ScrollView",
+      "identifier": "search-results",
+      "bundleId": "dev.e2e.benchmark",
+      "rect": {
+        "x": 42,
+        "y": 550,
+        "width": 996,
+        "height": 1808
+      },
+      "enabled": true,
+      "selected": false,
+      "editable": false,
+      "password": false,
+      "hintShowing": false,
+      "visibleToUser": true,
+      "hittable": true,
+      "depth": 11,
+      "parentIndex": 21,
+      "ref": "e25"
+    }
+  ],
+  "truncated": false,
+  "appName": "dev.e2e.benchmark",
+  "appBundleId": "dev.e2e.benchmark"
+}

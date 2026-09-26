@@ -1,0 +1,13 @@
+screen
+  application "e2e Benchmark"
+    other "Benchmark Examples"
+      navigation "Benchmark Examples" #Apple Pay
+        button "Benchmark Examples" #BackButton
+        text "Apple Pay"
+      other "Order summary"
+        other "Order summary"
+          text "Order summary"
+          text "Trail Mix 500 g — $6.99"
+          text "Rush delivery — $2.00"
+          text "Total — $8.99"
+          other "Buy with Apple Pay" #apple-pay-button

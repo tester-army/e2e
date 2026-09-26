@@ -1,0 +1,62 @@
+screen
+  application "e2e Benchmark"
+    window "Next keyboard"
+      other "Next keyboard"
+        other "Next keyboard"
+          other "Padding-Left"
+            keyboard "Padding-Left"
+              other "Padding-Left" #UIKeyboardLayoutStar Preview
+                key "Padding-Left"
+                key "q"
+                key "w"
+                key "e"
+                key "r"
+                key "t"
+                key "y"
+                key "u"
+                key "i"
+                key "o"
+                key "p"
+                key "Padding-Right"
+                key "a"
+                key "s"
+                key "d"
+                key "f"
+                key "g"
+                key "h"
+                key "j"
+                key "k"
+                key "l"
+                button "shift" #shift
+                key "z"
+                key "x"
+                key "c"
+                key "v"
+                key "b"
+                key "n"
+                key "m"
+                key "delete" #delete
+                key "numbers" #more
+                button "Emoji" #emoji
+                key #space
+                key "@"
+                key "."
+                button "return" #Return
+          other "Next keyboard"
+            button "Next keyboard" value="Polski"
+            button "Dictate" #dictation
+    other #inputView
+    other "Benchmark Examples"
+      navigation "Benchmark Examples" #Sequential Onboarding
+        button "Benchmark Examples" #BackButton
+        text "Sequential Onboarding"
+      other "Vertical scroll bar, 1 page"
+        other "Step 1 of 3" #onboarding-step-email
+          scroll-view "Step 1 of 3"
+            other "Step 1 of 3"
+              text "Step 1 of 3"
+              text "Let's start with your email"
+              textbox [focused] #email-input placeholder="e.g. jane@example.com"
+              other "Continue" #continue-button
+            other "Vertical scroll bar, 1 page" value="0%"
+            other "Horizontal scroll bar, 1 page" value="0%"

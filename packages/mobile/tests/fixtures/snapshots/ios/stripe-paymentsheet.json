@@ -1,0 +1,584 @@
+{
+  "nodes": [
+    {
+      "enabled": true,
+      "hittable": false,
+      "rect": {
+        "width": 402,
+        "height": 874,
+        "y": 0,
+        "x": 0
+      },
+      "type": "Application",
+      "label": "e2e Benchmark",
+      "index": 0,
+      "depth": 0,
+      "ref": "e1"
+    },
+    {
+      "enabled": true,
+      "hittable": true,
+      "rect": {
+        "width": 402,
+        "height": 874,
+        "y": 0,
+        "x": 0
+      },
+      "type": "Window",
+      "label": "Vertical scroll bar, 1 page",
+      "parentIndex": 0,
+      "index": 1,
+      "depth": 1,
+      "ref": "e2"
+    },
+    {
+      "enabled": true,
+      "hittable": true,
+      "rect": {
+        "width": 402,
+        "height": 874,
+        "y": 0,
+        "x": 0
+      },
+      "type": "Other",
+      "label": "Close",
+      "parentIndex": 1,
+      "index": 2,
+      "depth": 2,
+      "ref": "e3"
+    },
+    {
+      "enabled": true,
+      "hittable": true,
+      "rect": {
+        "width": 402,
+        "height": 648,
+        "y": 226,
+        "x": 0
+      },
+      "type": "Other",
+      "label": "Close",
+      "parentIndex": 2,
+      "index": 3,
+      "depth": 3,
+      "ref": "e4"
+    },
+    {
+      "enabled": true,
+      "hittable": true,
+      "rect": {
+        "width": 402,
+        "height": 52,
+        "y": 226,
+        "x": 0
+      },
+      "type": "Other",
+      "label": "TEST",
+      "parentIndex": 3,
+      "index": 4,
+      "depth": 4,
+      "ref": "e5"
+    },
+    {
+      "enabled": true,
+      "hittable": true,
+      "rect": {
+        "y": 226,
+        "x": 0,
+        "width": 61,
+        "height": 52
+      },
+      "type": "Other",
+      "label": "TEST",
+      "parentIndex": 4,
+      "index": 5,
+      "depth": 5,
+      "ref": "e6"
+    },
+    {
+      "enabled": true,
+      "hittable": true,
+      "rect": {
+        "y": 240.66666666666666,
+        "x": 20,
+        "width": 41,
+        "height": 22.99999999999997
+      },
+      "type": "Other",
+      "label": "TEST",
+      "parentIndex": 5,
+      "index": 6,
+      "depth": 6,
+      "ref": "e7"
+    },
+    {
+      "index": 7,
+      "depth": 7,
+      "enabled": true,
+      "rect": {
+        "y": 240.66666666666666,
+        "x": 20,
+        "width": 41,
+        "height": 22.99999999999997
+      },
+      "type": "StaticText",
+      "parentIndex": 6,
+      "label": "TEST",
+      "hittable": true,
+      "ref": "e8"
+    },
+    {
+      "hittable": true,
+      "depth": 5,
+      "enabled": true,
+      "rect": {
+        "y": 241,
+        "x": 366,
+        "width": 16,
+        "height": 22
+      },
+      "type": "Button",
+      "identifier": "UIButton.Close",
+      "parentIndex": 4,
+      "label": "Close",
+      "index": 8,
+      "ref": "e9"
+    },
+    {
+      "index": 9,
+      "depth": 4,
+      "enabled": true,
+      "rect": {
+        "y": 278,
+        "x": 0,
+        "width": 402,
+        "height": 596
+      },
+      "type": "ScrollView",
+      "hiddenContentAbove": true,
+      "parentIndex": 3,
+      "label": "Pay 10,99 US$",
+      "hittable": true,
+      "ref": "e10"
+    },
+    {
+      "index": 10,
+      "depth": 5,
+      "enabled": true,
+      "rect": {
+        "y": 278,
+        "x": 0,
+        "width": 402,
+        "height": 596
+      },
+      "type": "Other",
+      "parentIndex": 9,
+      "label": "Pay 10,99 US$",
+      "hittable": true,
+      "ref": "e11"
+    },
+    {
+      "index": 11,
+      "depth": 6,
+      "enabled": true,
+      "rect": {
+        "y": 278,
+        "x": 0,
+        "width": 402,
+        "height": 596
+      },
+      "type": "Other",
+      "parentIndex": 10,
+      "label": "Select payment method",
+      "hittable": true,
+      "ref": "e12"
+    },
+    {
+      "index": 12,
+      "depth": 7,
+      "enabled": true,
+      "rect": {
+        "y": 278,
+        "x": 0,
+        "width": 402,
+        "height": 480
+      },
+      "type": "Other",
+      "parentIndex": 11,
+      "label": "Select payment method",
+      "hittable": true,
+      "ref": "e13"
+    },
+    {
+      "index": 13,
+      "depth": 8,
+      "enabled": true,
+      "rect": {
+        "y": 278,
+        "x": 20,
+        "width": 362,
+        "height": 480
+      },
+      "type": "Other",
+      "parentIndex": 12,
+      "label": "Select payment method",
+      "hittable": true,
+      "ref": "e14"
+    },
+    {
+      "index": 14,
+      "depth": 9,
+      "enabled": true,
+      "rect": {
+        "y": 278,
+        "x": 20,
+        "width": 362,
+        "height": 24
+      },
+      "type": "StaticText",
+      "parentIndex": 13,
+      "label": "Select payment method",
+      "hittable": true,
+      "ref": "e15"
+    },
+    {
+      "index": 15,
+      "depth": 9,
+      "enabled": true,
+      "rect": {
+        "y": 326,
+        "x": 20,
+        "width": 362,
+        "height": 18
+      },
+      "type": "StaticText",
+      "parentIndex": 13,
+      "label": "Saved",
+      "hittable": true,
+      "ref": "e16"
+    },
+    {
+      "hittable": true,
+      "depth": 9,
+      "enabled": true,
+      "rect": {
+        "y": 356,
+        "x": 20,
+        "width": 362,
+        "height": 48
+      },
+      "type": "Other",
+      "identifier": "•••• 4242",
+      "parentIndex": 13,
+      "label": "Visa ending in 4 2 4 2",
+      "index": 16,
+      "ref": "e17"
+    },
+    {
+      "hittable": true,
+      "depth": 10,
+      "enabled": true,
+      "rect": {
+        "y": 356,
+        "x": 20,
+        "width": 362,
+        "height": 48
+      },
+      "type": "Button",
+      "identifier": "•••• 4242",
+      "selected": true,
+      "parentIndex": 16,
+      "label": "Visa ending in 4 2 4 2",
+      "index": 17,
+      "ref": "e18"
+    },
+    {
+      "hittable": true,
+      "depth": 10,
+      "enabled": true,
+      "rect": {
+        "y": 360,
+        "x": 288.66666666666674,
+        "width": 81.33333333333331,
+        "height": 40
+      },
+      "type": "Button",
+      "identifier": "View more",
+      "parentIndex": 16,
+      "label": "View more",
+      "index": 18,
+      "ref": "e19"
+    },
+    {
+      "index": 19,
+      "depth": 9,
+      "enabled": true,
+      "rect": {
+        "y": 440,
+        "x": 20,
+        "width": 362,
+        "height": 18
+      },
+      "type": "StaticText",
+      "parentIndex": 13,
+      "label": "New payment method",
+      "hittable": true,
+      "ref": "e20"
+    },
+    {
+      "hittable": true,
+      "depth": 9,
+      "enabled": true,
+      "rect": {
+        "y": 470,
+        "x": 20,
+        "width": 362,
+        "height": 48
+      },
+      "type": "Other",
+      "identifier": "New card",
+      "parentIndex": 13,
+      "label": "New card",
+      "index": 20,
+      "ref": "e21"
+    },
+    {
+      "hittable": true,
+      "depth": 10,
+      "enabled": true,
+      "rect": {
+        "y": 470,
+        "x": 20,
+        "width": 362,
+        "height": 48
+      },
+      "type": "Button",
+      "identifier": "New card",
+      "parentIndex": 20,
+      "label": "New card",
+      "index": 21,
+      "ref": "e22"
+    },
+    {
+      "hittable": true,
+      "depth": 9,
+      "enabled": true,
+      "rect": {
+        "y": 530,
+        "x": 20,
+        "width": 362,
+        "height": 48
+      },
+      "type": "Other",
+      "identifier": "Crypto",
+      "parentIndex": 13,
+      "label": "Crypto",
+      "index": 22,
+      "ref": "e23"
+    },
+    {
+      "hittable": true,
+      "depth": 10,
+      "enabled": true,
+      "rect": {
+        "y": 530,
+        "x": 20,
+        "width": 362,
+        "height": 48
+      },
+      "type": "Button",
+      "identifier": "Crypto",
+      "parentIndex": 22,
+      "label": "Crypto",
+      "index": 23,
+      "ref": "e24"
+    },
+    {
+      "hittable": true,
+      "depth": 9,
+      "enabled": true,
+      "rect": {
+        "y": 590,
+        "x": 20,
+        "width": 362,
+        "height": 48
+      },
+      "type": "Other",
+      "identifier": "Cash App Pay",
+      "parentIndex": 13,
+      "label": "Cash App Pay",
+      "index": 24,
+      "ref": "e25"
+    },
+    {
+      "hittable": true,
+      "depth": 10,
+      "enabled": true,
+      "rect": {
+        "y": 590,
+        "x": 20,
+        "width": 362,
+        "height": 48
+      },
+      "type": "Button",
+      "identifier": "Cash App Pay",
+      "parentIndex": 24,
+      "label": "Cash App Pay",
+      "index": 25,
+      "ref": "e26"
+    },
+    {
+      "hittable": true,
+      "depth": 9,
+      "enabled": true,
+      "rect": {
+        "y": 650,
+        "x": 20,
+        "width": 362,
+        "height": 48
+      },
+      "type": "Other",
+      "identifier": "Amazon Pay",
+      "parentIndex": 13,
+      "label": "Amazon Pay",
+      "index": 26,
+      "ref": "e27"
+    },
+    {
+      "hittable": true,
+      "depth": 10,
+      "enabled": true,
+      "rect": {
+        "y": 650,
+        "x": 20,
+        "width": 362,
+        "height": 48
+      },
+      "type": "Button",
+      "identifier": "Amazon Pay",
+      "parentIndex": 26,
+      "label": "Amazon Pay",
+      "index": 27,
+      "ref": "e28"
+    },
+    {
+      "type": "Other",
+      "depth": 9,
+      "identifier": "Alipay",
+      "enabled": true,
+      "label": "Alipay",
+      "rect": {
+        "y": 710,
+        "x": 20,
+        "width": 362,
+        "height": 48
+      },
+      "index": 28,
+      "hittable": true,
+      "parentIndex": 13,
+      "ref": "e29"
+    },
+    {
+      "type": "Button",
+      "depth": 10,
+      "identifier": "Alipay",
+      "enabled": true,
+      "label": "Alipay",
+      "rect": {
+        "y": 710,
+        "x": 20,
+        "width": 362,
+        "height": 48
+      },
+      "index": 29,
+      "hittable": true,
+      "parentIndex": 28,
+      "ref": "e30"
+    },
+    {
+      "type": "Button",
+      "depth": 7,
+      "enabled": true,
+      "label": "Pay 10,99 US$",
+      "rect": {
+        "y": 790,
+        "x": 20,
+        "width": 362,
+        "height": 44
+      },
+      "hittable": true,
+      "index": 30,
+      "parentIndex": 11,
+      "ref": "e31"
+    },
+    {
+      "type": "Image",
+      "depth": 8,
+      "identifier": "icon_lock",
+      "enabled": true,
+      "rect": {
+        "y": 806,
+        "x": 356.3333333333333,
+        "width": 9.666666666666686,
+        "height": 12
+      },
+      "hittable": true,
+      "index": 31,
+      "parentIndex": 30,
+      "ref": "e32"
+    },
+    {
+      "type": "Image",
+      "depth": 8,
+      "identifier": "icon_plus",
+      "enabled": true,
+      "rect": {
+        "y": 804,
+        "x": 36,
+        "width": 16,
+        "height": 16
+      },
+      "hittable": true,
+      "index": 32,
+      "parentIndex": 30,
+      "ref": "e33"
+    },
+    {
+      "type": "Other",
+      "parentIndex": 9,
+      "depth": 5,
+      "enabled": true,
+      "label": "Vertical scroll bar, 1 page",
+      "value": "0%",
+      "index": 33,
+      "rect": {
+        "y": 278,
+        "x": 369,
+        "width": 30,
+        "height": 534
+      },
+      "hittable": true,
+      "ref": "e34"
+    },
+    {
+      "type": "Other",
+      "parentIndex": 9,
+      "depth": 5,
+      "enabled": true,
+      "label": "Horizontal scroll bar, 1 page",
+      "value": "0%",
+      "index": 34,
+      "rect": {
+        "y": 841,
+        "x": 62,
+        "width": 278,
+        "height": 30
+      },
+      "hittable": true,
+      "ref": "e35"
+    }
+  ],
+  "truncated": false,
+  "appName": "dev.e2e.benchmark",
+  "appBundleId": "dev.e2e.benchmark"
+}

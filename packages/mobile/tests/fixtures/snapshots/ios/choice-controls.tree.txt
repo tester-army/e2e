@@ -1,0 +1,28 @@
+screen
+  application "e2e Benchmark"
+    other "Benchmark Examples"
+      navigation "Benchmark Examples" #Choice Controls
+        button "Benchmark Examples" #BackButton
+        text "Choice Controls"
+      other "Vertical scroll bar, 1 page"
+        other "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then place the order (dismiss the keyboard first)."
+          scroll-view
+            other
+              text
+              text "Size"
+              radio "Small" #size-small
+              radio "Medium" #size-medium
+              radio "Large" #size-large
+              text "Toppings"
+              checkbox "Cheese" #topping-cheese
+              checkbox "Olives" #topping-olives
+              checkbox "Mushrooms" #topping-mushrooms
+              checkbox "Onions" #topping-onions
+              text "Rush delivery"
+              other "0"
+                switch "0" value="0" #rush-delivery
+              text "Delivery notes"
+              textbox #delivery-notes placeholder="Ring the doorbell twice"
+              other "Place order" [disabled] #place-order
+            other "Vertical scroll bar, 1 page" value="0%"
+            other "Horizontal scroll bar, 1 page" value="0%"

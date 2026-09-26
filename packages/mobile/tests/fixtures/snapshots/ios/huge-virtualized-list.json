@@ -1,0 +1,441 @@
+{
+  "nodes": [
+    {
+      "enabled": true,
+      "hittable": false,
+      "index": 0,
+      "type": "Application",
+      "label": "e2e Benchmark",
+      "depth": 0,
+      "rect": {
+        "y": 0,
+        "width": 402,
+        "height": 874,
+        "x": 0
+      },
+      "ref": "e1"
+    },
+    {
+      "enabled": true,
+      "hittable": true,
+      "index": 1,
+      "type": "Other",
+      "label": "Benchmark Examples",
+      "depth": 1,
+      "parentIndex": 0,
+      "rect": {
+        "y": 0,
+        "width": 402,
+        "height": 874,
+        "x": 0
+      },
+      "ref": "e2"
+    },
+    {
+      "enabled": true,
+      "hittable": true,
+      "index": 2,
+      "identifier": "Huge Virtualized List",
+      "type": "NavigationBar",
+      "label": "Benchmark Examples",
+      "depth": 2,
+      "parentIndex": 1,
+      "rect": {
+        "y": 62,
+        "width": 402,
+        "height": 54,
+        "x": 0
+      },
+      "ref": "e3"
+    },
+    {
+      "enabled": true,
+      "hittable": true,
+      "index": 3,
+      "identifier": "BackButton",
+      "type": "Button",
+      "label": "Benchmark Examples",
+      "depth": 3,
+      "parentIndex": 2,
+      "rect": {
+        "y": 62,
+        "width": 44,
+        "height": 44,
+        "x": 16
+      },
+      "ref": "e4"
+    },
+    {
+      "enabled": true,
+      "hittable": true,
+      "index": 4,
+      "type": "StaticText",
+      "label": "Huge Virtualized List",
+      "depth": 3,
+      "parentIndex": 2,
+      "rect": {
+        "y": 73.66666666666666,
+        "width": 165.33333333333331,
+        "height": 20.66666666666667,
+        "x": 118.33333333333331
+      },
+      "ref": "e5"
+    },
+    {
+      "enabled": true,
+      "hittable": true,
+      "index": 5,
+      "type": "Other",
+      "label": "Vertical scroll bar, 45 pages",
+      "depth": 2,
+      "parentIndex": 1,
+      "rect": {
+        "y": 116,
+        "width": 402,
+        "height": 758,
+        "x": 0
+      },
+      "ref": "e6"
+    },
+    {
+      "enabled": true,
+      "hittable": true,
+      "index": 6,
+      "identifier": "huge-list",
+      "type": "Other",
+      "label": "Row 0001",
+      "depth": 3,
+      "parentIndex": 5,
+      "rect": {
+        "y": 116,
+        "width": 402,
+        "height": 758,
+        "x": 0
+      },
+      "ref": "e7"
+    },
+    {
+      "type": "ScrollView",
+      "depth": 4,
+      "hiddenContentBelow": true,
+      "enabled": true,
+      "label": "All 600 rows are loaded. Scroll to Row 0512 and tap it.",
+      "rect": {
+        "height": 758,
+        "x": 0,
+        "width": 402,
+        "y": 116
+      },
+      "index": 7,
+      "hittable": true,
+      "parentIndex": 6,
+      "ref": "e8"
+    },
+    {
+      "type": "Other",
+      "depth": 5,
+      "enabled": true,
+      "rect": {
+        "height": 758,
+        "x": 0,
+        "width": 402,
+        "y": 116
+      },
+      "index": 8,
+      "hittable": false,
+      "parentIndex": 7,
+      "ref": "e9",
+      "inheritsLabel": true
+    },
+    {
+      "type": "Other",
+      "depth": 6,
+      "enabled": true,
+      "rect": {
+        "height": 47.66666793823242,
+        "x": 0,
+        "width": 402,
+        "y": 116
+      },
+      "index": 9,
+      "hittable": true,
+      "parentIndex": 8,
+      "ref": "e10",
+      "inheritsLabel": true
+    },
+    {
+      "type": "StaticText",
+      "depth": 7,
+      "enabled": true,
+      "rect": {
+        "height": 47.66666793823242,
+        "x": 0,
+        "width": 402,
+        "y": 116
+      },
+      "index": 10,
+      "hittable": true,
+      "parentIndex": 9,
+      "ref": "e11",
+      "inheritsLabel": true
+    },
+    {
+      "type": "Other",
+      "depth": 6,
+      "identifier": "row-1",
+      "enabled": true,
+      "label": "Row 0001",
+      "rect": {
+        "height": 55.999996185302734,
+        "x": 0,
+        "width": 402,
+        "y": 163.66666793823242
+      },
+      "index": 11,
+      "hittable": true,
+      "parentIndex": 8,
+      "ref": "e12"
+    },
+    {
+      "type": "Other",
+      "depth": 6,
+      "identifier": "row-2",
+      "enabled": true,
+      "label": "Row 0002",
+      "rect": {
+        "height": 56.00000762939453,
+        "x": 0,
+        "width": 402,
+        "y": 219.66666412353516
+      },
+      "index": 12,
+      "hittable": true,
+      "parentIndex": 8,
+      "ref": "e13"
+    },
+    {
+      "type": "Other",
+      "depth": 6,
+      "identifier": "row-3",
+      "enabled": true,
+      "label": "Row 0003",
+      "rect": {
+        "height": 56,
+        "x": 0,
+        "width": 402,
+        "y": 275.6666717529297
+      },
+      "index": 13,
+      "hittable": true,
+      "parentIndex": 8,
+      "ref": "e14"
+    },
+    {
+      "type": "Other",
+      "depth": 6,
+      "identifier": "row-4",
+      "enabled": true,
+      "label": "Row 0004",
+      "rect": {
+        "height": 55.99998474121094,
+        "x": 0,
+        "width": 402,
+        "y": 331.6666717529297
+      },
+      "index": 14,
+      "hittable": true,
+      "parentIndex": 8,
+      "ref": "e15"
+    },
+    {
+      "type": "Other",
+      "depth": 6,
+      "identifier": "row-5",
+      "enabled": true,
+      "label": "Row 0005",
+      "rect": {
+        "height": 56,
+        "x": 0,
+        "width": 402,
+        "y": 387.6666564941406
+      },
+      "index": 15,
+      "hittable": true,
+      "parentIndex": 8,
+      "ref": "e16"
+    },
+    {
+      "type": "Other",
+      "depth": 6,
+      "identifier": "row-6",
+      "enabled": true,
+      "label": "Row 0006",
+      "rect": {
+        "height": 56,
+        "x": 0,
+        "width": 402,
+        "y": 443.6666564941406
+      },
+      "index": 16,
+      "hittable": true,
+      "parentIndex": 8,
+      "ref": "e17"
+    },
+    {
+      "type": "Other",
+      "depth": 6,
+      "identifier": "row-7",
+      "enabled": true,
+      "label": "Row 0007",
+      "rect": {
+        "height": 56,
+        "x": 0,
+        "width": 402,
+        "y": 499.6666564941406
+      },
+      "index": 17,
+      "hittable": true,
+      "parentIndex": 8,
+      "ref": "e18"
+    },
+    {
+      "type": "Other",
+      "depth": 6,
+      "identifier": "row-8",
+      "enabled": true,
+      "label": "Row 0008",
+      "rect": {
+        "height": 56,
+        "x": 0,
+        "width": 402,
+        "y": 555.6666564941406
+      },
+      "index": 18,
+      "hittable": true,
+      "parentIndex": 8,
+      "ref": "e19"
+    },
+    {
+      "type": "Other",
+      "depth": 6,
+      "identifier": "row-9",
+      "enabled": true,
+      "label": "Row 0009",
+      "rect": {
+        "height": 56.000030517578125,
+        "x": 0,
+        "width": 402,
+        "y": 611.6666564941406
+      },
+      "index": 19,
+      "hittable": true,
+      "parentIndex": 8,
+      "ref": "e20"
+    },
+    {
+      "type": "Other",
+      "depth": 6,
+      "identifier": "row-10",
+      "enabled": true,
+      "label": "Row 0010",
+      "rect": {
+        "height": 56,
+        "x": 0,
+        "width": 402,
+        "y": 667.6666870117188
+      },
+      "index": 20,
+      "hittable": true,
+      "parentIndex": 8,
+      "ref": "e21"
+    },
+    {
+      "type": "Other",
+      "depth": 6,
+      "identifier": "row-11",
+      "enabled": true,
+      "label": "Row 0011",
+      "rect": {
+        "height": 56,
+        "x": 0,
+        "width": 402,
+        "y": 723.6666870117188
+      },
+      "index": 21,
+      "hittable": true,
+      "parentIndex": 8,
+      "ref": "e22"
+    },
+    {
+      "type": "Other",
+      "depth": 6,
+      "identifier": "row-12",
+      "enabled": true,
+      "label": "Row 0012",
+      "rect": {
+        "height": 56,
+        "x": 0,
+        "width": 402,
+        "y": 779.6666870117188
+      },
+      "index": 22,
+      "hittable": true,
+      "parentIndex": 8,
+      "ref": "e23"
+    },
+    {
+      "type": "Other",
+      "depth": 6,
+      "identifier": "row-13",
+      "enabled": true,
+      "label": "Row 0013",
+      "rect": {
+        "height": 38.33331298828125,
+        "x": 0,
+        "width": 402,
+        "y": 835.6666870117188
+      },
+      "index": 23,
+      "hittable": true,
+      "parentIndex": 8,
+      "ref": "e24"
+    },
+    {
+      "type": "Other",
+      "parentIndex": 7,
+      "depth": 5,
+      "value": "0%",
+      "enabled": true,
+      "label": "Vertical scroll bar, 45 pages",
+      "index": 24,
+      "rect": {
+        "height": 668,
+        "x": 369,
+        "width": 30,
+        "y": 144
+      },
+      "hittable": true,
+      "ref": "e25"
+    },
+    {
+      "type": "Other",
+      "parentIndex": 7,
+      "depth": 5,
+      "value": "0%",
+      "enabled": true,
+      "label": "Horizontal scroll bar, 1 page",
+      "index": 25,
+      "rect": {
+        "height": 30,
+        "x": 62,
+        "width": 278,
+        "y": 807
+      },
+      "hittable": true,
+      "ref": "e26"
+    }
+  ],
+  "truncated": false,
+  "appName": "dev.e2e.benchmark",
+  "appBundleId": "dev.e2e.benchmark"
+}

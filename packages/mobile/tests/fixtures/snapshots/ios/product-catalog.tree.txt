@@ -1,0 +1,26 @@
+screen
+  application "e2e Benchmark"
+    other "Benchmark Examples"
+      navigation "Benchmark Examples" #Product Catalog
+        button "Benchmark Examples" #BackButton
+        text "Product Catalog"
+      other "Vertical scroll bar, 1 page"
+        other "Add exactly 2 × Trail Mix 500 g to the cart, then review the cart"
+          scroll-view
+            other
+              text
+              other "Cart (0)" #open-cart
+              other "Trail Mix, 250 g · $3.99" #product-trail-mix-250
+              other "Favorite Trail Mix 250 g" #favorite-trail-mix-250
+              other "Trail Mix, 500 g · $6.99" #product-trail-mix-500
+              other "Favorite Trail Mix 500 g" #favorite-trail-mix-500
+              other "Trail Mix, 1 kg · $11.99" #product-trail-mix-1000
+              other "Favorite Trail Mix 1 kg" #favorite-trail-mix-1000
+              other "Granola, 500 g · $5.49" #product-granola-500
+              other "Favorite Granola 500 g" #favorite-granola-500
+              other "Almonds, 250 g · $7.99" #product-almonds-250
+              other "Favorite Almonds 250 g" #favorite-almonds-250
+              other "Cashews, 250 g · $8.49" #product-cashews-250
+              other "Favorite Cashews 250 g" #favorite-cashews-250
+            other "Vertical scroll bar, 1 page" value="0%"
+            other "Horizontal scroll bar, 1 page" value="0%"

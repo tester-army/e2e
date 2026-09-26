@@ -1,0 +1,11 @@
+screen
+  application "e2e Benchmark"
+    other "Benchmark Examples"
+      navigation "Benchmark Examples" #Photo Picker
+        button "Benchmark Examples" #BackButton
+        text "Photo Picker"
+      other "Expense report"
+        other "Expense report"
+          text "Expense report"
+          text "Attach the receipt photo from your photo library to submit this expense."
+          other "Choose photo" #choose-photo

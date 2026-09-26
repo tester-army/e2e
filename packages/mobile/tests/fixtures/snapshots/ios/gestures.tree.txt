@@ -1,0 +1,11 @@
+screen
+  application "e2e Benchmark"
+    other "Benchmark Examples"
+      navigation "Benchmark Examples" #Gestures
+        button "Benchmark Examples" #BackButton
+        text "Gestures"
+      other "Step 1 of 3"
+        other "Step 1 of 3"
+          text "Step 1 of 3"
+          text "Long-press the button below (hold ~1 second)"
+          other "Hold me" #long-press-target

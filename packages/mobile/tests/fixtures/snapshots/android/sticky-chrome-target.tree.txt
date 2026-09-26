@@ -1,0 +1,43 @@
+screen
+  text "11:25 PM" text="11:25" #com.android.systemui:id/clock
+  image "Android System notification: "
+  image "Wifi signal full." #com.android.systemui:id/wifi_signal
+  group "T-Mobile, signal full." #com.android.systemui:id/mobile_combo
+    image #com.android.systemui:id/mobile_signal
+  group "Battery charging, 100 percent." #com.android.systemui:id/battery
+    image
+  group
+    group
+      group
+        group #dev.e2e.benchmark:id/action_bar_root
+          group #android:id/content
+            group
+              group
+                group
+                  group
+                    group
+                      group
+                        button "Navigate up"
+                        text "Sticky Chrome Target"
+                    group
+                      group
+                        group
+                          text "Read the agreement, tap Accept terms at the bottom, then Continue."
+                          text "Section 1"
+                          text "Deterministic agreement paragraph 1 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button."
+                          text "Section 2"
+                          text "Deterministic agreement paragraph 2 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button."
+                          text "Section 3"
+                          text "Deterministic agreement paragraph 3 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button."
+                          text "Section 4"
+                          text "Deterministic agreement paragraph 4 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button."
+                          text "Section 5"
+                          text "Deterministic agreement paragraph 5 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button."
+                          text "Section 6"
+                          text "Deterministic agreement paragraph 6 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button."
+                          text "Section 7"
+                          text "Deterministic agreement paragraph 7 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button."
+                          text "Section 8"
+                          text "Deterministic agreement paragraph 8 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button."
+                        group "Continue" #continue-button
+                          text "Continue"

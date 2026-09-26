@@ -1,0 +1,37 @@
+screen
+  text "11:25 PM" text="11:25" #com.android.systemui:id/clock
+  image "Android System notification: "
+  image "Wifi signal full." #com.android.systemui:id/wifi_signal
+  group "T-Mobile, signal full." #com.android.systemui:id/mobile_combo
+    image #com.android.systemui:id/mobile_signal
+  group "Battery charging, 100 percent." #com.android.systemui:id/battery
+    image
+  group
+    group
+      group
+        group #dev.e2e.benchmark:id/action_bar_root
+          group #android:id/content
+            group
+              group
+                group
+                  group
+                    group
+                      group
+                        button "Navigate up"
+                        text "WebView Accessibility"
+                    group
+                      group
+                        text "Apply the coupon shown inside the web page (accept the terms first)"
+                        group
+                          group #coupon-webview
+                            document
+                              document [focused]
+                                text "Checkout coupon"
+                                text "Your coupon code is "
+                                group "TA-BENCH-50" #coupon
+                                text "."
+                                group "Coupon code"
+                                textbox #coupon-input placeholder="Coupon code"
+                                group
+                                  checkbox "I accept the terms" #terms
+                                button "Apply coupon" #apply

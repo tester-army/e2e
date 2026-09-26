@@ -1,0 +1,14 @@
+screen
+  application "e2e Benchmark"
+    other "Benchmark Examples"
+      navigation "Benchmark Examples" #Debounced Search
+        button "Benchmark Examples" #BackButton
+        text "Debounced Search"
+      other "Search for and select \"Benchmark Target\""
+        other
+          text
+          textbox #search-input placeholder="Search…"
+          other "Vertical scroll bar, 1 page" #search-results
+            scroll-view
+              other value="0%"
+              other "Horizontal scroll bar, 1 page" value="0%"

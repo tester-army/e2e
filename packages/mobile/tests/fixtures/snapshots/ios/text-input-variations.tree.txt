@@ -1,0 +1,22 @@
+screen
+  application "e2e Benchmark"
+    other "Benchmark Examples"
+      navigation "Benchmark Examples" #Text Input Variations
+        button "Benchmark Examples" #BackButton
+        text "Text Input Variations"
+      other "Vertical scroll bar, 1 page"
+        other "Username (min 3 chars)"
+          scroll-view "Username (min 3 chars)"
+            other "Username (min 3 chars)"
+              text "Username (min 3 chars)"
+              textbox #username-input
+              text "PIN (exactly 4 digits, secure)"
+              textbox [secure] #pin-input
+              text "Notes (multiline, min 10 chars) — 0/10"
+              other "Vertical scroll bar, 1 page"
+                textbox #notes-input
+                  other value="0%"
+                  other "Horizontal scroll bar, 1 page" value="0%"
+              other "Submit" [disabled] #submit-button
+            other "Vertical scroll bar, 1 page" value="0%"
+            other "Horizontal scroll bar, 1 page" value="0%"

@@ -1,0 +1,187 @@
+{
+  "nodes": [
+    {
+      "index": 0,
+      "enabled": true,
+      "type": "Application",
+      "rect": {
+        "y": 0,
+        "width": 402,
+        "x": 0,
+        "height": 874
+      },
+      "hittable": false,
+      "label": "e2e Benchmark",
+      "depth": 0,
+      "ref": "e1"
+    },
+    {
+      "index": 1,
+      "enabled": true,
+      "type": "Other",
+      "rect": {
+        "y": 0,
+        "width": 402,
+        "x": 0,
+        "height": 874
+      },
+      "parentIndex": 0,
+      "hittable": true,
+      "label": "Benchmark Examples",
+      "depth": 1,
+      "ref": "e2"
+    },
+    {
+      "index": 2,
+      "enabled": true,
+      "type": "NavigationBar",
+      "rect": {
+        "x": 0,
+        "width": 402,
+        "height": 54,
+        "y": 62
+      },
+      "parentIndex": 1,
+      "hittable": true,
+      "label": "Benchmark Examples",
+      "depth": 2,
+      "identifier": "Login Form",
+      "ref": "e3"
+    },
+    {
+      "index": 3,
+      "enabled": true,
+      "type": "Button",
+      "rect": {
+        "x": 16.00000000000001,
+        "width": 219.66666666666666,
+        "height": 44,
+        "y": 62
+      },
+      "parentIndex": 2,
+      "hittable": true,
+      "label": "Benchmark Examples",
+      "depth": 3,
+      "identifier": "BackButton",
+      "ref": "e4"
+    },
+    {
+      "index": 4,
+      "enabled": true,
+      "type": "StaticText",
+      "rect": {
+        "x": 247.66666666666669,
+        "width": 89,
+        "height": 20.66666666666667,
+        "y": 73.66666666666666
+      },
+      "parentIndex": 2,
+      "hittable": true,
+      "label": "Login Form",
+      "depth": 3,
+      "ref": "e5"
+    },
+    {
+      "index": 5,
+      "enabled": true,
+      "type": "Other",
+      "rect": {
+        "x": 0,
+        "width": 402,
+        "height": 874,
+        "y": 0
+      },
+      "parentIndex": 1,
+      "hittable": true,
+      "label": "Use tester@tester.army / benchmark123",
+      "depth": 2,
+      "ref": "e6"
+    },
+    {
+      "index": 6,
+      "enabled": true,
+      "type": "Other",
+      "rect": {
+        "x": 0,
+        "width": 402,
+        "height": 758,
+        "y": 116
+      },
+      "parentIndex": 5,
+      "hittable": true,
+      "depth": 3,
+      "ref": "e7",
+      "inheritsLabel": true
+    },
+    {
+      "index": 7,
+      "depth": 4,
+      "rect": {
+        "x": 24,
+        "width": 354,
+        "height": 15.666656494140625,
+        "y": 406
+      },
+      "enabled": true,
+      "type": "StaticText",
+      "parentIndex": 6,
+      "hittable": true,
+      "ref": "e8",
+      "inheritsLabel": true
+    },
+    {
+      "hittable": true,
+      "depth": 4,
+      "rect": {
+        "x": 25,
+        "width": 352,
+        "height": 39.333343505859375,
+        "y": 434.6666564941406
+      },
+      "enabled": true,
+      "type": "TextField",
+      "identifier": "email-input",
+      "parentIndex": 6,
+      "placeholder": "Email",
+      "index": 8,
+      "ref": "e9"
+    },
+    {
+      "hittable": true,
+      "depth": 4,
+      "rect": {
+        "x": 25,
+        "width": 352,
+        "height": 39.333343505859375,
+        "y": 488
+      },
+      "enabled": true,
+      "type": "SecureTextField",
+      "identifier": "password-input",
+      "parentIndex": 6,
+      "placeholder": "Password",
+      "index": 9,
+      "ref": "e10"
+    },
+    {
+      "hittable": true,
+      "depth": 4,
+      "rect": {
+        "x": 24,
+        "width": 354,
+        "height": 43.333343505859375,
+        "y": 540.6666564941406
+      },
+      "enabled": true,
+      "type": "Other",
+      "identifier": "login-button",
+      "parentIndex": 6,
+      "label": "Log in",
+      "index": 10,
+      "ref": "e11"
+    }
+  ],
+  "truncated": false,
+  "appName": "dev.e2e.benchmark",
+  "appBundleId": "dev.e2e.benchmark"
+}

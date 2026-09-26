@@ -1,0 +1,201 @@
+{
+  "nodes": [
+    {
+      "hittable": false,
+      "index": 0,
+      "enabled": true,
+      "label": "e2e Benchmark",
+      "type": "Application",
+      "depth": 0,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "height": 874,
+        "width": 402
+      },
+      "ref": "e1"
+    },
+    {
+      "hittable": true,
+      "index": 1,
+      "enabled": true,
+      "label": "Benchmark Examples",
+      "type": "Other",
+      "depth": 1,
+      "parentIndex": 0,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "height": 874,
+        "width": 402
+      },
+      "ref": "e2"
+    },
+    {
+      "hittable": true,
+      "index": 2,
+      "enabled": true,
+      "label": "Benchmark Examples",
+      "type": "NavigationBar",
+      "depth": 2,
+      "identifier": "Apple Pay",
+      "parentIndex": 1,
+      "rect": {
+        "x": 0,
+        "y": 62,
+        "height": 54,
+        "width": 402
+      },
+      "ref": "e3"
+    },
+    {
+      "hittable": true,
+      "index": 3,
+      "enabled": true,
+      "label": "Benchmark Examples",
+      "type": "Button",
+      "depth": 3,
+      "identifier": "BackButton",
+      "parentIndex": 2,
+      "rect": {
+        "x": 16.00000000000001,
+        "y": 62,
+        "height": 44,
+        "width": 219.66666666666666
+      },
+      "ref": "e4"
+    },
+    {
+      "hittable": true,
+      "index": 4,
+      "enabled": true,
+      "label": "Apple Pay",
+      "type": "StaticText",
+      "depth": 3,
+      "parentIndex": 2,
+      "rect": {
+        "x": 247.66666666666663,
+        "y": 73.66666666666666,
+        "height": 20.66666666666667,
+        "width": 79.33333333333331
+      },
+      "ref": "e5"
+    },
+    {
+      "hittable": true,
+      "index": 5,
+      "enabled": true,
+      "label": "Order summary",
+      "type": "Other",
+      "depth": 2,
+      "parentIndex": 1,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "height": 874,
+        "width": 402
+      },
+      "ref": "e6"
+    },
+    {
+      "hittable": true,
+      "index": 6,
+      "enabled": true,
+      "label": "Order summary",
+      "type": "Other",
+      "depth": 3,
+      "parentIndex": 5,
+      "rect": {
+        "x": 0,
+        "y": 116,
+        "height": 758,
+        "width": 402
+      },
+      "ref": "e7"
+    },
+    {
+      "hittable": true,
+      "depth": 4,
+      "rect": {
+        "x": 123,
+        "y": 389,
+        "height": 26.333343505859375,
+        "width": 156
+      },
+      "enabled": true,
+      "type": "StaticText",
+      "parentIndex": 6,
+      "label": "Order summary",
+      "index": 7,
+      "ref": "e8"
+    },
+    {
+      "index": 8,
+      "depth": 4,
+      "rect": {
+        "x": 40.33333396911621,
+        "height": 18,
+        "y": 447.6666774749756,
+        "width": 321.33331298828125
+      },
+      "enabled": true,
+      "type": "StaticText",
+      "parentIndex": 6,
+      "label": "Trail Mix 500 g — $6.99",
+      "hittable": true,
+      "ref": "e9"
+    },
+    {
+      "hittable": true,
+      "depth": 4,
+      "rect": {
+        "width": 321.33331298828125,
+        "y": 471.66667556762695,
+        "x": 40.33333396911621,
+        "height": 18
+      },
+      "enabled": true,
+      "type": "StaticText",
+      "parentIndex": 6,
+      "label": "Rush delivery — $2.00",
+      "index": 9,
+      "ref": "e10"
+    },
+    {
+      "index": 10,
+      "depth": 4,
+      "enabled": true,
+      "rect": {
+        "width": 321.33331298828125,
+        "height": 19.333343505859375,
+        "x": 40.33333396911621,
+        "y": 499.6666793823242
+      },
+      "type": "StaticText",
+      "parentIndex": 6,
+      "label": "Total — $8.99",
+      "hittable": true,
+      "ref": "e11"
+    },
+    {
+      "hittable": true,
+      "depth": 4,
+      "rect": {
+        "width": 354,
+        "height": 49.666656494140625,
+        "x": 24,
+        "y": 551.3333435058594
+      },
+      "enabled": true,
+      "type": "Other",
+      "identifier": "apple-pay-button",
+      "parentIndex": 6,
+      "label": "Buy with Apple Pay",
+      "index": 11,
+      "ref": "e12"
+    }
+  ],
+  "truncated": false,
+  "appName": "dev.e2e.benchmark",
+  "appBundleId": "dev.e2e.benchmark"
+}

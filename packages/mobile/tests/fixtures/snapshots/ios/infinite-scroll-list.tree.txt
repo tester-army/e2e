@@ -1,0 +1,29 @@
+screen
+  application "e2e Benchmark"
+    other "Benchmark Examples"
+      navigation "Benchmark Examples" #Infinite Scroll List
+        button "Benchmark Examples" #BackButton
+        text "Infinite Scroll List"
+      other "Vertical scroll bar, 2 pages"
+        other "Item 1" #benchmark-list
+          scroll-view "Scroll down and tap Item 137 to complete"
+            other
+              other
+                text
+              other "Item 1" #item-1
+              other "Item 2" #item-2
+              other "Item 3" #item-3
+              other "Item 4" #item-4
+              other "Item 5" #item-5
+              other "Item 6" #item-6
+              other "Item 7" #item-7
+              other "Item 8" #item-8
+              other "Item 9" #item-9
+              other "Item 10" #item-10
+              other "Item 11" #item-11
+              other "Item 12" #item-12
+              other "Item 13" #item-13
+              other "Item 14" #item-14
+              other "Item 15" #item-15
+            other "Vertical scroll bar, 2 pages" value="0%"
+            other "Horizontal scroll bar, 1 page" value="0%"

@@ -1,0 +1,32 @@
+screen
+  application "e2e Benchmark"
+    other "Benchmark Examples"
+      navigation "Benchmark Examples" #Sticky Chrome Target
+        button "Benchmark Examples" #BackButton
+        text "Sticky Chrome Target"
+      other "Continue"
+        other "Continue"
+          other "Vertical scroll bar, 3 pages"
+            other "Read the agreement, tap Accept terms at the bottom, then Continue."
+              scroll-view
+                other
+                  text
+                  text "Section 1"
+                  text "Deterministic agreement paragraph 1 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button."
+                  text "Section 2"
+                  text "Deterministic agreement paragraph 2 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button."
+                  text "Section 3"
+                  text "Deterministic agreement paragraph 3 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button."
+                  text "Section 4"
+                  text "Deterministic agreement paragraph 4 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button."
+                  text "Section 5"
+                  text "Deterministic agreement paragraph 5 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button."
+                  text "Section 6"
+                  text "Deterministic agreement paragraph 6 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button."
+                  text "Section 7"
+                  text "Deterministic agreement paragraph 7 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button."
+                  text "Section 8"
+                  text "Deterministic agreement paragraph 8 of 14. Nothing in this section is actionable; it only adds scroll distance between the top of the screen and the accept button."
+                other "Vertical scroll bar, 3 pages" value="0%"
+                other "Horizontal scroll bar, 1 page" value="0%"
+            other "Continue" #continue-button

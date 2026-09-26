@@ -1,0 +1,120 @@
+{
+  "nodes": [
+    {
+      "index": 0,
+      "enabled": true,
+      "type": "Application",
+      "rect": {
+        "width": 402,
+        "height": 874,
+        "x": 0,
+        "y": 0
+      },
+      "hittable": false,
+      "label": "e2e Benchmark",
+      "depth": 0,
+      "ref": "e1"
+    },
+    {
+      "index": 1,
+      "enabled": true,
+      "type": "Other",
+      "rect": {
+        "width": 402,
+        "height": 874,
+        "x": 0,
+        "y": 0
+      },
+      "parentIndex": 0,
+      "hittable": true,
+      "label": "Benchmark Examples",
+      "depth": 1,
+      "ref": "e2"
+    },
+    {
+      "index": 2,
+      "type": "NavigationBar",
+      "enabled": true,
+      "rect": {
+        "width": 402,
+        "height": 54,
+        "x": 0,
+        "y": 62
+      },
+      "parentIndex": 1,
+      "hittable": true,
+      "label": "Benchmark Examples",
+      "depth": 2,
+      "identifier": "Broken Accessibility",
+      "ref": "e3"
+    },
+    {
+      "index": 3,
+      "type": "Button",
+      "enabled": true,
+      "rect": {
+        "width": 44,
+        "height": 44,
+        "x": 16,
+        "y": 62
+      },
+      "parentIndex": 2,
+      "hittable": true,
+      "label": "Benchmark Examples",
+      "depth": 3,
+      "identifier": "BackButton",
+      "ref": "e4"
+    },
+    {
+      "index": 4,
+      "enabled": true,
+      "type": "StaticText",
+      "rect": {
+        "width": 160.33333333333331,
+        "height": 20.66666666666667,
+        "x": 120.66666666666669,
+        "y": 73.66666666666666
+      },
+      "parentIndex": 2,
+      "hittable": true,
+      "label": "Broken Accessibility",
+      "depth": 3,
+      "ref": "e5"
+    },
+    {
+      "index": 5,
+      "enabled": true,
+      "type": "Other",
+      "rect": {
+        "width": 402,
+        "height": 874,
+        "x": 0,
+        "y": 0
+      },
+      "parentIndex": 1,
+      "hittable": true,
+      "label": "Tap the green circle to continue",
+      "depth": 2,
+      "ref": "e6"
+    },
+    {
+      "index": 6,
+      "enabled": true,
+      "type": "Other",
+      "rect": {
+        "width": 402,
+        "height": 758,
+        "x": 0,
+        "y": 116
+      },
+      "parentIndex": 5,
+      "hittable": true,
+      "depth": 3,
+      "ref": "e7",
+      "inheritsLabel": true
+    }
+  ],
+  "truncated": false,
+  "appName": "dev.e2e.benchmark",
+  "appBundleId": "dev.e2e.benchmark"
+}

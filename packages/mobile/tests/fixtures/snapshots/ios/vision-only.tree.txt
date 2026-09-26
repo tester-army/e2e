@@ -1,0 +1,6 @@
+screen
+  application "e2e Benchmark"
+    other "Benchmark Examples"
+      navigation "Benchmark Examples" #Vision Only
+        button "Benchmark Examples" #BackButton
+        text "Vision Only"

@@ -1,0 +1,58 @@
+screen
+  text "11:26 PM" text="11:26" #com.android.systemui:id/clock
+  image "Android System notification: "
+  image "Wifi signal full." #com.android.systemui:id/wifi_signal
+  group "T-Mobile, signal full." #com.android.systemui:id/mobile_combo
+    image #com.android.systemui:id/mobile_signal
+  group "Battery charging, 100 percent." #com.android.systemui:id/battery
+    image
+  group
+    group
+      group
+        group #dev.e2e.benchmark:id/action_bar_root
+          group #android:id/content
+            group
+              group
+                group
+                  group
+                    group
+                      group
+                        button "Navigate up"
+                        text "Product Catalog"
+                    group
+                      group
+                        group
+                          group
+                            text "Add exactly 2 × Trail Mix 500 g to the cart, then review the cart"
+                            group "Cart (0)" #open-cart
+                              text "Cart (0)"
+                            group "Trail Mix, 250 g · $3.99" #product-trail-mix-250
+                              text "Trail Mix"
+                              text "250 g · $3.99"
+                            group "Favorite Trail Mix 250 g" #favorite-trail-mix-250
+                              text "♡"
+                            group "Trail Mix, 500 g · $6.99" #product-trail-mix-500
+                              text "Trail Mix"
+                              text "500 g · $6.99"
+                            group "Favorite Trail Mix 500 g" #favorite-trail-mix-500
+                              text "♡"
+                            group "Trail Mix, 1 kg · $11.99" #product-trail-mix-1000
+                              text "Trail Mix"
+                              text "1 kg · $11.99"
+                            group "Favorite Trail Mix 1 kg" #favorite-trail-mix-1000
+                              text "♡"
+                            group "Granola, 500 g · $5.49" #product-granola-500
+                              text "Granola"
+                              text "500 g · $5.49"
+                            group "Favorite Granola 500 g" #favorite-granola-500
+                              text "♡"
+                            group "Almonds, 250 g · $7.99" #product-almonds-250
+                              text "Almonds"
+                              text "250 g · $7.99"
+                            group "Favorite Almonds 250 g" #favorite-almonds-250
+                              text "♡"
+                            group "Cashews, 250 g · $8.49" #product-cashews-250
+                              text "Cashews"
+                              text "250 g · $8.49"
+                            group "Favorite Cashews 250 g" #favorite-cashews-250
+                              text "♡"

@@ -1,0 +1,68 @@
+screen
+  text "11:25 PM" text="11:25" #com.android.systemui:id/clock
+  image "Android System notification: "
+  image "Wifi signal full." #com.android.systemui:id/wifi_signal
+  group "T-Mobile, two bars." #com.android.systemui:id/mobile_combo
+    image #com.android.systemui:id/mobile_signal
+  group "Battery charging, 100 percent." #com.android.systemui:id/battery
+    image
+  group
+    group
+      group
+        group #dev.e2e.benchmark:id/action_bar_root
+          group #android:id/content
+            group
+              group
+                group
+                  group
+                    text "Benchmark Examples"
+                    group
+                      group
+                        group
+                          group
+                            group "Login Form. Fill credentials, handle validation errors, reach the logged-in state." #Login Form
+                              text "Login Form"
+                            group "Infinite Scroll List. Scroll a paginated list until a target item deep in the list is found." #Infinite Scroll List
+                              text "Infinite Scroll List"
+                            group "Modal Flow. Open a modal, confirm a native alert, and land on the success state." #Modal Flow
+                              text "Modal Flow"
+                            group "Bottom Tabs. Navigate between tabs and complete an action on the last tab." #Bottom Tabs
+                              text "Bottom Tabs"
+                            group "Text Input Variations. Fill secure, multiline, and numeric inputs to unlock the submit button." #Text Input Variations
+                              text "Text Input Variations"
+                            group "Broken Accessibility. Whole screen merged into one a11y node (accessible=true) — snapshot is useless, vision required." #Broken Accessibility
+                              text "Broken Accessibility"
+                            group "Vision Only. A11y tree fully hidden like a canvas-rendered (Flutter-style) app — pure pixel-driven flow." #Vision Only
+                              text "Vision Only"
+                            group "Gestures. Long-press, swipe left, and double-tap targets in sequence." #Gestures
+                              text "Gestures"
+                            group "Async States. Wait out a loading screen, pull to refresh, and catch a transient toast." #Async States
+                              text "Async States"
+                            group "Debounced Search. Type into a debounced search field, wait for async results, select the target." #Debounced Search
+                              text "Debounced Search"
+                            group "Huge Virtualized List. 600 preloaded virtualized rows — the target sits ~28,000px down and off-screen rows never enter the a11y tree, so the agent must size long scroll jumps from the scroll extent." #Huge Virtualized List
+                              text "Huge Virtualized List"
+                            group "Flattened Registration Form. Multi-field registration form merged into one a11y node (accessible=true) — fields must be focused from vision and typed into via focused typing." #Flattened Registration Form
+                              text "Flattened Registration Form"
+                            group "Flattened Login. Login form merged into one a11y node (accessible=true) - credentials must be filled from vision via focused fill, success visible only in pixels." #Flattened Login
+                              text "Flattened Login"
+                            group "Sticky Chrome Target. Accept button ~3 screens down in a non-virtualized scroll (present as an off-screen ref) under a sticky footer — tapping it must scroll it clear of the footer." #Sticky Chrome Target
+                              text "Sticky Chrome Target"
+                            group "WebView Accessibility. Read a coupon code inside a WebView, fill the web form, accept the terms, and apply it." #WebView Accessibility
+                              text "WebView Accessibility"
+                            group "Permission Prompt. Trigger the microphone permission request and handle the OS dialog to reach the granted state." #Permission Prompt
+                              text "Permission Prompt"
+                            group "Photo Picker. Open the system photo picker (outside the app a11y tree), select the seeded receipt photo, land back with it attached." #Photo Picker
+                              text "Photo Picker"
+                            group "Product Catalog. Disambiguate near-identical cards, drill into Trail Mix 500 g, set quantity 2, add to cart, review it." #Product Catalog
+                              text "Product Catalog"
+                            group "Error Recovery. Recover from a failed load via retry, then delete a draft through a destructive-confirm modal." #Error Recovery
+                              text "Error Recovery"
+                            group "Choice Controls. Select the exact size, toppings, and switch combination, dismiss the keyboard, place the order." #Choice Controls
+                              text "Choice Controls"
+                            group "Stripe PaymentSheet. Complete Stripe's SDK-provided test-mode PaymentSheet while native focus, keyboard, and field refs shift." #Stripe PaymentSheet
+                              text "Stripe PaymentSheet"
+                            group "Sequential Onboarding. Multi-step signup wizard where each step auto-focuses a field, so the keyboard covers the Continue button (and the second name field) from the moment the screen opens — occluded taps land on keyboard keys and corrupt the values, and the success screen echoes them exactly." #Sequential Onboarding
+                              text "Sequential Onboarding"
+                            group "Control Inventory. The deterministic contract surface: plain controls with every state exposed, one exercise per runner verb. Not a hard surface." #Control Inventory
+                              text "Control Inventory"

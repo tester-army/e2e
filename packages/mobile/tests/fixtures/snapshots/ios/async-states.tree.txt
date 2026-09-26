@@ -1,0 +1,11 @@
+screen
+  application "e2e Benchmark"
+    other "Benchmark Examples"
+      navigation "Benchmark Examples" #Async States
+        button "Benchmark Examples" #BackButton
+        text "Async States"
+      other "Loading…"
+        other "In progress"
+          other "In progress" #initial-loading
+            status "In progress" value="1"
+          text "Loading…"

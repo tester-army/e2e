@@ -1,0 +1,27 @@
+screen
+  text "11:25 PM" text="11:25" #com.android.systemui:id/clock
+  image "Android System notification: "
+  image "Wifi signal full." #com.android.systemui:id/wifi_signal
+  group "T-Mobile, one bar." #com.android.systemui:id/mobile_combo
+    image #com.android.systemui:id/mobile_signal
+  group "Battery charging, 100 percent." #com.android.systemui:id/battery
+    image
+  group
+    group
+      group
+        group #dev.e2e.benchmark:id/action_bar_root
+          group #android:id/content
+            group
+              group
+                group
+                  group
+                    group
+                      group
+                        button "Navigate up"
+                        text "Gestures"
+                    group
+                      group
+                        text "Step 1 of 3"
+                        text "Long-press the button below (hold ~1 second)"
+                        group "Hold me" #long-press-target
+                          text "Hold me"

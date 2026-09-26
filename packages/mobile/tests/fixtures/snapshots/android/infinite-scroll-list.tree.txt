@@ -1,0 +1,57 @@
+screen
+  text "11:25 PM" text="11:25" #com.android.systemui:id/clock
+  image "Android System notification: "
+  image "Wifi signal full." #com.android.systemui:id/wifi_signal
+  group "T-Mobile, two bars." #com.android.systemui:id/mobile_combo
+    image #com.android.systemui:id/mobile_signal
+  group "Battery charging, 100 percent." #com.android.systemui:id/battery
+    image
+  group
+    group
+      group
+        group #dev.e2e.benchmark:id/action_bar_root
+          group #android:id/content
+            group
+              group
+                group
+                  group
+                    group
+                      group
+                        button "Navigate up"
+                        text "Infinite Scroll List"
+                    group
+                      group
+                        group #benchmark-list
+                          group
+                            text "Scroll down and tap Item 137 to complete"
+                            group "Item 1" #item-1
+                              text "Item 1"
+                            group "Item 2" #item-2
+                              text "Item 2"
+                            group "Item 3" #item-3
+                              text "Item 3"
+                            group "Item 4" #item-4
+                              text "Item 4"
+                            group "Item 5" #item-5
+                              text "Item 5"
+                            group "Item 6" #item-6
+                              text "Item 6"
+                            group "Item 7" #item-7
+                              text "Item 7"
+                            group "Item 8" #item-8
+                              text "Item 8"
+                            group "Item 9" #item-9
+                              text "Item 9"
+                            group "Item 10" #item-10
+                              text "Item 10"
+                            group "Item 11" #item-11
+                              text "Item 11"
+                            group "Item 12" #item-12
+                              text "Item 12"
+                            group "Item 13" #item-13
+                              text "Item 13"
+                            group "Item 14" #item-14
+                              text "Item 14"
+                            group "Item 15" #item-15
+                              text "Item 15"
+                            group "Item 16" #item-16

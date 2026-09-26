@@ -1,0 +1,169 @@
+{
+  "nodes": [
+    {
+      "index": 0,
+      "type": "Application",
+      "enabled": true,
+      "rect": {
+        "width": 402,
+        "x": 0,
+        "y": 0,
+        "height": 874
+      },
+      "hittable": false,
+      "label": "e2e Benchmark",
+      "depth": 0,
+      "ref": "e1"
+    },
+    {
+      "index": 1,
+      "type": "Other",
+      "enabled": true,
+      "rect": {
+        "width": 402,
+        "x": 0,
+        "y": 0,
+        "height": 874
+      },
+      "parentIndex": 0,
+      "hittable": true,
+      "label": "Benchmark Examples",
+      "depth": 1,
+      "ref": "e2"
+    },
+    {
+      "index": 2,
+      "type": "NavigationBar",
+      "enabled": true,
+      "rect": {
+        "width": 402,
+        "x": 0,
+        "y": 62,
+        "height": 54
+      },
+      "parentIndex": 1,
+      "hittable": true,
+      "label": "Benchmark Examples",
+      "depth": 2,
+      "identifier": "Gestures",
+      "ref": "e3"
+    },
+    {
+      "index": 3,
+      "type": "Button",
+      "enabled": true,
+      "rect": {
+        "width": 219.66666666666666,
+        "x": 16.00000000000001,
+        "y": 62,
+        "height": 44
+      },
+      "parentIndex": 2,
+      "hittable": true,
+      "label": "Benchmark Examples",
+      "depth": 3,
+      "identifier": "BackButton",
+      "ref": "e4"
+    },
+    {
+      "index": 4,
+      "type": "StaticText",
+      "enabled": true,
+      "rect": {
+        "width": 72.33333333333331,
+        "x": 247.66666666666663,
+        "y": 73.66666666666666,
+        "height": 20.66666666666667
+      },
+      "parentIndex": 2,
+      "hittable": true,
+      "label": "Gestures",
+      "depth": 3,
+      "ref": "e5"
+    },
+    {
+      "index": 5,
+      "type": "Other",
+      "enabled": true,
+      "rect": {
+        "width": 402,
+        "x": 0,
+        "y": 0,
+        "height": 874
+      },
+      "parentIndex": 1,
+      "hittable": true,
+      "label": "Step 1 of 3",
+      "depth": 2,
+      "ref": "e6"
+    },
+    {
+      "index": 6,
+      "type": "Other",
+      "enabled": true,
+      "rect": {
+        "width": 402,
+        "x": 0,
+        "y": 116,
+        "height": 758
+      },
+      "parentIndex": 5,
+      "hittable": true,
+      "label": "Step 1 of 3",
+      "depth": 3,
+      "ref": "e7"
+    },
+    {
+      "hittable": true,
+      "depth": 4,
+      "rect": {
+        "width": 65,
+        "x": 168.3333282470703,
+        "y": 435.6666564941406,
+        "height": 15.66668701171875
+      },
+      "enabled": true,
+      "type": "StaticText",
+      "parentIndex": 6,
+      "label": "Step 1 of 3",
+      "index": 7,
+      "ref": "e8"
+    },
+    {
+      "hittable": true,
+      "depth": 4,
+      "rect": {
+        "width": 335.33331298828125,
+        "x": 33.33333206176758,
+        "y": 467.3333435058594,
+        "height": 19.33331298828125
+      },
+      "enabled": true,
+      "type": "StaticText",
+      "parentIndex": 6,
+      "label": "Long-press the button below (hold ~1 second)",
+      "index": 8,
+      "ref": "e9"
+    },
+    {
+      "hittable": true,
+      "depth": 4,
+      "rect": {
+        "width": 126.99998474121094,
+        "x": 137.6666717529297,
+        "y": 503,
+        "height": 51.333343505859375
+      },
+      "enabled": true,
+      "type": "Other",
+      "identifier": "long-press-target",
+      "parentIndex": 6,
+      "label": "Hold me",
+      "index": 9,
+      "ref": "e10"
+    }
+  ],
+  "truncated": false,
+  "appName": "dev.e2e.benchmark",
+  "appBundleId": "dev.e2e.benchmark"
+}

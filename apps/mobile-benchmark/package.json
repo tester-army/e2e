@@ -12,7 +12,8 @@
     "build:benchmark": "eas build --profile benchmark --platform all",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.tests.json",
     "test": "node node_modules/e2e/dist/cli/bin.js run",
-    "test:agent": "node node_modules/e2e/dist/cli/bin.js run --config e2e.agent.config.ts"
+    "test:agent": "node node_modules/e2e/dist/cli/bin.js run --config e2e.agent.config.ts",
+    "capture:snapshots": "node node_modules/e2e/dist/cli/bin.js run --config e2e.capture.config.ts"
   },
   "dependencies": {
     "@react-navigation/bottom-tabs": "7.19.2",

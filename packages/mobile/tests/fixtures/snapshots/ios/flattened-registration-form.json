@@ -1,0 +1,186 @@
+{
+  "nodes": [
+    {
+      "hittable": false,
+      "index": 0,
+      "enabled": true,
+      "label": "e2e Benchmark",
+      "type": "Application",
+      "depth": 0,
+      "rect": {
+        "height": 874,
+        "x": 0,
+        "width": 402,
+        "y": 0
+      },
+      "ref": "e1"
+    },
+    {
+      "hittable": true,
+      "index": 1,
+      "enabled": true,
+      "label": "Benchmark Examples",
+      "type": "Other",
+      "depth": 1,
+      "parentIndex": 0,
+      "rect": {
+        "height": 874,
+        "x": 0,
+        "width": 402,
+        "y": 0
+      },
+      "ref": "e2"
+    },
+    {
+      "hittable": true,
+      "index": 2,
+      "enabled": true,
+      "label": "Benchmark Examples",
+      "type": "NavigationBar",
+      "depth": 2,
+      "identifier": "Flattened Registration Form",
+      "parentIndex": 1,
+      "rect": {
+        "height": 54,
+        "x": 0,
+        "width": 402,
+        "y": 62
+      },
+      "ref": "e3"
+    },
+    {
+      "hittable": true,
+      "index": 3,
+      "enabled": true,
+      "label": "Benchmark Examples",
+      "type": "Button",
+      "depth": 3,
+      "identifier": "BackButton",
+      "parentIndex": 2,
+      "rect": {
+        "height": 44,
+        "x": 16,
+        "width": 44,
+        "y": 62
+      },
+      "ref": "e4"
+    },
+    {
+      "hittable": true,
+      "index": 4,
+      "enabled": true,
+      "label": "Flattened Registration Form",
+      "type": "StaticText",
+      "depth": 3,
+      "parentIndex": 2,
+      "rect": {
+        "height": 20.66666666666667,
+        "x": 90.33333333333331,
+        "width": 221.33333333333331,
+        "y": 73.66666666666666
+      },
+      "ref": "e5"
+    },
+    {
+      "hittable": true,
+      "index": 5,
+      "enabled": true,
+      "label": "Vertical scroll bar, 2 pages",
+      "type": "Other",
+      "depth": 2,
+      "parentIndex": 1,
+      "rect": {
+        "height": 758,
+        "x": 0,
+        "width": 402,
+        "y": 116
+      },
+      "ref": "e6"
+    },
+    {
+      "hittable": true,
+      "index": 6,
+      "enabled": true,
+      "label": "Create your benchmark account, First name, Last name, Email address, Set password, Passwords must contain a minimum of 8 characters. By signing up you confirm you have read the benchmark terms. This filler paragraph exists so the form spans roughly two screens and the scroll indicator reports multiple pages, matching the production app this scenario was distilled from., CREATE ACCOUNT, More filler content below the primary action: support links, privacy policy, and terms and conditions would normally live here. It pads the scroll extent so off-screen estimation has something to measure.",
+      "type": "Other",
+      "depth": 3,
+      "parentIndex": 5,
+      "rect": {
+        "height": 758,
+        "x": 0,
+        "width": 402,
+        "y": 116
+      },
+      "ref": "e7"
+    },
+    {
+      "type": "ScrollView",
+      "depth": 4,
+      "rect": {
+        "height": 758,
+        "x": 0,
+        "width": 402,
+        "y": 116
+      },
+      "enabled": true,
+      "index": 7,
+      "hittable": true,
+      "parentIndex": 6,
+      "ref": "e8",
+      "inheritsLabel": true
+    },
+    {
+      "type": "Other",
+      "depth": 5,
+      "rect": {
+        "height": 758,
+        "x": 0,
+        "width": 402,
+        "y": 116
+      },
+      "enabled": true,
+      "index": 8,
+      "hittable": true,
+      "parentIndex": 7,
+      "ref": "e9",
+      "inheritsLabel": true
+    },
+    {
+      "type": "Other",
+      "parentIndex": 7,
+      "depth": 5,
+      "enabled": true,
+      "label": "Vertical scroll bar, 2 pages",
+      "rect": {
+        "height": 668,
+        "x": 369,
+        "width": 30,
+        "y": 144
+      },
+      "index": 9,
+      "value": "0%",
+      "hittable": true,
+      "ref": "e10"
+    },
+    {
+      "type": "Other",
+      "parentIndex": 7,
+      "depth": 5,
+      "enabled": true,
+      "label": "Horizontal scroll bar, 1 page",
+      "rect": {
+        "height": 30,
+        "x": 62,
+        "width": 278,
+        "y": 807
+      },
+      "index": 10,
+      "value": "0%",
+      "hittable": true,
+      "ref": "e11"
+    }
+  ],
+  "truncated": false,
+  "appName": "dev.e2e.benchmark",
+  "appBundleId": "dev.e2e.benchmark"
+}

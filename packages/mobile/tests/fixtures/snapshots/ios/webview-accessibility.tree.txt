@@ -1,0 +1,32 @@
+screen
+  application "e2e Benchmark"
+    other "Benchmark Examples"
+      navigation "Benchmark Examples" #WebView Accessibility
+        button "Benchmark Examples" #BackButton
+        text "WebView Accessibility"
+      other "Apply the coupon shown inside the web page (accept the terms first)"
+        other
+          text
+          other "Vertical scroll bar, 1 page" #coupon-webview
+            other
+              web-view
+                web-view
+                  other "Checkout coupon"
+                    other "Checkout coupon"
+                      other "Checkout coupon" value="1" [focused]
+                        text "Checkout coupon" value="Checkout coupon" [focused]
+                      other "Your coupon code is" [focused]
+                        text "Your coupon code is" value="Your coupon code is" [focused]
+                        text "TA-BENCH-50" value="TA-BENCH-50" [focused]
+                        text "." value="." [focused]
+                      other "Coupon code" [focused]
+                        text "Coupon code" value="Coupon code" [focused]
+                      textbox "Coupon code" [focused]
+                      other "I accept the terms" [focused]
+                        switch "I accept the terms" value="0" [focused]
+                        other "I accept the terms" [focused]
+                          text "I accept the terms" value="I accept the terms" [focused]
+                      button "Apply coupon" [focused]
+                      other "alert" [focused]
+                other value="0%"
+                other "Horizontal scroll bar, 1 page" value="0%"

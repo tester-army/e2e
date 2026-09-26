@@ -1,0 +1,137 @@
+{
+  "nodes": [
+    {
+      "index": 0,
+      "type": "Application",
+      "enabled": true,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "height": 874,
+        "width": 402
+      },
+      "hittable": false,
+      "label": "e2e Benchmark",
+      "depth": 0,
+      "ref": "e1"
+    },
+    {
+      "index": 1,
+      "type": "Other",
+      "enabled": true,
+      "rect": {
+        "height": 874,
+        "y": 0,
+        "x": 0,
+        "width": 402
+      },
+      "parentIndex": 0,
+      "hittable": true,
+      "label": "Benchmark Examples",
+      "depth": 1,
+      "ref": "e2"
+    },
+    {
+      "index": 2,
+      "enabled": true,
+      "type": "NavigationBar",
+      "rect": {
+        "height": 54,
+        "y": 62,
+        "x": 0,
+        "width": 402
+      },
+      "parentIndex": 1,
+      "hittable": true,
+      "label": "Benchmark Examples",
+      "depth": 2,
+      "identifier": "Modal Flow",
+      "ref": "e3"
+    },
+    {
+      "index": 3,
+      "type": "Button",
+      "enabled": true,
+      "rect": {
+        "width": 219.66666666666666,
+        "x": 16.00000000000001,
+        "height": 44,
+        "y": 62
+      },
+      "parentIndex": 2,
+      "hittable": true,
+      "label": "Benchmark Examples",
+      "depth": 3,
+      "identifier": "BackButton",
+      "ref": "e4"
+    },
+    {
+      "index": 4,
+      "type": "StaticText",
+      "enabled": true,
+      "rect": {
+        "width": 90,
+        "x": 247.66666666666669,
+        "height": 20.66666666666667,
+        "y": 73.66666666666666
+      },
+      "parentIndex": 2,
+      "hittable": true,
+      "label": "Modal Flow",
+      "depth": 3,
+      "ref": "e5"
+    },
+    {
+      "index": 5,
+      "type": "Other",
+      "enabled": true,
+      "rect": {
+        "width": 402,
+        "x": 0,
+        "height": 874,
+        "y": 0
+      },
+      "parentIndex": 1,
+      "hittable": true,
+      "label": "Open modal",
+      "depth": 2,
+      "ref": "e6"
+    },
+    {
+      "index": 6,
+      "type": "Other",
+      "enabled": true,
+      "rect": {
+        "width": 402,
+        "x": 0,
+        "height": 758,
+        "y": 116
+      },
+      "parentIndex": 5,
+      "hittable": true,
+      "label": "Open modal",
+      "depth": 3,
+      "ref": "e7"
+    },
+    {
+      "hittable": true,
+      "depth": 4,
+      "rect": {
+        "width": 139.3333282470703,
+        "x": 131.3333282470703,
+        "height": 43.33331298828125,
+        "y": 473.3333435058594
+      },
+      "enabled": true,
+      "type": "Other",
+      "identifier": "open-modal-button",
+      "parentIndex": 6,
+      "label": "Open modal",
+      "index": 7,
+      "ref": "e8"
+    }
+  ],
+  "truncated": false,
+  "appName": "dev.e2e.benchmark",
+  "appBundleId": "dev.e2e.benchmark"
+}

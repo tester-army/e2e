@@ -1,0 +1,12 @@
+screen
+  application "e2e Benchmark"
+    other "Benchmark Examples"
+      navigation "Benchmark Examples" #Flattened Registration Form
+        button "Benchmark Examples" #BackButton
+        text "Flattened Registration Form"
+      other "Vertical scroll bar, 2 pages"
+        other "Create your benchmark account, First name, Last name, Email address, Set password, Passwords must contain a minimum of 8 characters. By signing up you confirm you have read the benchmark terms. This filler paragraph exists so the form spans roughly two screens and the scroll indicator reports multiple pages, matching the production app this scenario was distilled from., CREATE ACCOUNT, More filler content below the primary action: support links, privacy policy, and terms and conditions would normally live here. It pads the scroll extent so off-screen estimation has something to measure."
+          scroll-view
+            other
+            other "Vertical scroll bar, 2 pages" value="0%"
+            other "Horizontal scroll bar, 1 page" value="0%"

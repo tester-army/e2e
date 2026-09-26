@@ -1,0 +1,54 @@
+screen
+  text "11:25 PM" text="11:25" #com.android.systemui:id/clock
+  image "Android System notification: "
+  image "Wifi signal full." #com.android.systemui:id/wifi_signal
+  group "T-Mobile, one bar." #com.android.systemui:id/mobile_combo
+    image #com.android.systemui:id/mobile_signal
+  group "Battery charging, 100 percent." #com.android.systemui:id/battery
+    image
+  group
+    group
+      group
+        group #dev.e2e.benchmark:id/action_bar_root
+          group #android:id/content
+            group
+              group
+                group
+                  group
+                    group
+                      group
+                        button "Navigate up"
+                        text "Huge Virtualized List"
+                    group
+                      group
+                        group #huge-list
+                          group
+                            text "All 600 rows are loaded. Scroll to Row 0512 and tap it."
+                            group "Row 0001" #row-1
+                              text "Row 0001"
+                            group "Row 0002" #row-2
+                              text "Row 0002"
+                            group "Row 0003" #row-3
+                              text "Row 0003"
+                            group "Row 0004" #row-4
+                              text "Row 0004"
+                            group "Row 0005" #row-5
+                              text "Row 0005"
+                            group "Row 0006" #row-6
+                              text "Row 0006"
+                            group "Row 0007" #row-7
+                              text "Row 0007"
+                            group "Row 0008" #row-8
+                              text "Row 0008"
+                            group "Row 0009" #row-9
+                              text "Row 0009"
+                            group "Row 0010" #row-10
+                              text "Row 0010"
+                            group "Row 0011" #row-11
+                              text "Row 0011"
+                            group "Row 0012" #row-12
+                              text "Row 0012"
+                            group "Row 0013" #row-13
+                              text "Row 0013"
+                            group "Row 0014" #row-14
+                              text "Row 0014"

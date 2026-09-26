@@ -1,0 +1,169 @@
+{
+  "nodes": [
+    {
+      "enabled": true,
+      "hittable": false,
+      "rect": {
+        "x": 0,
+        "height": 874,
+        "width": 402,
+        "y": 0
+      },
+      "type": "Application",
+      "label": "e2e Benchmark",
+      "index": 0,
+      "depth": 0,
+      "ref": "e1"
+    },
+    {
+      "enabled": true,
+      "hittable": true,
+      "rect": {
+        "x": 0,
+        "height": 874,
+        "width": 402,
+        "y": 0
+      },
+      "type": "Other",
+      "label": "Benchmark Examples",
+      "parentIndex": 0,
+      "index": 1,
+      "depth": 1,
+      "ref": "e2"
+    },
+    {
+      "enabled": true,
+      "hittable": true,
+      "identifier": "Permission Prompt",
+      "rect": {
+        "x": 0,
+        "height": 54,
+        "width": 402,
+        "y": 62
+      },
+      "type": "NavigationBar",
+      "label": "Benchmark Examples",
+      "parentIndex": 1,
+      "index": 2,
+      "depth": 2,
+      "ref": "e3"
+    },
+    {
+      "enabled": true,
+      "hittable": true,
+      "identifier": "BackButton",
+      "rect": {
+        "x": 16,
+        "height": 44,
+        "width": 44,
+        "y": 62
+      },
+      "type": "Button",
+      "label": "Benchmark Examples",
+      "parentIndex": 2,
+      "index": 3,
+      "depth": 3,
+      "ref": "e4"
+    },
+    {
+      "enabled": true,
+      "hittable": true,
+      "rect": {
+        "x": 125.33333333333331,
+        "height": 20.66666666666667,
+        "width": 151,
+        "y": 73.66666666666666
+      },
+      "type": "StaticText",
+      "label": "Permission Prompt",
+      "parentIndex": 2,
+      "index": 4,
+      "depth": 3,
+      "ref": "e5"
+    },
+    {
+      "enabled": true,
+      "hittable": true,
+      "rect": {
+        "x": 0,
+        "height": 874,
+        "width": 402,
+        "y": 0
+      },
+      "type": "Other",
+      "label": "Voice notes",
+      "parentIndex": 1,
+      "index": 5,
+      "depth": 2,
+      "ref": "e6"
+    },
+    {
+      "enabled": true,
+      "hittable": true,
+      "rect": {
+        "x": 0,
+        "height": 758,
+        "width": 402,
+        "y": 116
+      },
+      "type": "Other",
+      "label": "Voice notes",
+      "parentIndex": 5,
+      "index": 6,
+      "depth": 3,
+      "ref": "e7"
+    },
+    {
+      "hittable": true,
+      "depth": 4,
+      "rect": {
+        "x": 142.6666717529297,
+        "height": 26.33331298828125,
+        "width": 116.33332824707031,
+        "y": 431.3333435058594
+      },
+      "enabled": true,
+      "type": "StaticText",
+      "parentIndex": 6,
+      "label": "Voice notes",
+      "index": 7,
+      "ref": "e8"
+    },
+    {
+      "hittable": true,
+      "depth": 4,
+      "rect": {
+        "x": 24,
+        "height": 33.66668701171875,
+        "width": 354,
+        "y": 469.6666564941406
+      },
+      "enabled": true,
+      "type": "StaticText",
+      "parentIndex": 6,
+      "label": "Recording voice notes requires microphone access. Allow the permission when the system asks.",
+      "index": 8,
+      "ref": "e9"
+    },
+    {
+      "hittable": true,
+      "depth": 4,
+      "enabled": true,
+      "rect": {
+        "height": 43.33331298828125,
+        "x": 104.33333587646484,
+        "width": 193.33331298828125,
+        "y": 515.3333435058594
+      },
+      "type": "Other",
+      "identifier": "request-permission",
+      "parentIndex": 6,
+      "label": "Enable microphone",
+      "index": 9,
+      "ref": "e10"
+    }
+  ],
+  "truncated": false,
+  "appName": "dev.e2e.benchmark",
+  "appBundleId": "dev.e2e.benchmark"
+}

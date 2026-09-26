@@ -1,0 +1,460 @@
+{
+  "nodes": [
+    {
+      "enabled": true,
+      "label": "e2e Benchmark",
+      "rect": {
+        "height": 874,
+        "y": 0,
+        "x": 0,
+        "width": 402
+      },
+      "index": 0,
+      "type": "Application",
+      "depth": 0,
+      "hittable": false,
+      "ref": "e1"
+    },
+    {
+      "enabled": true,
+      "parentIndex": 0,
+      "label": "Benchmark Examples",
+      "rect": {
+        "height": 874,
+        "y": 0,
+        "x": 0,
+        "width": 402
+      },
+      "index": 1,
+      "type": "Other",
+      "depth": 1,
+      "hittable": true,
+      "ref": "e2"
+    },
+    {
+      "hittable": true,
+      "identifier": "Choice Controls",
+      "parentIndex": 1,
+      "label": "Benchmark Examples",
+      "rect": {
+        "height": 54,
+        "y": 62,
+        "x": 0,
+        "width": 402
+      },
+      "index": 2,
+      "type": "NavigationBar",
+      "depth": 2,
+      "enabled": true,
+      "ref": "e3"
+    },
+    {
+      "hittable": true,
+      "identifier": "BackButton",
+      "parentIndex": 2,
+      "label": "Benchmark Examples",
+      "rect": {
+        "height": 44,
+        "y": 62,
+        "x": 16,
+        "width": 44
+      },
+      "index": 3,
+      "type": "Button",
+      "depth": 3,
+      "enabled": true,
+      "ref": "e4"
+    },
+    {
+      "enabled": true,
+      "parentIndex": 2,
+      "label": "Choice Controls",
+      "rect": {
+        "height": 20.66666666666667,
+        "y": 73.66666666666666,
+        "x": 137.33333333333331,
+        "width": 127
+      },
+      "index": 4,
+      "type": "StaticText",
+      "depth": 3,
+      "hittable": true,
+      "ref": "e5"
+    },
+    {
+      "enabled": true,
+      "parentIndex": 1,
+      "label": "Vertical scroll bar, 1 page",
+      "rect": {
+        "height": 758,
+        "y": 116,
+        "x": 0,
+        "width": 402
+      },
+      "index": 5,
+      "type": "Other",
+      "depth": 2,
+      "hittable": true,
+      "ref": "e6"
+    },
+    {
+      "hittable": true,
+      "parentIndex": 5,
+      "label": "Order a Medium pizza with exactly Cheese and Olives, enable rush delivery, then place the order (dismiss the keyboard first).",
+      "rect": {
+        "x": 0,
+        "width": 402,
+        "y": 116,
+        "height": 758
+      },
+      "index": 6,
+      "type": "Other",
+      "depth": 3,
+      "enabled": true,
+      "ref": "e7"
+    },
+    {
+      "hittable": true,
+      "depth": 4,
+      "rect": {
+        "x": 0,
+        "width": 402,
+        "y": 116,
+        "height": 758
+      },
+      "enabled": true,
+      "type": "ScrollView",
+      "parentIndex": 6,
+      "index": 7,
+      "ref": "e8",
+      "inheritsLabel": true
+    },
+    {
+      "hittable": true,
+      "depth": 5,
+      "rect": {
+        "x": 0,
+        "width": 402,
+        "y": 116,
+        "height": 629
+      },
+      "enabled": true,
+      "type": "Other",
+      "parentIndex": 7,
+      "index": 8,
+      "ref": "e9",
+      "inheritsLabel": true
+    },
+    {
+      "hittable": true,
+      "depth": 6,
+      "rect": {
+        "x": 24,
+        "width": 354,
+        "y": 140,
+        "height": 50.333335876464844
+      },
+      "enabled": true,
+      "type": "StaticText",
+      "parentIndex": 8,
+      "index": 9,
+      "ref": "e10",
+      "inheritsLabel": true
+    },
+    {
+      "index": 10,
+      "depth": 6,
+      "enabled": true,
+      "rect": {
+        "x": 24,
+        "width": 354,
+        "y": 210.33333587646484,
+        "height": 19.333328247070312
+      },
+      "type": "StaticText",
+      "parentIndex": 8,
+      "label": "Size",
+      "hittable": true,
+      "ref": "e11"
+    },
+    {
+      "hittable": true,
+      "depth": 6,
+      "rect": {
+        "height": 36.00000762939453,
+        "y": 241.66666412353516,
+        "x": 24,
+        "width": 71.33333587646484
+      },
+      "enabled": true,
+      "type": "Other",
+      "identifier": "size-small",
+      "parentIndex": 8,
+      "label": "Small",
+      "value": "radio button",
+      "index": 11,
+      "ref": "e12"
+    },
+    {
+      "hittable": true,
+      "depth": 6,
+      "rect": {
+        "width": 88.99999237060547,
+        "x": 103.33333587646484,
+        "y": 241.66666412353516,
+        "height": 36.00000762939453
+      },
+      "enabled": true,
+      "type": "Other",
+      "identifier": "size-medium",
+      "parentIndex": 8,
+      "label": "Medium",
+      "value": "radio button",
+      "index": 12,
+      "ref": "e13"
+    },
+    {
+      "hittable": true,
+      "depth": 6,
+      "rect": {
+        "width": 73.00001525878906,
+        "x": 200.3333282470703,
+        "y": 241.66666412353516,
+        "height": 36.00000762939453
+      },
+      "enabled": true,
+      "type": "Other",
+      "identifier": "size-large",
+      "parentIndex": 8,
+      "label": "Large",
+      "value": "radio button",
+      "index": 13,
+      "ref": "e14"
+    },
+    {
+      "index": 14,
+      "depth": 6,
+      "enabled": true,
+      "rect": {
+        "width": 354,
+        "x": 24,
+        "y": 297.6666717529297,
+        "height": 19.333328247070312
+      },
+      "type": "StaticText",
+      "parentIndex": 8,
+      "label": "Toppings",
+      "hittable": true,
+      "ref": "e15"
+    },
+    {
+      "hittable": true,
+      "depth": 6,
+      "rect": {
+        "width": 354,
+        "x": 24,
+        "y": 329,
+        "height": 36
+      },
+      "enabled": true,
+      "type": "Other",
+      "identifier": "topping-cheese",
+      "parentIndex": 8,
+      "label": "Cheese",
+      "value": "checkbox, unchecked",
+      "index": 15,
+      "ref": "e16"
+    },
+    {
+      "hittable": true,
+      "depth": 6,
+      "rect": {
+        "width": 354,
+        "x": 24,
+        "y": 377,
+        "height": 36
+      },
+      "enabled": true,
+      "type": "Other",
+      "identifier": "topping-olives",
+      "parentIndex": 8,
+      "label": "Olives",
+      "value": "checkbox, unchecked",
+      "index": 16,
+      "ref": "e17"
+    },
+    {
+      "hittable": true,
+      "depth": 6,
+      "rect": {
+        "width": 354,
+        "x": 24,
+        "y": 425,
+        "height": 36
+      },
+      "enabled": true,
+      "type": "Other",
+      "identifier": "topping-mushrooms",
+      "parentIndex": 8,
+      "label": "Mushrooms",
+      "value": "checkbox, unchecked",
+      "index": 17,
+      "ref": "e18"
+    },
+    {
+      "hittable": true,
+      "depth": 6,
+      "rect": {
+        "width": 354,
+        "x": 24,
+        "y": 473,
+        "height": 36
+      },
+      "enabled": true,
+      "type": "Other",
+      "identifier": "topping-onions",
+      "parentIndex": 8,
+      "label": "Onions",
+      "value": "checkbox, unchecked",
+      "index": 18,
+      "ref": "e19"
+    },
+    {
+      "index": 19,
+      "depth": 6,
+      "enabled": true,
+      "rect": {
+        "width": 97.66666412353516,
+        "x": 24,
+        "y": 533.333333492279,
+        "height": 19.33331298828125
+      },
+      "type": "StaticText",
+      "parentIndex": 8,
+      "label": "Rush delivery",
+      "hittable": true,
+      "ref": "e20"
+    },
+    {
+      "index": 20,
+      "depth": 6,
+      "enabled": true,
+      "rect": {
+        "width": 63,
+        "x": 315,
+        "y": 529,
+        "height": 28
+      },
+      "type": "Other",
+      "parentIndex": 8,
+      "label": "0",
+      "hittable": true,
+      "ref": "e21"
+    },
+    {
+      "hittable": true,
+      "depth": 7,
+      "rect": {
+        "width": 63,
+        "x": 315,
+        "y": 529,
+        "height": 28
+      },
+      "enabled": true,
+      "type": "Switch",
+      "identifier": "rush-delivery",
+      "parentIndex": 20,
+      "label": "0",
+      "value": "0",
+      "index": 21,
+      "ref": "e22"
+    },
+    {
+      "index": 22,
+      "depth": 6,
+      "enabled": true,
+      "rect": {
+        "width": 354,
+        "x": 24,
+        "y": 577,
+        "height": 19.333343505859375
+      },
+      "type": "StaticText",
+      "parentIndex": 8,
+      "label": "Delivery notes",
+      "hittable": true,
+      "ref": "e23"
+    },
+    {
+      "hittable": true,
+      "depth": 6,
+      "rect": {
+        "width": 352,
+        "x": 25,
+        "y": 609.3333435058594,
+        "height": 43.333343505859375
+      },
+      "enabled": true,
+      "type": "TextField",
+      "identifier": "delivery-notes",
+      "parentIndex": 8,
+      "placeholder": "Ring the doorbell twice",
+      "index": 23,
+      "ref": "e24"
+    },
+    {
+      "hittable": false,
+      "depth": 6,
+      "enabled": false,
+      "rect": {
+        "width": 354,
+        "x": 24,
+        "y": 673.6666870117188,
+        "height": 47.33331298828125
+      },
+      "type": "Other",
+      "identifier": "place-order",
+      "parentIndex": 8,
+      "label": "Place order",
+      "index": 24,
+      "ref": "e25"
+    },
+    {
+      "hittable": true,
+      "depth": 5,
+      "enabled": true,
+      "rect": {
+        "width": 30,
+        "x": 369,
+        "y": 144,
+        "height": 668
+      },
+      "type": "Other",
+      "parentIndex": 7,
+      "label": "Vertical scroll bar, 1 page",
+      "value": "0%",
+      "index": 25,
+      "ref": "e26"
+    },
+    {
+      "hittable": true,
+      "depth": 5,
+      "enabled": true,
+      "rect": {
+        "width": 278,
+        "x": 62,
+        "y": 807,
+        "height": 30
+      },
+      "type": "Other",
+      "parentIndex": 7,
+      "label": "Horizontal scroll bar, 1 page",
+      "value": "0%",
+      "index": 26,
+      "ref": "e27"
+    }
+  ],
+  "truncated": false,
+  "appName": "dev.e2e.benchmark",
+  "appBundleId": "dev.e2e.benchmark"
+}

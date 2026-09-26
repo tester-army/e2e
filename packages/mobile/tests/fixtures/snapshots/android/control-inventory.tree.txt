@@ -1,0 +1,46 @@
+screen
+  text "11:26 PM" text="11:26" #com.android.systemui:id/clock
+  image "Android System notification: "
+  image "Wifi signal full." #com.android.systemui:id/wifi_signal
+  group "T-Mobile, signal full." #com.android.systemui:id/mobile_combo
+    image #com.android.systemui:id/mobile_signal
+  group "Battery charging, 100 percent." #com.android.systemui:id/battery
+    image
+  group
+    group
+      group
+        group #dev.e2e.benchmark:id/action_bar_root
+          group #android:id/content
+            group
+              group
+                group
+                  group
+                    group
+                      group
+                        button "Navigate up"
+                        text "Control Inventory"
+                    group
+                      group
+                        group #inventory-scroll
+                          group
+                            heading "Inventory heading" text="Plain controls, every state exposed" #inventory-header
+                            text "scheme: light" #color-scheme
+                            text "orientation: portrait" #orientation
+                            text "411x914" #window-size
+                            tablist #section-tabs
+                            tab "Fields" [selected] #tab-fields
+                              text "Fields"
+                            tab "Toggles" #tab-toggles
+                              text "Toggles"
+                            tab "Gestures" #tab-gestures
+                              text "Gestures"
+                            tab "Device" #tab-device
+                              text "Device"
+                            textbox "Name field" text="Ada Lovelace" value="Ada Lovelace" #name-input placeholder="Type your name"
+                            text "name: Ada Lovelace" #name-echo
+                            textbox "Passphrase field" text="Passphrase" [secure] #passphrase-input placeholder="Passphrase"
+                            text "passphrase length: 0" #passphrase-length
+                            textbox "Key echo field" text="Key echo" #key-input placeholder="Key echo"
+                            text "key: none" #key-status
+                            button "Show focus fields" #show-focus-fields
+                              text "Show focus fields"

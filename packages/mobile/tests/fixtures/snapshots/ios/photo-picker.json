@@ -1,0 +1,169 @@
+{
+  "nodes": [
+    {
+      "enabled": true,
+      "hittable": false,
+      "rect": {
+        "height": 874,
+        "x": 0,
+        "y": 0,
+        "width": 402
+      },
+      "type": "Application",
+      "label": "e2e Benchmark",
+      "index": 0,
+      "depth": 0,
+      "ref": "e1"
+    },
+    {
+      "enabled": true,
+      "hittable": true,
+      "rect": {
+        "height": 874,
+        "x": 0,
+        "y": 0,
+        "width": 402
+      },
+      "type": "Other",
+      "label": "Benchmark Examples",
+      "parentIndex": 0,
+      "index": 1,
+      "depth": 1,
+      "ref": "e2"
+    },
+    {
+      "enabled": true,
+      "hittable": true,
+      "identifier": "Photo Picker",
+      "rect": {
+        "height": 54,
+        "x": 0,
+        "y": 62,
+        "width": 402
+      },
+      "type": "NavigationBar",
+      "label": "Benchmark Examples",
+      "parentIndex": 1,
+      "index": 2,
+      "depth": 2,
+      "ref": "e3"
+    },
+    {
+      "enabled": true,
+      "hittable": true,
+      "identifier": "BackButton",
+      "rect": {
+        "height": 44,
+        "x": 16.00000000000001,
+        "y": 62,
+        "width": 219.66666666666666
+      },
+      "type": "Button",
+      "label": "Benchmark Examples",
+      "parentIndex": 2,
+      "index": 3,
+      "depth": 3,
+      "ref": "e4"
+    },
+    {
+      "enabled": true,
+      "hittable": true,
+      "rect": {
+        "height": 20.66666666666667,
+        "x": 247.66666666666669,
+        "y": 73.66666666666666,
+        "width": 100.66666666666669
+      },
+      "type": "StaticText",
+      "label": "Photo Picker",
+      "parentIndex": 2,
+      "index": 4,
+      "depth": 3,
+      "ref": "e5"
+    },
+    {
+      "enabled": true,
+      "hittable": true,
+      "rect": {
+        "height": 874,
+        "x": 0,
+        "y": 0,
+        "width": 402
+      },
+      "type": "Other",
+      "label": "Expense report",
+      "parentIndex": 1,
+      "index": 5,
+      "depth": 2,
+      "ref": "e6"
+    },
+    {
+      "enabled": true,
+      "hittable": true,
+      "rect": {
+        "height": 758,
+        "x": 0,
+        "y": 116,
+        "width": 402
+      },
+      "type": "Other",
+      "label": "Expense report",
+      "parentIndex": 5,
+      "index": 6,
+      "depth": 3,
+      "ref": "e7"
+    },
+    {
+      "hittable": true,
+      "depth": 4,
+      "rect": {
+        "width": 151.66665649414062,
+        "height": 26.33331298828125,
+        "x": 125,
+        "y": 431.3333435058594
+      },
+      "enabled": true,
+      "type": "StaticText",
+      "parentIndex": 6,
+      "label": "Expense report",
+      "index": 7,
+      "ref": "e8"
+    },
+    {
+      "hittable": true,
+      "depth": 4,
+      "rect": {
+        "width": 354,
+        "height": 33.66668701171875,
+        "x": 24,
+        "y": 469.6666564941406
+      },
+      "enabled": true,
+      "type": "StaticText",
+      "parentIndex": 6,
+      "label": "Attach the receipt photo from your photo library to submit this expense.",
+      "index": 8,
+      "ref": "e9"
+    },
+    {
+      "hittable": true,
+      "depth": 4,
+      "rect": {
+        "width": 153.66665649414062,
+        "height": 43.33331298828125,
+        "x": 124.33333587646484,
+        "y": 515.3333435058594
+      },
+      "enabled": true,
+      "type": "Other",
+      "identifier": "choose-photo",
+      "parentIndex": 6,
+      "label": "Choose photo",
+      "index": 9,
+      "ref": "e10"
+    }
+  ],
+  "truncated": false,
+  "appName": "dev.e2e.benchmark",
+  "appBundleId": "dev.e2e.benchmark"
+}
