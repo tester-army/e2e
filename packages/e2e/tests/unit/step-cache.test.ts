@@ -822,6 +822,22 @@ describe('cache.strict', () => {
     await expect(truncated.begin()).resolves.toBeUndefined();
   });
 
+  it('keeps the stale entry it failed on in read-write mode, so the next strict run fails on it too', async () => {
+    const deleted: string[] = [];
+    const base = strict(entryContext({ endPath: '/customers', endAnchors: [savedAnchor] }));
+    const context: AgentCacheContext = { ...base, store: { ...base.store, delete: async (key) => { deleted.push(key); } } };
+    const session = makeSession(context, makeHost(['/pricing', '/customers']));
+    await expect(session.begin()).rejects.toMatchObject({ code: 'REPLAY_STALE' });
+    await session.conclude('failed', undefined);
+    expect(deleted).toEqual([]);
+  });
+
+  it('runs live when the store read rejects, since nothing says a recording exists', async () => {
+    const session = makeSession(strict(fakeContext(async () => { throw new Error('redis is down'); })), makeHost(['/']));
+    await expect(session.begin()).resolves.toBeUndefined();
+    expect(session.cacheInfo).toMatchObject({ mode: 'missed', reason: 'invalid-entry' });
+  });
+
   it('replays a recording that still holds as it always does', async () => {
     const context = strict(entryContext({ endPath: '/customers', endAnchors: [savedAnchor] }));
     const verdict = await makeSession(context, makeHost(['/pricing', '/customers'], [[savedMarker]])).begin();

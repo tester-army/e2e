@@ -72,7 +72,12 @@ type HandOffReason = ReplayedPrefix['stopReason'];
 /** One store read: a validated entry, or why none was read. */
 type EntryRead =
   | { readonly status: 'hit'; readonly entry: TraceEntry }
-  | { readonly status: 'miss'; readonly reason: 'retry' | 'no-entry' | 'invalid-entry' };
+  | {
+      readonly status: 'miss';
+      readonly reason: 'retry' | 'no-entry' | 'invalid-entry';
+      /** The store's read rejected: nothing says a recording exists, so `cache.strict` runs the step live. */
+      readonly unavailable?: true;
+    };
 
 /**
  * What the start capture is for, which decides how far it settles. The path
@@ -143,6 +148,8 @@ export class StepTraceSession {
   private replayedWhole = false;
   /** True once a cached entry's actions were run this step, fully or partly. */
   private consumedReplay = false;
+  /** True once `cache.strict` failed the step on its recording, which is then kept for review rather than evicted. */
+  private failedStale = false;
   /** Grammar actions recorded so far when an end-mismatch hand-off happened. */
   private actionsAtEndMismatch: number | undefined;
 
@@ -205,7 +212,7 @@ export class StepTraceSession {
     if (read.status === 'miss') {
       await this.captureStart(this.recorder === undefined ? 'path-only' : 'baseline');
       this.info = this.missed(read.reason, 0);
-      this.failIfStale();
+      if (read.unavailable !== true) this.failIfStale();
       return undefined;
     }
     // With an entry in hand the step is the cache's from its first moment: the
@@ -231,6 +238,7 @@ export class StepTraceSession {
   private failIfStale(): void {
     const reason = this.info?.reason;
     if (!this.cache.strict || !STALE_REASONS.has(reason)) return;
+    this.failedStale = true;
     throw new AgentError(
       'REPLAY_STALE',
       `the recording of this step no longer replays (${reason}), and cache.strict hands no step to the agent; ` +
@@ -269,7 +277,10 @@ export class StepTraceSession {
       case 'cancelled':
         return;
       case 'failed':
-        if (this.consumedReplay) await this.evict();
+        // A stale recording `cache.strict` failed on stays for the next strict
+        // run to fail on too, until a lenient run re-records it; evicting it
+        // would turn it into a `no-entry` that runs live.
+        if (this.consumedReplay && !this.failedStale) await this.evict();
         return;
       case 'passed':
         if (this.repairedAfterEndMismatch(recorder)) await this.evict();
@@ -292,7 +303,7 @@ export class StepTraceSession {
     try {
       read = await this.cache.store.read(this.keyHash);
     } catch {
-      return { status: 'miss', reason: 'invalid-entry' };
+      return { status: 'miss', reason: 'invalid-entry', unavailable: true };
     }
     if (read.status === 'miss') return { status: 'miss', reason: 'no-entry' };
     if (read.status === 'invalid') return { status: 'miss', reason: 'invalid-entry' };
