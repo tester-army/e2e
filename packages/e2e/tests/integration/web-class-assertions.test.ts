@@ -20,22 +20,22 @@ const SUITE = `import { test } from '@e2edev/web';
 import { expect } from 'e2e';
 
 test('class assertions poll for a node that arrives late', async ({ app, web }) => {
-  await app.open();
+  await app.open('/classes');
   await expect(web).toHaveClass(web.locator('#late-card'), 'card late', { timeout: 1800 });
 });
 
 test('class assertions on an ambiguous locator fail at once', async ({ app, web }) => {
-  await app.open();
+  await app.open('/classes');
   await expect(web).toHaveClass(web.locator('.dup'), 'dup', { timeout: 1800 });
 });
 
 test('an empty class attribute is an empty class list', async ({ app, web }) => {
-  await app.open();
+  await app.open('/classes');
   await expect(web).toHaveClass(web.locator('#blank-card'), '');
 });
 
 test('a missing class attribute is not an empty class list', async ({ app, web, screen }) => {
-  await app.open();
+  await app.open('/classes');
   await expect(web).toHaveClass(screen.getByTestId('items'), '', { timeout: 300 });
 });
 `;

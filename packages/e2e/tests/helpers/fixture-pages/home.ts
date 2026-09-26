@@ -51,9 +51,8 @@ export const HOME_PAGES: Record<string, PageRenderer> = {
     <li data-testid="item">Item Beta</li>
     <li data-testid="item">Item Gamma</li>
   </ul>
-  <span class="dup">Duplicated</span>
-  <span class="dup">Duplicated</span>
-  <div id="blank-card" class="">Blank</div>
+  <span>Duplicated</span>
+  <span>Duplicated</span>
 
   <input id="prefilled" aria-label="Prefilled" value="hello-value" />
   <textarea id="notes" aria-label="Notes">line1
@@ -66,13 +65,6 @@ line2  </textarea>
       late.textContent = 'Late arrival';
       document.body.appendChild(late);
     }, 400);
-    setTimeout(() => {
-      const card = document.createElement('div');
-      card.id = 'late-card';
-      card.className = 'card late';
-      card.textContent = 'Late card';
-      document.body.appendChild(card);
-    }, 600);
   </script>
 </body>
 </html>`),
@@ -103,6 +95,29 @@ line2  </textarea>
   <form aria-label="Sign in"><input aria-label="User" /></form>
   <hr />
   <article aria-label="First post"><p>Body</p></article>
+</body>
+</html>`),
+  // Class assertions: a node that arrives late, duplicates, and the two
+  // shapes of an empty class. Its own page so the late node never lands in
+  // another suite's screen diff.
+  '/classes': constant(`<!doctype html>
+<html>
+<head><title>Classes</title></head>
+<body>
+  <h1>Classes</h1>
+  <span class="dup">Duplicated</span>
+  <span class="dup">Duplicated</span>
+  <div id="blank-card" class="">Blank</div>
+  <ul data-testid="items"><li>Item</li></ul>
+  <script>
+    setTimeout(() => {
+      const card = document.createElement('div');
+      card.id = 'late-card';
+      card.className = 'card late';
+      card.textContent = 'Late card';
+      document.body.appendChild(card);
+    }, 600);
+  </script>
 </body>
 </html>`),
   '/about': constant(`<!doctype html>
