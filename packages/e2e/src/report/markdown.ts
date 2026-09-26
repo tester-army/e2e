@@ -303,14 +303,19 @@ function flakyFold(entries: readonly Entry[], manyTargets: boolean, options: Mar
 function repeatsSection(entries: readonly Entry[], manyTargets: boolean): string[] {
   const groups = repeatGroups(entries, ({ result, final }) => ({
     key: `${result.testId}@${result.agent}@${result.targetId}`,
-    label: `\`${fileLabel(result.file, result.targetId, manyTargets)}\` ${testName({ ...result, repeat: 0 })}`,
+    label: [
+      code(result.file, MAX_PATH_CHARS),
+      ...(manyTargets ? [`(${cell(result.targetId, MAX_ID_CHARS)})`] : []),
+      ...(result.agent === 'default' ? [] : [`as ${cell(result.agent, MAX_ID_CHARS)}`]),
+      testName({ ...result, repeat: 0 }),
+    ].join(' '),
     run: { repeat: result.repeat, status: result.status, code: final.final.error?.code ?? final.lastFailed?.error?.code },
   }));
   if (groups.length === 0) return [];
   const unstable = groups.filter((group) => group.passed < group.runs.length);
   return [
     `**Repeats:** ${repeatSummary(groups)}`,
-    ...(unstable.length === 0 ? [] : ['', ...unstable.map((group) => `- ${ICON.flaky} ${group.label}: ${repeatLine(group)}`)]),
+    ...(unstable.length === 0 ? [] : ['', ...unstable.map((group) => `- ${ICON.flaky} ${group.label}: ${cell(repeatLine(group))}`)]),
   ];
 }
 

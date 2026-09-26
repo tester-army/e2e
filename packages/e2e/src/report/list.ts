@@ -674,7 +674,8 @@ export class ListReporter implements Reporter {
     this.runs.push({
       key: `${result.test.id}@${result.agent}@${result.target.name}`,
       label: `${this.badge(group.target)} ${bounded(group.file)}${this.separator}${this.titledAs(result.test.titlePath.join(' > '), result.agent, 0)}`,
-      run: { repeat: result.repeat, status: result.status, code: error?.code },
+      // A flaky run's final attempt passed; the code is the one its retry recovered from.
+      run: { repeat: result.repeat, status: result.status, code: error?.code ?? result.attempts.findLast((attempt) => attempt.status !== 'passed')?.error?.code },
     });
     if (statusBucket(result.status) === 'failed') {
       this.failures.push({ group, title, status: result.status, error, videos, failure, screenPath });

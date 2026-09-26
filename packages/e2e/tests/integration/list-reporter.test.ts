@@ -54,7 +54,7 @@ describe('list reporter output', () => {
     }
   });
 
-  it('tallies a --repeat-each run: the tests that passed every run, and the runs of the one that did not', async () => {
+  it('tallies a --repeat-each run: the tests that passed every run, and the flaky runs of the one that did not with the code each retry recovered from', async () => {
     const written: string[] = [];
     const stdoutWrite = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
       written.push(String(chunk));
@@ -66,7 +66,7 @@ describe('list reporter output', () => {
         { 'tests/repeat.e2e.ts': `import { readFileSync, writeFileSync } from 'node:fs';
           import { test, expect } from 'e2e';
           test('always passes', async () => {});
-          test('fails every other run', async () => {
+          test('fails every other <b>attempt</b>', async () => {
             const file = new URL('../count.txt', import.meta.url);
             let count = 0;
             try { count = Number(readFileSync(file, 'utf8')); } catch {}
@@ -79,6 +79,7 @@ describe('list reporter output', () => {
             targets: [{ name: 'fake', platform: 'custom', engine: defineEngine({ name: 'fake', version: '1', spiVersion: 1, observe: async () => snapshot([]) }) }],
             cache: 'off',
             workers: 1,
+            retries: 1,
           },
           runOptions: { quiet: false, repeatEach: 3, reporters: ['list', 'markdown'] },
         },
@@ -87,10 +88,13 @@ describe('list reporter output', () => {
       stdoutWrite.mockRestore();
       const output = stripVTControlCharacters(written.join(''));
       expect(output).toMatch(/Repeats {2}1 of 2 tests passed all 3 runs\n/u);
-      expect(output).toMatch(/× \|fake\| tests\/repeat\.e2e\.ts > fails every other run {2}2\/3 passed · repeat 1 ASSERTION_FAILED\n/u);
+      // The target badge is `|fake|` without color and ` fake ` on a background with it.
+      // Repeat 0 passes at once; 1 and 2 fail their first attempt and pass the retry.
+      const line = '1/3 passed · repeat 1 flaky (ASSERTION_FAILED) · repeat 2 flaky (ASSERTION_FAILED)';
+      expect(output).toMatch(new RegExp(`× [| ]fake[| ] tests/repeat\\.e2e\\.ts > fails every other <b>attempt</b> {2}${line.replaceAll('(', '\\(').replaceAll(')', '\\)')}\n`, 'u'));
       const summary = readFileSync(path.join(project.dir, '.e2e', 'summary.md'), 'utf8');
       expect(summary).toContain('**Repeats:** 1 of 2 tests passed all 3 runs');
-      expect(summary).toContain('`tests/repeat.e2e.ts` fails every other run: 2/3 passed · repeat 1 ASSERTION_FAILED');
+      expect(summary).toContain(`\`tests/repeat.e2e.ts\` fails every other &lt;b&gt;attempt&lt;/b&gt;: ${line}`);
     } finally {
       stdoutWrite.mockRestore();
       project?.cleanup();
