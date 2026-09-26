@@ -23,12 +23,14 @@
     "release": "pnpm run build && changeset publish --tag beta",
     "canary": "node scripts/canary-changeset.ts && changeset version --snapshot canary && pnpm run build",
     "canary:publish": "changeset publish --tag canary --no-git-tag && node scripts/restore-peer-ranges.ts",
-    "typecheck": "pnpm run build && pnpm -r run typecheck",
-    "test": "pnpm run build && pnpm --filter e2e run test && pnpm --filter @e2edev/web run test && pnpm --filter @e2edev/mobile run test && pnpm --filter @e2edev/github run test",
+    "typecheck": "pnpm run build && pnpm -r run typecheck && tsc -p scripts",
+    "test": "pnpm run build && pnpm --filter e2e run test && pnpm --filter @e2edev/web run test && pnpm --filter @e2edev/mobile run test && pnpm --filter @e2edev/github run test && pnpm run test:scripts",
     "test:testbed": "pnpm run build && pnpm --filter @e2edev/testbed test",
     "test:web-benchmark": "pnpm run build && pnpm --filter @e2edev/web-benchmark test",
     "test:mobile-benchmark": "pnpm run build && pnpm --filter @e2edev/mobile-benchmark test",
-    "test:agent": "pnpm run build && pnpm --filter @e2edev/testbed test:agent"
+    "test:agent": "pnpm run build && pnpm --filter @e2edev/testbed test:agent",
+    "test:scripts": "node --test \"scripts/**/*.test.ts\"",
+    "bench:ab": "node scripts/bench-ab.ts"
   },
   "contributors": [
     "Oskar Kwaśniewski <oskar@tester.army>",

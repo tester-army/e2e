@@ -83,6 +83,16 @@ pnpm docs:dev     # local preview
 pnpm docs:check   # validate the site, its links, and the quickstart examples
 ```
 
+A change that claims to be faster, or that touches the runner, the agent
+loop, or an engine, gets measured against `main` on the benchmark suites:
+
+```sh
+pnpm bench:ab -- tests-agent/control-inventory.e2e.ts --config e2e.agent.config.ts
+```
+
+It prints a markdown table to paste into the PR, and lists first any test
+whose behavior changed. `AGENTS.md` describes the output.
+
 ### Commit message convention
 
 We follow the [conventional commits specification](https://www.conventionalcommits.org/en):

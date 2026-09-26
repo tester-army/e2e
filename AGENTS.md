@@ -251,6 +251,40 @@ CROSSCHECK_BENCHMARK_URL=http://127.0.0.1:4280 pnpm --filter @e2edev/web exec vi
   Playwright's copy, MPL-2.0). Its disagreements live in
   `tests/conformance/expected.txt` the same way, grouped by reason; a line
   that starts with `Bug:` is a fix waiting to be made, and the fix deletes it.
+## Measuring a change against main
+
+`pnpm bench:ab` runs a benchmark suite through two builds, the merge base
+with `origin/main` (a worktree under the system temp directory, installed and
+built once per commit) and the working tree, in pairs in a seeded random
+order, and prints a markdown table for the PR body. Use it for any perf claim
+and before and after a change to the runner, the agent loop, or an engine:
+
+```bash
+pnpm bench:ab -- tests-agent/control-inventory.e2e.ts --config e2e.agent.config.ts
+pnpm bench:ab --suite testbed --threshold 3 -- tests/forms.e2e.ts
+```
+
+Arguments after `--` go to `e2e run`; the options are in the header of
+`scripts/bench-ab.ts`. What it reports, in order:
+
+- Behavior. A test whose status, attempts, or step sequence (kind, api,
+  label, status, error code, cache mode) differs between the builds, or
+  between two runs of one build, is listed and left out of the timings. This
+  is the regression check: a perf change that alters behavior is not a perf
+  change.
+- Timings: the whole suite, the observe, action, and model event phases, and
+  every step api, each as the median paired change with a bootstrap 95%
+  interval, `faster`, `slower`, or `same` against `±--threshold`, else
+  `unresolved`. Sampling stops once the suite's interval resolves.
+- Counters that should not move within one build: steps, events by kind,
+  observed nodes and bytes, cache modes, model calls and tokens. A change
+  here is exact and needs no statistics.
+
+Runs go with `CI=1`: committed recordings replay read-only, a step with none
+calls the model. A load average above half the cores is warned about; shared
+CI runners are too noisy for wall-time verdicts, so trust the behavior and
+counter sections there. The harness's statistics have unit tests under
+`scripts/bench-ab/` (`pnpm test:scripts`).
 
 ## Gotchas
 
