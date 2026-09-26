@@ -85,6 +85,23 @@ describe('session envelope', () => {
     }
   });
 
+  it('names every secret the config accepts: a long name and many names validate and round-trip', async () => {
+    const longName = 'x'.repeat(300);
+    const secrets = [
+      [longName, SECRET_VALUE] as const,
+      ...Array.from({ length: 300 }, (_, index) => [`token-${String(index)}`, `value-${String(index)}-padded`] as const),
+    ];
+    const { store, envelope } = await saveEnvelope({ secrets, tainted: true });
+    try {
+      assertValidSessionEnvelope(envelope);
+      expect((envelope.secrecy as { names: string[] }).names).toHaveLength(301);
+      const loaded = await store.load('member', identity);
+      expect(loaded.secrecy.secrets).toEqual(secrets);
+    } finally {
+      store.cleanup();
+    }
+  });
+
   it('accepts the canonical valid fixture', () => {
     assertValidSessionEnvelope(specFixture('session-v1.valid.json'));
   });
