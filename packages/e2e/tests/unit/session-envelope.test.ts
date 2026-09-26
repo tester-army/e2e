@@ -32,7 +32,9 @@ async function saveEnvelope(): Promise<{ store: SessionStore; envelope: Record<s
     version: 1,
     data: { cookies: [{ name: 'sid', value: 'abc' }] },
   });
-  const raw = await readFile(path.join(root, runId, 'web--member.json'), 'utf8');
+  const [file] = await readdir(path.join(root, runId));
+  expect(file).toMatch(/^web--member-[0-9a-f]{16}\.json$/);
+  const raw = await readFile(path.join(root, runId, file!), 'utf8');
   return { store, envelope: JSON.parse(raw) as Record<string, unknown> };
 }
 
@@ -104,6 +106,31 @@ describe('session file names', () => {
       await store.save('c', second, stateFor('a-b', 'c'));
       expect((await store.load('c', first)).data).toEqual({ pair: 'a.b/c' });
       expect((await store.load('c', second)).data).toEqual({ pair: 'a-b/c' });
+    } finally {
+      store.cleanup();
+    }
+  });
+
+  it('keeps the longest allowed names within the file name limit', async () => {
+    const { store, root, runId } = await openStore();
+    const longName = '-'.repeat(128);
+    const longTarget = `${'a.b-'.repeat(60)}end`;
+    const wide: SessionIdentity = { ...identity, targetId: longTarget };
+    const twin: SessionIdentity = { ...identity, targetId: `${longTarget}x` };
+    try {
+      await store.save(longName, wide, stateFor(longTarget, longName));
+      await store.save(longName, twin, stateFor(`${longTarget}x`, longName));
+      const files = await readdir(path.join(root, runId));
+      expect(files).toHaveLength(2);
+      for (const file of files) {
+        expect(Buffer.byteLength(file)).toBeLessThan(200);
+      }
+      expect((await store.load(longName, wide)).data).toEqual({
+        pair: `${longTarget}/${longName}`,
+      });
+      expect((await store.load(longName, twin)).data).toEqual({
+        pair: `${longTarget}x/${longName}`,
+      });
     } finally {
       store.cleanup();
     }

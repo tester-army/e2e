@@ -1,6 +1,6 @@
 /** Per-run encrypted session store. */
 
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 import { mkdirSync, rmSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -113,7 +113,14 @@ export class SessionStore {
   }
 
   private filePath(targetId: string, name: string): string {
-    return path.join(this.directory, `${fileNamePart(targetId)}--${fileNamePart(name)}.json`);
+    const digest = createHash('sha256')
+      .update(`${targetId}\u0000${name}`)
+      .digest('hex')
+      .slice(0, 16);
+    return path.join(
+      this.directory,
+      `${fileNamePart(targetId)}--${fileNamePart(name)}-${digest}.json`,
+    );
   }
 
   /** Encrypts and atomically persists one captured engine state. */
@@ -258,12 +265,18 @@ export class SessionStore {
   }
 }
 
+const FILE_NAME_PART_MAX = 40;
+
 /**
- * Encodes one component of a session file name so the `--` between target
- * and session name is unambiguous: every character outside `[A-Za-z0-9_]`,
- * `-` and `.` included, becomes `%XX`. Target `a--b` with session `c` and
- * target `a` with session `b--c` are two files, and no part can carry a path
- * separator or a `..` segment.
+ * The readable prefix of a session file name for one of its parts: every
+ * character outside `[A-Za-z0-9_]`, `-` and `.` included, becomes `%XX`, so
+ * the part carries no path separator or `..` segment, then the result is cut
+ * to a fixed length. A session name may be 128 characters and a target name
+ * any length, and the escape triples a dash, so the cut keeps the whole file
+ * name, with the atomic-write suffix, far under the 255-byte component limit.
+ * The digest `filePath` appends is what tells two pairs apart, so target
+ * `a--b` with session `c` and target `a` with session `b--c` are two files
+ * even where their prefixes agree.
  */
 function fileNamePart(value: string): string {
   return Array.from(Buffer.from(value, 'utf8'), (byte) => {
@@ -271,7 +284,9 @@ function fileNamePart(value: string): string {
     return /[A-Za-z0-9_]/.test(char)
       ? char
       : `%${byte.toString(16).toUpperCase().padStart(2, '0')}`;
-  }).join('');
+  })
+    .join('')
+    .slice(0, FILE_NAME_PART_MAX);
 }
 
 /** Parses an envelope file, classifying a corrupt or truncated one as SESSION_INVALID. */
