@@ -78,6 +78,22 @@ function flatten(node: SemanticNode, out: SemanticNode[] = []): SemanticNode[] {
   return out;
 }
 
+/** One observation of the page through the same capture the engine uses, frames included. */
+async function captureTree(): Promise<SemanticNode[]> {
+  let nextId = 1;
+  const { tree } = await captureDocument(
+    {
+      testIdAttribute: 'data-testid',
+      site: undefined,
+      reserveIds: (count) => { const first = nextId; nextId += count; return first; },
+      commit: () => undefined,
+    },
+    page,
+    { framePath: [], budget: 100, deadline: Date.now() + 10_000, signal: new AbortController().signal },
+  );
+  return flatten(tree);
+}
+
 describe('the tree walk through a box with no size', () => {
   it('lists the fixed controls under a zero-height page and wrapper, and neither the wrapper nor the root as hidden', async () => {
     await page.setContent(`
@@ -85,20 +101,25 @@ describe('the tree walk through a box with no size', () => {
         <button style="position:fixed;left:0;top:0;width:100px;height:30px">Reset</button>
       </nav>
     `);
-    let nextId = 1;
-    const { tree } = await captureDocument(
-      {
-        testIdAttribute: 'data-testid',
-        site: undefined,
-        reserveIds: (count) => { const first = nextId; nextId += count; return first; },
-        commit: () => undefined,
-      },
-      page,
-      { framePath: [], budget: 100, deadline: Date.now() + 10_000, signal: new AbortController().signal },
-    );
-    const nodes = flatten(tree);
-    expect(tree.states?.hidden).toBeUndefined();
+    const nodes = await captureTree();
+    expect(nodes[0]!.states?.hidden).toBeUndefined();
     expect(nodes.find((node) => node.role === 'button')?.name).toBe('Reset');
     expect(nodes.find((node) => node.testId === 'wrapper')).toBeUndefined();
+  });
+
+  it('lists neither the document of a frame with no box nor the options of a select with none', async () => {
+    await page.setContent(`
+      <iframe style="width:0;height:0;border:0" srcdoc="<button>Pay</button>"></iframe>
+      <iframe style="width:200px;height:100px" srcdoc="<button>Shown pay</button>"></iframe>
+      <select aria-label="Folded" style="width:0;height:0;padding:0;border:0"><option>plain</option><option>warm</option></select>
+      <select aria-label="Shown"><option>cool</option></select>
+    `);
+    await Promise.all(page.frames().slice(1).map((frame) => frame.waitForLoadState()));
+    const nodes = await captureTree();
+    const buttons = nodes.filter((node) => node.role === 'button').map((node) => node.name);
+    const options = nodes.filter((node) => node.role === 'option').map((node) => node.name);
+    expect(buttons).toEqual(['Shown pay']);
+    expect(options).toEqual(['cool']);
+    expect(nodes.filter((node) => node.role === 'combobox').map((node) => node.name)).toEqual(['Shown']);
   });
 });

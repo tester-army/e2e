@@ -997,6 +997,10 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     const style = styleOf(el);
     if (hidesSubtree(el, style)) return;
     const hidden = isHidden(el, style);
+    // The two elements listed by a rule of their own carry nothing a person
+    // sees past their edges: a frame with no box shows none of its document,
+    // and a select with none offers no options.
+    if (hidden && (tag === 'iframe' || tag === 'select')) return;
 
     // Iframes are emitted as boundary nodes and never entered: their content
     // lives in another document, which the engine captures per frame and
