@@ -241,7 +241,9 @@ describe('contenteditable editing hosts', () => {
       <div contenteditable style="white-space: pre-wrap" aria-label="Code" data-testid="pre">  keep spaces  </div>
       <div contenteditable style="white-space: pre-wrap" aria-label="Lines" data-testid="lines"><p>line1</p><p>  line2</p></div>
       <div contenteditable aria-label="Prose" data-testid="prose">  collapsed   text  </div>
+      <div contenteditable style="white-space: pre-wrap" aria-label="Spaces" data-testid="spaces">   </div>
       <div contenteditable aria-label="Empty" data-testid="empty"><p><br></p></div>
+      <div contenteditable style="white-space: pre-wrap" aria-label="Empty pre" data-testid="empty-pre"><p><br></p></div>
       <div contenteditable aria-label="Blank" data-testid="blank"></div>
       <input aria-label="Field" value="  keep spaces  " data-testid="field">
     `);
@@ -250,7 +252,9 @@ describe('contenteditable editing hosts', () => {
     expect(nodes.get('lines')?.value).toBe('line1\n\n  line2');
     // Under white-space: normal the browser renders no leading or trailing space, so none is read.
     expect(nodes.get('prose')?.value).toBe('collapsed text');
+    expect(nodes.get('spaces')?.value).toBe('   ');
     expect(nodes.get('empty')?.value).toBe('');
+    expect(nodes.get('empty-pre')?.value).toBe('');
     expect(nodes.get('blank')?.value).toBe('');
     expect(nodes.get('field')?.value).toBe('  keep spaces  ');
   });
