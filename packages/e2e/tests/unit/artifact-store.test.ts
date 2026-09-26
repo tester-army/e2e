@@ -259,6 +259,21 @@ describe('download redaction', () => {
     expect(store.puts[0]!.sha256).toBe(createHash('sha256').update(redacted).digest('hex'));
   });
 
+  it('rewrites a value CSV quoted, its double quotes doubled', async () => {
+    const artifacts = createAttemptArtifacts({
+      artifactsRoot: root(),
+      segments: ['web', 'test-1', 'attempt-0'],
+      attemptId: 'att-1',
+      secrecy: () => ({ ledger: new SecretLedger([['api-key', 'pa"ss,word']]), taint: { value: true } }),
+    });
+    mkdirSync(path.join(artifacts.dir, 'downloads'));
+    writeFileSync(path.join(artifacts.dir, 'downloads', 'export.csv'), 'id,key\n1,"pa""ss,word"\n');
+    artifacts.sink.register('download', 'downloads/export.csv');
+    await artifacts.settle();
+    expect(artifacts.records[0]).toMatchObject({ redaction: 'complete' });
+    expect(readFileSync(path.join(artifacts.dir, 'downloads', 'export.csv'), 'utf8')).toBe('id,key\n1,"<secret:api-key>"\n');
+  });
+
   it('keeps a byte order mark on a rewritten download', async () => {
     const store = capturing();
     const artifacts = downloads(true, store);

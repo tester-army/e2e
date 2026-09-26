@@ -113,11 +113,11 @@ masked rectangle.
 The redactor matches each registered value character by character, in every
 spelling a serializer gives a character: as is; JSON-escaped once or twice,
 including `\uXXXX` escapes in either hex case; as an HTML character
-reference, named, decimal, or hex; and percent-encoded in either hex case,
-with `+` for a space. It retains old values after a secret rotates, and never
-rewrites a marker it wrote, so text that passes it twice reads as text that
-passed once. Secret values are excluded from cache entries, model input, and
-reports.
+reference, named, decimal, or hex; percent-encoded in either hex case,
+with `+` for a space; and a double quote doubled, as CSV writes it. It
+retains old values after a secret rotates, and never rewrites a marker it
+wrote, so text that passes it twice reads as text that passed once. Secret
+values are excluded from cache entries, model input, and reports.
 
 A static value shorter than 6 characters (code points) is `INVALID_CONFIG`,
 and a provider returning one fails the fill. Every occurrence of a value

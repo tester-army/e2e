@@ -102,7 +102,8 @@ const NAMED_REFERENCES: Readonly<Record<string, readonly string[]>> = {
  * case, and `\/` for a slash, each of those once more inside a quoted JSON
  * string (a JSON request body inside a HAR field); as an HTML character
  * reference, named, decimal, zero-padded decimal, or hex in either case; and
- * percent-encoded in either hex case, with `+` for a space. A letter or digit
+ * percent-encoded in either hex case, with `+` for a space; and a double
+ * quote doubled, as CSV writes it inside a quoted field. A letter or digit
  * has one spelling: no serializer rewrites those.
  */
 function spellings(ch: string): string[] {
@@ -126,6 +127,7 @@ function spellings(ch: string): string[] {
       percent((byte) => byte.toString(16).padStart(2, '0')),
       percent((byte) => byte.toString(16).padStart(2, '0').toUpperCase()),
       ...(ch === ' ' ? ['+'] : []),
+      ...(ch === '"' ? ['""'] : []),
     ]),
   ].toSorted((a, b) => b.length - a.length);
 }

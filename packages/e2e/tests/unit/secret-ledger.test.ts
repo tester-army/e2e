@@ -79,6 +79,12 @@ describe('encoded forms', () => {
     expect(quoted.redact(JSON.stringify({ t: inner }))).toBe(JSON.stringify({ t: '{"v":"<secret:quoted>"}' }));
   });
 
+  it('redacts a double quote doubled, as CSV writes it inside a quoted field', () => {
+    const quoted = new SecretLedger([['quoted', 'pa"ss,word']]);
+    expect(quoted.redact('id,key\n1,"pa""ss,word"\n')).toBe('id,key\n1,"<secret:quoted>"\n');
+    expect(new SecretLedger([['lead', '"quoted']]).redact('"""quoted"')).toBe('"<secret:lead>"');
+  });
+
   it('redacts a slash escaped the way PHP writes JSON', () => {
     expect(new SecretLedger([['path', 'a/b/c']]).redact('{"p":"a\\/b\\/c"}')).toBe('{"p":"<secret:path>"}');
   });
