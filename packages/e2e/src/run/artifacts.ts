@@ -156,18 +156,17 @@ async function measure(absolute: string): Promise<{ size: number; sha256: string
 
 /** Longest report path segment the runner writes: a name every common filesystem accepts. */
 const MAX_SEGMENT_CHARS = 120;
-/** Hex characters of the digest a cut segment ends in. */
+/** Hex characters of the digest a rewritten or cut segment ends in. */
 const SEGMENT_DIGEST_CHARS = 8;
 
 /**
  * Restricts a report path segment to a safe filename alphabet and length. A
- * value that is already safe and within the cap is unchanged, so the
- * directories of ordinary ids stay where they were. Any other value ends in a
- * digest of the whole original: one the alphabet rewrote (a test id with a
- * `/`, a `::`, a percent-encoded space), one that is only dots (which would
- * name the directory or its parent), or one past the cap, which is cut first.
- * The digest is what keeps two ids that sanitize alike (`artifact%20a` and
- * `artifact_20a`, or two long ids with a shared prefix) in directories of
+ * value that is already safe and within the cap is unchanged. Any other value
+ * ends in a digest of the whole original: one the alphabet rewrote (a test id
+ * with a `/`, a `::`, a percent-encoded space), one that is only dots (which
+ * would name the directory or its parent), or one past the cap, which is cut
+ * first. The digest is what keeps two ids that sanitize alike (`artifact%20a`
+ * and `artifact_20a`, or two long ids with a shared prefix) in directories of
  * their own instead of writing over each other's evidence.
  */
 export function sanitizePathSegment(value: string): string {
