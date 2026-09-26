@@ -226,16 +226,21 @@ export class ErrorLatch {
   }
 
   /**
-   * Waits, within the budget, for tracked paths still running, then rethrows
-   * the latched error once. A path that outlives the budget fails closed:
-   * `CLEANUP_TIMEOUT` naming it, and whatever it throws afterwards is dropped
-   * here on purpose rather than landing on a verdict already reached.
+   * Rethrows the latched error once; with none latched yet, first waits,
+   * within the budget, for the tracked paths running when it was called. One
+   * of those that outlives the budget fails closed: `CLEANUP_TIMEOUT` naming
+   * it, and whatever it throws afterwards is dropped here on purpose rather
+   * than landing on a verdict already reached. A path that starts during the
+   * wait is left to the next settle.
    */
   async settle(budget: EngineCleanupContext): Promise<void> {
+    this.throwPending();
     if (!this.abandoned && this.running.size > 0) {
-      await withinCleanupBudget(Promise.all(this.running.keys()), budget);
-      if (this.running.size > 0) {
-        const kinds = [...new Set(this.running.values())].toSorted().join(' and ');
+      const waited = [...this.running.keys()];
+      await withinCleanupBudget(Promise.all(waited), budget);
+      const outlived = waited.filter((path) => this.running.has(path));
+      if (outlived.length > 0) {
+        const kinds = [...new Set(outlived.map((path) => this.running.get(path)))].toSorted().join(' and ');
         this.running.clear();
         this.abandoned = true;
         this.throwPending();

@@ -182,12 +182,25 @@ describe('ErrorLatch', () => {
     await expect(latch.settle(budget())).resolves.toBeUndefined();
   });
 
-  it('names every kind of handler still running, and reports a latched error ahead of the timeout', async () => {
+  it('waits only for the paths running when it was called, so one starting during the wait is no timeout', async () => {
+    const latch = new ErrorLatch();
+    let startNext!: () => void;
+    const first = new Promise<void>((resolve) => {
+      startNext = resolve;
+    });
+    latch.track('route', first);
+    void first.then(() => latch.track('route', new Promise<void>((resolve) => setTimeout(resolve, 50))));
+    const settling = latch.settle(budget());
+    startNext();
+    await expect(settling).resolves.toBeUndefined();
+  });
+
+  it('reports a latched error at once, ahead of handlers still running, and names every kind still running at the timeout', async () => {
     const latch = new ErrorLatch();
     latch.latch(new TestError('ASSERTION_FAILED', 'landed in time'));
     latch.track('route', new Promise<void>(() => undefined));
     latch.track('dialog', new Promise<void>(() => undefined));
-    await expect(latch.settle({ timeoutMs: 20, signal: new AbortController().signal })).rejects.toThrowError(
+    await expect(latch.settle({ timeoutMs: 60_000, signal: new AbortController().signal })).rejects.toThrowError(
       expect.objectContaining({ code: 'ASSERTION_FAILED' }),
     );
     const bare = new ErrorLatch();
