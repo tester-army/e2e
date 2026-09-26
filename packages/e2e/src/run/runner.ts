@@ -95,6 +95,8 @@ export interface RunOptions {
   passWithNoTests?: boolean | undefined;
   /** Runs with the trace cache off (`--no-cache`), overriding the config. */
   noCache?: boolean | undefined;
+  /** Turns `cache.strict` on (`--strict-cache`): a recording that no longer replays fails its step. */
+  strictCache?: boolean | undefined;
   /**
    * The configured agents unpinned tests run as (`--agent`), instead of
    * `agents.default`. Several names run every such test once per agent.
@@ -286,6 +288,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   if (options.workers !== undefined) cli.workers = options.workers;
   if (options.reporters !== undefined) cli.reporters = options.reporters;
   if (options.noCache === true) cli.cache = 'off';
+  if (options.strictCache === true) cli.cacheStrict = true;
   if (options.video === true) cli.video = true;
   if (options.agent !== undefined) cli.agents = typeof options.agent === 'string' ? [options.agent] : options.agent;
 

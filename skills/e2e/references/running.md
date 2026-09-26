@@ -33,6 +33,7 @@ npx e2e telemetry [disable|enable] # anonymous usage telemetry: status, or the s
 | `--reporter <ids>` | `list`, `json`, `junit`, `markdown`, comma-separated. `json` cannot combine with `list`. |
 | `--artifacts <dir>` | Artifact root, default `.e2e/artifacts`. |
 | `--no-cache` | Run with the trace cache off. |
+| `--strict-cache` | Fail a step whose committed recording no longer replays (`REPLAY_STALE`, exit 2) instead of letting the agent take it over. For CI that replays committed recordings. |
 | `--pass-with-no-tests` | Exit 0 when nothing matches instead of `NO_TESTS`. |
 | `--debug` | Phase timings and an agent step table on stderr; step transcripts saved as artifacts. |
 | `--ai-trace` | Record every model call to `.e2e/ai-trace.json`. |

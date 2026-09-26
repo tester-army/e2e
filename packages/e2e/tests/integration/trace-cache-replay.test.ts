@@ -220,6 +220,42 @@ describe('trace cache: a changed screen hands the step to the agent, which re-re
   });
 });
 
+describe('trace cache: --strict-cache fails a stale recording instead of handing it to the agent', () => {
+  let app: FixtureApp;
+  let project: FixtureProject;
+  let strict: RunOutcome;
+  let strictModelCalls = 0;
+
+  beforeAll(async () => {
+    app = await startFixtureApp();
+    project = createProject({ [FLOWS_FILE]: flowsSuite(DIVERGENCE, 'record') });
+    expectPassed(await runExisting(project, { appUrl: app.url, config: cacheConfig(flowsModel()) }));
+    writeFileSync(path.join(project.dir, FLOWS_FILE), flowsSuite(DIVERGENCE, 'replay'), 'utf8');
+    strict = await runExisting(project, { appUrl: app.url, config: cacheConfig(flowsModel()), runOptions: { strictCache: true } });
+    strictModelCalls = loopCalls.length;
+  }, 240_000);
+
+  afterAll(async () => {
+    project?.cleanup();
+    await app?.close();
+  });
+
+  it('fails every diverged step with REPLAY_STALE, exit 2, without a model call or a retry', () => {
+    expect(strict.exitCode).toBe(2);
+    expect(strictModelCalls).toBe(0);
+    for (const [title, reason] of [
+      ['creates a company', 'target-not-found'],
+      ['archives a record', 'wrong-context'],
+      ['retires a record', 'target-not-found'],
+    ] as const) {
+      const step = onlyActStep(strict, title);
+      expect(step.error?.code, title).toBe('REPLAY_STALE');
+      expect(step.error?.message, title).toContain(reason);
+      expect(step.cache?.reason, title).toBe(reason);
+    }
+  });
+});
+
 /** The one-flow suite the target and repeat suites run: the counter, incremented twice. */
 const COUNTER_SUITE = flowsSuite([flowByTitle('increments the counter')], 'record');
 

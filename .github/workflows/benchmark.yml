@@ -130,7 +130,9 @@ jobs:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
           # The reporter posts the comment with the job's token.
           GITHUB_TOKEN: ${{ github.token }}
-        run: pnpm --filter @e2edev/web-benchmark run test:agent
+        # --strict-cache: a committed recording that no longer replays fails
+        # the job instead of spending model calls on every run.
+        run: pnpm --filter @e2edev/web-benchmark run test:agent --strict-cache
       - name: Upload report
         if: ${{ !cancelled() }}
         continue-on-error: true

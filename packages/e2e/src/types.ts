@@ -230,6 +230,7 @@ export type AgentErrorCode =
   | 'STEP_NO_CONCLUSION'
   | 'ASSERTION_FAILED'
   | 'ASSERTION_INCONCLUSIVE'
+  | 'REPLAY_STALE'
   | 'CANCELLED';
 
 export interface Agent {
@@ -980,6 +981,15 @@ export interface CacheConfig {
   store?: TraceCacheStore;
   /** File store directory, resolved against the project root. */
   dir?: string;
+  /**
+   * Fails a step whose recording exists but no longer replays (a control
+   * not found or ambiguous, a rejected action, an end state that did not
+   * come back, the app on another screen, an unreadable entry) with
+   * `REPLAY_STALE`, instead of handing it to the agent. A step with no
+   * recording, a retry, and a value read off the screen still run live.
+   * `--strict-cache` sets it for one run. Default `false`.
+   */
+  strict?: boolean;
 }
 
 /**

@@ -583,6 +583,7 @@ describe('e2e --version and --help', () => {
       '--max-failures',
       '--repeat-each',
       '--no-cache',
+      '--strict-cache',
       '--reporter',
       '--artifacts',
       '--debug',

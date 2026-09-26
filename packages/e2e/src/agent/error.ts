@@ -50,6 +50,10 @@ export const AGENT_CODE_TABLE: Readonly<
   STEP_NO_CONCLUSION: { category: 'test' },
   ASSERTION_FAILED: { category: 'test' },
   ASSERTION_INCONCLUSIVE: { category: 'test' },
+  // A stale recording is committed test data to re-record, not a product
+  // failure: a retry never replays, so a test-category code would pass live
+  // on the retry and read as flaky.
+  REPLAY_STALE: { category: 'configuration' },
 };
 
 /** Exit/result class per code; derived from the one table. */

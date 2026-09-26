@@ -233,6 +233,7 @@ or every test was filtered out.
 | `--reporter <ids>` | comma-separated list | config | Replaces the built-in IDs in `config.reporters`: `list`, `json`, `junit`, `markdown`. `json` with `list` is `INVALID_CONFIG`. [Reporter objects](/reference/reporters) in the config keep running. |
 | `--artifacts <dir>` | string | `.e2e/artifacts` | Relocates the report and artifact tree. |
 | `--no-cache` | boolean | `false` | Trace cache off for this run, whatever `config.cache` says. |
+| `--strict-cache` | boolean | `false` | Turns on `cache.strict` for this run: a step whose recording exists but no longer replays fails with `REPLAY_STALE` instead of handing off to the agent. See [Fail on a stale recording](/cache#fail-on-a-stale-recording). |
 | `--pass-with-no-tests` | boolean | `false` | Exit 0 instead of `NO_TESTS` when nothing is selected. |
 | `--debug` | boolean | `false` | Phase timings and an agent step table on stderr after the run. |
 | `--ai-trace` | boolean | `false` | Records every model call to `.e2e/ai-trace.json`, an AI SDK devtools database. Open it with [unbox-ai](https://github.com/tester-army/unbox-ai). |

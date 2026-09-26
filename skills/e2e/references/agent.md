@@ -284,6 +284,10 @@ state no longer matches, the live agent continues from the current screen.
   unless `cache: 'read-write'` is set explicitly).
 - A failing run evicts the entries it implicates. To rule the cache out of a
   failure, run with `--no-cache`.
+- With committed recordings, run CI with `--strict-cache`: a recording that
+  exists but no longer replays fails with `REPLAY_STALE` instead of quietly
+  spending model calls on every run. Re-record it locally and commit the
+  entry. Steps with no recording still run live.
 
 ## Inspect what the model did
 

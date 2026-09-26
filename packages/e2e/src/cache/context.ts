@@ -48,6 +48,8 @@ export interface AgentCacheContext {
   readonly identity: { readonly testId: string; readonly targetId: string };
   /** Whether this attempt may replay; writes are governed by `mode` alone. */
   readonly replayEligible: boolean;
+  /** A recording that no longer replays fails its step (`REPLAY_STALE`) instead of handing it to the executor. */
+  readonly strict: boolean;
   /**
    * Claims one step's key hash. Not a pure derivation: each claim advances
    * the per-attempt occurrence index for its signature, which is what lets a
@@ -162,6 +164,7 @@ export function createAgentCacheContext(options: {
     store,
     identity: { testId: options.testId, targetId: options.target.targetId },
     replayEligible: options.attemptIndex === 0,
+    strict: options.cache.strict,
     claimKeyHash: (kind, instruction, params) => {
       const signature = traceCallSignature(kind, instruction, params);
       return traceCacheKeyHash(

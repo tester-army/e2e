@@ -102,6 +102,13 @@ describe('cache config resolution', () => {
     expect(resolved.store).toBe(store);
   });
 
+  it('is lenient unless the config or --strict-cache asks, and rejects a strict that is not a boolean', () => {
+    expect(resolve(APP).cache.strict).toBe(false);
+    expect(resolve({ cache: { strict: true } }).cache).toMatchObject({ mode: 'read-write', strict: true });
+    expect(resolve({ cache: 'read-only' }, BASE_ENV, { cacheStrict: true }).cache).toMatchObject({ mode: 'read-only', strict: true });
+    expect(() => resolve({ cache: { strict: 'yes' as unknown as boolean } })).toThrow(/cache\.strict must be a boolean/);
+  });
+
   it('rejects unknown modes, unknown keys, and non-store store values', () => {
     expect(() => resolve({ ...APP, cache: 'aggressive' as never })).toThrow(/cache mode/);
     expect(() => resolve({ ...APP, cache: { mode: 'off', ttl: 5 } as never })).toThrow(
@@ -116,7 +123,7 @@ describe('cache config resolution', () => {
 describe('flushStagedTraces', () => {
   function contextWith(store: TraceCacheStore) {
     const context = createAgentCacheContext({
-      cache: { mode: 'read-write', store, dir: '/unused' },
+      cache: { mode: 'read-write', store, dir: '/unused', strict: false },
       projectId: 'p',
       testId: 't',
       target: {

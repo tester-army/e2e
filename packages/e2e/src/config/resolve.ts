@@ -128,6 +128,8 @@ export interface ResolvedCacheConfig {
   readonly store: TraceCacheStore | undefined;
   /** Absolute file store directory. */
   readonly dir: string;
+  /** A recording that no longer replays fails its step with `REPLAY_STALE` instead of handing off. */
+  readonly strict: boolean;
 }
 
 /**
@@ -141,6 +143,8 @@ export interface CliOverrides {
   reporters?: readonly BuiltinReporter[];
   /** Trace cache mode override; `--no-cache` maps to `'off'`. */
   cache?: CacheMode;
+  /** `--strict-cache`: turns `cache.strict` on for the run. */
+  cacheStrict?: boolean;
   /** `--video`: adds the `video` artifact kind to whatever the config asks for. */
   video?: boolean;
   /** `--agent`: the configured agents unpinned tests run as, instead of `default` alone. */
@@ -173,7 +177,7 @@ const TOP_LEVEL_KEYS = new Set([
   'secrets',
 ]);
 
-const CACHE_KEYS = new Set(['mode', 'store', 'dir']);
+const CACHE_KEYS = new Set(['mode', 'store', 'dir', 'strict']);
 const CACHE_MODES = new Set(['off', 'read-only', 'read-write']);
 
 const APP_BELONGS_TO_ENGINE =
@@ -294,7 +298,7 @@ export function resolveConfig(
     ...baseLimits,
     maxObservationBytes: Math.max(...[...agents.values()].map((entry) => entry.maxObservationBytes)),
   };
-  const cache = resolveCacheConfig(raw, ci, options.projectRoot, cli.cache);
+  const cache = resolveCacheConfig(raw, ci, options.projectRoot, cli.cache, cli.cacheStrict === true);
 
   const resolved: ResolvedConfig = {
     specVersion: '0.1',
@@ -360,6 +364,7 @@ function resolveCacheConfig(
   ci: boolean,
   projectRoot: string,
   cliMode: CacheMode | undefined,
+  cliStrict: boolean,
 ): ResolvedCacheConfig {
   const value = raw.cache;
   let mode: CacheMode = 'read-write';
@@ -367,6 +372,7 @@ function resolveCacheConfig(
   let explicit = false;
   let store: TraceCacheStore | undefined;
   let dir: string | undefined;
+  let strict = false;
   if (typeof value === 'string') {
     mode = value;
     explicit = true;
@@ -400,6 +406,12 @@ function resolveCacheConfig(
       }
       dir = value.dir;
     }
+    if (value.strict !== undefined) {
+      if (typeof value.strict !== 'boolean') {
+        throw new ConfigurationError('INVALID_CONFIG', `cache.strict must be a boolean, got ${JSON.stringify(value.strict)}`);
+      }
+      strict = value.strict;
+    }
   }
   if (!CACHE_MODES.has(mode)) {
     throw new ConfigurationError(
@@ -413,6 +425,7 @@ function resolveCacheConfig(
     mode,
     store,
     dir: path.resolve(projectRoot, dir ?? path.join('.e2e', 'cache')),
+    strict: strict || cliStrict,
   };
 }
 

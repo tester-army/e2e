@@ -24,6 +24,7 @@ import { sleep } from '../internal/time.ts';
 import type { StepCacheInfo } from '../run/steps.ts';
 import type { JsonValue } from '../types.ts';
 import type { RecordableAction } from './actions.ts';
+import { AgentError } from './error.ts';
 import { isRuntimeHardStop, type ReplayedPrefix, type StepVerdict } from './executor.ts';
 import {
   replayTrace,
@@ -82,6 +83,23 @@ type EntryRead =
  * capture on.
  */
 type StartPurpose = 'path-only' | 'baseline' | 'replay-start';
+
+/**
+ * The reasons a recording that exists no longer replays: the app or the
+ * entry changed under it. The others describe the step (a value read off
+ * the screen, a flow too long to record), the attempt (a retry), or the
+ * absence of a recording, and run live under `cache.strict` too.
+ */
+const STALE_REASONS: ReadonlySet<StepCacheInfo['reason']> = new Set<StepCacheInfo['reason']>([
+  'invalid-entry',
+  'wrong-context',
+  'target-not-found',
+  'target-ambiguous',
+  'viewport-changed',
+  'action-failed',
+  'action-uncertain',
+  'end-mismatch',
+]);
 
 /** Margin added to a recorded step's duration when replay waits for its end state. */
 const END_WAIT_MARGIN_MS = 10_000;
@@ -187,6 +205,7 @@ export class StepTraceSession {
     if (read.status === 'miss') {
       await this.captureStart(this.recorder === undefined ? 'path-only' : 'baseline');
       this.info = this.missed(read.reason, 0);
+      this.failIfStale();
       return undefined;
     }
     // With an entry in hand the step is the cache's from its first moment: the
@@ -196,8 +215,27 @@ export class StepTraceSession {
     // that cannot finish the step hands it to the model.
     this.host.replaying(true);
     const verdict = await this.replayEntry(read.entry);
-    if (verdict === undefined) this.host.replaying(false);
+    if (verdict === undefined) {
+      this.host.replaying(false);
+      this.failIfStale();
+    }
     return verdict;
+  }
+
+  /**
+   * Under `cache.strict`, ends the step when its recording exists but no
+   * longer replays, rather than handing it to the executor: a committed
+   * recording that went stale is a change to re-record in review, not a
+   * model call to absorb on every run. The report keeps the cache detail.
+   */
+  private failIfStale(): void {
+    const reason = this.info?.reason;
+    if (!this.cache.strict || !STALE_REASONS.has(reason)) return;
+    throw new AgentError(
+      'REPLAY_STALE',
+      `the recording of this step no longer replays (${reason}), and cache.strict hands no step to the agent; ` +
+        're-record it with a read-write run without --strict-cache and commit the changed .e2e/cache entry',
+    );
   }
 
   /**

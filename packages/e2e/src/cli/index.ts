@@ -474,6 +474,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .option('--max-failures <n>', 'stop the run once this many tests have failed; the rest are skipped', parsePositiveInt)
     .option('--repeat-each <n>', 'run every selected test this many times, each run its own result (pair with --no-cache to exercise the model each time)', parsePositiveInt)
     .option('--no-cache', 'run with the trace cache off, whatever the config says')
+    .option('--strict-cache', 'fail a step whose recording no longer replays (REPLAY_STALE) instead of handing it to the agent')
     .optionsGroup('Output:')
     .option('--reporter <ids>', `comma-separated reporters: ${BUILTIN_REPORTERS.join(', ')}`, parseReporters)
     .option('--artifacts <dir>', 'artifact root (default: .e2e/artifacts)')
@@ -496,6 +497,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           'e2e run --reporter list,junit --workers 4 --retries 2',
           'e2e run --max-failures 3',
           'e2e run --repeat-each 5 --no-cache tests/checkout.e2e.ts',
+          'CI=1 e2e run --strict-cache',
           'e2e run --agent ux tests/onboarding.e2e.ts',
           'e2e run --agent buyer,admin tests/checkout.e2e.ts',
           'AI_GATEWAY_API_KEY=... e2e run --no-cache',
@@ -523,6 +525,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           artifacts?: string;
           /** Commander negation: `--no-cache` parses as `cache: false`. */
           cache?: boolean;
+          strictCache?: boolean;
           debug?: boolean;
           aiTrace?: boolean;
           video?: boolean;
@@ -545,6 +548,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
             reporters: options.reporter,
             artifactsDir: options.artifacts,
             noCache: options.cache === false,
+            strictCache: options.strictCache,
             debug: options.debug,
             aiTrace: options.aiTrace,
             video: options.video,

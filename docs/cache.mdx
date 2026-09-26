@@ -190,6 +190,26 @@ replayed entry: a replay that still finds every control refreshes none of
 its descriptors, anchors, or end wait, so a UI that drifts is repaired only
 when a control can no longer be found and the agent takes that step over.
 
+## Fail on a stale recording
+
+A committed recording that stops replaying is quiet by default: the agent
+takes the step over, the test passes, and every CI run pays for the model
+calls until someone re-records. `--strict-cache` (or `cache: { strict: true }`)
+makes it loud. A step whose recording exists but no longer replays fails
+with `REPLAY_STALE` and makes no model call:
+
+```bash
+CI=1 npx e2e run --strict-cache
+```
+
+The reasons that fail are the ones that mean the app or the entry changed:
+`invalid-entry`, `wrong-context`, `target-not-found`, `target-ambiguous`,
+`viewport-changed`, `action-failed`, `action-uncertain`, and `end-mismatch`.
+A step with no recording (`no-entry`), a retry, a `gap`, and a `truncated`
+recording still run live. `REPLAY_STALE` exits 2 and is not retried, since a
+retry never replays and would pass live. To fix it, run the test without the
+flag in `read-write` mode and commit the changed entry.
+
 ## Inspect the cache
 
 ```bash

@@ -236,6 +236,8 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
   deterministic speed and cost, for this repository's branches only: a fork's
   pull request has no key. Re-record with the package's `test:agent` and
   commit the changed entries in the same pull request as the scenario change.
+  The web benchmark's agent job runs with `--strict-cache`, so a recording a
+  change broke fails with `REPLAY_STALE` instead of quietly calling the model.
   The web benchmark's entries are in. The mobile benchmark's iOS entries are
   recorded on a Mac; nobody has recorded on an Android emulator yet, so the
   Android side spends model calls until an emulator recording is committed.
