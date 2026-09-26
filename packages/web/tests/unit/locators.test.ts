@@ -114,6 +114,12 @@ describe('projectExpression', () => {
       'locator(:scope:not([aria-hidden="true"]))',
     ]);
     expect(projected.visible).toBe(true);
+    // The composable form narrows the same way, so a has filter on a visible label drops a hidden control.
+    expect(projected.composable === null ? null : chainOf(projected.composable)).toEqual([
+      expect.stringMatching(/^locator\(e2e-label=/),
+      'filter(visible=true)',
+      'locator(:scope:not([aria-hidden="true"]))',
+    ]);
     const visibleText: LocatorExpression = {
       kind: 'query',
       query: { kind: 'text', value: { kind: 'string', value: 'Save', exact: true }, visible: true },

@@ -22,9 +22,9 @@ function operation(attemptId: string): OperationContext {
   return { signal: new AbortController().signal, timeoutMs: 30_000, runId: 'run-rows', attemptId, origin: 'test' };
 }
 
-function byLabel(value: string, exact: boolean): LocatorExpression {
+function byLabel(value: string, exact: boolean, visible?: boolean): LocatorExpression {
   const pattern: TextPattern = { kind: 'string', value, exact };
-  return { kind: 'query', query: { kind: 'label', value: pattern } };
+  return { kind: 'query', query: { kind: 'label', value: pattern, ...(visible === undefined ? {} : { visible }) } };
 }
 
 const rows: LocatorExpression = { kind: 'query', query: { kind: 'role', value: { kind: 'string', value: 'listitem', exact: true } } };
@@ -79,9 +79,9 @@ describe('an exact label query composed as a has filter', () => {
   });
 
   it('keeps the exact predicate: one row for the exact label, two for the substring, as standalone', async () => {
-    expect((await locate(byLabel('Name', true))).map((node) => node.name)).toEqual(['Name']);
-    expect(await testIds(rowsWith(byLabel('Name', true)))).toEqual(['row-name']);
-    expect(await testIds(rowsWith(byLabel('Name', false)))).toEqual(['row-last-name', 'row-name']);
+    expect((await locate(byLabel('Name', true))).map((node) => node.name)).toEqual(['Name', 'Name']);
+    expect(await testIds(rowsWith(byLabel('Name', true)))).toEqual(['row-name', 'row-name-hidden']);
+    expect(await testIds(rowsWith(byLabel('Name', false)))).toEqual(['row-last-name', 'row-name', 'row-name-hidden']);
     expect(await testIds(rowsWith(byLabel('Last Name', true)))).toEqual(['row-last-name']);
     expect(await testIds(rowsWith(byLabel('Nowhere', true)))).toEqual([]);
   });
@@ -91,12 +91,18 @@ describe('an exact label query composed as a has filter', () => {
     expect(await testIds(rowsWith(byLabel('Say "hi" >> now', true)))).toEqual(['row-quoted']);
   });
 
+  it('keeps the visible flag when composed: a row whose matching input is hidden drops out', async () => {
+    expect((await locate(byLabel('Name', true, true))).map((node) => node.states?.hidden)).toEqual([undefined]);
+    expect(await testIds(rowsWith(byLabel('Name', true, true)))).toEqual(['row-name']);
+    expect(await testIds(rowsWith(byLabel('Name', false, true)))).toEqual(['row-last-name', 'row-name']);
+  });
+
   it('composes onto a position and a child query, and acts on the row it picked', async () => {
     const remove = removeButtonOf({ kind: 'index', source: rowsWith(byLabel('Name', true)), index: 'first' });
     const [button] = await locate(remove);
     expect(button).toBeDefined();
     await engine.perform!(button!.ref, { kind: 'tap' }, op);
-    expect(await testIds(rows)).toEqual(['row-last-name', 'row-quoted']);
+    expect(await testIds(rows)).toEqual(['row-last-name', 'row-quoted', 'row-name-hidden']);
     expect(await testIds(byLabel('Last Name', true))).toHaveLength(1);
   });
 });

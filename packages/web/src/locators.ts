@@ -153,7 +153,11 @@ const NOT_ARIA_HIDDEN = ':scope:not([aria-hidden="true"])';
  * hidden to Playwright and shown to the semantic read).
  */
 function visibleQueryToPw(scope: PwScope, query: SemanticQuery, testIdAttribute: string): PwLocator {
-  const located = queryToPw(scope, query, testIdAttribute);
+  return narrowedToVisible(queryToPw(scope, query, testIdAttribute), query);
+}
+
+/** The visibility narrowing above, on a locator already built for `query`; identity unless the query is `visible`. */
+function narrowedToVisible(located: PwLocator, query: SemanticQuery): PwLocator {
   if (query.visible !== true) return located;
   return located.filter({ visible: true }).locator(NOT_ARIA_HIDDEN);
 }
@@ -248,8 +252,11 @@ function project(scope: PwScope, expression: LocatorExpression, testIdAttribute:
         composable:
           exactLabel === null
             ? null
-            : inner.locator(
-                exactLabelSelector({ value: exactLabel.value, testIdAttribute, secureFieldSelector: SECURE_FIELD_SELECTOR }),
+            : narrowedToVisible(
+                inner.locator(
+                  exactLabelSelector({ value: exactLabel.value, testIdAttribute, secureFieldSelector: SECURE_FIELD_SELECTOR }),
+                ),
+                query,
               ),
         steps: [],
         visible: query.visible === true,

@@ -300,7 +300,8 @@ const CLOSED_ORDER = `<!doctype html>
  * composing an exact label query as a `has` filter or a scope. The second
  * row's label carries an aria-hidden marker, which Playwright's own label
  * matching reads and the engine's reader drops; a third row has a label with
- * the characters a selector body has to carry unharmed.
+ * the characters a selector body has to carry unharmed; a fourth row's `Name`
+ * input is hidden, for the `visible` flag on a composed query.
  */
 const ROWS = `<!doctype html>
 <html>
@@ -311,6 +312,7 @@ const ROWS = `<!doctype html>
   <li data-testid="row-last-name"><label>Last Name <input name="last"></label><button type="button" onclick="this.parentElement.remove()">Remove</button></li>
   <li data-testid="row-name"><label for="name">Name<span aria-hidden="true">*</span></label><input id="name"><button type="button" onclick="this.parentElement.remove()">Remove</button></li>
   <li data-testid="row-quoted"><label>Say "hi" >> now <input name="quoted"></label><button type="button" onclick="this.parentElement.remove()">Remove</button></li>
+  <li data-testid="row-name-hidden"><label for="name-hidden">Name</label><input id="name-hidden" hidden><button type="button" onclick="this.parentElement.remove()">Remove</button></li>
 </ul>
 </body>
 </html>`;
