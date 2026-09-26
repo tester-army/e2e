@@ -23,6 +23,7 @@ import { collapseText } from '../internal/text.ts';
 import type { Report1Document, ReportError, ReportExplore, ReportExploreFinding, ReportResult, ReportStep, ReportTarget } from './build.ts';
 import { ENDED_TEXT, orderFindings, SEVERITY_WORDS, stepCountParts } from './explore-text.ts';
 import { formatCost, formatTokens, repeatSuffix, statusBucket, tally, type Counters } from './format.ts';
+import { repeatGroups, repeatLine, repeatSummary } from './repeats.ts';
 import {
   attemptsLine,
   detailLines,
@@ -294,6 +295,25 @@ function flakyFold(entries: readonly Entry[], manyTargets: boolean, options: Mar
   return [['<details>', `<summary>${summary}</summary>`, '', shown.join('\n\n'), '</details>'].join('\n')];
 }
 
+/**
+ * A `--repeat-each` run's tally: how many tests passed every run, then each
+ * test that did not, with the runs that failed. Empty for a run that
+ * repeated nothing.
+ */
+function repeatsSection(entries: readonly Entry[], manyTargets: boolean): string[] {
+  const groups = repeatGroups(entries, ({ result, final }) => ({
+    key: `${result.testId}@${result.agent}@${result.targetId}`,
+    label: `\`${fileLabel(result.file, result.targetId, manyTargets)}\` ${testName({ ...result, repeat: 0 })}`,
+    run: { repeat: result.repeat, status: result.status, code: final.final.error?.code ?? final.lastFailed?.error?.code },
+  }));
+  if (groups.length === 0) return [];
+  const unstable = groups.filter((group) => group.passed < group.runs.length);
+  return [
+    `**Repeats:** ${repeatSummary(groups)}`,
+    ...(unstable.length === 0 ? [] : ['', ...unstable.map((group) => `- ${ICON.flaky} ${group.label}: ${repeatLine(group)}`)]),
+  ];
+}
+
 // --- every test, by file ---
 
 interface FileGroup {
@@ -502,7 +522,7 @@ export function renderMarkdownReport(report: Report1Document, options: MarkdownR
   const groups = fileGroups(entries);
   const sections =
     explore === undefined
-      ? [errors, ...failures, flaky, allTests(groups, selected.length, manyTargets)]
+      ? [errors, ...failures, flaky, repeatsSection(entries, manyTargets), allTests(groups, selected.length, manyTargets)]
       : [
           [`**Goal:** ${cell(explore.goal, MAX_GOAL_CHARS)}  `, `**Steps:** ${exploreSteps(explore)}`],
           errors,

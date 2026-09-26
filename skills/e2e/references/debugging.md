@@ -90,6 +90,10 @@ jq '.run.results[] | select(.status != "passed") | .attempts[-1]
   deterministic `expect` beside it.
 - Timing under load: `retries` masks the cause; `--workers 1` and
   `--headed` usually show it.
+- Measure before and after a fix: `npx e2e run <file> --repeat-each 10
+  --retries 0` (add `--no-cache` for agent steps). The `Repeats` row reads
+  `3/10 passed · repeat 1 ASSERTION_FAILED · ...` before and `10 of 10`
+  after, which is the evidence a flake fix needs.
 
 ## Is it the app?
 

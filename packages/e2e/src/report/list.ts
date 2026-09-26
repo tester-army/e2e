@@ -55,6 +55,7 @@ import { ExploreView } from './list-explore.ts';
 import { isShownEvent, type FileGroup, type RunningTest, type TestLine } from './list-model.ts';
 import { stepLine } from './list-steps.ts';
 import { LiveWindow } from './live-window.ts';
+import { repeatGroups, repeatLine, repeatSummary, type RepeatRun } from './repeats.ts';
 import { RunningTree } from './running-tree.ts';
 
 const F_DOWN = '↓';
@@ -221,6 +222,8 @@ export class ListReporter implements Reporter {
   /** Whether a live window paints; without one, finished steps stream permanently. */
   private readonly live: boolean;
   private readonly failures: Failure[] = [];
+  /** Every finished test's run, for the `Repeats` summary of a `--repeat-each` run. */
+  private readonly runs: { key: string; label: string; run: RepeatRun }[] = [];
   /**
    * Serial groups whose members' results are still to come, by group id. The
    * runner emits a group before its member results, and a member's details
@@ -668,6 +671,11 @@ export class ListReporter implements Reporter {
       steps,
     };
     group.lines.push(line);
+    this.runs.push({
+      key: `${result.test.id}@${result.agent}@${result.target.name}`,
+      label: `${this.badge(group.target)} ${bounded(group.file)}${this.separator}${this.titledAs(result.test.titlePath.join(' > '), result.agent, 0)}`,
+      run: { repeat: result.repeat, status: result.status, code: error?.code },
+    });
     if (statusBucket(result.status) === 'failed') {
       this.failures.push({ group, title, status: result.status, error, videos, failure, screenPath });
     }
@@ -800,6 +808,7 @@ export class ListReporter implements Reporter {
     }
     const cache = cacheText(pc, this.runCache);
     if (cache !== undefined) rows.push(padTitle(pc, 'Cache') + cache);
+    if (final) rows.push(...this.repeatRows());
     if (this.errors.length > 0) {
       const count = this.errors.length;
       rows.push(padTitle(pc, 'Errors') + pc.bold(pc.red(`${count} error${count === 1 ? '' : 's'}`)));
@@ -810,6 +819,22 @@ export class ListReporter implements Reporter {
       rows.push(padTitle(pc, 'Duration') + durationText(pc, Date.now() - startedAt.getTime(), this.startupMs));
     }
     return rows;
+  }
+
+  /**
+   * The `Repeats` row of a `--repeat-each` run: how many tests passed every
+   * run, then one line per test that did not, naming the runs that failed.
+   */
+  private repeatRows(): string[] {
+    const { pc } = this;
+    const groups = repeatGroups(this.runs, (entry) => entry);
+    if (groups.length === 0) return [];
+    const unstable = groups.filter((group) => group.passed < group.runs.length);
+    const summary = repeatSummary(groups);
+    return [
+      padTitle(pc, 'Repeats') + (unstable.length === 0 ? pc.green(summary) : pc.yellow(summary)),
+      ...unstable.map((group) => `${padTitle(pc, '')}${pc.yellow(F_CROSS)} ${group.label}  ${pc.dim(repeatLine(group))}`),
+    ];
   }
 
   /** A zero counter's label: the plain text, or the interrupt when that is why nothing is counted. */
