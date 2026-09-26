@@ -38,8 +38,12 @@ interface ScrollScript {
   readonly screens: readonly (readonly SemanticNode[])[];
   /** Whether the engine declares the swipe action; default true. */
   readonly swipeable?: boolean;
-  /** Every swipe hangs for the whole operation budget, then fails as an engine honouring `timeoutMs` does. */
-  readonly hang?: boolean;
+  /**
+   * Every swipe hangs, then fails as an engine reporting a timeout does: `true`
+   * for the whole operation budget, as one honouring `timeoutMs` does, or a
+   * number of milliseconds of its own clock.
+   */
+  readonly hang?: boolean | number;
   /** The action timeout of the locator engine; default 1000 ms. */
   readonly actionTimeout?: number;
 }
@@ -59,11 +63,10 @@ function scrollScreen(script: ScrollScript) {
           actions: ['swipe'],
           perform: async (ref, action, operation) => {
             if (action.kind !== 'swipe') throw new Error(`unexpected ${action.kind}`);
-            if (script.hang === true) {
-              await sleep(operation.timeoutMs);
-              throw new EngineError('OPERATION_TIMEOUT', `swipe exceeded ${operation.timeoutMs} ms`, {
-                retryable: false,
-              });
+            if (script.hang !== undefined && script.hang !== false) {
+              const budget = script.hang === true ? operation.timeoutMs : script.hang;
+              await sleep(budget);
+              throw new EngineError('OPERATION_TIMEOUT', `swipe exceeded ${budget} ms`, { retryable: false });
             }
             swipes.push({ ref: ref.id, direction: action.direction, momentum: action.momentum });
           },
@@ -153,12 +156,52 @@ describe('screen.scrollUntilVisible', () => {
   });
 
   it('bounds a locator swipe by the same deadline', async () => {
-    const { screen } = scrollScreen({ screens: [[feed()]], hang: true, actionTimeout: 5_000 });
+    const { screen, steps } = scrollScreen({ screens: [[feed()]], hang: true, actionTimeout: 5_000 });
     const started = Date.now();
     await expect(
       screen.getByRole('list', { name: 'Feed' }).scrollUntilVisible(screen.getByText('Accept'), { timeout: 250 }),
-    ).rejects.toMatchObject({ code: 'LOCATOR_NOT_FOUND' });
+    ).rejects.toMatchObject({
+      code: 'LOCATOR_NOT_FOUND',
+      message: 'target did not become visible while scrolling: getByText("Accept")',
+      cause: expect.objectContaining({ code: 'ACTION_FAILED', cause: expect.objectContaining({ code: 'OPERATION_TIMEOUT' }) }),
+    });
     expect(Date.now() - started).toBeLessThan(2_000);
+    expect(steps.all()).toEqual([
+      expect.objectContaining({ status: 'failed', error: expect.objectContaining({ code: 'LOCATOR_NOT_FOUND' }) }),
+    ]);
+  });
+
+  it('owns the outcome whichever timer fires first: a swipe timing out on the budget the deadline left it is LOCATOR_NOT_FOUND', async () => {
+    // A swipe whose budget is the deadline's remainder, ending on the engine's
+    // own clock a moment before this one reads the deadline as passed.
+    const { screen } = scrollScreen({ screens: [[]], hang: 110, actionTimeout: 5_000 });
+    await expect(screen.scrollUntilVisible(screen.getByText('Accept'), { timeout: 200 })).rejects.toMatchObject({
+      code: 'LOCATOR_NOT_FOUND',
+      cause: expect.objectContaining({ code: 'OPERATION_TIMEOUT' }),
+    });
+  });
+
+  it('dispatches no swipe once the budget left is too short for one, and fails as LOCATOR_NOT_FOUND', async () => {
+    const { screen, swipes } = scrollScreen({ screens: [[], [TARGET]] });
+    await expect(screen.scrollUntilVisible(screen.getByText('Accept'), { timeout: 50 })).rejects.toMatchObject({
+      code: 'LOCATOR_NOT_FOUND',
+      message: 'target did not become visible while scrolling: getByText("Accept")',
+    });
+    expect(swipes).toEqual([]);
+  });
+
+  it('keeps an engine timeout far from the deadline as the action failure it is', async () => {
+    const { screen, steps } = scrollScreen({ screens: [[feed()]], hang: 20, actionTimeout: 5_000 });
+    await expect(
+      screen.getByRole('list', { name: 'Feed' }).scrollUntilVisible(screen.getByText('Accept'), { timeout: 30_000 }),
+    ).rejects.toMatchObject({
+      code: 'ACTION_FAILED',
+      message: 'operation timed out: getByRole("list", name: "Feed")',
+      cause: expect.objectContaining({ code: 'OPERATION_TIMEOUT' }),
+    });
+    expect(steps.all()).toEqual([
+      expect.objectContaining({ status: 'failed', error: expect.objectContaining({ code: 'ACTION_FAILED' }) }),
+    ]);
   });
 
   it('rejects a target that is not an e2e locator before recording a step', async () => {
