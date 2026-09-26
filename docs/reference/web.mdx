@@ -322,7 +322,9 @@ in a suite that also runs on other platforms.
 `file:`, `data:`, or `javascript:` URL. `waitForURL` polls every 100 ms; a
 relative string resolves against the base URL and matches exactly after
 normalization, a `RegExp` tests the full URL, anything else (a predicate
-function, say) is `INVALID_ARGUMENT`, and a timeout is `ASSERTION_FAILED`. The other navigations throw `ACTION_FAILED`.
+function, say) is `INVALID_ARGUMENT`, and a timeout is `ASSERTION_FAILED`. It
+takes `timeout` only: another key, such as Playwright's `waitUntil`, is
+`INVALID_ARGUMENT`. The other navigations throw `ACTION_FAILED`.
 
 ```ts
 await browser.goto('/dashboard', { waitUntil: 'networkidle' });

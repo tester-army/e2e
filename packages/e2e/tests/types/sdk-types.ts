@@ -266,6 +266,17 @@ void asyncExpectation.toContainText(['a', /b/]);
 void asyncExpectation.toHaveText(['a', 1]);
 // @ts-expect-error only toHaveText and toContainText take a list; a value is one string
 void asyncExpectation.toHaveValue(['a']);
+// Playwright's state flags and ignoreCase are taken where Playwright takes them, and nowhere else.
+void asyncExpectation.toBeChecked({ checked: false });
+void asyncExpectation.toBeVisible({ visible: false, timeout: 1000 });
+void asyncExpectation.toContainText('error', { ignoreCase: true });
+void asyncExpectation.toHaveAttribute('data-kind', 'error', { ignoreCase: true });
+// @ts-expect-error toBeChecked has no indeterminate state
+void asyncExpectation.toBeChecked({ indeterminate: true });
+// @ts-expect-error a value is compared as it is, case included
+void asyncExpectation.toHaveValue('a', { ignoreCase: true });
+// @ts-expect-error presence has no case to ignore
+void asyncExpectation.toHaveAttribute('data-kind', { ignoreCase: true });
 
 // expect.poll carries every value matcher and no other, each resolving to void.
 declare const pollMatcherNames: Exclude<keyof PollExpectation<string>, 'not'>;

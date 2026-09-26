@@ -740,21 +740,25 @@ export interface TestAPI<Fixtures = TestFixtures> {
   afterAll(fn: SuiteHookFn): void;
 }
 
+/**
+ * The locator matchers. An option a matcher does not take, or a flag that is
+ * not a boolean, is `INVALID_ARGUMENT` before the first read.
+ */
 export interface AsyncExpectation {
   /** Inverts the matcher. A negated matcher passes after 1000 ms of continuous truth. */
   readonly not: AsyncExpectation;
-  /** Waits for visibility. */
-  toBeVisible(options?: { timeout?: number }): Promise<void>;
+  /** Waits for visibility; `visible: false` waits for hidden or absent state, as `toBeHidden`. */
+  toBeVisible(options?: { visible?: boolean; timeout?: number }): Promise<void>;
   /** Waits for hidden or absent state. */
   toBeHidden(options?: { timeout?: number }): Promise<void>;
-  /** Waits for one match to exist, visible or not. */
-  toBeAttached(options?: { timeout?: number }): Promise<void>;
-  /** Waits for enabled state. */
-  toBeEnabled(options?: { timeout?: number }): Promise<void>;
+  /** Waits for one match to exist, visible or not; `attached: false` waits for none. */
+  toBeAttached(options?: { attached?: boolean; timeout?: number }): Promise<void>;
+  /** Waits for enabled state; `enabled: false` waits for disabled state. */
+  toBeEnabled(options?: { enabled?: boolean; timeout?: number }): Promise<void>;
   /** Waits for disabled state. */
   toBeDisabled(options?: { timeout?: number }): Promise<void>;
-  /** Waits for checked state. */
-  toBeChecked(options?: { timeout?: number }): Promise<void>;
+  /** Waits for checked state; `checked: false` waits for unchecked state. */
+  toBeChecked(options?: { checked?: boolean; timeout?: number }): Promise<void>;
   /** Waits for selected state. */
   toBeSelected(options?: { timeout?: number }): Promise<void>;
   /** Waits for expanded state. */
@@ -762,20 +766,28 @@ export interface AsyncExpectation {
   /** Waits for focused state. */
   toBeFocused(options?: { timeout?: number }): Promise<void>;
   /** Waits for exact normalized text; a list waits for exactly that many matches, each with its entry's text, in order. */
-  toHaveText(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
-  toHaveText(expected: readonly TextMatch[], options?: { timeout?: number }): Promise<void>;
+  toHaveText(expected: TextMatch, options?: TextMatcherOptions): Promise<void>;
+  toHaveText(expected: readonly TextMatch[], options?: TextMatcherOptions): Promise<void>;
   /** Waits for contained normalized text; a list waits for each entry to be contained by a distinct match, in order, extra matches allowed. */
-  toContainText(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
-  toContainText(expected: readonly TextMatch[], options?: { timeout?: number }): Promise<void>;
+  toContainText(expected: TextMatch, options?: TextMatcherOptions): Promise<void>;
+  toContainText(expected: readonly TextMatch[], options?: TextMatcherOptions): Promise<void>;
   /** Waits for a form control's value, compared as it is. */
   toHaveValue(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
   /** Waits for the attribute to be present; with `value`, for it to match. */
   toHaveAttribute(name: string, options?: { timeout?: number }): Promise<void>;
-  toHaveAttribute(name: string, value: TextMatch, options?: { timeout?: number }): Promise<void>;
+  toHaveAttribute(name: string, value: TextMatch, options?: TextMatcherOptions): Promise<void>;
   /** Waits for an exact match count. */
   toHaveCount(expected: number, options?: { timeout?: number }): Promise<void>;
   /** Waits for an accessible name. */
-  toHaveAccessibleName(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
+  toHaveAccessibleName(expected: TextMatch, options?: TextMatcherOptions): Promise<void>;
+}
+
+/** Options of a locator matcher that compares text. */
+export interface TextMatcherOptions {
+  /** Compares a string case-insensitively; on a RegExp, `true` adds the `i` flag and `false` removes it. */
+  ignoreCase?: boolean;
+  /** Assertion budget in milliseconds. */
+  timeout?: number;
 }
 
 /**

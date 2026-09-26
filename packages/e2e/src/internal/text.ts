@@ -59,6 +59,8 @@ export interface TextComparison {
   readonly mode: 'equals' | 'contains';
   /** Whether both sides are whitespace-normalized first. `false` compares the raw strings, as a form control's value is. */
   readonly normalize: boolean;
+  /** Compares a string pattern case-insensitively. A RegExp reads case from its flags; `withIgnoreCase` sets them. */
+  readonly ignoreCase?: boolean | undefined;
 }
 
 /**
@@ -81,7 +83,19 @@ export function compareText(actual: string, pattern: TextPattern, comparison: Te
   if (pattern.kind === 'regexp') return testPattern(pattern.source, pattern.flags, subject);
   const expected = comparison.normalize ? normalizeText(pattern.value) : pattern.value;
   if (!pattern.exact) return subject.toLowerCase().includes(expected.toLowerCase());
-  return comparison.mode === 'equals' ? subject === expected : subject.includes(expected);
+  const fold = (text: string): string => (comparison.ignoreCase === true ? text.toLowerCase() : text);
+  return comparison.mode === 'equals' ? fold(subject) === fold(expected) : fold(subject).includes(fold(expected));
+}
+
+/**
+ * The pattern under Playwright's `ignoreCase`: `true` adds a RegExp's `i`
+ * flag, `false` removes it, `undefined` keeps the flags it came with. A string
+ * pattern is returned as it is; `compareText` folds its case.
+ */
+export function withIgnoreCase(pattern: TextPattern, ignoreCase: boolean | undefined): TextPattern {
+  if (pattern.kind !== 'regexp' || ignoreCase === undefined) return pattern;
+  const flags = pattern.flags.replace('i', '');
+  return { ...pattern, flags: normalizeRegexpFlags(ignoreCase ? `${flags}i` : flags) };
 }
 
 /** Renders a pattern for diagnostics. */

@@ -51,6 +51,7 @@ before passing its result to `expect`.
 | --- | --- |
 | Default timeout | `config.assertionTimeout`, 5000 ms |
 | Override | `{ timeout }` in milliseconds, on every locator and `browser` matcher |
+| Unknown option | `INVALID_ARGUMENT` before the first read, from JavaScript too |
 | Negation grace window | A negated matcher passes after 1000 ms of continuous truth, or after the whole budget when `{ timeout }` is shorter than that |
 | Failure code | `ASSERTION_FAILED`, exit code 1 |
 
@@ -84,21 +85,25 @@ Assert the outcome of the fill, not the field.
 ## Locator matchers
 
 ```ts
+/**
+ * The locator matchers. An option a matcher does not take, or a flag that is
+ * not a boolean, is `INVALID_ARGUMENT` before the first read.
+ */
 export interface AsyncExpectation {
   /** Inverts the matcher. A negated matcher passes after 1000 ms of continuous truth. */
   readonly not: AsyncExpectation;
-  /** Waits for visibility. */
-  toBeVisible(options?: { timeout?: number }): Promise<void>;
+  /** Waits for visibility; `visible: false` waits for hidden or absent state, as `toBeHidden`. */
+  toBeVisible(options?: { visible?: boolean; timeout?: number }): Promise<void>;
   /** Waits for hidden or absent state. */
   toBeHidden(options?: { timeout?: number }): Promise<void>;
-  /** Waits for one match to exist, visible or not. */
-  toBeAttached(options?: { timeout?: number }): Promise<void>;
-  /** Waits for enabled state. */
-  toBeEnabled(options?: { timeout?: number }): Promise<void>;
+  /** Waits for one match to exist, visible or not; `attached: false` waits for none. */
+  toBeAttached(options?: { attached?: boolean; timeout?: number }): Promise<void>;
+  /** Waits for enabled state; `enabled: false` waits for disabled state. */
+  toBeEnabled(options?: { enabled?: boolean; timeout?: number }): Promise<void>;
   /** Waits for disabled state. */
   toBeDisabled(options?: { timeout?: number }): Promise<void>;
-  /** Waits for checked state. */
-  toBeChecked(options?: { timeout?: number }): Promise<void>;
+  /** Waits for checked state; `checked: false` waits for unchecked state. */
+  toBeChecked(options?: { checked?: boolean; timeout?: number }): Promise<void>;
   /** Waits for selected state. */
   toBeSelected(options?: { timeout?: number }): Promise<void>;
   /** Waits for expanded state. */
@@ -106,20 +111,28 @@ export interface AsyncExpectation {
   /** Waits for focused state. */
   toBeFocused(options?: { timeout?: number }): Promise<void>;
   /** Waits for exact normalized text; a list waits for exactly that many matches, each with its entry's text, in order. */
-  toHaveText(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
-  toHaveText(expected: readonly TextMatch[], options?: { timeout?: number }): Promise<void>;
+  toHaveText(expected: TextMatch, options?: TextMatcherOptions): Promise<void>;
+  toHaveText(expected: readonly TextMatch[], options?: TextMatcherOptions): Promise<void>;
   /** Waits for contained normalized text; a list waits for each entry to be contained by a distinct match, in order, extra matches allowed. */
-  toContainText(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
-  toContainText(expected: readonly TextMatch[], options?: { timeout?: number }): Promise<void>;
+  toContainText(expected: TextMatch, options?: TextMatcherOptions): Promise<void>;
+  toContainText(expected: readonly TextMatch[], options?: TextMatcherOptions): Promise<void>;
   /** Waits for a form control's value, compared as it is. */
   toHaveValue(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
   /** Waits for the attribute to be present; with `value`, for it to match. */
   toHaveAttribute(name: string, options?: { timeout?: number }): Promise<void>;
-  toHaveAttribute(name: string, value: TextMatch, options?: { timeout?: number }): Promise<void>;
+  toHaveAttribute(name: string, value: TextMatch, options?: TextMatcherOptions): Promise<void>;
   /** Waits for an exact match count. */
   toHaveCount(expected: number, options?: { timeout?: number }): Promise<void>;
   /** Waits for an accessible name. */
-  toHaveAccessibleName(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
+  toHaveAccessibleName(expected: TextMatch, options?: TextMatcherOptions): Promise<void>;
+}
+
+/** Options of a locator matcher that compares text. */
+export interface TextMatcherOptions {
+  /** Compares a string case-insensitively; on a RegExp, `true` adds the `i` flag and `false` removes it. */
+  ignoreCase?: boolean;
+  /** Assertion budget in milliseconds. */
+  timeout?: number;
 }
 ```
 
@@ -140,6 +153,22 @@ password input, `toHaveAttribute` throws `POLICY_DENIED` like
 `toBeAttached` passes once one match exists, hidden or shown, where
 `toBeVisible` needs a shown one. Negated, it passes once nothing matches.
 
+The boolean options Playwright gives these matchers work the same way:
+`toBeChecked({ checked: false })` waits for an unchecked node,
+`toBeEnabled({ enabled: false })` for a disabled one,
+`toBeVisible({ visible: false })` for a hidden or absent one, as
+`toBeHidden` does, and `toBeAttached({ attached: false })` for no match.
+`ignoreCase: true` on `toHaveText`, `toContainText`, `toHaveAccessibleName`,
+and the value form of `toHaveAttribute` compares a string case-insensitively
+and adds the `i` flag to a `RegExp`; `ignoreCase: false` removes it.
+
+A matcher refuses any other option key, and a flag that is not a boolean, with
+`INVALID_ARGUMENT` before it reads the screen. Types catch these in
+TypeScript, but `e2e run` does not type-check, so the check runs for a
+JavaScript test or a computed option object too. Playwright options e2e does
+not implement, such as `indeterminate` on `toBeChecked` or `useInnerText` on
+`toHaveText`, fail this way instead of passing on the default.
+
 `toHaveText([...])` and `toContainText([...])` check a list, with no
 exactly-one rule; the failure message lists every text observed.
 `toHaveText([...])` needs the match count to equal the list length and the
@@ -153,6 +182,8 @@ holds. Negated, it fails as soon as that ordered subsequence exists, so
 
 ```ts
 await expect(screen.getByRole('status')).toHaveText('Saved');
+await expect(screen.getByRole('alert')).not.toContainText('error', { ignoreCase: true });
+await expect(screen.getByLabel('Subscribe')).toBeChecked({ checked: false });
 await expect(screen.getByTestId('todo')).toHaveCount(3);
 await expect(screen.getByTestId('todo')).toHaveText(['Write spec', /^Ship/, 'Release']);
 await expect(screen.getByTestId('todo')).toContainText(['spec', 'runner', 'Release']);
@@ -181,7 +212,9 @@ export interface BrowserExpectation {
 
 A relative `toHaveURL` string resolves against the base URL and matches
 exactly after normalization; a `RegExp` tests the full URL. Anything else,
-such as a predicate function, is `INVALID_ARGUMENT`.
+such as a predicate function, is `INVALID_ARGUMENT`. Each `web` matcher takes
+`timeout` only; any other key, such as Playwright's `ignoreCase` on
+`toHaveURL`, is `INVALID_ARGUMENT`.
 
 `toHaveClass` polls for the node too: a target that matches nothing yet is one
 more poll, not a failure, until the assertion timeout runs out. An ambiguous

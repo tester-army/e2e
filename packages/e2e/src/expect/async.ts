@@ -2,13 +2,14 @@
 
 import type { SemanticNode } from '../engine/surface.ts';
 import { TestError } from '../internal/errors.ts';
+import { rejectUnknownOptions } from '../internal/options.ts';
 import {
   isTextMatch,
   normalizeText,
   compareText,
-  matchesText,
   toTextPattern,
   describePattern,
+  withIgnoreCase,
   type TextComparison,
   type TextPattern,
 } from '../internal/text.ts';
@@ -17,7 +18,7 @@ import { Deadline, pollCondition } from '../internal/time.ts';
 import { attributeOf, denySecureRead, isNodeVisible } from '../locator/engine.ts';
 import { describeExpression } from '../locator/expression.ts';
 import type { LocatorInternals } from '../locator/screen.ts';
-import type { AsyncExpectation, TextMatch } from '../types.ts';
+import type { AsyncExpectation, TextMatch, TextMatcherOptions } from '../types.ts';
 
 interface Sample {
   readonly count: number;
@@ -59,12 +60,24 @@ interface StateMatcherDef {
   readonly key: StateKey;
   readonly expected: boolean;
   readonly describeExpected: string;
+  /** Playwright's boolean option that flips the matcher, `{ checked: false }`, and what it then expects. */
+  readonly flag?: { readonly option: string; readonly describeExpected: string };
 }
 
 const STATE_MATCHERS = {
-  toBeEnabled: { key: 'disabled', expected: false, describeExpected: 'enabled' },
+  toBeEnabled: {
+    key: 'disabled',
+    expected: false,
+    describeExpected: 'enabled',
+    flag: { option: 'enabled', describeExpected: 'disabled' },
+  },
   toBeDisabled: { key: 'disabled', expected: true, describeExpected: 'disabled' },
-  toBeChecked: { key: 'checked', expected: true, describeExpected: 'checked' },
+  toBeChecked: {
+    key: 'checked',
+    expected: true,
+    describeExpected: 'checked',
+    flag: { option: 'checked', describeExpected: 'unchecked' },
+  },
   toBeSelected: { key: 'selected', expected: true, describeExpected: 'selected' },
   toBeExpanded: { key: 'expanded', expected: true, describeExpected: 'expanded' },
   toBeFocused: { key: 'focused', expected: true, describeExpected: 'focused' },
@@ -78,6 +91,8 @@ const STATE_MATCHERS = {
 interface TextMatcherDef extends TextComparison {
   readonly field: 'text' | 'value' | 'name';
   readonly describeExpected: (pattern: string) => string;
+  /** Whether the matcher takes Playwright's `ignoreCase`. */
+  readonly takesIgnoreCase: boolean;
 }
 
 const TEXT_MATCHERS = {
@@ -86,24 +101,28 @@ const TEXT_MATCHERS = {
     mode: 'equals',
     normalize: true,
     describeExpected: (pattern) => `text ${pattern}`,
+    takesIgnoreCase: true,
   },
   toContainText: {
     field: 'text',
     mode: 'contains',
     normalize: true,
     describeExpected: (pattern) => `text containing ${pattern}`,
+    takesIgnoreCase: true,
   },
   toHaveValue: {
     field: 'value',
     mode: 'equals',
     normalize: false,
     describeExpected: (pattern) => `value ${pattern}`,
+    takesIgnoreCase: false,
   },
   toHaveAccessibleName: {
     field: 'name',
     mode: 'equals',
     normalize: true,
     describeExpected: (pattern) => `accessible name ${pattern}`,
+    takesIgnoreCase: true,
   },
 } as const satisfies Record<string, TextMatcherDef>;
 
@@ -121,9 +140,28 @@ class AsyncExpectationImpl implements AsyncExpectation {
     return describeExpression(this.internals.expression);
   }
 
+  /** The matcher's name as its step and its errors print it: `expect.not.toBeChecked`. */
+  private api(name: string): string {
+    return `expect.${this.negated ? 'not.' : ''}${name}`;
+  }
+
+  /**
+   * Refuses an option `name` does not take before anything is read: a
+   * JavaScript caller's Playwright option must fail, not run as if absent.
+   * Returns the boolean `flag` option, `undefined` when absent.
+   */
+  private readOptions(name: string, options: object | undefined, flag?: string): boolean | undefined {
+    const api = this.api(name);
+    rejectUnknownOptions(api, options, flag === undefined ? ['timeout'] : [flag, 'timeout']);
+    if (flag === undefined || options === undefined) return undefined;
+    const value: unknown = Reflect.get(options, flag);
+    if (value === undefined || typeof value === 'boolean') return value;
+    throw new TestError('INVALID_ARGUMENT', `${api} option ${flag} must be a boolean`);
+  }
+
   private async poll(spec: MatcherSpec, timeout: number | undefined): Promise<void> {
     const { engine } = this.internals.context;
-    const api = `expect.${this.negated ? 'not.' : ''}${spec.name}`;
+    const api = this.api(spec.name);
     await this.internals.context.steps.run('assertion', api, this.label, async () => {
       const deadline = engine.deadline(timeout ?? engine.assertionTimeout);
       let lastSample: Sample = { count: 0, node: null, nodes: [] };
@@ -186,15 +224,36 @@ class AsyncExpectationImpl implements AsyncExpectation {
     return { count, node, nodes: [] };
   }
 
-  private stateMatcher(name: keyof typeof STATE_MATCHERS, timeout: number | undefined): Promise<void> {
-    const def = STATE_MATCHERS[name];
+  /** A state matcher; its Playwright flag set to `false` expects the opposite state. */
+  private stateMatcher(name: keyof typeof STATE_MATCHERS, options: { timeout?: number } | undefined): Promise<void> {
+    const def: StateMatcherDef = STATE_MATCHERS[name];
+    const holds = this.readOptions(name, options, def.flag?.option) ?? true;
+    const expected = holds ? def.expected : !def.expected;
     return this.poll(
       {
         name,
         predicate: (sample) =>
-          sample.node !== null && (sample.node.states?.[def.key] === true) === def.expected,
-        describeExpected: def.describeExpected,
+          sample.node !== null && (sample.node.states?.[def.key] === true) === expected,
+        describeExpected: holds || def.flag === undefined ? def.describeExpected : def.flag.describeExpected,
         observed: observedState,
+      },
+      options?.timeout,
+    );
+  }
+
+  /** `toBeVisible` and `toBeHidden`: not visible means hidden or absent. */
+  private visibilityMatcher(
+    name: 'toBeVisible' | 'toBeHidden',
+    visible: boolean,
+    timeout: number | undefined,
+  ): Promise<void> {
+    return this.poll(
+      {
+        name,
+        evaluableWithoutNode: true,
+        predicate: (sample) => isNodeVisible(sample.node) === visible,
+        describeExpected: visible ? 'visible' : 'hidden or absent',
+        observed: visible ? observedState : (sample) => (isNodeVisible(sample.node) ? 'visible' : 'hidden'),
       },
       timeout,
     );
@@ -203,11 +262,13 @@ class AsyncExpectationImpl implements AsyncExpectation {
   private textMatcher(
     name: keyof typeof TEXT_MATCHERS,
     expected: TextMatch | readonly TextMatch[],
-    timeout: number | undefined,
+    options: TextMatcherOptions | undefined,
   ): Promise<void> {
-    if (isTextMatchList(expected)) return this.textListMatcher(name, expected, timeout);
-    const def = TEXT_MATCHERS[name];
-    const pattern = toTextPattern(expected, { exact: true });
+    const def: TextMatcherDef = TEXT_MATCHERS[name];
+    const ignoreCase = this.readOptions(name, options, def.takesIgnoreCase ? 'ignoreCase' : undefined);
+    const comparison: TextComparison = { mode: def.mode, normalize: def.normalize, ignoreCase };
+    if (isTextMatchList(expected)) return this.textListMatcher(name, expected, comparison, options?.timeout);
+    const pattern = withIgnoreCase(toTextPattern(expected, { exact: true }), ignoreCase);
     return this.poll(
       {
         name,
@@ -215,9 +276,9 @@ class AsyncExpectationImpl implements AsyncExpectation {
         evaluableNode: (node) => readField(def, node) !== undefined,
         predicate: (sample) => {
           const actual = sample.node === null ? undefined : readField(def, sample.node);
-          return actual !== undefined && compareText(actual, pattern, def);
+          return actual !== undefined && compareText(actual, pattern, comparison);
         },
-        describeExpected: def.describeExpected(describePattern(pattern)),
+        describeExpected: def.describeExpected(describeText(pattern, ignoreCase)),
         observed: (sample) => {
           if (sample.node === null) return 'no node';
           const actual = readField(def, sample.node);
@@ -225,7 +286,7 @@ class AsyncExpectationImpl implements AsyncExpectation {
           return `${def.field} ${printField(def, actual)}`;
         },
       },
-      timeout,
+      options?.timeout,
     );
   }
 
@@ -237,17 +298,20 @@ class AsyncExpectationImpl implements AsyncExpectation {
   private textListMatcher(
     name: keyof typeof TEXT_MATCHERS,
     expected: readonly TextMatch[],
+    comparison: TextComparison,
     timeout: number | undefined,
   ): Promise<void> {
     const def = TEXT_MATCHERS[name];
-    const patterns = expected.map((entry) => toTextPattern(entry, { exact: true }));
+    const patterns = expected.map((entry) =>
+      withIgnoreCase(toTextPattern(entry, { exact: true }), comparison.ignoreCase),
+    );
     const printed = (node: SemanticNode): string => {
       const actual = readField(def, node);
       return actual === undefined ? `no ${def.field}` : printField(def, actual);
     };
     const satisfies = (node: SemanticNode, pattern: TextPattern): boolean => {
       const actual = readField(def, node);
-      return actual !== undefined && compareText(actual, pattern, def);
+      return actual !== undefined && compareText(actual, pattern, comparison);
     };
     const matchesList = def.mode === 'contains' ? matchesSubsequence : matchesPositionally;
     return this.poll(
@@ -256,102 +320,94 @@ class AsyncExpectationImpl implements AsyncExpectation {
         readsWithheld: def.field !== 'name',
         wholeSet: 'read',
         predicate: (sample) => matchesList(sample.nodes, patterns, satisfies),
-        describeExpected: def.describeExpected(`[${patterns.map(describePattern).join(', ')}]`),
+        describeExpected: def.describeExpected(
+          `[${patterns.map((pattern) => describeText(pattern, comparison.ignoreCase)).join(', ')}]`,
+        ),
         observed: (sample) => `${def.field} [${sample.nodes.map(printed).join(', ')}]`,
       },
       timeout,
     );
   }
 
-  toBeVisible(options?: { timeout?: number }): Promise<void> {
-    return this.poll(
-      {
-        name: 'toBeVisible',
-        evaluableWithoutNode: true,
-        predicate: (sample) => isNodeVisible(sample.node),
-        describeExpected: 'visible',
-        observed: observedState,
-      },
-      options?.timeout,
-    );
+  toBeVisible(options?: { visible?: boolean; timeout?: number }): Promise<void> {
+    const visible = this.readOptions('toBeVisible', options, 'visible') ?? true;
+    return this.visibilityMatcher('toBeVisible', visible, options?.timeout);
   }
 
   toBeHidden(options?: { timeout?: number }): Promise<void> {
-    return this.poll(
-      {
-        name: 'toBeHidden',
-        evaluableWithoutNode: true,
-        predicate: (sample) => !isNodeVisible(sample.node),
-        describeExpected: 'hidden or absent',
-        observed: (sample) => (isNodeVisible(sample.node) ? 'visible' : 'hidden'),
-      },
-      options?.timeout,
-    );
+    this.readOptions('toBeHidden', options);
+    return this.visibilityMatcher('toBeHidden', false, options?.timeout);
   }
 
-  toBeAttached(options?: { timeout?: number }): Promise<void> {
+  toBeAttached(options?: { attached?: boolean; timeout?: number }): Promise<void> {
+    const attached = this.readOptions('toBeAttached', options, 'attached') ?? true;
     return this.poll(
       {
         name: 'toBeAttached',
         evaluableWithoutNode: true,
-        predicate: (sample) => sample.node !== null,
-        describeExpected: 'attached',
+        predicate: (sample) => (sample.node !== null) === attached,
+        describeExpected: attached ? 'attached' : 'detached',
         observed: (sample) => (sample.node === null ? 'no node' : 'attached'),
       },
       options?.timeout,
     );
   }
 
-  toBeEnabled(options?: { timeout?: number }): Promise<void> {
-    return this.stateMatcher('toBeEnabled', options?.timeout);
+  toBeEnabled(options?: { enabled?: boolean; timeout?: number }): Promise<void> {
+    return this.stateMatcher('toBeEnabled', options);
   }
 
   toBeDisabled(options?: { timeout?: number }): Promise<void> {
-    return this.stateMatcher('toBeDisabled', options?.timeout);
+    return this.stateMatcher('toBeDisabled', options);
   }
 
-  toBeChecked(options?: { timeout?: number }): Promise<void> {
-    return this.stateMatcher('toBeChecked', options?.timeout);
+  toBeChecked(options?: { checked?: boolean; timeout?: number }): Promise<void> {
+    return this.stateMatcher('toBeChecked', options);
   }
 
   toBeSelected(options?: { timeout?: number }): Promise<void> {
-    return this.stateMatcher('toBeSelected', options?.timeout);
+    return this.stateMatcher('toBeSelected', options);
   }
 
   toBeExpanded(options?: { timeout?: number }): Promise<void> {
-    return this.stateMatcher('toBeExpanded', options?.timeout);
+    return this.stateMatcher('toBeExpanded', options);
   }
 
   toBeFocused(options?: { timeout?: number }): Promise<void> {
-    return this.stateMatcher('toBeFocused', options?.timeout);
+    return this.stateMatcher('toBeFocused', options);
   }
 
-  toHaveText(expected: TextMatch | readonly TextMatch[], options?: { timeout?: number }): Promise<void> {
-    return this.textMatcher('toHaveText', expected, options?.timeout);
+  toHaveText(expected: TextMatch | readonly TextMatch[], options?: TextMatcherOptions): Promise<void> {
+    return this.textMatcher('toHaveText', expected, options);
   }
 
-  toContainText(expected: TextMatch | readonly TextMatch[], options?: { timeout?: number }): Promise<void> {
-    return this.textMatcher('toContainText', expected, options?.timeout);
+  toContainText(expected: TextMatch | readonly TextMatch[], options?: TextMatcherOptions): Promise<void> {
+    return this.textMatcher('toContainText', expected, options);
   }
 
   toHaveValue(expected: TextMatch, options?: { timeout?: number }): Promise<void> {
-    return this.textMatcher('toHaveValue', expected, options?.timeout);
+    return this.textMatcher('toHaveValue', expected, options);
   }
 
   toHaveAttribute(
     name: string,
     valueOrOptions?: TextMatch | { timeout?: number },
-    options?: { timeout?: number },
+    options?: TextMatcherOptions,
   ): Promise<void> {
     let value: TextMatch | undefined;
     let timeout: number | undefined;
+    let ignoreCase: boolean | undefined;
     if (isTextMatch(valueOrOptions)) {
       value = valueOrOptions;
+      ignoreCase = this.readOptions('toHaveAttribute', options, 'ignoreCase');
       timeout = options?.timeout;
     } else {
+      this.readOptions('toHaveAttribute', valueOrOptions);
       timeout = valueOrOptions?.timeout;
     }
-    const pattern = value === undefined ? undefined : toTextPattern(value, { exact: true });
+    const pattern =
+      value === undefined ? undefined : withIgnoreCase(toTextPattern(value, { exact: true }), ignoreCase);
+    const comparison: TextComparison = { mode: 'equals', normalize: true, ignoreCase };
     return this.poll(
       {
         name: 'toHaveAttribute',
@@ -359,12 +415,12 @@ class AsyncExpectationImpl implements AsyncExpectation {
         predicate: (sample) => {
           if (sample.node === null) return false;
           const attribute = attributeOf(sample.node, name);
-          return attribute !== null && (pattern === undefined || matchesText(attribute, pattern));
+          return attribute !== null && (pattern === undefined || compareText(attribute, pattern, comparison));
         },
         describeExpected:
           pattern === undefined
             ? `attribute "${name}"`
-            : `attribute "${name}" ${describePattern(pattern)}`,
+            : `attribute "${name}" ${describeText(pattern, ignoreCase)}`,
         observed: (sample) => {
           if (sample.node === null) return 'no node';
           const attribute = attributeOf(sample.node, name);
@@ -377,11 +433,12 @@ class AsyncExpectationImpl implements AsyncExpectation {
     );
   }
 
-  toHaveAccessibleName(expected: TextMatch, options?: { timeout?: number }): Promise<void> {
-    return this.textMatcher('toHaveAccessibleName', expected, options?.timeout);
+  toHaveAccessibleName(expected: TextMatch, options?: TextMatcherOptions): Promise<void> {
+    return this.textMatcher('toHaveAccessibleName', expected, options);
   }
 
   toHaveCount(expected: number, options?: { timeout?: number }): Promise<void> {
+    this.readOptions('toHaveCount', options);
     return this.poll(
       {
         name: 'toHaveCount',
@@ -441,6 +498,12 @@ function readField(def: TextMatcherDef, node: SemanticNode): string | undefined 
   if (raw !== undefined) return raw;
   if (def.field !== 'value') return '';
   return isValueControl(node) ? '' : undefined;
+}
+
+/** A pattern as a failure message prints it, marking a string compared ignoring case. */
+function describeText(pattern: TextPattern, ignoreCase: boolean | undefined): string {
+  const described = describePattern(pattern);
+  return pattern.kind === 'string' && ignoreCase === true ? `${described} (ignoring case)` : described;
 }
 
 /** The field as the failure message prints it: normalized when the comparison was, so the message shows what got compared. */
