@@ -38,6 +38,8 @@ test('deterministic queries and reads', async ({ app, screen, web }) => {
   expect(await screen.getByTestId('missing').all()).toEqual([]);
   await expect(screen.getByTestId('item')).toHaveText(['Item Alpha', /Beta/, 'Item Gamma']);
   await expect(screen.getByTestId('item')).toContainText(['Alpha', 'Beta', 'Gamma']);
+  await expect(screen.getByTestId('item')).toContainText(['Alpha', 'Gamma']);
+  await expect(screen.getByTestId('item')).not.toContainText(['Gamma', 'Alpha']);
   await expect(screen.getByTestId('item')).not.toHaveText(['Item Alpha', 'Item Beta']);
 
   await expect(screen.getByText('Hidden content')).toBeAttached();

@@ -9,6 +9,7 @@ import {
   toTextPattern,
   describePattern,
   type TextComparison,
+  type TextPattern,
 } from '../internal/text.ts';
 import { isValueControl } from '../internal/roles.ts';
 import { Deadline, pollCondition } from '../internal/time.ts';
@@ -228,8 +229,9 @@ class AsyncExpectationImpl implements AsyncExpectation {
   }
 
   /**
-   * The list form: exactly as many matches as entries, each match's field
-   * satisfying the entry at its position.
+   * The list form. `toHaveText` needs exactly as many matches as entries,
+   * each match satisfying the entry at its position; `toContainText` needs
+   * each entry contained by a distinct match, in order, as Playwright's does.
    */
   private textListMatcher(
     name: keyof typeof TEXT_MATCHERS,
@@ -242,17 +244,22 @@ class AsyncExpectationImpl implements AsyncExpectation {
       const actual = readField(def, node);
       return actual === undefined ? `no ${def.field}` : printField(def, actual);
     };
+    const satisfies = (node: SemanticNode, pattern: TextPattern): boolean => {
+      const actual = readField(def, node);
+      return actual !== undefined && compareText(actual, pattern, def);
+    };
     return this.poll(
       {
         name,
         readsWithheld: def.field !== 'name',
         wholeSet: 'read',
-        predicate: (sample) =>
-          sample.nodes.length === patterns.length &&
-          patterns.every((pattern, index) => {
-            const actual = readField(def, sample.nodes[index]!);
-            return actual !== undefined && compareText(actual, pattern, def);
-          }),
+        predicate: (sample) => {
+          if (def.mode === 'contains') return matchesSubsequence(sample.nodes, patterns, satisfies);
+          return (
+            sample.nodes.length === patterns.length &&
+            patterns.every((pattern, index) => satisfies(sample.nodes[index]!, pattern))
+          );
+        },
         describeExpected: def.describeExpected(`[${patterns.map(describePattern).join(', ')}]`),
         observed: (sample) => `${def.field} [${sample.nodes.map(printed).join(', ')}]`,
       },
@@ -395,6 +402,24 @@ class AsyncExpectationImpl implements AsyncExpectation {
 /** A list of text matches, as opposed to one string or RegExp. */
 function isTextMatchList(expected: TextMatch | readonly TextMatch[]): expected is readonly TextMatch[] {
   return Array.isArray(expected);
+}
+
+/**
+ * Whether every pattern is satisfied by a distinct node, in order. Greedy:
+ * each pattern takes the first node after the previous pattern's that
+ * satisfies it, which finds a subsequence whenever one exists.
+ */
+function matchesSubsequence(
+  nodes: readonly SemanticNode[],
+  patterns: readonly TextPattern[],
+  satisfies: (node: SemanticNode, pattern: TextPattern) => boolean,
+): boolean {
+  let next = 0;
+  for (const node of nodes) {
+    if (next === patterns.length) break;
+    if (satisfies(node, patterns[next]!)) next += 1;
+  }
+  return next === patterns.length;
 }
 
 /**

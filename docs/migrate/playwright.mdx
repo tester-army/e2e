@@ -163,7 +163,7 @@ to do today.
 | --- | --- | --- | --- |
 | `expect(locator).toBeVisible()`, `toBeHidden()`, `toBeEnabled()`, `toBeDisabled()`, `toBeChecked()`, `toBeFocused()` | the same | `expect` | same |
 | `toHaveText()`, `toContainText()`, `toHaveValue()`, `toHaveAttribute()`, `toHaveCount()`, `toHaveAccessibleName()` | the same | `expect` | same |
-| `toHaveText(['a', 'b'])`, `toContainText([...])` on several matches | the same; the count must match too | `expect` | same |
+| `toHaveText(['a', 'b'])`, `toContainText([...])` on several matches | the same: `toHaveText` needs the count to match, `toContainText` an ordered subsequence | `expect` | same |
 | `toHaveAttribute('aria-selected', 'true')`, `'aria-expanded'` | `toBeSelected()`, `toBeExpanded()` | `expect` | renamed |
 | a positive matcher on several matches | `LOCATOR_AMBIGUOUS` at once; narrow with `filter`, `first`, or `{ visible: true }` | `expect` | by design |
 | `toBeAttached()` | the same; passes on a hidden match too | `expect` | same |

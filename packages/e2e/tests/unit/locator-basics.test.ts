@@ -192,6 +192,45 @@ describe('the list form of toHaveText and toContainText', () => {
     ).rejects.toMatchObject({ code: 'ASSERTION_FAILED' });
   });
 
+  it('toContainText holds for an ordered subsequence of the matches', async () => {
+    const locator = createScreenFixture(ITEMS).getByRole('listitem');
+    await expectFixture(locator).toContainText(['Beta']);
+    await expectFixture(locator).toContainText(['Alpha', 'Gamma']);
+    await expectFixture(locator).toContainText(['Item', 'Item', 'Item']);
+    await expectFixture(locator).toContainText([]);
+  });
+
+  it('negated toContainText fails when one entry is contained by some match', async () => {
+    const locator = createScreenFixture(ITEMS).getByRole('listitem');
+    await expect(expectFixture(locator).not.toContainText(['Beta'])).rejects.toMatchObject({
+      code: 'ASSERTION_FAILED',
+      message: expect.stringContaining('expected: not text containing ["Beta"]'),
+    });
+  });
+
+  it('toContainText fails out of order, with more entries than matches, or on a missing entry', async () => {
+    const locator = createScreenFixture(ITEMS).getByRole('listitem');
+    await expect(expectFixture(locator).toContainText(['Gamma', 'Alpha'])).rejects.toMatchObject({
+      code: 'ASSERTION_FAILED',
+      message: expect.stringContaining('observed: text ["Item Alpha", "Item Beta", "Item Gamma"] (match count 3)'),
+    });
+    await expect(expectFixture(locator).toContainText(['Item', 'Item', 'Item', 'Item'])).rejects.toMatchObject({
+      code: 'ASSERTION_FAILED',
+    });
+    await expect(expectFixture(locator).toContainText(['Alpha', 'Delta'])).rejects.toMatchObject({
+      code: 'ASSERTION_FAILED',
+    });
+    await expectFixture(locator).not.toContainText(['Gamma', 'Alpha']);
+  });
+
+  it('toContainText needs a distinct match for each duplicate entry', async () => {
+    const locator = createScreenFixture([item('a', 'Done'), item('b', 'Open')]).getByRole('listitem');
+    await expect(expectFixture(locator).toContainText(['Done', 'Done'])).rejects.toMatchObject({
+      code: 'ASSERTION_FAILED',
+    });
+    await expectFixture(locator).not.toContainText(['Done', 'Done']);
+  });
+
   it('keeps the single-value path strict on several matches', async () => {
     await expect(
       expectFixture(createScreenFixture(ITEMS).getByRole('listitem')).toHaveText('Item Alpha'),

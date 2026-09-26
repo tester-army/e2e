@@ -247,7 +247,8 @@ is, whitespace included, and fails on a node that has none. On a secure
 field such as a password input all three are `POLICY_DENIED`, never a
 comparison against `''`. Both text matchers take a list to check every match at once:
 `toHaveText(['Alpha', /^Beta/])` needs exactly two matches with those texts
-in order. `toBeAttached` waits for a match to exist, hidden or not. A failed
+in order; `toContainText(['Alpha', 'Beta'])` needs each entry in a distinct
+match, in order, extra matches allowed. `toBeAttached` waits for a match to exist, hidden or not. A failed
 matcher is `ASSERTION_FAILED`, exit code 1.
 
 A test that takes only `app` opens no page and calls no model; the browser

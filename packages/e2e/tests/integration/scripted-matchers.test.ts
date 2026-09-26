@@ -39,6 +39,7 @@ test('every matcher passes on the scripted screen', async ({ app, screen }) => {
   await expect(screen.getByTestId('todo')).toHaveCount(3);
   await expect(screen.getByTestId('todo')).toHaveText(['Write spec', /^Ship/, 'Release']);
   await expect(screen.getByTestId('todo')).toContainText(['spec', 'runner', 'Release']);
+  await expect(screen.getByTestId('todo')).toContainText(['spec', 'Release']);
   await expect(screen.getByTestId('missing')).toHaveText([]);
   await expect(screen.getByTestId('missing')).toHaveCount(0);
 });
@@ -171,6 +172,11 @@ test('the list form of toHaveText fails on a shorter list', async ({ app, screen
   await expect(screen.getByTestId('todo')).toHaveText(['Write spec', 'Ship runner'], fast);
 });
 
+test('the negated list form of toContainText fails when one match contains the entry', async ({ app, screen }) => {
+  await app.open('/');
+  await expect(screen.getByTestId('todo')).not.toContainText(['runner'], fast);
+});
+
 test('a negated matcher fails while the condition holds', async ({ app, screen }) => {
   await app.open('/');
   await expect(screen.getByRole('button', { name: 'Submit' })).not.toBeVisible(fast);
@@ -204,6 +210,7 @@ const FAILURES: [string, ...string[]][] = [
   ['toHaveAccessibleName fails on another name', 'expected: accessible name "Done"', 'observed: name "Todos"'],
   ['toHaveCount fails on another count', 'expected: count 2', 'observed: count 3 (match count 3)'],
   ['the list form of toHaveText fails on a shorter list', 'expected: text ["Write spec", "Ship runner"]', 'observed: text ["Write spec", "Ship runner", "Release"] (match count 3)'],
+  ['the negated list form of toContainText fails when one match contains the entry', 'expect.not.toContainText failed', 'expected: not text containing ["runner"]'],
   ['a negated matcher fails while the condition holds', 'expect.not.toBeVisible failed', 'expected: not visible', 'observed: default states (match count 1)'],
 ];
 
