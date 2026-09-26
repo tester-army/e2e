@@ -54,7 +54,7 @@ export class DialogRouter {
   /** Routes one native dialog to the newest registered handler; the attempt end waits for it. */
   dispatch(dialog: PwDialog): Promise<void> {
     const work = this.route(dialog);
-    this.latch.track(work);
+    this.latch.track('dialog', work);
     return work;
   }
 

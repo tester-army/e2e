@@ -432,6 +432,22 @@ test('a step call without await before the body throws', async ({ app }) => {
 });
 `;
 
+const LATE_HANDLER_THEN_TEARDOWN = `import { test } from '@e2edev/web';
+import { expect } from 'e2e';
+
+test.afterEach(async ({ app }) => {
+  await app.open('/');
+});
+
+test('a route handler assertion that no step follows, then a teardown that navigates', async ({ app, web }) => {
+  await web.route('**/api/flags', async (route) => {
+    await route.fulfill({ json: { betaBoard: true } });
+    expect(route.request.method).toBe('POST');
+  });
+  await app.open('/flags');
+});
+`;
+
 describe('web platform integration', () => {
   let app: FixtureApp;
   let outcome: RunOutcome;
@@ -440,7 +456,7 @@ describe('web platform integration', () => {
   beforeAll(async () => {
     app = await startFixtureApp();
     ({ outcome, project } = await runProject(
-      { 'tests/kitchen.e2e.ts': KITCHEN_SINK },
+      { 'tests/kitchen.e2e.ts': KITCHEN_SINK, 'tests/late-handler.e2e.ts': LATE_HANDLER_THEN_TEARDOWN },
       {
         appUrl: app.url,
         config: { actionTimeout: 5_000, assertionTimeout: 4_000, timeout: 30_000 },
@@ -551,6 +567,20 @@ describe('web platform integration', () => {
     expect(attempt.error).toMatchObject({ code: 'ASSERTION_FAILED', phase: 'body' });
     expect(attempt.cleanup).toBe('complete');
     expect(outcome.report.run.errors.map((error) => error.code)).toEqual([]);
+  });
+
+  it('takes the failure evidence of a late handler assertion before a teardown navigates away', () => {
+    const result = resultByTitle(outcome, 'a route handler assertion that no step follows, then a teardown that navigates');
+    expect(result.status).toBe('failed');
+    const attempt = result.attempts[0]!;
+    expect(attempt.error).toMatchObject({ code: 'ASSERTION_FAILED', phase: 'body' });
+    expect(attempt.steps.map((step) => step.api)).toEqual(['web.route', 'app.open', 'app.open']);
+    const failure = attempt.failure!;
+    expect(failure.url).toMatch(/\/flags$/);
+    const screen = attempt.artifacts.find((artifact) => artifact.id === failure.screen)!;
+    const text = readFileSync(path.join(project.dir, '.e2e', 'artifacts', screen.path!), 'utf8');
+    expect(text).toContain('heading "Flags"');
+    expect(text).not.toContain('heading "Home"');
   });
 
   it('fails UI operations before open with APP_NOT_OPEN', () => {

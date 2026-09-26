@@ -321,7 +321,9 @@ browser never keeps) rejects `text()` and `json()` with `ACTION_FAILED`
 instead of an empty string. A genuinely empty body reads as `''`. A handler
 that throws (a failed `expect` on the request, say) fails the next step with
 that error, or the attempt at its end when no step follows; a handler still
-running then gets the cleanup budget to finish.
+running then gets the cleanup budget to finish. One that outlives the budget
+fails the attempt with `CLEANUP_TIMEOUT`, and whatever it throws afterwards is
+dropped.
 
 ```ts
 await web.route('**/api/quote', async (route) => {

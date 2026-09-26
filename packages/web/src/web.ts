@@ -377,7 +377,7 @@ export function createWebFixture(surface: PlaywrightSurface, context: EngineFixt
       // collects what it latched.
       const pwHandler = (route: Route): Promise<void> => {
         const work = handleRoute(route);
-        latch.track(work);
+        latch.track('route', work);
         return work;
       };
       return surface.guard(context.operation(), 'route', async () => {

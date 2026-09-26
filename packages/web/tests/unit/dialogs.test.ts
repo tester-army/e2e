@@ -161,9 +161,40 @@ describe('ErrorLatch', () => {
     await expect(latch.settle(budget())).resolves.toBeUndefined();
   });
 
-  it('settles within the budget when a tracked path never finishes', async () => {
+  it('fails closed with CLEANUP_TIMEOUT naming a handler that outlives the budget, and drops what it throws later', async () => {
     const latch = new ErrorLatch();
-    latch.track(new Promise<void>(() => undefined));
-    await expect(latch.settle({ timeoutMs: 20, signal: new AbortController().signal })).resolves.toBeUndefined();
+    const router = new DialogRouter(latch);
+    router.add(async (dialog) => {
+      await dialog.accept();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      throw new TestError('ASSERTION_FAILED', 'too late to count');
+    });
+    const dispatched = router.dispatch(fakeDialog().dialog);
+    await expect(latch.settle({ timeoutMs: 20, signal: new AbortController().signal })).rejects.toThrowError(
+      expect.objectContaining({
+        code: 'CLEANUP_TIMEOUT',
+        category: 'infrastructure',
+        message: expect.stringContaining('a dialog handler was still running'),
+      }),
+    );
+    await dispatched;
+    expect(() => latch.throwPending()).not.toThrow();
+    await expect(latch.settle(budget())).resolves.toBeUndefined();
+  });
+
+  it('names every kind of handler still running, and reports a latched error ahead of the timeout', async () => {
+    const latch = new ErrorLatch();
+    latch.latch(new TestError('ASSERTION_FAILED', 'landed in time'));
+    latch.track('route', new Promise<void>(() => undefined));
+    latch.track('dialog', new Promise<void>(() => undefined));
+    await expect(latch.settle({ timeoutMs: 20, signal: new AbortController().signal })).rejects.toThrowError(
+      expect.objectContaining({ code: 'ASSERTION_FAILED' }),
+    );
+    const bare = new ErrorLatch();
+    bare.track('route', new Promise<void>(() => undefined));
+    bare.track('dialog', new Promise<void>(() => undefined));
+    await expect(bare.settle({ timeoutMs: 20, signal: new AbortController().signal })).rejects.toThrowError(
+      expect.objectContaining({ message: expect.stringContaining('a dialog and route handler was still running') }),
+    );
   });
 });

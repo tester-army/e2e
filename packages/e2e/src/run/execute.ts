@@ -1045,8 +1045,14 @@ export class TargetExecutor implements SerialHost {
       // A callback the surface ran for the body (a request interceptor, a
       // dialog handler) fails on a path no step awaits; one that failed after
       // the last step is collected here, so it is the verdict instead of the
-      // next attempt's surprise.
-      await this.settleAttempt(session, attemptId).catch((cause: unknown) => recordFailure(cause, 'body'));
+      // next attempt's surprise. Evidence is taken now, before a teardown
+      // navigates away from the page the callback saw.
+      try {
+        await this.settleAttempt(session, attemptId);
+      } catch (cause) {
+        recordFailure(cause, 'body');
+        await captureEvidence();
+      }
 
       phase = 'afterEach';
       // Each teardown gets its own cleanup budget: a body that timed out or

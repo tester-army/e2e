@@ -209,23 +209,42 @@ export function cancelled(text: string): EngineError {
  */
 export class ErrorLatch {
   private pending: Error | null = null;
-  private readonly running = new Set<Promise<void>>();
+  private readonly running = new Map<Promise<void>, string>();
+  private abandoned = false;
 
-  /** Latches an error; the first one wins until it is thrown. */
+  /** Latches an error; the first one wins until it is thrown. Dropped once `settle` gave up on a handler. */
   latch(error: Error): void {
+    if (this.abandoned) return;
     this.pending ??= error;
   }
 
-  /** Tracks one unawaited path until it settles, so `settle` can wait for it. Its own rejection is the caller's to latch. */
-  track(work: Promise<void>): void {
+  /** Tracks one unawaited `kind` of path (a route or dialog handler) until it settles, so `settle` can wait for it. Its own rejection is the caller's to latch. */
+  track(kind: string, work: Promise<void>): void {
     const tracked: Promise<void> = work.then(() => undefined, () => undefined);
-    this.running.add(tracked);
+    this.running.set(tracked, kind);
     void tracked.then(() => this.running.delete(tracked));
   }
 
-  /** Waits, within the budget, for tracked paths still running, then rethrows the latched error once. */
+  /**
+   * Waits, within the budget, for tracked paths still running, then rethrows
+   * the latched error once. A path that outlives the budget fails closed:
+   * `CLEANUP_TIMEOUT` naming it, and whatever it throws afterwards is dropped
+   * here on purpose rather than landing on a verdict already reached.
+   */
   async settle(budget: EngineCleanupContext): Promise<void> {
-    if (this.running.size > 0) await withinCleanupBudget(Promise.all(this.running), budget);
+    if (!this.abandoned && this.running.size > 0) {
+      await withinCleanupBudget(Promise.all(this.running.keys()), budget);
+      if (this.running.size > 0) {
+        const kinds = [...new Set(this.running.values())].toSorted().join(' and ');
+        this.running.clear();
+        this.abandoned = true;
+        this.throwPending();
+        throw new InfrastructureError(
+          'CLEANUP_TIMEOUT',
+          `a ${kinds} handler was still running when the cleanup budget ended; anything it throws now is dropped`,
+        );
+      }
+    }
     this.throwPending();
   }
 

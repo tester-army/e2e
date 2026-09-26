@@ -111,7 +111,7 @@ These appear in terminal output and in the report as plain string codes.
 | `UNHANDLED_REJECTION` | A promise rejected with no test running. An unhandled rejection is charged to the test running when it surfaces, since Node cannot say which test created the promise; between tests it is this run error, naming the last test that finished in the worker as the likely source. Before any test has finished in the worker it ends the worker instead: the rejection is the run error and the test on its way fails with `WORKER_CRASH`. The body that left it keeps running like one past `TEST_TIMEOUT` | test | 1 |
 | `HOOK_FAILED` | `beforeAll` or `afterAll` threw. Skips the suite's tests. | test | 1 |
 | `LAUNCH_TIMEOUT` | Engine init or attempt start exceeded `config.launchTimeout` | infrastructure | 3 |
-| `CLEANUP_TIMEOUT` | Engine attempt end exceeded `config.cleanupTimeout` | infrastructure | 3 |
+| `CLEANUP_TIMEOUT` | Engine attempt end exceeded `config.cleanupTimeout`, or a route or dialog handler the engine ran for the test was still running when the attempt settled | infrastructure | 3 |
 | `TRACE_WITHHELD` | A trace from an attempt that filled a secret could not be rewritten, so it was deleted. Recorded in the attempt's `secondaryErrors`; never fails the attempt. | infrastructure | 3 |
 | `BROWSER_INSTALL_FAILED` | Browser provisioning failed | infrastructure | 3 |
 | `WORKER_INIT_FAILED` | A worker process never became ready | infrastructure | 3 |
