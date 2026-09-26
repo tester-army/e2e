@@ -245,6 +245,12 @@ CROSSCHECK_BENCHMARK_URL=http://127.0.0.1:4280 pnpm --filter @e2edev/web exec vi
   of `tests/crosscheck/crosscheck.ts`, each with its reason, not lines.
 - A reader change (`src/in-page/read-semantics.ts`) runs it before the PR.
   A bug in that family starts as a fixture page line here.
+- `tests/integration/conformance.test.ts` holds the reader to a third
+  oracle: the role and accessible-name expectations of the axe-core test
+  suite (`tests/conformance/axe-core/`, vendored byte for byte through
+  Playwright's copy, MPL-2.0). Its disagreements live in
+  `tests/conformance/expected.txt` the same way, grouped by reason; a line
+  that starts with `Bug:` is a fix waiting to be made, and the fix deletes it.
 
 ## Gotchas
 

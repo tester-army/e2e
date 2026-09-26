@@ -16,7 +16,7 @@ import { captureDocument } from '../../src/observation.ts';
 
 /** One field on which the engine and an oracle read a node differently. */
 export interface Disagreement {
-  readonly oracle: 'chrome' | 'playwright';
+  readonly oracle: 'chrome' | 'playwright' | 'axe';
   /** `role`, `name`, a state name, `level`, `missing` (Chrome has the node, the engine does not), or `unknown` (the other way). */
   readonly field: string;
   readonly ours: string;
@@ -89,7 +89,8 @@ const INTERACTIVE_CHROME_ROLES = new Set([
 /** The ARIA states compared, as Chrome's AX property names. */
 const STATES = ['checked', 'disabled', 'expanded', 'selected', 'pressed'] as const;
 
-const MARKER = 'data-e2e-crosscheck';
+/** The attribute each published element carries its node id in. */
+export const MARKER = 'data-e2e-crosscheck';
 
 function flatten(node: SemanticNode, out: SemanticNode[] = []): SemanticNode[] {
   out.push(node);
@@ -106,7 +107,7 @@ function describe(role: string, name: string): string {
 }
 
 /** One capture through the engine's own reader, with the element behind each node id. */
-async function captureTagged(page: Page): Promise<{
+export async function captureTagged(page: Page): Promise<{
   nodes: SemanticNode[];
   elements: Map<string, ElementHandle<Element>>;
   facts: Map<string, ElementFacts>;

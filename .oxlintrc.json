@@ -14,6 +14,8 @@
   "ignorePatterns": [
     "**/dist/**",
     "packages/*/tests/fixtures/**",
+    // Vendored conformance data, kept byte for byte.
+    "packages/*/tests/conformance/*/**",
     "packages/*/tests/tmp-projects/**"
   ],
   "rules": {
