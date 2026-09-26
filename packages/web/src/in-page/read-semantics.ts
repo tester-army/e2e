@@ -228,6 +228,8 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
           case 'submit':
           case 'reset':
           case 'image':
+          // A file input is its picker button, as Chrome and Playwright read it.
+          case 'file':
             return 'button';
           case 'checkbox':
             return 'checkbox';

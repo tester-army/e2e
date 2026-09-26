@@ -1,13 +1,13 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-09-24T19:35:10.785Z",
+  "createdAt": "2026-09-26T20:48:22.536Z",
   "payload": {
     "actions": [
       {
         "name": "upload",
-        "summary": "upload \"fixtures/attachment.txt\", \"fixtures/second.txt\" to textbox \"Attachments\" in \"Files\"",
+        "summary": "upload \"fixtures/attachment.txt\", \"fixtures/second.txt\" to button \"Attachments\" in \"Files\"",
         "target": {
-          "role": "textbox",
+          "role": "button",
           "name": "Attachments",
           "within": "Files"
         },
@@ -26,7 +26,7 @@
       "targetId": "web",
       "instructionDigest": "6eb8c4cb34d6623811808727d85db0d55946be5724f0cdc01b3c633db3d6f44d"
     },
-    "summary": "Attached both fixtures/attachment.txt and fixtures/second.txt to the Attachments input. The Attachments state now shows “attachment.txt, second.txt.”.",
+    "summary": "Attached both fixtures/attachment.txt and fixtures/second.txt. The Attachments state now lists attachment.txt and second.txt.",
     "startPath": "/e/control-inventory",
     "endPath": "/e/control-inventory",
     "endAnchors": [
@@ -36,6 +36,6 @@
         "text": "attachment.txt, second.txt"
       }
     ],
-    "endWaitMs": 11856
+    "endWaitMs": 11392
   }
 }

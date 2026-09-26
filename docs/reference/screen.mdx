@@ -568,6 +568,7 @@ an `<img alt="">` is decoration and matches nothing.
 The web engine derives the roles from HTML the way HTML-AAM does: `<progress>`
 is `progressbar`, `<meter>` is `meter`, `<hr>` is `separator`, `<fieldset>`
 and `<details>` are `group`, `<input type="number">` is `spinbutton`,
+`<input type="file">` is `button`, as Chrome and Playwright read it,
 `<thead>` and `<tbody>` are `rowgroup`, `<th scope="row">` is `rowheader`,
 `<figure>` is `figure`, `<article>` is `article`, and `<form>` and `<section>`
 are `form` and `region` only when they carry an `aria-label`,
