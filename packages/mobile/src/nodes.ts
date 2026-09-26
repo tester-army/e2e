@@ -382,6 +382,8 @@ const SYSTEM_BAR_MIN_WIDTH_SHARE = 0.9;
 /** The screen edge band a status icon sits in, and the width share it stays under. */
 const STATUS_ICON_BAND_SHARE = 0.08;
 const STATUS_ICON_MAX_WIDTH_SHARE = 0.5;
+/** The classes a status icon is built from: it shows, and offers nothing to act on. */
+const STATUS_ICON_KINDS: ReadonlySet<string> = new Set(['text-view', 'image-view', 'frame-layout', 'linear-layout', 'view', 'view-group']);
 
 /**
  * Whether a top-level element is one of Android's system bars: the status
@@ -399,14 +401,15 @@ const STATUS_ICON_MAX_WIDTH_SHARE = 0.5;
  * agent-device 0.21.15 reports the status bar's icons (clock, signal,
  * battery, a notification icon) as top-level nodes of their own rather than
  * children of one bar, so a narrow systemui node lying wholly inside the edge
- * band is the bar too. A popup is wide, and stays.
+ * band, built only of text, images, and layouts, is the bar too. A popup is
+ * wide or holds a control, and stays.
  */
-function isSystemBar(node: RawNode, screen: ViewportSize | undefined): boolean {
+function isSystemBar(node: RawNode, screen: ViewportSize | undefined, displayOnly: () => boolean): boolean {
   if (node.bundleId !== SYSTEM_UI_PACKAGE || node.rect === undefined || screen === undefined) return false;
   const { y, width, height } = node.rect;
   const band = screen.height * STATUS_ICON_BAND_SHARE;
   const inEdgeBand = y + height <= band || y >= screen.height - band;
-  if (inEdgeBand && width < screen.width * STATUS_ICON_MAX_WIDTH_SHARE) return true;
+  if (inEdgeBand && width < screen.width * STATUS_ICON_MAX_WIDTH_SHARE && displayOnly()) return true;
   if (height >= screen.height * SYSTEM_BAR_MAX_SHARE || width < screen.width * SYSTEM_BAR_MIN_WIDTH_SHARE) return false;
   return y <= 0 || y + height >= screen.height;
 }
@@ -508,8 +511,14 @@ export function projectSnapshot(raw: readonly RawNode[], options: { readonly min
     projected.node = node;
     return node;
   };
+  /** Whether every node from `position` down is a class that only shows (`STATUS_ICON_KINDS`). */
+  const displayOnly = (position: number): boolean => {
+    const node = raw[position] as RawNode;
+    if (node.editable === true || !STATUS_ICON_KINDS.has(normalizeKind(node.type ?? ''))) return false;
+    return (children.get(position) ?? []).every(displayOnly);
+  };
   const rootNodes = roots
-    .filter((position) => !isSystemBar(raw[position] as RawNode, viewport))
+    .filter((position) => !isSystemBar(raw[position] as RawNode, viewport, () => displayOnly(position)))
     .map((position) => build(position, undefined));
   return { roots: rootNodes, index, viewport };
 }
