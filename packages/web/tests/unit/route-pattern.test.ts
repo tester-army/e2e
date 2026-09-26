@@ -57,3 +57,13 @@ describe('routePatternsEqual', () => {
     expect(routePatternsEqual(toRoutePattern('a'), toRoutePattern(/a/))).toBe(false);
   });
 });
+
+describe('toRoutePattern', () => {
+  it('rejects a pattern that is neither a string nor a RegExp instead of matching every URL', () => {
+    for (const pattern of [(url: URL) => url.pathname === '/other', { source: 'a', flags: '' }, undefined, 1]) {
+      expect(() => toRoutePattern(pattern as unknown as RegExp)).toThrow(
+        expect.objectContaining({ code: 'INVALID_ARGUMENT' }),
+      );
+    }
+  });
+});

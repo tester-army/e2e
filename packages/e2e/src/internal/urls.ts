@@ -1,6 +1,6 @@
 /** URL normalization and origin policy helpers. */
 
-import { ConfigurationError } from './errors.ts';
+import { ConfigurationError, TestError } from './errors.ts';
 import { testPattern } from './regexp.ts';
 
 export interface NormalizedBaseUrl {
@@ -177,6 +177,8 @@ export function sameSite(url: string | URL, site: string): boolean {
  * Compares a current URL to an expected string/regexp.
  * Relative expected strings resolve against the base URL; string comparison is
  * exact after WHATWG serialization; regexps test the complete serialized URL.
+ * Anything else, such as a Playwright-style predicate, is `INVALID_ARGUMENT`:
+ * read as a regexp it would have no source and match every URL.
  */
 export function urlMatches(current: string, expected: string | RegExp, baseHref: string): boolean {
   if (typeof expected === 'string') {
@@ -187,6 +189,9 @@ export function urlMatches(current: string, expected: string | RegExp, baseHref:
       return false;
     }
     return serializeForComparison(current) === expectedUrl.href;
+  }
+  if (!(expected instanceof RegExp)) {
+    throw new TestError('INVALID_ARGUMENT', `URL pattern must be a string or RegExp, got ${typeof expected}`);
   }
   return testPattern(expected.source, expected.flags, serializeForComparison(current));
 }

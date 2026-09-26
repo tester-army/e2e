@@ -12,7 +12,7 @@ function escapeRegexpChar(ch: string): string {
 function testPattern(source: string, flags: string, input: string): boolean {
   return new RegExp(source, flags).test(input);
 }
-import type { TextPattern } from 'e2e/engine';
+import { TestError, type TextPattern } from 'e2e/engine';
 
 /**
  * Compiles a string route pattern: `*` matches within one path segment, `**`
@@ -55,9 +55,16 @@ export function routePatternMatches(pattern: TextPattern, url: string): boolean 
   return testPattern(pattern.source, pattern.flags, url);
 }
 
-/** Converts a public string/RegExp pattern into the wire TextPattern form. */
+/**
+ * Converts a public string/RegExp pattern into the wire TextPattern form.
+ * Anything else, such as a Playwright-style predicate, is `INVALID_ARGUMENT`:
+ * read as a regexp it would have no source and match every URL.
+ */
 export function toRoutePattern(pattern: string | RegExp): TextPattern {
   if (typeof pattern === 'string') return { kind: 'string', value: pattern, exact: true };
+  if (!(pattern instanceof RegExp)) {
+    throw new TestError('INVALID_ARGUMENT', `URL pattern must be a string or RegExp, got ${typeof pattern}`);
+  }
   return { kind: 'regexp', source: pattern.source, flags: pattern.flags };
 }
 

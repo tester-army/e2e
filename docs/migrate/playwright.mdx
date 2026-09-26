@@ -192,7 +192,7 @@ to do today.
 | `page.goBack()` | `app.back()`, or `web.back()` | `app` | renamed |
 | `page.goForward()`, `page.reload()` | `web.forward()`, `web.reload()` | `web` | web only |
 | `page.url()`, `page.title()` | `web.url()`, `web.title()` | `web` | web only |
-| `page.waitForURL()` | `web.waitForURL()` | `web` | web only |
+| `page.waitForURL()` | `web.waitForURL()`; a string or `RegExp`, no predicate function | `web` | web only |
 | `page.waitForLoadState()` | not yet; `web.goto(url, { waitUntil })` on the navigation itself | `web` | missing |
 | `page.waitForFunction(fn)` | `expect.poll(() => web.evaluate(fn)).toBeTruthy()` | `web` | missing |
 | `page.waitForTimeout(ms)` | a locator assertion on the state you are waiting for | `expect` | by design |
@@ -205,12 +205,12 @@ to do today.
 
 | Playwright | e2e | Lives in | Status |
 | --- | --- | --- | --- |
-| `page.route(pattern, handler)` | `web.route(pattern, handler)`; the handler decides exactly once | `web` | web only |
+| `page.route(pattern, handler)` | `web.route(pattern, handler)`; a string or `RegExp` pattern, no predicate function; the handler decides exactly once | `web` | web only |
 | `route.fulfill({ json, body, status, headers })` | the same; `json` or `body`, never both | `web` | web only |
 | `route.fulfill({ path, contentType })`, `route.fetch()` | not yet; read the file in the test and pass `body` | `web` | missing |
 | `route.continue(overrides)`, `route.abort(code)` | `continue()` and `abort()` take no arguments | `web` | missing |
 | `page.unroute()` | `web.unroute()` | `web` | web only |
-| `page.waitForResponse(pattern)` | `web.waitForResponse(pattern)`: `url`, `status`, `headers`, `json()`, `text()` | `web` | web only |
+| `page.waitForResponse(pattern)` | `web.waitForResponse(pattern)`: a string or `RegExp`, no predicate function; `url`, `status`, `headers`, `json()`, `text()` | `web` | web only |
 | `response.ok()`, `response.body()`, `response.request()` | not yet; `status` and `text()` | `web` | missing |
 | `page.waitForRequest()`, `request.postDataJSON()` | not yet; `route.request.postData` is a string | `web` | missing |
 | `routeFromHAR()`, `routeWebSocket()` | not yet | `web` | missing |

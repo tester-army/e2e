@@ -246,8 +246,8 @@ in a suite that also runs on other platforms.
 `goto` defaults `waitUntil` to `'load'` and throws `POLICY_DENIED` for a
 `file:`, `data:`, or `javascript:` URL. `waitForURL` polls every 100 ms; a
 relative string resolves against the base URL and matches exactly after
-normalization, a `RegExp` tests the full URL, and a timeout is
-`ASSERTION_FAILED`. The other navigations throw `ACTION_FAILED`.
+normalization, a `RegExp` tests the full URL, anything else (a predicate
+function, say) is `INVALID_ARGUMENT`, and a timeout is `ASSERTION_FAILED`. The other navigations throw `ACTION_FAILED`.
 
 ```ts
 await web.goto('/dashboard', { waitUntil: 'networkidle' });
@@ -310,7 +310,10 @@ const flag = await web.evaluate(
 
 ### Routing
 
-A route survives `app.restart()`, `app.clearState()`, and session restore.
+`route`, `unroute`, and `waitForResponse` take a string pattern (`*` within a
+path segment, `**` across `/`) or a `RegExp`, both tested against the full
+URL; a predicate function is `INVALID_ARGUMENT`. A route survives
+`app.restart()`, `app.clearState()`, and session restore.
 The handler must decide exactly once with `fulfill`, `continue`, or `abort`;
 deciding twice or not at all is `ACTION_FAILED`, as is a `waitForResponse`
 that nothing matches inside the deadline. The response resolves once its body

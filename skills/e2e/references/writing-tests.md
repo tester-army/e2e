@@ -335,7 +335,7 @@ Import `test` from `@e2edev/web`. Prefer `app` and `screen`; use
 | `frameLocator(css)` | A `Screen` scoped to one iframe: `web.frameLocator('#payment').getByLabel('Card number')`. The scope keeps `locator(css)` for unnamed controls inside the frame and `frameLocator(css)` for a nested frame. |
 | `evaluate(fn, arg?)` | Runs serialized code in the page. JSON in and out only, no closures. |
 | `route(pattern, handler)`, `unroute(pattern)` | Intercept requests: `route.fulfill({ json })`, `route.continue()`, `route.abort()`. |
-| `waitForResponse(pattern)` | Resolves with `{ url, status, headers, json(), text() }`; `text()` and `json()` reject with `ACTION_FAILED` when the body could not be read. |
+| `waitForResponse(pattern)` | Resolves with `{ url, status, headers, json(), text() }`; `text()` and `json()` reject with `ACTION_FAILED` when the body could not be read. A URL pattern here, in `route`, and in `waitForURL` is a glob string or a `RegExp`; a predicate function is `INVALID_ARGUMENT`. |
 | `cookies()`, `setCookies([...])` | Read and set cookies; a target is an http(s) URL or a domain. |
 | `setViewport({ width, height })` | Resize. |
 | `onDialog('accept' \| 'dismiss' \| handler)` | Returns an unsubscribe function. Register it before the tap that opens the dialog. |

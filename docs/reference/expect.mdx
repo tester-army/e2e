@@ -150,7 +150,8 @@ export interface WebExpectation {
 ```
 
 A relative `toHaveURL` string resolves against the base URL and matches
-exactly after normalization; a `RegExp` tests the full URL.
+exactly after normalization; a `RegExp` tests the full URL. Anything else,
+such as a predicate function, is `INVALID_ARGUMENT`.
 
 `toHaveClass` polls for the node too: a target that matches nothing yet is one
 more poll, not a failure, until the assertion timeout runs out. An ambiguous
