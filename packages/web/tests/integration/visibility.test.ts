@@ -43,6 +43,7 @@ const PAGE = `
   <div id="sized" style="width:40px;height:40px;overflow:hidden"><button>Shown</button></div>
   <details id="closed"><summary>More</summary><button id="in-closed">Inside closed</button></details>
   <details id="open" open><summary>More</summary><button id="in-open">Inside open</button></details>
+  <details><summary>Outer</summary><details id="nested" open><summary>Inner</summary><button id="in-nested">Nested</button></details></details>
   <div id="contents-empty" style="display:contents"></div>
   <div id="contents-hidden-child" style="display:contents"><span style="display:none">gone</span></div>
   <div id="contents-painted" style="display:contents"><button>Painted</button></div>
@@ -63,6 +64,9 @@ describe('visibility agrees with Playwright', () => {
     ['a button inside closed details', '#in-closed', true],
     ['the summary of closed details', '#closed summary', false],
     ['a button inside open details', '#in-open', false],
+    ['open details nested in the body of closed details', '#nested', true],
+    ['the summary of details nested in closed details', '#nested summary', true],
+    ['a button inside open details nested in closed details', '#in-nested', true],
     ['an empty display: contents element', '#contents-empty', true],
     ['a display: contents element whose only child is hidden', '#contents-hidden-child', true],
     ['a display: contents element with a painted child', '#contents-painted', false],

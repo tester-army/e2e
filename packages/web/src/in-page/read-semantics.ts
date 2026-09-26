@@ -579,12 +579,20 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
 
   /**
    * True for content a closed `<details>` folds away: anything under it that
-   * is not in its `<summary>`. The nearest of the two decides, so a summary's
-   * own controls stay visible while the closed body's do not.
+   * is not in its `<summary>`. Every closed ancestor is asked, so a summary's
+   * own controls stay visible while the closed body's do not, nested
+   * `<details>` and their summaries included.
    */
   const isInClosedDetails = (el: Element): boolean => {
-    const nearest = el.closest('details,summary');
-    return nearest !== null && nearest !== el && nearest instanceof HTMLDetailsElement && !nearest.open;
+    let details = el.parentElement?.closest('details') ?? null;
+    while (details !== null) {
+      if (!details.open) {
+        const summary = details.querySelector(':scope > summary');
+        if (summary === null || !summary.contains(el)) return true;
+      }
+      details = details.parentElement?.closest('details') ?? null;
+    }
+    return false;
   };
 
   /**
