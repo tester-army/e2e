@@ -170,12 +170,13 @@ export function createAttemptArtifacts(options: {
  * trace's text entries are, and returns the redaction the record can claim:
  * `complete` once every registered value is gone from it, changed or not, and
  * `incomplete` when the file is not UTF-8 text or cannot be read or written,
- * in which case it is left as served.
+ * in which case it is left as served. A leading byte order mark is kept as
+ * part of the text, so a rewritten file starts the way it was served.
  */
 async function redactDownload(absolute: string, secrecy: SessionSecrecy): Promise<ArtifactRecord['redaction']> {
   try {
     const bytes = await readFile(absolute);
-    const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
     const redacted = secrecy.ledger.redact(text);
     if (redacted !== text) await writeFileAtomic(absolute, redacted);
     return 'complete';

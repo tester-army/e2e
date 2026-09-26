@@ -259,6 +259,21 @@ describe('download redaction', () => {
     expect(store.puts[0]!.sha256).toBe(createHash('sha256').update(redacted).digest('hex'));
   });
 
+  it('keeps a byte order mark on a rewritten download', async () => {
+    const store = capturing();
+    const artifacts = downloads(true, store);
+    const bom = Buffer.from([0xef, 0xbb, 0xbf]);
+    writeFileSync(path.join(artifacts.dir, 'downloads', 'export.csv'), Buffer.concat([bom, Buffer.from(`key\n${SECRET}\n`)]));
+    artifacts.sink.register('download', 'downloads/export.csv');
+    await artifacts.settle();
+    const rewritten = readFileSync(path.join(artifacts.dir, 'downloads', 'export.csv'));
+    expect(rewritten.subarray(0, 3).equals(bom)).toBe(true);
+    expect(rewritten.subarray(3).toString('utf8')).toBe('key\n<secret:api-key>\n');
+    expect(artifacts.records[0]).toMatchObject({ redaction: 'complete', size: rewritten.byteLength });
+    expect(store.puts[0]!.sha256).toBe(createHash('sha256').update(rewritten).digest('hex'));
+    expect(Buffer.from(store.puts[0]!.bytes).equals(rewritten)).toBe(true);
+  });
+
   it('labels a scanned text download complete when it held nothing to redact', async () => {
     const artifacts = downloads(true);
     writeFileSync(path.join(artifacts.dir, 'downloads', 'notes.txt'), 'nothing secret here');
