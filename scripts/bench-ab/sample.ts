@@ -41,6 +41,7 @@ interface ReportCase {
   readonly repeat: number;
   readonly status: string;
   readonly serialGroupId?: string;
+  readonly skip?: { readonly cause?: string };
   readonly attempts: readonly ReportAttempt[];
 }
 
@@ -56,17 +57,18 @@ export interface ReportDocument {
 
 /** One test, or one serial group, as a sample sees it. */
 export interface CaseSample {
+  /** Its attempts' time; zero for a test skipped before it started. */
   readonly durationMs: number;
-  /** Status, attempts, and every step's kind, api, label, status, error code, and cache mode. */
+  /** Status, skip cause, attempts, and every step's kind, api, label, status, error code, and cache mode. */
   readonly signature: string;
+  /** The event phases and each step api, summed over the case, so a run total can leave out a case whose behavior changed. */
+  readonly timings: Readonly<Record<string, number>>;
 }
 
 export interface Sample {
   readonly exitCode: number;
   /** Wall clock of the CLI process, startup and teardown included. */
   readonly wallMs: number;
-  /** Named durations compared pair by pair, summed over the run. */
-  readonly timings: Readonly<Record<string, number>>;
   /** Counts that two runs of one build should agree on. */
   readonly counters: Readonly<Record<string, number>>;
   readonly cases: ReadonlyMap<string, CaseSample>;
@@ -97,18 +99,17 @@ function add(into: Record<string, number>, key: string, value: number): void {
 
 /** Reads one report into a sample; `wallMs` is measured by the caller around the process. */
 export function sampleFromReport(report: ReportDocument, wallMs: number): Sample {
-  const timings: Record<string, number> = { 'suite (sum of attempts)': 0, 'observe (events)': 0, 'action (events)': 0, 'model (events)': 0 };
   const counters: Record<string, number> = {};
   const cases = new Map<string, CaseSample>();
-  const entries = [
-    ...report.run.results.filter((entry) => entry.serialGroupId === undefined && entry.attempts.length > 0),
-    ...report.run.serialGroups.filter((entry) => entry.attempts.length > 0),
-  ];
+  // A serial member's result carries no attempts of its own; its group does.
+  const entries = [...report.run.results.filter((entry) => entry.serialGroupId === undefined), ...report.run.serialGroups];
   for (const entry of entries) {
+    if (entry.attempts.length === 0 && entry.status !== 'skipped') continue;
     add(counters, `tests ${entry.status}`, 1);
     add(counters, 'attempts', entry.attempts.length);
+    const timings: Record<string, number> = {};
     let durationMs = 0;
-    const lines = [`status ${entry.status}`, `attempts ${entry.attempts.length}`];
+    const lines = [`status ${entry.status}${entry.skip?.cause === undefined ? '' : ` (${entry.skip.cause})`}`, `attempts ${entry.attempts.length}`];
     entry.attempts.forEach((attempt, index) => {
       durationMs += attempt.durationMs;
       lines.push(`attempt ${index + 1} ${attempt.status}${attempt.error?.code === undefined ? '' : ` ${attempt.error.code}`}`);
@@ -132,9 +133,8 @@ export function sampleFromReport(report: ReportDocument, wallMs: number): Sample
         }
       }
     });
-    add(timings, 'suite (sum of attempts)', durationMs);
-    cases.set(caseKey(entry), { durationMs, signature: lines.join('\n') });
+    cases.set(caseKey(entry), { durationMs, signature: lines.join('\n'), timings });
   }
   add(counters, 'model tokens', report.run.usage.modelTokens ?? 0);
-  return { exitCode: report.run.exitCode, wallMs, timings, counters, cases };
+  return { exitCode: report.run.exitCode, wallMs, counters, cases };
 }

@@ -47,7 +47,10 @@ export interface Comparison {
   readonly changes: readonly CaseChange[];
   /** Counters whose range differs between the sides, or varies within one. */
   readonly counters: readonly CounterRow[];
-  /** Run-level timings: the whole suite, the event phases, and each step api. */
+  /**
+   * The process wall clock, then totals over the tests whose behavior matched:
+   * the suite, the event phases, and each step api.
+   */
   readonly timings: readonly TimingRow[];
   /** Tests whose own duration resolved outside the threshold. */
   readonly cases: readonly TimingRow[];
@@ -79,12 +82,12 @@ function timingRow(name: string, base: readonly number[], head: readonly number[
   };
 }
 
+/** The distinct signatures of a case across one side's runs; a run without the case counts as a variant of its own. */
 function signatures(samples: readonly Sample[], key: string): Set<string> {
-  return new Set(samples.flatMap((sample) => {
-    const entry = sample.cases.get(key);
-    return entry === undefined ? [] : [entry.signature];
-  }));
+  return new Set(samples.map((sample) => sample.cases.get(key)?.signature ?? ABSENT));
 }
+
+const ABSENT = '(absent)';
 
 function caseChanges(base: readonly Sample[], head: readonly Sample[]): CaseChange[] {
   const keys = new Set([...base, ...head].flatMap((sample) => [...sample.cases.keys()]));
@@ -92,8 +95,9 @@ function caseChanges(base: readonly Sample[], head: readonly Sample[]): CaseChan
   for (const key of [...keys].toSorted()) {
     const inBase = signatures(base, key);
     const inHead = signatures(head, key);
-    if (inBase.size === 0) changes.push({ kind: 'added', key });
-    else if (inHead.size === 0) changes.push({ kind: 'removed', key });
+    const only = (set: Set<string>, value: string) => set.size === 1 && set.has(value);
+    if (only(inBase, ABSENT)) changes.push({ kind: 'added', key });
+    else if (only(inHead, ABSENT)) changes.push({ kind: 'removed', key });
     else if (inBase.size > 1) changes.push({ kind: 'unstable', key, side: 'base', variants: inBase.size });
     else if (inHead.size > 1) changes.push({ kind: 'unstable', key, side: 'head', variants: inHead.size });
     else {
@@ -104,6 +108,10 @@ function caseChanges(base: readonly Sample[], head: readonly Sample[]): CaseChan
   }
   return changes;
 }
+
+/** The headline row: the attempts of every comparable test, summed. */
+export const SUITE = 'suite (sum of attempts)';
+const PHASES = ['observe (events)', 'action (events)', 'model (events)'];
 
 /** Compares `base[i]` with `head[i]` for every pair. The arrays must be the same length. */
 export function compareSamples(base: readonly Sample[], head: readonly Sample[], limits: Limits): Comparison {
@@ -120,9 +128,20 @@ export function compareSamples(base: readonly Sample[], head: readonly Sample[],
     if (!stable || baseRange[0] !== headRange[0]) counters.push({ name, base: baseRange, head: headRange });
   }
 
-  const timingNames = new Set([...base, ...head].flatMap((sample) => Object.keys(sample.timings)));
-  const rows = [...timingNames]
-    .map((name) => timingRow(name, base.map((sample) => sample.timings[name] ?? 0), head.map((sample) => sample.timings[name] ?? 0), limits))
+  // Every case left has one signature on both sides, so it is in every run.
+  const comparable = [...new Set(base.flatMap((sample) => [...sample.cases.keys()]))]
+    .filter((key) => !excluded.has(key))
+    .toSorted();
+  // Run totals over the comparable cases only: a test whose behavior changed
+  // did different work, and its time would read as a speedup or a slowdown.
+  const total = (sample: Sample, name: string) =>
+    comparable.reduce((sum, key) => {
+      const entry = sample.cases.get(key)!;
+      return sum + (name === SUITE ? entry.durationMs : (entry.timings[name] ?? 0));
+    }, 0);
+  const timingNames = [SUITE, ...PHASES, ...new Set(comparable.flatMap((key) => base.flatMap((sample) => Object.keys(sample.cases.get(key)!.timings))))];
+  const rows = [...new Set(timingNames)]
+    .map((name) => timingRow(name, base.map((sample) => total(sample, name)), head.map((sample) => total(sample, name)), limits))
     .filter((row) => row.base.median > 0 || row.head.median > 0);
   const isStep = (row: TimingRow) => row.name.startsWith('step ');
   const timings = [
@@ -131,10 +150,6 @@ export function compareSamples(base: readonly Sample[], head: readonly Sample[],
     ...rows.filter(isStep).toSorted((a, b) => b.base.median - a.base.median),
   ];
 
-  const everywhere = (key: string) => [...base, ...head].every((sample) => sample.cases.has(key));
-  const comparable = [...new Set(base.flatMap((sample) => [...sample.cases.keys()]))]
-    .filter((key) => !excluded.has(key) && everywhere(key))
-    .toSorted();
   const cases = comparable
     .map((key) => timingRow(
       key,

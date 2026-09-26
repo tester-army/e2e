@@ -42,13 +42,12 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, wri
 import os from 'node:os';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { compareSamples } from './bench-ab/compare.ts';
+import { compareSamples, SUITE } from './bench-ab/compare.ts';
 import { renderMarkdown } from './bench-ab/markdown.ts';
 import { sampleFromReport, type ReportDocument, type Sample } from './bench-ab/sample.ts';
-import { pairedDelta, seededRandom } from './bench-ab/stats.ts';
+import { seededRandom } from './bench-ab/stats.ts';
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '..');
-const HEADLINE = 'suite (sum of attempts)';
 
 const { values: options, positionals: forwarded } = parseArgs({
   allowPositionals: true,
@@ -243,8 +242,9 @@ async function pair(index: number, measured: boolean): Promise<void> {
   base.push(results.base!);
   head.push(results.head!);
   order.push(headFirst ? 'head-first' : 'base-first');
-  const b = results.base!.timings[HEADLINE] ?? 0;
-  const h = results.head!.timings[HEADLINE] ?? 0;
+  const suiteMs = (sample: Sample) => [...sample.cases.values()].reduce((sum, entry) => sum + entry.durationMs, 0);
+  const b = suiteMs(results.base!);
+  const h = suiteMs(results.head!);
   log(`pair ${index}: base ${(b / 1000).toFixed(2)} s, head ${(h / 1000).toFixed(2)} s (${headFirst ? 'head' : 'base'} first)`);
 }
 
@@ -253,14 +253,14 @@ for (let index = 1; index <= warmup; index += 1) {
   await pair(index, false);
 }
 const started = Date.now();
-const headlineDelta = () =>
-  pairedDelta(base.map((sample, index) => [sample.timings[HEADLINE] ?? 0, head[index]!.timings[HEADLINE] ?? 0] as const), { threshold, seed });
+/** The suite row's verdict over the tests whose behavior matched so far. */
+const headlineVerdict = () => compareSamples(base, head, { threshold, floorMs }).timings.find((row) => row.name === SUITE)?.delta.verdict ?? 'unresolved';
 let stop: string | undefined;
 while (stop === undefined && base.length < maxPairs) {
   await pair(base.length + 1, true);
   const due = base.length >= minPairs && ((base.length - minPairs) % batch === 0 || base.length === maxPairs);
   if (!due) continue;
-  if (headlineDelta().verdict !== 'unresolved') stop = `resolved after ${base.length} pairs`;
+  if (headlineVerdict() !== 'unresolved') stop = `resolved after ${base.length} pairs`;
   else if (Date.now() - started > timeoutMs) stop = `stopped at the ${options.timeout}-minute timeout, unresolved`;
 }
 stop ??= `stopped at the ${maxPairs}-pair budget, unresolved`;
@@ -278,7 +278,12 @@ const header = {
   suiteDiffers,
 };
 const markdown = renderMarkdown(header, comparison);
-const serialize = (sample: Sample) => ({ exitCode: sample.exitCode, wallMs: sample.wallMs, timings: sample.timings, counters: sample.counters });
+const serialize = (sample: Sample) => ({
+  exitCode: sample.exitCode,
+  wallMs: sample.wallMs,
+  counters: sample.counters,
+  cases: Object.fromEntries([...sample.cases].map(([key, entry]) => [key, { durationMs: entry.durationMs, timings: entry.timings }])),
+});
 writeFileSync(path.join(outRoot, 'summary.md'), markdown);
 writeFileSync(path.join(outRoot, 'result.json'), `${JSON.stringify({
   version: 'bench-ab/1',

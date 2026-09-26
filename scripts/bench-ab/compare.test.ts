@@ -97,6 +97,42 @@ describe('compareSamples', () => {
     assert.match(markdown, /\+ agent agent\.act "one" passed cache:missed/);
   });
 
+  it('leaves a test whose behavior changed out of the suite and phase totals', () => {
+    const base = Array.from({ length: 6 }, (_, index) => sampleFromReport(report({
+      stable: [{ api: 'agent.act', durationMs: 1000 + index, cache: 'self-finalized', nodes: 5 }],
+      moved: [{ api: 'agent.act', durationMs: 4000 + index, cache: 'missed', nodes: 5 }],
+    }), 6000));
+    const head = Array.from({ length: 6 }, (_, index) => sampleFromReport(report({
+      stable: [{ api: 'agent.act', durationMs: 1000 + index, cache: 'self-finalized', nodes: 5 }],
+      moved: [{ api: 'agent.act', durationMs: 400 + index, cache: 'self-finalized', nodes: 5 }],
+    }), 3000));
+    const comparison = compareSamples(base, head, limits);
+    assert.deepEqual(comparison.changes.map((change) => change.kind), ['changed']);
+    const row = (name: string) => comparison.timings.find((entry) => entry.name === name)!;
+    assert.equal(row('suite (sum of attempts)').delta.verdict, 'same');
+    assert.equal(row('suite (sum of attempts)').base.median, 1002.5);
+    assert.equal(row('step agent.act').delta.verdict, 'same');
+    assert.equal(row('wall (process)').delta.verdict, 'faster');
+    assert.match(renderMarkdown(header, comparison), /covers the 1 tests whose behavior matched/);
+  });
+
+  it('keeps a test skipped before it started, and calls a test missing from some runs of one build unstable', () => {
+    const skipped: ReportDocument = {
+      run: {
+        exitCode: 0,
+        serialGroups: [],
+        usage: { modelTokens: 0 },
+        results: [{ file: 'tests/a.e2e.ts', titlePath: ['later'], targetId: 'web', agent: 'default', repeat: 0, status: 'skipped', skip: { cause: 'failure-limit' }, attempts: [] }],
+      },
+    };
+    const withSkip = sampleFromReport(skipped, 100);
+    assert.equal(withSkip.cases.get('tests/a.e2e.ts › later (web)')?.signature, 'status skipped (failure-limit)\nattempts 0');
+    const present = sampleFromReport(report({ one: [{ api: 'app.open', durationMs: 10 }] }), 100);
+    const absent = sampleFromReport(report({}), 100);
+    const changes = compareSamples([present, absent], [present, present], limits).changes;
+    assert.deepEqual(changes, [{ kind: 'unstable', key: 'tests/a.e2e.ts › one (web)', side: 'base', variants: 2 }]);
+  });
+
   it('flags a test whose steps vary between runs of one build, and tests that only one side has', () => {
     const base = [
       sampleFromReport(report({ one: [{ api: 'app.open', durationMs: 10 }], gone: [{ api: 'app.open', durationMs: 10 }] }), 100),

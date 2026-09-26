@@ -88,7 +88,11 @@ export function renderMarkdown(header: Header, comparison: Comparison): string {
     out.push('These tests are left out of the timing rows below.', '');
     for (const change of comparison.changes) out.push(...changeLines(change));
   }
-  out.push('', '#### Timings', '', ...timingTable(comparison.timings, 'Metric'));
+  out.push('', '#### Timings', '');
+  if (comparison.changes.length > 0) {
+    out.push(`Every row but the process wall clock covers the ${comparison.casesCompared} tests whose behavior matched.`, '');
+  }
+  out.push(...timingTable(comparison.timings, 'Metric'));
   out.push('', '#### Counters', '');
   if (comparison.counters.length === 0) out.push('Every counter matched on every run of both builds.');
   else out.push(...counterTable(comparison.counters));
