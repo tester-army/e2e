@@ -2,11 +2,12 @@
  * How the screen is read after each kind of action.
  *
  * One table, keyed by the action grammar, answers both questions the runtime
- * asks once an action has committed: how long the next settled look waits
- * for the screen to leave the shape the action was resolved against (the
- * dispatcher arms it), and how far the replay's look before the next action
- * settles. A new action kind does not compile until it declares both, and
- * the live loop and replay can never disagree about the same action.
+ * asks once an action has committed: how long after it the screen has to
+ * leave the shape the action was resolved against (the dispatcher arms it,
+ * and the next settled look waits out what remains), and how far the
+ * replay's look before the next action settles. A new action kind does not
+ * compile until it declares both, and the live loop and replay can never
+ * disagree about the same action.
  */
 
 import type { RecordedAction } from '../cache/trace.ts';
@@ -37,14 +38,14 @@ export type SettleMode = 'raw' | 'after-change' | 'held-still';
 export const HELD_STILL_MS = 1_000;
 
 /**
- * How long a settled look waits for the screen to move away from the shape
- * an action was resolved against before accepting that the action changed
- * nothing visible. A tap on a link starts a navigation that commits hundreds
- * of milliseconds later; a client-side route change swaps the document body
- * after a fetch; a submit renders its result after a round trip. Read too
- * early, the observation is the old page, stable and wrong, and a model
- * "repairs" what already worked. Bounded so a dead control costs one wait,
- * not the step.
+ * How long after an action a settled look waits for the screen to move away
+ * from the shape the action was resolved against before accepting that the
+ * action changed nothing visible. A tap on a link starts a navigation that
+ * commits hundreds of milliseconds later; a client-side route change swaps
+ * the document body after a fetch; a submit renders its result after a round
+ * trip. Read too early, the observation is the old page, stable and wrong,
+ * and a model "repairs" what already worked. Bounded so a dead control costs
+ * one wait, not the step.
  */
 const FULL_CHANGE_WAIT_MS = 2_000;
 
@@ -60,10 +61,11 @@ const BRIEF_CHANGE_WAIT_MS = 500;
 /** What happens to the screen after one kind of action, as far as the runtime waits for it. */
 interface SettleAfter {
   /**
-   * How long the next settled look waits for the screen to leave the shape
-   * the action was resolved against. Absent for an action whose effect the
-   * tree cannot show: a secret fill is masked out of every capture, so a
-   * change wait after it could never be satisfied and would only cost time.
+   * How long after the action the screen has to leave the shape it was
+   * resolved against; capture time and delays before the next settled look
+   * count toward it. Absent for an action whose effect the tree cannot
+   * show: a secret fill is masked out of every capture, so a change wait
+   * after it could never be satisfied and would only cost time.
    */
   readonly changeWaitMs?: number;
   /** How far the replay's look before the next action settles. */
