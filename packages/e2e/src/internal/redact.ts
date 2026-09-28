@@ -87,15 +87,15 @@ function compile(values: readonly (readonly [string, string])[]): Compiled {
   // `split` on a capturing pattern returns the markers at the odd indexes; those pass through untouched.
   const redact = (text: string): string =>
     text.split(known).map((piece, index) => (index % 2 === 1 ? piece : rewrite(piece))).join('');
-  const foldedValues = entries.map(([, value]) => folded(value));
+  const valueKeys = entries.map(([, value]) => caseKey(value));
   const redactCut = (text: string): string => {
     // Only what follows the last marker can end in a value cut short.
     const tail = text.split(known).at(-1) ?? '';
-    const foldedTail = folded(tail);
+    const tailKey = caseKey(tail);
     let cut = 0;
     let marker = '';
-    foldedValues.forEach((value, index) => {
-      const length = leadingPartAtEnd(foldedTail, value, Math.min(FRAGMENT_LENGTH, Math.ceil(value.length / 2)));
+    valueKeys.forEach((value, index) => {
+      const length = leadingPartAtEnd(tailKey, value, Math.min(FRAGMENT_LENGTH, Math.ceil(value.length / 2)));
       if (length > cut) {
         cut = length;
         marker = markers[index] ?? '';
@@ -113,7 +113,7 @@ function compile(values: readonly (readonly [string, string])[]): Compiled {
     }
     return `${redact(text.slice(0, text.length - tail.length + start))}${marker}`;
   };
-  const fragments = fragmentOwners(foldedValues);
+  const fragments = fragmentOwners(valueKeys);
   const redactFragments = (text: string): string =>
     redact(text)
       .split(known)
@@ -231,8 +231,7 @@ function distinct(texts: readonly string[]): string[] {
  * `text` as the `i` flag compares it outside Unicode mode (ECMA-262
  * Canonicalize): each UTF-16 unit upper-cased, unless that takes more than
  * one unit or maps a non-ASCII unit into ASCII. Two literals match the same
- * text exactly when these agree. Unit for unit, so an index into the result
- * is one into `text`.
+ * text exactly when these agree.
  */
 function folded(text: string): string {
   return text
@@ -242,6 +241,34 @@ function folded(text: string): string {
       return upper.length === 1 && !(unit.charCodeAt(0) >= 128 && upper.charCodeAt(0) < 128) ? upper : unit;
     })
     .join('');
+}
+
+/**
+ * `text` with every character in one case, for comparing a cut or a fragment
+ * of a value as whole-value matching does: each code point lower-cased from
+ * its upper case, the Turkish lower case standing in where the default one
+ * takes more units (`İ` as `i`), so `ſ`, `S`, and `s` agree, and so do `İ`
+ * and `i`. A mapping that changes the length (`ß` as `SS`) is left out, so
+ * an index into the result is one into `text`.
+ */
+function caseKey(text: string): string {
+  if (!/[^\p{ASCII}]/u.test(text)) return text.toLowerCase();
+  let out = '';
+  for (const ch of text) out += ch.charCodeAt(0) < 128 ? ch.toLowerCase() : caseKeyOf(ch);
+  return out;
+}
+
+/** One non-ASCII character's `caseKey`, the same length as `ch`. */
+function caseKeyOf(ch: string): string {
+  const upper = sameLength(ch.toUpperCase(), ch);
+  const lower = upper.toLowerCase();
+  if (lower.length === ch.length) return lower;
+  return sameLength(upper.toLocaleLowerCase('tr'), upper);
+}
+
+/** `mapped` when it is as long as `original`, else `original`. */
+function sameLength(mapped: string, original: string): string {
+  return mapped.length === original.length ? mapped : original;
 }
 
 /** Locales whose case mappings differ from the default: the dotted and dotless i of Turkish and Azeri, Lithuanian's retained dot. */
@@ -321,8 +348,8 @@ function leadingPartAtEnd(text: string, value: string, minimum: number): number 
 /**
  * Every run of `FRAGMENT_LENGTH` characters of every value, mapped to the
  * index of the first value holding it; values come longest first, so a run
- * two values share names the longer one. The values come `folded`, so the
- * runs are keyed as the `i` flag compares them.
+ * two values share names the longer one. The values come as `caseKey`
+ * reads them, so a run in any case finds its owner.
  */
 function fragmentOwners(values: readonly string[]): Map<string, number> {
   const owners = new Map<string, number>();
@@ -338,14 +365,14 @@ function fragmentOwners(values: readonly string[]): Map<string, number> {
 /**
  * `text` with every stretch whose windows of `FRAGMENT_LENGTH` characters
  * each occur in a value replaced by the marker of the value owning its first
- * window. Windows are looked up `folded`, as `owners` is keyed, so a fragment
- * in another case is one too. The stretch grows one window at a time, so the
+ * window. Windows are looked up by `caseKey`, as `owners` is keyed, so a
+ * fragment in another case is one too. The stretch grows one window at a time, so the
  * scan is linear in the text and a run spanning two values becomes one
  * marker.
  */
 function rewriteFragments(text: string, owners: ReadonlyMap<string, number>, markers: readonly string[]): string {
   if (owners.size === 0) return text;
-  const key = folded(text);
+  const key = caseKey(text);
   let out = '';
   let kept = 0;
   let start = 0;
@@ -426,11 +453,10 @@ export class SecretLedger {
    * longest such part becomes that value's marker too, down to
    * `FRAGMENT_LENGTH` characters, or half of a value shorter than twice that.
    * A cut is one position, so a boundary this short seldom matches plain text
-   * by chance. Matched as the value is written, in any case the `i` flag
-   * folds (a CSS `text-transform` upper-casing the field): the cut falls on
-   * text as the engine read it, before any serializer spells it. A case
-   * mapping that changes length (`ß` to `SS`) is not followed, nor is
-   * collapsed whitespace. The part is found before whole values are
+   * by chance. Matched as the value is written, in any case (`caseKey`), as
+   * a CSS `text-transform` shows it: the cut falls on text as the engine read
+   * it, before any serializer spells it. A case mapping that changes length
+   * (`ß` to `SS`) is not followed, nor is collapsed whitespace. The part is found before whole values are
    * rewritten, so a value that starts with another registered value is not
    * half rewritten as the shorter one, and an occurrence running into the
    * part joins its marker. Bound like `redact`.

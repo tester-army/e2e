@@ -344,6 +344,17 @@ describe('redactFragments', () => {
     expect(ledger.redactFragments(`a ${SECRET.slice(20, 27).toUpperCase()} b`)).toBe(`a ${SECRET.slice(20, 27).toUpperCase()} b`);
   });
 
+  it('folds a fragment as whole-value matching does, keeping every index', () => {
+    const ledger = new SecretLedger([
+      ['turkish', 'fragment-igloo-sigma-2718'],
+      ['longS', 'long-ſecret-ſtring-3141'],
+    ]);
+    const turkish = 'fragment-igloo-sigma-2718'.slice(0, 20).toLocaleUpperCase('tr');
+    expect(turkish).toContain('İ');
+    expect(ledger.redactFragments(`x ${turkish} y`)).toBe('x <secret:turkish> y');
+    expect(ledger.redactFragments(`x ${'long-ſecret-ſtring-3141'.slice(3, 18).toUpperCase()} y`)).toBe('x <secret:longS> y');
+  });
+
   it('scans a long text in one linear pass', () => {
     const ledger = new SecretLedger([['apiKey', SECRET]]);
     const text = `${SECRET.slice(0, 7).toUpperCase()} `.repeat(20_000);

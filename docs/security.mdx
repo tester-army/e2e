@@ -134,11 +134,12 @@ An observed name, text, value, or selection the engine cut at its length
 limit can end partway through a secret. When a field exactly at its limit
 ends with the start of a registered value, 8 characters or more (half of a
 value shorter than 16), that part becomes `<secret:name>` too, in either
-case, since a CSS `text-transform` cuts the value as it shows it. A case
-mapping that changes the length (`ß` as `SS`) is not followed here. A shorter
-start is left as it is: it says little about the value, and masking it would
-take ordinary text that happens to end the same way and tell the model the
-value's first characters. A field that happens to be exactly that long
+case: the engine cuts the text as rendered, so a value a CSS `text-transform`
+upper-cases is cut upper-cased. Two forms whole values match are not followed
+here: a case mapping that changes the length (`ß` as `SS`) and a whitespace
+run collapsed to one space. A shorter start is left as it is: it says little
+about the value, and masking it would take ordinary text that happens to end
+the same way and tell the model the value's first characters. A field that happens to be exactly that long
 uncut loses its last characters the same way, since the runner cannot tell
 the two apart.
 
