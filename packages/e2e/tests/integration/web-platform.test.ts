@@ -469,6 +469,33 @@ test('downloads are captured as artifacts', async ({ app, web }) => {
   if (!download.path.startsWith('downloads/')) throw new Error(download.path);
 });
 
+test('clicks hold the modifiers they name', async ({ app, screen, web }) => {
+  await app.open();
+  await web.evaluate(() => {
+    document.body.innerHTML = '<button>Pick</button><p role="status"></p>';
+    const button = document.querySelector('button')!;
+    const status = document.querySelector('p')!;
+    const held = (event: MouseEvent) =>
+      [event.type, event.shiftKey && 'shift', event.altKey && 'alt', event.ctrlKey && 'ctrl', event.metaKey && 'meta']
+        .filter(Boolean)
+        .join(' ');
+    button.addEventListener('click', (event) => { status.textContent = held(event); });
+    button.addEventListener('dblclick', (event) => { status.textContent = held(event); });
+    button.addEventListener('contextmenu', (event) => { event.preventDefault(); status.textContent = held(event); });
+    return null;
+  });
+  const pick = screen.getByRole('button', { name: 'Pick' });
+  const status = screen.getByRole('status');
+  await pick.click({ modifiers: ['Shift'] });
+  await expect(status).toHaveText('click shift');
+  await pick.doubleTap({ modifiers: ['Alt'] });
+  await expect(status).toHaveText('dblclick alt');
+  await pick.secondaryTap({ modifiers: ['Shift', 'Control'] });
+  await expect(status).toHaveText('contextmenu shift ctrl');
+  await pick.tap();
+  await expect(status).toHaveText('click');
+});
+
 test('css selectors via web.locator', async ({ app, web }) => {
   await app.open();
   await expect(web.locator('ul[data-testid="items"] li').first()).toHaveText('Item Alpha');
@@ -602,6 +629,10 @@ describe('web platform integration', () => {
     const tap = result.attempts[0]!.steps.find((step) => step.api === 'locator.tap');
     expect(tap?.status).toBe('failed');
     expect(tap?.durationMs).toBeGreaterThanOrEqual(800);
+  });
+
+  it('holds click modifiers on the web engine', () => {
+    expect(resultByTitle(outcome, 'clicks hold the modifiers they name').status).toBe('passed');
   });
 
   it('fails ambiguous locators immediately with LOCATOR_AMBIGUOUS', () => {

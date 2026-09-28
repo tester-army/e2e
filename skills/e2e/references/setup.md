@@ -307,8 +307,8 @@ export default {
   Both can fill a `Secret`; screenshots are withheld afterward.
 - A deterministic check that names a platform label runs on one platform
   only: `test('...', { platforms: ['ios'] }, ...)`.
-- `selectOption`, `setInputFiles`, `scrollIntoView`, and `secondaryTap` are
-  `UNSUPPORTED_CAPABILITY` on a device.
+- `selectOption`, `setInputFiles`, `scrollIntoView`, `secondaryTap`, and
+  `modifiers` on a tap are `UNSUPPORTED_CAPABILITY` on a device.
 - React Native on iOS: a view with `accessibilityRole="checkbox"` or
   `"radio"` answers `getByRole`, `check()`, and `toBeChecked` (the role and
   state are read off the accessibility value); a `tab` is `other` with

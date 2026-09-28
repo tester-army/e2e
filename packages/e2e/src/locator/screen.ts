@@ -1,6 +1,7 @@
 /** Public Screen and Locator surfaces bound to one attempt. */
 
 import nodePath from 'node:path';
+import { isKeyModifier, KEY_MODIFIERS, type KeyModifier } from '../engine/contract.ts';
 import type { LocatorAction, LocatorExpression, SemanticNode } from '../engine/surface.ts';
 import { locatorBrand, secretBrand } from '../internal/brands.ts';
 import { asEngineError, TestError } from '../internal/errors.ts';
@@ -10,6 +11,7 @@ import { realmSlot } from '../internal/realm-slot.ts';
 import { normalizeText } from '../internal/text.ts';
 import type {
   ActionOptions,
+  ClickOptions,
   LongPressOptions,
   Locator,
   Momentum,
@@ -298,11 +300,11 @@ class LocatorImpl extends ScreenImpl implements Locator {
    * dispatched at that offset of the node's box.
    */
   private tapWith(api: 'tap' | 'click', options: TapOptions | undefined): Promise<void> {
-    rejectUnknownOptions(api, options, ['timeout', 'position']);
-    if (options?.position === undefined) {
-      return this.action(`locator.${api}`, () =>
-        this.context.engine.perform(this.expression, { kind: 'tap' }, options?.timeout),
-      );
+    rejectUnknownOptions(api, options, ['timeout', 'position', 'modifiers']);
+    const modifiers = requireModifiers(options?.modifiers, api);
+    if (options?.position === undefined) return this.dispatchTap(api, 'tap', modifiers, options?.timeout);
+    if (modifiers.modifiers !== undefined) {
+      throw new TestError('INVALID_ARGUMENT', `${api}() does not take modifiers with a position yet; drop one of them`);
     }
     const position = requirePoint(options.position, `${api} position`);
     return this.context.steps.run(
@@ -313,12 +315,31 @@ class LocatorImpl extends ScreenImpl implements Locator {
     );
   }
 
-  doubleTap(options?: ActionOptions): Promise<void> {
-    return this.perform('doubleTap', { kind: 'doubleTap' }, options);
+  doubleTap(options?: ClickOptions): Promise<void> {
+    return this.clickWith('doubleTap', options);
   }
 
-  secondaryTap(options?: ActionOptions): Promise<void> {
-    return this.perform('secondaryTap', { kind: 'secondaryTap' }, options);
+  secondaryTap(options?: ClickOptions): Promise<void> {
+    return this.clickWith('secondaryTap', options);
+  }
+
+  /** A double or secondary tap, with the keys `modifiers` holds for it. */
+  private clickWith(verb: 'doubleTap' | 'secondaryTap', options: ClickOptions | undefined): Promise<void> {
+    rejectUnknownOptions(verb, options, ['timeout', 'modifiers']);
+    return this.dispatchTap(verb, verb, requireModifiers(options?.modifiers, verb), options?.timeout);
+  }
+
+  /** One tap kind with the keys it holds, named after the node in the step label. */
+  private dispatchTap(
+    api: string,
+    kind: 'tap' | 'doubleTap' | 'secondaryTap',
+    held: { modifiers?: readonly KeyModifier[] },
+    timeout: number | undefined,
+  ): Promise<void> {
+    const label = held.modifiers === undefined ? this.label : `${this.label} with ${held.modifiers.join('+')}`;
+    return this.context.steps.run('locator', `locator.${api}`, label, () =>
+      this.context.engine.perform(this.expression, { kind, ...held }, timeout),
+    );
   }
 
   longPress(options?: LongPressOptions): Promise<void> {
@@ -606,4 +627,27 @@ function validateLongPress(durationMs: number | undefined): number {
     );
   }
   return value;
+}
+
+/**
+ * The `modifiers` of a click, validated: a list of distinct key modifiers,
+ * spread into the action only when it names one.
+ */
+function requireModifiers(value: unknown, api: string): { modifiers?: readonly KeyModifier[] } {
+  if (value === undefined) return {};
+  if (!Array.isArray(value)) {
+    throw new TestError('INVALID_ARGUMENT', `${api}() modifiers must be an array of ${KEY_MODIFIERS.join(', ')}`);
+  }
+  const modifiers: KeyModifier[] = [];
+  for (const modifier of value) {
+    if (!isKeyModifier(modifier)) {
+      throw new TestError(
+        'INVALID_ARGUMENT',
+        `${api}() modifier ${JSON.stringify(modifier)} is not one of ${KEY_MODIFIERS.join(', ')}`,
+      );
+    }
+    if (modifiers.includes(modifier)) throw new TestError('INVALID_ARGUMENT', `${api}() names a modifier twice`);
+    modifiers.push(modifier);
+  }
+  return modifiers.length === 0 ? {} : { modifiers };
 }

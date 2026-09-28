@@ -247,10 +247,16 @@ export interface ObservationPixels {
  */
 export type LocatorAction =
   | {
+      readonly kind: 'tap' | 'doubleTap' | 'secondaryTap';
+      /**
+       * Keys held for the click, as a Shift-click extends a selection. Only
+       * an engine that declares `tapModifiers` receives it; the harness
+       * refuses it for any other before dispatch.
+       */
+      readonly modifiers?: readonly KeyModifier[];
+    }
+  | {
       readonly kind:
-        | 'tap'
-        | 'doubleTap'
-        | 'secondaryTap'
         | 'check'
         | 'uncheck'
         | 'clear'
@@ -391,7 +397,13 @@ export interface ParsedKey {
   readonly key: { readonly kind: 'named'; readonly name: KeyName } | { readonly kind: 'char'; readonly char: string };
 }
 
-const MODIFIER_SET: ReadonlySet<string> = new Set(KEY_MODIFIERS);
+const MODIFIER_SET: ReadonlySet<unknown> = new Set(KEY_MODIFIERS);
+
+/** Whether a value is one of the key grammar's modifier names. */
+export function isKeyModifier(value: unknown): value is KeyModifier {
+  return MODIFIER_SET.has(value);
+}
+
 /** Control, format, surrogate, private-use, unassigned, and line or paragraph separators: never a printable key. */
 const NON_PRINTABLE = /[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}\p{Zl}\p{Zp}]/u;
 const NAME_SET: ReadonlySet<string> = new Set(KEY_NAMES);
@@ -412,8 +424,8 @@ export function parseKey(key: string): ParsedKey | undefined {
   if (last === undefined || last === '') return undefined;
   const modifiers: KeyModifier[] = [];
   for (const part of parts) {
-    if (!MODIFIER_SET.has(part) || modifiers.includes(part as KeyModifier)) return undefined;
-    modifiers.push(part as KeyModifier);
+    if (!isKeyModifier(part) || modifiers.includes(part)) return undefined;
+    modifiers.push(part);
   }
   if (NAME_SET.has(last)) return { modifiers, key: { kind: 'named', name: last as KeyName } };
   if ([...last].length === 1 && !NON_PRINTABLE.test(last)) return { modifiers, key: { kind: 'char', char: last } };

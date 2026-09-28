@@ -123,6 +123,13 @@ export interface Engine {
    * before reaching the engine.
    */
   readonly pointerActions?: readonly PointerActionKind[];
+  /**
+   * The surface honors `modifiers` on the `tap`, `doubleTap`, and
+   * `secondaryTap` actions `perform` receives. Without it the harness fails
+   * an action that carries modifiers with `UNSUPPORTED_CAPABILITY` before it
+   * reaches the engine.
+   */
+  readonly tapModifiers?: boolean;
   /** capability: keyboard - requires observation. Input to whatever holds focus; see `EngineKeyboard`. */
   readonly keyboard?: EngineKeyboard;
   /**
@@ -214,6 +221,7 @@ export interface OperationContext {
 | `observe` | `observation` | - | judgment tier, prompt snapshots, trace replay, the viewport swipe's root |
 | `perform` + `actions` | `actions` | `observe` | the agent's grammar verbs (`tap`, `double_tap`, `long_press`, `right_click`, `hover`, `type`, `press`, `select`, `check`, `type_secret`, `scroll`, `scroll_to`, `drag`, `upload`, and `tap_at` or `hover_at` when the point lands on a listed node) and the `screen`/`Locator` action set with platform actionability checks, each only for a kind listed in `actions` |
 | `locate` | `location` | `observe` | `screen`, `Locator`, `expect(locator)` |
+| `tapModifiers: true` | - | `perform` | `modifiers` on `tap`, `doubleTap`, and `secondaryTap` (`row.click({ modifiers: ['Shift'] })`), held for the click; without it such a call is `UNSUPPORTED_CAPABILITY` |
 | `performAt` + `pointerActions` | `pointer` | `observe` | the agent's `tap_at` and `hover_at` verbs when the point lands on nothing the tree lists (the `tap` and `hover` pointer kinds), and the test's `screen.tapAt` and `tap({ position })` (the `tap` kind) and `screen.swipe({ from, to })` (the `swipeTo` kind): one pointer action at a viewport point in the CSS pixels of `SemanticNode.rect`, with no node behind it |
 | `keyboard.{type,press,dismiss?}` | `keyboard` | `observe` | the agent's `type` and `press` without a target, the keyboard fallback of `type_at` and `press_at` on a point the tree lists nothing at, and `dismiss_keyboard` when `dismiss` exists: input to whatever holds focus, for a field drawn on a canvas or flattened out of a platform's tree; with the `focus` action, `locator.pressSequentially`, which the harness composes as `focus` then `keyboard.type` |
 | `fixtures.<name>` | `<name>` | - | a contributed fixture; `requires: ['<name>']` gates at selection |
@@ -570,10 +578,12 @@ depend on their semantic capture cannot provide this fallback.
  */
 export type LocatorAction =
   | {
+      readonly kind: 'tap' | 'doubleTap' | 'secondaryTap';
+      /** Keys held for the click; only an engine that declares `tapModifiers` receives it. */
+      readonly modifiers?: readonly KeyModifier[];
+    }
+  | {
       readonly kind:
-        | 'tap'
-        | 'doubleTap'
-        | 'secondaryTap'
         | 'check'
         | 'uncheck'
         | 'clear'

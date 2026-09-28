@@ -18,6 +18,7 @@ import {
   type E2EConfig,
   type ExecutorVerb,
   type FinishedRun,
+  type KeyModifier,
   type Locator,
   type ModelInstance,
   type PointHit,
@@ -278,6 +279,11 @@ void screen.tapAt(point, { timeout: 1_000 });
 void screen.swipe({ direction: 'up', momentum: 'fast' });
 void screen.swipe({ from: point, to: point });
 void screen.getByRole('image').tap({ position: point, timeout: 1_000 });
+const rangeKeys: readonly KeyModifier[] = ['Shift', 'ControlOrMeta'];
+void screen.getByRole('row').click({ modifiers: rangeKeys });
+void screen.getByRole('row').secondaryTap({ modifiers: ['Alt'] });
+// @ts-expect-error modifiers are the key grammar's modifier names
+void screen.getByRole('row').doubleTap({ modifiers: ['Hyper'] });
 void screen.getByRole('image').click({ position: point });
 // @ts-expect-error a point has both coordinates.
 void screen.tapAt({ x: 1 });

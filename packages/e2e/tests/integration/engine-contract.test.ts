@@ -904,6 +904,42 @@ test('swipes without a swipe capability', async ({ screen }) => {
     },
     60_000,
   );
+
+  it(
+    'hands click modifiers only to an engine that declares tapModifiers, and refuses them before perform otherwise',
+    async () => {
+      const file = `import { test } from 'e2e';
+
+test('shift-clicks', async ({ app, screen }) => {
+  await app.open('/');
+  await screen.getByRole('button', { name: 'Submit' }).click({ modifiers: ['Shift'] });
+});
+`;
+      const run = async (fake: FakeEngineHandle) => {
+        const { outcome, project } = await runProject(
+          { 'tests/modifiers.e2e.ts': file },
+          { appUrl: APP_URL, config: engineConfig(fake.engine) },
+        );
+        project.cleanup();
+        const result = resultByTitle(outcome, 'shift-clicks');
+        return { result, performs: fake.callsOf(result.attempts[0]!.id, 'perform').map((call) => call.action) };
+      };
+
+      const declaring = await run(createFakeEngine({ tapModifiers: true }));
+      expect(declaring.result.status).toBe('passed');
+      expect(declaring.performs).toEqual([{ kind: 'tap', modifiers: ['Shift'] }]);
+
+      const predating = await run(createFakeEngine());
+      expect(predating.result.status).toBe('failed');
+      expect(predating.result.attempts[0]!.error).toMatchObject({
+        code: 'UNSUPPORTED_CAPABILITY',
+        category: 'configuration',
+        message: expect.stringContaining('modifiers on the "tap" action'),
+      });
+      expect(predating.performs).toEqual([]);
+    },
+    60_000,
+  );
 });
 
 describe('video artifacts', () => {

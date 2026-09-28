@@ -110,7 +110,8 @@ export class LocatorEngine {
 
   /**
    * Refuses an action the session would refuse, before the locator is
-   * resolved: an undeclared kind is `UNSUPPORTED_CAPABILITY`, a `press` key
+   * resolved: an undeclared kind, or modifiers on an engine that does not
+   * declare `tapModifiers`, is `UNSUPPORTED_CAPABILITY`, a `press` key
    * outside the grammar is `INVALID_ARGUMENT`. Waiting for a node the engine
    * could never act on would report it as missing instead.
    */
@@ -121,6 +122,12 @@ export class LocatorEngine {
         `the "${action.kind}" action is not available on this target: its engine declares ${
           this.session.actions.size === 0 ? 'no actions' : [...this.session.actions].join(', ')
         }`,
+      );
+    }
+    if ('modifiers' in action && action.modifiers !== undefined && !this.session.tapModifiers) {
+      throw new ConfigurationError(
+        'UNSUPPORTED_CAPABILITY',
+        `modifiers on the "${action.kind}" action are not available on this target: its engine does not declare tapModifiers`,
       );
     }
     if (action.kind === 'press') requireKey(action.key);

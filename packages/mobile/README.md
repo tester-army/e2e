@@ -82,8 +82,9 @@ straight through, with no conditional spread.
 - **Actions**: tap, double tap, long press, fill, clear, check/uncheck (when
   the tree exposes the checked state; Android switches do not), focus on
   editable fields, `Enter`, single-character keys, swipe within a node, drag.
-  `selectOption`, `setInputFiles`, `scrollIntoView`, `secondaryTap`, focus on
-  a control, and other keys fail with `UNSUPPORTED_CAPABILITY`.
+  `selectOption`, `setInputFiles`, `scrollIntoView`, `secondaryTap`,
+  `modifiers` on a tap, focus on a control, and other keys fail with
+  `UNSUPPORTED_CAPABILITY`.
 - **Location**: every `screen` query, plus agent-device selectors through
   `device.locator('role=NavigationBar id=General')`.
 - **Viewport swipe**, `app.back()`, `app.restart()`, `app.clearState()`, and

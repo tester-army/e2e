@@ -60,6 +60,16 @@ describe('defineEngine', () => {
     expect(() => defineEngine(observingEngine({ actions: ['tap'] }))).toThrow(/actions without perform/);
   });
 
+  it('carries tapModifiers onto the handle only with perform, and only as a boolean', () => {
+    const perform = async () => undefined;
+    expect(defineEngine(observingEngine({ actions: ['tap'], perform, tapModifiers: true })).tapModifiers).toBe(true);
+    expect(defineEngine(observingEngine({ actions: ['tap'], perform, tapModifiers: false })).tapModifiers).toBeUndefined();
+    expect(() => defineEngine(observingEngine({ tapModifiers: true }))).toThrow(/tapModifiers without perform/);
+    expect(() => defineEngine(observingEngine({ actions: ['tap'], perform, tapModifiers: 'yes' as never }))).toThrow(
+      /tapModifiers must be a boolean/,
+    );
+  });
+
   it('closes the action list: known kinds, each once, at least one', () => {
     const withActions = (actions: unknown) =>
       defineEngine(observingEngine({ actions: actions as never, perform: async () => undefined }));

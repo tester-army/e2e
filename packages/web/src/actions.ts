@@ -1,7 +1,7 @@
 /** Locator action dispatch for the Playwright engine. */
 
 import type { Page } from 'playwright';
-import { EngineError, type LocatorAction, type NodeRef, type PointerAction, type ViewportPoint } from 'e2e/engine';
+import { EngineError, type KeyModifier, type LocatorAction, type NodeRef, type PointerAction, type ViewportPoint } from 'e2e/engine';
 import {
   asActionable,
   isClassified,
@@ -19,6 +19,11 @@ import {
 /** How long a long press holds the button when the action names no duration. */
 const DEFAULT_LONG_PRESS_MS = 500;
 
+/** The keys a click holds, as Playwright's `modifiers` takes them; the contract spells them the same. */
+function heldKeys(action: Extract<LocatorAction, { kind: 'tap' | 'doubleTap' | 'secondaryTap' }>): { modifiers?: KeyModifier[] } {
+  return action.modifiers === undefined ? {} : { modifiers: [...action.modifiers] };
+}
+
 /**
  * Dispatches one deterministic locator action onto a Playwright target with the
  * platform's own actionability checks. `lookup` resolves the second ref of a
@@ -33,13 +38,13 @@ export async function dispatchLocatorAction(
   const locator = asActionable(target);
   switch (action.kind) {
     case 'tap':
-      await locator.click({ timeout });
+      await locator.click({ timeout, ...heldKeys(action) });
       return;
     case 'doubleTap':
-      await locator.dblclick({ timeout });
+      await locator.dblclick({ timeout, ...heldKeys(action) });
       return;
     case 'secondaryTap':
-      await locator.click({ button: 'right', timeout });
+      await locator.click({ button: 'right', timeout, ...heldKeys(action) });
       return;
     case 'longPress':
       await locator.click({ timeout, delay: action.durationMs ?? DEFAULT_LONG_PRESS_MS });

@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { resolveExpression, type LocatorExpression } from '../../src/engine/index.ts';
+import { resolveExpression, type KeyModifier, type LocatorAction, type LocatorExpression } from '../../src/engine/index.ts';
 import type { ActionOptions, Locator, Screen } from '../../src/types.ts';
 import { invalid } from '../helpers/invalid.ts';
 import { screenOver } from '../helpers/screen-over.ts';
@@ -69,5 +69,80 @@ describe('locator action options', () => {
     await call(screen.getByLabel('Agree'), { timeout: 1_000 }, screen);
     expect(performed).toHaveLength(1);
     expect(steps.all()).toEqual([expect.objectContaining({ api: `locator.${verb}`, status: 'passed' })]);
+  });
+
+  describe('modifiers', () => {
+    /** A screen over the box whose engine declares `tapModifiers` or not, keeping every action it receives. */
+    function modifierScreen(tapModifiers: boolean | undefined) {
+      const received: LocatorAction[] = [];
+      const { screen, steps } = screenOver({
+        locate: (expression) => resolveExpression(expression, NODES),
+        observe: () => snapshot(NODES),
+        perform: (_ref, action) => {
+          received.push(action);
+        },
+        ...(tapModifiers === undefined ? {} : { tapModifiers }),
+        timeoutMs: 1_000,
+      });
+      return { screen, steps, received };
+    }
+
+    it.each([
+      ['tap', (locator: Locator) => locator.tap({ modifiers: ['Shift'] })],
+      ['click', (locator: Locator) => locator.click({ modifiers: ['Shift'] })],
+      ['doubleTap', (locator: Locator) => locator.doubleTap({ modifiers: ['Shift'] })],
+      ['secondaryTap', (locator: Locator) => locator.secondaryTap({ modifiers: ['Shift'] })],
+    ] as const)('%s hands the held keys to an engine that declares tapModifiers', async (verb, call) => {
+      const { screen, steps, received } = modifierScreen(true);
+      await call(screen.getByLabel('Agree'));
+      expect(received).toEqual([{ kind: verb === 'click' ? 'tap' : verb, modifiers: ['Shift'] }]);
+      expect(steps.all()).toEqual([
+        expect.objectContaining({ api: `locator.${verb}`, label: 'getByLabel("Agree") with Shift', status: 'passed' }),
+      ]);
+    });
+
+    it('leaves the field off an action that names no modifier, an empty list included', async () => {
+      const { screen, received } = modifierScreen(undefined);
+      await screen.getByLabel('Agree').tap({ modifiers: [] });
+      await screen.getByLabel('Agree').doubleTap();
+      expect(received).toEqual([{ kind: 'tap' }, { kind: 'doubleTap' }]);
+    });
+
+    it('refuses modifiers on an engine that does not declare tapModifiers, before it acts', async () => {
+      const { screen, received } = modifierScreen(undefined);
+      await expect(screen.getByLabel('Agree').tap({ modifiers: ['Shift'] })).rejects.toMatchObject({
+        code: 'UNSUPPORTED_CAPABILITY',
+        message: expect.stringContaining('modifiers on the "tap" action'),
+      });
+      expect(received).toEqual([]);
+    });
+
+    it('refuses modifiers on such an engine before resolving, so a missing node is not LOCATOR_NOT_FOUND', async () => {
+      const { screen } = modifierScreen(undefined);
+      const started = Date.now();
+      await expect(screen.getByLabel('Missing').secondaryTap({ modifiers: ['Alt'] })).rejects.toMatchObject({
+        code: 'UNSUPPORTED_CAPABILITY',
+      });
+      expect(Date.now() - started).toBeLessThan(500);
+    });
+
+    it.each([
+      [invalid<readonly KeyModifier[]>(['Hyper']), /modifier "Hyper" is not one of Shift, Control, Alt, Meta, ControlOrMeta/],
+      [invalid<readonly KeyModifier[]>('Shift'), /modifiers must be an array/],
+      [['Shift', 'Shift'] as const, /names a modifier twice/],
+    ])('rejects modifiers %j before any lookup', async (modifiers, message) => {
+      const { screen, received } = modifierScreen(true);
+      await expect(
+        Promise.resolve().then(() => screen.getByLabel('Agree').tap({ modifiers })),
+      ).rejects.toMatchObject({ code: 'INVALID_ARGUMENT', message: expect.stringMatching(message) });
+      expect(received).toEqual([]);
+    });
+
+    it('refuses modifiers with a position, which the pointer path cannot hold yet', async () => {
+      const { screen } = modifierScreen(true);
+      await expect(
+        Promise.resolve().then(() => screen.getByLabel('Agree').tap({ modifiers: ['Shift'], position: { x: 1, y: 1 } })),
+      ).rejects.toMatchObject({ code: 'INVALID_ARGUMENT', message: expect.stringContaining('modifiers with a position') });
+    });
   });
 });

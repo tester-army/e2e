@@ -128,6 +128,8 @@ export interface TargetSession {
   readonly actions: ReadonlySet<LocatorActionKind>;
   /** Pointer action kinds the engine declared for `performAt`; empty without the pointer capability. */
   readonly pointerActions: ReadonlySet<PointerActionKind>;
+  /** Whether the engine declared `tapModifiers`, so the tap actions may carry `modifiers`. */
+  readonly tapModifiers: boolean;
   /** Captures one atomic agent observation; the harness redacts it downstream. */
   observe(operation: OperationContext, options?: EngineObserveOptions): Promise<Observation>;
   /** Resolves immediately; the runner owns query polling and strictness. */

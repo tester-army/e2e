@@ -218,9 +218,9 @@ export interface Locator extends Screen {
   /** Alias of tap. */
   click(options?: TapOptions): Promise<void>;
   /** Double-taps exactly one matching actionable node. */
-  doubleTap(options?: ActionOptions): Promise<void>;
+  doubleTap(options?: ClickOptions): Promise<void>;
   /** Performs a secondary tap, such as a right click or two-finger tap. */
-  secondaryTap(options?: ActionOptions): Promise<void>;
+  secondaryTap(options?: ClickOptions): Promise<void>;
   /** Long-presses exactly one matching actionable node. */
   longPress(options?: LongPressOptions): Promise<void>;
   /** Fills exactly one input. Secret values are never logged. */
@@ -297,6 +297,14 @@ export interface Locator extends Screen {
   `INVALID_ARGUMENT` before the node is resolved, so the control is never
   touched.
 - `click` is an alias of `tap`.
+- `tap`, `doubleTap`, and `secondaryTap` take `modifiers`, the keys held for
+  the click, as a Shift-click extends a selection:
+  `row.click({ modifiers: ['Shift'] })`. `ControlOrMeta` is Control on Windows
+  and Linux, Meta on macOS. An unknown or repeated modifier is
+  `INVALID_ARGUMENT`, and so is `modifiers` beside `position`. The browser
+  engine holds them; an engine that does not declare `tapModifiers`, the
+  mobile engine among them, fails with `UNSUPPORTED_CAPABILITY` before it
+  acts.
 - `tap({ position })` taps at an offset of the node's top-left corner, in
   CSS pixels. The node is scrolled into view when the engine lists
   `scrollIntoView`, then its box is read and the pointer dispatched at the
@@ -553,8 +561,14 @@ export interface SwipePathOptions {
  */
 export type Point = ViewportPoint; // { x: number; y: number }
 
+/** `doubleTap` and `secondaryTap` options: the action timeout and the keys held for the click. */
+export interface ClickOptions extends ActionOptions {
+  /** Keys held while the pointer clicks: Shift, Control, Alt, Meta, ControlOrMeta. */
+  modifiers?: readonly ('Shift' | 'Control' | 'Alt' | 'Meta' | 'ControlOrMeta')[];
+}
+
 /** `tap` and `click` options. */
-export interface TapOptions extends ActionOptions {
+export interface TapOptions extends ClickOptions {
   /**
    * Where to tap, relative to the node's top-left corner. Without it the
    * platform picks a point of the node, usually its center, behind its own

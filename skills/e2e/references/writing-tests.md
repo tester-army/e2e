@@ -176,7 +176,8 @@ await screen.scrollUntilVisible(screen.getByRole('button', { name: 'Accept' }));
 Each action resolves one node, waits for it to be actionable within
 `config.actionTimeout` (30 s, or `{ timeout }`), and performs one operation.
 
-`tap()` (alias `click()`), `doubleTap()`, `longPress({ duration? })`,
+`tap()` (alias `click()`), `doubleTap()`, `secondaryTap()` (each takes
+`{ modifiers: ['Shift'] }` for the keys held on the web), `longPress({ duration? })`,
 `fill(value | Secret)`, `pressSequentially(text, { delay? })`, `clear()`,
 `press(key)`, `check()`, `uncheck()`,
 `selectOption(label | { label } | { value } | { index })` (one option; an

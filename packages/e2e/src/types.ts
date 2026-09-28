@@ -9,12 +9,12 @@ import type { Unique } from './params.ts';
 import type { StepExecutor } from './agent/executor.ts';
 import type { StepCacheInfo } from './run/steps.ts';
 import type { EngineHandle } from './engine/index.ts';
-import type { Momentum, ScrollDirection, SelectOption, ViewportPoint } from './engine/contract.ts';
+import type { KeyModifier, Momentum, ScrollDirection, SelectOption, ViewportPoint } from './engine/contract.ts';
 import type { TraceCacheStore } from './cache/store.ts';
 import type { RunEvent, RunExitCode, RunStatus } from './run/events.ts';
 import type { Report1Document } from './report/build.ts';
 
-export type { Momentum, ScrollDirection, SelectOption } from './engine/contract.ts';
+export type { KeyModifier, Momentum, ScrollDirection, SelectOption } from './engine/contract.ts';
 export type { CacheReadResult, TraceCacheStore } from './cache/store.ts';
 export type { DerivedReason } from './cache/trace.ts';
 export type { StepCacheInfo } from './run/steps.ts';
@@ -365,8 +365,19 @@ export interface ActionOptions {
  */
 export type Point = ViewportPoint;
 
+/** `doubleTap` and `secondaryTap` options: the action timeout and the keys held for the click. */
+export interface ClickOptions extends ActionOptions {
+  /**
+   * Keys held while the pointer clicks, as a Shift-click extends a selection:
+   * `Shift`, `Control`, `Alt`, `Meta`, or `ControlOrMeta` (Control on Windows
+   * and Linux, Meta on macOS). Needs an engine that declares `tapModifiers`,
+   * `UNSUPPORTED_CAPABILITY` otherwise.
+   */
+  modifiers?: readonly KeyModifier[];
+}
+
 /** `tap` and `click` options. */
-export interface TapOptions extends ActionOptions {
+export interface TapOptions extends ClickOptions {
   /**
    * Where to tap, relative to the node's top-left corner. Without it the
    * platform picks a point of the node, usually its center, behind its own
@@ -443,9 +454,9 @@ export interface Locator extends Screen {
   /** Alias of tap. */
   click(options?: TapOptions): Promise<void>;
   /** Double-taps exactly one matching actionable node. */
-  doubleTap(options?: ActionOptions): Promise<void>;
+  doubleTap(options?: ClickOptions): Promise<void>;
   /** Secondary-taps exactly one matching actionable node: a right click, a two-finger tap. */
-  secondaryTap(options?: ActionOptions): Promise<void>;
+  secondaryTap(options?: ClickOptions): Promise<void>;
   /** Long-presses exactly one matching actionable node. */
   longPress(options?: LongPressOptions): Promise<void>;
   /** Fills exactly one input. Secret values are never logged. */

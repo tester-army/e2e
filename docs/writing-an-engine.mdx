@@ -111,6 +111,7 @@ fail with `UNSUPPORTED_CAPABILITY`.
 | `observe(context, options?)` | `observation` | Agent observations and trace replay |
 | `perform(ref, action, context)` + `actions` | `actions` | Node actions supported by the declared kinds, including viewport scrolling through `swipe` |
 | `locate(expression, context)` | `location` | `screen`, `Locator`, and `expect(locator)` |
+| `tapModifiers: true` | | `modifiers` on the `tap`, `doubleTap`, and `secondaryTap` actions `perform` receives, held for the click; without it the runner refuses them with `UNSUPPORTED_CAPABILITY` before `perform` |
 | `performAt(point, action, context)` + `pointerActions` | `pointer` | Coordinate actions supported by the declared kinds |
 | `keyboard.{type,press,dismiss?}` | `keyboard` | Typing and key presses into the focused control; optional keyboard dismissal |
 | `state.{capture,restore}` | `state` | `test.setup` and the `session` option |

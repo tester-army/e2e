@@ -121,6 +121,8 @@ export interface FakeEngineBehavior {
   pointerActions?: readonly PointerActionKind[];
   /** Declares a keyboard; every call is a `keyboard` record. */
   keyboard?: boolean;
+  /** Declares `tapModifiers`, so modifiers on the tap actions reach `perform`. */
+  tapModifiers?: boolean;
   /** Declares `session.back`, `restart`, and `reset` beside `open`; with a scene, the last two close the app. */
   navigation?: boolean;
   /** Declares the state capability. */
@@ -315,6 +317,7 @@ export function createFakeEngine(behavior: FakeEngineBehavior = {}): FakeEngineH
       sceneOf(operation)?.perform(ref.id, action);
       await behavior.perform?.(ref, action, operation, current);
     },
+    ...(behavior.tapModifiers === undefined ? {} : { tapModifiers: behavior.tapModifiers }),
     ...(behavior.pointerActions === undefined
       ? {}
       : {

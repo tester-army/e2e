@@ -188,6 +188,7 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
   const actions: ReadonlySet<LocatorActionKind> = new Set(engine?.actions ?? []);
   const performAtRaw = guard('point actions', engine?.performAt);
   const pointerActions: ReadonlySet<PointerActionKind> = new Set(engine?.pointerActions ?? []);
+  const tapModifiers = engine?.tapModifiers === true;
 
   const app: SessionApp = {
     open: guard('navigation', engine?.session?.open),
@@ -218,6 +219,7 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
     verbs: declaredVerbs(engine),
     actions,
     pointerActions,
+    tapModifiers,
     app,
     artifacts,
     ...(engine?.state === undefined
@@ -300,6 +302,9 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
     },
     async perform(ref, action, operation) {
       if (!actions.has(action.kind)) unsupported(`the "${action.kind}" action`);
+      if ('modifiers' in action && action.modifiers !== undefined && !tapModifiers) {
+        unsupported(`modifiers on the "${action.kind}" action`);
+      }
       if (action.kind === 'press') requireKey(action.key);
       rejectSupersededLocate(ref);
       if (action.kind === 'dragTo') rejectSupersededLocate(action.target);
