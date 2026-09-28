@@ -296,6 +296,13 @@ describe('redactCut', () => {
     expect(chained.redactCut('pw abc123xyz-tai')).toBe('pw <secret:second>');
   });
 
+  it('rewrites a cut part shown in another case, as a CSS text-transform shows it', () => {
+    const ledger = new SecretLedger([['apiKey', SECRET]]);
+    expect(ledger.redactCut(`receipt ${SECRET.slice(0, 59).toUpperCase()}`)).toBe('receipt <secret:apiKey>');
+    expect(ledger.redactCut(`receipt ${SECRET.slice(0, 8).toLowerCase()}`)).toBe('receipt <secret:apiKey>');
+    expect(ledger.redactCut('receipt CUT-SEC')).toBe('receipt CUT-SEC');
+  });
+
   it('changes nothing with no value registered', () => {
     expect(new SecretLedger().redactCut('anything at all')).toBe('anything at all');
   });
@@ -328,6 +335,21 @@ describe('redactFragments', () => {
     ]);
     expect(ledger.redactFragments(`x ${short.slice(0, 20)}`)).toBe('x <secret:long>');
     expect(ledger.redactFragments(`x ${long.slice(0, 59)}`)).toBe('x <secret:short><secret:long>');
+  });
+
+  it('rewrites a fragment in another case, and leaves a shorter one', () => {
+    const ledger = new SecretLedger([['apiKey', SECRET]]);
+    expect(ledger.redactFragments(`sel ${SECRET.slice(5, 45).toUpperCase()} end`)).toBe('sel <secret:apiKey> end');
+    expect(ledger.redactFragments(`a ${SECRET.slice(20, 28).toLowerCase()} b`)).toBe('a <secret:apiKey> b');
+    expect(ledger.redactFragments(`a ${SECRET.slice(20, 27).toUpperCase()} b`)).toBe(`a ${SECRET.slice(20, 27).toUpperCase()} b`);
+  });
+
+  it('scans a long text in one linear pass', () => {
+    const ledger = new SecretLedger([['apiKey', SECRET]]);
+    const text = `${SECRET.slice(0, 7).toUpperCase()} `.repeat(20_000);
+    const started = performance.now();
+    expect(ledger.redactFragments(text)).toBe(text);
+    expect(performance.now() - started).toBeLessThan(200);
   });
 
   it('changes nothing with no value registered', () => {

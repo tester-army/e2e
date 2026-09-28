@@ -1,10 +1,11 @@
 /**
  * A secret the web engine's observation limits cut short is still redacted.
  * Through the real Playwright engine: a filled credential echoed after filler
- * so the text (512) and name (256) limits keep all but its last character
- * reaches neither the model, the failure screen, the report, nor any file
- * under `.e2e` (the entries of the Playwright trace included), while a plain value placed the same way is still cut and
- * shown as it is.
+ * so the text (512) and name (256) limits keep all but its last character,
+ * as typed or upper-cased by CSS, reaches neither the model, the failure
+ * screen, the report, nor any file under `.e2e` (the entries of the
+ * Playwright trace included), while a plain value placed the same way is
+ * still cut and shown as it is.
  */
 
 import { readFileSync } from 'node:fs';
@@ -18,6 +19,8 @@ import { contentsUnder, resultByTitle, runProject, type FixtureProject } from '.
 const SECRET = 'cut-secret-Kq7ZrT2mWx9pLd4sNv8bHc3jFg6yQa1eUo5iRk0tYw2zXn7uM';
 /** The shortest leading part checked for: any longer one contains it. */
 const FRAGMENT = SECRET.slice(0, 8);
+/** The same part as the CSS `text-transform: uppercase` echo shows it. */
+const UPPER_FRAGMENT = FRAGMENT.toUpperCase();
 /** What the control paragraph keeps once the text limit cuts it. */
 const CONTROL_KEPT = 'plain-control-'.repeat(5).slice(0, 59);
 
@@ -61,8 +64,9 @@ describe('secrets cut short by observation limits', () => {
     const observation = fakeCalls.map((call) => call.observation).join('\n');
     expect(observation).toContain(`${CONTROL_KEPT}"`);
     expect(observation).not.toContain(FRAGMENT);
-    // The echoed text and the button's name each end in the marker where the cut value stood.
-    expect(observation.match(/<secret:member>"/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(observation).not.toContain(UPPER_FRAGMENT);
+    // The echoed texts and the button's name each end in the marker where the cut value stood.
+    expect(observation.match(/<secret:member>"/g)?.length).toBeGreaterThanOrEqual(3);
   });
 
   it('keeps the cut fragment out of the failure screen, the report, the trace, and every file under .e2e', () => {
@@ -71,10 +75,13 @@ describe('secrets cut short by observation limits', () => {
     const screen = attempt.artifacts.find((artifact) => artifact.id === attempt.failure?.screen)!;
     const screenText = readFileSync(path.join(project.dir, '.e2e', 'artifacts', screen.path!), 'utf8');
     expect(screenText).toContain(`${CONTROL_KEPT}"`);
-    expect(screenText).not.toContain(FRAGMENT);
-    expect(JSON.stringify(outcome.report)).not.toContain(FRAGMENT);
+    const report = JSON.stringify(outcome.report);
     const contents = contentsUnder(path.join(project.dir, '.e2e'));
-    for (const [file, text] of contents) expect(text.includes(FRAGMENT), file).toBe(false);
+    for (const fragment of [FRAGMENT, UPPER_FRAGMENT]) {
+      expect(screenText).not.toContain(fragment);
+      expect(report).not.toContain(fragment);
+      for (const [file, text] of contents) expect(text.includes(fragment), file).toBe(false);
+    }
     // The trace was scanned inside, and its plain text survived the rewrite.
     const trace = contents.filter(([file]) => file.includes('.zip!'));
     expect(trace.some(([, text]) => text.includes(CONTROL_KEPT))).toBe(true);

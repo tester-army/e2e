@@ -301,7 +301,8 @@ line2  </textarea>
 </body></html>`),
   // Echoes the Source field after filler long enough that an observation's
   // text (512) and name (256) limits cut the value's last character, next to
-  // a plain value placed the same way.
+  // a plain value placed the same way. An editor echoes it upper-cased by CSS:
+  // its value is read as rendered and cut at the text limit too.
   '/echo-cut': constant(`<!doctype html>
 <html>
 <head><title>Echo cut</title></head>
@@ -309,12 +310,14 @@ line2  </textarea>
   <label for="source">Source</label>
   <input id="source" />
   <p id="echo"></p>
+  <div id="echo-upper" contenteditable="true" aria-label="Upper echo" style="text-transform: uppercase"></div>
   <button id="echo-name">Echo</button>
   <p id="control"></p>
   <script>
     const filler = (length) => '0123456789'.repeat(60).slice(0, length);
     const echo = (value) => {
       document.getElementById('echo').textContent = filler(512 - value.length + 1) + value;
+      document.getElementById('echo-upper').textContent = filler(512 - value.length + 1) + value;
       document.getElementById('echo-name').setAttribute('aria-label', filler(256 - value.length + 1) + value);
     };
     document.getElementById('source').addEventListener('input', (event) => echo(event.target.value));

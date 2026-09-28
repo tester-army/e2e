@@ -133,7 +133,9 @@ excluded from cache entries, model input, and reports.
 An observed name, text, value, or selection the engine cut at its length
 limit can end partway through a secret. When a field exactly at its limit
 ends with the start of a registered value, 8 characters or more (half of a
-value shorter than 16), that part becomes `<secret:name>` too. A shorter
+value shorter than 16), that part becomes `<secret:name>` too, in either
+case, since a CSS `text-transform` cuts the value as it shows it. A case
+mapping that changes the length (`ß` as `SS`) is not followed here. A shorter
 start is left as it is: it says little about the value, and masking it would
 take ordinary text that happens to end the same way and tell the model the
 value's first characters. A field that happens to be exactly that long
@@ -172,7 +174,7 @@ hook; its console output reaches the runner's streams as written.
   shows it, is not one string in the tree and passes through.
 - A Playwright trace from a tainted session is rewritten before it is kept.
   Text entries become `<secret:name>`, and so does any run of 8 or more
-  consecutive characters of a registered value, since the trace keeps what
+  consecutive characters of a registered value, in either case, since the trace keeps what
   the engine read from the page before redaction: a text cut at its limit
   partway through a secret, or a selection over part of one. Plain trace
   text that happens to share 8 characters with a value is masked too.
