@@ -357,7 +357,9 @@ await screen.getByLabel('City').pressSequentially('War', { delay: 50 });
 `textContent` and `allTextContents` return the node's rendered text with
 whitespace collapsed to single spaces. On the web that is what `innerText`
 reads, not the DOM's `textContent`: CSS `text-transform` applies,
-`display: none` descendants are left out, and a `<br>` reads as a space.
+`display: none` descendants are left out, and a `<br>` reads as a space. A
+node that is not rendered itself, such as a `display: none` one, reads its
+DOM text, as `innerText` does.
 
 `isChecked` is `false` on a node with no checked state, such as a button or
 a heading; it does not throw.
