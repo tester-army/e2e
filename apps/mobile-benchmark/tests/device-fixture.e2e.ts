@@ -127,12 +127,17 @@ test.describe('device fixture', () => {
     await device.setPermission('location', 'grant');
     const read = screen.getByTestId('read-location');
     const status = screen.getByTestId('location-status');
+    // Switching device location off can make Play services put its "No
+    // location access" warning (Find My Device) over the app, now and then;
+    // it hides the read button until it is closed.
+    const noAccess = screen.getByRole('button', { name: 'Close' });
     // A read in flight is left to finish: the poll only looks, and asks for
     // another read once the last one has answered. An assertion inside the
     // poll would hold it for the assertion's own budget instead.
     const readsBack = async (expected: RegExp): Promise<void> => {
       await expect
         .poll(async () => {
+          if (await noAccess.isVisible()) await noAccess.tap();
           const text = (await status.allTextContents())[0] ?? '';
           if (text !== 'location: reading' && !expected.test(text)) await read.tap();
           return text;
