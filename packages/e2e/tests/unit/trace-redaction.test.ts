@@ -1,6 +1,7 @@
 /**
  * Trace archive redaction: JSON records are rewritten value by value and other
- * text as text, in every encoding a trace spells a value; binary entries are
+ * text as text, in every encoding a trace spells a value, and a fragment of a
+ * value the page read raw with them; binary entries are
  * carried byte for byte unless they hold a secret, in which case they are
  * dropped; an untouched archive keeps its bytes; every listed segment is
  * covered; an archive that cannot be rewritten takes the whole trace with it;
@@ -97,6 +98,21 @@ describe('redactTraceArchives', () => {
     expect(after.get('resources/form.dat')!.toString()).toBe('user=ada&password=<secret:member>');
     expect(after.get('resources/page.html')!.toString()).toBe('<input value="<secret:member>">');
     expect(after.get('trace.stacks')!.toString()).toBe('{"files":[]}');
+  });
+
+  it('rewrites a fragment of a secret the page read raw, cut or selected, and leaves plain text', async () => {
+    const secret = 'cut-secret-Kq7ZrT2mWx9pLd4sNv8bHc3jFg6yQa1eUo5iRk0tYw2zXn7uM';
+    const dir = attemptDir();
+    const file = path.join(dir, 'trace', 'trace.zip');
+    const read = { text: `0123456789${secret.slice(0, 59)}`, selection: secret.slice(5, 45), name: 'plain-control-plain' };
+    writeFileSync(file, writeZip([zipEntry('trace.trace', Buffer.from(JSON.stringify({ type: 'after', result: { value: read } })))]));
+
+    await redactTraceArchives(dir, ['trace/trace.zip'], new SecretLedger([['member', secret]]));
+
+    expect(JSON.parse(entriesOf(file).get('trace.trace')!.toString())).toEqual({
+      type: 'after',
+      result: { value: { text: '0123456789<secret:member>', selection: '<secret:member>', name: 'plain-control-plain' } },
+    });
   });
 
   it('keeps JSON records well-formed when the secret is JSON syntax itself', async () => {

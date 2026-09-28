@@ -3,7 +3,7 @@
  * Through the real Playwright engine: a filled credential echoed after filler
  * so the text (512) and name (256) limits keep all but its last character
  * reaches neither the model, the failure screen, the report, nor any file
- * under `.e2e`, while a plain value placed the same way is still cut and
+ * under `.e2e` (the entries of the Playwright trace included), while a plain value placed the same way is still cut and
  * shown as it is.
  */
 
@@ -13,7 +13,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { RunOutcome } from '../../src/run/runner.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { fakeCalls, installFakeModel, judgment } from '../helpers/fake-model.ts';
-import { filesUnder, resultByTitle, runProject, type FixtureProject } from '../helpers/run-project.ts';
+import { contentsUnder, resultByTitle, runProject, type FixtureProject } from '../helpers/run-project.ts';
 
 const SECRET = 'cut-secret-Kq7ZrT2mWx9pLd4sNv8bHc3jFg6yQa1eUo5iRk0tYw2zXn7uM';
 /** The shortest leading part checked for: any longer one contains it. */
@@ -65,7 +65,7 @@ describe('secrets cut short by observation limits', () => {
     expect(observation.match(/<secret:member>"/g)?.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('keeps the cut fragment out of the failure screen, the report, and every file under .e2e', () => {
+  it('keeps the cut fragment out of the failure screen, the report, the trace, and every file under .e2e', () => {
     const attempt = resultByTitle(outcome, 'echoes a secret across the observation limits').attempts.at(-1)!;
     expect(attempt.error?.code).toBe('LOCATOR_NOT_FOUND');
     const screen = attempt.artifacts.find((artifact) => artifact.id === attempt.failure?.screen)!;
@@ -73,8 +73,10 @@ describe('secrets cut short by observation limits', () => {
     expect(screenText).toContain(`${CONTROL_KEPT}"`);
     expect(screenText).not.toContain(FRAGMENT);
     expect(JSON.stringify(outcome.report)).not.toContain(FRAGMENT);
-    for (const file of filesUnder(path.join(project.dir, '.e2e'))) {
-      expect(readFileSync(file).toString('latin1'), file).not.toContain(FRAGMENT);
-    }
+    const contents = contentsUnder(path.join(project.dir, '.e2e'));
+    for (const [file, text] of contents) expect(text.includes(FRAGMENT), file).toBe(false);
+    // The trace was scanned inside, and its plain text survived the rewrite.
+    const trace = contents.filter(([file]) => file.includes('trace.zip!'));
+    expect(trace.some(([, text]) => text.includes(CONTROL_KEPT))).toBe(true);
   });
 });

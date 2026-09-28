@@ -148,18 +148,24 @@ describe('markers', () => {
 describe('redactCut', () => {
   const SECRET = 'cut-secret-Kq7ZrT2mWx9pLd4sNv8bHc3jFg6yQa1eUo5iRk0tYw2zXn7uM';
 
-  it('rewrites the leading part of a value the cut stopped inside, down to one character', () => {
+  it('rewrites the leading part of a value the cut stopped inside, down to 8 characters', () => {
     const ledger = new SecretLedger([['apiKey', SECRET]]);
-    for (const kept of [59, 40, 8, 1]) {
+    for (const kept of [59, 40, 8]) {
       const cut = `receipt ${SECRET.slice(0, kept)}`;
       expect(ledger.redact(cut)).toBe(cut);
       expect(ledger.redactCut(cut)).toBe('receipt <secret:apiKey>');
     }
   });
 
-  it('still rewrites whole values, and the fragment after the last one', () => {
+  it('leaves a leading part shorter than the minimum as it is, so plain text is not taken for one', () => {
+    const ledger = new SecretLedger([['long', 'ovl-secret-AbCdEfGhIjKlMnOpQrStUvWxYz']]);
+    for (const text of ['name-co', 'name-control-o', 'text ovl-sec']) expect(ledger.redactCut(text)).toBe(text);
+  });
+
+  it('still rewrites whole values, and the fragment after the last one, down to half of a short value', () => {
     const ledger = new SecretLedger([['member', 'hunter2']]);
-    expect(ledger.redactCut('hunter2 then hunter2 then hun')).toBe('<secret:member> then <secret:member> then <secret:member>');
+    expect(ledger.redactCut('hunter2 then hunter2 then hunt')).toBe('<secret:member> then <secret:member> then <secret:member>');
+    expect(ledger.redactCut('hunter2 then hun')).toBe('<secret:member> then hun');
     expect(ledger.redactCut('hunter2hunt')).toBe('<secret:member><secret:member>');
   });
 
@@ -176,7 +182,7 @@ describe('redactCut', () => {
       ['short', 'ab-xyz'],
       ['long', 'cab-long-value'],
     ]);
-    expect(ledger.redactCut('text cab-')).toBe('text <secret:long>');
+    expect(ledger.redactCut('text cab-long')).toBe('text <secret:long>');
     expect(ledger.redactCut('text ab-')).toBe('text <secret:short>');
   });
 
@@ -191,11 +197,45 @@ describe('redactCut', () => {
       ['first', 'abc123xyz'],
       ['second', 'xyz-tail-value'],
     ]);
-    expect(chained.redactCut('pw abc123xyz-ta')).toBe('pw <secret:second>');
+    expect(chained.redactCut('pw abc123xyz-tai')).toBe('pw <secret:second>');
   });
 
   it('changes nothing with no value registered', () => {
     expect(new SecretLedger().redactCut('anything at all')).toBe('anything at all');
+  });
+});
+
+describe('redactFragments', () => {
+  const SECRET = 'cut-secret-Kq7ZrT2mWx9pLd4sNv8bHc3jFg6yQa1eUo5iRk0tYw2zXn7uM';
+
+  it('rewrites a run of 8 or more characters of a value anywhere in the text, and leaves a shorter one', () => {
+    const ledger = new SecretLedger([['apiKey', SECRET]]);
+    expect(ledger.redactFragments(`cut ${SECRET.slice(0, 59)}`)).toBe('cut <secret:apiKey>');
+    expect(ledger.redactFragments(`sel ${SECRET.slice(5, 45)} end`)).toBe('sel <secret:apiKey> end');
+    expect(ledger.redactFragments(`a ${SECRET.slice(20, 28)} b`)).toBe('a <secret:apiKey> b');
+    expect(ledger.redactFragments(`a ${SECRET.slice(20, 27)} b`)).toBe(`a ${SECRET.slice(20, 27)} b`);
+    expect(ledger.redactFragments('plain text, 0123456789 and more')).toBe('plain text, 0123456789 and more');
+  });
+
+  it('rewrites whole values in every spelling first, then the fragments between them, and never a marker', () => {
+    const ledger = new SecretLedger([['member', 'pa"ss-word-2718-xyz']]);
+    expect(ledger.redactFragments('{"v":"pa\\"ss-word-2718-xyz"} ss-word-2718')).toBe('{"v":"<secret:member>"} <secret:member>');
+    expect(ledger.redactFragments('<secret:member> and <secret:member>')).toBe('<secret:member> and <secret:member>');
+  });
+
+  it('names a run two values share after the longer, and a whole shorter value after itself', () => {
+    const short = 'ovl-secret-AbCdEfGhIjKlMnOpQrSt';
+    const long = `${short}UvWxYz0123456789ABCDEFGHIJKLMN`;
+    const ledger = new SecretLedger([
+      ['short', short],
+      ['long', long],
+    ]);
+    expect(ledger.redactFragments(`x ${short.slice(0, 20)}`)).toBe('x <secret:long>');
+    expect(ledger.redactFragments(`x ${long.slice(0, 59)}`)).toBe('x <secret:short><secret:long>');
+  });
+
+  it('changes nothing with no value registered', () => {
+    expect(new SecretLedger().redactFragments('anything at all')).toBe('anything at all');
   });
 });
 

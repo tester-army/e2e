@@ -16,7 +16,7 @@ import { inflateEntry, readZip } from '../../src/internal/zip.ts';
 import type { ArtifactStore, StoredArtifact } from '../../src/types.ts';
 import type { RunOutcome } from '../../src/run/runner.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
-import { createProject, filesUnder, resultByTitle, runExisting, type FixtureProject } from '../helpers/run-project.ts';
+import { contentsUnder, createProject, resultByTitle, runExisting, type FixtureProject } from '../helpers/run-project.ts';
 import { entriesFor, readEntries } from '../helpers/trace-cache.ts';
 
 const SECRET = 'trace-secret-Qx7#"&=2718';
@@ -199,12 +199,6 @@ describe('trace secrecy', () => {
     for (const put of store.puts) {
       expect(Buffer.from(put.bytes).includes(SECRET), put.path).toBe(false);
     }
-    for (const file of filesUnder(path.join(project.dir, '.e2e'))) {
-      const bytes = readFileSync(file);
-      expect(bytes.includes(SECRET), file).toBe(false);
-      if (file.endsWith('.zip')) {
-        for (const [name, text] of textEntries(bytes)) expect(text, `${file}!${name}`).not.toContain(SECRET);
-      }
-    }
+    for (const [file, text] of contentsUnder(path.join(project.dir, '.e2e'))) expect(text.includes(SECRET), file).toBe(false);
   });
 });

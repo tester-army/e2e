@@ -52,7 +52,10 @@ function isInside(root: string, absolute: string): boolean {
 }
 
 /**
- * Every text entry is rewritten through the ledger; one the redactor left
+ * Every text entry is rewritten through the ledger, fragments of a value
+ * included: the trace keeps what the engine read from the page raw, a text
+ * cut at an observation limit partway through a secret or a selection over
+ * part of one, which whole-value matching misses. One the redactor left
  * unchanged is carried as stored, so an archive with nothing to redact is not
  * rewritten at all. An entry that is not UTF-8 text (a screencast frame, a
  * font, an image) cannot be rewritten: it is carried as stored unless a
@@ -73,7 +76,7 @@ async function redactArchive(absolute: string, ledger: SecretLedger): Promise<vo
       kept.push(entry);
       continue;
     }
-    const clean = redactText(text, ledger.redact);
+    const clean = redactText(text, ledger.redactFragments);
     if (clean === text) {
       kept.push(entry);
       continue;

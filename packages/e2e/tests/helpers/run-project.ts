@@ -1,12 +1,13 @@
 /** Creates throwaway fixture projects and runs them through the built runner. */
 
-import { mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { web } from '@e2edev/web';
 import type { ListOptions, ListedPair, RunOptions, RunOutcome } from '../../src/run/runner.ts';
 import type { E2EConfig } from '../../src/index.ts';
+import { inflateEntry, readZip } from '../../src/internal/zip.ts';
 
 export type { RunOptions, RunOutcome };
 
@@ -56,10 +57,26 @@ export function createProject(files: Readonly<Record<string, string>>): FixtureP
 }
 
 /** Every regular file under `dir`, recursively. */
-export function filesUnder(dir: string): string[] {
+function filesUnder(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
     const file = path.join(dir, name);
     return statSync(file).isDirectory() ? filesUnder(file) : [file];
+  });
+}
+
+/**
+ * The bytes of every file under `dir` as latin1 text keyed by path, and of
+ * every entry inside a zip archive among them, inflated and keyed
+ * `archive!entry`: a compressed trace hides what it holds from a scan of the
+ * archive's own bytes.
+ */
+export function contentsUnder(dir: string): [string, string][] {
+  return filesUnder(dir).flatMap((file) => {
+    const bytes = readFileSync(file);
+    const entries = file.endsWith('.zip')
+      ? readZip(bytes).map((entry) => [`${file}!${entry.name}`, inflateEntry(entry).toString('latin1')] as [string, string])
+      : [];
+    return [[file, bytes.toString('latin1')], ...entries];
   });
 }
 
