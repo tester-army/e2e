@@ -150,10 +150,11 @@ hook; its console output reaches the runner's streams as written.
   a hash, is a different string and passes through.
 - A value the app renders in another Unicode normalization form, decomposed
   accents where the secret has composed ones, passes through.
-- A whitespace run in the value stands for at most as many whitespace
-  characters as it has, so text that widens it, or drops it, passes through. A value that is
-  shorter than 6 characters once trimmed is only matched with its edge
-  whitespace.
+- A whitespace run between two characters of the value stands for one to as
+  many whitespace characters as it has, so text that widens it, or drops it,
+  passes through. Whitespace at either end may be dropped only while the
+  trimmed value is still 6 characters or longer; a shorter one is only
+  matched with its edge whitespace.
 - A value spread over several nodes, one character per cell as a PIN pad
   shows it, is not one string in the tree and passes through.
 - A Playwright trace from a tainted session is rewritten before it is kept.

@@ -120,8 +120,8 @@ describe('redactTraceArchives', () => {
     writeFileSync(
       file,
       writeZip([
-        zipEntry('trace.trace', Buffer.from('{"type":"before"}\nfirst line 4417\nsecond line Qx\n{"type":"after"}')),
         zipEntry('resources/page.html', Buffer.from(page)),
+        zipEntry('resources/data.txt', Buffer.from('{"type":"before"}\nkey-4417\n[1,2,3]\n')),
       ]),
     );
 
@@ -131,12 +131,13 @@ describe('redactTraceArchives', () => {
       new SecretLedger([
         ['note', 'first line 4417\nsecond line Qx'],
         ['phrase', 'correct horse battery'],
+        ['seam', 'key-4417\n[1,2,3]'],
       ]),
     );
 
     const after = entriesOf(file);
-    expect(after.get('trace.trace')!.toString()).toBe('{"type":"before"}\n<secret:note>\n{"type":"after"}');
     expect(after.get('resources/page.html')!.toString()).toBe('<pre>\n<secret:note>\n</pre>\n<p><secret:phrase></p>\n');
+    expect(after.get('resources/data.txt')!.toString()).toBe('{"type":"before"}\n<secret:seam>\n');
   });
 
   it('re-serializes a changed record without touching its numbers or its line ending', async () => {

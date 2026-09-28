@@ -86,30 +86,16 @@ async function redactArchive(absolute: string, ledger: SecretLedger): Promise<vo
 
 /**
  * A trace's own members are JSON, one record per line; a resource is whatever
- * the page served. A line that parses as JSON is redacted value by value and
- * re-serialized only when something changed, so a secret that happens to
- * spell JSON syntax cannot break a record. The lines between two records are
- * redacted together as text, so a value that spans a line break there, or
- * matches across one as whitespace, is caught whole.
+ * the page served. An entry whose every non-blank line parses as JSON is
+ * redacted record by record, value by value, and a record is re-serialized
+ * only when something changed, so a secret that happens to spell JSON syntax
+ * cannot break one. Any other entry is redacted whole as text, so a value
+ * that spans a line break, or matches across one as whitespace, is caught.
  */
 function redactText(text: string, redact: (text: string) => string): string {
-  const out: string[] = [];
-  let prose: string[] = [];
-  const flush = (): void => {
-    if (prose.length > 0) out.push(redact(prose.join('\n')));
-    prose = [];
-  };
-  for (const line of text.split('\n')) {
-    const record = redactRecord(line, redact);
-    if (record === undefined) {
-      prose.push(line);
-      continue;
-    }
-    flush();
-    out.push(record);
-  }
-  flush();
-  return out.join('\n');
+  const lines = text.split('\n');
+  const records = lines.map((line) => (line.trim() === '' ? line : redactRecord(line, redact)));
+  return records.every((record) => record !== undefined) ? records.join('\n') : redact(text);
 }
 
 /**
