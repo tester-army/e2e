@@ -175,10 +175,11 @@ hook; its console output reaches the runner's streams as written.
   shows it, is not one string in the tree and passes through.
 - A Playwright trace from a tainted session is rewritten before it is kept.
   Text entries become `<secret:name>`, and so does any run of 8 or more
-  consecutive characters of a registered value, in either case, since the trace keeps what
-  the engine read from the page before redaction: a text cut at its limit
-  partway through a secret, or a selection over part of one. Plain trace
-  text that happens to share 8 characters with a value is masked too.
+  consecutive characters of a registered value, in either case, since the
+  trace keeps what the engine read from the page before redaction: a text
+  cut at its limit partway through a secret, or a selection over part of
+  one. Plain trace text that happens to share 8 characters with a value is
+  masked too.
   Screencast frames are dropped, since the viewport is pixel-tainted. Other
   image entries cannot be rewritten: one containing the literal secret bytes
   is dropped, an image the app served that merely draws the secret survives.
