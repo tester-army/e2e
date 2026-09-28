@@ -1,7 +1,7 @@
 /**
  * Trace archive redaction: JSON records are rewritten value by value and other
- * text as text, in every encoding a trace spells a value, and a fragment of a
- * value the page read raw with them; binary entries are
+ * text as text, in every encoding a trace spells a value; a fragment of a
+ * value the page read raw is rewritten the same way; binary entries are
  * carried byte for byte unless they hold a secret, in which case they are
  * dropped; an untouched archive keeps its bytes; every listed segment is
  * covered; an archive that cannot be rewritten takes the whole trace with it;

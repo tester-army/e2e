@@ -76,7 +76,7 @@ describe('secrets cut short by observation limits', () => {
     const contents = contentsUnder(path.join(project.dir, '.e2e'));
     for (const [file, text] of contents) expect(text.includes(FRAGMENT), file).toBe(false);
     // The trace was scanned inside, and its plain text survived the rewrite.
-    const trace = contents.filter(([file]) => file.includes('trace.zip!'));
+    const trace = contents.filter(([file]) => file.includes('.zip!'));
     expect(trace.some(([, text]) => text.includes(CONTROL_KEPT))).toBe(true);
   });
 });
