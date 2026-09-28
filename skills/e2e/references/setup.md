@@ -3,9 +3,10 @@
 ## Requirements
 
 - Node.js 22.12 or newer.
-- ES modules. e2e loads `.ts` config, tests, and helpers as ES modules
-  whatever the nearest `package.json` `type` says, so a CommonJS package (a
-  Next.js app, for instance) needs no change. Write them with `import`, never
+- ES modules. e2e loads `.ts` config, tests, and helpers, workspace packages
+  that export `.ts` source included, as ES modules whatever the nearest
+  `package.json` `type` says, so a CommonJS package (a Next.js app, for
+  instance) needs no change. Write them with `import`, never
   `require` or `module.exports`.
 - For browser tests, `@e2e-dev/web` plus `playwright` (`>=1.63.0 <2`),
   a peer dependency the engine does not install itself: an app that already

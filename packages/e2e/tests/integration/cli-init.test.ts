@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -190,6 +190,50 @@ describe('initializing standalone projects', () => {
     const config = resolveConfig(raw, { projectRoot: dir, env: {} });
     const collection = await collect(config);
     expect(collection.tests.map((test) => test.title)).toEqual(['registers']);
+  });
+
+  it('runs tests that import and require a typeless workspace package exporting TypeScript source', async () => {
+    writeFileSync(path.join(dir, 'package.json'), '{}');
+    writeFileSync(path.join(dir, 'e2e.config.ts'), CONFIG);
+    const core = path.join(dir, 'packages', 'core');
+    mkdirSync(path.join(core, 'src', 'shared'), { recursive: true });
+    writeFileSync(
+      path.join(core, 'package.json'),
+      JSON.stringify({ name: '@scope/core', exports: { './shared/*': './src/shared/*.ts' }, imports: { '#shared/*': './src/shared/*.ts' } }),
+    );
+    writeFileSync(path.join(core, 'src', 'shared', 'pad.ts'), "export const pad = (n: number): string => String(n).padStart(2, '0');\n");
+    writeFileSync(
+      path.join(core, 'src', 'shared', 'months.ts'),
+      "import { pad } from '#shared/pad';\n\nexport const month = (date: Date): string => `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}`;\n",
+    );
+    mkdirSync(path.join(dir, 'node_modules', '@scope'), { recursive: true });
+    symlinkSync(core, path.join(dir, 'node_modules', '@scope', 'core'), 'junction');
+    mkdirSync(path.join(dir, 'tests'));
+    writeFileSync(path.join(dir, 'tests', 'required.cjs'), "module.exports = require('@scope/core/shared/months');\n");
+    writeFileSync(
+      path.join(dir, 'tests', 'example.e2e.ts'),
+      "import { expect, test } from 'e2e';\nimport { month } from '@scope/core/shared/months';\nimport required from './required.cjs';\n\ntest('workspace TypeScript loads', () => {\n  const date = new Date(Date.UTC(2026, 8, 1));\n  expect(month(date)).toBe('2026-09');\n  expect(required.month(date)).toBe('2026-09');\n});\n",
+    );
+    linkPackages('e2e');
+
+    const { stdout } = await execFileAsync(process.execPath, [CLI, 'run', '--workers', '1', '--no-cache'], { cwd: dir });
+    expect(stdout).toContain('1 passed');
+  });
+
+  it('says TypeScript an installed CommonJS package ships exists, and why it failed to load', async () => {
+    writeFileSync(path.join(dir, 'e2e.config.ts'), CONFIG);
+    const dep = path.join(dir, 'node_modules', 'dep');
+    mkdirSync(dep, { recursive: true });
+    writeFileSync(path.join(dep, 'package.json'), JSON.stringify({ name: 'dep', exports: './index.ts' }));
+    writeFileSync(path.join(dep, 'index.ts'), 'export const answer: number = 42;\n');
+    mkdirSync(path.join(dir, 'tests'));
+    writeFileSync(path.join(dir, 'tests', 'example.e2e.ts'), "import { test } from 'e2e';\nimport { answer } from 'dep';\n\ntest('dep', () => void answer);\n");
+    linkPackages('e2e');
+
+    await expect(execFileAsync(process.execPath, [CLI, 'run'], { cwd: dir })).rejects.toMatchObject({
+      code: 2,
+      stdout: expect.stringContaining(`exists: ${path.join(realpathSync(dep), 'package.json')} declares no "type": "module"`),
+    });
   });
 
   it('tells a project that skipped npm install to run it, naming its package manager', async () => {

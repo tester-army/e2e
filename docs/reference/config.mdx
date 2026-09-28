@@ -49,8 +49,10 @@ symlinks. A dot directory is included only when a glob segment explicitly
 starts with a dot.
 
 Config and test files run as ESM whatever the nearest `package.json` `type`
-says. Packages imported by name keep their own format. A config or test
-written with `require` or `module.exports` fails to load.
+says, and so does TypeScript they import from outside `node_modules`: a
+helper, or a workspace package that exports its `.ts` source. Installed
+packages keep their own format. A config or test written with `require` or
+`module.exports` fails to load.
 
 ## Top level
 

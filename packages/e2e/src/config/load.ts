@@ -8,7 +8,7 @@ import { register, type NamespacedUnregister } from 'tsx/esm/api';
 import { ConfigurationError } from '../internal/errors.ts';
 import type { E2EConfig } from '../types.ts';
 import { explainModuleError } from './diagnose.ts';
-import { resolveSync } from './esm-hooks.ts';
+import { resolveSync, TSX_NAMESPACE } from './esm-hooks.ts';
 
 const CONFIG_NAMES = ['e2e.config.ts', 'e2e.config.mts'] as const;
 
@@ -138,7 +138,7 @@ function registerLoader(): NamespacedUnregister {
     // tests run from source (tsc rewrites import specifiers, not URLs).
     nodeModule.register(import.meta.url.replace(/load(\.[jt]s)$/, 'esm-hooks$1'));
   }
-  return register({ namespace: 'e2e' });
+  return register({ namespace: TSX_NAMESPACE });
 }
 
 /**

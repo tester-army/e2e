@@ -3,6 +3,7 @@ import { asModule, resolve, resolveSync } from '../../src/config/esm-hooks.ts';
 import { tsxUsesSyncHooks } from '../../src/config/load.ts';
 
 const context = { conditions: [], importAttributes: {}, parentURL: undefined };
+const underTsx = { parentURL: 'file:///app/tests/example.e2e.ts?e2e=collect-1&tsx-namespace=e2e' };
 
 describe('asModule', () => {
   it.each([
@@ -11,7 +12,7 @@ describe('asModule', () => {
     ['a .tsx helper', 'file:///app/tests/helper.tsx', 'commonjs'],
     ['an .mts file Node left untyped', 'file:///app/e2e.config.mts', null],
   ])('marks %s as an ES module', (_case, url, format) => {
-    expect(asModule(url, { url, format })).toEqual({ url, format: 'module' });
+    expect(asModule(url, context, { url, format })).toEqual({ url, format: 'module' });
   });
 
   it.each([
@@ -22,7 +23,15 @@ describe('asModule', () => {
     ['file:///C:/app/src/lib/seed.ts', 'file:///C:/app/src/lib/seed.ts'],
   ])('marks a file reached by the path %s as an ES module', (specifier, url) => {
     const resolution = { url, format: 'commonjs-typescript' };
-    expect(asModule(specifier, resolution)).toEqual({ ...resolution, format: 'module' });
+    expect(asModule(specifier, context, resolution)).toEqual({ ...resolution, format: 'module' });
+  });
+
+  it.each([
+    ['a linked package shipping TypeScript source', 'cjs-helper', { url: 'file:///work/cjs-helper/index.ts', format: 'commonjs-typescript' }],
+    ['a workspace package export', '@scope/core/shared/months', { url: 'file:///work/core/src/shared/months.ts', format: 'commonjs' }],
+    ['a subpath import', '#internal/helper', { url: 'file:///app/src/helper.ts', format: 'commonjs' }],
+  ])('marks TypeScript outside node_modules reached through %s as an ES module', (_case, specifier, resolution) => {
+    expect(asModule(specifier, underTsx, resolution)).toEqual({ ...resolution, format: 'module' });
   });
 
   it.each([
@@ -31,13 +40,20 @@ describe('asModule', () => {
     ['a .cts file', './a.cts', { url: 'file:///app/a.cts', format: 'commonjs' }],
     ['JavaScript', './a.js', { url: 'file:///app/a.js', format: 'commonjs' }],
     ['an installed package', 'dep', { url: 'file:///app/node_modules/dep/index.ts', format: 'commonjs' }],
-    ['a linked package shipping TypeScript source', 'cjs-helper', { url: 'file:///work/cjs-helper/index.ts', format: 'commonjs-typescript' }],
-    ['a scoped package', '@scope/dep', { url: 'file:///work/dep/src/index.ts', format: 'commonjs' }],
-    ['a subpath import', '#internal/helper', { url: 'file:///app/src/helper.ts', format: 'commonjs' }],
+    ['a scoped installed package', '@scope/dep', { url: 'file:///app/node_modules/@scope/dep/src/index.ts', format: 'commonjs' }],
     ['a builtin', 'node:path', { url: 'node:path', format: 'builtin' }],
     ['a data: URL', 'data:text/javascript,export%20{}', { url: 'data:text/javascript,export%20{}', format: undefined }],
   ])('leaves %s alone', (_case, specifier, resolution) => {
-    expect(asModule(specifier, resolution)).toBe(resolution);
+    expect(asModule(specifier, underTsx, resolution)).toBe(resolution);
+  });
+
+  it.each([
+    ['a .cjs helper', 'file:///app/tests/required.cjs'],
+    ['a module Node loaded itself', 'file:///work/core/src/shared/months.ts'],
+    ['another tsx namespace', 'file:///app/tests/example.ts?tsx-namespace=other'],
+  ])('leaves a workspace package that %s reaches alone, so Node strips its types', (_case, parentURL) => {
+    const resolution = { url: 'file:///work/core/src/shared/pad.ts', format: 'commonjs-typescript' };
+    expect(asModule('#shared/pad', { parentURL }, resolution)).toBe(resolution);
   });
 
   it('serves both hook kinds', async () => {
