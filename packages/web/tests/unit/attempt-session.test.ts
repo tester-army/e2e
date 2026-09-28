@@ -41,6 +41,7 @@ function target(id: string, response?: Promise<{ targetId: string }>) {
     setViewportSize: async () => undefined,
     viewportSize: () => ({ width: 320, height: 200 }),
     isClosed: () => false,
+    goto: async () => null,
     close: vi.fn(async () => undefined),
   } as unknown as Page;
   return { page, send };
@@ -99,6 +100,45 @@ describe('AttemptSession', () => {
     await owner.start(new AbortController().signal);
     await owner.ensurePage();
     expect(setViewportSize).not.toHaveBeenCalled();
+    await owner.close(cleanup());
+  });
+
+  it('serves the first page from the persistent browser\'s own tab, on a fresh document, and opens a new tab after it closed', async () => {
+    const current = remote('current');
+    const initial = target('initial');
+    const goto = vi.fn(async () => null);
+    let closed = false;
+    Object.assign(initial.page, { goto, isClosed: () => closed });
+    const opened = target('opened');
+    current.pages.push(initial.page);
+    const newPage = vi.fn(async () => opened.page);
+    const context = { ...current.browser.contexts()[0]!, newPage };
+    Object.assign(current.browser, { contexts: () => [context] });
+    vi.mocked(connectCdp).mockResolvedValue(current.browser);
+    const owner = session();
+    await owner.start(new AbortController().signal);
+    expect(await owner.ensurePage()).toBe(initial.page);
+    expect(goto).toHaveBeenCalledWith('about:blank');
+    expect(newPage).not.toHaveBeenCalled();
+    closed = true;
+    expect(await owner.ensurePage()).toBe(opened.page);
+    expect(newPage).toHaveBeenCalledTimes(1);
+    await owner.close(cleanup());
+  });
+
+  it('opens a new tab in an ordinary context, whatever pages the browser already shows', async () => {
+    const existing = target('existing').page;
+    const opened = target('opened').page;
+    const newPage = vi.fn(async () => opened);
+    const context = { pages: () => [existing], newPage, close: async () => undefined };
+    const owner = new AttemptSession({
+      artifactsDir: tmpdir(), viewport: { width: 320, height: 200 }, contextOptions: {},
+      acquire: async () => ({ newContext: async () => context }) as unknown as Browser,
+      configure: async () => undefined,
+    });
+    await owner.start(new AbortController().signal);
+    expect(await owner.ensurePage()).toBe(opened);
+    expect(newPage).toHaveBeenCalledTimes(1);
     await owner.close(cleanup());
   });
 

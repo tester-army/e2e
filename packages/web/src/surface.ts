@@ -336,19 +336,20 @@ export class PlaywrightSurface {
   /**
    * The persistent remote context this attempt rides, when it does: the
    * `connect` resolvers, or a browser leased for this attempt alone, which
-   * reconnects through the lease's own endpoint. Undefined for isolated
-   * contexts on the shared browser.
+   * reconnects through the lease's own endpoint and is fresh by the
+   * provider's contract, so no earlier attempt's context is checked against
+   * it. Undefined for isolated contexts on the shared browser.
    */
   private async persistentBinding(
     context: EngineAttemptContext,
-  ): Promise<{ provision: CdpEndpointResolver; reconnect: CdpEndpointResolver; usedContexts: Set<string> } | undefined> {
+  ): Promise<{ provision: CdpEndpointResolver; reconnect: CdpEndpointResolver; usedContexts?: Set<string> } | undefined> {
     const { connect, usedContexts } = this;
     if (connect?.reconnectEndpoint !== undefined) {
       return { provision: connect.cdpEndpoint, reconnect: connect.reconnectEndpoint, usedContexts };
     }
     if (this.leases?.scope !== 'attempt') return undefined;
     const lease = await this.leases.startAttempt(context);
-    return { provision: () => lease.cdpEndpoint, reconnect: () => lease.reconnectEndpoint ?? lease.cdpEndpoint, usedContexts };
+    return { provision: () => lease.cdpEndpoint, reconnect: () => lease.reconnectEndpoint ?? lease.cdpEndpoint };
   }
 
   /** Opens one attempt owner before setup starts, so cleanup can cancel pending attachment. */

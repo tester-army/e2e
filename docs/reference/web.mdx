@@ -143,7 +143,14 @@ or session state capture and restore. `app.restart` remains available. Omit
 A `browser` provider with `scope: 'attempt'` rides the same persistent
 context, with the same limits: the lease's `cdpEndpoint` provisions the
 attempt's browser and its `reconnectEndpoint` (else `cdpEndpoint` again)
-reconnects to it.
+reconnects to it. A lease is fresh by the provider's contract, so the engine
+does not compare its context with earlier attempts': a hosted service may
+restore browsers from one snapshot, which gives new browsers the same
+context id.
+
+The attempt's first page is the browser's own first tab, navigated to
+`about:blank`, rather than a second tab beside it; a page opened after that,
+such as the one `app.restart` opens, is a new tab.
 
 ## Web
 

@@ -21,7 +21,13 @@ interface SessionOptions {
   readonly persistent?: {
     readonly provision: CdpEndpointResolver;
     readonly reconnect: CdpEndpointResolver;
-    readonly usedContexts: Set<string>;
+    /**
+     * The default contexts earlier attempts rode, for an endpoint that could
+     * hand one back (a `connect` resolver). Absent for a provider's lease,
+     * fresh by contract: a hosted service may restore browsers from one
+     * snapshot, so a new browser can carry an earlier one's context id.
+     */
+    readonly usedContexts?: Set<string>;
   };
 }
 
@@ -41,6 +47,8 @@ export class AttemptSession {
   private state: SessionState = { kind: 'empty' };
   private generation = {};
   private observed = true;
+  /** Until the attempt's first page opens: a persistent browser's own first tab can serve as that page. */
+  private firstPage = true;
   private tracing = false;
   private traceSegments = 0;
   private traceParts: string[] = [];
@@ -95,12 +103,14 @@ export class AttemptSession {
           return { browser, context, page: null };
         }
         const binding = await attachPersistent(persistent.provision, remaining());
+        const { usedContexts } = persistent;
+        if (usedContexts === undefined) return binding;
         const contextId = binding.identity.contextId;
-        if (persistent.usedContexts.has(contextId)) {
+        if (usedContexts.has(contextId)) {
           await binding.browser.close().catch(() => undefined);
           throw recoveryFailed('cdpEndpoint reused a browser from a previous attempt; provision a fresh browser');
         }
-        persistent.usedContexts.add(contextId);
+        usedContexts.add(contextId);
         return binding;
       }));
   }
@@ -183,7 +193,7 @@ export class AttemptSession {
     if (binding.page !== null && !binding.page.isClosed()) return binding.page;
     this.invalidate();
     const token = this.token();
-    const page = await binding.context.newPage();
+    const page = await this.nextPage(binding.context);
     try {
       let identity = binding.identity;
       if (identity !== undefined) {
@@ -199,6 +209,27 @@ export class AttemptSession {
       await page.close().catch(() => undefined);
       throw cause;
     }
+  }
+
+  /**
+   * The page the attempt shows next. A persistent browser is fresh for the
+   * attempt, so its own first tab serves as the attempt's first page instead
+   * of a second tab beside it, which a hosted browser's live view would show
+   * behind the test's. The tab is navigated to `about:blank` first, so its
+   * document runs the context's init scripts as a new tab's does. Every later
+   * page is a new tab.
+   */
+  private async nextPage(context: BrowserContext): Promise<Page> {
+    const first = this.firstPage;
+    this.firstPage = false;
+    if (first && this.options.persistent !== undefined) {
+      const initial = context.pages().find((page) => !page.isClosed());
+      if (initial !== undefined) {
+        await initial.goto('about:blank');
+        return initial;
+      }
+    }
+    return context.newPage();
   }
 
   /** Restarts the document while retaining this context's storage. */

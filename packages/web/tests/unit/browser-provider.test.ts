@@ -440,6 +440,20 @@ describe('attempt scope', () => {
     expect(cloud.released.map((lease) => lease.id)).toEqual(['lease-0', 'lease-1']);
   });
 
+  it('trusts every lease to be a fresh browser, even one whose default context id an earlier lease had', async () => {
+    const cloud = provider({ scope: 'attempt' });
+    vi.mocked(connectCdp).mockImplementation(async () => fakeBrowser('snapshot-context').browser);
+    const { env } = await prepared(cloud.impl, 1);
+    const worker = new PlaywrightSurface({ browser: cloud.impl });
+    await worker.init(initInfo(0, env));
+    await worker.startAttempt(attempt('a1'));
+    await worker.endAttempt(cleanup());
+    await worker.startAttempt(attempt('a2'));
+    await worker.endAttempt(cleanup());
+    expect(cloud.released.map((lease) => lease.id)).toEqual(['lease-0', 'lease-1']);
+    await worker.dispose(cleanup());
+  });
+
   it('releases the lease at endAttempt after a start that failed to attach', async () => {
     const cloud = provider({ scope: 'attempt' });
     vi.mocked(connectCdp).mockRejectedValue(new Error('endpoint refused'));
