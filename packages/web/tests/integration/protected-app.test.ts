@@ -146,4 +146,19 @@ describe('web({ headers, basicAuth })', () => {
       await shutdown(engine);
     }
   });
+
+  it('reports the configured user agent to the page, after a context reset too', async () => {
+    const engine = web({ url: app.url, userAgent: 'Mozilla/5.0 e2e-probe playwright' });
+    try {
+      await boot(engine, app, artifactsDir, 'u0');
+      await engine.session!.open!(app.url, operation('u0'));
+      const page = () => surfaceOf(engine)!.page();
+      expect(await page().evaluate(() => navigator.userAgent)).toBe('Mozilla/5.0 e2e-probe playwright');
+      await engine.session!.reset!(operation('u0'));
+      await engine.session!.open!(app.url, operation('u0'));
+      expect(await page().evaluate(() => navigator.userAgent)).toBe('Mozilla/5.0 e2e-probe playwright');
+    } finally {
+      await shutdown(engine);
+    }
+  });
 });

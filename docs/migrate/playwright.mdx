@@ -58,7 +58,8 @@ A Playwright key the runner recognizes (`testDir`, `baseURL`, `webServer`,
 | `use.video` | `artifacts: { kinds: ['video'], video: { retain: 'on-failure' } }`, or `--video` for one run | config | renamed |
 | `use.headless: false` | `--headed` on the CLI | CLI | renamed |
 | `use.locale`, `timezoneId`, `colorScheme`, `geolocation`, `permissions` | not yet | config | missing |
-| `devices['iPhone 15']`, `userAgent`, `deviceScaleFactor`, `isMobile`, `hasTouch` | not yet; `web({ viewport })` sets the size only | config | missing |
+| `use.userAgent` | `web({ userAgent })` | config | renamed |
+| `devices['iPhone 15']`, `deviceScaleFactor`, `isMobile`, `hasTouch` | not yet; `web({ viewport })` sets the size only | config | missing |
 | `ignoreHTTPSErrors`, `bypassCSP`, `offline`, `launchOptions`, `proxy` | not yet | config | missing |
 
 ## A test, before and after

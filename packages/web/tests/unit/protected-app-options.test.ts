@@ -1,5 +1,5 @@
 /**
- * The `headers`, `basicAuth`, and `testIdAttribute` options are checked at
+ * The `headers`, `basicAuth`, `testIdAttribute`, and `userAgent` options are checked at
  * config load, so a header the browser could never send or an attribute no
  * element could carry fails the run before a browser launches. What the
  * browser does with valid ones is in tests/integration.
@@ -74,5 +74,23 @@ describe('web({ testIdAttribute })', () => {
         /testIdAttribute.*must be an attribute name/,
       );
     }
+  });
+});
+
+describe('web({ userAgent })', () => {
+  it('accepts a non-empty string', () => {
+    expect(() => web({ userAgent: 'Mozilla/5.0 playwright' })).not.toThrow();
+  });
+
+  it('rejects an empty or non-string value and a control character', () => {
+    expect(() => web({ userAgent: '' })).toThrowError(/non-empty string/);
+    expect(() => web({ userAgent: 3 as unknown as string })).toThrowError(/non-empty string/);
+    expect(() => web({ userAgent: 'a\r\nx-injected: 1' })).toThrowError(/control character/);
+  });
+
+  it('is refused with a persistent context, which it could not be applied to', () => {
+    expect(() =>
+      web({ userAgent: 'playwright', connect: { cdpEndpoint: () => 'ws://x', reconnectEndpoint: () => 'ws://x' } }),
+    ).toThrowError(/headers, basicAuth, and userAgent require a newly created context/);
   });
 });

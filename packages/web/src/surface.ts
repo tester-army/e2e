@@ -182,6 +182,13 @@ export interface WebOptions extends EngineAppDeclaration {
    * Defaults to `data-testid`.
    */
   readonly testIdAttribute?: string;
+  /**
+   * The `User-Agent` every attempt's context sends and `navigator.userAgent`
+   * reports, as Playwright's own `userAgent` context option sets it: for an
+   * app that switches into a test mode on a marker in the agent string.
+   * Defaults to the browser's own.
+   */
+  readonly userAgent?: string;
 }
 
 /** The test-id attribute when the options name none. */
@@ -207,6 +214,7 @@ export class PlaywrightSurface {
   private readonly headers: Readonly<Record<string, string>> | undefined;
   private readonly basicAuth: WebBasicAuth | undefined;
   private readonly testIdAttribute: string;
+  private readonly userAgent: string | undefined;
   private app: EngineAppInfo = {};
   private headed = false;
   private artifactsDir = '';
@@ -227,6 +235,7 @@ export class PlaywrightSurface {
     this.headers = options.headers === undefined ? undefined : lowercaseNames(options.headers);
     this.basicAuth = options.basicAuth;
     this.testIdAttribute = options.testIdAttribute ?? DEFAULT_TEST_ID_ATTRIBUTE;
+    this.userAgent = options.userAgent;
   }
 
   // --- lifecycle ---
@@ -371,6 +380,7 @@ export class PlaywrightSurface {
         viewport: this.viewport,
         acceptDownloads: true,
         ...(credentials === undefined ? {} : { httpCredentials: credentials }),
+        ...(this.userAgent === undefined ? {} : { userAgent: this.userAgent }),
         ...(this.headers === undefined ? {} : { serviceWorkers: 'block' as const }),
       },
       configure: async (target) => {
