@@ -17,6 +17,7 @@ import type { ActionOptions, Expectable, JsonValue, Locator, Screen, TextMatch }
 import {
   Deadline,
   describePattern,
+  EngineError,
   matchesText,
   pollCondition,
   TestError,
@@ -469,18 +470,22 @@ export function createWebFixture(surface: PlaywrightSurface, context: EngineFixt
     async waitForDownload(trigger, options) {
       const operation = context.operation(options?.timeout);
       let triggerFailure: { cause: unknown } | undefined;
+      let awaiting: { waitMs: number; triggerMs: number } | undefined;
       return surface.guard(operation, 'download', async (currentOperation) => {
         const waiter: Promise<Download> = surface.requirePage()
           .waitForEvent('download', { timeout: currentOperation.timeoutMs });
         // The trigger may fail before the waiter settles; absorb its later rejection.
         waiter.catch(() => undefined);
+        const triggerStart = Date.now();
         try {
           await trigger();
         } catch (cause) {
           triggerFailure = { cause };
           throw cause;
         }
+        awaiting = { waitMs: currentOperation.timeoutMs, triggerMs: Date.now() - triggerStart };
         const download = await waiter;
+        awaiting = undefined;
         const suggestedFilename = download.suggestedFilename();
         const { relative, absolute } = surface.artifactPath('downloads', suggestedFilename, '');
         await download.saveAs(absolute);
@@ -489,7 +494,16 @@ export function createWebFixture(surface: PlaywrightSurface, context: EngineFixt
       }, (cause, label) => {
         // The trigger is test code, so its errors keep their original classification.
         if (triggerFailure !== undefined && Object.is(cause, triggerFailure.cause)) throw cause;
-        return translatePwError(cause, label);
+        const translated = translatePwError(cause, label);
+        // The waiter's clock starts before the trigger runs, so the message names both.
+        if (awaiting !== undefined && translated instanceof EngineError && translated.code === 'OPERATION_TIMEOUT') {
+          return new TestError(
+            'ACTION_FAILED',
+            `no download started within ${awaiting.waitMs}ms; the trigger resolved after ${awaiting.triggerMs}ms`,
+            { cause },
+          );
+        }
+        return translated;
       });
     },
     keyboard: {

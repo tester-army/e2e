@@ -421,7 +421,11 @@ unhandled dialog does. One that throws fails the next step, or the attempt at
 its end when no step follows, with its error: a failed `expect` stays
 `ASSERTION_FAILED`, an unclassified throw is `ENGINE_FAILURE`.
 `waitForDownload` registers the file as a `download`
-artifact and throws `ACTION_FAILED` when it does not complete in time.
+artifact and throws `ACTION_FAILED` when it does not complete in time. A
+trigger that resolves without starting a download fails with
+`no download started within <n>ms; the trigger resolved after <m>ms`, where
+the wait includes the trigger's own time. A trigger that throws fails with its
+own error.
 
 ```ts
 /** A native dialog as a test's handler sees it. */

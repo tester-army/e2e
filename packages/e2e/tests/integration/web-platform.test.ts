@@ -496,6 +496,11 @@ test('clicks hold the modifiers they name', async ({ app, screen, web }) => {
   await expect(status).toHaveText('click');
 });
 
+test('a trigger that starts no download times out saying so', async ({ app, web }) => {
+  await app.open('/downloads');
+  await web.waitForDownload(() => new Promise((resolve) => setTimeout(resolve, 200)), { timeout: 500 });
+});
+
 test('css selectors via web.locator', async ({ app, web }) => {
   await app.open();
   await expect(web.locator('ul[data-testid="items"] li').first()).toHaveText('Item Alpha');
@@ -633,6 +638,15 @@ describe('web platform integration', () => {
 
   it('holds click modifiers on the web engine', () => {
     expect(resultByTitle(outcome, 'clicks hold the modifiers they name').status).toBe('passed');
+  });
+
+  it('fails a download that never started with the wait and the trigger time, not a bare timeout', () => {
+    const result = resultByTitle(outcome, 'a trigger that starts no download times out saying so');
+    expect(result.status).toBe('failed');
+    const error = result.attempts[0]!.error;
+    expect(error?.code).toBe('ACTION_FAILED');
+    const triggerMs = Number(/^no download started within 500ms; the trigger resolved after (\d+)ms$/.exec(error?.message ?? '')?.[1]);
+    expect(triggerMs).toBeGreaterThanOrEqual(200);
   });
 
   it('fails ambiguous locators immediately with LOCATOR_AMBIGUOUS', () => {
