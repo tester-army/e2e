@@ -206,7 +206,7 @@ test('never registered', async () => {});
       const notices: string[] = [];
       const narrowed = await runProject(files, {
         appUrl: app.url,
-        runOptions: { files: ['tests/good.e2e.ts'], onEvent: (event) => { if (event.type === 'notice') notices.push(event.message); } },
+        runOptions: { files: ['tests/good.e2e.ts'], onEvent: (event) => { if (event.type === 'notice' && event.target === 'collect') notices.push(event.message); } },
       });
       expect(narrowed.outcome.exitCode).toBe(0);
       expect(narrowed.outcome.report.run.results.map((result) => result.titlePath.at(-1))).toEqual(['runs']);
