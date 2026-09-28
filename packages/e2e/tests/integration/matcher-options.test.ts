@@ -70,6 +70,11 @@ test('an option toHaveURL does not take is refused', async ({ app, web }) => {
   await app.open();
   await expect(web).toHaveURL('/', flag('ignoreCase', true));
 });
+
+test('an option waitForURL does not take is refused', async ({ app, web }) => {
+  await app.open();
+  await web.waitForURL('/', flag('waitUntil', 'load'));
+});
 `;
 
 describe('matcher options in a browser', () => {
@@ -110,6 +115,7 @@ describe('matcher options in a browser', () => {
   it.each([
     ['an option toBeChecked does not take is refused', 'expect.toBeChecked options has no key "indeterminate"'],
     ['an option toHaveURL does not take is refused', 'expect.toHaveURL options has no key "ignoreCase"'],
+    ['an option waitForURL does not take is refused', 'web.waitForURL options has no key "waitUntil"'],
   ])('%s', (title, message) => {
     const result = resultByTitle(outcome, title);
     expect(result.status).toBe('failed');

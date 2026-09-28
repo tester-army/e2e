@@ -204,7 +204,7 @@ what to do today.
 | `page.goBack()` | `app.back()`, or `browser.back()` | renamed |
 | `page.goForward()`, `page.reload()` | `browser.forward()`, `browser.reload()` | web only |
 | `page.url()`, `page.title()` | `browser.url()`, `browser.title()` | web only |
-| `page.waitForURL()` | `browser.waitForURL()`; a string or `RegExp`, no predicate function | web only |
+| `page.waitForURL()` | `browser.waitForURL()`; a string or `RegExp`, no predicate function, and `timeout` is its only option, so `waitUntil` is `INVALID_ARGUMENT` | web only |
 | `page.waitForLoadState()` | not yet; `browser.goto(url, { waitUntil })` on the navigation itself | missing |
 | `page.waitForFunction(fn)` | `expect.poll(() => browser.evaluate(fn)).toBeTruthy()` | missing |
 | `page.waitForTimeout(ms)` | a locator assertion on the state you are waiting for: `toBeVisible()` on what appears, `toBeHidden()` on what goes away | by design |

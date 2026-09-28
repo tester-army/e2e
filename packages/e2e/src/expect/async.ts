@@ -394,19 +394,11 @@ class AsyncExpectationImpl implements AsyncExpectation {
     valueOrOptions?: TextMatch | { timeout?: number },
     options?: TextMatcherOptions,
   ): Promise<void> {
-    let value: TextMatch | undefined;
-    let timeout: number | undefined;
-    let ignoreCase: boolean | undefined;
-    if (isTextMatch(valueOrOptions)) {
-      value = valueOrOptions;
-      ignoreCase = this.readOptions('toHaveAttribute', options, 'ignoreCase');
-      timeout = options?.timeout;
-    } else {
-      this.readOptions('toHaveAttribute', valueOrOptions);
-      timeout = valueOrOptions?.timeout;
-    }
-    const pattern =
-      value === undefined ? undefined : withIgnoreCase(toTextPattern(value, { exact: true }), ignoreCase);
+    const hasValue = isTextMatch(valueOrOptions);
+    // Presence reads the third argument too when the value is `undefined`, as Playwright does.
+    const bag = hasValue ? options : (valueOrOptions ?? options);
+    const ignoreCase = this.readOptions('toHaveAttribute', bag, hasValue ? 'ignoreCase' : undefined);
+    const pattern = hasValue ? withIgnoreCase(toTextPattern(valueOrOptions, { exact: true }), ignoreCase) : undefined;
     const comparison: TextComparison = { mode: 'equals', normalize: true, ignoreCase };
     return this.poll(
       {
@@ -429,7 +421,7 @@ class AsyncExpectationImpl implements AsyncExpectation {
             : `attribute "${name}" ${JSON.stringify(attribute)}`;
         },
       },
-      timeout,
+      bag?.timeout,
     );
   }
 

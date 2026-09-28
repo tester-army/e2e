@@ -151,6 +151,10 @@ describe('options a matcher does not take', () => {
     ['toHaveText useInnerText', () => at('banner').toHaveText('Save Error', computed({ useInnerText: true }))],
     ['toHaveCount ignoreCase', () => at('banner').toHaveCount(1, computed({ ignoreCase: true }))],
     ['toHaveAttribute presence ignoreCase', () => at('banner').toHaveAttribute('data-kind', computed({ ignoreCase: true }))],
+    [
+      'toHaveAttribute presence ignoreCase after an undefined value',
+      () => at('banner').toHaveAttribute('data-kind', undefined as never, computed({ ignoreCase: true })),
+    ],
   ])('%s is INVALID_ARGUMENT before the first read', (_label, call) => {
     vexpect(call).toThrow(vexpect.objectContaining(invalidArgument));
   });
