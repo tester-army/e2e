@@ -2,8 +2,9 @@
  * Runner-side redaction of the trace archives an engine wrote, before the
  * runner registers, hashes, or hands them to a store. An engine records what
  * happened, secrets included: a Playwright trace holds the filled value in the
- * action's parameters, in every DOM snapshot of the field, and in the request
- * that carried it. The runner owns the secret ledger, so the runner rewrites.
+ * action's parameters, in every DOM snapshot of the field, in the request
+ * that carried it, and in the screencast frames of a field that shows it. The
+ * runner owns the secret ledger, so the runner rewrites.
  */
 
 import { readFile, rm } from 'node:fs/promises';
@@ -18,7 +19,10 @@ import { inflateEntry, readZip, writeZip, zipEntry, type ZipEntry } from '../int
  * returned from `stopTrace`, relative to `dir`; one that resolves outside
  * `dir` is refused before anything is touched. An archive that cannot be
  * rewritten is deleted together with the rest of the trace, and the failure
- * is thrown: the runner keeps no trace it cannot vouch for.
+ * is thrown: the runner keeps no trace it cannot vouch for. Only a trace from
+ * a session a secret was filled on comes here, and its viewport is
+ * pixel-tainted: its screencast frames are dropped, as a screenshot would be
+ * denied.
  */
 export async function redactTraceArchives(
   dir: string,
@@ -57,15 +61,23 @@ function isInside(root: string, absolute: string): boolean {
  * cut at an observation limit partway through a secret or a selection over
  * part of one, which whole-value matching misses. One the redactor left
  * unchanged is carried as stored, so an archive with nothing to redact is not
- * rewritten at all. An entry that is not UTF-8 text (a screencast frame, a
- * font, an image) cannot be rewritten: it is carried as stored unless a
- * secret's bytes occur in it, in which case it is dropped from the archive.
+ * rewritten at all. An entry that is not UTF-8 text (a font, an image) cannot
+ * be rewritten: it is carried as stored unless a secret's bytes occur in it,
+ * in which case it is dropped from the archive. Screencast frames are dropped
+ * whatever they hold: every entry under `screencast/`, referenced or not, the
+ * `screencast-frame` records in each event stream (a `.trace` entry), and any
+ * other entry such a record names.
  */
 async function redactArchive(absolute: string, ledger: SecretLedger): Promise<void> {
   const entries = readZip(await readFile(absolute));
   let changed = false;
   const kept: ZipEntry[] = [];
+  const frames = new Set<string>();
   for (const entry of entries) {
+    if (entry.name.startsWith('screencast/')) {
+      changed = true;
+      continue;
+    }
     const bytes = inflateEntry(entry);
     const text = decodeText(bytes);
     if (text === undefined) {
@@ -76,7 +88,8 @@ async function redactArchive(absolute: string, ledger: SecretLedger): Promise<vo
       kept.push(entry);
       continue;
     }
-    const clean = redactText(text, ledger.redactFragments);
+    const events = entry.name.endsWith('.trace') ? withoutFrameRecords(text, frames) : text;
+    const clean = redactText(events, ledger.redactFragments);
     if (clean === text) {
       kept.push(entry);
       continue;
@@ -84,7 +97,32 @@ async function redactArchive(absolute: string, ledger: SecretLedger): Promise<vo
     changed = true;
     kept.push(zipEntry(entry.name, Buffer.from(clean, 'utf8'), entry));
   }
-  if (changed) await writeFileAtomic(absolute, writeZip(kept));
+  if (changed) await writeFileAtomic(absolute, writeZip(kept.filter((entry) => !frames.has(entry.name))));
+}
+
+/**
+ * An event stream without its `screencast-frame` records; the image each one
+ * names joins `frames`. A record names it as `file`, or, in a trace older
+ * than format 9, as a `sha1` under `resources/`. App content is JSON-escaped
+ * inside the records that carry it, so only the trace's own records match.
+ */
+function withoutFrameRecords(text: string, frames: Set<string>): string {
+  return text
+    .split('\n')
+    .filter((line) => {
+      if (!line.includes('"screencast-frame"')) return true;
+      let record: { type?: unknown; file?: unknown; sha1?: unknown } | null;
+      try {
+        record = JSON.parse(line);
+      } catch {
+        return true;
+      }
+      if (record?.type !== 'screencast-frame') return true;
+      if (typeof record.file === 'string') frames.add(record.file);
+      if (typeof record.sha1 === 'string') frames.add(`resources/${record.sha1}`);
+      return false;
+    })
+    .join('\n');
 }
 
 /**

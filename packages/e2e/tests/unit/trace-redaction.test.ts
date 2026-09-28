@@ -3,9 +3,12 @@
  * text as text, in every encoding a trace spells a value; a fragment of a
  * value the page read raw is rewritten the same way; binary entries are
  * carried byte for byte unless they hold a secret, in which case they are
- * dropped; an untouched archive keeps its bytes; every listed segment is
- * covered; an archive that cannot be rewritten takes the whole trace with it;
- * a path outside the attempt directory is refused before anything is touched.
+ * dropped; screencast frames, referenced or not, and their records are
+ * dropped whatever they hold, while an app resource that merely looks like a
+ * frame record stays; an untouched archive keeps its bytes; every listed
+ * segment is covered; an archive that cannot be rewritten takes the whole
+ * trace with it; a path outside the attempt directory is refused before
+ * anything is touched.
  */
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -56,7 +59,7 @@ function traceArchive(secret = SECRET): Buffer {
         `<input value="${secret.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')}">`,
       ),
     ),
-    zipEntry('screencast/clean.jpeg', FRAME_CLEAN),
+    zipEntry('resources/clean.jpeg', FRAME_CLEAN),
     zipEntry('trace.stacks', Buffer.from('{"files":[]}')),
   ]);
 }
@@ -77,7 +80,7 @@ describe('redactTraceArchives', () => {
     const after = entriesOf(file);
     expect([...after.keys()]).toEqual([...before.keys()]);
     for (const [name, bytes] of after) {
-      if (name === 'screencast/clean.jpeg') {
+      if (name === 'resources/clean.jpeg') {
         expect(bytes.equals(before.get(name)!)).toBe(true);
         continue;
       }
@@ -185,15 +188,85 @@ describe('redactTraceArchives', () => {
       writeZip([
         zipEntry('trace.trace', Buffer.from('{"type":"before"}')),
         zipEntry('resources/body.bin', FRAME_WITH_SECRET),
-        zipEntry('screencast/clean.jpeg', FRAME_CLEAN),
+        zipEntry('resources/clean.jpeg', FRAME_CLEAN),
       ]),
     );
 
     await redactTraceArchives(dir, ['trace/trace.zip'], new SecretLedger([['member', SECRET]]));
 
     const after = entriesOf(file);
-    expect([...after.keys()]).toEqual(['trace.trace', 'screencast/clean.jpeg']);
-    expect(after.get('screencast/clean.jpeg')!.equals(FRAME_CLEAN)).toBe(true);
+    expect([...after.keys()]).toEqual(['trace.trace', 'resources/clean.jpeg']);
+    expect(after.get('resources/clean.jpeg')!.equals(FRAME_CLEAN)).toBe(true);
+  });
+
+  it('drops every screencast frame and its record, whatever the frame holds, and keeps the other images', async () => {
+    const dir = attemptDir();
+    const file = path.join(dir, 'trace', 'trace.zip');
+    const frame = { type: 'screencast-frame', pageId: 'page@1', width: 1280, height: 720, timestamp: 12.5 };
+    const served = JSON.stringify({ ...frame, file: 'resources/logo.jpeg' });
+    writeFileSync(
+      file,
+      writeZip([
+        zipEntry('resources/logo.jpeg', FRAME_CLEAN),
+        zipEntry('resources/served.json', Buffer.from(served)),
+        zipEntry('screencast/page@1-1.jpeg', FRAME_CLEAN),
+        zipEntry('screencast/page@1-2.jpeg', FRAME_CLEAN),
+        zipEntry(
+          'trace.trace',
+          Buffer.from(
+            [
+              JSON.stringify({ type: 'before', method: 'fill', params: { value: 'plain' } }),
+              JSON.stringify({ ...frame, file: 'screencast/page@1-1.jpeg' }),
+              JSON.stringify({ ...frame, sha1: 'abc.jpeg' }),
+              JSON.stringify({ type: 'frame-snapshot', snapshot: { resourceOverrides: [{ sha1: 'logo.jpeg' }] } }),
+            ].join('\n'),
+          ),
+        ),
+        zipEntry('resources/abc.jpeg', FRAME_CLEAN),
+      ]),
+    );
+
+    await redactTraceArchives(dir, ['trace/trace.zip'], new SecretLedger([['member', SECRET]]));
+
+    const after = entriesOf(file);
+    expect([...after.keys()]).toEqual(['resources/logo.jpeg', 'resources/served.json', 'trace.trace']);
+    expect(after.get('resources/logo.jpeg')!.equals(FRAME_CLEAN)).toBe(true);
+    expect(after.get('resources/served.json')!.toString()).toBe(served);
+    expect(after.get('trace.trace')!.toString().split('\n').map((line) => JSON.parse(line) as unknown)).toEqual([
+      { type: 'before', method: 'fill', params: { value: 'plain' } },
+      { type: 'frame-snapshot', snapshot: { resourceOverrides: [{ sha1: 'logo.jpeg' }] } },
+    ]);
+  });
+
+  it('drops the screencast and scrubs a cut fragment in the same event stream', async () => {
+    const secret = 'cut-secret-Kq7ZrT2mWx9pLd4sNv8bHc3jFg6yQa1eUo5iRk0tYw2zXn7uM';
+    const dir = attemptDir();
+    const file = path.join(dir, 'trace', 'trace.zip');
+    const frame = { type: 'screencast-frame', pageId: 'page@1', file: 'screencast/page@1-1.jpeg' };
+    writeFileSync(
+      file,
+      writeZip([
+        zipEntry('screencast/page@1-1.jpeg', FRAME_CLEAN),
+        zipEntry(
+          'trace.trace',
+          Buffer.from(
+            [
+              JSON.stringify(frame),
+              JSON.stringify({ type: 'after', result: { value: { text: `0123456789${secret.slice(0, 59)}` } } }),
+            ].join('\n'),
+          ),
+        ),
+      ]),
+    );
+
+    await redactTraceArchives(dir, ['trace/trace.zip'], new SecretLedger([['member', secret]]));
+
+    const after = entriesOf(file);
+    expect([...after.keys()]).toEqual(['trace.trace']);
+    expect(JSON.parse(after.get('trace.trace')!.toString())).toEqual({
+      type: 'after',
+      result: { value: { text: '0123456789<secret:member>' } },
+    });
   });
 
   it('leaves an archive with nothing to redact untouched, and rewrites every listed segment', async () => {

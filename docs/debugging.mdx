@@ -107,9 +107,10 @@ After a secret fill, the runner withholds screenshots from agent calls and
 `app.screenshot()` for the rest of the attempt.
 
 Playwright traces and videos need separate care. Trace redaction replaces
-secret text with `<secret:name>`, but it cannot remove a secret rendered as
-pixels. A trace marked `redaction: "complete"` can still contain those
-images. Videos mask nothing and are marked `redaction: "incomplete"`.
+secret text with `<secret:name>` and drops the trace's screencast frames, so
+the viewer shows actions, DOM snapshots, and network, but no filmstrip. An
+image the app served itself stays, even one that draws the secret. Videos
+mask nothing and are marked `redaction: "incomplete"`.
 
 If trace rewriting fails, the runner deletes the trace from the attempt's
 artifact directory. For a path outside that directory, it withholds the

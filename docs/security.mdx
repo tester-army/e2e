@@ -175,11 +175,12 @@ hook; its console output reaches the runner's streams as written.
   consecutive characters of a registered value, since the trace keeps what
   the engine read from the page before redaction: a text cut at its limit
   partway through a secret, or a selection over part of one. Plain trace
-  text that happens to share 8 characters with a value is masked too. Image
-  entries cannot be rewritten:
-  one containing the literal secret bytes is dropped, one that merely renders
-  the secret as pixels survives. A trace the runner cannot rewrite is
-  deleted and the attempt records `TRACE_WITHHELD`.
+  text that happens to share 8 characters with a value is masked too.
+  Screencast frames are dropped, since the viewport is pixel-tainted. Other
+  image entries cannot be rewritten: one containing the literal secret bytes
+  is dropped, an image the app served that merely draws the secret survives.
+  A trace the runner cannot rewrite is deleted and the attempt records
+  `TRACE_WITHHELD`.
 - A video masks nothing and is labelled `redaction: "incomplete"`. It is
   never recorded unless you ask.
 - A download is what the app served. After a secret fill on the session, a
@@ -239,7 +240,7 @@ path you configure.
 | --- | --- | --- |
 | `report.json` | The run record. Errors, reasoning excerpts, and action summaries pass the redactor. | complete |
 | `artifacts/.../*.png` | Screenshots. Secure fields are masked before screenshots are returned or saved as artifacts. | complete |
-| `artifacts/.../trace.zip` | Playwright trace, rewritten after a secret fill. | not-required, complete, or deleted |
+| `artifacts/.../trace.zip` | Playwright trace, rewritten after a secret fill, screencast frames dropped. | not-required, complete, or deleted |
 | `artifacts/.../*.webm`, `*.mp4` | Video, opt-in, kept for every attempt unless `retain: 'on-failure'`. | incomplete |
 | `artifacts/.../downloads/*` | Files the app served through a download. Text ones are rewritten after a secret fill; the rest are kept as served. | complete or incomplete |
 | `artifacts/.../failure/screen.txt` | The redacted tree at the moment of failure. | complete |

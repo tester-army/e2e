@@ -4,9 +4,11 @@
  * filled by an executor's `typeSecret` each produce a trace whose every text
  * entry is redacted, labelled `complete`, and handed to the store already
  * clean; an attempt that filled no secret keeps its trace as recorded,
- * labelled `not-required`. The executor's fill is recorded in the trace cache
- * by the secret's name alone. Nothing under the project's `.e2e` directory
- * holds the plaintext afterwards.
+ * labelled `not-required`. A secret filled into a visible ordinary field
+ * denies screenshots and leaves no screencast frame in the trace, while the
+ * untainted trace keeps its frames. The executor's fill is recorded in the
+ * trace cache by the secret's name alone. Nothing under the project's `.e2e`
+ * directory holds the plaintext afterwards.
  */
 
 import { readFileSync } from 'node:fs';
@@ -50,6 +52,13 @@ test('downloads without a fill', async ({ app, screen, web }) => {
   await app.open('/downloads');
   await web.waitForDownload(() => screen.getByRole('link', { name: 'Download report' }).tap());
 });
+
+test('fills a visible field', async ({ app, screen }) => {
+  await app.open();
+  await screen.getByLabel('Focus target').fill(credentials.user('member').password);
+  const denied = await app.screenshot().then(() => undefined, (error: { code?: string }) => error.code);
+  expect(denied).toBe('POLICY_DENIED');
+});
 `;
 
 function capturing(): ArtifactStore & { puts: StoredArtifact[] } {
@@ -74,6 +83,16 @@ function textEntries(bytes: Uint8Array): Map<string, string> {
       }
     }),
   );
+}
+
+/** Names of the archive's JPEG and PNG entries, told by their magic bytes. */
+function imageEntries(bytes: Uint8Array): string[] {
+  return readZip(bytes).flatMap((entry) => {
+    const head = Buffer.from(inflateEntry(entry).subarray(0, 4));
+    const jpeg = head.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]));
+    const png = head.equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    return jpeg || png ? [entry.name] : [];
+  });
 }
 
 describe('trace secrecy', () => {
@@ -158,8 +177,25 @@ describe('trace secrecy', () => {
     const trace = attempt.artifacts.find((artifact) => artifact.kind === 'trace')!;
     expect(trace).toMatchObject({ redaction: 'not-required' });
     expect(trace.path).toBeDefined();
-    const entries = textEntries(readFileSync(path.join(project.dir, '.e2e', 'artifacts', trace.path!)));
+    const onDisk = readFileSync(path.join(project.dir, '.e2e', 'artifacts', trace.path!));
+    const entries = textEntries(onDisk);
     expect(entries.get('trace.trace')).toContain('plain text');
+    expect(entries.get('trace.trace')).toContain('"screencast-frame"');
+    expect(imageEntries(onDisk)).toEqual(expect.arrayContaining([expect.stringMatching(/^screencast\/.+\.jpeg$/)]));
+  });
+
+  it('fills a visible field: screenshots are denied and the trace keeps no screencast frame', () => {
+    const attempt = resultByTitle(outcome, 'fills a visible field').attempts[0]!;
+    const trace = attempt.artifacts.find((artifact) => artifact.kind === 'trace')!;
+    expect(trace).toMatchObject({ redaction: 'complete' });
+    const onDisk = readFileSync(path.join(project.dir, '.e2e', 'artifacts', trace.path!));
+    const entries = textEntries(onDisk);
+    expect(entries.get('trace.trace')).toContain('<secret:member>');
+    expect(entries.get('trace.trace')).toContain('"frame-snapshot"');
+    expect(entries.get('trace.trace')).not.toContain('"screencast-frame"');
+    expect(imageEntries(onDisk)).toEqual([]);
+    const put = store.puts.find((stored) => stored.path === trace.path)!;
+    expect(Buffer.from(put.bytes).equals(onDisk)).toBe(true);
   });
 
   it('downloads after a fill: a text download is rewritten, labelled complete, and stored clean', () => {

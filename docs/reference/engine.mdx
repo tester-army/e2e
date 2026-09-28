@@ -985,7 +985,9 @@ cleanup budget. Return segments in recording order from `stopVideo` and
 `stopTrace`.
 
 After a secret fill, the runner redacts every text entry in each trace
-archive. If redaction fails, it deletes the archives and records
+archive and drops its screencast frames: every `screencast/` entry, each
+`screencast-frame` record in a `.trace` entry, and any image a record names.
+If redaction fails, it deletes the archives and records
 `TRACE_WITHHELD`. Videos are unmasked and carry `redaction: 'incomplete'`.
 A `download` an engine attaches is the app's bytes: after a secret fill the
 runner rewrites a text one (`.txt`, `.csv`, `.json`, `.html`) through the
