@@ -318,8 +318,8 @@ importers:
   packages/e2e:
     dependencies:
       '@ai-sdk/provider':
-        specifier: 4.0.17
-        version: 4.0.17
+        specifier: 4.0.18
+        version: 4.0.18
       '@clack/prompts':
         specifier: 1.8.1
         version: 1.8.1
@@ -488,6 +488,10 @@ packages:
 
   '@ai-sdk/provider@4.0.17':
     resolution: {integrity: sha512-VYMBxIQdcHqbIf1j+YZlI9Ati6LZ4wJe0GGd4z4a5H/KxTggjeOiyaVYTnfF7LHZK5jMQ+rofmzz4QPqf++NUw==}
+    engines: {node: '>=22'}
+
+  '@ai-sdk/provider@4.0.18':
+    resolution: {integrity: sha512-+GZJIgz1jk86pwEbb3f1BD2bdoSKyWE4Jg4YUc7NMnMozbWemSKYZcw2F4nMaO5qwsL5A8RmioAKW81YktRpIQ==}
     engines: {node: '>=22'}
 
   '@ai-sdk/xai@5.0.4':
@@ -7252,6 +7256,10 @@ snapshots:
       zod: 4.6.1
 
   '@ai-sdk/provider@4.0.17':
+    dependencies:
+      json-schema: 0.4.0
+
+  '@ai-sdk/provider@4.0.18':
     dependencies:
       json-schema: 0.4.0
 
