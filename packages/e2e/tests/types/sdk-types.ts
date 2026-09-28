@@ -183,6 +183,8 @@ executorContext.attachTurns([{ index: 1, calls: ['tap({"target":"n19"})'], outco
 asyncExpectation.toHaveAttribute('x', 42);
 // A test id takes a RegExp, as the text queries do.
 void (screen.getByTestId(/^total-/) satisfies Locator);
+// @ts-expect-error a test id is a text match
+screen.getByTestId(42);
 // Set reads answer with lists and never wait; the list form of a text matcher takes strings and RegExps.
 void (screen.getByTestId('todo').all() satisfies Promise<Locator[]>);
 void (screen.getByTestId('todo').allTextContents() satisfies Promise<string[]>);
