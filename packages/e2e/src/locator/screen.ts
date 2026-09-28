@@ -5,7 +5,7 @@ import type { LocatorAction, LocatorExpression, SemanticNode } from '../engine/s
 import { locatorBrand, secretBrand } from '../internal/brands.ts';
 import { asEngineError, TestError } from '../internal/errors.ts';
 import { requireFinitePoint } from '../internal/geometry.ts';
-import { rejectUnknownOptions } from '../internal/options.ts';
+import { isPlainObject, rejectUnknownOptions } from '../internal/options.ts';
 import { realmSlot } from '../internal/realm-slot.ts';
 import { normalizeText } from '../internal/text.ts';
 import type {
@@ -512,13 +512,13 @@ class LocatorImpl extends ScreenImpl implements Locator {
   }
 
   filter(options: { hasText?: TextMatch; has?: Locator }): Locator {
-    requireFilterOptions(options);
-    const hasExpression =
-      options.has === undefined ? undefined : this.ownLocator(options.has, 'filter({ has })').expression;
+    rejectUnknownOptions('filter', options, ['hasText', 'has'], 'INVALID_LOCATOR');
+    const { hasText, has } = options ?? {};
+    const hasExpression = has === undefined ? undefined : this.ownLocator(has, 'filter({ has })').expression;
     return new LocatorImpl(
       this.context,
       filterExpression(this.expression, {
-        ...(options.hasText !== undefined ? { hasText: options.hasText } : {}),
+        ...(hasText !== undefined ? { hasText } : {}),
         ...(hasExpression !== undefined ? { has: hasExpression } : {}),
       }),
     );
@@ -558,24 +558,6 @@ function requirePoint(point: Point | undefined, what: string): Point {
 }
 
 /**
- * Refuses a filter options bag carrying a key other than `hasText` and `has`.
- * `filter` builds its expression from those two alone, so any other key
- * (`hasNot`, `hasNotText`, `visible`) would drop out silently and widen the
- * match, even beside a supported key.
- */
-function requireFilterOptions(options: unknown): void {
-  if (typeof options !== 'object' || options === null || Array.isArray(options)) {
-    throw new TestError('INVALID_LOCATOR', 'filter() options must be a plain object');
-  }
-  const unknown = Object.keys(options).filter((key) => key !== 'hasText' && key !== 'has');
-  if (unknown.length === 0) return;
-  throw new TestError(
-    'INVALID_LOCATOR',
-    `filter() has no ${unknown.length === 1 ? 'option' : 'options'} ${unknown.map((key) => `"${key}"`).join(', ')}; it takes hasText and has`,
-  );
-}
-
-/**
  * Refuses a `selectOption` value that is not one option: a label string or an
  * object with exactly one of `label`, `value`, or a nonnegative integer
  * `index`. An engine maps the value field by field, so an array or a
@@ -589,11 +571,10 @@ function requireSelectOption(value: unknown): void {
     );
   }
   if (typeof value === 'string') return;
-  if (typeof value === 'object' && value !== null) {
-    const entries = Object.entries(value);
-    const [key, field] = entries[0] ?? [];
-    if (entries.length === 1 && (key === 'label' || key === 'value') && typeof field === 'string') return;
-    if (entries.length === 1 && key === 'index' && Number.isInteger(field) && field >= 0) return;
+  if (isPlainObject(value) && Object.getOwnPropertyNames(value).length === 1) {
+    const { label, value: attribute, index } = value;
+    if (typeof label === 'string' || typeof attribute === 'string') return;
+    if (typeof index === 'number' && Number.isInteger(index) && index >= 0) return;
   }
   throw new TestError(
     'INVALID_ARGUMENT',

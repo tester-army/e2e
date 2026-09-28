@@ -41,32 +41,44 @@ describe('locator.filter options', () => {
   });
 
   it.each<[string, (paid: Locator) => object, string]>([
-    ['hasNotText beside hasText', () => ({ hasText: 'Invoice', hasNotText: 'Paid' }), 'option "hasNotText"'],
-    ['hasNot beside has', (paid) => ({ has: paid, hasNot: paid }), 'option "hasNot"'],
-    ['visible beside hasText', () => ({ hasText: 'Invoice', visible: true }), 'option "visible"'],
-    ['hasNotText alone', () => ({ hasNotText: 'Paid' }), 'option "hasNotText"'],
-    ['two unknown keys', (paid) => ({ hasText: 'Invoice', hasNot: paid, hasNotText: 'Paid' }), 'options "hasNot", "hasNotText"'],
+    ['hasNotText beside hasText', () => ({ hasText: 'Invoice', hasNotText: 'Paid' }), 'key "hasNotText"'],
+    ['hasNot beside has', (paid) => ({ has: paid, hasNot: paid }), 'key "hasNot"'],
+    ['visible beside hasText', () => ({ hasText: 'Invoice', visible: true }), 'key "visible"'],
+    ['hasNotText alone', () => ({ hasNotText: 'Paid' }), 'key "hasNotText"'],
+    ['two unknown keys', (paid) => ({ hasText: 'Invoice', hasNot: paid, hasNotText: 'Paid' }), 'keys "hasNot", "hasNotText"'],
+    [
+      'a non-enumerable hasNotText',
+      () => Object.defineProperty({ hasText: 'Invoice' }, 'hasNotText', { value: 'Paid' }),
+      'key "hasNotText"',
+    ],
   ])('rejects %s with INVALID_LOCATOR before any engine call', (_, options, named) => {
     const { screen, expressions } = invoiceScreen();
     const paid = screen.getByText('Paid');
     expect(() => screen.getByRole('row').filter(invalid<FilterOptions>(options(paid)))).toThrow(
       expect.objectContaining({
         code: 'INVALID_LOCATOR',
-        message: `filter() has no ${named}; it takes hasText and has`,
+        message: `filter options has no ${named}; it takes hasText, has`,
       }),
     );
     expect(expressions).toEqual([]);
   });
 
   it.each([
-    ['undefined', undefined],
     ['null', null],
     ['an array', [{ hasText: 'Invoice' }]],
     ['a string', 'Invoice'],
+    ['an object inheriting hasNotText', Object.assign(Object.create({ hasNotText: 'Paid' }), { hasText: 'Invoice' })],
   ])('rejects %s in place of the options object', (_, options) => {
     const { screen } = invoiceScreen();
     expect(() => screen.getByRole('row').filter(invalid<FilterOptions>(options))).toThrow(
-      expect.objectContaining({ code: 'INVALID_LOCATOR', message: 'filter() options must be a plain object' }),
+      expect.objectContaining({ code: 'INVALID_LOCATOR', message: 'filter options must be a plain object' }),
+    );
+  });
+
+  it('rejects absent options as an empty filter', () => {
+    const { screen } = invoiceScreen();
+    expect(() => screen.getByRole('row').filter(invalid<FilterOptions>(undefined))).toThrow(
+      expect.objectContaining({ code: 'INVALID_LOCATOR', message: 'filter() requires hasText and/or has' }),
     );
   });
 });

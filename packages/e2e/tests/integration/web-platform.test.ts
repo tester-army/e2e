@@ -220,12 +220,12 @@ test('unsupported filter and selectOption shapes fail before acting', async ({ a
   const digest = () =>
     web.evaluate(() => [...document.querySelector<HTMLSelectElement>('#digest')!.selectedOptions].map((option) => option.value));
 
-  const mixed = { hasText: 'Item', hasNotText: 'Alpha' } as unknown as { hasText: string };
+  const mixed = { hasText: 'Item', hasNotText: 'Alpha' } as never;
   expect(await code(() => screen.getByTestId('item').filter(mixed).first().textContent())).toBe('INVALID_LOCATOR');
   await expect(screen.getByTestId('item').filter({ hasText: 'Item' })).toHaveCount(3);
   await expect(screen.getByTestId('item').filter({ hasText: 'Item' }).first()).toHaveText('Item Alpha');
 
-  const several = ['daily', 'weekly'] as unknown as string;
+  const several = ['daily', 'weekly'] as never;
   expect(await code(() => screen.getByLabel('Digest').selectOption(several))).toBe('INVALID_ARGUMENT');
   expect(await digest()).toEqual([]);
   await screen.getByLabel('Digest').selectOption({ value: 'weekly' });

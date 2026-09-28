@@ -30,8 +30,24 @@ describe('rejectUnknownOptions', () => {
   });
 
   it('rejects a bag that is not a plain object', () => {
-    for (const options of [null, 'fast', 3, [1]]) {
+    for (const options of [null, 'fast', 3, [1], new Date(), Object.create({ intervalMs: 100 })]) {
       expect(() => rejectUnknownOptions('agent.assert', options as never, KNOWN)).toThrow(TestError);
     }
+  });
+
+  it('sees a non-enumerable unknown key', () => {
+    const options = Object.defineProperty({ timeout: 1 }, 'force', { value: true });
+    expect(() => rejectUnknownOptions('agent.assert', options, KNOWN)).toThrow(
+      expect.objectContaining({ message: 'agent.assert options has no key "force"; it takes timeout, interval, maxModelCalls, vision' }),
+    );
+  });
+
+  it('throws the code the caller names', () => {
+    expect(() => rejectUnknownOptions('filter', { hasNotText: 'Paid' }, ['hasText', 'has'], 'INVALID_LOCATOR')).toThrow(
+      expect.objectContaining({ code: 'INVALID_LOCATOR' }),
+    );
+    expect(() => rejectUnknownOptions('filter', null as never, ['hasText', 'has'], 'INVALID_LOCATOR')).toThrow(
+      expect.objectContaining({ code: 'INVALID_LOCATOR' }),
+    );
   });
 });
