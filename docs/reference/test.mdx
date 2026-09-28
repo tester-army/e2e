@@ -258,9 +258,9 @@ contribute fails with `UNSUPPORTED_CAPABILITY`; declare `requires: ['web']`
 to skip such tests at selection instead.
 
 The fixtures above are lazy. Destructuring in the parameter list acquires
-them before the body's first statement. Your own fixtures are not: each one
-of the `test` a test was registered through sets up for that test, whether
-its parameters name it or not.
+them before the body's first statement. Your own fixtures are not: every
+fixture in the `extend` chain a test was registered through sets up for that
+test, even when its parameters omit it.
 
 ### Your own fixtures
 

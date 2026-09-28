@@ -160,7 +160,7 @@ to do today.
 | `keyboard.down`, `keyboard.up`, `keyboard.insertText` | not yet | `web` | missing |
 | `page.mouse.click(x, y)` | `screen.tapAt({ x, y })`, viewport coordinates | `screen` | renamed |
 | `mouse.move`, `down`, `up` as a drag | `screen.swipe({ from, to })` | `screen` | renamed |
-| `page.dragAndDrop(source, target, { sourcePosition, targetPosition })` | `source.dragTo(target)`, or `screen.swipe({ from, to })` with points from `boundingBox()` | `screen` | renamed |
+| `page.dragAndDrop(source, target, { sourcePosition, targetPosition })` | `source.dragTo(target)`, which takes no positions; for `sourcePosition` or `targetPosition`, `screen.swipe({ from, to })` with each `boundingBox()` origin plus its offset | `screen` | renamed |
 | `page.mouse.move`, `wheel`, `down`, `up` | `web.mouse.*` | `web` | web only |
 
 ### Assertions
