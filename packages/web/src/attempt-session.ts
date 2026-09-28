@@ -55,7 +55,7 @@ export class AttemptSession {
   private requestedViewport: { readonly width: number; readonly height: number } | undefined;
 
   constructor(private readonly options: SessionOptions) {
-    this.video = new VideoRecorder(options.viewport, options.artifactsDir);
+    this.video = new VideoRecorder(options.artifactsDir);
   }
 
   /** Captures an immutable connection generation for publication after asynchronous reads. */

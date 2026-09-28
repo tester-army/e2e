@@ -6,8 +6,9 @@
  * attempt's page; a page about to close (a restart, a context replaced by a
  * state reset) ends its segment first, since Playwright writes nothing for a
  * screencast whose page closed under it, and the next page the attempt opens
- * starts the next segment. Each segment is captured at the attempt's viewport
- * size (the window's, measured when the page starts it, under `viewport: null`) and carries the instant it began, so a consumer can place step
+ * starts the next segment. Each segment is captured at its page's viewport
+ * size when it starts (the window's under `viewport: null`, so a page
+ * `web.setViewport` sized is recorded at that size) and carries the instant it began, so a consumer can place step
  * timestamps on it. The first segment is `video/video.webm`; later ones are
  * `video/video-part<n>.webm`. Without a recording, every hook here is a no-op.
  */
@@ -15,7 +16,7 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { Page } from 'playwright';
-import { EngineError, type VideoSegment, type ViewportSize } from 'e2e/engine';
+import { EngineError, type VideoSegment } from 'e2e/engine';
 import { currentViewport, message } from './support.ts';
 
 /** One segment in progress: the page it records and where its file lands. */
@@ -27,7 +28,6 @@ interface Segment {
 }
 
 export class VideoRecorder {
-  private readonly viewport: ViewportSize | null;
   /** Set by `arm`, cleared by `stop`; pages the attempt opens in between start segments. */
   private armed = false;
   private current: Segment | null = null;
@@ -38,12 +38,7 @@ export class VideoRecorder {
   /** The first segment whose stop failed and left no file; `stop` reports it. */
   private lost: { readonly relative: string; readonly cause: unknown } | undefined;
 
-  constructor(
-    viewport: ViewportSize | null,
-    private readonly artifactsDir: string,
-  ) {
-    this.viewport = viewport;
-  }
+  constructor(private readonly artifactsDir: string) {}
 
   /** True between `arm` and `stop`: a page the attempt opens then starts a segment. */
   get isArmed(): boolean {
@@ -93,7 +88,7 @@ export class VideoRecorder {
   }
 
   /**
-   * Starts one segment on a page, a screencast at the attempt's viewport size.
+   * Starts one segment on a page, a screencast at the page's viewport size.
    * A segment still recording (a page the app closed on its own) ends first.
    */
   private async begin(page: Page): Promise<void> {
@@ -103,7 +98,7 @@ export class VideoRecorder {
     const relative = path.posix.join('video', `${name}.webm`);
     const absolute = path.join(this.artifactsDir, relative);
     mkdirSync(path.dirname(absolute), { recursive: true });
-    const size = this.viewport ?? await currentViewport(page);
+    const size = await currentViewport(page);
     await page.screencast.start({
       path: absolute,
       size: { width: size.width, height: size.height },

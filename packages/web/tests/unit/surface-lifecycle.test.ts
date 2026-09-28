@@ -34,6 +34,7 @@ beforeEach(async () => {
     isClosed: () => false,
     close: async () => undefined,
     goto: async () => undefined,
+    viewportSize: () => ({ width: 1280, height: 720 }),
     frames: () => [{ evaluate: focus }],
     keyboard: { press, type },
     screencast: {

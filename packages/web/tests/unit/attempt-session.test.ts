@@ -142,7 +142,7 @@ describe('AttemptSession', () => {
     await owner.close(cleanup());
   });
 
-  it('refuses a viewport that is not whole pixels and keeps a copy of the one it accepts', async () => {
+  it('refuses a viewport that is not whole pixels, keeps a copy of the one it accepts, and resizes an open page', async () => {
     const current = remote('current');
     vi.mocked(connectCdp).mockResolvedValue(current.browser);
     const setViewportSize = vi.fn(async (_size: { width: number; height: number }) => undefined);
@@ -160,6 +160,8 @@ describe('AttemptSession', () => {
     await owner.ensurePage();
     expect(setViewportSize).toHaveBeenCalled();
     for (const [called] of setViewportSize.mock.calls) expect(called).toEqual({ width: 390, height: 600 });
+    await owner.setViewport({ width: 800, height: 600 });
+    expect(setViewportSize).toHaveBeenLastCalledWith({ width: 800, height: 600 });
     await owner.close(cleanup());
   });
 

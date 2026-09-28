@@ -16,13 +16,16 @@ import { VideoRecorder } from '../../src/video.ts';
 const VIEWPORT = { width: 320, height: 200 };
 
 /** A page whose screencast writes its file on start unless told not to, and fails to stop when told to. */
-function fakePage(options: { writes?: boolean; stopError?: Error; startError?: Error } = {}) {
+function fakePage(options: { writes?: boolean; stopError?: Error; startError?: Error; viewport?: { width: number; height: number } } = {}) {
   const started: string[] = [];
+  const sizes: { width: number; height: number }[] = [];
   const page = {
+    viewportSize: () => options.viewport ?? VIEWPORT,
     screencast: {
-      start: async ({ path: file }: { path: string }) => {
+      start: async ({ path: file, size }: { path: string; size: { width: number; height: number } }) => {
         if (options.startError !== undefined) throw options.startError;
         started.push(file);
+        sizes.push(size);
         if (options.writes !== false) writeFileSync(file, 'webm');
       },
       stop: async () => {
@@ -30,14 +33,14 @@ function fakePage(options: { writes?: boolean; stopError?: Error; startError?: E
       },
     },
   } as unknown as Page;
-  return { page, started };
+  return { page, started, sizes };
 }
 
 describe('VideoRecorder', () => {
   let dir: string;
   const recorder = () => {
     dir = mkdtempSync(path.join(tmpdir(), 'e2e-video-unit-'));
-    return new VideoRecorder(VIEWPORT, dir);
+    return new VideoRecorder(dir);
   };
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
@@ -46,7 +49,7 @@ describe('VideoRecorder', () => {
   it('records one segment per page, in order, each with its start instant', async () => {
     const video = recorder();
     const first = fakePage();
-    const second = fakePage();
+    const second = fakePage({ viewport: { width: 390, height: 600 } });
     await video.arm(first.page);
     expect(video.isArmed).toBe(true);
     expect(video.isRecording).toBe(true);
@@ -57,6 +60,7 @@ describe('VideoRecorder', () => {
     expect(video.isArmed).toBe(true);
     await video.pageOpened(second.page);
     expect(second.started).toEqual([path.join(dir, 'video', 'video-part2.webm')]);
+    expect([...first.sizes, ...second.sizes]).toEqual([VIEWPORT, { width: 390, height: 600 }]);
     const segments = await video.stop();
     expect(segments.map((segment) => segment.path)).toEqual(['video/video.webm', 'video/video-part2.webm']);
     for (const segment of segments) expect(Number.isNaN(Date.parse(segment.startedAt))).toBe(false);
