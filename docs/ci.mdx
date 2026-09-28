@@ -127,8 +127,8 @@ implemented yet.
 `--last-failed` runs only the tests the previous run did not pass, read from
 `.e2e/report.json` before the new run overwrites it. A `beforeAll` or
 `afterAll` that failed brings back every test in its describe or file on that
-target, even one whose body passed, until a run where the hook passes; in a
-setup's file, the tests that consume its session. Locally it is the loop after
+target, even one whose body passed, until a rerun of those tests passes the
+hook; in a setup's file, the tests that consume its session. Locally it is the loop after
 a red run:
 
 ```bash

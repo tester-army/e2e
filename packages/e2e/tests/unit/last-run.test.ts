@@ -106,9 +106,11 @@ describe('readLastRun and lastFailedIds', () => {
       { id: 'a', status: 'passed' },
       { id: 'b', file: 'tests/b.e2e.ts', status: 'passed' },
       { id: 'unselected', status: 'skipped', selected: false, skip: { cause: 'filtered', reason: 'grep' } },
+      // A report older than `selected` does not say it.
+      { id: 'legacy', status: 'passed', selected: undefined },
     ];
     const unscoped = { code: 'HOOK_FAILED', phase: 'afterAll', scopeId: 'file' };
-    expect([...(await readLastFailed(reportFile(report(results, [unscoped]))))]).toEqual(['a', 'b'].map(idOf));
+    expect([...(await readLastFailed(reportFile(report(results, [unscoped]))))]).toEqual(['a', 'b', 'legacy'].map(idOf));
   });
 
   it('is NO_LAST_RUN when no report exists, with the path and the way out', async () => {

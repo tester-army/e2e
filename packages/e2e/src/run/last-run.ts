@@ -84,7 +84,8 @@ export async function readLastRun(reportPath: string): Promise<Report1Document> 
  * The result ids of a report's tests that did not pass: failed, timed out,
  * interrupted, or skipped because a setup, a serial predecessor, a hook, or
  * the worker failed, and every selected test in the scope of a `beforeAll` or
- * `afterAll` that failed, until a run where that hook passes. An explicit
+ * `afterAll` that failed, until a run where that hook passes. A report older
+ * than `selected` counts every result as selected. An explicit
  * skip and a filtered test passed in the sense that matters here: nothing to
  * run again. The ids are `resultId(testId, target, agent)`, so a test is
  * named per target and agent whichever of its `--repeat-each` runs did not
@@ -93,7 +94,7 @@ export async function readLastRun(reportPath: string): Promise<Report1Document> 
 export function lastFailedIds(document: Report1Document): ReadonlySet<string> {
   const hookFailures = document.run.errors.filter((error) => error.phase === 'beforeAll' || error.phase === 'afterAll');
   const rerun = (result: ReportResult): boolean =>
-    didNotPass(result) || (result.selected && hookFailures.some((error) => inHookScope(result, error)));
+    didNotPass(result) || (result.selected !== false && hookFailures.some((error) => inHookScope(result, error)));
   return new Set(document.run.results.filter(rerun).map((result) => resultId(result.testId, result.targetId, result.agent)));
 }
 
