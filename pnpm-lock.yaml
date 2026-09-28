@@ -297,8 +297,8 @@ importers:
         specifier: 26.6.2
         version: 26.6.2
       agent-device:
-        specifier: 0.21.6
-        version: 0.21.6(ai@7.0.107(zod@4.6.1))
+        specifier: 0.21.16
+        version: 0.21.16(ai@7.0.107(zod@4.6.1))
       ai:
         specifier: 7.0.107
         version: 7.0.107(zod@4.6.1)
@@ -2932,16 +2932,6 @@ packages:
 
   agent-device@0.21.16:
     resolution: {integrity: sha512-eIJWHxRXB2CMmt/yDhY/Vvgnj733k1IdzWimoNX6Rono0y19FKTb6zaPw+Dug0e6e0MYYJsrt6Ht+Q/ZyPQ/4A==}
-    engines: {node: '>=22.12'}
-    hasBin: true
-    peerDependencies:
-      ai: ^6.0.0 || ^7.0.0
-    peerDependenciesMeta:
-      ai:
-        optional: true
-
-  agent-device@0.21.6:
-    resolution: {integrity: sha512-p0tYqpU0pATvcblhwmUaq4ayi7EQ74wU5lK5kceCrhF8R5nYqQe3OTA3cxpyN/seIRtRUgVLvpJbRB0CPkFauA==}
     engines: {node: '>=22.12'}
     hasBin: true
     peerDependencies:
@@ -10151,10 +10141,6 @@ snapshots:
   agent-cli-detector@0.1.7: {}
 
   agent-device@0.21.16(ai@7.0.107(zod@4.6.1)):
-    optionalDependencies:
-      ai: 7.0.107(zod@4.6.1)
-
-  agent-device@0.21.6(ai@7.0.107(zod@4.6.1)):
     optionalDependencies:
       ai: 7.0.107(zod@4.6.1)
 
