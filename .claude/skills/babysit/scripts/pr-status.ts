@@ -67,9 +67,12 @@ interface ThreadPage {
   nodes: Thread[];
 }
 
+/** GitHub nulls the author of a comment or review whose account was deleted. */
+type Author = { login: string } | null;
+
 interface IssueComment {
   id: number;
-  user: { login: string };
+  user: Author;
   created_at: string;
   html_url: string;
   body: string;
@@ -78,7 +81,7 @@ interface IssueComment {
 
 interface Review {
   id: number;
-  user: { login: string };
+  user: Author;
   state: string;
   body: string | null;
   html_url: string;
@@ -95,7 +98,8 @@ interface SummaryInput {
   now?: number;
 }
 
-const FAILED = new Set(['FAILURE', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR']);
+// STALE: GitHub expired a result nobody refreshed; it needs a rerun, not trust.
+const FAILED = new Set(['FAILURE', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'STALE', 'ERROR']);
 const AGENT_REPLY = /^_\[[^\]]+\] responding on behalf of /;
 // GitHub exposes no push time; the head's first check start is the closest
 // signal, and the commit date (which can predate the push) the fallback.
@@ -127,7 +131,8 @@ export function summarize({ pr, threads, comments, reviews = [], viewer, now = D
   if (headPushedAt !== null && now - Date.parse(headPushedAt) < SETTLE_MS) {
     pending.push('checks settling after push');
   }
-  const byAgent = (login: string | undefined, body: string) => login === viewer && AGENT_REPLY.test(body);
+  const byAgent = (login: string | undefined, body: string) =>
+    login !== undefined && login === viewer && AGENT_REPLY.test(body);
   const unresolved = threads
     .filter((thread) => !thread.isResolved)
     .map((thread) => {
@@ -148,10 +153,10 @@ export function summarize({ pr, threads, comments, reviews = [], viewer, now = D
     });
   const open = unresolved.filter((thread) => !thread.escalated);
   const unacknowledged = comments
-    .filter((comment) => comment.acknowledged !== true && !byAgent(comment.user.login, comment.body))
+    .filter((comment) => comment.acknowledged !== true && !byAgent(comment.user?.login, comment.body))
     .map((comment) => ({
       id: comment.id,
-      author: comment.user.login,
+      author: comment.user?.login ?? null,
       url: comment.html_url,
       body: comment.body.slice(0, 600),
     }));
@@ -166,18 +171,18 @@ export function summarize({ pr, threads, comments, reviews = [], viewer, now = D
   );
   const verdicts = new Map<string, Review>();
   for (const review of submitted.toSorted((a, b) => a.submitted_at.localeCompare(b.submitted_at))) {
-    if (VERDICTS.has(review.state)) verdicts.set(review.user.login, review);
+    if (VERDICTS.has(review.state)) verdicts.set(review.user?.login ?? `deleted:${review.id}`, review);
   }
   const changesRequested = [...verdicts.values()]
     .filter((review) => review.state === 'CHANGES_REQUESTED')
-    .map((review) => ({ id: review.id, author: review.user.login, url: review.html_url }));
+    .map((review) => ({ id: review.id, author: review.user?.login ?? null, url: review.html_url }));
   if (changesRequested.length > 0) blockers.push(`changes-requested:${changesRequested.length}`);
   const newReviews = submitted
     .filter((review) => headPushedAt === null || review.submitted_at > headPushedAt)
     .filter((review) => review.state === 'CHANGES_REQUESTED' || (review.body ?? '').trim() !== '')
     .map((review) => ({
       id: review.id,
-      author: review.user.login,
+      author: review.user?.login ?? null,
       state: review.state,
       url: review.html_url,
       body: (review.body ?? '').slice(0, 600),
@@ -198,6 +203,11 @@ export function summarize({ pr, threads, comments, reviews = [], viewer, now = D
     reviews: newReviews,
     changesRequested,
   };
+}
+
+/** True when `viewer` reacted 👍 among a comment's reactions; any other reaction or reactor does not count. */
+export function acknowledges(reactions: { content: string; user: Author }[], viewer: string): boolean {
+  return reactions.some((reaction) => reaction.content === '+1' && reaction.user?.login === viewer);
 }
 
 /** CLOSED for a merged or closed PR, else the most urgent open state. */
@@ -250,18 +260,19 @@ function fetchStatus(selector: string | null) {
   } while (after !== null);
   const viewer = (JSON.parse(gh(['api', 'user'])) as { login: string }).login;
   const acknowledgedBy = (id: number) =>
-    (
-      JSON.parse(
-        gh([
-          'api',
-          '--paginate',
-          '--slurp',
-          `repos/${owner}/${repo}/issues/comments/${id}/reactions?content=%2B1&per_page=100`,
-        ]),
-      ) as { content: string; user: { login: string } }[][]
-    )
-      .flat()
-      .some((reaction) => reaction.content === '+1' && reaction.user.login === viewer);
+    acknowledges(
+      (
+        JSON.parse(
+          gh([
+            'api',
+            '--paginate',
+            '--slurp',
+            `repos/${owner}/${repo}/issues/comments/${id}/reactions?content=%2B1&per_page=100`,
+          ]),
+        ) as { content: string; user: Author }[][]
+      ).flat(),
+      viewer,
+    );
   const comments = (
     JSON.parse(
       gh(['api', '--paginate', '--slurp', `repos/${owner}/${repo}/issues/${pr.number}/comments?per_page=100`]),

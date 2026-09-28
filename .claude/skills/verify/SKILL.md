@@ -100,10 +100,11 @@ ran, and what you saw, with media:
   fenced `text` block (ANSI stripped, paths trimmed). This is the primary
   evidence for runner, CLI, and reporter changes.
 - **Video:** `--video` (add `--headed` to watch it) records every attempt to
-  `.e2e/artifacts/<target>/<test>/.../attempt-<n>/video/video.webm`.
+  `.e2e/artifacts/<target>/<test>/.../attempt-<n>/video/`: `video.webm` from
+  `@e2edev/web`, `video.mp4` from `@e2edev/mobile`.
   Attach it for engine, locator, and agent changes a viewer can see.
 - **Stills:** cut a frame from the video
-  (`ffmpeg -ss <seconds> -i video.webm -frames:v 1 after.png`), or screenshot
+  (`ffmpeg -ss <seconds> -i <video> -frames:v 1 after.png`), or screenshot
   the docs page.
 - **Bug fixes, main vs branch:** write the regression test first and run it
   while the checkout still matches main, so the failure is captured. Already

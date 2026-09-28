@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { summarize } from './pr-status.ts';
+import { acknowledges, summarize } from './pr-status.ts';
 
 const reply = (text: string) => `_[model] responding on behalf of Owner_\n\n${text}`;
 
@@ -142,7 +142,7 @@ test('a reviewer quoting the attribution cannot escalate a thread', () => {
 });
 
 test('every failed conclusion and a draft block the PR', () => {
-  for (const conclusion of ['FAILURE', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE']) {
+  for (const conclusion of ['FAILURE', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'STALE']) {
     const check = { name: 'ci', status: 'COMPLETED', conclusion };
     const status = summarize({ now: later, pr: pr({ statusCheckRollup: [check] }), threads: [], comments: [] });
     assert.deepEqual(status.blockers, ['failing:ci'], conclusion);
@@ -213,4 +213,26 @@ test("review summaries since the push are listed, and a reviewer's standing chan
     status.reviews.map((entry) => entry.author),
     ['carol'],
   );
+});
+
+test("only the viewer's own 👍 acknowledges a comment", () => {
+  const reaction = (content: string, login: string | null) => ({ content, user: login === null ? null : { login } });
+  assert.equal(acknowledges([reaction('+1', 'owner')], 'owner'), true);
+  assert.equal(acknowledges([reaction('heart', 'owner'), reaction('eyes', 'owner')], 'owner'), false);
+  assert.equal(acknowledges([reaction('+1', 'someone'), reaction('+1', null)], 'owner'), false);
+});
+
+test('a comment or review by a deleted account still counts', () => {
+  const status = summarize({
+    now: later,
+    pr: pr(),
+    threads: [],
+    comments: [{ id: 2, user: null, created_at: pushedAt, html_url: 'u', body: 'orphaned' }],
+    reviews: [
+      { id: 4, user: null, state: 'CHANGES_REQUESTED', body: 'x', html_url: 'u', submitted_at: pushedAt },
+      { id: 5, user: null, state: 'CHANGES_REQUESTED', body: 'y', html_url: 'u', submitted_at: pushedAt },
+    ],
+    viewer: 'owner',
+  });
+  assert.deepEqual(status.blockers, ['comments:1', 'changes-requested:2']);
 });
