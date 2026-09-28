@@ -259,9 +259,13 @@ export class SessionHost {
     });
   }
 
-  /** Stops a recording still running when the session closes, and says where it went or why it was lost. */
+  /**
+   * Stops a recording still running when the session closes, and says where
+   * it went or why it was lost. Always queued, never checked first: a start
+   * still in flight is not running yet, and would record past the close.
+   */
   private async saveRecording(live: LiveSession): Promise<string | undefined> {
-    if (live.recorder?.isRecording !== true) return undefined;
+    if (live.recorder === undefined) return undefined;
     try {
       const recording = await live.recorder.stop();
       return recording === undefined ? undefined : describeRecording(recording);

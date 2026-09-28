@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OperationContext, VideoSegment } from '../../src/engine/surface.ts';
 import { describeRecording, SessionRecorder } from '../../src/mcp/recording.ts';
 
@@ -168,6 +168,9 @@ describe('SessionRecorder', () => {
     });
     const recordings = recorder();
     const starting = recordings.start('late');
+    // The engine start is in flight, and the recorder does not count it as running yet.
+    await vi.waitFor(() => expect(calls).toEqual(['start']));
+    expect(recordings.isRecording).toBe(false);
     const stopping = recordings.stop();
     release();
     await starting;
