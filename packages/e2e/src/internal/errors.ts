@@ -116,6 +116,15 @@ export interface ErrorDetails {
   readonly waitedMs?: number;
 }
 
+/** Where a suite hook ran, in the terms its tests' results use. */
+export interface HookScope {
+  /** The test file, project-relative. */
+  readonly file: string;
+  readonly targetId: string;
+  /** The describe titles the hook is declared in, outermost first; empty for a file-level hook. */
+  readonly titlePath: readonly string[];
+}
+
 export interface SerializedError {
   category: ErrorCategory;
   code: string;
@@ -123,10 +132,8 @@ export interface SerializedError {
   retryable: boolean;
   phase?: ErrorPhase;
   scopeId?: string;
-  /** A suite hook failure's test file, project-relative, the way its tests' results name it. */
-  file?: string;
-  /** A suite hook failure's target: with `file` and `scopeId`, the tests a rerun has to verify again. */
-  targetId?: string;
+  /** A suite hook failure's scope: the tests it leaves unverified, which `--last-failed` runs again. */
+  scope?: HookScope;
   details?: ErrorDetails;
   /** The line in the test file the failure unwound through, when the stack named one. */
   source?: SourceLocation;
@@ -351,8 +358,7 @@ export function serializeError(
   extras: {
     phase?: ErrorPhase;
     scopeId?: string;
-    file?: string;
-    targetId?: string;
+    scope?: HookScope;
     projectRoot?: string | undefined;
     /**
      * Replaces secret values in the message, the details, and the stack: an
@@ -371,8 +377,7 @@ export function serializeError(
   };
   if (extras.phase !== undefined) serialized.phase = extras.phase;
   if (extras.scopeId !== undefined) serialized.scopeId = extras.scopeId;
-  if (extras.file !== undefined) serialized.file = extras.file;
-  if (extras.targetId !== undefined) serialized.targetId = extras.targetId;
+  if (extras.scope !== undefined) serialized.scope = extras.scope;
   if (error.details !== undefined) {
     const details = boundedDetails(error.details, redact);
     if (details !== undefined) serialized.details = details;

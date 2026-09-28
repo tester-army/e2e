@@ -146,12 +146,7 @@ export class RealmManager {
         try {
           await runHook(`${hook.kind} hook`, () => hook.fn(this.suiteFixtures()), this.options.timeout);
         } catch (cause) {
-          const error = classifyError(cause);
-          failed = serializeError(
-            new E2EError('test', 'HOOK_FAILED', `beforeAll failed: ${error.message}`, { cause }),
-            this.hookScope(realm, scope, 'beforeAll'),
-          );
-          this.options.runErrors.push({ error: failed });
+          failed = this.hookFailed(realm, scope, 'beforeAll', cause);
           break;
         }
       }
@@ -190,12 +185,7 @@ export class RealmManager {
         try {
           await runHook(`${hook.kind} hook`, () => hook.fn(this.suiteFixtures()), this.options.cleanupTimeout);
         } catch (cause) {
-          const error = classifyError(cause);
-          const failed = serializeError(
-            new E2EError('test', 'HOOK_FAILED', `afterAll failed: ${error.message}`, { cause }),
-            this.hookScope(realm, scope, 'afterAll'),
-          );
-          this.options.runErrors.push({ error: failed });
+          const failed = this.hookFailed(realm, scope, 'afterAll', cause);
           failure ??= failed;
         }
       }
@@ -209,12 +199,21 @@ export class RealmManager {
   }
 
   /**
-   * Where a suite hook failed: its phase, and the scope, file, and target
-   * whose tests `--last-failed` runs again, since a hook failure is a run
-   * error that no test result carries.
+   * Records a suite hook failure as a run error. No test result carries it,
+   * so it names its scope the way results do, for `--last-failed` to run
+   * the tests in it again.
    */
-  private hookScope(realm: Realm, scope: Scope, phase: 'beforeAll' | 'afterAll') {
-    return { phase, scopeId: scopeId(scope), file: realm.file, targetId: this.options.targetName };
+  private hookFailed(realm: Realm, scope: Scope, phase: 'beforeAll' | 'afterAll', cause: unknown): SerializedError {
+    const failed = serializeError(
+      new E2EError('test', 'HOOK_FAILED', `${phase} failed: ${classifyError(cause).message}`, { cause }),
+      {
+        phase,
+        scopeId: scopeId(scope),
+        scope: { file: realm.file, targetId: this.options.targetName, titlePath: scope === undefined ? [] : groupTitles(scope) },
+      },
+    );
+    this.options.runErrors.push({ error: failed });
+    return failed;
   }
 
   /** One scope's hooks of one kind, in declaration order. */

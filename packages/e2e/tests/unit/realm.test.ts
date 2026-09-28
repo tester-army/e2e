@@ -155,7 +155,7 @@ describe('realm hook lifecycle', () => {
     );
 
     const failure = await realms.enterScopes(realm, registered(realm, 'broken', 'one'));
-    expect(failure).toMatchObject({ code: 'HOOK_FAILED', phase: 'beforeAll', scopeId: 'broken', file: 'tests/realm.e2e.ts', targetId: 'web' });
+    expect(failure).toMatchObject({ code: 'HOOK_FAILED', phase: 'beforeAll', scopeId: 'broken', scope: { file: 'tests/realm.e2e.ts', targetId: 'web', titlePath: ['broken'] } });
     expect(failure?.message).toContain('suite setup exploded');
     // The scope stays entered as failed: the next test in it is skipped by the same failure.
     expect(await realms.enterScopes(realm, registered(realm, 'broken', 'two'))).toBe(failure);
@@ -185,7 +185,7 @@ describe('realm hook lifecycle', () => {
     );
     await realms.enterScopes(realm, registered(realm, 'group', 't'));
     const failure = await realms.leaveFinished(realm, []);
-    expect(failure).toMatchObject({ code: 'HOOK_FAILED', phase: 'afterAll', scopeId: 'group', file: 'tests/realm.e2e.ts', targetId: 'web' });
+    expect(failure).toMatchObject({ code: 'HOOK_FAILED', phase: 'afterAll', scopeId: 'group', scope: { file: 'tests/realm.e2e.ts', targetId: 'web', titlePath: ['group'] } });
     expect(failure?.message).toContain('teardown exploded');
     expect(log).toEqual(['afterAll:group-first', 'afterAll:file']);
     expect(runErrors.map((entry) => entry.error)).toEqual([failure]);

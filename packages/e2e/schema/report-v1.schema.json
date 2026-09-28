@@ -63,8 +63,16 @@
           "enum": ["config", "collection", "launch", "beforeAll", "beforeEach", "body", "afterEach", "afterAll", "cleanup", "report"]
         },
         "scopeId": { "type": "string", "minLength": 1, "maxLength": 1024 },
-        "file": { "$ref": "#/$defs/relativePath" },
-        "targetId": { "type": "string", "minLength": 1 },
+        "scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["file", "targetId", "titlePath"],
+          "properties": {
+            "file": { "$ref": "#/$defs/relativePath" },
+            "targetId": { "type": "string", "minLength": 1 },
+            "titlePath": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+          }
+        },
         "source": { "$ref": "#/$defs/source" },
         "details": {
           "type": "object",

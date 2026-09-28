@@ -91,8 +91,9 @@ export interface SelectionFilters {
   readonly grepInvert?: readonly RegExp[];
   /**
    * The result ids (`resultId(testId, target, agent)`) of the tests the
-   * previous run did not pass (`--last-failed`): only those run. Empty means
-   * nothing failed, so nothing is selected.
+   * previous run did not pass (`--last-failed`): only those run, and the
+   * consumers of a setup among them. Empty means nothing failed, so nothing
+   * is selected.
    */
   readonly lastFailed?: ReadonlySet<string>;
   /** The one shard of the selection to run, once every other filter applied (`--shard`). */
@@ -304,6 +305,10 @@ export function select(
 
   assertSerialAgentsAgree(collection.tests, optionsByTest);
   const sessionProducers = collectSessionProducers(collection.tests);
+  const pairFilters =
+    filters.lastFailed === undefined
+      ? filters
+      : { ...filters, lastFailed: withSetupConsumers(filters.lastFailed, collection.tests, targets, optionsByTest, sessionProducers) };
 
   // One pair per target, test, and agent the test runs as, in that order,
   // so a persona sweep reports its variants side by side.
@@ -312,7 +317,7 @@ export function select(
     for (const test of collection.tests) {
       const options = optionsByTest.get(test.id)!;
       for (const agent of options.agents) {
-        pairs.push(classifyPair(test, target, agent, options, focused, selectedFiles, filters, tagMode));
+        pairs.push(classifyPair(test, target, agent, options, focused, selectedFiles, pairFilters, tagMode));
       }
     }
   }
@@ -521,6 +526,31 @@ function collectSessionProducers(
     }
   }
   return producers;
+}
+
+/**
+ * `--last-failed` widened to the consumers of every setup it names. A setup
+ * runs only for a selected test that needs its session, so a setup whose
+ * `afterAll` failed while its consumers passed comes back through them.
+ */
+function withSetupConsumers(
+  lastFailed: ReadonlySet<string>,
+  tests: readonly CollectedTest[],
+  targets: readonly ResolvedTarget[],
+  optionsByTest: ReadonlyMap<string, ResolvedTestOptions>,
+  sessionProducers: ReadonlyMap<string, CollectedTest>,
+): ReadonlySet<string> {
+  const widened = new Set(lastFailed);
+  for (const target of targets) {
+    for (const test of tests) {
+      const options = optionsByTest.get(test.id)!;
+      const producer = options.session === undefined ? undefined : sessionProducers.get(options.session);
+      if (producer === undefined) continue;
+      const rerun = optionsByTest.get(producer.id)!.agents.some((agent) => lastFailed.has(resultId(producer.id, target.name, agent)));
+      if (rerun) for (const agent of options.agents) widened.add(resultId(test.id, target.name, agent));
+    }
+  }
+  return widened;
 }
 
 function classifyPair(

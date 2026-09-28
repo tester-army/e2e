@@ -66,8 +66,10 @@
         "retryable": false,
         "phase": "afterAll",
         "scopeId": "file",
-        "file": "/abs/tests/example.e2e.ts",
-        "targetId": ""
+        "scope": {
+          "file": "/abs/tests/example.e2e.ts",
+          "targetId": "web"
+        }
       }
     ]
   }

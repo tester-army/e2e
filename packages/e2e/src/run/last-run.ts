@@ -31,18 +31,21 @@ function didNotPass(result: ReportResult): boolean {
 }
 
 /**
- * Whether a failed suite hook covered a result: same file and target, and a
- * describe chain inside the hook's scope. A hook failure is a run error no
+ * Whether a failed suite hook covered a result: same file and target, and
+ * declared inside the hook's describe. A hook failure is a run error no
  * result carries, so a test whose body passed there still has to run again.
- * An error that names no file or target covers every test, since nothing
- * narrower is known to be safe.
+ * An error that names no scope covers every test, since nothing narrower is
+ * known to be safe.
  */
 function inHookScope(result: ReportResult, error: ReportError): boolean {
-  if (error.file === undefined || error.targetId === undefined || error.scopeId === undefined) return true;
-  if (result.file !== error.file || result.targetId !== error.targetId) return false;
-  if (error.scopeId === 'file') return true;
-  const groups = result.titlePath.slice(0, -1).join(' \u203a ');
-  return groups === error.scopeId || groups.startsWith(`${error.scopeId} \u203a `);
+  const scope = error.scope;
+  if (scope === undefined) return true;
+  return (
+    result.file === scope.file &&
+    result.targetId === scope.targetId &&
+    result.titlePath.length > scope.titlePath.length &&
+    scope.titlePath.every((title, index) => result.titlePath[index] === title)
+  );
 }
 
 function noLastRun(message: string, cause?: unknown): ConfigurationError {
@@ -126,6 +129,14 @@ function isResult(value: unknown): value is ReportResult {
 
 function isError(value: unknown): value is ReportError {
   if (typeof value !== 'object' || value === null) return false;
-  const error = value as Partial<Record<keyof ReportError, unknown>>;
-  return (['phase', 'scopeId', 'file', 'targetId'] as const).every((key) => error[key] === undefined || typeof error[key] === 'string');
+  const { phase, scope } = value as { phase?: unknown; scope?: { file?: unknown; targetId?: unknown; titlePath?: unknown } | null };
+  return (
+    (phase === undefined || typeof phase === 'string') &&
+    (scope === undefined ||
+      (typeof scope === 'object' &&
+        scope !== null &&
+        typeof scope.file === 'string' &&
+        typeof scope.targetId === 'string' &&
+        Array.isArray(scope.titlePath)))
+  );
 }

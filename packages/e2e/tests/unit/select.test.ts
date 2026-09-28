@@ -305,6 +305,20 @@ describe('select', () => {
     );
   });
 
+  it('keeps the consumers of a setup the last run did not pass, which brings the setup back', async () => {
+    const col = await collection(() => {
+      test.setup('sign in', { sessions: ['member'] }, noop);
+      test('signed in', { session: 'member' }, noop);
+      test('signed out', noop);
+    });
+    const idOf = (title: string) => resultId(col.tests.find((entry) => entry.title === title)!.id, 'web', 'default');
+    const running = (lastFailed: ReadonlySet<string>) =>
+      select(col, config(), { lastFailed }).pairs.filter((pair) => pair.disposition === 'run').map((pair) => pair.test.title);
+    expect(running(new Set([idOf('sign in')]))).toEqual(['sign in', 'signed in']);
+    // Control: a failure elsewhere leaves the setup and its consumer out.
+    expect(running(new Set([idOf('signed out')]))).toEqual(['signed out']);
+  });
+
   it('cuts a shard from the selected tests after every other filter, keeping a serial group together', async () => {
     const col = await collection(() => {
       test('a', noop);

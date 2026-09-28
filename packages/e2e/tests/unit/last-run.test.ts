@@ -81,17 +81,19 @@ describe('readLastRun and lastFailedIds', () => {
       { id: 'in-scope', titlePath: ['teardown', 'in-scope'], status: 'passed' },
       { id: 'nested', titlePath: ['teardown', 'inner', 'nested'], status: 'passed' },
       { id: 'prefix-sibling', titlePath: ['teardown-other', 'prefix-sibling'], status: 'passed' },
+      { id: 'separator-sibling', titlePath: ['teardown \u203a inner', 'separator-sibling'], status: 'passed' },
       { id: 'file-scope', titlePath: ['file-scope'], status: 'passed' },
       { id: 'other-file', file: 'tests/b.e2e.ts', titlePath: ['teardown', 'other-file'], status: 'passed' },
       { id: 'other-target', targetId: 'mobile', titlePath: ['teardown', 'other-target'], status: 'passed' },
       { id: 'unselected', titlePath: ['teardown', 'unselected'], status: 'skipped', selected: false, skip: { cause: 'filtered', reason: 'grep' } },
     ];
-    const afterAll = { code: 'HOOK_FAILED', phase: 'afterAll', scopeId: 'teardown', file: 'tests/a.e2e.ts', targetId: 'web' };
+    const scope = { file: 'tests/a.e2e.ts', targetId: 'web', titlePath: ['teardown'] };
+    const afterAll = { code: 'HOOK_FAILED', phase: 'afterAll', scopeId: 'teardown', scope };
     expect([...(await readLastFailed(reportFile(report(results, [afterAll]))))]).toEqual(['in-scope', 'nested'].map(idOf));
 
-    const fileScope = { ...afterAll, phase: 'beforeAll', scopeId: 'file' };
+    const fileScope = { ...afterAll, phase: 'beforeAll', scopeId: 'file', scope: { ...scope, titlePath: [] } };
     expect([...(await readLastFailed(reportFile(report(results, [fileScope]))))]).toEqual(
-      ['in-scope', 'nested', 'prefix-sibling', 'file-scope'].map(idOf),
+      ['in-scope', 'nested', 'prefix-sibling', 'separator-sibling', 'file-scope'].map(idOf),
     );
 
     // Control: a run error that is not a suite hook's selects nothing more.
@@ -134,6 +136,7 @@ describe('readLastRun and lastFailedIds', () => {
       '{"schemaVersion":"report-1","run":{"results":[{"id":"a","status":"skipped","skip":"later"}]}}',
       '{"schemaVersion":"report-1","run":{"results":[]}}',
       '{"schemaVersion":"report-1","run":{"results":[],"errors":[{"phase":1}]}}',
+      '{"schemaVersion":"report-1","run":{"results":[],"errors":[{"phase":"afterAll","scope":{"file":"a.e2e.ts","targetId":"web"}}]}}',
     ]) {
       await expect(readLastRun(reportFile(content)), content).rejects.toMatchObject({
         code: 'NO_LAST_RUN',

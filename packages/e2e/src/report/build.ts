@@ -7,7 +7,7 @@ import { BLOCKABLE_CODES } from '../agent/executor.ts';
 import { DEFAULT_OBSERVATION_BYTES, resolveLimits } from '../config/agent.ts';
 import type { ResolvedConfig, ResolvedLimits, ResolvedTarget } from '../config/resolve.ts';
 import type { AgentErrorCode, ConfiguredArtifactKind } from '../types.ts';
-import type { ErrorCategory, ErrorDetails, ErrorPhase, SerializedError } from '../internal/errors.ts';
+import type { ErrorCategory, ErrorDetails, ErrorPhase, HookScope, SerializedError } from '../internal/errors.ts';
 import { resultId, timestamp } from '../internal/ids.ts';
 import { obj } from '../internal/objects.ts';
 import { packageVersion } from '../internal/package-version.ts';
@@ -150,10 +150,8 @@ export interface ReportError {
   retryable: boolean;
   phase?: ErrorPhase | undefined;
   scopeId?: string | undefined;
-  /** A suite hook failure's test file, project-relative, the way its tests' results name it. */
-  file?: string | undefined;
-  /** A suite hook failure's target: with `file` and `scopeId`, the tests a rerun has to verify again. */
-  targetId?: string | undefined;
+  /** A suite hook failure's scope: the tests it leaves unverified, which `--last-failed` runs again. */
+  scope?: HookScope | undefined;
   /** Structured facts beside the message: an assertion's expected and observed, a locator's role and name. */
   details?: ErrorDetails | undefined;
   /** The line in the test file the failure unwound through. */
