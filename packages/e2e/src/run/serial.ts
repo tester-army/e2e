@@ -61,6 +61,7 @@ export interface SerialHost {
     attemptId: string,
     artifactsDir: string,
     signal: AbortSignal,
+    attemptIndex: number,
   ): Promise<TargetSession>;
   closeSession(
     session: TargetSession,
@@ -224,7 +225,7 @@ async function runSerialAttempt(
   let shared: SharedSerialSession;
   try {
     shared = {
-      session: await host.launchSession(first.options.session, attemptId, artifacts.dir, host.interruptSignal),
+      session: await host.launchSession(first.options.session, attemptId, artifacts.dir, host.interruptSignal, attemptIndex),
       attemptId,
       artifactSegments,
       priorSteps: [],

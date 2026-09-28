@@ -134,6 +134,8 @@ export class TargetExecutor implements SerialHost {
   private lastAttemptTestId: string | undefined;
   private readonly models: WorkerModels;
   private readonly sessionIdentity: SessionIdentity;
+  /** Sessions whose attempt records a trace; `closeSession` stops only those. */
+  private readonly traced = new WeakSet<TargetSession>();
   /** Resolves once the engine's init hook completed for this worker. */
   private engineReady: Promise<void> | undefined;
 
@@ -519,12 +521,16 @@ export class TargetExecutor implements SerialHost {
 
   // --- attempt core ---
 
-  /** Starts one attempt on the engine, restores a configured session, and starts tracing. */
+  /**
+   * Starts one attempt on the engine, restores a configured session, and
+   * starts tracing, on a retry only when the trace records retries only.
+   */
   async launchSession(
     sessionName: string | undefined,
     attemptId: string,
     artifactsDir: string,
     signal: AbortSignal,
+    attemptIndex: number,
   ): Promise<TargetSession> {
     // The engine booted in init() once per worker; the adapter is per-attempt
     // so refs never cross attempts.
@@ -579,7 +585,10 @@ export class TargetExecutor implements SerialHost {
         else await starting.catch(() => undefined);
       };
       await startRecording('video', session.artifacts.startVideo);
-      await startRecording('trace', session.artifacts.startTrace);
+      if (this.config.traceRecord === 'all' || attemptIndex > 0) {
+        this.traced.add(session);
+        await startRecording('trace', session.artifacts.startTrace);
+      }
     } catch (cause) {
       // The attempt's isolation is open, or a timed-out startAttempt may still
       // open it: end it within the cleanup budget, or the retry opens a second
@@ -644,7 +653,7 @@ export class TargetExecutor implements SerialHost {
         }
       });
     }
-    if (stopTrace !== undefined) {
+    if (stopTrace !== undefined && this.traced.has(session)) {
       await this.stopRecording('trace', attemptId, record, secondaryErrors, async (operation) => {
         const stopped = await stopTrace(operation);
         const archives = typeof stopped === 'string' ? [stopped] : stopped;
@@ -878,7 +887,7 @@ export class TargetExecutor implements SerialHost {
     try {
       const session =
         shared?.session ??
-        (await this.launchSession(pair.options.session, attemptId, artifacts.dir, attemptAbort.signal));
+        (await this.launchSession(pair.options.session, attemptId, artifacts.dir, attemptAbort.signal, attemptIndex));
       openSession = session;
 
       const testDeadline = new Deadline(pair.options.timeout);

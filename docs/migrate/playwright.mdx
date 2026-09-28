@@ -54,7 +54,7 @@ A Playwright key the runner recognizes (`testDir`, `baseURL`, `webServer`,
 | `use.actionTimeout` | `actionTimeout` | config | renamed |
 | `use.navigationTimeout` | `timeout`, the test budget; `web.goto(url, { timeout })` overrides one call | config | renamed |
 | `use.storageState` | `test.setup` and `{ session }`; no file import, see [By design](#by-design) | config | by design |
-| `use.trace` | `artifacts.kinds`; a trace is on for every attempt by default | config | renamed |
+| `use.trace` | `artifacts.kinds`; a trace is on for every attempt by default, `artifacts: { trace: { record: 'retries' } }` for `on-all-retries` | config | renamed |
 | `use.video` | `artifacts: { kinds: ['video'], video: { retain: 'on-failure' } }`, or `--video` for one run | config | renamed |
 | `use.headless: false` | `--headed` on the CLI | CLI | renamed |
 | `use.locale`, `timezoneId`, `colorScheme`, `geolocation`, `permissions` | not yet | config | missing |
@@ -276,7 +276,7 @@ to do today.
 | `--retries`, `--workers`, `--config`, `--pass-with-no-tests` | the same | CLI | same |
 | `--reporter` | the same flag; the ids are `list`, `json`, `junit`, `markdown` | CLI | same |
 | `--output` | `--artifacts` | CLI | renamed |
-| `--trace on` | a trace is on for every attempt; `artifacts.kinds` without `'trace'` turns it off | config | renamed |
+| `--trace on` | a trace is on for every attempt; `artifacts.kinds` without `'trace'` turns it off, `artifacts.trace.record: 'retries'` is `on-all-retries` | config | renamed |
 | `--last-failed`, `--shard`, `--repeat-each`, `--max-failures` | the same names; `--shard` keeps serial groups together | CLI | same |
 | `--quiet` | not yet | CLI | missing |
 | `--update-snapshots` | no equivalent; there is no pixel assertion | CLI | missing |
@@ -414,7 +414,7 @@ These differ from Playwright on purpose and will stay that way.
 | Expect timeout | 5 s | 5 s, `assertionTimeout` |
 | Navigation timeout | none | 120 s, the test budget; `web.goto(url, { timeout })` overrides one call |
 | Retries | 0 | 1 in CI, 0 locally |
-| Trace | `off` (`on-first-retry` in the scaffolded config) | on for every attempt; no retain policy |
+| Trace | `off` (`on-first-retry` in the scaffolded config) | on for every attempt; `artifacts.trace.record: 'retries'` records retries only |
 | `getByRole` name, `getByLabel`, `getByPlaceholder`, `getByText` | case-insensitive substring | exact |
 | `isVisible()` on several matches | the first match, no error | `LOCATOR_AMBIGUOUS` |
 

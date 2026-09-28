@@ -129,6 +129,9 @@ unique(7);
 ({ targets, artifacts: ['gif'] }) satisfies E2EConfig;
 // @ts-expect-error video retention is a closed union
 ({ targets, artifacts: { video: { retain: 'sometimes' } } }) satisfies E2EConfig;
+({ targets, artifacts: { trace: { record: 'retries' } } }) satisfies E2EConfig;
+// @ts-expect-error trace recording is a closed union
+({ targets, artifacts: { trace: { record: 'on-failure' } } }) satisfies E2EConfig;
 ({ put: async (artifact) => ({ ref: artifact.startedAt ?? artifact.sha256 }) }) satisfies ArtifactStore;
 declare const reporter: Reporter;
 ({ targets, reporters: ['list', reporter] }) satisfies E2EConfig;

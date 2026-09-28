@@ -156,7 +156,7 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
   };
 
   try {
-    session = await executor.launchSession(undefined, attemptId, artifacts.dir, signal);
+    session = await executor.launchSession(undefined, attemptId, artifacts.dir, signal, 0);
   } catch (cause) {
     await executor.dispose();
     await teardownProcesses();

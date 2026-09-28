@@ -1068,6 +1068,17 @@ export interface VideoArtifactConfig {
   retain?: 'all' | 'on-failure';
 }
 
+/** Options of the `trace` artifact. */
+export interface TraceArtifactConfig {
+  /**
+   * Which attempts record a trace: every attempt (`all`, the default), or
+   * only retries (`retries`), like Playwright's `on-all-retries`. Under
+   * `retries` a first attempt runs without the recording's cost, so a
+   * failure the runner does not retry and an `e2e mcp` session record none.
+   */
+  record?: 'all' | 'retries';
+}
+
 /** Artifact configuration: which kinds to capture, and where they go. */
 export interface ArtifactsConfig {
   /** Kinds to capture; defaults to screenshot and trace. */
@@ -1076,6 +1087,8 @@ export interface ArtifactsConfig {
   store?: ArtifactStore;
   /** Options of the `video` kind; ignored unless `video` is among the kinds. */
   video?: VideoArtifactConfig;
+  /** Options of the `trace` kind; ignored unless `trace` is among the kinds. */
+  trace?: TraceArtifactConfig;
 }
 
 /**
@@ -1212,7 +1225,7 @@ export interface E2EConfig {
   retries?: number;
   /** Parallel workers, 1 through 1024; default 1 in CI, else half the cores. An engine may cap it lower. */
   workers?: number;
-  /** Artifact kinds, or `{ kinds, store, video }` to also hand every artifact to a host store. */
+  /** Artifact kinds, or `{ kinds, store, video, trace }` to also hand every artifact to a host store. */
   artifacts?: readonly ConfiguredArtifactKind[] | ArtifactsConfig;
   /**
    * Output renderers and reporter objects. `junit` writes `.e2e/junit.xml`,

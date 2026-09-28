@@ -913,6 +913,18 @@ describe('resolveConfig', () => {
       expect(policies(later)).toEqual({ screenshot: 'best-effort', trace: 'best-effort' });
     });
 
+    it('resolves the trace block, all attempts by default', () => {
+      expect(resolve({ ...APP }).traceRecord).toBe('all');
+      expect(resolve({ ...APP, artifacts: { trace: { record: 'retries' } } }).traceRecord).toBe('retries');
+      expect(() => resolve({ ...APP, artifacts: { trace: { record: 'sometimes' } } as never })).toThrow(
+        /artifacts.trace.record must be one of all, retries/,
+      );
+      expect(() => resolve({ ...APP, artifacts: { trace: { mode: 'retries' } } as never })).toThrow(
+        /unknown artifacts.trace config key "mode"/,
+      );
+      expect(() => resolve({ ...APP, artifacts: { trace: 'retries' } as never })).toThrow(/artifacts.trace must be an object/);
+    });
+
     it('rejects a malformed video block', () => {
       expect(() => resolve({ ...APP, artifacts: { video: { keep: true } } as never })).toThrow(
         /unknown artifacts.video config key "keep"/,

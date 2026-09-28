@@ -78,7 +78,7 @@ export interface E2EConfig {
   retries?: number;
   /** Parallel workers, 1 through 1024; default 1 in CI, else half the cores. An engine may cap it lower. */
   workers?: number;
-  /** Artifact kinds, or `{ kinds, store, video }` to also hand every artifact to a host store. */
+  /** Artifact kinds, or `{ kinds, store, video, trace }` to also hand every artifact to a host store. */
   artifacts?: readonly ConfiguredArtifactKind[] | ArtifactsConfig;
   /**
    * Output renderers and reporter objects. `junit` writes `.e2e/junit.xml`,
@@ -407,6 +407,25 @@ it.
 
 A recording masks nothing and is recorded with `redaction: 'incomplete'`.
 Turning video on or off never invalidates cached replays.
+
+### trace
+
+A trace is on for every attempt by default. Recording one costs CPU for the
+whole attempt: on a 141-test suite, every-attempt traces added about a
+quarter to the run's wall time. `record: 'retries'` skips the first attempt,
+like Playwright's `on-all-retries`, so a test that passes costs nothing extra
+and one that fails and retries is traced on the retry. Only a retry is
+traced: with no retries (the local default) nothing is, and neither is a
+failure the runner does not retry, such as `LAUNCH_TIMEOUT`, or an `e2e mcp`
+session, which is a single attempt.
+
+```ts
+artifacts: { trace: { record: 'retries' } },
+```
+
+| Key | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `record` | `'all' \| 'retries'` | `'all'` | `retries` records the attempts after the first; a serial group's shared trace follows the group's attempts |
 
 ## agents
 

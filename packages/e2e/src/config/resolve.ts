@@ -24,6 +24,7 @@ import type {
   SecretPurpose,
   Target,
   TraceCacheStore,
+  TraceArtifactConfig,
   VideoArtifactConfig,
 } from '../types.ts';
 import { isEngineHandle, type EngineHandle } from '../engine/index.ts';
@@ -96,6 +97,8 @@ export interface ResolvedConfig {
   readonly artifactStore: ArtifactStore | undefined;
   /** Which attempts keep their video: every one, or only those that did not pass. */
   readonly videoRetain: 'all' | 'on-failure';
+  /** Which attempts record a trace: every one, or retries only. */
+  readonly traceRecord: 'all' | 'retries';
   /** The built-in renderers in force: `--reporter` when given, else the config's ids. */
   readonly reporters: readonly BuiltinReporter[];
   /** The reporter objects the config names; `--reporter` never removes one. */
@@ -282,7 +285,7 @@ export function resolveConfig(
     boundedInt(raw.workers, 'workers', 1, 1024) ??
     (ci ? 1 : Math.max(1, Math.floor(os.availableParallelism() / 2)));
 
-  const { artifacts, artifactStore, videoRetain } = resolveArtifactsConfig(raw, cli);
+  const { artifacts, artifactStore, videoRetain, traceRecord } = resolveArtifactsConfig(raw, cli);
   const { reporters, customReporters } = resolveReporters(raw, cli);
 
   const projectId = resolveProjectId(raw.projectId, options.projectRoot);
@@ -318,6 +321,7 @@ export function resolveConfig(
     artifacts,
     artifactStore,
     videoRetain,
+    traceRecord,
     reporters,
     customReporters,
     agentNames,
@@ -432,14 +436,16 @@ function resolveCacheConfig(
 /** The default artifact set. `video` is opt-in and never part of it. */
 const DEFAULT_ARTIFACT_KINDS = ['screenshot', 'trace'] as const;
 const ARTIFACT_KINDS: readonly ConfiguredArtifactKind[] = ['screenshot', 'trace', 'video'];
-const ARTIFACTS_KEYS = new Set(['kinds', 'store', 'video']);
+const ARTIFACTS_KEYS = new Set(['kinds', 'store', 'video', 'trace']);
 const VIDEO_KEYS = new Set(['retain']);
 const VIDEO_RETAIN_VALUES = ['all', 'on-failure'] as const;
+const TRACE_KEYS = new Set(['record']);
+const TRACE_RECORD_VALUES = ['all', 'retries'] as const;
 
 /**
  * Resolves the `artifacts` key: a bare array of kinds, or `{ kinds, store,
- * video }` where `store` is the host seam every produced artifact is handed
- * to and `video` holds the recording options. Named kinds are required; the
+ * video, trace }` where `store` is the host seam every produced artifact is
+ * handed to and `video` and `trace` hold the recording options. Named kinds are required; the
  * default set (screenshot and trace) is best-effort; `--video` adds video as
  * a required kind on top of either. A store is a live value validated
  * structurally, like `cache.store`.
@@ -451,16 +457,18 @@ function resolveArtifactsConfig(
   artifacts: ReadonlyMap<ConfiguredArtifactKind, ArtifactPolicy>;
   artifactStore: ArtifactStore | undefined;
   videoRetain: 'all' | 'on-failure';
+  traceRecord: 'all' | 'retries';
 } {
   const value: unknown = raw.artifacts;
   let kinds: unknown = value;
   let store: ArtifactStore | undefined;
   let video: unknown;
+  let trace: unknown;
   if (value !== undefined && !Array.isArray(value)) {
     if (!isArtifactsObject(value)) {
       throw new ConfigurationError(
         'INVALID_CONFIG',
-        'artifacts must be an array of artifact kinds or { kinds, store, video }',
+        'artifacts must be an array of artifact kinds or { kinds, store, video, trace }',
       );
     }
     for (const key of Object.keys(value)) {
@@ -474,6 +482,7 @@ function resolveArtifactsConfig(
     kinds = value.kinds;
     store = value.store;
     video = value.video;
+    trace = value.trace;
     if (store !== undefined && !isArtifactStore(store)) {
       throw new ConfigurationError(
         'INVALID_CONFIG',
@@ -496,7 +505,7 @@ function resolveArtifactsConfig(
   const policy: ArtifactPolicy = kinds === undefined ? 'best-effort' : 'required';
   const artifacts = new Map((resolved as readonly ConfiguredArtifactKind[]).map((kind) => [kind, policy] as const));
   if (cli.video === true) artifacts.set('video', 'required');
-  return { artifacts, artifactStore: store, videoRetain: resolveVideoRetain(video) };
+  return { artifacts, artifactStore: store, videoRetain: resolveVideoRetain(video), traceRecord: resolveTraceRecord(trace) };
 }
 
 /** Validates the `artifacts.video` block; absent means every attempt keeps its recording. */
@@ -522,6 +531,31 @@ function resolveVideoRetain(value: unknown): 'all' | 'on-failure' {
     );
   }
   return retain;
+}
+
+/** Validates the `artifacts.trace` block; absent means every attempt records one. */
+function resolveTraceRecord(value: unknown): 'all' | 'retries' {
+  if (value === undefined) return 'all';
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new ConfigurationError('INVALID_CONFIG', 'artifacts.trace must be an object');
+  }
+  for (const key of Object.keys(value)) {
+    if (!TRACE_KEYS.has(key)) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `unknown artifacts.trace config key "${key}"${didYouMean(key, [...TRACE_KEYS])}`,
+      );
+    }
+  }
+  const record = (value as TraceArtifactConfig).record;
+  if (record === undefined) return 'all';
+  if (!(TRACE_RECORD_VALUES as readonly unknown[]).includes(record)) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `artifacts.trace.record must be one of ${TRACE_RECORD_VALUES.join(', ')}, got ${JSON.stringify(record)}`,
+    );
+  }
+  return record;
 }
 
 /** The `{ kinds, store }` form, as opposed to the bare kinds array. */
