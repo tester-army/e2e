@@ -66,8 +66,7 @@ export function createSessionCatalog(options: CatalogOptions): SessionCatalog {
     ...recording,
   };
   const defined = isDefaultAgent(options.executor) ? options.executor.tools : {};
-  // A recording changes nothing on the app; it only writes a file.
-  const readOnly = new Set(['observe', 'locate', 'screenshot', ...Object.keys(recording)]);
+  const readOnly = new Set(['observe', 'locate', 'screenshot']);
   const project: ToolSet = {};
   for (const [name, tool] of Object.entries(projectTools(context, defined))) {
     if (name in builtIn) {

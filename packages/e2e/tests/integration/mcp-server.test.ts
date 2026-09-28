@@ -171,8 +171,8 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
       expect.stringMatching(/^- select_at \{x, y, value\}: Pick one option/),
       expect.stringMatching(/^- type_secret \{target, name\}: /),
       expect.stringMatching(/^- locate \{role\?, name\?, text\?, label\?, placeholder\?, testId\?, exact\?\}: .* \[read-only\]$/),
-      expect.stringMatching(/^- start_recording \{name\?\}: Start recording a video of the app, for a person to watch: .* \[read-only\]$/),
-      expect.stringMatching(/^- stop_recording: Stop the running recording and save it: .* \[read-only\]$/),
+      expect.stringMatching(/^- start_recording \{name\?\}: Start recording a video of the app, for a person to watch: .*\.$/),
+      expect.stringMatching(/^- stop_recording: Stop the running recording and save it: .*\.$/),
     ]);
     expect(opened.text).toMatch(/Current screen \(revision b\d+, path \/, \d+ nodes\):/);
     expect(opened.text).toContain('button "Increment"');
@@ -285,7 +285,8 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     await call('start_recording');
     const closed = await invoke('close_session');
     expect(closed.isError, closed.text).toBe(false);
-    expect(closed.text).toMatch(/\nRecording 2 stopped after \d+\.\d s\.\n- \S+\/2\.webm$/);
+    expect(closed.text).toMatch(/\nRecording 2 stopped after \d+\.\d s\.\n- \S+$/);
+    expect(closed.text.endsWith(`- ${path.join(recordings, '2.webm')}`)).toBe(true);
     expect(closed.text).not.toContain('Cleanup:');
     expect(readdirSync(recordings).toSorted()).toEqual(['1-counter.webm', '2.webm']);
   });

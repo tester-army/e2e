@@ -23,12 +23,15 @@ describe('SessionRecorder', () => {
 
   /** Engine calls that fail, by name, until the test clears them. */
   let failing: Set<string>;
+  /** What every startVideo waits on before it returns. */
+  let startGate: Promise<void>;
   let tainted: boolean;
 
   const recorder = () =>
     new SessionRecorder({
       startVideo: async () => {
         calls.push('start');
+        await startGate;
         if (failing.has('start')) throw new Error('device refused to record');
       },
       stopVideo: async (): Promise<readonly VideoSegment[]> => {
@@ -54,6 +57,7 @@ describe('SessionRecorder', () => {
     calls = [];
     written = ['video/video.mp4'];
     failing = new Set();
+    startGate = Promise.resolve();
     tainted = false;
   });
 
@@ -140,5 +144,35 @@ describe('SessionRecorder', () => {
     expect(describeRecording(recording!)).toMatch(
       /\nA secret was filled in this session and videos are not masked: check it is not on screen before sharing\.$/,
     );
+  });
+
+  it('keeps a recording whose files could not all be moved, and moves the rest on the next stop without stopping the engine again', async () => {
+    written = ['video/video.webm', 'video/video-part2.webm'];
+    const recordings = recorder();
+    await recordings.start('demo');
+    // A directory in the way of the second file: the first moves, the second cannot.
+    mkdirSync(path.join(outDir, '1-demo-part2.webm', 'blocker'), { recursive: true });
+    await expect(recordings.stop()).rejects.toThrow();
+    expect(recordings.isRecording).toBe(true);
+    rmSync(path.join(outDir, '1-demo-part2.webm'), { recursive: true });
+    const recording = await recordings.stop();
+    expect(recording?.files).toEqual([path.join(outDir, '1-demo.webm'), path.join(outDir, '1-demo-part2.webm')]);
+    expect(readFileSync(recording!.files[1]!, 'utf8')).toBe('2:1');
+    expect(calls).toEqual(['start', 'stop']);
+  });
+
+  it('runs a stop after a start still in flight, so a close never misses the recording it started', async () => {
+    let release!: () => void;
+    startGate = new Promise((resolve) => {
+      release = resolve;
+    });
+    const recordings = recorder();
+    const starting = recordings.start('late');
+    const stopping = recordings.stop();
+    release();
+    await starting;
+    expect((await stopping)?.files).toEqual([path.join(outDir, '1-late.mp4')]);
+    expect(calls).toEqual(['start', 'stop']);
+    expect(recordings.isRecording).toBe(false);
   });
 });

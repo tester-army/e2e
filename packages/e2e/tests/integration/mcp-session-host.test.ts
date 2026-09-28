@@ -141,8 +141,8 @@ describe('SessionHost', { timeout: 60_000 }, () => {
     // The config's video kind is for runs: the session must not record from launch.
     const recording = host(fake, { artifacts: ['video'] });
     const opened = await recording.open({});
-    expect(opened).toMatch(/^- start_recording \{name\?\}: Start recording a video of the app, for a person to watch: .* \[read-only\]$/m);
-    expect(opened).toMatch(/^- stop_recording: Stop the running recording and save it: .* \[read-only\]$/m);
+    expect(opened).toMatch(/^- start_recording \{name\?\}: Start recording a video of the app, for a person to watch: .*\.$/m);
+    expect(opened).toMatch(/^- stop_recording: Stop the running recording and save it: .*\.$/m);
     expect(fake.operations.map((operation) => operation.method)).not.toContain('artifacts.startVideo');
     const sessionId = /^Session (\S+) open/.exec(opened)![1]!;
     const recordings = path.join(dir, '.e2e', 'videos', sessionId);

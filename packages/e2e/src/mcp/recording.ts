@@ -11,7 +11,7 @@
  * is tainted says so instead.
  */
 
-import { mkdirSync, renameSync } from 'node:fs';
+import { existsSync, mkdirSync, renameSync } from 'node:fs';
 import path from 'node:path';
 import type { ToolSet } from 'ai';
 import { z } from 'zod';
@@ -49,70 +49,95 @@ interface ActiveRecording {
   readonly index: number;
   readonly name: string | undefined;
   readonly startedAt: Date;
+  /** Set once the engine stopped it: what it wrote, still to be moved. */
+  stopped?: { readonly segments: readonly VideoSegment[]; readonly at: number };
 }
 
-/** Starts and stops the session's recordings, one at a time. */
+/**
+ * Starts and stops the session's recordings, one at a time. Every call waits
+ * for the one before it, so a close that saves the recording never races a
+ * start_recording or stop_recording still in flight.
+ */
 export class SessionRecorder {
   private active: ActiveRecording | undefined;
   private count = 0;
+  private queue: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly options: SessionRecorderOptions) {}
 
-  /** True while a recording runs. */
+  /** True while a recording runs, or stopped but not yet saved. */
   get isRecording(): boolean {
     return this.active !== undefined;
   }
 
   /** Starts a recording; a recording already running is reported, not restarted. */
-  async start(name: string | undefined): Promise<string> {
-    if (this.active !== undefined) {
-      return `${describe(this.active)} is already running since ${this.active.startedAt.toISOString()}; stop_recording ends it.`;
-    }
-    try {
-      await this.options.startVideo(this.options.operation(this.options.timeoutMs));
-    } catch (cause) {
-      // An engine may count a start that failed as a recording; stopping it
-      // lets the next start_recording begin from nothing.
-      await this.options.stopVideo(this.options.operation(this.options.timeoutMs)).catch(() => undefined);
-      throw cause;
-    }
-    this.count += 1;
-    this.active = { index: this.count, name, startedAt: new Date() };
-    return `${describe(this.active)} started. Act as usual; stop_recording saves the video, and close_session saves one still running.`;
+  start(name: string | undefined): Promise<string> {
+    return this.serial(async () => {
+      if (this.active !== undefined) {
+        return `${describe(this.active)} is already running since ${this.active.startedAt.toISOString()}; stop_recording ends it.`;
+      }
+      try {
+        await this.options.startVideo(this.options.operation(this.options.timeoutMs));
+      } catch (cause) {
+        // An engine may count a start that failed as a recording; stopping it
+        // lets the next start_recording begin from nothing.
+        await this.options.stopVideo(this.options.operation(this.options.timeoutMs)).catch(() => undefined);
+        throw cause;
+      }
+      this.count += 1;
+      this.active = { index: this.count, name, startedAt: new Date() };
+      return `${describe(this.active)} started. Act as usual; stop_recording saves the video, and close_session saves one still running.`;
+    });
   }
 
   /**
    * Stops the running recording and moves its files out of the attempt
-   * directory; `undefined` when nothing records. A stop that fails leaves the
-   * recording running, so stop_recording or close_session can try again.
+   * directory; `undefined` when nothing records. A stop or a move that fails
+   * leaves the recording in place, so stop_recording or close_session can
+   * try again: the engine is asked to stop only once, and a file already
+   * moved stays where it went.
    */
-  async stop(): Promise<FinishedRecording | undefined> {
-    const active = this.active;
-    if (active === undefined) return undefined;
-    // Before the engine call: finalizing the file can take seconds and records nothing.
-    const stoppedAt = Date.now();
-    const segments = await this.options.stopVideo(this.options.operation(this.options.timeoutMs));
-    this.active = undefined;
-    const files = segments.map((segment, position) => this.keep(active, segment, position));
-    const startedAt = segments[0]?.startedAt ?? active.startedAt.toISOString();
-    return {
-      index: active.index,
-      name: active.name,
-      files,
-      startedAt,
-      durationMs: Math.max(0, stoppedAt - Date.parse(startedAt)),
-      tainted: this.options.tainted(),
-    };
+  stop(): Promise<FinishedRecording | undefined> {
+    return this.serial(async () => {
+      const active = this.active;
+      if (active === undefined) return undefined;
+      if (active.stopped === undefined) {
+        // Before the engine call: finalizing the file can take seconds and records nothing.
+        const at = Date.now();
+        active.stopped = { segments: await this.options.stopVideo(this.options.operation(this.options.timeoutMs)), at };
+      }
+      const { segments, at } = active.stopped;
+      const files = segments.map((segment, position) => this.keep(active, segment, position));
+      this.active = undefined;
+      const startedAt = segments[0]?.startedAt ?? active.startedAt.toISOString();
+      return {
+        index: active.index,
+        name: active.name,
+        files,
+        startedAt,
+        durationMs: Math.max(0, at - Date.parse(startedAt)),
+        tainted: this.options.tainted(),
+      };
+    });
   }
 
-  /** Moves one segment to `<outDir>/<index>[-<name>][-part<n>]<ext>` and returns where it landed. */
+  /** Runs `body` after every call before it has settled. */
+  private serial<T>(body: () => Promise<T>): Promise<T> {
+    const run = this.queue.then(body, body);
+    this.queue = run.catch(() => undefined);
+    return run;
+  }
+
+  /** Moves one segment to `<outDir>/<index>[-<name>][-part<n>]<ext>`, unless an earlier try did, and returns where it landed. */
   private keep(recording: ActiveRecording, segment: VideoSegment, position: number): string {
     const stem = [String(recording.index), recording.name, position === 0 ? undefined : `part${String(position + 1)}`]
       .filter((part) => part !== undefined)
       .join('-');
     const destination = path.join(this.options.outDir, `${stem}${path.extname(segment.path)}`);
+    const source = path.join(this.options.attemptDir, segment.path);
+    if (!existsSync(source) && existsSync(destination)) return destination;
     mkdirSync(this.options.outDir, { recursive: true });
-    renameSync(path.join(this.options.attemptDir, segment.path), destination);
+    renameSync(source, destination);
     return destination;
   }
 }

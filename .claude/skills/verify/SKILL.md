@@ -74,8 +74,9 @@ One session at a time; `close_session` when done.
 
 Use it to write locators (`locate` prints the `screen.*` call), to look at a
 surface before testing it, to verify changes to the MCP tools
-themselves, and to record a video of what you drove: `start_recording` once
-the screen is set up, `stop_recording` for the file paths.
+themselves, and to record a video of what you drove when the engine records
+video (both web and mobile do): `start_recording` once the screen is set up,
+`stop_recording` for the file paths.
 
 ## Drive it like a user
 

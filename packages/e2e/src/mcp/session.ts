@@ -115,7 +115,7 @@ export class SessionHost {
     if (live.idleTimer !== undefined) clearTimeout(live.idleTimer);
     await live.step.end({ status: 'passed', summary: `session closed: ${reason}` });
     const outcome = await live.step.done;
-    // After the step: a start_recording still in flight has settled by now.
+    // The recorder runs this after a start or stop still in flight, even one the step's deadline abandoned.
     const saved = await this.saveRecording(live);
     const cleanupErrors = await live.attempt.close();
     live.abort.abort();
