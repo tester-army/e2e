@@ -350,13 +350,15 @@ counter sections there. The harness's statistics have unit tests under
     filled the viewport stays pixel-tainted for the rest of the attempt. What
     an executor keeps in `attempt.memory` is its own; the harness never
     reports it.
-  - An agent's secret fill is authorized by the runner, not the model
-    (`authorizeSecretFill`): a handle the step's params declare, configured
-    for the run, an enabled editable node on the newest observation, and a
-    password field for a password. There is no origin check: the value goes
-    to whatever site the page is on (`docs/security.mdx`). The model never
-    sees or picks the value. A test's own `fill(secret)` is trusted code and
-    runs none of these checks.
+  - An agent's secret fill is authorized by the runner, not the model.
+    `typeSecret` (`action-dispatcher.ts`) takes only a handle the step's
+    params declare, the target resolves on the newest observation
+    (`feed.resolve` and `requireLatest` in `observation-feed.ts`), and
+    `authorizeSecretFill` (`secrets.ts`) requires the secret configured for
+    the run, an enabled editable node, and a password field for a password.
+    There is no origin check: the value goes to whatever site the page is on
+    (`docs/security.mdx`). The model never sees or picks the value. A test's
+    own `fill(secret)` is trusted code and runs none of these checks.
   - Every model tool call is parsed into a closed schema and authorized
     immediately before dispatch. Nothing runs on a refusal: an unknown tool
     name or an undeclared field goes back to the model as the call's error
