@@ -118,7 +118,7 @@ export interface WebConnectOptions {
    * same browser after a transport drop. Called once before the next
    * operation, within its budget. The original browser and page must survive.
    * Dispatched operations are never retried. The host owns browser cleanup.
-   * Context replacement, headers, and basicAuth are unavailable in this mode.
+   * Context replacement, headers, basicAuth, and userAgent are unavailable in this mode.
    */
   readonly reconnectEndpoint?: (signal: AbortSignal) => string | Promise<string>;
 }
@@ -187,7 +187,8 @@ export interface WebOptions extends EngineAppDeclaration {
    * reports, as Playwright's own `userAgent` context option sets it: for an
    * app that switches into a test mode on a marker in the agent string.
    * Defaults to the browser's own. A `user-agent` entry in `headers` beside
-   * it is `INVALID_CONFIG`.
+   * it is `INVALID_CONFIG`, and so is a persistent context
+   * (`connect.reconnectEndpoint`, or a provider with `scope: 'attempt'`).
    */
   readonly userAgent?: string;
 }
