@@ -566,17 +566,16 @@ export class PlaywrightSurface {
           for (const handle of handles ?? []) void handle.dispose().catch(() => undefined);
         };
         const first = handles?.[0];
-        const reads =
+        const raws =
           handles === null
             ? await projected.locator.evaluateAll(readManySemanticsFunction, readOptions)
             : first === undefined
               ? []
               : await first.evaluate(readHandlesSemanticsFunction, { elements: handles, options: readOptions });
         // A match the page replaced between the query and the read comes back null; re-resolve the set.
-        const raws = reads.filter((raw): raw is RawNodeData => raw !== null);
-        if (raws.length !== reads.length) {
+        if (!raws.every((raw): raw is RawNodeData => raw !== null)) {
           releaseHandles();
-          throw new EngineError('NODE_STALE', 'a match was replaced while it was read', { retryable: true });
+          throw new EngineError('NODE_STALE', 'a match left the document while it was read', { retryable: true });
         }
         const candidates = raws
           .map((raw, index) => ({ raw, index }))
@@ -586,9 +585,9 @@ export class PlaywrightSurface {
         // and an aria-label override or a second label does not either.
         const predicate =
           displayValue !== null
-            ? (raw: (typeof raws)[number]) => matchesText(raw.value ?? '', displayValue)
+            ? (raw: RawNodeData) => matchesText(raw.value ?? '', displayValue)
             : name !== null
-              ? (raw: (typeof raws)[number]) =>
+              ? (raw: RawNodeData) =>
                   raw.labels !== null && raw.labels.some((label) => matchesText(label, name))
               : null;
         const matches =

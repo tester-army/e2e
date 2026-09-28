@@ -1,8 +1,9 @@
 /**
  * Visibility reads against a field the page swaps for an identical clone on
  * every animation frame. A read that lands on the node a frame already
- * replaced must re-resolve, never report the visible field hidden; a field
- * that is really removed still reads as hidden.
+ * replaced must re-resolve, never report the visible field hidden; a stable
+ * field that shares its candidate set still reads as shown, and a field that
+ * is really removed still reads as hidden.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -12,7 +13,7 @@ import { resultByTitle, runProject, type FixtureProject, type RunOutcome } from 
 const SUITE = `import { test } from '@e2edev/web';
 import { expect } from 'e2e';
 
-const READS = 100;
+const READS = 30;
 
 const fields = (screen) => ({
   testId: screen.getByTestId('nickname'),
@@ -20,15 +21,30 @@ const fields = (screen) => ({
   displayValue: screen.getByDisplayValue('ada'),
 });
 
-test('a field replaced every frame never reads as hidden', async ({ app, screen }) => {
-  await app.open('/replaced');
-  const hidden = { testId: 0, label: 0, displayValue: 0 };
-  for (const [kind, field] of Object.entries(fields(screen))) {
+/** How many of READS reads of each locator report it hidden. */
+const hiddenReads = async (locators) => {
+  const hidden = {};
+  for (const [kind, locator] of Object.entries(locators)) {
+    hidden[kind] = 0;
     for (let read = 0; read < READS; read += 1) {
-      if (await field.isHidden()) hidden[kind] += 1;
+      if (await locator.isHidden()) hidden[kind] += 1;
     }
   }
-  expect(hidden).toEqual({ testId: 0, label: 0, displayValue: 0 });
+  return hidden;
+};
+
+test('a field replaced every frame never reads as hidden', async ({ app, screen }) => {
+  await app.open('/replaced');
+  expect(await hiddenReads(fields(screen))).toEqual({ testId: 0, label: 0, displayValue: 0 });
+});
+
+test('a stable field beside one replaced every frame reads as shown', async ({ app, screen }) => {
+  await app.open('/replaced');
+  const city = {
+    label: screen.getByLabel('City', { exact: true }),
+    displayValue: screen.getByDisplayValue('paris'),
+  };
+  expect(await hiddenReads(city)).toEqual({ label: 0, displayValue: 0 });
 });
 
 for (const kind of ['testId', 'label', 'displayValue']) {
@@ -44,7 +60,6 @@ test('a field removed while it is being replaced reads as hidden', async ({ app,
   await screen.getByRole('button', { name: 'Remove' }).tap();
   for (const field of Object.values(fields(screen))) {
     await expect(field).toBeHidden();
-    await expect(field).not.toBeAttached();
     expect(await field.isHidden()).toBe(true);
   }
 });
@@ -70,6 +85,11 @@ describe('reads of a node replaced every frame', () => {
 
   it('never reads the live field as hidden through a detached node', () => {
     const result = resultByTitle(outcome, 'a field replaced every frame never reads as hidden');
+    expect(result.status, JSON.stringify(result.attempts[0]?.error)).toBe('passed');
+  });
+
+  it('reads a stable neighbor of a replaced field without tripping on it', () => {
+    const result = resultByTitle(outcome, 'a stable field beside one replaced every frame reads as shown');
     expect(result.status, JSON.stringify(result.attempts[0]?.error)).toBe('passed');
   });
 

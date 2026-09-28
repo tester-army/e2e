@@ -117,12 +117,15 @@ export const LIVE_PAGES: Record<string, PageRenderer> = {
   // A field a framework re-renders on every animation frame: the element is
   // swapped for an identical clone, so exactly one visible match is in the
   // document at any moment while every handle taken a frame earlier points at
-  // a detached node. "Remove" takes the field out for good and stops the swap.
+  // a detached node. "City" stays put beside it, a candidate of the same label
+  // and display-value queries. "Remove" takes the nickname out for good and
+  // stops the swap.
   '/replaced': constant(`<!doctype html>
 <html>
 <head><title>Replaced</title></head>
 <body>
   <label>Nickname <input data-testid="nickname" value="ada"></label>
+  <label>City <input data-testid="city" value="paris"></label>
   <button id="remove">Remove</button>
   <script>
     let removed = false;

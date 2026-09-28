@@ -58,7 +58,7 @@ export const EXACT_LABEL_SELECTOR_ENGINE_SOURCE = `() => {${CLOSED_SHADOW_HELPER
     const options = { testIdAttribute: body.testIdAttribute, secureFieldSelector: body.secureFieldSelector, mode: { kind: 'node' } };
     const candidates = matchesIn(root, ${JSON.stringify(LABELABLE_SELECTOR)}, []);
     for (const closed of closedRootsUnder(root, [])) matchesIn(closed, ${JSON.stringify(LABELABLE_SELECTOR)}, candidates);
-    return candidates.filter((el) => (read(el, options).labels ?? []).some((label) => normalize(label) === expected));
+    return candidates.filter((el) => (read(el, options)?.labels ?? []).some((label) => normalize(label) === expected));
   };
   return { queryAll, query: (root, selector) => queryAll(root, selector)[0] ?? null };
 }`;
