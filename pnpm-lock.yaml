@@ -403,8 +403,8 @@ importers:
   packages/mobile:
     dependencies:
       agent-device:
-        specifier: 0.21.15
-        version: 0.21.15(ai@7.0.107(zod@4.6.1))
+        specifier: 0.21.16
+        version: 0.21.16(ai@7.0.107(zod@4.6.1))
       pngjs:
         specifier: 7.0.0
         version: 7.0.0
@@ -2913,8 +2913,8 @@ packages:
     engines: {node: '>=18.18'}
     hasBin: true
 
-  agent-device@0.21.15:
-    resolution: {integrity: sha512-Om1j6oNJkeKlkk8lBM+0V9bKwpxUXLMf/PDDSvAt3RFquBRqAiM58J81E0rvPQNxs6GCjhABYpwVvIAXptxjjA==}
+  agent-device@0.21.16:
+    resolution: {integrity: sha512-eIJWHxRXB2CMmt/yDhY/Vvgnj733k1IdzWimoNX6Rono0y19FKTb6zaPw+Dug0e6e0MYYJsrt6Ht+Q/ZyPQ/4A==}
     engines: {node: '>=22.12'}
     hasBin: true
     peerDependencies:
@@ -10127,7 +10127,7 @@ snapshots:
 
   agent-cli-detector@0.1.7: {}
 
-  agent-device@0.21.15(ai@7.0.107(zod@4.6.1)):
+  agent-device@0.21.16(ai@7.0.107(zod@4.6.1)):
     optionalDependencies:
       ai: 7.0.107(zod@4.6.1)
 

@@ -151,23 +151,28 @@ test.describe('device fixture', () => {
     await readsBack(/^location: (unavailable|permission denied)/);
   });
 
-  // The Device section has the prompt, but neither device can answer it from
-  // the outside yet: agent-device 0.21.13 refuses Face ID simulation on the
-  // iOS 26 runtime, and the emulator's fingerprint answers only once a lock
-  // screen and a fingerprint are enrolled by hand.
-  test(
-    'enrollBiometrics and setBiometrics answer a biometric prompt',
-    {
-      skip: 'agent-device 0.21.13 refuses Face ID simulation on the iOS 26 runtime ("not supported on this simulator runtime"), and the emulator fingerprint needs a lock screen and an enrolled finger first',
-    },
-    async ({ device, screen }) => {
-      await screen.getByTestId('tab-device').tap();
-      const status = screen.getByTestId('biometrics-status');
-      await device.enrollBiometrics('faceid', true);
+  // The emulator's fingerprint answers only once a lock screen and a
+  // fingerprint are enrolled by hand, so only the simulator's Face ID runs.
+  // The status reads "authenticating" before the system sheet listens, and a
+  // match posted to no sheet is dropped, so the match repeats until one lands.
+  test('enrollBiometrics and setBiometrics answer a biometric prompt', { platforms: ['ios'] }, async ({ device, screen }) => {
+    await screen.getByTestId('tab-device').tap();
+    const status = screen.getByTestId('biometrics-status');
+    await device.enrollBiometrics('faceid', true);
+    try {
       await screen.getByTestId('unlock-biometrics').tap();
       await expect(status).toHaveText('biometrics: authenticating');
-      await device.setBiometrics('faceid', 'match');
-      await expect(status).toHaveText('biometrics: unlocked');
-    },
-  );
+      await expect
+        .poll(
+          async () => {
+            await device.setBiometrics('faceid', 'match');
+            return status.textContent();
+          },
+          { timeout: 10_000 },
+        )
+        .toBe('biometrics: unlocked');
+    } finally {
+      await device.enrollBiometrics('faceid', false);
+    }
+  });
 });
