@@ -64,6 +64,35 @@ describe('classifyActionError', () => {
     expect(error.message).toContain('tap did not become actionable');
   });
 
+  it('cuts a not-actionable timeout to its headline and the last blocker the log names', () => {
+    const covered = [
+      ...PRE_DISPATCH_LOG.slice(0, 4),
+      'element is visible, enabled and stable',
+      '<div class="toast">…</div> intercepts pointer events',
+      'retrying click action',
+      'waiting 100ms',
+      '<div data-popover="true">…</div> intercepts pointer events',
+      'retrying click action',
+    ];
+    expect(classifyActionError(pwTimeout(covered), TAP).message).toBe(
+      'tap did not become actionable in time: locator.click: Timeout 5000ms exceeded. <div data-popover="true">…</div> intercepts pointer events',
+    );
+    expect(classifyActionError(pwTimeout(PRE_DISPATCH_LOG), TAP).message).toBe(
+      'tap did not become actionable in time: locator.click: Timeout 5000ms exceeded. element is not stable',
+    );
+    const compressed = new Error(
+      'locator.click: Timeout 5000ms exceeded.\nCall log:\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is not enabled\n    - retrying click action\n',
+    );
+    expect(classifyActionError(compressed, TAP).message).toBe(
+      'tap did not become actionable in time: locator.click: Timeout 5000ms exceeded. element is not enabled',
+    );
+  });
+
+  it('keeps a not-actionable timeout whole when its log names no blocker', () => {
+    const waiting = pwTimeout(["waiting for getByRole('button')"]);
+    expect(classifyActionError(waiting, TAP).message).toBe(`tap did not become actionable in time: ${waiting.message}`);
+  });
+
   it('maps a timeout whose log reached the dispatch to ACTION_MAY_HAVE_COMMITTED', () => {
     const error = classifyActionError(pwTimeout(POST_DISPATCH_LOG), TAP);
     expect(error).toMatchObject({ code: 'ACTION_MAY_HAVE_COMMITTED', retryable: false });

@@ -167,6 +167,24 @@ function redactSensitive(text: string, action: LocatorAction): string {
   return text.replaceAll(action.value, '[redacted]');
 }
 
+/** A call-log line naming what kept a node from being acted on: an element over it, or a state it never reached. */
+const BLOCKER_PATTERN = /intercepts pointer events|element is not (?:visible|enabled|stable|editable)|element is outside of the viewport/i;
+
+/**
+ * Playwright's timeout cut to its headline and the last blocker its call log
+ * names: `<div data-popover>… intercepts pointer events` says what to close,
+ * where the whole log repeats it once per retry, thousands of characters a
+ * report prints and the agent pays for as model input. A log without a
+ * blocker is kept whole.
+ */
+function actionabilitySummary(text: string): string {
+  const [headline = text, ...log] = text.split('\n');
+  const blocker = log
+    .map((line) => line.trim().replace(/^- /, ''))
+    .findLast((line) => BLOCKER_PATTERN.test(line));
+  return blocker === undefined ? text : `${headline} ${blocker}`;
+}
+
 /**
  * Classifies a failed action onto the error contract (see the table above
  * `POST_DISPATCH_PATTERN` in support.ts): stale, not actionable, possibly
@@ -192,7 +210,7 @@ export function classifyActionError(rawCause: unknown, action: LocatorAction): E
     }
     return new EngineError(
       'NOT_ACTIONABLE',
-      `${action.kind} did not become actionable in time: ${text}`,
+      `${action.kind} did not become actionable in time: ${actionabilitySummary(text)}`,
       { retryable: false, cause },
     );
   }
