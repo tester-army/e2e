@@ -1,41 +1,46 @@
 /**
- * Puts every public package's `e2e` peer back to the wide range main keeps.
+ * Puts every public package's peer on another public package back to the
+ * wide range main keeps.
  *
- * `changeset version --snapshot canary` pins that peer to the runner's exact
- * canary version: a prerelease satisfies no `>=x <1` range, so changesets
- * treats the runner as out of range and rewrites the peer. The published
- * tarballs need the pin (`init` installs the matching runner canary); the
- * `chore: release` commit must not keep it, or every later runner release
- * cascades a patch to each engine and a consumer who updates `e2e` alone
- * hits an unmet peer. A pin becomes `>=<major.minor.patch> <major+1>` of the
- * runner as versioned, the prerelease suffix dropped. A peer already in that
- * shape keeps its floor: an engine a runner minor left alone still names the
- * runner it was built against.
+ * `changeset version --snapshot canary` pins those peers to the siblings'
+ * exact canary versions: a prerelease satisfies no `>=x <1` range, so
+ * changesets treats the sibling as out of range and rewrites the peer. The
+ * published tarballs need the pin (`init` installs the matching runner
+ * canary); the `chore: release` commit must not keep it, or every later
+ * release of the sibling cascades a patch to each dependent and a consumer who
+ * updates the sibling alone hits an unmet peer. A pin becomes
+ * `>=<major.minor.patch> <major+1>` of the sibling as versioned, the
+ * prerelease suffix dropped. A peer already in that shape keeps its floor: an
+ * engine a runner minor left alone still names the runner it was built
+ * against.
  *
  * Usage: `node scripts/restore-peer-ranges.ts`, after `changeset publish` and
  * before the commit; `pnpm run canary:publish` runs it. `check-peer-ranges.ts`
  * in `pnpm check` fails on anything but this shape.
  */
 
-import { readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { REPO_ROOT, RUNNER, isRunnerPeerRange, publicPackages, runnerPeerRange, type PackageManifest } from './public-packages.ts';
+import { writeFileSync } from 'node:fs';
+import { isWidePeerRange, publicPackages, siblingPeers, widePeerRange } from './public-packages.ts';
 
-const runner = JSON.parse(readFileSync(join(REPO_ROOT, 'packages', RUNNER, 'package.json'), 'utf8')) as PackageManifest;
-if (runner.version === undefined) {
-  console.error(`packages/${RUNNER}/package.json has no version`);
-  process.exit(1);
-}
-const range = runnerPeerRange(runner.version);
+const packages = publicPackages();
+const versions = new Map(packages.map(({ manifest }) => [manifest.name, manifest.version]));
+const siblings = new Set(versions.keys());
 
 let restored = 0;
-for (const { path, manifest } of publicPackages()) {
+for (const { path, manifest } of packages) {
   const peers = manifest.peerDependencies;
-  const current = peers?.[RUNNER];
-  if (peers === undefined || current === undefined || isRunnerPeerRange(current)) continue;
-  peers[RUNNER] = range;
+  const pinned = siblingPeers(peers, siblings).filter(([, range]) => !isWidePeerRange(range));
+  if (peers === undefined || pinned.length === 0) continue;
+  for (const [peer, current] of pinned) {
+    const version = versions.get(peer);
+    if (version === undefined) {
+      console.error(`${peer} has no version to restore the peer of ${manifest.name} from`);
+      process.exit(1);
+    }
+    peers[peer] = widePeerRange(version);
+    console.log(`${manifest.name}: ${peer} peer ${current} -> ${peers[peer]}`);
+    restored += 1;
+  }
   writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
-  console.log(`${manifest.name}: ${RUNNER} peer ${current} -> ${range}`);
-  restored += 1;
 }
-if (restored === 0) console.log(`every ${RUNNER} peer already reads a wide range`);
+if (restored === 0) console.log('every peer on a sibling package already reads a wide range');

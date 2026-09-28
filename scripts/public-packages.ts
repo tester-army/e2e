@@ -1,12 +1,13 @@
 /**
  * What the release scripts agree on: which packages under `packages/` publish,
- * and the shape of the peer range they keep on the runner.
+ * and the shape of the peer range one keeps on another.
  *
- * An engine or reporter peers on `e2e` as `>=<major.minor.patch> <major+1>`
- * of the runner it was built against (`>=0.15.0 <1` today). Anything narrower
- * puts every runner minor out of range, and changesets then patch-bumps the
- * dependent and rewrites its pin on every runner release; an exact pin also
- * leaves a consumer who updates `e2e` alone with a peer npm 7+ refuses.
+ * An engine or reporter peers on `e2e`, and an integration on the engine it
+ * plugs into, as `>=<major.minor.patch> <major+1>` of the sibling it was built
+ * against (`>=0.15.0 <1` on the runner today). Anything narrower puts every
+ * sibling minor out of range, and changesets then patch-bumps the dependent
+ * and rewrites its pin on every release of the sibling; an exact pin also
+ * leaves a consumer who updates the sibling alone with a peer npm 7+ refuses.
  */
 
 import { readdirSync, readFileSync } from 'node:fs';
@@ -14,9 +15,6 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
-
-/** The runner package every engine and reporter peers on. */
-export const RUNNER = 'e2e';
 
 export interface PackageManifest {
   name: string;
@@ -44,16 +42,21 @@ export function publicPackages(): { path: string; manifest: PackageManifest }[] 
   return packages;
 }
 
-/** The peer range on a runner at `version`, its prerelease suffix dropped: `>=0.15.0 <1` for `0.15.0-canary-x`. */
-export function runnerPeerRange(version: string): string {
+/** The peer range on a sibling at `version`, its prerelease suffix dropped: `>=0.15.0 <1` for `0.15.0-canary-x`. */
+export function widePeerRange(version: string): string {
   const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version);
-  if (match === null) throw new Error(`runner version ${JSON.stringify(version)} is not semver`);
+  if (match === null) throw new Error(`version ${JSON.stringify(version)} is not semver`);
   const [, major, minor, patch] = match;
   return `>=${major}.${minor}.${patch} <${Number(major) + 1}`;
 }
 
-/** Whether `range` has the shape `runnerPeerRange` produces, whatever its floor. */
-export function isRunnerPeerRange(range: string): boolean {
+/** Whether `range` has the shape `widePeerRange` produces, whatever its floor. */
+export function isWidePeerRange(range: string): boolean {
   const match = WIDE_RANGE.exec(range);
   return match !== null && Number(match[2]) === Number(match[1]) + 1;
+}
+
+/** The peers in `peers` that name another public package, with the range each declares. */
+export function siblingPeers(peers: Readonly<Record<string, string>> | undefined, siblings: ReadonlySet<string>): [name: string, range: string][] {
+  return Object.entries(peers ?? {}).filter(([name]) => siblings.has(name));
 }
