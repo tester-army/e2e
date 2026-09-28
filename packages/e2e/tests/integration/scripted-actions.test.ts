@@ -111,7 +111,7 @@ describe('scripted engine: actions, pointer actions, and app hooks', () => {
       ['submit', { kind: 'tap' }],
       ['submit', { kind: 'doubleTap' }],
       ['submit', { kind: 'secondaryTap' }],
-      ['submit', { kind: 'longPress', durationMs: 500 }],
+      ['submit', { kind: 'longPress' }],
       ['submit', { kind: 'longPress', durationMs: 800 }],
       ['email', { kind: 'fill', value: 'ada@example.test', sensitive: false }],
       ['email', { kind: 'clear' }],

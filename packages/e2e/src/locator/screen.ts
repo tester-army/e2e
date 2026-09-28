@@ -9,6 +9,7 @@ import { asEngineError, TestError } from '../internal/errors.ts';
 import { requireFinitePoint } from '../internal/geometry.ts';
 import { isPlainObject, rejectUnknownOptions } from '../internal/options.ts';
 import { realmSlot } from '../internal/realm-slot.ts';
+import { obj } from '../internal/objects.ts';
 import { normalizeText } from '../internal/text.ts';
 import type {
   ActionOptions,
@@ -347,7 +348,7 @@ class LocatorImpl extends ScreenImpl implements Locator {
     rejectUnknownOptions('longPress', options, ['timeout', 'duration']);
     const durationMs = validateLongPress(options?.duration);
     return this.action('locator.longPress', () =>
-      this.context.engine.perform(this.expression, { kind: 'longPress', durationMs }, options?.timeout),
+      this.context.engine.perform(this.expression, obj({ kind: 'longPress' as const, durationMs }), options?.timeout),
     );
   }
 
@@ -621,16 +622,16 @@ function validateDelay(delay: number | undefined): number | undefined {
   return delay;
 }
 
-/** Validates the shared long-press duration bound. */
-function validateLongPress(durationMs: number | undefined): number {
-  const value = durationMs ?? 500;
-  if (!Number.isInteger(value) || value < 100 || value > 10_000) {
+/** Validates the shared long-press duration bound; none named leaves the hold to the engine's default. */
+function validateLongPress(durationMs: number | undefined): number | undefined {
+  if (durationMs === undefined) return undefined;
+  if (!Number.isInteger(durationMs) || durationMs < 100 || durationMs > 10_000) {
     throw new TestError(
       'INVALID_ARGUMENT',
       `longPress duration must be an integer from 100 through 10000, got ${String(durationMs)}`,
     );
   }
-  return value;
+  return durationMs;
 }
 
 /**
