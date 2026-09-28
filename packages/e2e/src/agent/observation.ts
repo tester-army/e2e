@@ -147,36 +147,34 @@ export function prepareObservation(
   };
 }
 
+/** The fields an engine may cut, each at its observed limit. */
+const CUT_FIELDS = [
+  ['name', OBSERVED_NAME_LIMIT],
+  ['text', OBSERVED_TEXT_LIMIT],
+  ['value', OBSERVED_TEXT_LIMIT],
+  ['selection', OBSERVED_TEXT_LIMIT],
+] as const;
+
 /**
- * The tree with every field that reaches its observed limit, and so was cut
- * there, passed through `redactCut` before any consumer reads it: a secret
- * the cut stopped partway through leaves a leading part at the end that no
- * whole-value redaction matches. A shorter field is whole and left to
- * `redact`; a subtree with nothing cut is returned as it is.
+ * The tree with every field exactly as long as its observed limit, and so
+ * possibly cut there, passed through `redactCut` before any consumer reads
+ * it: a secret the cut stopped partway through leaves a leading part at the
+ * end that no whole-value redaction matches. A shorter field is whole, and so
+ * is a longer one (a native input's value, which no engine cuts); both are
+ * left to `redact`. A subtree with nothing cut is returned as it is.
  */
 function redactCutFields(node: SemanticNode, redactCut: (text: string) => string): SemanticNode {
-  const cut = (text: string | undefined, limit: number): string | undefined =>
-    text === undefined || text.length < limit ? text : redactCut(text);
-  const name = cut(node.name, OBSERVED_NAME_LIMIT);
-  const text = cut(node.text, OBSERVED_TEXT_LIMIT);
-  const value = cut(node.value, OBSERVED_TEXT_LIMIT);
-  const selection = cut(node.selection, OBSERVED_TEXT_LIMIT);
+  const changed: { -readonly [Field in (typeof CUT_FIELDS)[number][0]]?: string } = {};
+  for (const [field, limit] of CUT_FIELDS) {
+    const text = node[field];
+    if (text?.length !== limit) continue;
+    const redacted = redactCut(text);
+    if (redacted !== text) changed[field] = redacted;
+  }
   const children = node.children?.map((child) => redactCutFields(child, redactCut));
-  const unchanged =
-    name === node.name &&
-    text === node.text &&
-    value === node.value &&
-    selection === node.selection &&
-    (children ?? []).every((child, index) => child === node.children?.[index]);
-  if (unchanged) return node;
-  return {
-    ...node,
-    ...(name === undefined ? {} : { name }),
-    ...(text === undefined ? {} : { text }),
-    ...(value === undefined ? {} : { value }),
-    ...(selection === undefined ? {} : { selection }),
-    ...(children === undefined ? {} : { children }),
-  };
+  const sameChildren = (children ?? []).every((child, index) => child === node.children?.[index]);
+  if (Object.keys(changed).length === 0 && sameChildren) return node;
+  return { ...node, ...changed, ...(children === undefined ? {} : { children }) };
 }
 
 /**

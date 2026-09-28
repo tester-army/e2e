@@ -1,6 +1,6 @@
 /** Creates throwaway fixture projects and runs them through the built runner. */
 
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -53,6 +53,14 @@ export function createProject(files: Readonly<Record<string, string>>): FixtureP
     dir,
     cleanup: () => rmSync(dir, { recursive: true, force: true }),
   };
+}
+
+/** Every regular file under `dir`, recursively. */
+export function filesUnder(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const file = path.join(dir, name);
+    return statSync(file).isDirectory() ? filesUnder(file) : [file];
+  });
 }
 
 export interface RunProjectOptions {

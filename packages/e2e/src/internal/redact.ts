@@ -73,9 +73,8 @@ function compile(values: readonly (readonly [string, string])[]): Compiled {
   const redact = (text: string): string =>
     text.split(known).map((piece, index) => (index % 2 === 1 ? piece : rewrite(piece))).join('');
   const redactCut = (text: string): string => {
-    const redacted = redact(text);
     // Only what follows the last marker can end in a value cut short.
-    const tail = redacted.split(known).at(-1) ?? '';
+    const tail = text.split(known).at(-1) ?? '';
     let cut = 0;
     let marker = '';
     entries.forEach(([, value], index) => {
@@ -85,7 +84,17 @@ function compile(values: readonly (readonly [string, string])[]): Compiled {
         marker = markers[index] ?? '';
       }
     });
-    return cut === 0 ? redacted : `${redacted.slice(0, redacted.length - cut)}${marker}`;
+    if (cut === 0) return redact(text);
+    // An occurrence the whole-value pass would rewrite across the fragment's start joins the fragment.
+    let start = tail.length - cut;
+    pattern.lastIndex = 0;
+    for (let match = pattern.exec(tail); match !== null && match.index < start; match = pattern.exec(tail)) {
+      if (match.index + match[0].length > start) {
+        start = match.index;
+        break;
+      }
+    }
+    return `${redact(text.slice(0, text.length - tail.length + start))}${marker}`;
   };
   return {
     redact,
@@ -236,7 +245,10 @@ export class SecretLedger {
    * its leading part at the end, which no whole-value match sees, so the
    * longest such part becomes that value's marker too, down to one
    * character. Matched as the value is written: the cut falls on text as the
-   * engine read it, before any serializer spells it. Bound like `redact`.
+   * engine read it, before any serializer spells it. The part is found before
+   * whole values are rewritten, so a value that starts with another
+   * registered value is not half rewritten as the shorter one, and an
+   * occurrence running into the part joins its marker. Bound like `redact`.
    */
   readonly redactCut = (text: string): string => this.compile().redactCut(text);
 

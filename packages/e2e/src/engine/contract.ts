@@ -118,10 +118,10 @@ export interface NodeRef {
  * `text` whose length reaches its limit was cut at exactly that limit, so
  * "length >= limit" is a precise truncation signal; every shorter value is
  * complete. `value` and `selection`, where an engine cuts them, use the text
- * limit the same way. Keep the start and cut the end: the harness redacts
- * the leading part of a secret that a field at its limit ends with, which a
- * whole-value match cannot see. Single-node reads are unbounded and always
- * carry the full value.
+ * limit the same way; a longer value was not cut. Keep the start and cut the
+ * end: the harness redacts the leading part of a secret that a field exactly
+ * at its limit ends with, which a whole-value match cannot see. Single-node
+ * reads are unbounded and always carry the full value.
  */
 export const OBSERVED_NAME_LIMIT = 256;
 export const OBSERVED_TEXT_LIMIT = 512;

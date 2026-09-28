@@ -180,6 +180,20 @@ describe('redactCut', () => {
     expect(ledger.redactCut('text ab-')).toBe('text <secret:short>');
   });
 
+  it('rewrites the cut part of a value that starts with another value, or that a whole value runs into, as one marker', () => {
+    const prefixed = new SecretLedger([
+      ['short', 'abcdef12'],
+      ['long', 'abcdef12-XYZ-long'],
+    ]);
+    expect(prefixed.redactCut('pw abcdef12-XY')).toBe('pw <secret:long>');
+    expect(prefixed.redactCut('pw abcdef12 abcdef12-XY')).toBe('pw <secret:short> <secret:long>');
+    const chained = new SecretLedger([
+      ['first', 'abc123xyz'],
+      ['second', 'xyz-tail-value'],
+    ]);
+    expect(chained.redactCut('pw abc123xyz-ta')).toBe('pw <secret:second>');
+  });
+
   it('changes nothing with no value registered', () => {
     expect(new SecretLedger().redactCut('anything at all')).toBe('anything at all');
   });

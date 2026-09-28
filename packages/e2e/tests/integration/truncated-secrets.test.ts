@@ -7,13 +7,13 @@
  * shown as it is.
  */
 
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { RunOutcome } from '../../src/run/runner.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { fakeCalls, installFakeModel, judgment } from '../helpers/fake-model.ts';
-import { resultByTitle, runProject, type FixtureProject } from '../helpers/run-project.ts';
+import { filesUnder, resultByTitle, runProject, type FixtureProject } from '../helpers/run-project.ts';
 
 const SECRET = 'cut-secret-Kq7ZrT2mWx9pLd4sNv8bHc3jFg6yQa1eUo5iRk0tYw2zXn7uM';
 /** The shortest leading part checked for: any longer one contains it. */
@@ -30,14 +30,6 @@ test('echoes a secret across the observation limits', async ({ app, agent, scree
   await screen.getByRole('button', { name: 'Not on this page' }).tap();
 });
 `;
-
-/** Every regular file under `dir`, recursively. */
-function filesUnder(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const file = path.join(dir, name);
-    return statSync(file).isDirectory() ? filesUnder(file) : [file];
-  });
-}
 
 describe('secrets cut short by observation limits', () => {
   let app: FixtureApp;

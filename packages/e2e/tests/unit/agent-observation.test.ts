@@ -156,6 +156,7 @@ describe('prepareObservation', () => {
         node('n4', { role: 'textbox', value: cutText(secret.slice(0, 20)), selection: cutText(secret.slice(0, 12)) }),
         node('n5', { role: 'paragraph', text: cutText('plain-control-plain') }),
         node('n6', { role: 'paragraph', text: `whole ${secret.slice(0, 20)}` }),
+        node('n7', { role: 'textbox', value: `0${cutText(secret.slice(0, 20))}` }),
       ],
     });
     const prepared = prepareObservation(observation(tree), { redact: ledger.redact, redactCut: ledger.redactCut, maxBytes: 16_384 });
@@ -171,6 +172,8 @@ describe('prepareObservation', () => {
     // A field under its limit was not cut, so a fragment inside it is only app text.
     expect(prepared.nodes.get('n6')?.text).toBe(`whole ${secret.slice(0, 20)}`);
     expect(prepared.nodes.get('n6')).toBe(tree.children?.[4]);
+    // A value longer than the limit is a native control's, which no engine cuts.
+    expect(prepared.nodes.get('n7')).toBe(tree.children?.[5]);
   });
 
   it('truncates at the byte limit while keeping the root and flagging truncation', () => {

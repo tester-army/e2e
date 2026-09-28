@@ -9,14 +9,14 @@
  * holds the plaintext afterwards.
  */
 
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { inflateEntry, readZip } from '../../src/internal/zip.ts';
 import type { ArtifactStore, StoredArtifact } from '../../src/types.ts';
 import type { RunOutcome } from '../../src/run/runner.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
-import { createProject, resultByTitle, runExisting, type FixtureProject } from '../helpers/run-project.ts';
+import { createProject, filesUnder, resultByTitle, runExisting, type FixtureProject } from '../helpers/run-project.ts';
 import { entriesFor, readEntries } from '../helpers/trace-cache.ts';
 
 const SECRET = 'trace-secret-Qx7#"&=2718';
@@ -61,14 +61,6 @@ function capturing(): ArtifactStore & { puts: StoredArtifact[] } {
       return { ref: `store://${artifact.sha256.slice(0, 12)}` };
     },
   };
-}
-
-/** Every regular file under `dir`, recursively. */
-function filesUnder(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const file = path.join(dir, name);
-    return statSync(file).isDirectory() ? filesUnder(file) : [file];
-  });
 }
 
 /** The archive's text entries by name, decoded. */
