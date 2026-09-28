@@ -873,9 +873,9 @@ Use these helpers to keep behavior consistent across engines:
 
 | Export | Use |
 | --- | --- |
-| `matchesText(actual, pattern)`, `toTextPattern(match, { exact? })`, `describePattern(pattern)` | `TextPattern` matching for `locate` and text matchers |
+| `matchesText(actual, pattern)`, `toTextPattern(match, { exact? })`, `describePattern(pattern)` | `TextPattern` matching for `locate` and text matchers; `toTextPattern` throws `INVALID_ARGUMENT` for a `match` that is neither a string nor a `RegExp` |
 | `resolveExpression(expression, nodes, { selector? })` | The reference `locate`. Resolves one `LocatorExpression` over a semantic tree in document order, with `text` and `label` answering the innermost match when a container echoes a descendant's text. An engine whose tree is the whole truth (a device) calls it; a browser engine reproduces it. A `selector` needs the hook, a `frame` is `FRAME_NOT_FOUND` |
-| `urlMatches(current, expected, baseHref)` | `toHaveURL`-style comparison; an `expected` that is neither a string nor a `RegExp` throws `INVALID_ARGUMENT` |
+| `urlMatches(current, expected, baseHref)` | `toHaveURL`-style comparison; an `expected` that is neither a string nor a `RegExp` throws `INVALID_ARGUMENT`, as in `toTextPattern` |
 | `pollCondition({ deadline, signal, negated, evaluate, onTimeout })`, `Deadline` | Assertion polling and the negation grace window |
 | `validateJsonValue(value, label)` | Rejects `undefined`, `NaN`, and cycles in a value a fixture returns |
 | `obj`, `raceAbort`, `withTimeout`, `withinCleanupBudget` | See [Contributed fixtures](#contributed-fixtures) |

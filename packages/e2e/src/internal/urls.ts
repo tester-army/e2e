@@ -1,7 +1,8 @@
 /** URL normalization and origin policy helpers. */
 
-import { ConfigurationError, TestError } from './errors.ts';
+import { ConfigurationError } from './errors.ts';
 import { testPattern } from './regexp.ts';
+import { toTextPattern } from './text.ts';
 
 export interface NormalizedBaseUrl {
   /** Serialized base URL without trailing artifacts beyond the normalized path. */
@@ -177,23 +178,20 @@ export function sameSite(url: string | URL, site: string): boolean {
  * Compares a current URL to an expected string/regexp.
  * Relative expected strings resolve against the base URL; string comparison is
  * exact after WHATWG serialization; regexps test the complete serialized URL.
- * Anything else, such as a Playwright-style predicate, is `INVALID_ARGUMENT`:
- * read as a regexp it would have no source and match every URL.
+ * Anything else is `INVALID_ARGUMENT`, the `toTextPattern` rule.
  */
 export function urlMatches(current: string, expected: string | RegExp, baseHref: string): boolean {
-  if (typeof expected === 'string') {
-    let expectedUrl: URL;
-    try {
-      expectedUrl = new URL(expected, baseHref);
-    } catch {
-      return false;
-    }
-    return serializeForComparison(current) === expectedUrl.href;
+  const pattern = toTextPattern(expected);
+  if (pattern.kind === 'regexp') {
+    return testPattern(pattern.source, pattern.flags, serializeForComparison(current));
   }
-  if (!(expected instanceof RegExp)) {
-    throw new TestError('INVALID_ARGUMENT', `URL pattern must be a string or RegExp, got ${typeof expected}`);
+  let expectedUrl: URL;
+  try {
+    expectedUrl = new URL(pattern.value, baseHref);
+  } catch {
+    return false;
   }
-  return testPattern(expected.source, expected.flags, serializeForComparison(current));
+  return serializeForComparison(current) === expectedUrl.href;
 }
 
 function serializeForComparison(url: string): string {

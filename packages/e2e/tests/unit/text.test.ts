@@ -1,3 +1,4 @@
+import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import {
   compareText,
@@ -67,6 +68,18 @@ describe('toTextPattern', () => {
 
   it('serializes regexps with normalized flags', () => {
     expect(toTextPattern(/ab/gi)).toEqual({ kind: 'regexp', source: 'ab', flags: 'gi' });
+  });
+
+  it('accepts a RegExp from another realm', () => {
+    expect(toTextPattern(runInNewContext('/ab/i') as RegExp)).toEqual({ kind: 'regexp', source: 'ab', flags: 'i' });
+  });
+
+  it('rejects anything but a string or a RegExp instead of matching everything', () => {
+    for (const match of [(text: string) => text === 'x', { source: 'x', flags: '' }, undefined, null, 1]) {
+      expect(() => toTextPattern(match as unknown as RegExp)).toThrow(
+        expect.objectContaining({ code: 'INVALID_ARGUMENT', message: expect.stringContaining('string or RegExp') }),
+      );
+    }
   });
 });
 

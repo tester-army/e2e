@@ -1,8 +1,9 @@
 /** Text normalization and matching rules. */
 
+import { types } from 'node:util';
 import type { TextPattern } from '../engine/contract.ts';
 import type { TextMatch } from '../types.ts';
-import { sanitizeText } from './errors.ts';
+import { sanitizeText, TestError } from './errors.ts';
 import { testPattern } from './regexp.ts';
 
 export type { TextPattern };
@@ -24,10 +25,18 @@ export function collapseText(text: string): string {
   return normalizeText(sanitizeText(text));
 }
 
-/** Converts a public TextMatch plus options into the wire TextPattern form. */
+/**
+ * Converts a public TextMatch plus options into the wire TextPattern form.
+ * Anything but a string or a RegExp (from any realm), such as a
+ * Playwright-style predicate, is `INVALID_ARGUMENT`: read as a regexp it would
+ * have no source and match everything.
+ */
 export function toTextPattern(match: TextMatch, options?: { exact?: boolean }): TextPattern {
   if (typeof match === 'string') {
     return { kind: 'string', value: match, exact: options?.exact ?? true };
+  }
+  if (!types.isRegExp(match)) {
+    throw new TestError('INVALID_ARGUMENT', `pattern must be a string or RegExp, got ${typeof match}`);
   }
   return { kind: 'regexp', source: match.source, flags: normalizeRegexpFlags(match.flags) };
 }

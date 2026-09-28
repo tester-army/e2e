@@ -33,7 +33,7 @@ import {
 import type { DialogHandler } from './dialogs.ts';
 import { isTestErrorCode, message as causeMessage, translatePwError } from './support.ts';
 import { compileEvaluation } from './evaluation.ts';
-import { routePatternMatches, routePatternsEqual, toRoutePattern } from './route-pattern.ts';
+import { routePatternMatches, routePatternsEqual } from './route-pattern.ts';
 import type { PlaywrightSurface } from './surface.ts';
 
 /** `json` or `body`, never both; neither fulfills with an empty body. */
@@ -314,7 +314,7 @@ export function createWebFixture(surface: PlaywrightSurface, context: EngineFixt
       return result.value as T;
     },
     route(pattern, handler) {
-      const wirePattern = toRoutePattern(pattern);
+      const wirePattern = toTextPattern(pattern);
       const predicate = (url: URL) => routePatternMatches(wirePattern, url.href);
       // Playwright never surfaces a throwing route handler to the test, so a
       // contract violation (no decision, two decisions) or a failing handler
@@ -379,7 +379,7 @@ export function createWebFixture(surface: PlaywrightSurface, context: EngineFixt
       });
     },
     unroute(pattern) {
-      const wirePattern = toRoutePattern(pattern);
+      const wirePattern = toTextPattern(pattern);
       return surface.guard(context.operation(), 'unroute', async () => {
         for (let i = routes.length - 1; i >= 0; i -= 1) {
           const stored = routes[i]!;
@@ -391,7 +391,7 @@ export function createWebFixture(surface: PlaywrightSurface, context: EngineFixt
       });
     },
     waitForResponse(pattern, options) {
-      const wirePattern = toRoutePattern(pattern);
+      const wirePattern = toTextPattern(pattern);
       const operation = context.operation(options?.timeout);
       return surface.guard(operation, 'waitForResponse', async (currentOperation) => {
         const response = await surface.requirePage().waitForResponse(

@@ -1,18 +1,11 @@
 /** Route URL pattern grammar. */
 
+import type { TextPattern } from 'e2e/engine';
+
 /** Escapes one character for literal use inside a regexp source. */
 function escapeRegexpChar(ch: string): string {
   return /[a-zA-Z0-9_-]/.test(ch) ? ch : `\\${ch}`;
 }
-
-/**
- * Tests input against a wire regexp (source + flags). A fresh RegExp is
- * constructed per call, so sticky/global state can never leak between matches.
- */
-function testPattern(source: string, flags: string, input: string): boolean {
-  return new RegExp(source, flags).test(input);
-}
-import { TestError, type TextPattern } from 'e2e/engine';
 
 /**
  * Compiles a string route pattern: `*` matches within one path segment, `**`
@@ -52,20 +45,7 @@ export function routePatternMatches(pattern: TextPattern, url: string): boolean 
   if (pattern.kind === 'string') {
     return compileRoutePattern(pattern.value).test(url);
   }
-  return testPattern(pattern.source, pattern.flags, url);
-}
-
-/**
- * Converts a public string/RegExp pattern into the wire TextPattern form.
- * Anything else, such as a Playwright-style predicate, is `INVALID_ARGUMENT`:
- * read as a regexp it would have no source and match every URL.
- */
-export function toRoutePattern(pattern: string | RegExp): TextPattern {
-  if (typeof pattern === 'string') return { kind: 'string', value: pattern, exact: true };
-  if (!(pattern instanceof RegExp)) {
-    throw new TestError('INVALID_ARGUMENT', `URL pattern must be a string or RegExp, got ${typeof pattern}`);
-  }
-  return { kind: 'regexp', source: pattern.source, flags: pattern.flags };
+  return new RegExp(pattern.source, pattern.flags).test(url);
 }
 
 /** Structural equality for route patterns, used by unroute. */

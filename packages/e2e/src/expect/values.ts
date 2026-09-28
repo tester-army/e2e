@@ -3,6 +3,7 @@
 import { equals, isAsymmetric, iterableEquality, subsetEquality } from '@vitest/expect';
 import { TestError } from '../internal/errors.ts';
 import { testPattern } from '../internal/regexp.ts';
+import { toTextPattern } from '../internal/text.ts';
 import type { AsymmetricMatcher, PropertyPath, ValueExpectation } from '../types.ts';
 
 function fail(message: string): never {
@@ -199,10 +200,11 @@ class ValueExpectationImpl<T> implements ValueExpectation<T> {
     }
     // A global or sticky RegExp keeps `lastIndex` between tests; a matcher
     // that is polled must see the same answer for the same value every time.
+    const pattern = toTextPattern(expected);
     const matches =
-      typeof expected === 'string'
-        ? actual.includes(expected)
-        : testPattern(expected.source, expected.flags, actual);
+      pattern.kind === 'string'
+        ? actual.includes(pattern.value)
+        : testPattern(pattern.source, pattern.flags, actual);
     this.check(
       matches,
       () => `expected ${format(actual)} to match ${format(expected)}`,

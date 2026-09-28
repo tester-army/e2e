@@ -52,6 +52,11 @@ describe('value matchers', () => {
     failsWith(() => e2eExpect('abc').toMatch(/xyz/), /to match/);
   });
 
+  it('toMatch rejects a predicate instead of matching everything', () => {
+    const predicate = ((text: string) => text === 'xyz') as unknown as RegExp;
+    vexpect(() => e2eExpect('abc').toMatch(predicate)).toThrow(vexpect.objectContaining({ code: 'INVALID_ARGUMENT' }));
+  });
+
   it('toMatch gives the same answer on every test of a global or sticky regexp', () => {
     const global = /done/g;
     e2eExpect('done').toMatch(global);

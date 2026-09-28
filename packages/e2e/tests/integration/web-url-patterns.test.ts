@@ -1,9 +1,9 @@
 /**
  * URL patterns in a real browser: `toHaveURL`, `waitForURL`, `route`,
- * `unroute`, and `waitForResponse` take a string or a RegExp. A predicate
- * function, which Playwright accepts and a migrated test may still pass, is
- * refused with INVALID_ARGUMENT instead of reading as a pattern that matches
- * every URL.
+ * `unroute`, and `waitForResponse` take a string or a RegExp, as does the
+ * text pattern of `toHaveTitle`. A predicate function, which Playwright
+ * accepts and a migrated test may still pass, is refused with
+ * INVALID_ARGUMENT instead of reading as a pattern that matches everything.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -39,6 +39,11 @@ test('route with a predicate', async ({ app, web, screen }) => {
 test('unroute with a predicate', async ({ app, web }) => {
   await app.open();
   await web.unroute(toOther);
+});
+
+test('toHaveTitle with a predicate', async ({ app, web }) => {
+  await app.open();
+  await expect(web).toHaveTitle(toOther, { timeout: 500 });
 });
 
 test('string and RegExp URL patterns match what they name', async ({ app, web, screen }) => {
@@ -85,6 +90,7 @@ describe('web URL patterns in a browser', () => {
     ['waitForResponse with a predicate', 'web.waitForResponse'],
     ['route with a predicate', 'web.route'],
     ['unroute with a predicate', 'web.unroute'],
+    ['toHaveTitle with a predicate', 'expect.toHaveTitle'],
   ])('%s fails with INVALID_ARGUMENT at %s', (title, api) => {
     const result = resultByTitle(outcome, title);
     expect(result.status).toBe('failed');

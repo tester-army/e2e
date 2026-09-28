@@ -142,11 +142,10 @@ describe('urlMatches', () => {
     expect(urlMatches('http://localhost:3000/alpha', /beta/, base.href)).toBe(false);
   });
 
-  it('rejects a pattern that is neither a string nor a RegExp instead of matching every URL', () => {
-    for (const expected of [(url: URL) => url.pathname === '/other', { source: 'beta', flags: '' }, undefined, 1]) {
-      expect(() => urlMatches('http://localhost:3000/items', expected as unknown as RegExp, base.href)).toThrow(
-        expect.objectContaining({ code: 'INVALID_ARGUMENT' }),
-      );
-    }
+  it('rejects a predicate instead of matching every URL', () => {
+    const predicate = ((url: URL) => url.pathname === '/other') as unknown as RegExp;
+    expect(() => urlMatches('http://localhost:3000/items', predicate, base.href)).toThrow(
+      expect.objectContaining({ code: 'INVALID_ARGUMENT' }),
+    );
   });
 });
