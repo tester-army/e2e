@@ -120,8 +120,9 @@ to do today.
 | `locator.and(other)`, `locator.or(other)` | not yet | `screen` | missing |
 | `locator.count()` | the same | `screen` | same |
 | `locator.all()`, `allTextContents()` | the same; `allInnerTexts()` is `allTextContents()` | `screen` | same |
-| `page.locator('css')`, `page.locator('xpath=...')` | `web.locator('css')` | `web` | web only |
-| `locator.locator('css')` | not yet; `web.locator('css').getByRole(...)` scopes the other way round | `web` | missing |
+| `page.locator('css')`, `page.locator('xpath=...')` | `web.locator('css')`: the string is a Playwright selector, so `xpath=` (or a leading `//`) and `>>` chains work too | `web` | web only |
+| `page.waitForSelector(selector)` | `web.locator(selector).waitFor()`; a locator is strict, so narrow a selector with several matches with a `>> visible=true` step or `first()` | `web` | renamed |
+| `locator.locator('css')` | not yet; a semantic query inside the scope (`cell.getByRole('textbox')` for `cell.locator('input')`), `web.locator('css').getByRole(...)` the other way round, or one `web.locator` selector for the whole path | `web` | missing |
 | `page.frameLocator('#frame')` | `web.frameLocator('#frame')`, then `screen` queries inside it | `web` | web only |
 
 ### Actions
@@ -159,6 +160,7 @@ to do today.
 | `keyboard.down`, `keyboard.up`, `keyboard.insertText` | not yet | `web` | missing |
 | `page.mouse.click(x, y)` | `screen.tapAt({ x, y })`, viewport coordinates | `screen` | renamed |
 | `mouse.move`, `down`, `up` as a drag | `screen.swipe({ from, to })` | `screen` | renamed |
+| `page.dragAndDrop(source, target, { sourcePosition, targetPosition })` | `source.dragTo(target)`, or `screen.swipe({ from, to })` with points from `boundingBox()` | `screen` | renamed |
 | `page.mouse.move`, `wheel`, `down`, `up` | `web.mouse.*` | `web` | web only |
 
 ### Assertions
@@ -183,9 +185,10 @@ to do today.
 | `toHaveLength()`, `toMatchObject()`, `toHaveProperty()` | the same | `expect` | same |
 | `toStrictEqual()`, `toThrow()`, `toBeInstanceOf()` | not yet; `toEqual` on the shape you need | `expect` | missing |
 | `expect.any()`, `objectContaining()`, `arrayContaining()`, `stringMatching()` | the same, plus `anything()` and `stringContaining()`, see [asymmetric matchers](/reference/expect#asymmetric-matchers) | `expect` | same |
-| `expect(async () => { ... }).toPass()` | `expect.poll(read).toBe(...)` | `expect` | renamed |
+| `expect(async () => { ... }).toPass()` | `expect.poll(read).toBe(...)`; poll an array with `toEqual([a, b])` for several values at once | `expect` | renamed |
 | `expect.poll()` | the same | `expect` | same |
 | `expect.soft()` | the same; kept failures fail the attempt once the body settles, see [soft assertions](/reference/expect#soft-assertions) | `expect` | same |
+| `expect(locator, 'message')` | `expect(locator)`; only a value expectation takes a message, a locator failure already names the locator, the matcher, and what was observed | `expect` | by design |
 | `expect.extend()` | not yet | `expect` | missing |
 | `expect(promise).resolves`, `.rejects` | not yet; `await` first, then `expect(value)` | `expect` | missing |
 
@@ -201,8 +204,9 @@ to do today.
 | `page.waitForURL()` | `web.waitForURL()`; a string or `RegExp`, no predicate function | `web` | web only |
 | `page.waitForLoadState()` | not yet; `web.goto(url, { waitUntil })` on the navigation itself | `web` | missing |
 | `page.waitForFunction(fn)` | `expect.poll(() => web.evaluate(fn)).toBeTruthy()` | `web` | missing |
-| `page.waitForTimeout(ms)` | a locator assertion on the state you are waiting for | `expect` | by design |
+| `page.waitForTimeout(ms)` | a locator assertion on the state you are waiting for: `toBeVisible()` on what appears, `toBeHidden()` on what goes away | `expect` | by design |
 | `page.setViewportSize()` | `web.setViewport()` | `web` | web only |
+| `page.viewportSize()` | not yet; `web.evaluate(() => ({ width: innerWidth, height: innerHeight }))` | `web` | missing |
 | `page.screenshot()` | `app.screenshot(label)`: the viewport, redacted, attached to the report; no `fullPage` | `app` | renamed |
 | a fresh `context` per test | every attempt starts in a fresh context; `app.restart()` recreates it, `app.clearState()` also clears storage | `app` | same |
 | `page.pause()` | not yet; `--headed` to watch, [`e2e mcp`](/reference/mcp) to drive the app from a coding agent | CLI | missing |
@@ -225,7 +229,7 @@ to do today.
 | `page.waitForEvent('popup')`, `context.on('page')` | not yet; a window the app opens is not driven | `web` | missing |
 | `page.on('console')`, `page.on('pageerror')` | not yet; assert on what the page shows | `web` | missing |
 | `page.evaluate(fn, arg)` | `web.evaluate(fn, arg)`; JSON in and out, no handles | `web` | web only |
-| `page.exposeFunction()`, `addInitScript()`, `setExtraHTTPHeaders()`, `emulateMedia()`, `clock` | not yet | `web` | missing |
+| `page.exposeFunction()`, `addInitScript()`, `addStyleTag()`, `setExtraHTTPHeaders()`, `emulateMedia()`, `clock` | not yet; `web.evaluate` appends a `<style>` once the page is open, and returns `null` since its result must be JSON | `web` | missing |
 | `context.addCookies()`, `context.cookies()` | `web.setCookies()`, `web.cookies()` | `web` | web only |
 | `context.clearCookies()` | not yet; `app.clearState()` also clears other persisted state and recreates the context | `web` | missing |
 | `request` fixture | Node `fetch`, see [Tests without a screen](/writing-tests#tests-without-a-screen) | `test` | by design |
@@ -252,7 +256,7 @@ to do today.
 | `test.info()`, `attach()`, `annotations` | not yet; `app.screenshot(label)` attaches a screenshot | `test` | missing |
 | `{ tag: '@smoke' }` | `{ tags: ['smoke'] }` on a test or group | `test` | renamed |
 | `test.use({ ... })` | per target in the config; `web.setViewport` at runtime | config | renamed |
-| `test.extend({ fixture })` | the same shape; a fixture that needs another goes in a chained `extend` | `test` | same |
+| `test.extend({ fixture })` | the same shape; a fixture that needs another goes in a chained `extend`. On-demand setup is not yet: every fixture of the chain sets up for every test registered through that `test`, named in the parameters or not, where Playwright sets up only the ones a test names. Give each setup its own `test` | `test` | missing |
 | `{ scope: 'worker' }` fixtures, option fixtures | not yet; `beforeAll` for per-file setup | `test` | missing |
 | a `setup` project with `storageState` | `test.setup(title, { sessions }, fn)` and `session.save(name)` | `test` | renamed |
 
@@ -280,6 +284,55 @@ to do today.
 | `npx playwright show-trace` | the same, on `trace/<name>.zip` under the attempt's artifact directory | CLI | same |
 | `npx playwright show-report` | not yet; `.e2e/summary.md` from the `markdown` reporter | CLI | missing |
 | `npx playwright install` | still works; the engine also installs a missing browser once per run, before the run's clock starts | CLI | same |
+
+## Page objects
+
+A page object that wraps `page` takes the fixtures it uses instead: `screen`
+for queries and actions, and `web` for what only a browser has (keyboard,
+mouse, CSS selectors, `evaluate`). Type them with `Screen` and `Locator` from
+`e2e` and `Web` from `@e2e-dev/web`, and hand them out as fixtures so every
+test gets its page objects without a `beforeEach`:
+
+```ts title="tests/page-models/account-page.ts"
+import type { Locator, Screen } from 'e2e';
+import type { Web } from '@e2e-dev/web';
+
+export class AccountPage {
+  readonly accountName: Locator;
+
+  constructor(
+    readonly screen: Screen,
+    readonly web: Web,
+  ) {
+    this.accountName = screen.getByTestId('account-name');
+  }
+
+  async filterByNote(note: string) {
+    await this.screen.getByRole('button', { name: 'Filter' }).click();
+    await this.screen.getByRole('button', { name: 'Note' }).click();
+    await this.web.keyboard.type(note);
+  }
+}
+```
+
+```ts title="tests/fixtures.ts"
+import { test as base } from '@e2e-dev/web';
+import { AccountPage } from './page-models/account-page.ts';
+
+export const test = base.extend<{ accountPage: AccountPage }>({
+  accountPage: async ({ screen, web }, use) => {
+    await use(new AccountPage(screen, web));
+  },
+});
+```
+
+A fixture that reads `web` makes every test on that `test` web only: on a
+device target it fails in `beforeEach` with `UNSUPPORTED_CAPABILITY`. Give
+those tests `requires: ['web']`, or keep portable tests on the base `test`.
+
+A `locator.page()` call has no counterpart: pass `web` alongside the locator.
+Tests that call `browser.newPage()` in `beforeEach` and `page.close()` in
+`afterEach` drop both, since every attempt starts in a fresh context.
 
 ## By design
 

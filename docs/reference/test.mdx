@@ -257,8 +257,10 @@ engine contributes `device`. Reaching for a fixture the engine does not
 contribute fails with `UNSUPPORTED_CAPABILITY`; declare `requires: ['web']`
 to skip such tests at selection instead.
 
-Fixtures are lazy. Destructuring in the parameter list acquires them before
-the body's first statement.
+The fixtures above are lazy. Destructuring in the parameter list acquires
+them before the body's first statement. Your own fixtures are not: each one
+of the `test` a test was registered through sets up for that test, whether
+its parameters name it or not.
 
 ### Your own fixtures
 
@@ -315,7 +317,10 @@ object that already has `a`.
 
 Per attempt:
 
-1. Each definition runs in declaration order until it calls `use`. Setup
+1. Each definition runs in declaration order until it calls `use`, whether
+   or not the test names it: a fixture that opens a page or changes app
+   state does so for every test of that `test`, so a file whose tests need
+   different setups registers them through different `extend` chains. Setup
    counts against the test `timeout`; a failure is reported in phase
    `beforeEach`, before any `beforeEach` hook has run.
 2. `beforeEach` hooks, the body, then `afterEach` hooks run with the same

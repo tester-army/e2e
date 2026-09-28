@@ -81,7 +81,7 @@ group, because each is a fresh module realm.
 
 ## Fixtures
 
-Fixtures are lazy; destructure them in the callback.
+The built-in fixtures are lazy; destructure them in the callback. Your own `test.extend` fixtures set up for every test registered through that `test`, named or not, so a fixture that changes app state belongs on its own `test`.
 
 | Fixture | Type | Available |
 | --- | --- | --- |

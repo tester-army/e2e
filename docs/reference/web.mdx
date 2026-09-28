@@ -259,6 +259,10 @@ await web.waitForURL(/\/orders\/\d+$/, { timeout: 15_000 });
 `locator` and `frameLocator`, at the page or inside a frame, throw
 `INVALID_LOCATOR` for an empty selector. `frameLocator` throws
 `LOCATOR_NOT_FOUND` for a missing frame and `LOCATOR_AMBIGUOUS` for several.
+The selector is a Playwright selector: CSS by default, XPath with `xpath=` or
+a leading `//`, and `>>` chains, so
+`web.locator('[data-testid="row"] >> nth=2 >> [data-testid="conditions"] > div')`
+scopes CSS to one row.
 
 ```ts
 const payment = web.frameLocator('#payment-frame');
