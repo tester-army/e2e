@@ -57,7 +57,9 @@ interface Thread {
   isOutdated: boolean;
   path: string;
   line: number | null;
-  comments: { nodes: ThreadComment[] };
+  /** The finding that opened the thread, and the newest reply, however long the thread. */
+  root: { nodes: ThreadComment[] };
+  latest: { nodes: ThreadComment[] };
 }
 
 interface ThreadPage {
@@ -80,7 +82,8 @@ interface Review {
   state: string;
   body: string | null;
   html_url: string;
-  submitted_at: string;
+  /** Null for the viewer's own unsubmitted draft. */
+  submitted_at: string | null;
 }
 
 interface SummaryInput {
@@ -128,8 +131,8 @@ export function summarize({ pr, threads, comments, reviews = [], viewer, now = D
   const unresolved = threads
     .filter((thread) => !thread.isResolved)
     .map((thread) => {
-      const first = thread.comments.nodes[0];
-      const last = thread.comments.nodes.at(-1);
+      const first = thread.root.nodes[0];
+      const last = thread.latest.nodes[0];
       return {
         id: thread.id,
         commentId: first?.databaseId ?? null,
@@ -158,15 +161,18 @@ export function summarize({ pr, threads, comments, reviews = [], viewer, now = D
   if (failing.length > 0) blockers.push(`failing:${failing.map((check) => check.name).join(',')}`);
   if (open.length > 0) blockers.push(`threads:${open.length}`);
   if (unacknowledged.length > 0) blockers.push(`comments:${unacknowledged.length}`);
+  const submitted = reviews.filter(
+    (review): review is Review & { submitted_at: string } => review.submitted_at !== null,
+  );
   const verdicts = new Map<string, Review>();
-  for (const review of reviews.toSorted((a, b) => a.submitted_at.localeCompare(b.submitted_at))) {
+  for (const review of submitted.toSorted((a, b) => a.submitted_at.localeCompare(b.submitted_at))) {
     if (VERDICTS.has(review.state)) verdicts.set(review.user.login, review);
   }
   const changesRequested = [...verdicts.values()]
     .filter((review) => review.state === 'CHANGES_REQUESTED')
     .map((review) => ({ id: review.id, author: review.user.login, url: review.html_url }));
   if (changesRequested.length > 0) blockers.push(`changes-requested:${changesRequested.length}`);
-  const newReviews = reviews
+  const newReviews = submitted
     .filter((review) => headPushedAt === null || review.submitted_at > headPushedAt)
     .filter((review) => review.state === 'CHANGES_REQUESTED' || (review.body ?? '').trim() !== '')
     .map((review) => ({
@@ -219,7 +225,7 @@ function fetchStatus(selector: string | null) {
     ]),
   ) as PullRequest;
   const [owner, repo] = new URL(pr.url).pathname.split('/').slice(1, 3);
-  const query = `query($owner:String!,$repo:String!,$number:Int!,$after:String){repository(owner:$owner,name:$repo){pullRequest(number:$number){reviewThreads(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{id isResolved isOutdated path line comments(last:100){nodes{databaseId author{login} body url}}}}}}}`;
+  const query = `query($owner:String!,$repo:String!,$number:Int!,$after:String){repository(owner:$owner,name:$repo){pullRequest(number:$number){reviewThreads(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{id isResolved isOutdated path line root:comments(first:1){nodes{databaseId author{login} body url}} latest:comments(last:1){nodes{author{login} body}}}}}}}`;
   const threads: Thread[] = [];
   let after: string | null = null;
   do {
@@ -246,9 +252,16 @@ function fetchStatus(selector: string | null) {
   const acknowledgedBy = (id: number) =>
     (
       JSON.parse(
-        gh(['api', `repos/${owner}/${repo}/issues/comments/${id}/reactions?content=%2B1&per_page=100`]),
-      ) as { content: string; user: { login: string } }[]
-    ).some((reaction) => reaction.content === '+1' && reaction.user.login === viewer);
+        gh([
+          'api',
+          '--paginate',
+          '--slurp',
+          `repos/${owner}/${repo}/issues/comments/${id}/reactions?content=%2B1&per_page=100`,
+        ]),
+      ) as { content: string; user: { login: string } }[][]
+    )
+      .flat()
+      .some((reaction) => reaction.content === '+1' && reaction.user.login === viewer);
   const comments = (
     JSON.parse(
       gh(['api', '--paginate', '--slurp', `repos/${owner}/${repo}/issues/${pr.number}/comments?per_page=100`]),

@@ -12,14 +12,14 @@ on:
 permissions:
   pull-requests: write
 
-# Two quick pushes both carry the label in their payload; one at a time, and
-# the second finds it gone.
+# The event's label list is a snapshot from the push, so a label added right
+# after it would be missed; the job reads the live labels instead, one run at
+# a time per PR.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
 
 jobs:
   drop:
-    if: contains(github.event.pull_request.labels.*.name, 'Ready for Human Review')
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 5
     steps:

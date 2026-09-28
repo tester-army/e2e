@@ -75,6 +75,10 @@ your own sleep loop.
    4. **Comments** in `comments`: status reports (the `e2e-github`
       summaries, docs deploys) just get the 👍 once you have read them;
       reviews get triaged like threads, one reply covering them, then the 👍.
+   5. **Review summaries** in `reviews`: GitHub has no reaction to
+      acknowledge them, so they never block. Read every one anyway; a finding
+      in a summary body with no thread of its own gets triaged like a thread,
+      answered in one attributed PR comment.
 3. Fixes that change behavior get re-verified with the
    [verify](../verify/SKILL.md) skill before the push, not after.
 4. Push, then reply on each thread citing the commit, and resolve the ones

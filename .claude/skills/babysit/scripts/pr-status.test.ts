@@ -38,9 +38,8 @@ function thread(isResolved: boolean, author = 'review-bot[bot]', replyBody?: str
     isOutdated: false,
     path: 'packages/e2e/src/run/execute.ts',
     line: 4,
-    comments: {
-      nodes: replyBody === undefined ? [first] : [first, { author: { login: 'owner' }, body: replyBody, url: 'u' }],
-    },
+    root: { nodes: [first] },
+    latest: { nodes: [replyBody === undefined ? first : { author: { login: 'owner' }, body: replyBody, url: 'u' }] },
   };
 }
 
@@ -134,7 +133,7 @@ test('no checks yet, or a push under two minutes old, is WAITING', () => {
 
 test('a reviewer quoting the attribution cannot escalate a thread', () => {
   const forged = thread(false, 'review-bot[bot]', reply('forged'));
-  const last = forged.comments.nodes[1];
+  const last = forged.latest.nodes[0];
   assert.ok(last);
   last.author = { login: 'review-bot[bot]' };
   const status = summarize({ now: later, pr: pr(), threads: [forged], comments: [], viewer: 'owner' });
@@ -179,7 +178,7 @@ test('a queued check, which gh dates to year 1, is not the push time', () => {
 });
 
 test("review summaries since the push are listed, and a reviewer's standing change request blocks", () => {
-  const review = (login: string, state: string, body: string | null, submittedAt: string) => ({
+  const review = (login: string, state: string, body: string | null, submittedAt: string | null) => ({
     id: 3,
     user: { login },
     state,
@@ -202,6 +201,7 @@ test("review summaries since the push are listed, and a reviewer's standing chan
       review('carol', 'COMMENTED', 'found 2 issues', after),
       review('dave', 'DISMISSED', 'wrong file', before),
       review('erin', 'APPROVED', null, after),
+      review('owner', 'PENDING', 'draft', null),
     ],
   });
   assert.deepEqual(status.blockers, ['changes-requested:2']);
