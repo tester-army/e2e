@@ -79,12 +79,21 @@ test('async states: load, pull to refresh, claim through the toast', async ({ ap
     .toBe(true);
   // The toast is gone within a couple of seconds, shorter than a snapshot
   // round trip on a slow machine; the message it leaves behind is the claim.
-  // One tap, once the button has come to rest after the refresh (the tap
-  // waits for that itself): a tap inside a poll blocks it for the action
-  // budget once the button has gone, and the poll times out on a claim that
-  // succeeded.
+  // A tap that lands while the scroll view still settles from the refresh
+  // stops the scroll instead of pressing the button, so a button still up
+  // with no toast gets another tap; claiming twice claims once. That tap is
+  // bounded: the button leaves the moment a claim lands.
+  const toast = screen.getByTestId('toast');
+  const claimed = screen.getByTestId('success-message');
   await claim.tap();
-  await expect(screen.getByTestId('success-message')).toHaveText('Reward claimed', { timeout: 10_000 });
+  await expect
+    .poll(async () => {
+      if (await claimed.isVisible()) return true;
+      if ((await claim.isVisible()) && !(await toast.isVisible())) await claim.tap({ timeout: 1_000 }).catch(() => undefined);
+      return false;
+    }, { timeout: 10_000 })
+    .toBe(true);
+  await expect(claimed).toHaveText('Reward claimed');
 });
 
 // Row 512 is about 40 screens down and scrollUntilVisible pages one screen
