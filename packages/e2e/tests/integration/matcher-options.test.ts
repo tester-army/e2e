@@ -10,7 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { resultByTitle, runProject, type FixtureProject, type RunOutcome } from '../helpers/run-project.ts';
 
-const SUITE = `import { test } from '@e2edev/web';
+const SUITE = `import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 const soon = { timeout: 300 };
@@ -31,7 +31,7 @@ test('state flags expect the opposite state', async ({ app, screen }) => {
 test('ignoreCase matches text in any case', async ({ app, screen }) => {
   await app.open();
   await expect(screen.getByRole('heading')).toHaveText('HOME', { ignoreCase: true });
-  await expect(screen.getByRole('heading')).toContainText('om', flag('ignoreCase', true));
+  await expect(screen.getByRole('heading')).toContainText('OM', flag('ignoreCase', true));
   await expect(screen.getByRole('heading')).not.toContainText('home', soon);
 });
 

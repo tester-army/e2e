@@ -155,6 +155,8 @@ describe('options a matcher does not take', () => {
       'toHaveAttribute presence ignoreCase after an undefined value',
       () => at('banner').toHaveAttribute('data-kind', undefined as never, computed({ ignoreCase: true })),
     ],
+    ['toHaveAttribute null value', () => at('banner').toHaveAttribute('data-kind', null as never)],
+    ['toHaveAttribute null options', () => at('banner').toHaveAttribute('data-kind', 'error', null as never)],
   ])('%s is INVALID_ARGUMENT before the first read', (_label, call) => {
     vexpect(call).toThrow(vexpect.objectContaining(invalidArgument));
   });
