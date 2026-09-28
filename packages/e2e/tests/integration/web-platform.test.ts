@@ -502,7 +502,9 @@ test('a trigger that starts no download times out saying so', async ({ app, web 
 });
 
 test('a viewport set before the first navigation holds through app.open', async ({ app, web }) => {
-  await web.setViewport({ width: 390, height: 600 });
+  const size = { width: 390, height: 600 };
+  await web.setViewport(size);
+  size.width = 1000;
   await app.open();
   const width = await web.evaluate(() => window.innerWidth);
   if (width !== 390) throw new Error('innerWidth ' + width);

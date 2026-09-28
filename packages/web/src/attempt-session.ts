@@ -234,9 +234,13 @@ export class AttemptSession {
 
   /** Sizes the open page, if any, and every page this attempt opens after it. */
   async setViewport(size: { readonly width: number; readonly height: number }): Promise<void> {
+    const { width, height } = size;
+    if (![width, height].every((side) => Number.isInteger(side) && side >= 0)) {
+      throw new Error(`the viewport needs whole, non-negative pixels, got ${width}x${height}`);
+    }
     const page = this.current().page;
-    if (page !== null && !page.isClosed()) await page.setViewportSize(size);
-    this.requestedViewport = size;
+    if (page !== null && !page.isClosed()) await page.setViewportSize({ width, height });
+    this.requestedViewport = { width, height };
   }
 
   /** Restarts the document while retaining this context's storage. */

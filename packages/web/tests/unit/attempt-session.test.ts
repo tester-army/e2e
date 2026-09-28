@@ -142,6 +142,27 @@ describe('AttemptSession', () => {
     await owner.close(cleanup());
   });
 
+  it('refuses a viewport that is not whole pixels and keeps a copy of the one it accepts', async () => {
+    const current = remote('current');
+    vi.mocked(connectCdp).mockResolvedValue(current.browser);
+    const setViewportSize = vi.fn(async (_size: { width: number; height: number }) => undefined);
+    const active = target('page');
+    (active.page as unknown as { setViewportSize: unknown }).setViewportSize = setViewportSize;
+    current.pages.push(active.page);
+    const owner = session({ viewport: null });
+    await owner.start(new AbortController().signal);
+    await expect(owner.setViewport({ width: 390.5, height: 600 })).rejects.toThrow('whole, non-negative pixels, got 390.5x600');
+    await expect(owner.setViewport({ width: 390, height: -1 })).rejects.toThrow('got 390x-1');
+    expect(setViewportSize).not.toHaveBeenCalled();
+    const size = { width: 390, height: 600 };
+    await owner.setViewport(size);
+    size.width = 1000;
+    await owner.ensurePage();
+    expect(setViewportSize).toHaveBeenCalled();
+    for (const [called] of setViewportSize.mock.calls) expect(called).toEqual({ width: 390, height: 600 });
+    await owner.close(cleanup());
+  });
+
   it('does not attach an endpoint that resolves after disposal', async () => {
     const endpoint = deferred<string>();
     const provision = vi.fn(() => endpoint.promise);
