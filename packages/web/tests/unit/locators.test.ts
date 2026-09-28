@@ -67,23 +67,21 @@ const textbox: LocatorExpression = {
 };
 
 describe('projectExpression', () => {
-  it('projects an exact label query onto labelable candidates with a label predicate, and composes exactly', () => {
+  it('projects an exact label query onto the label engine with a label predicate, and composes exactly', () => {
     const label: LocatorExpression = {
       kind: 'query',
       query: { kind: 'label', value: { kind: 'string', value: 'Display name', exact: true } },
     };
     const projected = projectExpression(page, label);
     expect(projected.name).toEqual({ kind: 'string', value: 'Display name', exact: true });
-    // The candidate list is matched per root by the engine's own selector, not Playwright's CSS engine.
-    expect(chainOf(projected.locator)).toEqual([
-      'locator(e2e-roots=button, input:not([type="hidden"]), textarea, select, meter, output, progress, [aria-label], [aria-labelledby])',
-    ]);
-    // Composition keeps the exact predicate: the label engine runs the reader in the page, with the reader's options.
+    // The label engine runs the reader in the page, with the reader's options, so only the labelled controls are
+    // candidates; alone and in composition alike.
     const EXACT_LABEL = `locator(e2e-label=${JSON.stringify({
       value: 'Display name',
       testIdAttribute: 'data-testid',
       secureFieldSelector: 'input[type="password" i]',
     })})`;
+    expect(chainOf(projected.locator)).toEqual([EXACT_LABEL]);
     expect(projected.composable === null ? null : chainOf(projected.composable)).toEqual([EXACT_LABEL]);
     // A position waits for the predicate and also narrows the composable locator.
     const firstLabel: LocatorExpression = { kind: 'index', source: label, index: 'first' };
@@ -108,15 +106,21 @@ describe('projectExpression', () => {
       query: { kind: 'label', value: { kind: 'string', value: 'Display name', exact: true }, visible: true },
     };
     const projected = projectExpression(page, visibleLabel);
-    expect(chainOf(projected.locator)).toEqual([
-      'locator(e2e-roots=button, input:not([type="hidden"]), textarea, select, meter, output, progress, [aria-label], [aria-labelledby])',
+    const visibleLabelChain = [
+      expect.stringMatching(/^locator\(e2e-label=/),
       'filter(visible=true)',
       'locator(:scope:not([aria-hidden="true"]))',
-    ]);
+    ];
+    expect(chainOf(projected.locator)).toEqual(visibleLabelChain);
     expect(projected.visible).toBe(true);
     // The composable form narrows the same way, so a has filter on a visible label drops a hidden control.
-    expect(projected.composable === null ? null : chainOf(projected.composable)).toEqual([
-      expect.stringMatching(/^locator\(e2e-label=/),
+    expect(projected.composable === null ? null : chainOf(projected.composable)).toEqual(visibleLabelChain);
+    const visibleValue: LocatorExpression = {
+      kind: 'query',
+      query: { kind: 'displayValue', value: { kind: 'string', value: 'ada', exact: true }, visible: true },
+    };
+    expect(chainOf(projectExpression(page, visibleValue).locator)).toEqual([
+      'locator(e2e-roots=input, textarea, select)',
       'filter(visible=true)',
       'locator(:scope:not([aria-hidden="true"]))',
     ]);

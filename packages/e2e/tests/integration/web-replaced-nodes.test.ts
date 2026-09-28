@@ -3,7 +3,9 @@
  * every animation frame. A read that lands on the node a frame already
  * replaced must re-resolve, never report the visible field hidden; a stable
  * field that shares its candidate set still reads as shown, and a field that
- * is really removed still reads as hidden.
+ * is really removed still reads as hidden. Among a crowd of fields replaced
+ * every frame, a stable field resolves and an absent one reads as hidden
+ * without waiting out the churn.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -54,6 +56,20 @@ for (const kind of ['testId', 'label', 'displayValue']) {
   });
 }
 
+test('a stable field among fields replaced every frame resolves promptly', async ({ app, screen }) => {
+  await app.open('/replaced-crowd');
+  const city = [screen.getByLabel('City', { exact: true }), screen.getByDisplayValue('paris')];
+  for (let round = 0; round < 5; round += 1) {
+    for (const field of city) {
+      await expect(field).toBeVisible({ timeout: 1_000 });
+      await expect(field).toHaveCount(1, { timeout: 1_000 });
+    }
+  }
+  for (const absent of [screen.getByLabel('Nickname', { exact: true }), screen.getByDisplayValue('ada')]) {
+    await expect(absent).toBeHidden({ timeout: 1_000 });
+  }
+});
+
 test('a field removed while it is being replaced reads as hidden', async ({ app, screen }) => {
   await app.open('/replaced');
   await expect(screen.getByTestId('nickname')).toBeVisible();
@@ -98,6 +114,11 @@ describe('reads of a node replaced every frame', () => {
     expect(result.status).toBe('failed');
     // A last sample that lands on a replaced node past the deadline reports the locator unresolved.
     expect(['ASSERTION_FAILED', 'LOCATOR_NOT_FOUND']).toContain(result.attempts[0]!.error?.code);
+  });
+
+  it('resolves a stable field among churning candidates within a short deadline', () => {
+    const result = resultByTitle(outcome, 'a stable field among fields replaced every frame resolves promptly');
+    expect(result.status, JSON.stringify(result.attempts[0]?.error)).toBe('passed');
   });
 
   it('still reads a genuinely removed field as hidden', () => {

@@ -33,7 +33,8 @@ const READ_OPTIONS = {
 async function hiddenOf(selector: string): Promise<{ reader: boolean; playwright: boolean }> {
   const locator = page.locator(selector);
   const [raw] = await locator.evaluateAll(readManySemanticsFunction, READ_OPTIONS);
-  return { reader: raw!.states.hidden, playwright: await locator.isHidden() };
+  if (raw === undefined || 'detached' in raw) throw new Error(`no connected element for ${selector}`);
+  return { reader: raw.states.hidden, playwright: await locator.isHidden() };
 }
 
 const PAGE = `

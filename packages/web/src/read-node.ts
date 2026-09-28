@@ -97,9 +97,19 @@ export type SemanticMode =
       textLimit: number;
     };
 
-/** Result of one read, selected by the mode discriminant; a node read of a detached element is null. */
+/**
+ * What a node read reports for an element no longer in its document. A
+ * detached element has no boxes, so everything else it would report (hidden,
+ * no labels) describes nothing on screen; its current value is still its own.
+ */
+export interface DetachedNodeData {
+  readonly detached: true;
+  readonly value: string | null;
+}
+
+/** Result of one read, selected by the mode discriminant. */
 export type SemanticResult<Mode extends SemanticMode> = Mode extends { kind: 'node' }
-  ? RawNodeData | null
+  ? RawNodeData | DetachedNodeData
   : RawObservation;
 
 /** Options for a single-node read, shared by `evaluate` and `evaluateAll` callers. */
@@ -137,7 +147,7 @@ export const readManySemanticsFunction = new Function(
   'elements',
   'options',
   `return elements.map((element) => (${readSemanticsFunction.toString()})(element, options));`,
-) as (elements: Element[], options: NodeReadOptions) => (RawNodeData | null)[];
+) as (elements: Element[], options: NodeReadOptions) => (RawNodeData | DetachedNodeData)[];
 
 /**
  * Reads every handle the caller already holds in one round trip, so what is
@@ -150,4 +160,4 @@ export const readHandlesSemanticsFunction = new Function(
   '_first',
   'arg',
   `return arg.elements.map((element) => (${readSemanticsFunction.toString()})(element, arg.options));`,
-) as (first: Element, arg: { elements: Element[]; options: NodeReadOptions }) => (RawNodeData | null)[];
+) as (first: Element, arg: { elements: Element[]; options: NodeReadOptions }) => (RawNodeData | DetachedNodeData)[];

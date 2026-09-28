@@ -3,7 +3,7 @@
 import type { FrameLocator, Locator as PwLocator, Page } from 'playwright';
 import { EngineError, type LocatorExpression, type SemanticQuery, type TextPattern } from 'e2e/engine';
 import { SEARCH_ROOTS_SELECTOR_ENGINE } from './closed-shadow.ts';
-import { exactLabelSelector, LABELABLE_SELECTOR } from './label-selector.ts';
+import { exactLabelSelector } from './label-selector.ts';
 import { SECURE_FIELD_SELECTOR } from './read-node.ts';
 
 type PwScope = Page | FrameLocator | PwLocator;
@@ -58,21 +58,22 @@ const VALUED_SELECTOR = 'input, textarea, select';
  * name, text, label, and attribute matching runs in each of them. A CSS
  * candidate set is matched per root by the engine itself (`e2e-roots=<css>`)
  * and narrowed by a predicate the surface applies once the candidates are
- * read: a control's current value, or a label as the reader names it. The
- * engine matches the CSS itself rather than composing it onto the roots
- * because Playwright's CSS engine sorts a list's matches in DOM order through
- * `shadowRoot`, which a closed root does not expose, and drops the ones it
- * cannot place.
+ * read: a control's current value. The engine matches the CSS itself rather
+ * than composing it onto the roots because Playwright's CSS engine sorts a
+ * list's matches in DOM order through `shadowRoot`, which a closed root does
+ * not expose, and drops the ones it cannot place. An `engine` selector names
+ * one of ours that searches the scope and its closed roots on its own.
  */
 type Candidates =
   | { readonly kind: 'playwright'; readonly locate: (roots: PwLocator) => PwLocator }
-  | { readonly kind: 'css'; readonly selector: string };
+  | { readonly kind: 'css'; readonly selector: string }
+  | { readonly kind: 'engine'; readonly selector: string };
 
 /**
  * The one table of query kinds: each declares its Playwright getter or its
  * CSS candidate set. An exact label query is the one kind whose candidates
- * depend on the pattern: exact goes to the labelable set and the surface's
- * label predicate, substring stays with Playwright's `getByLabel`.
+ * depend on the pattern: exact goes to the `e2e-label` engine, substring
+ * stays with Playwright's `getByLabel`.
  */
 function candidatesOf(query: SemanticQuery, testIdAttribute: string): Candidates {
   switch (query.kind) {
@@ -98,8 +99,11 @@ function candidatesOf(query: SemanticQuery, testIdAttribute: string): Candidates
       return { kind: 'playwright', locate: (roots) => roots.getByRole(role as Parameters<Page['getByRole']>[0], options) };
     }
     case 'label':
-      return patternExact(query.value)
-        ? { kind: 'css', selector: LABELABLE_SELECTOR }
+      return query.value.kind === 'string' && query.value.exact
+        ? {
+            kind: 'engine',
+            selector: exactLabelSelector({ value: query.value.value, testIdAttribute, secureFieldSelector: SECURE_FIELD_SELECTOR }),
+          }
         : { kind: 'playwright', locate: (roots) => roots.getByLabel(patternToPw(query.value), { exact: false }) };
     case 'placeholder':
       return { kind: 'playwright', locate: (roots) => roots.getByPlaceholder(patternToPw(query.value), { exact: patternExact(query.value) }) };
@@ -115,9 +119,14 @@ function candidatesOf(query: SemanticQuery, testIdAttribute: string): Candidates
 /** Composes the candidates of one query onto `scope` and the closed shadow roots under it. */
 function queryToPw(scope: PwScope, query: SemanticQuery, testIdAttribute: string): PwLocator {
   const candidates = candidatesOf(query, testIdAttribute);
-  return candidates.kind === 'css'
-    ? scope.locator(`${SEARCH_ROOTS_SELECTOR_ENGINE}=${candidates.selector}`)
-    : candidates.locate(scope.locator(`${SEARCH_ROOTS_SELECTOR_ENGINE}=`));
+  switch (candidates.kind) {
+    case 'css':
+      return scope.locator(`${SEARCH_ROOTS_SELECTOR_ENGINE}=${candidates.selector}`);
+    case 'engine':
+      return scope.locator(candidates.selector);
+    case 'playwright':
+      return candidates.locate(scope.locator(`${SEARCH_ROOTS_SELECTOR_ENGINE}=`));
+  }
 }
 
 /** One positional step applied after display-value filtering. */
@@ -173,7 +182,8 @@ export interface ProjectedLocator {
   readonly displayValue: TextPattern | null;
   /**
    * Non-null when the terminal query is an exact label query: `locator` holds
-   * every labelable control in scope and the surface keeps those with an
+   * the controls the `e2e-label` engine found labelled with the pattern, and
+   * the surface reads them and keeps those still labelled with it: an
    * associated label (an `aria-label`, an `aria-labelledby` target, or a
    * `<label>`) whose accessible-name text equals the pattern. Playwright's own
    * `getByLabel` reads a label's full text, aria-hidden included, so a
@@ -184,9 +194,9 @@ export interface ProjectedLocator {
   /**
    * The Playwright locator to compose with as a scope or `has` filter, for a
    * projection whose own predicate lives outside Playwright's chain. An exact
-   * label query composes through the `e2e-label` selector engine, which runs
-   * the same reader on the same candidates inside the page, so a `has` filter
-   * keeps the row the label names and no row whose label merely contains it.
+   * label query composes as its `locator`, whose `e2e-label` engine runs the
+   * reader's label predicate inside the page, so a `has` filter keeps the row
+   * the label names and no row whose label merely contains it.
    * Null for a display-value projection, which has no such equivalent and is
    * rejected instead.
    */
@@ -244,19 +254,12 @@ function project(scope: PwScope, expression: LocatorExpression, testIdAttribute:
           : requireComposable(project(scope, expression.scope, testIdAttribute));
       const { query } = expression;
       const exactLabel = query.kind === 'label' && query.value.kind === 'string' && query.value.exact ? query.value : null;
+      const locator = visibleQueryToPw(inner, query, testIdAttribute);
       return {
-        locator: visibleQueryToPw(inner, query, testIdAttribute),
+        locator,
         displayValue: query.kind === 'displayValue' ? query.value : null,
         name: exactLabel,
-        composable:
-          exactLabel === null
-            ? null
-            : narrowedToVisible(
-                inner.locator(
-                  exactLabelSelector({ value: exactLabel.value, testIdAttribute, secureFieldSelector: SECURE_FIELD_SELECTOR }),
-                ),
-                query,
-              ),
+        composable: exactLabel === null ? null : locator,
         steps: [],
         visible: query.visible === true,
       };

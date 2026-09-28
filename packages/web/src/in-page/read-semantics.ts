@@ -12,10 +12,11 @@ import type { RawNodeData, RawObservedNode, SemanticMode, SemanticResult } from 
  * Serialized into the page by Playwright. Must stay self-contained: no outer
  * captures beyond its two arguments.
  *
- * `mode.kind === 'node'` reads exactly one element for locator reads, or
- * returns null for an element no longer in its document: a handle taken a
- * moment earlier can point at a node the page has since replaced, and what
- * such a node reports (no boxes, so hidden) describes nothing on screen.
+ * `mode.kind === 'node'` reads exactly one element for locator reads. An
+ * element no longer in its document reads as detached with its value alone:
+ * a handle taken a moment earlier can point at a node the page has since
+ * replaced, and what such a node reports (no boxes, so hidden) describes
+ * nothing on screen.
  * `mode.kind === 'tree'` walks the subtree for one agent observation and
  * returns live element handles aligned with the flattened node list. The two
  * modes also project nodes differently; those differences are data (see
@@ -1009,7 +1010,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
   // The conditional return type resolves per call site; inside the body the
   // discriminant narrows the value but not the generic, hence the two casts.
   if (options.mode.kind === 'node') {
-    return (element.isConnected ? describe(element) : null) as SemanticResult<Mode>;
+    return (element.isConnected ? describe(element) : { detached: true, value: describe(element).value }) as SemanticResult<Mode>;
   }
 
   const maxNodes = options.mode.maxNodes;

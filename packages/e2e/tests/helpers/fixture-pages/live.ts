@@ -145,4 +145,36 @@ export const LIVE_PAGES: Record<string, PageRenderer> = {
   </script>
 </body>
 </html>`),
+  // A stable "City" field among 250 labelled fields, each swapped for a
+  // clone on every animation frame: candidates of the same exact label and
+  // display-value queries that are never a match for "City".
+  '/replaced-crowd': constant(`<!doctype html>
+<html>
+<head><title>Replaced crowd</title></head>
+<body>
+  <div id="crowd"></div>
+  <label>City <input data-testid="city" value="paris"></label>
+  <script>
+    const crowd = document.getElementById('crowd');
+    for (let i = 0; i < 250; i += 1) {
+      const label = document.createElement('label');
+      label.textContent = 'Churn ' + i + ' ';
+      const input = document.createElement('input');
+      input.className = 'churn';
+      input.value = 'c' + i;
+      label.append(input);
+      crowd.append(label);
+    }
+    const swap = () => {
+      for (const field of document.querySelectorAll('.churn')) {
+        const clone = field.cloneNode(true);
+        clone.value = field.value;
+        field.replaceWith(clone);
+      }
+      requestAnimationFrame(swap);
+    };
+    requestAnimationFrame(swap);
+  </script>
+</body>
+</html>`),
 };
