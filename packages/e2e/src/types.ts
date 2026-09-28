@@ -365,7 +365,7 @@ export interface ActionOptions {
  */
 export type Point = ViewportPoint;
 
-/** `doubleTap` and `secondaryTap` options: the action timeout and the keys held for the click. */
+/** `tap`, `click`, `doubleTap`, and `secondaryTap` options: the action timeout and the keys held for the click. */
 export interface ClickOptions extends ActionOptions {
   /**
    * Keys held while the pointer clicks, as a Shift-click extends a selection:

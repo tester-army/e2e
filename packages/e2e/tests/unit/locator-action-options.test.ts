@@ -138,6 +138,13 @@ describe('locator action options', () => {
       expect(received).toEqual([]);
     });
 
+    it('quotes a modifier JSON cannot serialize without throwing its own error', async () => {
+      const { screen } = modifierScreen(true);
+      await expect(
+        Promise.resolve().then(() => screen.getByLabel('Agree').tap({ modifiers: invalid<readonly KeyModifier[]>([1n]) })),
+      ).rejects.toMatchObject({ code: 'INVALID_ARGUMENT', message: expect.stringContaining('modifier a bigint is not one of') });
+    });
+
     it('refuses modifiers with a position, which the pointer path cannot hold yet', async () => {
       const { screen } = modifierScreen(true);
       await expect(

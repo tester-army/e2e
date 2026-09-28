@@ -177,7 +177,8 @@ Each action resolves one node, waits for it to be actionable within
 `config.actionTimeout` (30 s, or `{ timeout }`), and performs one operation.
 
 `tap()` (alias `click()`), `doubleTap()`, `secondaryTap()` (each takes
-`{ modifiers: ['Shift'] }` for the keys held on the web), `longPress({ duration? })`,
+`{ modifiers: ['Shift'] }` for the keys held; web only, `UNSUPPORTED_CAPABILITY`
+on a device), `longPress({ duration? })`,
 `fill(value | Secret)`, `pressSequentially(text, { delay? })`, `clear()`,
 `press(key)`, `check()`, `uncheck()`,
 `selectOption(label | { label } | { value } | { index })` (one option; an

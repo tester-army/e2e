@@ -1,6 +1,7 @@
 /** Public Screen and Locator surfaces bound to one attempt. */
 
 import nodePath from 'node:path';
+import { describeValue } from '../config/validate.ts';
 import { isKeyModifier, KEY_MODIFIERS, type KeyModifier } from '../engine/contract.ts';
 import type { LocatorAction, LocatorExpression, SemanticNode } from '../engine/surface.ts';
 import { locatorBrand, secretBrand } from '../internal/brands.ts';
@@ -643,7 +644,7 @@ function requireModifiers(value: unknown, api: string): { modifiers?: readonly K
     if (!isKeyModifier(modifier)) {
       throw new TestError(
         'INVALID_ARGUMENT',
-        `${api}() modifier ${JSON.stringify(modifier)} is not one of ${KEY_MODIFIERS.join(', ')}`,
+        `${api}() modifier ${describeValue(modifier)} is not one of ${KEY_MODIFIERS.join(', ')}`,
       );
     }
     if (modifiers.includes(modifier)) throw new TestError('INVALID_ARGUMENT', `${api}() names a modifier twice`);
