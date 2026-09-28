@@ -335,29 +335,31 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
 
   /**
    * Each aria-labelledby target's contribution (accname 2B), in attribute
-   * order, unnamed targets dropped; null when the element references nothing
-   * that names it. A hidden target is read whole, as a screen reader reads it,
-   * and a reference inside a target is not followed, so this is null inside a
-   * reference traversal too.
+   * order, unnamed targets dropped; null when the targets' joined text is
+   * empty, so the element names itself. The join is untrimmed, as Playwright
+   * reads it: a target holding only whitespace, or two unnamed targets, end
+   * the computation with no names. A hidden target is read whole, as a screen
+   * reader reads it, and a reference inside a target is not followed, so this
+   * is null inside a reference traversal too.
    */
   const referencedNamesOf = (el: Element, walk: NameWalk): string[] | null => {
     if (walk.inReference) return null;
     const ids = (el.getAttribute('aria-labelledby') ?? '').trim();
     if (ids === '') return null;
-    const names: string[] = [];
+    const contributions: string[] = [];
     for (const id of ids.split(/\s+/)) {
       const target = referencedElementOf(el, id);
       if (target === null) continue;
-      const name = contentNameOf(target, styleOf(target), {
-        inReference: true,
-        hiddenAllowed: isReferenceHidden(target),
-        visited: walk.visited,
-      })
-        .replace(/\s+/g, ' ')
-        .trim();
-      if (name !== '') names.push(name);
+      contributions.push(
+        contentNameOf(target, styleOf(target), {
+          inReference: true,
+          hiddenAllowed: isReferenceHidden(target),
+          visited: walk.visited,
+        }),
+      );
     }
-    return names.length === 0 ? null : names;
+    if (contributions.join(' ') === '') return null;
+    return contributions.map((text) => text.replace(/\s+/g, ' ').trim()).filter((name) => name !== '');
   };
 
   /**
@@ -369,6 +371,10 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    * `<svg aria-labelledby="t"><title id="t">Close</title></svg>` is "Close",
    * and a hidden `<span>` a button references still names it. A form
    * control's content is its value, not label text, so it contributes nothing.
+   * The title is the fallback only for empty content, untrimmed as Playwright
+   * reads it: the spaces a block-level child adds count, so a flex container's
+   * blockified icon keeps the container's `title` out of the name, the name
+   * `getByRole` then fails to match.
    */
   const contentNameOf = (el: Element, style: CSSStyleDeclaration | undefined, walk: NameWalk): string => {
     if (walk.visited.has(el)) return '';
@@ -382,7 +388,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     if (alt !== null) return alt;
     if (NAME_OPAQUE_TAGS.has(el.tagName)) return '';
     const content = childrenNameOf(el, walk);
-    if (content.trim() !== '') return content;
+    if (content !== '') return content;
     const title = el.getAttribute('title');
     return title === null ? '' : title.trim();
   };

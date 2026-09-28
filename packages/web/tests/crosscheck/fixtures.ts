@@ -137,6 +137,9 @@ export const FIXTURE_PAGES: readonly FixturePage[] = [
       <input aria-label="Wins over label" id="both"><label for="both">Loses</label>
       <button aria-describedby="d1">Delete</button><span id="d1">Permanently removes the file</span>
       <button title="Tooltip only"></button>
+      <button><span title="Child tooltip"><svg width="10" height="10"></svg></span></button>
+      <button><span title="Blockified tooltip" style="display:flex"><svg width="10" height="10"></svg></span></button>
+      <button aria-labelledby="l3">Own text</button><span id="l3" title="Spaced reference"> </span>
       <button><img alt="Trash" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAAAAAAALAAAAAABAAEAAAIBRAA7"> Empty trash</button>
       <button>  Spaced   out   label  </button>
       <button><span aria-hidden="true">★</span> Star</button>
