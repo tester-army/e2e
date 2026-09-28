@@ -17,6 +17,7 @@ import type { ResolvedConfig } from '../config/resolve.ts';
 import type { OperationContext, TargetSession } from '../engine/surface.ts';
 import type { SemanticNode } from '../engine/contract.ts';
 import { truncateUtf8, type E2EError } from '../internal/errors.ts';
+import { isTypoOf } from '../internal/suggest.ts';
 import type { ArtifactSink } from './fixtures.ts';
 import type { FailureEvidence } from './records.ts';
 import type { SessionSecrecy } from './secrecy.ts';
@@ -113,9 +114,9 @@ function screenText(observation: AgentObservation, url: string | undefined): str
 
 /**
  * For a locator that matched nothing or too much, the nodes on screen closest
- * to what it asked for: the same role, a name sharing words with the one
- * requested, or the test id. Rendered as the screen lists them, so the reader
- * can rewrite the locator from what is there.
+ * to what it asked for: the same role, a name sharing words (or near misses
+ * of them) with the one requested, or the test id. Rendered as the screen
+ * lists them, so the reader can rewrite the locator from what is there.
  */
 function locatorCandidates(error: E2EError, observation: AgentObservation, redact: (text: string) => string): string[] {
   if (observation.kind === 'pixels') return [];
@@ -128,25 +129,38 @@ function locatorCandidates(error: E2EError, observation: AgentObservation, redac
   for (const node of observation.nodes.values()) {
     const roleMatched = role !== undefined && node.role?.toLowerCase() === role.toLowerCase();
     const testIdMatched = testId !== undefined && node.testId !== undefined && (node.testId === testId || node.testId.includes(testId) || testId.includes(node.testId));
-    const own = new Set(tokens(`${node.name ?? ''} ${node.text ?? ''} ${node.attributes?.['placeholder'] ?? ''}`));
-    const shared = words.filter((word) => own.has(word)).length;
+    const own = tokens(`${node.name ?? ''} ${node.text ?? ''} ${node.attributes?.['placeholder'] ?? ''}`);
+    const exact = words.filter((word) => own.includes(word)).length;
+    const near = words.filter((word) => !own.includes(word) && own.some((other) => nearWord(word, other))).length;
+    const shared = exact + near;
     // A request that named the node is answered by nodes of the asked role
-    // (any role, when none was asked) sharing a word with the name; a role
-    // alone is enough only when no name was asked for; a test id stands on
-    // its own either way.
+    // (any role, when none was asked) sharing a word, or a near miss of one,
+    // with the name; a role alone is enough only when no name was asked for;
+    // a test id stands on its own either way.
     const nameMatched = shared > 0 && (role === undefined || roleMatched);
     if (!(nameMatched || testIdMatched || (roleMatched && words.length === 0))) continue;
     const score =
       (roleMatched ? 3 : 0) +
       (testIdMatched ? (node.testId === testId ? 6 : 3) : 0) +
-      shared * 2 +
-      (words.length > 0 && shared === words.length ? 2 : 0);
+      exact * 2 +
+      near +
+      (words.length > 0 && exact === words.length ? 2 : 0);
     scored.push({ score, node });
   }
   return scored
     .toSorted((a, b) => b.score - a.score)
     .slice(0, MAX_CANDIDATES)
     .map(({ node }) => truncateUtf8(formatNode(node, 0, redact), MAX_CANDIDATE_BYTES));
+}
+
+/**
+ * Whether a word on screen is a near miss for one asked for: a typo or an
+ * inflection of it (`Notes` for `Note`, `Submit` for `Sumbit`), by the budget
+ * "did you mean" uses. Words under four letters only match exactly, so `and`
+ * never answers `add`.
+ */
+function nearWord(asked: string, seen: string): boolean {
+  return asked.length >= 4 && seen.length >= 4 && isTypoOf(asked, seen);
 }
 
 function tokens(text: string): string[] {

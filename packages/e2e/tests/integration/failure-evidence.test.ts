@@ -12,6 +12,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import type { SemanticNode } from '../../src/engine/contract.ts';
 import type { E2EConfig } from '../../src/index.ts';
 import { createFakeEngine, FAKE_APP_URL, type FakeEngineHandle } from '../helpers/fake-engine.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
@@ -39,6 +40,14 @@ const MISSING_LOCATOR_TEST = `import { test } from 'e2e';
 test('taps a button that is not there', async ({ app, screen }) => {
   await app.open('/');
   await screen.getByRole('button', { name: 'Submit now' }).tap();
+});
+`;
+
+const WAIT_FOR_NEAR_MISS_TEST = `import { test } from 'e2e';
+
+test('waits for a button named a little differently', async ({ app, screen }) => {
+  await app.open('/');
+  await screen.getByRole('button', { name: 'Submits the order' }).waitFor({ timeout: 300 });
 });
 `;
 
@@ -77,6 +86,39 @@ test('artifact_20a', async ({ app, screen }) => {
 `;
 
 describe('failure evidence', () => {
+  it(
+    'lists the closest nodes for a waitFor that timed out, a word one edit away included and a short word never stretched',
+    async () => {
+      const tree: SemanticNode = {
+        ref: { id: 'root', revision: '' },
+        role: 'root',
+        children: [
+          { ref: { id: 'submit', revision: '' }, role: 'button', name: 'Submit', states: { hidden: false } },
+          { ref: { id: 'themes', revision: '' }, role: 'button', name: 'Themes', states: { hidden: false } },
+          { ref: { id: 'cancel', revision: '' }, role: 'button', name: 'Cancel', states: { hidden: false } },
+        ],
+      };
+      const fake = createFakeEngine({ artifacts: true, locate: () => [], tree });
+      const { outcome, project } = await runProject(
+        { 'tests/wait.e2e.ts': WAIT_FOR_NEAR_MISS_TEST },
+        { appUrl: FAKE_APP_URL, config: fakeConfig(fake) },
+      );
+      try {
+        assertValidReport(outcome.report);
+        const attempt = reported(outcome, 'waits for a button named a little differently').attempts.at(-1)!;
+        expect(attempt.error).toMatchObject({
+          code: 'LOCATOR_NOT_FOUND',
+          details: { locator: 'getByRole("button", name: "Submits the order")', role: 'button', name: 'Submits the order' },
+        });
+        expect(attempt.error?.details?.waitedMs).toBeGreaterThanOrEqual(300);
+        expect(attempt.failure?.candidates).toEqual([expect.stringContaining('button "Submit"')]);
+      } finally {
+        project.cleanup();
+      }
+    },
+    30_000,
+  );
+
   it(
     'keeps the screen, a screenshot, the location, and the closest nodes when a locator matched nothing, and the locator facts on the error',
     async () => {

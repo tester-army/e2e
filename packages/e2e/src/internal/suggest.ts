@@ -14,7 +14,7 @@
 export function suggest(word: string, candidates: readonly string[]): string | undefined {
   if (candidates.includes(word)) return undefined;
   const needle = word.toLowerCase();
-  const budget = Math.max(1, Math.floor(word.length / 3));
+  const budget = typoBudget(word);
   let best: { candidate: string; distance: number } | undefined;
   for (const candidate of candidates) {
     // A case-only difference is distance 0 here and still a fix worth naming.
@@ -23,6 +23,16 @@ export function suggest(word: string, candidates: readonly string[]): string | u
     if (best === undefined || distance < best.distance) best = { candidate, distance };
   }
   return best?.candidate;
+}
+
+/** Whether `candidate` is close enough to `word` to be a typo of it, by the budget `suggest` uses. Ignores case. */
+export function isTypoOf(word: string, candidate: string): boolean {
+  return editDistance(word.toLowerCase(), candidate.toLowerCase()) <= typoBudget(word);
+}
+
+/** The edits a typo may take: one for short words, a third of the length otherwise. */
+function typoBudget(word: string): number {
+  return Math.max(1, Math.floor(word.length / 3));
 }
 
 /** `; did you mean "x"?` for a message tail, or the empty string. */

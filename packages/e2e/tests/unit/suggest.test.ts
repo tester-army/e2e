@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { didYouMean, suggest } from '../../src/internal/suggest.ts';
+import { didYouMean, isTypoOf, suggest } from '../../src/internal/suggest.ts';
 
 const KEYS = ['targets', 'tests', 'timeout', 'retries', 'workers', 'reporters', 'agent', 'cache'];
 
@@ -21,6 +21,13 @@ describe('suggest', () => {
   it('returns nothing for an exact match or an empty candidate list', () => {
     expect(suggest('targets', KEYS)).toBeUndefined();
     expect(suggest('targets', [])).toBeUndefined();
+  });
+
+  it('judges one pair by the same budget, ignoring case', () => {
+    expect(isTypoOf('Note', 'notes')).toBe(true);
+    expect(isTypoOf('sumbit', 'submit')).toBe(true);
+    expect(isTypoOf('note', 'nothing')).toBe(false);
+    expect(isTypoOf('the', 'themes')).toBe(false);
   });
 
   it('formats a message tail only when there is a suggestion', () => {

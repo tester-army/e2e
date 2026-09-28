@@ -32,7 +32,7 @@ import type {
   TextMatchOptions,
 } from '../types.ts';
 import type { StepRecorder } from '../run/steps.ts';
-import { attributeOf, denySecureRead, isNodeVisible, type LocatorEngine } from './engine.ts';
+import { attributeOf, denySecureRead, isNodeVisible, locatorDetails, type LocatorEngine } from './engine.ts';
 import {
   describeExpression,
   filterExpression,
@@ -206,12 +206,12 @@ class ScreenImpl implements Screen {
     const label = describeExpression(internals.expression);
     await this.context.steps.run('screen', 'screen.scrollUntilVisible', label, async () => {
       const deadline = engine.deadline(options?.timeout ?? 30_000);
+      const startedMs = Date.now();
       const notVisible = (cause?: unknown) =>
-        new TestError(
-          'LOCATOR_NOT_FOUND',
-          `target did not become visible while scrolling: ${label}`,
-          cause === undefined ? undefined : { cause },
-        );
+        new TestError('LOCATOR_NOT_FOUND', `target did not become visible while scrolling: ${label}`, {
+          details: locatorDetails(internals.expression, Date.now() - startedMs),
+          ...(cause === undefined ? {} : { cause }),
+        });
       for (;;) {
         const { node } = await engine.tryRead(internals.expression, deadline);
         if (isNodeVisible(node)) return;
@@ -518,6 +518,7 @@ class LocatorImpl extends ScreenImpl implements Locator {
     await this.context.steps.run('locator', 'locator.waitFor', `${this.label} → ${state}`, async () => {
       const { engine } = this.context;
       const deadline = engine.deadline(options?.timeout);
+      const startedMs = Date.now();
       await pollCondition({
         deadline,
         signal: engine.signal,
@@ -528,7 +529,9 @@ class LocatorImpl extends ScreenImpl implements Locator {
           return state === 'visible' ? visible : !visible;
         },
         onTimeout: () =>
-          new TestError('LOCATOR_NOT_FOUND', `locator did not become ${state}: ${this.label}`),
+          new TestError('LOCATOR_NOT_FOUND', `locator did not become ${state}: ${this.label}`, {
+            details: locatorDetails(this.expression, Date.now() - startedMs),
+          }),
       });
     }, { verifies: true });
   }

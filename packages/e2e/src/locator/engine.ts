@@ -483,7 +483,7 @@ function assertSingle(refs: readonly NodeRef[], expression: LocatorExpression): 
  * The facts of a locator failure the report keeps beside the message: the
  * locator as written, what it asked for, and how long it actually waited, in ms.
  */
-function locatorDetails(expression: LocatorExpression, waitedMs?: number): ErrorDetails {
+export function locatorDetails(expression: LocatorExpression, waitedMs?: number): ErrorDetails {
   return {
     locator: describeExpression(expression),
     ...expressionHints(expression),

@@ -132,6 +132,7 @@ describe('screen.scrollUntilVisible', () => {
     await expect(screen.scrollUntilVisible(screen.getByText('Accept'), { timeout: 250 })).rejects.toMatchObject({
       code: 'LOCATOR_NOT_FOUND',
       message: 'target did not become visible while scrolling: getByText("Accept")',
+      details: { locator: 'getByText("Accept")', name: 'Accept', waitedMs: expect.any(Number) },
     });
     expect(swipes.length).toBeGreaterThanOrEqual(1);
     expect(steps.all()).toEqual([
