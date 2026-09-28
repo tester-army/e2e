@@ -248,18 +248,13 @@ class AsyncExpectationImpl implements AsyncExpectation {
       const actual = readField(def, node);
       return actual !== undefined && compareText(actual, pattern, def);
     };
+    const matchesList = def.mode === 'contains' ? matchesSubsequence : matchesPositionally;
     return this.poll(
       {
         name,
         readsWithheld: def.field !== 'name',
         wholeSet: 'read',
-        predicate: (sample) => {
-          if (def.mode === 'contains') return matchesSubsequence(sample.nodes, patterns, satisfies);
-          return (
-            sample.nodes.length === patterns.length &&
-            patterns.every((pattern, index) => satisfies(sample.nodes[index]!, pattern))
-          );
-        },
+        predicate: (sample) => matchesList(sample.nodes, patterns, satisfies),
         describeExpected: def.describeExpected(`[${patterns.map(describePattern).join(', ')}]`),
         observed: (sample) => `${def.field} [${sample.nodes.map(printed).join(', ')}]`,
       },
@@ -404,6 +399,17 @@ function isTextMatchList(expected: TextMatch | readonly TextMatch[]): expected i
   return Array.isArray(expected);
 }
 
+type NodeSatisfies = (node: SemanticNode, pattern: TextPattern) => boolean;
+
+/** Whether there are exactly as many nodes as patterns, each satisfying the pattern at its position. */
+function matchesPositionally(
+  nodes: readonly SemanticNode[],
+  patterns: readonly TextPattern[],
+  satisfies: NodeSatisfies,
+): boolean {
+  return nodes.length === patterns.length && patterns.every((pattern, index) => satisfies(nodes[index]!, pattern));
+}
+
 /**
  * Whether every pattern is satisfied by a distinct node, in order. Greedy:
  * each pattern takes the first node after the previous pattern's that
@@ -412,7 +418,7 @@ function isTextMatchList(expected: TextMatch | readonly TextMatch[]): expected i
 function matchesSubsequence(
   nodes: readonly SemanticNode[],
   patterns: readonly TextPattern[],
-  satisfies: (node: SemanticNode, pattern: TextPattern) => boolean,
+  satisfies: NodeSatisfies,
 ): boolean {
   let next = 0;
   for (const node of nodes) {
