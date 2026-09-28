@@ -34,10 +34,23 @@ Do not write essays. A few bullets on what changed and why, then evidence.
   is the PR.
 - Spec changes: name the chapter, schema, and `suiteVersion` bump in one
   bullet so the reviewer can check them together.
+- A `## Verified` section, required on every PR:
+  - First line: `Ran it locally: yes`, or `Ran it locally: no - <why>`
+    (docs typo, CI-only, a device you do not have).
+  - With `yes`: the [verify](../verify/SKILL.md) surface, the command you
+    ran, what you saw, and the CLI output, screenshots, or video showing it
+    work.
+  - A `fix` PR with `yes` also shows the bug and the fix side by side in a
+    `| main | this branch |` table.
+  - Upload media with `gh` 2.99+ `--attach`: reference images in the body as
+    markdown (`![after](./after.png)`) and pass each file as `--attach`; `gh`
+    uploads them and rewrites those paths. Do not write video paths in the
+    body: attached videos are appended at the end and render as players.
 
 ## Leave out
 
-- "Validation" or "I ran tests" sections. CI reports that.
+- "I ran lint/tests" lists. CI reports that; `## Verified` is for what CI
+  cannot see.
 - Intermediate history. Squashed 6k lines down to 1k, refactored twice,
   renamed midway: none of it lands. Only the final aggregate squash-merge
   commit exists, so only that gets commentary.
@@ -53,6 +66,22 @@ Before/after for visuals:
 | --- | --- |
 | ![before](url) | ![after](url) |
 ```
+
+Verified, for a fix (local image paths become uploaded assets with `--attach`):
+
+```markdown
+## Verified
+
+Ran it locally: yes
+- testbed, `e2e run tests/scroll.e2e.ts --video`: the new test fails on main
+  and passes here
+
+| main | this branch |
+| --- | --- |
+| ![bug](./main.png) | ![fixed](./branch.png) |
+```
+
+`gh pr edit <pr> --body-file body.md --attach ./main.png --attach ./branch.png --attach ./video.webm`
 
 Benchmarks:
 
@@ -79,7 +108,8 @@ flowchart LR
 For truly impressive, difficult, high-risk, or wide-scoped changes, write the
 body like a technical blog post: context, the problem, the approach, code
 samples, diagrams, before/after, images. Storytelling is fine here. The rules
-above still hold: no test logs, no intermediate history.
+above still hold: run output only as `## Verified` evidence, no
+intermediate history.
 
 ## Voice
 

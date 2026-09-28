@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "e2e": {
+      "command": "pnpm",
+      "args": ["-C", "apps/testbed", "exec", "node", "node_modules/e2e/dist/cli/bin.js", "mcp"]
+    }
+  }
+}

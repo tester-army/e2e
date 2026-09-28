@@ -38,6 +38,10 @@ jobs:
         run: pnpm docs:check-errors
       - name: Peer ranges on the runner
         run: pnpm check:peer-ranges
+      - name: Agent skill scripts
+        run: |
+          pnpm exec tsc -p .claude/skills/babysit/scripts
+          node --test .claude/skills/babysit/scripts/pr-status.test.ts
       - name: Install browsers
         run: pnpm --filter @e2edev/web exec playwright install chromium --with-deps
       - name: Testbed

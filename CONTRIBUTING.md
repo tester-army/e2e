@@ -96,7 +96,10 @@ We follow the [conventional commits specification](https://www.conventionalcommi
 
 Mark a breaking change with `!` after the type (`feat(config)!: ...`). PRs are
 squash-merged, so the PR title is the commit; the
-[`writing-pr`](./.claude/skills/writing-pr/SKILL.md) skill describes the body.
+[`writing-pr`](./.claude/skills/writing-pr/SKILL.md) skill describes the body,
+including the `## Verified` section every PR carries. Coding agents open PRs
+through the [`ship-pr`](./.claude/skills/ship-pr/SKILL.md) skill and babysit
+them until the `Ready for Human Review` label is on; a later push removes it.
 
 ### Changesets
 

@@ -142,6 +142,31 @@ pnpm --filter @e2edev/testbed run test:headed
   also installs a missing browser once per run, in the runner, before `plan`
   is emitted and the run's clock starts.
 
+## Definition of done
+
+Work is done when a human can review it without redoing any of it: verified
+against the built packages, reviewed in a fresh context, green, every bot
+thread handled, and labeled `Ready for Human Review`. "It compiles" and
+"tests pass" are not done.
+
+- Prove behavior with the `verify` skill (`.claude/skills/verify`) while
+  iterating and before the PR: the built CLI on the testbed or a benchmark,
+  the `e2e` MCP server (`.mcp.json`), a scratch project for `init`, the docs
+  site. If you cannot verify something, say so; never imply you did.
+- Every PR body states under `## Verified` whether it was run locally, with
+  CLI output, screenshots, or video when it was, and a main-vs-branch table
+  for fixes (`writing-pr` skill).
+- Open every PR through the `ship-pr` skill (`.claude/skills/ship-pr`):
+  checks, verification, fresh-context self-review, the PR, then the
+  `babysit` skill (`.claude/skills/babysit`) until the label is on. Asking
+  for a PR means asking for all of that. A push removes the label
+  (`.github/workflows/review-label.yml`), so a labeled PR is always labeled
+  for its current head.
+- Never merge or approve.
+- When a reviewer (human or bot) corrects the same thing twice, encode it:
+  make it impossible in types or structure, else a lint rule or a test, else
+  a skill line, in that order of preference.
+
 ## Non-obvious conventions
 
 - **Relative imports carry the `.ts` extension** (`rewriteRelativeImportExtensions`).
