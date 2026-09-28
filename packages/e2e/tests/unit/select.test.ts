@@ -460,6 +460,16 @@ describe('select', () => {
     );
   });
 
+  it('caps the files named as where a missing producer may live', async () => {
+    const col = await collection(() => {
+      test('uses session', { session: 'member' }, noop);
+    });
+    const uncollected = ['a', 'b', 'c', 'd', 'e'].map((name) => ({ file: `tests/${name}.e2e.ts`, reason: 'boom' }));
+    expect(() => select({ ...col, uncollected }, config())).toThrow(
+      /failed to collect: tests\/a\.e2e\.ts \(boom\), tests\/b\.e2e\.ts \(boom\), tests\/c\.e2e\.ts \(boom\) and 2 more$/,
+    );
+  });
+
   it('fails on duplicate session producers', async () => {
     const col = await collection(() => {
       test.setup('one', { sessions: ['member'] }, noop);

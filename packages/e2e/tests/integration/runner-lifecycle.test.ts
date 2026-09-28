@@ -213,7 +213,7 @@ test('never registered', async () => {});
       expect(notices).toEqual([
         expect.stringMatching(/^skipped tests\/broken\.e2e\.ts, which no positional selected and which failed to collect: Cannot find module .*not-written-yet\.ts/),
         expect.stringMatching(/^skipped tests\/duplicate\.e2e\.ts, which no positional selected and which failed to collect: duplicate title path twice/),
-        expect.stringMatching(/^skipped tests\/invalid\.e2e\.ts, which no positional selected and which failed to collect: (?!tests\/)/),
+        expect.stringMatching(/^skipped tests\/invalid\.e2e\.ts, which no positional selected and which failed to collect: test body function is required$/),
       ]);
       narrowed.project.cleanup();
 

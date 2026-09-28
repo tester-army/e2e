@@ -744,7 +744,7 @@ function applySessionSelection(
       const cause =
         uncollected.length === 0
           ? ''
-          : `; it may be declared in a file that failed to collect: ${uncollected.map((entry) => `${entry.file} (${entry.reason})`).join(', ')}`;
+          : `; it may be declared in a file that failed to collect: ${nameFiles(uncollected.map((entry) => `${entry.file} (${entry.reason})`))}`;
       throw new CollectionError(
         `test ${pair.test.id} consumes session "${pair.options.session}" but no setup test produces it${cause}`,
       );
