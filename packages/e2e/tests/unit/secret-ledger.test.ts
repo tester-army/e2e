@@ -162,6 +162,13 @@ describe('whitespace-normalized forms', () => {
     expect(ledger.redact('x     ab')).toBe('x<secret:short>');
   });
 
+  it('matches a run shortened to any length down to one character, spelled as written or encoded', () => {
+    const ledger = new SecretLedger([['block', 'row-one-11\r\n\r\nrow-two-22']]);
+    expect(ledger.redact('row-one-11\n\nrow-two-22')).toBe('<secret:block>');
+    expect(ledger.redact('row-one-11\nrow-two-22')).toBe('<secret:block>');
+    expect(ledger.redact('{"v":"row-one-11\\r\\n\\r\\nrow-two-22"}')).toBe('{"v":"<secret:block>"}');
+  });
+
   it('leaves whitespace runs the value does not have, and a value whose words are glued together', () => {
     const ledger = new SecretLedger([['phrase', 'correct horse battery']]);
     expect(ledger.redact('correct  horse battery correcthorse battery')).toBe('correct  horse battery correcthorse battery');
@@ -172,6 +179,20 @@ describe('whitespace-normalized forms', () => {
     const first = stream.push('said correct\n');
     expect(first).toBe('');
     expect(first + stream.push('horse battery\n') + stream.flush()).toBe('said <secret:phrase>\n');
+  });
+});
+
+describe('near misses', () => {
+  it.each([
+    ['letters', 'abcdefghijklmnopqrstuvwxyzABCDEFG'],
+    ['whitespace runs', Array.from({ length: 13 }, (_, index) => `w${index}`).join(' ')],
+    ['accented letters', 'é'.repeat(31)],
+  ])('rejects text one character short of a long value made of %s in one pass', (_kind, value) => {
+    const ledger = new SecretLedger([['long', value]]);
+    const nearMiss = `${value.slice(0, -1)}!`;
+    const started = performance.now();
+    expect(ledger.redact(nearMiss)).toBe(nearMiss);
+    expect(performance.now() - started).toBeLessThan(200);
   });
 });
 

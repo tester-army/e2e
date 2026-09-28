@@ -113,6 +113,32 @@ describe('redactTraceArchives', () => {
     ]);
   });
 
+  it('redacts a value that spans a line break of a resource, written or as whitespace', async () => {
+    const dir = attemptDir();
+    const file = path.join(dir, 'trace', 'trace.zip');
+    const page = '<pre>\nfirst line 4417\nsecond line Qx\n</pre>\n<p>correct horse\nbattery</p>\n';
+    writeFileSync(
+      file,
+      writeZip([
+        zipEntry('trace.trace', Buffer.from('{"type":"before"}\nfirst line 4417\nsecond line Qx\n{"type":"after"}')),
+        zipEntry('resources/page.html', Buffer.from(page)),
+      ]),
+    );
+
+    await redactTraceArchives(
+      dir,
+      ['trace/trace.zip'],
+      new SecretLedger([
+        ['note', 'first line 4417\nsecond line Qx'],
+        ['phrase', 'correct horse battery'],
+      ]),
+    );
+
+    const after = entriesOf(file);
+    expect(after.get('trace.trace')!.toString()).toBe('{"type":"before"}\n<secret:note>\n{"type":"after"}');
+    expect(after.get('resources/page.html')!.toString()).toBe('<pre>\n<secret:note>\n</pre>\n<p><secret:phrase></p>\n');
+  });
+
   it('re-serializes a changed record without touching its numbers or its line ending', async () => {
     const dir = attemptDir();
     const file = path.join(dir, 'trace', 'trace.zip');

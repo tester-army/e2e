@@ -33,7 +33,7 @@ interface Compiled {
   readonly maxFormLength: number;
   /** The longest marker of a known name; a marker cut short at that length or beyond cannot complete into one. */
   readonly maxMarkerLength: number;
-  /** Whether a value contains a line break: the one case an unfinished line cannot be cut from the line before it. */
+  /** Whether a value can match across a line break, holding one or inner whitespace one stands for: the one case an unfinished line cannot be cut from the line before it. */
   readonly spansLines: boolean;
 }
 
@@ -47,8 +47,9 @@ const MARKER_NAME = /^[A-Za-z0-9_.-]*$/;
  * serializer gives it, so one pattern covers a JSON body, a serialized page, a
  * URL, the raw value, and the value as a text reader or a CSS `text-transform`
  * shows it alike, and a mixed or unusual spelling needs no form of its own.
- * The `i` flag folds what the per-character case forms leave out: a sigma
- * lower-cased at the end of a word, a titlecase digraph.
+ * The `i` flag matches hex digits in either case and folds what the
+ * per-character case forms leave out: a sigma lower-cased at the end of a
+ * word, a titlecase digraph.
  */
 function compile(values: readonly (readonly [string, string])[]): Compiled {
   const entries = values.filter(([, value]) => value.length > 0).toSorted((a, b) => b[1].length - a[1].length);
@@ -88,72 +89,114 @@ interface Pattern {
 
 /**
  * The source matching `value` in every spelling, and the most text one match
- * of it can span. A whitespace run inside the value also matches the one
- * character a reader collapses it to (`normalizeText`), and a value with
- * whitespace at either end also matches trimmed, as the reader trims it,
- * unless trimming leaves it shorter than a secret may be.
+ * of it can span. Each character matches in every case form and spelling
+ * (`character`). A whitespace run between two other characters matches as a
+ * text reader may leave it (`whitespaceRun`); one at either end matches as
+ * written or not at all, as the reader trims it, unless trimming leaves the
+ * value shorter than a secret may be.
  */
 function valuePattern(value: string): Pattern {
-  const whole = runsPattern(value);
-  const trimmed = value.trim();
-  if (trimmed === value || secretLength(trimmed) < MIN_SECRET_LENGTH) return whole;
-  return { source: `${whole.source}|${runsPattern(trimmed).source}`, maxLength: whole.maxLength };
-}
-
-/** `text` character by character, each whitespace run between two other characters matching as `whitespaceRun` reads it. */
-function runsPattern(text: string): Pattern {
-  const pieces = text.split(/(\s+)/);
-  let source = '';
-  let maxLength = 0;
-  pieces.forEach((piece, index) => {
-    const inner = index % 2 === 1 && pieces[index - 1] !== '' && pieces[index + 1] !== '';
-    const part = inner ? whitespaceRun(piece) : sequence(piece);
-    source += part.source;
-    maxLength += part.maxLength;
-  });
-  return { source, maxLength };
+  const trimmable = secretLength(value.trim()) >= MIN_SECRET_LENGTH;
+  // `split` on a capturing pattern returns the whitespace runs at the odd indexes.
+  const pieces = value.split(/(\s+)/);
+  return concat(
+    pieces.map((piece, index) => {
+      const run = index % 2 === 1;
+      if (run && pieces[index - 1] !== '' && pieces[index + 1] !== '') return whitespaceRun(piece);
+      const written = concat([...piece].map(character));
+      return run && trimmable ? { source: `(?:${written.source})?`, maxLength: written.maxLength } : written;
+    }),
+  );
 }
 
 /**
- * A whitespace run: as written, or as the one character normalization leaves
- * of it, a space in any of its spellings or any other whitespace character.
+ * A whitespace run inside a value: one to as many whitespace characters as it
+ * has, each any whitespace character or the spelling of a space or of one of
+ * the run's own characters, so the run as written and the one space a reader
+ * collapses it to (`normalizeText`) both match.
  */
 function whitespaceRun(run: string): Pattern {
-  const written = sequence(run);
-  const space = spellings(' ');
+  const spelled = [...new Set([' ', ...run])].flatMap(spellings).filter((spelling) => !/^\s$/.test(spelling));
+  const one = alternation([{ source: '\\s', maxLength: 1 }, ...distinct(spelled).map(exact)]);
+  const count = [...run].length;
+  return { source: `${one.source}{1,${count}}`, maxLength: one.maxLength * count };
+}
+
+/**
+ * One character in every case form and every spelling of each. A spelling
+ * the `i` flag already matches through another (`a` beside `A`, `é` beside
+ * `É`) is left out, so no two alternatives match the same text: a near miss
+ * then costs the pattern one try per alternative, not one per combination of
+ * them across the value.
+ */
+function character(ch: string): Pattern {
+  const forms = caseForms(ch);
+  const single = forms.filter((form) => [...form].length === 1).flatMap(spellings);
+  const expanded = forms
+    .filter((form) => [...form].length > 1)
+    .map((form) => concat([...form].map((part) => alternation(distinct(spellings(part)).map(exact)))));
+  return alternation([...distinct(single).map(exact), ...expanded]);
+}
+
+/** `options` as one alternation, longest first, so a spelling is never cut short by one it starts with. */
+function alternation(options: readonly Pattern[]): Pattern {
+  if (options.length === 1) return options[0]!;
+  const sorted = options.toSorted((a, b) => b.maxLength - a.maxLength);
   return {
-    source: `(?:${written.source}|${space.map(literal).join('|')}|\\s)`,
-    maxLength: Math.max(written.maxLength, space[0]?.length ?? 1),
+    source: `(?:${sorted.map(({ source }) => source).join('|')})`,
+    maxLength: sorted[0]?.maxLength ?? 0,
   };
 }
 
-/** `text` character by character, each in every case form and spelling. */
-function sequence(text: string): Pattern {
-  let source = '';
-  let maxLength = 0;
-  for (const ch of text) {
-    const forms = caseForms(ch).map((form) => {
-      const options = [...form].map(spellings);
-      return {
-        source: options.map((option) => `(?:${option.map(literal).join('|')})`).join(''),
-        maxLength: options.reduce((sum, option) => sum + (option[0]?.length ?? 1), 0),
-      };
-    });
-    source += forms.length === 1 ? forms[0]!.source : `(?:${forms.map((form) => form.source).join('|')})`;
-    maxLength += Math.max(...forms.map((form) => form.maxLength));
-  }
-  return { source, maxLength };
+/** `parts` one after another. */
+function concat(parts: readonly Pattern[]): Pattern {
+  return {
+    source: parts.map(({ source }) => source).join(''),
+    maxLength: parts.reduce((sum, { maxLength }) => sum + maxLength, 0),
+  };
+}
+
+/** `text` matched literally. */
+function exact(text: string): Pattern {
+  return { source: literal(text), maxLength: text.length };
+}
+
+/** `texts` without the ones an earlier one matches under the `i` flag. */
+function distinct(texts: readonly string[]): string[] {
+  const seen = new Set<string>();
+  return texts.filter((spelling) => {
+    const key = folded(spelling);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/**
+ * `text` as the `i` flag compares it outside Unicode mode (ECMA-262
+ * Canonicalize): each UTF-16 unit upper-cased, unless that takes more than
+ * one unit or maps a non-ASCII unit into ASCII. Two literals match the same
+ * text exactly when these agree.
+ */
+function folded(text: string): string {
+  return text
+    .split('')
+    .map((unit) => {
+      const upper = unit.toUpperCase();
+      return upper.length === 1 && !(unit.charCodeAt(0) >= 128 && upper.charCodeAt(0) < 128) ? upper : unit;
+    })
+    .join('');
 }
 
 /** Locales whose case mappings differ from the default: the dotted and dotless i of Turkish and Azeri, Lithuanian's retained dot. */
 const CASE_LOCALES = ['tr', 'az', 'lt'];
 
 /**
- * The strings one character can become when text is upper- or lower-cased,
- * longest first: the character itself, the full mappings, so `ß` is also
- * `SS`, and the locale-specific ones a `lang` attribute selects, so `i` is
- * also `İ`. Each form is spelled on its own, so a case variant's character
- * reference or escape is covered too.
+ * The strings one character can become when text is upper- or lower-cased:
+ * the character itself, the full mappings, so `ß` is also `SS`, and the
+ * locale-specific ones a `lang` attribute selects, so `i` is also `İ`. Each
+ * form is spelled on its own, so a case variant's character reference or
+ * escape is covered too.
  */
 function caseForms(ch: string): string[] {
   return [
@@ -163,7 +206,7 @@ function caseForms(ch: string): string[] {
       ch.toLowerCase(),
       ...CASE_LOCALES.flatMap((locale) => [ch.toLocaleUpperCase(locale), ch.toLocaleLowerCase(locale)]),
     ]),
-  ].toSorted((a, b) => b.length - a.length);
+  ];
 }
 
 const NAMED_REFERENCES: Readonly<Record<string, readonly string[]>> = {
@@ -175,23 +218,20 @@ const NAMED_REFERENCES: Readonly<Record<string, readonly string[]>> = {
 };
 
 /**
- * The spellings one character has in captured text, longest first: as is; as
- * JSON writes it, escaped the short way (`\"`), as `\uXXXX` in either hex
- * case, and `\/` for a slash, each of those once more inside a quoted JSON
- * string (a JSON request body inside a HAR field); as an HTML character
- * reference, named, decimal, zero-padded decimal, or hex in either case; and
- * percent-encoded in either hex case, with `+` for a space; and a double
- * quote doubled, as CSV writes it inside a quoted field. A letter or digit
- * has one spelling: no serializer rewrites those.
+ * The spellings one character has in captured text: as is; as JSON writes
+ * it, escaped the short way (`\"`), as `\uXXXX`, and `\/` for a slash, each
+ * of those once more inside a quoted JSON string (a JSON request body inside
+ * a HAR field); as an HTML character reference, named, decimal, zero-padded
+ * decimal, or hex; and percent-encoded, with `+` for a space; and a double
+ * quote doubled, as CSV writes it inside a quoted field. Hex digits are
+ * spelled in lower case; the pattern's `i` flag matches them in upper too. A
+ * letter or digit has one spelling: no serializer rewrites those.
  */
 function spellings(ch: string): string[] {
   if (/^[A-Za-z0-9]$/.test(ch)) return [ch];
-  const inJson = [JSON.stringify(ch).slice(1, -1), ...unicodeEscapes(ch), ...(ch === '/' ? ['\\/'] : [])];
+  const inJson = [JSON.stringify(ch).slice(1, -1), unicodeEscape(ch), ...(ch === '/' ? ['\\/'] : [])];
   const codePoint = ch.codePointAt(0) ?? 0;
   const decimal = String(codePoint);
-  const hex = codePoint.toString(16);
-  const percent = (digits: (byte: number) => string): string =>
-    [...Buffer.from(ch, 'utf8')].map((byte) => `%${digits(byte)}`).join('');
   return [
     ...new Set([
       ch,
@@ -200,22 +240,18 @@ function spellings(ch: string): string[] {
       ...(NAMED_REFERENCES[ch] ?? []),
       `&#${decimal};`,
       `&#${decimal.padStart(3, '0')};`,
-      `&#x${hex};`,
-      `&#x${hex.toUpperCase()};`,
-      percent((byte) => byte.toString(16).padStart(2, '0')),
-      percent((byte) => byte.toString(16).padStart(2, '0').toUpperCase()),
+      `&#x${codePoint.toString(16)};`,
+      [...Buffer.from(ch, 'utf8')].map((byte) => `%${byte.toString(16).padStart(2, '0')}`).join(''),
       ...(ch === ' ' ? ['+'] : []),
       ...(ch === '"' ? ['""'] : []),
     ]),
-  ].toSorted((a, b) => b.length - a.length);
+  ];
 }
 
-/** `\uXXXX` per UTF-16 code unit, hex digits in lower case and in upper. */
-function unicodeEscapes(ch: string): string[] {
-  const escape = (digits: (unit: number) => string): string =>
-    Array.from({ length: ch.length }, (_, index) => `\\u${digits(ch.charCodeAt(index))}`).join('');
-  const hex4 = (unit: number): string => unit.toString(16).padStart(4, '0');
-  return [escape(hex4), escape((unit) => hex4(unit).toUpperCase())];
+/** `\uXXXX` per UTF-16 code unit. */
+function unicodeEscape(ch: string): string {
+  const units = Array.from({ length: ch.length }, (_, index) => ch.charCodeAt(index));
+  return units.map((unit) => `\\u${unit.toString(16).padStart(4, '0')}`).join('');
 }
 
 function literal(text: string): string {

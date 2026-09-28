@@ -118,9 +118,10 @@ with `+` for a space; and a double quote doubled, as CSV writes it. Each
 character also matches in either case, including full and locale-specific
 mappings (`ß` as `SS`, `i` as `İ`), so a value a CSS `text-transform`
 upper-cases, lower-cases, or capitalizes is still caught. A whitespace run
-inside the value also matches the one space a text reader collapses it to, and
-a value with whitespace at either end also matches trimmed, so a multi-line
-value shown as one line is caught too. Redaction only rewrites what the runner
+inside the value also matches any shorter run of whitespace, down to the one
+space a text reader collapses it to, and a value with whitespace at either end
+also matches trimmed, so a multi-line value shown as one line is caught too,
+in a trace resource as well as in the report. Redaction only rewrites what the runner
 reports; assertions still compare the text the page shows. It retains old
 values after a secret rotates, and never rewrites a marker it wrote, so text
 that passes it twice reads as text that passed once. Secret values are
@@ -149,8 +150,8 @@ hook; its console output reaches the runner's streams as written.
   a hash, is a different string and passes through.
 - A value the app renders in another Unicode normalization form, decomposed
   accents where the secret has composed ones, passes through.
-- A whitespace run in the value stands for one whitespace character, so text
-  that widens it to several, or drops it, passes through. A value that is
+- A whitespace run in the value stands for at most as many whitespace
+  characters as it has, so text that widens it, or drops it, passes through. A value that is
   shorter than 6 characters once trimmed is only matched with its edge
   whitespace.
 - A value spread over several nodes, one character per cell as a PIN pad
