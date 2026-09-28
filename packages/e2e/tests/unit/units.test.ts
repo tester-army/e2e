@@ -113,6 +113,7 @@ describe('buildWorkPlans', () => {
       tests: [a1, a2, setup, b1, skipped],
       nearMisses: [],
       unmatchedPositionals: [],
+      uncollected: [],
     };
 
     const plans = buildWorkPlans(selection, collection, '/project');
@@ -138,6 +139,7 @@ describe('buildWorkPlans', () => {
       tests: [only],
       nearMisses: [],
       unmatchedPositionals: [],
+      uncollected: [],
     };
     const plans = buildWorkPlans(selection, collection, '/project');
     expect(plans[0]!.fileUnits).toHaveLength(0);

@@ -20,7 +20,7 @@ async function collection(
   const registration = await collectModule(async () => body());
   // Positionals that matched nothing leave the discovered file collected but unselected.
   const collected = collectFromRegistration('/root', `/root/${file}`, registration, unmatchedPositionals.length === 0);
-  return { files: [collected], tests: collected.tests, nearMisses: [], unmatchedPositionals };
+  return { files: [collected], tests: collected.tests, nearMisses: [], unmatchedPositionals, uncollected: [] };
 }
 
 /** Several files collected together, with `selected` naming the ones positionals chose (all by default). */
@@ -33,12 +33,12 @@ async function collectionOf(
     const registration = await collectModule(async () => module.body());
     files.push(collectFromRegistration('/root', `/root/${module.file}`, registration, selected === undefined || selected.includes(module.file)));
   }
-  return { files, tests: files.flatMap((entry) => entry.tests), nearMisses: [], unmatchedPositionals: [] };
+  return { files, tests: files.flatMap((entry) => entry.tests), nearMisses: [], unmatchedPositionals: [], uncollected: [] };
 }
 
 /** A collection whose globs matched nothing, with optional look-alike files. */
 function emptyCollection(nearMisses: readonly string[] = []): Collection {
-  return { files: [], tests: [], nearMisses, unmatchedPositionals: [] };
+  return { files: [], tests: [], nearMisses, unmatchedPositionals: [], uncollected: [] };
 }
 
 function config(raw: Partial<E2EConfig> = {}, env: NodeJS.ProcessEnv = ENV) {
@@ -450,6 +450,16 @@ describe('select', () => {
     expect(() => select(col, config())).toThrow(/no setup test produces it/);
   });
 
+  it('names a file a narrowed run could not collect as where a missing producer may live', async () => {
+    const col = await collection(() => {
+      test('uses session', { session: 'member' }, noop);
+    });
+    const narrowed = { ...col, uncollected: [{ file: 'tests/auth.setup.e2e.ts', reason: 'boom' }] };
+    expect(() => select(narrowed, config())).toThrow(
+      /no setup test produces it; it may be declared in a file that failed to collect: tests\/auth\.setup\.e2e\.ts \(boom\)$/,
+    );
+  });
+
   it('fails on duplicate session producers', async () => {
     const col = await collection(() => {
       test.setup('one', { sessions: ['member'] }, noop);
@@ -586,7 +596,7 @@ describe('positional file selection', () => {
     const registration = await collectModule(async () => body());
     const declared = registration.tests.map((entry) => entry.source!.line);
     const collected = collectFromRegistration(TESTS_ROOT, THIS_FILE, registration, true, pick(declared));
-    return { files: [collected], tests: collected.tests, nearMisses: [], unmatchedPositionals: [] };
+    return { files: [collected], tests: collected.tests, nearMisses: [], unmatchedPositionals: [], uncollected: [] };
   }
 
   it('ignores a line that matches a test declared in a module the file imports', async () => {
@@ -597,7 +607,7 @@ describe('positional file selection', () => {
     const importer = collectFromRegistration(TESTS_ROOT, path.join(TESTS_ROOT, 'unit', 'importer.e2e.ts'), registration, true, [line]);
     expect(importer.tests[0]!.selected).toBe(false);
     expect(importer.declaredLines).toEqual([]);
-    const col: Collection = { files: [importer], tests: importer.tests, nearMisses: [], unmatchedPositionals: [] };
+    const col: Collection = { files: [importer], tests: importer.tests, nearMisses: [], unmatchedPositionals: [], uncollected: [] };
     expect(() => select(col, config())).toThrow(
       `1 not declared at a line a positional named: unit/importer.e2e.ts:${line} names no test (the file declares no test itself)`,
     );

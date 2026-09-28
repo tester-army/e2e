@@ -5,7 +5,7 @@ import { resultId } from '../internal/ids.ts';
 import { didYouMean, suggestionNote } from '../internal/suggest.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import type { Capability } from '../types.ts';
-import type { Collection, CollectedTest } from './collect.ts';
+import type { Collection, CollectedTest, UncollectedFile } from './collect.ts';
 import { groupChain } from './registry.ts';
 
 export interface ResolvedTestOptions {
@@ -324,7 +324,7 @@ export function select(
 
   const withClosure = applySerialClosure(pairs);
   const withShard = filters.shard === undefined ? withClosure : applyShard(withClosure, filters.shard);
-  const withSessions = applySessionSelection(withShard, sessionProducers);
+  const withSessions = applySessionSelection(withShard, sessionProducers, collection.uncollected);
 
   const runnableOrdinary = withSessions.filter(
     (pair) => pair.disposition === 'run' && pair.test.kind === 'test',
@@ -733,14 +733,20 @@ function applyShard(pairs: readonly TestTargetPair[], shard: Shard): TestTargetP
 function applySessionSelection(
   pairs: readonly TestTargetPair[],
   sessionProducers: ReadonlyMap<string, CollectedTest>,
+  uncollected: readonly UncollectedFile[],
 ): TestTargetPair[] {
   const neededSetups = new Set<string>();
   for (const pair of pairs) {
     if (pair.disposition !== 'run' || pair.options.session === undefined) continue;
     const producer = sessionProducers.get(pair.options.session);
     if (producer === undefined) {
+      // The setup may be in a file a narrowed run could not collect; its error is then the cause.
+      const cause =
+        uncollected.length === 0
+          ? ''
+          : `; it may be declared in a file that failed to collect: ${uncollected.map((entry) => `${entry.file} (${entry.reason})`).join(', ')}`;
       throw new CollectionError(
-        `test ${pair.test.id} consumes session "${pair.options.session}" but no setup test produces it`,
+        `test ${pair.test.id} consumes session "${pair.options.session}" but no setup test produces it${cause}`,
       );
     }
     neededSetups.add(`${pair.target.name}::${producer.id}`);

@@ -195,6 +195,42 @@ test('never registered', async () => {});
   );
 
   it(
+    'runs the named file past broken files it did not name, and fails a run that names one or names none',
+    async () => {
+      const files = {
+        'tests/good.e2e.ts': `import { test } from 'e2e';\n\ntest('runs', async () => {});\n`,
+        'tests/broken.e2e.ts': `import { missing } from './not-written-yet.ts';\nimport { test } from 'e2e';\n\ntest('never collected', async () => { missing(); });\n`,
+        'tests/invalid.e2e.ts': `import { test } from 'e2e';\n\ntest('no body', 'not a function' as never);\n`,
+      };
+      const notices: string[] = [];
+      const narrowed = await runProject(files, {
+        appUrl: app.url,
+        runOptions: { files: ['tests/good.e2e.ts'], onEvent: (event) => { if (event.type === 'notice') notices.push(event.message); } },
+      });
+      expect(narrowed.outcome.exitCode).toBe(0);
+      expect(narrowed.outcome.report.run.results.map((result) => result.titlePath.at(-1))).toEqual(['runs']);
+      expect(notices).toEqual([
+        expect.stringMatching(/^skipped tests\/broken\.e2e\.ts, which no positional selected and which failed to collect: Cannot find module .*not-written-yet\.ts/),
+        expect.stringMatching(/^skipped tests\/invalid\.e2e\.ts, which no positional selected and which failed to collect: (?!tests\/)/),
+      ]);
+      narrowed.project.cleanup();
+
+      const named = await runProject(files, { appUrl: app.url, runOptions: { files: ['tests/broken.e2e.ts'] } });
+      expect(named.outcome.exitCode).toBe(2);
+      expect(named.outcome.report.run.errors.map((error) => error.code)).toEqual(['COLLECTION_ERROR']);
+      expect(named.outcome.report.run.errors[0]?.message).toMatch(/^failed to collect tests\/broken\.e2e\.ts: /);
+      named.project.cleanup();
+
+      const whole = await runProject(files, { appUrl: app.url });
+      expect(whole.outcome.exitCode).toBe(2);
+      expect(whole.outcome.report.run.errors.map((error) => error.code)).toEqual(['COLLECTION_ERROR']);
+      expect(whole.outcome.report.run.errors[0]?.message).toMatch(/failed to collect tests\/broken\.e2e\.ts/);
+      whole.project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
     'skips scope tests when beforeAll fails and reports hook-failed',
     async () => {
       const file = `import { test } from 'e2e';

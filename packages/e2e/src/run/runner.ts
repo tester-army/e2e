@@ -593,6 +593,9 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       return;
     }
     const { collection, selection } = planned;
+    for (const skipped of collection.uncollected) {
+      notice('collect', `skipped ${skipped.file}, which no positional selected and which failed to collect: ${skipped.reason}`);
+    }
 
     // Pre-flight: grade every selected target from its engine declaration
     // before any worker starts, so a config that asks for more than the

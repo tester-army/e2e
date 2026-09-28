@@ -109,6 +109,18 @@ export interface Collection {
    * the `NO_TESTS` message names them when nothing is left to run.
    */
   readonly unmatchedPositionals: readonly string[];
+  /**
+   * Files positionals left unselected that failed to collect. Only a narrowed
+   * run keeps going past one. A selected test whose session has no setup test
+   * gets these files named in its error, since the setup may be in one.
+   */
+  readonly uncollected: readonly UncollectedFile[];
+}
+
+/** A discovered file a narrowed run could not collect, and why. */
+export interface UncollectedFile {
+  readonly file: string;
+  readonly reason: string;
 }
 
 /** Suffixes other runners use, and ours with the wrong extension. */
@@ -401,6 +413,7 @@ export function collectInMemory(
     tests: collected.tests,
     nearMisses: [],
     unmatchedPositionals: [],
+    uncollected: [],
   };
 }
 
@@ -410,8 +423,10 @@ export function collectInMemory(
  * positional arguments selected. Every discovered file is imported even when
  * positionals name a few, because selection needs the whole picture: the
  * setup test a selected test's session depends on may live in a file no
- * positional named. A collection error anywhere in the suite is therefore an
- * error for every run, as it is for a runner that loads the suite whole.
+ * positional named. A collection error in a selected file, or anywhere in an
+ * unnarrowed run, fails the run; one in a file positionals left out is kept
+ * in `uncollected`, so a half-written file elsewhere in the suite does not
+ * stop `e2e run tests/one.e2e.ts`.
  */
 export async function collect(
   config: ResolvedConfig,
@@ -421,6 +436,7 @@ export async function collect(
   const { files: selectedFiles, unmatched, lines } = selectPositionals(config.projectRoot, discovered, positionals);
   const selected = new Set(selectedFiles);
   const files: CollectedFile[] = [];
+  const uncollected: UncollectedFile[] = [];
   for (const file of discovered) {
     const absolutePath = path.join(config.projectRoot, file);
     let registration: ModuleRegistration;
@@ -428,6 +444,10 @@ export async function collect(
       registration = await collectModule(() => importModule(absolutePath, 'collect'), absolutePath);
     } catch (cause) {
       // A registration error names the option but not the module it came from.
+      if (positionals.length > 0 && !selected.has(file)) {
+        uncollected.push({ file, reason: cause instanceof CollectionError ? cause.message : explainModuleError(cause, absolutePath) });
+        continue;
+      }
       if (cause instanceof CollectionError) throw new CollectionError(`${file}: ${cause.message}`, { cause });
       throw new CollectionError(
         `failed to collect ${file}: ${explainModuleError(cause, absolutePath)}`,
@@ -441,5 +461,6 @@ export async function collect(
     tests: files.flatMap((file) => file.tests),
     nearMisses: discovered.length === 0 ? findNearMissTestFiles(config.projectRoot, config.tests) : [],
     unmatchedPositionals: unmatched,
+    uncollected,
   };
 }

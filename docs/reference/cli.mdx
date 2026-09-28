@@ -208,8 +208,12 @@ OS. A path outside the project root is `COLLECTION_ERROR`.
 
 The runner imports every discovered test file, even when you select only a
 few. This lets a selected test find its session setup in another file.
-Other ordinary tests remain unselected, but a collection error in any file
-still fails the run.
+Other ordinary tests remain unselected. A collection error in a selected
+file, or in any file of a run with no positionals, fails the run. A file the
+positionals left out that fails to import or register its tests is skipped
+with a notice, so a half-written file elsewhere in the suite does not stop
+`npx e2e run tests/login.e2e.ts`; if a selected test's session then has no
+setup test, the error names that file as where the setup may be.
 
 A positional starting with `-` that names no file is a usage error, exit 2.
 This is what `pnpm test:e2e -- --headed` produces: the `--` reaches e2e and

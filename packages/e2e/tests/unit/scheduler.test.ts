@@ -102,6 +102,7 @@ function makeCollection(files: readonly string[], pairs: readonly TestTargetPair
     tests: collected.flatMap((file) => file.tests),
     nearMisses: [],
     unmatchedPositionals: [],
+    uncollected: [],
   };
 }
 

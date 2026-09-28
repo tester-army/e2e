@@ -109,8 +109,9 @@ export type RunEventFact =
        * download narrating under a `prepare` step, a reused app process
        * under an `app` step, or what a worker's engine `init` reported
        * (`<target> worker <slot>: <line>`) once the run is executing.
-       * `target` is the target the line is about, or `app` for the app
-       * process and its services.
+       * `target` is the target the line is about, `app` for the app
+       * process and its services, or `collect` for a test file a narrowed
+       * run skipped.
        */
       readonly type: 'notice';
       readonly target: string;
