@@ -288,8 +288,21 @@ export class AttemptSession {
     return parts.length === 0 ? relative : [...parts, relative];
   }
 
-  /** Starts video before tracing can choose the page's screencast size. */
-  async startVideo(): Promise<void> { await this.video.arm(await this.ensurePage()); }
+  /**
+   * Starts video at the page's full size. A trace records through the same
+   * screencast and sizes it for itself, so a trace already running (a host
+   * that starts the video mid-attempt) is split around the start: its
+   * segment so far is saved, and it resumes on the video's screencast.
+   */
+  async startVideo(): Promise<void> {
+    const page = await this.ensurePage();
+    const resume = this.video.isRecording ? false : await this.closeTraceSegment(this.current().context);
+    try {
+      await this.video.arm(page);
+    } finally {
+      if (resume) await this.startTrace();
+    }
+  }
 
   /** Collects finalized trace segments even when connection replacement failed. */
   collectTrace(operation: OperationContext): Promise<string | readonly string[]> {

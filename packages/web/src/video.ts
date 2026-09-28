@@ -82,6 +82,8 @@ export class VideoRecorder {
     this.armed = false;
     const lost = this.lost;
     this.lost = undefined;
+    // Handed over or not, this recording's segments never carry into the next one.
+    const finished = this.finished.splice(0);
     if (lost !== undefined) {
       throw new EngineError(
         'ENGINE_FAILURE',
@@ -89,7 +91,7 @@ export class VideoRecorder {
         { retryable: false, cause: lost.cause },
       );
     }
-    return this.finished.splice(0);
+    return finished;
   }
 
   /**
