@@ -217,6 +217,7 @@ describe('lifecycle', () => {
     expect(handed[poolVariableIn(handed, 'IOS')]).toBe(JSON.stringify([{ device: 'iPhone 16e', sessionApp: 'Settings' }]));
 
     // The worker resumes a session that is on the app: its first fresh launch presets the permissions without an open to bind it.
+    h.fake.respond('sessions.list', () => [{ name: 'e2e-ios-0', address: 'e2e-ios-0' }]);
     await boot(h.engine, 'ios', 0);
     await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal });
     const before = h.fake.calls.length;
@@ -289,7 +290,7 @@ describe('lifecycle', () => {
     // A worker reads the pool from the environment it was started with, never process.env.
     const worker = harness({ device: undefined });
     await boot(worker.engine, 'ios', 1, { [variable]: handed[variable] });
-    expect(worker.fake.methods()).toEqual(['devices.boot']);
+    expect(worker.fake.methods()).toEqual(['devices.boot', 'sessions.list']);
     expect(worker.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios', udid: '8A2DC8D6-7B20-44FA-ADBB-47D3EAE6E8F3' });
     expect(worker.sessions).toEqual(['e2e-ios-1']);
   });
@@ -1335,6 +1336,21 @@ describe('device fixture', () => {
       ['command.keyboard', { action: 'dismiss' }],
       ['command.clipboard', { action: 'read' }],
       ['command.clipboard', { action: 'write', text: 'x' }],
+    ]);
+  });
+
+  it('opens the app before a permission change when the warmed session is gone, as after a worker retired on a failing test', async () => {
+    const h = harness({ device: 'iPhone 16e' });
+    await h.engine.prepare!({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: () => undefined });
+    // The retired worker's dispose closed the slot's session, so agent-device no longer lists it.
+    h.fake.respond('sessions.list', () => [{ name: 'e2e-ios-1', address: 'e2e-ios-1' }]);
+    await boot(h.engine, 'ios', 0);
+    await h.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: new AbortController().signal });
+    const before = h.fake.calls.length;
+    await fixture(h).setPermission('microphone', 'reset');
+    expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
+      ['apps.open', { app: 'Settings', platform: 'ios', device: 'iPhone 16e' }],
+      ['settings.update', { setting: 'permission', permission: 'microphone', state: 'reset' }],
     ]);
   });
 

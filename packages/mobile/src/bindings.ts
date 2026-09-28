@@ -50,7 +50,9 @@ export interface SlotBinding {
   /**
    * App the warm-up in `prepare` opened in the slot's session, which the
    * worker resumes: a permission command there already acts on it. Absent
-   * when nothing was opened, or the open failed.
+   * when nothing was opened, or the open failed. Every worker of the slot
+   * reads it, but only a worker that finds the session still open keeps it:
+   * one retired after a failing test closed it.
    */
   readonly sessionApp?: string | undefined;
 }

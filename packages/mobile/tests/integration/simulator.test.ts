@@ -60,6 +60,8 @@ describe.skipIf(!enabled)('agent-device engine on a booted iOS simulator', () =>
       signal: new AbortController().signal,
     });
     await engine.startAttempt!({ attemptId: 'sim-1', artifactsDir, signal: new AbortController().signal });
+    // What a test's `app.open()` runs: the engine launches nothing on its own.
+    await engine.session!.restart!(operation());
   });
 
   afterAll(async () => {
@@ -132,8 +134,10 @@ describe.skipIf(!enabled)('agent-device engine on a booted iOS simulator', () =>
     expect(await locationWhen(engine, (location) => location.startsWith('com.apple.mobilesafari'))).toMatch(/^com\.apple\.mobilesafari/);
     const safari = await engine.observe!(operation());
     expect([...walk(safari.root)].some((node) => node.name?.includes('Example Domain'))).toBe(true);
-    await device.openLink('maps://?q=Cupertino', { app: 'com.apple.Maps' });
-    expect(await locationWhen(engine, (location) => location.startsWith('com.apple.Maps'))).toMatch(/^com\.apple\.Maps/);
+    // Shortcuts, not Maps or Calendar: those ask for location on their first launch, and the system
+    // alert outlives the app, covering whatever the simulator shows next.
+    await device.openLink('shortcuts://', { app: 'com.apple.shortcuts' });
+    expect(await locationWhen(engine, (location) => location.startsWith('com.apple.shortcuts'))).toMatch(/^com\.apple\.shortcuts/);
     await device.openApp('Settings', { relaunch: true });
     expect(await locationWhen(engine, (location) => location.startsWith('com.apple.Preferences'))).toMatch(/^com\.apple\.Preferences/);
   });

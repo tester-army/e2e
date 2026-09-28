@@ -281,8 +281,8 @@ export class AgentDeviceSurface {
   /**
    * The app this worker's agent-device session is on, and so the app a
    * permission command there acts on: what the warm-up in `prepare` opened
-   * under the session this worker resumed, then whatever this surface last
-   * opened. Undefined while nothing has been opened in the session, and once
+   * under the session this worker resumed, while that session is still open,
+   * then whatever this surface last opened. Undefined while nothing has been opened in the session, and once
    * `closeApp` ended it.
    */
   private sessionApp: string | undefined;
@@ -406,16 +406,34 @@ export class AgentDeviceSurface {
     this.projectRoot = info.projectRoot;
     const binding = this.pool.binding(info.targetName, info.workerSlot, info.env);
     this.device = binding;
-    this.sessionApp = binding?.sessionApp;
     const session = this.pool.session(info.targetName, info.workerSlot);
     const label = deviceLabel(binding);
     this.where = `session ${session}${label === undefined ? '' : ` on ${label}`}`;
     this.client ??= this.createClient(session, binding);
     await this.command('boot', (client) => client.devices.boot(this.selection()), info.signal);
+    this.sessionApp = binding?.sessionApp === undefined ? undefined : await this.resumedSessionApp(session, binding.sessionApp, info.signal);
     // Nothing is installed here: a device provider that installed the build
     // from `appPath` says so on the binding, and otherwise the suite installs
     // it where it wants to, with `device.installApp()`.
     this.installedApp = binding?.installedApp;
+  }
+
+  /**
+   * The app the warm-up left the slot's session on, while agent-device still
+   * holds that session. Only the slot's first worker finds it: a worker
+   * retired after a failing test closed it in `dispose`, and a permission
+   * command on a closed session reaches no device. A session not listed, or
+   * a list that fails, leaves the app unknown, and the first permission
+   * change opens it again.
+   */
+  private async resumedSessionApp(session: string, app: string, signal: AbortSignal): Promise<string | undefined> {
+    const sessions: unknown = await this.command('sessions', (client) => client.sessions.list(), signal).catch((cause: unknown) => {
+      if (signal.aborted) throw cause;
+      return undefined;
+    });
+    if (!Array.isArray(sessions)) return undefined;
+    const open = sessions.some((entry: { name?: unknown; address?: unknown }) => (entry.address ?? entry.name) === session);
+    return open ? app : undefined;
   }
 
   async startAttempt(context: EngineAttemptContext): Promise<void> {
