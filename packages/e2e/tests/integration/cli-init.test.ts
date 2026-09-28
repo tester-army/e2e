@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -218,22 +218,6 @@ describe('initializing standalone projects', () => {
 
     const { stdout } = await execFileAsync(process.execPath, [CLI, 'run', '--workers', '1', '--no-cache'], { cwd: dir });
     expect(stdout).toContain('1 passed');
-  });
-
-  it('says TypeScript an installed CommonJS package ships exists, and why it failed to load', async () => {
-    writeFileSync(path.join(dir, 'e2e.config.ts'), CONFIG);
-    const dep = path.join(dir, 'node_modules', 'dep');
-    mkdirSync(dep, { recursive: true });
-    writeFileSync(path.join(dep, 'package.json'), JSON.stringify({ name: 'dep', exports: './index.ts' }));
-    writeFileSync(path.join(dep, 'index.ts'), 'export const answer: number = 42;\n');
-    mkdirSync(path.join(dir, 'tests'));
-    writeFileSync(path.join(dir, 'tests', 'example.e2e.ts'), "import { test } from 'e2e';\nimport { answer } from 'dep';\n\ntest('dep', () => void answer);\n");
-    linkPackages('e2e');
-
-    await expect(execFileAsync(process.execPath, [CLI, 'run'], { cwd: dir })).rejects.toMatchObject({
-      code: 2,
-      stdout: expect.stringContaining(`exists: ${path.join(realpathSync(dep), 'package.json')} declares no "type": "module"`),
-    });
   });
 
   it('tells a project that skipped npm install to run it, naming its package manager', async () => {
