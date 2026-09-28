@@ -501,6 +501,25 @@ test('a trigger that starts no download times out saying so', async ({ app, web 
   await web.waitForDownload(() => new Promise((resolve) => setTimeout(resolve, 200)), { timeout: 500 });
 });
 
+test('a viewport set before the first navigation holds through app.open', async ({ app, web }) => {
+  await web.setViewport({ width: 390, height: 600 });
+  await app.open();
+  const width = await web.evaluate(() => window.innerWidth);
+  if (width !== 390) throw new Error('innerWidth ' + width);
+  await app.restart();
+  const restarted = await web.evaluate(() => window.innerWidth);
+  if (restarted !== 390) throw new Error('innerWidth after restart ' + restarted);
+  await app.clearState();
+  await app.open();
+  const cleared = await web.evaluate(() => window.innerWidth);
+  if (cleared !== 390) throw new Error('innerWidth after clearState ' + cleared);
+});
+
+test('a viewport set before the first navigation opens no page', async ({ screen, web }) => {
+  await web.setViewport({ width: 390, height: 600 });
+  await screen.getByTestId('items').tap({ timeout: 200 });
+});
+
 test('css selectors via web.locator', async ({ app, web }) => {
   await app.open();
   await expect(web.locator('ul[data-testid="items"] li').first()).toHaveText('Item Alpha');
@@ -647,6 +666,16 @@ describe('web platform integration', () => {
     expect(error?.code).toBe('ACTION_FAILED');
     const triggerMs = Number(/^no download started within 500ms; the trigger resolved after (\d+)ms$/.exec(error?.message ?? '')?.[1]);
     expect(triggerMs).toBeGreaterThanOrEqual(200);
+  });
+
+  it('sets a viewport before the first navigation without opening a page', () => {
+    expect(resultByTitle(outcome, 'a viewport set before the first navigation holds through app.open').status).toBe('passed');
+    const result = resultByTitle(outcome, 'a viewport set before the first navigation opens no page');
+    expect(result.attempts[0]!.steps.map((step) => [step.api, step.status])).toEqual([
+      ['web.setViewport', 'passed'],
+      ['locator.tap', 'failed'],
+    ]);
+    expect(result.attempts[0]!.error?.code).toBe('APP_NOT_OPEN');
   });
 
   it('fails ambiguous locators immediately with LOCATOR_AMBIGUOUS', () => {

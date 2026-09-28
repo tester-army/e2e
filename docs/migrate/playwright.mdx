@@ -206,7 +206,7 @@ to do today.
 | `page.waitForLoadState()` | not yet; `web.goto(url, { waitUntil })` on the navigation itself | `web` | missing |
 | `page.waitForFunction(fn)` | `expect.poll(() => web.evaluate(fn)).toBeTruthy()` | `web` | missing |
 | `page.waitForTimeout(ms)` | a locator assertion on the state you are waiting for: `toBeVisible()` on what appears, `toBeHidden()` on what goes away | `expect` | by design |
-| `page.setViewportSize()` | `web.setViewport()` | `web` | web only |
+| `page.setViewportSize()` | `web.setViewport()`, before or after the first navigation | `web` | web only |
 | `page.viewportSize()` | not yet; `web.evaluate(() => ({ width: innerWidth, height: innerHeight }))` | `web` | missing |
 | `page.screenshot()` | `app.screenshot(label)`: the viewport, redacted, attached to the report; no `fullPage` | `app` | renamed |
 | a fresh `context` per test | every attempt starts in a fresh context; `app.restart()` recreates it, `app.clearState()` also clears storage | `app` | same |

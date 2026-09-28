@@ -459,7 +459,7 @@ export function createWebFixture(surface: PlaywrightSurface, context: EngineFixt
     },
     setViewport: (size) =>
       surface.guard(context.operation(), 'setViewport', async () => {
-        await surface.requirePage().setViewportSize(size);
+        await surface.setViewport(size);
         context.attachViewport({ width: size.width, height: size.height, scale: 1 });
       }),
     // Async so the harness records the registration as a `web.onDialog` step.

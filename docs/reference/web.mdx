@@ -402,7 +402,11 @@ export interface WebResponse {
 `setCookies` validates every cookie before setting any; an unparseable
 target or a forbidden scheme is `POLICY_DENIED` and nothing is set. For the
 `domain` form the scheme follows the base URL and a leading `.` is stripped.
-`setViewport` records the new size on the report.
+`setViewport` records the new size on the report. It works before the first
+navigation too, as Playwright's `setViewportSize` does: the next `app.open`
+loads at that size, so a phone-sized test never renders the desktop layout first.
+The size holds for the rest of the attempt, through `app.restart()` and
+`app.clearState()`.
 
 ```ts
 export interface CookieFields {

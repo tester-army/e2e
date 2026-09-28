@@ -492,6 +492,11 @@ export class PlaywrightSurface {
     return this.requireSession().ensurePage();
   }
 
+  /** Sizes the open page, or the one the next navigation opens, for the rest of the attempt. */
+  setViewport(size: { readonly width: number; readonly height: number }): Promise<void> {
+    return this.requireSession().setViewport(size);
+  }
+
   /**
    * The single entry of every operation: rethrows an error latched on an
    * unawaited path, refuses a cancelled operation, races `fn` against the
