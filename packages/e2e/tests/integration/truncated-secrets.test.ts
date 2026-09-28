@@ -78,5 +78,8 @@ describe('secrets cut short by observation limits', () => {
     // The trace was scanned inside, and its plain text survived the rewrite.
     const trace = contents.filter(([file]) => file.includes('.zip!'));
     expect(trace.some(([, text]) => text.includes(CONTROL_KEPT))).toBe(true);
+    // The same rewrite dropped the screencast of the tainted viewport.
+    expect(trace.filter(([file]) => file.includes('.zip!screencast/'))).toEqual([]);
+    expect(trace.some(([, text]) => text.includes('"screencast-frame"'))).toBe(false);
   });
 });
