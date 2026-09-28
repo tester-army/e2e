@@ -151,7 +151,7 @@ class ScreenImpl implements Screen {
     );
   }
 
-  getByTestId(id: string, options?: { visible?: boolean }): Locator {
+  getByTestId(id: TextMatch, options?: { visible?: boolean }): Locator {
     return new LocatorImpl(this.context, this.build(testIdQuery(id, options, this.scope)));
   }
 

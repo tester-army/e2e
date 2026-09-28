@@ -420,8 +420,8 @@ export interface Screen {
   getByText(text: TextMatch, options?: TextMatchOptions): Locator;
   /** Creates a lazy displayed-value query. */
   getByDisplayValue(value: TextMatch, options?: TextMatchOptions): Locator;
-  /** Creates a lazy test-id query. */
-  getByTestId(id: string, options?: { visible?: boolean }): Locator;
+  /** Creates a lazy test-id query: a string matches the whole id, case-sensitive; a RegExp tests it. */
+  getByTestId(id: TextMatch, options?: { visible?: boolean }): Locator;
   /** Taps a viewport point, with no node behind it. */
   tapAt(point: Point, options?: ActionOptions): Promise<void>;
   /** Performs a viewport-level swipe: in a direction, or along a path from one point to another. */

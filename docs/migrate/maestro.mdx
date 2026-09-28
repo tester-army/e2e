@@ -183,7 +183,8 @@ account for most edits.
 - Text and id are regular expressions in Maestro, so `tapOn: ".*Save.*"`
   matches any text with Save in it. `getByText` is exact. Write
   `getByText(/Save/)` for the pattern, or `{ exact: false }` for a
-  case-insensitive substring. `getByTestId` takes a string only; name the id.
+  case-insensitive substring. `getByTestId` matches a string as the whole id;
+  write `getByTestId(/^row-/)` for a pattern.
 - `index: 2` is `.nth(2)`. When several nodes match and no index is given,
   Maestro taps the first one silently; e2e fails with `LOCATOR_AMBIGUOUS`.
   Write `.first()` when the first match is what you mean.

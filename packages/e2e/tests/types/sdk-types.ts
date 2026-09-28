@@ -181,6 +181,8 @@ void executorContext.actions.drag({ id: 'n1' });
 executorContext.attachTurns([{ index: 1, calls: ['tap({"target":"n19"})'], outcome: 'the form opened' } satisfies StepTurn]);
 // @ts-expect-error attribute values must be text matches
 asyncExpectation.toHaveAttribute('x', 42);
+// A test id takes a RegExp, as the text queries do.
+void (screen.getByTestId(/^total-/) satisfies Locator);
 // Set reads answer with lists and never wait; the list form of a text matcher takes strings and RegExps.
 void (screen.getByTestId('todo').all() satisfies Promise<Locator[]>);
 void (screen.getByTestId('todo').allTextContents() satisfies Promise<string[]>);

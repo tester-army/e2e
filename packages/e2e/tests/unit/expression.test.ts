@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   describeExpression,
+  expressionHints,
   filterExpression,
   indexExpression,
   roleQuery,
@@ -78,6 +79,22 @@ describe('locator expressions', () => {
     expect(expression).toMatchObject({
       query: { value: { kind: 'regexp', source: 'pro', flags: 'i' } },
     });
+  });
+
+  it('builds a test-id query from a string or a regexp', () => {
+    expect(testIdQuery('card', undefined, undefined)).toMatchObject({
+      query: { kind: 'testId', value: { kind: 'string', value: 'card', exact: true } },
+    });
+    const expression = testIdQuery(/^total-/i, undefined, undefined);
+    expect(expression).toMatchObject({
+      query: { kind: 'testId', value: { kind: 'regexp', source: '^total-', flags: 'i' } },
+    });
+    expect(describeExpression(expression)).toBe('getByTestId(/^total-/i)');
+  });
+
+  it('hints only a string test id, never a pattern source read as an id', () => {
+    expect(expressionHints(testIdQuery('card', undefined, undefined))).toEqual({ testId: 'card' });
+    expect(expressionHints(testIdQuery(/^row-\d+$/, undefined, undefined))).toEqual({});
   });
 
   it('describeExpression renders a readable chain', () => {

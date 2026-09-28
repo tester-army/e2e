@@ -64,7 +64,7 @@ export function textQuery(
 
 /** Builds a test-id query expression. */
 export function testIdQuery(
-  id: string,
+  id: TextMatch,
   options: { visible?: boolean } | undefined,
   scope: LocatorExpression | undefined,
 ): LocatorExpression {
@@ -73,7 +73,7 @@ export function testIdQuery(
       kind: 'query',
       query: {
         kind: 'testId',
-        value: { kind: 'string', value: id, exact: true },
+        value: toTextPattern(id, { exact: true }),
         ...visibility(options),
       },
     },
@@ -119,9 +119,10 @@ export function indexExpression(
 /**
  * What an expression asks for, as the facts a failure report keeps beside
  * the rendered locator: the role and name of a role query, the text a label,
- * placeholder, text, or value query looks for, or the test id. A filter or
- * index answers for the query under it; a native selector or frame has no
- * semantic hint to give.
+ * placeholder, text, or value query looks for, or a string test id (a
+ * pattern's source is no id to compare nodes with). A filter or index answers
+ * for the query under it; a native selector or frame has no semantic hint to
+ * give.
  */
 export function expressionHints(expression: LocatorExpression): Pick<ErrorDetails, 'role' | 'name' | 'testId'> {
   switch (expression.kind) {
@@ -131,7 +132,7 @@ export function expressionHints(expression: LocatorExpression): Pick<ErrorDetail
       if (query.kind === 'role') {
         return { role: value, ...(query.name === undefined ? {} : { name: patternText(query.name) }) };
       }
-      if (query.kind === 'testId') return { testId: value };
+      if (query.kind === 'testId') return query.value.kind === 'string' ? { testId: value } : {};
       return { name: value };
     }
     case 'filter':
