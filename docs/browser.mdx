@@ -204,7 +204,7 @@ straight back, never used.
 The attempt runs in the browser's persistent default context, so the
 remote must contain only that context, and the limits of
 [`connect.reconnectEndpoint`](/reference/web#recovering-a-cdp-transport)
-apply: no `headers` or `basicAuth` (both are `INVALID_CONFIG`), no
+apply: no `headers`, `basicAuth`, or `userAgent` (each is `INVALID_CONFIG`), no
 `app.clearState()`, no session state capture or restore. After a transport
 drop the next operation reattaches through the lease's `reconnectEndpoint`,
 or `cdpEndpoint` when the lease has none, and the engine checks it is the

@@ -38,7 +38,8 @@ stable cache and session key when the origin is ephemeral). Browser options:
 `browser` (`chromium`, `firefox`, `webkit`; default `chromium`; or a
 `BrowserProvider` that leases hosted browsers, see below), `viewport`
 (`{ width, height }`; default 1280x720), `testIdAttribute` (the attribute
-`getByTestId` and a node's `testId` read; default `data-testid`), and
+`getByTestId` and a node's `testId` read; default `data-testid`), `userAgent`
+(the `User-Agent` every attempt sends and `navigator.userAgent` reports), and
 `connect` — attach to a remote browser over CDP instead of launching a local
 one.
 
@@ -68,7 +69,7 @@ engine verifies the default context ID and active page target ID, clears stale
 references, and never repeats a dispatched operation. A missing target fails
 the attempt. The host owns deleting the remote browser after cleanup.
 
-This mode does not support `headers`, `basicAuth`, context reset, or session
+This mode does not support `headers`, `basicAuth`, `userAgent`, context reset, or session
 state capture and restore. Recording resumes after reconnect, but a segment
 lost during the disconnect remains unavailable. See the
 [Playwright reference](../../docs/reference/web.mdx#recovering-a-cdp-transport)

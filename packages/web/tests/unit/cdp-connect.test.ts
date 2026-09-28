@@ -31,10 +31,11 @@ describe('web({ connect })', () => {
     expect(engine.session?.restart).toBeTypeOf('function');
   });
 
-  it('rejects creation-time credentials and headers with persistent recovery', () => {
+  it('rejects creation-time credentials, headers, and user agent with persistent recovery', () => {
     const connect = { cdpEndpoint: () => 'ws://localhost:0', reconnectEndpoint: () => 'ws://localhost:0' };
     expect(() => web({ connect, headers: { 'x-preview': 'synthetic' } })).toThrow(/persistent context/);
     expect(() => web({ connect, basicAuth: { username: 'user', password: 'synthetic' } })).toThrow(/persistent context/);
+    expect(() => web({ connect, userAgent: 'synthetic playwright' })).toThrow(/persistent context/);
   });
 
   it('accepts a connect option with the default chromium browser', () => {

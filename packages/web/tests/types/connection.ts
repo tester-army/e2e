@@ -22,8 +22,8 @@ import type { BrowserLease, BrowserProvider, WebConnectOptions, WebOptions } fro
 // @ts-expect-error a provider releases what it leased.
 ({ name: 'hosted', acquire: async () => ({ id: 's', cdpEndpoint: 'ws://x' }) }) satisfies BrowserProvider;
 
-// Gates on the way to a protected app, the page size, and the attribute that carries a test id.
-({ headers: { 'x-vercel-protection-bypass': 'token' }, basicAuth: { username: 'preview', password: 'secret' }, viewport: { width: 390, height: 844 }, testIdAttribute: 'data-qa' }) satisfies WebOptions;
+// Gates on the way to a protected app, the page size, the attribute that carries a test id, and the user agent.
+({ headers: { 'x-vercel-protection-bypass': 'token' }, basicAuth: { username: 'preview', password: 'secret' }, viewport: { width: 390, height: 844 }, testIdAttribute: 'data-qa', userAgent: 'Mozilla/5.0 playwright' }) satisfies WebOptions;
 // @ts-expect-error basic auth is a username and a password; one without the other is no credential.
 ({ basicAuth: { username: 'preview' } }) satisfies WebOptions;
 // @ts-expect-error a header value is a string; nothing else is sent.
@@ -34,3 +34,5 @@ import type { BrowserLease, BrowserProvider, WebConnectOptions, WebOptions } fro
 ({ viewport: null }) satisfies WebOptions;
 // @ts-expect-error the test id attribute is one attribute name.
 ({ testIdAttribute: ['data-qa', 'data-test'] }) satisfies WebOptions;
+// @ts-expect-error a user agent is one string.
+({ userAgent: 3 }) satisfies WebOptions;

@@ -88,9 +88,8 @@ describe('web({ userAgent })', () => {
     expect(() => web({ userAgent: 'a\r\nx-injected: 1' })).toThrowError(/control character/);
   });
 
-  it('is refused with a persistent context, which it could not be applied to', () => {
-    expect(() =>
-      web({ userAgent: 'playwright', connect: { cdpEndpoint: () => 'ws://x', reconnectEndpoint: () => 'ws://x' } }),
-    ).toThrowError(/headers, basicAuth, and userAgent require a newly created context/);
+  it('rejects a user-agent header beside it, which would override it on the app site only', () => {
+    expect(() => web({ userAgent: 'playwright', headers: { 'User-Agent': 'other' } })).toThrowError(/conflict/);
+    expect(() => web({ userAgent: 'playwright', headers: { 'x-preview': 'token' } })).not.toThrow();
   });
 });

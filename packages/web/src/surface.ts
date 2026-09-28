@@ -186,7 +186,8 @@ export interface WebOptions extends EngineAppDeclaration {
    * The `User-Agent` every attempt's context sends and `navigator.userAgent`
    * reports, as Playwright's own `userAgent` context option sets it: for an
    * app that switches into a test mode on a marker in the agent string.
-   * Defaults to the browser's own.
+   * Defaults to the browser's own. A `user-agent` entry in `headers` beside
+   * it is `INVALID_CONFIG`.
    */
   readonly userAgent?: string;
 }

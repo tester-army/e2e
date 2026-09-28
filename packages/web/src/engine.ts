@@ -67,7 +67,7 @@ export function web(options: WebOptions = {}): EngineHandle {
   if (options.headers !== undefined) validateHeaders(options.headers);
   if (options.basicAuth !== undefined) validateBasicAuth(options.basicAuth);
   if (options.testIdAttribute !== undefined) validateTestIdAttribute(options.testIdAttribute);
-  if (options.userAgent !== undefined) validateUserAgent(options.userAgent);
+  if (options.userAgent !== undefined) validateUserAgent(options.userAgent, options.headers);
   const reconnecting = options.connect?.reconnectEndpoint !== undefined;
   if (reconnecting && typeof options.connect?.reconnectEndpoint !== 'function') {
     throw new ConfigurationError('INVALID_CONFIG', 'connect.reconnectEndpoint must be a function');
@@ -196,13 +196,20 @@ function validateBasicAuth(basicAuth: unknown): void {
   }
 }
 
-/** Refuses a user agent the browser could not send: not a string, empty, or carrying a control character. */
-function validateUserAgent(userAgent: unknown): void {
+/**
+ * Refuses a user agent the browser could not send (not a string, empty, or
+ * carrying a control character) and one a `user-agent` header would override
+ * on the app's site while `navigator.userAgent` kept reporting it.
+ */
+function validateUserAgent(userAgent: unknown, headers: Readonly<Record<string, string>> | undefined): void {
   if (typeof userAgent !== 'string' || userAgent === '') {
     throw new ConfigurationError('INVALID_CONFIG', 'web({ userAgent }) must be a non-empty string');
   }
   if (FIELD_VALUE_CONTROL.test(userAgent)) {
     throw new ConfigurationError('INVALID_CONFIG', 'web({ userAgent }) must not contain a control character');
+  }
+  if (headers !== undefined && Object.keys(headers).some((name) => name.toLowerCase() === 'user-agent')) {
+    throw new ConfigurationError('INVALID_CONFIG', 'web({ userAgent }) and a user-agent header in web({ headers }) conflict; set userAgent only');
   }
 }
 
