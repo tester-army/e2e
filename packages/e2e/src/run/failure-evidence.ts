@@ -27,6 +27,8 @@ const EVIDENCE_TIMEOUT_MS = 5_000;
 /** Screen lines a locator failure lists as its nearest nodes, and the bytes each keeps; the wire schema caps both. */
 const MAX_CANDIDATES = 5;
 const MAX_CANDIDATE_BYTES = 1024;
+/** Longer tokens are ids or hashes, not words a locator names; comparing them would cost an edit-distance matrix each. */
+const MAX_NEAR_WORD_LENGTH = 24;
 const MAX_URL_BYTES = 2048;
 /** Report-relative path of the screen text under the attempt's artifact directory. */
 const SCREEN_FILE = 'failure/screen.txt';
@@ -129,15 +131,16 @@ function locatorCandidates(error: E2EError, observation: AgentObservation, redac
   for (const node of observation.nodes.values()) {
     const roleMatched = role !== undefined && node.role?.toLowerCase() === role.toLowerCase();
     const testIdMatched = testId !== undefined && node.testId !== undefined && (node.testId === testId || node.testId.includes(testId) || testId.includes(node.testId));
-    const own = tokens(`${node.name ?? ''} ${node.text ?? ''} ${node.attributes?.['placeholder'] ?? ''}`);
-    const exact = words.filter((word) => own.includes(word)).length;
-    const near = words.filter((word) => !own.includes(word) && own.some((other) => nearWord(word, other))).length;
+    const own = new Set(tokens(`${node.name ?? ''} ${node.text ?? ''} ${node.attributes?.['placeholder'] ?? ''}`));
+    const exact = words.filter((word) => own.has(word)).length;
+    const roleEligible = role === undefined || roleMatched;
+    const near = roleEligible ? words.filter((word) => !own.has(word) && [...own].some((other) => nearWord(word, other))).length : 0;
     const shared = exact + near;
     // A request that named the node is answered by nodes of the asked role
     // (any role, when none was asked) sharing a word, or a near miss of one,
     // with the name; a role alone is enough only when no name was asked for;
     // a test id stands on its own either way.
-    const nameMatched = shared > 0 && (role === undefined || roleMatched);
+    const nameMatched = shared > 0 && roleEligible;
     if (!(nameMatched || testIdMatched || (roleMatched && words.length === 0))) continue;
     const score =
       (roleMatched ? 3 : 0) +
@@ -156,11 +159,12 @@ function locatorCandidates(error: E2EError, observation: AgentObservation, redac
 /**
  * Whether a word on screen is a near miss for one asked for: a typo or an
  * inflection of it (`Notes` for `Note`, `Submit` for `Sumbit`), by the budget
- * "did you mean" uses. Words under four letters only match exactly, so `and`
- * never answers `add`.
+ * "did you mean" uses. Words under four letters or over
+ * `MAX_NEAR_WORD_LENGTH` only match exactly, so `and` never answers `add`.
  */
 function nearWord(asked: string, seen: string): boolean {
-  return asked.length >= 4 && seen.length >= 4 && isTypoOf(asked, seen);
+  const eligible = (word: string) => word.length >= 4 && word.length <= MAX_NEAR_WORD_LENGTH;
+  return eligible(asked) && eligible(seen) && isTypoOf(asked, seen);
 }
 
 function tokens(text: string): string[] {

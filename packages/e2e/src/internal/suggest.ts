@@ -27,7 +27,9 @@ export function suggest(word: string, candidates: readonly string[]): string | u
 
 /** Whether `candidate` is close enough to `word` to be a typo of it, by the budget `suggest` uses. Ignores case. */
 export function isTypoOf(word: string, candidate: string): boolean {
-  return editDistance(word.toLowerCase(), candidate.toLowerCase()) <= typoBudget(word);
+  const budget = typoBudget(word);
+  if (Math.abs(word.length - candidate.length) > budget) return false;
+  return editDistance(word.toLowerCase(), candidate.toLowerCase()) <= budget;
 }
 
 /** The edits a typo may take: one for short words, a third of the length otherwise. */
