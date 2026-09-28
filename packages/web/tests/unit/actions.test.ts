@@ -89,8 +89,10 @@ describe('classifyActionError', () => {
   });
 
   it('keeps a not-actionable timeout whole when its log names no blocker', () => {
-    const waiting = pwTimeout(["waiting for getByRole('button')"]);
-    expect(classifyActionError(waiting, TAP).message).toBe(`tap did not become actionable in time: ${waiting.message}`);
+    for (const log of [["waiting for getByRole('button')"], ["waiting for getByText('element is not visible')"]]) {
+      const waiting = pwTimeout(log);
+      expect(classifyActionError(waiting, TAP).message).toBe(`tap did not become actionable in time: ${waiting.message}`);
+    }
   });
 
   it('maps a timeout whose log reached the dispatch to ACTION_MAY_HAVE_COMMITTED', () => {

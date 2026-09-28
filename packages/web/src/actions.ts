@@ -168,7 +168,7 @@ function redactSensitive(text: string, action: LocatorAction): string {
 }
 
 /** A call-log line naming what kept a node from being acted on: an element over it, or a state it never reached. */
-const BLOCKER_PATTERN = /intercepts pointer events|element is not (?:visible|enabled|stable|editable)|element is outside of the viewport/i;
+const BLOCKER_PATTERN = /^element is (?:not (?:visible|enabled|stable|editable)|outside of the viewport)$| intercepts pointer events$/i;
 
 /**
  * Playwright's timeout cut to its headline and the last blocker its call log
