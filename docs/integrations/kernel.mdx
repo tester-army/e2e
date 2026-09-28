@@ -1,0 +1,108 @@
+---
+title: Kernel browsers
+sidebarTitle: Kernel
+description: Run web targets in Kernel's hosted Chromium with the kernel() browser provider from @e2e-dev/integrations.
+---
+
+`kernel()` from `@e2e-dev/integrations/kernel` is a
+[browser provider](/browser#hosted-browsers) for [Kernel](https://kernel.sh).
+Each worker slot gets its own hosted Chromium, created when the run starts and
+deleted when it ends. Tests, config, and CI stay the same.
+
+## Setup
+
+```bash
+npm install --save-dev @e2e-dev/integrations @onkernel/sdk
+```
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+import { kernel } from '@e2e-dev/integrations/kernel';
+
+export default {
+  targets: [
+    {
+      name: 'kernel',
+      engine: web({
+        url: 'https://staging.example.com',
+        browser: kernel({ stealth: true }),
+        viewport: null,
+      }),
+    },
+  ],
+  workers: 4,
+} satisfies E2EConfig;
+```
+
+Set `KERNEL_API_KEY` in the environment `e2e run` starts in, such as a CI
+secret.
+
+## Fill the screen
+
+Size the screen with Kernel's `viewport` and leave the page size to the window
+with the web engine's `viewport: null`:
+
+```ts
+web({
+  url,
+  browser: kernel({ viewport: { width: 1920, height: 1080 } }),
+  viewport: null,
+})
+```
+
+Each attempt's window opens maximized, and the page
+[fills it](/viewports#fill-the-window): 1920 by 993 on a 1920 by 1080 screen,
+the rest being the tab strip and address bar. A fixed web `viewport`, even
+one matching the screen, gets a window smaller than the screen with the page
+emulated at the size you set inside it, so the live view shows
+the page cut off or in part of the window.
+
+## Options
+
+`kernel(options)` takes Kernel's create-browser body as is: `stealth`,
+`headless`, `timeout_seconds`, `profile`, `proxy_id`, `proxy`, `viewport`,
+`extensions`, `region`, `tags`, and the rest of `BrowserCreateParams` in the
+`@onkernel/sdk` you installed. On top of that:
+
+| Option   | Default    | Meaning |
+| -------- | ---------- | ------- |
+| `scope`  | `'worker'` | `'worker'`: one browser per worker slot for the run. `'attempt'`: a fresh browser per test attempt, retries included. See [Scopes](#scopes). |
+
+## Scopes
+
+`scope: 'worker'` keeps one browser per worker slot for the whole run and
+gives every attempt a new browser context on it, as a local run does: a test
+never sees another test's cookies, storage, or permissions. Kernel's initial
+tab stays open behind the attempts' windows. A context the engine creates
+does not share the browser's default context, so a Kernel `profile`'s saved
+cookies and storage are not there.
+
+`scope: 'attempt'` leases a fresh browser per attempt and runs the attempt in
+that browser's default context, on its own first tab, so a `profile` applies
+and the live view shows one tab. It costs a browser start per test and
+carries the limits of a [per-attempt lease](/browser#hosted-browsers): no
+`headers` or `basicAuth`, no `app.clearState()`, no session state.
+
+## Video
+
+`--video` records each attempt with the web engine's screencast of the page,
+as it does for a local browser.
+
+## What the provider does
+
+- Tags every browser `e2e_run`, `e2e_target`, `e2e_slot`, and, per attempt,
+  `e2e_attempt`, merged over the `tags` you pass, so a session in Kernel's
+  dashboard names the run that started it.
+- Defaults `timeout_seconds` to 600. A worker that dies before the engine
+  releases its browser leaves the browser idle, and Kernel deletes it after
+  that long. Pass your own to change it.
+- Logs `browser <id>, watch at <live view URL>` to the reporter as each
+  browser is created.
+- Deletes a browser that arrives after its request was cancelled, and treats
+  one Kernel no longer knows as already deleted.
+
+A missing `KERNEL_API_KEY` or a Kernel error fails the lease with that
+message. In `worker` scope that ends the run before any test, and the
+browsers other slots got are still deleted; in `attempt` scope it fails the
+attempt.

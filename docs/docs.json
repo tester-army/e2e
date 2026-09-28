@@ -94,6 +94,14 @@
             ]
           },
           {
+            "group": "Integrations",
+            "icon": "plug",
+            "pages": [
+              "integrations/index",
+              "integrations/kernel"
+            ]
+          },
+          {
             "group": "Migrate",
             "icon": "arrow-right-arrow-left",
             "pages": [

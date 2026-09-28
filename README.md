@@ -40,6 +40,8 @@ Maestro, and the full reference.
 - [`@e2e-dev/web`](./packages/web): the browser engine.
 - [`@e2e-dev/mobile`](./packages/mobile): the iOS and Android engine.
 - [`@e2e-dev/github`](./packages/github): the pull request comment reporter.
+- [`@e2e-dev/integrations`](./packages/integrations): official integrations
+  with hosted services, such as Kernel browsers.
 
 ## Contributing
 

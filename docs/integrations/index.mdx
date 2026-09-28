@@ -1,0 +1,27 @@
+---
+title: Integrations
+sidebarTitle: Overview
+description: Official integrations with hosted services, from the @e2e-dev/integrations package.
+---
+
+`@e2e-dev/integrations` connects e2e to hosted services through the engines'
+provider seams. Tests, config, and CI stay the same; the integration decides
+where a target's browser or device comes from.
+
+Each integration is its own subpath, and only that subpath imports the
+service's SDK. Install the package and the SDK of the service you use:
+
+```bash
+npm install --save-dev @e2e-dev/integrations @onkernel/sdk
+```
+
+<CardGroup cols={2}>
+  <Card title="Kernel" icon="cloud" href="/integrations/kernel">
+    Hosted Chromium for web targets, one browser per worker or per test.
+  </Card>
+</CardGroup>
+
+A service without an integration is one small provider in your project:
+see [Hosted browsers](/browser#hosted-browsers) for the web engine's
+`BrowserProvider` and [Hosted devices](/mobile#hosted-devices) for the mobile engine's
+`DeviceProvider`.

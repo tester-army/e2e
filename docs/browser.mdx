@@ -148,8 +148,10 @@ from a service and hands back the CDP endpoint to attach to. The engine
 attaches over CDP the way `connect` does, and adds the lifecycle `connect`
 lacks: it asks for a browser when one is needed and gives it back when its
 scope ends, on every exit path, so a session billed by the minute stops
-when the run no longer uses it. Nothing in the framework knows a vendor; a
-provider is a few dozen lines in your project. Add `viewport: null` when
+when the run no longer uses it. The engine knows no vendor: for
+[Kernel](/integrations/kernel), `kernel()` from `@e2e-dev/integrations/kernel` is the
+provider, and for any other service a provider is a few dozen lines in your
+project. Add `viewport: null` when
 the service shows the window in a live view: the page then
 [fills the window](/viewports#fill-the-window) instead of a fixed 1280 by
 720 area of it.
@@ -201,8 +203,9 @@ acquired it.
 included, and releases it in `endAttempt`, also after a start that failed.
 A lease that arrives once the attempt was cancelled or ended is given
 straight back, never used.
-The attempt runs in the browser's persistent default context, so the
-remote must contain only that context, and the limits of
+The attempt runs in the browser's persistent default context, on the
+browser's own first tab, so the remote must contain only that context, and
+the limits of
 [`connect.reconnectEndpoint`](/reference/web#recovering-a-cdp-transport)
 apply: no `headers` or `basicAuth` (both are `INVALID_CONFIG`), no
 `app.clearState()`, no session state capture or restore. After a transport

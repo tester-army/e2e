@@ -120,7 +120,7 @@ export default {
 | `agents` | `{ default: built-in }` | Agents by name. `default` is what tests run with; `e2e run --agent <name>` runs with another. Each entry is `createAgent(...)`, an options block `{ model, judge, context, maxSteps, maxModelCalls, providerOptions }`, or a custom `StepExecutor`. The built-in agent requires `model` as an AI SDK instance. Custom executors can implement `act` and `assert` without a model; `waitFor` and `extract` still need one. |
 | `credentials` | `{}` | Named `{ username, password }` entries; `password` is a string of at least 6 characters (code points) or a function returning the value. |
 | `secrets` | `{}` | Named values the model never sees (API keys, tokens): a string of at least 6 characters (code points) or a function returning the value. A name cannot also be a credential. |
-| `artifacts` | `['screenshot', 'trace']` | Kinds to keep (`screenshot`, `trace`, and the opt-in `video`), or `{ kinds, store, video }`; `video: { retain: 'on-failure' }` keeps only the recordings of attempts that did not pass. |
+| `artifacts` | `['screenshot', 'trace']` | Kinds to keep (`screenshot`, `trace`, and the opt-in `video`), or `{ kinds, store, video }`; `video: { retain: 'on-failure' }` keeps only the recordings of attempts that did not pass. A test's `video` option overrides the run's setting. |
 | `projectId` | the package name | Report and cache identity. |
 
 ## The app under test
@@ -136,8 +136,8 @@ identity for cache and session keys. `web()` accepts:
 | `services` | Dependency processes started before `command`, in order. |
 | `environment` | `'test'`, `'staging'`, `'production'`. Inferred from the host; a label for the report and the cache key. |
 | `identity` | Stable app identity for cache and session keys when the origin changes per deploy (preview URLs). |
-| `browser` | `'chromium'` (default), `'firefox'`, `'webkit'`, or a `BrowserProvider` object that leases hosted browsers over CDP: one per worker slot for the run (`scope: 'worker'`, the default, acquired at `prepare` and released at `finish`) or a fresh one per attempt (`scope: 'attempt'`, released at `endAttempt`, the same limits as `reconnectEndpoint`). A provider implies chromium and excludes `connect`. |
-| `viewport` | `{ width, height }`, default 1280x720; `null` follows the browser window (a hosted browser's live view, a headed run). |
+| `browser` | `'chromium'` (default), `'firefox'`, `'webkit'`, or a `BrowserProvider` object that leases hosted browsers over CDP (`kernel()` from `@e2e-dev/integrations/kernel` for Kernel, or your own): one per worker slot for the run (`scope: 'worker'`, the default, acquired at `prepare` and released at `finish`) or a fresh one per attempt (`scope: 'attempt'`, released at `endAttempt`, the same limits as `reconnectEndpoint`). A provider implies chromium and excludes `connect`. |
+| `viewport` | `{ width, height }`, default 1280x720; `null` follows the browser window (a hosted browser's live view, a headed run). On a headed hosted browser such as Kernel's, use `null` and size the service's screen: there, a fixed size gets a smaller, unmaximized window. |
 | `connect` | `{ cdpEndpoint }` attaches to a remote Chromium over CDP. Adding `reconnectEndpoint` uses a dedicated persistent default context, provisions a fresh browser per attempt, and reconnects only to the original browser and page. |
 | `headers` | Request headers sent to the app's site only (a Vercel `x-vercel-protection-bypass`, ngrok's `ngrok-skip-browser-warning`). Reaches every path onto the page, `agent.act` included; turns the browser HTTP cache off and blocks service workers. |
 | `basicAuth` | `{ username, password }` answering a `401` challenge. |

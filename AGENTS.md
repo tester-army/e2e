@@ -65,6 +65,14 @@ suites that consume the built packages the way a user would.
   `e2e/engine` only: the semantics every engine must reproduce
   (error taxonomy, text and URL matching, assertion polling, JSON-value rules)
   are exported there, and there is no `e2e/internal` subpath.
+- `packages/integrations` - the published `@e2e-dev/integrations` package:
+  official integrations with hosted services, one subpath each
+  (`@e2e-dev/integrations/kernel`) and no root entry. A subpath is the only
+  place its vendor SDK is imported, and every SDK and engine is an optional
+  peer, so a project installs the SDK of the service it uses and nothing
+  else. An integration implements an engine's provider seam
+  (`BrowserProvider`, `DeviceProvider`) and imports that engine's types only;
+  the engines never know it exists.
 - `apps/testbed` (`@e2e-dev/testbed`, private) — dogfood project that
   consumes the **built** packages like a real user would: the playground app
   where every runner feature (sessions, routes, downloads, frames, uploads,
@@ -427,10 +435,12 @@ trees, on both platforms, without a device.
   any prose an agent writes here; other agents install it with
   `npx skills add okwasniewski/dotfiles --skill unslop`.
 - Releases go through changesets: a user-visible change adds a `.changeset/`
-  entry. Peer ranges point one way only (engine -> `e2e`) and read
-  `>=<major.minor.patch> <major+1>` of the runner the engine was built against
-  (`>=0.15.0 <1` today); `scripts/check-peer-ranges.ts` (`pnpm check`) fails on
-  any other shape. Narrow or exact, every runner minor (exact: every patch too)
+  entry. Peer ranges point one way only (engine -> `e2e`, integration ->
+  engine) and read `>=<major.minor.patch> <major+1>` of the sibling the
+  package was built against (`>=0.15.0 <1` on the runner today);
+  `scripts/check-peer-ranges.ts` (`pnpm check`) fails on any other shape for
+  every peer one package under `packages/` has on another (vendor SDK peers
+  such as `@onkernel/sdk` are not checked). Narrow or exact, every runner minor (exact: every patch too)
   falls out of range, and changesets 3 then patch-bumps each engine and
   rewrites its pin, never a major (`determineDependents` in
   `@changesets/assemble-release-plan` patches an out-of-range peer dependent).
@@ -468,9 +478,10 @@ trees, on both platforms, without a device.
   after `changeset version` so `init` records those versions, and `init` pins a
   prerelease engine exactly, since a caret on a prerelease resolves to the
   newest canary of that tuple, whose peer range names a different runner build.
-  The snapshot also pins every `e2e` peer to that runner build, since a
-  prerelease satisfies no `>=x <1` range: the tarballs need the pin, main must
-  not keep it, so the restore step widens it to `>=<runner major.minor.patch> <1`
+  The snapshot also pins every `e2e` peer to that runner build (and an
+  integration's engine peer to that engine build), since a prerelease
+  satisfies no `>=x <1` range: the tarballs need the pin, main must not keep
+  it, so the restore step widens it to `>=<sibling major.minor.patch> <1`
   before the output (versions, changelogs, consumed changesets, peers) is
   committed to main as `chore: release`. A `changeset publish` typed by hand
   needs `node scripts/restore-peer-ranges.ts` after it, or `pnpm check` fails

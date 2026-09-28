@@ -400,6 +400,27 @@ importers:
         specifier: 5.0.1
         version: 5.0.1(@types/node@26.6.2)(vite@8.1.5(@types/node@26.6.2)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
 
+  packages/integrations:
+    devDependencies:
+      '@e2e-dev/web':
+        specifier: workspace:*
+        version: link:../web
+      '@onkernel/sdk':
+        specifier: 0.113.0
+        version: 0.113.0
+      '@types/node':
+        specifier: 26.6.2
+        version: 26.6.2
+      e2e:
+        specifier: workspace:*
+        version: link:../e2e
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 5.0.1
+        version: 5.0.1(@types/node@26.6.2)(vite@8.1.5(@types/node@26.6.2)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.14)(yaml@2.9.0))
+
   packages/mobile:
     dependencies:
       agent-device:
@@ -2054,6 +2075,9 @@ packages:
   '@nodelib/fs.walk@1.2.8':
     resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
     engines: {node: '>= 8'}
+
+  '@onkernel/sdk@0.113.0':
+    resolution: {integrity: sha512-tv6nTy6YqWKY3SZ/QhDNOpofRGlBUwyFVt5fg2Ku5EGJP16/3vnec91ZdBGYRxYgn0fFHn6gmg0x32AJcJSzOg==}
 
   '@openai/codex-sdk@0.149.1':
     resolution: {integrity: sha512-R00Rz5327LefZggAxl28r7vFQq1vxa91OxtjZJOsQfAM/MyH8InW5qwwRu6pzUmRGp1E29XrOzm7u1TeV5Yz2A==}
@@ -9291,6 +9315,8 @@ snapshots:
     dependencies:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.20.3
+
+  '@onkernel/sdk@0.113.0': {}
 
   '@openai/codex-sdk@0.149.1':
     dependencies:
