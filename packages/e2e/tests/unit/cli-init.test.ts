@@ -397,6 +397,19 @@ describe('e2e init', () => {
       devDependencies: { ...manifest.devDependencies, 'e2e': expect.any(String), playwright: '^1' },
     });
     expect(read('package.json')).toContain('\r\n    "name"');
+    const written = JSON.parse(read('package.json'));
+    expect(Object.keys(written)).toEqual(Object.keys(manifest));
+    expect(Object.keys(written.devDependencies)).toEqual(['@e2e-dev/web', 'e2e', 'playwright', 'vite']);
+    expect(Object.keys(written.scripts)).toEqual(['dev', 'test:e2e']);
+  });
+
+  it('appends to a hand-ordered devDependencies block and to scripts even when they sort', async () => {
+    const manifest = { name: 'existing-app', scripts: { lint: 'oxlint', typecheck: 'tsc' }, devDependencies: { vite: '^7.0.0', '@types/node': '^24.0.0' } };
+    writeFileSync(path.join(dir, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+    await init(dir, { yes: true });
+    const written = JSON.parse(read('package.json'));
+    expect(Object.keys(written.scripts)).toEqual(['lint', 'typecheck', 'test:e2e']);
+    expect(Object.keys(written.devDependencies).slice(0, 2)).toEqual(['vite', '@types/node']);
   });
 
   it("keeps the app's own playwright and adds only the engine next to it", async () => {

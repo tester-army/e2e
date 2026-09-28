@@ -3,6 +3,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
+import { compareCodePoints } from '../../internal/globs.ts';
+import { isPlainObject } from '../../internal/options.ts';
 
 const dependencyBlock = z.record(z.string(), z.string()).optional();
 const packageSchema = z.looseObject({
@@ -62,9 +64,42 @@ export function addScripts(manifest: PackageManifest, scripts: Readonly<Record<s
   };
 }
 
-/** Serializes with the original manifest's indentation and newline convention. */
+/**
+ * Serializes with the original manifest's indentation, newline convention,
+ * and key order: parsing puts the schema's keys first, so without this an
+ * existing project's `package.json` would come back reshuffled.
+ */
 export function serializePackage(manifest: PackageManifest, original: string | undefined): string {
   const indent = original?.match(/\n([\t ]+)"/)?.[1] ?? '  ';
   const newline = original?.includes('\r\n') ? '\r\n' : '\n';
-  return `${JSON.stringify(manifest, null, indent).replaceAll('\n', newline)}${newline}`;
+  const parsed: unknown = original === undefined ? undefined : JSON.parse(original);
+  const written = isPlainObject(parsed) ? inOriginalOrder(manifest, parsed) : manifest;
+  return `${JSON.stringify(written, null, indent).replaceAll('\n', newline)}${newline}`;
+}
+
+/**
+ * The manifest with its keys in the original's order and new keys after them.
+ * The sections init adds to keep their order the same way, except that a
+ * sorted `devDependencies` (as package managers write it) stays sorted.
+ */
+function inOriginalOrder(manifest: PackageManifest, original: Record<string, unknown>): Record<string, unknown> {
+  const ordered = ordering(manifest, original);
+  for (const section of ['devDependencies', 'scripts'] as const) {
+    const block = manifest[section];
+    const before = original[section];
+    if (block === undefined || !isPlainObject(before)) continue;
+    const entries = Object.entries(ordering(block, before));
+    const keys = Object.keys(before);
+    const sorted = section === 'devDependencies' && keys.every((key, index) => index === 0 || compareCodePoints(keys[index - 1]!, key) <= 0);
+    ordered[section] = Object.fromEntries(sorted ? entries.toSorted(([a], [b]) => compareCodePoints(a, b)) : entries);
+  }
+  return ordered;
+}
+
+/** `value`'s entries, those `reference` has first in its order, the rest after in their own. */
+function ordering(value: Record<string, unknown>, reference: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(reference)) if (key in value) out[key] = value[key];
+  for (const [key, entry] of Object.entries(value)) if (!(key in out)) out[key] = entry;
+  return out;
 }
