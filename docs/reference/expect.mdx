@@ -95,7 +95,7 @@ export interface AsyncExpectation {
   /** Waits for exact normalized text; a list waits for exactly that many matches, each with its entry's text, in order. */
   toHaveText(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
   toHaveText(expected: readonly TextMatch[], options?: { timeout?: number }): Promise<void>;
-  /** Waits for contained normalized text; a list waits for exactly that many matches, each containing its entry, in order. */
+  /** Waits for contained normalized text; a list waits for each entry to be contained by a distinct match, in order, extra matches allowed. */
   toContainText(expected: TextMatch, options?: { timeout?: number }): Promise<void>;
   toContainText(expected: readonly TextMatch[], options?: { timeout?: number }): Promise<void>;
   /** Waits for a form control's value, compared as it is. */
