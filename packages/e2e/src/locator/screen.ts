@@ -1,7 +1,7 @@
 /** Public Screen and Locator surfaces bound to one attempt. */
 
 import nodePath from 'node:path';
-import type { LocatorExpression, SemanticNode } from '../engine/surface.ts';
+import type { LocatorAction, LocatorExpression, SemanticNode } from '../engine/surface.ts';
 import { locatorBrand, secretBrand } from '../internal/brands.ts';
 import { asEngineError, ConfigurationError, TestError } from '../internal/errors.ts';
 import { requireFinitePoint } from '../internal/geometry.ts';
@@ -269,6 +269,22 @@ class LocatorImpl extends ScreenImpl implements Locator {
     return this.context.steps.run('locator', api, this.label, body);
   }
 
+  /**
+   * One action on the node for a verb that takes only a timeout. Any other
+   * option key (Playwright's `trial`, `force`, `noWaitAfter`) throws before
+   * the step starts, so nothing is resolved or dispatched.
+   */
+  private perform(
+    verb: string,
+    action: LocatorAction | ((deadline: Deadline) => Promise<LocatorAction>),
+    options: ActionOptions | undefined,
+  ): Promise<void> {
+    rejectUnknownOptions(verb, options, ['timeout']);
+    return this.action(`locator.${verb}`, () =>
+      this.context.engine.perform(this.expression, action, options?.timeout),
+    );
+  }
+
   tap(options?: TapOptions): Promise<void> {
     return this.tapWith('tap', options);
   }
@@ -298,15 +314,11 @@ class LocatorImpl extends ScreenImpl implements Locator {
   }
 
   doubleTap(options?: ActionOptions): Promise<void> {
-    return this.action('locator.doubleTap', () =>
-      this.context.engine.perform(this.expression, { kind: 'doubleTap' }, options?.timeout),
-    );
+    return this.perform('doubleTap', { kind: 'doubleTap' }, options);
   }
 
   secondaryTap(options?: ActionOptions): Promise<void> {
-    return this.action('locator.secondaryTap', () =>
-      this.context.engine.perform(this.expression, { kind: 'secondaryTap' }, options?.timeout),
-    );
+    return this.perform('secondaryTap', { kind: 'secondaryTap' }, options);
   }
 
   longPress(options?: LongPressOptions): Promise<void> {
@@ -318,6 +330,7 @@ class LocatorImpl extends ScreenImpl implements Locator {
   }
 
   fill(value: string | Secret, options?: ActionOptions): Promise<void> {
+    rejectUnknownOptions('fill', options, ['timeout']);
     const sensitive = isSecret(value);
     // Resolved inside the recorded step, so a failing provider fails the fill.
     return this.action('locator.fill', async () =>
@@ -352,47 +365,31 @@ class LocatorImpl extends ScreenImpl implements Locator {
   }
 
   clear(options?: ActionOptions): Promise<void> {
-    return this.action('locator.clear', () =>
-      this.context.engine.perform(this.expression, { kind: 'clear' }, options?.timeout),
-    );
+    return this.perform('clear', { kind: 'clear' }, options);
   }
 
   press(key: string, options?: ActionOptions): Promise<void> {
-    return this.action('locator.press', () =>
-      this.context.engine.perform(this.expression, { kind: 'press', key }, options?.timeout),
-    );
+    return this.perform('press', { kind: 'press', key }, options);
   }
 
   check(options?: ActionOptions): Promise<void> {
-    rejectUnknownOptions('check', options, ['timeout']);
-    return this.action('locator.check', () =>
-      this.context.engine.perform(this.expression, { kind: 'check' }, options?.timeout),
-    );
+    return this.perform('check', { kind: 'check' }, options);
   }
 
   uncheck(options?: ActionOptions): Promise<void> {
-    rejectUnknownOptions('uncheck', options, ['timeout']);
-    return this.action('locator.uncheck', () =>
-      this.context.engine.perform(this.expression, { kind: 'uncheck' }, options?.timeout),
-    );
+    return this.perform('uncheck', { kind: 'uncheck' }, options);
   }
 
   selectOption(value: SelectOption, options?: ActionOptions): Promise<void> {
-    return this.action('locator.selectOption', () =>
-      this.context.engine.perform(this.expression, { kind: 'selectOption', value }, options?.timeout),
-    );
+    return this.perform('selectOption', { kind: 'selectOption', value }, options);
   }
 
   focus(options?: ActionOptions): Promise<void> {
-    return this.action('locator.focus', () =>
-      this.context.engine.perform(this.expression, { kind: 'focus' }, options?.timeout),
-    );
+    return this.perform('focus', { kind: 'focus' }, options);
   }
 
   hover(options?: ActionOptions): Promise<void> {
-    return this.action('locator.hover', () =>
-      this.context.engine.perform(this.expression, { kind: 'hover' }, options?.timeout),
-    );
+    return this.perform('hover', { kind: 'hover' }, options);
   }
 
   setInputFiles(paths: string | readonly string[], options?: ActionOptions): Promise<void> {
@@ -402,38 +399,29 @@ class LocatorImpl extends ScreenImpl implements Locator {
     }
     const base = this.context.projectRoot;
     const resolved = list.map((entry) => (base === undefined ? entry : nodePath.resolve(base, entry)));
-    return this.action('locator.setInputFiles', () =>
-      this.context.engine.perform(
-        this.expression,
-        { kind: 'setInputFiles', paths: resolved },
-        options?.timeout,
-      ),
-    );
+    return this.perform('setInputFiles', { kind: 'setInputFiles', paths: resolved }, options);
   }
 
   dragTo(target: Locator, options?: ActionOptions): Promise<void> {
     const internals = this.ownLocator(target, 'dragTo');
     // The drop target resolves inside the retry, so a superseded target ref
     // is re-resolved along with the source instead of looping until timeout.
-    return this.action('locator.dragTo', () =>
-      this.context.engine.perform(
-        this.expression,
-        async (deadline) => ({
-          kind: 'dragTo',
-          target: await this.context.engine.resolveExactlyOne(internals.expression, deadline),
-        }),
-        options?.timeout,
-      ),
+    return this.perform(
+      'dragTo',
+      async (deadline) => ({
+        kind: 'dragTo',
+        target: await this.context.engine.resolveExactlyOne(internals.expression, deadline),
+      }),
+      options,
     );
   }
 
   scrollIntoView(options?: ActionOptions): Promise<void> {
-    return this.action('locator.scrollIntoView', () =>
-      this.context.engine.perform(this.expression, { kind: 'scrollIntoView' }, options?.timeout),
-    );
+    return this.perform('scrollIntoView', { kind: 'scrollIntoView' }, options);
   }
 
   override swipe(options: SwipeOptions & ActionOptions): Promise<void> {
+    rejectUnknownOptions('swipe', options, ['direction', 'momentum', 'timeout']);
     return this.action('locator.swipe', () =>
       this.context.engine.perform(
         this.expression,

@@ -174,37 +174,35 @@ test('actions and state', async ({ app, screen, web }) => {
 test('check and uncheck refuse an unknown option and leave the box untouched', async ({ app, screen, web }) => {
   await app.open();
   await web.evaluate(() => {
-    const box = document.querySelector('#notifications')!;
-    Object.assign(window, { toggles: 0 });
+    const box = document.querySelector<HTMLInputElement>('#notifications')!;
+    box.dataset.events = '0';
     for (const type of ['input', 'change', 'click']) {
-      box.addEventListener(type, () => Object.assign(window, { toggles: (window as never as { toggles: number }).toggles + 1 }));
+      box.addEventListener(type, () => { box.dataset.events = String(Number(box.dataset.events) + 1); });
     }
   });
-  const toggles = () => web.evaluate(() => (window as never as { toggles: number }).toggles);
   const box = screen.getByLabel('Notifications');
-  const refused = async (call: () => Promise<void>) => {
+  const code = async (call: () => Promise<void>) => {
     try {
       await call();
     } catch (error) {
-      if ((error as { code?: string }).code === 'INVALID_ARGUMENT') return;
-      throw error;
+      return (error as { code?: string }).code;
     }
-    throw new Error('an unknown option was accepted');
+    return 'no error';
   };
 
-  await refused(() => box.check({ trial: true } as never));
+  expect(await code(() => box.check({ trial: true } as never))).toBe('INVALID_ARGUMENT');
   await expect(box).not.toBeChecked();
-  expect(await toggles()).toBe(0);
+  await expect(box).toHaveAttribute('data-events', '0');
   await box.check();
   await expect(box).toBeChecked();
-  expect(await toggles()).toBe(3);
+  await expect(box).toHaveAttribute('data-events', '3');
 
-  await refused(() => box.uncheck({ trial: true } as never));
+  expect(await code(() => box.uncheck({ trial: true } as never))).toBe('INVALID_ARGUMENT');
   await expect(box).toBeChecked();
-  expect(await toggles()).toBe(3);
+  await expect(box).toHaveAttribute('data-events', '3');
   await box.uncheck();
   await expect(box).not.toBeChecked();
-  expect(await toggles()).toBe(6);
+  await expect(box).toHaveAttribute('data-events', '6');
 });
 
 test('class assertions report the observed class on failure', async ({ app, web }) => {

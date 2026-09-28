@@ -134,6 +134,7 @@ to do today.
 | `click({ position })` | `tap({ position })`, an offset from the node's top-left corner | `screen` | renamed |
 | `click({ force })` | not yet; `tap({ position })` skips every actionability check but the scroll into view | `screen` | missing |
 | `click({ modifiers, clickCount, delay, trial })` | not yet | `web` | missing |
+| `{ trial }`, `{ force }`, `{ noWaitAfter }` on `check()`, `fill()`, and the other actions | not yet; an option the action does not name is `INVALID_ARGUMENT` before the node resolves, never ignored | `screen` | missing |
 | `fill(value)` | the same; also takes a `Secret` | `screen` | same |
 | `pressSequentially(text, { delay })` | the same; keystrokes through the platform keyboard, a `Secret` is refused | `screen` | same |
 | `press(key)` | the same; modifiers join with `+`, see the [key grammar](/reference/engine#keys) | `screen` | same |
