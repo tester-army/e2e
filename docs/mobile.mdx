@@ -73,7 +73,7 @@ agent-device's `prepare ios-runner`, whose startup budget covers a cold
 simulator, then opens the app once with neither, to put the worker's session
 on the app; the process a test sees comes from `app.open()`. A build the
 suite installs itself gets the runner start only, so the first test's
-`app.open()` never pays for it. Arguments that select a build mode change
+`app.open()` does not pay for it. Arguments that select a build mode change
 what the app is: give each mode its own `identity` so their recordings stay
 apart.
 

@@ -270,7 +270,7 @@ describe('automation runner failures through the engine', () => {
       throw new Error('runner still installing');
     });
     await h.engine.prepare!(prepareInfo(lines));
-    expect(lines[3]).toMatch(/runner not warmed up.*runner still installing/);
+    expect(lines[3]).toMatch(/Settings did not open.*runner still installing/);
   });
 
   it('closes every session a failed warm-up opened at finish, and still releases the leases when a close fails', async () => {

@@ -390,7 +390,7 @@ export interface TapOptions extends ClickOptions {
 
 /** `longPress` options: the hold time in milliseconds, 100 through 10000, default the engine's own. */
 export interface LongPressOptions extends ActionOptions {
-  /** Hold time in milliseconds, 100 through 10000; unset, the engine's default (500 on the web, 1000 on a device). */
+  /** Hold time in milliseconds, 100 through 10000; unset, the engine's default. */
   duration?: number;
 }
 

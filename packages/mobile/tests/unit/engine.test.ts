@@ -229,7 +229,7 @@ describe('lifecycle', () => {
     ]);
   });
 
-  it('logs a runner that does not warm up in prepare instead of failing the run; a device that cannot boot does fail it', async () => {
+  it('logs an app that does not open in prepare instead of failing the run; a device that cannot boot does fail it', async () => {
     const h = harness({ device: 'iPhone 16e' });
     h.fake.respond('apps.open', () => {
       throw new Error('runner still installing');
@@ -237,7 +237,7 @@ describe('lifecycle', () => {
     const lines: string[] = [];
     const info = { runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: (line: string) => lines.push(line) };
     const result = await h.engine.prepare!(info);
-    expect(lines[1]).toMatch(/runner not warmed up.*runner still installing/);
+    expect(lines[1]).toMatch(/Settings did not open.*runner still installing/);
     // Nothing put the session on the app, and the binding says so: the worker's first launch binds it itself.
     const handed = result?.env ?? {};
     expect(handed[poolVariableIn(handed, 'IOS')]).toBe(JSON.stringify([{ device: 'iPhone 16e' }]));
@@ -257,7 +257,8 @@ describe('lifecycle', () => {
     const info = { runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: (line: string) => lines.push(line) };
     await h.engine.prepare!(info);
     expect(lines[1]).toMatch(/runner not prepared.*runner still building/);
-    expect(h.fake.methods()).toEqual(['devices.boot', 'command.prepare', 'apps.open']);
+    // The warm-up open would start the runner again under open's shorter budget, so the slot is left unopened.
+    expect(h.fake.methods()).toEqual(['devices.boot', 'command.prepare']);
 
     h.fake.respond('command.prepare', () => {
       throw new AppError('RUNNER_BUSY', 'the runner is still finishing a command');

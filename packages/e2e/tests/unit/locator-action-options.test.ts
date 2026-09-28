@@ -41,16 +41,18 @@ const CALLS: Record<string, Call> = {
 /** A screen over a checkbox and a drop region, logging every node lookup and every action the engine receives. */
 function boxScreen() {
   const performed: string[] = [];
+  const actions: LocatorAction[] = [];
   const locate = vi.fn(async (expression: LocatorExpression) => resolveExpression(expression, NODES));
   const { screen, steps } = screenOver({
     locate,
     observe: () => snapshot(NODES),
     perform: (_ref, action) => {
       performed.push(action.kind);
+      actions.push(action);
     },
     timeoutMs: 1_000,
   });
-  return { screen, steps, performed, locate };
+  return { screen, steps, performed, actions, locate };
 }
 
 describe('locator action options', () => {
@@ -151,5 +153,24 @@ describe('locator action options', () => {
         Promise.resolve().then(() => screen.getByLabel('Agree').tap({ modifiers: ['Shift'], position: { x: 1, y: 1 } })),
       ).rejects.toMatchObject({ code: 'INVALID_ARGUMENT', message: expect.stringContaining('modifiers with a position') });
     });
+  });
+
+  it('longPress sends a duration from 100 through 10000 and none when unset, so the engine default holds', async () => {
+    const { screen, actions } = boxScreen();
+    const box = screen.getByLabel('Agree');
+    await box.longPress();
+    await box.longPress({ duration: 100 });
+    await box.longPress({ duration: 10_000 });
+    expect(actions).toEqual([{ kind: 'longPress' }, { kind: 'longPress', durationMs: 100 }, { kind: 'longPress', durationMs: 10_000 }]);
+    expect(Object.hasOwn(actions[0]!, 'durationMs')).toBe(false);
+  });
+
+  it.each([99, 10_001, 1.5, null])('longPress refuses a duration of %s before any action', async (duration) => {
+    const { screen, performed } = boxScreen();
+    await expect(Promise.resolve().then(() => screen.getByLabel('Agree').longPress({ duration: invalid<number>(duration) }))).rejects.toMatchObject({
+      code: 'INVALID_ARGUMENT',
+      message: expect.stringContaining('longPress duration must be an integer from 100 through 10000'),
+    });
+    expect(performed).toEqual([]);
   });
 });

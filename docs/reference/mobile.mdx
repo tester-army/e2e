@@ -169,11 +169,14 @@ leases hosted devices; see [Hosted devices](/mobile#hosted-devices) for the
 Devices boot in `prepare`, once per run and before the run's clock starts, so
 a cold boot on CI is never charged against `launchTimeout`. agent-device
 commands take no abort signal, so a timed-out command keeps running on the
-device; the next attempt waits for it to settle. `prepare` brings the pinned
-`app` up once per device when it is installed, so the automation runner's
-first launch is paid before the first test; a build the suite installs itself
-comes up with the first `app.open()`, which relaunches it fresh whenever a
-test asks; without a pinned app the model opens apps with the `open_app` tool.
+device; the next attempt waits for it to settle. On iOS, `prepare` starts the
+automation runner on every device with agent-device's `prepare ios-runner`,
+so its first launch is paid before the first test, then brings the pinned
+`app` up once per device when it is installed; a build the suite installs
+itself comes up with the first `app.open()`, which relaunches it fresh
+whenever a test asks; without a pinned app the model opens apps with the
+`open_app` tool. A runner that does not start in `prepare` is logged and left
+to the first attempt, and that device's app is not opened there.
 
 `launchArguments` and `permissions` ride every fresh launch of the pinned
 app: `app.open()`, `app.restart()`, and `app.clearState()`, which resets the
