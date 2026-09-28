@@ -201,6 +201,7 @@ test('never registered', async () => {});
         'tests/good.e2e.ts': `import { test } from 'e2e';\n\ntest('runs', async () => {});\n`,
         'tests/broken.e2e.ts': `import { missing } from './not-written-yet.ts';\nimport { test } from 'e2e';\n\ntest('never collected', async () => { missing(); });\n`,
         'tests/invalid.e2e.ts': `import { test } from 'e2e';\n\ntest('no body', 'not a function' as never);\n`,
+        'tests/duplicate.e2e.ts': `import { test } from 'e2e';\n\ntest('twice', async () => {});\ntest('twice', async () => {});\n`,
       };
       const notices: string[] = [];
       const narrowed = await runProject(files, {
@@ -211,6 +212,7 @@ test('never registered', async () => {});
       expect(narrowed.outcome.report.run.results.map((result) => result.titlePath.at(-1))).toEqual(['runs']);
       expect(notices).toEqual([
         expect.stringMatching(/^skipped tests\/broken\.e2e\.ts, which no positional selected and which failed to collect: Cannot find module .*not-written-yet\.ts/),
+        expect.stringMatching(/^skipped tests\/duplicate\.e2e\.ts, which no positional selected and which failed to collect: duplicate title path twice/),
         expect.stringMatching(/^skipped tests\/invalid\.e2e\.ts, which no positional selected and which failed to collect: (?!tests\/)/),
       ]);
       narrowed.project.cleanup();

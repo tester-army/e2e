@@ -439,22 +439,28 @@ export async function collect(
   const uncollected: UncollectedFile[] = [];
   for (const file of discovered) {
     const absolutePath = path.join(config.projectRoot, file);
+    const skippable = positionals.length > 0 && !selected.has(file);
     let registration: ModuleRegistration;
     try {
       registration = await collectModule(() => importModule(absolutePath, 'collect'), absolutePath);
     } catch (cause) {
-      // A registration error names the option but not the module it came from.
-      if (positionals.length > 0 && !selected.has(file)) {
+      if (skippable) {
         uncollected.push({ file, reason: cause instanceof CollectionError ? cause.message : explainModuleError(cause, absolutePath) });
         continue;
       }
+      // A registration error names the option but not the module it came from.
       if (cause instanceof CollectionError) throw new CollectionError(`${file}: ${cause.message}`, { cause });
       throw new CollectionError(
         `failed to collect ${file}: ${explainModuleError(cause, absolutePath)}`,
         { cause },
       );
     }
-    files.push(collectFromRegistration(config.projectRoot, absolutePath, registration, selected.has(file), lines.get(file)));
+    try {
+      files.push(collectFromRegistration(config.projectRoot, absolutePath, registration, selected.has(file), lines.get(file)));
+    } catch (cause) {
+      if (!skippable || !(cause instanceof CollectionError)) throw cause;
+      uncollected.push({ file, reason: cause.message });
+    }
   }
   return {
     files,
