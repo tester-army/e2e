@@ -9,7 +9,7 @@ and `onRunFinished` to process the final report and artifacts.
 
 ```ts
 import type { E2EConfig, Reporter } from 'e2e';
-import { web } from '@e2edev/web';
+import { web } from '@e2e-dev/web';
 
 const upload: Reporter = {
   name: 'upload',
@@ -61,7 +61,7 @@ naming the file. `markdown` does the same with `summary.md` through
 `renderMarkdownReport(report, options)`, also exported, so your own reporter
 can post the same page elsewhere; `failurePages` links each block to a page
 by result id. The built-in reporter also writes one page per failed or flaky
-test under `failures/`, with the screen at failure inline. [`@e2edev/github`](/github) is that
+test under `failures/`, with the screen at failure inline. [`@e2e-dev/github`](/github) is that
 reporter for GitHub Actions.
 
 A name and at least one handler are required; anything else is
@@ -159,7 +159,7 @@ abandoned reporter keeps the CLI alive after the run has ended.
 
 With `--last-failed`, `lastRun` is the report the rerun selected from. The
 rerun's own report lists the tests it left out as unselected, so a reporter
-that keeps one place current, the way `@e2edev/github` keeps a pull request
+that keeps one place current, the way `@e2e-dev/github` keeps a pull request
 comment, folds the rerun into `lastRun` to show both runs as one.
 
 The rows a reporter resolves with print under the `list` summary in the same

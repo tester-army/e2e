@@ -1,4 +1,4 @@
-import { test } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 test.describe('browser fixture', { requires: ['web'], tags: ['browser'] }, () => {

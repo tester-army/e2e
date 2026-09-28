@@ -1,4 +1,4 @@
-# @e2edev/web-benchmark
+# @e2e-dev/web-benchmark
 
 A Next.js app of self-contained scenarios that are hard to automate, and the
 e2e suites written against them. This is where we test writing tests with
@@ -19,7 +19,7 @@ planted bug.
   `plantedBug`. One component per scenario in `app/src/Examples/`, served at
   `/e/<slug>`; the home page lists them all.
 - `e2e.config.ts` + `tests/`: the deterministic suite. Gates every PR
-  (`benchmark.yml`); `@e2edev/github` posts each run as one pull request
+  (`benchmark.yml`); `@e2e-dev/github` posts each run as one pull request
   comment. Every scenario has a deterministic twin, `tests/<slug>.e2e.ts`,
   driven with locators and `expect` only: the floor the agentic suite must
   match, so a red agentic run is the model, not the tools. A bug-book
@@ -48,10 +48,10 @@ does not exist yet at install time, and CI installs before it builds.
 
 ```bash
 pnpm build                                          # from the repo root, once
-pnpm --filter @e2edev/web-benchmark test            # build the app, run tests/
-pnpm --filter @e2edev/web-benchmark test:headed
-AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/web-benchmark test:agent
-pnpm --filter @e2edev/web-benchmark dev             # browse the scenarios on :4280
+pnpm --filter @e2e-dev/web-benchmark test            # build the app, run tests/
+pnpm --filter @e2e-dev/web-benchmark test:headed
+AI_GATEWAY_API_KEY=... pnpm --filter @e2e-dev/web-benchmark test:agent
+pnpm --filter @e2e-dev/web-benchmark dev             # browse the scenarios on :4280
 ```
 
 ### Writing tests
@@ -62,7 +62,7 @@ already answering on port 4280 is used as is and nothing is started or
 stopped. Run one file at a time from the package directory:
 
 ```bash
-pnpm --filter @e2edev/web-benchmark dev
+pnpm --filter @e2e-dev/web-benchmark dev
 cd apps/web-benchmark
 node node_modules/e2e/dist/cli/bin.js run tests/login-form.e2e.ts --headed
 ```

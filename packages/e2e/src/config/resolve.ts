@@ -634,7 +634,7 @@ function resolveTargets(raw: E2EConfig, projectRoot: string, ports: PortAssignme
       const got = typeof target.engine === 'string' ? `the string ${JSON.stringify(target.engine)}` : `a ${typeof target.engine}`;
       throw new ConfigurationError(
         'INVALID_CONFIG',
-        `${where} engine must be an engine handle, got ${got}; call the engine's factory: web({ url }) from @e2edev/web, mobile({ platform, app }) from @e2edev/mobile, or your own defineEngine(...)`,
+        `${where} engine must be an engine handle, got ${got}; call the engine's factory: web({ url }) from @e2e-dev/web, mobile({ platform, app }) from @e2e-dev/mobile, or your own defineEngine(...)`,
       );
     }
     const platform = resolvePlatform(target, where);

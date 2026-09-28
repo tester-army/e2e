@@ -57,7 +57,7 @@ suites that consume the built packages the way a user would.
     are the whole public surface: the flows, stores, and fetch behind them
     are module-private, not a library for other products. `tests/live/` holds hand-run
     checks that need a stored login and are never part of `pnpm test`.
-- `packages/web` — the published `@e2edev/web` package: the
+- `packages/web` — the published `@e2e-dev/web` package: the
   browser engine, built with the public `defineEngine`, contributing the
   `web` fixture and `expect(web)`. It depends on `e2e` (peer), never the
   reverse; a target names it explicitly as `engine: web()`. There is
@@ -65,13 +65,13 @@ suites that consume the built packages the way a user would.
   `e2e/engine` only: the semantics every engine must reproduce
   (error taxonomy, text and URL matching, assertion polling, JSON-value rules)
   are exported there, and there is no `e2e/internal` subpath.
-- `apps/testbed` (`@e2edev/testbed`, private) — dogfood project that
+- `apps/testbed` (`@e2e-dev/testbed`, private) — dogfood project that
   consumes the **built** packages like a real user would: the playground app
   where every runner feature (sessions, routes, downloads, frames, uploads,
   serial groups, the executor seams, verdict edge cases, the reporter under
   stress, `explore`) has a deterministic test. Hard UI surfaces belong to the
   benchmarks, not here.
-- `apps/web-benchmark` (`@e2edev/web-benchmark`, private) — a Next.js app of
+- `apps/web-benchmark` (`@e2e-dev/web-benchmark`, private) — a Next.js app of
   self-contained hard-surface scenarios (shadow DOM, canvas, iframes, native
   dialogs, planted bugs) at `/e/<slug>`, copied from the tester-army web
   benchmark, plus the e2e suites written against them (`tests/` and
@@ -82,11 +82,11 @@ suites that consume the built packages the way a user would.
   like the mobile benchmark's: plain controls, one exercise per agent verb the
   hard scenarios never reach, with one agentic test per verb in
   `tests-agent/control-inventory.e2e.ts`.
-- `apps/mobile-benchmark` (`@e2edev/mobile-benchmark`, private) — an Expo
+- `apps/mobile-benchmark` (`@e2e-dev/mobile-benchmark`, private) — an Expo
   app of hard mobile surfaces (merged or hidden accessibility trees, native
   alerts over modals, keyboard-covered submits, virtualized lists, a WebView,
   OS permission and payment sheets), copied from the tester-army mobile
-  benchmark, plus the e2e suites on the `@e2edev/mobile` engine
+  benchmark, plus the e2e suites on the `@e2e-dev/mobile` engine
   (`tests/` locators only, `tests-agent/` one `agent.act` per scenario).
   Both suites run in CI on an iOS simulator and an Android emulator
   (`.github/workflows/mobile.yml`; the Expo build is cached per native
@@ -125,8 +125,8 @@ pnpm --filter e2e run build
 pnpm --filter e2e run test:unit                       # unit only, no build
 pnpm --filter e2e exec vitest run tests/unit/scheduler.test.ts
 pnpm --filter e2e exec vitest run -t 'name fragment'
-pnpm --filter @e2edev/web run test
-pnpm --filter @e2edev/testbed run test:headed
+pnpm --filter @e2e-dev/web run test
+pnpm --filter @e2e-dev/testbed run test:headed
 ```
 
 - Package `test` scripts do **not** build. Root `build` and `test` order the
@@ -137,7 +137,7 @@ pnpm --filter @e2edev/testbed run test:headed
 - `pnpm typecheck` runs `build` first, then per-package `typecheck`. The
   package `typecheck` covers `tests/**`, which is what makes
   `tests/types/sdk-types.ts` a test.
-- Integration tests need Chromium: `pnpm --filter @e2edev/web exec
+- Integration tests need Chromium: `pnpm --filter @e2e-dev/web exec
   playwright install chromium`. The web engine's `prepare` hook
   also installs a missing browser once per run, in the runner, before `plan`
   is emitted and the run's clock starts.
@@ -218,7 +218,7 @@ Use [unbox-ai](https://github.com/tester-army/unbox-ai) to read it — never
 agents: `npx skills add tester-army/unbox-ai`). Start wide, then drill:
 
 ```bash
-AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed test:agent -- --ai-trace --no-cache
+AI_GATEWAY_API_KEY=... pnpm --filter @e2e-dev/testbed test:agent -- --ai-trace --no-cache
 npx unbox-ai runs apps/testbed/.e2e/ai-trace.json            # one line per agent step
 npx unbox-ai summary apps/testbed/.e2e/ai-trace.json --run 3 # one step: turns, tokens, caching
 npx unbox-ai tools apps/testbed/.e2e/ai-trace.json --run 3   # what the agent called, and how often
@@ -256,8 +256,8 @@ fixture pages in `tests/crosscheck/fixtures.ts` under `pnpm test`, and on
 every web-benchmark scenario in `benchmark.yml` or locally:
 
 ```bash
-pnpm --filter @e2edev/web-benchmark run build && pnpm --filter @e2edev/web-benchmark run start &
-CROSSCHECK_BENCHMARK_URL=http://127.0.0.1:4280 pnpm --filter @e2edev/web exec vitest run tests/integration/crosscheck.test.ts
+pnpm --filter @e2e-dev/web-benchmark run build && pnpm --filter @e2e-dev/web-benchmark run start &
+CROSSCHECK_BENCHMARK_URL=http://127.0.0.1:4280 pnpm --filter @e2e-dev/web exec vitest run tests/integration/crosscheck.test.ts
 ```
 
 - Every disagreement must be listed in `tests/crosscheck/expected.txt` with a
@@ -424,7 +424,7 @@ counter sections there. The harness's statistics have unit tests under
   `--tag`, so a brand-new package lands on `latest` once regardless.
   Do not switch to changesets pre mode to get a real prerelease version: a
   `0.16.0-beta.0` runner is outside the engine's `e2e` peer range, so
-  changesets patch-bumps `@e2edev/web` and rewrites the peer to
+  changesets patch-bumps `@e2e-dev/web` and rewrites the peer to
   `>=0.16.0-beta.0 <0.16.0`, which no stable runner satisfies. Widening the range does not
   rescue it — node-semver only lets a prerelease satisfy a comparator set when a
   comparator with the same `major.minor.patch` carries a prerelease, so
@@ -453,11 +453,11 @@ counter sections there. The harness's statistics have unit tests under
   on the pin.
 - The runner publishes as the unscoped `e2e` (entry points `e2e`, `e2e/agent`,
   `e2e/engine`, `e2e/oauth/chatgpt`, `e2e/oauth/copilot`, `e2e/oauth/grok`; the bin is `e2e` too); engines and reporters publish public
-  under the `@e2edev` scope. `@e2edev/e2e` and `@e2edev/oauth` (folded into
-  `e2e/oauth` on 2026-09-21) are the retired names: deprecated on npm, never
-  referenced here. Provenance stays off until the repository is
+  under the `@e2e-dev` scope. The `@e2edev` scope (moved to `@e2e-dev` on
+  2026-09-28), `@e2edev/e2e`, and `@e2edev/oauth` (folded into `e2e/oauth` on
+  2026-09-21) are the retired names: deprecated on npm, never referenced here. Provenance stays off until the repository is
   public, and the release job authenticates with the `NPM_TOKEN` secret.
   Document the CLI as `npx e2e`; npx runs the locally installed bin first, and
   the flag `--no-install` adds nothing once the package is a dependency.
 - Private packages are skipped entirely by changesets (`privatePackages: false`),
-  so `@e2edev/testbed` gets no version bump, no `CHANGELOG.md`, and no git tag.
+  so `@e2e-dev/testbed` gets no version bump, no `CHANGELOG.md`, and no git tag.

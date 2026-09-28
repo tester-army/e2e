@@ -20,7 +20,7 @@ const PACKAGE_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const CLI = path.join(PACKAGE_ROOT, 'dist', 'cli', 'bin.js');
 
 const CONFIG = `import type { E2EConfig } from 'e2e';
-import { web } from '@e2edev/web';
+import { web } from '@e2e-dev/web';
 
 // Anything a config prints must reach stderr, never the protocol stream.
 console.log('config loaded');

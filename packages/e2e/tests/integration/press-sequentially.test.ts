@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { resultByTitle, runProject, type FixtureProject, type RunOutcome } from '../helpers/run-project.ts';
 
-const SUITE = `import { test } from '@e2edev/web';
+const SUITE = `import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 test('fill sets the value without key events', async ({ app, screen }) => {

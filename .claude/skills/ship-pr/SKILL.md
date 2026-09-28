@@ -20,7 +20,7 @@ Run what CI runs for what you touched, and fix everything:
 ```bash
 pnpm check                    # lint, dead code, typecheck, error codes, peer ranges, docs
 pnpm test                     # or the touched package: pnpm --filter e2e run test:unit
-pnpm --filter @e2edev/testbed test
+pnpm --filter @e2e-dev/testbed test
 pnpm test:web-benchmark       # when the runner, web engine, or benchmark changed
 ```
 

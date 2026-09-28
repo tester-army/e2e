@@ -6,7 +6,7 @@
  * the value is in the key and every run misses.
  */
 
-import { test } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
 import { expect, unique } from 'e2e';
 
 test('act adds an address with a run-unique label', async ({ app, agent, screen }) => {

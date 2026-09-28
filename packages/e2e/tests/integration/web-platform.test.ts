@@ -6,7 +6,7 @@ import { assertValidReport } from '../helpers/report-schema.ts';
 import { resultByTitle, runProject, type FixtureProject } from '../helpers/run-project.ts';
 import type { RunOutcome } from '../helpers/run-project.ts';
 
-const KITCHEN_SINK = `import { test } from '@e2edev/web';
+const KITCHEN_SINK = `import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 test('deterministic queries and reads', async ({ app, screen, web }) => {
@@ -526,7 +526,7 @@ test('a step call without await before the body throws', async ({ app }) => {
 });
 `;
 
-const LATE_HANDLER_THEN_TEARDOWN = `import { test } from '@e2edev/web';
+const LATE_HANDLER_THEN_TEARDOWN = `import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 test.afterEach(async ({ app }) => {

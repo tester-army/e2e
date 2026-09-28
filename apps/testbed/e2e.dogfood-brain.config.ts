@@ -8,7 +8,7 @@
  */
 
 import type { E2EConfig, StepExecutor, StepVerdict } from 'e2e';
-import { web } from '@e2edev/web';
+import { web } from '@e2e-dev/web';
 import { createGateway, stepCountIs, tool, ToolLoopAgent } from 'ai';
 import { z } from 'zod';
 

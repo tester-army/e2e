@@ -1,4 +1,4 @@
-# @e2edev/github
+# @e2e-dev/github
 
 ## 0.3.0-canary-20260924194828
 

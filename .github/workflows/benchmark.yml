@@ -2,7 +2,7 @@ name: benchmark
 
 # The web benchmark is where the runner meets deliberately hard surfaces, so
 # its suites gate every pull request that can reach them (the `changes` job
-# says which). Each suite posts one comment through @e2edev/github (hence
+# says which). Each suite posts one comment through @e2e-dev/github (hence
 # pull-requests: write) and edits it on rerun. The mobile benchmark has its
 # own workflow, mobile.yml.
 #
@@ -67,14 +67,14 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Install browsers
-        run: pnpm --filter @e2edev/web exec playwright install chromium --with-deps
+        run: pnpm --filter @e2e-dev/web exec playwright install chromium --with-deps
       - name: Build
         run: pnpm run build
       - name: Run test
         env:
           # The reporter posts the comment with the job's token.
           GITHUB_TOKEN: ${{ github.token }}
-        run: pnpm --filter @e2edev/web-benchmark run test
+        run: pnpm --filter @e2e-dev/web-benchmark run test
       # The engine's tree against Chrome's accessibility tree and Playwright's
       # getByRole on every scenario, against the disagreements committed in
       # packages/web/tests/crosscheck/expected.txt. `test` built the app.
@@ -82,9 +82,9 @@ jobs:
         env:
           CROSSCHECK_BENCHMARK_URL: http://127.0.0.1:4280
         run: |
-          pnpm --filter @e2edev/web-benchmark run start > /tmp/benchmark-app.log 2>&1 &
+          pnpm --filter @e2e-dev/web-benchmark run start > /tmp/benchmark-app.log 2>&1 &
           for _ in $(seq 1 60); do curl -sf "$CROSSCHECK_BENCHMARK_URL" > /dev/null && break; sleep 1; done
-          pnpm --filter @e2edev/web exec vitest run --project integration tests/integration/crosscheck.test.ts
+          pnpm --filter @e2e-dev/web exec vitest run --project integration tests/integration/crosscheck.test.ts
       # The comment is the result; the artifact is evidence for it. A storage
       # quota that refuses the upload must not turn a green suite red.
       - name: Upload report
@@ -132,7 +132,7 @@ jobs:
           fi
       - run: pnpm install --frozen-lockfile
       - name: Install browsers
-        run: pnpm --filter @e2edev/web exec playwright install chromium --with-deps
+        run: pnpm --filter @e2e-dev/web exec playwright install chromium --with-deps
       - name: Build
         run: pnpm run build
       - name: Run test:agent
@@ -142,7 +142,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         # --strict-cache: a committed recording that no longer replays fails
         # the job instead of spending model calls on every run.
-        run: pnpm --filter @e2edev/web-benchmark run test:agent --strict-cache
+        run: pnpm --filter @e2e-dev/web-benchmark run test:agent --strict-cache
       - name: Upload report
         if: ${{ !cancelled() }}
         continue-on-error: true

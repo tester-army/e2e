@@ -16,7 +16,7 @@ repeat.
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm --filter @e2edev/web exec playwright install chromium
+pnpm --filter @e2e-dev/web exec playwright install chromium
 pnpm build                    # every consumer below runs dist; rebuild after each change
 ```
 
@@ -29,13 +29,13 @@ run, and after switching branches.
 | --- | --- | --- |
 | Runner, collect, locator, config, sessions, CLI flags | the testbed suite, or the file covering it | The built CLI end to end on a deterministic app |
 | Reporters (list, json, markdown, junit) | the testbed file plus `test:stress` | The printed and written output, hostile titles included |
-| `@e2edev/web` | the testbed file, then the web benchmark's `tests/` | Real Chromium on plain and hard surfaces |
+| `@e2e-dev/web` | the testbed file, then the web benchmark's `tests/` | Real Chromium on plain and hard surfaces |
 | Agent (`src/agent/`), prompts, trace cache | the web benchmark's `tests-agent/` replay, then `--no-cache --ai-trace` | Replay still hits, and the live agent still reaches the goal |
-| `@e2edev/mobile` | the mobile benchmark on a simulator or emulator | Real devices; see `apps/mobile-benchmark` |
+| `@e2e-dev/mobile` | the mobile benchmark on a simulator or emulator | Real devices; see `apps/mobile-benchmark` |
 | `e2e mcp` | the `e2e` MCP server on the testbed | The tools as a coding agent sees them |
 | `e2e init`, packaging, the skill | packed tarballs in a scratch project under `/tmp` | What a new user gets from npm |
 | Docs pages | `pnpm docs:dev` | The rendered page |
-| `@e2edev/github` | the PR's own `e2e-github` comments | The comment a user's PR gets |
+| `@e2e-dev/github` | the PR's own `e2e-github` comments | The comment a user's PR gets |
 
 Commands (run from the app directory; call the CLI directly, since
 `pnpm run <script> -- --flag` forwards the `--` and the CLI reads the flag
@@ -101,7 +101,7 @@ ran, and what you saw, with media:
   evidence for runner, CLI, and reporter changes.
 - **Video:** `--video` (add `--headed` to watch it) records every attempt to
   `.e2e/artifacts/<target>/<test>/.../attempt-<n>/video/`: `video.webm` from
-  `@e2edev/web`, `video.mp4` from `@e2edev/mobile`.
+  `@e2e-dev/web`, `video.mp4` from `@e2e-dev/mobile`.
   Attach it for engine, locator, and agent changes a viewer can see.
 - **Stills:** cut a frame from the video
   (`ffmpeg -ss <seconds> -i <video> -frames:v 1 after.png`), or screenshot

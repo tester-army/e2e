@@ -18,7 +18,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const CLI = path.join(ROOT, 'node_modules', '@e2edev', 'e2e', 'dist', 'cli', 'bin.js');
+const CLI = path.join(ROOT, 'node_modules', '@e2e-dev', 'e2e', 'dist', 'cli', 'bin.js');
 const OUT = path.join(ROOT, '.e2e', 'explore-bench');
 
 /** The planted defects and the patterns a finding about them matches (title + expected + actual). */

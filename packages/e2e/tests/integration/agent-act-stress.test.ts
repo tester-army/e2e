@@ -355,7 +355,7 @@ describe('config-file executor across worker processes', () => {
   it('reconstructs the executor per worker and passes in parallel', async () => {
     const configSource = `import type { E2EConfig } from 'e2e';
 import type { StepExecutor } from 'e2e';
-import { web } from '@e2edev/web';
+import { web } from '@e2e-dev/web';
 
 const executor: StepExecutor = {
   name: 'worker-executor',

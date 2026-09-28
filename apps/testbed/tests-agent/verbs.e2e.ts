@@ -6,7 +6,7 @@
  * passes and one that only claimed to does not.
  */
 
-import { test } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 test('hover reveals the card menu and the agent archives the card', async ({ web, agent, screen }) => {

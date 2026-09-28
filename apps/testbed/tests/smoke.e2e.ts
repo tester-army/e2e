@@ -1,4 +1,4 @@
-import { test } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 test('playground renders and navigates', { tags: ['smoke'] }, async ({ app, screen, web }) => {

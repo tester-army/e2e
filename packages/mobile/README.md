@@ -1,4 +1,4 @@
-# @e2edev/mobile
+# @e2e-dev/mobile
 
 The mobile engine for [`e2e`](https://www.npmjs.com/package/e2e), built on
 [agent-device](https://github.com/callstack/agent-device): iOS simulators and
@@ -14,7 +14,7 @@ elsewhere; change the platform in `e2e.config.ts` when needed.
 Or add the packages to an existing project:
 
 ```bash
-npm install --save-dev e2e @e2edev/mobile
+npm install --save-dev e2e @e2e-dev/mobile
 ```
 
 `agent-device` needs Xcode with an iOS simulator runtime, or the Android SDK
@@ -24,8 +24,8 @@ to the runner.
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
 import { createAgent } from 'e2e/agent';
-import { mobile } from '@e2edev/mobile';
-import { mobileTools } from '@e2edev/mobile/tools';
+import { mobile } from '@e2e-dev/mobile';
+import { mobileTools } from '@e2e-dev/mobile/tools';
 import { gateway } from 'ai';
 
 const iphone = mobile({ platform: 'ios', app: 'Settings' });
@@ -112,7 +112,7 @@ Deterministic device management, recorded as `device.<method>` steps. Import
 `test` from this package to have it typed.
 
 ```ts
-import { test } from '@e2edev/mobile';
+import { test } from '@e2e-dev/mobile';
 import { expect } from 'e2e';
 
 test('shows the version offline in dark mode', async ({ agent, device, screen }) => {
@@ -139,7 +139,7 @@ never a link; `openLink` opens one, under the navigation rule.
 
 ## Agent tools
 
-`@e2edev/mobile/tools` exports `mobileTools(...engines)`: `open_app`,
+`@e2e-dev/mobile/tools` exports `mobileTools(...engines)`: `open_app`,
 `swipe` (free-form, in logical pixels), and `alert` (accept or dismiss a
 system alert). It takes at least one engine. Pass every device engine the
 config declares: tool names are fixed, so two packs cannot be merged, and the

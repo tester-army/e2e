@@ -17,7 +17,7 @@ const PACKAGE_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const CLI = path.join(PACKAGE_ROOT, 'dist', 'cli', 'bin.js');
 
 const CONFIG = `import type { E2EConfig } from 'e2e';
-import { web } from '@e2edev/web';
+import { web } from '@e2e-dev/web';
 
 export default {
   targets: [{ name: 'web', platform: 'web', engine: web({ url: 'http://127.0.0.1:1' }) }],

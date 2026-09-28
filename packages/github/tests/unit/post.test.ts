@@ -32,7 +32,7 @@ describe('upsertComment', () => {
       authorization: 'Bearer ghs_token',
       accept: 'application/vnd.github+json',
       'x-github-api-version': '2022-11-28',
-      'user-agent': '@e2edev/github',
+      'user-agent': '@e2e-dev/github',
     });
     expect(calls[1]?.headers['content-type']).toBe('application/json');
     expect(calls[1]?.body).toEqual({ body: `${MARKER}\n### e2e` });

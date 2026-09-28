@@ -48,7 +48,7 @@ need Xcode with an iOS simulator runtime, or the Android SDK with an emulator.
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
 import { createAgent } from 'e2e/agent';
-import { web } from '@e2edev/web';
+import { web } from '@e2e-dev/web';
 import { gateway } from 'ai';
 
 export default {
@@ -58,7 +58,7 @@ export default {
 ```
 
 ```ts title="tests/example.e2e.ts"
-import { test } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 test('app opens', async ({ app, web }) => {
@@ -80,7 +80,7 @@ test('app opens', async ({ app, web }) => {
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
 import { createAgent } from 'e2e/agent';
-import { mobile } from '@e2edev/mobile';
+import { mobile } from '@e2e-dev/mobile';
 import { gateway } from 'ai';
 
 export default {
@@ -91,7 +91,7 @@ export default {
 ```
 
 ```ts title="tests/example.e2e.ts"
-import { test } from '@e2edev/mobile';
+import { test } from '@e2e-dev/mobile';
 import { expect } from 'e2e';
 
 test('Settings opens', async ({ app, screen }) => {
@@ -175,7 +175,7 @@ Adapt the web example to a flow your app supports:
 <Tabs>
   <Tab title="Web">
 ```ts title="tests/agent.e2e.ts"
-import { test } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 test('a visitor signs up for a trial', async ({ app, agent, screen }) => {
@@ -192,7 +192,7 @@ test('a visitor signs up for a trial', async ({ app, agent, screen }) => {
   </Tab>
   <Tab title="Mobile (iOS)">
 ```ts title="tests/agent.e2e.ts"
-import { test } from '@e2edev/mobile';
+import { test } from '@e2e-dev/mobile';
 import { expect } from 'e2e';
 
 test('the agent opens General', async ({ agent, app, device }) => {

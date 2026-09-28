@@ -10,7 +10,7 @@ other project-specific operations during a goal. Wrap each AI SDK tool with
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
 import { createAgent, defineTool } from 'e2e/agent';
-import { web } from '@e2edev/web';
+import { web } from '@e2e-dev/web';
 import { gateway, tool } from 'ai';
 import { z } from 'zod';
 
@@ -104,13 +104,13 @@ overwriting an earlier image.
 
 ## Device toolkits
 
-`@e2edev/mobile` ships a ready tool pack for its engine:
+`@e2e-dev/mobile` ships a ready tool pack for its engine:
 
 ```ts
 import type { E2EConfig } from 'e2e';
 import { createAgent } from 'e2e/agent';
-import { mobile } from '@e2edev/mobile';
-import { mobileTools } from '@e2edev/mobile/tools';
+import { mobile } from '@e2e-dev/mobile';
+import { mobileTools } from '@e2e-dev/mobile/tools';
 import { gateway } from 'ai';
 
 const iphone = mobile({ platform: 'ios', app: 'Settings' });

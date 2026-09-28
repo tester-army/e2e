@@ -137,7 +137,7 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
   const unsupported = (what: string): never => {
     const remedy =
       engine === undefined
-        ? 'the target declares no engine; add one, such as web({ url }) from @e2edev/web or mobile({ platform, app }) from @e2edev/mobile'
+        ? 'the target declares no engine; add one, such as web({ url }) from @e2e-dev/web or mobile({ platform, app }) from @e2e-dev/mobile'
         : `engine ${engine.name} does not implement it`;
     throw new ConfigurationError(
       'UNSUPPORTED_CAPABILITY',

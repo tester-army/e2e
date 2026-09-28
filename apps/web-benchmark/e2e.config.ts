@@ -1,6 +1,6 @@
 import type { E2EConfig } from 'e2e';
-import { web } from '@e2edev/web';
-import { github } from '@e2edev/github';
+import { web } from '@e2e-dev/web';
+import { github } from '@e2e-dev/github';
 
 /**
  * Deterministic suite against the benchmark scenarios. `pnpm test` builds the

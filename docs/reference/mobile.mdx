@@ -3,7 +3,7 @@ title: Mobile
 description: Mobile engine options and the device fixture for iOS and Android.
 ---
 
-`@e2edev/mobile` drives iOS simulators and Android emulators through
+`@e2e-dev/mobile` drives iOS simulators and Android emulators through
 [agent-device](https://github.com/callstack/agent-device). `agent`, `app`,
 `screen`, and `expect` work as they do everywhere; this page covers what is
 specific to a device target. Import `test` from the package to have `device`
@@ -22,8 +22,8 @@ installation is needed.
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
 import { createAgent } from 'e2e/agent';
-import { mobile } from '@e2edev/mobile';
-import { mobileTools } from '@e2edev/mobile/tools';
+import { mobile } from '@e2e-dev/mobile';
+import { mobileTools } from '@e2e-dev/mobile/tools';
 import { gateway } from 'ai';
 
 const iphone = mobile({ platform: 'ios', app: 'Settings' });
@@ -198,7 +198,7 @@ least its size.
 
 ```ts
 import type { E2EConfig } from 'e2e';
-import { mobile } from '@e2edev/mobile';
+import { mobile } from '@e2e-dev/mobile';
 
 const iphones = mobile({
   platform: 'ios',

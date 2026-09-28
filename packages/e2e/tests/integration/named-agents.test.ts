@@ -10,7 +10,7 @@ import { createProject, runExisting, type FixtureProject } from '../helpers/run-
 import { createScriptedInstance, scriptedResult } from '../helpers/scripted-model.ts';
 
 const SUITE = `
-import { test } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 test('asks the agent', async ({ app, agent }) => {
@@ -21,7 +21,7 @@ test('asks the agent', async ({ app, agent }) => {
 `;
 
 const PINNED_SUITE = `
-import { test } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 test.describe('as the buyer', { agent: 'buyer' }, () => {
@@ -52,7 +52,7 @@ test('an unknown agent on a call fails that call', async ({ app, agent }) => {
 `;
 
 const PERSONA_SUITE = `
-import { test } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 test.describe('checkout', { agent: ['buyer', 'admin'] }, () => {
@@ -69,7 +69,7 @@ test('unpinned follows the run', async ({ app, agent }) => {
 `;
 
 const TWO_MODELS_SUITE = `
-import { test } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
 
 test('the default agent judges twice', async ({ app, agent }) => {
   await app.open();

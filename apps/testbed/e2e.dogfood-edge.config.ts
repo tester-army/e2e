@@ -7,7 +7,7 @@
  */
 
 import type { E2EConfig } from 'e2e';
-import { web } from '@e2edev/web';
+import { web } from '@e2e-dev/web';
 import { gateway } from 'ai';
 
 export default {

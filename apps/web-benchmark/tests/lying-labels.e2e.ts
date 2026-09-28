@@ -1,5 +1,5 @@
-import { test } from '@e2edev/web';
-import type { Web } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
+import type { Web } from '@e2e-dev/web';
 import { expect } from 'e2e';
 import type { Locator } from 'e2e';
 import { failure, siblingOf } from './support.ts';

@@ -3,7 +3,7 @@ title: Testing iOS and Android
 description: Set up a simulator or emulator target, write a device test, and know what differs from the web.
 ---
 
-`@e2edev/mobile` runs tests on iOS simulators and Android emulators.
+`@e2e-dev/mobile` runs tests on iOS simulators and Android emulators.
 Tests use the same `agent`, `screen`, and `expect` APIs as browser tests.
 A test launches the configured app with `app.open()`, as a Maestro flow does
 with `launchApp`; between tests the app stays where the last one left it.
@@ -23,7 +23,7 @@ Settings app and one worker:
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
-import { mobile } from '@e2edev/mobile';
+import { mobile } from '@e2e-dev/mobile';
 
 export default {
   // Replace Settings with your app's bundle id.
@@ -95,7 +95,7 @@ Add a target for each platform:
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
-import { mobile } from '@e2edev/mobile';
+import { mobile } from '@e2e-dev/mobile';
 
 const iphone = mobile({ platform: 'ios', app: 'com.example.app' });
 const pixel = mobile({ platform: 'android', app: 'com.example.app' });
@@ -186,7 +186,7 @@ A provider against a typical session API has three requests: create a
 session, poll it until the daemon is reachable, stop it.
 
 ```ts title="device-provider.ts"
-import type { DeviceProvider } from '@e2edev/mobile';
+import type { DeviceProvider } from '@e2e-dev/mobile';
 
 /**
  * Leases devices from a service that starts an agent-device daemon per
@@ -239,7 +239,7 @@ export function hostedDevices(options: { serviceUrl: string; image: string }): D
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
-import { mobile } from '@e2edev/mobile';
+import { mobile } from '@e2e-dev/mobile';
 import { hostedDevices } from './device-provider.ts';
 
 export default {
@@ -267,7 +267,7 @@ hands the worker the lease scope as `client`.
 
 ```ts title="device-cloud-provider.ts"
 import { createAgentDeviceClient } from 'agent-device';
-import type { DeviceProvider } from '@e2edev/mobile';
+import type { DeviceProvider } from '@e2e-dev/mobile';
 
 /**
  * Leases devices from a device cloud agent-device itself speaks to, through
@@ -316,7 +316,7 @@ export function cloudDevices(options: { provider: string; stateDir: string }): D
 `listitem`, and `switch`. Use `getByTestId` for native element identifiers.
 
 ```ts
-import { test } from '@e2edev/mobile';
+import { test } from '@e2e-dev/mobile';
 import { expect } from 'e2e';
 
 test('shows the version offline in dark mode', async ({ agent, device, screen }) => {
@@ -376,8 +376,8 @@ Add `mobileTools` for app switching, device gestures, and system alerts:
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
 import { createAgent } from 'e2e/agent';
-import { mobile } from '@e2edev/mobile';
-import { mobileTools } from '@e2edev/mobile/tools';
+import { mobile } from '@e2e-dev/mobile';
+import { mobileTools } from '@e2e-dev/mobile/tools';
 import { gateway } from 'ai';
 
 const iphone = mobile({ platform: 'ios', app: 'com.example.app' });

@@ -1,5 +1,5 @@
 ---
-'@e2edev/web': patch
+'@e2e-dev/web': patch
 'e2e': patch
 ---
 

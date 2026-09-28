@@ -3,7 +3,7 @@ title: Web
 description: The browser engine, its options, and the web fixture it contributes.
 ---
 
-`@e2edev/web` drives Chromium, Firefox, and WebKit through Playwright.
+`@e2e-dev/web` drives Chromium, Firefox, and WebKit through Playwright.
 A web target names it as its engine, and it contributes the `web` fixture for
 browser-only work. Import `test` from the package to have `web` typed.
 
@@ -13,7 +13,7 @@ version; `e2e init` adds `playwright` only to a project that has none.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
-import { web } from '@e2edev/web';
+import { web } from '@e2e-dev/web';
 
 export default {
   targets: [{ engine: web({ url: 'http://localhost:3000' }) }],
@@ -504,7 +504,7 @@ fixtures.
 ## surfaceOf
 
 ```ts
-import { web, surfaceOf } from '@e2edev/web';
+import { web, surfaceOf } from '@e2e-dev/web';
 
 const engine = web({ url: 'http://localhost:3000' });
 const live = surfaceOf(engine);   // PlaywrightLiveSurface | undefined

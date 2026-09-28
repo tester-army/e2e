@@ -7,14 +7,14 @@
   whatever the nearest `package.json` `type` says, so a CommonJS package (a
   Next.js app, for instance) needs no change. Write them with `import`, never
   `require` or `module.exports`.
-- For browser tests, `@e2edev/web` plus `playwright` (`>=1.63.0 <2`),
+- For browser tests, `@e2e-dev/web` plus `playwright` (`>=1.63.0 <2`),
   a peer dependency the engine does not install itself: an app that already
   depends on Playwright keeps its version and its browser cache. A version
   outside the range may be rejected by the package manager as an unmet peer
   (npm's `ERESOLVE`); upgrade `playwright` within the range.
   Missing browsers download when the engine first boots. In CI install them
   up front: `npx playwright install chromium --with-deps`.
-- For mobile tests, `@e2edev/mobile`. It installs the `agent-device`
+- For mobile tests, `@e2e-dev/mobile`. It installs the `agent-device`
   it was built and tested against, pinned exactly because agent-device minors
   break; the pin moves with each engine release.
 
@@ -45,7 +45,7 @@ the skill and registered MCP entries. The final message shows the run command.
 Without the wizard:
 
 ```bash
-npm install --save-dev e2e@canary @e2edev/web@canary playwright ai@^7
+npm install --save-dev e2e@canary @e2e-dev/web@canary playwright ai@^7
 ```
 
 `ai` (the Vercel AI SDK, v7) is only needed for `agent.*` steps.
@@ -80,7 +80,7 @@ unknown keys are `INVALID_CONFIG`.
 ```ts
 import type { E2EConfig } from 'e2e';
 import { createAgent } from 'e2e/agent';
-import { web } from '@e2edev/web';
+import { web } from '@e2e-dev/web';
 import { gateway } from 'ai';
 
 export default {
@@ -248,7 +248,7 @@ or read the address from the environment:
 
 ## Mobile targets
 
-`@e2edev/mobile` drives iOS simulators and Android emulators through
+`@e2e-dev/mobile` drives iOS simulators and Android emulators through
 [agent-device](https://github.com/callstack/agent-device). It needs Xcode
 with a simulator runtime, or the Android SDK with an emulator; run
 `npx agent-device doctor` once.
@@ -256,8 +256,8 @@ with a simulator runtime, or the Android SDK with an emulator; run
 ```ts
 import type { E2EConfig } from 'e2e';
 import { createAgent } from 'e2e/agent';
-import { mobile } from '@e2edev/mobile';
-import { mobileTools } from '@e2edev/mobile/tools';
+import { mobile } from '@e2e-dev/mobile';
+import { mobileTools } from '@e2e-dev/mobile/tools';
 import { gateway } from 'ai';
 
 const iphone = mobile({ platform: 'ios', app: 'com.example.app' });
@@ -297,7 +297,7 @@ export default {
   Raw screenshot files are removed when capture finishes, including after
   cancellation.
 - `screen`, `expect`, `app`, and `agent` work unchanged. Import `test` from
-  `@e2edev/mobile` to type the `device` fixture (`setAppearance`,
+  `@e2e-dev/mobile` to type the `device` fixture (`setAppearance`,
   `setNetwork`, `setPermission`, `installApp`, `openLink('myapp://...')`,
   `clearKeychain`, `locator('role=... id=...')`, and more). Portable suites
   declare

@@ -4,7 +4,7 @@
 
 ```ts
 // tests/todos.e2e.ts
-import { test } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 test.describe('todos', { tags: ['todos'] }, () => {
@@ -89,8 +89,8 @@ Fixtures are lazy; destructure them in the callback.
 | `screen` | `Screen` | Always. |
 | `agent` | `Agent` | Needs a configured model, else `MODEL_UNAVAILABLE`. See the `agent` topic. |
 | `platform` | `'web' \| 'ios' \| 'android' \| string` | Always; also in `beforeAll` and `afterAll`. |
-| `web` | `Web` | Browser targets. Import `test` from `@e2edev/web`. |
-| `device` | `Device` | Device targets. Import `test` from `@e2edev/mobile`. |
+| `web` | `Web` | Browser targets. Import `test` from `@e2e-dev/web`. |
+| `device` | `Device` | Device targets. Import `test` from `@e2e-dev/mobile`. |
 | `session` | `SetupSession` | Only in `test.setup`. |
 
 ### app
@@ -275,7 +275,7 @@ tests declare it. Selecting a dependent test alone still runs its setup.
 
 ```ts
 // tests/auth.setup.e2e.ts
-import { test } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
 import { expect, credentials } from 'e2e';
 
 test.setup('authenticate as admin', { sessions: ['admin'] }, async ({ app, screen, session, web }) => {
@@ -328,7 +328,7 @@ a setup test and keep the evidence in the tests that matter.
 
 ## The web fixture (browser only)
 
-Import `test` from `@e2edev/web`. Prefer `app` and `screen`; use
+Import `test` from `@e2e-dev/web`. Prefer `app` and `screen`; use
 `web` for what only a browser has. Portable suites declare
 `requires: ['web']` so device targets skip the test instead of failing.
 

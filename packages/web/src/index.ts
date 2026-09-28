@@ -1,5 +1,5 @@
 /**
- * `@e2edev/web` public surface: the `web()` engine factory, the
+ * `@e2e-dev/web` public surface: the `web()` engine factory, the
  * `web` fixture types, and a `test` typed with that fixture. Everything else a
  * test needs (`expect`, `credentials`) comes from `e2e` itself: this package
  * contributes a surface, it does not re-export the test API.

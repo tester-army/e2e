@@ -1,17 +1,17 @@
-# @e2edev/github
+# @e2e-dev/github
 
 The GitHub reporter for [`e2e`](https://www.npmjs.com/package/e2e).
 From GitHub Actions, every run becomes one pull request comment, edited in
 place on reruns, and the same text lands in the job summary.
 
 ```bash
-npm install --save-dev @e2edev/github
+npm install --save-dev @e2e-dev/github
 ```
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
-import { web } from '@e2edev/web';
-import { github } from '@e2edev/github';
+import { web } from '@e2e-dev/web';
+import { github } from '@e2e-dev/github';
 
 export default {
   targets: [{ engine: web({ url: 'http://localhost:3000' }) }],

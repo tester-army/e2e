@@ -1,6 +1,6 @@
 import type { E2EConfig } from 'e2e';
 import { createAgent } from 'e2e/agent';
-import { mobile } from '@e2edev/mobile';
+import { mobile } from '@e2e-dev/mobile';
 import { gateway } from 'ai';
 
 export default {

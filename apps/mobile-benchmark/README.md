@@ -1,4 +1,4 @@
-# @e2edev/mobile-benchmark
+# @e2e-dev/mobile-benchmark
 
 An Expo app (iOS and Android) of self-contained scenarios that are hard to
 automate on a device, and the e2e suites written against them. Every
@@ -49,7 +49,7 @@ model for a step with none: the iOS entries are recorded on a Mac with
 change; nobody has recorded on an Android emulator yet, so that side spends
 model calls until an emulator recording is committed.
 Each job posts its first pass to the pull request as one comment (`e2e ios:
-44 passed`, `e2e android agent: ...`) through `@e2edev/github`, like the web
+44 passed`, `e2e android agent: ...`) through `@e2e-dev/github`, like the web
 benchmark's two. The second pass over failed tests posts nothing, so a green
 job whose comment lists failures is one that pass recovered.
 
@@ -60,10 +60,10 @@ Native projects are generated with CNG (`ios/` and `android/` are ignored);
 
 ```bash
 pnpm build                                              # from the repo root, once
-pnpm --filter @e2edev/mobile-benchmark ios              # build + install on the booted simulator
-pnpm --filter @e2edev/mobile-benchmark android          # same for the running emulator
-pnpm --filter @e2edev/mobile-benchmark test             # tests/ on both targets
-AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/mobile-benchmark test:agent
+pnpm --filter @e2e-dev/mobile-benchmark ios              # build + install on the booted simulator
+pnpm --filter @e2e-dev/mobile-benchmark android          # same for the running emulator
+pnpm --filter @e2e-dev/mobile-benchmark test             # tests/ on both targets
+AI_GATEWAY_API_KEY=... pnpm --filter @e2e-dev/mobile-benchmark test:agent
 ```
 
 The configs pin the app by bundle id (`dev.e2e.benchmark`) and expect it

@@ -1,4 +1,4 @@
-import { test } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 // Role names match exactly unless told otherwise; the home links' names carry

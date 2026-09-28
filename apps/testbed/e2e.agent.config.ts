@@ -1,5 +1,5 @@
 import type { E2EConfig } from 'e2e';
-import { web } from '@e2edev/web';
+import { web } from '@e2e-dev/web';
 import { gateway } from 'ai';
 
 /**
@@ -20,7 +20,7 @@ if (process.env.E2E_DEVTOOLS !== undefined && process.env.E2E_DEVTOOLS !== '') {
 /**
  * Opt-in agentic suite against the local playground. Run manually:
  *
- *   AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed test:agent
+ *   AI_GATEWAY_API_KEY=... pnpm --filter @e2e-dev/testbed test:agent
  *
  * Not part of CI: every test spends real model calls, and act flows and
  * judgments are structurally comparable across models, not identical.

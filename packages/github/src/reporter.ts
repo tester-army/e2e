@@ -31,7 +31,7 @@ export interface ReportDeps extends ActionsDeps {
  * The GitHub reporter. Add it to `reporters` beside the built-in ids:
  *
  * ```ts
- * import { github } from '@e2edev/github';
+ * import { github } from '@e2e-dev/github';
  * export default { targets, reporters: ['list', github()] } satisfies E2EConfig;
  * ```
  *

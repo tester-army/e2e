@@ -1,5 +1,5 @@
 {
-  "name": "@e2edev/github",
+  "name": "@e2e-dev/github",
   "version": "0.3.0-canary-20260924194828",
   "description": "GitHub reporter for e2e: one pull request comment per run, from GitHub Actions",
   "keywords": [

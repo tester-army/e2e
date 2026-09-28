@@ -69,7 +69,7 @@
     "NOTICE"
   ],
   "scripts": {
-    "build": "node -e \"const fs=require('node:fs');for(const dir of ['dist','skills'])fs.rmSync(dir,{recursive:true,force:true});fs.cpSync('../../skills/e2e','skills/e2e',{recursive:true})\" && tsc --project tsconfig.build.json && node -e \"const fs=require('node:fs');const read=(dir)=>JSON.parse(fs.readFileSync('../'+dir+'/package.json','utf8'));const versions=Object.fromEntries(['web','mobile'].map((dir)=>['@e2edev/'+dir,read(dir).version]));versions.playwright=read('web').devDependencies.playwright;fs.writeFileSync('dist/cli/init/sibling-versions.json',JSON.stringify(versions)+'\\n')\" && node ../../scripts/stamp-dist.ts",
+    "build": "node -e \"const fs=require('node:fs');for(const dir of ['dist','skills'])fs.rmSync(dir,{recursive:true,force:true});fs.cpSync('../../skills/e2e','skills/e2e',{recursive:true})\" && tsc --project tsconfig.build.json && node -e \"const fs=require('node:fs');const read=(dir)=>JSON.parse(fs.readFileSync('../'+dir+'/package.json','utf8'));const versions=Object.fromEntries(['web','mobile'].map((dir)=>['@e2e-dev/'+dir,read(dir).version]));versions.playwright=read('web').devDependencies.playwright;fs.writeFileSync('dist/cli/init/sibling-versions.json',JSON.stringify(versions)+'\\n')\" && node ../../scripts/stamp-dist.ts",
     "prepublishOnly": "node ../../scripts/check-dist.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -111,7 +111,7 @@
     "@ai-sdk/openai": "4.0.71",
     "@ai-sdk/openai-compatible": "3.0.53",
     "@ai-sdk/xai": "5.0.4",
-    "@e2edev/web": "workspace:*",
+    "@e2e-dev/web": "workspace:*",
     "@openrouter/ai-sdk-provider": "3.1.0",
     "@types/node": "26.6.2",
     "@types/pngjs": "6.0.5",

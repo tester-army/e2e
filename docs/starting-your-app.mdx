@@ -9,7 +9,7 @@ when the run ends.
 
 ## Point at a running app
 
-Import `web` from `@e2edev/web` and put this in the exported
+Import `web` from `@e2e-dev/web` and put this in the exported
 config object:
 
 ```ts title="e2e.config.ts"
@@ -32,7 +32,7 @@ answers, and stops it when the run ends, fails, or is interrupted:
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
 import { createAgent } from 'e2e/agent';
-import { web } from '@e2edev/web';
+import { web } from '@e2e-dev/web';
 import { gateway } from 'ai';
 
 export default {
@@ -145,7 +145,7 @@ Two browsers on one app are two targets that each name it:
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
-import { web } from '@e2edev/web';
+import { web } from '@e2e-dev/web';
 
 const app = { url: 'http://localhost:3000' };
 

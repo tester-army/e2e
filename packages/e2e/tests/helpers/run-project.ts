@@ -4,7 +4,7 @@ import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync }
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { web } from '@e2edev/web';
+import { web } from '@e2e-dev/web';
 import type { ListOptions, ListedPair, RunOptions, RunOutcome } from '../../src/run/runner.ts';
 import type { E2EConfig } from '../../src/index.ts';
 import { inflateEntry, readZip } from '../../src/internal/zip.ts';
@@ -137,7 +137,7 @@ export async function listProject(
 /** Default file-backed config used by worker-path integration tests. */
 export function workerConfigSource(workers: number, extra = ''): string {
   return `import type { E2EConfig } from 'e2e';
-import { web } from '@e2edev/web';
+import { web } from '@e2e-dev/web';
 
 export default {
   targets: [{ name: 'web', engine: web({ url: process.env.APP_URL! }) }],

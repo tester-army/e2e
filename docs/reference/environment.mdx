@@ -79,7 +79,7 @@ What is sent and how to read it is on the [Telemetry](/telemetry) page.
 
 ## Reporters
 
-`@e2edev/github` reads the variables GitHub Actions sets, when a run finishes:
+`@e2e-dev/github` reads the variables GitHub Actions sets, when a run finishes:
 
 | Variable | Reading | Effect |
 | --- | --- | --- |
@@ -96,7 +96,7 @@ What is sent and how to read it is on the [Telemetry](/telemetry) page.
 | Variable | Reading | Effect |
 | --- | --- | --- |
 | `PLAYWRIGHT_BROWSERS_PATH` | value | Playwright's browser cache, honored by the engine's `prepare` hook |
-| `E2E_AGENT_DEVICE_POOL_<TARGET>_<digest>` | value | Written by `@e2edev/mobile` in `prepare` and read by each worker to find its booted device. Not meant to be set by hand |
+| `E2E_AGENT_DEVICE_POOL_<TARGET>_<digest>` | value | Written by `@e2e-dev/mobile` in `prepare` and read by each worker to find its booted device. Not meant to be set by hand |
 
 ## What app processes inherit
 

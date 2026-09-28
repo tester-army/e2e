@@ -1,5 +1,5 @@
 {
-  "name": "@e2edev/mobile-benchmark",
+  "name": "@e2e-dev/mobile-benchmark",
   "version": "0.0.0",
   "private": true,
   "description": "Benchmark Expo app of hard mobile surfaces, with the e2e suites written against them",
@@ -33,8 +33,8 @@
     "react-native-webview": "13.16.1"
   },
   "devDependencies": {
-    "@e2edev/github": "workspace:*",
-    "@e2edev/mobile": "workspace:*",
+    "@e2e-dev/github": "workspace:*",
+    "@e2e-dev/mobile": "workspace:*",
     "@expo/fingerprint": "0.20.13",
     "@expo/repack-app": "0.10.3",
     "@types/node": "26.6.2",

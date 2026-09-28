@@ -2,7 +2,7 @@ import { readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { web } from '@e2edev/web';
+import { web } from '@e2e-dev/web';
 import type { E2EConfig } from '../../src/index.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import {
@@ -43,7 +43,7 @@ const DECLARATION = {
 
 /** The same declaration as a config file, so the worker path re-resolves it from disk. */
 const CONFIG_SOURCE = `import type { E2EConfig } from 'e2e';
-import { web } from '@e2edev/web';
+import { web } from '@e2e-dev/web';
 
 export default {
   targets: [{

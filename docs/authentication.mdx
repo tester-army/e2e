@@ -10,7 +10,7 @@ that session to start signed in.
   <Tab title="tests/auth.setup.e2e.ts">
 
 ```ts
-import { test } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
 import { expect, credentials } from 'e2e';
 
 test.setup('authenticate as admin', { sessions: ['admin'] }, async ({ app, screen, session, web }) => {
@@ -32,7 +32,7 @@ test.setup('authenticate as admin', { sessions: ['admin'] }, async ({ app, scree
   <Tab title="tests/dashboard.e2e.ts">
 
 ```ts
-import { test } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 test('the dashboard opens directly', { session: 'admin' }, async ({ app, screen, web }) => {
@@ -228,7 +228,7 @@ Save one session per user, then run the same tests with each session and
   <Tab title="tests/personas.setup.e2e.ts">
 
 ```ts
-import { test } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
 import { expect, credentials } from 'e2e';
 
 const PERSONAS = ['buyer', 'admin'] as const;
@@ -251,7 +251,7 @@ test.setup('sign in each persona', { sessions: [...PERSONAS] }, async ({ app, sc
   <Tab title="tests/checkout.e2e.ts">
 
 ```ts
-import { test } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
 
 for (const persona of ['buyer', 'admin'] as const) {
   test.describe(`checkout as ${persona}`, { agent: persona, session: persona, tags: [persona] }, () => {

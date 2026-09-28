@@ -1,8 +1,8 @@
 /**
- * `@e2edev/mobile` public surface: the `mobile()` engine factory,
+ * `@e2e-dev/mobile` public surface: the `mobile()` engine factory,
  * the `device` fixture types, and a `test` typed with that fixture. `expect`
  * and `credentials` still come from `e2e`; the agent-side tool pack lives on
- * the `@e2edev/mobile/tools` subpath so this entry never loads the AI SDK.
+ * the `@e2e-dev/mobile/tools` subpath so this entry never loads the AI SDK.
  */
 
 import { test as base } from 'e2e';

@@ -1,5 +1,5 @@
 import type { E2EConfig } from 'e2e';
-import { github } from '@e2edev/github';
+import { github } from '@e2e-dev/github';
 import { gateway } from 'ai';
 import base from './e2e.config.ts';
 
@@ -9,7 +9,7 @@ import base from './e2e.config.ts';
  * (`benchmark.yml`), replaying the recordings committed under `.e2e/cache/`
  * and calling the model for a step with none. To re-record by hand:
  *
- *   AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/web-benchmark test:agent
+ *   AI_GATEWAY_API_KEY=... pnpm --filter @e2e-dev/web-benchmark test:agent
  *
  * `E2E_MODEL` overrides the pinned model so one suite dogfoods several
  * providers.

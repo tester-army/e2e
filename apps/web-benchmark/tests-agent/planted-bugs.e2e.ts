@@ -5,7 +5,7 @@
  * its way and reports it counts too: the agent caught it either way.
  */
 
-import { test } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 /** Whether the flow reported the product misbehaving, as an act verdict or a judgment. */

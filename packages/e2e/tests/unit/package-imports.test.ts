@@ -163,7 +163,7 @@ describe('the scan', () => {
     expect(specifiers("`import a provider, e.g. gateway('x') from 'ai'`")).toEqual([]);
     expect(specifiers("/** Loads `ai` once: `await import('ai')`. */\nimport { slot } from './slot.ts';")).toEqual(['./slot.ts']);
     expect(specifiers("// falls back to import('ai')\nimport { z } from 'zod';")).toEqual(['zod']);
-    expect(specifiers("const example = `import { test } from '@e2edev/web';\nimport { expect } from 'e2e';\n`;")).toEqual([]);
+    expect(specifiers("const example = `import { test } from '@e2e-dev/web';\nimport { expect } from 'e2e';\n`;")).toEqual([]);
   });
 
   it('names the package a specifier belongs to', () => {
@@ -183,8 +183,8 @@ describe('the scan', () => {
     expect(objection(e2e, manifest, 'run/steps.ts', 'ai')).toBe('ai is an optional peer of e2e; load it from agent/ai-sdk.ts only');
     expect(objection(e2e, manifest, 'run/steps.ts', 'path')).toBe('path is a builtin; import it as node:path');
     expect(objection(e2e, manifest, 'run/steps.ts', 'playwright')).toBe('playwright is neither a dependency nor a peer of e2e');
-    expect(objection(e2e, manifest, 'run/steps.ts', '@e2edev/web')).toBe('@e2edev/web is neither a dependency nor a peer of e2e');
+    expect(objection(e2e, manifest, 'run/steps.ts', '@e2e-dev/web')).toBe('@e2e-dev/web is neither a dependency nor a peer of e2e');
     const mobile = SCOPES[2]!;
-    expect(objection(mobile, manifestOf(mobile), 'tools.ts', 'ai')).toBe('ai is an optional peer of @e2edev/mobile; import its types only');
+    expect(objection(mobile, manifestOf(mobile), 'tools.ts', 'ai')).toBe('ai is an optional peer of @e2e-dev/mobile; import its types only');
   });
 });

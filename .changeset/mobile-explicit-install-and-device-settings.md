@@ -1,5 +1,5 @@
 ---
-'@e2edev/mobile': patch
+'@e2e-dev/mobile': patch
 ---
 
 The engine no longer installs `appPath` on its own: the suite says where, with `device.installApp()`, which without a path installs the engine's build, once per device in a fixture or a test, and pins what it installed when no `app` is; a device provider still installs on the device it leases. `device.setPermission` brings the pinned app to the foreground when the session is on no app, and again once when agent-device refuses for that reason, instead of failing the test that reset a permission before its `app.open()`. `device.setLocation` on Android switches location services on before the fix: `clearLocation` had switched them off, and the emulator keeps that, so the next run's fix was one the app could not read. A `longPress` with no `duration`, the agent's `long_press` included, holds for one second: agent-device's default hold is shorter than a React Native `Pressable`'s `delayLongPress`, so the agent's long press registered as a tap and never advanced a scenario that waits for one.

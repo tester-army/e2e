@@ -1,4 +1,4 @@
-# @e2edev/mobile
+# @e2e-dev/mobile
 
 ## 0.8.0-canary-20260925150007
 

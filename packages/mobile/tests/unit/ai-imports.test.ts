@@ -1,5 +1,5 @@
 /**
- * `ai` is an optional peer dependency, and `@e2edev/mobile/tools` loads
+ * `ai` is an optional peer dependency, and `@e2e-dev/mobile/tools` loads
  * with the project's config. A value import of the package anywhere in `src`
  * turns a project without it into a module-resolution crash at config load;
  * type imports erase and are fine, and the tool pack needs nothing else.

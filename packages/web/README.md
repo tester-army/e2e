@@ -1,4 +1,4 @@
-# @e2edev/web
+# @e2e-dev/web
 
 The browser engine for [`e2e`](https://www.npmjs.com/package/e2e), built on
 [Playwright](https://playwright.dev).
@@ -11,7 +11,7 @@ seam with no privilege either way.
 ## Install
 
 ```bash
-npm install --save-dev e2e @e2edev/web playwright
+npm install --save-dev e2e @e2e-dev/web playwright
 ```
 
 Bring your own Playwright: `playwright` is a peer dependency (`>=1.63.0 <2`),
@@ -22,7 +22,7 @@ outside the range may be rejected by your package manager as an unmet peer
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
-import { web } from '@e2edev/web';
+import { web } from '@e2e-dev/web';
 
 export default {
   targets: [{ name: 'web', engine: web({ url: 'http://localhost:3000' }) }],
@@ -107,7 +107,7 @@ downloads, keyboard and mouse, plus `expect(web).toHaveURL()` and
 typed; it is the same runtime `test` as `e2e`'s.
 
 ```ts
-import { test } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 test('signs in', async ({ app, screen, web }) => {

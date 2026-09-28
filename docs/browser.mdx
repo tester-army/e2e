@@ -5,10 +5,10 @@ description: Mock an API, handle a dialog, download a file, reach into an iframe
 
 Use `screen`, `app`, and `expect` for navigation, interactions, and checks.
 For browser-specific operations such as request mocking, dialogs, and
-downloads, use `web`. Import `test` from `@e2edev/web` to access it:
+downloads, use `web`. Import `test` from `@e2e-dev/web` to access it:
 
 ```ts
-import { test } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 test('the dashboard loads', async ({ app, screen, web }) => {
@@ -123,7 +123,7 @@ on one app are two targets:
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
-import { web } from '@e2edev/web';
+import { web } from '@e2e-dev/web';
 
 const app = { url: 'http://localhost:3000' };
 
@@ -214,7 +214,7 @@ A provider against a typical session API has three requests: create a
 session, poll it until it exposes a DevTools endpoint, stop it.
 
 ```ts title="browser-provider.ts"
-import type { BrowserProvider } from '@e2edev/web';
+import type { BrowserProvider } from '@e2e-dev/web';
 
 /**
  * Leases browsers from a service that starts a Chromium per session and
@@ -267,7 +267,7 @@ export function hostedBrowsers(options: { serviceUrl: string; scope?: 'worker' |
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
-import { web } from '@e2edev/web';
+import { web } from '@e2e-dev/web';
 import { hostedBrowsers } from './browser-provider.ts';
 
 export default {

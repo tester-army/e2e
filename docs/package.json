@@ -1,5 +1,5 @@
 {
-  "name": "@e2edev/docs",
+  "name": "@e2e-dev/docs",
   "private": true,
   "description": "The e2e documentation site, built with Mintlify",
   "type": "module",
@@ -9,9 +9,9 @@
     "typecheck": "tsc --noEmit --project examples/tsconfig.json"
   },
   "devDependencies": {
-    "@e2edev/mobile": "workspace:*",
+    "@e2e-dev/mobile": "workspace:*",
     "e2e": "workspace:*",
-    "@e2edev/web": "workspace:*",
+    "@e2e-dev/web": "workspace:*",
     "@types/node": "26.6.2",
     "agent-device": "0.21.6",
     "ai": "7.0.107",

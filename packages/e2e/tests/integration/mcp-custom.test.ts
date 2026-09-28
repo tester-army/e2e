@@ -30,7 +30,7 @@ export const kiosk = createFakeEngine({
 
 const CONFIG = `import type { E2EConfig } from 'e2e';
 import { createAgent, defineTool, getToolContext } from 'e2e/agent';
-import { web } from '@e2edev/web';
+import { web } from '@e2e-dev/web';
 import { z } from 'zod';
 import { kiosk } from './kiosk.ts';
 

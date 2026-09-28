@@ -57,7 +57,7 @@ appId: com.example.app
 ```
 
 ```ts title="e2e"
-import { test } from '@e2edev/mobile';
+import { test } from '@e2e-dev/mobile';
 import { expect } from 'e2e';
 
 test('asks for the email', async ({ app, agent, screen }) => {
@@ -77,7 +77,7 @@ the Resend control. The flow could also stay fully deterministic: every
 
 Every e2e call sits on one side of a line. What is on `screen` and
 `expect(locator)` runs on every target: a simulator or emulator, a browser
-through `@e2edev/web`, any engine built on the same contract. What is
+through `@e2e-dev/web`, any engine built on the same contract. What is
 on `device` runs only on a device, and a test that uses it declares
 `requires: ['device']` so other targets skip it. A Maestro flow ports line by
 line to one side or the other; the `Lives in` column says which. `Status`

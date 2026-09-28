@@ -164,7 +164,7 @@ Locator assertions retry until they pass or time out. Direct reads such as
 `textContent()` do not retry a mismatched value.
 
 Use the `web` fixture for browser features such as routes, cookies, dialogs,
-frames, and downloads. Import `test` from `@e2edev/web` to use it.
+frames, and downloads. Import `test` from `@e2e-dev/web` to use it.
 See the [Web engine reference](/reference/web) and the
 [screen reference](/reference/screen).
 
@@ -204,7 +204,7 @@ session or a `beforeEach` that sets cookies runs as the signed-in user. Every
 test registered through this `test` acquires `web`, so it needs a web target.
 
 ```ts title="tests/api.ts"
-import { test as base } from '@e2edev/web';
+import { test as base } from '@e2e-dev/web';
 
 export const test = base.extend<{ api: (path: string, init?: RequestInit) => Promise<Response> }>({
   api: async ({ app, web }, use) => {

@@ -10,8 +10,8 @@ one goal; `agent.assert`, `agent.waitFor`, and `agent.extract` judge the
 screen. Use `screen`, `app`, `web`, and `expect` for exact interactions and
 checks. The trace cache can replay verified actions and check their recorded
 end state without a model call. Agent judgments still run live.
-UI targets use `@e2edev/web` for browsers or
-`@e2edev/mobile` for iOS simulators and Android emulators. A test that
+UI targets use `@e2e-dev/web` for browsers or
+`@e2e-dev/mobile` for iOS simulators and Android emulators. A test that
 takes only `app` can check an API with `fetch` and `expect`; see the
 `writing-tests` topic.
 
@@ -23,7 +23,7 @@ an API key, or a local model. `e2e init` offers these choices. See
 // e2e.config.ts
 import type { E2EConfig } from 'e2e';
 import { createAgent } from 'e2e/agent';
-import { web } from '@e2edev/web';
+import { web } from '@e2e-dev/web';
 import { gateway } from 'ai';
 
 export default {
@@ -47,7 +47,7 @@ export default {
 
 ```ts
 // tests/billing.e2e.ts
-import { test } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 test('a member upgrades to Pro', async ({ app, agent, screen, web }) => {
@@ -108,7 +108,7 @@ one. Without them, the installed CLI prints the same text:
   `web({ url, command })`. A tools-only target can omit the engine
   and set `platform` explicitly. There is no top-level `app` key or `defineConfig`.
 - Import `test`, `expect`, `credentials`, and `secrets` from `e2e`. A test that
-  uses the `web` fixture imports `test` from `@e2edev/web` instead: the
+  uses the `web` fixture imports `test` from `@e2e-dev/web` instead: the
   same runtime `test`, typed with `web`.
 - Config and tests are ES modules and load as such whatever `package.json` sets as `type`.
 - Locators resolve when used. Actions wait for readiness and `expect`

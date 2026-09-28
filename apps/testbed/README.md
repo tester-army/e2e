@@ -1,4 +1,4 @@
-# @e2edev/testbed
+# @e2e-dev/testbed
 
 Dogfood workspace for the [`e2e`](../../packages/e2e) runner: a real project consuming the
 built `e2e` package exactly like a user would, against playground apps we
@@ -50,13 +50,13 @@ here.
 
 ```bash
 pnpm --filter e2e build               # the testbed runs the built runner
-pnpm --filter @e2edev/testbed test    # typecheck + local suite (starts the app itself)
-pnpm --filter @e2edev/testbed test:headed
-pnpm --filter @e2edev/testbed app     # run the playground manually
-AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed test:agent     # real model calls
-AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed test:dogfood
-AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed explore:garden
-pnpm --filter @e2edev/testbed test:stress                            # reporters only
+pnpm --filter @e2e-dev/testbed test    # typecheck + local suite (starts the app itself)
+pnpm --filter @e2e-dev/testbed test:headed
+pnpm --filter @e2e-dev/testbed app     # run the playground manually
+AI_GATEWAY_API_KEY=... pnpm --filter @e2e-dev/testbed test:agent     # real model calls
+AI_GATEWAY_API_KEY=... pnpm --filter @e2e-dev/testbed test:dogfood
+AI_GATEWAY_API_KEY=... pnpm --filter @e2e-dev/testbed explore:garden
+pnpm --filter @e2e-dev/testbed test:stress                            # reporters only
 ```
 
 The local suite runs in CI on every push. Reports land in `.e2e/report.json`;
@@ -71,8 +71,8 @@ dispatch, or by hand. Each config builds its model with the AI SDK's
 `E2E_MODEL` variable so the same suite can be replayed across providers:
 
 ```bash
-AI_GATEWAY_API_KEY=...  pnpm --filter @e2edev/testbed test:agent
-E2E_MODEL=openai/gpt-6-luna-fast AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed test:agent
+AI_GATEWAY_API_KEY=...  pnpm --filter @e2e-dev/testbed test:agent
+E2E_MODEL=openai/gpt-6-luna-fast AI_GATEWAY_API_KEY=... pnpm --filter @e2e-dev/testbed test:agent
 ```
 
 Agentic assertions are structurally comparable across models, not textually
@@ -83,7 +83,7 @@ To see where the tokens went, record the run and open the trace in
 [unbox-ai](https://github.com/tester-army/unbox-ai):
 
 ```bash
-AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed test:agent -- --ai-trace
+AI_GATEWAY_API_KEY=... pnpm --filter @e2e-dev/testbed test:agent -- --ai-trace
 npx unbox-ai .e2e/ai-trace.json          # viewer: treemap, waterfall, diffed turns
 npx unbox-ai runs .e2e/ai-trace.json     # one line per agent step, from the terminal
 ```
@@ -94,7 +94,7 @@ first, in this directory:
 
 ```bash
 npx unbox-ai devtools                    # live viewer on http://localhost:4983
-E2E_DEVTOOLS=1 AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed test:agent -- --workers 1
+E2E_DEVTOOLS=1 AI_GATEWAY_API_KEY=... pnpm --filter @e2e-dev/testbed test:agent -- --workers 1
 ```
 
 The devtools recorder names runs after their first prompt and keeps one

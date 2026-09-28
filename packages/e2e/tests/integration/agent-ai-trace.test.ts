@@ -161,7 +161,7 @@ describe('--ai-trace on child-process workers', () => {
     // built inside the config file from the shared helper.
     const helper = fileURLToPath(new URL('../helpers/fake-loop-model.ts', import.meta.url));
     const configSource = `import type { E2EConfig } from 'e2e';
-import { web } from '@e2edev/web';
+import { web } from '@e2e-dev/web';
 import { installFakeLoopModel } from ${JSON.stringify(helper)};
 
 export default {

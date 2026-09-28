@@ -3,7 +3,7 @@ title: From Playwright
 description: Run e2e alongside Playwright and migrate tests one file at a time.
 ---
 
-`@e2edev/web` uses your installed Playwright when its version satisfies
+`@e2e-dev/web` uses your installed Playwright when its version satisfies
 the engine's peer dependency (`>=1.63.0 <2`). Both runners can stay in one
 project. e2e reads `e2e.config.ts` and finds `tests/**/*.e2e.ts` by default,
 so keep the two file patterns apart.
@@ -78,7 +78,7 @@ test('checkout', async ({ page }) => {
 ```
 
 ```ts title="e2e"
-import { test } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 test('checkout', async ({ app, agent, screen }) => {
@@ -96,7 +96,7 @@ fully deterministic: every `page.getBy*` line has a `screen.getBy*` line.
 
 Every e2e call sits on one side of a line. What is on `screen` and
 `expect(locator)` runs on every target: a browser, a simulator or emulator
-through `@e2edev/mobile`, any engine built on the same contract. What
+through `@e2e-dev/mobile`, any engine built on the same contract. What
 is on `web` runs only in a browser, and a test that uses it declares
 `requires: ['web']` so other targets skip it. A Playwright test ports line by
 line to one side or the other; the `Lives in` column says which. `Status`
@@ -230,7 +230,7 @@ to do today.
 
 | Playwright | e2e | Lives in | Status |
 | --- | --- | --- | --- |
-| `import { test, expect } from '@playwright/test'` | `import { test } from '@e2edev/web'` and `import { expect } from 'e2e'` | `test` | renamed |
+| `import { test, expect } from '@playwright/test'` | `import { test } from '@e2e-dev/web'` and `import { expect } from 'e2e'` | `test` | renamed |
 | `test(title, fn)`, `test.describe`, `beforeEach`, `afterEach` | the same | `test` | same |
 | `test.beforeAll`, `afterAll` | the same, with `platform` as the only fixture; no `browser` or `request` | `test` | same |
 | `{ page }` in a test | `{ screen, app, web }`; no raw `Page` in tests, see [By design](#by-design) | `test` | by design |

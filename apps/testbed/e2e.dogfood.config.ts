@@ -6,7 +6,7 @@
  */
 
 import type { E2EConfig } from 'e2e';
-import { web } from '@e2edev/web';
+import { web } from '@e2e-dev/web';
 import { createAgent, defineTool } from 'e2e/agent';
 import { gateway, tool } from 'ai';
 import { z } from 'zod';

@@ -6,7 +6,7 @@ export { credentials, secrets } from './secrets.ts';
 export { unique } from './params.ts';
 export { AgentError, isAgentError } from './agent/error.ts';
 // The markdown page the `markdown` reporter writes, for a reporter that posts
-// it elsewhere: @e2edev/github renders the pull request comment from it.
+// it elsewhere: @e2e-dev/github renders the pull request comment from it.
 export { renderMarkdownReport } from './report/markdown.ts';
 export type { MarkdownReportOptions } from './report/markdown.ts';
 

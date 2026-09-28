@@ -619,7 +619,7 @@ describe('ListReporter', () => {
       writeFileSync(
         file,
         [
-          "import { test } from '@e2edev/web';",
+          "import { test } from '@e2e-dev/web';",
           '',
           'await app.open();',
           'await expect(status).toContainText("Welcome");',

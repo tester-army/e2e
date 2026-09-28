@@ -24,10 +24,10 @@ const CLI = path.join(PACKAGE_ROOT, 'dist', 'cli', 'bin.js');
 const CONFIG = "export default { targets: [{ name: 'local', platform: 'test' }] };\n";
 let dir: string;
 
-/** Links workspace packages into the fixture's node_modules, standing in for an install: the runner as `e2e`, everything else under `@e2edev`. */
+/** Links workspace packages into the fixture's node_modules, standing in for an install: the runner as `e2e`, everything else under `@e2e-dev`. */
 function linkPackages(...names: readonly string[]): void {
   for (const name of names) {
-    const target = path.join(dir, 'node_modules', ...(name === 'e2e' ? [name] : ['@e2edev', name]));
+    const target = path.join(dir, 'node_modules', ...(name === 'e2e' ? [name] : ['@e2e-dev', name]));
     mkdirSync(path.dirname(target), { recursive: true });
     symlinkSync(path.resolve(PACKAGE_ROOT, '..', name), target, 'junction');
   }
@@ -91,7 +91,7 @@ describe('initializing standalone projects', () => {
     const config = resolveConfig(raw, { projectRoot: dir, env: {} });
     const collection = await collect(config);
 
-    expect(scaffold.dependencies).not.toHaveProperty('@e2edev/web');
+    expect(scaffold.dependencies).not.toHaveProperty('@e2e-dev/web');
     expect(scaffold.dependencies).toMatchObject({ ai: '^7.0.0', '@openrouter/ai-sdk-provider': '^3.0.0' });
     expect(config.agent.model).toMatchObject({ provider: expect.stringMatching(/^openrouter/), id: 'openai/gpt-6-luna-fast' });
     expect(config.targets[0]!.app.base).toBeUndefined();
@@ -123,7 +123,7 @@ describe('initializing standalone projects', () => {
     expect(config.targets).toMatchObject([{ name: platform, platform, engine: { name: 'mobile' } }]);
     expect(collection.tests.map((test) => test.title)).toEqual(['Settings opens']);
     // The engine installs agent-device itself; init writes the engine, never the driver.
-    expect(scaffold.dependencies).toHaveProperty('@e2edev/mobile');
+    expect(scaffold.dependencies).toHaveProperty('@e2e-dev/mobile');
     expect(scaffold.dependencies).not.toHaveProperty('agent-device');
   });
 
@@ -143,9 +143,9 @@ describe('initializing standalone projects', () => {
       expect(stdout).toContain('1 passed');
       const manifest = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'));
       const playwrightVersion = (JSON.parse(readFileSync(path.resolve(PACKAGE_ROOT, '..', 'web', 'package.json'), 'utf8')) as { version: string }).version;
-      expect(manifest.devDependencies['@e2edev/web']).toBe(dependencyRange(playwrightVersion));
+      expect(manifest.devDependencies['@e2e-dev/web']).toBe(dependencyRange(playwrightVersion));
       const recorded = JSON.parse(readFileSync(path.join(PACKAGE_ROOT, 'dist', 'cli', 'init', 'sibling-versions.json'), 'utf8')) as Record<string, string>;
-      expect(Object.keys(recorded).toSorted()).toEqual(['@e2edev/mobile', '@e2edev/web', 'playwright']);
+      expect(Object.keys(recorded).toSorted()).toEqual(['@e2e-dev/mobile', '@e2e-dev/web', 'playwright']);
       expect(manifest.devDependencies.playwright).toBe(`^${recorded.playwright}`);
       expect(manifest.devDependencies.ai).toBe('^7.0.0');
       expect(manifest.scripts).toEqual({ 'test:e2e': 'e2e run' });

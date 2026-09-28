@@ -96,7 +96,7 @@ describe('e2e init', () => {
     expect(JSON.parse(read('package.json'))).toEqual({
       private: true,
       type: 'module',
-      devDependencies: { 'e2e': dependencyRange(runnerVersion), '@e2edev/web': '0.x', playwright: '^1', ai: '^7.0.0' },
+      devDependencies: { 'e2e': dependencyRange(runnerVersion), '@e2e-dev/web': '0.x', playwright: '^1', ai: '^7.0.0' },
       scripts: { 'test:e2e': 'e2e run' },
     });
     expect(read('e2e.config.ts')).toContain('agents: {\n    default: createAgent({');
@@ -200,8 +200,8 @@ describe('e2e init', () => {
     const device = engine === 'mobile';
     expect(Object.keys(manifest.devDependencies)).toEqual([
       'e2e',
-      ...(engine === 'web' ? ['@e2edev/web', 'playwright'] : []),
-      ...(device ? ['@e2edev/mobile'] : []),
+      ...(engine === 'web' ? ['@e2e-dev/web', 'playwright'] : []),
+      ...(device ? ['@e2e-dev/mobile'] : []),
       ...(ai ? ['ai', '@openrouter/ai-sdk-provider'] : []),
     ]);
     expect(manifest.devDependencies.ai).toBe(ai ? '^7.0.0' : undefined);
@@ -211,10 +211,10 @@ describe('e2e init', () => {
     expect(read('e2e.config.ts').includes("model: openrouter('openai/gpt-6-luna-fast'),")).toBe(ai);
     expect(read('e2e.config.ts').includes('// OpenRouter serves the model id and reads OPENROUTER_API_KEY.')).toBe(ai);
     expect(clack.text).not.toHaveBeenCalled();
-    expect(read('e2e.config.ts').includes('@e2edev/web')).toBe(engine === 'web');
-    expect(read('tests/example.e2e.ts').includes('@e2edev/web')).toBe(engine === 'web');
-    expect(read('e2e.config.ts').includes('@e2edev/mobile')).toBe(device);
-    expect(read('tests/example.e2e.ts').includes('@e2edev/mobile')).toBe(device);
+    expect(read('e2e.config.ts').includes('@e2e-dev/web')).toBe(engine === 'web');
+    expect(read('tests/example.e2e.ts').includes('@e2e-dev/web')).toBe(engine === 'web');
+    expect(read('e2e.config.ts').includes('@e2e-dev/mobile')).toBe(device);
+    expect(read('tests/example.e2e.ts').includes('@e2e-dev/mobile')).toBe(device);
     expect(read('e2e.config.ts').includes('APP_URL')).toBe(engine === 'web');
     expect(output()).toContain(`Next: npm install, then ${device ? '' : 'APP_URL=http://localhost:3000 '}npm run test:e2e`);
     expect(spawnSync).not.toHaveBeenCalled();
@@ -355,7 +355,7 @@ describe('e2e init', () => {
     async (type) => {
       const manifest = `${JSON.stringify({
         name: 'existing-app', type, scripts: { 'test:e2e': 'e2e run --workers 1' },
-        dependencies: { 'e2e': 'workspace:*', '@e2edev/web': 'workspace:*', playwright: '1.59.0-alpha-2026-01-01', ai: '^7.0.12' },
+        dependencies: { 'e2e': 'workspace:*', '@e2e-dev/web': 'workspace:*', playwright: '1.59.0-alpha-2026-01-01', ai: '^7.0.12' },
       }, null, 4)}\n`;
       writeFileSync(path.join(dir, 'package.json'), manifest);
       for (let run = 0; run < 2; run += 1) {
@@ -384,7 +384,7 @@ describe('e2e init', () => {
     const manifest = {
       name: 'existing-app', type: 'commonjs', scripts: { dev: 'vite' },
       dependencies: { ai: '^7.0.12' },
-      devDependencies: { '@e2edev/web': 'file:../engine', vite: '^7.0.0' },
+      devDependencies: { '@e2e-dev/web': 'file:../engine', vite: '^7.0.0' },
       custom: { enabled: true },
     };
     writeFileSync(path.join(dir, 'package.json'), `${JSON.stringify(manifest, null, 4).replaceAll('\n', '\r\n')}\r\n`);
@@ -410,7 +410,7 @@ describe('e2e init', () => {
     await init(dir);
     const written = JSON.parse(read('package.json'));
     expect(written.dependencies).toEqual(manifest.dependencies);
-    expect(Object.keys(written.devDependencies)).toEqual(['e2e', '@e2edev/web']);
+    expect(Object.keys(written.devDependencies)).toEqual(['e2e', '@e2e-dev/web']);
   });
 
   it.each([

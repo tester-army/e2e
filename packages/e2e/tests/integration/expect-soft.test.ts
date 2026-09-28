@@ -3,7 +3,7 @@ import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { resultByTitle, runProject, type FixtureProject, type RunOutcome } from '../helpers/run-project.ts';
 
-const SOFT_SUITE = `import { test } from '@e2edev/web';
+const SOFT_SUITE = `import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 test('soft failures let the body run on', async ({ app, screen, web }) => {

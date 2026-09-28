@@ -1,4 +1,4 @@
-import { test } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
 import { expect, credentials } from 'e2e';
 
 test.setup('authenticate as admin', { sessions: ['admin'] }, async ({ app, screen, session, web }) => {

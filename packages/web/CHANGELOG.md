@@ -1,4 +1,4 @@
-# @e2edev/web
+# @e2e-dev/web
 
 ## 0.11.0-canary-20260925150007
 

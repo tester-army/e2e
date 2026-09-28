@@ -1,6 +1,6 @@
 import type { E2EConfig } from 'e2e';
 import { createAgent } from 'e2e/agent';
-import { mobileTools } from '@e2edev/mobile/tools';
+import { mobileTools } from '@e2e-dev/mobile/tools';
 import { gateway } from 'ai';
 import base, { android, ios } from './e2e.config.ts';
 
@@ -10,7 +10,7 @@ import base, { android, ios } from './e2e.config.ts';
  * recordings committed under `.e2e/cache/` and calling the model for a step
  * with none. To record by hand, on a booted simulator or emulator:
  *
- *   AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/mobile-benchmark test:agent
+ *   AI_GATEWAY_API_KEY=... pnpm --filter @e2e-dev/mobile-benchmark test:agent
  *
  * `E2E_MODEL` overrides the pinned model so one suite dogfoods several
  * providers.

@@ -4,7 +4,7 @@
  * the colour of one pixel, and how many pixels of a band hold one colour.
  */
 
-import type { Web } from '@e2edev/web';
+import type { Web } from '@e2e-dev/web';
 import type { Point } from 'e2e';
 
 export type Band = { x: number; y: number; width: number; height: number };

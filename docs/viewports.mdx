@@ -14,7 +14,7 @@ and cannot resize it.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
-import { web } from '@e2edev/web';
+import { web } from '@e2e-dev/web';
 
 const app = { url: 'http://localhost:3000' };
 
@@ -56,7 +56,7 @@ size for the rest of the attempt as usual.
 `web.setViewport` resizes the page for the rest of the attempt:
 
 ```ts
-import { test } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 test('the menu collapses on a narrow screen', async ({ app, screen, web }) => {

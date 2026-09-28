@@ -27,7 +27,7 @@
   ],
   "ignoreDependencies": [
     "e2e",
-    "@e2edev/web",
+    "@e2e-dev/web",
     "@openrouter/ai-sdk-provider",
     "@expo/fingerprint",
     "@expo/repack-app"

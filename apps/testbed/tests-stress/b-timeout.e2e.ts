@@ -1,7 +1,7 @@
 import { existsSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { test } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 const MARKER = path.join(tmpdir(), 'e2e-stress-flaky-marker');

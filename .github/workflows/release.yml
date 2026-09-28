@@ -40,11 +40,11 @@ jobs:
       - name: Verify
         run: pnpm run check
       - name: Install browsers
-        run: pnpm --filter @e2edev/web exec playwright install chromium --with-deps
+        run: pnpm --filter @e2e-dev/web exec playwright install chromium --with-deps
       - name: Unit and integration tests
         run: pnpm test
       - name: Testbed
-        run: pnpm --filter @e2edev/testbed test
+        run: pnpm --filter @e2e-dev/testbed test
 
       # Opens or updates a release PR while changesets are pending; publishes
       # once that PR is merged and no changesets remain.
@@ -57,7 +57,7 @@ jobs:
           pr-title: 'chore: version packages'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Granular npm access token with read/write on the @e2edev scope.
+          # Granular npm access token with read/write on the @e2e-dev scope.
           # Provenance stays off until the repository is public: npm only
           # attests builds whose source it can link to.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -3,7 +3,7 @@
  * matches the file it came from.
  *
  * The examples are typechecked against the built packages (`pnpm --filter
- * @e2edev/docs typecheck`); Mintlify cannot import a file into a page, so the
+ * @e2e-dev/docs typecheck`); Mintlify cannot import a file into a page, so the
  * page carries a copy of each and this script keeps the copies honest.
  *
  * Usage: `node scripts/check-docs-examples.ts`. Exits 1 listing every block

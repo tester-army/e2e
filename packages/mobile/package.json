@@ -1,5 +1,5 @@
 {
-  "name": "@e2edev/mobile",
+  "name": "@e2e-dev/mobile",
   "version": "0.8.0-canary-20260925150007",
   "description": "Mobile engine (iOS and Android) for e2e agentic end-to-end testing, built on agent-device",
   "keywords": [

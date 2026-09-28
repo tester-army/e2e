@@ -1,13 +1,13 @@
 import type { E2EConfig } from 'e2e';
-import { web } from '@e2edev/web';
+import { web } from '@e2e-dev/web';
 import { gateway } from 'ai';
 
 /**
  * `e2e explore` against the bug garden (`app/bug-garden.mjs`), a bookshop
  * with planted defects. Manual and opt-in: real model calls.
  *
- *   AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed explore:garden
- *   AI_GATEWAY_API_KEY=... pnpm --filter @e2edev/testbed explore:bench
+ *   AI_GATEWAY_API_KEY=... pnpm --filter @e2e-dev/testbed explore:garden
+ *   AI_GATEWAY_API_KEY=... pnpm --filter @e2e-dev/testbed explore:bench
  *
  * `EXPLORE_APP_URL` points the target at an already running garden (the bench
  * starts one per run); without it the config starts one on port 4275.

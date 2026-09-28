@@ -1,4 +1,4 @@
-import { test } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 test('title with  bell, [31mANSI[0m, and a tab\tinside', async ({ app }) => {

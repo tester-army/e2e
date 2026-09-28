@@ -1,4 +1,4 @@
-import type { BrowserProvider } from '@e2edev/web';
+import type { BrowserProvider } from '@e2e-dev/web';
 
 /**
  * Leases browsers from a service that starts a Chromium per session and

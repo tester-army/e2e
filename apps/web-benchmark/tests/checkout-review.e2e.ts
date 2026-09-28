@@ -1,4 +1,4 @@
-import { test } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 test('shows a raw greeting token and an undefined delivery date (planted bug), yet places the order', async ({

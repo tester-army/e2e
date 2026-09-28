@@ -1,5 +1,5 @@
 {
-  "name": "@e2edev/testbed",
+  "name": "@e2e-dev/testbed",
   "version": "0.0.0",
   "private": true,
   "description": "Dogfood suite: runs the e2e runner against a local playground app",
@@ -17,7 +17,7 @@
     "explore:bench": "node scripts/explore-bench.mjs"
   },
   "dependencies": {
-    "@e2edev/web": "workspace:*",
+    "@e2e-dev/web": "workspace:*",
     "e2e": "workspace:*"
   },
   "devDependencies": {

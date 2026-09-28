@@ -19,7 +19,7 @@ import { fakeCalls, installFakeModel, type FakeCall } from '../helpers/fake-mode
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { createProject, type FixtureProject } from '../helpers/run-project.ts';
-import { web } from '@e2edev/web';
+import { web } from '@e2e-dev/web';
 import { z } from 'zod';
 
 type PlanAnswer = { decision: 'step'; title: string; instruction: string } | { decision: 'finish'; summary: string };

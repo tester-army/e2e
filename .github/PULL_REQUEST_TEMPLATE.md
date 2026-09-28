@@ -20,4 +20,4 @@ Ran it locally: yes | no - <why>
 - [ ] Breaking change: title carries `!`, the changeset body names what breaks and what replaces it, and the deprecation warning landed a window earlier (stability policy in CONTRIBUTING.md).
 - [ ] Docs updated in the same PR: the `docs/**/*.mdx` page for the behavior, and `skills/e2e/` if the skill describes it.
 - [ ] Contract change: emitted `.d.ts` reviewed, `tests/types/sdk-types.ts` updated; wire change edits the schema and both fixtures.
-- [ ] Engine contract change (`e2e/engine`): changesets for `e2e`, `@e2edev/web`, and `@e2edev/mobile`.
+- [ ] Engine contract change (`e2e/engine`): changesets for `e2e`, `@e2e-dev/web`, and `@e2e-dev/mobile`.

@@ -1,6 +1,6 @@
 import type { E2EConfig } from 'e2e';
-import { mobile } from '@e2edev/mobile';
-import { github } from '@e2edev/github';
+import { mobile } from '@e2e-dev/mobile';
+import { github } from '@e2e-dev/github';
 
 /**
  * Deterministic suite against the benchmark app on an iOS simulator and an

@@ -1,5 +1,5 @@
 import { createAgentDeviceClient } from 'agent-device';
-import type { DeviceProvider } from '@e2edev/mobile';
+import type { DeviceProvider } from '@e2e-dev/mobile';
 
 /**
  * Leases devices from a device cloud agent-device itself speaks to, through

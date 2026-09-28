@@ -16,7 +16,7 @@ import {
   type RunOutcome,
 } from '../helpers/run-project.ts';
 
-const SUITE = `import { test } from '@e2edev/web';
+const SUITE = `import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 test('class assertions poll for a node that arrives late', async ({ app, web }) => {

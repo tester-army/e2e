@@ -31,7 +31,7 @@ const PER_PAGE = 100;
  * reaches: ten thousand comments.
  */
 const MAX_PAGES = 100;
-const USER_AGENT = '@e2edev/github';
+const USER_AGENT = '@e2e-dev/github';
 
 type Method = 'GET' | 'POST' | 'PATCH';
 

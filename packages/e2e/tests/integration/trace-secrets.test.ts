@@ -23,7 +23,7 @@ import { entriesFor, readEntries } from '../helpers/trace-cache.ts';
 
 const SECRET = 'trace-secret-Qx7#"&=2718';
 
-const SUITE = `import { test } from '@e2edev/web';
+const SUITE = `import { test } from '@e2e-dev/web';
 import { expect, credentials } from 'e2e';
 
 test('fills through screen', async ({ app, screen }) => {

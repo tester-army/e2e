@@ -41,9 +41,9 @@ Maestro, and the full reference.
 ## Packages
 
 - [`e2e`](./packages/e2e): SDK, runner, and CLI.
-- [`@e2edev/web`](./packages/web): the browser engine.
-- [`@e2edev/mobile`](./packages/mobile): the iOS and Android engine.
-- [`@e2edev/github`](./packages/github): the pull request comment reporter.
+- [`@e2e-dev/web`](./packages/web): the browser engine.
+- [`@e2e-dev/mobile`](./packages/mobile): the iOS and Android engine.
+- [`@e2e-dev/github`](./packages/github): the pull request comment reporter.
 
 ## Contributing
 

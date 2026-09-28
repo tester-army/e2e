@@ -24,7 +24,7 @@ its accessible name.
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
 import { createToolLoopExecutor } from 'e2e/agent';
-import { web, surfaceOf } from '@e2edev/web';
+import { web, surfaceOf } from '@e2e-dev/web';
 import { gateway, tool } from 'ai';
 import { z } from 'zod';
 
@@ -86,7 +86,7 @@ understand.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig, StepExecutor } from 'e2e';
-import { web } from '@e2edev/web';
+import { web } from '@e2e-dev/web';
 
 const scripted: StepExecutor = {
   name: 'scripted',
@@ -158,13 +158,13 @@ configured model and raise `MODEL_UNAVAILABLE` without one.
 
 ### Driving the page yourself
 
-Use `surfaceOf(handle)` from `@e2edev/web` to access the current
+Use `surfaceOf(handle)` from `@e2e-dev/web` to access the current
 attempt's `Page` and `BrowserContext`. Both accessors throw `INVALID_STATE`
 outside an active attempt.
 
 ```ts
 import type { E2EConfig, StepExecutor } from 'e2e';
-import { web, surfaceOf } from '@e2edev/web';
+import { web, surfaceOf } from '@e2e-dev/web';
 
 const engine = web({ url: 'http://localhost:3000' });
 const own: StepExecutor = {

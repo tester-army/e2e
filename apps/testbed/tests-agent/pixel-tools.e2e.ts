@@ -6,7 +6,7 @@
  * where the tree alone should carry the step.
  */
 
-import { test } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 test('enters a code on the drawn keypad through points', async ({ web, agent, screen }) => {

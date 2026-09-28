@@ -9,7 +9,7 @@
  * opens it. An `e2e explore` run
  * renders its record instead: the goal, every finding with its evidence,
  * and the assessment. The built-in `markdown` reporter writes the page as
- * `summary.md` beside `report.json`; `@e2edev/github` posts it as the pull
+ * `summary.md` beside `report.json`; `@e2e-dev/github` posts it as the pull
  * request comment.
  *
  * Everything a test or the agent wrote (titles, labels, error messages,

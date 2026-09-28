@@ -39,7 +39,7 @@ function host(): { decisions: string[]; recordPolicy: (name: string, decision: s
 }
 
 /**
- * An Android password `EditText` as `@e2edev/mobile` projects it: UIAutomator
+ * An Android password `EditText` as `@e2e-dev/mobile` projects it: UIAutomator
  * flags it `password` while the class stays the plain one, so the engine
  * derives `secure` and the purpose from the flag and drops the value.
  */

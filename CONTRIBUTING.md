@@ -41,8 +41,8 @@ This project is a pnpm monorepo. `packages/` holds what publishes to npm,
 `apps/` the private apps and suites that consume the built packages:
 
 - `packages/e2e`: the published `e2e` package (SDK, runner, CLI, engine contract)
-- `packages/web`: the published `@e2edev/web` browser engine
-- `packages/mobile`: the published `@e2edev/mobile` mobile engine
+- `packages/web`: the published `@e2e-dev/web` browser engine
+- `packages/mobile`: the published `@e2e-dev/mobile` mobile engine
 - `apps/testbed`: private dogfood suite that consumes the built packages
 - `apps/web-benchmark`: private Next.js app of hard-surface scenarios plus the e2e suites written against them
 - `apps/mobile-benchmark`: private Expo app of hard mobile surfaces plus the e2e suites written against them
@@ -71,7 +71,7 @@ pnpm test    # unit + integration
 Integration tests need Chromium:
 
 ```sh
-pnpm --filter @e2edev/web exec playwright install chromium
+pnpm --filter @e2e-dev/web exec playwright install chromium
 ```
 
 Docs are part of the change, not a follow-up. A behavior change updates its
@@ -117,8 +117,8 @@ We use [changesets](https://github.com/changesets/changesets) to publish new
 versions. It handles bumping the version based on semver, writing the
 changelog, and creating tags and GitHub releases.
 
-If your change affects `e2e`, `@e2edev/web`, or
-`@e2edev/mobile`, add a changeset:
+If your change affects `e2e`, `@e2e-dev/web`, or
+`@e2e-dev/mobile`, add a changeset:
 
 ```sh
 pnpm changeset
@@ -133,12 +133,13 @@ tag. Never hand-edit a package `version` or
 ## Releases
 
 The runner publishes to npmjs as `e2e`; engines and reporters publish under
-the `@e2edev` scope. All are public packages: anyone can install them and read
+the `@e2e-dev` scope. All are public packages: anyone can install them and read
 the release on GitHub. After a PR with a changeset lands on `main`, the release
 workflow opens a `chore: version packages` pull request that applies the
 pending changesets. Merging that PR re-runs the full gate, publishes the new
 versions, and creates the matching GitHub release. `@e2edev/e2e` is the
-runner's retired name and is deprecated on npm.
+runner's retired name, and the `@e2edev` scope is the engines' and reporters'
+retired scope; both are deprecated on npm.
 
 ### Release channels
 
@@ -223,7 +224,7 @@ prompts and tool descriptions.
 
 ### Engine contract
 
-`e2e/engine` is what `@e2edev/web` and `@e2edev/mobile`
+`e2e/engine` is what `@e2e-dev/web` and `@e2e-dev/mobile`
 build against, and what a third-party engine builds against too. A change to
 that contract bumps all three packages together in one release, with a
 changeset for each, so an engine and a runner from the same release always

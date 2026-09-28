@@ -1,9 +1,9 @@
 ---
 title: Pull request comments
-description: The @e2edev/github reporter posts one comment per run from GitHub Actions and keeps it current.
+description: The @e2e-dev/github reporter posts one comment per run from GitHub Actions and keeps it current.
 ---
 
-`@e2edev/github` posts test results as a pull request comment, including
+`@e2e-dev/github` posts test results as a pull request comment, including
 failures, source links, and links to workflow artifacts. Reruns update the
 same comment, and a `--last-failed` rerun updates it as one run. The reporter
 also writes the results to the job summary.
@@ -11,13 +11,13 @@ also writes the results to the job summary.
 ## Setup
 
 ```bash
-npm install --save-dev @e2edev/github
+npm install --save-dev @e2e-dev/github
 ```
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
-import { web } from '@e2edev/web';
-import { github } from '@e2edev/github';
+import { web } from '@e2e-dev/web';
+import { github } from '@e2e-dev/github';
 
 export default {
   targets: [{ engine: web({ url: 'http://localhost:3000' }) }],

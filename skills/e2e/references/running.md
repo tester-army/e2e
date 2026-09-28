@@ -114,7 +114,7 @@ recorded flow is stale — `--no-cache` only skips the cache for one run.
   serial members share the group's attempt but keep distinct step IDs.
   The `end` phase carries the redacted error and preserves `blocked` and
   `cancelled` statuses. Accept missing identity when reading older streams.
-- `github()` from `@e2edev/github`: on GitHub Actions, one pull request comment per
+- `github()` from `@e2e-dev/github`: on GitHub Actions, one pull request comment per
   run (edited on rerun) and the job summary; needs `pull-requests: write` and
   `GITHUB_TOKEN` in the step's env.
 - Artifacts (screenshots, Playwright traces, `--video` recordings, `--debug`

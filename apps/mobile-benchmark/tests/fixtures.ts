@@ -1,11 +1,11 @@
 /**
- * The suite's `test`: the one `@e2edev/mobile` exports, typed with the
+ * The suite's `test`: the one `@e2e-dev/mobile` exports, typed with the
  * engine's contributed `device` fixture, plus the `build` fixture that puts
  * the app on the device. `expect` is `e2e`'s.
  */
 
-import type { Device } from '@e2edev/mobile';
-import { test as base } from '@e2edev/mobile';
+import type { Device } from '@e2e-dev/mobile';
+import { test as base } from '@e2e-dev/mobile';
 import type { App, Screen } from 'e2e';
 import { expect } from 'e2e';
 

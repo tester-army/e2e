@@ -1,4 +1,4 @@
-import { test } from '@e2edev/mobile';
+import { test } from '@e2e-dev/mobile';
 import { expect } from 'e2e';
 
 test('Settings opens', async ({ app, screen }) => {

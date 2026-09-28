@@ -25,7 +25,7 @@ name: mobile
 # here, and the report alone says what the first attempt of a flaky test met.
 #
 # Each job posts its run to the pull request as one comment through
-# @e2edev/github (hence pull-requests: write), named `ios`, `ios agent`,
+# @e2e-dev/github (hence pull-requests: write), named `ios`, `ios agent`,
 # `android`, or `android agent` by E2E_MOBILE_BENCHMARK_COMMENT, the way
 # benchmark.yml names the web ones. The second pass over the failed tests
 # updates the same comment: the reporter folds the rerun into the first

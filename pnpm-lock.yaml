@@ -189,10 +189,10 @@ importers:
         specifier: 13.16.1
         version: 13.16.1(react-native@0.86.2(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.1.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)
     devDependencies:
-      '@e2edev/github':
+      '@e2e-dev/github':
         specifier: workspace:*
         version: link:../../packages/github
-      '@e2edev/mobile':
+      '@e2e-dev/mobile':
         specifier: workspace:*
         version: link:../../packages/mobile
       '@expo/fingerprint':
@@ -219,7 +219,7 @@ importers:
 
   apps/testbed:
     dependencies:
-      '@e2edev/web':
+      '@e2e-dev/web':
         specifier: workspace:*
         version: link:../../packages/web
       e2e:
@@ -247,7 +247,7 @@ importers:
 
   apps/web-benchmark:
     dependencies:
-      '@e2edev/web':
+      '@e2e-dev/web':
         specifier: workspace:*
         version: link:../../packages/web
       e2e:
@@ -263,7 +263,7 @@ importers:
         specifier: 19.3.0
         version: 19.3.0(react@19.3.0)
     devDependencies:
-      '@e2edev/github':
+      '@e2e-dev/github':
         specifier: workspace:*
         version: link:../../packages/github
       '@types/node':
@@ -287,10 +287,10 @@ importers:
 
   docs:
     devDependencies:
-      '@e2edev/mobile':
+      '@e2e-dev/mobile':
         specifier: workspace:*
         version: link:../packages/mobile
-      '@e2edev/web':
+      '@e2e-dev/web':
         specifier: workspace:*
         version: link:../packages/web
       '@types/node':
@@ -354,7 +354,7 @@ importers:
       '@ai-sdk/xai':
         specifier: 5.0.4
         version: 5.0.4(zod@4.6.1)
-      '@e2edev/web':
+      '@e2e-dev/web':
         specifier: workspace:*
         version: link:../web
       '@openrouter/ai-sdk-provider':

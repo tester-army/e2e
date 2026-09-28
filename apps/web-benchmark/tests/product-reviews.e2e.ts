@@ -1,4 +1,4 @@
-import { test } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 test('the running-shoe page lists coffee-grinder reviews (planted bug)', async ({ app, screen }) => {

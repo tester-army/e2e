@@ -1,4 +1,4 @@
-import { test } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 test('accepts the terms once the button clears the sticky footer', async ({ app, screen }) => {

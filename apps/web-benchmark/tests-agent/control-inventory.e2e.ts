@@ -6,7 +6,7 @@
  * check pins each outcome the way the deterministic twin reads it.
  */
 
-import { test } from '@e2edev/web';
+import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 const TAGS = { tags: ['control-inventory'] };
