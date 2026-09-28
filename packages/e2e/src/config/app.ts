@@ -63,9 +63,9 @@ export interface ResolvedApp {
   /** The free-port request the declared URL made; undefined when it names a port or there is no URL. */
   readonly portRequest: PortRequest | undefined;
   /**
-   * The site of the base URL, as `siteOf` reads it: where secrets, headers,
-   * and basic-auth credentials may go and whose child frames observations
-   * read. Undefined without a URL, which is no policy at all.
+   * The site of the base URL, as `siteOf` reads it: where configured
+   * headers go and whose child frames observations read. Undefined without
+   * a URL, which is no policy at all.
    */
   readonly site: string | undefined;
   readonly environment: 'test' | 'staging' | 'production';

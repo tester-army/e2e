@@ -114,9 +114,9 @@ export interface AsyncExpectation {
 ```
 
 A missing `checked`, `selected`, or `expanded` state counts as `false`, so
-`.not.toBeChecked()` passes on a button or a heading; a node
-is enabled unless it reports `disabled`. On the web, `disabled` is the state
-the browser applies, not the attribute alone: a control inside a
+`.not.toBeChecked()` passes on a button or a heading; a node is enabled
+unless it reports `disabled`. On the web, `disabled` is the state the
+browser applies, not the attribute alone: a control inside a
 `<fieldset disabled>` is disabled unless it sits in that fieldset's first
 `<legend>`, and `aria-disabled="true"` on an ancestor disables the widgets
 below it until an `aria-disabled="false"` cuts the chain, the same reading

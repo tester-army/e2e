@@ -167,9 +167,10 @@ export interface ExecutorActions {
   type(target: ExecutorTarget, value: string): Promise<void>;
   /**
    * Fills one secret declared in the step's params into an input. The
-   * harness authorizes the fill (configured secret, origin policy, an
-   * editable sink; a password field for a password) and hands the plaintext straight to
-   * the engine — it never passes through the executor or any model.
+   * harness authorizes the fill (configured secret, an enabled editable
+   * sink, a password field for a password; no origin check) and hands the
+   * plaintext straight to the engine: it never passes through the executor
+   * or any model.
    */
   typeSecret(target: ExecutorTarget, name: string): Promise<void>;
   press(target: ExecutorTarget, key: string): Promise<void>;

@@ -350,10 +350,12 @@ counter sections there. The harness's statistics have unit tests under
     filled the viewport stays pixel-tainted for the rest of the attempt. What
     an executor keeps in `attempt.memory` is its own; the harness never
     reports it.
-  - A secret fill is authorized by the runner, not the model: authentic
-    unresolved handle, a secure sink, allowed top-level and frame origin, an
-    editable node with a compatible purpose, a current observation, and no
-    control transfer since. The model never sees or picks the value.
+  - A secret fill is authorized by the runner, not the model
+    (`authorizeSecretFill`): a handle the step's params declare, configured
+    for the run, an enabled editable node on the newest observation, and a
+    password field for a password. There is no origin check: the value goes
+    to whatever site the page is on (`docs/security.mdx`). The model never
+    sees or picks the value.
   - Every model tool call is parsed into a closed schema and authorized
     immediately before dispatch. Nothing runs on a refusal: an unknown tool
     name or an undeclared field goes back to the model as the call's error

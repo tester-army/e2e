@@ -284,15 +284,14 @@ to do today.
 
 These differ from Playwright on purpose and will stay that way.
 
-- A string name is exact. `getByRole` names, `getByLabel`,
-  `getByPlaceholder`, and `getByText` match the whole string, case-sensitive,
-  after whitespace normalization. A substring match on `Save` also hits
-  `Save as draft`, and a test that passes on the wrong node is worse than
-  one that fails. Pass `{ exact: false }` or a `RegExp` when you mean a
-  fragment. A query that misses matches nothing, so a negated assertion on
-  it passes: check the query with a positive assertion first.
-  `filter({ hasText })` stays a case-insensitive substring match, as in
-  Playwright.
+- A string name is exact. Playwright's `getByRole` names, `getByLabel`,
+  `getByPlaceholder`, and `getByText` match a case-insensitive substring; here
+  a string matches the whole text, case-sensitive, see
+  [queries](/reference/screen#queries). A substring match on `Save` also hits
+  `Save as draft`, and a test that passes on the wrong node is worse than one
+  that fails. Pass `{ exact: false }` or a `RegExp` when you mean a fragment.
+  A query that misses matches nothing, so a negated assertion on it passes:
+  check the query with a positive assertion first.
 
   ```ts
   // <button>Save changes</button>, <label>Email address <input></label>
@@ -300,32 +299,27 @@ These differ from Playwright on purpose and will stay that way.
   screen.getByRole('button', { name: 'Save', exact: false });    // matches
   screen.getByRole('button', { name: 'save changes' });          // no match, case differs
   screen.getByLabel('Email');                                    // no match
-  screen.getByLabel('Email address');                            // matches
   ```
-- Text reads are rendered text. On the web, `textContent()`,
-  `allTextContents()`, `toHaveText`, and `toContainText` read what
-  `innerText` returns, with whitespace collapsed to single spaces: CSS
-  `text-transform` applies, `display: none` descendants drop out, and a
-  `<br>` becomes a space. Playwright's `textContent()` and `toHaveText` read
-  the DOM's `textContent` unless `useInnerText` is set. Queries still match
-  the source text, as Playwright's do: the exact `getByText('Draft')` finds
-  the first node below, `getByText('DRAFT')` does not. Read the raw DOM text
-  with `web.evaluate` when a test needs it.
+- Text reads are rendered text. On the web, `textContent()` and `toHaveText`
+  read what `innerText` returns, see
+  [locator reads](/reference/screen#locator-reads). Playwright reads the DOM's
+  `textContent` unless `toHaveText` gets `useInnerText`. Queries still match
+  the source text, as Playwright's do: `getByText('Draft')` finds the tag
+  below, `getByText('DRAFT')` does not. `web.evaluate` reads the raw DOM text.
 
   ```ts
   // <span data-testid="tag" style="text-transform: uppercase">Draft</span>
   // <p data-testid="total">Total <span style="display: none">debug</span>42</p>
   // <p data-testid="address">Line one<br>Line two</p>
-  await expect(screen.getByTestId('tag')).toHaveText('DRAFT');              // Playwright: 'Draft'
-  await expect(screen.getByTestId('total')).toHaveText('Total 42');         // Playwright: 'Total debug42'
+  await expect(screen.getByTestId('tag')).toHaveText('DRAFT');                 // Playwright: 'Draft'
+  await expect(screen.getByTestId('total')).toHaveText('Total 42');            // Playwright: 'Total debug42'
   await expect(screen.getByTestId('address')).toHaveText('Line one Line two'); // Playwright: 'Line oneLine two'
   ```
 - A node with no checked state is unchecked. `isChecked()` is `false` and
-  `.not.toBeChecked()` passes on a button, heading, or text input, where
-  Playwright throws `Not a checkbox or radio button`. A checkbox that is
-  replaced by a plain button therefore still satisfies an unchecked
-  assertion found by test id. Query checkable controls by role so the query
-  fails when the control changes kind.
+  `.not.toBeChecked()` passes on a button or a heading, where Playwright
+  throws `Not a checkbox or radio button`. A checkbox replaced by a plain
+  button still passes an unchecked assertion found by test id, so query a
+  checkable control by role: the query fails when the control changes kind.
 
   ```ts
   await expect(screen.getByRole('checkbox', { name: 'Subscribe' })).not.toBeChecked();
@@ -367,8 +361,6 @@ These differ from Playwright on purpose and will stay that way.
 | Retries | 0 | 1 in CI, 0 locally |
 | Trace | `off` (`on-first-retry` in the scaffolded config) | on for every attempt; no retain policy |
 | `getByRole` name, `getByLabel`, `getByPlaceholder`, `getByText` | case-insensitive substring | exact |
-| Text read by `textContent()`, `toHaveText` | DOM `textContent` | rendered text, as `innerText` |
-| `isChecked()`, `toBeChecked()` on a node that is not checkable | throws | unchecked |
 | `isVisible()` on several matches | the first match, no error | `LOCATOR_AMBIGUOUS` |
 
 ## What to migrate first
