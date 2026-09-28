@@ -245,15 +245,16 @@ export class DevicePool {
       this.retain(info.targetName, client);
       info.log(`booting ${label} (${slot + 1} of ${bindings.length})`);
       await runCommand('boot', () => client.devices.boot(where), info.signal, at);
+      if (this.options.platform === 'ios') await prepareRunner(client, where, info, at);
       const app = pinnedApp(this.options, binding.installedApp);
       if (app === undefined) {
         warmed.push(binding);
         continue;
       }
       // A build the suite installs itself is not on the device yet, so there
-      // is nothing to open: the first attempt installs it and starts the runner.
+      // is nothing to open: the first attempt installs it.
       if (this.options.appPath !== undefined && binding.installedApp === undefined) {
-        info.log(`${label}: ${app} awaits the suite's device.installApp(); the first attempt starts the automation runner`);
+        info.log(`${label}: ${app} awaits the suite's device.installApp()`);
         warmed.push(binding);
         continue;
       }
@@ -274,5 +275,23 @@ export class DevicePool {
     const clients = this.warmed.get(targetName) ?? [];
     clients.push(client);
     this.warmed.set(targetName, clients);
+  }
+}
+
+/**
+ * Starts the slot's iOS automation runner under `prepare ios-runner`, whose
+ * startup budget covers a cold simulator. Left to the first `open`, the
+ * start runs inside that request's 90 s envelope, which a cold runner on a
+ * loaded CI Mac outlasts; a timed-out `open` resets the daemon, ending every
+ * other slot's session with it. A runner that is busy or wedged ends the run
+ * here, like a warm-up open that meets one; any other failure is left to the
+ * first attempt.
+ */
+async function prepareRunner(client: AgentDeviceClient, where: DeviceSelection, info: EnginePrepareInfo, at: string): Promise<void> {
+  try {
+    await runCommand('prepare ios-runner', () => client.command.prepare({ action: 'ios-runner', ...where }), info.signal, at);
+  } catch (cause) {
+    if (info.signal.aborted || isRunnerFailure(cause)) throw cause;
+    info.log(`${at}: automation runner not prepared (${message(cause)}); the first attempt starts it`);
   }
 }

@@ -170,27 +170,28 @@ describe('lifecycle', () => {
       log: (line) => lines.push(line),
     });
     expect(h.sessions).toEqual(['e2e-ios-0', 'e2e-ios-1']);
-    expect(h.fake.methods()).toEqual(['devices.boot', 'apps.open', 'devices.boot', 'apps.open']);
+    expect(h.fake.methods()).toEqual(['devices.boot', 'command.prepare', 'apps.open', 'devices.boot', 'command.prepare', 'apps.open']);
     expect(h.fake.calls[0]!.args).toEqual({ platform: 'ios', device: 'iPhone 17' });
-    expect(h.fake.calls[1]!.args).toEqual({ app: 'Settings', platform: 'ios', device: 'iPhone 17' });
-    expect(h.fake.calls[2]!.args).toEqual({ platform: 'ios', device: 'iPhone 17 Pro' });
+    expect(h.fake.calls[1]!.args).toEqual({ action: 'ios-runner', platform: 'ios', device: 'iPhone 17' });
+    expect(h.fake.calls[2]!.args).toEqual({ app: 'Settings', platform: 'ios', device: 'iPhone 17' });
+    expect(h.fake.calls[3]!.args).toEqual({ platform: 'ios', device: 'iPhone 17 Pro' });
     expect(lines).toEqual(['booting iPhone 17 (1 of 2)', 'booting iPhone 17 Pro (2 of 2)']);
 
-    // Without a pinned app there is nothing to open, so it boots only; so does
-    // a build `appPath` nobody has installed and no `app`, since the engine
-    // installs nothing on its own and the suite's `device.installApp()` comes
-    // later. A pinned `app` whose build is not on yet is not opened either,
-    // and the log says why.
+    // Without a pinned app there is nothing to open, so it boots and starts
+    // the runner only; so does a build `appPath` nobody has installed and no
+    // `app`, since the engine installs nothing on its own and the suite's
+    // `device.installApp()` comes later. A pinned `app` whose build is not on
+    // yet is not opened either, and the log says why.
     const bare = harness({ device: 'iPhone 16e' }, false);
     await bare.engine.prepare!({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: () => undefined });
-    expect(bare.fake.methods()).toEqual(['devices.boot']);
+    expect(bare.fake.methods()).toEqual(['devices.boot', 'command.prepare']);
     const build = harness({ device: 'iPhone 16e', appPath: 'build/App.app' }, false);
     await build.engine.prepare!({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: () => undefined });
-    expect(build.fake.methods()).toEqual(['devices.boot']);
+    expect(build.fake.methods()).toEqual(['devices.boot', 'command.prepare']);
     const pinnedBuild = harness({ device: 'iPhone 16e', appPath: 'build/App.app' });
     const pinnedLines: string[] = [];
     await pinnedBuild.engine.prepare!({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: (line) => pinnedLines.push(line) });
-    expect(pinnedBuild.fake.methods()).toEqual(['devices.boot']);
+    expect(pinnedBuild.fake.methods()).toEqual(['devices.boot', 'command.prepare']);
     expect(pinnedLines[1]).toMatch(/Settings awaits the suite's device.installApp\(\)/);
 
     const single = harness({ device: 'iPhone 16e', session: 'qa' });
@@ -211,7 +212,7 @@ describe('lifecycle', () => {
   it('warms each device with a plain open, no launch arguments, and hands the worker the app its session is on', async () => {
     const h = harness({ device: 'iPhone 16e', launchArguments: ['-e2e', 'YES'], permissions: { camera: 'grant' } });
     const result = await h.engine.prepare!({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: () => undefined });
-    expect(h.fake.methods()).toEqual(['devices.boot', 'apps.open']);
+    expect(h.fake.methods()).toEqual(['devices.boot', 'command.prepare', 'apps.open']);
     expect(h.fake.lastArgs('apps.open')).toEqual({ app: 'Settings', platform: 'ios', device: 'iPhone 16e' });
     const handed = result?.env ?? {};
     expect(handed[poolVariableIn(handed, 'IOS')]).toBe(JSON.stringify([{ device: 'iPhone 16e', sessionApp: 'Settings' }]));
@@ -245,6 +246,28 @@ describe('lifecycle', () => {
       throw new Error('no such device');
     });
     await expect(h.engine.prepare!(info)).rejects.toMatchObject({ message: expect.stringContaining('no such device') });
+  });
+
+  it('starts the iOS runner in prepare, leaves one that does not start to the first attempt, and ends the run on a wedged one', async () => {
+    const h = harness({ device: 'iPhone 16e' });
+    h.fake.respond('command.prepare', () => {
+      throw new Error('runner still building');
+    });
+    const lines: string[] = [];
+    const info = { runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, log: (line: string) => lines.push(line) };
+    await h.engine.prepare!(info);
+    expect(lines[1]).toMatch(/runner not prepared.*runner still building/);
+    expect(h.fake.methods()).toEqual(['devices.boot', 'command.prepare', 'apps.open']);
+
+    h.fake.respond('command.prepare', () => {
+      throw new AppError('RUNNER_BUSY', 'the runner is still finishing a command');
+    });
+    await expect(h.engine.prepare!(info)).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
+
+    // Android has no XCTest runner to start.
+    const android = harness({ device: 'emulator-5556', platform: 'android' });
+    await android.engine.prepare!({ ...info, targetName: 'android' });
+    expect(android.fake.methods()).not.toContain('command.prepare');
   });
 
   it('discovers every booted device of the platform when no device is named, boots as many as the run has slots, and reports the pool', async () => {

@@ -87,8 +87,8 @@ describe('device provider', () => {
       { baseUrl: 'https://0.example', authToken: 'token-0' },
       { baseUrl: 'https://1.example', authToken: 'token-1' },
     ]);
-    expect(h.fake.methods()).toEqual(['devices.boot', 'apps.open', 'devices.boot', 'apps.open']);
-    expect(h.fake.calls[1]!.args).toEqual({ app: 'Settings', platform: 'ios', device: 'sim-0' });
+    expect(h.fake.methods()).toEqual(['devices.boot', 'command.prepare', 'apps.open', 'devices.boot', 'command.prepare', 'apps.open']);
+    expect(h.fake.calls[2]!.args).toEqual({ app: 'Settings', platform: 'ios', device: 'sim-0' });
     const handed = result?.env ?? {};
     const variable = poolVariableIn(handed, 'IOS');
     expect(JSON.parse(handed[variable]!)).toEqual([
@@ -120,8 +120,8 @@ describe('device provider', () => {
     const h = harness({ device: cloud.impl, appPath: 'build/App.app' });
     const result = await h.engine.prepare!(prepareInfo({}, 1));
     expect(cloud.acquired[0]!.appPath).toBe(path.join(PROJECT_ROOT, 'build/App.app'));
-    // The lease installed nothing: the build is not on the device, so warm-up boots only, and the worker installs nothing.
-    expect(h.fake.methods()).toEqual(['devices.boot']);
+    // The lease installed nothing: the build is not on the device, so warm-up boots and starts the runner only, and the worker installs nothing.
+    expect(h.fake.methods()).toEqual(['devices.boot', 'command.prepare']);
     const handed = result?.env ?? {};
     const worker = harness({ device: cloud.impl, appPath: 'build/App.app' });
     await boot(worker.engine, 'ios', 0, handed);
@@ -135,7 +135,7 @@ describe('device provider', () => {
     const h = harness({ device: cloud.impl, appPath: 'build/App.app' }, false);
     await h.engine.prepare!(prepareInfo({}, 1));
     // Installed by the provider: warm-up opens it right away.
-    expect(h.fake.methods()).toEqual(['devices.boot', 'apps.open']);
+    expect(h.fake.methods()).toEqual(['devices.boot', 'command.prepare', 'apps.open']);
     expect(h.fake.lastArgs('apps.open')).toEqual({ app: 'com.example.app', platform: 'ios', device: 'sim-0' });
     await boot(h.engine, 'ios', 0);
     expect(h.fake.methods().filter((method) => method === 'apps.install')).toEqual([]);

@@ -68,9 +68,12 @@ those launches, so the app starts holding them and no system prompt appears;
 `app.clearState()` puts them back after it reset them with the data. `deny`
 differs by platform: iOS records the refusal and the app is told no without
 a prompt, Android revokes the permission and the OS asks again when the app
-requests it. The warm-up in `prepare` opens the app once with neither, to
-bring the runner up and put the worker's session on the app; the process a
-test sees comes from `app.open()`. Arguments that select a build mode change
+requests it. The warm-up in `prepare` starts the iOS runner with
+agent-device's `prepare ios-runner`, whose startup budget covers a cold
+simulator, then opens the app once with neither, to put the worker's session
+on the app; the process a test sees comes from `app.open()`. A build the
+suite installs itself gets the runner start only, so the first test's
+`app.open()` never pays for it. Arguments that select a build mode change
 what the app is: give each mode its own `identity` so their recordings stay
 apart.
 
@@ -168,8 +171,8 @@ exit path including failure, interrupt, and a `prepare` that threw, within
 provider can keep its own fields on it; only `daemon`, `client`, `device`,
 and `installedApp` travel to the workers. Report `installedApp` only for a
 request that carried `appPath`.
-Leased devices are warmed like local ones: booted and opened once before
-the run's clock starts.
+Leased devices are warmed like local ones: booted, the iOS runner started,
+and opened once before the run's clock starts.
 
 `client` is agent-device client configuration, JSON data the worker's client
 is created with on top of the session name and the `daemon` address (the
