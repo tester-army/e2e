@@ -27,11 +27,12 @@ pnpm test:web-benchmark       # when the runner, web engine, or benchmark change
 Then the repo rules `pnpm check` cannot see (`AGENTS.md`, "Contracts"):
 
 - A user-visible change to a published package adds a `.changeset/` entry.
-- Behavior changes update the matching `docs/**/*.mdx` page and
-  `skills/e2e/` in the same change.
+- Behavior changes update the matching `docs/**/*.mdx` page in the same
+  change, "not implemented yet" callouts included, and `skills/e2e/` when it
+  describes the changed surface.
 - A public API change reviews the emitted `.d.ts` and updates
-  `tests/types/sdk-types.ts`; a wire change edits the schema and both
-  fixtures.
+  `packages/e2e/tests/types/sdk-types.ts`; a wire change edits the schema,
+  both fixtures, and the producer together.
 - A new build input or benchmark dependency goes into `.github/filters.yml`.
 
 ## 2. Verify

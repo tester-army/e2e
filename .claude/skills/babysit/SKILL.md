@@ -58,8 +58,9 @@ your own sleep loop.
       (`gh run view <run-id> --log-failed`).
       - A failure in code this diff touches is a fix.
       - A failure in code the diff never touches usually means a stale base.
-        Check with `git merge-base --is-ancestor origin/<base> HEAD` and
-        rebase instead of retrying.
+        `git fetch origin && git merge-base --is-ancestor origin/<base> HEAD`
+        exits 1 when the base moved past the branch: rebase instead of
+        retrying.
       - Infrastructure (runner lost, registry timeout, simulator or emulator
         boot) gets one `gh run rerun <run-id> --failed`. The same failure
         twice is not flake: read it and fix it.
