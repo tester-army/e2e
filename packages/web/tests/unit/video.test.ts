@@ -1,8 +1,7 @@
 /**
  * The recorder's segment bookkeeping over a scripted page: one segment per
  * page, a failed stop that still left a file kept, a lost segment reported at
- * stop without carrying the rest into the next recording, and every hook a
- * no-op until armed. The real screencast is covered by
+ * stop, and every hook a no-op until armed. The real screencast is covered by
  * the lifecycle integration test.
  */
 
@@ -91,7 +90,7 @@ describe('VideoRecorder', () => {
     expect(existsSync(path.join(dir, 'video', 'video.webm'))).toBe(false);
   });
 
-  it('drops the finalized segments of a stop that reported a lost one, so the next recording starts empty', async () => {
+  it('hands the segments that finalized to the stop after one that reported a lost segment', async () => {
     const video = recorder();
     const kept = fakePage();
     const broken = fakePage({ writes: false, stopError: new Error('screencast stop failed') });
@@ -99,11 +98,8 @@ describe('VideoRecorder', () => {
     await video.pageClosing();
     await video.pageOpened(broken.page);
     await expect(video.stop()).rejects.toThrow('video/video-part2.webm');
-    // The segment that finalized stays on disk, but belongs to the failed recording, not the next one.
-    expect(existsSync(path.join(dir, 'video', 'video.webm'))).toBe(true);
-    const next = fakePage();
-    await video.arm(next.page);
-    expect((await video.stop()).map((segment) => segment.path)).toEqual(['video/video-part3.webm']);
+    // A host that retries the stop gets what did finalize, so nothing on disk goes unreported.
+    expect((await video.stop()).map((segment) => segment.path)).toEqual(['video/video.webm']);
   });
 
   it('stays disarmed when the first segment cannot start', async () => {

@@ -1050,6 +1050,7 @@ describe('web engine lifecycle', () => {
           const frame = await lastFrame(viewer, readFileSync(path.join(videoDir, segment.path)));
           expect({ width: frame.width, height: frame.height }, segment.path).toEqual(viewport);
           expect(frame.padded, `${segment.path} padded`).toBeLessThan(0.01);
+          expect(frame.inked, `${segment.path} inked`).toBeGreaterThan(0.0005);
         }
         // Each start closed the trace segment before it; the trace kept running around both.
         expect(await engine.artifacts!.stopTrace!(operation('v3'))).toEqual([
