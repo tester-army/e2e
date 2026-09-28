@@ -1,11 +1,12 @@
 /**
  * The session host in-process on the fake engine: the headed flag reaches the
  * engine, an idle session closes itself, the TTL ends a session through the
- * step's own deadline, and an `open_session` that fails after the attempt
- * opened tears the attempt down and leaves the host ready for the next one.
+ * step's own deadline, an `open_session` that fails after the attempt
+ * opened tears the attempt down and leaves the host ready for the next one,
+ * and a session records video only when the agent asks.
  */
 
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -24,9 +25,13 @@ describe('SessionHost', { timeout: 60_000 }, () => {
   let dir: string;
   let logs: string[];
 
-  const host = (fake: FakeEngineHandle, options: { headed?: boolean; idleMs?: number; ttlMs?: number } = {}) => {
+  const host = (fake: FakeEngineHandle, options: { headed?: boolean; idleMs?: number; ttlMs?: number; artifacts?: readonly string[] } = {}) => {
     const config = resolveConfig(
-      { targets: [{ name: 'kiosk', platform: 'kiosk', engine: fake.engine }], credentials: { admin: { username: 'admin', password: 'kiosk-pw' } } } as never,
+      {
+        targets: [{ name: 'kiosk', platform: 'kiosk', engine: fake.engine }],
+        credentials: { admin: { username: 'admin', password: 'kiosk-pw' } },
+        ...(options.artifacts === undefined ? {} : { artifacts: options.artifacts }),
+      } as never,
       { projectRoot: dir, env: {} },
     );
     return new SessionHost({
@@ -129,5 +134,45 @@ describe('SessionHost', { timeout: 60_000 }, () => {
     expect(text).toContain('button "Submit"');
     await flaky.close('done');
     expect(fake.stats()).toMatchObject({ attemptsStarted: 2, attemptsEnded: 2, disposes: 2 });
+  });
+
+  it('records only between start_recording and stop_recording, and saves a recording still running at close', async () => {
+    const fake = createFakeEngine({ video: true });
+    // The config's video kind is for runs: the session must not record from launch.
+    const recording = host(fake, { artifacts: ['video'] });
+    const opened = await recording.open({});
+    expect(opened).toMatch(/^- start_recording \{name\?\}: Start recording a video of the app, for a person to watch: .* \[read-only\]$/m);
+    expect(opened).toMatch(/^- stop_recording: Stop the running recording and save it: .* \[read-only\]$/m);
+    expect(fake.operations.map((operation) => operation.method)).not.toContain('artifacts.startVideo');
+    const sessionId = /^Session (\S+) open/.exec(opened)![1]!;
+    const recordings = path.join(dir, '.e2e', 'videos', sessionId);
+    const extra = { signal: new AbortController().signal };
+    const text = (result: { content: { type: string; text?: string }[] }) => result.content.map((part) => part.text ?? '').join('\n');
+
+    const started = await recording.call(sessionId, 'start_recording', { name: 'demo' }, extra);
+    expect(text(started)).toContain('Recording 1 "demo" started.');
+    const stopped = await recording.call(sessionId, 'stop_recording', {}, extra);
+    expect(text(stopped)).toMatch(/^Recording 1 "demo" stopped after \d+\.\d s\.\n- (\S+)$/);
+    expect(text(stopped).endsWith(`- ${path.join(recordings, '1-demo.webm')}`)).toBe(true);
+    const nothing = await recording.call(sessionId, 'stop_recording', {}, extra);
+    expect(text(nothing)).toBe('Nothing is recording; start_recording starts a recording.');
+    const badName = await recording.call(sessionId, 'start_recording', { name: '../escape' }, extra);
+    expect(badName.isError).toBe(true);
+    expect(text(badName)).toMatch(/^INVALID_ARGUMENT: call start_recording: name: /);
+
+    await recording.call(sessionId, 'start_recording', {}, extra);
+    const closed = await recording.close('done');
+    expect(closed).toMatch(/^Session \S+ closed \(done\); \d+ tool calls ran\.\nRecording 2 stopped after \d+\.\d s\.\n- \S+$/);
+    expect(closed.endsWith(`- ${path.join(recordings, '2.webm')}`)).toBe(true);
+    expect(readdirSync(recordings).toSorted()).toEqual(['1-demo.webm', '2.webm']);
+    expect(existsSync(path.join(fake.attempts[0]!.artifactsDir, 'video', 'fake.webm'))).toBe(false);
+  });
+
+  it('lists no recording tools when the engine records no video', async () => {
+    const plain = host(createFakeEngine());
+    const opened = await plain.open({});
+    expect(opened).not.toContain('start_recording');
+    const closed = await plain.close('done');
+    expect(closed).not.toContain('Recording');
   });
 });

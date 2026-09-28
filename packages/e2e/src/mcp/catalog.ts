@@ -3,8 +3,9 @@
  * `observe` shows the whole screen, the grammar is what the target's engine
  * honors, `screenshot` and the point tools (`tap_at`, `hover_at`, `type_at`,
  * `press_at`, `select_at`) among it, answering `PIXEL_TAINTED` once a secret
- * has been filled, `locate` tries a semantic locator the way a test would, and the
- * project's own tools follow. Built-in
+ * has been filled, `locate` tries a semantic locator the way a test would,
+ * `start_recording` and `stop_recording` follow when the engine records video,
+ * and the project's own tools come last. Built-in
  * names win: a project tool named like one is neither listed nor reachable,
  * the precedence the testing agent's toolset applies.
  */
@@ -21,6 +22,7 @@ import { ConfigurationError } from '../internal/errors.ts';
 import { describeExpression, roleQuery, testIdQuery, textQuery } from '../locator/expression.ts';
 import type { LocatorEngine } from '../locator/engine.ts';
 import type { Role } from '../types.ts';
+import { recordingTools, type SessionRecorder } from './recording.ts';
 
 /** How many matching nodes `locate` describes. */
 const MAX_LOCATE_NODES = 10;
@@ -45,6 +47,8 @@ export interface CatalogOptions {
   readonly executor: StepExecutor | undefined;
   /** The attempt's secret ledger: what `locate` shows of a node passes through it, as `observe` does. */
   readonly redact: (text: string) => string;
+  /** The session's recorder, when the engine records video. */
+  readonly recorder: SessionRecorder | undefined;
   readonly warn: (message: string) => void;
 }
 
@@ -54,13 +58,16 @@ export function createSessionCatalog(options: CatalogOptions): SessionCatalog {
   // The grammar's own observe reports a diff for the model loop; the
   // session's shows the whole screen, so it replaces the grammar's.
   const { observe: _diffObserve, ...verbs } = createGrammarTools(context, { screen });
+  const recording = options.recorder === undefined ? {} : recordingTools(options.recorder);
   const builtIn: ToolSet = {
     observe: fullObserveTool(context, screen),
     ...verbs,
     locate: locateTool(options.locator, options.session, options.redact),
+    ...recording,
   };
   const defined = isDefaultAgent(options.executor) ? options.executor.tools : {};
-  const readOnly = new Set(['observe', 'locate', 'screenshot']);
+  // A recording changes nothing on the app; it only writes a file.
+  const readOnly = new Set(['observe', 'locate', 'screenshot', ...Object.keys(recording)]);
   const project: ToolSet = {};
   for (const [name, tool] of Object.entries(projectTools(context, defined))) {
     if (name in builtIn) {

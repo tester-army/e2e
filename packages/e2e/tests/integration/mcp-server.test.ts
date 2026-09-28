@@ -3,11 +3,12 @@
  * a real MCP client. The server's tool list is four tools; everything the
  * session can do is a catalog behind `call`. Covers the catalog, a live
  * session driven through `call`, argument validation, the secret and pixel
- * invariants, a second session after the first closed, an explicit config
+ * invariants, a video recording, a second session after the first closed, an explicit config
  * path, and stdout hygiene: a config that prints to stdout must not corrupt
  * the protocol.
  */
 
+import { readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -170,6 +171,8 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
       expect.stringMatching(/^- select_at \{x, y, value\}: Pick one option/),
       expect.stringMatching(/^- type_secret \{target, name\}: /),
       expect.stringMatching(/^- locate \{role\?, name\?, text\?, label\?, placeholder\?, testId\?, exact\?\}: .* \[read-only\]$/),
+      expect.stringMatching(/^- start_recording \{name\?\}: Start recording a video of the app, for a person to watch: .* \[read-only\]$/),
+      expect.stringMatching(/^- stop_recording: Stop the running recording and save it: .* \[read-only\]$/),
     ]);
     expect(opened.text).toMatch(/Current screen \(revision b\d+, path \/, \d+ nodes\):/);
     expect(opened.text).toContain('button "Increment"');
@@ -177,7 +180,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
 
     const listed = await invoke('tools');
     expect(listed.isError, listed.text).toBe(false);
-    expect(listed.text).toContain(`Session ${sessionId} on target "web": 24 tools.`);
+    expect(listed.text).toContain(`Session ${sessionId} on target "web": 26 tools.`);
     expect(catalogLines(listed.text)).toEqual(catalogLines(opened.text));
     const detail = await invoke('tools', { tool: 'type_secret' });
     expect(detail.text).toContain('"admin" (password)');
@@ -260,6 +263,31 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     const gone = await call('observe');
     expect(gone.isError).toBe(true);
     expect(gone.text).toContain('the previous session ended: closed by the agent');
+  });
+
+  it('records the app between start_recording and stop_recording, and saves a recording still running at close', async () => {
+    const opened = await invoke('open_session');
+    expect(opened.isError, opened.text).toBe(false);
+    const sessionId = /^Session (\S+) open/.exec(opened.text)![1]!;
+    const recordings = path.join(project.dir, '.e2e', 'videos', sessionId);
+
+    const started = await call('start_recording', { name: 'counter' });
+    expect(started.isError, started.text).toBe(false);
+    const observed = await call('observe');
+    await call('tap', { target: nodeId(observed.text, /button "Increment"/) });
+    const stopped = await call('stop_recording');
+    expect(stopped.isError, stopped.text).toBe(false);
+    expect(stopped.text).toMatch(/^Recording 1 "counter" stopped after \d+\.\d s\.\n- \S+\.webm$/);
+    const file = path.join(recordings, '1-counter.webm');
+    expect(stopped.text.endsWith(`- ${file}`)).toBe(true);
+    expect(statSync(file).size).toBeGreaterThan(0);
+
+    await call('start_recording');
+    const closed = await invoke('close_session');
+    expect(closed.isError, closed.text).toBe(false);
+    expect(closed.text).toMatch(/\nRecording 2 stopped after \d+\.\d s\.\n- \S+\/2\.webm$/);
+    expect(closed.text).not.toContain('Cleanup:');
+    expect(readdirSync(recordings).toSorted()).toEqual(['1-counter.webm', '2.webm']);
   });
 
   it('opens a second session after the first closed, on an explicit config path, and names an unknown target', async () => {

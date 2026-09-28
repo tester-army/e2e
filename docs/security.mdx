@@ -250,6 +250,7 @@ path you configure.
 | `artifacts/.../failure/screen.txt` | The redacted tree at the moment of failure. | complete |
 | `ai-trace.json` | Every model call, opt-in via `--ai-trace`. Prompts are the redacted ones the model saw; inline image bytes are replaced by their size. | as the prompt |
 | `sessions/<runId>/` | Encrypted sessions, deleted at cleanup. | encrypted |
+| `videos/<session>/*.webm`, `*.mp4` | Videos an `e2e mcp` session recorded with `start_recording`, kept until you delete them. Never handed to `artifacts.store`. | none |
 | `cache/` | Trace entries. | secret-free by construction |
 | The path in `command.log` | Your app's stdout and stderr, verbatim. Must be inside the project root. | none |
 

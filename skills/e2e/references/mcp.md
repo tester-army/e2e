@@ -37,7 +37,7 @@ can do is a catalog behind `call`.
 | `open_session` | Loads the config (`config` names another file; default the nearest `e2e.config.ts`), starts the declared app command if any, boots the engine, opens the app URL, and returns the session id, the catalog, and the first observation. `target` is required when the config declares several. One session at a time. |
 | `tools` | The catalog: one line per tool with its argument names (`?` marks optional), the first sentence of its description, and `[read-only]` where it changes nothing. `tools {tool}` shows one tool's full description and the JSON Schema of its arguments. |
 | `call` | Runs one catalog tool: `call {tool: "tap", args: {target: "n42"}}`. Arguments are checked against the tool's schema first; a wrong one fails with `INVALID_ARGUMENT` naming the field. |
-| `close_session` | Ends the attempt, disposes the engine, stops the app processes the session started. |
+| `close_session` | Saves a recording still running, ends the attempt, disposes the engine, stops the app processes the session started. |
 
 The catalog, per session:
 
@@ -53,6 +53,8 @@ The catalog, per session:
 | `type_at` | Types `value` into the field at a point: a listed input under it is filled by id; with a keyboard, anything else is tapped to focus it and typed into, at the caret unless `replace` is set. Without a keyboard a point on nothing listed fails. Listed when the engine declares `type` or a keyboard. |
 | `press_at` | Sends one `key` (`Enter`, `Escape`, `Tab`) to the control at a point: a listed control gets it by id; with a keyboard, anything else is tapped to focus it and the key goes through the keyboard. Listed when the engine declares `press` or a keyboard. |
 | `select_at` | Picks the option whose visible label is `value` in the select-like control at a point; the point must land on a listed select. Listed when the engine declares `select`. |
+| `start_recording` | Starts a video of the app (`name` optional, for the file name). Listed when the engine records video. |
+| `stop_recording` | Stops it and returns the absolute path of each video file, under `.e2e/videos/<session>/`. |
 | Project tools | Every `defineTool` passed to `createAgent({ tools })` that applies to the target's platform, under its own name; an engine pack such as `mobileTools` adds `open_app`, `swipe`, `alert`. |
 
 The five point tools and `screenshot` stay in the catalog once a secret has
@@ -85,7 +87,11 @@ Resources: `e2e://guide` and `e2e://guide/<topic>` hold this skill.
 ## Rules
 
 - Sessions enforce the same policy as tests: secrets fill only through
-  `type_secret`, and pixels are withheld once a secret is on screen.
+  `type_secret`, and screenshots are withheld once a secret is on screen.
+- Record a demo or a bug for a pull request with `start_recording` once the
+  screen is set up, and `stop_recording` when the part worth watching is
+  over; `close_session` saves one still running. Videos are not masked:
+  keep secrets off screen while recording.
 - Nothing a session does is recorded as a test or into the trace cache. A
   session is for looking and trying; the test is what you write afterwards.
 - A run from the shell and a live session can share the app only if the

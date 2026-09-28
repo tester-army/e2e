@@ -4,7 +4,8 @@
  * through a fixed, four-tool surface. `open_session` loads the project's
  * config and opens the attempt and the step; `tools` renders the session's
  * catalog; `call` runs one catalog tool by name inside the step;
- * `close_session` ends the step and tears the attempt down. The catalog is
+ * `close_session` ends the step, saves a recording still running, and tears
+ * the attempt down. The catalog is
  * data, not registrations, so it follows the config and the target without a
  * restart and the client's tool list never changes.
  */
@@ -20,9 +21,11 @@ import { ConfigurationError, errorMessage } from '../internal/errors.ts';
 import { uuidv7 } from '../internal/ids.ts';
 import { LocatorEngine } from '../locator/engine.ts';
 import { allocateAppPorts } from '../run/app-ports.ts';
+import { sessionSecrecy } from '../run/secrecy.ts';
 import { openStandaloneAttempt, type StandaloneAttempt } from '../run/standalone.ts';
 import type { AgentParams } from '../types.ts';
 import { createSessionCatalog, isGrammarVerb, type SessionCatalog } from './catalog.ts';
+import { describeRecording, SessionRecorder } from './recording.ts';
 import { catalogLine, defineMcpTool, describeToolDetail, errorResult, invokeTool, redactResult, textResult, type McpToolCallExtra, type McpToolResult, type McpToolSpec } from './tools.ts';
 
 /** How long one session may live, whatever happens. */
@@ -41,6 +44,8 @@ interface LiveSession {
   readonly step: InteractiveStep;
   readonly screen: ScreenPresenter;
   readonly catalog: SessionCatalog;
+  /** The session's recordings, when the engine records video. */
+  readonly recorder: SessionRecorder | undefined;
   /** Cancels the attempt wherever it is. */
   readonly abort: AbortController;
   idleTimer: NodeJS.Timeout | undefined;
@@ -110,9 +115,12 @@ export class SessionHost {
     if (live.idleTimer !== undefined) clearTimeout(live.idleTimer);
     await live.step.end({ status: 'passed', summary: `session closed: ${reason}` });
     const outcome = await live.step.done;
+    // After the step: a start_recording still in flight has settled by now.
+    const saved = await this.saveRecording(live);
     const cleanupErrors = await live.attempt.close();
     live.abort.abort();
     const lines = [`Session ${live.id} closed (${reason}); ${live.actions} tool calls ran.`];
+    if (saved !== undefined) lines.push(saved);
     if (outcome.error !== undefined) lines.push(`The session step ended with: ${errorMessage(outcome.error)}`);
     for (const error of cleanupErrors) lines.push(`Cleanup: ${error.code}: ${error.message}`);
     return lines.join('\n');
@@ -156,7 +164,9 @@ export class SessionHost {
     let step: InteractiveStep | undefined;
     try {
       attempt = await openStandaloneAttempt({
-        config,
+        // A session records only between start_recording and stop_recording:
+        // the config's video kind is for runs, and would record everything.
+        config: { ...config, artifacts: new Map([...config.artifacts].filter(([kind]) => kind !== 'video')) },
         target,
         headed: this.options.headed,
         env: this.options.env,
@@ -174,12 +184,14 @@ export class SessionHost {
         timeout: ttlMs,
       });
       const screen = new ScreenPresenter();
+      const recorder = this.recorder(id, config, attempt);
       const catalog = createSessionCatalog({
         context: step.context,
         screen,
         session: attempt.session,
         executor: config.agent.executor,
         redact: attempt.agentRuntime.redact,
+        recorder,
         locator: new LocatorEngine({
           session: attempt.session,
           budget: attempt.budget,
@@ -198,6 +210,7 @@ export class SessionHost {
         step,
         screen,
         catalog,
+        recorder,
         abort,
         idleTimer: undefined,
         actions: 0,
@@ -221,6 +234,39 @@ export class SessionHost {
       await attempt?.close().catch(() => undefined);
       abort.abort();
       throw cause;
+    }
+  }
+
+  /** A recorder writing to `.e2e/videos/<session>/`, when the engine records video. */
+  private recorder(id: string, config: ResolvedConfig, attempt: StandaloneAttempt): SessionRecorder | undefined {
+    const { startVideo, stopVideo } = attempt.session.artifacts;
+    if (startVideo === undefined || stopVideo === undefined) return undefined;
+    return new SessionRecorder({
+      startVideo,
+      stopVideo,
+      attemptDir: attempt.artifactsDir,
+      outDir: path.join(config.projectRoot, '.e2e', 'videos', id),
+      // Not the attempt's signal: a session that hit its TTL still saves the recording on the way out.
+      operation: (timeoutMs) => ({
+        signal: AbortSignal.timeout(timeoutMs),
+        timeoutMs,
+        runId: attempt.runId,
+        attemptId: attempt.attemptId,
+        origin: 'test',
+      }),
+      timeoutMs: config.cleanupTimeout,
+      tainted: () => sessionSecrecy(attempt.session, config.secrets).taint.value,
+    });
+  }
+
+  /** Stops a recording still running when the session closes, and says where it went or why it was lost. */
+  private async saveRecording(live: LiveSession): Promise<string | undefined> {
+    if (live.recorder?.isRecording !== true) return undefined;
+    try {
+      const recording = await live.recorder.stop();
+      return recording === undefined ? undefined : describeRecording(recording);
+    } catch (cause) {
+      return `The running recording could not be saved: ${errorMessage(cause)}`;
     }
   }
 
@@ -355,7 +401,7 @@ export class SessionHost {
     return defineMcpTool({
       name: 'tools',
       description:
-        "List the tools the open session can run through call: observe, the grammar its engine honors (one tool per action the engine declares, type_secret when a secret is configured, and screenshot and the point tools, which answer PIXEL_TAINTED once a secret has been filled), locate, and the project's own tools. With tool, shows that tool's full description and the JSON Schema of its arguments.",
+        "List the tools the open session can run through call: observe, the grammar its engine honors (one tool per action the engine declares, type_secret when a secret is configured, and screenshot and the point tools, which answer PIXEL_TAINTED once a secret has been filled), locate, start_recording and stop_recording when the engine records video, and the project's own tools. With tool, shows that tool's full description and the JSON Schema of its arguments.",
       inputSchema: z.object({
         tool: z.string().min(1).optional().describe('A catalog tool name, for its full contract'),
         session: z.string().min(1).optional().describe('Session id; defaults to the open session'),
@@ -383,7 +429,7 @@ export class SessionHost {
   private closeSpec(): McpToolSpec {
     return defineMcpTool({
       name: 'close_session',
-      description: 'Close the live session: end the attempt, dispose the engine, and stop the app processes the session started.',
+      description: 'Close the live session: save a recording still running, end the attempt, dispose the engine, and stop the app processes the session started.',
       inputSchema: z.object({
         session: z.string().min(1).optional().describe('Session id; defaults to the open session'),
       }).strict(),

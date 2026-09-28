@@ -165,6 +165,8 @@ describe('e2e mcp with project tools and a custom engine', { timeout: 120_000 },
       'press_at',
       'select_at',
       'locate',
+      'start_recording',
+      'stop_recording',
       'seed_data',
       'count_nodes',
     ]);

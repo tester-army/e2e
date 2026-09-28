@@ -53,7 +53,7 @@ protocol; anything a config module writes to stdout is redirected.
 | `open_session` | `target` (optional), `config` (optional path) | Loads the config, starts the app command, boots the engine, starts one attempt, opens the app URL when the engine can navigate. Returns the session id, the catalog, and the first observation. |
 | `tools` | `tool` (optional), `session` (optional) | The catalog, one line per tool. With `tool`, its full description and argument schema. |
 | `call` | `tool`, `args` (optional), `session` (optional) | Runs one catalog tool. Arguments are validated against the tool's closed schema first: a wrong type or an argument the tool does not declare is `INVALID_ARGUMENT`, and nothing runs. |
-| `close_session` | `session` (optional) | Ends the attempt, disposes the engine, stops the app processes the session started. |
+| `close_session` | `session` (optional) | Saves a recording still running, ends the attempt, disposes the engine, stops the app processes the session started. |
 
 Only one session can be open at a time. The `session` argument is optional;
 when supplied, it must match the current session or the call fails with
@@ -74,6 +74,8 @@ What `call` can run depends on the session's target:
 | `type_at` | `x`, `y`, `value`; `replace` on an engine with a keyboard | Fills a listed input under the point by id. With a keyboard, anything else is tapped to focus it and typed into, at the caret unless `replace` is set; without one, a point on nothing listed fails. Listed when the engine declares `type` or a keyboard. |
 | `press_at` | `x`, `y`, `key` | Sends the key to a listed control under the point by id; with a keyboard, anything else is tapped to focus it and the key goes through the keyboard. Listed when the engine declares `press` or a keyboard. |
 | `select_at` | `x`, `y`, `value`, the option's visible label | Picks the option in the listed select-like control under the point; nothing listed there fails. Listed when the engine declares `select`. |
+| `start_recording` | `name` (optional; letters, digits, `-`, `_`) | Starts a video of the app. One recording at a time; a second start reports the one running. Listed when the engine records video. |
+| `stop_recording` | none | Stops the recording and returns the absolute path of each video file. Listed when the engine records video. |
 
 The five point tools answer `PIXEL_TAINTED` once a secret has been filled.
 Before the session's first `screenshot` each answers with the line that says
@@ -84,6 +86,22 @@ their own names, scoped to the target's platform. A mobile project that
 passes `mobileTools(...)` also gets `open_app`, `swipe`,
 and `alert`. A project tool named like a built-in is not served. An unknown
 name fails with `UNKNOWN_TOOL` and the list of names.
+
+### Recording
+
+A session records only between `start_recording` and `stop_recording`, as
+many times as needed; the config's `video` artifact kind applies to runs,
+not sessions. Each recording is saved to
+`.e2e/videos/<session>/<n>[-<name>].webm` (`.mp4` on mobile), where `n`
+counts the session's recordings. A web recording that spans a restart or a
+state reset has one file per page, `-part2`, `-part3`, and so on, in play
+order. `close_session`, the idle timeout, and the session TTL save a
+recording still running, and the close result lists its files.
+
+Recordings are not masked and are not withheld after a secret was filled:
+they are files for a person to watch, and no tool returns their pixels. A
+secret typed into a plain input while recording is readable in the video,
+and a recording stopped after a secret was filled says so.
 
 A session is one attempt on one target. A second `open_session` fails with
 `SESSION_OPEN`; a `call` without a session fails with `NO_SESSION`. A session
@@ -97,7 +115,8 @@ been filled, `screenshot` and the point tools (`tap_at`, `hover_at`,
 `PIXEL_TAINTED` for the rest of the session. Every text a `call` returns, a node `locate` found,
 an action's result, or an error, passes the attempt's secret ledger. Nothing a
 session does is recorded as a test result or into the trace cache; its
-artifacts land under `.e2e/artifacts/<target>/sessions/`.
+artifacts land under `.e2e/artifacts/<target>/sessions/`, its videos under
+`.e2e/videos/`.
 
 ## Resources
 
