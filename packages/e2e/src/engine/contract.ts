@@ -114,14 +114,14 @@ export interface NodeRef {
 }
 
 /**
- * Per-field bounds an engine applies to observation-tree nodes. A `name` or
- * `text` whose length reaches its limit was cut at exactly that limit, so
- * "length >= limit" is a precise truncation signal; every shorter value is
- * complete. `value` and `selection`, where an engine cuts them, use the text
- * limit the same way; a longer value was not cut. Keep the start and cut the
- * end: the harness redacts the leading part of a secret that a field exactly
- * at its limit ends with, which a whole-value match cannot see. Single-node
- * reads are unbounded and always carry the full value.
+ * Per-field bounds an engine applies to observation-tree nodes. A field an
+ * engine cuts is cut at exactly its limit: `name` at the name limit, `text`
+ * and any `value` or `selection` it cuts at the text limit. So a field
+ * exactly at its limit may have been cut; a shorter one, or a longer one the
+ * engine left whole (the web engine's native input value), is complete. Keep the start and
+ * cut the end: the harness redacts the leading part of a secret that a field
+ * exactly at its limit ends with, which a whole-value match cannot see.
+ * Single-node reads are unbounded and always carry the full value.
  */
 export const OBSERVED_NAME_LIMIT = 256;
 export const OBSERVED_TEXT_LIMIT = 512;

@@ -1088,11 +1088,13 @@ dispatch.
 `LOCATOR_ACTION_KINDS`, `POINTER_ACTION_KINDS`, `KEY_MODIFIERS`,
 `KEY_NAMES`, `parseKey`, `ENGINE_ERROR_CODES`, `RETRYABLE_ENGINE_ERROR_CODES`,
 `OBSERVED_NAME_LIMIT` and `OBSERVED_TEXT_LIMIT` are exported from
-`e2e/engine`. An observed `name` or `text` whose length reaches its limit
-was cut at exactly that limit; a `value` or `selection` an engine cuts uses
-the text limit, and a longer value was not cut. Keep the start and cut the
-end: the runner redacts the leading part of a secret that a field exactly at
-its limit ends with, which a whole-value match cannot see. The `selector` expression kind carries a
+`e2e/engine`. An engine that cuts an observed field cuts it at exactly its
+limit: `name` at the name limit, `text` and any `value` or `selection` it
+cuts at the text limit. So a field exactly at its limit may have been cut; a
+shorter one, or a longer one the engine left whole, is complete. Keep the start and cut the end: the
+runner redacts the leading part of a secret that a field exactly at its limit
+ends with, which a whole-value match cannot see. Single-node reads are
+unbounded and always carry the full value. The `selector` expression kind carries a
 platform-native selector string; `frame` scopes a query into a nested
 document.
 

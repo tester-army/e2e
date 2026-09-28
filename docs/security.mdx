@@ -119,11 +119,12 @@ retains old values after a secret rotates, and never rewrites a marker it
 wrote, so text that passes it twice reads as text that passed once. Secret
 values are excluded from cache entries, model input, and reports.
 
-An observed name or text the engine cut at its length limit can end partway
-through a secret. When a field exactly at its limit ends with the start of a
-registered value, down to one character, that part becomes `<secret:name>`
-too. A field that happens to be exactly that long uncut loses its last
-characters the same way, since the runner cannot tell the two apart.
+An observed name, text, value, or selection the engine cut at its length
+limit can end partway through a secret. When a field exactly at its limit
+ends with the start of a registered value, down to one character, that part
+becomes `<secret:name>` too. A field that happens to be exactly that long
+uncut loses its last characters the same way, since the runner cannot tell
+the two apart.
 
 A static value shorter than 6 characters (code points) is `INVALID_CONFIG`,
 and a provider returning one fails the fill. Every occurrence of a value
