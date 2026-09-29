@@ -172,6 +172,14 @@ describe('web({ browser: provider })', () => {
     expect(() => web({ browser: { ...provider().impl, downloads: { dir: '/downloads', read: async () => new Uint8Array() } } })).not.toThrow();
   });
 
+  it("rejects a relative downloads.dir, and takes an absolute one in either the POSIX or the Windows form", () => {
+    const read = async () => new Uint8Array();
+    expect(() => web({ browser: { ...provider().impl, downloads: { dir: 'downloads', read } } })).toThrow(
+      /provider "toy-cloud" has downloads.dir "downloads"; name an absolute path on the browser's machine/,
+    );
+    expect(() => web({ browser: { ...provider().impl, downloads: { dir: 'C:\\Users\\kernel\\Downloads', read } } })).not.toThrow();
+  });
+
   it('rejects a provider together with connect: two browser sources', () => {
     expect(() => web({ browser: provider().impl, connect: { cdpEndpoint: () => 'ws://x' } })).toThrow(/two browser sources/);
   });

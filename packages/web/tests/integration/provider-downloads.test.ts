@@ -30,8 +30,8 @@ const signal = () => new AbortController().signal;
 
 describe.each<BrowserProviderScope>(['worker', 'attempt'])('downloads through a provider, %s scope', (scope) => {
   let app: FixtureApp;
-  let artifactsDir: string;
-  let remoteDisk: string;
+  let artifactsDir: string | undefined;
+  let remoteDisk: string | undefined;
   let chrome: RemoteChrome | undefined;
   let engine: EngineHandle | undefined;
 
@@ -48,8 +48,8 @@ describe.each<BrowserProviderScope>(['worker', 'attempt'])('downloads through a 
     await engine?.dispose!(cleanup());
     await engine?.finish!({ runId: 'run-downloads', targetName: 'web', env: {}, log: () => undefined, ...cleanup() });
     if (chrome !== undefined) await closeRemoteChrome(chrome);
-    rmSync(artifactsDir, { recursive: true, force: true });
-    rmSync(remoteDisk, { recursive: true, force: true });
+    if (artifactsDir !== undefined) rmSync(artifactsDir, { recursive: true, force: true });
+    if (remoteDisk !== undefined) rmSync(remoteDisk, { recursive: true, force: true });
   });
 
   it('saves the file on the browser\'s disk and reads it back through the provider', async () => {

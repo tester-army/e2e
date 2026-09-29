@@ -237,7 +237,7 @@ function compareWithChrome(node: SemanticNode, ax: AXNode, facts: ElementFacts, 
   }
   const accepted = CHROME_ROLES[role] ?? [role];
   if (!accepted.includes(chromeRole)) into.push({ oracle: 'chrome', field: 'role', ours: role, theirs: chromeRole, node: label });
-  const theirs = normalize(String(ax.name?.value ?? '').replace(ICON_GLYPHS, ''));
+  const theirs = normalize(String(ax.name?.value ?? '').replace(ICON_GLYPHS, ' '));
   const cut = ours.length >= 250 && theirs.startsWith(ours.slice(0, 200));
   const unnamedByChrome = theirs === '' && (ENGINE_NAMED_ROLES.has(role) || CHROME_UNNAMED_ROLES.has(role));
   if (normalize(ours) !== theirs && !cut && !unnamedByChrome) into.push({ oracle: 'chrome', field: 'name', ours, theirs, node: label });
