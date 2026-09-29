@@ -3,9 +3,12 @@ title: Introduction
 description: Write end-to-end tests with AI goals, locators, and assertions for web and mobile apps.
 ---
 
-e2e is an end-to-end testing framework for web and mobile apps. Describe a
-goal in natural language and an agent interacts with the app to complete it.
-Use locators and assertions in the same test to check exact results.
+e2e is an end-to-end testing framework for web and mobile apps. Describe
+a [goal](/writing-tests#goals-agent-act) in natural
+language and an agent interacts with the app to complete it.
+Use [locators](/writing-tests#deterministic-apis-screen-and-expect)
+and [assertions](/reference/expect#locator-matchers)
+in the same test to check exact results.
 
 ```ts title="tests/checkout.e2e.ts"
 import { test, expect } from 'e2e';
