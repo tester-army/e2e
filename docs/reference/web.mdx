@@ -275,7 +275,9 @@ export interface Web extends Expectable<WebExpectation> {
 | `waitForURL` | `config.assertionTimeout`, 5000 ms |
 | `url`, `title`, `evaluate`, `route`, `unroute`, `cookies`, `setCookies`, `setViewport`, `onDialog`, `keyboard.*`, `mouse.*` | `config.actionTimeout`, 30000 ms, not overridable |
 
-Every `web` call is a recorded `web.<method>` step. A relative URL needs the
+Every `web` call is a recorded `web.<method>` step, except `locator` and
+`frameLocator`: they build a locator without touching the page, and the
+action or assertion on it is the step. A relative URL needs the
 engine's declared `url`, else `APP_URL_REQUIRED`. Declare `requires: ['web']`
 in a suite that also runs on other platforms.
 
@@ -542,9 +544,10 @@ cannot reuse node IDs or publish handles over a newer observation.
 `WebOptions`, `WebScreencastOptions`, `WebConnectOptions`, `WebBasicAuth`, `BrowserName`,
 `BrowserProvider`, `BrowserProviderScope`, `BrowserRequest`, `BrowserLease`,
 `BrowserReleaseContext`, `PlaywrightLiveSurface`, `Web`, `FrameScreen`,
-`WebExpectation`, `WebRoute`, `WebResponse`, `Cookie`, `Dialog`, and
-`DialogHandler` are exported from the package for typing config helpers and
-fixtures.
+`WebExpectation`, `WebRoute`, `RouteFulfillResponse`, `WebResponse`,
+`Cookie`, `CookieFields`, `Dialog`, and `DialogHandler` are exported from the
+package for typing config helpers and fixtures. The runtime exports are
+`web`, [`surfaceOf`](#surfaceof), and `test`, typed with the `web` fixture.
 
 ## expect(web)
 

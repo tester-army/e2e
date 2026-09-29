@@ -100,6 +100,7 @@ What `call` can run depends on the session's target:
 | --- | --- | --- |
 | `observe` | none | A fresh observation, one node per line as `#id role "name" ...`, with the current path and revision. A link's `href` is its path when it is on the app URL's origin, else origin and path; `mailto:`, `tel:`, and `blob:` targets keep their scheme. `…` marks what is left out: `?…` a query, `#…` a fragment, `data:…` or `javascript:…` an inline payload, a trailing `…` a target cut at 256 characters. |
 | `tap`, `double_tap`, `long_press`, `right_click`, `hover`, `type`, `press`, `select`, `check`, `scroll`, `scroll_to`, `drag`, `upload`, `navigate`, `back`, `type_secret` | A node id from the newest observation, plus the value, key, `checked` state, direction, drop target, project-relative `files`, URL, or secret name | The action's summary and what changed on screen. A verb the engine does not declare is not in the catalog. `upload` refuses a path outside the project, a hidden file, or a file under a hidden directory with `POLICY_DENIED`. `type_secret` is listed when the config declares `credentials` or `secrets`; the plaintext never reaches the agent. |
+| `dismiss_keyboard` | none | Hides the on-screen keyboard. Listed when the engine's keyboard declares `dismiss`, as the device engines do. |
 | `locate` | Exactly one of `role` (with optional `name`), `text`, `label`, `placeholder`, `testId`; `exact` | How many nodes match, which, and the `screen.*` call to write. Zero or several matches name the error a test would get. What it shows of a node passes the secret ledger, as `observe` does: a filled secret reads `<secret:name>`. |
 | `screenshot` | none | The masked viewport as an image. From then on every action result carries a fresh screenshot. Once a secret has been filled it answers `PIXEL_TAINTED` instead, for the rest of the session. |
 | `tap_at` | `x`, `y` in the latest screenshot's pixels | Taps that point: a listed control under it by id, otherwise the bare point through the engine's `performAt`; without `performAt` the point must land on a listed control. Listed when the engine declares `tap` or `performAt`. |
@@ -114,7 +115,7 @@ The five point tools answer `PIXEL_TAINTED` once a secret has been filled.
 Before the session's first `screenshot` each answers with the line that says
 to take one, at no cost.
 
-Project tools in the agent's `tools` follow in the catalog under
+Project tools in `agents.default.tools` follow in the catalog under
 their own names, scoped to the target's platform. A mobile project that
 passes `mobileTools(...)` also gets `open_app`, `swipe`,
 and `alert`. A project tool named like a built-in is not served. An unknown

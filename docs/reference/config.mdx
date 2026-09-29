@@ -411,6 +411,9 @@ owns part of it, the output directory fails the config load with
 - holds a directory a `tests` glob scans (`output: 'tests'` with the default
   `tests/**/*.e2e.ts`).
 
+`e2e init` writes `.gitignore` entries for the default `.e2e/` paths only.
+With `output` set elsewhere, add that directory to `.gitignore` yourself.
+
 The removed `--artifacts <dir>` flag fails with the `--output` it maps to:
 the report used to go to the directory's parent, so `--artifacts
 out/artifacts` is `--output out`.
@@ -465,6 +468,17 @@ artifacts: {
 ```
 
 ```ts
+export interface ArtifactsConfig {
+  /** Host store every produced artifact is handed to; omit it to keep files local only. */
+  store?: ArtifactStore;
+}
+
+export interface ArtifactStore {
+  put(artifact: StoredArtifact): Promise<{ readonly ref: string }>;
+  /** Receives a provider-hosted video as a link; optional. */
+  putLink?(link: StoredArtifactLink): Promise<{ readonly ref: string }>;
+}
+
 /** One produced artifact, handed to `store.put` once it is complete on disk. */
 export interface StoredArtifact {
   readonly kind: 'screenshot' | 'trace' | 'video' | 'download' | 'log';
@@ -556,7 +570,9 @@ mode: its recordings are the ones `start_recording` and `stop_recording`
 make.
 
 Neither `trace` nor `video`, at the top or on a target, enters the config
-digest: turning one on or off never invalidates cached replays.
+digest, and neither is part of a replay's
+[cache key](/cache#what-must-match): turning one on or off never
+invalidates cached replays.
 
 ### trace
 
@@ -871,7 +887,30 @@ export interface CacheConfig {
   /** Fail a step whose recording no longer replays with `REPLAY_STALE`. Default `false`. */
   strict?: boolean;
 }
+
+/** Where the replay cache keeps its entries: the file store by default, or a host's own through `cache.store`. */
+export interface CacheStore {
+  readonly writable: boolean;
+  read(keyHash: string): Promise<CacheReadResult>;
+  /** Persists one trace, returning its size, or undefined when not written. */
+  write(keyHash: string, payload: ActionTrace): Promise<{ bytes: number } | undefined>;
+  /**
+   * Evicts one entry, best-effort. Called when a replayed or just-recorded
+   * flow is implicated in a failed attempt: the entry re-records on the next
+   * pass instead of replaying a poisoned flow forever. Optional: a store
+   * without eviction merely stays stale until the next confirmed write.
+   */
+  delete?(keyHash: string): Promise<void>;
+}
+
+export type CacheReadResult =
+  | { readonly status: 'hit'; readonly entry: TraceEntry; readonly bytes: number }
+  | { readonly status: 'miss' }
+  | { readonly status: 'invalid'; readonly reason: string; readonly bytes?: number };
 ```
+
+`CacheStore`, `CacheReadResult`, `TraceEntry`, and `ActionTrace` are
+exported from `e2e`.
 
 A bare string is shorthand for `{ mode }`. Set `'read-write'` explicitly when
 CI restores the cache from its own cache service; `--no-cache` wins over

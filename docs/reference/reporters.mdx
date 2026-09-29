@@ -102,7 +102,27 @@ The `phase` field describes step progress:
 - `start` and `end` mark the step's boundaries.
 - `event` reports a completed model turn, tool call, or observation.
 - `activity` reports work starting: `observe`, `action`, or `model`.
-- `replay` reports when trace replay starts or returns control to the agent.
+- `replay` reports when replay from the cache starts or returns control to the agent.
+
+```ts
+type StepProgress = (
+  | { phase: 'start'; kind: StepKind; api: string; label: string }
+  | {
+      phase: 'end';
+      kind: StepKind;
+      api: string;
+      label: string;
+      status: 'passed' | 'failed' | 'blocked' | 'timed-out' | 'cancelled';
+      durationMs: number;
+      modelCalls: number;
+      error?: SerializedError;
+      explanation?: string;
+    }
+  | { phase: 'event'; api: string; event: StepEvent }
+  | { phase: 'activity'; api: string; activity: 'observe' | 'model' | 'action' }
+  | { phase: 'replay'; api: string; active: boolean }
+) & { identity?: StepProgressIdentity };
+```
 
 Every step phase emitted by the runner includes `progress.identity`:
 

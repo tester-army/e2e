@@ -148,7 +148,7 @@ export interface AgentOption {
 
 /** `assert` options: one judgment plus one repair round, within `timeout`. */
 export interface AssertOptions extends VisionOption, AgentOption {
-  /** Deadline in milliseconds; defaults to the agent's `timeout`, 30000. */
+  /** Deadline in milliseconds; defaults to the agent's `judgmentTimeout`, 30000. */
   timeout?: number;
   /** Attach a redacted screenshot to the step; on by default, denied after a secret fill. */
   screenshot?: boolean;
@@ -156,11 +156,11 @@ export interface AssertOptions extends VisionOption, AgentOption {
 
 /** `waitFor` options: a judgment at most once per `interval` until `timeout`. */
 export interface WaitForOptions extends VisionOption, AgentOption {
-  /** Deadline in milliseconds; defaults to the agent's `timeout`, 30000. */
+  /** Deadline in milliseconds; defaults to the agent's `judgmentTimeout`, 30000. */
   timeout?: number;
   /** Least time between two judgments, in milliseconds; 100 through 60000, default 3000. */
   interval?: number;
-  /** Judgment budget; defaults to `agent.maxModelCalls` and can only lower it. */
+  /** Judgment budget; defaults to `agents.<name>.maxModelCalls` and can only lower it. */
   maxModelCalls?: number;
 }
 
@@ -168,7 +168,7 @@ export interface WaitForOptions extends VisionOption, AgentOption {
 export interface ExtractOptions<Schema extends StandardSchemaV1> extends VisionOption, AgentOption {
   /** Any Standard Schema v1 validator; the output is validated against it, with one repair round. */
   schema: Schema;
-  /** Deadline in milliseconds; defaults to the agent's `timeout`, 30000. */
+  /** Deadline in milliseconds; defaults to the agent's `judgmentTimeout`, 30000. */
   timeout?: number;
 }
 
@@ -185,11 +185,11 @@ export interface ActOptions extends AgentOption {
    * cache records a slot for it instead of the value.
    */
   params?: AgentParams;
-  /** Step deadline in milliseconds; defaults to the test timeout. */
+  /** Step deadline in milliseconds; defaults to `config.timeout`. */
   timeout?: number;
-  /** Action budget; defaults to `agent.maxSteps` and can only lower it. */
+  /** Action budget; defaults to `agents.<name>.maxSteps` and can only lower it. */
   maxSteps?: number;
-  /** Model-call budget; defaults to `agent.maxModelCalls` and can only lower it. */
+  /** Model-call budget; defaults to `agents.<name>.maxModelCalls` and can only lower it. */
   maxModelCalls?: number;
 }
 
@@ -1012,7 +1012,7 @@ export interface ModelInstance {
   readonly doGenerate: (...args: never[]) => unknown;
 }
 
-/** Replay cache posture. In CI, `read-write` is forced down to `read-only`. */
+/** Replay cache posture. In CI an unset mode is `read-only`, unless `cache.store` is set. */
 export type CacheMode = 'off' | 'read-only' | 'read-write';
 
 /**

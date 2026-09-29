@@ -5,7 +5,8 @@ description: Queries, refinement, actions, and reads.
 
 A `Locator` stores a query and resolves it when an action, read, or assertion
 runs. Every `Screen` query method is also available on a locator, scoped to
-its subtree.
+its subtree. `tapAt` is not scoped: on a locator it still taps a viewport
+point.
 
 ```ts
 export interface Screen {
@@ -347,6 +348,10 @@ export interface Locator extends Screen {
   entry throws `INVALID_ARGUMENT`.
 - `dragTo` with a non-runner target, or one made by another target's screen,
   throws `INVALID_LOCATOR`.
+- `swipe` on a locator is a gesture on that one node: `{ direction,
+  momentum? }` as [`screen.swipe`](#screen-swipe) defines them, plus
+  `timeout`. It has no `{ from, to }` form. `screen.swipe` takes no
+  `timeout`: a `timeout` key there is `INVALID_ARGUMENT`.
 - An action that may already have committed surfaces as `ACTION_FAILED` and
   is never repeated.
 
@@ -568,9 +573,17 @@ export type Point = ViewportPoint; // { x: number; y: number }
 
 /** `tap`, `click`, `doubleTap`, and `secondaryTap` options: the action timeout and the keys held for the click. */
 export interface ClickOptions extends ActionOptions {
-  /** Keys held while the pointer clicks: Shift, Control, Alt, Meta, ControlOrMeta. */
-  modifiers?: readonly ('Shift' | 'Control' | 'Alt' | 'Meta' | 'ControlOrMeta')[];
+  /**
+   * Keys held while the pointer clicks, as a Shift-click extends a selection:
+   * `Shift`, `Control`, `Alt`, `Meta`, or `ControlOrMeta` (Control on Windows
+   * and Linux, Meta on macOS). Needs an engine that declares `tapModifiers`,
+   * `UNSUPPORTED_CAPABILITY` otherwise.
+   */
+  modifiers?: readonly KeyModifier[];
 }
+
+/** A modifier key, for `modifiers` and the `press` key grammar. */
+export type KeyModifier = 'Shift' | 'Control' | 'Alt' | 'Meta' | 'ControlOrMeta';
 
 /** `tap` and `click` options. */
 export interface TapOptions extends ClickOptions {

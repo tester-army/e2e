@@ -30,7 +30,7 @@ The CLI needs Node.js 22.12 or newer.
 
 ```console
 $ npx e2e --version
-0.11.0
+0.14.0
 ```
 
 Output is colored on a terminal or in CI, plain when piped or when `NO_COLOR`
@@ -121,9 +121,17 @@ npx e2e login                     # choose a provider
 ```
 
 Signs in to a subscription and stores credentials in
-`~/.config/e2e/oauth.json`. A failed sign-in exits 1, a cancelled one 130; an
+`$XDG_CONFIG_HOME/e2e/oauth.json`, by default `~/.config/e2e/oauth.json`. A failed sign-in exits 1, a cancelled one 130; an
 unknown provider exits 2. See [Subscriptions](/subscriptions) for model
 configuration.
+
+| Argument or flag | Type | Default | Behavior |
+| --- | --- | --- | --- |
+| `[provider]` | `openai`, `github-copilot`, or `spacexai` | a picker | The subscription to sign in to |
+| `--device` | boolean | `false` | ChatGPT: show a code to enter on another device instead of opening a browser |
+| `--from-gh` | boolean | `false` | GitHub Copilot: reuse the token of the signed-in GitHub CLI |
+| `--client-id <id>` | string | none | GitHub Copilot: the client id of your GitHub OAuth App with the device flow enabled |
+| `--enterprise-url <host>` | string | none | GitHub Copilot: the GitHub Enterprise host |
 
 ## e2e logout
 
@@ -388,7 +396,7 @@ tests of a file no positional named.
 The exploration runs with the replay cache off and zero retries whatever the
 config says. A `--session` setup test runs as it would for `run`, with the
 config's agents, cache, and retries.
-`.e2e/report.json` gains `run.explore`: the goal, the budgets, why the run
+`<output>/report.json` gains `run.explore`: the goal, the budgets, why the run
 ended (`finished`, `step-limit`, `time`, `stuck`, or `aborted`), the
 assessment, the steps, and the findings.
 
@@ -488,8 +496,8 @@ E2E_TELEMETRY_DEBUG=1 npx e2e run
 
 `E2E_TELEMETRY_DISABLED=1` and `DO_NOT_TRACK=1` turn telemetry off without
 touching the file. `E2E_TELEMETRY_DEBUG=1` prints every event to stderr and
-sends nothing. The first command on a machine other than `e2e init` prints a
-notice once; in CI nothing is printed and no file is written.
+sends nothing. The first command on a machine other than `e2e init` and
+`e2e telemetry` prints a notice once; in CI nothing is printed and no file is written.
 
 ## Exit codes
 

@@ -20,7 +20,12 @@ implements shared types for nodes, locators, actions, and errors. Use
 
 Validation fails with `INVALID_CONFIG` for:
 
+- a spec that is not an object, or a missing or empty `name`;
 - a missing or empty `version`, or a `spiVersion` other than `1`;
+- an empty `platform`, or a `workers` that is not a positive safe integer;
+- a hook (`observe`, `locate`, `perform`, `performAt`, `prepare`, `finish`,
+  `init`, `startAttempt`, `settleAttempt`, `endAttempt`, `dispose`) that is
+  not a function;
 - an unknown top-level key on an object literal (a class instance's own
   fields are not checked);
 - `perform`, `locate`, `performAt`, or `keyboard` without `observe`;
@@ -29,13 +34,16 @@ Validation fails with `INVALID_CONFIG` for:
 - `performAt` without `pointerActions` or the reverse; a `pointerActions`
   list that is empty, repeats a kind, or names one outside
   `POINTER_ACTION_KINDS`;
-- a `state`, `artifacts`, or `session` manifest with an unknown key or a
-  non-function member. `state` needs both `capture` and `restore`;
-  `artifacts` needs `screenshot`; `startTrace`/`stopTrace` and
-  `startVideo`/`stopVideo` come in pairs;
+- a `tapModifiers` that is not a boolean, or `true` without `perform`;
+- a `keyboard`, `state`, `artifacts`, or `session` manifest with an unknown
+  key or a non-function member. `keyboard` needs `type` and `press`; `state`
+  needs both `capture` and `restore`; `artifacts` needs `screenshot`;
+  `startTrace`/`stopTrace` and `startVideo`/`stopVideo` come in pairs;
+- a `secrets` that is not an array of `secrets.get()` handles;
 - an `app` declaration with an unknown key or a function;
-- a fixture name that is not a lower-camel identifier or shadows `agent`,
-  `app`, `screen`, `platform`, or `session`.
+- a `fixtures` that is not an object, a fixture that is not a factory
+  function, or a fixture name that is not a lower-camel identifier or shadows
+  `agent`, `app`, `screen`, `platform`, or `session`.
 
 Every function on the handle is bound to the spec it came from, so a class
 instance is as valid a body as an object literal.
@@ -311,7 +319,7 @@ export interface EngineKeyboard {
 
 | Hook | Budget |
 | --- | --- |
-| `prepare(info)` | none; only `info.signal` (the run's interrupt) cuts it short. Failure ends the run before any test |
+| `prepare(info)` | none; only `info.signal` (the run's interrupt) cuts it short. Failure ends the run before any test: a runner error class (a `ConfigurationError` for an option the engine cannot honour) keeps its code, an `EngineError` `CANCELLED` stays a cancellation, and anything else, any other `EngineError` or a plain `Error`, is infrastructure `ENGINE_FAILURE` |
 | `finish(info)` | `cleanupTimeout`, shared by every prepared target, never cut short by an interrupt; failure is a cleanup run error |
 | `init(info)` | `launchTimeout`; failure is infrastructure |
 | `startAttempt(context)` | `launchTimeout`; on failure or timeout `context.signal` aborts and `endAttempt` runs |
@@ -899,10 +907,28 @@ an observation would. A method can also fail a step with the runner's own
 error classes, exported from the same entry:
 
 ```ts
-export class TestError extends Error {}            // a test failure: ASSERTION_FAILED, INVALID_LOCATOR, ACTION_FAILED, ...
-export class ConfigurationError extends Error {}   // POLICY_DENIED, APP_URL_REQUIRED, UNSUPPORTED_CAPABILITY, ...
-export class InfrastructureError extends Error {}  // the surface itself failed: BROWSER_INSTALL_FAILED, ...
+/** The runner's error base: `category` sets the exit code, `code` names the cause. */
+declare class E2EError extends Error {
+  readonly category: 'test' | 'configuration' | 'infrastructure' | 'internal' | 'interrupted';
+  readonly code: string;
+  readonly retryable: boolean;
+}
+
+/** A test failure: ASSERTION_FAILED, INVALID_LOCATOR, ACTION_FAILED, ... */
+export class TestError extends E2EError {
+  constructor(code: string, message: string, options?: { retryable?: boolean; cause?: unknown });
+}
+/** POLICY_DENIED, APP_URL_REQUIRED, UNSUPPORTED_CAPABILITY, ... */
+export class ConfigurationError extends E2EError {
+  constructor(code: string, message: string, options?: { cause?: unknown });
+}
+/** The surface itself failed: BROWSER_INSTALL_FAILED, ... */
+export class InfrastructureError extends E2EError {
+  constructor(code: string, message: string, options?: { cause?: unknown });
+}
 ```
+
+`E2EError` itself is not exported; construct one of the three.
 
 ## Shared semantics
 
@@ -914,8 +940,9 @@ Use these helpers to keep behavior consistent across engines:
 | `resolveExpression(expression, nodes, { selector? })` | The reference `locate`. Resolves one `LocatorExpression` over a semantic tree in document order, with `text` and `label` answering the innermost match when a container echoes a descendant's text. An engine whose tree is the whole truth (a device) calls it; a browser engine reproduces it. A `selector` needs the hook, a `frame` is `FRAME_NOT_FOUND` |
 | `urlMatches(current, expected, baseHref)` | `toHaveURL`-style comparison; an `expected` that is neither a string nor a `RegExp` throws `INVALID_ARGUMENT`, as in `toTextPattern` |
 | `pollCondition({ deadline, signal, negated, evaluate, onTimeout })`, `Deadline` | Assertion polling and the negation grace window |
-| `validateJsonValue(value, label)` | Rejects `undefined`, `NaN`, and cycles in a value a fixture returns |
+| `validateJsonValue(value, label, rules?)` | Checks a value is plain JSON: a top-level `undefined` passes; a non-finite number, a cycle, an object that is not a plain object or array, or a function, symbol, bigint, or `undefined` inside is `INVALID_ARGUMENT` naming `label`. A `Secret` is `POLICY_DENIED` unless `rules.onSecret` throws its own; `rules.maxDepth` caps the nesting |
 | `obj`, `raceAbort`, `withTimeout`, `withinCleanupBudget` | See [Contributed fixtures](#contributed-fixtures) |
+| `isProviderRecording(value)` | Whether what a provider's `record` resolved to is a recording: a parseable `startedAt` and a `stop`. Check it before keeping one, so a malformed recording fails the start, named, instead of the stop |
 | `stopProviderRecording(recording, { artifactsDir, provider, leaseId, signal })` | Ends a hosted service's recording and checks it into a `VideoSegment`; see [Provider recordings](#provider-recordings) |
 
 ## State
@@ -1209,8 +1236,10 @@ an option that takes either.
 `KeyModifier`, `KeyName`, `ParsedKey`, `ENGINE_SPI_VERSION`,
 `LOCATOR_ACTION_KINDS`, `POINTER_ACTION_KINDS`, `KEY_MODIFIERS`,
 `KEY_NAMES`, `parseKey`, `ENGINE_ERROR_CODES`, `RETRYABLE_ENGINE_ERROR_CODES`,
-`Secret`, `isSecret`, `OBSERVED_NAME_LIMIT` and `OBSERVED_TEXT_LIMIT` are exported from
-`e2e/engine`. An engine that cuts an observed field cuts it at exactly its
+`Secret`, `isSecret`, `TextMatch`, `JsonValue`, `JsonValueRules`,
+`ResolveExpressionOptions`, `PollConditionOptions`, `WithoutUndefined`,
+`FixtureOperation`, `OBSERVED_NAME_LIMIT` (256) and `OBSERVED_TEXT_LIMIT`
+(512) are exported from `e2e/engine`. An engine that cuts an observed field cuts it at exactly its
 limit: `name` at the name limit, `text` and any `value` or `selection` it
 cuts at the text limit. So a field exactly at its limit may have been cut; a
 shorter one, or a longer one the engine left whole, is complete. Keep the start and cut the end: the

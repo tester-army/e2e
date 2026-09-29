@@ -201,7 +201,7 @@ masks depend on the accessibility capture.
   `agent.act('rename the project to {name}', { params: { name } })`. The runner does not
   expand `{name}`; the model receives the instruction as written plus the
   params as a separate block and reads the value from there.
-- Give vocabulary once, in `agent.context` or `agentContext`, instead of
+- Give vocabulary once, in `agents.<name>.context` or `agentContext`, instead of
   repeating it in every instruction.
 - Do not describe mechanics the runner already handles: waiting, scrolling
   into view, retries.
@@ -241,10 +241,10 @@ tool call before it executes.
 
 | Call | Model calls | Default timeout |
 | --- | ---: | --- |
-| `act` | up to `agent.maxModelCalls` (25) | the test `timeout`, 120 s |
+| `act` | up to `agents.<name>.maxModelCalls` (25) | the config `timeout`, 120 s |
 | `assert` | 2 | 30 s |
 | `extract` | 2 | 30 s |
-| `waitFor` | up to `agent.maxModelCalls` (25) | 30 s |
+| `waitFor` | up to `agents.<name>.maxModelCalls` (25) | 30 s |
 
 - A verified `act` can replay without model calls. Cache misses and
   hand-offs use the model, and judgments still run live.

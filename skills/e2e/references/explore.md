@@ -66,8 +66,8 @@ a configured secret is not redacted either.
 | `--timeout <ms>` | 600000 (180000 to 900000) | Wall clock; the last minute is for the assessment. |
 | `--headed`, `--reporter`, `--output`, `--debug`, `--ai-trace`, `--trace [mode]`, `--video [mode]` | as `run` | Same meaning as for `e2e run`. One attempt, so a retry mode (`on-first-retry`, `on-all-retries`, the CI trace default) records nothing; put the goal before a bare `--trace` or `--video`. |
 
-Per-step action and model-call budgets default to 40 each; `agent.maxSteps`
-and `agent.maxModelCalls` in the config override them. The replay cache is off
+Per-step action and model-call budgets default to 40 each; `agents.<name>.maxSteps`
+and `agents.<name>.maxModelCalls` in the config override them. The replay cache is off
 and retries are zero for the exploration.
 
 ## Reading the result

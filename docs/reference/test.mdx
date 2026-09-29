@@ -77,6 +77,10 @@ export const test: TestAPI;
 Registering a test, group, or hook outside module evaluation throws
 `COLLECTION_ERROR`.
 
+A test or group title is 1 through 512 UTF-8 bytes after NFC normalization,
+with no NUL character. Two tests in one file with the same title path, the
+group titles and then the test's own, are a `COLLECTION_ERROR`.
+
 ## Members
 
 A skipped test never affects the exit code. With `test.only`, other tests
@@ -233,6 +237,13 @@ to be a static, non-empty array of unique names.
 
 Resolution order: test, nearest group, outer groups, config, built-in default.
 
+`requires` names engine capabilities: `observation`, `actions`, `location`,
+`pointer`, `keyboard`, `state`, `artifacts`, or the name of a fixture the
+engine contributes, such as `web` or `device`. See
+[the engine contract](/reference/engine#engine). An `agent` name that
+`agents` does not define is a `COLLECTION_ERROR` at selection, before any
+test runs.
+
 `trace` and `video` take a [recording mode](/reference/config#recording):
 `off`, `on`, `retain-on-failure`, `on-first-retry`, or `on-all-retries`. A
 test's or group's own value wins over `--trace` / `--video`, the target's,
@@ -260,7 +271,7 @@ records one trace and one video per group attempt, from the `trace` and
 
 ```ts
 export interface TestFixtures {
-  /** Agent steps. The built-in agent requires a configured model. */
+  /** Agent steps. Acquiring it without a configured model is `MODEL_UNAVAILABLE`. */
   readonly agent: Agent;
   /** App lifecycle: open, restart, clear state, back, screenshot. */
   readonly app: App;

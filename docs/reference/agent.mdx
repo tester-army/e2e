@@ -6,7 +6,9 @@ description: Run agent actions, check conditions, and extract structured data.
 Use `act` to interact with the app, `assert` to check the current screen,
 `waitFor` to wait for a condition, and `extract` to read structured data.
 Each call has its own timeout and model-call budget. The built-in agent
-requires a configured model and otherwise raises `MODEL_UNAVAILABLE`.
+requires a configured model: without one, the first acquisition of the
+`agent` fixture records one run-level `MODEL_UNAVAILABLE` and stops the run
+(exit 2).
 [Custom executors](/executors) can implement `act` and `assert` without one;
 `waitFor` and `extract` still need a model.
 
@@ -40,14 +42,14 @@ remaining test timeout.
 | `assert` | 2 | 0 | `agents.<name>.judgmentTimeout`, 30000 ms |
 
 `actionTimeout` limits engine operations, not model calls. Per-call budgets
-must be positive integers and can only lower the configured limits. All
-durations are in milliseconds.
+must be positive integers no larger than the configured limits; a larger one
+is `INVALID_ARGUMENT`. All durations are in milliseconds.
 
 The `assert` row holds for the built-in agent. When the selected agent has a
 custom `executor`, `assert` is dispatched to it as a step: its budget is the
 agent's `maxSteps` and `maxModelCalls`, its default timeout is
-`config.timeout`, and `vision` or `screenshot` on the call is
-`UNSUPPORTED_CAPABILITY`.
+`config.timeout`, and `vision` on the call is `UNSUPPORTED_CAPABILITY`;
+`screenshot` still applies.
 
 ## agent.act
 
@@ -63,9 +65,10 @@ with an `ActResult`; a failing or blocked one throws an `AgentError` whose
 unknown `agent` name is `INVALID_ARGUMENT` before the step opens.
 
 Values come from your code through `options.params`, never from the model. The
-model sees a `Secret` as its name and purpose only. The runner fills the value
-under the same rules as `locator.fill`: the field must be an enabled editable
-input, and a password goes only into a password field.
+model sees a `Secret` as its name and purpose only. The runner checks the
+field the model picked before it fills the value: it must be an enabled
+editable input, and a password goes only into a password field.
+`locator.fill` runs no such check, since your code chose the field.
 
 ```ts
 await agent.act('invite {email} as an editor', { params: { email: 'ada@example.test' } });
@@ -203,12 +206,28 @@ viewport of the recorded size, or at the same place inside the listed node
 that contained it. A step that sent pixels records `visionInput: true` and
 `metrics.pixelBytes`.
 
-Throws `ACTION_FAILED` for a failed verdict with no more specific code; a
-blocked code (`AUTH_CREDENTIAL_UNAVAILABLE`, `ENVIRONMENT_UNAVAILABLE`,
-`SEED_DATA_MISSING`, `TEST_SETUP_FAILED`, `AUTOMATION_UNSUPPORTED`) when the
-step could not reach a product verdict; `STEP_BUDGET_EXHAUSTED` and
-`STEP_TIMEOUT` when a budget or the deadline ran out; `INVALID_ARGUMENT` for
-a malformed instruction, oversized `params`, or an unknown option; and
+A failed or blocked step throws an `AgentError`. A failed verdict is
+`ACTION_FAILED` unless the executor names a more specific code, such as
+`LOCATOR_NOT_FOUND` or `AUTHENTICATION_FAILED`. A blocked verdict, a step
+that could not reach a product verdict, carries one of these codes:
+
+| Blocked on | Codes |
+| --- | --- |
+| credentials | `AUTH_CREDENTIAL_UNAVAILABLE`, `AUTH_CREDENTIAL_INVALID`, `SECRET_UNAVAILABLE` |
+| environment | `ENVIRONMENT_UNAVAILABLE`, `APP_UNREACHABLE`, `APP_ALREADY_RUNNING` |
+| seed data | `SEED_DATA_MISSING` |
+| test setup | `TEST_SETUP_FAILED`, `APP_NOT_OPEN`, `POLICY_DENIED` |
+| automation | `MODEL_UNAVAILABLE`, `AUTOMATION_UNSUPPORTED`, `STEP_BUDGET_EXHAUSTED`, `STEP_TIMEOUT`, `CONTEXT_OVERFLOW` |
+
+The runner's own stops are
+`STEP_BUDGET_EXHAUSTED` and `STEP_TIMEOUT` when a budget or the deadline ran
+out, `CANCELLED`, `STEP_NO_CONCLUSION` when the turns ran out without a
+conclusion, `CONTEXT_OVERFLOW`, `MODEL_PROVIDER_FAILED`,
+`MODEL_OUTPUT_INVALID` for a verdict outside the grammar, and `REPLAY_STALE`
+under a strict cache. Every code is in [Errors](/reference/errors#agenterror).
+
+`act` also throws `INVALID_ARGUMENT` for a malformed instruction, oversized
+`params`, an unknown option, or a budget above the configured limit, and
 `UNSUPPORTED_CAPABILITY` for `schema` or `vision`, which `act` does not take.
 
 ## agent.assert
@@ -248,9 +267,11 @@ await agent.assert('the dashboard shows a trial badge');
 waitFor(condition: string, options?: WaitForOptions): Promise<void>;
 ```
 
-One observation per interval, and a judgment when the screen changed.
-Succeeds on the first judgment that holds; a false or inconclusive round
-keeps waiting.
+Observes and judges at once. After a false or inconclusive judgment it
+waits out `interval`, then observes every 500 ms (or every `interval`, when
+shorter) without a model call, and judges again only once the screen
+differs from the one last judged, pixels included under `vision`. Succeeds
+on the first judgment that holds.
 
 Throws `STEP_TIMEOUT` on deadline expiry and `STEP_BUDGET_EXHAUSTED` on
 budget exhaustion, each carrying the last judgment (with the same vision
@@ -333,11 +354,11 @@ export interface ActOptions extends AgentOption {
    * cache records a slot for it instead of the value.
    */
   params?: AgentParams;
-  /** Step deadline in milliseconds; defaults to the test timeout. */
+  /** Step deadline in milliseconds; defaults to `config.timeout`. */
   timeout?: number;
-  /** Action budget; defaults to `agent.maxSteps` and can only lower it. */
+  /** Action budget; defaults to `agents.<name>.maxSteps` and can only lower it. */
   maxSteps?: number;
-  /** Model-call budget; defaults to `agent.maxModelCalls` and can only lower it. */
+  /** Model-call budget; defaults to `agents.<name>.maxModelCalls` and can only lower it. */
   maxModelCalls?: number;
 }
 
@@ -348,7 +369,7 @@ export interface AgentOption {
 
 /** `assert` options: one judgment plus one repair round, within `timeout`. */
 export interface AssertOptions extends VisionOption, AgentOption {
-  /** Deadline in milliseconds; defaults to the agent's `timeout`, 30000. */
+  /** Deadline in milliseconds; defaults to the agent's `judgmentTimeout`, 30000. */
   timeout?: number;
   /** Attach a redacted screenshot to the step; on by default, denied after a secret fill. */
   screenshot?: boolean;
@@ -356,11 +377,11 @@ export interface AssertOptions extends VisionOption, AgentOption {
 
 /** `waitFor` options: a judgment at most once per `interval` until `timeout`. */
 export interface WaitForOptions extends VisionOption, AgentOption {
-  /** Deadline in milliseconds; defaults to the agent's `timeout`, 30000. */
+  /** Deadline in milliseconds; defaults to the agent's `judgmentTimeout`, 30000. */
   timeout?: number;
   /** Least time between two judgments, in milliseconds; 100 through 60000, default 3000. */
   interval?: number;
-  /** Judgment budget; defaults to `agent.maxModelCalls` and can only lower it. */
+  /** Judgment budget; defaults to `agents.<name>.maxModelCalls` and can only lower it. */
   maxModelCalls?: number;
 }
 
@@ -368,7 +389,7 @@ export interface WaitForOptions extends VisionOption, AgentOption {
 export interface ExtractOptions<Schema extends StandardSchemaV1> extends VisionOption, AgentOption {
   /** Any Standard Schema v1 validator; the output is validated against it, with one repair round. */
   schema: Schema;
-  /** Deadline in milliseconds; defaults to the agent's `timeout`, 30000. */
+  /** Deadline in milliseconds; defaults to the agent's `judgmentTimeout`, 30000. */
   timeout?: number;
 }
 
@@ -401,6 +422,43 @@ export interface ActResult {
   readonly actions: number;
 }
 
+/**
+ * How the replay cache took part in one agent step. `self-finalized` means
+ * the full trace replayed and the step passed with zero model calls;
+ * `agent-concluded` means a replayed prefix handed the step to the executor;
+ * `missed` means the executor ran the step from the top.
+ */
+export interface StepCacheInfo {
+  mode: 'self-finalized' | 'agent-concluded' | 'missed';
+  /** The miss or hand-off reason token; absent on `self-finalized`. */
+  reason?: TraceReplayMissReason | ReplayHandOffReason;
+  /**
+   * On a `gap` at a typed value: the rule that made the value this run's
+   * data rather than the flow's. Absent for a gap at a project tool.
+   */
+  derived?: DerivedReason;
+  /**
+   * Why a passing step that ran live was still not recorded, when the cause
+   * is the call itself: `param-collision` when a `unique()` value equals, is
+   * spelled inside, or is the encoded form of another param's value, so the
+   * recording could not tell which param a recorded input came from.
+   */
+  notRecorded?: 'param-collision';
+  replayedActions: number;
+  totalActions: number;
+}
+
+type TraceReplayMissReason = 'retry' | 'no-entry' | 'invalid-entry' | 'truncated' | 'wrong-context';
+export type ReplayHandOffReason =
+  | 'gap'
+  | 'target-not-found'
+  | 'target-ambiguous'
+  | 'viewport-changed'
+  | 'action-failed'
+  | 'action-uncertain'
+  | 'end-mismatch';
+export type DerivedReason = 'pixels' | 'whole-node' | 'minted-token' | 'date';
+
 /** Values an `act` instruction refers to. */
 export type AgentParams = Readonly<Record<string, AgentParam>>;
 
@@ -413,9 +471,39 @@ export type AgentParam =
   | { readonly [key: string]: AgentParam };
 ```
 
+Each `StepCacheInfo.reason` is explained under
+[Why a step was not replayed](/cache#why-a-step-was-not-replayed).
+
 `Unique` is what `unique()` returns: a value that differs on every run, which
 the replay cache records as a slot and substitutes on replay. See
 [Cache](/cache).
+
+## unique
+
+```ts
+import { unique } from 'e2e';
+
+/** A string param that differs on every run; the model sees `value`, the replay cache a slot. */
+export interface Unique {
+  readonly value: string;
+}
+
+/**
+ * Marks a value that is different on every run. Mark values the flow types
+ * or looks for, not choices that steer it: two runs whose `unique()` values
+ * differ replay the same recording.
+ */
+export function unique(value: string): Unique;
+```
+
+Throws `INVALID_ARGUMENT` for a value that is not a string, is empty or only
+whitespace, or contains the placeholder text `{{param:`.
+
+```ts
+await agent.act('create a company named {name}', {
+  params: { name: unique(`Acme ${Date.now()}`) },
+});
+```
 
 ## AgentError
 

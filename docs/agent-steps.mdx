@@ -121,7 +121,7 @@ of input tokens per step.
 ## Where secrets go
 
 For a `Secret` param, the model receives only its name and purpose. The
-runner authorizes and fills the value, as it does for `locator.fill`.
+runner checks the field the model picked, then fills the value itself.
 The value never enters prompts, transcripts, reports, or AI traces.
 
 After a secret fill, screenshots are withheld from the model and assertion

@@ -113,8 +113,9 @@ await web.setCookies([{ url: 'http://localhost:3000', name: 'tz', value: 'UTC' }
 await web.setViewport({ width: 390, height: 844 });
 ```
 
-Cookie URLs must use HTTP or HTTPS. If any entry is invalid, no cookies
-are set.
+A cookie URL that does not parse, or uses `file:`, `data:`, or
+`javascript:`, is `POLICY_DENIED`; a domain cookie is checked as the origin
+it would be sent to. If any entry is refused, no cookies are set.
 
 ## Pick a browser and viewport
 

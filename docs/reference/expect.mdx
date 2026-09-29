@@ -34,6 +34,9 @@ export interface Expect extends ExpectCall {
 ```
 
 Engine fixtures can provide matchers too, such as `expect(web).toHaveURL()`.
+Such a fixture is an `Expectable<E>`: its engine attached the matcher set `E`
+through [`expectable`](/reference/engine#contributed-fixtures), and
+`expect(fixture)` returns it.
 Other arguments use value matchers, including promises, so await a promise
 before passing its result to `expect`.
 
