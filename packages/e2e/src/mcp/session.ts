@@ -66,8 +66,10 @@ export interface OpenSessionOptions {
 }
 
 export interface SessionHostOptions {
-  /** Loads a config fresh for each session, so an edited config applies without a restart; `configPath` overrides the server's default. */
-  readonly loadConfig: (configPath: string | undefined) => Promise<LoadedConfig>;
+  /** The absolute path of the config a session loads, without evaluating it; `configPath` overrides the server's default. */
+  readonly locateConfig: (configPath: string | undefined) => string;
+  /** Loads the config at an absolute path fresh for each session, so an edited config applies without a restart. */
+  readonly loadConfig: (configPath: string) => Promise<LoadedConfig>;
   readonly env: NodeJS.ProcessEnv;
   readonly headed: boolean;
   /** The target every session opens on, from `--target`; a call may still name one. */
@@ -182,11 +184,16 @@ export class SessionHost {
     // and on every render, so the optional SDK is loaded once here: a project
     // without it learns so before an attempt opens a browser.
     await loadAiSdk();
-    const loaded = await this.options.loadConfig(options.config);
+    // The config is claimed before it evaluates: its top-level code resolves
+    // secrets against the registry an open session installed, which only
+    // knows that session's config.
+    const configPath = this.options.locateConfig(options.config);
+    this.sessions.claimConfig(id, configPath);
+    const loaded = await this.options.loadConfig(configPath);
     // A session is its own run: a URL declared with port 0 gets a port here.
     const config = await allocateAppPorts(loaded);
     const target = this.resolveTarget(config, options.target);
-    this.sessions.claim(id, target.name, target.engine, loaded.configPath);
+    this.sessions.claimEngine(id, target.name, target.engine);
     const ttlMs = this.options.ttlMs ?? SESSION_TTL_MS;
     const abort = new AbortController();
     let attempt: StandaloneAttempt | undefined;

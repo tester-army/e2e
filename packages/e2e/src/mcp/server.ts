@@ -12,7 +12,7 @@ import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mc
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { readGuide, skillTopics } from '../cli/skill.ts';
 import { ConfigurationError, errorMessage } from '../internal/errors.ts';
-import { loadProjectConfig } from './config.ts';
+import { loadProjectConfig, locateProjectConfig } from './config.ts';
 import { SessionHost } from './session.ts';
 import { errorResult } from './tools.ts';
 
@@ -55,7 +55,8 @@ export async function serveMcp(options: ServeOptions): Promise<number> {
   };
 
   const host = new SessionHost({
-    loadConfig: (configPath) => loadProjectConfig({ cwd: options.cwd, configPath: configPath ?? options.configPath, env: options.env }),
+    locateConfig: (configPath) => locateProjectConfig({ cwd: options.cwd, configPath: configPath ?? options.configPath }),
+    loadConfig: (configPath) => loadProjectConfig(configPath, options.env),
     env: options.env,
     headed: options.headed,
     maxSessions: options.maxSessions,

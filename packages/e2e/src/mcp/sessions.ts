@@ -21,13 +21,6 @@ export interface NamedSession {
   readonly target: { readonly name: string };
 }
 
-/** What an admitted session holds exclusively, or with every session at once. */
-interface Claim {
-  /** An engine instance runs one attempt at a time. */
-  readonly engine: EngineHandle | undefined;
-  /** Credentials and secrets resolve through one process-wide registry, so every session shares one config. */
-  readonly configPath: string;
-}
 
 type Phase<S> =
   | { readonly phase: 'opening' }
@@ -36,7 +29,15 @@ type Phase<S> =
 
 interface Entry<S> {
   phase: Phase<S>;
-  claim: Claim | undefined;
+  /**
+   * The config the session loads. Credentials and secrets resolve through one
+   * process-wide registry, so every session shares one config; claimed
+   * before the file evaluates, since its top-level code resolves secrets
+   * against the registry an open session installed.
+   */
+  configPath: string | undefined;
+  /** The target's engine instance, which runs one attempt at a time. */
+  engine: EngineHandle | undefined;
   /** Settles when the open does, whatever its outcome. */
   opened: Promise<unknown>;
 }
@@ -64,7 +65,7 @@ export class SessionRegistry<S extends NamedSession> {
     if (this.draining) return Promise.reject(new ConfigurationError('SESSION_OPEN', 'the server is shutting down; no session can open'));
     if (this.entries.size >= this.limit) return Promise.reject(this.limitReached());
     const id = uuidv7();
-    const entry: Entry<S> = { phase: { phase: 'opening' }, claim: undefined, opened: Promise.resolve() };
+    const entry: Entry<S> = { phase: { phase: 'opening' }, configPath: undefined, engine: undefined, opened: Promise.resolve() };
     this.entries.set(id, entry);
     const opened = open(id).catch((cause: unknown) => {
       this.entries.delete(id);
@@ -74,26 +75,30 @@ export class SessionRegistry<S extends NamedSession> {
     return opened;
   }
 
-  /** Claims the target's engine instance and the config for an opening session, or refuses what another session holds. */
-  claim(id: string, target: string, engine: EngineHandle | undefined, configPath: string): void {
-    const others = [...this.entries].filter(([other]) => other !== id);
-    const engineHolder = others.find(([, entry]) => engine !== undefined && entry.claim?.engine === engine);
-    if (engineHolder !== undefined) {
-      const [holder] = engineHolder;
-      throw new ConfigurationError(
-        'ENGINE_IN_USE',
-        `target "${target}" gets its engine instance from a package, so every session shares it, and session ${holder} is driving it; create the engine in the config or a file it imports by path, or close_session ${holder} first`,
-      );
-    }
-    const configHolder = others.find(([, entry]) => entry.claim !== undefined && entry.claim.configPath !== configPath);
-    if (configHolder !== undefined) {
-      const [holder, entry] = configHolder;
+  /** Claims the config for an opening session before it loads, or refuses a config other than the one open sessions share. */
+  claimConfig(id: string, configPath: string): void {
+    const holder = this.others(id).find(([, entry]) => entry.configPath !== undefined && entry.configPath !== configPath);
+    if (holder !== undefined) {
+      const [holderId, entry] = holder;
       throw new ConfigurationError(
         'CONFIG_IN_USE',
-        `session ${holder} is open on config ${entry.claim?.configPath}; sessions open at once share one config, because credentials and secrets resolve process-wide; open this one on that config, or close every session on it first`,
+        `session ${holderId} is open on config ${entry.configPath}; sessions open at once share one config, because credentials and secrets resolve process-wide; open this one on that config, or close every session on it first`,
       );
     }
-    this.require(id).claim = { engine, configPath };
+    this.require(id).configPath = configPath;
+  }
+
+  /** Claims the target's engine instance for an opening session, or refuses one another session is driving. */
+  claimEngine(id: string, target: string, engine: EngineHandle | undefined): void {
+    const holder = this.others(id).find(([, entry]) => engine !== undefined && entry.engine === engine);
+    if (holder !== undefined) {
+      const [holderId] = holder;
+      throw new ConfigurationError(
+        'ENGINE_IN_USE',
+        `target "${target}" gets its engine instance from a package, so every session shares it, and session ${holderId} is driving it; create the engine in the config or a file it imports by path, or close_session ${holderId} first`,
+      );
+    }
+    this.require(id).engine = engine;
   }
 
   /** Makes an opened session live: from now on calls resolve to it. */
@@ -156,6 +161,11 @@ export class SessionRegistry<S extends NamedSession> {
     const summaries = await Promise.all(this.live().map((session) => this.close(session.id, reason, teardown)));
     await Promise.allSettled(closing.map((phase) => phase.closed));
     return summaries;
+  }
+
+  /** Every admitted session but `id`, with its entry. */
+  private others(id: string): [string, Entry<S>][] {
+    return [...this.entries].filter(([other]) => other !== id);
   }
 
   /** The live sessions, in the order they were admitted. */

@@ -23,7 +23,7 @@ const { SessionHost } = (await import(sessionModule)) as typeof import('../../sr
 const resolveModule = new URL('../../dist/config/resolve.js', import.meta.url).href;
 const { resolveConfig } = (await import(resolveModule)) as typeof import('../../src/config/resolve.ts');
 const secretsModule = new URL('../../dist/secrets.js', import.meta.url).href;
-const { credentials } = (await import(secretsModule)) as typeof import('../../src/secrets.ts');
+const { credentials, secrets } = (await import(secretsModule)) as typeof import('../../src/secrets.ts');
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -54,6 +54,8 @@ describe('SessionHost', { timeout: 60_000 }, () => {
     readonly video?: RecordingMode;
     /** Holds every config load until it settles. */
     readonly loaded?: Promise<void>;
+    /** Runs while a config file evaluates, as its top-level code would. */
+    readonly evaluate?: (configPath: string) => void;
   }
 
   /**
@@ -63,9 +65,10 @@ describe('SessionHost', { timeout: 60_000 }, () => {
    */
   const host = (engine: () => FakeEngineHandle, options: HostOptions = {}) =>
     new SessionHost({
-      loadConfig: async (requested) => {
+      locateConfig: (requested) => path.join(dir, requested ?? 'e2e.config.ts'),
+      loadConfig: async (configPath) => {
         await options.loaded;
-        const configPath = path.join(dir, requested ?? 'e2e.config.ts');
+        options.evaluate?.(configPath);
         const config = resolveConfig(
           {
             targets: [{ name: 'kiosk', platform: 'kiosk', engine: engine().engine }],
@@ -270,6 +273,25 @@ describe('SessionHost', { timeout: 60_000 }, () => {
     });
     await mixed.close('done');
     expect(await mixed.open({ config: 'other.config.ts' })).toContain(`config ${path.join(dir, 'other.config.ts')}`);
+    await mixed.close('done');
+  });
+
+  it('refuses a session on another config before evaluating it, so its secrets never resolve against the open session\'s', async () => {
+    const evaluated: string[] = [];
+    const mixed = host(engines().next, {
+      maxSessions: 2,
+      evaluate: (configPath) => {
+        evaluated.push(path.basename(configPath));
+        // A config that hands an engine option secrets.get() of a secret only it declares.
+        if (configPath.endsWith('other.config.ts')) secrets.get('OTHER_ONLY');
+      },
+    });
+    const first = sessionId(await mixed.open({}));
+    await expect(mixed.open({ config: 'other.config.ts' })).rejects.toMatchObject({
+      code: 'CONFIG_IN_USE',
+      message: expect.stringContaining(`session ${first} is open on config ${path.join(dir, 'e2e.config.ts')}`),
+    });
+    expect(evaluated).toEqual(['e2e.config.ts']);
     await mixed.close('done');
   });
 
