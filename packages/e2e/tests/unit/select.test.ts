@@ -591,6 +591,13 @@ describe('select', () => {
     expect(() => select(col, config(), {}, { passWithNoTests: true })).not.toThrow();
   });
 
+  it('names the ! entry that takes out a file a positional names, not a look-alike', async () => {
+    const col = await collection(() => {}, 'tests/wip/b.e2e.ts', ['tests/wip/a.e2e.ts']);
+    expect(() => select(col, config({ tests: ['tests/**/*.e2e.ts', '!tests/wip/a.e2e.ts', '!tests/wip/c*'] }))).toThrow(
+      'no test file matched tests/wip/a.e2e.ts (excluded by the tests entry "!tests/wip/a.e2e.ts"); the config globs discovered tests/wip/b.e2e.ts; pass --pass-with-no-tests to allow this',
+    );
+  });
+
   it('offers the nearest discovered file name when the unmatched positional was a bare name', async () => {
     const col = await collection(() => {}, 'tests/agent.e2e.ts', ['agnet.e2e.ts']);
     expect(() => select(col, config())).toThrow(

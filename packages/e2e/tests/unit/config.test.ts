@@ -87,6 +87,31 @@ describe('resolveConfig', () => {
     ]);
   });
 
+  it('refuses a wildcard-free tests entry that names a directory, which a glob would read as a file', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-tests-dir-'));
+    const resolveIn = (tests: string[]) => resolveConfig({ targets: TARGETS, tests }, { projectRoot: root, env: BASE_ENV });
+    try {
+      fs.mkdirSync(path.join(root, 'tests', 'wip'), { recursive: true });
+      fs.writeFileSync(path.join(root, 'tests', 'wip', 'a.e2e.ts'), '');
+      expect(() => resolveIn(['tests/**/*.e2e.ts', '!tests/wip'])).toThrow(
+        expect.objectContaining({
+          code: 'INVALID_CONFIG',
+          message: 'tests entry "!tests/wip" names a directory, and a glob names files, so it excludes nothing; write "!tests/wip/**" to exclude everything under it',
+        }),
+      );
+      expect(() => resolveIn(['./tests'])).toThrow(
+        expect.objectContaining({
+          code: 'INVALID_CONFIG',
+          message: 'tests entry "./tests" names a directory, and a glob names files, so it selects nothing; write "tests/**/*.e2e.ts" to select the test files under it',
+        }),
+      );
+      expect(resolveIn(['tests/**/*.e2e.ts', '!tests/wip/**']).tests).toEqual(['tests/**/*.e2e.ts', '!tests/wip/**']);
+      expect(resolveIn(['tests/**/*.e2e.ts', '!tests/wip/a.e2e.ts', '!tests/gone']).tests).toHaveLength(3);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('applies the config bounds to CLI overrides too', () => {
     expect(() =>
       resolveConfig({ targets: TARGETS }, { projectRoot: ROOT, env: BASE_ENV, cli: { workers: 0 } }),

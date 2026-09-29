@@ -6,7 +6,7 @@ import { didYouMean, suggestionNote } from '../internal/suggest.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import { attemptRecording, type AttemptRecordings, type RecordingKind, type ResolvedRecording } from '../internal/recording-modes.ts';
 import type { Capability, RecordingMode, TestOptions } from '../types.ts';
-import type { Collection, CollectedTest, UncollectedFile } from './collect.ts';
+import { excludingEntry, type Collection, type CollectedTest, type UncollectedFile } from './collect.ts';
 import { groupChain } from './registry.ts';
 
 export interface ResolvedTestOptions {
@@ -441,7 +441,11 @@ function describeNoTests(
     // A positional may be a whole path or just a file name, so a near miss is looked for as either.
     const baseNames = discovered.map((file) => file.slice(file.lastIndexOf('/') + 1));
     const named = unmatchedPositionals
-      .map((positional) => `${positional}${suggestionNote(positional, discovered) || suggestionNote(positional, baseNames)}`)
+      .map((positional) => {
+        const excluded = excludingEntry(config.projectRoot, config.tests, positional);
+        if (excluded !== undefined) return `${positional} (excluded by the tests entry ${JSON.stringify(excluded)})`;
+        return `${positional}${suggestionNote(positional, discovered) || suggestionNote(positional, baseNames)}`;
+      })
       .join(', ');
     return `no test file matched ${named}; the config globs discovered ${nameFiles(discovered)}`;
   }

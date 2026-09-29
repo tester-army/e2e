@@ -1,6 +1,6 @@
 /** Config validation, defaults, and resolution. */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { envFlag } from '../internal/env.ts';
@@ -259,7 +259,7 @@ export function resolveConfig(
   }
 
   const targets = resolveTargets(raw, options.projectRoot, options.ports ?? {}, runRecordings(raw, cli, ci));
-  const tests = normalizeTests(raw.tests);
+  const tests = normalizeTests(raw.tests, options.projectRoot);
 
   const timeout = positiveInt(raw.timeout, 'timeout', 'milliseconds') ?? 120_000;
   const launchTimeout = positiveInt(raw.launchTimeout, 'launchTimeout', 'milliseconds') ?? 60_000;
@@ -764,7 +764,7 @@ function resolvePlatform(target: Target, where: string): string {
  * `INVALID_GLOB` only once a run or `e2e list` collected, so `explore`,
  * `mcp`, and `cache` accepted a config no run could use.
  */
-function normalizeTests(tests: unknown): readonly string[] {
+function normalizeTests(tests: unknown, projectRoot: string): readonly string[] {
   const list = tests === undefined ? ['tests/**/*.e2e.ts'] : typeof tests === 'string' ? [tests] : tests;
   if (!Array.isArray(list)) {
     throw new ConfigurationError(
@@ -789,7 +789,29 @@ function normalizeTests(tests: unknown): readonly string[] {
       `tests has only "!" exclusions, which select nothing; add a glob that selects files, such as ["tests/**/*.e2e.ts", ${list.map((glob) => JSON.stringify(glob)).join(', ')}]`,
     );
   }
+  for (const entry of list as readonly string[]) rejectDirectoryEntry(entry, projectRoot);
   return [...new Set(list)];
+}
+
+/**
+ * Refuses a `tests` entry with no wildcard that names an existing directory.
+ * A glob names files, so `tests/wip` matches a file called `wip` and nothing
+ * under the directory: as an exclusion it would take out nothing, and as an
+ * inclusion select nothing, each without a word.
+ */
+function rejectDirectoryEntry(entry: string, projectRoot: string): void {
+  const excluding = entry.startsWith('!');
+  const glob = compileGlob(excluding ? entry.slice(1) : entry);
+  const names = literalPrefix(glob);
+  if (names.length !== glob.segments.length) return;
+  if (statSync(path.join(projectRoot, ...names), { throwIfNoEntry: false })?.isDirectory() !== true) return;
+  const dir = names.join('/');
+  throw new ConfigurationError(
+    'INVALID_CONFIG',
+    excluding
+      ? `tests entry ${JSON.stringify(entry)} names a directory, and a glob names files, so it excludes nothing; write "!${dir}/**" to exclude everything under it`
+      : `tests entry ${JSON.stringify(entry)} names a directory, and a glob names files, so it selects nothing; write "${dir}/**/*.e2e.ts" to select the test files under it`,
+  );
 }
 
 function resolveProjectId(explicit: string | undefined, projectRoot: string): string {

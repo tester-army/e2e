@@ -332,6 +332,26 @@ export function selectPositionals(
   return { files: discovered.filter((file) => selected.has(file)), unmatched, lines };
 }
 
+/**
+ * The `!` entry of `tests` that takes out the file a positional names by its
+ * path: an including glob matches the path and this exclusion does too.
+ * Undefined for a positional no exclusion explains, a name or a glob among
+ * them, so the `NO_TESTS` message says why the file is not selected instead
+ * of offering a look-alike.
+ */
+export function excludingEntry(projectRoot: string, tests: readonly string[], positional: string): string | undefined {
+  let file: string;
+  try {
+    file = relativeToRoot(projectRoot, splitLine(projectRoot, positional).path);
+  } catch {
+    return undefined;
+  }
+  if (GLOB_SYNTAX.test(file)) return undefined;
+  const { include } = compileGlobList(tests);
+  if (!include.some((glob) => matchesGlob(glob, file))) return undefined;
+  return tests.find((entry) => entry.startsWith('!') && matchesGlob(compileGlob(entry.slice(1)), file));
+}
+
 function positionalMatcher(projectRoot: string, positional: string): (file: string) => boolean {
   const normalized = relativeToRoot(projectRoot, positional);
   if (normalized === '.') return () => true;

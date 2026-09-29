@@ -47,7 +47,11 @@ The `tests` globs select files relative to the project root. An entry that
 starts with `!` excludes: `tests: ['tests/**/*.e2e.ts', '!tests/wip/**']`
 selects every test file except those under `tests/wip/`. A file is selected
 when an including glob matches it and no exclusion does, whatever the order of
-the list, and a list of only exclusions is `INVALID_CONFIG`. Discovery visits
+the list, and a list of only exclusions is `INVALID_CONFIG`. A glob names
+files, so an entry with no wildcard that names a directory (`'!tests/wip'`)
+is `INVALID_CONFIG` naming the glob to write (`'!tests/wip/**'`). A file
+passed to `e2e run` that an exclusion takes out is `NO_TESTS` naming that
+entry. Discovery visits
 only directories that could match, never enters one an exclusion takes whole,
 skips `node_modules`, and ignores symlinks. A dot directory is included only
 when a glob segment explicitly starts with a dot.
