@@ -79,6 +79,9 @@ export function easSimulators(options: EasSimulatorsOptions): DeviceProvider {
   if (buildId !== undefined && applicationArchiveUrl !== undefined) {
     throw new Error('easSimulators: pass `buildId` or `applicationArchiveUrl`, not both');
   }
+  if (options.maxIdleTimeMinutes !== undefined && maxDurationMinutes !== undefined && options.maxIdleTimeMinutes >= maxDurationMinutes) {
+    throw new Error('easSimulators: `maxIdleTimeMinutes` must be below `maxDurationMinutes`, as EAS requires');
+  }
   const idleMinutes = options.maxIdleTimeMinutes ?? (maxDurationMinutes === undefined ? DEFAULT_MAX_IDLE_TIME_MINUTES : Math.min(DEFAULT_MAX_IDLE_TIME_MINUTES, maxDurationMinutes - 1));
   // EAS takes no idle limit of zero; a session that short runs to its duration.
   const maxIdleTimeMinutes = idleMinutes >= 1 ? idleMinutes : undefined;

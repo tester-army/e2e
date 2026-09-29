@@ -284,6 +284,7 @@ describe('easSimulators()', () => {
     eas.calls = [];
     await easSimulators({ projectId: 'p1', maxDurationMinutes: 1 }).acquire(request());
     expect(eas.calls[0]?.variables['input']).not.toHaveProperty('maxIdleTimeMinutes');
+    expect(() => easSimulators({ projectId: 'p1', maxIdleTimeMinutes: 10, maxDurationMinutes: 10 })).toThrow('`maxIdleTimeMinutes` must be below `maxDurationMinutes`');
   });
 
   it('gives up on a session that boots for fifteen minutes after leaving the queue', async () => {
