@@ -100,8 +100,12 @@ name uppercased, with every non-alphanumeric character replaced by `_`:
 E2E_USER_ADMIN_USERNAME=admin E2E_USER_ADMIN_PASSWORD=... npx e2e run
 ```
 
-`password` also accepts a function, called on every authorized fill, for a
-vault lookup or a freshly computed one-time code.
+A string is checked when the config loads: while `ADMIN_PASSWORD` is unset,
+every command, `e2e list` included, fails with `INVALID_CONFIG`. `password`
+also accepts a function, called on every authorized fill, for a vault lookup
+or a freshly computed one-time code. A function's value is redacted only
+from its first fill on, so prefer a string for a value the app can show
+before a test types it.
 
 ## The password is a handle
 
@@ -115,9 +119,9 @@ admin.username; // a plain string
 admin.password; // Secret: opaque, with no plaintext accessor
 ```
 
-A `Secret` has no `.value`. In a test, exactly two sinks accept one (an
-engine option can hold one too, as
-[`basicAuth`](/starting-your-app#protected-previews) does):
+A `Secret` has no `.value`. Three sinks accept one: the two below in a
+test, and an engine option that declares it, as
+[`basicAuth`](/starting-your-app#protected-previews) does:
 
 <Tabs>
   <Tab title="Deterministic">

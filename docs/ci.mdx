@@ -56,7 +56,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload artifacts
-        if: failure()
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: e2e-artifacts
@@ -67,6 +67,9 @@ jobs:
 
 The workflow pins actions to commit SHAs and installs dependencies from the
 lockfile. `npx e2e` runs the installed version.
+
+Artifacts upload on every run that is not cancelled, so a test that failed
+and then passed on retry still has its evidence.
 
 Configure your CI's test-report integration to read `.e2e/junit.xml`. It
 includes startup failures such as `APP_UNREACHABLE` in a `run` suite. Add
@@ -145,7 +148,7 @@ it into `.e2e/` before the rerun step, or rerun the failed job whole.
 ## Model credentials
 
 Pass the credential your configured provider needs, such as
-`AI_GATEWAY_API_KEY` in the workflow above. See [Choosing a model](/models)
+`AI_GATEWAY_API_KEY` in the workflow above. See [Models](/models)
 for provider setup. Tests that never use `agent` need no model credentials.
 
 Store keys in CI secrets and use spending limits where available. The code
@@ -161,7 +164,7 @@ A failed agent step fails the job like a failed `expect`. Keep the checks
 predictable by giving each `agent.act` one goal and checking its outcome
 with a locator assertion or `agent.assert`.
 
-To reuse verified actions in CI, [share the replay cache](/cache#commit-your-traces).
+To reuse verified actions in CI, [share the replay cache](/cache#commit-the-replay-cache).
 A cache hit avoids a model call for that action step. Agent judgments still
 run live, and a cache miss or hand-off uses the model.
 

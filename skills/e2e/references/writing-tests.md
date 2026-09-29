@@ -329,6 +329,9 @@ credentials: {
 },
 ```
 
+A string is checked when the config loads, so an unset variable fails every
+command with `INVALID_CONFIG`. A function is read at fill time, but its value
+is redacted only from that fill on.
 `E2E_USER_ADMIN_USERNAME` and `E2E_USER_ADMIN_PASSWORD` override either
 field per run. `credentials.user('admin').password` is a `Secret` with no
 plaintext accessor; only `fill()` and `agent.act` params accept it. Any other

@@ -73,9 +73,11 @@ An agent step returns one of three verdicts:
 - `blocked`: a prerequisite, environment problem, or execution limit
   prevented a product verdict. The error code determines the exit code.
 
-An error code belongs to `failed` or `blocked` only. A `passed` verdict
-that carries one is not refused: the code is dropped, the step passes, and
-the turn's outcome notes the dropped code.
+An error code belongs to `failed` or `blocked` only. When the built-in
+agent's model concludes `passed` with one, the code is dropped, the step
+passes, and the turn's outcome notes the dropped code. A
+[custom executor](/executors) that returns one is refused with
+`MODEL_OUTPUT_INVALID`.
 
 | Blocked by | Codes | Exit |
 | --- | --- | ---: |

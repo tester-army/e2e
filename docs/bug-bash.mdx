@@ -26,7 +26,7 @@ The agent reads the app's routes and, for a branch, the diff, and writes
 five to ten charters: one-sentence goals, each on one area with one
 posture, such as a first-time user, numbers and copy, edge input, state
 across reloads, or error paths. It runs one `e2e explore` per charter, four
-at a time, each with its own `--artifacts` root so reports never collide,
+at a time, each with its own `--output` directory so reports never collide,
 and merges the findings. It sets aside findings that the local
 environment, the design, or the seed data explain. Each remaining issue
 gets a repro test that asserts the expected behavior, and counts as a bug

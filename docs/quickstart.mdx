@@ -202,7 +202,8 @@ test('the agent opens General', async ({ agent, app, device }) => {
 });
 ```
 
-  The device starts in the configured app. `device.locator` uses
+  `app.open()` launches the configured app fresh; without it, a test starts
+  where the previous one left the device. `device.locator` uses
   [agent-device selectors](/mobile#the-device-fixture).
   </Tab>
 </Tabs>

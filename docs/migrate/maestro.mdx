@@ -23,7 +23,7 @@ reference pages hold the details: [screen](/reference/screen),
 | `--platform ios` | `mobile({ platform: 'ios' })`, one engine per platform | config | renamed |
 | `--device` | `mobile({ device: 'iPhone 17' })`; a list is a pool, one worker per device | config | renamed |
 | `.maestro/config.yaml` `flows` | `tests`, default `tests/**/*.e2e.ts`; Maestro runs one folder level, e2e recurses | config | renamed |
-| `flows: ['!helper.yaml']` | not yet; keep helpers outside the glob | config | missing |
+| `flows: ['!helper.yaml']` | a `tests` entry with a leading `!`: `tests: ['tests/**/*.e2e.ts', '!tests/helpers/**']` | config | renamed |
 | `tags` and `--include-tags` | `{ tags: [...] }` on a test or group, `--tag` on the CLI | config | renamed |
 | `--exclude-tags` | `--exclude-tag` | CLI | renamed |
 | `env` and `${VAR}` | module constants, and `params` in a goal, see [Selectors](#selectors) | `test` | renamed |
@@ -127,7 +127,7 @@ says whether the call exists: `same`, `renamed`, `device only`, `by design`
 
 | Maestro | e2e | Lives in | Status |
 | --- | --- | --- | --- |
-| `swipe: { direction: UP }` | `screen.swipe({ direction: 'up' })`, or `locator.swipe(...)` inside one node | `screen` | renamed |
+| `swipe: { direction: UP }` | `screen.swipe({ direction: 'down' })`, or `locator.swipe(...)` inside one node; Maestro names the finger's direction, e2e the content's | `screen` | renamed |
 | `swipe: { start, end }` | `screen.swipe({ from: { x, y }, to: { x, y } })` | `screen` | renamed |
 | `scroll` | `screen.swipe({ direction: 'down' })` | `screen` | renamed |
 | `scrollUntilVisible: { element }` | `screen.scrollUntilVisible(locator, { direction })` | `screen` | renamed |

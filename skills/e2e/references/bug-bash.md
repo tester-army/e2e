@@ -121,8 +121,8 @@ directory. Overlap between charters is fine; duplicates are merged in step 4.
 
 ## 3. Fan out
 
-One `e2e explore` per charter, each with its own artifact root, so reports
-never overwrite each other: `--artifacts .e2e/bugbash/<slug>/artifacts`
+One `e2e explore` per charter, each with its own output directory, so reports
+never overwrite each other: `--output .e2e/bugbash/<slug>`
 writes `.e2e/bugbash/<slug>/report.json`, and `--reporter list,markdown`
 the `summary.md` beside it.
 
@@ -140,7 +140,7 @@ CHARTERS
 while IFS='|' read -r slug target charter; do
   [ -n "$slug" ] && printf '%s\0%s\0%s\0' "$slug" "$target" "$charter"
 done < .e2e/bugbash/charters.txt | xargs -0 -n 3 -P 4 sh -c \
-  'npx e2e explore "$3" --target "$2" --artifacts ".e2e/bugbash/$1/artifacts" --max-steps 6 --video --reporter list,markdown < /dev/null > ".e2e/bugbash/$1.log" 2>&1' _
+  'npx e2e explore "$3" --target "$2" --output ".e2e/bugbash/$1" --max-steps 6 --video --reporter list,markdown < /dev/null > ".e2e/bugbash/$1.log" 2>&1' _
 ```
 
 Each run takes a minute or a few and costs what its model calls cost; the

@@ -129,14 +129,19 @@ The executor receives this context:
 | --- | --- |
 | `ctx.step` | The instruction, params, and `index` in the attempt's timeline |
 | `ctx.observe({ tree, pixels })` | Redacted screen text, with an optional node tree and masked screenshot |
-| `ctx.actions` | Checked and recorded actions: `tap`, `doubleTap`, `longPress`, `secondaryTap`, `hover`, `type`, `typeSecret`, `press`, `select`, `check`, `drag`, `scrollTo`, `upload`, `scroll`, `navigate`, `back`, and the point and keyboard verbs below |
-| `ctx.target.verbs` | The actions supported by the target's engine. Offer only these to the model. |
+| `ctx.actions` | Checked and recorded actions: `tap`, `doubleTap`, `longPress`, `secondaryTap`, `hover`, `type`, `typeSecret`, `press`, `select`, `check`, `drag`, `scrollTo`, `scrollUntil`, `upload`, `scroll`, `navigate`, `back`, and the point and keyboard verbs below |
+| `ctx.target` | The target's `name` and `platform`, and `verbs`, the actions its engine supports. Offer only these to the model. |
 | `ctx.pixelsTainted` | True after a secret fill. Screenshots are withheld for the rest of the attempt. |
+| `ctx.signal` | Aborts on cancellation, at the step deadline, or on any other hard stop. Stop promptly when it fires |
+| `ctx.replayedPrefix` | Set when a cache replay ran part of the step before handing it over: the replayed actions and why replay stopped |
+| `ctx.model`, `ctx.providerOptions` | The agent's configured model and `providerOptions`, when set |
+| `ctx.agentContext` | The agent's `context` plus the test's `agentContext` |
 | `ctx.ledger` | Completed steps in the test |
 | `ctx.attempt` | Test and attempt ids, retry index, abort signal, and a `memory` map that is never reported |
 | `ctx.budgets` | Accounting for custom tools and model calls |
 | `ctx.attachTranscript(text)` | Attaches the model transcript to the step. Kept as a `log` artifact under `--debug`, a no-op otherwise; call once, at conclusion |
 | `ctx.attachTurns(turns)` | Keeps a clipped record of the step's model turns (`{ index, calls, outcome }`) on the step record whatever the debug setting; the report shows the last ones under a failed step |
+| `ctx.attachScreenshot(pixels, label)` | Keeps observed pixels as a `screenshot` artifact of the step and resolves with its report id |
 
 `tapAt(point)` and `hoverAt(point)` use a node id when a listed control
 occupies the point and otherwise call the engine's coordinate action.
@@ -194,16 +199,36 @@ export default {
 } satisfies E2EConfig;
 ```
 
-Direct Playwright calls bypass the runner's action authorization and trace
-recording. The runner still enforces the step deadline and records the
+Direct Playwright calls bypass the runner's action authorization and the
+replay cache. The runner still enforces the step deadline and records the
 verdict, but these calls have no automatic replay or artifacts. Use
 `ctx.budgets` to count custom tool and model calls.
+
+### Replay cache
+
+`cache` on a `StepExecutor` sets how its `act` steps use the
+[replay cache](/cache); `assert` steps are never cached. `'inherit'`, the
+default, follows the configured cache mode. A recorded step replays without
+calling `runStep`. A replay that stops partway calls `runStep` with
+`ctx.replayedPrefix`: continue from the current screen and do not redo the
+replayed actions. What a step does through `ctx.actions` is recorded; a
+mutating tool call leaves a gap the executor fills on replay. Entries are not
+keyed by executor, so an entry one agent recorded replays for another.
+
+`'off'` never replays or records the executor's steps, so every step reaches
+`runStep`. Use it for a brain whose own history or memory is the source of
+truth, or one that must see every step run. The two `StepExecutor` samples on
+this page set it so their code runs on every call.
 
 ## The verdict
 
 Return `passed`, `failed`, or `blocked` with a summary. A blocked verdict
-also needs an error code. [How agent steps work](/agent-steps#how-a-step-ends)
-lists the codes and resulting exits.
+also needs an error code, and a passed one carries none.
+[How agent steps work](/agent-steps#how-a-step-ends) lists the codes and
+resulting exits. `STEP_BUDGET_EXHAUSTED`, `STEP_TIMEOUT`, and `CANCELLED`
+belong to the runner: return one only when that budget is spent, the step
+deadline has passed, or the test was cancelled. Returning one otherwise, or
+a passed verdict with any code, is refused with `MODEL_OUTPUT_INVALID`.
 
 <CardGroup cols={2}>
   <Card title="agent reference" icon="wand-magic-sparkles" href="/reference/agent">

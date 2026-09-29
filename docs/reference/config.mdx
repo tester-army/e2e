@@ -769,7 +769,7 @@ sign-in, use the [`e2e/oauth/*` models](/subscriptions).
 Reports record `provider` and `modelId` per step. Each worker constructs its
 own instance from the config module; a digest that differs between the
 runner and a worker is `CONFIG_NOT_DETERMINISTIC`. See
-[Choosing a model](/models).
+[Models](/models).
 
 ## credentials
 
@@ -919,12 +919,12 @@ recording that exists but no longer replays into a `REPLAY_STALE` failure
 instead of a hand-off to the agent; see
 [Fail on a stale recording](/cache#fail-on-a-stale-recording).
 
-### Commit your traces
+### Commit the replay cache
 
 `e2e init` adds `.e2e/cache/` to `.gitignore`, so committing entries is
 opt-in. Remove that line to share replays with CI and teammates; CI stays
 `read-only` unless `cache: 'read-write'` is set. See
-[Caching agent steps](/cache#commit-your-traces).
+[Caching agent steps](/cache#commit-the-replay-cache).
 
 ## Run limits
 

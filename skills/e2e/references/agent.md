@@ -90,7 +90,7 @@ verdict.
 
 Options: `params` (the values the instruction refers to; a `Secret` is filled
 by the runner; a run-unique value such as `unique(\`E2E ${Date.now()}\`)` keeps
-the replay cache working across runs), `timeout` (default the test timeout), `maxSteps` (default 25
+the replay cache working across runs), `timeout` (default the config `timeout`), `maxSteps` (default 25
 actions), `maxModelCalls` (default 25). Per-call budgets can only lower the
 configured limits. `act` takes no `schema`: structured output is
 `extract({ schema })`. By default pixels reach an `act` step through the
@@ -248,8 +248,9 @@ tool call before it executes.
 
 - A verified `act` can replay without model calls. Cache misses and
   hand-offs use the model, and judgments still run live.
-- For slow model calls, raise the step or test `timeout`. Raise
-  `actionTimeout` for slow UI operations. `STEP_TIMEOUT` and
+- For slow model calls, raise the step or test `timeout` for `act` and
+  the agent's `judgmentTimeout` for judgments. Raise `actionTimeout` for
+  slow UI operations. `STEP_TIMEOUT` and
   `STEP_BUDGET_EXHAUSTED` count as test failures; smaller goals can help.
 - `--debug` prints a per-step table (duration, model calls, tokens, cost)
   after the run and saves each step's transcript as an artifact.

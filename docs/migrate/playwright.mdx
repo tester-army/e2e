@@ -32,7 +32,7 @@ A Playwright key the runner recognizes (`testDir`, `baseURL`, `webServer`,
 | `projects` | `targets`, one engine instance each | config | renamed |
 | `projects[].dependencies` for sign-in | `test.setup` and `{ session }`, see [Signing in](/authentication) | config | renamed |
 | `testDir`, `testMatch` | `tests`, globs relative to the project root | config | renamed |
-| `testIgnore` | not yet; name only the globs you want | config | missing |
+| `testIgnore` | a `tests` entry with a leading `!`: `tests: ['tests/**/*.e2e.ts', '!tests/wip/**']` | config | renamed |
 | `fullyParallel` | not yet; a file's tests run in order on one worker, files run in parallel | config | missing |
 | `maxFailures` | `--max-failures <n>`; no config key | CLI | renamed |
 | `reporter` | `reporters: ['list', 'junit']`; also `json` and `markdown` | config | renamed |
@@ -55,7 +55,7 @@ A Playwright key the runner recognizes (`testDir`, `baseURL`, `webServer`,
 | `use.navigationTimeout` | `timeout`, the test budget; `web.goto(url, { timeout })` overrides one call | config | renamed |
 | `use.storageState` | `test.setup` and `{ session }`; no file import, see [By design](#by-design) | config | by design |
 | `use.trace` | `trace` with the same modes (`'off'`, `'on'`, `'retain-on-failure'`, `'on-first-retry'`, `'on-all-retries'`), at the top of the config, per target, `test('x', { trace }, ...)`, or `--trace [mode]` for one run; the default differs, see [below](#defaults-that-differ) | config | same |
-| `use.video` | `video` with the same modes as `trace`, at the top of the config, per target in place of a project, `test('x', { video }, ...)` in place of `test.use`, or `--video [mode]` for one run | config | renamed |
+| `use.video` | `video` with the same modes as `trace`, at the top of the config, per target in place of a project, `test('x', { video }, ...)` in place of `test.use`, or `--video [mode]` for one run | config | same |
 | `use.headless: false` | `--headed` on the CLI | CLI | renamed |
 | `use.locale`, `timezoneId`, `colorScheme`, `geolocation`, `permissions` | not yet | config | missing |
 | `use.userAgent` | `web({ userAgent })` | config | renamed |

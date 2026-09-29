@@ -51,7 +51,7 @@ jobs:
 
 Upload artifacts even when a retry passes. Each failure's evidence links open
 the run's Artifacts section; inside the download, every test has a directory
-named after it (`web/tests_billing.e2e.ts__upgrades/attempt-0/`), so keep
+named after it and the agent that ran it (`web/tests_billing.e2e.ts__upgrades/default/attempt-0/`), so keep
 `path: .e2e/artifacts` and the download lines up with the report. A project that
 sits below the checkout root, such as `packages/e2e-tests`, gets source links
 under that path: the reporter finds the checkout root as the nearest directory holding `.git`, inside `GITHUB_WORKSPACE`, so a checkout placed with `actions/checkout`'s `path` input resolves too.

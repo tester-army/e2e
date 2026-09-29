@@ -5,8 +5,9 @@ description: Official integrations with hosted services, one package per service
 ---
 
 Official integrations connect e2e to hosted services through the engines'
-provider seams, one package per service. Tests, config, and CI stay the same;
-the integration decides where a target's browser or device comes from.
+provider seams, one package per service. Tests and CI stay the same, and the
+config changes only where a target names its `browser` or `device`: the
+integration decides where it comes from.
 
 <CardGroup cols={2}>
   <Card title="Kernel" icon="cloud" href="/integrations/kernel">

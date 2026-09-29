@@ -234,8 +234,8 @@ when you need to inspect the whole flow or rule out a stale recording. See
 | `ASSERTION_FAILED` | The expectation is wrong, or the state settles after 5 s; for `agent.assert`, the judgment was false | Compare with the screenshot; `{ timeout }` on the matcher; rewrite the question |
 | `ASSERTION_INCONCLUSIVE` | `agent.assert` asked about something the screen does not show: the value is on another page, still loading, or only in pixels | Open or wait for the right screen first; ask about what is visible; add `vision: true` when the answer is in pixels (the message says so when the judge read the tree alone) |
 | `ACTION_FAILED` | Element covered, disabled, or detached, or an operation timed out | Wait on the right condition with `expect` first; close overlays |
-| `STEP_BUDGET_EXHAUSTED`, `STEP_TIMEOUT` | The agent ran out of model calls or time | Scope the goal to one step; raise `timeout` for slow providers |
-| `MODEL_UNAVAILABLE` | No model constructed in the config | See [Choosing a model](/models) |
+| `STEP_BUDGET_EXHAUSTED`, `STEP_TIMEOUT` | The agent ran out of actions, model calls, or time | Scope the goal to one step. Raise the agent entry's `maxSteps` or `maxModelCalls` for the budget, the config `timeout` for an `act` step, or the agent's `judgmentTimeout` for `assert`, `waitFor`, and `extract` |
+| `MODEL_UNAVAILABLE` | No model constructed in the config | See [Models](/models) |
 | `MODEL_PROVIDER_FAILED` | Bad key, rate limit, no credits | Check the key the provider reads and the quota |
 
 Every code, its class, and its exit code are in the

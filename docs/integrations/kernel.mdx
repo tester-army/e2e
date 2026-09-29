@@ -6,8 +6,10 @@ description: Run web targets in Kernel's hosted Chromium with the kernel() brows
 
 `kernel()` from `@e2e-dev/kernel` is a
 [browser provider](/browser#hosted-browsers) for [Kernel](https://kernel.sh).
-Each worker slot gets its own hosted Chromium, created when the run starts and
-deleted when it ends. Tests, config, and CI stay the same.
+By default each worker slot gets its own hosted Chromium, created when the run
+starts and deleted when it ends; `scope: 'attempt'` leases one per test
+attempt instead. Tests and CI stay the same; the config changes only in the
+target's `browser`.
 
 ## Setup
 

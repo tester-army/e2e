@@ -156,9 +156,11 @@ swipe(options: SwipeOptions | SwipePathOptions): Promise<void>;
 ```
 
 Viewport-level gesture, in one of two shapes. `{ direction, momentum? }` is
-a scroll gesture on the screen; `momentum` is its fling strength, `'none'`
-by default: `'none'` a plain drag of half the surface, `'slow'` a short
-fling, `'fast'` a long one. How far each carries is the engine's.
+a scroll gesture on the screen. `direction` is the way the content scrolls,
+not the finger: `'down'` reveals what is below. `momentum` is its fling
+strength, `'none'` by default: `'none'` a plain drag of half the surface,
+`'slow'` a short fling, `'fast'` a long one. How far each carries is the
+engine's.
 `{ from, to }` is a swipe along a path between two viewport points: a touch
 swipe on a device, a pointer drag on a document platform, which is what
 reveals a row action, dismisses a sheet, or drags a card between columns.

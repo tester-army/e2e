@@ -108,7 +108,7 @@ fail with `UNSUPPORTED_CAPABILITY`.
 
 | Member | Capability | Unlocks |
 | --- | --- | --- |
-| `observe(context, options?)` | `observation` | Agent observations and trace replay |
+| `observe(context, options?)` | `observation` | Agent observations and the replay cache |
 | `perform(ref, action, context)` + `actions` | `actions` | Node actions supported by the declared kinds, including viewport scrolling through `swipe` |
 | `locate(expression, context)` | `location` | `screen`, `Locator`, and `expect(locator)` |
 | `tapModifiers: true` | | `modifiers` on the `tap`, `doubleTap`, and `secondaryTap` actions `perform` receives, held for the click; without it the runner refuses them with `UNSUPPORTED_CAPABILITY` before `perform` |
@@ -140,8 +140,8 @@ Map valid keys to your platform and throw `UNSUPPORTED_CAPABILITY` for keys
 it cannot send. See the [key grammar](/reference/engine#keys).
 
 An observation may include `location`, such as a URL, screen title, or window
-name. The runner uses it for trace replay and applies origin checks when it
-parses as a URL.
+name. The runner anchors replay cache entries on it and applies origin
+checks when it parses as a URL.
 
 `session.open` receives a URL already resolved by the runner. After `restart`
 or `reset`, the runner reopens the configured address through `open`. If your

@@ -180,7 +180,9 @@ A custom `cache.store` replaces the file store and does not default to
 read-only in CI. `e2e explore` and `e2e mcp` do not use the cache. See the
 [config reference](/reference/config#cache).
 
-## Commit your traces
+## Commit the replay cache
+
+<span id="commit-your-traces" />
 
 `e2e init` adds `.e2e/cache/` to `.gitignore`, so every machine records its
 own and CI starts with none. To share replays, remove that line and commit

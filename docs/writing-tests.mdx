@@ -155,7 +155,7 @@ await screen.swipe({ from: { x: 300, y: 400 }, to: { x: 40, y: 400 } });
 
 // Polling assertions:
 await expect(screen.getByRole('status')).toHaveText('2 remaining');
-await expect(web).toHaveURL('/dashboard');
+await expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
 ```
 
 Actions and single-node reads or assertions fail when a query matches more
