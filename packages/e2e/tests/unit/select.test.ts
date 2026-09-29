@@ -598,6 +598,13 @@ describe('select', () => {
     );
   });
 
+  it('names the ! entry excluding a positional file when the exclusions left nothing discovered', () => {
+    const excludedAll: Collection = { ...emptyCollection(), unmatchedPositionals: ['tests/wip/a.e2e.ts'] };
+    expect(() => select(excludedAll, config({ tests: ['tests/wip/*.e2e.ts', '!tests/wip/a.e2e.ts'] }))).toThrow(
+      'no test file matched tests/wip/a.e2e.ts (excluded by the tests entry "!tests/wip/a.e2e.ts"); the config globs discovered no file; pass --pass-with-no-tests to allow this',
+    );
+  });
+
   it('offers the nearest discovered file name when the unmatched positional was a bare name', async () => {
     const col = await collection(() => {}, 'tests/agent.e2e.ts', ['agnet.e2e.ts']);
     expect(() => select(col, config())).toThrow(

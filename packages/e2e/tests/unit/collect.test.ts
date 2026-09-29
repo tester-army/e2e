@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { collect, relativeToRoot, selectPositionals } from '../../src/collect/collect.ts';
+import { collect, excludingEntry, relativeToRoot, selectPositionals } from '../../src/collect/collect.ts';
 import { resolveConfig } from '../../src/config/resolve.ts';
 
 // What the config globs discovered, in discovery order. `tests/agent/notes.md`
@@ -254,5 +254,22 @@ describe('relativeToRoot', () => {
       /outside the project root/,
     );
     expect(() => relativeToRoot('C:\\proj', 'C:\\other\\a.e2e.ts', win)).toThrow(/outside the project root/);
+  });
+});
+
+describe('excludingEntry', () => {
+  const tests = ['tests/**/*.e2e.ts', '!tests/agent/**'];
+
+  it('names the ! entry that takes out the file a positional names', () => {
+    expect(excludingEntry(root, tests, 'tests/agent/b.e2e.ts')).toBe('!tests/agent/**');
+    expect(excludingEntry(root, tests, 'tests/agent/b.e2e.ts:3')).toBe('!tests/agent/**');
+    expect(excludingEntry(root, tests, 'tests/a.e2e.ts')).toBeUndefined();
+    expect(excludingEntry(root, tests, 'tests/agent/*.e2e.ts')).toBeUndefined();
+    expect(excludingEntry(root, tests, 'tests/agent/notes.md')).toBeUndefined();
+  });
+
+  it('compares an existing file in its on-disk casing on a case-insensitive filesystem', (ctx) => {
+    if (!caseInsensitiveFs) ctx.skip();
+    expect(excludingEntry(root, tests, 'Tests/Agent/b.e2e.ts')).toBe('!tests/agent/**');
   });
 });

@@ -337,11 +337,14 @@ export function selectPositionals(
  * path: an including glob matches the path and this exclusion does too.
  * Undefined for a positional no exclusion explains, a name or a glob among
  * them, so the `NO_TESTS` message says why the file is not selected instead
- * of offering a look-alike.
+ * of offering a look-alike. An existing file is compared in its on-disk
+ * casing, as `positionalMatcher` compares it.
  */
 export function excludingEntry(projectRoot: string, tests: readonly string[], positional: string): string | undefined {
-  const file = relativeToRoot(projectRoot, splitLine(projectRoot, positional).path);
-  if (GLOB_SYNTAX.test(file)) return undefined;
+  const typed = relativeToRoot(projectRoot, splitLine(projectRoot, positional).path);
+  if (GLOB_SYNTAX.test(typed)) return undefined;
+  const absolutePath = path.resolve(projectRoot, typed);
+  const file = statSync(absolutePath, { throwIfNoEntry: false }) === undefined ? typed : (onDiskRelativePath(projectRoot, absolutePath) ?? typed);
   const { include } = compileGlobList(tests);
   if (!include.some((glob) => matchesGlob(glob, file))) return undefined;
   return tests.find((entry) => entry.startsWith('!') && matchesGlob(compileGlob(entry.slice(1)), file));

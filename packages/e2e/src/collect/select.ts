@@ -416,8 +416,9 @@ function nameFiles(files: readonly string[]): string {
 }
 
 /**
- * Why nothing is runnable, told from the most upstream cause: the globs
- * matched no file (naming look-alike files when there are any), a positional
+ * Why nothing is runnable, told from the most upstream cause: a `!` entry
+ * excluding the file a positional names, the globs matched no file (naming
+ * look-alike files when there are any), a positional
  * selected none, the files registered no tests, or every collected test was
  * filtered or skipped. Each ends where the author's next edit goes.
  */
@@ -429,6 +430,17 @@ function describeNoTests(
 ): string {
   const { files, nearMisses, unmatchedPositionals, tests } = collection;
   const discovered = files.map((file) => file.file);
+  const exclusions = new Map(
+    unmatchedPositionals.map((positional) => [positional, excludingEntry(config.projectRoot, config.tests, positional)]),
+  );
+  const excludedNote = (positional: string): string => {
+    const entry = exclusions.get(positional);
+    return entry === undefined ? '' : ` (excluded by the tests entry ${JSON.stringify(entry)})`;
+  };
+  const excluded = unmatchedPositionals.filter((positional) => exclusions.get(positional) !== undefined);
+  if (discovered.length === 0 && excluded.length > 0) {
+    return `no test file matched ${excluded.map((positional) => `${positional}${excludedNote(positional)}`).join(', ')}; the config globs discovered no file`;
+  }
   if (discovered.length === 0) {
     const globs = config.tests.map((glob) => `"${glob}"`).join(', ');
     const where = `no test file matched ${globs} under ${config.projectRoot}`;
@@ -441,11 +453,7 @@ function describeNoTests(
     // A positional may be a whole path or just a file name, so a near miss is looked for as either.
     const baseNames = discovered.map((file) => file.slice(file.lastIndexOf('/') + 1));
     const named = unmatchedPositionals
-      .map((positional) => {
-        const excluded = excludingEntry(config.projectRoot, config.tests, positional);
-        if (excluded !== undefined) return `${positional} (excluded by the tests entry ${JSON.stringify(excluded)})`;
-        return `${positional}${suggestionNote(positional, discovered) || suggestionNote(positional, baseNames)}`;
-      })
+      .map((positional) => `${positional}${excludedNote(positional) || suggestionNote(positional, discovered) || suggestionNote(positional, baseNames)}`)
       .join(', ');
     return `no test file matched ${named}; the config globs discovered ${nameFiles(discovered)}`;
   }
