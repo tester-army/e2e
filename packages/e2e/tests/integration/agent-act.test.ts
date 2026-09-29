@@ -880,7 +880,7 @@ describe('the default agent reads action results after their effect', () => {
     );
     try {
       expect(resultByTitle(outcome, 'default agent taps a control with no effect').status).toBe('passed');
-      expect(loopCalls[1]!.lastToolResult).toContain('did not change within the wait after this action');
+      expect(loopCalls[1]!.lastToolResult).toContain('No listed node changed within the wait after this action');
       // No tree and no change lines: the model has the screen already.
       expect(loopCalls[1]!.lastToolResult).not.toMatch(/^(added|changed|removed) #n\d+ /m);
     } finally {

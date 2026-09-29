@@ -788,7 +788,7 @@ function createPointTools(
  */
 function verbKit(context: StepExecutorContext, options: GrammarToolOptions) {
   const guard = options.guard ?? (<T>(body: () => Promise<T>) => body());
-  const screen: ScreenPresenter = options.screen ?? new ScreenPresenter();
+  const screen: ScreenPresenter = options.screen ?? new ScreenPresenter({ pixelsUnavailable: () => context.pixelsTainted });
   const queue = new OperationQueue();
   const inOrder = <T>(body: () => Promise<T>): Promise<T> => queue.run(body);
   /** The screen after an action: the changes since the one the model holds and, once the step shows pixels, a fresh screenshot. */

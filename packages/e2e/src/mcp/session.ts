@@ -221,7 +221,8 @@ export class SessionHost {
         ...(params === undefined ? {} : { params }),
         timeout: ttlMs,
       });
-      const screen = new ScreenPresenter();
+      const { context } = step;
+      const screen = new ScreenPresenter({ pixelsUnavailable: () => context.pixelsTainted });
       const recorder = this.recorder(id, config, attempt);
       const catalog = createSessionCatalog({
         context: step.context,

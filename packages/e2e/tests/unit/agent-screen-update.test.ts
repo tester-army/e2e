@@ -85,8 +85,41 @@ describe('ScreenPresenter', () => {
     );
     const afterAction = presenter.update(screen('b3', HOME), { lead: 'Tapped #n3.', expectChange: true });
     expect(afterAction).toContain('Tapped #n3.');
-    expect(afterAction).toContain('did not change within the wait after this action');
     expect(afterAction).toContain('re-observed as revision b3');
+  });
+
+  it('says no listed node changed after an action, never that it had no effect, when no screenshot was compared', () => {
+    const presenter = new ScreenPresenter();
+    const shot = (byte: number) => ({ data: new Uint8Array([byte]), mediaType: 'image/png' as const, width: 1, height: 1, scale: 1, maskedRegionCount: 0 });
+    const textOf = (output: ReturnType<ScreenPresenter['present']>) => (typeof output === 'string' ? output : output.text);
+    presenter.open(screen('b1', HOME));
+    // A tap that only fills a drawn dot leaves the tree as it was: the tree cannot tell a drawn effect from none.
+    const treeOnly = textOf(presenter.present(screen('b2', HOME), { lead: 'Tapped #n3.', expectChange: true }));
+    expect(treeOnly).toContain('No listed node changed within the wait after this action');
+    expect(treeOnly).toContain('a drawn change needs a screenshot to see');
+    expect(treeOnly).not.toContain('had no visible effect');
+    expect(treeOnly).not.toContain('look for another way');
+    // The first screenshot has none before it to differ from, so it proves no more than the tree.
+    const first = textOf(presenter.present(screen('b3', HOME, { pixels: shot(1) }), { lead: 'Tapped #n3.', expectChange: true }));
+    expect(first).not.toContain('had no visible effect');
+  });
+
+  it('keeps the listing as the only evidence, and says to try another way, when the step can get no screenshot', () => {
+    const textOf = (output: ReturnType<ScreenPresenter['present']>) => (typeof output === 'string' ? output : output.text);
+    let tainted = false;
+    const presenter = new ScreenPresenter({ pixelsUnavailable: () => tainted });
+    presenter.open(screen('b1', HOME));
+    tainted = true;
+    // A secret was filled: no pixel tool is offered, so pointing at a screenshot would be advice the model cannot follow.
+    const after = textOf(presenter.present(screen('b2', HOME), { lead: 'Tapped #n3.', expectChange: true }));
+    expect(after).toContain('No screenshot can be taken in this step');
+    expect(after).toContain('look for another way rather than repeating it');
+    expect(after).not.toContain('needs a screenshot to see');
+    // An engine that captures none says so once asked; from then on the same holds.
+    const denied = new ScreenPresenter();
+    denied.open(screen('c1', HOME));
+    denied.present(screen('c2', HOME, { pixelsWithheld: 'UNSUPPORTED_CAPABILITY' }));
+    expect(textOf(denied.present(screen('c3', HOME), { lead: 'Tapped #n3.', expectChange: true }))).toContain('No screenshot can be taken in this step');
   });
 
   it('says the screenshot changed, not that the control had no effect, when the listing stood still under a moved image', () => {
@@ -108,13 +141,23 @@ describe('ScreenPresenter', () => {
     expect(observed).not.toContain('Screen unchanged since');
   });
 
+  it('treats unproven masking as one screen\'s refusal, not the step\'s', () => {
+    const textOf = (output: ReturnType<ScreenPresenter['present']>) => (typeof output === 'string' ? output : output.text);
+    const presenter = new ScreenPresenter();
+    presenter.open(screen('b1', HOME));
+    presenter.present(screen('b2', HOME, { pixelsWithheld: 'MASKING_UNPROVEN' }));
+    const later = textOf(presenter.present(screen('b3', HOME), { lead: 'Tapped #n3.', expectChange: true }));
+    expect(later).not.toContain('No screenshot can be taken in this step');
+    expect(later).toContain('a drawn change needs a screenshot to see');
+  });
+
   it('ignores focus moving, which every action does, when deciding what changed', () => {
     const presenter = new ScreenPresenter();
     presenter.initial(screen('b1', HOME));
     const focused = [...HOME];
     focused[2] = ' #n3 button "Increment" [focused]';
     expect(presenter.update(screen('b2', focused), { lead: 'Tapped #n3.', expectChange: true })).toContain(
-      'did not change within the wait',
+      'No listed node changed within the wait',
     );
     const typed = [...focused];
     typed[5] = ' #n6 textbox "Email" value="a" [focused]';

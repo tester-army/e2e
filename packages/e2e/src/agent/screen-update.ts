@@ -112,6 +112,15 @@ export class ScreenPresenter {
   private shown: ShownScreen | undefined;
   private screenshot: ShownScreenshot | undefined;
   private screenshotDigest: string | undefined;
+  /** True once the engine said it captures no screenshots at all. */
+  private pixelsDenied = false;
+
+  /**
+   * `pixelsUnavailable` says whether the step can get no screenshot at all
+   * (a secret was filled, so no pixel tool is offered), which makes the
+   * listing the only evidence an action result has.
+   */
+  constructor(private readonly options: { readonly pixelsUnavailable?: () => boolean } = {}) {}
 
   /** True once a screenshot went to the model in this step. */
   get showingPixels(): boolean {
@@ -134,11 +143,11 @@ export class ScreenPresenter {
    * the changed lines, or the whole screen when most of it changed.
    */
   update(observation: ExecutorObservation, options: ScreenUpdateOptions = {}): string {
-    return this.render(observation, options, false);
+    return this.render(observation, options, 'none');
   }
 
-  /** The update, told whether the screenshot going out with it differs from the one the model held. */
-  private render(observation: ExecutorObservation, options: ScreenUpdateOptions, screenshotChanged: boolean): string {
+  /** The update, told what the screenshot going out with it says against the one the model held. */
+  private render(observation: ExecutorObservation, options: ScreenUpdateOptions, pixels: PixelEvidence): string {
     const lead = options.lead === undefined ? '' : `${options.lead}\n\n`;
     if (observation.treeUnavailable === true) {
       return `${lead}${this.initial(observation)}`;
@@ -152,7 +161,7 @@ export class ScreenPresenter {
     const changes = diff.length;
     // A truncated screen is never called unchanged: what it left out is unknown.
     if (changes === 0 && !observation.truncated) {
-      return `${lead}${renderUnchanged(previous.revision, observation, options.expectChange === true, screenshotChanged)}${closed}`;
+      return `${lead}${renderUnchanged(previous.revision, observation, options.expectChange === true, pixels)}${closed}`;
     }
     if (changes >= MAX_DIFF_LINES || changes > MAX_DIFF_SHARE * next.order.length) {
       return `${lead}The screen changed substantially since revision ${previous.revision}. ${renderFull(observation)}${closed}`;
@@ -179,34 +188,40 @@ export class ScreenPresenter {
    * tree is not a failed action: what the action did may be drawn, not
    * listed, so the screenshot is the evidence and no action is blamed. On a
    * screen the tree does describe, an unchanged tree after an action means
-   * the control had no visible effect, unless the screenshot moved: then what
-   * changed is drawn, not listed, and the model is told to read the image.
+   * the control had no visible effect only when an identical screenshot says
+   * so too. A moved screenshot means what changed is drawn, not listed, and
+   * the model is told to read the image; with no screenshot to compare, the
+   * model is told only that no listed node changed.
    */
   present(observation: ExecutorObservation, options: ScreenUpdateOptions = {}): ScreenOutput {
-    const screenshotChanged = this.attach(observation);
+    const compared = this.attach(observation);
+    const pixels = compared === 'none' && (this.pixelsDenied || this.options.pixelsUnavailable?.() === true) ? 'unavailable' : compared;
     const text = this.render(
       observation,
       {
         ...options,
         expectChange: this.showingPixels && interactiveNodeCount(observation) === 0 ? false : options.expectChange,
       },
-      screenshotChanged,
+      pixels,
     );
     return this.withScreenshot(observation, text);
   }
 
   /**
    * Records that a screenshot is going to the model; from here on the step is
-   * in pixel mode. Returns whether it differs from the screenshot the model
+   * in pixel mode. Returns what it says against the screenshot the model
    * held, which is how an unchanged tree is kept from being read as no effect.
    */
-  private attach(observation: ExecutorObservation): boolean {
-    if (observation.pixels === undefined) return false;
+  private attach(observation: ExecutorObservation): PixelEvidence {
+    // Masking can be proven again on the next screen; an engine without capture never captures.
+    if (observation.pixelsWithheld === 'UNSUPPORTED_CAPABILITY') this.pixelsDenied = true;
+    if (observation.pixels === undefined) return 'none';
     const digest = pixelDigest(observation.pixels.data);
-    const changed = this.screenshotDigest !== undefined && digest !== this.screenshotDigest;
+    const previous = this.screenshotDigest;
     this.screenshot = { pixels: observation.pixels, viewport: observation.viewport };
     this.screenshotDigest = digest;
-    return changed;
+    if (previous === undefined) return 'none';
+    return digest === previous ? 'unchanged' : 'changed';
   }
 
   /**
@@ -262,19 +277,34 @@ function renderFull(observation: ExecutorObservation): string {
 }
 
 /**
+ * What the screenshot going out with an update says against the one the
+ * model held: `none` when there is no pair to compare (no screenshot, or the
+ * step's first), `unavailable` when the step can get no screenshot at all.
+ */
+type PixelEvidence = 'changed' | 'unchanged' | 'none' | 'unavailable';
+
+/**
  * An update with no listed line changed. A screenshot that moved while the
  * listing stood still is said so, whatever was expected: the effect is drawn,
  * and blaming the control would send the model looking for another way to do
- * what it just did.
+ * what it just did. For the same reason the control is blamed only when an
+ * identical screenshot backs the tree: the tree alone cannot tell a drawn
+ * effect (a filled dot, a color) from none.
  */
-function renderUnchanged(since: string, observation: ExecutorObservation, expectedChange: boolean, screenshotChanged: boolean): string {
+function renderUnchanged(since: string, observation: ExecutorObservation, expectedChange: boolean, pixels: PixelEvidence): string {
   const looked = `re-observed as revision ${observation.revision}${describeLocation(observation)}`;
-  if (screenshotChanged) {
+  if (pixels === 'changed') {
     return `Since revision ${since} (${looked}): listed nodes unchanged; the screenshot changed. Read the effect off the image (a focus ring alone is no effect); the ids you have stay valid.`;
   }
-  return expectedChange
-    ? `The screen did not change within the wait after this action (${looked}); the ids you have stay valid. If a change was expected, the control had no visible effect here: look for another way rather than repeating it.`
-    : `Screen unchanged since revision ${since} (${looked}); the ids you have stay valid.`;
+  if (!expectedChange) return `Screen unchanged since revision ${since} (${looked}); the ids you have stay valid.`;
+  switch (pixels) {
+    case 'unchanged':
+      return `The screen did not change within the wait after this action (${looked}); the ids you have stay valid. If a change was expected, the control had no visible effect here: look for another way rather than repeating it.`;
+    case 'unavailable':
+      return `No listed node changed within the wait after this action (${looked}); the ids you have stay valid. No screenshot can be taken in this step, so the listing is the only evidence: if a change was expected, look for another way rather than repeating it.`;
+    case 'none':
+      return `No listed node changed within the wait after this action (${looked}); the ids you have stay valid. The listing shows only what the tree describes: a drawn change needs a screenshot to see.`;
+  }
 }
 
 /** The keyboard note when the action took the keyboard off the screen. */

@@ -276,8 +276,9 @@ describe('agent.act grammar verbs', () => {
     expect(actions[0]!.detail).toBe('check checkbox "Agree to terms"');
     const [, second, third] = turnsOf('agree to the terms');
     expect(second!.lastToolResult).toMatch(/changed #\S+ status "Gesture state" text="agreed: true"/);
-    // The second check flipped nothing: the screen stood still, and the result says so.
-    expect(third!.lastToolResult).toContain('had no visible effect');
+    // The second check flipped nothing: the listing stood still, and the result says so without blaming the control.
+    expect(third!.lastToolResult).toContain('No listed node changed');
+    expect(third!.lastToolResult).not.toContain('had no visible effect');
   });
 
   it('uploads a project-relative file, recording the path as given and the policy decision', () => {

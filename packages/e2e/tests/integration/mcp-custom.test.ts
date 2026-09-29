@@ -197,7 +197,7 @@ describe('e2e mcp with project tools and a custom engine', { timeout: 120_000 },
     const tapped = await call('tap', { target: id! });
     expect(tapped.isError, tapped.text).toBe(false);
     expect(tapped.text).toContain(`Tapped #${id}.`);
-    expect(tapped.text).toMatch(/Screen changes since revision|The screen did not change/);
+    expect(tapped.text).toMatch(/Screen changes since revision|The screen did not change|No listed node changed/);
 
     // The fake declares no viewport swipe, so scroll is a verb this target lacks.
     const scrolled = await call('scroll', { direction: 'down' });
