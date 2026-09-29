@@ -9,7 +9,10 @@
     "dark": "#171717"
   },
   "logo": "/logo.png",
-  "favicon": "/favicon-white.png",
+  "favicon": {
+    "light": "/favicon-black.png",
+    "dark": "/favicon-white.png"
+  },
   "seo": {
     "metatags": {
       "og:image": "https://e2e.tester.army/docs/images/og.png",
