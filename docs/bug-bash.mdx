@@ -55,6 +55,9 @@ itself: `npx e2e guide bug-bash`.
   first visit looks to an explorer like a link that does nothing.
 - Give each charter its own seeded account, and tell the explorers in the
   agent's `context` which integrations the local app has no keys for.
+- When a setup test signs in, start charters with
+  [`e2e explore --session <name>`](/explore): a setup that signs in without
+  typing a password keeps screenshots for every finding.
 - On mobile, each explorer needs its own device: declare one target per
   simulator or emulator.
 - Put test accounts under `credentials`; explorers fill passwords by name

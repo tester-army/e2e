@@ -37,6 +37,13 @@ and when a change needs a broad look before review. For one flow, a single
   workspace or user per charter with the project's own fixtures or seed
   scripts, and declare each as a credential (`bb-<slug>`). Explorers that
   share an account edit each other's state and report the result as bugs.
+- Start signed-in charters from a saved session when the project has a
+  setup test that signs in: `e2e explore --session <name>` runs that setup
+  and explores signed in (topic `explore`). A setup that signs in without
+  filling a password (a cookie, an API call) keeps screenshots available for
+  every finding; a charter that types a password itself gets none after
+  that point. Charters that need their own account each need their own
+  setup and session.
 - Tell the explorers what the local app cannot do, in the agent's
   `context`: which integrations have no keys (email, payments, an AI
   provider), what is seed data, and what must never be clicked (starting
@@ -156,9 +163,9 @@ behavior, whatever the wording. Keep the clearest reproduction and every
 charter that hit it. Keep warnings in a separate list; they are polish, not
 bugs, unless the user asked for polish.
 
-A charter that filled a password has no screenshots after that point: pixels
-are withheld once a secret is on screen, so its findings print no
-`evidence` line. Its video still shows what happened, but a video is not
+A charter that filled a password, or started from a session whose setup
+filled one, has no screenshots after that point: pixels are withheld once a
+secret is on screen, so its findings print no `evidence` line. Its video still shows what happened, but a video is not
 masked: before you share one, check that no secret shows in it (a password
 field the app lets you reveal, a token echoed on screen).
 
