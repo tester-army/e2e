@@ -130,7 +130,9 @@ It does not emulate touch, color scheme, or reduced-motion preferences.
 Use the [device engine](/mobile) for tests on a simulator or emulator.
 
 A video keeps the size the page had when it started recording; set
-`web({ screencast: { size } })` for one fixed size.
+`web({ screencast: { size } })` for one fixed size. A browser provider that
+records, such as [Kernel](/integrations/kernel#recordings), records the whole
+screen instead.
 
 <CardGroup cols={2}>
   <Card title="Working with the browser" icon="globe" href="/browser">
