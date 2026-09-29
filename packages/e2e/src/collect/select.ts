@@ -789,7 +789,8 @@ function applySessionSelection(
   sessionProducers: ReadonlyMap<string, CollectedTest>,
   uncollected: readonly UncollectedFile[],
 ): TestTargetPair[] {
-  const neededSetups = new Set<string>();
+  /** Each needed setup, by target and producer, with the sessions a selected test consumes from it. */
+  const neededSetups = new Map<string, Set<string>>();
   for (const pair of pairs) {
     if (pair.disposition !== 'run' || pair.options.session === undefined) continue;
     const producer = sessionProducers.get(pair.options.session);
@@ -808,18 +809,30 @@ function applySessionSelection(
         `test "${pair.test.titlePath.join(' > ')}" in ${pair.test.file} consumes session "${pair.options.session}" but no setup test produces it${known}${cause}`,
       );
     }
-    neededSetups.add(`${pair.target.name}::${producer.id}`);
+    const key = `${pair.target.name}::${producer.id}`;
+    const sessions = neededSetups.get(key) ?? new Set<string>();
+    sessions.add(pair.options.session);
+    neededSetups.set(key, sessions);
   }
   return pairs.map((pair) => {
     if (pair.test.kind !== 'setup') return pair;
     const key = `${pair.target.name}::${pair.test.id}`;
-    if (!neededSetups.has(key)) return pair;
+    const sessions = neededSetups.get(key);
+    if (sessions === undefined) return pair;
     // A producer the target cannot run - skipped for a missing capability or
     // filtered out by its own platform list - cannot be promoted; a consumer
     // that needs it is a configuration error, not a silent run elsewhere.
     if (pair.disposition === 'skip' || pair.skip?.cause === 'platform-unavailable') {
       throw new CollectionError(
         `setup test ${pair.test.id} is required by a session consumer but cannot run on target "${pair.target.name}": ${pair.skip?.reason ?? ''}`,
+      );
+    }
+    // Saving and restoring a session ride the engine's state capability;
+    // refused here, before the setup runs its login only to fail at save.
+    const engine = pair.target.engine;
+    if (engine !== undefined && !engine.capabilities.has('state')) {
+      throw new CollectionError(
+        `setup test ${pair.test.id} saves session ${[...sessions].map((name) => `"${name}"`).join(', ')} for a selected test, but target "${pair.target.name}" cannot save or restore a session: engine ${engine.name}, as configured, has no state capability`,
       );
     }
     return { ...pair, disposition: 'run' as const, skip: undefined };

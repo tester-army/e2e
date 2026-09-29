@@ -85,8 +85,8 @@ export function web(options: WebOptions = {}): EngineHandle {
   }
   // A per-attempt lease rides the same persistent context as `reconnectEndpoint`, with the same limits.
   const recoverable = reconnecting || provider?.scope === 'attempt';
+  const mode = provider === undefined ? 'connect.reconnectEndpoint' : `browser provider "${provider.name}" with scope "attempt"`;
   if (recoverable && (options.headers !== undefined || options.basicAuth !== undefined || options.userAgent !== undefined)) {
-    const mode = provider === undefined ? 'connect.reconnectEndpoint' : `browser provider "${provider.name}" with scope "attempt"`;
     throw new ConfigurationError(
       'INVALID_CONFIG',
       `${mode} uses a persistent context; headers, basicAuth, and userAgent require a newly created context`,
@@ -125,7 +125,7 @@ export function web(options: WebOptions = {}): EngineHandle {
       open: (url, operation) => surface.open(url, operation),
       back: (operation) => surface.back(operation),
       restart: (operation) => surface.restart(operation),
-      ...(recoverable ? {} : { reset: (operation) => surface.reset(operation) }),
+      reset: recoverable ? () => Promise.reject(persistentContextLimit('app.clearState()', mode, provider !== undefined)) : (operation) => surface.reset(operation),
     },
     artifacts: {
       screenshot: (label, operation) => surface.screenshot(label, operation),
@@ -167,6 +167,19 @@ const WEB_OPTION_KEYS: readonly string[] = Object.keys({
   testIdAttribute: true,
   userAgent: true,
 } satisfies Record<keyof WebOptions, true>);
+
+/**
+ * What a persistent context rules out, named with its cause: `what` replaces
+ * the browser context, which `mode` never does. A per-attempt lease starts
+ * every attempt on a fresh browser already, and worker scope has the reset.
+ */
+function persistentContextLimit(what: string, mode: string, leased: boolean): ConfigurationError {
+  const remedy = leased ? '; every attempt already starts on a fresh browser, and scope "worker" can clear one mid-test' : '';
+  return new ConfigurationError(
+    'UNSUPPORTED_CAPABILITY',
+    `${what} is unavailable with ${mode}: it replaces the browser context, and the attempt rides one persistent context${remedy}`,
+  );
+}
 
 /** An HTTP header field name: one or more `token` characters (RFC 9110). */
 const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;

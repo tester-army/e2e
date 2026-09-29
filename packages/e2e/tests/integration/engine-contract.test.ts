@@ -453,7 +453,7 @@ test('needs web', async ({ app, web }) => {
   );
 
   it(
-    'session.save without a state capability fails with UNSUPPORTED_CAPABILITY',
+    'a session consumed on a target without a state capability fails the run before its setup test runs',
     async () => {
       const fake = createFakeEngine({ state: false });
       // Setup tests only run when a selected test depends on their session.
@@ -476,10 +476,14 @@ test('wants session', { session: 'acct' }, async ({ app }) => {
         appUrl: APP_URL,
         config: engineConfig(fake.engine),
       });
-      const result = resultByTitle(outcome, 'capture session');
-      expect(result.status).toBe('failed');
-      expect(result.attempts[0]!.error?.code).toBe('UNSUPPORTED_CAPABILITY');
-      expect(resultByTitle(outcome, 'wants session').status).not.toBe('passed');
+      expect(outcome.report.run.errors.map((error) => [error.code, error.message])).toEqual([
+        [
+          'COLLECTION_ERROR',
+          expect.stringMatching(/saves session "acct" for a selected test, but target "\S+" cannot save or restore a session: engine \S+, as configured, has no state capability$/),
+        ],
+      ]);
+      expect(fake.attempts).toEqual([]);
+      expect(outcome.exitCode).toBe(2);
       project.cleanup();
     },
     60_000,

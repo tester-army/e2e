@@ -80,7 +80,8 @@ cookies and storage are not there.
 that browser's default context, on its own first tab, so a `profile` applies
 and the live view shows one tab. It costs a browser start per test and
 carries the limits of a [per-attempt lease](/browser#hosted-browsers): no
-`headers` or `basicAuth`, no `app.clearState()`, no session state.
+`headers` or `basicAuth`, no `app.clearState()`, and no
+[sessions](/authentication), which fail the run before any test.
 
 ## Recordings
 

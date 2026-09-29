@@ -24,10 +24,13 @@ function initInfo(signal = new AbortController().signal): EngineInitInfo {
 }
 
 describe('web({ connect })', () => {
-  it('declares persistent recovery without context replacement capabilities', () => {
+  it('declares persistent recovery without context replacement capabilities, and names why a reset is refused', async () => {
     const engine = web({ connect: { cdpEndpoint: () => 'ws://localhost:0', reconnectEndpoint: () => 'ws://localhost:0' } });
     expect(engine.state).toBeUndefined();
-    expect(engine.session?.reset).toBeUndefined();
+    await expect(engine.session!.reset!({ timeoutMs: 1_000, signal: new AbortController().signal, runId: 'run-connect', attemptId: 'a1', origin: 'test' })).rejects.toMatchObject({
+      code: 'UNSUPPORTED_CAPABILITY',
+      message: 'app.clearState() is unavailable with connect.reconnectEndpoint: it replaces the browser context, and the attempt rides one persistent context',
+    });
     expect(engine.session?.restart).toBeTypeOf('function');
   });
 

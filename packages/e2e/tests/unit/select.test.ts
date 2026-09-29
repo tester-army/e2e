@@ -511,6 +511,20 @@ describe('select', () => {
     expect(() => select(col, config())).toThrow(/cannot run on target "web"/);
   });
 
+  it('fails before any test runs when the target\'s engine cannot save or restore the consumed session', async () => {
+    const col = await collection(() => {
+      test.setup('auth', { sessions: ['member'] }, noop);
+      test('uses session', { session: 'member' }, noop);
+    });
+    const stateless = defineEngine({ name: 'toy', version: '1.0.0', spiVersion: 1 });
+    expect(() => select(col, config({ targets: [{ name: 'web', platform: 'web', engine: stateless }] }))).toThrow(
+      /^setup test .+ saves session "member" for a selected test, but target "web" cannot save or restore a session: engine toy, as configured, has no state capability$/,
+    );
+    const stateful = defineEngine({ name: 'toy', version: '1.0.0', spiVersion: 1, state: { capture: async () => ({ format: 'toy', version: 1, data: {} }), restore: async () => undefined } });
+    const selection = select(col, config({ targets: [{ name: 'web', platform: 'web', engine: stateful }] }));
+    expect(selection.pairs.find((pair) => pair.test.kind === 'setup')!.disposition).toBe('run');
+  });
+
   it('fails when a consumed session has no producer', async () => {
     const col = await collection(() => {
       test('uses session', { session: 'missing' }, noop);

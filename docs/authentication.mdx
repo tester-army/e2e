@@ -59,6 +59,7 @@ The runner runs the required setup even when you select only
 | Exactly one setup declares a given session name | collection error |
 | Every name in `sessions` is saved by the body | `SESSION_CONTRACT` failure |
 | Only declared names are saved | `SESSION_CONTRACT` failure |
+| The target's engine saves and restores state | collection error, before any test runs; a hosted browser leased per attempt has none |
 
 Setup tests run before any ordinary test for the same target. If a setup
 fails, its dependents are skipped with cause `setup-failed` and unrelated

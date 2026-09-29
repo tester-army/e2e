@@ -184,14 +184,18 @@ describe('web({ browser: provider })', () => {
     expect(() => web({ browser: provider().impl, headers: { 'x-preview': 'synthetic' } })).not.toThrow();
   });
 
-  it('declares context replacement for worker scope and not for attempt scope, and a finish hook for both', () => {
+  it('declares context replacement for worker scope and not for attempt scope, and a finish hook for both', async () => {
     const perWorker = web({ browser: provider().impl });
     expect(perWorker.state).toBeDefined();
     expect(perWorker.session?.reset).toBeTypeOf('function');
     expect(perWorker.finish).toBeTypeOf('function');
     const perAttempt = web({ browser: provider({ scope: 'attempt' }).impl });
     expect(perAttempt.state).toBeUndefined();
-    expect(perAttempt.session?.reset).toBeUndefined();
+    await expect(perAttempt.session!.reset!(operation())).rejects.toMatchObject({
+      code: 'UNSUPPORTED_CAPABILITY',
+      message:
+        'app.clearState() is unavailable with browser provider "toy-cloud" with scope "attempt": it replaces the browser context, and the attempt rides one persistent context; every attempt already starts on a fresh browser, and scope "worker" can clear one mid-test',
+    });
     expect(perAttempt.session?.restart).toBeTypeOf('function');
   });
 });
