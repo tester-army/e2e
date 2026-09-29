@@ -51,6 +51,7 @@
   "navbar": {
     "primary": {
       "type": "github",
+      "label": "GitHub",
       "href": "https://github.com/tester-army/e2e"
     }
   },
