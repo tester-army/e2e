@@ -1,3 +1,4 @@
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -10,6 +11,8 @@ import { resultId } from '../../src/internal/ids.ts';
 import type { E2EConfig } from '../../src/types.ts';
 
 const noop = async () => {};
+/** A project root that does not exist, so the diagnostics that stat a positional find nothing, on every host. */
+const ROOT = path.join(os.tmpdir(), 'e2e-select-no-such-root');
 const ENV = { APP_URL: 'http://localhost:3000' } as NodeJS.ProcessEnv;
 
 async function collection(
@@ -19,7 +22,7 @@ async function collection(
 ): Promise<Collection> {
   const registration = await collectModule(async () => body());
   // Positionals that matched nothing leave the discovered file collected but unselected.
-  const collected = collectFromRegistration('/root', `/root/${file}`, registration, unmatchedPositionals.length === 0);
+  const collected = collectFromRegistration(ROOT, `${ROOT}/${file}`, registration, unmatchedPositionals.length === 0);
   return { files: [collected], tests: collected.tests, nearMisses: [], unmatchedPositionals, uncollected: [] };
 }
 
@@ -31,7 +34,7 @@ async function collectionOf(
   const files = [];
   for (const module of modules) {
     const registration = await collectModule(async () => module.body());
-    files.push(collectFromRegistration('/root', `/root/${module.file}`, registration, selected === undefined || selected.includes(module.file)));
+    files.push(collectFromRegistration(ROOT, `${ROOT}/${module.file}`, registration, selected === undefined || selected.includes(module.file)));
   }
   return { files, tests: files.flatMap((entry) => entry.tests), nearMisses: [], unmatchedPositionals: [], uncollected: [] };
 }
@@ -42,12 +45,12 @@ function emptyCollection(nearMisses: readonly string[] = []): Collection {
 }
 
 function config(raw: Partial<E2EConfig> = {}, env: NodeJS.ProcessEnv = ENV) {
-  return resolveConfig({ targets: [{ name: 'web', platform: 'web' }], ...raw }, { projectRoot: '/root', env });
+  return resolveConfig({ targets: [{ name: 'web', platform: 'web' }], ...raw }, { projectRoot: ROOT, env });
 }
 
 /** `config()` with command-line overrides, the way `--agent` reaches selection. */
 function configWith(raw: Partial<E2EConfig>, cli: NonNullable<Parameters<typeof resolveConfig>[1]['cli']>) {
-  return resolveConfig({ targets: [{ name: 'web', platform: 'web' }], ...raw }, { projectRoot: '/root', env: ENV, cli });
+  return resolveConfig({ targets: [{ name: 'web', platform: 'web' }], ...raw }, { projectRoot: ROOT, env: ENV, cli });
 }
 
 describe('resolveOptions', () => {
@@ -614,7 +617,7 @@ describe('select', () => {
 
   it('explains empty discovery with the globs, the root, and any look-alike files', () => {
     expect(() => select(emptyCollection(), config())).toThrow(
-      'no test file matched "tests/**/*.e2e.ts" under /root; create tests/example.e2e.ts (e2e init writes one), or set tests in the config; pass --pass-with-no-tests to allow this',
+      `no test file matched "tests/**/*.e2e.ts" under ${ROOT}; create tests/example.e2e.ts (e2e init writes one), or set tests in the config; pass --pass-with-no-tests to allow this`,
     );
     expect(() =>
       select(emptyCollection(['tests/login.test.ts', 'tests/a.spec.ts', 'tests/b.spec.ts', 'tests/c.spec.ts']), config()),
