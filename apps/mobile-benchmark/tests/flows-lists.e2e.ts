@@ -89,7 +89,7 @@ test('async states: load, pull to refresh, claim through the toast', async ({ ap
   await expect
     .poll(async () => {
       if (await claimed.isVisible()) return true;
-      if ((await claim.isVisible()) && !(await toast.isVisible())) await claim.tap({ timeout: 1_000 }).catch(() => undefined);
+      if ((await claim.isVisible()) && !(await toast.isVisible())) await claim.tap({ timeout: 1_000 });
       return false;
     }, { timeout: 10_000 })
     .toBe(true);
