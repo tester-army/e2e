@@ -33,11 +33,19 @@ function claimStdout(): Writable {
   const write = stdout.write.bind(stdout) as (chunk: Buffer, callback: (error?: Error | null) => void) => boolean;
   stdout.write = ((chunk: unknown, encoding?: unknown, callback?: unknown) =>
     (stderr.write as (...args: unknown[]) => boolean)(chunk, encoding, callback)) as typeof process.stdout.write;
-  return new Writable({
+  const protocol = new Writable({
     write(chunk: Buffer, _encoding, callback) {
       write(chunk, callback);
     },
   });
+  // A client that went away fails the pipe with EPIPE; the protocol stream
+  // carries the error to the server, which closes its sessions and exits.
+  // A client that captured stderr takes that pipe with it too, and the
+  // diagnostics written while the sessions close must not kill the server
+  // before its app processes stop.
+  stdout.on('error', (error) => protocol.destroy(error));
+  stderr.on('error', () => undefined);
+  return protocol;
 }
 
 /** Runs the server until the client disconnects or a signal arrives; returns the exit code. */

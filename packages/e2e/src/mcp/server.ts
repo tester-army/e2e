@@ -49,9 +49,10 @@ export async function serveMcp(options: ServeOptions): Promise<number> {
     { name: 'e2e', title: 'e2e', version: options.version },
     { capabilities: { logging: {}, tools: {}, resources: {} }, instructions: INSTRUCTIONS },
   );
+  let disconnected = false;
   const log = (level: LogLevel, message: string): void => {
     options.log(`[${level}] ${message}`);
-    if (server.isConnected()) void server.sendLoggingMessage({ level, logger: 'e2e', data: message }).catch(() => undefined);
+    if (!disconnected && server.isConnected()) void server.sendLoggingMessage({ level, logger: 'e2e', data: message }).catch(() => undefined);
   };
 
   const host = new SessionHost({
@@ -85,17 +86,29 @@ export async function serveMcp(options: ServeOptions): Promise<number> {
   registerGuide(server);
 
   const transport = new StdioServerTransport(options.stdin, options.stdout);
-  const closed = new Promise<void>((resolve) => {
+  const closed = new Promise<string>((resolve) => {
     // The SDK's Server exposes a plain callback property, not an event target.
     // oxlint-disable-next-line unicorn/prefer-add-event-listener
-    server.server.onclose = () => resolve();
-    options.signal?.addEventListener('abort', () => resolve(), { once: true });
+    server.server.onclose = () => resolve('server shutdown');
+    options.signal?.addEventListener('abort', () => resolve('server shutdown'), { once: true });
+    // The stdio transport never closes on its own: a client that ends stdin,
+    // or dies and takes both pipes with it, is noticed here. A write to a
+    // stdout nobody reads fails with EPIPE; with no listener that error
+    // would kill the server and leave its app processes running.
+    const gone = (): void => {
+      disconnected = true;
+      resolve('client disconnected');
+    };
+    options.stdin.once('end', gone);
+    options.stdin.once('error', gone);
+    options.stdout.on('error', gone);
   });
   await server.connect(transport);
   log('info', `e2e mcp ${options.version} serving ${options.cwd}`);
-  await closed;
+  const reason = await closed;
+  if (disconnected) options.log('[info] client disconnected; closing every session');
   try {
-    const summary = await host.closeAll('server shutdown');
+    const summary = await host.closeAll(reason);
     if (summary !== undefined) options.log(summary);
   } catch (cause) {
     options.log(`session teardown failed: ${errorMessage(cause)}`);

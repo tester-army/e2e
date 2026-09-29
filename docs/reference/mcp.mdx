@@ -149,7 +149,9 @@ and a recording stopped after a secret was filled says so.
 A session is one attempt on one target. A `call` before any session is
 open fails with `NO_SESSION`. A session closes on `close_session`, after 30
 idle minutes, after 4 hours, when the client disconnects, and on SIGINT or
-SIGTERM.
+SIGTERM. The client disconnects when it closes the server's stdin or dies,
+so the pipes break under the server: every session closes, the app commands
+the sessions started stop, and the server exits.
 
 Sessions enforce what tests enforce. Node ids are valid only against the
 newest observation. A secret fills only through `type_secret`; once one has
@@ -171,6 +173,7 @@ videos stay.
 
 ## Exit codes
 
-`e2e mcp` exits 0 when the client disconnects or a signal ends it, and 2
+`e2e mcp` exits 0 when the client disconnects, with or without a session
+open, or a signal ends it, and 2
 when the command line is invalid. Config and engine failures come back as
 tool errors with the same codes the CLI prints.

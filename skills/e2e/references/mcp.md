@@ -81,7 +81,8 @@ Resources: `e2e://guide` and `e2e://guide/<topic>` hold this skill.
 4. Run it from the shell: `npx e2e run tests/<feature>.e2e.ts`,
    read the failure (topic `debugging`), fix, repeat.
 5. `close_session` when you are done exploring; an idle session closes on its
-   own after 30 minutes and never outlives 4 hours. To look at another
+   own after 30 minutes and never outlives 4 hours. When the client exits,
+   every session closes and the app commands stop. To look at another
    project or config, `open_session {config: "path/to/e2e.config.ts"}`; no
    restart needed.
 
