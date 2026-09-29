@@ -28,11 +28,18 @@ export class ProviderVideo implements AttemptVideo {
     private readonly artifactsDir: string,
   ) {}
 
-  /** Starts the provider's recording; one that arrives once `signal` aborted is stopped at once, never kept. */
+  /**
+   * Starts the provider's recording. One that arrives once `signal` aborted
+   * (a start that outlived its budget) is stopped at once and never kept, and
+   * never replaces the handle of a recording started after it.
+   */
   async arm(_page: Page, signal: AbortSignal): Promise<void> {
-    this.started = await this.record(signal);
-    if (!signal.aborted) return;
-    await this.abandon(AbortSignal.timeout(LATE_STOP_MS));
+    const started = await this.record(signal);
+    if (!signal.aborted) {
+      this.started = started;
+      return;
+    }
+    await this.stopLease(started, AbortSignal.timeout(LATE_STOP_MS)).catch(() => undefined);
     throw connectionAbort(signal, 'video');
   }
 
@@ -51,14 +58,9 @@ export class ProviderVideo implements AttemptVideo {
   stop(signal: AbortSignal): Promise<readonly VideoSegment[]> {
     const started = this.started;
     if (started === undefined) return Promise.resolve([]);
-    this.stopping ??= stopProviderRecording(started.recording, {
-      artifactsDir: this.artifactsDir,
-      provider: started.provider,
-      leaseId: started.leaseId,
-      signal,
-    }).then(
+    this.stopping ??= this.stopLease(started, signal).then(
       (segment) => {
-        this.started = undefined;
+        if (this.started === started) this.started = undefined;
         return [segment];
       },
     ).finally(() => {
@@ -67,9 +69,22 @@ export class ProviderVideo implements AttemptVideo {
     return this.stopping;
   }
 
-  /** Stops a recording the attempt never collected, best effort and once: the attempt keeps nothing of it. */
+  /**
+   * Stops a recording the attempt never collected, best effort: the attempt
+   * keeps nothing of it. A stop that fails keeps the handle, so the recording
+   * is never marked stopped while it may still run.
+   */
   async abandon(signal: AbortSignal): Promise<void> {
     await this.stop(signal).catch(() => undefined);
-    this.started = undefined;
+  }
+
+  /** Ends one of the provider's recordings as a segment of the attempt. */
+  private stopLease(started: LeaseRecording, signal: AbortSignal): Promise<VideoSegment> {
+    return stopProviderRecording(started.recording, {
+      artifactsDir: this.artifactsDir,
+      provider: started.provider,
+      leaseId: started.leaseId,
+      signal,
+    });
   }
 }

@@ -91,8 +91,9 @@ export class VideoRecorder implements AttemptVideo {
     return this.end();
   }
 
-  /** The attempt closes uncollected: the segment in progress still ends, so its file is complete on disk. */
+  /** The attempt closes uncollected: disarmed first, so no late page starts a segment, then the one in progress ends and its file is complete on disk. */
   abandon(): Promise<void> {
+    this.armed = false;
     return this.end();
   }
 

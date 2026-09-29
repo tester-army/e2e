@@ -223,8 +223,7 @@ const ATTRIBUTE_NAME = /^[A-Za-z_:][A-Za-z0-9_:.-]*$/;
 
 /** `web({ video })`: a whole-pixel frame size and a 0-100 JPEG quality, each optional. */
 function validateVideo(video: unknown): void {
-  const prototype = typeof video === 'object' && video !== null ? Object.getPrototypeOf(video) : undefined;
-  if (prototype !== Object.prototype && prototype !== null) {
+  if (!isPlainObject(video)) {
     throw new ConfigurationError('INVALID_CONFIG', 'web({ video }) must be a plain object: { size?, quality? }');
   }
   for (const key of Object.keys(video as object)) {
@@ -234,7 +233,7 @@ function validateVideo(video: unknown): void {
   }
   const { size, quality } = video as { size?: unknown; quality?: unknown };
   if (size !== undefined) {
-    const fields = typeof size === 'object' && size !== null && !Array.isArray(size) ? size : {};
+    const fields = isPlainObject(size) ? size : {};
     const { width, height } = fields as { width?: unknown; height?: unknown };
     const unknownKey = Object.keys(fields).find((key) => key !== 'width' && key !== 'height');
     if (unknownKey !== undefined) {
@@ -247,6 +246,13 @@ function validateVideo(video: unknown): void {
   if (quality !== undefined && (!Number.isInteger(quality) || (quality as number) < 0 || (quality as number) > 100)) {
     throw new ConfigurationError('INVALID_CONFIG', 'web({ video: { quality } }) must be an integer from 0 through 100');
   }
+}
+
+/** An object literal (or `Object.create(null)`): not an array, a class instance, or a primitive. */
+function isPlainObject(value: unknown): value is object {
+  if (typeof value !== 'object' || value === null) return false;
+  const prototype: unknown = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 /** Refuses a test-id attribute no element could carry, at config load. */

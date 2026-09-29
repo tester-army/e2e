@@ -121,10 +121,12 @@ with a scale factor of 1, desktop pointer behavior, and its usual user agent.
 It does not emulate touch, color scheme, or reduced-motion preferences.
 Use the [device engine](/mobile) for tests on a simulator or emulator.
 
-A video on a Playwright target is sized to the viewport the attempt started
-with, the window's size under `viewport: null`, unless
-`web({ video: { size } })` sets it. A resize mid-attempt does not change the
-recording's dimensions. A browser provider that records, such as
+A video on a Playwright target records each page at its viewport when the
+page's segment starts, the window's size under `viewport: null`, unless
+`web({ video: { size } })` sets one size for every segment. A resize
+mid-segment does not change that segment's dimensions; the page a restart
+or a state reset opens after it starts a new segment at the new size. A
+browser provider that records, such as
 [Kernel](/integrations/kernel#recordings), records the whole screen
 instead.
 

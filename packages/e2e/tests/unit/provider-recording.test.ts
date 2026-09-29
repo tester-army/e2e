@@ -52,7 +52,8 @@ describe('stopProviderRecording', () => {
   });
 
   it('refuses a file outside the directory or never written, a non-http URL, and a link without a media type', async () => {
-    for (const result of [{ file: '../escape.mp4' }, { file: 'missing.mp4' }, { url: 'file:///tmp/r.mp4', mediaType: 'video/mp4' }, { url: 'https://', mediaType: 'video/mp4' }, { url: 'https://cloud.example/r' }, 'replay.mp4']) {
+    const tooLong = { url: `https://cloud.example/${'r'.repeat(2048)}`, mediaType: 'video/mp4' };
+    for (const result of [{ file: '../escape.mp4' }, { file: 'missing.mp4' }, { file: 'nul\0.mp4' }, { url: 'file:///tmp/r.mp4', mediaType: 'video/mp4' }, { url: 'https://', mediaType: 'video/mp4' }, { url: 'https://cloud.example/r' }, tooLong, 'replay.mp4']) {
       await expect(stopProviderRecording(recording(async () => result), target())).rejects.toMatchObject({
         code: 'ENGINE_FAILURE',
         message: expect.stringContaining('browser provider "cloud" recording lease lease-7 finished without naming a file'),
@@ -66,6 +67,15 @@ describe('stopProviderRecording', () => {
       return { file: 'clip.mp4' };
     });
     await expect(stopProviderRecording(directory, target())).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
+  });
+
+  it('names the provider and the lease when the video directory cannot be made', async () => {
+    const where = target();
+    writeFileSync(path.join(where.artifactsDir, 'video'), 'a file where the directory goes');
+    await expect(stopProviderRecording(recording(async () => ({ file: 'replay.mp4' })), where)).rejects.toMatchObject({
+      code: 'ENGINE_FAILURE',
+      message: expect.stringContaining('browser provider "cloud" recording lease lease-7 has no video directory to write into'),
+    });
   });
 
   it('names the provider and the lease when the stop itself fails', async () => {

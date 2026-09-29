@@ -82,8 +82,12 @@ export function isProviderRecording(value: unknown): value is ProviderRecording 
  */
 export async function stopProviderRecording(recording: ProviderRecording, target: ProviderRecordingTarget): Promise<VideoSegment> {
   const dir = path.join(target.artifactsDir, 'video');
-  mkdirSync(dir, { recursive: true });
   const what = `${target.provider} recording lease ${target.leaseId}`;
+  try {
+    mkdirSync(dir, { recursive: true });
+  } catch (cause) {
+    throw new EngineError('ENGINE_FAILURE', `${what} has no video directory to write into, ${dir}: ${cause instanceof Error ? cause.message : String(cause)}`, { retryable: false, cause });
+  }
   let result: unknown;
   try {
     result = await recording.stop({ dir, signal: target.signal });
@@ -101,7 +105,12 @@ function isWrittenFile(result: unknown, dir: string): result is { readonly file:
   if (typeof result !== 'object' || result === null) return false;
   const { file } = result as { file?: unknown };
   if (typeof file !== 'string' || file === '' || file === '.' || file === '..' || file !== path.basename(file)) return false;
-  return statSync(path.join(dir, file), { throwIfNoEntry: false })?.isFile() === true;
+  try {
+    return statSync(path.join(dir, file), { throwIfNoEntry: false })?.isFile() === true;
+  } catch {
+    // A name the filesystem refuses (a NUL byte) names no file the provider wrote.
+    return false;
+  }
 }
 
 /** An `http(s)` URL with a non-empty media type. */
@@ -111,15 +120,20 @@ function isLink(result: unknown): result is { readonly url: string; readonly med
   return hostedVideoUrl(url) !== undefined && typeof mediaType === 'string' && mediaType.trim() !== '';
 }
 
+/** The longest URL the report admits for a hosted video, as for a failure's `url`. */
+const MAX_VIDEO_URL_CHARS = 2048;
+
 /**
- * The parsed form of an `http(s)` URL with a host, the one shape the report
- * admits for a video a hosted service keeps; undefined for anything else.
+ * The parsed form of an `http(s)` URL with a host, at most 2048 characters,
+ * the one shape the report admits for a video a hosted service keeps;
+ * undefined for anything else.
  */
 export function hostedVideoUrl(url: unknown): string | undefined {
   if (typeof url !== 'string') return undefined;
   try {
     const parsed = new URL(url);
-    return (parsed.protocol === 'https:' || parsed.protocol === 'http:') && parsed.host !== '' ? parsed.href : undefined;
+    const hosted = (parsed.protocol === 'https:' || parsed.protocol === 'http:') && parsed.host !== '';
+    return hosted && parsed.href.length <= MAX_VIDEO_URL_CHARS ? parsed.href : undefined;
   } catch {
     return undefined;
   }

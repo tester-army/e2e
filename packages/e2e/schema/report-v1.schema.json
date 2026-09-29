@@ -101,7 +101,7 @@
         "kind": { "enum": ["screenshot", "trace", "video", "download", "log", "other"] },
         "mediaType": { "type": "string", "minLength": 1 },
         "path": { "$ref": "#/$defs/relativePath" },
-        "url": { "type": "string", "pattern": "^https?://[^\\s/]+[^\\s]*$" },
+        "url": { "type": "string", "maxLength": 2048, "pattern": "^https?://[^\\s/]+[^\\s]*$" },
         "size": { "type": "integer", "minimum": 0 },
         "sha256": { "$ref": "#/$defs/sha256" },
         "ref": { "type": "string", "minLength": 1 },

@@ -125,6 +125,17 @@ describe('VideoRecorder', () => {
     expect((await video.stop()).map((segment) => segment.path)).toEqual(['video/video.webm']);
   });
 
+  it('starts no segment for a page opened after the attempt abandoned its recording', async () => {
+    const video = recorder();
+    const first = fakePage();
+    const late = fakePage();
+    await video.arm(first.page);
+    await video.abandon();
+    expect(video.isArmed).toBe(false);
+    await video.pageOpened(late.page);
+    expect(late.started).toEqual([]);
+  });
+
   it('stays disarmed when the first segment cannot start', async () => {
     const video = recorder();
     const dead = fakePage({ startError: new Error('screencast unavailable') });

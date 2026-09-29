@@ -95,9 +95,10 @@ mode applies to runs, not sessions. Each recording is saved to
 `.e2e/videos/<session>/<n>[-<name>].webm` (`.mp4` on mobile), where `n`
 counts the session's recordings. A web recording that spans a restart or a
 state reset has one file per page, `-part2`, `-part3`, and so on, in play
-order. A browser or device provider that records the lease itself, like
-[Kernel](/integrations/kernel), keeps the recording: the result lists its
-URL instead of a file. `close_session`, the idle timeout, and the session
+order. A browser or device provider that records the lease itself records
+the session instead: [Kernel](/integrations/kernel) downloads its replay,
+saved here as `<n>[-<name>].mp4` like any other file, and a provider that
+keeps its recordings is listed by URL instead of a file. `close_session`, the idle timeout, and the session
 TTL save a recording still running, and the close result lists its files.
 
 Recordings are not masked and are not withheld after a secret was filled:
