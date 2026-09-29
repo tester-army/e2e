@@ -20,7 +20,9 @@ it('reports link targets as origin and whole path, marking a dropped query, frag
       <a href="tel:+48123456789">Call</a>
       <a href="data:text/csv,${'id,name%0A1,Ada%0A'.repeat(200)}">Export</a>
       <a href="javascript:void(document.body.dataset.clicked = 'yes')">Script</a>
-      <a href="blob:http://app.test/0b7c4c1e-8d9a-4f2e-9c1b-2a3d4e5f6a7b">Download</a>`);
+      <a href="blob:http://app.test/0b7c4c1e-8d9a-4f2e-9c1b-2a3d4e5f6a7b">Download</a>
+      <a href="blob:https://user:pass@files.example.test/0b7c4c1e?token=abc">Signed</a>
+      <a href="blob:null/0b7c4c1e">Opaque</a>`);
     const captured = await captureDocument({
       testIdAttribute: 'data-testid', site: undefined, reserveIds: () => 1, commit: () => {},
     }, page, { framePath: [], budget: 100, deadline: Date.now() + 10_000, signal: new AbortController().signal });
@@ -36,6 +38,8 @@ it('reports link targets as origin and whole path, marking a dropped query, frag
       Export: 'data:…',
       Script: 'javascript:…',
       Download: 'blob:http://app.test/0b7c4c1e-8d9a-4f2e-9c1b-2a3d4e5f6a7b',
+      Signed: 'blob:https://files.example.test/0b7c4c1e?…',
+      Opaque: 'blob:…',
     });
   } finally {
     await page.close();

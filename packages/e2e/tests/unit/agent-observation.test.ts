@@ -319,6 +319,19 @@ describe('disambiguating attributes', () => {
     expect(projectTree(tree, NO_REDACT).attributes).toEqual({ href: `${href.slice(0, 255)}…` });
   });
 
+  it('gives an executor tree an app link absolute, cut no shorter than the line cuts its path', () => {
+    const path = `/${'p'.repeat(240)}`;
+    const long = `/${'q'.repeat(300)}`;
+    const tree = node('n1', {
+      children: [
+        node('n2', { role: 'link', name: 'Fits', attributes: { href: `https://app.test${path}` } }),
+        node('n3', { role: 'link', name: 'Long', attributes: { href: `https://app.test${long}` } }),
+      ],
+    });
+    const hrefs = projectTree(tree, NO_REDACT, 'https://app.test').children?.map((child) => child.attributes?.['href']);
+    expect(hrefs).toEqual([`https://app.test${path}`, `https://app.test${long.slice(0, 256)}…`]);
+  });
+
   it('redacts a secret in a link target before cutting it, so no part of it survives the cut', () => {
     const ledger = new SecretLedger([['token', 'tok-0123456789']]);
     const path = `/${'p'.repeat(250)}/tok-0123456789`;

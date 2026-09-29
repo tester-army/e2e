@@ -299,16 +299,17 @@ export function interactiveNodeCount(observation: Pick<ExecutorObservation, 'tex
  * Projects the raw tree onto the executor-facing node shape: the same
  * redaction the text serialization applies, field by field, and no value or
  * selection at all for a secure node, and a link target bounded as a line
- * bounds it. Selectors stay behind — they are relocation material for the
- * trace cache, not something a brain reasons about.
+ * bounds it: a target on `appOrigin` keeps that origin and loses no more of
+ * its path than the line does. Selectors stay behind — they are relocation
+ * material for the trace cache, not something a brain reasons about.
  */
-export function projectTree(node: SemanticNode, redact: (text: string) => string): ExecutorNode {
+export function projectTree(node: SemanticNode, redact: (text: string) => string, appOrigin?: string): ExecutorNode {
   const secure = node.states?.secure === true;
   const attributes =
     node.attributes === undefined
       ? undefined
       : Object.fromEntries(
-          Object.entries(node.attributes).map(([key, value]) => [key, key === 'href' ? boundHref(redact(value)) : redact(value)]),
+          Object.entries(node.attributes).map(([key, value]) => [key, key === 'href' ? treeHref(redact(value), appOrigin) : redact(value)]),
         );
   return {
     id: node.ref.id,
@@ -324,7 +325,7 @@ export function projectTree(node: SemanticNode, redact: (text: string) => string
     ...(node.framePath === undefined ? {} : { framePath: node.framePath }),
     ...(node.children === undefined
       ? {}
-      : { children: node.children.map((child) => projectTree(child, redact)) }),
+      : { children: node.children.map((child) => projectTree(child, redact, appOrigin)) }),
   };
 }
 
@@ -388,7 +389,17 @@ export function formatNode(
  * `boundHref`, after redaction.
  */
 function renderHref(href: string, appOrigin: string | undefined): string {
-  return boundHref(appOrigin !== undefined && href.startsWith(`${appOrigin}/`) ? href.slice(appOrigin.length) : href);
+  return boundHref(onOrigin(href, appOrigin) ? href.slice(appOrigin.length) : href);
+}
+
+/** A link target as an executor tree carries it: absolute, and bounded exactly as `renderHref` bounds the line. */
+function treeHref(href: string, appOrigin: string | undefined): string {
+  return onOrigin(href, appOrigin) ? `${appOrigin}${renderHref(href, appOrigin)}` : boundHref(href);
+}
+
+/** Whether a link target is on `origin`. */
+function onOrigin(href: string, origin: string | undefined): origin is string {
+  return origin !== undefined && href.startsWith(`${origin}/`);
 }
 
 /**
