@@ -44,6 +44,8 @@ Tests start once every slot has a simulator.
   command reached, the backstop for a run that died.
 - `maxDurationMinutes` caps a session's life (40 minutes by default, 115 on
   a high-priority plan), so a run must fit in it.
+- `agentDeviceVersion` is the agent-device EAS starts, by default the one
+  `@e2e-dev/mobile` pins.
 - `tags` are added to the run's own.
 
 Set the engine's `videoTouches: false` for video: drawing touches into a

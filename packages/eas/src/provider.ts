@@ -25,6 +25,14 @@ const STARTUP_TIMEOUT_MS = 15 * 60_000;
 /** State polls that may fail in a row, a blip at api.expo.dev, before the session is given up. */
 const POLL_FAILURES_TOLERATED = 3;
 
+/**
+ * When each session a run holds became ready, by run and session id, across
+ * every `easSimulators()` of the run: targets prepare one after another in
+ * the runner process, so a target's ready sessions sit idle while the next
+ * target's queue.
+ */
+const readyAt = new Map<string, Map<string, number>>();
+
 /** What `easSimulators()` takes: the Expo project, the app each simulator starts with, and the simulator itself. */
 export interface EasSimulatorsOptions {
   /** The Expo project the sessions belong to: its id (`extra.eas.projectId` in the app config), not its slug. */
@@ -41,13 +49,20 @@ export interface EasSimulatorsOptions {
   readonly device?: string | undefined;
   /**
    * Minutes without an agent-device command after which EAS stops the
-   * session. Defaults to 10. In a run with more than one slot, a session
-   * still queued this long fails the lease: the sessions leased before it
-   * have been idle about as long.
+   * session. Defaults to 10, or one less than `maxDurationMinutes` when that
+   * is shorter, since EAS wants it below the duration. A session still
+   * queued once another session of the run has been ready this long fails
+   * the lease: EAS is stopping that one.
    */
   readonly maxIdleTimeMinutes?: number | undefined;
   /** Minutes a session may run once ready before EAS stops it. Absent, the account's cap: 40, or 115 on a high-priority plan. */
   readonly maxDurationMinutes?: number | undefined;
+  /**
+   * The agent-device version EAS starts the session's daemon at. Defaults to
+   * the one `@e2e-dev/mobile` pins, so the remote daemon answers as the
+   * engine's client expects; EAS otherwise starts the latest.
+   */
+  readonly agentDeviceVersion?: string | undefined;
   /** Tags on every session, beside the run's own; EAS stores them lowercased. */
   readonly tags?: readonly string[] | undefined;
 }
@@ -60,10 +75,13 @@ export interface EasSimulatorsOptions {
  * `EXPO_TOKEN` comes from the run's environment.
  */
 export function easSimulators(options: EasSimulatorsOptions): DeviceProvider {
-  const { projectId, buildId, applicationArchiveUrl, device, maxIdleTimeMinutes = DEFAULT_MAX_IDLE_TIME_MINUTES, maxDurationMinutes, tags = [] } = options;
+  const { projectId, buildId, applicationArchiveUrl, device, maxDurationMinutes, agentDeviceVersion, tags = [] } = options;
   if (buildId !== undefined && applicationArchiveUrl !== undefined) {
     throw new Error('easSimulators: pass `buildId` or `applicationArchiveUrl`, not both');
   }
+  const idleMinutes = options.maxIdleTimeMinutes ?? (maxDurationMinutes === undefined ? DEFAULT_MAX_IDLE_TIME_MINUTES : Math.min(DEFAULT_MAX_IDLE_TIME_MINUTES, maxDurationMinutes - 1));
+  // EAS takes no idle limit of zero; a session that short runs to its duration.
+  const maxIdleTimeMinutes = idleMinutes >= 1 ? idleMinutes : undefined;
   const clients = new Map<string, EasSessions>();
   const clientFor = (env: DeviceRequest['env']): EasSessions => {
     const token = envValue(env, EXPO_TOKEN);
@@ -94,6 +112,7 @@ export function easSimulators(options: EasSimulatorsOptions): DeviceProvider {
           deviceIdentifier: device,
           maxIdleTimeMinutes,
           maxRunTimeMinutes: maxDurationMinutes,
+          packageVersion: agentDeviceVersion ?? request.agentDeviceVersion,
         },
         AbortSignal.timeout(60_000),
       );
@@ -101,6 +120,12 @@ export function easSimulators(options: EasSimulatorsOptions): DeviceProvider {
       try {
         const session = await ready(client, created.id, request, maxIdleTimeMinutes);
         if (session.openPreviewUrl !== undefined) request.log(`watch at ${session.openPreviewUrl}`);
+        let held = readyAt.get(request.runId);
+        if (held === undefined) {
+          held = new Map();
+          readyAt.set(request.runId, held);
+        }
+        held.set(created.id, Date.now());
         return { id: created.id, daemon: { baseUrl: session.daemonUrl, authToken: session.daemonToken } };
       } catch (cause) {
         // EAS bills a session from the moment it starts, and the engine holds only leases `acquire` returned.
@@ -113,6 +138,9 @@ export function easSimulators(options: EasSimulatorsOptions): DeviceProvider {
       }
     },
     async release(lease: DeviceLease, context: DeviceReleaseContext): Promise<void> {
+      const held = readyAt.get(context.runId);
+      held?.delete(lease.id);
+      if (held?.size === 0) readyAt.delete(context.runId);
       await clientFor(context.env).stop(lease.id, context.signal);
     },
   };
@@ -120,11 +148,16 @@ export function easSimulators(options: EasSimulatorsOptions): DeviceProvider {
 
 /**
  * Polls a session until its agent-device daemon is reachable. Says once when
- * it has queued for two minutes, and gives up when it queues longer than the
- * idle limit beside other slots, boots for longer than eas-cli waits, ends,
- * or the API fails several polls in a row.
+ * it has queued for two minutes, and gives up when it is still queued once
+ * another session of the run has idled to the idle limit, boots for longer
+ * than eas-cli waits, ends, or the API fails several polls in a row.
  */
-async function ready(client: EasSessions, id: string, request: DeviceRequest, maxIdleTimeMinutes: number): Promise<Extract<EasSessionState, { phase: 'ready' }>> {
+async function ready(
+  client: EasSessions,
+  id: string,
+  request: DeviceRequest,
+  maxIdleTimeMinutes: number | undefined,
+): Promise<Extract<EasSessionState, { phase: 'ready' }>> {
   const queuedSince = Date.now();
   let startedAt: number | undefined;
   let noticed = false;
@@ -144,10 +177,10 @@ async function ready(client: EasSessions, id: string, request: DeviceRequest, ma
     if (state.phase === 'ended') throw new Error(`session ${state.status}`);
     const now = Date.now();
     if (state.phase === 'queued') {
-      // A lone slot has no ready sibling going idle while it waits.
-      if (request.slots > 1 && now - queuedSince >= maxIdleTimeMinutes * 60_000) {
+      const idleSince = Math.min(...(readyAt.get(request.runId)?.values() ?? []));
+      if (maxIdleTimeMinutes !== undefined && now - idleSince >= maxIdleTimeMinutes * 60_000) {
         throw new Error(
-          `still queued after ${maxIdleTimeMinutes} minutes, the idle limit that stops the sessions leased before it; lower \`workers\` or raise \`maxIdleTimeMinutes\``,
+          `still queued while a session of this run has been ready for ${maxIdleTimeMinutes} minutes, the idle limit EAS stops it at; lower \`workers\` or raise \`maxIdleTimeMinutes\``,
         );
       }
       if (!noticed && now - queuedSince >= QUEUE_NOTICE_MS) {

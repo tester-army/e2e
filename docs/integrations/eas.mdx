@@ -83,8 +83,9 @@ mobile({ platform: 'ios', app: 'com.example.app', appPath: 'build/App.app', devi
 | `buildId`               | none        | EAS Build EAS installs and launches on every simulator. |
 | `applicationArchiveUrl` | none        | App archive URL EAS installs in place of a build. Excludes `buildId`. |
 | `device`                | EAS's pick  | iOS device name or UDID (`'iPhone 17 Pro'`), or an Android AVD hardware profile (`'pixel_9'`). |
-| `maxIdleTimeMinutes`    | `10`        | Minutes without an agent-device command after which EAS stops the session. See [What the provider does](#what-the-provider-does). |
+| `maxIdleTimeMinutes`    | `10`        | Minutes without an agent-device command after which EAS stops the session. EAS wants it below `maxDurationMinutes`, so a shorter duration lowers the default to one less. See [What the provider does](#what-the-provider-does). |
 | `maxDurationMinutes`    | account cap | Minutes a session may run once ready. EAS caps it at 40, or 115 on a high-priority plan. |
+| `agentDeviceVersion`    | the engine's | The agent-device version EAS starts the session's daemon at. Defaults to the one `@e2e-dev/mobile` pins, so the remote daemon answers as the engine's client expects; without it EAS starts the latest. |
 | `tags`                  | `[]`        | Tags on every session, beside the run's own. |
 
 ## Workers and sessions
@@ -103,9 +104,11 @@ EAS runs as many sessions at once as the Expo account allows, and queues
 the rest until one ends. None ends before the run does, so keep `workers`
 within that number across targets. Every session queues for a few seconds;
 one still queued after two minutes logs `still queued at EAS after two
-minutes`. With more than one worker, one still queued after
-`maxIdleTimeMinutes` fails the lease and the run stops every session: the
-ready ones have been idle that long, and EAS is about to stop them.
+minutes`. Targets prepare one after another, so the sessions of a target
+that is ready wait idle while the next target's queue and boot. A session
+still queued once another session of the run has been ready for
+`maxIdleTimeMinutes` fails the lease, and the run stops every session: EAS
+is stopping the idle one.
 
 ## Watch a run
 
@@ -143,9 +146,11 @@ Without the indicator, stopping takes about two seconds.
   reachable, then hands the engine the daemon's URL and token.
 - Defaults `maxIdleTimeMinutes` to 10. A run that dies before the engine
   stops its sessions leaves them idle, and EAS stops them after that long.
-- Stops a session that errors, is cancelled, stays queued past
-  `maxIdleTimeMinutes`, or is still booting 15 minutes after leaving the
-  queue, and treats one EAS no longer knows as already stopped.
+- Starts each daemon at the agent-device version `@e2e-dev/mobile` pins.
+- Stops a session that errors, is cancelled, stays queued while another
+  session of the run idles to `maxIdleTimeMinutes`, or is still booting 15
+  minutes after leaving the queue, and treats one EAS no longer knows as
+  already stopped.
 - Cancels the job of a session it stops while the job is still queued:
   EAS would otherwise start it later and count it against the account's
   concurrent sessions.

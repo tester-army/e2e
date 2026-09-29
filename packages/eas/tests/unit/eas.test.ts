@@ -86,15 +86,19 @@ afterEach(() => {
 
 const env = { EXPO_TOKEN: 'expo-test' };
 
+/** Each test's own run: the provider tracks the ready sessions of a run across its instances. */
+let runs = 0;
+
 function request(overrides: Partial<DeviceRequest> = {}): DeviceRequest & { lines: string[] } {
   const lines: string[] = [];
   return {
     platform: 'ios',
-    runId: 'run-1',
+    runId: `run-${++runs}`,
     targetName: 'ios',
     slot: 0,
     slots: 2,
     app: 'com.example.app',
+    agentDeviceVersion: '0.21.16',
     env,
     signal: new AbortController().signal,
     log: (line) => lines.push(line),
@@ -103,8 +107,8 @@ function request(overrides: Partial<DeviceRequest> = {}): DeviceRequest & { line
   };
 }
 
-function releaseContext(): DeviceReleaseContext {
-  return { runId: 'run-1', targetName: 'ios', env, signal: new AbortController().signal, log: () => undefined };
+function releaseContext(runId = 'run-1'): DeviceReleaseContext {
+  return { runId, targetName: 'ios', env, signal: new AbortController().signal, log: () => undefined };
 }
 
 const notFound = { message: 'Entity Not Found', extensions: { errorCode: 'NOT_FOUND_ERROR' } };
@@ -116,8 +120,8 @@ describe('easSimulators()', () => {
     expect(provider.record).toBeUndefined();
   });
 
-  it('starts an agent-device session named after the slot, tagged with the run, with the idle backstop', async () => {
-    await easSimulators({ projectId: 'p1', buildId: 'b1', device: 'iPhone 17 Pro', tags: ['nightly'] }).acquire(request({ slot: 1 }));
+  it('starts an agent-device session named after the slot, tagged with the run, on the engine\'s agent-device, with the idle backstop', async () => {
+    await easSimulators({ projectId: 'p1', buildId: 'b1', device: 'iPhone 17 Pro', tags: ['nightly'] }).acquire(request({ slot: 1, runId: 'run-1' }));
     expect(eas.calls[0]).toEqual({
       operation: 'create',
       authorization: 'Bearer expo-test',
@@ -131,6 +135,7 @@ describe('easSimulators()', () => {
           buildId: 'b1',
           ios: { deviceIdentifier: 'iPhone 17 Pro' },
           maxIdleTimeMinutes: 10,
+          packageVersion: '0.21.16',
         },
       },
     });
@@ -227,24 +232,42 @@ describe('easSimulators()', () => {
     expect(eas.calls.at(-1)?.operation).toBe('stop');
   });
 
-  it('gives up on a session queued longer than the idle limit, which would already have stopped its siblings', async () => {
+  it('gives up on a session still queued once another session of the run, from any target, has idled to the limit', async () => {
     let now = 0;
     vi.spyOn(Date, 'now').mockImplementation(() => (now += 60_000));
+    const ios = request({ runId: 'run-idle' });
+    const iosProvider = easSimulators({ projectId: 'p1', maxIdleTimeMinutes: 5 });
+    const lease = await iosProvider.acquire(ios);
     eas.states = [{ status: 'NEW', turtleJobRun: { status: 'IN_QUEUE' }, remoteConfig: null }];
-    await expect(easSimulators({ projectId: 'p1', maxIdleTimeMinutes: 5 }).acquire(request())).rejects.toThrow(
-      'simulator session s1 did not become ready: still queued after 5 minutes, the idle limit that stops the sessions leased before it; lower `workers` or raise `maxIdleTimeMinutes`; stopped it',
+    await expect(easSimulators({ projectId: 'p1', maxIdleTimeMinutes: 5 }).acquire(request({ runId: 'run-idle', platform: 'android', targetName: 'android', slots: 1 }))).rejects.toThrow(
+      'simulator session s1 did not become ready: still queued while a session of this run has been ready for 5 minutes, the idle limit EAS stops it at; lower `workers` or raise `maxIdleTimeMinutes`; stopped it',
     );
     vi.restoreAllMocks();
     expect(eas.calls.at(-1)?.operation).toBe('stop');
+    await iosProvider.release(lease, releaseContext('run-idle'));
   });
 
-  it('keeps waiting on a lone slot however long it queues, since no sibling goes idle', async () => {
+  it('keeps waiting however long it queues while no session of the run is ready, or after they were released', async () => {
     let now = 0;
     vi.spyOn(Date, 'now').mockImplementation(() => (now += 60_000));
     const queued = { status: 'NEW', turtleJobRun: { status: 'IN_QUEUE' }, remoteConfig: null };
     eas.states = [...Array.from({ length: 20 }, () => queued), READY];
-    await expect(easSimulators({ projectId: 'p1', maxIdleTimeMinutes: 5 }).acquire(request({ slots: 1 }))).resolves.toMatchObject({ id: 's1' });
+    await expect(easSimulators({ projectId: 'p1', maxIdleTimeMinutes: 5 }).acquire(request())).resolves.toMatchObject({ id: 's1' });
+    const provider = easSimulators({ projectId: 'p1', maxIdleTimeMinutes: 5 });
+    eas.states = [READY];
+    const lease = await provider.acquire(request({ runId: 'run-released' }));
+    await provider.release(lease, releaseContext('run-released'));
+    eas.states = [...Array.from({ length: 20 }, () => queued), READY];
+    await expect(provider.acquire(request({ runId: 'run-released' }))).resolves.toMatchObject({ id: 's1' });
     vi.restoreAllMocks();
+  });
+
+  it('keeps the idle limit below a short duration, as EAS requires, and pins the agent-device an option names', async () => {
+    await easSimulators({ projectId: 'p1', maxDurationMinutes: 5, agentDeviceVersion: '0.22.0' }).acquire(request());
+    expect(eas.calls[0]?.variables['input']).toMatchObject({ maxRunTimeMinutes: 5, maxIdleTimeMinutes: 4, packageVersion: '0.22.0' });
+    eas.calls = [];
+    await easSimulators({ projectId: 'p1', maxDurationMinutes: 1 }).acquire(request());
+    expect(eas.calls[0]?.variables['input']).not.toHaveProperty('maxIdleTimeMinutes');
   });
 
   it('gives up on a session that boots for fifteen minutes after leaving the queue', async () => {

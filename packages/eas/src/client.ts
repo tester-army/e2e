@@ -17,6 +17,8 @@ export interface EasSessionParams {
   readonly deviceIdentifier?: string | undefined;
   readonly maxIdleTimeMinutes?: number | undefined;
   readonly maxRunTimeMinutes?: number | undefined;
+  /** The agent-device version EAS starts the daemon at. */
+  readonly packageVersion?: string | undefined;
 }
 
 /** Where a session is: `queued` until the account has a free simulator, `starting` while it boots, `ready` once its daemon is reachable. */
