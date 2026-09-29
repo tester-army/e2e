@@ -140,3 +140,31 @@ describe('web({ screencast })', () => {
     }
   });
 });
+
+describe('web() option keys', () => {
+  const url = 'http://127.0.0.1:4321';
+  const refused = (message: string) => expect.objectContaining({ code: 'INVALID_CONFIG', message });
+
+  it('rejects an option it does not know, naming the nearest', () => {
+    expect(() => web({ url, comand: { executable: 'node' } } as unknown as Parameters<typeof web>[0])).toThrow(
+      refused('web() has unknown option "comand"; did you mean "command"?'),
+    );
+    expect(() => web({ url, launchOptions: {} } as unknown as Parameters<typeof web>[0])).toThrow(
+      /^web\(\) has unknown option "launchOptions"; it takes url, environment, identity, command, readyUrl, services, browser, viewport/,
+    );
+  });
+
+  it('rejects an unknown key inside connect and basicAuth', () => {
+    const cdpEndpoint = () => 'ws://127.0.0.1:9222';
+    expect(() => web({ connect: { cdpEndpoint, reconectEndpoint: cdpEndpoint } } as unknown as Parameters<typeof web>[0])).toThrow(
+      refused('web({ connect }) has unknown key "reconectEndpoint"; did you mean "reconnectEndpoint"?'),
+    );
+    expect(() => web({ basicAuth: { username: 'u', password: 'p', user: 'u' } } as unknown as Parameters<typeof web>[0])).toThrow(
+      refused('web({ basicAuth }) has unknown key "user"; it is { username, password }'),
+    );
+  });
+
+  it('keeps the removed options their own messages', () => {
+    expect(() => web({ allowedOrigins: [] } as unknown as Parameters<typeof web>[0])).toThrow(/allowedOrigins }\) is gone/);
+  });
+});

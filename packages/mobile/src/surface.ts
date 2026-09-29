@@ -16,6 +16,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, w
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
+  didYouMean,
   EngineError,
   KEY_NAMES,
   parseKey,
@@ -276,6 +277,34 @@ type SettleOptions = { readonly settle: true; readonly settleQuietMs: number } |
 
 const DEFAULT_SETTLE_QUIET_MS = 150;
 
+/** Every option `mobile()` takes. */
+const MOBILE_OPTION_KEYS: readonly string[] = [
+  'platform',
+  'app',
+  'appPath',
+  'identity',
+  'environment',
+  'device',
+  'session',
+  'snapshot',
+  'settle',
+  'transition',
+  'launchArguments',
+  'permissions',
+];
+
+/** Refuses an option `mobile()` does not take, a misspelled one naming the nearest, so a typo never falls through to a default. */
+function rejectUnknownOptions(options: MobileOptions): void {
+  for (const key of Object.keys(options)) {
+    if (MOBILE_OPTION_KEYS.includes(key)) continue;
+    const hint = didYouMean(key, MOBILE_OPTION_KEYS);
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `mobile() has unknown option "${key}"${hint === '' ? `; it takes ${MOBILE_OPTION_KEYS.join(', ')}` : hint}`,
+    );
+  }
+}
+
 /** Resolves the `transition` option: the default budget or a custom one. */
 function transitionMs(transition: MobileOptions['transition']): number {
   const budget = transition ?? DEFAULT_TRANSITION_MS;
@@ -352,6 +381,7 @@ export class AgentDeviceSurface {
     readonly options: MobileOptions,
     private readonly createClient: ClientFactory,
   ) {
+    rejectUnknownOptions(options);
     assertConfiguredApp(options.app);
     this.pool = new DevicePool(options, createClient);
     this.settleOptions = settleOptions(options.settle);

@@ -10,6 +10,7 @@ import { CollectionError } from '../internal/errors.ts';
 import { validateTitle } from '../internal/ids.ts';
 import { realmSlot } from '../internal/realm-slot.ts';
 import { parseSkipCall, skipRunningTest } from '../internal/skip.ts';
+import { didYouMean } from '../internal/suggest.ts';
 import type {
   DescribeOptions,
   FixtureFn,
@@ -257,7 +258,37 @@ export function outermostSerialGroup(group: GroupNode | undefined): GroupNode | 
   return groupChain(group).find((node) => node.serial);
 }
 
-function validateCommonOptions(options: TestOptions | DescribeOptions, label: string): void {
+/** The keys `test()` and `test.setup()` take, `sessions` aside. */
+const TEST_OPTION_KEYS: readonly string[] = [
+  'timeout',
+  'retries',
+  'tags',
+  'skip',
+  'only',
+  'platforms',
+  'requires',
+  'session',
+  'agentContext',
+  'agent',
+  'trace',
+  'video',
+];
+
+/** The keys `test.describe()` takes: a test's, without `only`, and `serial`. */
+const DESCRIBE_OPTION_KEYS: readonly string[] = [...TEST_OPTION_KEYS.filter((key) => key !== 'only'), 'serial'];
+
+/**
+ * The checks tests and groups share: only the option `keys` the call takes,
+ * so a misspelled `timout` fails instead of leaving the default in place,
+ * and each known option's value.
+ */
+function validateCommonOptions(options: TestOptions | DescribeOptions, label: string, keys: readonly string[]): void {
+  for (const key of Object.keys(options)) {
+    if (!keys.includes(key)) {
+      const hint = didYouMean(key, keys);
+      throw new CollectionError(`${label} has unknown key "${key}"${hint === '' ? `; expected one of ${keys.join(', ')}` : hint}`);
+    }
+  }
   if (options.timeout !== undefined) {
     if (!Number.isSafeInteger(options.timeout) || options.timeout <= 0) {
       throw new CollectionError(`${label}: timeout must be a positive safe integer`);
@@ -337,7 +368,7 @@ function insideSerial(group: GroupNode | undefined): boolean {
 }
 
 function validateTestOptions(options: TestOptions, group: GroupNode | undefined): void {
-  validateCommonOptions(options, 'test options');
+  validateCommonOptions(options, 'test options', TEST_OPTION_KEYS);
   if (insideSerial(group)) {
     const forbidden: (keyof TestOptions)[] = [
       'retries',
@@ -360,7 +391,7 @@ function validateTestOptions(options: TestOptions, group: GroupNode | undefined)
 }
 
 function validateDescribeOptions(options: DescribeOptions, parent: GroupNode | undefined): void {
-  validateCommonOptions(options, 'describe options');
+  validateCommonOptions(options, 'describe options', DESCRIBE_OPTION_KEYS);
   if (options.serial === true && insideSerial(parent)) {
     throw new CollectionError('nested serial groups are collection errors');
   }

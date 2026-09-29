@@ -52,7 +52,9 @@ match. Use [`expect`](/reference/expect) to wait.
 
 ## Queries
 
-Every query returns a `Locator` synchronously and performs no work.
+Every query returns a `Locator` synchronously and performs no work. An
+option key the query does not take (`{ nam: 'Save' }`) throws
+`INVALID_LOCATOR` naming the keys it does.
 
 A string passed to `getByRole` as `name`, `getByLabel`, `getByPlaceholder`,
 `getByText`, or `getByDisplayValue` matches the whole text, case-sensitive,

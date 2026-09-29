@@ -110,6 +110,12 @@ function timedOut(cause: unknown): boolean {
   return engineError?.code === 'OPERATION_TIMEOUT';
 }
 
+/** The keys of `TextMatchOptions`, what every text-family query takes. */
+const TEXT_OPTION_KEYS = ['exact', 'visible'] as const;
+
+/** The keys of `RoleOptions`: the accessible name, the text-match keys, and the states. */
+const ROLE_OPTION_KEYS = ['name', ...TEXT_OPTION_KEYS, 'checked', 'disabled', 'selected', 'expanded', 'pressed', 'level'] as const;
+
 class ScreenImpl implements Screen {
   constructor(
     protected readonly context: ScreenContext,
@@ -123,14 +129,17 @@ class ScreenImpl implements Screen {
   }
 
   getByRole(role: Role | RoleAlias, options?: RoleOptions): Locator {
+    rejectUnknownOptions('getByRole', options, ROLE_OPTION_KEYS, 'INVALID_LOCATOR');
     return new LocatorImpl(this.context, this.build(roleQuery(role, options, this.scope)));
   }
 
   getByLabel(text: TextMatch, options?: TextMatchOptions): Locator {
+    rejectUnknownOptions('getByLabel', options, TEXT_OPTION_KEYS, 'INVALID_LOCATOR');
     return new LocatorImpl(this.context, this.build(textQuery('label', text, options, this.scope)));
   }
 
   getByPlaceholder(text: TextMatch, options?: TextMatchOptions): Locator {
+    rejectUnknownOptions('getByPlaceholder', options, TEXT_OPTION_KEYS, 'INVALID_LOCATOR');
     return new LocatorImpl(
       this.context,
       this.build(textQuery('placeholder', text, options, this.scope)),
@@ -138,10 +147,12 @@ class ScreenImpl implements Screen {
   }
 
   getByText(text: TextMatch, options?: TextMatchOptions): Locator {
+    rejectUnknownOptions('getByText', options, TEXT_OPTION_KEYS, 'INVALID_LOCATOR');
     return new LocatorImpl(this.context, this.build(textQuery('text', text, options, this.scope)));
   }
 
   getByDisplayValue(value: TextMatch, options?: TextMatchOptions): Locator {
+    rejectUnknownOptions('getByDisplayValue', options, TEXT_OPTION_KEYS, 'INVALID_LOCATOR');
     return new LocatorImpl(
       this.context,
       this.build(textQuery('displayValue', value, options, this.scope)),
@@ -149,6 +160,7 @@ class ScreenImpl implements Screen {
   }
 
   getByTestId(id: TextMatch, options?: { visible?: boolean }): Locator {
+    rejectUnknownOptions('getByTestId', options, ['visible'], 'INVALID_LOCATOR');
     return new LocatorImpl(this.context, this.build(testIdQuery(id, options, this.scope)));
   }
 

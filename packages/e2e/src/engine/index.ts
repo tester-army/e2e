@@ -27,8 +27,9 @@ import { engineBrand } from '../internal/brands.ts';
 // reproduce exactly, exported so an engine never carries its own copy: the
 // runner error taxonomy, text-pattern matching, locator resolution over a
 // semantic tree, URL matching, assertion polling, and the JSON-value rules
-// for data a fixture returns.
+// for data a fixture returns, and the nearest-key hint an option typo gets.
 export { ConfigurationError, InfrastructureError, TestError } from '../internal/errors.ts';
+export { didYouMean } from '../internal/suggest.ts';
 export { validateJsonValue, type JsonValueRules } from '../internal/json-value.ts';
 export { describePattern, matchesText, toTextPattern } from '../internal/text.ts';
 export { resolveExpression, type ResolveExpressionOptions } from './resolve.ts';

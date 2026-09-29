@@ -203,6 +203,22 @@ describe('resolveConfig', () => {
     ).toThrow(/app\.services\[0\]\.env\.PASSWORD must be a string, got secrets\.get\("db"\)/);
   });
 
+  it('rejects a command, service, or teardown key the contract does not know, naming the nearest', () => {
+    const url = 'http://localhost:3000';
+    expect(() => resolveApp({ url, command: { executable: 'node', arg: ['server.mjs'] } } as never)).toThrow(
+      expect.objectContaining({ code: 'INVALID_CONFIG', message: 'target "web" engine fake app.command has unknown key "arg"; did you mean "args"?' }),
+    );
+    expect(() => resolveApp({ url, command: { executable: 'node', readyUrl: url } } as never)).toThrow(
+      /app\.command has unknown key "readyUrl"; expected one of executable, args, cwd, env, startupTimeout, shutdownTimeout, log, reuseExisting/,
+    );
+    expect(() => resolveApp({ url, services: [{ executable: 'db', readyURL: url }] } as never)).toThrow(
+      'target "web" engine fake app.services[0] has unknown key "readyURL"; did you mean "readyUrl"?',
+    );
+    expect(() =>
+      resolveApp({ url, services: [{ executable: 'db', waitForExit: true, teardown: { executable: 'db', waitForExit: true } }] } as never),
+    ).toThrow(/app\.services\[0\]\.teardown has unknown key "waitForExit"; expected one of executable, args/);
+  });
+
   it('rejects specVersion, which the runner version replaced', () => {
     for (const specVersion of ['0.1', '0.2']) {
       expect(() => resolve({ specVersion } as never)).toThrow(

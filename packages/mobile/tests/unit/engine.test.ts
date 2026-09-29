@@ -91,6 +91,15 @@ describe('manifest', () => {
     expect(Object.keys(free.session!)).toEqual(['back']);
   });
 
+  it('rejects an option it does not know, naming the nearest', () => {
+    expect(() => harness({ sesion: 'e2e-ios' } as never)).toThrow(
+      expect.objectContaining({ code: 'INVALID_CONFIG', message: 'mobile() has unknown option "sesion"; did you mean "session"?' }),
+    );
+    expect(() => harness({ bundleId: 'com.example' } as never)).toThrow(
+      /^mobile\(\) has unknown option "bundleId"; it takes platform, app, appPath, identity/,
+    );
+  });
+
   it('declares the app identity from the option, the build path, or an explicit identity', () => {
     expect(harness({ appPath: './build/App.app' }, false).engine.app).toMatchObject({ identity: './build/App.app' });
     expect(harness({ identity: 'com.example.app', environment: 'staging' }).engine.app).toMatchObject({

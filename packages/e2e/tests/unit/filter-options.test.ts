@@ -82,3 +82,15 @@ describe('locator.filter options', () => {
     );
   });
 });
+
+describe('query options', () => {
+  it.each<[string, (screen: ReturnType<typeof invoiceScreen>['screen']) => unknown, string]>([
+    ['getByRole', (screen) => screen.getByRole('row', invalid({ nam: 'Invoice 42 Due' })), 'getByRole options has no key "nam"; it takes name, exact, visible, checked, disabled, selected, expanded, pressed, level'],
+    ['getByText', (screen) => screen.getByText('Due', invalid({ exac: false })), 'getByText options has no key "exac"; it takes exact, visible'],
+    ['getByTestId', (screen) => screen.getByTestId('row', invalid({ exact: true })), 'getByTestId options has no key "exact"; it takes visible'],
+  ])('%s rejects a key it does not know with INVALID_LOCATOR before any engine call', (_, query, message) => {
+    const { screen, expressions } = invoiceScreen();
+    expect(() => query(screen)).toThrow(expect.objectContaining({ code: 'INVALID_LOCATOR', message }));
+    expect(expressions).toEqual([]);
+  });
+});

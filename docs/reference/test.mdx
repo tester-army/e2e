@@ -232,7 +232,8 @@ export interface SetupOptions extends Omit<TestOptions, 'session' | 'only' | 'sk
 ```
 
 `timeout` must be a positive safe integer; `retries` must be an integer from
-0 through 10. Groups do not accept `only`. `test.setup` requires `sessions`
+0 through 10. Groups do not accept `only`. An option key the call does not
+take (`{ timout: 1000 }`) is `COLLECTION_ERROR`, naming the nearest known one. `test.setup` requires `sessions`
 to be a static, non-empty array of unique names.
 
 Resolution order: test, nearest group, outer groups, config, built-in default.

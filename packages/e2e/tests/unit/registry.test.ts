@@ -53,6 +53,25 @@ describe('registration', () => {
     expect(registration.tests[0]!.options.tags).toEqual(['smoke', 'Login Form', 'billing:refunds', 'v2.0']);
   });
 
+  it('rejects an option key test, describe, or setup does not know, naming the nearest', async () => {
+    const register = (declare: () => void) => collectModule(async () => declare());
+    await expect(register(() => test('x', { timout: 1000, retry: 2 } as never, noop))).rejects.toThrow(
+      'test options has unknown key "timout"; did you mean "timeout"?',
+    );
+    await expect(register(() => test('x', { retry: 2 } as never, noop))).rejects.toThrow(
+      'test options has unknown key "retry"; expected one of timeout, retries, tags, skip, only, platforms, requires, session, agentContext, agent, trace, video',
+    );
+    await expect(register(() => test.describe('group', { searial: true } as never, () => {}))).rejects.toThrow(
+      'describe options has unknown key "searial"; did you mean "serial"?',
+    );
+    await expect(register(() => test.describe('group', { only: true } as never, () => {}))).rejects.toThrow(
+      /describe options has unknown key "only"; expected one of timeout, retries/,
+    );
+    await expect(register(() => test.setup('login', { sessions: ['admin'], tag: ['auth'] } as never, noop))).rejects.toThrow(
+      'test options has unknown key "tag"; did you mean "tags"?',
+    );
+  });
+
   it('rejects registration outside collection', () => {
     expect(() => test('orphan', noop)).toThrow(/collected by the e2e runner/);
   });

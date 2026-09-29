@@ -8,6 +8,7 @@ import type { EngineAppDeclaration, EngineHandle } from '../engine/index.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import { obj } from '../internal/objects.ts';
 import { insideProjectRoot } from '../internal/paths.ts';
+import { didYouMean } from '../internal/suggest.ts';
 import { isSecret } from '../secrets.ts';
 import {
   isImplicitTestHost,
@@ -209,15 +210,46 @@ function expandCommandPort<T extends CommandConfig>(command: T, label: string, e
   };
 }
 
+/** The keys of a `CommandConfig`: an app command and a service teardown take these only. */
+const COMMAND_KEYS: readonly string[] = [
+  'executable',
+  'args',
+  'cwd',
+  'env',
+  'startupTimeout',
+  'shutdownTimeout',
+  'log',
+  'reuseExisting',
+];
+
+/** The keys of a `ServiceConfig`: a command's, plus what steers the service. */
+const SERVICE_KEYS: readonly string[] = [...COMMAND_KEYS, 'name', 'readyUrl', 'waitForExit', 'teardown'];
+
 /**
- * The shape every spawned command shares: a non-empty executable, when set
- * positive integer timeouts, and when set a `log` path inside the project
- * root. A NaN or infinite budget would otherwise make the readiness loop spin
- * without a deadline; a log outside the root would let config write anywhere.
+ * The shape every spawned command shares: only the `keys` it takes, a
+ * non-empty executable, string `args` and `env` values, when set positive
+ * integer timeouts, and when set a `log` path inside the project root. A
+ * misspelled key would otherwise be dropped without a word; a NaN or
+ * infinite budget would make the readiness loop spin without a deadline; a
+ * log outside the root would let config write anywhere.
  */
-function validateCommand(command: CommandConfig, label: string, projectRoot: string): void {
+function validateCommand(
+  command: CommandConfig,
+  label: string,
+  projectRoot: string,
+  keys: readonly string[] = COMMAND_KEYS,
+): void {
   if (typeof command !== 'object' || command === null) {
     throw new ConfigurationError('INVALID_CONFIG', `${label} must be an object`);
+  }
+  for (const key of Object.keys(command)) {
+    if (!keys.includes(key)) {
+      const hint = didYouMean(key, keys);
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `${label} has unknown key "${key}"${hint === '' ? `; expected one of ${keys.join(', ')}` : hint}`,
+      );
+    }
   }
   if (typeof command.executable !== 'string' || command.executable.length === 0) {
     throw new ConfigurationError('INVALID_CONFIG', `${label}.executable is required`);
@@ -326,7 +358,7 @@ export function resolveServices(
   return raw.map((declaredService: ServiceConfig, index): ResolvedService => {
     const position = `${prefix}[${index}]`;
     const service = expandCommandPort(declaredService, position, expand);
-    validateCommand(service, position, projectRoot);
+    validateCommand(service, position, projectRoot, SERVICE_KEYS);
     const { name: _name, readyUrl: rawReadyUrl, waitForExit, teardown: declaredTeardown, ...command } = service;
     const readyUrl = httpUrl(
       rawReadyUrl === undefined ? undefined : expand(rawReadyUrl, `${position}.readyUrl`),
