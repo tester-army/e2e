@@ -30,7 +30,7 @@ import { createSessionCatalog, isGrammarVerb, type SessionCatalog } from './cata
 import type { LoadedConfig } from './config.ts';
 import { describeRecording, SessionRecorder } from './recording.ts';
 import { SessionRegistry } from './sessions.ts';
-import { catalogLine, defineMcpTool, describeToolDetail, errorResult, invokeTool, redactResult, textResult, type McpToolCallExtra, type McpToolResult, type McpToolSpec } from './tools.ts';
+import { actionResult, catalogLine, defineMcpTool, describeToolDetail, errorResult, invokeTool, redactResult, textResult, type McpToolCallExtra, type McpToolResult, type McpToolSpec } from './tools.ts';
 
 /** How long one session may live, whatever happens. */
 const SESSION_TTL_MS = 4 * 60 * 60 * 1000;
@@ -174,7 +174,7 @@ export class SessionHost {
     if (tool === undefined) throw this.unknownTool(live, name);
     const redact = live.attempt.agentRuntime.redact;
     return this.run(live, () => invokeTool(name, tool, args, extra)).then(
-      (result) => redactResult(result, redact),
+      (result) => redactResult(isGrammarVerb(name) ? actionResult(name, result) : result, redact),
       (cause: unknown) => redactResult(errorResult(cause), redact),
     );
   }

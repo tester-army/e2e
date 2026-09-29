@@ -302,8 +302,10 @@ describe('agent.act grammar verbs', () => {
       expect(step.events.filter((event) => event.kind === 'policy')).toEqual([
         expect.objectContaining({ name: 'upload.path', decision: 'denied', code: 'POLICY_DENIED' }),
       ]);
-      // The refusal reaches the model as the action's failure, naming the path it refused.
-      expect(turnsOf(instruction)[1]!.lastToolResult).toContain(`failed: ${JSON.stringify(path)} is`);
+      // The refusal reaches the model as the action's failure, led by the attempt and the code, naming the path it refused.
+      expect(turnsOf(instruction)[1]!.lastToolResult).toMatch(
+        new RegExp(`^upload ${JSON.stringify(path).replaceAll('.', '\\.')} to #\\S+ failed: POLICY_DENIED: ${JSON.stringify(path).replaceAll('.', '\\.')} is`),
+      );
     }
   });
 

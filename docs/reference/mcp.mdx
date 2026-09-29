@@ -53,7 +53,7 @@ protocol; anything a config module writes to stdout is redirected.
 | --- | --- | --- |
 | `open_session` | `target` (optional), `config` (optional path) | Loads the config, starts the app command, boots the engine, starts one attempt, opens the app URL when the engine can navigate. Returns the session id, the catalog, and the first observation. |
 | `tools` | `tool` (optional), `session` (required while several are open) | The catalog, one line per tool. With `tool`, its full description and argument schema. |
-| `call` | `tool`, `args` (optional), `session` (required while several are open) | Runs one catalog tool. Arguments are validated against the tool's closed schema first: a wrong type or an argument the tool does not declare is `INVALID_ARGUMENT`, and nothing runs. |
+| `call` | `tool`, `args` (optional), `session` (required while several are open) | Runs one catalog tool. Arguments are validated against the tool's closed schema first: a wrong type or an argument the tool does not declare is `INVALID_ARGUMENT`, and nothing runs. An action that fails is an error result that still carries the screen it re-observed, and leads with the tool, its target, and the code: `navigate file:///etc/passwd failed: POLICY_DENIED: forbidden URL scheme: file:`. |
 | `close_session` | `session` (required while several are open) | Saves a recording still running, ends the attempt, disposes the engine, stops the app processes the session started once no other session uses them. |
 
 ## Several sessions

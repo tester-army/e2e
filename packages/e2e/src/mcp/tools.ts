@@ -17,7 +17,8 @@
 import type { JSONSchema7, Tool, ToolExecutionOptions, ToolSet } from 'ai';
 import type { z } from 'zod';
 import { aiSdk, loadAiSdk } from '../agent/ai-sdk.ts';
-import { ConfigurationError, errorMessage, E2EError, isForeignE2EError } from '../internal/errors.ts';
+import { isFailedResult } from '../agent/loop-guards.ts';
+import { codedMessage, ConfigurationError, errorMessage } from '../internal/errors.ts';
 
 /** One MCP content part this server emits. */
 export type McpContent =
@@ -61,8 +62,18 @@ export function textResult(text: string): McpToolResult {
  * the code and message are what a test would have reported.
  */
 export function errorResult(cause: unknown): McpToolResult {
-  const code = cause instanceof E2EError || isForeignE2EError(cause) ? `${(cause as { code: string }).code}: ` : '';
-  return { content: [{ type: 'text', text: `${code}${errorMessage(cause)}` }], isError: true };
+  return { content: [{ type: 'text', text: codedMessage(cause) }], isError: true };
+}
+
+/**
+ * A grammar action's result, marked as an error when the action failed. A
+ * failed action still returns the screen it re-observed, as it does for the
+ * testing agent, so the result keeps it; its lead (`tap #n9 failed:
+ * LOCATOR_NOT_FOUND: …`) carries the code.
+ */
+export function actionResult(name: string, result: McpToolResult): McpToolResult {
+  const lead = result.content.find((part) => part.type === 'text');
+  return lead !== undefined && isFailedResult(name, lead.text) ? { ...result, isError: true } : result;
 }
 
 /** The same result with every text part passed through `redact`; image parts are the pixel taint's to withhold. */

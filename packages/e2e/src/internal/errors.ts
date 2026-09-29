@@ -15,6 +15,16 @@ export function errorMessage(cause: unknown): string {
 }
 
 /**
+ * The message of a thrown value led by its code when it is an e2e error, as
+ * the CLI prints one: `POLICY_DENIED: forbidden URL scheme: file:`. Any
+ * other value is its message alone.
+ */
+export function codedMessage(cause: unknown): string {
+  const code = cause instanceof E2EError || isForeignE2EError(cause) ? `${(cause as { code: string }).code}: ` : '';
+  return `${code}${errorMessage(cause)}`;
+}
+
+/**
  * Appends a remedy to a message: as a clause after a one-line message, on its
  * own line after a multi-line one (a provider's paragraph, Node's own `Did you
  * mean` line), so the hint never dangles off a sentence that already ended.

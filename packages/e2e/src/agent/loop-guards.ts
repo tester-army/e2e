@@ -10,6 +10,7 @@
  */
 
 import type { ModelMessage } from 'ai';
+import { GRAMMAR_TOOL_NAMES } from './action-names.ts';
 import { toolResultTexts } from './screen-update.ts';
 
 /** One tool call as identity: the name plus its exact serialized input. */
@@ -184,7 +185,7 @@ export function extractToolResults(messages: readonly ModelMessage[], concludeTo
       const texts = toolResultTexts(output);
       if (texts.length === 0) continue;
       const text = texts.join('\n');
-      results.push({ text, failed: isFailedResult(text) });
+      results.push({ text, failed: isFailedResult(part.toolName, text) });
     }
   }
   return results;
@@ -192,15 +193,18 @@ export function extractToolResults(messages: readonly ModelMessage[], concludeTo
 
 /**
  * Whether a tool result reports its action failing, by the first line's
- * shape: `Tapped #n6. failed: …` from an id-addressed grammar action,
- * `tap_at (30, 30) failed: …` from a point verb, `Action failed: …` from the
- * loop's guard, `Tool "x" failed: …` from a project tool. A point verb's lead
- * is its name and the point, so `failed:` after a closing parenthesis counts
- * only at the line's start; text the model typed never leads a line.
+ * shape: `Action failed: …` from the loop's guard and `Tool "x" failed: …`
+ * from a project tool that threw, for any tool; for a grammar tool also its
+ * own failure lead, the tool's name and what it was aimed at before
+ * `failed:` (`tap #n6 failed: …`, `tap_at (30, 30) failed: …`). A grammar
+ * success leads with a capital, so text the model typed into one never reads
+ * as a failure, and a project tool's own text (`build failed: 2 red`) is its
+ * result, not a failed call.
  */
-export function isFailedResult(text: string): boolean {
+export function isFailedResult(toolName: string, text: string): boolean {
   const first = text.split('\n', 1)[0] ?? '';
-  return /(?:^|\. )(?:Action |Tool "[^"]*" )?failed: |^[a-z_]+ \([^)]*\) failed: /.test(first);
+  if (/^(?:Action |Tool "[^"]*" )failed: /.test(first)) return true;
+  return GRAMMAR_TOOL_NAMES.has(toolName) && /^[a-z_]+(?: .*)? failed: /.test(first);
 }
 
 /**

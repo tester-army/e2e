@@ -13,7 +13,7 @@ import type { StepResult, Tool, ToolSet } from 'ai';
 import { z } from 'zod';
 import type { NodeActionName, PointActionName } from '../cache/trace.ts';
 import type { ViewportPoint } from '../engine/surface.ts';
-import { hasCause, TestError } from '../internal/errors.ts';
+import { codedMessage, hasCause, TestError } from '../internal/errors.ts';
 import type { AgentErrorCode } from '../types.ts';
 import { isRuntimeHardStop, BLOCKABLE_CODES, type StepExecutorContext, type StepVerdict } from './executor.ts';
 import { cacheTokenFields, readCost } from './model/sdk.ts';
@@ -332,7 +332,7 @@ export function createGrammarTools(
       description,
       inputSchema: z.object({ target }),
       execute: ({ target: id }) =>
-        acting(`${lead} #${id}.`, () => context.actions[verb]({ id }), expectChange === undefined ? {} : { expectChange }),
+        acting({ done: `${lead} #${id}.`, attempt: `${tool} #${id}` }, () => context.actions[verb]({ id }), expectChange === undefined ? {} : { expectChange }),
     });
   }
   // scroll_to reaches a node the screen lists (by id, through the engine's
@@ -372,12 +372,12 @@ export function createGrammarTools(
         const { target: id, text: reading, direction: way } = input;
         if (reading !== undefined) {
           return acting(
-            `Scrolled ${way ?? 'down'} until ${JSON.stringify(reading)} was in view.`,
+            { done: `Scrolled ${way ?? 'down'} until ${JSON.stringify(reading)} was in view.`, attempt: `scroll_to ${JSON.stringify(reading)}` },
             () => context.actions.scrollUntil(reading, way ?? 'down', id === undefined ? undefined : { id }),
             { expectChange: false },
           );
         }
-        if (id !== undefined) return acting(`Scrolled into view #${id}.`, () => context.actions.scrollTo({ id }), { expectChange: false });
+        if (id !== undefined) return acting({ done: `Scrolled into view #${id}.`, attempt: `scroll_to #${id}` }, () => context.actions.scrollTo({ id }), { expectChange: false });
         throw new TestError('INVALID_ARGUMENT', 'scroll_to takes a listed node id as target, a text to reach, or both');
       },
     });
@@ -399,10 +399,10 @@ export function createGrammarTools(
       }),
       execute: ({ target: id, value, ...rest }) =>
         id === undefined
-          ? acting('Typed into the focused field.', () =>
+          ? acting({ done: 'Typed into the focused field.', attempt: 'type into the focused field' }, () =>
               context.actions.typeText(value, { replace: (rest as { replace?: boolean }).replace === true }),
             )
-          : acting(`Typed into #${id}.`, () => typeIntoNode(context, { id }, value, `#${id}`)),
+          : acting({ done: `Typed into #${id}.`, attempt: `type #${id}` }, () => typeIntoNode(context, { id }, value, `#${id}`)),
     });
   }
   if (verbs.has('press') || verbs.has('pressKey')) {
@@ -442,7 +442,10 @@ export function createGrammarTools(
       }),
       execute: ({ target: id, key, times: count }) =>
         acting(
-          pressed(key, count ?? 1, id === undefined ? 'on the focused field' : `on #${id}`),
+          {
+            done: pressed(key, count ?? 1, id === undefined ? 'on the focused field' : `on #${id}`),
+            attempt: `press ${key} ${id === undefined ? 'on the focused field' : `on #${id}`}`,
+          },
           () => pressing(key, id, count ?? 1),
           { expectChange: !movesFocusOnly(key) },
         ),
@@ -452,7 +455,8 @@ export function createGrammarTools(
     tools['dismiss_keyboard'] = screenTool({
       description: 'Hide the on-screen keyboard when it covers what you need to reach.',
       inputSchema: z.object({}),
-      execute: () => acting('Dismissed the keyboard.', () => context.actions.dismissKeyboard(), { expectChange: false, keyboardNote: false }),
+      execute: () =>
+        acting({ done: 'Dismissed the keyboard.', attempt: 'dismiss_keyboard' }, () => context.actions.dismissKeyboard(), { expectChange: false, keyboardNote: false }),
     });
   }
   if (verbs.has('select')) {
@@ -460,7 +464,7 @@ export function createGrammarTools(
       description: 'Pick one option from a select-like control by its visible label.',
       inputSchema: z.object({ target, value: z.string().min(1) }),
       execute: ({ target: id, value }) =>
-        acting(`Selected "${value}" in #${id}.`, () => context.actions.select({ id }, value)),
+        acting({ done: `Selected "${value}" in #${id}.`, attempt: `select "${value}" in #${id}` }, () => context.actions.select({ id }, value)),
     });
   }
   if (verbs.has('check')) {
@@ -469,7 +473,10 @@ export function createGrammarTools(
         'Set a checkbox, switch, or radio to a state: checked true (the default) or false. Unlike tap it never flips a control already in that state, so use it whenever the step names the state to end in.',
       inputSchema: z.object({ target, checked: z.boolean().optional().describe('The state to end in; default true') }),
       execute: ({ target: id, checked }) =>
-        acting(`${checked === false ? 'Unchecked' : 'Checked'} #${id}.`, () => context.actions.check({ id }, checked !== false)),
+        acting(
+          { done: `${checked === false ? 'Unchecked' : 'Checked'} #${id}.`, attempt: `check #${id}` },
+          () => context.actions.check({ id }, checked !== false),
+        ),
     });
   }
   if (verbs.has('drag')) {
@@ -477,7 +484,7 @@ export function createGrammarTools(
       description:
         'Drag one node and drop it on another: reorder a list, move a card to a column, drop an item into a zone. The result reports what moved.',
       inputSchema: z.object({ target, to: target.describe('Node id of the drop target') }),
-      execute: ({ target: id, to }) => acting(`Dragged #${id} to #${to}.`, () => context.actions.drag({ id }, { id: to })),
+      execute: ({ target: id, to }) => acting({ done: `Dragged #${id} to #${to}.`, attempt: `drag #${id} to #${to}` }, () => context.actions.drag({ id }, { id: to })),
     });
   }
   if (verbs.has('upload')) {
@@ -486,7 +493,10 @@ export function createGrammarTools(
         'Attach one or more files to a file input node. Paths are relative to the project root, e.g. "fixtures/photo.png"; use the paths the step gives you. A file outside the project, a hidden one, or one that does not exist is refused.',
       inputSchema: z.object({ target, files: z.array(z.string().min(1)).min(1) }),
       execute: ({ target: id, files }) =>
-        acting(`Uploaded ${files.map((file) => JSON.stringify(file)).join(', ')} to #${id}.`, () => context.actions.upload({ id }, files)),
+        acting(
+          { done: `Uploaded ${listed(files)} to #${id}.`, attempt: `upload ${listed(files)} to #${id}` },
+          () => context.actions.upload({ id }, files),
+        ),
     });
   }
   if (verbs.has('scroll')) {
@@ -498,8 +508,10 @@ export function createGrammarTools(
       .max(MAX_SCROLL_TIMES)
       .optional()
       .describe(`How many screens to scroll in this one call, 1 to ${String(MAX_SCROLL_TIMES)}; default 1. Use more to move far down a long list or feed.`);
-    const scrolled = (way: string, count: number) =>
-      count === 1 ? `Scrolled ${way}.` : `Scrolled ${way} ${String(count)} screens.`;
+    const scrolled = (way: string, count: number, id?: string) => ({
+      done: count === 1 ? `Scrolled ${way}.` : `Scrolled ${way} ${String(count)} screens.`,
+      attempt: `scroll ${way}${id === undefined ? '' : ` #${id}`}`,
+    });
     // Each repeat is one recorded action against the budget, paced like a
     // separate call, so a lazy list gets to render between screens.
     const scrolling = async (way: 'up' | 'down' | 'left' | 'right', id: string | undefined, count: number): Promise<void> => {
@@ -515,7 +527,7 @@ export function createGrammarTools(
             'Scroll the viewport, or one scrollable node when target is given, by a screen or a few. The result reports the rows that came into or left the tree. For a row far down a long or windowed list, prefer scroll_to with the row\'s text: it pages until the row shows, as one action.',
           inputSchema: z.object({ direction, target: target.optional(), times }),
           execute: ({ direction: way, target: id, times: count }) =>
-            acting(scrolled(way, count ?? 1), () => scrolling(way, id, count ?? 1), { expectChange: false }),
+            acting(scrolled(way, count ?? 1, id), () => scrolling(way, id, count ?? 1), { expectChange: false }),
         })
       : screenTool({
           description: 'Scroll the viewport by a screen or a few. The result reports the rows that came into or left the tree. For a row far down a long list, prefer scroll_to with the row\'s text: it pages until the row shows, as one action.',
@@ -528,14 +540,14 @@ export function createGrammarTools(
     tools['navigate'] = screenTool({
       description: 'Navigate to a URL or an app-relative path.',
       inputSchema: z.object({ url: z.string().min(1) }),
-      execute: ({ url }) => acting(`Navigated to ${url}.`, () => context.actions.navigate(url)),
+      execute: ({ url }) => acting({ done: `Navigated to ${url}.`, attempt: `navigate ${url}` }, () => context.actions.navigate(url)),
     });
   }
   if (verbs.has('back')) {
     tools['back'] = screenTool({
       description: 'Go back one step: the browser history on a page, the in-app back on a device. The result shows the screen you return to.',
       inputSchema: z.object({}),
-      execute: () => acting('Navigated back.', () => context.actions.back()),
+      execute: () => acting({ done: 'Navigated back.', attempt: 'back' }, () => context.actions.back()),
     });
   }
   // The pixel verbs are offered while pixels can still leave the runner. Once
@@ -566,7 +578,7 @@ export function createGrammarTools(
       inputSchema: z.object({ target, name: z.string().min(1) }),
       execute: ({ target: id, name }) =>
         acting(
-          `Filled secret "${name}" into #${id}; its value is masked in every observation.`,
+          { done: `Filled secret "${name}" into #${id}; its value is masked in every observation.`, attempt: `type_secret "${name}" into #${id}` },
           () => context.actions.typeSecret({ id }, name),
           { expectChange: false },
         ),
@@ -691,7 +703,7 @@ function createPointTools(
       execute: ({ x: px, y: py }) => {
         const point = pointOf(px, py, tool);
         if (typeof point === 'string') return Promise.resolve(point);
-        return acting(`${tool} ${at(px, py)}`, async () => (await context.actions[verb](point)).summary);
+        return acting(pointAttempt(tool, at(px, py)), async () => (await context.actions[verb](point)).summary);
       },
     });
   }
@@ -709,7 +721,7 @@ function createPointTools(
       execute: ({ x: px, y: py, value, ...rest }) => {
         const point = pointOf(px, py, 'type_at');
         if (typeof point === 'string') return Promise.resolve(point);
-        return acting(`type_at ${at(px, py)}`, async () => {
+        return acting(pointAttempt('type_at', at(px, py)), async () => {
           const found = await focusAt(point, px, py, 'type_at');
           if (found.kind === 'control') {
             const note = await typeIntoNode(context, found.control, value, found.summary);
@@ -732,7 +744,7 @@ function createPointTools(
       execute: ({ x: px, y: py, key }) => {
         const point = pointOf(px, py, 'press_at');
         if (typeof point === 'string') return Promise.resolve(point);
-        return acting(`press_at ${at(px, py)}`, async () => {
+        return acting(pointAttempt('press_at', at(px, py)), async () => {
           const found = await focusAt(point, px, py, 'press_at');
           if (found.kind === 'control') await context.actions.press(found.control, key);
           else await context.actions.pressKey(key);
@@ -749,7 +761,7 @@ function createPointTools(
       execute: ({ x: px, y: py, value }) => {
         const point = pointOf(px, py, 'select_at');
         if (typeof point === 'string') return Promise.resolve(point);
-        return acting(`select_at ${at(px, py)}`, async () => {
+        return acting(pointAttempt('select_at', at(px, py)), async () => {
           const hit = await controlAt(point, 'select_at');
           await context.actions.select(hit.control, value);
           return `Selected "${value}" in ${hit.summary}.`;
@@ -783,26 +795,56 @@ function verbKit(context: StepExecutorContext, options: GrammarToolOptions) {
   const present = async (lead: string, update: ScreenUpdate = {}): Promise<ScreenOutput> =>
     screen.present(await context.observe({ pixels: screen.showingPixels }), { lead, ...update });
   const acting = (
-    description: string,
+    label: ActionLabel,
     action: () => Promise<string | ActionOutcome | void>,
     { expectChange = true, ...update }: ScreenUpdate = {},
   ): Promise<ScreenOutput> =>
     inOrder(() =>
       guard(async () => {
-        let outcome: ActionOutcome = { lead: description, expectChange };
+        let outcome: ActionOutcome = { lead: label.done, expectChange };
         try {
           const returned = await action();
           if (typeof returned === 'string') outcome = { lead: returned, expectChange };
           else if (returned !== undefined) outcome = { lead: returned.lead, expectChange: returned.expectChange ?? expectChange };
         } catch (cause) {
           if (isRuntimeHardStop(cause)) throw cause;
-          const message = cause instanceof Error ? cause.message : String(cause);
-          return present(`${description} failed: ${message}`);
+          return present(failureLead(label, cause));
         }
         return present(outcome.lead, { expectChange: outcome.expectChange, ...update });
       }),
     );
   return { guard, screen, verbs: context.target.verbs, inOrder, present, acting };
+}
+
+/**
+ * What an action's result opens with: `done` when it ran, and `attempt`,
+ * the tool and what it was aimed at, for the lead of a failure, so a failed
+ * action never reads as done.
+ */
+interface ActionLabel {
+  readonly done: string;
+  readonly attempt: string;
+}
+
+/**
+ * The lead of a failed action: the attempt, then the error's code when it
+ * has one, then its message. `navigate file:///etc/passwd failed:
+ * POLICY_DENIED: forbidden URL scheme: file:`. It starts with the tool's
+ * name, lowercase, where every success lead starts with a capital, which is
+ * the shape `isFailedResult` reads.
+ */
+function failureLead(label: ActionLabel, cause: unknown): string {
+  return `${label.attempt} failed: ${codedMessage(cause)}`;
+}
+
+/** The label of a point verb: its name and the point; a success leads with what the action says it hit. */
+function pointAttempt(tool: string, point: string): ActionLabel {
+  return { done: `${tool} ${point}`, attempt: `${tool} ${point}` };
+}
+
+/** Files as an upload's lead names them. */
+function listed(files: readonly string[]): string {
+  return files.map((file) => JSON.stringify(file)).join(', ');
 }
 
 /** How the screen after an action reads (a change expected unless said otherwise); the lead is the action's own. */

@@ -80,27 +80,35 @@ describe('checkLoopGuards thresholds', () => {
 });
 
 describe('failure streak', () => {
-  const failed = 'Tapped #n6. failed: node #n6 is not on the current screen (observation b3); it was removed or never existed\n\nCurrent screen (revision b3, 2 nodes):\n#n1 document\n #n2 heading "X"';
+  const failed = 'tap #n6 failed: LOCATOR_NOT_FOUND: node #n6 is not on the current screen (observation b3); it was removed or never existed\n\nCurrent screen (revision b3, 2 nodes):\n#n1 document\n #n2 heading "X"';
   const tapped = 'Tapped #n6.\n\nScreen unchanged since revision b3 (2 nodes).';
 
   it('recognizes every failure shape a tool result takes, and nothing else', () => {
-    expect(isFailedResult(failed)).toBe(true);
-    expect(isFailedResult('Action failed: the step budget is spent')).toBe(true);
-    expect(isFailedResult('Tool "seed" failed: connection refused')).toBe(true);
-    expect(isFailedResult(tapped)).toBe(false);
+    expect(isFailedResult('tap', failed)).toBe(true);
+    expect(isFailedResult('tap', 'Action failed: the step budget is spent')).toBe(true);
+    expect(isFailedResult('seed', 'Tool "seed" failed: connection refused')).toBe(true);
+    expect(isFailedResult('tap', tapped)).toBe(false);
+    // An action's failure leads with the tool and what it was aimed at, never the success it did not have.
+    expect(isFailedResult('navigate', 'navigate file:///etc/passwd failed: POLICY_DENIED: forbidden URL scheme: file:')).toBe(true);
+    expect(isFailedResult('upload', 'upload "voucher.txt" to #n12006 failed: no file at "voucher.txt" under the project root')).toBe(true);
+    expect(isFailedResult('back', 'back failed: there is no page to go back to')).toBe(true);
+    expect(isFailedResult('navigate', 'Navigated to https://example.test/failed: x.\n\nScreen changes since revision b3:')).toBe(false);
+    // A project tool's own text is its result, however it reads; only a throw, reported by the guard, fails it.
+    expect(isFailedResult('ci_status', 'build failed: 2 tests red')).toBe(false);
+    expect(isFailedResult('ci_status', 'Action failed: the step budget is spent')).toBe(true);
     // Text the model typed is not a failure, even when it reads like one.
-    expect(isFailedResult('Typed "failed: no" into #n3.\n\nScreen unchanged since revision b3 (2 nodes).')).toBe(false);
-    expect(isFailedResult('Typed "(x) failed: no" into #n3.\n\nScreen unchanged since revision b3 (2 nodes).')).toBe(false);
+    expect(isFailedResult('tap', 'Typed "failed: no" into #n3.\n\nScreen unchanged since revision b3 (2 nodes).')).toBe(false);
+    expect(isFailedResult('tap', 'Typed "(x) failed: no" into #n3.\n\nScreen unchanged since revision b3 (2 nodes).')).toBe(false);
   });
 
   it('recognizes the point verbs, whose lead is the verb and the point rather than a sentence', () => {
     const missed = 'nothing the screen lists is at (50, 50)';
-    expect(isFailedResult(`tap_at (30, 30) failed: ${missed}; this engine taps listed nodes only\n\nScreen unchanged since revision b3 (2 nodes).`)).toBe(true);
-    expect(isFailedResult(`type_at (60, 189) failed: ${missed}; type_at needs a control the screen lists.`)).toBe(true);
-    expect(isFailedResult(`press_at (60, 189) failed: ${missed}; press_at needs a control the screen lists.`)).toBe(true);
-    expect(isFailedResult(`select_at (30, 30) failed: ${missed}; select_at needs a control the screen lists.`)).toBe(true);
-    expect(isFailedResult('Tapped the point (300, 60); no listed control is there.\n\nScreen unchanged since revision b3 (2 nodes).')).toBe(false);
-    expect(isFailedResult('Typed into the field at (120, 60) (tapped to focus it; nothing the screen lists is at (200, 100)).')).toBe(false);
+    expect(isFailedResult('tap_at', `tap_at (30, 30) failed: ${missed}; this engine taps listed nodes only\n\nScreen unchanged since revision b3 (2 nodes).`)).toBe(true);
+    expect(isFailedResult('type_at', `type_at (60, 189) failed: ${missed}; type_at needs a control the screen lists.`)).toBe(true);
+    expect(isFailedResult('press_at', `press_at (60, 189) failed: ${missed}; press_at needs a control the screen lists.`)).toBe(true);
+    expect(isFailedResult('select_at', `select_at (30, 30) failed: ${missed}; select_at needs a control the screen lists.`)).toBe(true);
+    expect(isFailedResult('tap', 'Tapped the point (300, 60); no listed control is there.\n\nScreen unchanged since revision b3 (2 nodes).')).toBe(false);
+    expect(isFailedResult('tap', 'Typed into the field at (120, 60) (tapped to focus it; nothing the screen lists is at (200, 100)).')).toBe(false);
   });
 
   const failure: GuardToolResult = { text: failed, failed: true };
@@ -166,7 +174,7 @@ describe('failure streak', () => {
     const results = extractToolResults([result('tap', withScreenshot(tapped)), ...streak(3)], 'complete_step');
     expect(results).toHaveLength(4);
     expect(results[0]!.failed).toBe(false);
-    expect(results[1]!.text).toMatch(/^Tapped #n6\. failed: /);
+    expect(results[1]!.text).toMatch(/^tap #n6 failed: /);
     expect(results[1]!.failed).toBe(true);
     expect(checkFailureStreak(results)).toEqual({ kind: 'warn', reason: 'the last 3 actions failed in a row' });
     expect(checkFailureStreak(extractToolResults(streak(5), 'complete_step')).kind).toBe('stop');

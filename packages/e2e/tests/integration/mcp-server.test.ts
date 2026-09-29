@@ -236,9 +236,12 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     expect(elsewhere.text).toContain(`NO_SESSION: session "not-this-one" is not open; open: ${sessionId} on "web"`);
 
     // A stale id is refused the way the testing agent sees it: the action
-    // reports its failure and the screen it re-observed, no wrong node acted on.
+    // reports its failure, code first and never as done, and the screen it
+    // re-observed; no wrong node acted on. The result is an MCP error.
     const stale = await call('tap', { target: 'n9999' });
-    expect(stale.text).toMatch(/^Tapped #n9999\. failed: .*n9999/);
+    expect(stale.isError).toBe(true);
+    expect(stale.text).toMatch(/^tap #n9999 failed: LOCATOR_NOT_FOUND: node #n9999 is not on the current screen/);
+    expect(stale.text).not.toContain('Tapped');
     expect(stale.text).toContain('re-observe');
 
     const before = await call('screenshot');
@@ -256,9 +259,12 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     expect(tainted.text).toContain('No screenshot: a secret was filled in this attempt');
     expect(tainted.text).toContain('PIXEL_TAINTED');
 
-    const denied = await call('navigate', { url: 'javascript:alert(1)' });
-    expect(denied.text).toMatch(/^Navigated to javascript:alert\(1\)\. failed: /);
-    expect(denied.text).toContain('forbidden URL scheme');
+    for (const url of ['javascript:alert(1)', 'file:///etc/passwd']) {
+      const denied = await call('navigate', { url });
+      expect(denied.isError, url).toBe(true);
+      expect(denied.text.split('\n')[0]).toBe(`navigate ${url} failed: POLICY_DENIED: forbidden URL scheme: ${url.slice(0, url.indexOf(':') + 1)}`);
+      expect(denied.text).not.toContain('Navigated');
+    }
 
     // A second session opens beside the first on its own browser: while both
     // are open a call names its session, and each drives its own screen.
