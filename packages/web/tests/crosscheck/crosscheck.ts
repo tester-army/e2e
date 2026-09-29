@@ -86,6 +86,21 @@ const INTERACTIVE_CHROME_ROLES = new Set([
   'slider', 'spinbutton', 'tab', 'menuitem', 'menuitemcheckbox', 'menuitemradio', 'treeitem',
 ]);
 
+/**
+ * Icon-font glyphs, private-use code points, which the tree drops from a
+ * name (`ICON_GLYPHS` in `src/in-page/read-semantics.ts`) and the engine's
+ * role locator tolerates (`glyphTolerantName` in `src/locators.ts`). Removed
+ * from Chrome's name before it is compared, and allowed around the words of
+ * the name `getByRole` is asked for.
+ */
+const ICON_GLYPHS = /\p{Co}/gu;
+
+/** A name as `getByRole` is asked for it: exact, with icon-font glyphs allowed wherever it has a space or begins or ends. */
+function glyphTolerant(name: string): RegExp {
+  const words = normalize(name).split(' ').map((word) => word.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&'));
+  return new RegExp(`^[\\s\\p{Co}]*${words.join('[\\s\\p{Co}]+')}[\\s\\p{Co}]*$`, 'u');
+}
+
 /** The ARIA states compared, as Chrome's AX property names. */
 const STATES = ['checked', 'disabled', 'expanded', 'selected', 'pressed'] as const;
 
@@ -222,7 +237,7 @@ function compareWithChrome(node: SemanticNode, ax: AXNode, facts: ElementFacts, 
   }
   const accepted = CHROME_ROLES[role] ?? [role];
   if (!accepted.includes(chromeRole)) into.push({ oracle: 'chrome', field: 'role', ours: role, theirs: chromeRole, node: label });
-  const theirs = normalize(String(ax.name?.value ?? ''));
+  const theirs = normalize(String(ax.name?.value ?? '').replace(ICON_GLYPHS, ''));
   const cut = ours.length >= 250 && theirs.startsWith(ours.slice(0, 200));
   const unnamedByChrome = theirs === '' && (ENGINE_NAMED_ROLES.has(role) || CHROME_UNNAMED_ROLES.has(role));
   if (normalize(ours) !== theirs && !cut && !unnamedByChrome) into.push({ oracle: 'chrome', field: 'name', ours, theirs, node: label });
@@ -247,7 +262,7 @@ async function compareWithPlaywright(page: Page, node: SemanticNode, into: Disag
     const found = await page
       // `includeHidden` also changes how Playwright computes names, so it is
       // set only for a node the tree itself reports hidden.
-      .getByRole(role as Parameters<Page['getByRole']>[0], { name, exact: true, includeHidden: node.states?.hidden === true })
+      .getByRole(role as Parameters<Page['getByRole']>[0], { name: glyphTolerant(name), includeHidden: node.states?.hidden === true })
       .evaluateAll((elements, [attribute, id]) => elements.some((element) => element.getAttribute(attribute!) === id), [MARKER, node.ref.id]);
     if (!found) into.push({ oracle: 'playwright', field: 'getByRole', ours: 'match', theirs: 'no match', node: label });
   } catch (error) {

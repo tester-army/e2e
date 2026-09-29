@@ -151,6 +151,23 @@ export const FIXTURE_PAGES: readonly FixturePage[] = [
     `,
   },
   {
+    name: 'generated content',
+    html: `
+      <style>
+        .arrow::before { content: "\\2192"; }
+        .glyph::before { content: "\\f090"; }
+        .badge::after { content: " new"; }
+        .quiet::before { content: "\\2605" / ""; }
+      </style>
+      <button><i class="arrow"> Login</i></button>
+      <button><i class="glyph"> Sign in</i></button>
+      <a href="/inbox" class="badge">Inbox</a>
+      <button class="quiet">Favourite</button>
+      <a href="/exit" aria-label="Log out"><i class="glyph"></i></a>
+      <a href="/leave" title="Sign out"><i class="glyph"></i></a>
+    `,
+  },
+  {
     name: 'hidden content',
     html: `
       <button aria-hidden="true">Aria hidden</button>

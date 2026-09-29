@@ -284,12 +284,15 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    * `hiddenAllowed` when that traversal began at a hidden target, whose whole
    * subtree then counts (2A); `visited` holds every element already read, so a
    * descendant that references its ancestor, or two that reference each other,
-   * contribute once.
+   * contribute once. `generated` is set for an accessible name, which reads
+   * CSS generated content (`::before`, `::after`) as accname does, and unset
+   * for label text, which Playwright's `getByLabel` reads without it.
    */
   interface NameWalk {
     readonly inReference: boolean;
     readonly hiddenAllowed: boolean;
     readonly visited: Set<Element>;
+    readonly generated: boolean;
   }
 
   /** Computed style of any element, SVG included, or undefined in a document with no view. */
@@ -297,11 +300,90 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     el.ownerDocument.defaultView?.getComputedStyle(el);
 
   /** A walk from the top, with the elements that may not contribute again already visited. */
-  const nameWalk = (visited: readonly Element[]): NameWalk => ({
+  const nameWalk = (visited: readonly Element[], generated: boolean): NameWalk => ({
     inReference: false,
     hiddenAllowed: false,
     visited: new Set(visited),
+    generated,
   });
+
+  /**
+   * Private-use code points: icon-font glyphs (Font Awesome's `\f090`) that
+   * render as a picture and read as nothing a person could type. Each one
+   * becomes a space once a name is computed, so `<button><i class="fa
+   * fa-sign-in"></i> Login</button>` is the button "Login" and the role
+   * locator, which tolerates them where a name has a space or begins or
+   * ends, finds it by that.
+   */
+  const ICON_GLYPHS = /\p{Co}/gu;
+
+  /** A computed name or label as the tree reports it: each icon glyph a space, whitespace collapsed. */
+  const withoutGlyphs = (name: string): string => {
+    const spaced = name.replace(ICON_GLYPHS, ' ');
+    return spaced === name ? name : spaced.replace(/\s+/g, ' ').trim();
+  };
+
+  /**
+   * An element's name as the tree reports it. A name of icon glyphs alone
+   * (`<button title="Delete"><i class="fa fa-trash"></i></button>`, which the
+   * browser names by the glyph) falls back to the element's `title`, the
+   * word a person hovering it reads, else to no name.
+   */
+  const reportedName = (el: Element, name: string | null): string | null => {
+    if (name === null) return null;
+    const shown = withoutGlyphs(name);
+    if (shown !== '' || shown === name) return shown;
+    const title = (el.getAttribute('title') ?? '').trim();
+    return title === '' ? null : title;
+  };
+
+  /**
+   * The text a `content` value contributes, as Playwright's role selector
+   * reads it: its strings and `attr()` values, or only the alternative text
+   * after a `/`. Contributing anything else (an image, a counter, a quote)
+   * makes it contribute nothing.
+   */
+  const contentTextOf = (el: Element, value: string): string | null => {
+    const tokens: string[] = [];
+    const token = /\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[-\w]+\((?:[^()"']|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')*\)|\/|[-\w]+)/gy;
+    let match: RegExpExecArray | null;
+    let end = 0;
+    while ((match = token.exec(value)) !== null) {
+      tokens.push(match[1]!);
+      end = token.lastIndex;
+    }
+    if (value.slice(end).trim() !== '') return null;
+    let text = '';
+    for (const part of tokens.slice(tokens.lastIndexOf('/') + 1)) {
+      const attribute = /^attr\(\s*([-\w]+)\s*\)$/.exec(part);
+      if (attribute !== null) text += el.getAttribute(attribute[1]!) ?? '';
+      else if (part.startsWith('"') || part.startsWith("'")) {
+        text += part.slice(1, -1).replace(/\\([0-9a-fA-F]{1,6})\s?|\\(.)/g, (_all, hex: string | undefined, char: string | undefined) =>
+          hex === undefined ? char! : String.fromCodePoint(Number.parseInt(hex, 16)));
+      } else return null;
+    }
+    return text;
+  };
+
+  /**
+   * What an element's `::before` or `::after` adds to a name (accname 2F.ii):
+   * its content's text, spaced like a block when the pseudo element is not
+   * inline; empty when it shows nothing.
+   */
+  const generatedContentOf = (el: Element, pseudo: '::before' | '::after'): string => {
+    const style = el.ownerDocument.defaultView?.getComputedStyle(el, pseudo);
+    if (style === undefined || style.display === 'none' || style.visibility === 'hidden') return '';
+    const value = style.content;
+    if (value === '' || value === 'none' || value === 'normal') return '';
+    const text = contentTextOf(el, value);
+    if (text === null) return '';
+    return style.display === 'inline' ? text : ` ${text} `;
+  };
+
+  /** An element's `::before` contribution, once per read: nested named-from-content roles walk the same descendants again. */
+  const beforeContentOf = memoized((el: Element) => generatedContentOf(el, '::before'));
+  /** An element's `::after` contribution, once per read. */
+  const afterContentOf = memoized((el: Element) => generatedContentOf(el, '::after'));
 
   /** True for a subtree the name computation drops: aria-hidden, or hidden by style as innerText leaves it out. */
   const isNameHidden = (el: Element, style: CSSStyleDeclaration | undefined): boolean =>
@@ -355,6 +437,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
           inReference: true,
           hiddenAllowed: isReferenceHidden(target),
           visited: walk.visited,
+          generated: walk.generated,
         }),
       );
     }
@@ -398,10 +481,12 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    * them: a space on each side of a block-level child and of a `<br>`, none
    * around an inline one. `<img alt="Search">Go` reads "SearchGo" and
    * `<div>A</div><div>B</div>` reads "A B", so the name a role query matched
-   * is the name the node reports.
+   * is the name the node reports. An accessible name wraps them in the
+   * element's generated content, so `<button class="next">Go</button>` with
+   * `.next::after { content: " \2192" }` is the button "Go →".
    */
   const childrenNameOf = (el: Element, walk: NameWalk): string => {
-    let out = '';
+    let out = walk.generated ? beforeContentOf(el) : '';
     for (const child of contentChildrenOf(el)) {
       if (child.nodeType === 3) {
         out += child.nodeValue ?? '';
@@ -413,7 +498,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
       const block = child.tagName === 'BR' || (style?.display ?? 'inline') !== 'inline';
       out += block ? ` ${token} ` : token;
     }
-    return out;
+    return walk.generated ? out + afterContentOf(el) : out;
   };
 
   /**
@@ -446,12 +531,13 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    * its descendants' contributions, hidden and aria-hidden subtrees dropped (a
    * required-field marker, a decorative glyph), whitespace collapsed. The
    * element's own attributes are `accessibleName`'s business; this reads what
-   * is inside it.
+   * is inside it. `generated` reads CSS generated content too, as an
+   * accessible name does and label text does not.
    */
-  const nameTextOf = (el: Element): string => {
+  const nameTextOf = (el: Element, generated: boolean): string => {
     if (isNameHidden(el, styleOf(el))) return '';
     if (NAME_OPAQUE_TAGS.has(el.tagName)) return '';
-    return childrenNameOf(el, nameWalk([el])).replace(/\s+/g, ' ').trim();
+    return childrenNameOf(el, nameWalk([el], generated)).replace(/\s+/g, ' ').trim();
   };
 
   const NAME_OPAQUE_TAGS: ReadonlySet<string> = new Set(['TEXTAREA', 'SELECT', 'INPUT', 'SCRIPT', 'STYLE']);
@@ -499,12 +585,13 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     const labels: string[] = [];
     const ariaLabel = el.getAttribute('aria-label');
     if (ariaLabel !== null && ariaLabel.trim() !== '') labels.push(ariaLabel.trim());
-    for (const name of referencedNamesOf(el, nameWalk([])) ?? []) labels.push(name);
+    for (const name of referencedNamesOf(el, nameWalk([], false)) ?? []) labels.push(name);
     for (const label of associatedLabels(el)) {
-      const text = nameTextOf(label);
+      const text = nameTextOf(label, false);
       if (text !== '') labels.push(text);
     }
-    return labels.length === 0 ? null : labels;
+    const shown = labels.map(withoutGlyphs).filter((label) => label !== '');
+    return shown.length === 0 ? null : shown;
   };
 
   /** Text owned directly by an element, excluding descendant elements. */
@@ -518,14 +605,14 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
 
   const accessibleName = memoized((el: Element): string | null => {
     // accname reads a labelledby reference (2B) before the element's own aria-label (2C).
-    const referenced = referencedNamesOf(el, nameWalk([]));
+    const referenced = referencedNamesOf(el, nameWalk([], true));
     if (referenced !== null) return referenced.join(' ');
     const ariaLabel = el.getAttribute('aria-label');
     if (ariaLabel !== null && ariaLabel.trim() !== '') return ariaLabel.trim();
     const labels = associatedLabels(el);
     if (labels.length > 0) {
       const joined = labels
-        .map((label) => nameTextOf(label))
+        .map((label) => nameTextOf(label, true))
         .join(' ')
         .trim();
       if (joined !== '') return joined;
@@ -535,7 +622,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     const captionTag = NAMING_CHILD_TAGS[el.tagName.toLowerCase()];
     if (captionTag !== undefined) {
       const caption = Array.from(el.children).find((child) => child.tagName.toLowerCase() === captionTag);
-      const text = caption === undefined ? '' : nameTextOf(caption);
+      const text = caption === undefined ? '' : nameTextOf(caption, true);
       if (text !== '') return text;
     }
     if (el instanceof HTMLInputElement && (el.type === 'button' || el.type === 'submit' || el.type === 'reset')) {
@@ -546,7 +633,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     }
     const role = implicitRole(el);
     if (role !== null && NAME_FROM_CONTENT_ROLES.has(role)) {
-      const text = nameTextOf(el);
+      const text = nameTextOf(el, true);
       if (text !== '') return text;
     }
     const title = el.getAttribute('title');
@@ -1020,7 +1107,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     else text = textOf(el);
     if (projection.textLimit !== null) text = text.slice(0, projection.textLimit);
 
-    let name = accessibleName(el);
+    let name = reportedName(el, accessibleName(el));
     if (projection.nameLimit !== null && name !== null) name = name.slice(0, projection.nameLimit);
     // A secure field withholds its value, never its labels: a password field is still found by its label.
     const labels = labelsOf(el);

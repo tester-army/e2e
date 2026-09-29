@@ -262,7 +262,8 @@ the fixture project (`tests/integration/agent-ai-trace.test.ts` shows how).
 web engine's semantic tree against two oracles on the same page: Chrome's
 accessibility tree over CDP (role, name, checked, disabled, expanded,
 selected, pressed, heading level, and interactive nodes the tree left out)
-and Playwright's `getByRole(role, { name, exact })` round trip. It runs on the
+and Playwright's `getByRole(role, { name })` round trip, exact but tolerant of
+icon-font glyphs the way the engine's role locator is. It runs on the
 fixture pages in `tests/crosscheck/fixtures.ts` under `pnpm test`, and on
 every web-benchmark scenario in `benchmark.yml` or locally:
 

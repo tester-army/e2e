@@ -69,6 +69,27 @@ type Candidates =
   | { readonly kind: 'css'; readonly selector: string }
   | { readonly kind: 'engine'; readonly selector: string };
 
+/** Whitespace or an icon-font glyph (a private-use code point), the characters the tree's names drop or collapse. */
+const GLYPH_OR_SPACE = '[\\s\\p{Co}]';
+
+/**
+ * A role query's string name as a pattern for the name the browser
+ * computes, which keeps the private-use glyphs of an icon font the tree
+ * drops (`in-page/read-semantics.ts`): "Login" matches the browser's
+ * "\uf090 Login", the button a person reads as Login. A glyph may stand
+ * wherever the name has a space or begins or ends. Exact is whole and
+ * case-sensitive, else a case-insensitive substring, as Playwright matches a
+ * string name.
+ */
+function glyphTolerantName(name: string, exact: boolean): RegExp {
+  const body = name
+    .trim()
+    .split(/\s+/)
+    .map((word) => word.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&'))
+    .join(`${GLYPH_OR_SPACE}+`);
+  return exact ? new RegExp(`^${GLYPH_OR_SPACE}*${body}${GLYPH_OR_SPACE}*$`, 'u') : new RegExp(body, 'iu');
+}
+
 /**
  * The one table of query kinds: each declares its Playwright getter or its
  * CSS candidate set. An exact label query is the one kind whose candidates
@@ -84,10 +105,6 @@ function candidatesOf(query: SemanticQuery, testIdAttribute: string): Candidates
         });
       }
       const options: Parameters<Page['getByRole']>[1] = {};
-      if (query.name !== undefined) {
-        options.name = patternToPw(query.name);
-        if (query.name.kind === 'string') options.exact = query.name.exact;
-      }
       const states = query.states ?? {};
       if (states.checked !== undefined) options.checked = states.checked;
       if (states.disabled !== undefined) options.disabled = states.disabled;
@@ -95,8 +112,11 @@ function candidatesOf(query: SemanticQuery, testIdAttribute: string): Candidates
       if (states.expanded !== undefined) options.expanded = states.expanded;
       if (states.pressed !== undefined) options.pressed = states.pressed;
       if (query.level !== undefined) options.level = query.level;
-      const role = ARIA_ROLE_BY_CONTRACT_ROLE[query.value.value] ?? query.value.value;
-      return { kind: 'playwright', locate: (roots) => roots.getByRole(role as Parameters<Page['getByRole']>[0], options) };
+      const role = (ARIA_ROLE_BY_CONTRACT_ROLE[query.value.value] ?? query.value.value) as Parameters<Page['getByRole']>[0];
+      const name = query.name;
+      if (name === undefined) return { kind: 'playwright', locate: (roots) => roots.getByRole(role, options) };
+      if (name.kind === 'regexp') return { kind: 'playwright', locate: (roots) => roots.getByRole(role, { ...options, name: patternToPw(name) }) };
+      return { kind: 'playwright', locate: (roots) => roots.getByRole(role, { ...options, name: glyphTolerantName(name.value, name.exact) }) };
     }
     case 'label':
       return query.value.kind === 'string' && query.value.exact

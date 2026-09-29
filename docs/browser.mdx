@@ -350,6 +350,24 @@ provider that cannot record, or a browser the service cannot record (a
 headless one), leaves `record` out, and the engine records the screencast.
 [Kernel](/integrations/kernel#recordings) records this way.
 
+## Icon fonts and generated content
+
+Text a stylesheet adds with `::before` or `::after` is part of a control's
+name, as browsers and screen readers read it: a button whose icon is
+`.next::before { content: "→" }` is `button "→ Next"` in the tree and to
+`getByRole`. Icon fonts are the exception. Font Awesome and its kin draw
+each icon from a private-use character (`\f090`) that means nothing as text,
+so the engine drops those characters from every name: the-internet's
+`<button><i class="fa fa-sign-in"> Login</i></button>` is `button "Login"`,
+and `getByRole('button', { name: 'Login' })` finds it; a glyph between two
+words reads as a space. A control whose only content is such an icon reads
+as its `title` when it has one, but the browser names it by the glyph, so
+`getByRole` by that title finds nothing: give it an `aria-label`, or reach
+it with `web.locator('[title="Sign out"]')`. A `RegExp` name is matched against the
+name as the browser computes it, glyph included, so leave it unanchored
+(`/Login/`) on such a control. Label text never includes generated content,
+as `getByLabel` reads it.
+
 ## Inert content
 
 The agent does not see an element with the `inert` attribute or anything

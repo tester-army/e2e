@@ -21,8 +21,9 @@ function fakeLocator(chain: readonly string[]): PwLocator {
     getByRole: (role: string, options?: Record<string, unknown>) =>
       fakeLocator([
         ...chain,
-        `role(${role}${options === undefined || Object.keys(options).length === 0 ? '' : `,${JSON.stringify(options)}`})`,
+        `role(${role}${options === undefined || Object.keys(options).length === 0 ? '' : `,${JSON.stringify(options, (_key, value: unknown) => (value instanceof RegExp ? String(value) : value))}`})`,
       ]),
+
     getByLabel: (text: string | RegExp, options?: { exact?: boolean }) =>
       fakeLocator([...chain, `label(${String(text)}${options?.exact ? ',exact' : ''})`]),
     getByText: (text: string | RegExp, options?: { exact?: boolean }) =>
@@ -56,6 +57,11 @@ const projectExpression = (target: Page, expression: LocatorExpression) => proje
 
 /** The step every semantic query part starts from: its scope plus the closed shadow roots under it. */
 const ROOTS = 'locator(e2e-roots=)';
+
+/** The step an exact role name projects to: the name with icon-font glyphs allowed around its words. */
+function exactRoleName(role: string, name: string, options = ''): string {
+  return `role(${role},{${options}"name":"/^[\\\\s\\\\p{Co}]*${name}[\\\\s\\\\p{Co}]*$/u"})`;
+}
 
 const shared: LocatorExpression = {
   kind: 'query',
@@ -160,7 +166,7 @@ describe('projectExpression', () => {
         level: 1,
       },
     };
-    expect(chainOf(projectExpression(page, heading).locator)).toEqual([ROOTS, 'role(heading,{"name":"Dashboard","exact":true,"level":1})']);
+    expect(chainOf(projectExpression(page, heading).locator)).toEqual([ROOTS, exactRoleName('heading', 'Dashboard', '"level":1,')]);
     const checkbox: LocatorExpression = {
       kind: 'query',
       query: { kind: 'role', value: { kind: 'string', value: 'checkbox', exact: true }, states: { checked: true, disabled: false } },
@@ -173,7 +179,7 @@ describe('projectExpression', () => {
       kind: 'query',
       query: { kind: 'role', value: { kind: 'string', value: 'image', exact: true }, name: { kind: 'string', value: 'Map', exact: true } },
     };
-    expect(chainOf(projectExpression(page, image).locator)).toEqual([ROOTS, 'role(img,{"name":"Map","exact":true})']);
+    expect(chainOf(projectExpression(page, image).locator)).toEqual([ROOTS, exactRoleName('img', 'Map')]);
     const tablist: LocatorExpression = {
       kind: 'query',
       query: { kind: 'role', value: { kind: 'string', value: 'tablist', exact: true } },
