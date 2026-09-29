@@ -153,7 +153,7 @@ function locatorCandidates(error: E2EError, observation: AgentObservation, redac
   return scored
     .toSorted((a, b) => b.score - a.score)
     .slice(0, MAX_CANDIDATES)
-    .map(({ node }) => truncateUtf8(formatNode(node, 0, redact), MAX_CANDIDATE_BYTES));
+    .map(({ node }) => truncateUtf8(formatNode(node, 0, redact, observation.origin), MAX_CANDIDATE_BYTES));
 }
 
 /**

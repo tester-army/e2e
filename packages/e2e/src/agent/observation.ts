@@ -45,6 +45,8 @@ interface AgentObservationMetadata {
   readonly location?: string;
   /** Location projected to path and query when it is a URL, otherwise kept opaque. */
   readonly path?: string;
+  /** The location's origin, when it has one; link targets on it render as paths. */
+  readonly origin?: string;
   readonly revision: string;
   /** Redacted, size-bounded serialization sent to the model. */
   readonly text: string;
@@ -75,10 +77,12 @@ export function prepareObservation(
 ): AgentObservation {
   const location = observation.location === undefined ? undefined : options.redact(observation.location);
   const path = location === undefined ? undefined : observationPath(location);
+  const origin = location === undefined ? undefined : observationOrigin(location);
   const metadata = {
     revision: observation.revision,
     ...(location === undefined ? {} : { location }),
     ...(path === undefined ? {} : { path }),
+    ...(origin === undefined ? {} : { origin }),
     viewport: observation.viewport,
   };
   const pixels = clearPixels(observation);
@@ -115,7 +119,7 @@ export function prepareObservation(
 
   const emit = (node: SemanticNode, depth: number): void => {
     if (cutByBudget) return;
-    const line = formatNode(node, depth, redact);
+    const line = formatNode(node, depth, redact, origin);
     const size = encoder.encode(`${line}\n`).byteLength;
     if (lines.length > 0 && bytes + size > budget) {
       cutByBudget = true;
@@ -208,6 +212,13 @@ function observationPath(location: string): string {
   if (!URL.canParse(location)) return location;
   const url = new URL(location);
   return `${url.pathname}${url.search}${url.hash}`;
+}
+
+/** The origin of a URL location, or undefined for an opaque one (`null` origins included). */
+function observationOrigin(location: string): string | undefined {
+  if (!URL.canParse(location)) return undefined;
+  const origin = new URL(location).origin;
+  return origin === 'null' ? undefined : origin;
 }
 
 /** Phase metrics describe a node count only when the capture actually read nodes. */
@@ -326,15 +337,20 @@ export function projectTree(node: SemanticNode, redact: (text: string) => string
 /** Depth beyond this renders flat; deep chrome must not buy tokens with spaces. */
 const MAX_INDENT_DEPTH = 10;
 
+/** Link target characters a line shows; a longer target is cut there and ends with `…`. */
+const MAX_HREF_LENGTH = 256;
+
 /**
  * Renders one node as `#id role "name" text="..." value="..." selection="..." [states]`. Role-less text
  * holders omit the role token entirely: on a large screen they are half the
- * lines, and the model needs their text, not a filler word.
+ * lines, and the model needs their text, not a filler word. A link target on
+ * `origin`, the screen's own, renders as its path.
  */
 export function formatNode(
   node: SemanticNode,
   depth: number,
   redact: (text: string) => string,
+  origin?: string,
 ): string {
   const parts: string[] = [`#${node.ref.id}`];
   if (node.role !== undefined && node.role !== '') parts.push(node.role);
@@ -345,7 +361,7 @@ export function formatNode(
   // already reduced href to origin and path.
   if (node.testId !== undefined && node.testId !== '') parts.push(`testid=${JSON.stringify(node.testId)}`);
   const href = node.attributes?.['href'];
-  if (href !== undefined && href !== '') parts.push(`href=${JSON.stringify(redact(href))}`);
+  if (href !== undefined && href !== '') parts.push(`href=${JSON.stringify(renderHref(redact(href), origin))}`);
   const placeholder = node.attributes?.['placeholder'];
   if (placeholder !== undefined && placeholder !== '' && (node.name ?? '') === '') {
     parts.push(`placeholder=${JSON.stringify(redact(placeholder))}`);
@@ -369,6 +385,17 @@ export function formatNode(
     .map(([key]) => key);
   if (states.length > 0) parts.push(`[${states.join(' ')}]`);
   return `${' '.repeat(Math.min(depth, MAX_INDENT_DEPTH))}${parts.join(' ')}`;
+}
+
+/**
+ * A link target as a line shows it: a path when it is on the screen's origin,
+ * complete and shorter than the URL, else as the engine reported it; cut at
+ * `MAX_HREF_LENGTH` with a trailing `…` so a cut target never reads as whole.
+ * Redaction runs before the cut, so the cut never leaves part of a secret.
+ */
+function renderHref(href: string, origin: string | undefined): string {
+  const shown = origin !== undefined && href.startsWith(`${origin}/`) ? href.slice(origin.length) : href;
+  return shown.length > MAX_HREF_LENGTH ? `${shown.slice(0, MAX_HREF_LENGTH)}…` : shown;
 }
 
 /**

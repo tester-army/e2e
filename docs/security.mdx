@@ -21,7 +21,7 @@ content. App content cannot grant tools, credentials, or a larger budget.
 | In the prompt | Form |
 | --- | --- |
 | Your instruction and params | Quoted inside `<instruction>` and marked as data. A `Secret` param is projected to its name and purpose. |
-| The screen | An accessibility tree with stable node ids, roles, names, text, test ids, and states, truncated at the observation byte limit. Selectors are stripped. |
+| The screen | An accessibility tree with stable node ids, roles, names, text, test ids, link targets, and states, truncated at the observation byte limit. Selectors are stripped. A link target keeps its origin and path; its query and fragment, where tokens ride, show only as `?…` and `#…`. |
 | The location | The current URL, redacted. |
 | A screenshot | When needed or requested, only if the engine proves secure fields are masked and no secret has been filled in the attempt. |
 | Prior steps | `agent.act` receives bounded records from the same test or serial group. Judgments use the current screen and instruction, without prior-step records. |

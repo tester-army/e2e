@@ -770,17 +770,24 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
   });
 
   /**
-   * Reduces a URL to origin and path, dropping userinfo, query, and fragment.
-   * Bounded: hrefs are shown to the model as link hints, not resolved, so a
-   * long path only buys tokens.
+   * Reduces a link target to origin and path, dropping userinfo, query, and
+   * fragment, which routinely carry tokens. A dropped query or fragment
+   * leaves `?…` or `#…` behind, so the value never reads as the whole
+   * target when it is not; a URL path never holds a literal `…`, since the
+   * URL parser percent-encodes it. A scheme with no origin (`mailto:`,
+   * `tel:`) keeps the scheme in its place. The path is whole: the harness
+   * bounds what it renders, and marks what it cuts.
    */
-  const HREF_LIMIT = 80;
   const originAndPath = (value: string, base: string): string => {
+    const elided = (query: boolean, fragment: boolean): string => `${query ? '?…' : ''}${fragment ? '#…' : ''}`;
     try {
       const url = new URL(value, base);
-      return `${url.origin}${url.pathname}`.slice(0, HREF_LIMIT);
+      const origin = url.origin === 'null' ? url.protocol : url.origin;
+      return `${origin}${url.pathname}${elided(url.search !== '', url.hash !== '')}`;
     } catch {
-      return (value.split('?')[0]?.split('#')[0] ?? '').slice(0, HREF_LIMIT);
+      const [beforeFragment = '', ...fragment] = value.split('#');
+      const [path = '', ...query] = beforeFragment.split('?');
+      return `${path}${elided(query.join('?') !== '', fragment.join('#') !== '')}`;
     }
   };
 
