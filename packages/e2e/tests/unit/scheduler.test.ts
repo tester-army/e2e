@@ -810,6 +810,28 @@ describe('scheduler fault handling', () => {
     ]);
   });
 
+  it('still fails a target whose every worker dies of SIGTERM while loading when no interrupt comes', async () => {
+    const target = makeTarget('web', 0);
+    const pairs = ['a', 'b'].map((name) => makePair(makeTest(`tests/${name}.e2e.ts`, name), target));
+    const fleet = new FakeFleet({ signalledInit: { workers: 50, signal: 'SIGTERM' } });
+
+    const collected = await run(
+      makeSelection([{ target, pairs }]),
+      makeCollection(
+        pairs.map((pair) => pair.test.file),
+        pairs,
+      ),
+      fleet,
+      { workers: 2 },
+    );
+
+    expect(collected.runErrors.map((error) => error.error.code)).toEqual(['WORKER_INIT_FAILED']);
+    expect(collected.results.map((result) => result.status)).toEqual(['skipped', 'skipped']);
+    // The two workers alive when the first signal landed are excused; their
+    // replacements count, so spawning stops as it does for any boot failure.
+    expect(fleet.spawned.length).toBeLessThanOrEqual(5);
+  });
+
   it('a plain interrupt reports the queued units it cancels, so a rerun can pick them up', async () => {
     const target = makeTarget('web', 0);
     const pairs = ['running', 'queued', 'queued-too'].map((name) =>

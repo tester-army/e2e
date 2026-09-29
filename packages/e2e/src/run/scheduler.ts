@@ -223,6 +223,8 @@ class Scheduler {
    * run; from then on the scheduler interrupts as if the signal had fired.
    */
   private stopSkip: SkipInfo | undefined;
+  /** The workers alive when the first one died of an interrupt signal before it was ready; see `excusedSignal`. */
+  private signalledWave: Set<SchedulerWorker> | undefined;
 
   constructor(private readonly options: RunUnitsOptions) {}
 
@@ -694,15 +696,28 @@ class Scheduler {
         });
       }
       this.synthesizeCrashResults(state, worker, unit);
-    } else if (tracked && !worker.becameReady && !this.interrupting && !isInterruptSignal(signal)) {
+    } else if (tracked && !worker.becameReady && !this.interrupting && !this.excusedSignal(worker, signal)) {
       // The interrupt retires every worker still starting; those exits were
-      // asked for and say nothing about whether the target can boot. Nor
-      // does a worker a terminal Ctrl-C reached before it could ignore the
-      // signal: the runner's own interrupt may reach it only after the exit.
+      // asked for and say nothing about whether the target can boot.
       state.initFailures += 1;
       if (state.initFailures >= MAX_INIT_FAILURES) this.failTarget(state);
     }
     this.wakeUp();
+  }
+
+  /**
+   * Whether a worker that died of `signal` before it was ready is excused as
+   * interrupted: a terminal Ctrl-C reaches every worker still loading before
+   * it ignores the signal, and the runner's own interrupt may land only after
+   * those exits. One signal reaches the workers alive at that moment, so only
+   * they are excused; a replacement that dies of a signal too is a boot
+   * failure like any other, and a target that kills its own workers still
+   * fails after `MAX_INIT_FAILURES`.
+   */
+  private excusedSignal(worker: SchedulerWorker, signal: NodeJS.Signals | null): boolean {
+    if (!isInterruptSignal(signal)) return false;
+    this.signalledWave ??= new Set([...this.workers, worker]);
+    return this.signalledWave.has(worker);
   }
 
   /** Emits records for a unit whose worker died before reporting it done. */
