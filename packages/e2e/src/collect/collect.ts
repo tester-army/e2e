@@ -399,22 +399,39 @@ export function collectFromRegistration(
 /**
  * A collection made of one registration supplied in memory instead of
  * discovered files: what `e2e explore` runs, whose one test has no file. The
- * virtual file name is what the report and the reporters show for it. Nothing
- * is discovered, so no near miss or unmatched positional can exist.
+ * virtual file name is what the report and the reporters show for it. With
+ * `setups` (from `collectSetups`), the project's files come first, none of
+ * them selected, so the setup test producing a session the registration
+ * consumes runs as it would for `e2e run`. No positional is involved, so no
+ * near miss or unmatched positional can exist.
  */
 export function collectInMemory(
   projectRoot: string,
   file: string,
   registration: ModuleRegistration,
+  setups?: Collection,
 ): Collection {
   const collected = collectFromRegistration(projectRoot, path.join(projectRoot, file), registration);
+  const files = [...(setups?.files ?? []), collected];
   return {
-    files: [collected],
-    tests: collected.tests,
+    files,
+    tests: files.flatMap((entry) => entry.tests),
     nearMisses: [],
     unmatchedPositionals: [],
-    uncollected: [],
+    uncollected: setups?.uncollected ?? [],
   };
+}
+
+/**
+ * Collects every file the config globs discover for its setup tests alone:
+ * no file is selected, so none of its ordinary tests runs, and a file that
+ * fails to collect is kept in `uncollected` rather than failing the run, as
+ * a file positionals left out is.
+ */
+export async function collectSetups(config: ResolvedConfig): Promise<Collection> {
+  const discovered = discoverFiles(config.projectRoot, config.tests);
+  const { files, uncollected } = await collectFiles(config, discovered, () => false, true, new Map());
+  return { files, tests: files.flatMap((entry) => entry.tests), nearMisses: [], unmatchedPositionals: [], uncollected };
 }
 
 /**
@@ -435,11 +452,33 @@ export async function collect(
   const discovered = discoverFiles(config.projectRoot, config.tests);
   const { files: selectedFiles, unmatched, lines } = selectPositionals(config.projectRoot, discovered, positionals);
   const selected = new Set(selectedFiles);
+  const { files, uncollected } = await collectFiles(config, discovered, (file) => selected.has(file), positionals.length > 0, lines);
+  return {
+    files,
+    tests: files.flatMap((file) => file.tests),
+    nearMisses: discovered.length === 0 ? findNearMissTestFiles(config.projectRoot, config.tests) : [],
+    unmatchedPositionals: unmatched,
+    uncollected,
+  };
+}
+
+/**
+ * Imports each discovered file once in the collection realm. A collection
+ * error in a selected file, or in any file of a run nothing narrowed, throws;
+ * one in a file a narrowed run left unselected is kept in `uncollected`.
+ */
+async function collectFiles(
+  config: ResolvedConfig,
+  discovered: readonly string[],
+  isSelected: (file: string) => boolean,
+  narrowed: boolean,
+  lines: ReadonlyMap<string, readonly number[]>,
+): Promise<{ files: CollectedFile[]; uncollected: UncollectedFile[] }> {
   const files: CollectedFile[] = [];
   const uncollected: UncollectedFile[] = [];
   for (const file of discovered) {
     const absolutePath = path.join(config.projectRoot, file);
-    const skippable = positionals.length > 0 && !selected.has(file);
+    const skippable = narrowed && !isSelected(file);
     let registration: ModuleRegistration;
     try {
       registration = await collectModule(() => importModule(absolutePath, 'collect'), absolutePath);
@@ -456,17 +495,11 @@ export async function collect(
       );
     }
     try {
-      files.push(collectFromRegistration(config.projectRoot, absolutePath, registration, selected.has(file), lines.get(file)));
+      files.push(collectFromRegistration(config.projectRoot, absolutePath, registration, isSelected(file), lines.get(file)));
     } catch (cause) {
       if (!skippable || !(cause instanceof CollectionError)) throw cause;
       uncollected.push({ file, reason: cause.message });
     }
   }
-  return {
-    files,
-    tests: files.flatMap((file) => file.tests),
-    nearMisses: discovered.length === 0 ? findNearMissTestFiles(config.projectRoot, config.tests) : [],
-    unmatchedPositionals: unmatched,
-    uncollected,
-  };
+  return { files, uncollected };
 }

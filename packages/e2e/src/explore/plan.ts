@@ -59,11 +59,22 @@ export interface PlanAccount {
   readonly username: string;
 }
 
+/**
+ * What the planner and the explorer are told when the exploration starts
+ * from a saved session, so neither spends a step signing in again or signs
+ * the rest of the run out.
+ */
+export function signedInContext(session: string): string {
+  return `The app starts signed in: the run restored the session "${session}" a setup test saved. Do not sign in again, and do not sign out, unless the goal asks for it.`;
+}
+
 export interface PlanRequest {
   /** The run must end now; the planner is asked for the closing assessment only. */
   readonly mustFinish: boolean;
   /** The accounts the explorer can sign in with. */
   readonly accounts?: readonly PlanAccount[] | undefined;
+  /** The saved session the exploration started from, when it started signed in. */
+  readonly session?: string | undefined;
   /** Why it must end, in the planner's prompt. */
   readonly reason?: string | undefined;
   readonly remainingMs: number;
@@ -158,6 +169,7 @@ export function planInstruction(state: ExploreState, request: PlanRequest): stri
     '',
     'Findings so far:',
     findings,
+    ...(request.session === undefined ? [] : ['', signedInContext(request.session)]),
     ...(request.accounts === undefined || request.accounts.length === 0
       ? []
       : [
@@ -167,6 +179,10 @@ export function planInstruction(state: ExploreState, request: PlanRequest): stri
         ]),
     '',
   ];
+  const signIn =
+    request.session === undefined
+      ? 'sign in with the accounts listed above (or made-up credentials when none are configured)'
+      : 'work as the signed-in user rather than signing in again';
   if (request.mustFinish) {
     return [
       ...header,
@@ -181,8 +197,8 @@ export function planInstruction(state: ExploreState, request: PlanRequest): stri
     '- "step": the next exploration charter. "title" names the area or flow in a few words. "instruction" is a concrete,',
     '  self-contained charter for an agent that sees only the screen and that text: which flow to exercise, what inputs',
     '  to try, what to check. One flow or screen per step, sized for five to fifteen actions; split anything bigger.',
-    '  Ask the agent to interact, not only to look: submit forms with made-up test data, save and revisit, sign in with',
-    '  the accounts listed above (or made-up credentials when none are configured), act on a non-first item of a list. Prefer breadth: touch the main',
+    '  Ask the agent to interact, not only to look: submit forms with made-up test data, save and revisit,',
+    `  ${signIn}, act on a non-first item of a list. Prefer breadth: touch the main`,
     '  flows the goal names before drilling deeper into one. Do not re-test an area a passed step already covered, and',
     '  never plan a step to re-confirm a finding already recorded above. When a step ended at its limit, continue where',
     '  it stopped or move on. When a step summary mentions something odd that is not among the findings, spend the next',

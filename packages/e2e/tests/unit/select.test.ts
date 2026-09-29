@@ -491,7 +491,17 @@ describe('select', () => {
     const col = await collection(() => {
       test('uses session', { session: 'missing' }, noop);
     });
-    expect(() => select(col, config())).toThrow(/no setup test produces it/);
+    expect(() => select(col, config())).toThrow(/no setup test produces it; no collected setup test declares a session$/);
+  });
+
+  it('names the sessions setup tests declare, with the nearest, when a consumed one has no producer', async () => {
+    const col = await collection(() => {
+      test.setup('auth', { sessions: ['admin', 'member'] }, noop);
+      test('uses session', { session: 'admn' }, noop);
+    });
+    expect(() => select(col, config())).toThrow(
+      /consumes session "admn" but no setup test produces it; setup tests declare "admin", "member"; did you mean "admin"\?$/,
+    );
   });
 
   it('names a file a narrowed run could not collect as where a missing producer may live', async () => {
@@ -500,7 +510,7 @@ describe('select', () => {
     });
     const narrowed = { ...col, uncollected: [{ file: 'tests/auth.setup.e2e.ts', reason: 'boom' }] };
     expect(() => select(narrowed, config())).toThrow(
-      /no setup test produces it; it may be declared in a file that failed to collect: tests\/auth\.setup\.e2e\.ts \(boom\)$/,
+      /no setup test produces it; no collected setup test declares a session; it may be declared in a file that failed to collect: tests\/auth\.setup\.e2e\.ts \(boom\)$/,
     );
   });
 

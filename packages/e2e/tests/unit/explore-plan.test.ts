@@ -109,4 +109,14 @@ describe('planInstruction', () => {
     expect(text).toContain('"decision": "finish"');
     expect(text).not.toContain('"decision": "step"');
   });
+
+  it('says the run starts signed in from a restored session and plans no sign-in', () => {
+    const signedOut = planInstruction(fresh(), { mustFinish: false, remainingMs: 300_000, timeoutMs: 60_000 });
+    expect(signedOut).not.toContain('starts signed in');
+    expect(signedOut).toContain('sign in with the accounts listed above');
+    const text = planInstruction(fresh(), { mustFinish: false, session: 'admin', remainingMs: 300_000, timeoutMs: 60_000 });
+    expect(text).toContain('The app starts signed in: the run restored the session "admin" a setup test saved.');
+    expect(text).toContain('work as the signed-in user rather than signing in again');
+    expect(text).not.toContain('sign in with the accounts listed above');
+  });
 });

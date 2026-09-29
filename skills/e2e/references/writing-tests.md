@@ -317,6 +317,10 @@ test('the dashboard opens directly', { session: 'admin' }, async ({ app, screen 
 - A session holds cookies, local storage, and IndexedDB, for one run only.
   The files are encrypted and deleted at cleanup. Server state is not part of
   it.
+- A restored session keeps its setup's secret protection: when the setup
+  filled a secret, screenshots stay withheld in every test that restores it.
+  A setup that signs in without filling one (setting a session cookie with
+  `web.setCookies`, say) leaves them available.
 - Credentials live in the config; values come from the environment:
 
 ```ts

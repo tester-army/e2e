@@ -36,9 +36,12 @@ export interface ExploreBodyOptions {
   /**
    * Whether to open the app first. `app.open()` needs a target with a declared
    * URL; a device target without one is explored where the last test, or the
-   * run's warm-up, left the app.
+   * run's warm-up, left the app. A restored session leaves no page open, so
+   * the app is opened with one too.
    */
   readonly openApp: boolean;
+  /** The saved session the attempt restored, which the planner is told it starts signed in with. */
+  readonly session?: string | undefined;
   /**
    * The configured accounts. Each travels with every charter as a step
    * secret, so the explorer can sign in with `type_secret` by name; the
@@ -59,6 +62,7 @@ interface Loop {
   readonly agent: Agent;
   readonly state: ExploreState;
   readonly accounts: readonly PlanAccount[];
+  readonly session: string | undefined;
   /** The accounts with their passwords as secrets, once resolved; undefined when none is configured. */
   readonly secrets: AgentParams | undefined;
   readonly stepTimeoutMs: number;
@@ -81,7 +85,7 @@ export function createExploreBody(options: ExploreBodyOptions): TestFn {
         : Object.fromEntries(
             accounts.map((account) => [account.name, { username: account.username, password: credentials.user(account.name).password }]),
           );
-    const ending = await runSteps({ agent, state, accounts, secrets, stepTimeoutMs: options.stepTimeoutMs, remaining: () => deadline - now() });
+    const ending = await runSteps({ agent, state, accounts, session: options.session, secrets, stepTimeoutMs: options.stepTimeoutMs, remaining: () => deadline - now() });
     state.end(ending.ended, ending.summary);
     conclude(state);
   };
@@ -106,6 +110,7 @@ async function runSteps(loop: Loop): Promise<Ending> {
         mustFinish: stop !== undefined,
         reason: stop?.reason,
         accounts: loop.accounts,
+        session: loop.session,
         remainingMs: remaining(),
         timeoutMs: Math.max(MIN_PLAN_TIMEOUT_MS, Math.min(PLAN_TIMEOUT_MS, remaining())),
       });

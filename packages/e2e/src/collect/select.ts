@@ -764,8 +764,13 @@ function applySessionSelection(
         uncollected.length === 0
           ? ''
           : `; it may be declared in a file that failed to collect: ${nameFiles(uncollected.map((entry) => `${entry.file} (${entry.reason})`))}`;
+      const declared = [...sessionProducers.keys()];
+      const known =
+        declared.length === 0
+          ? '; no collected setup test declares a session'
+          : `; setup tests declare ${declared.map((name) => `"${name}"`).join(', ')}${didYouMean(pair.options.session, declared)}`;
       throw new CollectionError(
-        `test ${pair.test.id} consumes session "${pair.options.session}" but no setup test produces it${cause}`,
+        `test "${pair.test.titlePath.join(' > ')}" in ${pair.test.file} consumes session "${pair.options.session}" but no setup test produces it${known}${cause}`,
       );
     }
     neededSetups.add(`${pair.target.name}::${producer.id}`);

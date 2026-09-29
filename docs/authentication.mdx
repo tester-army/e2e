@@ -142,9 +142,13 @@ model input and reports. Reading a secure field is denied, so check that
 sign-in succeeded instead.
 
 After a secret fill, the runner withholds screenshots for the rest of the
-attempt because the app could display the value elsewhere. Keep sign-in in
-a setup test so later tests can still capture screenshots. Playwright trace
-images and video have separate limits; see
+attempt because the app could display the value elsewhere. A saved session
+keeps that protection: a test that restores a session whose setup filled a
+secret has its screenshots withheld too. A setup that signs in without
+filling a secret, for example by setting a session cookie with
+`web.setCookies`, leaves screenshots available to the tests that restore it.
+A value it uses that is not a configured secret is not redacted. Playwright
+trace images and video have separate limits; see
 [artifact redaction](/debugging#artifacts).
 
 ## Secrets that are not passwords

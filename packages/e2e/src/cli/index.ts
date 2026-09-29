@@ -595,6 +595,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
     .option('--target <id>', 'the target to explore (default: the first configured target)')
     .option('--agent <name>', 'the configured agent to explore with (default: agents.default)')
+    .option('--session <name>', 'start signed in: run the setup test that saves this session, then explore with it restored')
     .optionsGroup('Budgets:')
     .option(
       '--max-steps <n>',
@@ -623,6 +624,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           "e2e explore 'Explore the checkout flow like a first-time buyer and report anything off'",
           'e2e explore --target web --max-steps 4 --headed',
           "e2e explore --agent ux 'Review onboarding as a first-time user'",
+          "e2e explore --session admin 'Explore the admin settings and find bugs'",
           "e2e explore 'Hunt for broken forms and dead links' --video",
         ]),
         '',
@@ -638,6 +640,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           config?: string;
           target?: string;
           agent?: string;
+          session?: string;
           maxSteps?: number;
           timeout?: number;
           headed?: boolean;
@@ -655,6 +658,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
             configPath: options.config,
             target: options.target,
             agent: options.agent,
+            session: options.session,
             maxSteps: options.maxSteps,
             timeoutMs: options.timeout,
             headed: options.headed,

@@ -9,8 +9,8 @@ import {
   type ResolvedConfig,
   type ResolvedTarget,
 } from '../config/resolve.ts';
-import { collect, collectInMemory, type Collection } from '../collect/collect.ts';
-import type { ModuleRegistration } from '../collect/registry.ts';
+import { collect, collectInMemory, collectSetups, type Collection } from '../collect/collect.ts';
+import { groupChain, type ModuleRegistration } from '../collect/registry.ts';
 import { repeatEach, select, selectTargets, type Selection, type SelectionFilters, type Shard, type TagMode } from '../collect/select.ts';
 import {
   classifyError,
@@ -147,7 +147,12 @@ export interface RunOptions {
   reporterTimeout?: number | undefined;
 }
 
-/** A registration supplied in memory, under the virtual file name the report shows for it. */
+/**
+ * A registration supplied in memory, under the virtual file name the report
+ * shows for it. When one of its tests consumes a session, the config's test
+ * files are collected too, none of them selected, so the setup test that
+ * produces the session runs first, exactly as it would for `e2e run`.
+ */
 export interface InMemoryTests {
   readonly file: string;
   readonly registration: ModuleRegistration;
@@ -162,6 +167,13 @@ export interface InMemoryTests {
 export interface InMemoryExplore {
   snapshot(): ReportExplore;
   subscribe(listener: (progress: ExploreProgress) => void): void;
+}
+
+/** Whether a test of the registration, or a describe around one, consumes a session a setup test produces. */
+function consumesSession(registration: ModuleRegistration): boolean {
+  return registration.tests.some(
+    (test) => test.options.session !== undefined || groupChain(test.group).some((group) => group.options.session !== undefined),
+  );
 }
 
 /** How long a reporter's `onRunFinished` may take before the run stops waiting for it. */
@@ -574,7 +586,12 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
           const collection =
             options.tests === undefined
               ? await collect(config, options.files)
-              : collectInMemory(config.projectRoot, options.tests.file, options.tests.registration);
+              : collectInMemory(
+                  config.projectRoot,
+                  options.tests.file,
+                  options.tests.registration,
+                  consumesSession(options.tests.registration) ? await collectSetups(config) : undefined,
+                );
           const inputs = await selectionInputs(options, config);
           lastRun = inputs.lastRun;
           const selection = repeatEach(
@@ -685,7 +702,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
         ? inProcessSpawner({
             config,
             selection,
-            registration: options.tests?.registration,
+            inMemory: options.tests,
             runId,
             artifactsRoot,
             sessionStore: store,

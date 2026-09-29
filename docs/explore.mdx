@@ -76,7 +76,8 @@ reproduction steps, and any screenshot evidence. Severity runs from
 
 The JSON report stores these details under `run.explore`, along with the
 goal, budgets, steps, assessment, and reason the run ended. After a secret
-fill, screenshots are withheld for the rest of the attempt.
+fill, screenshots are withheld for the rest of the attempt, including a fill
+in the setup test of a [restored session](#start-signed-in).
 
 `--reporter list,markdown` also writes the findings to `.e2e/summary.md`.
 `--debug`, `--ai-trace`, and `--video` work as they do for `e2e run`. Video
@@ -99,6 +100,36 @@ for the exploration. Without credentials, it skips password sign-in.
 Use `--target <name>` to choose among several targets. Otherwise, explore
 uses the first and prints a notice. Exploration disables the trace cache
 and retries.
+
+## Start signed in
+
+Pass `--session <name>` to explore as a signed-in user. The name is a session
+a [setup test](/authentication) in your test files saves:
+
+```bash
+npx e2e explore --session admin 'Explore the admin settings and find bugs'
+```
+
+Explore collects the config's test files, runs the one setup test that
+declares the session, then restores the session into the exploration and
+opens the app. This works the same way as a test that declares
+`{ session: 'admin' }`. No other test runs. The planner and the agent are
+told the app starts signed in, so they do not plan a sign-in step. If no
+setup test declares the name, the run stops with `COLLECTION_ERROR` before
+any app process starts. The message lists the sessions your setup tests
+declare.
+
+Screenshots depend on how the setup signed in. Once a secret is filled, the
+runner withholds screenshots for the rest of the attempt, and a restored
+session keeps that protection:
+
+| The setup | Findings in the exploration |
+| --- | --- |
+| Filled a password or other secret, for example `fill(admin.password)` | No screenshots |
+| Signed in without filling a secret, for example by setting a session cookie with `web.setCookies` | Screenshots attached |
+
+A value the setup uses without it being a configured secret, such as a
+token it sets as a cookie, is not redacted from observations or reports.
 
 ## Writing a good goal
 

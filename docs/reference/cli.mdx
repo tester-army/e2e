@@ -368,6 +368,7 @@ assessment. The default goal is `Explore the app and find bugs`. See
 | `--config <path>` | string | discovered | Explicit config path, with the same errors as `run`. |
 | `--target <id>` | string | the first configured target | The one target to explore. Several targets and no flag explores the first and says so on stderr. An unknown name is `UNKNOWN_TARGET`. |
 | `--agent <name>` | string | `default` | The configured agent the exploration runs as. Its model, tools, and context are reused; a hand-rolled `StepExecutor` is replaced by the built-in agent, with a notice. An unknown name is `INVALID_CONFIG`. |
+| `--session <name>` | string | none | Starts signed in. The setup test in the config's test files that declares this session runs first, and the exploration restores what it saved, as a test with `{ session }` does. No other test runs. A name no setup test declares is `COLLECTION_ERROR`, naming the declared ones, before any app process starts. See [Start signed in](/explore#start-signed-in). |
 | `--max-steps <n>` | integer 1-12 | `8` | Exploration steps at most. Out of range exits 2. |
 | `--timeout <ms>` | integer 180000-900000 | `600000` | The run's wall clock. The last minute is kept for the closing assessment. Out of range exits 2. |
 | `--headed` | boolean | `false` | Requests visible UI when the engine supports it. |
@@ -378,6 +379,9 @@ assessment. The default goal is `Explore the app and find bugs`. See
 | `--video [mode]` | a video mode | config | As for `run`: one video of the whole exploration (WebM on a browser engine, MP4 on a device engine). A mode that records on an engine that cannot fails the run with `UNSUPPORTED_ARTIFACT` before exploration starts. A bare `--video` is `on`; `retain-on-failure` keeps it only when the exploration did not pass. The exploration is one attempt, so `on-first-retry` records nothing. Put the goal before `--video`, or write `--video=<mode>`. |
 
 The run has one result, under the virtual file `explore`, titled by the goal.
+With `--session`, the report also holds the setup test's result and lists the
+project's other tests as skipped with cause `filtered`, as `run` lists the
+tests of a file no positional named.
 The trace cache is off and retries are zero whatever the config says.
 `.e2e/report.json` gains `run.explore`: the goal, the budgets, why the run
 ended (`finished`, `step-limit`, `time`, `stuck`, or `aborted`), the
