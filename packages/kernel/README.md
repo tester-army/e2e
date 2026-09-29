@@ -28,9 +28,9 @@ Kernel's create-browser body as is (`stealth`, `headless`, `timeout_seconds`,
 `worker` (default) is one browser per worker slot for the run, `attempt` a
 fresh browser per test attempt. Every browser is tagged with the run, target,
 and slot, `timeout_seconds` defaults to 600 so Kernel deletes a browser a dead
-worker never released, and each lease logs its live view URL. On a headed
-browser, an attempt that records video (`--video`, or a test's `video`
-option) gets a Kernel replay of the browser's screen as its
+worker never released, and each lease logs its live view URL when Kernel
+gives one. On a headed browser, an attempt that records video (`--video`, or
+a test's `video` option) gets a Kernel replay of the browser's screen as its
 `video/replay.mp4`; a headless browser and `replay: false` get the page
 screencast.
 

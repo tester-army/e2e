@@ -69,8 +69,9 @@ suites that consume the built packages the way a user would.
   browsers for the web engine. An official integration with a hosted service
   is one package per service, named after it (`@e2e-dev/<service>`), with the
   vendor SDK and the engine it plugs into as peers. It implements that
-  engine's provider seam (`BrowserProvider`, `DeviceProvider`) and imports
-  the engine's types only; the engines never know it exists.
+  engine's provider seam (`BrowserProvider` for web, `DeviceProvider` for
+  mobile) and imports the engine's types only; the engines never know it
+  exists.
 - `apps/testbed` (`@e2e-dev/testbed`, private) — dogfood project that
   consumes the **built** packages like a real user would: the playground app
   where every runner feature (sessions, routes, downloads, frames, uploads,
@@ -488,7 +489,8 @@ trees, on both platforms, without a device.
   under the `@e2e-dev` scope. The `@e2edev` scope (moved to `@e2e-dev` on
   2026-09-28), `@e2edev/e2e`, `@e2edev/oauth` (folded into `e2e/oauth` on
   2026-09-21), and `@e2e-dev/integrations` (moved to `@e2e-dev/kernel` on
-  2026-09-29) are the retired names: deprecated on npm, never referenced here. Provenance stays off until the repository is
+  2026-09-29, deprecated by hand after the first `@e2e-dev/kernel` publish)
+  are the retired names: deprecated on npm, never referenced here. Provenance stays off until the repository is
   public, and the release job authenticates with the `NPM_TOKEN` secret.
   Document the CLI as `npx e2e`; npx runs the locally installed bin first, and
   the flag `--no-install` adds nothing once the package is a dependency.
