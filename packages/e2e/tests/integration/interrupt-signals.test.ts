@@ -10,6 +10,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { startFixtureApp } from '../helpers/fixture-app.ts';
 import { createProject } from '../helpers/run-project.ts';
 
 const PACKAGE_ROOT = path.resolve(fileURLToPath(import.meta.url), '..', '..', '..');
@@ -120,6 +121,49 @@ test('sleeps until interrupted', async () => {
   await new Promise((resolve) => setTimeout(resolve, 600_000));
 });
 `;
+
+/**
+ * The web engine with a real browser up in the worker when the signal lands,
+ * so the browser library's own signal handling is in play too. The body
+ * sleeps behind an `afterEach` that takes a while and logs its end: a worker
+ * the library exits on the signal dies inside the hook, so the log shows
+ * whether the worker, not the library, decided when to go.
+ */
+function webProject(appUrl: string): Fixture {
+  return {
+    files: {
+      'e2e.config.ts': `import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+
+export default {
+  tests: 'tests/**/*.e2e.ts',
+  targets: [{ name: 'web', engine: web({ url: ${JSON.stringify(appUrl)} }) }],
+  timeout: 60_000,
+  cleanupTimeout: ${CLEANUP_TIMEOUT_MS},
+  workers: 1,
+  cache: 'off',
+} satisfies E2EConfig;
+`,
+      'tests/sleep.e2e.ts': `import { appendFileSync } from 'node:fs';
+import { test } from 'e2e';
+
+${LOG_HELPER}
+
+test.afterEach(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 2_000));
+  log('afterEach.end');
+});
+
+test('sleeps until interrupted', async ({ app }) => {
+  await app.open('/');
+  log('test.start');
+  await new Promise((resolve) => setTimeout(resolve, 600_000));
+});
+`,
+    },
+    until: 'test.start',
+  };
+}
 
 interface RunningCli {
   readonly child: ChildProcess;
@@ -235,6 +279,32 @@ describe('interrupt signals against the CLI', () => {
         expect(run.output()).toContain('interrupted: stopping the running test');
         expect(alive(run.workerPid)).toBe(false);
       }),
+    60_000,
+  );
+
+  it(
+    'one Ctrl-C with a browser open in the worker reports the running test interrupted with its attempt, not a worker exit',
+    async () => {
+      const app = await startFixtureApp();
+      try {
+        await withRunningCli(webProject(app.url), async (run) => {
+          run.signalGroup('SIGINT');
+          const code = await run.exit;
+
+          expect(code, run.output()).toBe(130);
+          expect(run.output()).not.toContain('WORKER_EXIT');
+          const { run: report } = JSON.parse(readFileSync(path.join(run.projectDir, '.e2e', 'report.json'), 'utf8')) as {
+            run: { results: { status: string; attempts: unknown[] }[]; errors: { code: string }[] };
+          };
+          expect(report.errors.map((error) => error.code)).toEqual([]);
+          expect(report.results.map((result) => [result.status, result.attempts.length])).toEqual([['interrupted', 1]]);
+          expect(run.events()).toEqual(['test.start', 'afterEach.end']);
+          expect(alive(run.workerPid)).toBe(false);
+        });
+      } finally {
+        await app.close();
+      }
+    },
     60_000,
   );
 
