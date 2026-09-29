@@ -8,6 +8,7 @@ import type { EngineAppDeclaration, EngineHandle } from '../engine/index.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import { obj } from '../internal/objects.ts';
 import { insideProjectRoot } from '../internal/paths.ts';
+import { isSecret } from '../secrets.ts';
 import {
   isImplicitTestHost,
   normalizeBaseUrl,
@@ -18,7 +19,7 @@ import {
   type NormalizedBaseUrl,
 } from '../internal/urls.ts';
 import type { CommandConfig, ServiceConfig } from '../types.ts';
-import { httpUrl, positiveInt } from './validate.ts';
+import { describeValue, httpUrl, positiveInt } from './validate.ts';
 
 /**
  * How a spawned process counts as ready: a URL that answers, or the process
@@ -221,6 +222,16 @@ function validateCommand(command: CommandConfig, label: string, projectRoot: str
   if (typeof command.executable !== 'string' || command.executable.length === 0) {
     throw new ConfigurationError('INVALID_CONFIG', `${label}.executable is required`);
   }
+  if (command.args !== undefined) {
+    if (!Array.isArray(command.args)) throw new ConfigurationError('INVALID_CONFIG', `${label}.args must be an array of strings`);
+    command.args.forEach((arg: unknown, index) => requireString(arg, `${label}.args[${index}]`));
+  }
+  if (command.env !== undefined) {
+    if (typeof command.env !== 'object' || command.env === null || Array.isArray(command.env)) {
+      throw new ConfigurationError('INVALID_CONFIG', `${label}.env must be an object of variable name to string`);
+    }
+    for (const [key, value] of Object.entries(command.env)) requireString(value, `${label}.env.${key}`);
+  }
   positiveInt(command.startupTimeout, `${label}.startupTimeout`, 'milliseconds');
   positiveInt(command.shutdownTimeout, `${label}.shutdownTimeout`, 'milliseconds');
   if (command.log !== undefined) {
@@ -237,6 +248,22 @@ function validateCommand(command: CommandConfig, label: string, projectRoot: str
   if (command.reuseExisting !== undefined && typeof command.reuseExisting !== 'boolean') {
     throw new ConfigurationError('INVALID_CONFIG', `${label}.reuseExisting must be a boolean`);
   }
+}
+
+/**
+ * Refuses a command value that is not a string. A `secrets.get()` handle is
+ * named as one: the child process would receive `[object Object]`, and only
+ * an engine option that declares secrets resolves a handle to its value.
+ */
+function requireString(value: unknown, label: string): void {
+  if (typeof value === 'string') return;
+  if (isSecret(value)) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `${label} must be a string, got secrets.get(${JSON.stringify(value.name)}): only an engine option that declares secrets accepts a handle, such as web({ basicAuth: { password } }); pass the value itself, read from process.env`,
+    );
+  }
+  throw new ConfigurationError('INVALID_CONFIG', `${label} must be a string, got ${describeValue(value)}`);
 }
 
 /** Only a command with a URL to probe can find something already answering there. */

@@ -326,7 +326,9 @@ that already answers is `APP_ALREADY_RUNNING`. `{port}` on a target without a
 `url` is `INVALID_CONFIG`.
 
 The child inherits only `PATH`, `HOME`, `TMPDIR`, `TMP`, `TEMP`,
-`SystemRoot`, and `COMSPEC`, plus everything in `command.env`. The runner
+`SystemRoot`, and `COMSPEC`, plus everything in `command.env`. Every `args`
+entry and `env` value is a string; anything else, a `secrets.get()` handle
+included, is `INVALID_CONFIG`. The runner
 never terminates a process it did not start.
 
 ### services
@@ -842,7 +844,11 @@ The engine declares it, the config load fails with `INVALID_CONFIG` when no
 when each attempt starts (a provider runs again every time). The value joins
 the attempt's redaction then, without the screenshot restrictions a fill
 brings, since it goes to the engine rather than onto the page. The digest
-records the name only.
+records the name only. The reference is not the value: turned into a string
+(a template literal, `String()`, `+`, `JSON.stringify`) it throws
+`INVALID_CONFIG`, and so does one placed in a `command.env` or `args` entry,
+which take strings only. Read a value a string needs, such as an app's API
+key, from `process.env` yourself.
 
 ```ts
 /**

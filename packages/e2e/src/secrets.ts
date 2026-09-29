@@ -77,16 +77,31 @@ function makeSecret(name: string, purpose: SecretPurpose): Secret {
  * config evaluation, where an engine option holds it until the engine
  * resolves it during an attempt. Only the resolved config knows whether the
  * name is a credential's password, so the purpose is read from the run's
- * registry when asked; the config load checks the name.
+ * registry when asked; the config load checks the name. Turned into a string
+ * (a template literal, `String()`, `+`, `JSON.stringify`) it throws: the
+ * config holds a name, not the value, and a string would pass the name off
+ * as the value where only a string fits, a command's env or an agent's context.
  */
 function deferredSecret(name: string): Secret {
-  return Object.freeze({
+  const notAValue = (): never => {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `secrets.get(${JSON.stringify(name)}) is a reference to a secret, not its value: only an engine option that declares secrets accepts it, such as web({ basicAuth: { password } }); where a string is needed, such as a command's env or an agent's context, read the value yourself (process.env)`,
+    );
+  };
+  const handle = {
     name,
     get purpose(): SecretPurpose {
       return registrySlot.get(globalThis)?.secrets.get(name)?.purpose ?? 'generic-secret';
     },
     [secretBrand]: true as const,
+  };
+  Object.defineProperties(handle, {
+    toString: { value: notAValue },
+    toJSON: { value: notAValue },
+    [Symbol.toPrimitive]: { value: notAValue },
   });
+  return Object.freeze(handle);
 }
 
 /** Whether a value is a `Secret` handle, from this module instance or another realm's. */

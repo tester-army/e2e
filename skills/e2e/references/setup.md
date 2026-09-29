@@ -143,7 +143,7 @@ identity for cache and session keys. `web()` accepts:
 | `viewport` | `{ width, height }`, default 1280x720; `null` follows the browser window (a hosted browser's live view, a headed run). On a headed hosted browser such as Kernel's, use `null` and size the service's screen: there, a fixed size gets a smaller, unmaximized window. |
 | `connect` | `{ cdpEndpoint }` attaches to a remote Chromium over CDP. Adding `reconnectEndpoint` uses a dedicated persistent default context, provisions a fresh browser per attempt, and reconnects only to the original browser and page. |
 | `headers` | Request headers sent to the app's site only (a Vercel `x-vercel-protection-bypass`, ngrok's `ngrok-skip-browser-warning`). Reaches every path onto the page, `agent.act` included; turns the browser HTTP cache off and blocks service workers. |
-| `basicAuth` | `{ username, password }` answering a `401` challenge. `password` may be `secrets.get('name')` for a `secrets` entry: resolved per attempt and redacted like any secret; an undeclared name is `INVALID_CONFIG` at load. |
+| `basicAuth` | `{ username, password }` answering a `401` challenge. `password` may be `secrets.get('name')` for a `secrets` entry: resolved per attempt and redacted like any secret; an undeclared name is `INVALID_CONFIG` at load. The handle is a reference, not the value: in `command.env`, a template literal, or `context` it is `INVALID_CONFIG`; read such a value from `process.env`. |
 | `userAgent` | The `User-Agent` every attempt sends and `navigator.userAgent` reports, for an app that enters a test mode on a marker in it. |
 
 CDP recovery never repeats a dispatched operation. Endpoint resolution, attachment,

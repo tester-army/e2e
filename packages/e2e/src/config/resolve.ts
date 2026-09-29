@@ -944,7 +944,9 @@ function computeConfigDigest(raw: E2EConfig, projectId: string): string {
   // reporter object changes nothing about what a run records, so it never
   // enters the digest either; the built-in ids digest as they always have,
   // so adding a reporter to a config leaves its cache valid.
-  const { artifacts: _artifacts, output: _output, trace: _trace, video: _video, ...recorded } = raw;
+  // `targets` digest by declaration below and never enter the clone: an
+  // engine holds `secrets.get()` handles, which refuse to serialize.
+  const { artifacts: _artifacts, output: _output, trace: _trace, video: _video, targets: _targets, ...recorded } = raw;
   const forClone: Record<string, unknown> = {
     ...recorded,
     ...(Array.isArray(raw.reporters)

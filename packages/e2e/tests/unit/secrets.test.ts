@@ -98,7 +98,21 @@ describe('secrets.get', () => {
     // Only the resolved config knows the name is a credential's password.
     setSecretRegistry(registry([admin], [adminPassword]));
     expect(deferred.purpose).toBe('password');
-    expect(JSON.stringify(deferred)).not.toContain('super-secret-password');
+  });
+
+  it('refuses to become a string before any run exists, so a config cannot pass the reference off as the value', () => {
+    const deferred = secrets.get('API_KEY');
+    const refused = expect.objectContaining({
+      code: 'INVALID_CONFIG',
+      message: expect.stringContaining('secrets.get("API_KEY") is a reference to a secret, not its value'),
+    });
+    expect(() => `${deferred}`).toThrow(refused);
+    expect(() => String(deferred)).toThrow(refused);
+    expect(() => 'key=' + (deferred as unknown as string)).toThrow(refused);
+    expect(() => deferred.toString()).toThrow(refused);
+    expect(() => JSON.stringify({ key: deferred })).toThrow(refused);
+    expect(Object.keys(deferred)).toEqual(['name', 'purpose']);
+    expect(isSecret(deferred)).toBe(true);
   });
 });
 
