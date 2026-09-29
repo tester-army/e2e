@@ -211,9 +211,9 @@ threw, within `cleanupTimeout`. When a worker's browser drops, the worker
 leases a replacement itself at the next attempt start and releases it when
 the worker exits; the dead lease stays with the runner, which releases it
 at the end. `acquire` therefore runs in a worker process too, so a provider
-must not depend on state it built in the runner process, and `log` is
-discarded there. Each lease is released exactly once, by the side that
-acquired it.
+must not depend on state it built in the runner process; its `log` still
+reaches the reporter, prefixed with the target and worker slot. Each lease
+is released exactly once, by the side that acquired it.
 
 `scope: 'attempt'` leases a fresh browser in every `startAttempt`, retries
 included, and releases it in `endAttempt`, also after a start that failed.

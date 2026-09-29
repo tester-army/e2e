@@ -135,7 +135,9 @@ attempt's artifacts, in both scopes.
   releases its browser leaves the browser idle, and Kernel deletes it after
   that long. Pass your own to change it.
 - Logs `browser <id>, watch at <live view URL>` to the reporter as each
-  browser is created.
+  browser is created: at the start of the run in `worker` scope, and from
+  the worker for each attempt's browser in `attempt` scope and for a
+  replacement after a browser dropped.
 - Deletes a browser that arrives after its request was cancelled, and treats
   one Kernel no longer knows as already deleted.
 

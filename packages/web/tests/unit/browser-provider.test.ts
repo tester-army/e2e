@@ -101,7 +101,7 @@ const finishInfo = (log: (line: string) => void = () => undefined): EngineFinish
   timeoutMs: 5_000,
   log,
 });
-const initInfo = (workerSlot: number, env: Readonly<Record<string, string | undefined>> = {}): EngineInitInfo => ({
+const initInfo = (workerSlot: number, env: Readonly<Record<string, string | undefined>> = {}, log: (line: string) => void = () => undefined): EngineInitInfo => ({
   runId: 'run-1',
   targetName: 'web',
   projectRoot: '/project',
@@ -110,7 +110,7 @@ const initInfo = (workerSlot: number, env: Readonly<Record<string, string | unde
   headed: false,
   workerSlot,
   signal: new AbortController().signal,
-  log: () => undefined,
+  log,
 });
 const attempt = (attemptId: string): EngineAttemptContext => ({ attemptId, artifactsDir: '/tmp/e2e-provider-artifacts', signal: new AbortController().signal, resolveSecret: noSecrets });
 const cleanup = (): EngineCleanupContext => ({ timeoutMs: 1_000, signal: new AbortController().signal });
@@ -365,6 +365,23 @@ describe('worker scope', () => {
     expect(cloud.released.map((lease) => lease.id)).toEqual(['lease-2', 'lease-3', 'lease-0', 'lease-1']);
   });
 
+  it('reports the progress a replacement lease logs through the worker\'s line to the reporter', async () => {
+    const cloud = provider();
+    const fake = fakeBrowser('context');
+    vi.mocked(connectCdp).mockResolvedValue(fake.browser);
+    const { env } = await prepared(cloud.impl, 1);
+    const lines: string[] = [];
+    const worker = new PlaywrightSurface({ browser: cloud.impl });
+    await worker.init(initInfo(0, env, (line) => lines.push(line)));
+    await worker.startAttempt(attempt('a1'));
+    await worker.endAttempt(cleanup());
+    expect(lines).toEqual([]);
+    fake.drop();
+    await worker.startAttempt(attempt('a2'));
+    expect(lines).toEqual(['toy-cloud: starting']);
+    await worker.dispose(cleanup());
+  });
+
   it('releases the replacement on dispose even when ending the attempt failed', async () => {
     const cloud = provider();
     const fake = fakeBrowser('context');
@@ -444,9 +461,12 @@ describe('attempt scope', () => {
     const cloud = provider({ scope: 'attempt' });
     const { env } = await prepared(cloud.impl, 2);
     const worker = new PlaywrightSurface({ browser: cloud.impl });
-    await worker.init(initInfo(1, { ...env, BROWSER_TOKEN: 't' }));
+    const lines: string[] = [];
+    await worker.init(initInfo(1, { ...env, BROWSER_TOKEN: 't' }, (line) => lines.push(line)));
     await worker.startAttempt(attempt('a1'));
     expect(cloud.acquired.map((request) => [request.slot, request.slots, request.attemptId, request.env])).toEqual([[1, 2, 'a1', { ...env, BROWSER_TOKEN: 't' }]]);
+    // Its progress reaches the reporter through the worker, as a lease from prepare does through the runner.
+    expect(lines).toEqual(['toy-cloud: starting']);
     expect(vi.mocked(connectCdp).mock.calls.map(([endpoint]) => endpoint)).toEqual(['wss://0.example']);
     await worker.endAttempt(cleanup());
     expect(cloud.released.map((lease) => lease.id)).toEqual(['lease-0']);

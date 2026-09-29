@@ -52,7 +52,7 @@ export interface BrowserRequest {
   readonly env: Readonly<Record<string, string | undefined>>;
   /** Aborts on interrupt, and when the attempt that needs the browser is cancelled or exceeds its budget. */
   readonly signal: AbortSignal;
-  /** Reports one line of progress to the run's reporter (a session URL to watch); discarded in a worker process. */
+  /** Reports one line of progress to the run's reporter (a session URL to watch), from the runner and from a worker alike. */
   readonly log: (line: string) => void;
 }
 
@@ -285,6 +285,8 @@ interface WorkerRun {
   readonly slot: number;
   /** Worker slots the run uses for the target, as `prepare` saw them; the request's `slots`. */
   readonly slots: number;
+  /** The worker's line to the reporter, as `init` got it; the runner prefixes the target and slot. */
+  readonly log: (line: string) => void;
 }
 
 /** A lease a worker attaches to, and whether the worker (not the runner's `prepare`) acquired it. */
@@ -398,7 +400,14 @@ export class LeasedBrowsers {
         { retryable: false },
       );
     }
-    this.run = { runId: info.runId, targetName: info.targetName, env: info.env, slot: info.workerSlot, slots: handoff.slots };
+    this.run = {
+      runId: info.runId,
+      targetName: info.targetName,
+      env: info.env,
+      slot: info.workerSlot,
+      slots: handoff.slots,
+      log: (line) => info.log(`${provider.name}: ${line}`),
+    };
     if (this.scope === 'attempt') return;
     const lease = handoff.leases[info.workerSlot];
     if (lease === undefined) {
@@ -428,7 +437,7 @@ export class LeasedBrowsers {
       return previous.lease.cdpEndpoint;
     }
     const { tenure } = this;
-    const lease = await this.acquire({ runId: run.runId, targetName: run.targetName, slot: run.slot, slots: run.slots, env: run.env, signal, log: discard });
+    const lease = await this.acquire({ runId: run.runId, targetName: run.targetName, slot: run.slot, slots: run.slots, env: run.env, signal, log: run.log });
     if (signal.aborted || this.tenure !== tenure) {
       await this.provider.release(lease, this.releaseContext(run, signal)).catch(discard);
       throw new EngineError('CANCELLED', `browser lease from "${this.provider.name}" arrived after the worker gave up; released`, { retryable: false });
@@ -457,7 +466,7 @@ export class LeasedBrowsers {
       attemptId: context.attemptId,
       env: run.env,
       signal: context.signal,
-      log: discard,
+      log: run.log,
     });
     if (context.signal.aborted || this.opened !== opened) {
       await this.provider.release(lease, this.releaseContext(run, context.signal)).catch(discard);
@@ -582,6 +591,6 @@ export class LeasedBrowsers {
   }
 
   private releaseContext(run: WorkerRun, signal: AbortSignal): BrowserReleaseContext {
-    return { runId: run.runId, targetName: run.targetName, env: run.env, signal, log: discard };
+    return { runId: run.runId, targetName: run.targetName, env: run.env, signal, log: run.log };
   }
 }
