@@ -46,12 +46,13 @@ export function rejectUnknownOptions(
 }
 
 /**
- * The message for the first own key of `value` outside `keys`: the nearest
+ * The message for the first own key of `value` outside `keys`, enumerable
+ * or not, as `rejectUnknownOptions` reads them: the nearest
  * known key when one is a plausible typo, every known key otherwise.
  * Undefined when every key is known.
  */
 export function unknownKeyMessage(label: string, value: object, keys: readonly string[]): string | undefined {
-  const key = Object.keys(value).find((candidate) => !keys.includes(candidate));
+  const key = Object.getOwnPropertyNames(value).find((candidate) => !keys.includes(candidate));
   if (key === undefined) return undefined;
   const hint = didYouMean(key, keys);
   return `${label} has unknown key "${key}"${hint === '' ? `; expected one of ${keys.join(', ')}` : hint}`;

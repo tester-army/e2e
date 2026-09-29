@@ -268,6 +268,14 @@ describe('excludingEntry', () => {
     expect(excludingEntry(root, tests, 'tests/agent/notes.md')).toBeUndefined();
   });
 
+  it('finds the excluded file a bare name or a path suffix names', () => {
+    expect(excludingEntry(root, tests, 'b.e2e.ts')).toBe('!tests/agent/**');
+    expect(excludingEntry(root, tests, 'nested/c.e2e.ts')).toBe('!tests/agent/**');
+    expect(excludingEntry(root, tests, 'b')).toBe('!tests/agent/**');
+    expect(excludingEntry(root, tests, 'd.e2e.ts')).toBeUndefined();
+    expect(excludingEntry(root, tests, 'missing.e2e.ts')).toBeUndefined();
+  });
+
   it('compares an existing file in its on-disk casing on a case-insensitive filesystem', (ctx) => {
     if (!caseInsensitiveFs) ctx.skip();
     expect(excludingEntry(root, tests, 'Tests/Agent/b.e2e.ts')).toBe('!tests/agent/**');

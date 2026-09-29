@@ -169,7 +169,8 @@ export type LaunchPermissions = Readonly<Partial<Record<DevicePermission, Permis
 ```
 
 An empty `device` list is `INVALID_CONFIG`, and so is an option `mobile()`
-does not take, naming the nearest known one. A `device` provider object
+does not take, naming the nearest known option when it is a likely typo and
+every option otherwise. A `device` provider object
 leases hosted devices; see [Hosted devices](/mobile#hosted-devices) for the
 `DeviceProvider` contract and an example provider.
 

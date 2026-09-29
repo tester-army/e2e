@@ -38,7 +38,7 @@ jq '.run.results[] | select(.status != "passed") | .attempts[-1]
 
 | Code | Usual cause | Fix |
 | --- | --- | --- |
-| `CONFIG_LOAD_FAILED` | The config throws an error of its own while loading (an engine option it refuses is `INVALID_CONFIG` instead), or imports a package that is not installed or a subpath that does not exist | The message names the cause: install the dependency, or fix the import it quotes |
+| `CONFIG_LOAD_FAILED` | The config throws an error of its own while loading (an engine option it refuses is `INVALID_CONFIG` instead), or imports a package that is not installed or a subpath that does not exist | The message names the cause: install the dependency, fix the import it quotes, or fix the config line whose error it quotes |
 | `INVALID_CONFIG` | Unknown key or a stale shape: a top-level `app`, `defineConfig`, a `backend` key, `json` combined with `list` reporters | Move app options into `web({ ... })`; use `satisfies E2EConfig`; the message names the key |
 | `CONFIG_NOT_FOUND`, `CONFIG_AMBIGUOUS` | Wrong `--config` path; both `.ts` and `.mts` present | Fix the path; keep one config file |
 | `NO_TESTS` | The glob or a positional matched nothing, or a filter left nothing to run | The message names each positional that matched nothing and, under `--tag`, each tag no test declares with the nearest declared one. Check `tests` in the config, the `.e2e.ts` suffix, and the tag names |

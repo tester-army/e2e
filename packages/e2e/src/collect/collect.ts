@@ -333,21 +333,31 @@ export function selectPositionals(
 }
 
 /**
- * The `!` entry of `tests` that takes out the file a positional names by its
- * path: an including glob matches the path and this exclusion does too.
- * Undefined for a positional no exclusion explains, a name or a glob among
- * them, so the `NO_TESTS` message says why the file is not selected instead
- * of offering a look-alike. An existing file is compared in its on-disk
- * casing, as `positionalMatcher` compares it.
+ * The `!` entry of `tests` that takes out a file the positional names: an
+ * including glob matches the file and this exclusion does too. An existing
+ * path is the file, in its on-disk casing as `positionalMatcher` compares
+ * it; any other name is the path as written or a file it names the way
+ * `nameMatcher` matches it, among those the including globs find with the
+ * exclusions left out, a walk only a `NO_TESTS` message pays for. Undefined for a glob and for a
+ * positional no exclusion explains, so the message says why the file is not
+ * selected instead of offering a look-alike.
  */
 export function excludingEntry(projectRoot: string, tests: readonly string[], positional: string): string | undefined {
   const typed = relativeToRoot(projectRoot, splitLine(projectRoot, positional).path);
   if (GLOB_SYNTAX.test(typed)) return undefined;
   const absolutePath = path.resolve(projectRoot, typed);
-  const file = statSync(absolutePath, { throwIfNoEntry: false }) === undefined ? typed : (onDiskRelativePath(projectRoot, absolutePath) ?? typed);
-  const { include } = compileGlobList(tests);
-  if (!include.some((glob) => matchesGlob(glob, file))) return undefined;
-  return tests.find((entry) => entry.startsWith('!') && matchesGlob(compileGlob(entry.slice(1)), file));
+  const including = tests.filter((entry) => !entry.startsWith('!'));
+  const excluding = tests.filter((entry) => entry.startsWith('!'));
+  const { include } = compileGlobList(including);
+  const named =
+    statSync(absolutePath, { throwIfNoEntry: false }) === undefined
+      ? [typed, ...discoverFiles(projectRoot, including).filter(nameMatcher(typed))]
+      : [onDiskRelativePath(projectRoot, absolutePath) ?? typed];
+  for (const file of named.filter((candidate) => include.some((glob) => matchesGlob(glob, candidate)))) {
+    const entry = excluding.find((exclusion) => matchesGlob(compileGlob(exclusion.slice(1)), file));
+    if (entry !== undefined) return entry;
+  }
+  return undefined;
 }
 
 function positionalMatcher(projectRoot: string, positional: string): (file: string) => boolean {

@@ -217,6 +217,9 @@ describe('resolveConfig', () => {
     expect(resolveApp({ url, command: { executable: 'node', env: { PORT: '3000', UNSET: undefined } } } as never).command?.env).toEqual({
       PORT: '3000',
     });
+    expect(() => resolveApp({ url, command: { executable: 'node', env: ['PORT=3000'] } } as never)).toThrow(
+      'target "web" engine fake app.command.env must be an object of variable name to string',
+    );
     expect(() => resolveApp({ url, command: { executable: 'node', env: { PORT: 3000 } } } as never)).toThrow(
       expect.objectContaining({ code: 'INVALID_CONFIG', message: 'target "web" engine fake app.command.env.PORT must be a string, got 3000' }),
     );

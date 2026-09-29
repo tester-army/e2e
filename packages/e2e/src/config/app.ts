@@ -200,7 +200,7 @@ function expandCommandPort<T extends CommandConfig>(command: T, label: string, e
     ...(Array.isArray(args)
       ? { args: args.map((arg) => (typeof arg === 'string' ? expand(arg, `${label}.args`) : arg)) }
       : {}),
-    ...(typeof env === 'object' && env !== null
+    ...(typeof env === 'object' && env !== null && !Array.isArray(env)
       ? {
           env: Object.fromEntries(
             Object.entries(env)

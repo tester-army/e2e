@@ -102,8 +102,8 @@ browsers and releases them when the run or the attempt ends; see
 [Hosted browsers](/browser#hosted-browsers) for the `BrowserProvider`
 contract and an example provider. `browser: provider` together with
 `connect` is `INVALID_CONFIG`, and so is an option `web()` does not take, or
-an unknown key inside `connect` or `basicAuth`, naming the nearest known one
-(`comand` is `command`). `:` is not allowed in the `basicAuth` user name.
+an unknown key inside `connect` or `basicAuth`, naming the nearest known key
+when it is a likely typo (`comand` is `command`) and every key otherwise. `:` is not allowed in the `basicAuth` user name.
 The `basicAuth` password is a string or `secrets.get(name)`: a secret the
 engine resolves when each attempt starts, redacted like any configured one.
 
