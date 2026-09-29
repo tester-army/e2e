@@ -27,6 +27,8 @@ const sdk = vi.hoisted(() => {
     },
     deleteByID: async (_id: string): Promise<void> => undefined,
     files: [] as { id: string; path: string; signal: AbortSignal | undefined }[],
+    listed: [] as unknown[],
+    active: [] as string[],
     counter: 0,
   };
   class Kernel {
@@ -37,6 +39,12 @@ const sdk = vi.hoisted(() => {
       create: async (body: unknown, options?: { signal?: AbortSignal }) => {
         state.created.push({ body, signal: options?.signal });
         return state.create(body);
+      },
+      list: (query: unknown) => {
+        state.listed.push(query);
+        return (async function* () {
+          for (const id of state.active) yield { session_id: id };
+        })();
       },
       deleteByID: async (id: string) => {
         state.deleted.push(id);
@@ -79,7 +87,7 @@ const defaultCreate = sdk.state.create;
 const defaultDelete = sdk.state.deleteByID;
 
 beforeEach(() => {
-  Object.assign(sdk.state, { apiKeys: [], created: [], deleted: [], replays: [], replaySignals: [], files: [], downloadFailures: 0, counter: 0, create: defaultCreate, deleteByID: defaultDelete });
+  Object.assign(sdk.state, { apiKeys: [], created: [], deleted: [], replays: [], replaySignals: [], files: [], listed: [], active: [], downloadFailures: 0, counter: 0, create: defaultCreate, deleteByID: defaultDelete });
 });
 
 const env = { KERNEL_API_KEY: 'k-test' };
@@ -199,6 +207,27 @@ describe('kernel()', () => {
     const bytes = await provider.downloads!.read({ id: 'b1', cdpEndpoint: 'wss://kernel/b1' }, '/tmp/e2e-downloads/guid-1', { runId: 'run-1', targetName: 'web', env, signal });
     expect(new TextDecoder().decode(bytes)).toBe('file bytes');
     expect(sdk.state.files).toEqual([{ id: 'b1', path: '/tmp/e2e-downloads/guid-1', signal }]);
+  });
+
+  it('sweeps the run\'s active browsers for the target, deletes each, and names only those Kernel still knew', async () => {
+    sdk.state.active = ['b7', 'b8'];
+    sdk.state.deleteByID = async (id) => {
+      if (id === 'b8') throw new sdk.NotFoundError('gone');
+    };
+    await expect(kernel().sweep!(releaseContext())).resolves.toEqual(['b7']);
+    expect(sdk.state.listed).toEqual([{ status: 'active', tags: { e2e_run: 'run-1', e2e_target: 'web' } }]);
+    expect(sdk.state.deleted).toEqual(['b7', 'b8']);
+  });
+
+  it('deletes every browser the sweep found even when one delete fails, and names both', async () => {
+    sdk.state.active = ['b7', 'b8', 'b9'];
+    sdk.state.deleteByID = async (id) => {
+      if (id === 'b8') throw new Error('500 internal');
+    };
+    await expect(kernel().sweep!(releaseContext())).rejects.toThrow(
+      'deleted b7, b9; could not delete b8 (500 internal), so Kernel ends it after timeout_seconds',
+    );
+    expect(sdk.state.deleted).toEqual(['b7', 'b8', 'b9']);
   });
 
   describe('record', () => {

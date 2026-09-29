@@ -131,9 +131,13 @@ attempt's artifacts, in both scopes.
 - Tags every browser `e2e_run`, `e2e_target`, `e2e_slot`, and, per attempt,
   `e2e_attempt`, merged over the `tags` you pass, so a session in Kernel's
   dashboard names the run that started it.
-- Defaults `timeout_seconds` to 600. A worker that dies before the engine
-  releases its browser leaves the browser idle, and Kernel deletes it after
-  that long. Pass your own to change it.
+- Deletes, when the run ends, every browser still active with the run's
+  `e2e_run` and `e2e_target` tags: the browser of a worker that died
+  mid-attempt, in either scope, is released with the run rather than left
+  running.
+- Defaults `timeout_seconds` to 600, the backstop for a run that dies
+  itself before it can delete its browsers: Kernel deletes an idle browser
+  after that long. Pass your own to change it.
 - Logs `browser <id>, watch at <live view URL>` to the reporter as each
   browser is created: at the start of the run in `worker` scope, and from
   the worker for each attempt's browser in `attempt` scope and for a

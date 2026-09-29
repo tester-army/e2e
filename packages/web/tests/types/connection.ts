@@ -23,6 +23,20 @@ import type { BrowserLease, BrowserProvider, WebConnectOptions, WebOptions } fro
 // @ts-expect-error a provider releases what it leased.
 ({ name: 'hosted', acquire: async () => ({ id: 's', cdpEndpoint: 'ws://x' }) }) satisfies BrowserProvider;
 
+({
+  name: 'hosted',
+  acquire: async () => ({ id: 's', cdpEndpoint: 'ws://x' }),
+  release: async () => undefined,
+  downloads: { dir: '/downloads', read: async (lease, file, context) => new TextEncoder().encode(`${lease.id} ${file} ${context.runId}`) },
+  sweep: async (context) => [context.runId],
+}) satisfies BrowserProvider;
+
+// @ts-expect-error: a download is its bytes, not a path.
+({ name: 'hosted', acquire: async () => ({ id: 's', cdpEndpoint: 'ws://x' }), release: async () => undefined, downloads: { dir: '/d', read: async () => '/d/file' } }) satisfies BrowserProvider;
+
+// @ts-expect-error: a sweep resolves to the ids it released.
+({ name: 'hosted', acquire: async () => ({ id: 's', cdpEndpoint: 'ws://x' }), release: async () => undefined, sweep: async () => 2 }) satisfies BrowserProvider;
+
 // Gates on the way to a protected app, the page size, the attribute that carries a test id, and the user agent.
 ({ headers: { 'x-vercel-protection-bypass': 'token' }, basicAuth: { username: 'preview', password: 'secret' }, viewport: { width: 390, height: 844 }, testIdAttribute: 'data-qa', userAgent: 'Mozilla/5.0 playwright' }) satisfies WebOptions;
 // @ts-expect-error basic auth is a username and a password; one without the other is no credential.

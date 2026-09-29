@@ -15,9 +15,9 @@ import { kernelBrowsers, type KernelBrowserParams, type KernelBrowsers, type Ker
 const KERNEL_API_KEY = 'KERNEL_API_KEY';
 
 /**
- * Kernel terminates a browser idle this long: the backstop for a worker that
- * died before the engine could release its lease. Kernel's own default is
- * shorter than a slow suite's gaps between attempts.
+ * Kernel terminates a browser idle this long: the backstop for a run that
+ * died before the engine could release or sweep its leases. Kernel's own
+ * default is shorter than a slow suite's gaps between attempts.
  */
 const DEFAULT_TIMEOUT_SECONDS = 600;
 
@@ -122,6 +122,20 @@ export function kernel(options: KernelOptions = {}): BrowserProvider {
     },
     async release(lease: BrowserLease, context: BrowserReleaseContext): Promise<void> {
       await clientFor(context.env).delete(lease.id, context.signal);
+    },
+    async sweep(context: BrowserReleaseContext): Promise<readonly string[]> {
+      const client = clientFor(context.env);
+      const open = await client.listActive({ e2e_run: context.runId, e2e_target: context.targetName }, context.signal);
+      const settled = await Promise.allSettled(open.map(async (id) => ((await client.delete(id, context.signal)) ? id : undefined)));
+      const deleted = settled.flatMap((result) => (result.status === 'fulfilled' && result.value !== undefined ? [result.value] : []));
+      const failed = open.flatMap((id, index) => {
+        const result = settled[index]!;
+        return result.status === 'rejected' ? [`${id} (${result.reason instanceof Error ? result.reason.message : String(result.reason)})`] : [];
+      });
+      if (failed.length > 0) {
+        throw new Error(`deleted ${deleted.length === 0 ? 'none' : deleted.join(', ')}; could not delete ${failed.join(', ')}, so Kernel ends it after timeout_seconds`);
+      }
+      return deleted;
     },
     downloads: {
       dir: DOWNLOADS_DIR,

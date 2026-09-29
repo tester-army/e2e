@@ -173,6 +173,8 @@ export interface BrowserProvider {
   record?(lease: BrowserLease, context: ProviderRecordContext): Promise<ProviderRecording>;
   /** Optional: serves `web.waitForDownload` for a browser on another machine. */
   readonly downloads?: BrowserProviderDownloads;
+  /** Optional: releases the run's leases a dead worker left open, once the run ends; resolves to their ids. */
+  sweep?(context: BrowserReleaseContext): Promise<readonly string[]>;
 }
 
 export interface BrowserProviderDownloads {
@@ -214,6 +216,15 @@ at the end. `acquire` therefore runs in a worker process too, so a provider
 must not depend on state it built in the runner process; its `log` still
 reaches the reporter, prefixed with the target and worker slot. Each lease
 is released exactly once, by the side that acquired it.
+
+A worker that dies (a crash, `process.exit`, a kill) cannot release what it
+acquired: an attempt's browser, or a replacement. Implement `sweep` to have
+the runner release those too. It runs once per target when the run ends,
+after the last worker exited and the leases the runner holds were released,
+so every lease it finds with the run's id and the target at the service is
+one a worker left open; it releases them and resolves to their ids, which
+the reporter lists. A sweep that fails is reported as a line and fails
+nothing. Without `sweep`, such a browser lives until the service ends it.
 
 `scope: 'attempt'` leases a fresh browser in every `startAttempt`, retries
 included, and releases it in `endAttempt`, also after a start that failed.

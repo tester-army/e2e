@@ -134,8 +134,10 @@ export interface LeaseRecording {
  * browser drops calls it again, from its own process, for a replacement. In
  * `attempt` scope every `startAttempt` calls it from the worker. `release`
  * is called exactly once per lease, by the process that acquired it, also
- * after an `acquire` of another slot failed. A provider must not rely on
- * runner-process state to serve a request from a worker.
+ * after an `acquire` of another slot failed; a worker that dies first never
+ * calls it, and `sweep`, when the provider has one, releases what it left.
+ * A provider must not rely on runner-process state to serve a request from
+ * a worker.
  */
 export interface BrowserProvider {
   /** Label in progress lines and error messages. */
@@ -160,6 +162,16 @@ export interface BrowserProvider {
    * machine leaves it out.
    */
   readonly downloads?: BrowserProviderDownloads | undefined;
+  /**
+   * Releases every lease of the run and target the provider still holds
+   * open, and resolves to their ids. Called once per target from `finish`,
+   * in the runner, after every worker exited and the leases `prepare` made
+   * were released: whatever it finds is a lease a worker acquired (a
+   * per-attempt browser, a replacement) and never gave back, because the
+   * worker died before it could. Find them by what `acquire` tagged them
+   * with at the service: the run id and the target.
+   */
+  sweep?(context: BrowserReleaseContext): Promise<readonly string[]>;
 }
 
 const SCOPES: ReadonlySet<string> = new Set<BrowserProviderScope>(['worker', 'attempt']);
@@ -175,8 +187,10 @@ export function asBrowserProvider(browser: object): BrowserProvider {
       throw new ConfigurationError('INVALID_CONFIG', `web: browser provider "${candidate.name}" must implement ${member}()`);
     }
   }
-  if (candidate.record !== undefined && typeof candidate.record !== 'function') {
-    throw new ConfigurationError('INVALID_CONFIG', `web: browser provider "${candidate.name}" has a record that is not a function`);
+  for (const member of ['record', 'sweep'] as const) {
+    if (candidate[member] !== undefined && typeof candidate[member] !== 'function') {
+      throw new ConfigurationError('INVALID_CONFIG', `web: browser provider "${candidate.name}" has a ${member} that is not a function`);
+    }
   }
   const downloads = candidate.downloads as Partial<Record<keyof BrowserProviderDownloads, unknown>> | null | undefined;
   if (
@@ -314,6 +328,8 @@ export class LeasedBrowsers {
   readonly name: string;
   /** Leases granted so far, per target, filled as each `acquire` settles. */
   private readonly held = new Map<string, BrowserLease[]>();
+  /** Targets whose `prepare` succeeded, so workers ran and may have left leases open. */
+  private readonly workersRan = new Set<string>();
   private run: WorkerRun | undefined;
   /** The lease the worker's shared browser attaches to, and whether `endpoint` has handed it out yet. */
   private current: WorkerLease | undefined;
@@ -340,10 +356,13 @@ export class LeasedBrowsers {
   async prepare(info: EnginePrepareInfo): Promise<EnginePrepareResult> {
     if (info.slots === 0) return {};
     const variable = handoffVariable(info.targetName);
-    if (this.scope === 'attempt') return { env: { [variable]: encodeHandoff({ slots: info.slots, leases: [] }) } };
-    const { provider } = this;
     const held: BrowserLease[] = [];
     this.held.set(info.targetName, held);
+    if (this.scope === 'attempt') {
+      this.workersRan.add(info.targetName);
+      return { env: { [variable]: encodeHandoff({ slots: info.slots, leases: [] }) } };
+    }
+    const { provider } = this;
     info.log(`leasing ${info.slots} browser(s) from ${provider.name}`);
     const leases = await allOrFirstFailure(
       Array.from({ length: info.slots }, (_, slot) => async () => {
@@ -362,21 +381,55 @@ export class LeasedBrowsers {
       }),
       `browser provider "${provider.name}" could not lease a browser`,
     );
-    return { workers: leases.length, env: { [variable]: encodeHandoff({ slots: leases.length, leases }) } };
+    const env = { [variable]: encodeHandoff({ slots: leases.length, leases }) };
+    this.workersRan.add(info.targetName);
+    return { workers: leases.length, env };
   }
 
-  /** Releases what `prepare` leased for the target, every lease before the first failure is reported. */
+  /**
+   * Releases what `prepare` leased for the target, every lease before the
+   * first failure is reported, then has the provider sweep up the leases a
+   * worker that died left open, in either scope, once workers ran: the sweep
+   * runs whatever the releases did, and is skipped when `prepare` failed and
+   * no worker started.
+   */
   async finish(info: EngineFinishInfo): Promise<void> {
     const { provider } = this;
     const leases = this.held.get(info.targetName);
+    const swept = this.workersRan.delete(info.targetName);
     this.held.delete(info.targetName);
-    if (leases === undefined || leases.length === 0) return;
+    if (leases === undefined) return;
     const context = { runId: info.runId, targetName: info.targetName, env: info.env, signal: info.signal, log: (line: string) => info.log(`${provider.name}: ${line}`) };
-    await allOrFirstFailure(
-      leases.map((lease) => () => provider.release(lease, context)),
-      `browser provider "${provider.name}" could not release a browser`,
-    );
-    info.log(`${provider.name}: released ${leases.length} browser(s)`);
+    try {
+      if (leases.length === 0) return;
+      await allOrFirstFailure(
+        leases.map((lease) => () => provider.release(lease, context)),
+        `browser provider "${provider.name}" could not release a browser`,
+      );
+      info.log(`${provider.name}: released ${leases.length} browser(s)`);
+    } finally {
+      if (swept) await this.sweep(context);
+    }
+  }
+
+  /**
+   * The provider's sweep of the leases workers left open, bounded by the
+   * cleanup budget. A backstop, so a sweep that fails is reported as a line,
+   * never as the run's failure: the service still ends an idle browser.
+   */
+  private async sweep(context: BrowserReleaseContext): Promise<void> {
+    const { provider } = this;
+    const sweep = provider.sweep?.bind(provider);
+    if (sweep === undefined) return;
+    let released: unknown;
+    try {
+      released = await raceAbort(sweep(context), context.signal, `sweeping browsers of "${provider.name}"`);
+    } catch (cause) {
+      context.log(`could not release the browsers a worker left open: ${message(cause)}`);
+      return;
+    }
+    const ids = Array.isArray(released) ? released.filter(isNonEmptyString) : [];
+    if (ids.length > 0) context.log(`released ${ids.length} browser(s) a worker left open: ${ids.join(', ')}`);
   }
 
   // --- worker side ---

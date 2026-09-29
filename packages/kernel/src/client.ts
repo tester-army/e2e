@@ -21,8 +21,10 @@ interface KernelBrowser {
 
 export interface KernelBrowsers {
   create(params: KernelBrowserParams, signal: AbortSignal): Promise<KernelBrowser>;
-  /** Deletes the browser; one Kernel no longer knows counts as deleted. */
-  delete(sessionId: string, signal: AbortSignal): Promise<void>;
+  /** Deletes the browser; one Kernel no longer knows counts as deleted. Resolves to whether Kernel still knew it. */
+  delete(sessionId: string, signal: AbortSignal): Promise<boolean>;
+  /** The session ids of the active browsers carrying every one of `tags`. */
+  listActive(tags: Readonly<Record<string, string>>, signal: AbortSignal): Promise<string[]>;
   /** Starts recording the browser's screen; resolves to the replay id. */
   startReplay(sessionId: string, params: KernelReplayParams, signal: AbortSignal): Promise<string>;
   /** Stops a recording. */
@@ -46,9 +48,17 @@ export function kernelBrowsers(apiKey: string): KernelBrowsers {
       const { client, NotFoundError } = await sdk;
       try {
         await client.browsers.deleteByID(sessionId, { signal });
+        return true;
       } catch (cause) {
         if (!(cause instanceof NotFoundError)) throw cause;
+        return false;
       }
+    },
+    async listActive(tags, signal) {
+      const { client } = await sdk;
+      const ids: string[] = [];
+      for await (const browser of client.browsers.list({ status: 'active', tags: { ...tags } }, { signal })) ids.push(browser.session_id);
+      return ids;
     },
     async startReplay(sessionId, params, signal) {
       const { client } = await sdk;
