@@ -234,7 +234,8 @@ html.dark body .code-block-fade-overlay {
 
 /* The "Copy page" menu shows titles only. docs.json requires a description on
    every custom option and Mintlify renders one under each title, so the second
-   line is hidden here. The menu has no id; the custom icons identify it. */
+   line is hidden here, on the built-in items too. The menu has no id; the
+   custom icons identify it. */
 [role='menu']:has(img[src*='/images/contextual/']) [role='menuitem'] {
   align-items: center;
 }
