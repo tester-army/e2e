@@ -20,6 +20,56 @@
       "twitter:image": "https://e2e.tester.army/docs/images/og.png"
     }
   },
+  "contextual": {
+    "options": [
+      "copy",
+      "view",
+      "chatgpt",
+      {
+        "title": "Open in Codex",
+        "description": "Ask Codex about this page",
+        "icon": "/images/contextual/codex.svg",
+        "href": {
+          "base": "codex://new",
+          "query": [
+            {
+              "key": "prompt",
+              "value": "Read this documentation page, so I can ask questions about it:\n\nhttps://e2e.tester.army/docs$path.md"
+            }
+          ]
+        }
+      },
+      "claude",
+      {
+        "title": "Open in Claude Code",
+        "description": "Ask Claude Code about this page",
+        "icon": "/images/contextual/claude-code.svg",
+        "href": {
+          "base": "claude-cli://open",
+          "query": [
+            {
+              "key": "q",
+              "value": "Read this documentation page, so I can ask questions about it:\n\nhttps://e2e.tester.army/docs$path.md"
+            }
+          ]
+        }
+      },
+      {
+        "title": "Open in Cursor",
+        "description": "Ask Cursor about this page",
+        "icon": "/images/contextual/cursor.svg",
+        "href": {
+          "base": "https://cursor.com/link/prompt",
+          "query": [
+            {
+              "key": "text",
+              "value": "Read this documentation page, so I can ask questions about it:\n\nhttps://e2e.tester.army/docs$path.md"
+            }
+          ]
+        }
+      }
+    ]
+  },
   "fonts": {
     "heading": {
       "family": "Geist",
