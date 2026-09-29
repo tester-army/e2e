@@ -111,8 +111,8 @@ npx e2e explore --session admin 'Explore the admin settings and find bugs'
 ```
 
 Explore collects the config's test files, runs the one setup test that
-declares the session, then restores the session into the exploration and
-opens the app. This works the same way as a test that declares
+declares the session, then restores the session into the exploration and,
+when the target declares a URL, opens the app. This works the same way as a test that declares
 `{ session: 'admin' }`. No other test runs. The setup test runs as it does
 for `e2e run`, with your configured agents, trace cache, and retries; only
 the exploration runs as the explorer. The planner and the agent are
@@ -128,7 +128,7 @@ session keeps that protection:
 | The setup | Findings in the exploration |
 | --- | --- |
 | Filled a password or other secret, for example `fill(admin.password)` | No screenshots |
-| Signed in without filling a secret, for example by setting a session cookie with `web.setCookies` | Screenshots attached |
+| Signed in without filling a secret, for example by setting a session cookie with `web.setCookies` | Screenshots attached when the engine captures them |
 
 A value the setup uses without it being a configured secret, such as a
 token it sets as a cookie, is not redacted from observations or reports.

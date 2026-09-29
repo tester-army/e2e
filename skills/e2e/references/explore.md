@@ -40,17 +40,18 @@ usernames, and the agent fills passwords with `type_secret` by name.
 (`test.setup('...', { sessions: ['admin'] }, ...)` and `session.save('admin')`,
 see `e2e guide writing-tests`). The run collects the config's test files, runs exactly
 the setup that declares the session, then restores it into the exploration
-and opens the app, as a test with `{ session: 'admin' }` does. No other test
-runs. The setup runs as it does for `e2e run`, with the configured agents,
-cache, and retries; only the exploration runs as the explorer. The planner and the agent are told they start signed in, so no charter
-is spent signing in again. A name no setup declares fails before any app
+and, on a target with a URL, opens the app, as a test with
+`{ session: 'admin' }` does. No other test runs. The setup runs as it does
+for `e2e run`, with the configured agents, cache, and retries; only the
+exploration runs as the explorer. The planner and the agent are told they
+start signed in, so no charter is spent signing in again. A name no setup declares fails before any app
 process starts with `COLLECTION_ERROR`, naming the declared sessions.
 
 Screenshots follow the setup: once a secret is filled, pixels stay withheld,
 and a restored session carries that taint. A setup that filled a password
 leaves every finding without a screenshot. One that signed in without filling
 a secret (setting a session cookie with `web.setCookies`, say) carries no
-taint, so findings keep their screenshots. A value the setup used that is not
+taint, so findings keep their screenshots when the engine captures pixels. A value the setup used that is not
 a configured secret is not redacted either.
 
 ## Flags
