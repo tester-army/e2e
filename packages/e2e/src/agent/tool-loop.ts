@@ -12,13 +12,14 @@
  */
 
 import type { StepTurn } from '../run/steps.ts';
-import type { LanguageModel, ModelMessage, StepResult, ToolSet } from 'ai';
+import type { ModelMessage, StepResult, ToolSet } from 'ai';
 import { asSdkLanguageModel, loadAiSdk, type AiSdk, type SdkLanguageModel } from './ai-sdk.ts';
 import { ConfigurationError, withHint } from '../internal/errors.ts';
 import type { ProviderOptions } from '../types.ts';
 import { failureHint, isAbort, TRANSPORT_RETRIES } from './model/sdk.ts';
 import { isContextOverflow } from './model/overflow.ts';
 import { isForcedToolChoiceRejected } from './model/tool-choice.ts';
+import { withStallGuard } from './model/stall.ts';
 import { providerHints, type ProviderHints, type ProviderModelRef } from './model/provider-hints.ts';
 import { isScreenOutput, toolResultTexts } from './screen-update.ts';
 import { compactScreenHistory } from './transcript-compaction.ts';
@@ -55,6 +56,9 @@ const CLOCK_WIND_DOWN_FRACTION = 4;
 /** Turns from the budget ceiling at which only the conclusion tool is offered. */
 const FORCED_CONCLUSION_TURNS = 2;
 
+/** Starts each loop note, in the report and the debug transcript alike. */
+const LOOP_NOTE = '[loop] ';
+
 /** Transcript ceiling per step; enough for every turn without unbounded logs. */
 const MAX_TRANSCRIPT_CHARS = 262_144;
 /** Per-turn clips: the model's prose, one tool call's arguments, one tool result. */
@@ -66,6 +70,14 @@ const MAX_REPORTED_TURNS = 12;
 const MAX_REPORTED_CALLS = 8;
 const MAX_REPORTED_CALL_CHARS = 200;
 const MAX_REPORTED_OUTCOME_CHARS = 600;
+/** The loop's own notes on a reported turn, kept past the outcome clip; with it, inside the report's 2048-char field. */
+const MAX_REPORTED_NOTES_CHARS = 1_000;
+
+/** One turn as the loop keeps it: the loop's notes apart from what the model and the tools produced. */
+interface LoopTurn extends StepTurn {
+  /** Loop events after the turn (a resent request, a shrunk history), each prefixed with `LOOP_NOTE`. */
+  notes: string[];
+}
 
 /**
  * Models that refused a forced tool choice once. The loop asks every model
@@ -171,7 +183,7 @@ export function createToolLoopExecutor(options: ToolLoopExecutorOptions): StepEx
       const ai = await loadAiSdk();
       // The context's model getter resolves the configured model on read, so
       // an executor that brought its own never touches (or fails on) it.
-      const model: LanguageModel | undefined =
+      const model: SdkLanguageModel | undefined =
         options.model ??
         (context.model === undefined ? undefined : asSdkLanguageModel(context.model));
       if (model === undefined) {
@@ -194,7 +206,7 @@ class LoopRun {
   private noticedGuardReason: string | undefined;
   private noticedLowClock = false;
   /** Every turn that ran, oldest first: the debug transcript is rendered from it, the report keeps the tail. */
-  private readonly turns: StepTurn[] = [];
+  private readonly turns: LoopTurn[] = [];
   /** Loop notes from before the first turn. */
   private readonly preamble: string[] = [];
   /** Model turns that ran; `turns` mirrors it. */
@@ -218,14 +230,19 @@ class LoopRun {
   private toolChoice: ToolChoiceMode;
   /** The last turn that ran, for continuing after a reply without tool calls. */
   private lastStep: StepResult<ToolSet> | undefined;
+  /** `model` as the loop sends requests to it: each one bounded, so a stalled response is sent again. */
+  private readonly requestModel: SdkLanguageModel;
 
   constructor(
     private readonly ai: AiSdk,
     private readonly options: ToolLoopExecutorOptions,
     private readonly context: StepExecutorContext,
-    private readonly model: LanguageModel,
+    private readonly model: SdkLanguageModel,
   ) {
-    this.toolChoice = typeof model === 'object' && FREE_TOOL_CHOICE_MODELS.has(model) ? 'auto' : 'required';
+    this.toolChoice = FREE_TOOL_CHOICE_MODELS.has(model) ? 'auto' : 'required';
+    this.requestModel = withStallGuard(ai, model, (stallMs) => {
+      this.note(`turn ${String(this.turnsUsed + 1)} got no response in ${String(stallMs / 1000)}s: sending it again`);
+    });
     this.hints = providerHints(model as ProviderModelRef);
     this.maxTurns = context.budgets.maxModelCalls;
     this.clockWindDownMs = Math.min(
@@ -325,7 +342,7 @@ class LoopRun {
       system,
     );
     return new this.ai.ToolLoopAgent({
-      model: this.model,
+      model: this.requestModel,
       instructions: this.hints.instructions(system),
       tools,
       toolChoice: this.toolChoice,
@@ -375,7 +392,7 @@ class LoopRun {
       return undefined;
     }
     this.toolChoice = 'auto';
-    if (typeof this.model === 'object') FREE_TOOL_CHOICE_MODELS.add(this.model);
+    FREE_TOOL_CHOICE_MODELS.add(this.model);
     this.turnOffset = this.turnsUsed;
     this.note(`the model rejected a forced tool choice before turn ${String(this.turnsUsed + 1)}: retrying with auto`);
     return this.lastRequest;
@@ -582,7 +599,11 @@ class LoopRun {
           return [];
         }),
       ].join('\n'),
+      notes: [],
     });
+    // Attached as each turn ends, not only once the loop returns: a step the
+    // clock ends settles without waiting for the loop, and keeps its turns.
+    this.attachTranscript();
   }
 
   /**
@@ -592,12 +613,8 @@ class LoopRun {
    * the record.
    */
   private note(text: string): void {
-    const last = this.turns.at(-1);
-    if (last === undefined) {
-      this.preamble.push(`[loop] ${text}`);
-      return;
-    }
-    last.outcome = `${last.outcome}\n[loop] ${text}`;
+    (this.turns.at(-1)?.notes ?? this.preamble).push(`${LOOP_NOTE}${text}`);
+    this.attachTranscript();
   }
 
   /** Hands the step its turns: the tail for the report, and every turn as the debug transcript. */
@@ -607,15 +624,26 @@ class LoopRun {
       this.turns.slice(-MAX_REPORTED_TURNS).map((turn) => ({
         index: turn.index,
         calls: turn.calls.slice(0, MAX_REPORTED_CALLS).map((call) => truncate(call, MAX_REPORTED_CALL_CHARS)),
-        outcome: truncate(turn.outcome, MAX_REPORTED_OUTCOME_CHARS),
+        outcome: reportedOutcome(turn),
       })),
     );
     const transcript = [
       ...this.preamble,
-      ...this.turns.map((turn) => [`--- turn ${turn.index} ---`, ...turn.calls.map((call) => `tool call: ${call}`), turn.outcome].join('\n')),
+      ...this.turns.map((turn) => [`--- turn ${turn.index} ---`, ...turn.calls.map((call) => `tool call: ${call}`), turn.outcome, ...turn.notes].join('\n')),
     ];
     this.context.attachTranscript(truncate(transcript.join('\n'), MAX_TRANSCRIPT_CHARS));
   }
+}
+
+/**
+ * A turn's outcome as the report keeps it: the tool results clipped, and the
+ * loop's notes after them, clipped apart, since they come last and one clip
+ * would drop them.
+ */
+function reportedOutcome(turn: LoopTurn): string {
+  const outcome = truncate(turn.outcome, MAX_REPORTED_OUTCOME_CHARS);
+  if (turn.notes.length === 0) return outcome;
+  return `${outcome}\n${truncate(turn.notes.join('\n'), MAX_REPORTED_NOTES_CHARS)}`;
 }
 
 function appendNotice(messages: ModelMessage[], content: string): ModelMessage[] {

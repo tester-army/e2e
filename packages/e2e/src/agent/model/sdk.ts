@@ -15,6 +15,7 @@ import { packageVersion } from '../../internal/package-version.ts';
 import { AgentError } from '../error.ts';
 import { isContextOverflow } from './overflow.ts';
 import { providerHints, type ProviderModelRef } from './provider-hints.ts';
+import { withStallGuard } from './stall.ts';
 import {
   imageTokenUpperBound,
   ModelOutputInvalidError,
@@ -49,6 +50,7 @@ export function createModelAdapter(model: ResolvedModel | undefined): ModelAdapt
   }
   const adapterVersion = packageVersion(import.meta.url, '../../../package.json', '0.0.0');
   const languageModel = asSdkLanguageModel(model.model);
+  let requestModel: SdkLanguageModel | undefined;
 
   return {
     provenance: {
@@ -60,7 +62,9 @@ export function createModelAdapter(model: ResolvedModel | undefined): ModelAdapt
       adapterVersion: `ai-sdk/${adapterVersion}`,
     },
     async generate<Value>(call: ModelCall<Value>): Promise<ModelResult<Value>> {
-      const { generateText, jsonSchema, Output } = await loadAiSdk();
+      const ai = await loadAiSdk();
+      const { generateText, jsonSchema, Output } = ai;
+      requestModel ??= withStallGuard(ai, languageModel);
       const hints = providerHints(languageModel as ProviderModelRef);
       const images = call.images ?? [];
       const inputBound =
@@ -79,7 +83,7 @@ export function createModelAdapter(model: ResolvedModel | undefined): ModelAdapt
       // is where the prompt cache is addressed; the prompt itself is one-off.
       const providerOptions = hints.providerOptions(call.providerOptions, call.system);
       const settings = {
-        model: languageModel,
+        model: requestModel,
         instructions: hints.instructions(call.system),
         // Text-only calls keep the plain prompt form; images require the
         // multi-part message form, and both must carry the same instruction
