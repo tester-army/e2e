@@ -174,7 +174,8 @@ describe('e2e explore', () => {
     const attempt = result.attempts[0]!;
     const evidence = attempt.artifacts.find((artifact) => artifact.id === finding.artifactId);
     expect(evidence).toMatchObject({ kind: 'screenshot', mediaType: 'image/png', producer: { kind: 'step' } });
-    expect(evidence!.path).toMatch(/\/finding-1\.png$/);
+    // The directory is a short name for the goal, not the test id that holds the whole goal encoded.
+    expect(evidence!.path).toBe('web/explore-the-home-page-and-find-bugs-b45b84f0/default/attempt-0/finding-1.png');
     expect(existsSync(path.join(project.dir, '.e2e', 'artifacts', ...evidence!.path!.split('/')))).toBe(true);
     expect(attempt.steps.find((step) => step.api === 'agent.act')!.artifacts).toContain(finding.artifactId);
     expect(result.titlePath).toEqual(['Explore the home page and find bugs']);

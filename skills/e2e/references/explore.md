@@ -105,7 +105,12 @@ high 4, medium 3, low 2, trivial 1. `.e2e/report.json` has the record under
 `artifactId` names the evidence screenshot among the attempt's `artifacts` in
 the result whose `file` is `explore`, where its path, size, and digest are.
 With `--session`, `run.results` also holds the setup's result and the
-project's other tests as skipped (`filtered`).
+project's other tests as skipped (`filtered`). The exploration's attempt
+directory is `<target>/explore-<first words of the goal>-<digest of the
+goal>/<agent>/attempt-0/`, e.g.
+`web/explore-check-the-cart-totals-1a2b3c4d/default/attempt-0/finding-1.png`
+under `.e2e/artifacts/`: the same goal always maps to the same directory,
+different goals never share one.
 
 Turn a finding into a test: its `reproduction` steps are the `agent.act()`
 instructions or `screen.*` actions, and `expected` is the assertion.

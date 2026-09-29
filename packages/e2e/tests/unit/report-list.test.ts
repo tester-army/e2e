@@ -2115,7 +2115,7 @@ describe('explore runs', () => {
             attempt({
               status: 'failed',
               error: { category: 'test', code: 'ASSERTION_FAILED', message: 'exploration found 1 issue(s): [severity 4] Cart total shows $0.00 with two items', retryable: false },
-              artifacts: [{ id: 'shot-1', kind: 'screenshot', mediaType: 'image/png', path: 'web/explore/attempt-0/finding-1.png', redaction: 'complete', producer: { kind: 'attempt' } }],
+              artifacts: [{ id: 'shot-1', kind: 'screenshot', mediaType: 'image/png', path: 'web/explore-checkout-like-a-first-time-buyer-1ec1fbac/default/attempt-0/finding-1.png', redaction: 'complete', producer: { kind: 'attempt' } }],
             }),
           ],
         }),
@@ -2154,7 +2154,7 @@ describe('explore runs', () => {
       '    steps     1. Open the catalog',
       '              2. Add two books to the cart',
       '              3. Open the cart',
-      '    evidence  .e2e/artifacts/web/explore/attempt-0/finding-1.png',
+      '    evidence  .e2e/artifacts/web/explore-checkout-like-a-first-time-buyer-1ec1fbac/default/attempt-0/finding-1.png',
     ]);
     const second = lines.indexOf(' 2. trivial warning  Footer misspells Receive');
     expect(lines[second + 1]).toBe('    / · step 2');

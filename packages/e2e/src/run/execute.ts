@@ -837,7 +837,7 @@ export class TargetExecutor implements SerialHost {
       // several times, from overwriting itself.
       segments:
         shared?.artifactSegments ??
-        [this.target.name, sanitizePathSegment(pair.test.id), pair.agent, ...repeatSegment(pair.repeat), `attempt-${attemptIndex}`],
+        [this.target.name, sanitizePathSegment(registered.artifactName ?? pair.test.id), pair.agent, ...repeatSegment(pair.repeat), `attempt-${attemptIndex}`],
       attemptId,
       currentStepId: () => steps.currentStepId,
       ...(this.config.artifactStore === undefined ? {} : { store: this.config.artifactStore }),

@@ -79,6 +79,12 @@ goal, budgets, steps, assessment, and reason the run ended. After a secret
 fill, screenshots are withheld for the rest of the attempt, including a fill
 in the setup test of a [restored session](#start-signed-in).
 
+Evidence and the run's other artifacts land in a directory named from the
+goal's first words and a digest of the whole goal, for example
+`.e2e/artifacts/web/explore-check-the-cart-totals-1a2b3c4d/default/attempt-0/finding-1.png`.
+A rerun of the same goal writes to the same directory, and two different
+goals never share one.
+
 `--reporter list,markdown` also writes the findings to `.e2e/summary.md`.
 `--debug`, `--ai-trace`, and `--video` work as they do for `e2e run`. Video
 requires an engine that supports recording. The exploration is one attempt,

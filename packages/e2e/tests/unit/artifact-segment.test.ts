@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { sanitizePathSegment } from '../../src/run/artifacts.ts';
+import { labelSegment, sanitizePathSegment } from '../../src/run/artifacts.ts';
 
 const SAFE_ALPHABET = /^[A-Za-z0-9._-]+$/;
 const DIGESTED = /-[0-9a-f]{8}$/;
@@ -76,5 +76,40 @@ describe('sanitizePathSegment', () => {
     const capped = sanitizePathSegment('a'.repeat(130));
     expect(capped).toHaveLength(MAX_SEGMENT_CHARS);
     expect(capped).toMatch(/^a{111}-[0-9a-f]{8}$/);
+  });
+});
+
+describe('labelSegment', () => {
+  const GOAL = 'Starting at /e/cart-totals, change each quantity up and down; check every total and the tax line';
+
+  it('names an exploration by the first words of its goal and a digest of the whole goal', () => {
+    expect(labelSegment('explore', GOAL)).toBe('explore-starting-at-e-cart-totals-change-05548d83');
+    expect(labelSegment('explore', GOAL)).toBe(labelSegment('explore', GOAL));
+  });
+
+  it('keeps two goals with the same first words apart', () => {
+    const first = labelSegment('explore', 'Check the cart totals after changing quantities');
+    const second = labelSegment('explore', 'Check the cart totals after removing an item');
+    expect(first).toBe('explore-check-the-cart-totals-after-948a4f2f');
+    expect(second).toBe('explore-check-the-cart-totals-after-88219565');
+  });
+
+  it('leaves out a first word the prefix already says', () => {
+    expect(labelSegment('explore', 'Explore the app and find bugs')).toBe('explore-the-app-and-find-bugs-f705c041');
+    expect(labelSegment('explore', 'Explore')).toMatch(/^explore-[0-9a-f]{8}$/);
+  });
+
+  it('drops accents, falls back to the digest alone, and cuts one long word, always a safe segment', () => {
+    const segments = [
+      labelSegment('explore', 'Sprawdź koszyk: żółć'),
+      labelSegment('explore', '購入フローを確認する'),
+      labelSegment('explore', `${'x'.repeat(300)} and more`),
+      labelSegment('explore', '../../etc/passwd'),
+    ];
+    expect(segments[0]).toMatch(/^explore-sprawdz-koszyk-zo-c-[0-9a-f]{8}$/);
+    expect(segments[1]).toMatch(/^explore-[0-9a-f]{8}$/);
+    expect(segments[2]).toMatch(/^explore-x{32}-[0-9a-f]{8}$/);
+    expect(segments[3]).toMatch(/^explore-etc-passwd-[0-9a-f]{8}$/);
+    for (const segment of segments) expect(sanitizePathSegment(segment)).toBe(segment);
   });
 });

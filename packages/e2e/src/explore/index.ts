@@ -16,6 +16,7 @@ import { discoverConfig, loadConfigModule, missingConfigError } from '../config/
 import { resolveConfig, type ResolvedCredential, type ResolvedTarget } from '../config/resolve.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import type { ReportExplore } from '../report/build.ts';
+import { labelSegment } from '../run/artifacts.ts';
 import { run, type RunOutcome } from '../run/runner.ts';
 import type { AgentConfig, BuiltinReporter, E2EConfig, VideoMode } from '../types.ts';
 import { createExploreBody } from './body.ts';
@@ -231,7 +232,9 @@ function credentialAccounts(credentials: ReadonlyMap<string, ResolvedCredential>
  * The one-test registration: the goal is the title, the body is the
  * exploration loop. With a session it consumes that session like any test
  * declaring `{ session }`, so the runner runs the setup that saves it first
- * and restores it into the exploration's attempt.
+ * and restores it into the exploration's attempt. Its artifacts go under a
+ * short name for the goal rather than the test id, which holds the whole
+ * goal encoded.
  */
 function exploreRegistration(
   state: ExploreState,
@@ -257,6 +260,7 @@ function exploreRegistration(
     group: undefined,
     mode: 'normal',
     source: undefined,
+    artifactName: labelSegment(EXPLORE_FILE, state.goal),
   };
   return { tests: [test], hooks: [] };
 }
