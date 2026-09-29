@@ -484,10 +484,11 @@ trees, on both platforms, without a device.
   needs `node scripts/restore-peer-ranges.ts` after it, or `pnpm check` fails
   on the pin.
 - The runner publishes as the unscoped `e2e` (entry points `e2e`, `e2e/agent`,
-  `e2e/engine`, `e2e/oauth/chatgpt`, `e2e/oauth/copilot`, `e2e/oauth/grok`; the bin is `e2e` too); engines and reporters publish public
+  `e2e/engine`, `e2e/oauth/chatgpt`, `e2e/oauth/copilot`, `e2e/oauth/grok`; the bin is `e2e` too); engines, reporters, and integrations publish public
   under the `@e2e-dev` scope. The `@e2edev` scope (moved to `@e2e-dev` on
-  2026-09-28), `@e2edev/e2e`, and `@e2edev/oauth` (folded into `e2e/oauth` on
-  2026-09-21) are the retired names: deprecated on npm, never referenced here. Provenance stays off until the repository is
+  2026-09-28), `@e2edev/e2e`, `@e2edev/oauth` (folded into `e2e/oauth` on
+  2026-09-21), and `@e2e-dev/integrations` (moved to `@e2e-dev/kernel` on
+  2026-09-29) are the retired names: deprecated on npm, never referenced here. Provenance stays off until the repository is
   public, and the release job authenticates with the `NPM_TOKEN` secret.
   Document the CLI as `npx e2e`; npx runs the locally installed bin first, and
   the flag `--no-install` adds nothing once the package is a dependency.
