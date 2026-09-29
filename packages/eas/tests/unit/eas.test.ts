@@ -240,11 +240,23 @@ describe('easSimulators()', () => {
     const lease = await iosProvider.acquire(ios);
     eas.states = [{ status: 'NEW', turtleJobRun: { status: 'IN_QUEUE' }, remoteConfig: null }];
     await expect(easSimulators({ projectId: 'p1', maxIdleTimeMinutes: 5 }).acquire(request({ runId: 'run-idle', platform: 'android', targetName: 'android', slots: 1 }))).rejects.toThrow(
-      'simulator session s1 did not become ready: still queued while a session of this run has been ready for 5 minutes, the idle limit EAS stops it at; lower `workers` or raise `maxIdleTimeMinutes`; stopped it',
+      'simulator session s1 did not become ready: still queued while another session of this run idled to its `maxIdleTimeMinutes`, where EAS stops it; lower `workers` or raise `maxIdleTimeMinutes`; stopped it',
     );
     vi.restoreAllMocks();
     expect(eas.calls.at(-1)?.operation).toBe('stop');
     await iosProvider.release(lease, releaseContext('run-idle'));
+  });
+
+  it('measures a ready session by its own idle limit, not the queued one\'s', async () => {
+    let now = 0;
+    vi.spyOn(Date, 'now').mockImplementation(() => (now += 60_000));
+    const patient = easSimulators({ projectId: 'p1', maxIdleTimeMinutes: 30 });
+    const lease = await patient.acquire(request({ runId: 'run-limits' }));
+    const queued = { status: 'NEW', turtleJobRun: { status: 'IN_QUEUE' }, remoteConfig: null };
+    eas.states = [...Array.from({ length: 10 }, () => queued), READY];
+    await expect(easSimulators({ projectId: 'p1', maxIdleTimeMinutes: 2 }).acquire(request({ runId: 'run-limits' }))).resolves.toMatchObject({ id: 's1' });
+    vi.restoreAllMocks();
+    await patient.release(lease, releaseContext('run-limits'));
   });
 
   it('keeps waiting however long it queues while no session of the run is ready, or after they were released', async () => {

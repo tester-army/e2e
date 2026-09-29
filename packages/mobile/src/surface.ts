@@ -499,9 +499,7 @@ export class AgentDeviceSurface {
       await this.stopLeaseRecording(dangling, attempt.artifactsDir, context.signal).catch(() => undefined);
     } else if (dangling !== undefined) {
       await this.settleInflight(context.signal).catch(() => undefined);
-      await this.command('stop video recording', (client) => client.recording.record({ action: 'stop' }), context.signal).catch(
-        () => undefined,
-      );
+      await this.stopScreenRecording(context.signal).catch(() => undefined);
     }
   }
 
@@ -558,25 +556,30 @@ export class AgentDeviceSurface {
       attempt.video = undefined;
       return [segment];
     }
-    const result = await this.command(
-      'stop video recording',
-      (client) => client.recording.record({ action: 'stop' }),
-      operation.signal,
-    );
+    const result = await this.stopScreenRecording(operation.signal);
     // Cleared only now: a stop that failed leaves the recording for `endAttempt`.
     attempt.video = undefined;
-    // A device-scope recording started with no session made one of its own, and
-    // stopping it ended that session, whatever the test opened in it since.
-    if (result.recordOnlySession === true) {
-      this.sessionApp = undefined;
-      this.screenReplaced();
-    }
     // The device may finalize the file under a path of its own choosing; the
     // artifact must live where the attempt directory expects it.
     const written = typeof result.outPath === 'string' ? result.outPath : video.absolute;
     if (written !== video.absolute && existsSync(written)) renameSync(written, video.absolute);
     if (!existsSync(video.absolute)) return [];
     return [{ path: video.relative, startedAt: video.startedAt }];
+  }
+
+  /**
+   * Stops the device's screen recording. A device-scope recording started
+   * with no session made one of its own, and stopping it ends that session,
+   * whatever the test opened in it since, so the session is then as
+   * `closeApp` leaves it.
+   */
+  private async stopScreenRecording(signal: AbortSignal): Promise<{ readonly outPath?: unknown }> {
+    const result = await this.command('stop video recording', (client) => client.recording.record({ action: 'stop' }), signal);
+    if (result.recordOnlySession === true) {
+      this.sessionApp = undefined;
+      this.screenReplaced();
+    }
+    return result;
   }
 
   /**

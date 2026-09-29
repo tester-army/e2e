@@ -1702,6 +1702,28 @@ describe('video', () => {
     ]);
   });
 
+  it('forgets the session app when the attempt-end retry of a failed stop ends the recording\'s own session', async () => {
+    const h = harness({ app: 'com.example.app', permissions: { camera: 'grant' } });
+    h.fake.respond('apps.open', () => ({ session: 's', appName: 'Example', appBundleId: 'com.example.app', identifiers: {} }));
+    let stops = 0;
+    h.fake.respond('recording.record', (args) => {
+      const options = args as { action: 'start' | 'stop'; path?: string };
+      if (options.action === 'start') return { recording: 'started', outPath: options.path, sessionStateDir: '/tmp', showTouches: false, recordOnlySession: true };
+      stops += 1;
+      if (stops === 1) throw new Error('export still running');
+      return { recording: 'stopped', outPath: path.join(artifactsDir, 'video', 'video.mp4'), artifacts: [], durationMs: 1200, showTouches: false, recordOnlySession: true };
+    });
+    await openAttempt(h);
+    await h.engine.session!.restart!(operation());
+    await h.engine.artifacts!.startVideo!(operation());
+    await expect(h.engine.artifacts!.stopVideo!(operation())).rejects.toThrow();
+    await h.engine.endAttempt!(cleanup());
+    await h.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets });
+    const before = h.fake.calls.length;
+    await h.engine.session!.restart!(operation());
+    expect(h.fake.calls.slice(before).map((call) => call.method)).toEqual(['apps.open', 'settings.update', 'apps.open']);
+  });
+
   it('moves a recording the device finalized elsewhere into place, and stops a dangling one at attempt end', async () => {
     const h = harness();
     const elsewhere = path.join(artifactsDir, 'elsewhere.mp4');
