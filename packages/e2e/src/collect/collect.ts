@@ -340,12 +340,7 @@ export function selectPositionals(
  * of offering a look-alike.
  */
 export function excludingEntry(projectRoot: string, tests: readonly string[], positional: string): string | undefined {
-  let file: string;
-  try {
-    file = relativeToRoot(projectRoot, splitLine(projectRoot, positional).path);
-  } catch {
-    return undefined;
-  }
+  const file = relativeToRoot(projectRoot, splitLine(projectRoot, positional).path);
   if (GLOB_SYNTAX.test(file)) return undefined;
   const { include } = compileGlobList(tests);
   if (!include.some((glob) => matchesGlob(glob, file))) return undefined;

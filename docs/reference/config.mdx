@@ -49,7 +49,7 @@ selects every test file except those under `tests/wip/`. A file is selected
 when an including glob matches it and no exclusion does, whatever the order of
 the list, and a list of only exclusions is `INVALID_CONFIG`. A glob names
 files, so an entry with no wildcard that names a directory (`'!tests/wip'`)
-is `INVALID_CONFIG` naming the glob to write (`'!tests/wip/**'`). A file
+is `INVALID_GLOB` naming the glob to write (`'!tests/wip/**'`). A file
 passed to `e2e run` that an exclusion takes out is `NO_TESTS` naming that
 entry. Discovery visits
 only directories that could match, never enters one an exclusion takes whole,
@@ -331,8 +331,9 @@ that already answers is `APP_ALREADY_RUNNING`. `{port}` on a target without a
 
 The child inherits only `PATH`, `HOME`, `TMPDIR`, `TMP`, `TEMP`,
 `SystemRoot`, and `COMSPEC`, plus everything in `command.env`. Every `args`
-entry and `env` value is a string; anything else, a `secrets.get()` handle
-included, is `INVALID_CONFIG`. The runner
+entry and `env` value is a string; anything else, a number or a
+`secrets.get()` handle included, is `INVALID_CONFIG`, except an `undefined`
+`env` value, which is dropped. The runner
 never terminates a process it did not start.
 
 ### services

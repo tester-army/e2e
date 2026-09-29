@@ -10,11 +10,11 @@ import type { BrowserContext, Page } from 'playwright';
 import {
   ConfigurationError,
   defineEngine,
-  didYouMean,
   isSecret,
   LOCATOR_ACTION_KINDS,
   POINTER_ACTION_KINDS,
   obj,
+  rejectUnknownKeys,
   type EngineAppDeclaration,
   type EngineHandle,
 } from 'e2e/engine';
@@ -47,7 +47,19 @@ export function surfaceOf(engine: EngineHandle): PlaywrightLiveSurface | undefin
 }
 
 export function web(options: WebOptions = {}): EngineHandle {
-  rejectUnknownOptions(options);
+  if ('allowedOrigins' in options) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      'web({ allowedOrigins }) is gone: navigation and secret fills are not gated by origin; remove the option',
+    );
+  }
+  if ('video' in options) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      "web({ video }) was renamed web({ screencast }): it takes { size?, quality? } for the page screencast; which attempts record is the video mode on the config or a target",
+    );
+  }
+  rejectUnknownKeys('web()', options, WEB_OPTION_KEYS);
   const provider = typeof options.browser === 'object' && options.browser !== null ? asBrowserProvider(options.browser) : undefined;
   if (provider !== undefined && options.connect !== undefined) {
     throw new ConfigurationError(
@@ -55,29 +67,17 @@ export function web(options: WebOptions = {}): EngineHandle {
       `web({ browser, connect }) names two browser sources; browser provider "${provider.name}" leases its own browsers, so remove connect`,
     );
   }
-  if (options.connect !== undefined) validateConnectKeys(options.connect);
+  if (isRecord(options.connect)) rejectUnknownKeys('web({ connect })', options.connect, ['cdpEndpoint', 'reconnectEndpoint']);
   if (options.connect !== undefined && typeof options.browser === 'string' && options.browser !== 'chromium') {
     throw new ConfigurationError(
       'INVALID_CONFIG',
       `web({ connect }) requires the chromium browser; CDP attach is chromium-only, got "${options.browser}"`,
     );
   }
-  if ('allowedOrigins' in options) {
-    throw new ConfigurationError(
-      'INVALID_CONFIG',
-      'web({ allowedOrigins }) is gone: navigation and secret fills are not gated by origin; remove the option',
-    );
-  }
   if (options.headers !== undefined) validateHeaders(options.headers);
   if (options.basicAuth !== undefined) validateBasicAuth(options.basicAuth);
   if (options.testIdAttribute !== undefined) validateTestIdAttribute(options.testIdAttribute);
   if (options.userAgent !== undefined) validateUserAgent(options.userAgent, options.headers);
-  if ('video' in options) {
-    throw new ConfigurationError(
-      'INVALID_CONFIG',
-      "web({ video }) was renamed web({ screencast }): it takes { size?, quality? } for the page screencast; which attempts record is the video mode on the config or a target",
-    );
-  }
   if (options.screencast !== undefined) validateScreencast(options.screencast);
   const reconnecting = options.connect?.reconnectEndpoint !== undefined;
   if (reconnecting && typeof options.connect?.reconnectEndpoint !== 'function') {
@@ -150,11 +150,7 @@ export function web(options: WebOptions = {}): EngineHandle {
   return handle;
 }
 
-/**
- * Every option `web()` takes, kept equal to `WebOptions` by the compiler.
- * `allowedOrigins` and `video` are gone and are refused by name after this
- * check lets them through.
- */
+/** Every option `web()` takes, kept equal to `WebOptions` by the compiler. */
 const WEB_OPTION_KEYS: readonly string[] = Object.keys({
   url: true,
   environment: true,
@@ -171,32 +167,6 @@ const WEB_OPTION_KEYS: readonly string[] = Object.keys({
   testIdAttribute: true,
   userAgent: true,
 } satisfies Record<keyof WebOptions, true>);
-
-/** Refuses an option `web()` does not take, a misspelled one naming the nearest, so a typo never falls through to a default. */
-function rejectUnknownOptions(options: WebOptions): void {
-  for (const key of Object.keys(options)) {
-    if (WEB_OPTION_KEYS.includes(key) || key === 'allowedOrigins' || key === 'video') continue;
-    const hint = didYouMean(key, WEB_OPTION_KEYS);
-    throw new ConfigurationError(
-      'INVALID_CONFIG',
-      `web() has unknown option "${key}"${hint === '' ? `; it takes ${WEB_OPTION_KEYS.join(', ')}` : hint}`,
-    );
-  }
-}
-
-/** Refuses a `connect` key other than `cdpEndpoint` and `reconnectEndpoint`. */
-function validateConnectKeys(connect: unknown): void {
-  if (!isRecord(connect)) return;
-  const keys = ['cdpEndpoint', 'reconnectEndpoint'];
-  for (const key of Object.keys(connect)) {
-    if (keys.includes(key)) continue;
-    const hint = didYouMean(key, keys);
-    throw new ConfigurationError(
-      'INVALID_CONFIG',
-      `web({ connect }) has unknown key "${key}"${hint === '' ? '; it is { cdpEndpoint, reconnectEndpoint? }' : hint}`,
-    );
-  }
-}
 
 /** An HTTP header field name: one or more `token` characters (RFC 9110). */
 const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
@@ -244,10 +214,7 @@ function validateBasicAuth(basicAuth: unknown): void {
   if (!isRecord(basicAuth)) {
     throw new ConfigurationError('INVALID_CONFIG', 'web({ basicAuth }) must be an object with username and password');
   }
-  const unknownKey = Object.keys(basicAuth).find((key) => key !== 'username' && key !== 'password');
-  if (unknownKey !== undefined) {
-    throw new ConfigurationError('INVALID_CONFIG', `web({ basicAuth }) has unknown key "${unknownKey}"; it is { username, password }`);
-  }
+  rejectUnknownKeys('web({ basicAuth })', basicAuth, ['username', 'password']);
   const { username, password } = basicAuth;
   if (typeof username !== 'string' || username === '') {
     throw new ConfigurationError('INVALID_CONFIG', 'web({ basicAuth }) requires a non-empty username string');

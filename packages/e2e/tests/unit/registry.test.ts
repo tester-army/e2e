@@ -68,7 +68,10 @@ describe('registration', () => {
       /describe options has unknown key "only"; expected one of timeout, retries/,
     );
     await expect(register(() => test.setup('login', { sessions: ['admin'], tag: ['auth'] } as never, noop))).rejects.toThrow(
-      'test options has unknown key "tag"; did you mean "tags"?',
+      'setup options has unknown key "tag"; did you mean "tags"?',
+    );
+    await expect(register(() => test.setup('login', { sessions: ['admin'], skip: true } as never, noop))).rejects.toThrow(
+      /^setup options has unknown key "skip"; expected one of timeout, retries, tags, platforms/,
     );
   });
 

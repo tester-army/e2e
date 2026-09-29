@@ -8,7 +8,7 @@ import type { EngineAppDeclaration, EngineHandle } from '../engine/index.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import { obj } from '../internal/objects.ts';
 import { insideProjectRoot } from '../internal/paths.ts';
-import { didYouMean } from '../internal/suggest.ts';
+import { rejectUnknownKeys } from '../internal/options.ts';
 import { isSecret } from '../secrets.ts';
 import {
   isImplicitTestHost,
@@ -186,8 +186,11 @@ function expandPort(value: string, port: number | undefined, label: string): str
 }
 
 /**
- * The command with `{port}` expanded in every `args` entry and `env` value.
- * Malformed shapes pass through untouched for `validateCommand` to name.
+ * The command with `{port}` expanded in every `args` entry and `env` value,
+ * and an `env` entry whose value is `undefined` dropped, as `spawn` drops
+ * it: `env: { KEY: process.env.KEY }` with the variable unset starts the app
+ * without it. Malformed shapes pass through untouched for `validateCommand`
+ * to name.
  */
 function expandCommandPort<T extends CommandConfig>(command: T, label: string, expand: PortExpander): T {
   if (typeof command !== 'object' || command === null) return command;
@@ -200,10 +203,9 @@ function expandCommandPort<T extends CommandConfig>(command: T, label: string, e
     ...(typeof env === 'object' && env !== null
       ? {
           env: Object.fromEntries(
-            Object.entries(env).map(([key, value]) => [
-              key,
-              typeof value === 'string' ? expand(value, `${label}.env.${key}`) : value,
-            ]),
+            Object.entries(env)
+              .filter(([, value]) => value !== undefined)
+              .map(([key, value]) => [key, typeof value === 'string' ? expand(value, `${label}.env.${key}`) : value]),
           ),
         }
       : {}),
@@ -250,15 +252,7 @@ function validateCommand(
   if (typeof command !== 'object' || command === null) {
     throw new ConfigurationError('INVALID_CONFIG', `${label} must be an object`);
   }
-  for (const key of Object.keys(command)) {
-    if (!keys.includes(key)) {
-      const hint = didYouMean(key, keys);
-      throw new ConfigurationError(
-        'INVALID_CONFIG',
-        `${label} has unknown key "${key}"${hint === '' ? `; expected one of ${keys.join(', ')}` : hint}`,
-      );
-    }
-  }
+  rejectUnknownKeys(label, command, keys);
   if (typeof command.executable !== 'string' || command.executable.length === 0) {
     throw new ConfigurationError('INVALID_CONFIG', `${label}.executable is required`);
   }

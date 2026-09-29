@@ -95,13 +95,13 @@ describe('resolveConfig', () => {
       fs.writeFileSync(path.join(root, 'tests', 'wip', 'a.e2e.ts'), '');
       expect(() => resolveIn(['tests/**/*.e2e.ts', '!tests/wip'])).toThrow(
         expect.objectContaining({
-          code: 'INVALID_CONFIG',
+          code: 'INVALID_GLOB',
           message: 'tests entry "!tests/wip" names a directory, and a glob names files, so it excludes nothing; write "!tests/wip/**" to exclude everything under it',
         }),
       );
       expect(() => resolveIn(['./tests'])).toThrow(
         expect.objectContaining({
-          code: 'INVALID_CONFIG',
+          code: 'INVALID_GLOB',
           message: 'tests entry "./tests" names a directory, and a glob names files, so it selects nothing; write "tests/**/*.e2e.ts" to select the test files under it',
         }),
       );
@@ -214,6 +214,9 @@ describe('resolveConfig', () => {
     expect(() => resolveApp({ url, command: { executable: 'node', args: ['server.mjs', 3000] } } as never)).toThrow(
       expect.objectContaining({ code: 'INVALID_CONFIG', message: 'target "web" engine fake app.command.args[1] must be a string, got 3000' }),
     );
+    expect(resolveApp({ url, command: { executable: 'node', env: { PORT: '3000', UNSET: undefined } } } as never).command?.env).toEqual({
+      PORT: '3000',
+    });
     expect(() => resolveApp({ url, command: { executable: 'node', env: { PORT: 3000 } } } as never)).toThrow(
       expect.objectContaining({ code: 'INVALID_CONFIG', message: 'target "web" engine fake app.command.env.PORT must be a string, got 3000' }),
     );

@@ -794,8 +794,8 @@ function normalizeTests(tests: unknown, projectRoot: string): readonly string[] 
 }
 
 /**
- * Refuses a `tests` entry with no wildcard that names an existing directory.
- * A glob names files, so `tests/wip` matches a file called `wip` and nothing
+ * Refuses a `tests` entry with no wildcard that names an existing directory,
+ * with the `INVALID_GLOB` a trailing `/` gets. A glob names files, so `tests/wip` matches a file called `wip` and nothing
  * under the directory: as an exclusion it would take out nothing, and as an
  * inclusion select nothing, each without a word.
  */
@@ -807,7 +807,7 @@ function rejectDirectoryEntry(entry: string, projectRoot: string): void {
   if (statSync(path.join(projectRoot, ...names), { throwIfNoEntry: false })?.isDirectory() !== true) return;
   const dir = names.join('/');
   throw new ConfigurationError(
-    'INVALID_CONFIG',
+    'INVALID_GLOB',
     excluding
       ? `tests entry ${JSON.stringify(entry)} names a directory, and a glob names files, so it excludes nothing; write "!${dir}/**" to exclude everything under it`
       : `tests entry ${JSON.stringify(entry)} names a directory, and a glob names files, so it selects nothing; write "${dir}/**/*.e2e.ts" to select the test files under it`,

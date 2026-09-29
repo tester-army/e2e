@@ -147,10 +147,10 @@ describe('web() option keys', () => {
 
   it('rejects an option it does not know, naming the nearest', () => {
     expect(() => web({ url, comand: { executable: 'node' } } as unknown as Parameters<typeof web>[0])).toThrow(
-      refused('web() has unknown option "comand"; did you mean "command"?'),
+      refused('web() has unknown key "comand"; did you mean "command"?'),
     );
     expect(() => web({ url, launchOptions: {} } as unknown as Parameters<typeof web>[0])).toThrow(
-      /^web\(\) has unknown option "launchOptions"; it takes url, environment, identity, command, readyUrl, services, browser, viewport/,
+      /^web\(\) has unknown key "launchOptions"; expected one of url, environment, identity, command, readyUrl, services, browser, viewport/,
     );
   });
 
@@ -159,8 +159,8 @@ describe('web() option keys', () => {
     expect(() => web({ connect: { cdpEndpoint, reconectEndpoint: cdpEndpoint } } as unknown as Parameters<typeof web>[0])).toThrow(
       refused('web({ connect }) has unknown key "reconectEndpoint"; did you mean "reconnectEndpoint"?'),
     );
-    expect(() => web({ basicAuth: { username: 'u', password: 'p', user: 'u' } } as unknown as Parameters<typeof web>[0])).toThrow(
-      refused('web({ basicAuth }) has unknown key "user"; it is { username, password }'),
+    expect(() => web({ basicAuth: { username: 'u', password: 'p', usernme: 'u' } } as unknown as Parameters<typeof web>[0])).toThrow(
+      refused('web({ basicAuth }) has unknown key "usernme"; did you mean "username"?'),
     );
   });
 

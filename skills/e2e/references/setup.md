@@ -109,7 +109,7 @@ export default {
 | Key | Default | Notes |
 | --- | --- | --- |
 | `targets` | required | Non-empty. UI targets set `engine`; `platform` defaults to the engine's platform and `name` defaults to that platform. Tools-only targets may omit `engine` and must set `platform`. Use `name` with `--target`. |
-| `tests` | `'tests/**/*.e2e.ts'` | A glob or an array of globs relative to the project root: `*`, `?`, and a whole `**` segment, `/` separators; a leading `./` is fine. An entry starting with `!` excludes (`['tests/**/*.e2e.ts', '!tests/wip/**']`), in any order; only exclusions is `INVALID_CONFIG`, and so is a wildcard-free entry naming a directory (`'!tests/wip'`: write `'!tests/wip/**'`). Braces, character classes, extglobs, `..`, and absolute paths are `INVALID_GLOB`. Discovery enters only the directories a glob can match beneath and does not follow symlinks. |
+| `tests` | `'tests/**/*.e2e.ts'` | A glob or an array of globs relative to the project root: `*`, `?`, and a whole `**` segment, `/` separators; a leading `./` is fine. An entry starting with `!` excludes (`['tests/**/*.e2e.ts', '!tests/wip/**']`), in any order; only exclusions is `INVALID_CONFIG`. A wildcard-free entry naming a directory (`'!tests/wip'`: write `'!tests/wip/**'`) is `INVALID_GLOB`. Braces, character classes, extglobs, `..`, and absolute paths are `INVALID_GLOB`. Discovery enters only the directories a glob can match beneath and does not follow symlinks. |
 | `timeout` | `120000` | Per test attempt, in ms. Also the default `agent.act` deadline. |
 | `actionTimeout` | `30000` | Every locator action and engine operation, including each observation inside an agent step. Raise it for slow UI operations. |
 | `assertionTimeout` | `5000` | `expect` polling window. |

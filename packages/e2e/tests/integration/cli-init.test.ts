@@ -300,6 +300,18 @@ describe('initializing standalone projects', () => {
     });
   });
 
+  it('keeps the code of a configuration error from another copy of e2e, and only a configuration one', async () => {
+    const foreign = (category: string) =>
+      `const error = new Error('refused by a second copy');\nObject.assign(error, { [Symbol.for('e2e.error.v1')]: true, category: '${category}', code: 'INVALID_CONFIG', retryable: false });\nthrow error;\n`;
+    writeFileSync(path.join(dir, 'e2e.config.ts'), foreign('configuration'));
+    await expect(loadConfigModule(path.join(dir, 'e2e.config.ts'))).rejects.toMatchObject({
+      code: 'INVALID_CONFIG',
+      message: 'refused by a second copy',
+    });
+    writeFileSync(path.join(dir, 'e2e.config.ts'), foreign('test'));
+    await expect(loadConfigModule(path.join(dir, 'e2e.config.ts'))).rejects.toMatchObject({ code: 'CONFIG_LOAD_FAILED' });
+  });
+
   it('loads a config through a symlink', async () => {
     const sourceDir = path.join(dir, 'source');
     mkdirSync(sourceDir);

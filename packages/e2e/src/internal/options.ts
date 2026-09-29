@@ -5,7 +5,8 @@
  * too, naming the rename when there is one, rather than run on the default.
  */
 
-import { TestError } from './errors.ts';
+import { ConfigurationError, TestError } from './errors.ts';
+import { didYouMean } from './suggest.ts';
 
 /**
  * Whether `value` is a plain object: not null, an array, or a class instance.
@@ -42,4 +43,26 @@ export function rejectUnknownOptions(
     code,
     `${api} options has no ${unknown.length === 1 ? 'key' : 'keys'} ${described.join(', ')}; it takes ${known.join(', ')}`,
   );
+}
+
+/**
+ * The message for the first own key of `value` outside `keys`: the nearest
+ * known key when one is a plausible typo, every known key otherwise.
+ * Undefined when every key is known.
+ */
+export function unknownKeyMessage(label: string, value: object, keys: readonly string[]): string | undefined {
+  const key = Object.keys(value).find((candidate) => !keys.includes(candidate));
+  if (key === undefined) return undefined;
+  const hint = didYouMean(key, keys);
+  return `${label} has unknown key "${key}"${hint === '' ? `; expected one of ${keys.join(', ')}` : hint}`;
+}
+
+/**
+ * Refuses a config object carrying a key outside `keys` with
+ * `INVALID_CONFIG`, naming the nearest known key, so a misspelled option
+ * fails at load instead of falling through to a default.
+ */
+export function rejectUnknownKeys(label: string, value: object, keys: readonly string[]): void {
+  const message = unknownKeyMessage(label, value, keys);
+  if (message !== undefined) throw new ConfigurationError('INVALID_CONFIG', message);
 }

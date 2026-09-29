@@ -10,7 +10,7 @@ import { CollectionError } from '../internal/errors.ts';
 import { validateTitle } from '../internal/ids.ts';
 import { realmSlot } from '../internal/realm-slot.ts';
 import { parseSkipCall, skipRunningTest } from '../internal/skip.ts';
-import { didYouMean } from '../internal/suggest.ts';
+import { unknownKeyMessage } from '../internal/options.ts';
 import type {
   DescribeOptions,
   FixtureFn,
@@ -164,7 +164,7 @@ class Collector {
         throw new CollectionError('duplicate session names in one setup declaration');
       }
     }
-    validateTestOptions(options, this.currentGroup);
+    validateTestOptions(options, this.currentGroup, kind);
     const titlePath = [...groupTitles(this.currentGroup), normalizedTitle];
     const registered: RegisteredTest = {
       kind,
@@ -258,7 +258,7 @@ export function outermostSerialGroup(group: GroupNode | undefined): GroupNode | 
   return groupChain(group).find((node) => node.serial);
 }
 
-/** The keys `test()` and `test.setup()` take, `sessions` aside. */
+/** The keys `test()` takes. */
 const TEST_OPTION_KEYS: readonly string[] = Object.keys({
   timeout: true,
   retries: true,
@@ -274,8 +274,34 @@ const TEST_OPTION_KEYS: readonly string[] = Object.keys({
   video: true,
 } satisfies Record<keyof TestOptions, true>);
 
-/** The keys `test.describe()` takes: a test's, without `only`, and `serial`. */
-const DESCRIBE_OPTION_KEYS: readonly string[] = [...TEST_OPTION_KEYS.filter((key) => key !== 'only'), 'serial'];
+/** The keys `test.setup()` takes beside `sessions`, which registration lifts out first. */
+const SETUP_OPTION_KEYS: readonly string[] = Object.keys({
+  timeout: true,
+  retries: true,
+  tags: true,
+  platforms: true,
+  requires: true,
+  agentContext: true,
+  agent: true,
+  trace: true,
+  video: true,
+} satisfies Record<Exclude<keyof SetupOptions, 'sessions'>, true>);
+
+/** The keys `test.describe()` takes. */
+const DESCRIBE_OPTION_KEYS: readonly string[] = Object.keys({
+  timeout: true,
+  retries: true,
+  tags: true,
+  skip: true,
+  platforms: true,
+  requires: true,
+  session: true,
+  agentContext: true,
+  agent: true,
+  trace: true,
+  video: true,
+  serial: true,
+} satisfies Record<keyof DescribeOptions, true>);
 
 /**
  * The checks tests and groups share: only the option `keys` the call takes,
@@ -283,12 +309,8 @@ const DESCRIBE_OPTION_KEYS: readonly string[] = [...TEST_OPTION_KEYS.filter((key
  * and each known option's value.
  */
 function validateCommonOptions(options: TestOptions | DescribeOptions, label: string, keys: readonly string[]): void {
-  for (const key of Object.keys(options)) {
-    if (!keys.includes(key)) {
-      const hint = didYouMean(key, keys);
-      throw new CollectionError(`${label} has unknown key "${key}"${hint === '' ? `; expected one of ${keys.join(', ')}` : hint}`);
-    }
-  }
+  const unknown = unknownKeyMessage(label, options, keys);
+  if (unknown !== undefined) throw new CollectionError(unknown);
   if (options.timeout !== undefined) {
     if (!Number.isSafeInteger(options.timeout) || options.timeout <= 0) {
       throw new CollectionError(`${label}: timeout must be a positive safe integer`);
@@ -367,8 +389,9 @@ function insideSerial(group: GroupNode | undefined): boolean {
   return outermostSerialGroup(group) !== undefined;
 }
 
-function validateTestOptions(options: TestOptions, group: GroupNode | undefined): void {
-  validateCommonOptions(options, 'test options', TEST_OPTION_KEYS);
+function validateTestOptions(options: TestOptions, group: GroupNode | undefined, kind: 'test' | 'setup'): void {
+  if (kind === 'setup') validateCommonOptions(options, 'setup options', SETUP_OPTION_KEYS);
+  else validateCommonOptions(options, 'test options', TEST_OPTION_KEYS);
   if (insideSerial(group)) {
     const forbidden: (keyof TestOptions)[] = [
       'retries',
