@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { flushStagedTraces, type AgentCacheContext } from '../../src/cache/context.ts';
 import { FileCacheStore, MAX_CACHE_WIRE_BYTES } from '../../src/cache/store.ts';
-import { buildTraceEntry, type ActionTrace, type TraceEntry } from '../../src/cache/trace.ts';
+import { buildTraceEntry, type ActionTrace, type DerivedReason, type TraceEntry } from '../../src/cache/trace.ts';
 import { recordedVerdictOf, StepTraceSession, type StepCacheHost, type StepCacheOptions } from '../../src/agent/step-cache.ts';
 import { AgentError } from '../../src/agent/error.ts';
 import type { ExecutorActions } from '../../src/agent/executor.ts';
@@ -813,6 +813,44 @@ describe('flushStagedTraces and a re-recorded flow', () => {
     const replaced = await snapshot();
     expect(replaced.bytes).not.toBe(written.bytes);
     expect(JSON.parse(replaced.bytes).payload.actions).toHaveLength(2);
+  });
+
+  it('leaves an entry untouched when only the rule that flagged a typed value differs', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'e2e-flush-derived-'));
+    const store = new FileCacheStore({ directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: true });
+    const file = join(directory, `${'d'.repeat(64)}.json`);
+    const trace = (derived?: DerivedReason): ActionTrace => ({
+      actions: [
+        { name: 'tool', summary: 'tool type (run-time value)', ...(derived === undefined ? {} : { derived }) },
+        { name: 'tap', summary: 'tap Apply', target: { role: 'button', name: 'Apply' } },
+      ],
+      executor: { name: 'scripted' },
+      summary: 'applied the coupon',
+      startPath: '/e/iframe-form',
+      endPath: '/e/iframe-form',
+      endAnchors: [{ role: 'status', name: 'Coupon', text: 'applied' }],
+    });
+    const flush = async (staged: ActionTrace) => {
+      const context: AgentCacheContext = {
+        mode: 'read-write',
+        store,
+        identity: { testId: 'tests/example.e2e.ts::step', targetId: 'web' },
+        replayEligible: true,
+        strict: false,
+        claimKeyHash: () => 'd'.repeat(64),
+        staged: [{ kind: 'write', keyHash: 'd'.repeat(64), stepIndex: 0, trace: staged }],
+      };
+      await flushStagedTraces(context, 1);
+    };
+
+    // An entry recorded before gaps carried their rule, then live runs whose
+    // agent read the value off pixels once and off a node the next time: a
+    // replay stops at the gap whatever the rule, so none of them is a new flow.
+    await flush(trace());
+    const written = await readFile(file, 'utf8');
+    await flush(trace('pixels'));
+    await flush(trace('minted-token'));
+    expect(await readFile(file, 'utf8')).toBe(written);
   });
 });
 

@@ -195,7 +195,9 @@ that re-recorded them.
 
 Local runs leave a committed directory clean unless something changed. A
 replayed step never rewrites its entry, and a live re-recording with the same
-actions, paths, and anchors is not written. A file changes when:
+actions, paths, and anchors is not written: the summary, the measured end
+wait, and the rule that flagged a typed run-time value differ between two
+live runs of the same flow and do not count. A file changes when:
 
 - a step records for the first time,
 - the agent finishes a step after a hand-off, re-recording what it saw,

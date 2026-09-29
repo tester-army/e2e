@@ -74,19 +74,29 @@ export interface AgentCacheContext {
 
 /**
  * Whether the store already holds this flow: the same actions, paths, anchors,
- * executor, and provenance. The model's summary and the measured end wait
- * differ on every live run, so a step that runs live each time (it types a
- * value read off the screen) would otherwise rewrite an entry a committed
- * cache directory carries, changing nothing a replay reads.
+ * executor, and provenance. The model's summary, the measured end wait, and
+ * the rule that flagged a gap's typed value (`derived`, which follows how the
+ * agent read the value this time) differ between live runs, so a step that
+ * runs live each time (it types a value read off the screen) would otherwise
+ * rewrite an entry a committed cache directory carries. A replay stops at a
+ * gap whatever its rule, which only names the hand-off in the report.
  */
 async function holdsSameFlow(store: CacheStore, keyHash: string, trace: ActionTrace): Promise<boolean> {
   const existing = await store.read(keyHash);
   return existing.status === 'hit' && flowOf(existing.entry.payload) === flowOf(trace);
 }
 
+/** The part of a trace that decides what a replay does, as canonical JSON. */
 function flowOf(trace: ActionTrace): string {
-  const { summary: _summary, endWaitMs: _endWaitMs, ...flow } = trace;
-  return canonicalJson(flow);
+  const { summary: _summary, endWaitMs: _endWaitMs, actions, ...flow } = trace;
+  return canonicalJson({
+    ...flow,
+    actions: actions.map((action) => {
+      if (action.name !== 'tool') return action;
+      const { derived: _derived, ...gap } = action;
+      return gap;
+    }),
+  });
 }
 
 /**
