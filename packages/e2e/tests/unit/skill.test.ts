@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { readGuide, readSkillFiles, skillTopics } from '../../src/cli/skill.ts';
 
@@ -51,5 +51,27 @@ describe('the bundled agent skill', () => {
   it('ships in the published package through the build copy', () => {
     expect(packageJson.files).toContain('skills');
     expect(packageJson.scripts['build']).toContain("cpSync('../../skills/e2e','skills/e2e'");
+  });
+});
+
+/** The skill sources and the docs pages, relative to the repository root, each with its text. */
+function userFacingPages(): { file: string; text: string }[] {
+  const root = new URL('../../../../', import.meta.url);
+  return ['skills/e2e', 'docs']
+    .flatMap((dir) =>
+      readdirSync(new URL(dir, root), { recursive: true, encoding: 'utf8' })
+        .filter((file) => /\.mdx?$/.test(file) && !file.includes('node_modules'))
+        .map((file) => `${dir}/${file}`),
+    )
+    .map((file) => ({ file, text: readFileSync(new URL(file, root), 'utf8') }));
+}
+
+describe('the skill and the docs', () => {
+  it('pass --artifacts only in a paragraph that says the flag is gone', () => {
+    for (const { file, text } of userFacingPages()) {
+      for (const paragraph of text.split(/\n\s*\n/).filter((block) => block.includes('--artifacts'))) {
+        expect(paragraph, file).toMatch(/removed|gone/);
+      }
+    }
   });
 });
