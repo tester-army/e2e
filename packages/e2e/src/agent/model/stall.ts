@@ -34,10 +34,10 @@ export function withStallGuard(
         const stalled = new Promise<never>((_, reject) => {
           stall.signal.addEventListener('abort', () => reject(stall.signal.reason as Error), { once: true });
         });
-        const request = Promise.resolve(inner.doGenerate({ ...params, abortSignal }));
-        // A provider that ignores the abort is left behind, not awaited; its late settlement has no reader.
-        request.catch(() => undefined);
         try {
+          const request = Promise.resolve(inner.doGenerate({ ...params, abortSignal }));
+          // A provider that ignores the abort is left behind, not awaited; its late settlement has no reader.
+          request.catch(() => undefined);
           return await Promise.race([request, stalled]);
         } catch (cause) {
           if (!stall.signal.aborted || params.abortSignal?.aborted === true) throw cause;

@@ -65,6 +65,18 @@ describe('withStallGuard', () => {
     expect(calls).toBe(2);
   });
 
+  it('clears its timer when the provider throws before returning a promise', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const inner = asSdkLanguageModel(createScriptedInstance('fake', 'throws', async () => scriptedResult([], 'stop')));
+      const throwing = { ...inner, doGenerate: () => { throw new Error('bad request shape'); } } as typeof inner;
+      await expect(generateText({ model: withStallGuard(ai, throwing, () => undefined, 50), prompt: 'hello', maxRetries: 0 })).rejects.toThrow('bad request shape');
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("passes the caller's cancellation through as it was, not as a stall", async () => {
     const model = createScriptedInstance('fake', 'stall', async (options: { abortSignal?: AbortSignal }) => never(options.abortSignal));
     const stalls: number[] = [];
