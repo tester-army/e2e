@@ -63,16 +63,17 @@ import base from './e2e.config.ts';
 
 export default {
   ...base,
-  // Repro tests from step 6 live here, out of the gating suites.
-  tests: 'tests/bugbash/**/*.e2e.ts',
+  // The project's tests, so a repro can use its setup tests' sessions, plus the repro tests from step 6.
+  tests: [base.tests ?? 'tests/**/*.e2e.ts', 'tests/bugbash/**/*.e2e.ts'].flat(),
   // The app already runs: no services, no command.
   targets: [{ name: 'web', platform: 'web', engine: web({ url: 'http://127.0.0.1:3000' }) }],
   retries: 0,
   reporters: ['list'],
   credentials: {
     ...base.credentials,
-    'bb-cart': { username: 'bb-cart@example.test', password: 'seeded-password' },
-    'bb-account': { username: 'bb-account@example.test', password: 'seeded-password' },
+    // The seed script's password, from the environment rather than the file.
+    'bb-cart': { username: 'bb-cart@example.test', password: process.env.BUGBASH_PASSWORD ?? '' },
+    'bb-account': { username: 'bb-account@example.test', password: process.env.BUGBASH_PASSWORD ?? '' },
   },
   agents: {
     default: {
@@ -154,7 +155,9 @@ bugs, unless the user asked for polish.
 
 A charter that filled a password has no screenshots after that point: pixels
 are withheld once a secret is on screen, so its findings print no
-`evidence` line. Its video still shows what happened.
+`evidence` line. Its video still shows what happened, but a video is not
+masked: before you share one, check that no secret shows in it (a password
+field the app lets you reveal, a token echoed on screen).
 
 ## 5. Triage
 
@@ -199,7 +202,8 @@ Without subagents, verify one area after another.
    id to every call), walk the reproduction, and `locate` each locator
    before writing it (topic `mcp`). Several verifiers can each hold a
    session at once; close yours when done.
-4. Run it with the config that holds the model:
+4. Run it with the config that holds the model, naming the file so the
+   rest of the suite stays out of the run:
    `npx e2e run tests/bugbash/<slug>.e2e.ts`. The bug is confirmed
    only when the test fails with `ASSERTION_FAILED` on the assertion that
    encodes it. Any other failure (`LOCATOR_NOT_FOUND`, a timeout, a setup
@@ -218,9 +222,10 @@ production risks, marked unverified. Then the rejected findings grouped by
 reason (environment, design, fixture, did not reproduce), and the warnings.
 End with the charters run, their cost, and the areas no charter reached.
 
-The repro tests fail until the bugs are fixed, and the config's glob picks
-them up, so a gating run must leave them out until then: `npx e2e run
---exclude-tag bugbash`, or keep them uncommitted. Offer to fix each bug:
+The repro tests fail until the bugs are fixed. Where the project's own
+`tests` glob covers `tests/bugbash/`, its gating run must leave them out
+until then (`npx e2e run --exclude-tag bugbash`), or keep them
+uncommitted. Offer to fix each bug:
 the repro test turning green is the proof, and it stays behind as the
 regression test, its `bugbash` tag removed.
 
