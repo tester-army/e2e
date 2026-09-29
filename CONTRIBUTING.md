@@ -229,5 +229,5 @@ build against, and what a third-party engine builds against too. A change to
 that contract bumps all three packages together in one release, with a
 changeset for each, so an engine and a runner from the same release always
 match. Engines declare a peer range on `e2e` that points one way only
-(engine to runner, `>=x <1`), and `@e2e-dev/integrations` does the same on
-the engines it plugs into; do not make it mutual or narrow it.
+(engine to runner, `>=x <1`), and each integration (`@e2e-dev/kernel`) does
+the same on the engines it plugs into; do not make it mutual or narrow it.

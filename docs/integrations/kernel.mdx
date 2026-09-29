@@ -1,10 +1,10 @@
 ---
 title: Kernel browsers
 sidebarTitle: Kernel
-description: Run web targets in Kernel's hosted Chromium with the kernel() browser provider from @e2e-dev/integrations.
+description: Run web targets in Kernel's hosted Chromium with the kernel() browser provider from @e2e-dev/kernel.
 ---
 
-`kernel()` from `@e2e-dev/integrations/kernel` is a
+`kernel()` from `@e2e-dev/kernel` is a
 [browser provider](/browser#hosted-browsers) for [Kernel](https://kernel.sh).
 Each worker slot gets its own hosted Chromium, created when the run starts and
 deleted when it ends. Tests, config, and CI stay the same.
@@ -12,13 +12,13 @@ deleted when it ends. Tests, config, and CI stay the same.
 ## Setup
 
 ```bash
-npm install --save-dev @e2e-dev/integrations @onkernel/sdk
+npm install --save-dev @e2e-dev/kernel @onkernel/sdk
 ```
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
 import { web } from '@e2e-dev/web';
-import { kernel } from '@e2e-dev/integrations/kernel';
+import { kernel } from '@e2e-dev/kernel';
 
 export default {
   targets: [

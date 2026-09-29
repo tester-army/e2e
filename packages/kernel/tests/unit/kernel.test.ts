@@ -10,7 +10,7 @@ import path from 'node:path';
 import type { BrowserLease, BrowserReleaseContext, BrowserRequest } from '@e2e-dev/web';
 import type { ProviderRecordContext } from 'e2e/engine';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { kernel } from '../../src/kernel/index.ts';
+import { kernel } from '../../src/index.ts';
 
 const sdk = vi.hoisted(() => {
   class NotFoundError extends Error {}

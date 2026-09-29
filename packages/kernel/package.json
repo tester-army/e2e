@@ -1,13 +1,12 @@
 {
-  "name": "@e2e-dev/integrations",
+  "name": "@e2e-dev/kernel",
   "version": "0.0.0",
-  "description": "Official integrations for e2e: hosted browsers and devices behind the engines' provider seams",
+  "description": "Kernel hosted browsers for e2e: run web targets in Kernel's hosted Chromium",
   "keywords": [
     "e2e",
     "testing",
     "agentic",
     "end-to-end",
-    "integrations",
     "kernel",
     "hosted-browsers"
   ],
@@ -19,12 +18,12 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/tester-army/e2e.git",
-    "directory": "packages/integrations"
+    "directory": "packages/kernel"
   },
   "bugs": {
     "url": "https://github.com/tester-army/e2e/issues"
   },
-  "homepage": "https://github.com/tester-army/e2e/tree/main/packages/integrations#readme",
+  "homepage": "https://github.com/tester-army/e2e/tree/main/packages/kernel#readme",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
     "access": "public",
@@ -33,9 +32,9 @@
   },
   "type": "module",
   "exports": {
-    "./kernel": {
-      "types": "./dist/kernel/index.d.ts",
-      "default": "./dist/kernel/index.js"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     }
   },
   "files": [
@@ -54,14 +53,6 @@
     "@e2e-dev/web": ">=0.11.0 <1",
     "@onkernel/sdk": ">=0.113.0 <1",
     "e2e": ">=0.15.0 <1"
-  },
-  "peerDependenciesMeta": {
-    "@e2e-dev/web": {
-      "optional": true
-    },
-    "@onkernel/sdk": {
-      "optional": true
-    }
   },
   "devDependencies": {
     "@e2e-dev/web": "workspace:*",

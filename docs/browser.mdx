@@ -149,7 +149,7 @@ attaches over CDP the way `connect` does, and adds the lifecycle `connect`
 lacks: it asks for a browser when one is needed and gives it back when its
 scope ends, on every exit path, so a session billed by the minute stops
 when the run no longer uses it. The engine knows no vendor: for
-[Kernel](/integrations/kernel), `kernel()` from `@e2e-dev/integrations/kernel` is the
+[Kernel](/integrations/kernel), `kernel()` from `@e2e-dev/kernel` is the
 provider, and for any other service a provider is a few dozen lines in your
 project. Add `viewport: null` when
 the service shows the window in a live view: the page then

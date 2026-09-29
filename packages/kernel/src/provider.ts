@@ -9,7 +9,7 @@ import type {
   BrowserRequest,
 } from '@e2e-dev/web';
 import type { ProviderRecordContext, ProviderRecording } from 'e2e/engine';
-import { envValue } from '../env.ts';
+import { envValue } from './env.ts';
 import { kernelBrowsers, type KernelBrowserParams, type KernelBrowsers, type KernelReplayParams } from './client.ts';
 
 const KERNEL_API_KEY = 'KERNEL_API_KEY';

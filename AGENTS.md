@@ -65,14 +65,12 @@ suites that consume the built packages the way a user would.
   `e2e/engine` only: the semantics every engine must reproduce
   (error taxonomy, text and URL matching, assertion polling, JSON-value rules)
   are exported there, and there is no `e2e/internal` subpath.
-- `packages/integrations` - the published `@e2e-dev/integrations` package:
-  official integrations with hosted services, one subpath each
-  (`@e2e-dev/integrations/kernel`) and no root entry. A subpath is the only
-  place its vendor SDK is imported, and every SDK and engine is an optional
-  peer, so a project installs the SDK of the service it uses and nothing
-  else. An integration implements an engine's provider seam
-  (`BrowserProvider`, `DeviceProvider`) and imports that engine's types only;
-  the engines never know it exists.
+- `packages/kernel` - the published `@e2e-dev/kernel` package: Kernel hosted
+  browsers for the web engine. An official integration with a hosted service
+  is one package per service, named after it (`@e2e-dev/<service>`), with the
+  vendor SDK and the engine it plugs into as peers. It implements that
+  engine's provider seam (`BrowserProvider`, `DeviceProvider`) and imports
+  the engine's types only; the engines never know it exists.
 - `apps/testbed` (`@e2e-dev/testbed`, private) — dogfood project that
   consumes the **built** packages like a real user would: the playground app
   where every runner feature (sessions, routes, downloads, frames, uploads,
