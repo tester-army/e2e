@@ -52,6 +52,19 @@ describe('withStallGuard', () => {
     expect(stalls).toEqual([50]);
   });
 
+  it('abandons a request whose provider ignores the abort, and sends it again', async () => {
+    let calls = 0;
+    const model = createScriptedInstance('fake', 'deaf', async () => {
+      calls += 1;
+      if (calls === 1) return new Promise<never>(() => undefined);
+      return scriptedResult([{ type: 'text', text: 'answered' }], 'stop');
+    });
+    const result = await generateText({ model: withStallGuard(ai, asSdkLanguageModel(model), () => undefined, 50), prompt: 'hello', maxRetries: 1 });
+
+    expect(result.text).toBe('answered');
+    expect(calls).toBe(2);
+  });
+
   it("passes the caller's cancellation through as it was, not as a stall", async () => {
     const model = createScriptedInstance('fake', 'stall', async (options: { abortSignal?: AbortSignal }) => never(options.abortSignal));
     const stalls: number[] = [];
