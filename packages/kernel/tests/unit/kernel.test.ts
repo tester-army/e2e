@@ -200,6 +200,17 @@ describe('kernel()', () => {
     await expect(kernel().acquire(request())).rejects.toThrow('401 invalid api key');
   });
 
+  it('trims the newline Kernel ends an error body with, keeping the error', async () => {
+    class AuthenticationError extends Error {}
+    const failure = new AuthenticationError('401 Invalid or disabled API key\n');
+    sdk.state.create = async () => {
+      throw failure;
+    };
+    const rejection = await kernel().acquire(request()).catch((cause: unknown) => cause);
+    expect(rejection).toBe(failure);
+    expect((rejection as Error).message).toBe('401 Invalid or disabled API key');
+  });
+
   it('has each browser save downloads to its own disk and reads a finished one back through the browser filesystem', async () => {
     const provider = kernel();
     expect(provider.downloads?.dir).toBe('/tmp/e2e-downloads');

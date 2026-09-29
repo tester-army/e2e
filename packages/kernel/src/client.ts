@@ -35,50 +35,76 @@ export interface KernelBrowsers {
   readFile(sessionId: string, file: string, signal: AbortSignal): Promise<Uint8Array>;
 }
 
+/**
+ * An SDK error with its message trimmed: Kernel's error bodies end in a
+ * newline the SDK keeps (`401 Invalid or disabled API key\n`), which would
+ * split the run's error line. The error itself is kept, class and all.
+ */
+function trimmed(cause: unknown): unknown {
+  if (cause instanceof Error && cause.message !== cause.message.trim()) cause.message = cause.message.trim();
+  return cause;
+}
+
+/** Runs one SDK request, its failure's message trimmed. */
+async function request<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (cause) {
+    throw trimmed(cause);
+  }
+}
+
 /** Kernel browsers for one API key, through the SDK. */
 export function kernelBrowsers(apiKey: string): KernelBrowsers {
   const sdk = import('@onkernel/sdk').then((module) => ({ client: new module.Kernel({ apiKey }), NotFoundError: module.NotFoundError }));
   return {
-    async create(params, signal) {
-      const { client } = await sdk;
-      const created = await client.browsers.create({ ...params, tags: { ...params.tags } }, { signal });
-      return { sessionId: created.session_id, cdpWsUrl: created.cdp_ws_url, liveViewUrl: created.browser_live_view_url };
-    },
-    async delete(sessionId, signal) {
-      const { client, NotFoundError } = await sdk;
-      try {
-        await client.browsers.deleteByID(sessionId, { signal });
-        return true;
-      } catch (cause) {
-        if (!(cause instanceof NotFoundError)) throw cause;
-        return false;
-      }
-    },
-    async listActive(tags, signal) {
-      const { client } = await sdk;
-      const ids: string[] = [];
-      for await (const browser of client.browsers.list({ status: 'active', tags: { ...tags } }, { signal })) ids.push(browser.session_id);
-      return ids;
-    },
-    async startReplay(sessionId, params, signal) {
-      const { client } = await sdk;
-      const replay = await client.browsers.replays.start(sessionId, params, { signal });
-      return replay.replay_id;
-    },
-    async stopReplay(sessionId, replayId, signal) {
-      const { client } = await sdk;
-      await client.browsers.replays.stop(replayId, { id_or_name: sessionId }, { signal });
-    },
-    async downloadReplay(sessionId, replayId, file, signal) {
-      const { client } = await sdk;
-      const response = await client.browsers.replays.download(replayId, { id_or_name: sessionId }, { signal });
-      if (response.body === null) throw new Error(`replay ${replayId} downloaded empty`);
-      await pipeline(Readable.fromWeb(response.body), createWriteStream(file), { signal });
-    },
-    async readFile(sessionId, file, signal) {
-      const { client } = await sdk;
-      const response = await client.browsers.fs.readFile(sessionId, { path: file }, { signal });
-      return new Uint8Array(await response.arrayBuffer());
-    },
+    create: (params, signal) =>
+      request(async () => {
+        const { client } = await sdk;
+        const created = await client.browsers.create({ ...params, tags: { ...params.tags } }, { signal });
+        return { sessionId: created.session_id, cdpWsUrl: created.cdp_ws_url, liveViewUrl: created.browser_live_view_url };
+      }),
+    delete: (sessionId, signal) =>
+      request(async () => {
+        const { client, NotFoundError } = await sdk;
+        try {
+          await client.browsers.deleteByID(sessionId, { signal });
+          return true;
+        } catch (cause) {
+          if (!(cause instanceof NotFoundError)) throw cause;
+          return false;
+        }
+      }),
+    listActive: (tags, signal) =>
+      request(async () => {
+        const { client } = await sdk;
+        const ids: string[] = [];
+        for await (const browser of client.browsers.list({ status: 'active', tags: { ...tags } }, { signal })) ids.push(browser.session_id);
+        return ids;
+      }),
+    startReplay: (sessionId, params, signal) =>
+      request(async () => {
+        const { client } = await sdk;
+        const replay = await client.browsers.replays.start(sessionId, params, { signal });
+        return replay.replay_id;
+      }),
+    stopReplay: (sessionId, replayId, signal) =>
+      request(async () => {
+        const { client } = await sdk;
+        await client.browsers.replays.stop(replayId, { id_or_name: sessionId }, { signal });
+      }),
+    downloadReplay: (sessionId, replayId, file, signal) =>
+      request(async () => {
+        const { client } = await sdk;
+        const response = await client.browsers.replays.download(replayId, { id_or_name: sessionId }, { signal });
+        if (response.body === null) throw new Error(`replay ${replayId} downloaded empty`);
+        await pipeline(Readable.fromWeb(response.body), createWriteStream(file), { signal });
+      }),
+    readFile: (sessionId, file, signal) =>
+      request(async () => {
+        const { client } = await sdk;
+        const response = await client.browsers.fs.readFile(sessionId, { path: file }, { signal });
+        return new Uint8Array(await response.arrayBuffer());
+      }),
   };
 }
