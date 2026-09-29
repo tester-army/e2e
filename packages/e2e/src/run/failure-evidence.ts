@@ -38,6 +38,8 @@ export interface FailureEvidenceOptions {
   readonly error: E2EError;
   readonly secrecy: SessionSecrecy;
   readonly config: ResolvedConfig;
+  /** The app base URL's origin, whose link targets the screen lists as paths. */
+  readonly appOrigin: string | undefined;
   readonly artifacts: ArtifactSink;
   readonly operation: (signal: AbortSignal, timeoutMs: number) => OperationContext;
   /** Aborts the capture: a run interrupt has no time for evidence. */
@@ -60,7 +62,12 @@ export async function captureFailureEvidence(options: FailureEvidenceOptions): P
   let observation: AgentObservation | undefined;
   try {
     const raw = await options.session.observe(operation);
-    observation = prepareObservation(raw, { redact, redactCut, maxBytes: options.config.limits.maxObservationBytes });
+    observation = prepareObservation(raw, {
+      redact,
+      redactCut,
+      maxBytes: options.config.limits.maxObservationBytes,
+      appOrigin: options.appOrigin,
+    });
   } catch {
     // The session may be gone with the failure (a crashed page, a closed app).
   }
@@ -79,7 +86,7 @@ export async function captureFailureEvidence(options: FailureEvidenceOptions): P
     } catch {
       // An unwritable directory: the tree stays unrecorded.
     }
-    const candidates = locatorCandidates(options.error, observation, redact);
+    const candidates = locatorCandidates(options.error, observation, redact, options.appOrigin);
     if (candidates.length > 0) evidence.candidates = candidates;
   }
 
@@ -120,7 +127,12 @@ function screenText(observation: AgentObservation, url: string | undefined): str
  * of them) with the one requested, or the test id. Rendered as the screen
  * lists them, so the reader can rewrite the locator from what is there.
  */
-function locatorCandidates(error: E2EError, observation: AgentObservation, redact: (text: string) => string): string[] {
+function locatorCandidates(
+  error: E2EError,
+  observation: AgentObservation,
+  redact: (text: string) => string,
+  appOrigin: string | undefined,
+): string[] {
   if (observation.kind === 'pixels') return [];
   if (error.code !== 'LOCATOR_NOT_FOUND' && error.code !== 'LOCATOR_AMBIGUOUS') return [];
   const { role, testId, name } = error.details ?? {};
@@ -153,7 +165,7 @@ function locatorCandidates(error: E2EError, observation: AgentObservation, redac
   return scored
     .toSorted((a, b) => b.score - a.score)
     .slice(0, MAX_CANDIDATES)
-    .map(({ node }) => truncateUtf8(formatNode(node, 0, redact, observation.origin), MAX_CANDIDATE_BYTES));
+    .map(({ node }) => truncateUtf8(formatNode(node, 0, redact, appOrigin), MAX_CANDIDATE_BYTES));
 }
 
 /**

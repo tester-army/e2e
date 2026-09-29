@@ -774,16 +774,22 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    * fragment, which routinely carry tokens. A dropped query or fragment
    * leaves `?…` or `#…` behind, so the value never reads as the whole
    * target when it is not; a URL path never holds a literal `…`, since the
-   * URL parser percent-encodes it. A scheme with no origin (`mailto:`,
-   * `tel:`) keeps the scheme in its place. The path is whole: the harness
-   * bounds what it renders, and marks what it cuts.
+   * URL parser percent-encodes it. `mailto:` and `tel:` keep their scheme in
+   * place of an origin; `blob:` keeps its inner URL. Any other scheme with no
+   * origin (`data:`, `javascript:`) carries its payload as its path, a whole
+   * file or script, so it is reduced to `scheme:…`. The path is whole
+   * otherwise: the harness bounds what it renders after redaction, and marks
+   * what it cuts.
    */
   const originAndPath = (value: string, base: string): string => {
     const elided = (query: boolean, fragment: boolean): string => `${query ? '?…' : ''}${fragment ? '#…' : ''}`;
     try {
       const url = new URL(value, base);
-      const origin = url.origin === 'null' ? url.protocol : url.origin;
-      return `${origin}${url.pathname}${elided(url.search !== '', url.hash !== '')}`;
+      const rest = `${url.pathname}${elided(url.search !== '', url.hash !== '')}`;
+      if (url.protocol === 'blob:') return `blob:${rest}`;
+      if (url.origin !== 'null') return `${url.origin}${rest}`;
+      if (url.protocol === 'mailto:' || url.protocol === 'tel:') return `${url.protocol}${rest}`;
+      return `${url.protocol}…`;
     } catch {
       const [beforeFragment = '', ...fragment] = value.split('#');
       const [path = '', ...query] = beforeFragment.split('?');

@@ -387,6 +387,7 @@ export class ObservationFeed {
       redactCut: this.runtime.redactCut,
       maxBytes: this.byteBudget(pixels || raw.kind === 'pixels'),
       pixelsAllowed: !this.runtime.taint.value,
+      appOrigin: this.runtime.app.base?.origin,
     });
     return prepared;
   }

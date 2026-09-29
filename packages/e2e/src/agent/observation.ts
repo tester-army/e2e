@@ -45,8 +45,6 @@ interface AgentObservationMetadata {
   readonly location?: string;
   /** Location projected to path and query when it is a URL, otherwise kept opaque. */
   readonly path?: string;
-  /** The location's origin, when it has one; link targets on it render as paths. */
-  readonly origin?: string;
   readonly revision: string;
   /** Redacted, size-bounded serialization sent to the model. */
   readonly text: string;
@@ -73,16 +71,16 @@ export function prepareObservation(
     maxBytes: number;
     /** Grants pixel-only evidence; omit when this consumer cannot use it. */
     pixelsAllowed?: boolean;
+    /** The app base URL's origin: link targets on it render as paths, which navigation resolves against it. */
+    appOrigin?: string | undefined;
   },
 ): AgentObservation {
   const location = observation.location === undefined ? undefined : options.redact(observation.location);
   const path = location === undefined ? undefined : observationPath(location);
-  const origin = location === undefined ? undefined : observationOrigin(location);
   const metadata = {
     revision: observation.revision,
     ...(location === undefined ? {} : { location }),
     ...(path === undefined ? {} : { path }),
-    ...(origin === undefined ? {} : { origin }),
     viewport: observation.viewport,
   };
   const pixels = clearPixels(observation);
@@ -119,7 +117,7 @@ export function prepareObservation(
 
   const emit = (node: SemanticNode, depth: number): void => {
     if (cutByBudget) return;
-    const line = formatNode(node, depth, redact, origin);
+    const line = formatNode(node, depth, redact, options.appOrigin);
     const size = encoder.encode(`${line}\n`).byteLength;
     if (lines.length > 0 && bytes + size > budget) {
       cutByBudget = true;
@@ -214,13 +212,6 @@ function observationPath(location: string): string {
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
-/** The origin of a URL location, or undefined for an opaque one (`null` origins included). */
-function observationOrigin(location: string): string | undefined {
-  if (!URL.canParse(location)) return undefined;
-  const origin = new URL(location).origin;
-  return origin === 'null' ? undefined : origin;
-}
-
 /** Phase metrics describe a node count only when the capture actually read nodes. */
 export function observationDetail(observation: AgentObservation): { count?: number; bytes: number } {
   return { bytes: observation.bytes, ...(observation.kind === 'semantic' ? { count: observation.nodes.size } : {}) };
@@ -307,15 +298,18 @@ export function interactiveNodeCount(observation: Pick<ExecutorObservation, 'tex
 /**
  * Projects the raw tree onto the executor-facing node shape: the same
  * redaction the text serialization applies, field by field, and no value or
- * selection at all for a secure node. Selectors stay behind — they are relocation
- * material for the trace cache, not something a brain reasons about.
+ * selection at all for a secure node, and a link target bounded as a line
+ * bounds it. Selectors stay behind — they are relocation material for the
+ * trace cache, not something a brain reasons about.
  */
 export function projectTree(node: SemanticNode, redact: (text: string) => string): ExecutorNode {
   const secure = node.states?.secure === true;
   const attributes =
     node.attributes === undefined
       ? undefined
-      : Object.fromEntries(Object.entries(node.attributes).map(([key, value]) => [key, redact(value)]));
+      : Object.fromEntries(
+          Object.entries(node.attributes).map(([key, value]) => [key, key === 'href' ? boundHref(redact(value)) : redact(value)]),
+        );
   return {
     id: node.ref.id,
     ...(node.role === undefined ? {} : { role: node.role }),
@@ -337,20 +331,20 @@ export function projectTree(node: SemanticNode, redact: (text: string) => string
 /** Depth beyond this renders flat; deep chrome must not buy tokens with spaces. */
 const MAX_INDENT_DEPTH = 10;
 
-/** Link target characters a line shows; a longer target is cut there and ends with `…`. */
+/** Link target UTF-16 units a line shows; a longer target is cut there and ends with `…`. */
 const MAX_HREF_LENGTH = 256;
 
 /**
  * Renders one node as `#id role "name" text="..." value="..." selection="..." [states]`. Role-less text
  * holders omit the role token entirely: on a large screen they are half the
  * lines, and the model needs their text, not a filler word. A link target on
- * `origin`, the screen's own, renders as its path.
+ * `appOrigin`, the app base URL's, renders as its path.
  */
 export function formatNode(
   node: SemanticNode,
   depth: number,
   redact: (text: string) => string,
-  origin?: string,
+  appOrigin?: string,
 ): string {
   const parts: string[] = [`#${node.ref.id}`];
   if (node.role !== undefined && node.role !== '') parts.push(node.role);
@@ -361,7 +355,7 @@ export function formatNode(
   // already reduced href to origin and path.
   if (node.testId !== undefined && node.testId !== '') parts.push(`testid=${JSON.stringify(node.testId)}`);
   const href = node.attributes?.['href'];
-  if (href !== undefined && href !== '') parts.push(`href=${JSON.stringify(renderHref(redact(href), origin))}`);
+  if (href !== undefined && href !== '') parts.push(`href=${JSON.stringify(renderHref(redact(href), appOrigin))}`);
   const placeholder = node.attributes?.['placeholder'];
   if (placeholder !== undefined && placeholder !== '' && (node.name ?? '') === '') {
     parts.push(`placeholder=${JSON.stringify(redact(placeholder))}`);
@@ -388,14 +382,24 @@ export function formatNode(
 }
 
 /**
- * A link target as a line shows it: a path when it is on the screen's origin,
- * complete and shorter than the URL, else as the engine reported it; cut at
- * `MAX_HREF_LENGTH` with a trailing `…` so a cut target never reads as whole.
- * Redaction runs before the cut, so the cut never leaves part of a secret.
+ * A link target as a line shows it: a path when it is on the app's origin,
+ * the one a navigation to a path resolves against, else the whole URL, since
+ * a path on another site would send the model back to the app. Bounded by
+ * `boundHref`, after redaction.
  */
-function renderHref(href: string, origin: string | undefined): string {
-  const shown = origin !== undefined && href.startsWith(`${origin}/`) ? href.slice(origin.length) : href;
-  return shown.length > MAX_HREF_LENGTH ? `${shown.slice(0, MAX_HREF_LENGTH)}…` : shown;
+function renderHref(href: string, appOrigin: string | undefined): string {
+  return boundHref(appOrigin !== undefined && href.startsWith(`${appOrigin}/`) ? href.slice(appOrigin.length) : href);
+}
+
+/**
+ * A redacted link target cut at `MAX_HREF_LENGTH` with a trailing `…`, so a
+ * cut target never reads as whole; the cut never splits a surrogate pair.
+ * Redaction runs first, so the cut never leaves part of a secret.
+ */
+function boundHref(href: string): string {
+  if (href.length <= MAX_HREF_LENGTH) return href;
+  const end = /[\uD800-\uDBFF]/.test(href.charAt(MAX_HREF_LENGTH - 1)) ? MAX_HREF_LENGTH - 1 : MAX_HREF_LENGTH;
+  return `${href.slice(0, end)}…`;
 }
 
 /**

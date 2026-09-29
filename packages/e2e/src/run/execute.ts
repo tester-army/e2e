@@ -879,6 +879,7 @@ export class TargetExecutor implements SerialHost {
         error: failure,
         secrecy: sessionSecrecy(openSession, this.config.secrets),
         config: this.config,
+        appOrigin: this.target.app.base?.origin,
         artifacts: artifacts.sink,
         operation: (signal, timeoutMs) => this.op(attemptId, timeoutMs, signal),
         interrupt: this.interruptSignal,

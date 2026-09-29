@@ -229,6 +229,7 @@ export class Invocation {
           redactCut: this.runtime.redactCut,
           maxBytes: this.observationByteBudget(),
           pixelsAllowed: this.options.vision !== false && !this.runtime.taint.value,
+          appOrigin: this.runtime.app.base?.origin,
         });
         return prepared;
       },

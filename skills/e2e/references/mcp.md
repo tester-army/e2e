@@ -43,7 +43,7 @@ The catalog, per session:
 
 | Catalog tool | Does |
 | --- | --- |
-| `observe` | A fresh observation: one node per line as `#id role "name" ...`, plus the current path. A link's `href` is its path on the page's origin, else origin and path; `?…` and `#…` mark a dropped query or fragment, a trailing `…` a target cut at 256 characters. |
+| `observe` | A fresh observation: one node per line as `#id role "name" ...`, plus the current path. A link's `href` is its path on the app URL's origin, else origin and path; `?…` and `#…` mark a dropped query or fragment, `data:…` and `javascript:…` an inline payload, a trailing `…` a target cut at 256 characters. |
 | `tap`, `double_tap`, `long_press`, `right_click`, `hover`, `type`, `press`, `select`, `check`, `scroll`, `scroll_to`, `drag`, `upload`, `navigate`, `back` | The grammar verbs, exactly as the testing agent gets them: `check` takes `checked`, `drag` a `to` node, `upload` project-relative `files`. Each reports what changed on screen; `observe` shows the whole screen. A verb the engine cannot honor is not listed and fails with `UNSUPPORTED_CAPABILITY`. |
 | `type_secret` | Fills a configured secret by name: a credential's password into a password field, a `secrets` entry into any editable input; the plaintext never reaches the agent. Listed when the config declares `credentials` or `secrets`. |
 | `locate` | Tries a semantic locator (`role` + `name`, `text`, `label`, `placeholder`, `testId`, `exact`) and returns how many nodes match, which, and the `screen.*` call to write. |
