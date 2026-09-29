@@ -712,12 +712,15 @@ nearest known one), a removed key, and a value in the old shapes:
 
 | Written | Now |
 | --- | --- |
-| `createAgent({ ... })` from `e2e/agent` | removed: write the options as the entry itself |
 | a bare `StepExecutor` as the entry | `{ executor }` |
 | `timeout` | `judgmentTimeout` |
 | `maxTurns` (on the entry or `createToolLoopExecutor`) | `maxModelCalls` |
 | top-level `limits.maxModelTokensPerCall` | `maxInputTokens` on each agent |
 | top-level `limits.maxAgentContextBytes`, `maxLedgerBytes`, `maxEventsPerStep` | removed; the runner fixes them at 16384 bytes, 8192 bytes, and 1000 events |
+
+`createAgent` is gone from `e2e/agent`: importing it fails the load with
+`CONFIG_LOAD_FAILED`, and the message says to write its options as the entry
+itself.
 
 Judgments (`assert`, `waitFor`, `extract`) allow 8192 output tokens per call
 and see the instruction and the current screen only.
