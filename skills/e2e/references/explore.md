@@ -41,7 +41,8 @@ usernames, and the agent fills passwords with `type_secret` by name.
 see `e2e guide writing-tests`). The run collects the config's test files, runs exactly
 the setup that declares the session, then restores it into the exploration
 and opens the app, as a test with `{ session: 'admin' }` does. No other test
-runs. The planner and the agent are told they start signed in, so no charter
+runs. The setup runs as it does for `e2e run`, with the configured agents,
+cache, and retries; only the exploration runs as the explorer. The planner and the agent are told they start signed in, so no charter
 is spent signing in again. A name no setup declares fails before any app
 process starts with `COLLECTION_ERROR`, naming the declared sessions.
 
@@ -66,7 +67,7 @@ a configured secret is not redacted either.
 
 Per-step action and model-call budgets default to 40 each; `agent.maxSteps`
 and `agent.maxModelCalls` in the config override them. The trace cache is off
-and retries are zero for the run.
+and retries are zero for the exploration.
 
 ## Reading the result
 

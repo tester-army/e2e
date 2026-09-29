@@ -404,10 +404,17 @@ describe('e2e explore', () => {
 
 describe('e2e explore --session', () => {
   /**
-   * Two setups, one that saves a marker without any secret and one that fills
-   * a password, and an ordinary test that must never run under explore.
+   * Three setups, one that saves a marker without any secret, one that has
+   * the project's agent save it, and one that fills a password, and an
+   * ordinary test that must never run under explore.
    */
   const files = {
+    'tests/acted.setup.e2e.ts': `import { test } from 'e2e';
+test.setup('has the agent save the marker', { sessions: ['acted'] }, async ({ app, agent, session }) => {
+  await app.open('/storage');
+  await agent.act('Tap Save marker');
+  await session.save('acted');
+});`,
     'tests/marker.setup.e2e.ts': `import { test } from 'e2e';
 test.setup('saves the marker', { sessions: ['marker'] }, async ({ app, screen, session }) => {
   await app.open('/storage');
@@ -520,6 +527,48 @@ test('never runs under explore', async () => {
     expect(JSON.stringify(outcome.report)).not.toContain('bookworm');
   }, 120_000);
 
+  it('runs an agentic setup as the project agent, not the explorer: its own prompt, tools, and cache, and no findings', async () => {
+    const setupCalls: LoopCall[] = [];
+    const model = installExploreModel({
+      plan: (call) =>
+        call.instruction.includes('(none yet')
+          ? { decision: 'step', title: 'Storage', instruction: 'Look at the storage page' }
+          : { decision: 'finish', summary: 'Looked around the storage page.' },
+      loop: (call) => {
+        if (call.system.includes('Exploration mode')) {
+          return [{ toolName: 'complete_step', input: { status: 'passed', summary: 'Looked' } }];
+        }
+        setupCalls.push(call);
+        if (setupCalls.length === 1) {
+          // Offered or not, the setup's model tries to report a finding; only the explorer may record one.
+          return [
+            { toolName: 'tap', input: { target: nodeIdFor(call.prompt, /button "Save marker"/) } },
+            { toolName: FINDING_TOOL_NAME, input: COUNTER_FINDING },
+          ];
+        }
+        return [{ toolName: 'complete_step', input: { status: 'passed', summary: 'Saved the marker' } }];
+      },
+    });
+    const outcome = await exploreWithSession(model, 'acted');
+
+    expect(outcome.report.run.errors).toEqual([]);
+    expect(ran(outcome)).toEqual(['Explore the storage page', 'has the agent save the marker']);
+    const setup = outcome.report.run.results.find((result) => result.titlePath.at(-1) === 'has the agent save the marker')!;
+    expect(setup.status).toBe('passed');
+    expect(setupCalls.length).toBeGreaterThan(0);
+    for (const call of setupCalls) {
+      expect(call.system).not.toContain('Exploration mode');
+      expect(call.system).not.toContain('Exploration goal');
+      expect(call.toolNames).not.toContain(FINDING_TOOL_NAME);
+    }
+    expect(outcome.explore.findings).toEqual([]);
+    // The setup keeps the project's trace cache; the exploration runs without it.
+    const setupAct = setup.attempts[0]!.steps.find((step) => step.api === 'agent.act')!;
+    expect(setupAct.cache).toBeDefined();
+    const exploreAttempt = outcome.report.run.results.find((result) => result.file === 'explore')!.attempts[0]!;
+    expect(exploreAttempt.steps.filter((step) => step.api === 'agent.act').map((step) => step.cache)).toEqual([undefined]);
+  }, 120_000);
+
   it('fails an unknown session at collection, naming the declared ones, before anything runs', async () => {
     const model = installExploreModel({
       plan: () => ({ decision: 'finish', summary: 'never asked' }),
@@ -534,7 +583,7 @@ test('never runs under explore', async () => {
       expect.objectContaining({
         phase: 'collection',
         code: 'COLLECTION_ERROR',
-        message: expect.stringMatching(/^test "Explore the storage page" in explore consumes session "markr" but no setup test produces it; setup tests declare "marker", "signed-in"; did you mean "marker"\?$/),
+        message: expect.stringMatching(/^test "Explore the storage page" in explore consumes session "markr" but no setup test produces it; setup tests declare "acted", "marker", "signed-in"; did you mean "marker"\?$/),
       }),
     ]);
     expect(fakeCalls).toEqual([]);

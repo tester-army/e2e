@@ -96,6 +96,19 @@ export interface TargetExecutorOptions {
   readonly interruptSignal: AbortSignal;
   readonly debug?: DebugTrace;
   readonly events?: ExecutionEvents;
+  /** The virtual file of tests registered in memory, and the agents they run as; see `InMemoryAttempts`. */
+  readonly inMemory?: InMemoryAttempts | undefined;
+}
+
+/**
+ * How the attempts of tests registered in memory (`e2e explore`) differ from
+ * the rest of the run: they run as `agents` in place of the config's, when
+ * given, and with the trace cache off, since nothing replays a test that has
+ * no source. The setup tests they need run with the config's own.
+ */
+export interface InMemoryAttempts {
+  readonly file: string;
+  readonly agents?: ResolvedConfig['agents'] | undefined;
 }
 
 type AttemptPhase = 'launch' | 'beforeEach' | 'body' | 'afterEach';
@@ -885,13 +898,17 @@ export class TargetExecutor implements SerialHost {
       }).catch(() => undefined);
       if (evidence !== undefined) record.failure = evidence;
     };
-    const cache = createAgentCacheContext({
-      cache: this.config.cache,
-      projectId: this.config.projectId,
-      testId: pair.test.id,
-      target: this.sessionIdentity,
-      attemptIndex,
-    });
+    const inMemory = this.options.inMemory?.file === pair.test.file ? this.options.inMemory : undefined;
+    const cache =
+      inMemory === undefined
+        ? createAgentCacheContext({
+            cache: this.config.cache,
+            projectId: this.config.projectId,
+            testId: pair.test.id,
+            target: this.sessionIdentity,
+            attemptIndex,
+          })
+        : undefined;
 
     // A rejection nobody caught, handed in by the process while this attempt
     // is in flight. Set while the body's race is pending, so the rejection
@@ -935,7 +952,7 @@ export class TargetExecutor implements SerialHost {
               );
             };
       const { fixtures } = createFixtures({
-        config: this.config,
+        config: inMemory?.agents === undefined ? this.config : { ...this.config, agents: inMemory.agents },
         target: this.target,
         session,
         steps,

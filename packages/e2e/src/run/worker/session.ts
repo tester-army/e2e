@@ -9,7 +9,7 @@ import type { ModuleRegistration } from '../../collect/registry.ts';
 import type { TestTargetPair } from '../../collect/select.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../../config/resolve.ts';
 import { DebugTrace } from '../../internal/debug.ts';
-import { TargetExecutor } from '../execute.ts';
+import { TargetExecutor, type InMemoryAttempts } from '../execute.ts';
 import { encodeResult, type RunError } from '../records.ts';
 import type { SessionStore } from '../sessions.ts';
 import { disappearedResult } from '../units.ts';
@@ -50,6 +50,8 @@ export interface TargetWorkerDeps {
   readonly isolated: boolean;
   readonly resolvePairs: ResolveUnitPairs;
   readonly debug?: DebugTrace;
+  /** See `TargetExecutorOptions.inMemory`; only an in-process worker has tests registered in memory. */
+  readonly inMemory?: InMemoryAttempts | undefined;
 }
 
 /** Transport callbacks a target worker needs. */
@@ -105,6 +107,7 @@ export class TargetWorker {
         isolated: deps.isolated,
         interruptSignal: this.interruptController.signal,
         ...(deps.debug !== undefined ? { debug: deps.debug } : {}),
+        inMemory: deps.inMemory,
         events: {
           onResult: (result) => {
             // Teardown after the result (an afterAll) belongs to no pair.

@@ -10,7 +10,7 @@ import {
   type ResolvedTarget,
 } from '../config/resolve.ts';
 import { collect, collectInMemory, collectSetups, type Collection } from '../collect/collect.ts';
-import { groupChain, type ModuleRegistration } from '../collect/registry.ts';
+import type { ModuleRegistration } from '../collect/registry.ts';
 import { repeatEach, select, selectTargets, type Selection, type SelectionFilters, type Shard, type TagMode } from '../collect/select.ts';
 import {
   classifyError,
@@ -157,6 +157,12 @@ export interface InMemoryTests {
   readonly file: string;
   readonly registration: ModuleRegistration;
   /**
+   * The agents the in-memory tests run as, in place of the config's: the
+   * explorer. Setup tests they need run as the config's own agents, with the
+   * config's cache and retries; the in-memory tests run with the trace cache off.
+   */
+  readonly agents?: ResolvedConfig['agents'] | undefined;
+  /**
    * The exploration behind `e2e explore`: its progress becomes `explore` run
    * events, and its record is read once the run is over, as `run.explore`.
    */
@@ -169,11 +175,9 @@ export interface InMemoryExplore {
   subscribe(listener: (progress: ExploreProgress) => void): void;
 }
 
-/** Whether a test of the registration, or a describe around one, consumes a session a setup test produces. */
+/** Whether a test of the registration consumes a session a setup test produces. */
 function consumesSession(registration: ModuleRegistration): boolean {
-  return registration.tests.some(
-    (test) => test.options.session !== undefined || groupChain(test.group).some((group) => group.options.session !== undefined),
-  );
+  return registration.tests.some((test) => test.options.session !== undefined);
 }
 
 /** How long a reporter's `onRunFinished` may take before the run stops waiting for it. */
@@ -613,7 +617,8 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     const { collection, selection } = planned;
     if (!interrupted.aborted) {
       for (const skipped of collection.uncollected) {
-        notice('collect', `skipped ${skipped.file}, which no positional selected and which failed to collect: ${skipped.reason}`);
+        const why = options.tests === undefined ? 'which no positional selected' : 'collected only for its setup tests';
+        notice('collect', `skipped ${skipped.file}, ${why} and which failed to collect: ${skipped.reason}`);
       }
     }
 

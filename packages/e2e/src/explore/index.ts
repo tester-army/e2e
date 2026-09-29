@@ -1,9 +1,9 @@
 /**
  * `e2e explore`: a run whose one test is a goal. The project config is loaded
- * as `run` loads it, the explorer replaces the executor of the agent the run
- * uses, and the exploration body is registered in memory as the run's only
- * test, so the reporters, `report.json`, artifacts, video, the AI trace, and
- * the exit codes are the runner's own. The exploration's progress travels
+ * as `run` loads it, the exploration body is registered in memory as the
+ * run's only test, and within that test alone the explorer replaces the
+ * executor of the agent the run uses, so the reporters, `report.json`,
+ * artifacts, video, the AI trace, and the exit codes are the runner's own. The exploration's progress travels
  * as `explore` run events, which the list reporter renders, and its record
  * rides along as `run.explore`.
  */
@@ -105,9 +105,8 @@ export async function explore(options: ExploreOptions = {}): Promise<ExploreOutc
   };
 
   const { raw, projectRoot } = await loadRawConfig(options, cwd);
-  // Nothing replays an exploration, and a retry would explore twice.
-  const rawConfig: E2EConfig = { ...raw, cache: 'off', retries: 0 };
-  const resolved = resolveConfig(rawConfig, { projectRoot, env, cli: options.agent === undefined ? {} : { agents: [options.agent] } });
+  const resolveOptions = { projectRoot, env, cli: options.agent === undefined ? {} : { agents: [options.agent] } };
+  const resolved = resolveConfig(raw, resolveOptions);
   const target = pickTarget(resolved.targets, options.target, notice);
   const accounts = credentialAccounts(resolved.credentials);
   // An exploration runs as exactly one agent: the one named, else `default`.
@@ -116,17 +115,22 @@ export async function explore(options: ExploreOptions = {}): Promise<ExploreOutc
 
   const state = new ExploreState(goal, budgets);
   const explorer = createExplorer({ state, from: resolved.agent.executor, notice });
+  // The explorer replaces the agent for the exploration alone: a setup test
+  // `--session` pulls in runs as the project's own agents, with its cache and
+  // retries. The exploration pins no retries and runs with the cache off.
+  const explorerAgents = resolveConfig(
+    { ...raw, agents: { ...raw.agents, [agentName]: exploreAgentConfig(raw.agents?.[agentName], explorer) } },
+    resolveOptions,
+  ).agents;
   const outcome = await run({
     cwd: projectRoot,
-    rawConfig: {
-      ...rawConfig,
-      agents: { ...rawConfig.agents, [agentName]: exploreAgentConfig(rawConfig.agents?.[agentName], explorer) },
-    },
+    rawConfig: raw,
     agent: options.agent,
     env,
     tests: {
       file: EXPLORE_FILE,
       registration: exploreRegistration(state, { openApp: target.app.base !== undefined, accounts, session: options.session }),
+      agents: explorerAgents,
       explore: state,
     },
     targetIds: [target.name],

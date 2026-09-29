@@ -11,6 +11,7 @@ import type { Selection, TestTargetPair } from '../collect/select.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import { classifyError, ConfigurationError, serializeError } from '../internal/errors.ts';
 import type { DebugTrace } from '../internal/debug.ts';
+import type { InMemoryAttempts } from './execute.ts';
 import type { SessionStore } from './sessions.ts';
 import type { SpawnUnitRunner, UnitRunner, UnitRunnerEvents } from './unit-runner.ts';
 import { pairKey } from './units.ts';
@@ -25,9 +26,10 @@ export interface InProcessRunnerOptions {
    * re-import, so the unit of their virtual file adopts this registration as
    * its realm; it is one unit with no retries, so nothing asks for a second
    * realm of it. The units of real files, a setup test the in-memory tests
-   * need, import their file as always.
+   * need, import their file as always. Their attempts run as described by
+   * `InMemoryAttempts`.
    */
-  readonly inMemory?: { readonly file: string; readonly registration: ModuleRegistration } | undefined;
+  readonly inMemory?: (InMemoryAttempts & { readonly registration: ModuleRegistration }) | undefined;
   readonly runId: string;
   readonly artifactsRoot: string;
   readonly sessionStore: SessionStore;
@@ -136,6 +138,7 @@ class InProcessRunner implements UnitRunner {
       env: this.options.envFor(this.targetName),
       isolated: false,
       debug: this.options.debug,
+      inMemory: this.options.inMemory,
       resolvePairs: (unit) =>
         resolveFromSelection(
           this.options.selection,

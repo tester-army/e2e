@@ -382,7 +382,9 @@ The run has one result, under the virtual file `explore`, titled by the goal.
 With `--session`, the report also holds the setup test's result and lists the
 project's other tests as skipped with cause `filtered`, as `run` lists the
 tests of a file no positional named.
-The trace cache is off and retries are zero whatever the config says.
+The exploration runs with the trace cache off and zero retries whatever the
+config says. A `--session` setup test runs as it would for `run`, with the
+config's agents, cache, and retries.
 `.e2e/report.json` gains `run.explore`: the goal, the budgets, why the run
 ended (`finished`, `step-limit`, `time`, `stuck`, or `aborted`), the
 assessment, the steps, and the findings.
