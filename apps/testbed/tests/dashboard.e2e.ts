@@ -10,6 +10,14 @@ test.describe('dashboard', { tags: ['auth'] }, () => {
     );
   });
 
+  test('a session saved from a cookie reaches the dashboard directly', { session: 'admin-cookie' }, async ({ app, screen, web }) => {
+    await app.open('/dashboard');
+    await expect(web).toHaveURL('/dashboard');
+    await expect(screen.getByRole('status', { name: 'Greeting' })).toHaveText(
+      'Welcome back, admin!',
+    );
+  });
+
   test('signing out invalidates the session', { session: 'admin' }, async ({ app, screen, web }) => {
     await app.open('/dashboard');
     await screen.getByRole('link', { name: 'Sign out' }).tap();

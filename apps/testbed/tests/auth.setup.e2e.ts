@@ -14,3 +14,15 @@ test.setup('authenticate as admin', { sessions: ['admin'] }, async ({ app, scree
 
   await session.save('admin');
 });
+
+test.setup('authenticate as admin with a cookie', { sessions: ['admin-cookie'] }, async ({ app, screen, session, web }) => {
+  // No secret is filled, so what restores this session keeps its screenshots.
+  await app.open('/');
+  await web.setCookies([{ name: 'session', value: 'admin', url: await web.url(), httpOnly: true }]);
+  await app.open('/dashboard');
+
+  await expect(web).toHaveURL('/dashboard');
+  await expect(screen.getByRole('status', { name: 'Greeting' })).toContainText('admin');
+
+  await session.save('admin-cookie');
+});
