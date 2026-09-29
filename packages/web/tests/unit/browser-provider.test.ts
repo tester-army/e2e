@@ -147,6 +147,15 @@ describe('web({ browser: provider })', () => {
     expect(() => web({ browser: provider({ scope: 'attempt' }).impl })).not.toThrow();
   });
 
+  it('rejects downloads that are not a directory and a read()', () => {
+    for (const downloads of [null, { dir: '', read: async () => new Uint8Array() }, { dir: '/downloads' }]) {
+      expect(() => web({ browser: { ...provider().impl, downloads } as unknown as BrowserProvider })).toThrow(
+        /provider "toy-cloud" has downloads that are not \{ dir, read\(\) \}/,
+      );
+    }
+    expect(() => web({ browser: { ...provider().impl, downloads: { dir: '/downloads', read: async () => new Uint8Array() } } })).not.toThrow();
+  });
+
   it('rejects a provider together with connect: two browser sources', () => {
     expect(() => web({ browser: provider().impl, connect: { cdpEndpoint: () => 'ws://x' } })).toThrow(/two browser sources/);
   });

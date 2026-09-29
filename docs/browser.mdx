@@ -171,6 +171,15 @@ export interface BrowserProvider {
   release(lease: BrowserLease, context: BrowserReleaseContext): Promise<void>;
   /** Optional: the service's own recording of the browser, in the worker, for an attempt that records video. */
   record?(lease: BrowserLease, context: ProviderRecordContext): Promise<ProviderRecording>;
+  /** Optional: serves `web.waitForDownload` for a browser on another machine. */
+  readonly downloads?: BrowserProviderDownloads;
+}
+
+export interface BrowserProviderDownloads {
+  /** Absolute directory on the browser's machine the browser saves downloads to. */
+  readonly dir: string;
+  /** The bytes of one finished download, `file` a path under `dir`, read off the leased browser. */
+  read(lease: BrowserLease, file: string, context: BrowserDownloadContext): Promise<Uint8Array>;
 }
 
 export interface BrowserLease {
@@ -298,6 +307,18 @@ Two workers lease two sessions in parallel and keep them for the run. Hosted
 sessions are billed while they run, so keep `workers` at what the suite can
 fill; `scope: 'attempt'` trades a session start per test for a browser no
 earlier test has touched.
+
+### Downloads on the provider
+
+A hosted browser saves a download to its own disk, where the runner cannot
+open it. Implement `downloads` and `web.waitForDownload` works as it does
+locally: the engine has the browser save the file under `dir` on its machine
+and hands the finished file's path to `read`, which fetches the bytes through
+the service's file API, in the worker, bounded by the call's timeout. The
+engine saves them as the attempt's `download` artifact. Without `downloads`, a
+download on a browser that runs on another machine fails with `ENGINE_FAILURE`
+naming the provider; one whose browsers run on the runner's machine needs
+nothing. [Kernel](/integrations/kernel#downloads) serves downloads this way.
 
 ### Recording on the provider
 

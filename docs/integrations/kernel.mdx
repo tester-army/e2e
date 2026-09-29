@@ -119,6 +119,13 @@ Kernel replays headed browsers only, its default. With `headless: true`, or
 `replay: false`, the provider does not record, and the web engine records
 its screencast of the page instead, as it does for a local browser.
 
+## Downloads
+
+`web.waitForDownload` works as it does locally. Each browser saves downloads
+under `/tmp/e2e-downloads` on its own disk, and the provider reads the
+finished file back through Kernel's browser filesystem API into the
+attempt's artifacts, in both scopes.
+
 ## What the provider does
 
 - Tags every browser `e2e_run`, `e2e_target`, `e2e_slot`, and, per attempt,

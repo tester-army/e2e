@@ -46,12 +46,16 @@ export interface KernelOptions extends KernelBrowserParams {
 
 const REPLAY_FILE = 'replay.mp4';
 
+/** Where each Kernel browser saves downloads on its own disk, for the engine to read back through the browser filesystem API. */
+const DOWNLOADS_DIR = '/tmp/e2e-downloads';
+
 /**
  * Kernel browsers for `web({ browser: kernel() })`: one hosted Chromium per
  * worker slot, or per attempt with `scope: 'attempt'`, created when the
  * engine asks and deleted when it gives the lease back. Every browser is
- * tagged with the run, target, slot, and attempt. `KERNEL_API_KEY` comes
- * from the run's environment.
+ * tagged with the run, target, slot, and attempt, and saves downloads to its
+ * own disk, read back through Kernel's browser filesystem API.
+ * `KERNEL_API_KEY` comes from the run's environment.
  */
 export function kernel(options: KernelOptions = {}): BrowserProvider {
   const { scope, replay = true, ...params } = options;
@@ -118,6 +122,10 @@ export function kernel(options: KernelOptions = {}): BrowserProvider {
     },
     async release(lease: BrowserLease, context: BrowserReleaseContext): Promise<void> {
       await clientFor(context.env).delete(lease.id, context.signal);
+    },
+    downloads: {
+      dir: DOWNLOADS_DIR,
+      read: async (lease, file, context) => clientFor(context.env).readFile(lease.id, file, context.signal),
     },
     ...(replayParams === undefined ? {} : { record: replays(replayParams) }),
   };

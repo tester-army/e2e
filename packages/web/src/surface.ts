@@ -41,7 +41,7 @@ import { classifyActionError, dispatchLocatorAction, dispatchPointerAction } fro
 import { BrowserConnection, connectCdp, type BrowserName } from './browser-connection.ts';
 import { AttemptSession, type StorageState } from './attempt-session.ts';
 import type { CdpEndpointResolver } from './cdp-recovery.ts';
-import { LeasedBrowsers, type BrowserProvider } from './provider.ts';
+import { LeasedBrowsers, type BrowserProvider, type LeaseDownloads } from './provider.ts';
 import { DialogRouter } from './dialogs.ts';
 import { ensureBrowsersInstalled } from './install.ts';
 import { applyPostSteps, frameSelectors, projectExpression } from './locators.ts';
@@ -516,6 +516,21 @@ export class PlaywrightSurface {
   requireContext(): BrowserContext {
     this.latch.throwPending();
     return this.requireSession().current().context;
+  }
+
+  /**
+   * The downloads of a leased browser, read through its provider, when the
+   * provider serves them; undefined for a local launch, a `connect`, or a
+   * provider that does not, whose downloads Playwright saves as usual.
+   */
+  remoteDownloads(): LeaseDownloads | undefined {
+    return this.leases?.downloads();
+  }
+
+  /** Why a download from a leased browser may never reach the runner, when its provider serves none. */
+  unservedDownloads(): string | undefined {
+    if (this.leases === undefined || this.leases.downloads() !== undefined) return undefined;
+    return `browser provider "${this.leases.name}" serves no downloads, so a browser on another machine keeps the file on its own disk (BrowserProvider.downloads)`;
   }
 
   /** Creates the active page through the attempt's sole binding owner. */

@@ -89,6 +89,37 @@ export interface BrowserReleaseContext {
   readonly log: (line: string) => void;
 }
 
+/** Handed to `downloads.read`, once per file. */
+export interface BrowserDownloadContext {
+  readonly runId: string;
+  readonly targetName: string;
+  /** The run's environment, the same `acquire` saw. */
+  readonly env: Readonly<Record<string, string | undefined>>;
+  /** Aborts when the `web.waitForDownload` call is cancelled or exceeds its timeout. */
+  readonly signal: AbortSignal;
+}
+
+/**
+ * How a download reaches the runner from a browser on another machine. The
+ * browser saves every file to its own disk, where the runner cannot open
+ * it, so the engine points the browser's downloads at `dir` there and reads
+ * each finished file back through `read`.
+ */
+export interface BrowserProviderDownloads {
+  /** Absolute directory on the browser's machine the browser saves downloads to; created by the browser if missing. */
+  readonly dir: string;
+  /** The bytes of one finished download, `file` an absolute path under `dir`, read off the leased browser's disk. */
+  read(lease: BrowserLease, file: string, context: BrowserDownloadContext): Promise<Uint8Array>;
+}
+
+/** The downloads of the browser an attempt rides, read through its provider. */
+export interface LeaseDownloads {
+  /** The provider as error messages name it: `browser provider "kernel"`. */
+  readonly provider: string;
+  readonly dir: string;
+  read(file: string, signal: AbortSignal): Promise<Uint8Array>;
+}
+
 /** A provider recording the attempt started, with who made it and which lease it covers, for `stopProviderRecording`. */
 export interface LeaseRecording {
   readonly recording: ProviderRecording;
@@ -122,6 +153,13 @@ export interface BrowserProvider {
    * screencast.
    */
   record?(lease: BrowserLease, context: ProviderRecordContext): Promise<ProviderRecording>;
+  /**
+   * Serves `web.waitForDownload` for a browser that runs on another machine.
+   * Without it a download on such a browser fails, since the file lands on
+   * the browser's disk; a provider whose browsers run on the runner's own
+   * machine leaves it out.
+   */
+  readonly downloads?: BrowserProviderDownloads | undefined;
 }
 
 const SCOPES: ReadonlySet<string> = new Set<BrowserProviderScope>(['worker', 'attempt']);
@@ -139,6 +177,13 @@ export function asBrowserProvider(browser: object): BrowserProvider {
   }
   if (candidate.record !== undefined && typeof candidate.record !== 'function') {
     throw new ConfigurationError('INVALID_CONFIG', `web: browser provider "${candidate.name}" has a record that is not a function`);
+  }
+  const downloads = candidate.downloads as Partial<Record<keyof BrowserProviderDownloads, unknown>> | null | undefined;
+  if (
+    downloads !== undefined &&
+    (typeof downloads !== 'object' || downloads === null || !isNonEmptyString(downloads.dir) || typeof downloads.read !== 'function')
+  ) {
+    throw new ConfigurationError('INVALID_CONFIG', `web: browser provider "${candidate.name}" has downloads that are not { dir, read() }`);
   }
   if (candidate.scope !== undefined && (typeof candidate.scope !== 'string' || !SCOPES.has(candidate.scope))) {
     throw new ConfigurationError(
@@ -263,6 +308,8 @@ const discard = (): void => undefined;
  */
 export class LeasedBrowsers {
   readonly scope: BrowserProviderScope;
+  /** The provider's name, for messages. */
+  readonly name: string;
   /** Leases granted so far, per target, filled as each `acquire` settles. */
   private readonly held = new Map<string, BrowserLease[]>();
   private run: WorkerRun | undefined;
@@ -277,6 +324,7 @@ export class LeasedBrowsers {
 
   constructor(private readonly provider: BrowserProvider) {
     this.scope = provider.scope ?? 'worker';
+    this.name = provider.name;
   }
 
   // --- runner side ---
@@ -466,6 +514,34 @@ export class LeasedBrowsers {
         throw new EngineError('ENGINE_FAILURE', `${label} returned a recording of browser ${lease.id} without a start time and a stop()`, { retryable: false });
       }
       return { recording, provider: label, leaseId: lease.id };
+    };
+  }
+
+  /**
+   * The downloads of the browser the attempt rides, when the provider
+   * serves them: the attempt's lease in `attempt` scope and the worker's
+   * current one in `worker` scope. A read that fails is named after the
+   * provider, or is the cancellation when the caller gave up first.
+   */
+  downloads(): LeaseDownloads | undefined {
+    const { provider } = this;
+    const served = provider.downloads;
+    if (served === undefined) return undefined;
+    const label = `browser provider "${provider.name}"`;
+    return {
+      provider: label,
+      dir: served.dir,
+      read: async (file, signal) => {
+        const run = this.requireRun();
+        const lease = this.scope === 'attempt' ? this.attempt : this.current?.lease;
+        if (lease === undefined) throw invalidState(`${label} was asked for a download before the attempt had a browser`);
+        try {
+          return await served.read(lease, file, { runId: run.runId, targetName: run.targetName, env: run.env, signal });
+        } catch (cause) {
+          if (signal.aborted) throw connectionAbort(signal, `download from "${provider.name}"`);
+          throw new EngineError('ENGINE_FAILURE', `${label} could not read download ${file} from browser ${lease.id}: ${message(cause)}`, { retryable: false, cause });
+        }
+      },
     };
   }
 

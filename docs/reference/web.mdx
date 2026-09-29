@@ -480,6 +480,8 @@ trigger that resolves in time but starts no download fails with
 `no download started within <n>ms; the trigger resolved after <m>ms`, where
 the wait includes the trigger's own time. A trigger still running at the
 timeout fails with the step timeout, and one that throws with its own error.
+On a hosted browser the file comes back through the provider's
+[`downloads`](/browser#downloads-on-the-provider).
 
 ```ts
 /** A native dialog as a test's handler sees it. */
@@ -549,7 +551,8 @@ cannot reuse node IDs or publish handles over a newer observation.
 
 `WebOptions`, `WebScreencastOptions`, `WebConnectOptions`, `WebBasicAuth`, `BrowserName`,
 `BrowserProvider`, `BrowserProviderScope`, `BrowserRequest`, `BrowserLease`,
-`BrowserReleaseContext`, `PlaywrightLiveSurface`, `Web`, `FrameScreen`,
+`BrowserReleaseContext`, `BrowserProviderDownloads`, `BrowserDownloadContext`,
+`PlaywrightLiveSurface`, `Web`, `FrameScreen`,
 `WebExpectation`, `WebRoute`, `RouteFulfillResponse`, `WebResponse`,
 `Cookie`, `CookieFields`, `Dialog`, and `DialogHandler` are exported from the
 package for typing config helpers and fixtures. The runtime exports are

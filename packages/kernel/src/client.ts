@@ -29,6 +29,8 @@ export interface KernelBrowsers {
   stopReplay(sessionId: string, replayId: string, signal: AbortSignal): Promise<void>;
   /** Downloads a stopped recording's MP4 to `file`. */
   downloadReplay(sessionId: string, replayId: string, file: string, signal: AbortSignal): Promise<void>;
+  /** The bytes of one file on the browser's own disk. */
+  readFile(sessionId: string, file: string, signal: AbortSignal): Promise<Uint8Array>;
 }
 
 /** Kernel browsers for one API key, through the SDK. */
@@ -62,6 +64,11 @@ export function kernelBrowsers(apiKey: string): KernelBrowsers {
       const response = await client.browsers.replays.download(replayId, { id_or_name: sessionId }, { signal });
       if (response.body === null) throw new Error(`replay ${replayId} downloaded empty`);
       await pipeline(Readable.fromWeb(response.body), createWriteStream(file), { signal });
+    },
+    async readFile(sessionId, file, signal) {
+      const { client } = await sdk;
+      const response = await client.browsers.fs.readFile(sessionId, { path: file }, { signal });
+      return new Uint8Array(await response.arrayBuffer());
     },
   };
 }

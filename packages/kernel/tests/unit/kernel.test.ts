@@ -26,6 +26,7 @@ const sdk = vi.hoisted(() => {
       return { session_id: `b${state.counter}`, cdp_ws_url: `wss://kernel/b${state.counter}`, browser_live_view_url: `https://view/b${state.counter}` };
     },
     deleteByID: async (_id: string): Promise<void> => undefined,
+    files: [] as { id: string; path: string; signal: AbortSignal | undefined }[],
     counter: 0,
   };
   class Kernel {
@@ -40,6 +41,12 @@ const sdk = vi.hoisted(() => {
       deleteByID: async (id: string) => {
         state.deleted.push(id);
         return state.deleteByID(id);
+      },
+      fs: {
+        readFile: async (id: string, query: { path: string }, options?: { signal?: AbortSignal }) => {
+          state.files.push({ id, path: query.path, signal: options?.signal });
+          return new Response('file bytes');
+        },
       },
       replays: {
         start: async (id: string, body: unknown, options?: { signal?: AbortSignal }) => {
@@ -72,7 +79,7 @@ const defaultCreate = sdk.state.create;
 const defaultDelete = sdk.state.deleteByID;
 
 beforeEach(() => {
-  Object.assign(sdk.state, { apiKeys: [], created: [], deleted: [], replays: [], replaySignals: [], downloadFailures: 0, counter: 0, create: defaultCreate, deleteByID: defaultDelete });
+  Object.assign(sdk.state, { apiKeys: [], created: [], deleted: [], replays: [], replaySignals: [], files: [], downloadFailures: 0, counter: 0, create: defaultCreate, deleteByID: defaultDelete });
 });
 
 const env = { KERNEL_API_KEY: 'k-test' };
@@ -183,6 +190,15 @@ describe('kernel()', () => {
       throw new Error('401 invalid api key');
     };
     await expect(kernel().acquire(request())).rejects.toThrow('401 invalid api key');
+  });
+
+  it('has each browser save downloads to its own disk and reads a finished one back through the browser filesystem', async () => {
+    const provider = kernel();
+    expect(provider.downloads?.dir).toBe('/tmp/e2e-downloads');
+    const signal = new AbortController().signal;
+    const bytes = await provider.downloads!.read({ id: 'b1', cdpEndpoint: 'wss://kernel/b1' }, '/tmp/e2e-downloads/guid-1', { runId: 'run-1', targetName: 'web', env, signal });
+    expect(new TextDecoder().decode(bytes)).toBe('file bytes');
+    expect(sdk.state.files).toEqual([{ id: 'b1', path: '/tmp/e2e-downloads/guid-1', signal }]);
   });
 
   describe('record', () => {

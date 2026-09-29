@@ -32,6 +32,7 @@ import {
   type TextPattern,
 } from 'e2e/engine';
 import type { DialogHandler } from './dialogs.ts';
+import { saveDownloadsTo, saveFromBrowser, saveLocally } from './downloads.ts';
 import { isTestErrorCode, message as causeMessage, translatePwError } from './support.ts';
 import { compileEvaluation } from './evaluation.ts';
 import { routePatternMatches, routePatternsEqual } from './route-pattern.ts';
@@ -472,6 +473,8 @@ export function createWebFixture(surface: PlaywrightSurface, context: EngineFixt
       let triggerFailure: { cause: unknown } | undefined;
       let awaiting: { waitMs: number; triggerMs: number } | undefined;
       return surface.guard(operation, 'download', async (currentOperation) => {
+        const remote = surface.remoteDownloads();
+        if (remote !== undefined) await saveDownloadsTo(surface.requirePage(), remote.dir);
         const waiter: Promise<Download> = surface.requirePage()
           .waitForEvent('download', { timeout: currentOperation.timeoutMs });
         // The trigger may fail before the waiter settles; absorb its later rejection.
@@ -488,7 +491,8 @@ export function createWebFixture(surface: PlaywrightSurface, context: EngineFixt
         awaiting = undefined;
         const suggestedFilename = download.suggestedFilename();
         const { relative, absolute } = surface.artifactPath('downloads', suggestedFilename, '');
-        await download.saveAs(absolute);
+        if (remote === undefined) await saveLocally(download, absolute, surface.unservedDownloads());
+        else await saveFromBrowser(download, remote, absolute, currentOperation.signal);
         context.attachArtifact('download', relative);
         return { path: relative, suggestedFilename };
       }, (cause, label) => {
