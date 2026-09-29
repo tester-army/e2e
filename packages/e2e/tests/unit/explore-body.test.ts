@@ -416,6 +416,25 @@ describe('the exploration body', () => {
     expect(closing.summary).toBeUndefined();
   });
 
+  it('covers a planner that answers not found like one outside the grammar', async () => {
+    const app = { open: async () => undefined } as unknown as App;
+    const state = new ExploreState('goal', budgets);
+    let plans = 0;
+    await createExploreBody({ state, stepTimeoutMs: 240_000, openApp: true })({
+      agent: {
+        extract: async () => {
+          plans += 1;
+          if (plans === 1) throw new AgentError('ASSERTION_INCONCLUSIVE', 'nothing to extract: no plan is on screen');
+          return { decision: 'finish', summary: 'Surveyed.' };
+        },
+        act: async () => ({ summary: 'toured', modelCalls: 1, actions: 3 }),
+      } as unknown as Agent,
+      app, screen: {} as never, platform: 'web',
+    } as TestFixtures);
+    expect(state.steps.map((step) => step.title)).toEqual(['Survey the app']);
+    expect(state.ended).toBe('finished');
+  });
+
   it('surfaces a cancelled step and a planner failure as the run error', async () => {
     const cancelled = new ExploreState('goal', budgets);
     await expect(

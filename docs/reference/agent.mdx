@@ -295,10 +295,21 @@ extract<Schema extends StandardSchemaV1>(
 Takes one fresh observation, requests structured output, validates it, and
 returns the validated value. It performs no app actions.
 
+When the schema has a JSON Schema projection (zod does), the model receives
+its shape: types, fields, required fields, and allowed literals. Value rules
+such as `min`, `max`, lengths, patterns, and formats stay with your schema,
+which judges the value the model read. The model can also answer that the
+screen does not show the data, which throws `ASSERTION_INCONCLUSIVE` with
+what was missing, instead of returning a placeholder such as `""` or `0`.
+To accept absence as an answer, say so in the instruction and the schema
+(`'the phone number, or null when none is shown'` with
+`z.string().nullable()`).
+
 The budget is two model calls: one extraction and one repair round for
 output that failed validation. Throws `INVALID_ARGUMENT` for a schema that is
-not Standard Schema v1, and `MODEL_OUTPUT_INVALID` when validation still
-fails after the repair.
+not Standard Schema v1, `ASSERTION_INCONCLUSIVE` when the screen does not
+show the data, and `MODEL_OUTPUT_INVALID` when validation still fails after
+the repair.
 
 ```ts
 const summary = await agent.extract('the workspace name and plan', {

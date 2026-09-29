@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
-import { fakeCalls, installFakeModel, judgment, type FakeCall } from '../helpers/fake-model.ts';
+import { extracted, fakeCalls, installFakeModel, judgment, type FakeCall } from '../helpers/fake-model.ts';
 import { installFakeLoopModel, nodeIdFor } from '../helpers/fake-loop-model.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { resultByTitle, runProject, type FixtureProject } from '../helpers/run-project.ts';
@@ -164,10 +164,10 @@ function respond(call: FakeCall): unknown {
       if (call.instruction === RETIRED_SHAPE_TWICE) return RETIRED_JUDGMENT;
       return judgment(true, 'the observation supports the assertion');
     }
-    case 'agent-extract-1': {
+    case 'agent-extract-2': {
       const status = call.lines.find((line) => line.includes('status'));
       const counter = /text="([^"]*)"/.exec(status ?? '')?.[1] ?? '';
-      return { counter };
+      return extracted({ counter });
     }
     default:
       throw new Error(`unexpected schema ${call.schemaName}`);

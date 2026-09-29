@@ -168,8 +168,13 @@ expect(data.titles).toContain('Buy milk');
 - `waitFor` observes every `interval` (default 3 s) and spends a judgment
   only when the screen changed; `STEP_TIMEOUT` after `timeout` (default
   30 s).
-- `extract` accepts any Standard Schema validator (zod works). Invalid output
-  gets one repair round, then `MODEL_OUTPUT_INVALID`.
+- `extract` accepts any Standard Schema validator (zod works). The model sees
+  the schema's shape, never its value rules (`min`, `max`, lengths,
+  patterns), so those check what it read. Data the screen does not show is
+  `ASSERTION_INCONCLUSIVE` naming what was missing, not `""` or `0`; to accept
+  absence, ask for it (`'the phone, or null when none is shown'` with
+  `.nullable()`). Invalid output gets one repair round, then
+  `MODEL_OUTPUT_INVALID`.
 - Judgments are never cached and always read a fresh observation.
 
 `vision` on a judgment controls the evidence: `false` (the default) the

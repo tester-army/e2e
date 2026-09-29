@@ -25,8 +25,14 @@ import {
   type InvocationOptions,
 } from './invocation.ts';
 import type { PromptInput } from './prompts.ts';
-import { acceptAnyJson, JUDGMENT_SCHEMA, validateJudgmentResponse } from './protocol.ts';
-import { EXTRACT_REQUEST, JUDGMENT_REQUEST } from './prompts.ts';
+import {
+  EXTRACT_SCHEMA_NAME,
+  extractSchema,
+  JUDGMENT_SCHEMA,
+  validateExtractResponse,
+  validateJudgmentResponse,
+} from './protocol.ts';
+import { EXTRACT_REPAIR_OUTLET, EXTRACT_REQUEST, JUDGMENT_REQUEST } from './prompts.ts';
 import { deriveJsonSchema } from './model/schema.ts';
 
 const DEFAULT_WAIT_INTERVAL_MS = 3_000;
@@ -179,6 +185,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
       requireStandardSchema(options?.schema);
       const schema = options.schema;
       const { config } = runtime.select(options.agent);
+      const vision = resolveVision(options.vision);
       return step(
         {
           api: 'agent.extract',
@@ -186,20 +193,20 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           task: 'extract structured data from the observation',
           timeoutMs: resolveTimeout(options.timeout, config.judgmentTimeout),
           maxModelCalls: EXTRACT_MODEL_CALLS,
-          vision: resolveVision(options.vision),
+          vision,
         },
         instruction,
         async (invocation) => {
-          // A projection of the caller's schema lets the provider enforce the
-          // shape; without one the repair loop is the only shape signal.
-          const projected = await deriveJsonSchema(schema);
+          // The shape of the caller's schema lets the provider enforce it;
+          // without one the repair loop is the only shape signal.
+          const shape = await deriveJsonSchema(schema);
           const observation = await invocation.observe();
           let repair: PromptInput['repair'];
           for (;;) {
-            const candidate = await invocation.ask({
-              schemaName: 'agent-extract-1',
-              schema: projected,
-              validate: acceptAnyJson,
+            const answer = await invocation.ask({
+              schemaName: EXTRACT_SCHEMA_NAME,
+              schema: shape === undefined ? undefined : extractSchema(shape),
+              validate: validateExtractResponse,
               prompt: {
                 request: EXTRACT_REQUEST,
                 instruction,
@@ -207,10 +214,18 @@ export function createAgentFixture(runtime: AgentContext): Agent {
                 ...(repair === undefined ? {} : { repair }),
               },
             });
-            const validation = await schema['~standard'].validate(candidate);
+            if (!answer.found) {
+              const missing = answer.missing ?? 'the observation does not show the requested data';
+              invocation.note({ explanation: missing });
+              throw new AgentError(
+                'ASSERTION_INCONCLUSIVE',
+                explain({ verdict: 'inconclusive', explanation: `nothing to extract: ${missing}` }, vision),
+              );
+            }
+            const validation = await schema['~standard'].validate(answer.value);
             if (validation.issues === undefined) return validation.value;
             const issue = validation.issues.map(describeIssue).join('; ');
-            invocation.recordSchemaRejection('agent-extract-1');
+            invocation.recordSchemaRejection(EXTRACT_SCHEMA_NAME);
             if (!invocation.canAsk()) {
               throw new AgentError(
                 'MODEL_OUTPUT_INVALID',
@@ -219,8 +234,9 @@ export function createAgentFixture(runtime: AgentContext): Agent {
             }
             repair = {
               issue,
-              rawText: safeJson(candidate),
+              rawText: safeJson({ found: true, value: answer.value, missing: null }),
               requiredFields: requiredFields(validation.issues),
+              outlet: EXTRACT_REPAIR_OUTLET,
             };
           }
         },

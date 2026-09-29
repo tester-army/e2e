@@ -42,6 +42,8 @@ export interface FakeCall {
   /** Model instance that received the call. */
   readonly modelId: string;
   readonly schemaName: string;
+  /** The structured-output schema the request carried, when it carried one. */
+  readonly schema: unknown;
   readonly system: string;
   readonly prompt: string;
   /** Content of the `<instruction>` section. */
@@ -116,6 +118,7 @@ export function installFakeModel(
       const parsed: FakeCall = {
         modelId,
         schemaName: request.responseFormat?.name ?? inferSchemaName(prompt),
+        schema: request.responseFormat?.schema,
         system,
         prompt,
         instruction: section(prompt, 'instruction').trim(),
@@ -200,7 +203,7 @@ function byteLength(data: unknown): number {
  * stable signal that identifies them.
  */
 function inferSchemaName(prompt: string): string {
-  return prompt.startsWith('Extract the requested data') ? 'agent-extract-1' : '';
+  return prompt.startsWith('Extract the requested data') ? 'agent-extract-2' : '';
 }
 
 /** Extracts one fenced prompt section. */
@@ -218,3 +221,13 @@ export function judgment(result: boolean | 'inconclusive', explanation: string):
   return { protocolVersion: 'agent-judgment-2', verdict, explanation };
 }
 
+
+/** Builds an agent-extract-2 response that found the requested data. */
+export function extracted(value: unknown): unknown {
+  return { found: true, value, missing: null };
+}
+
+/** Builds an agent-extract-2 response saying the screen does not show the requested data. */
+export function notFound(missing: string): unknown {
+  return { found: false, value: null, missing };
+}

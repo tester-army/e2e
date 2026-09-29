@@ -28,6 +28,8 @@ const MIN_STEP_MS = 45_000;
 const PLAN_TIMEOUT_MS = 90_000;
 /** Below this, not even the closing assessment is asked for. */
 const MIN_PLAN_TIMEOUT_MS = 30_000;
+/** Planner failures that are the model's, not the run's: no plan in the grammar, or a plan the model said it could not find. */
+const PLANNER_SHORTCOMINGS: ReadonlySet<AgentErrorCode> = new Set(['MODEL_OUTPUT_INVALID', 'ASSERTION_INCONCLUSIVE']);
 
 export interface ExploreBodyOptions {
   readonly state: ExploreState;
@@ -117,13 +119,14 @@ async function runSteps(loop: Loop): Promise<Ending> {
       plannerFailures = 0;
     } catch (cause) {
       // A model that cannot produce a plan in the grammar, even after the
-      // repair round, is a model shortcoming, not the end of the world: one
+      // repair round, or answers that the screen shows none (an extract's
+      // not-found), is a model shortcoming, not the end of the world: one
       // failure is covered by a built-in charter (a survey first, a
       // continuation later); two in a row end the exploration with the
       // record so far; a failed closing assessment leaves the run to end for
       // the reason it had to, without one. Anything else (the provider, the
       // clock, a cancellation) is the run's error.
-      if (!isAgentError(cause) || cause.code !== 'MODEL_OUTPUT_INVALID') throw cause;
+      if (!isAgentError(cause) || !PLANNER_SHORTCOMINGS.has(cause.code)) throw cause;
       if (stop !== undefined) return { ended: stop.ended };
       plannerFailures += 1;
       if (plannerFailures > 1) return { ended: 'aborted' };

@@ -58,6 +58,8 @@ export interface PromptInput {
         readonly rawText: string | undefined;
         /** Top-level fields the caller's schema requires, derived from issue paths. */
         readonly requiredFields?: readonly string[] | undefined;
+        /** What to answer instead when no correction the evidence supports can satisfy the errors. */
+        readonly outlet?: string | undefined;
       }
     | undefined;
 }
@@ -101,6 +103,7 @@ export function buildPrompt(input: PromptInput): string {
             `The value must be a JSON object whose top-level fields include: ${input.repair.requiredFields.join(', ')}.`,
           ]),
       'Return a corrected response that satisfies every error above.',
+      ...(input.repair.outlet === undefined ? [] : [input.repair.outlet]),
       '</previous-attempt-rejected>',
     );
   }
@@ -153,11 +156,24 @@ export const JUDGMENT_REQUEST = [
   'Respond with { "protocolVersion": "agent-judgment-2", "explanation": <short reason grounded in the observation>, "verdict": "holds" | "fails" | "inconclusive" }.',
 ].join('\n');
 
-/** Request text for structured extraction. */
+/**
+ * Request text for structured extraction. The envelope's `found: false` is
+ * the answer for data the screen does not show, so a required field is never
+ * filled with a placeholder to fit the schema.
+ */
 export const EXTRACT_REQUEST = [
   'Extract the requested data from the observation.',
-  'Respond with one JSON value and nothing else: no prose, no code fence, no wrapper.',
-  'The value is checked against the caller\'s schema, which is not shown to you, so',
-  'follow the shape the instruction implies; rejections list the required field paths.',
-  'Use only values visible in the observation; never invent data.',
+  'Respond with one JSON object and nothing else: no prose, no code fence.',
+  'When the observation shows the requested data, respond with { "found": true, "value": <the data>, "missing": null }.',
+  'When it does not (the data is not on screen, still loading, or unreadable), respond with { "found": false, "value": null, "missing": <what the observation lacks> }.',
+  'Never fill a gap with a placeholder such as an empty string or 0.',
+  'An instruction that says what to answer when the data is absent, such as "or null when none is shown", is answered by that: respond with "found": true and that value.',
+  'Take every value from the observation as it reads; never invent data.',
+  'The value is checked against the caller\'s schema. An attached response schema gives the value\'s shape, its types and fields;',
+  'the caller\'s rules on values, such as ranges, lengths, and patterns, are not shown. Without an attached schema, follow',
+  'the shape the instruction implies. Rejections list the errors and the required field paths.',
 ].join('\n');
+
+/** The extraction's answer to a rejection the screen cannot satisfy: say so rather than change the data. */
+export const EXTRACT_REPAIR_OUTLET =
+  'Correct a misread or a wrong shape. When the data the observation shows cannot satisfy the errors, respond with "found": false and say why in "missing" rather than change a value to fit.';

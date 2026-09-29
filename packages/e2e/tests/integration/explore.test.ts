@@ -16,7 +16,7 @@ import { explore, type ExploreOptions, type ExploreOutcome } from '../../src/exp
 import { FINDING_TOOL_NAME } from '../../src/explore/executor.ts';
 import type { ModelInstance } from '../../src/types.ts';
 import { installFakeLoopModel, loopCalls, nodeIdFor, type LoopCall, type LoopToolCall } from '../helpers/fake-loop-model.ts';
-import { fakeCalls, installFakeModel, type FakeCall } from '../helpers/fake-model.ts';
+import { extracted, fakeCalls, installFakeModel, type FakeCall } from '../helpers/fake-model.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { createProject, type FixtureProject } from '../helpers/run-project.ts';
@@ -41,7 +41,7 @@ function installExploreModel(options: {
 }): ModelInstance {
   const loop = installFakeLoopModel(options.loop) as ModelInstance & { doGenerate: (request: unknown) => Promise<unknown> };
   // Strict providers want every planner field present; the scripts name only the ones they use.
-  const single = installFakeModel((call) => ({ title: '', instruction: '', summary: '', ...options.plan(call) })) as ModelInstance & { doGenerate: (request: unknown) => Promise<unknown> };
+  const single = installFakeModel((call) => extracted({ title: '', instruction: '', summary: '', ...options.plan(call) })) as ModelInstance & { doGenerate: (request: unknown) => Promise<unknown> };
   return {
     ...single,
     provider: 'fake',

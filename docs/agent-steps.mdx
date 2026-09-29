@@ -94,7 +94,8 @@ Every call has a model-call budget and a default timeout, listed under
 drives the cost:
 
 - `assert` and `extract` make one judgment, plus one repair call if the
-  model's answer is malformed.
+  model's answer is malformed. An `extract` whose data is not on screen
+  fails with `ASSERTION_INCONCLUSIVE` rather than returning a placeholder.
 - `waitFor` skips model calls while the screen is unchanged.
 - Screenshots add input tokens on every call that carries them. `act` asks
   for one only when the text snapshot is not enough.

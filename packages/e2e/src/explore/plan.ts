@@ -17,7 +17,11 @@ const DERIVED_TITLE_CHARS = 80;
  * The most the grammar accepts in one field. Well above the report's ceilings,
  * which the state clips to when the step opens: a model that pours a whole
  * charter into one field (seen live, past 2000 characters) has still planned
- * a step, and a rejection would cost a repair round for nothing.
+ * a step, and a rejection would cost a repair round for nothing. Validation
+ * enforces it, not the provider: `extract` sends a schema's shape without
+ * its value rules, so a runaway field runs to the judgment's output ceiling
+ * and costs the repair round; when the repair runs away too, the planner
+ * falls back to its built-in charter.
  */
 const MAX_FIELD_CHARS = 8_000;
 

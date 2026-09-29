@@ -102,6 +102,10 @@ await agent.waitFor('the export finishes and a download link appears', {
 `extract` reads structured data from the screen. Provide a
 [Standard Schema](https://standardschema.dev) validator, such as Zod, to define
 the result. Invalid output gets one repair attempt before `MODEL_OUTPUT_INVALID`.
+The model sees the schema's shape but not its value rules, so `min`, `max`,
+and patterns check what it read rather than steer it. When the screen does not
+show the data, `extract` fails with `ASSERTION_INCONCLUSIVE` instead of
+returning `""` or `0`.
 
 ```ts
 import { z } from 'zod';

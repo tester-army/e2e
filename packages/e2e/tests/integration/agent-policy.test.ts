@@ -7,7 +7,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { installFakeLoopModel, loopCalls, nodeIdFor } from '../helpers/fake-loop-model.ts';
-import { installFakeModel, judgment } from '../helpers/fake-model.ts';
+import { extracted, installFakeModel, judgment } from '../helpers/fake-model.ts';
 import type { FakeCall } from '../helpers/fake-model.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { resultByTitle, runProject, type FixtureProject } from '../helpers/run-project.ts';
@@ -91,11 +91,11 @@ test('the agent increments the counter once', async ({ app, agent, screen }) => 
 /** Scripted responder whose behavior is selected by the schema. */
 function respond(call: FakeCall): unknown {
   if (call.schemaName === 'agent-judgment-2') return judgment(true, 'the field has a value');
-  if (call.schemaName === 'agent-extract-1') {
+  if (call.schemaName === 'agent-extract-2') {
     const status = call.lines.find((line) => line.includes('status'));
     const counter = /text="([^"]*)"/.exec(status ?? '')?.[1] ?? '';
     // The first attempt returns a bare value; the repair round wraps it.
-    return call.prompt.includes('<previous-attempt-rejected>') ? { counter } : counter;
+    return extracted(call.prompt.includes('<previous-attempt-rejected>') ? { counter } : counter);
   }
   throw new Error(`unexpected schema ${call.schemaName}`);
 }
@@ -159,7 +159,7 @@ describe('agent policy and error classification', () => {
               executor: {
                 name: 'house-brain',
                 runStep: async () => ({ status: 'passed', summary: 'unused' }),
-                model: installFakeModel(() => ({ counter: '0' })) as unknown as SdkLanguageModel,
+                model: installFakeModel(() => extracted({ counter: '0' })) as unknown as SdkLanguageModel,
               },
             },
           },

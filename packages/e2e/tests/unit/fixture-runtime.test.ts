@@ -14,7 +14,7 @@ import type { StepExecutor } from '../../src/agent/executor.ts';
 import { defineTool, getToolContext } from '../../src/agent/tool.ts';
 import type { E2EConfig } from '../../src/types.ts';
 import { installFakeLoopModel } from '../helpers/fake-loop-model.ts';
-import { installFakeModel, judgment } from '../helpers/fake-model.ts';
+import { extracted, fakeCalls, installFakeModel, judgment, notFound } from '../helpers/fake-model.ts';
 import { snapshot } from '../helpers/snapshot.ts';
 
 /** A real fixture graph with an in-memory engine and no runner process or model provider. */
@@ -382,6 +382,70 @@ describe('model reasoning on step events', () => {
     const event = steps.all().flatMap((step) => step.events).find((candidate) => candidate.kind === 'model');
     expect(event).toBeDefined();
     expect(event).not.toHaveProperty('reasoning');
+  });
+});
+
+describe('agent.extract', () => {
+  const todos = () => defineEngine({
+    name: 'fake', version: '1', spiVersion: 1,
+    observe: async () => snapshot(['Buy milk', 'Walk the dog', 'Ship it'].map((text, index) => ({
+      ref: { id: `todo-${index}`, revision: '' }, role: 'listitem', text,
+    }))),
+  });
+
+  it('sends the caller schema as a shape: types and required fields, no value constraints', async () => {
+    const model = installFakeModel(() => extracted({ count: 3 }));
+    const { fixtures } = runtime(todos(), { agents: { default: { model } } });
+    await expect(fixtures.agent.extract('the number of todos', {
+      schema: z.object({ count: z.number().int().min(1).max(10), label: z.string().min(1).regex(/\w+/).optional() }),
+    })).resolves.toEqual({ count: 3 });
+    const sent = JSON.stringify(fakeCalls[0]?.schema);
+    expect(fakeCalls[0]?.schema).toMatchObject({
+      type: 'object',
+      additionalProperties: false,
+      required: ['found', 'value', 'missing'],
+      properties: { found: { type: 'boolean' } },
+    });
+    expect(sent).toContain('"count":{"type":"integer"}');
+    expect(sent).toContain('"label":{"type":"string"}');
+    for (const constraint of ['minimum', 'maximum', 'minLength', 'pattern', '$schema']) {
+      expect(sent).not.toContain(constraint);
+    }
+  });
+
+  it('returns the value the model found', async () => {
+    const model = installFakeModel(() => extracted({ count: 3 }));
+    const { fixtures } = runtime(todos(), { agents: { default: { model } } });
+    await expect(fixtures.agent.extract('the number of todos', { schema: z.object({ count: z.number().int() }) }))
+      .resolves.toEqual({ count: 3 });
+  });
+
+  it('fails inconclusive, naming what was missing, when the screen does not show the data', async () => {
+    const model = installFakeModel(() => notFound('no phone number is on this screen'));
+    const { fixtures, steps } = runtime(todos(), { agents: { default: { model } } });
+    await expect(fixtures.agent.extract('the customer phone number', { schema: z.object({ phone: z.string() }) }))
+      .rejects.toMatchObject({ code: 'ASSERTION_INCONCLUSIVE', message: expect.stringContaining('no phone number is on this screen') });
+    expect(fakeCalls).toHaveLength(1);
+    expect(steps.all().at(-1)).toMatchObject({ api: 'agent.extract', status: 'failed', error: { code: 'ASSERTION_INCONCLUSIVE' } });
+  });
+
+  it('lets the model decline on the repair round instead of bending the value to the schema', async () => {
+    const model = installFakeModel((call) =>
+      call.prompt.includes('<previous-attempt-rejected>') ? notFound('the list shows 3 todos, not 100 or more') : extracted({ count: 3 }));
+    const { fixtures } = runtime(todos(), { agents: { default: { model } } });
+    await expect(fixtures.agent.extract('the number of todos', { schema: z.object({ count: z.number().int().min(100) }) }))
+      .rejects.toMatchObject({ code: 'ASSERTION_INCONCLUSIVE' });
+    expect(fakeCalls).toHaveLength(2);
+    expect(fakeCalls[1]?.prompt).toContain('count: Too small');
+  });
+
+  it('asks for the same envelope in text mode, when the caller schema has no JSON Schema projection', async () => {
+    const model = installFakeModel(() => notFound('no phone number is on this screen'));
+    const { fixtures } = runtime(todos(), { agents: { default: { model } } });
+    const schema = { '~standard': { version: 1, vendor: 'test', validate: (value: unknown) => ({ value }) } } as const;
+    await expect(fixtures.agent.extract('the customer phone number', { schema })).rejects.toMatchObject({ code: 'ASSERTION_INCONCLUSIVE' });
+    expect(fakeCalls[0]?.schema).toBeUndefined();
+    expect(fakeCalls[0]?.prompt).toContain('"found"');
   });
 });
 

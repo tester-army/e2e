@@ -1,7 +1,8 @@
 /**
- * Closed `agent-protocol-1` response grammars. Mirrors
+ * Closed `agent-protocol-1` response grammars. The judgment grammar mirrors
  * `schema/agent-judgment-v2.schema.json`; the schema wins on any divergence,
  * and `tests/unit/agent-judgment-schema.test.ts` holds both to the same answers.
+ * The extract envelope has no published schema: its value is the caller's.
  *
  * Validation is runner-owned: a response that does not match exactly is a
  * policy error before any engine dispatch.
@@ -67,13 +68,97 @@ function isJudgmentVerdict(value: unknown): value is JudgmentVerdict {
   return JUDGMENT_VERDICTS.some((verdict) => verdict === value);
 }
 
+/** The `agent.extract` response grammar's name, sent as the structured-output name. */
+export const EXTRACT_SCHEMA_NAME = 'agent-extract-2';
+
 /**
- * `agent.extract` sends no provider schema, because only the caller's Standard
- * Schema knows the payload shape. Any parsed JSON value is therefore protocol
- * valid; the caller's schema is the only authority over its contents.
+ * An extraction answer. `found: false` is the model's outlet for data the
+ * screen does not show: without it a required field can only be filled with a
+ * placeholder or an invented value that the caller's schema then accepts.
  */
-export function acceptAnyJson(value: unknown): ProtocolValidation<unknown> {
-  return { ok: true, value };
+type ExtractResponse =
+  | { readonly found: true; readonly value: unknown }
+  | { readonly found: false; readonly missing: string | undefined };
+
+/** Where the caller's shape moves when it refers to its own root, so `#` refs still reach it inside the envelope; suffixed until no caller definition has the name. */
+const EXTRACT_VALUE_DEFINITION = 'extractValue';
+
+/**
+ * The provider schema of an extraction: the caller's shape wrapped in the
+ * `agent-extract-2` envelope. Every property is required and the value is
+ * nullable rather than optional, which strict structured-output providers
+ * need. The shape's definitions move to the root, where its `$ref`s point;
+ * a shape that refers to its own root (`$ref: "#"`, a recursive zod root)
+ * moves there too, and those refs follow it, or they would name the envelope.
+ */
+export function extractSchema(shape: JSONSchema7): JSONSchema7 {
+  const { definitions, $defs, ...value } = shape;
+  const selfReferencing = refersToRoot(value) || Object.values({ ...definitions, ...$defs }).some(refersToRoot);
+  const name = freeName(EXTRACT_VALUE_DEFINITION, new Set([...Object.keys(definitions ?? {}), ...Object.keys($defs ?? {})]));
+  const target = `#/definitions/${name}`;
+  const moved = <Schema>(schema: Schema): Schema => (selfReferencing ? retargetRootRefs(schema, target) : schema);
+  const hoisted = {
+    ...(definitions === undefined ? {} : moved(definitions)),
+    ...(selfReferencing ? { [name]: moved(value) } : {}),
+  };
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['found', 'value', 'missing'],
+    properties: {
+      found: { type: 'boolean', description: 'false only when the observation cannot answer the instruction' },
+      value: { anyOf: [selfReferencing ? { $ref: target } : value, { type: 'null' }], description: 'the extracted data; null when not found' },
+      missing: { type: ['string', 'null'], description: 'when not found, what the observation lacks; null otherwise' },
+    },
+    ...(Object.keys(hoisted).length === 0 ? {} : { definitions: hoisted }),
+    ...($defs === undefined ? {} : { $defs: moved($defs) }),
+  };
+}
+
+/** `base`, or `base` with the first numeric suffix no name in `taken` has. */
+function freeName(base: string, taken: ReadonlySet<string>): string {
+  let name = base;
+  for (let suffix = 2; taken.has(name); suffix += 1) name = `${base}${String(suffix)}`;
+  return name;
+}
+
+/** Whether a schema holds a `$ref` into its own root other than through its definitions. */
+function refersToRoot(schema: unknown): boolean {
+  if (typeof schema !== 'object' || schema === null) return false;
+  if (Array.isArray(schema)) return schema.some(refersToRoot);
+  return Object.entries(schema).some(([key, member]) =>
+    key === '$ref' ? typeof member === 'string' && isRootRef(member) : refersToRoot(member));
+}
+
+/** `#` and pointers into the root's own body, not into its definitions. */
+function isRootRef(ref: string): boolean {
+  return ref === '#' || (ref.startsWith('#/') && !ref.startsWith('#/definitions/') && !ref.startsWith('#/$defs/'));
+}
+
+/** The schema with every root ref pointed at `target` instead, the rest of the pointer kept. */
+function retargetRootRefs<Schema>(schema: Schema, target: string): Schema {
+  if (typeof schema !== 'object' || schema === null) return schema;
+  if (Array.isArray(schema)) return schema.map((member: unknown) => retargetRootRefs(member, target)) as Schema;
+  return Object.fromEntries(Object.entries(schema).map(([key, member]: [string, unknown]) => [
+    key,
+    key === '$ref' && typeof member === 'string' && isRootRef(member) ? `${target}${member.slice(1)}` : retargetRootRefs(member, target),
+  ])) as Schema;
+}
+
+/**
+ * Validates the envelope only. The value inside is the caller's to judge:
+ * its Standard Schema is the only authority over extracted data.
+ */
+export function validateExtractResponse(value: unknown): ProtocolValidation<ExtractResponse> {
+  const record = asClosedRecord(value, ['found', 'value', 'missing']);
+  if (record === null) return fail('response is not an agent-extract-2 object with found, value, and missing');
+  if (record['found'] === true) return { ok: true, value: { found: true, value: record['value'] } };
+  if (record['found'] !== false) return fail('found must be true or false');
+  const missing = record['missing'];
+  if (missing === null || missing === undefined) return { ok: true, value: { found: false, missing: undefined } };
+  const bounded = asBoundedString(missing, 0, EXPLANATION_MAX_LENGTH);
+  if (bounded === null) return fail('missing must be a bounded string or null');
+  return { ok: true, value: { found: false, missing: bounded.trim() === '' ? undefined : bounded } };
 }
 
 function fail(issue: string): { ok: false; issue: string } {
