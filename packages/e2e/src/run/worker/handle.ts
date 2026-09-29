@@ -67,7 +67,7 @@ class ChildProcessRunner implements UnitRunner {
       // delivered before the scheduler treats the worker as gone.
       this.child.once('close', (code, signal) => {
         this.exited = true;
-        events.onExit(`code ${String(code)}, signal ${String(signal)}`);
+        events.onExit(`code ${String(code)}, signal ${String(signal)}`, signal);
         resolve();
       });
     });

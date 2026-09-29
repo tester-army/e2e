@@ -129,6 +129,12 @@ interface FakeBehaviour {
   readonly hangOn?: readonly string[];
   /** Workers ignore `terminate` and have to be killed. */
   readonly ignoreTerminate?: boolean;
+  /**
+   * The first `workers` spawned die of `signal` before becoming ready, as
+   * workers still loading do when a terminal Ctrl-C reaches the process
+   * group; the ones after them hang in startup.
+   */
+  readonly signalledInit?: { readonly workers: number; readonly signal: NodeJS.Signals };
 }
 
 class FakeFleet {
@@ -182,6 +188,11 @@ class FakeRunner implements UnitRunner {
     setTimeout(() => {
       if (this.exited) return;
       if (behaviour.neverReady?.includes(targetName) === true) return;
+      const signalled = behaviour.signalledInit;
+      if (signalled !== undefined) {
+        if (index < signalled.workers) this.end(`code null, signal ${signalled.signal}`, signalled.signal);
+        return;
+      }
       if (behaviour.failInit?.includes(targetName) === true) this.end('init failed');
       else this.events.onMessage({ type: 'ready' });
     }, 0);
@@ -243,11 +254,11 @@ class FakeRunner implements UnitRunner {
     this.events.onMessage({ type: 'unit-done', unitId: message.unitId, runErrors: [] });
   }
 
-  private end(detail: string): void {
+  private end(detail: string, signal: NodeJS.Signals | null = null): void {
     if (this.exited) return;
     this.exited = true;
     this.fleet.onExit(this.targetName);
-    this.events.onExit(detail);
+    this.events.onExit(detail, signal);
     this.finish();
   }
 }
@@ -771,6 +782,32 @@ describe('scheduler fault handling', () => {
     expect(fleet.interruptSkips).toEqual([undefined, undefined]);
     // Both workers exit before becoming ready, as many as MAX_INIT_FAILURES: exits the interrupt asked for are not init failures.
     expect(collected.runErrors).toEqual([]);
+  });
+
+  it('takes workers a Ctrl-C killed while they were still loading for the interrupt it is, not a boot failure', async () => {
+    const target = makeTarget('web', 0);
+    const pairs = ['a', 'b'].map((name) => makePair(makeTest(`tests/${name}.e2e.ts`, name), target));
+    const fleet = new FakeFleet({ signalledInit: { workers: 2, signal: 'SIGINT' } });
+    const controller = new AbortController();
+    // The runner handles its own SIGINT after the workers' exits reached it.
+    const timer = setTimeout(() => controller.abort(), 20);
+
+    const collected = await run(
+      makeSelection([{ target, pairs }]),
+      makeCollection(
+        pairs.map((pair) => pair.test.file),
+        pairs,
+      ),
+      fleet,
+      { workers: 2, interruptSignal: controller.signal },
+    );
+    clearTimeout(timer);
+
+    expect(collected.runErrors).toEqual([]);
+    expect(collected.results.map((result) => [result.test.title, result.status, result.skip?.reason]).toSorted()).toEqual([
+      ['a', 'skipped', 'run interrupted before execution'],
+      ['b', 'skipped', 'run interrupted before execution'],
+    ]);
   });
 
   it('a plain interrupt reports the queued units it cancels, so a rerun can pick them up', async () => {

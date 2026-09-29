@@ -14,9 +14,10 @@ export interface UnitRunnerEvents {
   onMessage(message: WorkerToMain): void;
   /**
    * Fires exactly once when the runner reaches end of life, for any reason.
-   * `detail` describes the cause for infrastructure error reporting.
+   * `detail` describes the cause for infrastructure error reporting;
+   * `signal` is the signal that ended a worker process, when one did.
    */
-  onExit(detail: string): void;
+  onExit(detail: string, signal?: NodeJS.Signals | null): void;
 }
 
 /** One worker bound to a single target, executing at most one unit at a time. */

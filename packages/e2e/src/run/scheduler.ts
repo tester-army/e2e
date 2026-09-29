@@ -90,6 +90,11 @@ const MAX_INIT_FAILURES = 2;
 /** How long a retiring or draining worker gets before it is force-killed. */
 const SHUTDOWN_GRACE_MS = 10_000;
 
+/** Whether a worker process died of a signal that interrupts the run, as a Ctrl-C to its process group does. */
+function isInterruptSignal(signal: NodeJS.Signals | null): boolean {
+  return signal === 'SIGINT' || signal === 'SIGTERM' || signal === 'SIGHUP';
+}
+
 /** Runs every planned unit and streams records. */
 export async function runUnits(options: RunUnitsOptions): Promise<void> {
   await new Scheduler(options).run();
@@ -134,13 +139,13 @@ class SchedulerWorker {
     readonly workerSlot: number,
     spawn: SpawnUnitRunner,
     onMessage: (worker: SchedulerWorker, message: WorkerToMain) => void,
-    onExit: (worker: SchedulerWorker, detail: string) => void,
+    onExit: (worker: SchedulerWorker, detail: string, signal: NodeJS.Signals | null) => void,
   ) {
     this.runner = spawn(targetName, workerSlot, {
       onMessage: (message) => onMessage(this, message),
-      onExit: (detail) => {
+      onExit: (detail, signal) => {
         this.clearKillTimer();
-        onExit(this, detail);
+        onExit(this, detail, signal ?? null);
       },
     });
   }
@@ -520,7 +525,7 @@ class Scheduler {
       workerSlot,
       this.options.spawn,
       (target, message) => this.onMessage(target, message),
-      (target, detail) => this.onExit(target, detail),
+      (target, detail, signal) => this.onExit(target, detail, signal),
     );
     this.workers.push(worker);
     return worker;
@@ -652,7 +657,7 @@ class Scheduler {
     }
   }
 
-  private onExit(worker: SchedulerWorker, detail: string): void {
+  private onExit(worker: SchedulerWorker, detail: string, signal: NodeJS.Signals | null): void {
     const tracked = this.workers.includes(worker);
     this.forget(worker);
     const state = this.targetState(worker);
@@ -680,9 +685,11 @@ class Scheduler {
         });
       }
       this.synthesizeCrashResults(state, worker, unit);
-    } else if (tracked && !worker.becameReady && !this.interrupting) {
+    } else if (tracked && !worker.becameReady && !this.interrupting && !isInterruptSignal(signal)) {
       // The interrupt retires every worker still starting; those exits were
-      // asked for and say nothing about whether the target can boot.
+      // asked for and say nothing about whether the target can boot. Nor
+      // does a worker a terminal Ctrl-C reached before it could ignore the
+      // signal: the runner's own interrupt may reach it only after the exit.
       state.initFailures += 1;
       if (state.initFailures >= MAX_INIT_FAILURES) this.failTarget(state);
     }
