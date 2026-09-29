@@ -1680,6 +1680,28 @@ describe('video', () => {
     });
   });
 
+  it('forgets the session app when stopping ends the session the recording made for itself', async () => {
+    const h = harness({ app: 'com.example.app', permissions: { camera: 'grant' } });
+    h.fake.respond('apps.open', () => ({ session: 's', appName: 'Example', appBundleId: 'com.example.app', identifiers: {} }));
+    h.fake.respond('recording.record', (args) => {
+      const options = args as { action: 'start' | 'stop'; path?: string };
+      if (options.action === 'start') return { recording: 'started', outPath: options.path, sessionStateDir: '/tmp', showTouches: false, recordOnlySession: true };
+      return { recording: 'stopped', outPath: path.join(artifactsDir, 'video', 'video.mp4'), artifacts: [], durationMs: 1200, showTouches: false, recordOnlySession: true };
+    });
+    await openAttempt(h);
+    await h.engine.session!.restart!(operation());
+    await h.engine.artifacts!.startVideo!(operation());
+    await h.engine.artifacts!.stopVideo!(operation());
+    const before = h.fake.calls.length;
+    await h.engine.session!.restart!(operation());
+    expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
+      // The session is gone, so it is put on the app again before the permission, as after closeApp.
+      ['apps.open', { platform: 'ios', app: 'com.example.app' }],
+      ['settings.update', { setting: 'permission', permission: 'camera', state: 'grant' }],
+      ['apps.open', { platform: 'ios', app: 'com.example.app', relaunch: true }],
+    ]);
+  });
+
   it('moves a recording the device finalized elsewhere into place, and stops a dangling one at attempt end', async () => {
     const h = harness();
     const elsewhere = path.join(artifactsDir, 'elsewhere.mp4');

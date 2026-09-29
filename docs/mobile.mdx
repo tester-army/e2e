@@ -165,8 +165,10 @@ export interface DeviceLease {
 ```
 
 `acquire` receives the platform, run id, target, slot, the `app` and resolved
-`appPath` options, the run's environment, an interrupt signal, and a `log`
-that reaches the reporter. Read tokens from `request.env`, not
+`appPath` options, the agent-device version the engine's client speaks
+(`agentDeviceVersion`, for a service that starts a daemon of a chosen
+version), the run's environment, an interrupt signal, and a `log` that
+reaches the reporter. Read tokens from `request.env`, not
 `process.env`. A target with nothing to run leases nothing. Every lease
 granted is held by the engine, one it then refuses included: a slot that
 fails to lease ends the run before any test, and the leases that succeeded

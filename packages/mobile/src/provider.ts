@@ -9,6 +9,7 @@
  * a machine down the hall are each one small provider in user code.
  */
 
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import {
   ConfigurationError,
@@ -38,6 +39,12 @@ export interface DeviceRequest {
   readonly slot: number;
   /** Devices the run acquires for this target, in all. */
   readonly slots: number;
+  /**
+   * The agent-device version this engine's client speaks, for a provider
+   * that picks the daemon version it starts: a daemon of another version may
+   * answer the same commands differently.
+   */
+  readonly agentDeviceVersion: string;
   /** The `app` option: the bundle id or package `app.open()` launches, when the config names one. */
   readonly app?: string | undefined;
   /**
@@ -187,6 +194,9 @@ export async function recordLease(provider: RecordingDeviceProvider, lease: Devi
   return recording;
 }
 
+/** The agent-device this package pins exactly, read from its manifest: the version every worker's client is. */
+const AGENT_DEVICE_VERSION = (createRequire(import.meta.url)('../package.json') as { dependencies: Record<string, string> }).dependencies['agent-device']!;
+
 /** An object with a lease id: something the provider granted and `release` is owed, whatever the field check makes of it. */
 function isGrantedLease(value: unknown): value is Pick<DeviceLease, 'id'> {
   return typeof value === 'object' && value !== null && typeof (value as { id?: unknown }).id === 'string';
@@ -247,6 +257,7 @@ export class LeasedDevices implements DeviceSource {
           targetName: info.targetName,
           slot,
           slots: info.slots,
+          agentDeviceVersion: AGENT_DEVICE_VERSION,
           app,
           appPath,
           env: info.env,

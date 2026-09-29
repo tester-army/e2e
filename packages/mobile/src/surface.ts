@@ -565,6 +565,12 @@ export class AgentDeviceSurface {
     );
     // Cleared only now: a stop that failed leaves the recording for `endAttempt`.
     attempt.video = undefined;
+    // A device-scope recording started with no session made one of its own, and
+    // stopping it ended that session, whatever the test opened in it since.
+    if (result.recordOnlySession === true) {
+      this.sessionApp = undefined;
+      this.screenReplaced();
+    }
     // The device may finalize the file under a path of its own choosing; the
     // artifact must live where the attempt directory expects it.
     const written = typeof result.outPath === 'string' ? result.outPath : video.absolute;

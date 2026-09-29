@@ -5,7 +5,7 @@
  * provider's own recording of an attempt.
  */
 
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -78,6 +78,8 @@ describe('device provider', () => {
       [1, 2, 'ios', 'Settings', undefined],
     ]);
     expect(cloud.acquired[0]!.env).toEqual({ DEVICE_SERVICE_TOKEN: 't' });
+    // The agent-device the package pins, so a provider can start a daemon of the same version.
+    expect(cloud.acquired[0]!.agentDeviceVersion).toBe((JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { dependencies: Record<string, string> }).dependencies['agent-device']);
     expect(lines).toEqual([
       'leasing 2 ios device(s) from toy-cloud',
       'toy-cloud (1 of 2): starting',
