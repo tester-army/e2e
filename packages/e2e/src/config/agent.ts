@@ -1,7 +1,8 @@
 /** Agent, model, and resource-limit resolution. */
 
 import { isStepExecutor, type StepExecutor } from '../agent/executor.ts';
-import { GRAMMAR_TOOL_NAMES } from '../agent/action-names.ts';
+import { GRAMMAR_TOOL_NAMES, HARNESS_TOOL_NAMES } from '../agent/action-names.ts';
+import { AgentError } from '../agent/error.ts';
 import { isDefinedTool } from '../agent/tool.ts';
 import { boundedInt, positiveInt } from './validate.ts';
 import { ConfigurationError } from '../internal/errors.ts';
@@ -111,7 +112,7 @@ const REMOVED_AGENT_KEYS: ReadonlyMap<string, string> = new Map([
   ['timeout', 'use judgmentTimeout, the deadline of one assert, waitFor, or extract call'],
   ['maxTurns', 'use maxModelCalls, the model requests one agent call may make'],
   ['maxModelTokensPerCall', 'use maxInputTokens'],
-  ['limits', 'set maxInputTokens on the agent; the other limits are fixed by the runner'],
+  ['limits', 'set maxInputTokens on the agent; the runner fixes the other limits'],
 ]);
 
 /** The keys only the built-in agent reads; a custom executor brings its own. */
@@ -231,13 +232,21 @@ function checkAgentShape(value: unknown, label: string): AgentConfig | undefined
       `${label} is a StepExecutor (${JSON.stringify(value.name)}); an agents entry is an options object now, so pass it as ${label}: { executor, model, ... }`,
     );
   }
+  if (looksLikeModel(value)) {
+    const { provider, modelId } = value as { provider?: unknown; modelId: string };
+    const named = typeof provider === 'string' ? `${provider}/${modelId}` : modelId;
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `${label} is a model instance (${named}); an agents entry is an options object, so write ${label}: { model: ... } with it`,
+    );
+  }
   if (!isPlainObject(value)) {
     throw new ConfigurationError('INVALID_CONFIG', `${label} must be an options object: ${label}: ${AGENT_SHAPE}`);
   }
   for (const key of Object.keys(value)) {
     const removed = REMOVED_AGENT_KEYS.get(key);
     if (removed !== undefined) {
-      throw new ConfigurationError('INVALID_CONFIG', `${label}.${key} was removed; ${removed}`);
+      throw new ConfigurationError('INVALID_CONFIG', `${label}.${key} was removed: ${removed}`);
     }
     if (!AGENT_KEY_SET.has(key)) {
       throw new ConfigurationError(
@@ -247,6 +256,30 @@ function checkAgentShape(value: unknown, label: string): AgentConfig | undefined
     }
   }
   return value as AgentConfig;
+}
+
+/**
+ * Whether a value reads as an AI SDK model instance, loosely: what a model
+ * put where an agents entry goes carries, with or without a `doGenerate` a
+ * wrapper hides, so the entry's own key check never reports its fields.
+ */
+function looksLikeModel(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate['specificationVersion'] === 'string' && typeof candidate['modelId'] === 'string';
+}
+
+/**
+ * `MODEL_UNAVAILABLE` for the agent `name`, whose entry holds no model:
+ * what needs it (`needs`, the agent fixture by default), and the entry to
+ * write, under that agent's own key.
+ */
+export function missingModelError(name: string, needs = 'the agent fixture requires a model'): AgentError {
+  const key = /^[A-Za-z_$][\w$]*$/.test(name) ? name : JSON.stringify(name);
+  return new AgentError(
+    'MODEL_UNAVAILABLE',
+    `${needs}, and agents.${name} has none: set model on it to an AI SDK model instance, e.g. agents: { ${key}: { model: gateway('openai/gpt-6-luna-fast') } }`,
+  );
 }
 
 /** A custom brain: any `StepExecutor`. */
@@ -293,8 +326,12 @@ function resolveTools(value: unknown, label: string): Readonly<Record<string, Ag
         `${key} was not created with defineTool; undeclared semantics are not trusted`,
       );
     }
-    if (name === 'complete_step' || GRAMMAR_TOOL_NAMES.has(name)) {
+    if (GRAMMAR_TOOL_NAMES.has(name)) {
       throw new ConfigurationError('INVALID_CONFIG', `${key}: the ${name} tool name is reserved for the agent's own tools`);
+    }
+    const harness = HARNESS_TOOL_NAMES.get(name);
+    if (harness !== undefined) {
+      throw new ConfigurationError('INVALID_CONFIG', `${key}: the ${name} tool name is reserved for the tool the harness adds in ${harness}; rename it`);
     }
     if (typeof defined.tool.execute !== 'function') {
       throw new ConfigurationError('INVALID_CONFIG', `${key} has no execute function`);

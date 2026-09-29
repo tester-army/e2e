@@ -11,18 +11,55 @@ import type { Secret } from '../types.ts';
 export interface SessionSecrecy {
   /** Every secret value the session may have seen; live, so a provider's value joins the moment it exists. */
   readonly ledger: SecretLedger;
-  /**
-   * Set the moment a secret is filled on the session, and never cleared: from
-   * then on the viewport, and everything recorded from it, may carry the value.
-   */
-  readonly taint: { value: boolean };
-  /**
-   * Set once the engine resolved a secret for an option it holds (basic-auth
-   * credentials), and never cleared. The viewport stays clean, but a trace
-   * records the options the engine opened the attempt with, so it is
-   * rewritten as after a fill.
-   */
-  readonly engineHeld: { value: boolean };
+  /** How far a secret reached the session, and what that withholds and rewrites. */
+  readonly exposure: SecretExposure;
+}
+
+/**
+ * How far a secret reached one session. It only rises, and is never cleared:
+ * `none`, no secret reached it; `engine`, the engine resolved one for an
+ * option it hands the app (basic-auth credentials), so the app has the value
+ * and a page can render it (an echo of the `Authorization` header) though
+ * nothing was typed; `filled`, a secret was typed into the app.
+ */
+export type SecretExposureLevel = 'none' | 'engine' | 'filled';
+
+const EXPOSURE_RANK: Readonly<Record<SecretExposureLevel, number>> = { none: 0, engine: 1, filled: 2 };
+
+/**
+ * One session's exposure level, and the one place that maps it to what each
+ * consumer does. Either level above `none` rewrites what text can carry the
+ * value (a trace's text entries, a text-like download) through the ledger,
+ * as every report and observation already is. Only a fill withholds pixels
+ * (failure screenshots, `app.screenshot()`, assert evidence, model input,
+ * and a trace's screencast frames): an engine-held secret is protected as
+ * text only, so a page that renders it on screen is not masked. Only a fill
+ * carries into a saved session too: the value then lives in the app's
+ * state, while an engine-held one is resolved again by whatever engine opens
+ * the restoring session.
+ */
+export class SecretExposure {
+  private current: SecretExposureLevel = 'none';
+
+  /** Records that a secret reached the session at `level`; a lower level never replaces a higher one. */
+  raise(level: Exclude<SecretExposureLevel, 'none'>): void {
+    if (EXPOSURE_RANK[level] > EXPOSURE_RANK[this.current]) this.current = level;
+  }
+
+  /** Whether no pixels may leave the session: no screenshot or screencast frame is taken, kept, or handed to a model. */
+  get withholdsPixels(): boolean {
+    return this.current === 'filled';
+  }
+
+  /** Whether a text recording of the session (a trace, a text-like download) is rewritten through the ledger before it is kept. */
+  get redactsRecordings(): boolean {
+    return this.current !== 'none';
+  }
+
+  /** Whether a session saved from this one carries the taint to the sessions that restore it. */
+  get carriesTaint(): boolean {
+    return this.current === 'filled';
+  }
 }
 
 /**
@@ -67,6 +104,21 @@ export async function resolveSecretValue(
   return plaintext;
 }
 
+/**
+ * Registers the forms an engine derived from one resolved secret (the base64
+ * basic-auth credential) under the secret's name, in `ledger` and in
+ * `processSecrets`, so what the app sees in place of the value is redacted
+ * wherever the value is. Registered before the engine hands a form to the
+ * app, since the resolve that computes them has not returned yet.
+ */
+export function registerDerivedSecrets(name: string, derived: readonly string[], ledger: SecretLedger): void {
+  for (const value of derived) {
+    if (typeof value !== 'string' || value === '') continue;
+    ledger.register(name, value);
+    processSecrets.register(name, value);
+  }
+}
+
 /** Secrets survive every fixture graph that shares the same live isolation. */
 const secrecyBySession = new WeakMap<TargetSession, SessionSecrecy>();
 
@@ -89,8 +141,7 @@ export function sessionSecrecy(
           typeof value === 'string' ? [[name, value] as const] : [],
         ),
       ),
-      taint: { value: false },
-      engineHeld: { value: false },
+      exposure: new SecretExposure(),
     };
     secrecyBySession.set(session, secrecy);
   }
@@ -119,7 +170,7 @@ export function carriedSecrecy(
     secrets: secrecy.ledger
       .entries()
       .filter(([name, value]) => secrets.get(name)?.value !== value),
-    tainted: secrecy.taint.value,
+    tainted: secrecy.exposure.carriesTaint,
   };
 }
 
@@ -129,5 +180,5 @@ export function adoptSecrecy(secrecy: SessionSecrecy, saved: SavedSecrecy): void
     secrecy.ledger.register(name, value);
     processSecrets.register(name, value);
   }
-  if (saved.tainted) secrecy.taint.value = true;
+  if (saved.tainted) secrecy.exposure.raise('filled');
 }

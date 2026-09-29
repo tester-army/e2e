@@ -47,7 +47,7 @@ test('unpinned follows the run', async ({ app, agent }) => {
 
 test('an unknown agent on a call fails that call', async ({ app, agent }) => {
   await app.open();
-  await agent.act('x', { agent: 'nobody' });
+  await agent.act('x', { agent: 'buyr' });
 });
 `;
 
@@ -154,7 +154,7 @@ describe('named agents', () => {
       const unknown = byTitle['an unknown agent on a call fails that call']!;
       expect(unknown.status).toBe('failed');
       expect(unknown.attempts[0]!.error).toMatchObject({ code: 'INVALID_ARGUMENT' });
-      expect(unknown.attempts[0]!.error?.message).toMatch(/unknown agent "nobody"; configured: default, buyer, admin, thorough/);
+      expect(unknown.attempts[0]!.error?.message).toBe('unknown agent "buyr"; configured: default, buyer, admin, thorough; did you mean "buyer"?');
       expect(agentSteps(unknown)).toHaveLength(0);
       expect(outcome.exitCode).toBe(1);
     } finally {
@@ -242,6 +242,21 @@ describe('named agents', () => {
     } finally {
       pinned.cleanup();
     }
+  }, 60_000);
+
+  it('names the agent the run selected when it has no model, not agents.default', async () => {
+    const outcome = await runExisting(project, {
+      appUrl: app.url,
+      config: { tests: 'tests/**/*.e2e.ts', agents: { default: { model: judging('fake', 'house') }, ux: { context: 'a ux reviewer' } } },
+      runOptions: { agent: 'ux' },
+    });
+    expect(outcome.exitCode).toBe(2);
+    expect(outcome.report.run.errors).toEqual([
+      expect.objectContaining({
+        code: 'MODEL_UNAVAILABLE',
+        message: expect.stringContaining('agents.ux has none: set model on it to an AI SDK model instance, e.g. agents: { ux: { model:'),
+      }),
+    ]);
   }, 60_000);
 
   it('fails the run before any test when --agent names nothing configured', async () => {

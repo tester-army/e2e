@@ -6,8 +6,9 @@ import path from 'node:path';
 import { envFlag } from '../internal/env.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import { canonicalDigest, sha256Hex } from '../internal/ids.ts';
+import { realpathOfExisting } from '../internal/paths.ts';
 import { didYouMean } from '../internal/suggest.ts';
-import { isRecordingMode, RECORDING_MODES, type RecordingKind, type ResolvedRecording } from '../internal/recording-modes.ts';
+import { isRecordingMode, legacyTraceSpelling, RECORDING_MODES, type RecordingKind, type ResolvedRecording } from '../internal/recording-modes.ts';
 import { BUILTIN_REPORTER_LIST, BUILTIN_REPORTERS, isBuiltinReporter } from '../report/builtin.ts';
 import { isStepExecutor } from '../agent/executor.ts';
 import { compileGlob, compileGlobList, literalPrefix } from '../internal/globs.ts';
@@ -174,10 +175,10 @@ const APP_BELONGS_TO_ENGINE =
 
 /** Keys this runner used to accept, each mapped to what replaces it. */
 const REMOVED_TOP_LEVEL_KEYS: ReadonlyMap<string, string> = new Map([
-  ['specVersion', 'remove it; the runner version is the format version'],
+  ['specVersion', 'delete it; the runner version is the format version'],
   [
     'limits',
-    'set maxInputTokens on each agent (was limits.maxModelTokensPerCall); maxAgentContextBytes, maxLedgerBytes, and maxEventsPerStep are fixed by the runner',
+    'set maxInputTokens on each agent (it was limits.maxModelTokensPerCall); the runner fixes maxAgentContextBytes, maxLedgerBytes, and maxEventsPerStep',
   ],
 ]);
 
@@ -248,7 +249,7 @@ export function resolveConfig(
   for (const key of Object.keys(raw)) {
     const removed = REMOVED_TOP_LEVEL_KEYS.get(key);
     if (removed !== undefined) {
-      throw new ConfigurationError('INVALID_CONFIG', `config key "${key}" was removed; ${removed}`);
+      throw new ConfigurationError('INVALID_CONFIG', `${key} was removed: ${removed}`);
     }
     if (!TOP_LEVEL_KEYS.has(key)) {
       throw new ConfigurationError(
@@ -425,13 +426,25 @@ function isWithin(inner: string, outer: string): boolean {
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }
 
+/** The nearest of `target` and its ancestors that exists, or undefined when none does. */
+function nearestExisting(target: string): string | undefined {
+  for (let current = target; ; current = path.dirname(current)) {
+    if (existsSync(current)) return current;
+    if (path.dirname(current) === current) return undefined;
+  }
+}
+
 /**
  * Resolves the results directory, `--output` over the config's `output`,
  * from the project root. A run clears `<output>/artifacts` and writes over
- * its reports, so the directory must be one it can own: inside the project
- * root and not the root itself, not holding the directory a test glob scans,
- * not the cache directory or inside it, and not wrapping the cache in a
- * directory the run clears or owns.
+ * its reports, so the directory must be one it can own: a directory (or a
+ * path that does not exist yet) inside the project root and not the root
+ * itself, not holding the directory a test glob scans, not the cache
+ * directory or inside it, and not wrapping the cache in a directory the run
+ * clears or owns. Every path is compared through the filesystem, with the
+ * symlinks of its nearest existing ancestor resolved and a dangling one
+ * followed to where it points, so one directory spelled through a symlink
+ * (`/tmp` and `/private/tmp` on macOS) is the same directory on both sides.
  */
 function resolveOutput(
   configured: unknown,
@@ -446,24 +459,36 @@ function resolveOutput(
     throw new ConfigurationError('INVALID_CONFIG', `${where} must be a non-empty path relative to the project root, got ${describeValue(value)}`);
   }
   const output = path.resolve(projectRoot, (value as string | undefined) ?? '.e2e');
+  const named = value === undefined ? `${where} ".e2e" (the default)` : `${where} ${JSON.stringify(value)}`;
   const refuse = (reason: string): never => {
-    throw new ConfigurationError('INVALID_CONFIG', `${where} ${JSON.stringify(value)} ${reason}`);
+    throw new ConfigurationError('INVALID_CONFIG', `${named} ${reason}`);
   };
-  if (output === projectRoot) refuse("is the project root; the run clears <output>/artifacts, so name a directory of its own, such as '.e2e'");
-  if (!isWithin(output, projectRoot)) refuse(`is outside the project root ${projectRoot}; name a directory inside it`);
-  if (isWithin(output, cacheDir)) refuse(`is the cache directory ${path.relative(projectRoot, cacheDir)} or inside it; keep results and the replay cache apart`);
+  const root = realpathOfExisting(projectRoot);
+  const real = realpathOfExisting(output);
+  const cache = realpathOfExisting(cacheDir);
+  if (real === root) refuse("is the project root; the run clears <output>/artifacts, so name a directory of its own, such as '.e2e'");
+  if (!isWithin(real, root)) refuse(`is outside the project root ${projectRoot}; name a directory inside it`);
+  const existing = nearestExisting(output);
+  if (existing !== undefined && !statSync(existing).isDirectory()) {
+    refuse(
+      existing === output
+        ? 'is a file; name a directory, which the run creates when it is missing'
+        : `is under the file ${path.relative(root, realpathOfExisting(existing))}; name a directory, which the run creates when it is missing`,
+    );
+  }
+  if (isWithin(real, cache)) refuse(`is the cache directory ${path.relative(root, cache)} or inside it; keep results and the replay cache apart`);
   for (const owned of OUTPUT_OWNED_DIRS) {
-    if (isWithin(cacheDir, path.join(output, owned))) {
-      refuse(`would hold cache.dir ${path.relative(projectRoot, cacheDir)} under ${owned}/, which the run owns; move cache.dir or the output`);
+    if (isWithin(cache, realpathOfExisting(path.join(output, owned)))) {
+      refuse(`would hold cache.dir ${path.relative(root, cache)} under ${owned}/, which the run owns; move cache.dir or the output`);
     }
   }
   for (const pattern of tests) {
     if (pattern.startsWith('!')) continue;
     const glob = compileGlob(pattern);
     const names = literalPrefix(glob);
-    const root = path.join(projectRoot, ...(names.length === glob.segments.length ? names.slice(0, -1) : names));
-    if (isWithin(root, output)) {
-      refuse(`holds ${path.relative(projectRoot, root) || '.'}, where the tests glob ${JSON.stringify(pattern)} finds test files; name a directory outside it`);
+    const scanned = path.join(projectRoot, ...(names.length === glob.segments.length ? names.slice(0, -1) : names));
+    if (isWithin(realpathOfExisting(scanned), real)) {
+      refuse(`holds ${path.relative(projectRoot, scanned) || '.'}, where the tests glob ${JSON.stringify(pattern)} finds test files; name a directory outside it`);
     }
   }
   return output;
@@ -479,25 +504,21 @@ const VIDEO_MOVED =
 const MODES_LIST = RECORDING_MODES.join(', ');
 
 /**
- * What replaces a removed artifact kinds list, from what the list held: the
- * trace mode it amounted to, the video option for a `video` kind, and the
- * failure screenshot a list without `screenshot` used to turn off.
+ * What replaces the removed recording facts of `artifacts`, read together:
+ * the kinds list (bare or as `kinds`, absent when the config had none) and
+ * the `trace` block. A list holding `trace` beside `trace: { record:
+ * 'retries' }` meant retries only, so the two name one mode between them,
+ * and a list without `trace` recorded none whatever the block said. Then the
+ * video option for a `video` kind, and the failure screenshot a list without
+ * `screenshot` used to turn off.
  */
-function kindsReplacement(kinds: unknown): string {
-  const listed = Array.isArray(kinds) ? (kinds as readonly unknown[]) : [];
-  const parts = [
-    `write trace: '${listed.includes('trace') ? 'on' : 'off'}' at the config root instead (the modes are ${MODES_LIST})`,
-  ];
-  if (listed.includes('video')) parts.push(VIDEO_MOVED);
-  if (!listed.includes('screenshot')) parts.push('failure screenshots are always captured now');
+function removedRecordingReplacement(kinds: readonly unknown[] | undefined, trace: unknown): string {
+  const traced = kinds === undefined || kinds.includes('trace');
+  const mode = traced ? (legacyTraceSpelling(trace)?.mode ?? 'on') : 'off';
+  const parts = [`write trace: '${mode}' at the config root instead (the modes are ${MODES_LIST})`];
+  if (kinds?.includes('video') === true) parts.push(VIDEO_MOVED);
+  if (kinds !== undefined && !kinds.includes('screenshot')) parts.push('failure screenshots are always captured now');
   return parts.join('; ');
-}
-
-/** What replaces a removed `artifacts.trace` block: the trace mode its `record` meant. */
-function traceBlockReplacement(trace: unknown): string {
-  const record = typeof trace === 'object' && trace !== null ? (trace as { record?: unknown }).record : undefined;
-  const mode = record === 'retries' ? 'on-all-retries' : 'on';
-  return `write trace: '${mode}' at the config root instead (the modes are ${MODES_LIST})`;
 }
 
 /**
@@ -511,19 +532,23 @@ function resolveArtifactStore(raw: E2EConfig): ArtifactStore | undefined {
   const value: unknown = raw.artifacts;
   if (value === undefined) return undefined;
   if (Array.isArray(value)) {
-    throw new ConfigurationError('INVALID_CONFIG', `artifacts no longer lists kinds; ${kindsReplacement(value)}`);
+    throw new ConfigurationError('INVALID_CONFIG', `artifacts no longer lists kinds: ${removedRecordingReplacement(value, undefined)}`);
   }
   if (typeof value !== 'object' || value === null) {
     throw new ConfigurationError('INVALID_CONFIG', 'artifacts must be { store }');
   }
-  for (const [key, entry] of Object.entries(value)) {
-    if (key === 'kinds') {
-      throw new ConfigurationError('INVALID_CONFIG', `artifacts.kinds was removed; ${kindsReplacement(entry)}`);
-    }
-    if (key === 'trace') {
-      throw new ConfigurationError('INVALID_CONFIG', `artifacts.trace was removed; ${traceBlockReplacement(entry)}`);
-    }
-    if (key === 'video') throw new ConfigurationError('INVALID_CONFIG', `artifacts.video is gone; ${VIDEO_MOVED}`);
+  const block = value as Record<string, unknown>;
+  const removed = (['kinds', 'trace'] as const).filter((key) => key in block);
+  if (removed.length > 0) {
+    const kinds = Array.isArray(block['kinds']) ? (block['kinds'] as readonly unknown[]) : 'kinds' in block ? [] : undefined;
+    const keys = removed.map((key) => `artifacts.${key}`).join(' and ');
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `${keys} ${removed.length === 1 ? 'was' : 'were'} removed: ${removedRecordingReplacement(kinds, block['trace'])}`,
+    );
+  }
+  for (const key of Object.keys(block)) {
+    if (key === 'video') throw new ConfigurationError('INVALID_CONFIG', `artifacts.video was removed: ${VIDEO_MOVED}`);
     if (!ARTIFACTS_KEYS.has(key)) {
       throw new ConfigurationError(
         'INVALID_CONFIG',
@@ -542,9 +567,14 @@ function resolveArtifactStore(raw: E2EConfig): ArtifactStore | undefined {
 }
 
 /** Checks one `trace` or `video` value: a mode, or undefined when the key is unset. */
-function recordingMode(value: unknown, where: string): RecordingMode | undefined {
+function recordingMode(value: unknown, where: string, kind: RecordingKind): RecordingMode | undefined {
   if (value === undefined) return undefined;
   if (!isRecordingMode(value)) {
+    const legacy = kind === 'trace' ? legacyTraceSpelling(value) : undefined;
+    if (legacy !== undefined) {
+      const spelled = where.startsWith('--') ? `${where} ${legacy.mode}` : `trace: '${legacy.mode}'`;
+      throw new ConfigurationError('INVALID_CONFIG', `${where} ${legacy.was} is the old spelling of ${spelled}; the modes are ${MODES_LIST}`);
+    }
     throw new ConfigurationError('INVALID_CONFIG', `${where} must be one of ${MODES_LIST}, got ${describeValue(value)}`);
   }
   return value;
@@ -564,8 +594,8 @@ interface RunRecording {
  */
 function runRecordings(raw: E2EConfig, cli: CliOverrides, ci: boolean): Readonly<Record<RecordingKind, RunRecording>> {
   return {
-    trace: { cli: recordingMode(cli.trace, '--trace'), config: recordingMode(raw.trace, 'trace'), fallback: ci ? 'on-first-retry' : 'on' },
-    video: { cli: recordingMode(cli.video, '--video'), config: recordingMode(raw.video, 'video'), fallback: 'off' },
+    trace: { cli: recordingMode(cli.trace, '--trace', 'trace'), config: recordingMode(raw.trace, 'trace', 'trace'), fallback: ci ? 'on-first-retry' : 'on' },
+    video: { cli: recordingMode(cli.video, '--video', 'video'), config: recordingMode(raw.video, 'video', 'video'), fallback: 'off' },
   };
 }
 
@@ -575,8 +605,8 @@ function runRecordings(raw: E2EConfig, cli: CliOverrides, ci: boolean): Readonly
  * target's own is checked whether or not the flag wins over it, so a flag
  * never hides a config mistake.
  */
-function targetRecording(run: RunRecording, own: unknown, where: string): ResolvedRecording {
-  const target = recordingMode(own, where);
+function targetRecording(run: RunRecording, own: unknown, where: string, kind: RecordingKind): ResolvedRecording {
+  const target = recordingMode(own, where, kind);
   if (run.cli !== undefined) return { mode: run.cli, source: 'run' };
   if (target !== undefined) return { mode: target, source: 'target' };
   if (run.config !== undefined) return { mode: run.config, source: 'run' };
@@ -721,8 +751,8 @@ function resolveTargets(
       platform,
       engine: target.engine,
       app: resolveTargetApp(name, target.engine, projectRoot, ports[name]),
-      trace: targetRecording(recordings.trace, target.trace, `${where} trace`),
-      video: targetRecording(recordings.video, target.video, `${where} video`),
+      trace: targetRecording(recordings.trace, target.trace, `${where} trace`, 'trace'),
+      video: targetRecording(recordings.video, target.video, `${where} video`, 'video'),
     };
   });
 }
@@ -952,13 +982,14 @@ function resolveAgents(
 }
 
 function computeConfigDigest(raw: E2EConfig, projectId: string): string {
-  // An agent's custom executor digests as its name/version, which is exactly
-  // what survives the function-stripping JSON clone below. Every model
-  // instance, wherever an agent entry carries it (`model`, `judge`, or inside
-  // an executor), is reduced to its identity by the clone: a live instance carries provider settings (and
-  // possibly credentials) that must never be digested, and its object graph
-  // may not serialize at all. Other live values are reduced before the clone:
-  // a store or a reporter may hold a client whose graph JSON cannot handle.
+  // Only plain data is JSON-cloned. Every live value is reduced to its
+  // identity before any clone sees it, since its object graph may not
+  // serialize at all (a recursive tool schema, a client inside a store) and
+  // a model instance carries provider settings, possibly credentials, that
+  // must never be digested: agents digest their tools by name, an executor
+  // by its name, version, and models, and a model anywhere by its identity;
+  // `cache.store` digests as whether it is writable; targets, credentials,
+  // and secrets are reduced below.
   //
   // `artifacts` holds only a host store, a live value, so it never enters the
   // digest. Nor does `output`, where results land, nor `trace` and `video`, at the top or on a target: recording
@@ -968,15 +999,26 @@ function computeConfigDigest(raw: E2EConfig, projectId: string): string {
   // so adding a reporter to a config leaves its cache valid.
   // `targets` digest by declaration below and never enter the clone: an
   // engine holds `secrets.get()` handles, which refuse to serialize.
-  const { artifacts: _artifacts, output: _output, trace: _trace, video: _video, targets: _targets, ...recorded } = raw;
-  const forClone: Record<string, unknown> = {
-    ...recorded,
-    ...(Array.isArray(raw.reporters)
-      ? { reporters: raw.reporters.filter((reporter) => typeof reporter === 'string') }
-      : {}),
-  };
+  const {
+    artifacts: _artifacts,
+    output: _output,
+    trace: _trace,
+    video: _video,
+    targets: _targets,
+    credentials: _credentials,
+    secrets: _secrets,
+    agents,
+    cache,
+    reporters,
+    ...plain
+  } = raw;
   const sanitized: Record<string, unknown> = {
-    ...(structuredCloneJsonSafe(forClone) as Record<string, unknown>),
+    ...(structuredCloneJsonSafe(plain) as Record<string, unknown>),
+    ...(reporters === undefined
+      ? {}
+      : { reporters: Array.isArray(reporters) ? reporters.filter((reporter) => typeof reporter === 'string') : structuredCloneJsonSafe(reporters) }),
+    ...(agents === undefined ? {} : { agents: digestAgents(agents) }),
+    ...(cache === undefined ? {} : { cache: digestCache(cache) }),
     projectId,
   };
   if (raw.credentials !== undefined) {
@@ -1019,6 +1061,44 @@ function computeConfigDigest(raw: E2EConfig, projectId: string): string {
     });
   }
   return canonicalDigest(sanitized);
+}
+
+/**
+ * The agents as the digest records them. Each entry passed `resolveAgents`,
+ * so it is a plain options object: its plain options are cloned, its tools
+ * named, and its executor reduced to what identifies it.
+ */
+function digestAgents(agents: NonNullable<E2EConfig['agents']>): unknown {
+  return Object.fromEntries(
+    Object.entries(agents).map(([name, entry]) => {
+      const { tools, executor, ...options } = entry ?? {};
+      return [
+        name,
+        {
+          ...(structuredCloneJsonSafe(options) as Record<string, unknown>),
+          ...(tools === undefined ? {} : { tools: Object.keys(tools).toSorted() }),
+          ...(executor === undefined
+            ? {}
+            : {
+                executor: {
+                  name: executor.name,
+                  ...(executor.version === undefined ? {} : { version: executor.version }),
+                  ...(executor.cache === undefined ? {} : { cache: executor.cache }),
+                  ...(executor.model === undefined ? {} : { model: modelIdentity(executor.model) }),
+                  ...(executor.judge === undefined ? {} : { judge: modelIdentity(executor.judge) }),
+                },
+              }),
+        },
+      ];
+    }),
+  );
+}
+
+/** `cache` as the digest records it: a mode string as is, an options object with its store reduced to whether it writes. */
+function digestCache(cache: NonNullable<E2EConfig['cache']>): unknown {
+  if (typeof cache !== 'object' || cache === null) return cache;
+  const { store, ...options } = cache;
+  return { ...options, ...(store === undefined ? {} : { store: { writable: store.writable } }) };
 }
 
 /**

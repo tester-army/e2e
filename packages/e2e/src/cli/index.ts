@@ -1,7 +1,7 @@
 /** e2e CLI. */
 
 import { existsSync } from 'node:fs';
-import { dirname, resolve as resolvePath } from 'node:path';
+import { dirname, isAbsolute, normalize, resolve as resolvePath, sep } from 'node:path';
 import { Argument, Command, CommanderError, InvalidArgumentError, Option } from 'commander';
 import picocolors from 'picocolors';
 import { detectPackageManager, execCommand, runScriptCommand } from '../internal/package-manager.ts';
@@ -13,7 +13,7 @@ import { explore, STEP_BOUNDS, TIMEOUT_BOUNDS } from '../explore/index.ts';
 import { BUILTIN_REPORTERS, isBuiltinReporter } from '../report/builtin.ts';
 import { bounded } from '../report/format.ts';
 import type { BuiltinReporter, RecordingMode } from '../types.ts';
-import { isRecordingMode, RECORDING_MODES } from '../internal/recording-modes.ts';
+import { isRecordingMode, legacyTraceSpelling, RECORDING_MODES } from '../internal/recording-modes.ts';
 import { runsFromCheckout } from '../telemetry/checkout.ts';
 import { initCompletedEvent, runCompletedEvent, USAGE_ERROR_CODE } from '../telemetry/events.ts';
 import { Telemetry } from '../telemetry/telemetry.ts';
@@ -156,8 +156,11 @@ function parseReporters(value: string): Reporter[] {
 function parseRecordingMode(flag: '--trace' | '--video'): (value: string) => RecordingMode {
   return (value) => {
     if (!isRecordingMode(value)) {
+      const legacy = flag === '--trace' ? legacyTraceSpelling(value) : undefined;
       throw new InvalidArgumentError(
-        `expected a mode (${RECORDING_MODES.join(', ')}), got "${value}"; write ${flag}=<mode>, or put test files before ${flag}`,
+        legacy === undefined
+          ? `expected a mode (${RECORDING_MODES.join(', ')}), got "${value}"; write ${flag}=<mode>, or put test files before ${flag}`
+          : `"${value}" is the old spelling of ${flag} ${legacy.mode}; the modes are ${RECORDING_MODES.join(', ')}`,
       );
     }
     return value;
@@ -167,12 +170,15 @@ function parseRecordingMode(flag: '--trace' | '--video'): (value: string) => Rec
 /**
  * The removed `--artifacts <dir>`, kept hidden so a script that still passes
  * it fails with the new spelling: the directory's parent held the report
- * beside it, and is what `--output` names now.
+ * beside it, and is what `--output` names now. A parent the output could not
+ * be (the working directory, above it, or an absolute path this parser
+ * cannot place in the project) is not suggested; `.e2e` is.
  */
 function removedArtifactsFlag(value: string): never {
-  const parent = dirname(value);
+  const parent = normalize(dirname(value));
+  const suggestable = parent !== '.' && parent !== '..' && !parent.startsWith(`..${sep}`) && !isAbsolute(parent);
   throw new InvalidArgumentError(
-    `--artifacts was removed; write --output ${parent} instead: the report and the artifacts/ directory go under the output directory (--artifacts out/artifacts is --output out)`,
+    `--artifacts was removed: write --output ${suggestable ? parent : '.e2e'} instead. The report and the artifacts/ directory go under the output directory, which must be a directory inside the project, not its root (--artifacts out/artifacts is --output out)`,
   );
 }
 

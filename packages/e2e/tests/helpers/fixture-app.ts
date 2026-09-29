@@ -46,6 +46,23 @@ const PATTERNS: readonly { readonly pattern: RegExp; readonly render: (match: Re
 
 type Responder = (request: IncomingMessage, response: ServerResponse, state: FixtureState) => void;
 
+/**
+ * The basic-auth user a request carries, or undefined once a challenge was
+ * answered in its place: the echo pages show only to a request with
+ * credentials, as a protected preview does.
+ */
+function basicAuthUser(request: IncomingMessage, response: ServerResponse): { username: string; password: string } | undefined {
+  const [scheme, encoded] = (request.headers.authorization ?? '').split(' ');
+  const decoded = scheme === 'Basic' && encoded ? Buffer.from(encoded, 'base64').toString('utf8') : '';
+  const separator = decoded.indexOf(':');
+  if (separator === -1) {
+    response.writeHead(401, { 'www-authenticate': 'Basic realm="fixture"', 'content-type': 'text/plain' });
+    response.end('unauthorized');
+    return undefined;
+  }
+  return { username: decoded.slice(0, separator), password: decoded.slice(separator + 1) };
+}
+
 /** Everything that is not a page: the todo API, a download, a JSON endpoint, a basic-auth echo, and a request that never answers. */
 const RESPONDERS: Record<string, Responder> = {
   '/api/todos': (request, response, state) => {
@@ -80,18 +97,18 @@ const RESPONDERS: Record<string, Responder> = {
   // Basic auth that takes any account and echoes its password, so a suite can
   // prove the value the engine sent is redacted wherever the page shows it.
   '/basic-auth': (request, response) => {
-    const [scheme, encoded] = (request.headers.authorization ?? '').split(' ');
-    const decoded = scheme === 'Basic' && encoded ? Buffer.from(encoded, 'base64').toString('utf8') : '';
-    const separator = decoded.indexOf(':');
-    if (separator === -1) {
-      response.writeHead(401, { 'www-authenticate': 'Basic realm="fixture"', 'content-type': 'text/plain' });
-      response.end('unauthorized');
-      return;
-    }
+    const decoded = basicAuthUser(request, response);
+    if (decoded === undefined) return;
     html(
       response,
-      `<!doctype html><title>Basic auth</title><h1>Signed in as ${escapeHtml(decoded.slice(0, separator))}</h1><p data-testid="echo">${escapeHtml(decoded.slice(separator + 1))}</p>`,
+      `<!doctype html><title>Basic auth</title><h1>Signed in as ${escapeHtml(decoded.username)}</h1><p data-testid="echo">${escapeHtml(decoded.password)}</p>` +
+        `<p data-testid="header">${escapeHtml(request.headers.authorization ?? '')}</p><a href="/basic-auth/headers.txt" download>Download headers</a>`,
     );
+  },
+  '/basic-auth/headers.txt': (request, response) => {
+    if (basicAuthUser(request, response) === undefined) return;
+    response.writeHead(200, { 'content-type': 'text/plain', 'content-disposition': 'attachment; filename="headers.txt"' });
+    response.end(`authorization: ${request.headers.authorization ?? ''}\n`);
   },
   '/api/flags': (_request, response) => {
     response.writeHead(200, { 'content-type': 'application/json' });

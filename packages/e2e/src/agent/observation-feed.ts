@@ -294,7 +294,7 @@ export class ObservationFeed {
     this.accounting.checkpoint();
     // A tainted viewport never captures pixels: the engine would mask what it
     // knows about, and the secret may be anywhere on screen by now.
-    const capturePixels = pixels && !this.runtime.taint.value;
+    const capturePixels = pixels && !this.runtime.exposure.withholdsPixels;
     const observation = await instrumentPhase(
       this.runtime,
       { api: this.accounting.api, kind: 'observation', phase: 'agent.observe' },
@@ -372,7 +372,7 @@ export class ObservationFeed {
     const raw = await retryingObserve({
       observe: (operation) => this.runtime.engine.session.observe(operation, {
         pixels,
-        pixelFallback: !this.runtime.taint.value,
+        pixelFallback: !this.runtime.exposure.withholdsPixels,
       }),
       operation: () => this.accounting.operation(),
       guard: (cause) => this.accounting.checkpoint(cause),
@@ -388,7 +388,7 @@ export class ObservationFeed {
       redact: this.runtime.redact,
       redactCut: this.runtime.redactCut,
       maxBytes: this.byteBudget(pixels || raw.kind === 'pixels'),
-      pixelsAllowed: !this.runtime.taint.value,
+      pixelsAllowed: !this.runtime.exposure.withholdsPixels,
       appOrigin: this.runtime.app.base?.origin,
     });
     return prepared;
@@ -417,7 +417,7 @@ export class ObservationFeed {
    * whenever it changes within the step.
    */
   private pixelsFor(observation: AgentObservation): Pick<ExecutorObservation, 'pixels' | 'pixelsWithheld'> {
-    const outcome = pixelsForModel(observation, this.runtime.taint.value);
+    const outcome = pixelsForModel(observation, this.runtime.exposure.withholdsPixels);
     if ('withheld' in outcome) {
       this.recordPixelDecision('denied', outcome.withheld);
       this.visionDegraded = outcome.withheld;

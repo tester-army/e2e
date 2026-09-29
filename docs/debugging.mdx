@@ -103,8 +103,8 @@ Each run empties it first, so it holds the latest run's evidence:
   run, `--trace` records every attempt of a CI run.
 - **Downloads** saved through `web.waitForDownload`, recorded with kind
   `download`. They are the app's bytes: `redaction: "incomplete"` unless a
-  secret was filled on the session and the file is text, which the runner
-  rewrites and marks `complete`.
+  secret reached the session (filled, or held by the engine for basic auth)
+  and the file is text, which the runner rewrites and marks `complete`.
 - **Videos** and **agent transcripts** when you ask for them; see below.
 
 After a secret fill, no screenshots are taken for the rest of the attempt; see

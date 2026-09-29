@@ -119,6 +119,10 @@ secrets.get('key') satisfies Secret;
 ({ name: 'gated', version: '1.0.0', spiVersion: 1, secrets: ['sk_test'] }) satisfies Engine;
 declare const attemptContext: EngineAttemptContext;
 attemptContext.resolveSecret(secrets.get('key')) satisfies Promise<string>;
+// The forms the app sees in place of the value join its redaction.
+void attemptContext.resolveSecret(secrets.get('key'), { derived: (plaintext) => [Buffer.from(`ada:${plaintext}`).toString('base64')] });
+// @ts-expect-error a derived form is a string computed from the value, never the handle itself.
+void attemptContext.resolveSecret(secrets.get('key'), { derived: () => [secrets.get('key')] });
 credentials.user('admin').password satisfies Secret;
 // @ts-expect-error a Secret has no plaintext accessor.
 secrets.get('key').value;

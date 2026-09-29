@@ -399,11 +399,16 @@ run.
 | `report.json` | The canonical report; `--last-failed` reads the one here |
 | `junit.xml`, `summary.md`, `failures/` | The `junit` and `markdown` reporters' files |
 | `ai-trace.json` | `--ai-trace` |
-| `artifacts/` | Screenshots, traces, videos, downloads, and logs, one directory per attempt. Cleared when a run starts, so it holds the latest run's evidence and nothing its report no longer names |
+| `artifacts/` | Screenshots, traces, videos, downloads, and logs, one directory per attempt. Cleared once a run's tests start, so it holds the latest run's evidence and nothing its report no longer names |
 | `sessions/` | The run's encrypted `test.setup` sessions, deleted when it ends |
 | `videos/<session>/` | [`e2e mcp`](/reference/mcp#recording) session recordings |
 
-An `e2e mcp` session writes its attempt's artifacts under the same
+A run that stops before its tests start writes nothing here: a selection
+that matches no test (`NO_TESTS`, a mistyped `--grep`), a collection error,
+a target that cannot record what it asks for (`UNSUPPORTED_ARTIFACT`),
+`NO_LAST_RUN`, an app or service that fails to start, or an interrupt
+leaves the previous run's `report.json`, `ai-trace.json`, and `artifacts/`
+as they were, so `--last-failed` still reads the last run that executed. An `e2e mcp` session writes its attempt's artifacts under the same
 `artifacts/` and never clears it.
 
 The replay cache is independent: [`cache.dir`](#cache) defaults to
@@ -413,17 +418,25 @@ owns part of it, the output directory fails the config load with
 `INVALID_CONFIG`, naming the reason, when it:
 
 - is the project root, or outside it;
+- is a file, or a path under one (a missing directory is created);
 - is `cache.dir` or inside it, or would hold `cache.dir` under `artifacts/`,
   `sessions/`, or `videos/`;
 - holds a directory a `tests` glob scans (`output: 'tests'` with the default
   `tests/**/*.e2e.ts`).
+
+Paths are compared with symlinks resolved, so an absolute path spelled
+through a symlink (`/tmp` for `/private/tmp` on macOS) names the same
+directory as its target. A symlink whose target does not exist yet is
+followed too: an output through one that points outside the project root is
+refused.
 
 `e2e init` writes `.gitignore` entries for the default `.e2e/` paths only.
 With `output` set elsewhere, add that directory to `.gitignore` yourself.
 
 The removed `--artifacts <dir>` flag fails with the `--output` it maps to:
 the report used to go to the directory's parent, so `--artifacts
-out/artifacts` is `--output out`.
+out/artifacts` is `--output out`. A parent an output cannot be (the project
+root, or outside it) maps to `--output .e2e`.
 
 ## artifacts
 
@@ -445,7 +458,8 @@ fill, see [Security](/security)). The removed forms fail with
 `INVALID_CONFIG` naming what replaced them: a kinds list (`artifacts:
 ['screenshot', 'trace']` or `artifacts.kinds`) names the `trace` mode it
 meant, `artifacts.trace` names `trace: 'on-all-retries'` for `record:
-'retries'`, and `artifacts.video` names the `video` option.
+'retries'` (read together with a kinds list that holds `trace`, so the pair
+still means retries only), and `artifacts.video` names the `video` option.
 
 `store` receives every artifact once it is complete on disk and returns a
 reference the report records as `ref` beside the local path. A failed `put`
@@ -552,7 +566,14 @@ export type RecordingMode = 'off' | 'on' | 'retain-on-failure' | 'on-first-retry
 
 The names are Playwright's `use.trace` and `use.video` modes. Under a retry
 mode a test with `retries: 0` records nothing, and neither does a failure the
-runner does not retry, such as `LAUNCH_TIMEOUT`.
+runner does not retry, such as `LAUNCH_TIMEOUT`. When a test whose engine can
+record runs that way, the run prints one notice per kind at plan time saying
+no traces (or videos) will be recorded for it.
+
+The old trace spellings fail with `INVALID_CONFIG` naming the mode they
+meant, wherever a mode goes (the config, a target, a test, `--trace`):
+`'all'` and `{ record: 'all' }` are `'on'`, and `'retries'` and `{ record:
+'retries' }` are `'on-all-retries'`.
 
 Four places set a mode, lowest first, and each replaces the one before it.
 The same rule holds for `trace` and `video`:
@@ -571,7 +592,9 @@ member.
 
 `e2e explore` and an `e2e mcp` session are one attempt each and use the
 target's mode, `--trace` and `--video` included for `explore`, so a retry
-mode records nothing there. An `e2e mcp` session always closes as passed, so
+mode records nothing there. That includes the CI default: `CI=1 e2e explore`
+records no trace unless you pass `--trace on`, and its plan-time notice says
+so. An `e2e mcp` session always closes as passed, so
 it keeps a trace only under `on`. It never records video from the configured
 mode: its recordings are the ones `start_recording` and `stop_recording`
 make.
@@ -587,9 +610,7 @@ The default is `on` locally and `on-first-retry` in CI (the same `CI`
 detection that makes `retries` default to 1 there). Recording a trace costs
 CPU for the whole attempt: on a 141-test suite, every-attempt traces added
 about a quarter to the run's wall time, which is why CI records only the
-retry a flaky test leaves behind. When the effective mode is a retry mode and
-a test runs with `retries: 0`, the run prints one notice at plan time saying
-no traces will be recorded for it.
+retry a flaky test leaves behind.
 
 The web engine writes a Playwright trace per attempt, `trace/trace.zip` under
 the attempt's artifact directory, which the runner redacts after a secret

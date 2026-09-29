@@ -64,7 +64,7 @@ a configured secret is not redacted either.
 | `--session <name>` | none | Run the setup that saves this session, then explore with it restored. |
 | `--max-steps <n>` | 8 (1 to 12) | Exploration steps at most. |
 | `--timeout <ms>` | 600000 (180000 to 900000) | Wall clock; the last minute is for the assessment. |
-| `--headed`, `--reporter`, `--output`, `--debug`, `--ai-trace`, `--trace [mode]`, `--video [mode]` | as `run` | Same meaning as for `e2e run`. One attempt, so a retry mode (`on-first-retry`, `on-all-retries`, the CI trace default) records nothing; put the goal before a bare `--trace` or `--video`. |
+| `--headed`, `--reporter`, `--output`, `--debug`, `--ai-trace`, `--trace [mode]`, `--video [mode]` | as `run` | Same meaning as for `e2e run`. One attempt, so a retry mode (`on-first-retry`, `on-all-retries`, the CI trace default) records nothing (`CI=1 e2e explore` needs `--trace on`; the run's notice says so); put the goal before a bare `--trace` or `--video`. |
 
 Per-step action and model-call budgets default to 40 each; `agents.<name>.maxSteps`
 and `agents.<name>.maxModelCalls` in the config override them. The replay cache is off
@@ -122,6 +122,7 @@ instructions or `screen.*` actions, and `expected` is the assertion.
 
 The agents entry's `tools` and `system` carry over to the explorer; a
 hand-rolled `StepExecutor` under `executor` is replaced by
-the built-in agent for the run, with a notice on stderr. Findings are the
+the built-in agent for the run, with a notice on stderr, and needs a
+`model` on the entry (or the executor's) or explore fails before it starts. Findings are the
 model's claims plus evidence, not verified reproductions: read `actual` against
 the screenshot before filing a bug.

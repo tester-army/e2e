@@ -376,7 +376,12 @@ trees, on both platforms, without a device.
     Model input is the redacted semantic tree (as text or, on request, the
     redacted node tree), masked pixels only when masking is proven and no
     secret was filled, and the sanitized prior-step records. Once a secret is
-    filled the viewport stays pixel-tainted for the rest of the attempt. What
+    filled the viewport stays pixel-tainted for the rest of the attempt. A
+    secret an engine resolves for an option the app sees (basic auth) is
+    protected as text only: redacted everywhere text goes, pixels untouched.
+    One exposure level per session (`SecretExposure` in `run/secrecy.ts`)
+    decides pixels, trace and download rewriting, and the taint a saved
+    session carries. What
     an executor keeps in `attempt.memory` is its own; the harness never
     reports it.
   - An agent's secret fill is authorized by the runner, not the model.

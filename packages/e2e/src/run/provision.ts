@@ -70,12 +70,15 @@ export function validateEngine(target: ResolvedTarget, pairs?: readonly TestTarg
 /**
  * The plan-time notices about recordings the run asked for and will not
  * make: one per kind naming every target whose engine cannot record what a
- * run-wide mode asked of it, and one when tests that would trace run under a
- * retry mode with no retries, so no attempt of theirs records a trace.
+ * run-wide mode asked of it, and one per kind when tests that would record it
+ * run under a retry mode with no retries, so no attempt of theirs records.
+ * `explore` is a run of one attempt no config can retry, so its notice says
+ * to pass the flag instead of setting retries.
  */
 export function recordingNotices(
   perTarget: readonly { readonly target: ResolvedTarget; readonly pairs: readonly TestTargetPair[] }[],
   grades: ReadonlyMap<string, EngineGrade>,
+  options: { readonly explore?: boolean } = {},
 ): string[] {
   const notices: string[] = [];
   for (const kind of RECORDING_KINDS) {
@@ -86,23 +89,41 @@ export function recordingNotices(
       `${kind} records only on targets whose engine can record it; ${names.length === 1 ? 'target' : 'targets'} ${names.join(', ')} record${names.length === 1 ? 's' : ''} no ${kind}`,
     );
   }
-  const modes = new Set<string>();
-  let untraced = 0;
-  for (const { target, pairs } of perTarget) {
-    if (!grades.get(target.name)?.provenance.artifactCapabilities.includes('trace')) continue;
-    for (const pair of pairs) {
-      const { mode } = pairRecording(pair, 'trace');
-      if (pair.disposition !== 'run' || !isRetryMode(mode) || pair.options.retries > 0) continue;
-      modes.add(`'${mode}'`);
-      untraced += 1;
-    }
-  }
-  if (untraced > 0) {
-    notices.push(
-      `trace: ${[...modes].join(' and ')} records retries only, and ${untraced} ${untraced === 1 ? 'test runs' : 'tests run'} with retries: 0, so no traces will be recorded for ${untraced === 1 ? 'it' : 'them'}; set retries, or trace: 'on'`,
-    );
+  for (const kind of RECORDING_KINDS) {
+    const notice = retryOnlyNotice(kind, perTarget, grades, options.explore === true);
+    if (notice !== undefined) notices.push(notice);
   }
   return notices;
+}
+
+/**
+ * The notice for one kind when tests whose engine can record it run under a
+ * retry mode with `retries: 0`: no attempt of theirs records one. Undefined
+ * when no such test runs.
+ */
+function retryOnlyNotice(
+  kind: RecordingKind,
+  perTarget: readonly { readonly target: ResolvedTarget; readonly pairs: readonly TestTargetPair[] }[],
+  grades: ReadonlyMap<string, EngineGrade>,
+  explore: boolean,
+): string | undefined {
+  const modes = new Set<string>();
+  let unrecorded = 0;
+  for (const { target, pairs } of perTarget) {
+    if (!grades.get(target.name)?.provenance.artifactCapabilities.includes(kind)) continue;
+    for (const pair of pairs) {
+      const { mode } = pairRecording(pair, kind);
+      if (pair.disposition !== 'run' || !isRetryMode(mode) || pair.options.retries > 0) continue;
+      modes.add(`'${mode}'`);
+      unrecorded += 1;
+    }
+  }
+  if (unrecorded === 0) return undefined;
+  const plural = kind === 'trace' ? 'traces' : 'videos';
+  const asked = `${kind}: ${[...modes].join(' and ')} records retries only`;
+  if (explore) return `${asked}, and explore runs its goal once, so no ${plural} will be recorded; pass --${kind} on`;
+  const tests = unrecorded === 1 ? 'test runs' : 'tests run';
+  return `${asked}, and ${unrecorded} ${tests} with retries: 0, so no ${plural} will be recorded for ${unrecorded === 1 ? 'it' : 'them'}; set retries, or ${kind}: 'on'`;
 }
 
 export interface PrepareScope {

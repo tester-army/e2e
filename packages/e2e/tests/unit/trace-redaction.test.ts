@@ -238,7 +238,7 @@ describe('redactTraceArchives', () => {
     ]);
   });
 
-  it('rewrites the options a context opened with and drops the screencast frames beside them', async () => {
+  it('keeps the screencast frames when asked, as for an engine-held secret, and still rewrites the options a context opened with', async () => {
     const dir = attemptDir();
     const file = path.join(dir, 'trace', 'trace.zip');
     const frame = JSON.stringify({ type: 'screencast-frame', pageId: 'page@1', width: 1280, height: 720, timestamp: 12.5, file: 'screencast/page@1-1.jpeg' });
@@ -251,12 +251,13 @@ describe('redactTraceArchives', () => {
       ]),
     );
 
-    await redactTraceArchives(dir, ['trace/trace.zip'], new SecretLedger([['staging', SECRET]]));
+    await redactTraceArchives(dir, ['trace/trace.zip'], new SecretLedger([['staging', SECRET]]), { keepFrames: true });
 
     const after = entriesOf(file);
-    expect([...after.keys()]).toEqual(['trace.trace']);
+    expect([...after.keys()]).toEqual(['screencast/page@1-1.jpeg', 'trace.trace']);
     expect(after.get('trace.trace')!.toString().split('\n').map((line) => JSON.parse(line) as unknown)).toEqual([
       { type: 'context-options', options: { httpCredentials: [{ username: 'ada', password: '<secret:staging>' }] } },
+      JSON.parse(frame),
     ]);
   });
 

@@ -253,7 +253,7 @@ or every test was filtered out.
 | `--repeat-each <n>` | integer, at least 1 | `1` | Runs every selected test this many times. Each run is a result of its own, with `repeat` 0 through `n - 1` and its own `id`; the list reporter titles the later runs `(repeat #1)`, `(repeat #2)`, and their artifacts go under a `repeat-<n>` directory. Setup tests run once. With the replay cache on, the first run records and the later ones replay, so pair it with `--no-cache` to exercise the model each time. The `list` summary adds a `Repeats` row (`1 of 2 tests passed all 5 runs`) and one line per test that did not pass every run, naming each run that failed; the `markdown` page carries the same tally. |
 | `--max-failures <n>` | integer, at least 1 | none | Stops the run once this many tests have failed or timed out. Nothing more is dispatched, the tests running on other workers end as `interrupted`, and the tests not started, the rest of the file whose test reached the limit included, are skipped with cause `failure-limit` and the reason `run stopped after 3 failures (--max-failures 3)`. The exit code is the failures' own, 1, not 130. |
 | `--reporter <ids>` | comma-separated list | config | Replaces the built-in IDs in `config.reporters`: `list`, `json`, `junit`, `markdown`. `json` with `list` is `INVALID_CONFIG`. [Reporter objects](/reference/reporters) in the config keep running. |
-| `--output <dir>` | string | config, else `.e2e` | The results directory for this run, over the config's [`output`](/reference/config#output): the report, the reporter files, the AI trace, `artifacts/` (cleared when the run starts), and `sessions/`. Resolved from the project root; one the run cannot own is `INVALID_CONFIG`. The removed `--artifacts <dir>` fails with the `--output` it maps to: `--artifacts out/artifacts` is `--output out`. |
+| `--output <dir>` | string | config, else `.e2e` | The results directory for this run, over the config's [`output`](/reference/config#output): the report, the reporter files, the AI trace, `artifacts/` (cleared once the run's tests start), and `sessions/`. Resolved from the project root; one the run cannot own is `INVALID_CONFIG`. The removed `--artifacts <dir>` fails with the `--output` it maps to: `--artifacts out/artifacts` is `--output out`, and a directory whose parent is the project root or outside it maps to `--output .e2e`. |
 | `--no-cache` | boolean | `false` | Replay cache off for this run, whatever `config.cache` says. |
 | `--strict-cache` | boolean | `false` | Turns on `cache.strict` for this run: a step whose recording exists but no longer replays fails with `REPLAY_STALE` instead of handing off to the agent. See [Fail on a stale recording](/cache#fail-on-a-stale-recording). |
 | `--pass-with-no-tests` | boolean | `false` | Exit 0 instead of `NO_TESTS` when nothing is selected. |
@@ -331,9 +331,12 @@ npx e2e run --reporter list,junit
 | `junit` | `junit.xml` beside the report. One `<testsuite>` per file, one `<testcase>` per test-target pair named `title > path [target]`. A test-class error is a `<failure>`, any other an `<error>`, a skip a `<skipped>` with its reason. Run-level errors form a `run` suite. |
 | `markdown` | `summary.md` beside the report with counts, cost, errors, and failure details. Failed and flaky tests also get a page under `failures/` there, with steps, model turns, and the screen at failure. Exploration runs show findings. [`@e2e-dev/github`](/github) uses this summary for pull request comments. |
 
-Every run writes `report.json` under the [output directory](/reference/config#output)
+Every run that gets to its tests writes `report.json` under the [output directory](/reference/config#output)
 (`.e2e` by default) whatever the reporters are, and the reporters' files
-beside it. A `junit.xml` or `summary.md` that could not be written is a
+beside it. A run that stops before (a config or collection error,
+`NO_TESTS`, `NO_LAST_RUN`, `UNSUPPORTED_ARTIFACT`, an app or service that
+fails to start, an interrupt) writes none of them and leaves the previous
+run's files in place; its errors are on the terminal and in the exit code. A `junit.xml` or `summary.md` that could not be written is a
 line on stderr, never a run error.
 
 With `--ai-trace`, the run also writes `<output>/ai-trace.json`: one entry per
@@ -352,7 +355,9 @@ Signals escalate.
    started are skipped with cause `infrastructure-unavailable` and the reason
    `run interrupted before execution`, so the report lists every planned
    test and `--last-failed` runs the interrupted and the unstarted ones
-   again. The runner writes the report and exits 130.
+   again. The runner writes the report and exits 130. An interrupt before
+   any test starts (during collection, an engine's `prepare`, or app
+   startup) writes no report and leaves the previous one in place.
 2. A second signal forces. Workers dispose their engines at once and are
    killed when the cleanup budget is spent. The report is still written.
 3. A third signal exits on the spot, after killing the process groups of every
@@ -386,7 +391,7 @@ assessment. The default goal is `Explore the app and find bugs`. See
 | `--output <dir>` | string | config, else `.e2e` | As for `run`; a finding's evidence screenshot is one of the attempt's artifacts under `<output>/artifacts`. |
 | `--debug` | boolean | `false` | As for `run`: phase timings and the agent step table. |
 | `--ai-trace` | boolean | `false` | As for `run`. |
-| `--trace [mode]` | a recording mode | config | As for `run`: one trace of the whole exploration. A bare `--trace` is `on`; `retain-on-failure` keeps it only when the exploration did not pass. The exploration is one attempt, so `on-first-retry` and `on-all-retries` record nothing, and neither does the CI default. Put the goal before `--trace`, or write `--trace=<mode>`. |
+| `--trace [mode]` | a recording mode | config | As for `run`: one trace of the whole exploration. A bare `--trace` is `on`; `retain-on-failure` keeps it only when the exploration did not pass. The exploration is one attempt, so `on-first-retry` and `on-all-retries` record nothing, and neither does the CI default: `CI=1 e2e explore` needs `--trace on` for a trace, and its plan-time notice says so. Put the goal before `--trace`, or write `--trace=<mode>`. |
 | `--video [mode]` | a recording mode | config | As for `run`: one video of the whole exploration (WebM on a browser engine, MP4 on a device engine). A bare `--video` is `on`; `retain-on-failure` keeps it only when the exploration did not pass. The exploration is one attempt, so a retry mode records nothing. Put the goal before `--video`, or write `--video=<mode>`. |
 
 The run has one result, under the virtual file `explore`, titled by the goal.

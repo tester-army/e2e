@@ -118,7 +118,7 @@ to take one, at no cost.
 Project tools in `agents.default.tools` follow in the catalog under
 their own names, scoped to the target's platform. A mobile project that
 passes `mobileTools(...)` also gets `open_app`, `swipe`,
-and `alert`. A project tool named like a built-in is not served. An unknown
+and `alert`. A project tool named like a built-in fails the config load with `INVALID_CONFIG`. An unknown
 name fails with `UNKNOWN_TOOL` and the list of names.
 
 ### Recording

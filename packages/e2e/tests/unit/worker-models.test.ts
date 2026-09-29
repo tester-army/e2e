@@ -31,10 +31,10 @@ describe('WorkerModels', () => {
       twin: { model: model('openai/gpt-5.6-luna-fast') },
     });
     const models = new WorkerModels(() => undefined);
-    const adapter = models.build(resolved.get('default')!.model);
-    expect(models.build(resolved.get('buyer')!.model)).toBe(adapter);
-    expect(models.build(resolved.get('thorough')!.model)).not.toBe(adapter);
-    expect(models.build(resolved.get('twin')!.model)).not.toBe(adapter);
+    const adapter = models.build(resolved.get('default')!.model, 'default');
+    expect(models.build(resolved.get('buyer')!.model, 'buyer')).toBe(adapter);
+    expect(models.build(resolved.get('thorough')!.model, 'thorough')).not.toBe(adapter);
+    expect(models.build(resolved.get('twin')!.model, 'twin')).not.toBe(adapter);
   });
 
   it('preflights each agent once, exempts a custom executor without a model, and reports a missing model to the run once then rethrows it', () => {
@@ -45,14 +45,16 @@ describe('WorkerModels', () => {
       brain: { executor: { name: 'brain', async runStep() { return { status: 'passed' as const, summary: 'ok' }; } } },
       modelless: { context: 'no model anywhere' },
     });
-    models.preflight(resolved.get('default')!);
-    models.preflight(resolved.get('default')!);
-    models.preflight(resolved.get('brain')!);
+    models.preflight(resolved.get('default')!, 'default');
+    models.preflight(resolved.get('default')!, 'default');
+    models.preflight(resolved.get('brain')!, 'brain');
     expect(failures).toEqual([]);
     // The built-in agent without a model fails once to the run, and every later preflight rethrows the same failure.
-    expect(() => models.preflight(resolved.get('modelless')!)).toThrow(/MODEL_UNAVAILABLE|requires a model/);
-    expect(() => models.preflight(resolved.get('modelless')!)).toThrow();
-    expect(() => models.preflight(resolved.get('default')!)).toThrow();
+    expect(() => models.preflight(resolved.get('modelless')!, 'modelless')).toThrow(
+      "the agent fixture requires a model, and agents.modelless has none: set model on it to an AI SDK model instance, e.g. agents: { modelless: { model: gateway('openai/gpt-6-luna-fast') } }",
+    );
+    expect(() => models.preflight(resolved.get('modelless')!, 'modelless')).toThrow();
+    expect(() => models.preflight(resolved.get('default')!, 'default')).toThrow();
     expect(failures).toEqual(['MODEL_UNAVAILABLE']);
   });
 });

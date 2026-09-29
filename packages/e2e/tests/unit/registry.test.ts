@@ -158,6 +158,18 @@ describe('registration', () => {
   });
 });
 
+describe('old trace spellings on a test', () => {
+  it('name the mode they meant', async () => {
+    const register = (trace: unknown) =>
+      collectModule(async () => {
+        test('x', { trace } as never, noop);
+      });
+    await expect(register('retries')).rejects.toThrow("test options: trace 'retries' is the old spelling of trace: 'on-all-retries'");
+    await expect(register({ record: 'retries' })).rejects.toThrow("trace { record: 'retries' } is the old spelling of trace: 'on-all-retries'");
+    await expect(register('all')).rejects.toThrow("trace 'all' is the old spelling of trace: 'on'");
+  });
+});
+
 describe('setup tests', () => {
   it('requires a static sessions list with valid names', async () => {
     await expect(

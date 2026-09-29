@@ -6,19 +6,28 @@
  * from a provider, so nothing registered it up front: the attempt's
  * resolution alone is what makes the page's echo of it redacted in the
  * failure message, the report, and every file the reporters write, and what
- * has the trace, which records the credentials, rewritten. Over the
- * fake engine: only a secret the engine declared resolves.
+ * has the trace, which records the credentials, rewritten. The engine also
+ * registers the base64 credential the `Authorization` header carries, which
+ * a page echoing its request headers shows instead of the password. The
+ * protection is text only: text downloads are rewritten too, but
+ * screenshots, the trace's screencast frames, and the model's pixels are
+ * kept, as with no secret. Over the fake engine: only a secret the engine
+ * declared resolves.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { web } from '@e2e-dev/web';
 import type { E2EConfig } from '../../src/index.ts';
 import type { RunOutcome } from '../../src/run/runner.ts';
 import { secrets } from '../../src/secrets.ts';
 import { createFakeEngine, FAKE_APP_URL } from '../helpers/fake-engine.ts';
+import { fakeCalls, installFakeModel, judgment } from '../helpers/fake-model.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { contentsUnder, resultByTitle, runProject, runProjectWithConfigFile, type FixtureProject } from '../helpers/run-project.ts';
 
 const PASSWORD = 'basic-Pa55-7Qz';
+/** What the `Authorization: Basic` header carries for ada and the password, which the page echoes. */
+const CREDENTIAL = Buffer.from(`ada:${PASSWORD}`).toString('base64');
 
 const CONFIG = `import type { E2EConfig } from 'e2e';
 import { secrets } from 'e2e';
@@ -48,6 +57,21 @@ test('signs in through basic auth', async ({ app, screen }) => {
 test('fails on the echoed password', async ({ app, screen }) => {
   await app.open('/basic-auth');
   await expect(screen.getByTestId('echo')).toHaveText('something else', { timeout: 500 });
+});
+
+test('fails on the echoed Authorization header', async ({ app, screen }) => {
+  await app.open('/basic-auth');
+  await expect(screen.getByTestId('header')).toHaveText('something else', { timeout: 500 });
+});
+
+test('downloads the echoed headers', async ({ app, web }) => {
+  await app.open('/basic-auth');
+  await web.waitForDownload(() => web.locator('a[download]').tap());
+});
+
+test('takes a screenshot of the page, an engine-held secret tainting no pixels', async ({ app }) => {
+  await app.open('/basic-auth');
+  await app.screenshot('echo');
 });
 `;
 
@@ -83,11 +107,78 @@ describe('a secret in an engine option', () => {
     for (const [file, text] of contents) expect(text, file).not.toContain(PASSWORD);
   });
 
+  it('redacts the base64 credential of the echoed header everywhere: failure, screen, failure pages, trace, download', () => {
+    const error = resultByTitle(outcome, 'fails on the echoed Authorization header').attempts[0]!.error!;
+    expect(error.message).toContain('Basic <secret:stagingPassword>');
+    expect(JSON.stringify(outcome.report)).not.toContain(CREDENTIAL);
+    const contents = contentsUnder(`${project.dir}/.e2e`).filter(([name]) => !name.endsWith('.zip'));
+    for (const written of ['/failure/screen.txt', '/failures/', '.zip!', '/downloads/']) {
+      expect(contents.some(([name]) => name.includes(written)), written).toBe(true);
+    }
+    for (const [file, text] of contents) expect(text, file).not.toContain(CREDENTIAL);
+  });
+
+  it('protects the secret as text only: screenshots and trace frames are kept, the text download rewritten', () => {
+    const shot = resultByTitle(outcome, 'takes a screenshot of the page, an engine-held secret tainting no pixels');
+    expect(shot.status, JSON.stringify(shot.attempts[0]?.error)).toBe('passed');
+    const failure = resultByTitle(outcome, 'fails on the echoed Authorization header').attempts[0]!;
+    expect(failure.artifacts.filter((artifact) => artifact.kind === 'screenshot')).toHaveLength(1);
+    expect(contentsUnder(`${project.dir}/.e2e`).some(([name]) => name.includes('.zip!screencast/'))).toBe(true);
+    const download = resultByTitle(outcome, 'downloads the echoed headers').attempts[0]!.artifacts.find((artifact) => artifact.kind === 'download')!;
+    expect(download.redaction).toBe('complete');
+  });
+
   it('rewrites each trace, which records the credentials the attempt opened with, though nothing was filled', () => {
     const traces = outcome.results.flatMap((result) => result.attempts.flatMap((attempt) => attempt.artifacts.filter((artifact) => artifact.kind === 'trace')));
-    expect(traces).toHaveLength(2);
+    expect(traces).toHaveLength(5);
     for (const trace of traces) expect(trace.redaction).toBe('complete');
   });
+});
+
+describe('what the model sees of an engine-held secret', () => {
+  it('reads the redacted tree, never the credential, with its pixels as with no secret', async () => {
+    const app = await startFixtureApp();
+    const model = installFakeModel(() => judgment(true, 'it does'));
+    const { outcome, project } = await runProject(
+      {
+        'tests/judge.e2e.ts': `import { test } from 'e2e';
+
+test('judges the echo with vision on', async ({ app, agent }) => {
+  await app.open('/basic-auth');
+  await agent.assert('the page shows a Basic credential', { vision: true });
+});
+`,
+      },
+      {
+        appUrl: app.url,
+        config: {
+          targets: [
+            {
+              name: 'web',
+              engine: web({ url: app.url, basicAuth: { username: 'ada', password: secrets.get('stagingPassword') as never } }) as never,
+            },
+          ],
+          agents: { default: { model } },
+          secrets: { stagingPassword: () => PASSWORD },
+        },
+      },
+    );
+    try {
+      const result = resultByTitle(outcome, 'judges the echo with vision on');
+      expect(result.status, JSON.stringify(result.attempts[0]?.error)).toBe('passed');
+      const judged = fakeCalls.find((call) => call.instruction === 'the page shows a Basic credential')!;
+      expect(judged.observation).toContain('Basic <secret:stagingPassword>');
+      expect(judged.prompt).not.toContain(CREDENTIAL);
+      expect(judged.prompt).not.toContain(PASSWORD);
+      expect(judged.images).toHaveLength(1);
+      const step = result.attempts[0]!.steps.find((candidate) => candidate.api === 'agent.assert')!;
+      expect(step.visionDegraded).toBeUndefined();
+      expect(step.visionInput).toBe(true);
+    } finally {
+      project.cleanup();
+      await app.close();
+    }
+  }, 120_000);
 });
 
 describe('resolving an engine secret', () => {

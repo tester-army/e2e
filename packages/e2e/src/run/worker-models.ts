@@ -21,17 +21,18 @@ export class WorkerModels {
 
   /**
    * Builds an agent's adapter on its first use and rethrows a failure on
-   * every later one. A custom executor with no model configured is exempt:
-   * its `act` steps need none, and judgment methods still fail on first use.
+   * every later one; `name` is the agent's key, which a missing model names.
+   * A custom executor with no model configured is exempt: its `act` steps
+   * need none, and judgment methods still fail on first use.
    */
-  readonly preflight = (agent: ResolvedAgentConfig): void => {
+  readonly preflight = (agent: ResolvedAgentConfig, name: string): void => {
     if (!this.checked.has(agent)) {
       this.checked.add(agent);
       if (agent.executor === undefined || agent.model !== undefined) {
         try {
           // Same instance, same adapter: a judge that is the model costs nothing.
-          this.build(agent.model);
-          this.build(agent.judge);
+          this.build(agent.model, name);
+          this.build(agent.judge, name);
         } catch (cause) {
           this.failure = classifyError(cause);
           this.onFailure(this.failure);
@@ -41,9 +42,9 @@ export class WorkerModels {
     if (this.failure !== undefined) throw this.failure;
   };
 
-  /** Adapter for one resolved model; each distinct model is built once per worker. */
-  readonly build = (model: ResolvedModel | undefined): ModelAdapter => {
-    if (model === undefined) return createModelAdapter(model);
+  /** Adapter for one resolved model; each distinct model is built once per worker. A missing one names the agent `name`. */
+  readonly build = (model: ResolvedModel | undefined, name: string): ModelAdapter => {
+    if (model === undefined) return createModelAdapter(model, name);
     const key = modelKey(model);
     let adapter = this.adapters.get(key);
     if (adapter === undefined) {

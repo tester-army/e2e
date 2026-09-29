@@ -87,7 +87,8 @@ of the same goal writes to the same directory.
 `--debug`, `--ai-trace`, `--trace`, and `--video` work as they do for
 `e2e run`: they apply when the engine can record, with a notice otherwise.
 The exploration is one attempt, so a retry mode (`on-first-retry`,
-`on-all-retries`, and the CI trace default) records nothing; put the goal
+`on-all-retries`, and the CI trace default) records nothing, and the run
+prints a notice saying to pass `--trace on` (or `--video on`); put the goal
 before a bare `--trace` or `--video`.
 
 ## Your config applies
@@ -95,7 +96,10 @@ before a bare `--trace` or `--video`.
 Explore reads `e2e.config.ts`, including the target, app command, model, and
 agent context. Use `--agent <name>` to select a configured agent.
 The agent's `tools` and `system` instructions also apply. Custom executors
-are replaced by the built-in agent for exploration, with a notice.
+are replaced by the built-in agent for exploration, with a notice naming the
+agent. The built-in agent needs a model: an entry with none, a custom
+executor that brought none included, fails with `MODEL_UNAVAILABLE` before
+anything starts.
 
 Every configured credential is available to the explorer. It receives
 account names and usernames; passwords remain secret handles and require

@@ -522,12 +522,13 @@ export class ActionDispatcher {
     }
     await this.commitTargeted('typeSecret', target, async (node) => {
       const plaintext = await authorizeSecretFill(this.policyHost(), this.runtime, secret, node);
+      // Before the engine call: a fill that types the value and then fails has still put it on screen.
+      this.runtime.exposure.raise('filled');
       await this.session.perform(
         node.ref,
         { kind: 'fill', value: plaintext, sensitive: true },
         this.accounting.actionOperation(),
       );
-      this.runtime.taint.value = true;
       // Recorded by stable name only; replay re-runs the full authorization.
       return { name: 'typeSecret', node, secret: name };
     });

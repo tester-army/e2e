@@ -27,6 +27,8 @@ const EXPLORE_RULES = `Exploration mode: this run has no scripted test. Each ste
 
 export interface ExplorerOptions {
   readonly state: ExploreState;
+  /** The key of the agents entry the exploration runs as, which a notice names. */
+  readonly agentName: string;
   /** The agents entry the exploration runs as, as configured; undefined is the built-in agent with no options. */
   readonly entry: AgentConfig | undefined;
   /** The same entry resolved, whose models a replaced custom executor's own ones are read from. */
@@ -37,9 +39,11 @@ export interface ExplorerOptions {
 
 /**
  * The agents entry the exploration runs as: the project's own options, its
- * guidance and tools included, with the exploration rules and the finding
- * tool added. A custom executor has no readable vocabulary and is replaced,
- * with a notice, keeping the models it brought.
+ * guidance and tools included, with the exploration rules added. A custom
+ * executor has no readable vocabulary and is replaced, with a notice,
+ * keeping the models it brought. The finding tool joins once the entry is
+ * resolved (`withFindingTool`): its name is reserved, so a project tool can
+ * never take it.
  */
 export function explorerAgent(options: ExplorerOptions): AgentConfig {
   const entry: AgentConfig = options.entry ?? {};
@@ -48,7 +52,7 @@ export function explorerAgent(options: ExplorerOptions): AgentConfig {
   if (executor !== undefined) {
     const { model, judge } = options.resolved;
     options.notice(
-      `the configured agent "${executor.name}" is a custom executor; explore runs the built-in agent instead` +
+      `agents.${options.agentName} is a custom executor ("${executor.name}"); explore runs the built-in agent instead` +
         (executor.model === undefined ? '' : ', with the model that executor brought'),
     );
     models = {
@@ -60,8 +64,13 @@ export function explorerAgent(options: ExplorerOptions): AgentConfig {
     ...shared,
     ...models,
     system: [system, EXPLORE_RULES].filter((part): part is string => part !== undefined && part.trim() !== '').join('\n\n'),
-    tools: { ...tools, [FINDING_TOOL_NAME]: createFindingTool(options.state) },
+    ...(tools === undefined ? {} : { tools }),
   };
+}
+
+/** The resolved explorer with the finding tool beside the project's tools. */
+export function withFindingTool(explorer: ResolvedAgentConfig, state: ExploreState): ResolvedAgentConfig {
+  return { ...explorer, tools: { ...explorer.tools, [FINDING_TOOL_NAME]: createFindingTool(state) } };
 }
 
 const FINDING_SCHEMA = z.object({

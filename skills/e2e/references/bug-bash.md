@@ -121,10 +121,11 @@ directory. Overlap between charters is fine; duplicates are merged in step 4.
 
 ## 3. Fan out
 
-One `e2e explore` per charter, each with its own output directory, so reports
-never overwrite each other: `--output .e2e/bugbash/<slug>`
-writes `.e2e/bugbash/<slug>/report.json`, and `--reporter list,markdown`
-the `summary.md` beside it.
+One `e2e explore` per charter, each with its own output directory, so
+reports never overwrite each other: `--output .e2e/bugbash/<slug>` writes
+`.e2e/bugbash/<slug>/report.json` and the attempt's files under
+`.e2e/bugbash/<slug>/artifacts/`, and `--reporter list,markdown` the
+`summary.md` beside the report.
 
 Run them as background shell jobs, four at a time. The explorer is the
 project's model and needs no supervision: a subagent per charter only

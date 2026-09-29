@@ -44,8 +44,11 @@ await agent.act('seed the cart with SKU {sku}, then check out', {
 ```
 
 Built-in tool names are reserved. Loading the config fails with
-`INVALID_CONFIG` for a project tool named like `tap`, `screenshot`, or
-`complete_step`, and for a value `defineTool` did not build. Tools belong to
+`INVALID_CONFIG` for a project tool named like a grammar verb (`tap`,
+`screenshot`), a tool the harness adds (`complete_step` in every step,
+`locate`, `start_recording`, and `stop_recording` in an `e2e mcp` session,
+`report_finding` under `e2e explore`), and for a value `defineTool` did not
+build. Tools belong to
 the built-in agent: an entry with a custom `executor` cannot also set
 `tools`.
 

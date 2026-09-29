@@ -5,9 +5,10 @@
  * `press_at`, `select_at`) among it, answering `PIXEL_TAINTED` once a secret
  * has been filled, `locate` tries a semantic locator the way a test would,
  * `start_recording` and `stop_recording` follow when the engine records video,
- * and the project's own tools come last. Built-in
- * names win: a project tool named like one is neither listed nor reachable,
- * the precedence the testing agent's toolset applies.
+ * and the project's own tools come last. The config load refuses a project
+ * tool named like a built-in; should one reach here anyway, the built-in
+ * wins and the project tool is neither listed nor reachable, the precedence
+ * the testing agent's toolset applies.
  */
 
 import type { ToolSet } from 'ai';

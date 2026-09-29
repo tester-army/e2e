@@ -18,6 +18,7 @@ import { Deadline } from '../internal/time.ts';
 import type { LocatorEngine } from '../locator/engine.ts';
 import type { SecretResolver } from '../locator/screen.ts';
 import type { ArtifactSink } from '../run/fixtures.ts';
+import type { SecretExposure } from '../run/secrecy.ts';
 import type {
   StepEvent,
   StepMetrics,
@@ -110,8 +111,8 @@ export interface AgentContext {
   readonly redact: (text: string) => string;
   /** The same ledger's redaction for text an engine cut at a length limit. */
   readonly redactCut: (text: string) => string;
-  /** Set once any secret is filled; the viewport stays pixel-tainted after. */
-  readonly taint: { value: boolean };
+  /** How far a secret reached the session; once one was filled, no pixels leave it for the rest of the attempt. */
+  readonly exposure: SecretExposure;
   readonly artifacts: ArtifactSink;
   /** The attempt's trace cache, or undefined when caching is off. */
   readonly cache?: AgentCacheContext;
@@ -228,7 +229,7 @@ export class Invocation {
           redact: this.runtime.redact,
           redactCut: this.runtime.redactCut,
           maxBytes: this.observationByteBudget(),
-          pixelsAllowed: this.options.vision !== false && !this.runtime.taint.value,
+          pixelsAllowed: this.options.vision !== false && !this.runtime.exposure.withholdsPixels,
           appOrigin: this.runtime.app.base?.origin,
         });
         return prepared;
@@ -249,7 +250,7 @@ export class Invocation {
     return retryingObserve({
       observe: (operation) => this.session.observe(operation, {
         pixels,
-        pixelFallback: this.options.vision !== false && !this.runtime.taint.value,
+        pixelFallback: this.options.vision !== false && !this.runtime.exposure.withholdsPixels,
       }),
       operation: () => this.operation(),
       guard: (cause) => this.checkDeadline(cause),
@@ -265,7 +266,7 @@ export class Invocation {
    */
   private pixelsRequested(): boolean {
     if (!this.pixelTier) return false;
-    if (this.runtime.taint.value) {
+    if (this.runtime.exposure.withholdsPixels) {
       this.loseVision('PIXEL_TAINTED');
       return false;
     }
@@ -274,7 +275,7 @@ export class Invocation {
 
   /** Records whether requested pixels actually became model input. */
   private recordPixels(observation: AgentObservation): void {
-    const outcome = pixelsForModel(observation, this.runtime.taint.value);
+    const outcome = pixelsForModel(observation, this.runtime.exposure.withholdsPixels);
     if ('withheld' in outcome) {
       this.loseVision(outcome.withheld);
       return;

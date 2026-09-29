@@ -276,7 +276,7 @@ class ActDispatch {
       },
       observe: (options) => this.feed.observe(options),
       get pixelsTainted() {
-        return dispatch.runtime.taint.value;
+        return dispatch.runtime.exposure.withholdsPixels;
       },
       attachTranscript: (text) => {
         // Debug detail only: transcripts are model prose and can be large.
@@ -348,7 +348,7 @@ class ActDispatch {
    */
   async captureEvidence(): Promise<string | undefined> {
     if (this.spec.kind !== 'assert' || this.spec.screenshot === false) return undefined;
-    if (this.runtime.taint.value) {
+    if (this.runtime.exposure.withholdsPixels) {
       recordPolicyEvent(this.runtime.steps, 'assert.screenshot', 'denied', 'PIXEL_TAINTED');
       return undefined;
     }

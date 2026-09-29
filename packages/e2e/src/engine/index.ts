@@ -534,18 +534,31 @@ export interface EngineAttemptContext {
   /**
    * The plaintext of a secret the engine declared in `secrets`, for an
    * option the engine hands the app itself (basic-auth credentials). A
-   * provider runs again on every call. The value joins the attempt's
-   * redaction before this resolves, so reports, logs, and every observation
-   * redact it; unlike a fill, it does not taint the viewport.
+   * provider runs again on every call. The value, and every value
+   * `options.derived` computes from it, join the attempt's redaction before
+   * this resolves, so reports, logs, and every observation redact them, and
+   * the attempt's trace and text downloads are rewritten. The protection is
+   * text only: unlike a fill, it withholds no screenshot or model pixels.
    * A secret the engine did not declare is `SECRET_UNAVAILABLE`.
    */
-  readonly resolveSecret: (secret: Secret) => Promise<string>;
+  readonly resolveSecret: (secret: Secret, options?: ResolveSecretOptions) => Promise<string>;
   /**
    * Aborts with the attempt, and the moment `startAttempt` fails or exceeds
    * the launch timeout: a hook still running then must stop, because the
    * harness ends the attempt's isolation right behind it and may retry.
    */
   readonly signal: AbortSignal;
+}
+
+/** How `EngineAttemptContext.resolveSecret` treats what the engine makes of the value. */
+export interface ResolveSecretOptions {
+  /**
+   * The forms of the value the app sees instead of the value itself, for the
+   * same redaction under the secret's name: the base64 `user:password` an
+   * `Authorization: Basic` header carries, which a page echoing its request
+   * headers would otherwise show.
+   */
+  readonly derived?: (plaintext: string) => readonly string[];
 }
 
 /**

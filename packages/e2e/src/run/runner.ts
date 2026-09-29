@@ -484,16 +484,22 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   // The report `--last-failed` selected from, once collection has read it;
   // reporters get it beside this run's report to fold the rerun into it.
   let lastRun: Report1Document | undefined;
+  /**
+   * Whether the run got as far as its tests. Only such a run writes into the
+   * output directory: one that stopped before leaves the previous run's
+   * report, AI trace, and artifacts where they are.
+   */
+  let testsStarted = false;
 
   const finish = async (): Promise<RunOutcome> => {
-    const aiTracePath = loaded.config === undefined ? undefined : await writeAiTrace(loaded.config);
+    const written = testsStarted ? loaded.config : undefined;
+    const aiTracePath = written === undefined ? undefined : await writeAiTrace(written);
     // One document: what is written is what the reporters and the outcome
     // see, so a reporter uploading `report` ships the file byte for byte.
     // Only a failed write, itself a run error, forces a rebuild that records it.
     const document = buildRunReport(currentExitCode());
     const recorded = runErrors.length;
-    const reportPath =
-      loaded.config === undefined ? undefined : await writeCanonicalReport(loaded.config, document);
+    const reportPath = written === undefined ? undefined : await writeCanonicalReport(written, document);
     const exitCode = currentExitCode();
     const report = runErrors.length === recorded ? document : buildRunReport(exitCode);
     // Read back from the report rather than recomputed: the report derives
@@ -565,15 +571,6 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // A run cancelled before it began collects nothing: the interrupt alone
     // decides the outcome.
     if (interrupted.aborted) return;
-
-    // Every run starts from an empty artifact tree, so what is there once it
-    // ends is this run's evidence and nothing a report no longer names.
-    try {
-      await rm(outputLayout(config.output).artifacts, { recursive: true, force: true });
-    } catch (cause) {
-      recordFailure(cause, 'collection');
-      return;
-    }
 
     // Which targets the run is for, settled before anything is collected,
     // downloaded, or started: an unknown --target is a collection failure.
@@ -648,7 +645,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       grades.set(target.name, grade);
       targetProvenance.set(target.name, grade.provenance);
     }
-    for (const message of recordingNotices(selection.perTarget, grades)) notice('run', message);
+    for (const message of recordingNotices(selection.perTarget, grades, { explore: options.tests?.explore !== undefined })) notice('run', message);
 
     // The work units, built once: the same plans tell each engine's `prepare`
     // how many worker slots to provision and the scheduler what to dispatch.
@@ -709,8 +706,25 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // A run cancelled while the app was starting runs no test: the interrupt
     // alone decides the outcome.
     if (interrupted.aborted) return;
-
     const layout = outputLayout(config.output);
+
+    // Tests are about to start, and only now is the previous run's evidence
+    // given up: the artifact tree is emptied, so what is there once this run
+    // ends is its own and nothing a report no longer names, and this run's
+    // report replaces the last. A run that stopped before here (no test
+    // selected, a collection error, a target that cannot record what it asks,
+    // an app that failed to start, an interrupt) leaves both, and
+    // `--last-failed` still reads the run that executed. A wipe that fails
+    // part way has already given up the old evidence, so this run's report
+    // records the failure.
+    testsStarted = true;
+    try {
+      await rm(layout.artifacts, { recursive: true, force: true });
+    } catch (cause) {
+      recordFailure(cause, 'launch');
+      return;
+    }
+
     const artifactsRoot = layout.artifacts;
     const store = SessionStore.create(runId, layout.sessions);
     sessionStore = store;

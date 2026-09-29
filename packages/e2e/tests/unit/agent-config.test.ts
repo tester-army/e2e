@@ -6,6 +6,9 @@ import { defineTool } from '../../src/agent/tool.ts';
 import { createToolLoopExecutor } from '../../src/agent/tool-loop.ts';
 import type { SdkLanguageModel } from '../../src/agent/ai-sdk.ts';
 import type { E2EConfig } from '../../src/types.ts';
+import { HARNESS_TOOL_NAMES } from '../../src/agent/action-names.ts';
+import { FINDING_TOOL_NAME } from '../../src/explore/executor.ts';
+import { recordingTools } from '../../src/mcp/recording.ts';
 
 const ROOT = '/tmp/e2e-agent-config-project';
 const BASE_ENV = { APP_URL: 'http://localhost:3000' } as NodeJS.ProcessEnv;
@@ -117,9 +120,9 @@ describe('agent config defaults', () => {
   });
 
   it.each([
-    ['timeout', 'agents.default.timeout was removed; use judgmentTimeout, the deadline of one assert, waitFor, or extract call'],
-    ['maxTurns', 'agents.default.maxTurns was removed; use maxModelCalls, the model requests one agent call may make'],
-    ['maxModelTokensPerCall', 'agents.default.maxModelTokensPerCall was removed; use maxInputTokens'],
+    ['timeout', 'agents.default.timeout was removed: use judgmentTimeout, the deadline of one assert, waitFor, or extract call'],
+    ['maxTurns', 'agents.default.maxTurns was removed: use maxModelCalls, the model requests one agent call may make'],
+    ['maxModelTokensPerCall', 'agents.default.maxModelTokensPerCall was removed: use maxInputTokens'],
   ])('rejects the removed agent key %s, naming its replacement', (key, message) => {
     expect(() => resolve({ agents: { default: { [key]: 30_000 } } } as never)).toThrow(message);
   });
@@ -143,7 +146,7 @@ describe('the agents entry shape', () => {
 
   it('rejects maxTurns on createToolLoopExecutor, naming maxModelCalls', () => {
     expect(() => createToolLoopExecutor({ name: 'brain', tools: () => ({}), buildPrompt: () => 'go', maxTurns: 3 } as never)).toThrow(
-      'createToolLoopExecutor({ maxTurns }) was removed; set maxModelCalls on the agents entry that runs the executor',
+      'createToolLoopExecutor({ maxTurns }) was removed: set maxModelCalls on the agents entry that runs the executor',
     );
   });
 
@@ -235,11 +238,47 @@ describe('the built-in agent options', () => {
     expect(() => resolve({ agents: { default: { tools: [readOnlyTool()] } } } as never)).toThrow(
       'agents.default.tools must be an object of tools by name, each from defineTool',
     );
-    for (const name of ['complete_step', 'tap', 'observe', 'screenshot']) {
+    for (const name of ['tap', 'observe', 'screenshot']) {
       expect(() => resolve({ agents: { ux: { tools: { [name]: readOnlyTool() } } } })).toThrow(
         `agents.ux.tools.${name}: the ${name} tool name is reserved for the agent's own tools`,
       );
     }
+  });
+
+  it('rejects the names of the tools the harness adds in an agent step, an e2e mcp session, and explore', () => {
+    const where = { complete_step: 'every agent step', locate: 'an e2e mcp session', start_recording: 'an e2e mcp session', stop_recording: 'an e2e mcp session', report_finding: 'e2e explore' };
+    for (const [name, surface] of Object.entries(where)) {
+      expect(() => resolve({ agents: { ux: { tools: { [name]: readOnlyTool() } } } })).toThrow(
+        `agents.ux.tools.${name}: the ${name} tool name is reserved for the tool the harness adds in ${surface}; rename it`,
+      );
+    }
+    // The list is the tools those surfaces really add.
+    const sessionTools = Object.keys({ locate: true, ...recordingTools({} as never) });
+    expect([...HARNESS_TOOL_NAMES.keys()].toSorted()).toEqual(['complete_step', FINDING_TOOL_NAME, ...sessionTools].toSorted());
+  });
+
+  it('refuses a model instance used as the entry itself, naming the model', () => {
+    const model = fakeModel('gateway', 'openai/gpt-6-luna-fast');
+    expect(() => resolve({ agents: { default: model as never } })).toThrow(
+      'agents.default is a model instance (gateway/openai/gpt-6-luna-fast); an agents entry is an options object, so write agents.default: { model: ... } with it',
+    );
+  });
+
+  it('digests tools by name and live values by identity, so a recursive tool schema loads', () => {
+    type Node = { name: string; readonly children: Node[] };
+    const node: z.ZodType<Node> = z.object({
+      name: z.string(),
+      get children() {
+        return z.array(node);
+      },
+    });
+    const tree = defineTool({ description: 'walks a tree', inputSchema: z.object({ root: node }), execute: async () => 'ok' }, { mutates: false });
+    const circular: Record<string, unknown> = { writable: true, read: async () => undefined, write: async () => undefined };
+    circular['self'] = circular;
+    const config = resolve({ agents: { default: { tools: { tree } } }, cache: { store: circular as never } });
+    expect(config.agent.tools).toEqual({ tree });
+    const renamed = resolve({ agents: { default: { tools: { walk: tree } } }, cache: { store: circular as never } });
+    expect(renamed.configDigest).not.toBe(config.configDigest);
   });
 });
 
@@ -379,11 +418,11 @@ describe('run limits', () => {
 
   it('rejects the removed limits key, naming each replacement', () => {
     expect(() => resolve({ limits: { maxModelTokensPerCall: 1_000 } } as never)).toThrow(
-      'config key "limits" was removed; set maxInputTokens on each agent (was limits.maxModelTokensPerCall); maxAgentContextBytes, maxLedgerBytes, and maxEventsPerStep are fixed by the runner',
+      'limits was removed: set maxInputTokens on each agent (it was limits.maxModelTokensPerCall); the runner fixes maxAgentContextBytes, maxLedgerBytes, and maxEventsPerStep',
     );
-    expect(() => resolve({ limits: {} } as never)).toThrow(/config key "limits" was removed/);
+    expect(() => resolve({ limits: {} } as never)).toThrow(/^limits was removed: /);
     expect(() => resolve({ agents: { default: { limits: {} } } } as never)).toThrow(
-      'agents.default.limits was removed; set maxInputTokens on the agent; the other limits are fixed by the runner',
+      'agents.default.limits was removed: set maxInputTokens on the agent; the runner fixes the other limits',
     );
   });
 });

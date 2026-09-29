@@ -28,12 +28,12 @@ export interface ArtifactRecord {
   /**
    * Mirrors report-1: how much of the file the runner masked. A screenshot is
    * `complete`; a trace is `complete` once every registered secret value was
-   * rewritten out of its text, and `not-required` when no secret was filled
-   * on its session; a video is `incomplete`, since a recording masks nothing
+   * rewritten out of its text, and `not-required` when no secret reached its
+   * session (filled, or held by the engine); a video is `incomplete`, since a recording masks nothing
    * (a secure field renders its own dots, but anything else the screen
    * showed is in the frames), and is kept as it is; a download is
    * `incomplete` too, bytes the app served and the runner did not rewrite,
-   * unless a secret was filled on the session and the file is text the
+   * unless a secret reached the session and the file is text the
    * ledger was run over, which makes it `complete`. report-1 also admits an
    * `incomplete` artifact without a `path`: a video a hosted service keeps,
    * recorded by `url`, or one its producer withheld, which this runner never

@@ -170,7 +170,7 @@ export function createToolLoopExecutor(options: ToolLoopExecutorOptions): StepEx
   if ('maxTurns' in options) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
-      'createToolLoopExecutor({ maxTurns }) was removed; set maxModelCalls on the agents entry that runs the executor',
+      'createToolLoopExecutor({ maxTurns }) was removed: set maxModelCalls on the agents entry that runs the executor',
     );
   }
   return {

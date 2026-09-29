@@ -435,8 +435,8 @@ test.describe('shared', { serial: true }, () => {
       expect(outcome.results).toHaveLength(0);
       const types = events.map((event) => event.type);
       expect(types).toEqual(['run-started', 'run-interrupted', 'run-finished']);
-      // The report is still the canonical record of the cancelled run.
-      expect(outcome.reportPath).toBeDefined();
+      // Nothing ran, so nothing is written: the last run's report stays the one --last-failed reads.
+      expect(outcome.reportPath).toBeUndefined();
     } finally {
       project.cleanup();
       await app.close();

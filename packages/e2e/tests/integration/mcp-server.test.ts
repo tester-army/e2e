@@ -41,6 +41,20 @@ export default {
 } satisfies E2EConfig;
 `;
 
+// A second config beside the first: a target whose engine answers basic auth
+// with a secret, on a page that echoes the Authorization header back.
+const PROTECTED_PASSWORD = 'basic-Pa55-7Qz';
+const PROTECTED_CREDENTIAL = Buffer.from(`ada:${PROTECTED_PASSWORD}`).toString('base64');
+const PROTECTED_CONFIG = `import type { E2EConfig } from 'e2e';
+import { secrets } from 'e2e';
+import { web } from '@e2e-dev/web';
+
+export default {
+  targets: [{ name: 'protected', engine: web({ url: process.env.APP_URL!, basicAuth: { username: 'ada', password: secrets.get('stagingPassword') } }) }],
+  secrets: { stagingPassword: () => ${JSON.stringify(PROTECTED_PASSWORD)} },
+} satisfies E2EConfig;
+`;
+
 interface ToolText {
   readonly text: string;
   readonly isError: boolean;
@@ -81,7 +95,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
 
   beforeAll(async () => {
     app = await startFixtureApp();
-    project = createProject({ 'e2e.config.ts': CONFIG, 'targets.ts': TARGETS });
+    project = createProject({ 'e2e.config.ts': CONFIG, 'targets.ts': TARGETS, 'protected.config.ts': PROTECTED_CONFIG });
     transport = new StdioClientTransport({
       command: process.execPath,
       args: [CLI, 'mcp', '--headless'],
@@ -360,6 +374,25 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     expect(after.text).toMatch(/textbox "Focus target" value="<secret:apiKey>"/);
     for (const output of [filled, located, after]) expect(output.text).not.toContain('sk-live-SUPERSECRET-0000');
 
+    const closed = await invoke('close_session');
+    expect(closed.isError, closed.text).toBe(false);
+  });
+
+  it('observes the basic-auth credential an engine secret becomes by name, never in base64, and keeps the screenshot verb', async () => {
+    const opened = await invoke('open_session', { config: 'protected.config.ts' });
+    expect(opened.isError, opened.text).toBe(false);
+    const navigated = await call('navigate', { url: '/basic-auth' });
+    expect(navigated.isError, navigated.text).toBe(false);
+    const observed = await call('observe');
+    expect(observed.text).toContain('Basic <secret:stagingPassword>');
+    // An engine-held secret is protected as text only: the screenshot is taken as with no secret.
+    const shot = await call('screenshot');
+    expect(shot.isError, shot.text).toBe(false);
+    expect(shot.images).toBe(1);
+    for (const output of [opened, navigated, observed, shot]) {
+      expect(output.text).not.toContain(PROTECTED_CREDENTIAL);
+      expect(output.text).not.toContain(PROTECTED_PASSWORD);
+    }
     const closed = await invoke('close_session');
     expect(closed.isError, closed.text).toBe(false);
   });

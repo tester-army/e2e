@@ -20,7 +20,7 @@ describe('session secrecy carried across save and restore', () => {
   it('carries the provider values and the taint, leaving static values to each session', () => {
     const saving = sessionSecrecy(newSession(), secrets);
     saving.ledger.register('token', PROVIDER_VALUE);
-    saving.taint.value = true;
+    saving.exposure.raise('filled');
     expect(carriedSecrecy(saving, secrets)).toEqual({ secrets: [['token', PROVIDER_VALUE]], tainted: true });
   });
 
@@ -31,13 +31,34 @@ describe('session secrecy carried across save and restore', () => {
     adoptSecrecy(restoring, { secrets: [['token', value]], tainted: true });
     expect(restoring.ledger.redact(`echo ${value}`)).toBe('echo <secret:token>');
     expect(processSecrets.redact(`log ${value}`)).toBe('log <secret:token>');
-    expect(restoring.taint.value).toBe(true);
+    expect(restoring.exposure.carriesTaint).toBe(true);
   });
 
   it('never clears a taint the restoring session already carries', () => {
     const restoring = sessionSecrecy(newSession(), secrets);
-    restoring.taint.value = true;
+    restoring.exposure.raise('filled');
     adoptSecrecy(restoring, { secrets: [], tainted: false });
-    expect(restoring.taint.value).toBe(true);
+    expect(restoring.exposure.carriesTaint).toBe(true);
+  });
+});
+
+describe('session exposure', () => {
+  it('rewrites recordings once the engine holds a secret, and withholds pixels only after a fill', () => {
+    const secrecy = sessionSecrecy(newSession(), secrets);
+    expect(secrecy.exposure).toMatchObject({ withholdsPixels: false, redactsRecordings: false, carriesTaint: false });
+    secrecy.exposure.raise('engine');
+    expect(secrecy.exposure).toMatchObject({ withholdsPixels: false, redactsRecordings: true, carriesTaint: false });
+    secrecy.exposure.raise('filled');
+    expect(secrecy.exposure).toMatchObject({ withholdsPixels: true, redactsRecordings: true, carriesTaint: true });
+  });
+
+  it('carries only a fill into a saved session, and never falls back to a lower level', () => {
+    const engineHeld = sessionSecrecy(newSession(), secrets);
+    engineHeld.exposure.raise('engine');
+    expect(carriedSecrecy(engineHeld, secrets).tainted).toBe(false);
+    engineHeld.exposure.raise('filled');
+    engineHeld.exposure.raise('engine');
+    expect(engineHeld.exposure.withholdsPixels).toBe(true);
+    expect(carriedSecrecy(engineHeld, secrets).tainted).toBe(true);
   });
 });

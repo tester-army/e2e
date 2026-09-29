@@ -92,7 +92,7 @@ export async function captureFailureEvidence(options: FailureEvidenceOptions): P
 
   // Pixels only when no secret has been filled: rectangle masking cannot
   // prove a tainted viewport redacted.
-  if (!options.secrecy.taint.value && !signal.aborted) {
+  if (!options.secrecy.exposure.withholdsPixels && !signal.aborted) {
     try {
       const relative = await options.session.artifacts.screenshot('failure', operation);
       evidence.screenshot = options.artifacts.register('screenshot', relative);

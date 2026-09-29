@@ -1224,6 +1224,20 @@ describe('trace capability and plan notices', () => {
   );
 
   it(
+    'warns at plan time that a retry mode with no retries records no videos, as for traces',
+    async () => {
+      const fake = createFakeEngine({ video: true });
+      const { outcome, notices } = await runWithNotices(fake, { 'tests/a.e2e.ts': PASSING_TEST }, { video: 'on-all-retries', retries: 0 });
+      expect(outcome.status).toBe('passed');
+      expect(notices).toEqual([
+        "video: 'on-all-retries' records retries only, and 1 test runs with retries: 0, so no videos will be recorded for it; set retries, or video: 'on'",
+      ]);
+      expect(fake.operations.some((operation) => operation.method === 'artifacts.startVideo')).toBe(false);
+    },
+    60_000,
+  );
+
+  it(
     'traces with the fake engine, keeping a passed attempt out of the report under retain-on-failure',
     async () => {
       const fake = createFakeEngine({ trace: true });

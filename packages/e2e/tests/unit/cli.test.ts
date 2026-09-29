@@ -362,6 +362,18 @@ describe('e2e run argument parsing', () => {
     expect(written(stderrSpy)).toContain('write --trace=<mode>, or put test files before --trace');
   });
 
+  it('maps the old --trace spellings to the modes they meant', async () => {
+    for (const [value, mode] of [['retries', 'on-all-retries'], ['all', 'on']]) {
+      runMock.mockClear();
+      process.exitCode = undefined;
+      stderrSpy.mockClear();
+      await invoke('run', `--trace=${value}`);
+      expect(runMock).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(2);
+      expect(written(stderrSpy)).toContain(`"${value}" is the old spelling of --trace ${mode}`);
+    }
+  });
+
   it('refuses the removed --artifacts, mapping it to --output of its parent', async () => {
     for (const command of ['run', 'explore']) {
       runMock.mockClear();
@@ -370,7 +382,18 @@ describe('e2e run argument parsing', () => {
       await invoke(command, '--artifacts', 'out/artifacts');
       expect(runMock).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(2);
-      expect(written(stderrSpy)).toContain('--artifacts was removed; write --output out instead');
+      expect(written(stderrSpy)).toContain('--artifacts was removed: write --output out instead');
+      expect(written(stderrSpy)).toContain('must be a directory inside the project, not its root');
+    }
+  });
+
+  it('suggests .e2e for a removed --artifacts whose parent no output can be', async () => {
+    for (const value of ['artifacts', './artifacts', '../elsewhere/artifacts', '/abs/artifacts']) {
+      process.exitCode = undefined;
+      stderrSpy.mockClear();
+      await invoke('run', '--artifacts', value);
+      expect(process.exitCode).toBe(2);
+      expect(written(stderrSpy), value).toContain('--artifacts was removed: write --output .e2e instead');
     }
   });
 

@@ -1,11 +1,12 @@
 /**
  * `output` and `--output`: every result a run writes lands under one
- * directory, the artifact tree is cleared when a run starts, `--last-failed`
- * reads the report there, and a store's `putLink` receives the recordings a
+ * directory, the artifact tree is cleared once a run's tests start (a run
+ * that stops before leaves the last run's evidence), `--last-failed` reads
+ * the report there, and a store's `putLink` receives the recordings a
  * hosted service keeps.
  */
 
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createFakeEngine, FAKE_APP_URL } from '../helpers/fake-engine.ts';
@@ -98,6 +99,91 @@ describe('output', () => {
         const elsewhere = await runExisting(project, { appUrl: FAKE_APP_URL, config, runOptions: { lastFailed: true, output: 'other' } });
         expect(elsewhere.report.run.errors.map((error) => error.code)).toEqual(['NO_LAST_RUN']);
         expect(rerun.reportPath).toBe(path.join(project.dir, 'results', 'report.json'));
+      } finally {
+        project.cleanup();
+      }
+    },
+    60_000,
+  );
+
+  it(
+    "keeps the last run's report and artifacts when a run stops before its tests start",
+    async () => {
+      const project = createProject({
+        'tests/pass.e2e.ts': PASSING_TEST,
+        'tests/fail.e2e.ts': FAILING_TEST,
+        'tests/broken.e2e.ts': `import { test } from 'e2e';\nthrow new Error('broken at import');\n`,
+      });
+      try {
+        const fake = createFakeEngine({ artifacts: true });
+        const config = engineConfig(fake.engine);
+        const files = ['tests/pass.e2e.ts', 'tests/fail.e2e.ts'];
+        const first = await runExisting(project, { appUrl: FAKE_APP_URL, config, runOptions: { files } });
+        expect(first.status).toBe('failed');
+        const reportFile = path.join(project.dir, '.e2e', 'report.json');
+        const report = readFileSync(reportFile, 'utf8');
+        const screenshot = resultByTitle(first, 'fails on purpose').attempts[0]!.artifacts.find((artifact) => artifact.kind === 'screenshot')!;
+        const evidence = path.join(project.dir, '.e2e', 'artifacts', screenshot.path!);
+        expect(existsSync(evidence)).toBe(true);
+        const planted = path.join(project.dir, '.e2e', 'artifacts', 'planted.txt');
+        writeFileSync(planted, 'left by the last run');
+
+        const stopped = [
+          { files, grep: [/no such title/] },
+          { files: ['tests/broken.e2e.ts'] },
+          { files, lastFailed: true, grep: [/typo/] },
+        ];
+        for (const runOptions of stopped) {
+          const outcome = await runExisting(project, { appUrl: FAKE_APP_URL, config, runOptions });
+          expect(outcome.exitCode, JSON.stringify(runOptions)).toBe(2);
+          expect(outcome.reportPath).toBeUndefined();
+          expect(existsSync(evidence)).toBe(true);
+          expect(existsSync(planted)).toBe(true);
+          expect(readFileSync(reportFile, 'utf8')).toBe(report);
+        }
+        const unrecordable = await runExisting(project, {
+          appUrl: FAKE_APP_URL,
+          config: { targets: [{ name: 'fake', platform: 'fake', engine: fake.engine, trace: 'on' }] },
+          runOptions: { files },
+        });
+        expect(unrecordable.report.run.errors.map((error) => error.code)).toEqual(['UNSUPPORTED_ARTIFACT']);
+        expect(existsSync(evidence)).toBe(true);
+        expect(readFileSync(reportFile, 'utf8')).toBe(report);
+
+        const withCommand = (args: readonly string[]) =>
+          engineConfig(
+            createFakeEngine({
+              artifacts: true,
+              app: { url: FAKE_APP_URL, readyUrl: 'http://127.0.0.1:1/', command: { executable: process.execPath, args, startupTimeout: 60_000 } },
+            }).engine,
+          );
+        const crashed = await runExisting(project, { appUrl: FAKE_APP_URL, config: withCommand(['-e', 'process.exit(3)']), runOptions: { files } });
+        expect(crashed.report.run.errors).toHaveLength(1);
+        expect(crashed.exitCode).not.toBe(0);
+        expect(crashed.reportPath).toBeUndefined();
+        expect(existsSync(planted)).toBe(true);
+        expect(readFileSync(reportFile, 'utf8')).toBe(report);
+
+        const interrupt = new AbortController();
+        const cancelled = await runExisting(project, {
+          appUrl: FAKE_APP_URL,
+          config: withCommand(['-e', 'setInterval(() => {}, 1000)']),
+          runOptions: {
+            files,
+            interruptSignal: interrupt.signal,
+            onEvent: (event) => {
+              if (event.type === 'setup' && event.step.kind === 'app' && event.state === 'started') interrupt.abort();
+            },
+          },
+        });
+        expect(cancelled.exitCode).toBe(130);
+        expect(cancelled.reportPath).toBeUndefined();
+        expect(existsSync(planted)).toBe(true);
+        expect(readFileSync(reportFile, 'utf8')).toBe(report);
+
+        const rerun = await runExisting(project, { appUrl: FAKE_APP_URL, config, runOptions: { files, lastFailed: true } });
+        expect(rerun.results.filter((result) => result.selected).map((result) => result.test.title)).toEqual(['fails on purpose']);
+        expect(existsSync(planted)).toBe(false);
       } finally {
         project.cleanup();
       }

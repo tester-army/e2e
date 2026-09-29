@@ -20,15 +20,17 @@ import { inflateEntry, readZip, writeZip, zipEntry, type ZipEntry } from '../int
  * `dir` is refused before anything is touched. An archive that cannot be
  * rewritten is deleted together with the rest of the trace, and the failure
  * is thrown: the runner keeps no trace it cannot vouch for. A trace comes
- * here from a session a secret was filled on, or whose engine holds one in
- * its options. Its screencast frames are dropped either way: a frame cannot
- * be rewritten, and an app can render what its engine was handed (a page
- * that echoes the basic-auth user) as well as what was typed.
+ * here from a session a secret was filled on, whose pixels are withheld, so
+ * its screencast frames are dropped as a screenshot would be denied; or from
+ * one whose engine holds a secret in its options and where nothing was
+ * filled, which the caller passes `keepFrames` for: an engine-held secret is
+ * protected as text only.
  */
 export async function redactTraceArchives(
   dir: string,
   paths: readonly string[],
   ledger: SecretLedger,
+  options: { readonly keepFrames?: boolean } = {},
 ): Promise<void> {
   const root = path.resolve(dir);
   const archives = paths.map((relative) => path.resolve(root, relative));
@@ -40,7 +42,7 @@ export async function redactTraceArchives(
     );
   }
   try {
-    for (const archive of archives) await redactArchive(archive, ledger);
+    for (const archive of archives) await redactArchive(archive, ledger, options.keepFrames === true);
   } catch (cause) {
     await Promise.all(archives.map((archive) => rm(archive, { force: true })));
     throw new InfrastructureError(
@@ -64,18 +66,18 @@ function isInside(root: string, absolute: string): boolean {
  * unchanged is carried as stored, so an archive with nothing to redact is not
  * rewritten at all. An entry that is not UTF-8 text (a font, an image) cannot
  * be rewritten: it is carried as stored unless a secret's bytes occur in it,
- * in which case it is dropped from the archive. Screencast frames are
- * dropped whatever they hold: every entry under
+ * in which case it is dropped from the archive. Unless `keepFrames`,
+ * screencast frames are dropped whatever they hold: every entry under
  * `screencast/`, referenced or not, the `screencast-frame` records in each
  * event stream (a `.trace` entry), and any other entry such a record names.
  */
-async function redactArchive(absolute: string, ledger: SecretLedger): Promise<void> {
+async function redactArchive(absolute: string, ledger: SecretLedger, keepFrames: boolean): Promise<void> {
   const entries = readZip(await readFile(absolute));
   let changed = false;
   const kept: ZipEntry[] = [];
   const frames = new Set<string>();
   for (const entry of entries) {
-    if (entry.name.startsWith('screencast/')) {
+    if (!keepFrames && entry.name.startsWith('screencast/')) {
       changed = true;
       continue;
     }
@@ -89,7 +91,7 @@ async function redactArchive(absolute: string, ledger: SecretLedger): Promise<vo
       kept.push(entry);
       continue;
     }
-    const events = entry.name.endsWith('.trace') ? withoutFrameRecords(text, frames) : text;
+    const events = !keepFrames && entry.name.endsWith('.trace') ? withoutFrameRecords(text, frames) : text;
     const clean = redactText(events, ledger.redactFragments);
     if (clean === text) {
       kept.push(entry);

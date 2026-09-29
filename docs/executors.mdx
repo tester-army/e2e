@@ -132,7 +132,7 @@ The executor receives this context:
 | `ctx.observe({ tree, pixels })` | Redacted screen text, with an optional node tree and masked screenshot |
 | `ctx.actions` | Checked and recorded actions: `tap`, `doubleTap`, `longPress`, `secondaryTap`, `hover`, `type`, `typeSecret`, `press`, `select`, `check`, `drag`, `scrollTo`, `scrollUntil`, `upload`, `scroll`, `navigate`, `back`, and the point and keyboard verbs below |
 | `ctx.target` | The target's `name` and `platform`, and `verbs`, the actions its engine supports. Offer only these to the model. |
-| `ctx.pixelsTainted` | True after a [secret fill](/security#screenshots-after-a-secret-fill), when no screenshots are available |
+| `ctx.pixelsTainted` | True after a [secret fill](/security#screenshots-after-a-secret-fill), when no screenshots are available. A secret an engine option holds (a basic-auth password) is redacted from text only and does not set it |
 | `ctx.signal` | Aborts on cancellation, at the step deadline, or on any other hard stop. Stop promptly when it fires |
 | `ctx.replayedPrefix` | Set when a cache replay ran part of the step before handing it over: the replayed actions and why replay stopped |
 | `ctx.model`, `ctx.providerOptions` | The agent's configured model and `providerOptions`, when set |

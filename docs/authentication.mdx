@@ -223,7 +223,9 @@ credential. A name cannot appear under both `credentials` and `secrets`.
 In `e2e.config.ts`, `secrets.get()` hands an engine option a secret it needs
 before any test runs, such as a [basic-auth password](/starting-your-app#protected-previews).
 The config load checks the name, and the value is redacted once the engine
-resolves it.
+resolves it, together with the base64 `Authorization` credential it becomes.
+The protection is text only: screenshots and the model's pixels are kept, so
+a page that renders the password on screen is not masked in them.
 
 ## Several signed-in users
 

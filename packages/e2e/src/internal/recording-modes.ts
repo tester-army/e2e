@@ -48,6 +48,21 @@ export function isRecordingMode(value: unknown): value is RecordingMode {
   return (RECORDING_MODES as readonly unknown[]).includes(value);
 }
 
+/**
+ * An old trace spelling and the mode it meant, for the message that refuses
+ * it: `'all'` (every attempt, the removed `artifacts.trace.record: 'all'`)
+ * is `'on'`, and `'retries'` is `'on-all-retries'`, bare or as the block
+ * `{ record }` lifted to where a mode goes now. `was` spells the value as
+ * written. Undefined for anything else.
+ */
+export function legacyTraceSpelling(value: unknown): { readonly was: string; readonly mode: RecordingMode } | undefined {
+  const block = typeof value === 'object' && value !== null && !Array.isArray(value);
+  const record = block ? (value as { record?: unknown }).record : value;
+  const mode = record === 'retries' ? 'on-all-retries' : record === 'all' ? 'on' : undefined;
+  if (mode === undefined) return undefined;
+  return { was: block ? `{ record: '${record}' }` : `'${record}'`, mode };
+}
+
 /** Whether a mode records retries only, so a test with no retries records nothing under it. */
 export function isRetryMode(mode: RecordingMode): boolean {
   return mode === 'on-first-retry' || mode === 'on-all-retries';

@@ -292,7 +292,7 @@ export class SessionHost {
         origin: 'test',
       }),
       timeoutMs: config.cleanupTimeout,
-      tainted: () => sessionSecrecy(attempt.session, config.secrets).taint.value,
+      tainted: () => sessionSecrecy(attempt.session, config.secrets).exposure.withholdsPixels,
     });
   }
 

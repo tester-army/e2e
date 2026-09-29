@@ -197,11 +197,7 @@ function currentContent(absolute: string): string | undefined {
  * there whose target does not exist yet.
  */
 function leadsTo(link: string, canonical: string): boolean {
-  const destination = realpathOfExisting(canonical);
-  if (realpathOfExisting(link) === destination) return true;
-  const entry = lstatOrUndefined(link);
-  return entry?.isSymbolicLink() === true
-    && realpathOfExisting(path.resolve(path.dirname(link), readlinkSync(link))) === destination;
+  return realpathOfExisting(link) === realpathOfExisting(canonical);
 }
 
 /**

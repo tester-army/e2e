@@ -2,9 +2,9 @@
  * `e2e mcp` with a project that has two targets, a custom engine with fewer
  * verbs, and project tools from `agents.default.tools`: the server's tool
  * list stays the same four, each session's catalog is what its own target
- * can do (the engine's verbs, the project tools for its platform), a project
- * tool named like a built-in is skipped, and a second config in the same
- * project opens without restarting the server.
+ * can do (the engine's verbs, the project tools for its platform), and a
+ * second config in the same project opens without restarting the server. A
+ * project tool named like a built-in never gets here: config load refuses it.
  */
 
 import path from 'node:path';
@@ -49,10 +49,6 @@ export default {
         { description: 'Count the nodes on screen.', inputSchema: z.object({}), execute: async (_input: unknown, options: object) => \`\${(await getToolContext(options).observe()).text.split('\\\\n').length} nodes\` },
         { mutates: false },
       ),
-      locate: defineTool(
-        { description: 'A project tool that collides with a built-in.', inputSchema: z.object({}), execute: async () => 'never served' },
-        { mutates: false },
-      ),
       shake: defineTool(
         { description: 'Shake the phone.', inputSchema: z.object({}), execute: async () => 'shaken' },
         { mutates: true, platforms: ['ios'] },
@@ -84,7 +80,6 @@ describe('e2e mcp with project tools and a custom engine', { timeout: 120_000 },
   let app: FixtureApp;
   let project: FixtureProject;
   let client: Client;
-  let stderr = '';
 
   const invoke = async (name: string, args: Record<string, unknown> = {}): Promise<ToolText> => {
     const result = (await client.callTool({ name, arguments: args }, undefined, { timeout: 110_000 })) as {
@@ -111,10 +106,7 @@ describe('e2e mcp with project tools and a custom engine', { timeout: 120_000 },
       args: [CLI, 'mcp', '--headless'],
       cwd: project.dir,
       env: { ...(process.env as Record<string, string>), APP_URL: app.url, CI: '' },
-      stderr: 'pipe',
-    });
-    transport.stderr?.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString();
+      stderr: 'ignore',
     });
     client = new Client({ name: 'e2e-mcp-custom-test', version: '0.0.0' });
     await client.connect(transport);
@@ -138,7 +130,7 @@ describe('e2e mcp with project tools and a custom engine', { timeout: 120_000 },
     expect(result.text).toContain('web, kiosk');
   });
 
-  it('catalogs the project tools of a web session, runs them, and skips the colliding and foreign ones', async () => {
+  it('catalogs the project tools of a web session, runs them, and skips the foreign ones', async () => {
     const opened = await invoke('open_session', { target: 'web' });
     expect(opened.isError, opened.text).toBe(false);
     expect(catalogNames(opened.text)).toEqual([
@@ -172,7 +164,6 @@ describe('e2e mcp with project tools and a custom engine', { timeout: 120_000 },
     ]);
     expect(opened.text).toContain('- seed_data {tenant}: Seed a tenant with demo data.');
     expect(opened.text).toContain('- count_nodes: Count the nodes on screen. [read-only]');
-    expect(stderr).toContain('project tool "locate" is not served over MCP');
     const detail = await invoke('tools', { tool: 'locate' });
     expect(detail.text).toContain('locator');
 

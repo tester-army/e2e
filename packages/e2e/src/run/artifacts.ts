@@ -72,8 +72,9 @@ export function createAttemptArtifacts(options: {
   /**
    * The secrecy of the session the attempt runs on, read when a download is
    * registered; undefined (no session open yet) leaves every download as
-   * served. Once a secret was filled on the session, a text-like download is
-   * rewritten through its ledger before it is hashed or stored.
+   * served. Once a secret reached the session (filled, or held by the
+   * engine), a text-like download is rewritten through its ledger before it
+   * is hashed or stored.
    */
   secrecy?: () => SessionSecrecy | undefined;
   /**
@@ -107,10 +108,10 @@ export function createAttemptArtifacts(options: {
       };
       records.push(record);
       const reportPath = path.posix.join(...options.segments, relativePath);
-      const secrecy = kind === 'download' && registration?.redaction === undefined ? options.secrecy?.() : undefined;
+      const secrecy: SessionSecrecy | undefined = kind === 'download' && registration?.redaction === undefined ? options.secrecy?.() : undefined;
       pending.push(
         (async () => {
-          if (secrecy?.taint.value && isTextLike(record.mediaType)) {
+          if (secrecy !== undefined && secrecy.exposure.redactsRecordings && isTextLike(record.mediaType)) {
             record.redaction = await redactDownload(absolute, secrecy);
           }
           // Without a store the file is streamed for its size and digest only;

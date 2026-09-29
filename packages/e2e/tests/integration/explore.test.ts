@@ -224,6 +224,26 @@ describe('e2e explore', () => {
     expect((outcome as unknown as { notices: string[] }).notices).toEqual([]);
   }, 120_000);
 
+  it('says to pass --trace on and --video on when a retry mode would record nothing, explore running once', async () => {
+    const model = installExploreModel({
+      plan: () => ({ decision: 'finish', summary: 'Nothing here.' }),
+      loop: () => [{ toolName: 'complete_step', input: { status: 'passed', summary: 'unused' } }],
+    });
+    const runNotices: string[] = [];
+    await runExplore(project, app, model, {
+      // CI's default trace mode records the first retry, and explore has none.
+      env: { ...process.env, CI: '1' },
+      video: 'on-first-retry',
+      onEvent: (event) => {
+        if (event.type === 'notice' && event.target === 'run') runNotices.push(event.message);
+      },
+    });
+    expect(runNotices).toEqual([
+      "trace: 'on-first-retry' records retries only, and explore runs its goal once, so no traces will be recorded; pass --trace on",
+      "video: 'on-first-retry' records retries only, and explore runs its goal once, so no videos will be recorded; pass --video on",
+    ]);
+  }, 120_000);
+
   it('is blocked when the agent explores nothing, and replaces a custom executor with a notice', async () => {
     const model = installExploreModel({
       plan: () => ({ decision: 'finish', summary: 'Nothing here.' }),
@@ -240,7 +260,7 @@ describe('e2e explore', () => {
     expect(outcome.report.run.explore).toMatchObject({ ended: 'finished', steps: [], findings: [] });
     expect(outcome.report.run.results[0]!.attempts[0]!.error?.code).toBe('AUTOMATION_UNSUPPORTED');
     expect((outcome as unknown as { notices: string[] }).notices).toEqual([
-      'the configured agent "house-brain" is a custom executor; explore runs the built-in agent instead',
+      'agents.default is a custom executor ("house-brain"); explore runs the built-in agent instead',
     ]);
   }, 120_000);
 
@@ -352,6 +372,20 @@ describe('e2e explore', () => {
       explore({ cwd: project.dir, rawConfig: { targets: [{ name: 'web', engine: web({ url: app.url }) }] as never, agents: { default: { model } } }, agent: 'nope' }),
     ).rejects.toMatchObject({ code: 'INVALID_CONFIG', message: 'unknown agent "nope"; configured: default' });
   }, 120_000);
+
+  it('rejects an agent with no model before anything starts, naming it, a custom executor that brought none included', async () => {
+    const custom: StepExecutor = { name: 'math-brain', runStep: async () => ({ status: 'passed', summary: 'never runs' }) };
+    const rawConfig = {
+      targets: [{ name: 'web', engine: web({ url: app.url }) }] as never,
+      agents: { default: { model: installExploreModel({ plan: () => ({ decision: 'finish', summary: '' }), loop: () => [] }) }, custom: { executor: custom } },
+    };
+    const notices: string[] = [];
+    await expect(explore({ cwd: project.dir, rawConfig, agent: 'custom', notice: (message) => notices.push(message) })).rejects.toMatchObject({
+      code: 'MODEL_UNAVAILABLE',
+      message: expect.stringContaining('explore runs the built-in agent, which requires a model, and agents.custom has none'),
+    });
+    expect(notices).toContain('agents.custom is a custom executor ("math-brain"); explore runs the built-in agent instead');
+  }, 60_000);
 
   it('lets the explorer sign in with a configured credential through type_secret, never seeing the password', async () => {
     const planPrompts: string[] = [];

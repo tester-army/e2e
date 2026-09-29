@@ -79,7 +79,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
    * earlier step's pixel request was already degraded.
    */
   const visionHint = (): string | undefined => {
-    if (runtime.taint.value || !runtime.engineCapabilities.has('artifacts')) return undefined;
+    if (runtime.exposure.withholdsPixels || !runtime.engineCapabilities.has('artifacts')) return undefined;
     const steps = runtime.steps.completed();
     if (steps.some((step) => step.visionDegraded !== undefined)) return undefined;
     return steps.some((step) => step.visionInput === true) ? VISION_HINT : VISION_HINT_UNPROVEN;
@@ -280,7 +280,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
    */
   function evidenceAllowed(invocation: Invocation, requested: boolean | undefined): boolean {
     if (requested === false) return false;
-    if (runtime.taint.value) {
+    if (runtime.exposure.withholdsPixels) {
       invocation.recordPolicy('assert.screenshot', 'denied', 'PIXEL_TAINTED');
       return false;
     }

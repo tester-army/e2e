@@ -253,7 +253,7 @@ describe('resolveConfig', () => {
   it('rejects specVersion, which the runner version replaced', () => {
     for (const specVersion of ['0.1', '0.2']) {
       expect(() => resolve({ specVersion } as never)).toThrow(
-        'config key "specVersion" was removed; remove it; the runner version is the format version',
+        'specVersion was removed: delete it; the runner version is the format version',
       );
     }
   });
@@ -702,6 +702,8 @@ describe('resolveConfig', () => {
         expect(() => resolveIn(root, 'escape/not/yet/created/app.log')).toThrow(
           /app\.command\.log must be a file inside the project root/,
         );
+        fs.symlinkSync(path.join(outside, 'not-yet'), path.join(root, 'dangling'));
+        expect(() => resolveIn(root, 'dangling/app.log')).toThrow(/app\.command\.log must be a file inside the project root/);
         expect(resolveIn(root, '.e2e/logs/app.log').command?.log).toBe('.e2e/logs/app.log');
         const alias = path.join(base, 'alias');
         fs.symlinkSync(root, alias);
@@ -971,10 +973,10 @@ describe('resolveConfig', () => {
     it('refuses the removed kinds list, in either form, naming the trace mode it meant', () => {
       expect(failure({ artifacts: ['screenshot', 'trace'] })).toMatchObject({
         code: 'INVALID_CONFIG',
-        message: expect.stringContaining("artifacts no longer lists kinds; write trace: 'on' at the config root instead"),
+        message: expect.stringContaining("artifacts no longer lists kinds: write trace: 'on' at the config root instead"),
       });
       const screenshotOnly = failure({ artifacts: { kinds: ['screenshot'] } });
-      expect(screenshotOnly.message).toMatch(/^artifacts.kinds was removed; write trace: 'off'/);
+      expect(screenshotOnly.message).toMatch(/^artifacts.kinds was removed: write trace: 'off'/);
       expect(screenshotOnly.message).not.toContain('failure screenshots');
       // A list without screenshot used to turn the failure screenshot off, which is no longer possible.
       expect(failure({ artifacts: [] }).message).toContain('failure screenshots are always captured now');
@@ -984,9 +986,45 @@ describe('resolveConfig', () => {
     it('refuses the removed trace block, naming the mode its record meant', () => {
       expect(failure({ artifacts: { trace: { record: 'retries' } } })).toMatchObject({
         code: 'INVALID_CONFIG',
-        message: expect.stringContaining("artifacts.trace was removed; write trace: 'on-all-retries' at the config root"),
+        message: expect.stringContaining("artifacts.trace was removed: write trace: 'on-all-retries' at the config root"),
       });
       expect(failure({ artifacts: { trace: {} } }).message).toContain("write trace: 'on'");
+    });
+
+    it('reads a kinds list and a trace block together, so retries only survives the migration', () => {
+      for (const artifacts of [
+        { kinds: ['screenshot', 'trace'], trace: { record: 'retries' } },
+        { trace: { record: 'retries' }, kinds: ['screenshot', 'trace'] },
+      ]) {
+        expect(failure({ artifacts: artifacts as never }).message).toMatch(
+          /^artifacts\.(kinds and artifacts\.trace|trace and artifacts\.kinds) were removed: write trace: 'on-all-retries' at the config root/,
+        );
+      }
+      // A list without trace recorded none, whatever the block said.
+      expect(failure({ artifacts: { kinds: ['screenshot'], trace: { record: 'retries' } } as never }).message).toContain("write trace: 'off'");
+    });
+
+    it('maps the old trace spellings lifted to where a mode goes to the mode they meant', () => {
+      const cases: [unknown, string][] = [
+        [{ record: 'retries' }, "trace { record: 'retries' } is the old spelling of trace: 'on-all-retries'"],
+        [{ record: 'all' }, "trace { record: 'all' } is the old spelling of trace: 'on'"],
+        ['retries', "trace 'retries' is the old spelling of trace: 'on-all-retries'"],
+        ['all', "trace 'all' is the old spelling of trace: 'on'"],
+      ];
+      for (const [trace, message] of cases) {
+        expect(failure({ trace: trace as never })).toMatchObject({ code: 'INVALID_CONFIG', message: expect.stringContaining(message) });
+      }
+      // A block without `record` is no old spelling: the message quotes nothing the config did not say.
+      const unspelled = failure({ trace: {} as never }).message;
+      expect(unspelled).toMatch(/^trace must be one of off, on, /);
+      expect(unspelled).not.toContain('record');
+      expect(failure({ targets: [{ ...WEB, trace: 'retries' as never }] }).message).toContain(
+        `target "web" trace 'retries' is the old spelling of trace: 'on-all-retries'`,
+      );
+      expect(() => resolveConfig({ targets: TARGETS }, { projectRoot: ROOT, env: BASE_ENV, cli: { trace: 'all' as never } })).toThrow(
+        "--trace 'all' is the old spelling of --trace on",
+      );
+      expect(failure({ video: 'all' as never }).message).toBe('video must be one of off, on, retain-on-failure, on-first-retry, on-all-retries, got "all"');
     });
 
     it('refuses video as an artifact kind or an artifacts block, naming the video option', () => {
@@ -1034,7 +1072,7 @@ describe('resolveConfig', () => {
       expect(() => resolveConfig({ targets: [web('retain_on_failure')] } as never, { projectRoot: ROOT, env: BASE_ENV, cli: { [kind]: 'on' } })).toThrow(
         `target "web" ${kind} must be one of`,
       );
-      expect(() => resolveConfig({ targets: TARGETS }, { projectRoot: ROOT, env: BASE_ENV, cli: { [kind]: 'all' as never } })).toThrow(
+      expect(() => resolveConfig({ targets: TARGETS }, { projectRoot: ROOT, env: BASE_ENV, cli: { [kind]: 'every' as never } })).toThrow(
         `--${kind} must be one of`,
       );
     });
@@ -1079,6 +1117,66 @@ describe('resolveConfig', () => {
       expect(refusal({ output: 'tests' })).toContain('holds tests, where the tests glob "tests/**/*.e2e.ts" finds test files');
       expect(refusal({ output: 'e2e', tests: ['e2e/smoke/**/*.e2e.ts'] })).toContain('holds e2e/smoke');
       expect(refusal({ output: 'e2e', tests: 'e2e/login.e2e.ts' })).toContain('holds e2e,');
+    });
+
+    it('names the default output when it is the one refused', () => {
+      expect(refusal({ cache: { dir: '.e2e' } })).toBe(
+        'output ".e2e" (the default) is the cache directory .e2e or inside it; keep results and the replay cache apart',
+      );
+      expect(refusal({ tests: '.e2e/**/*.e2e.ts' })).toContain('output ".e2e" (the default) holds .e2e,');
+    });
+
+    it('compares paths through symlinks, so one directory spelled two ways is one directory', () => {
+      const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-output-')));
+      const real = path.join(base, 'real');
+      const link = path.join(base, 'link');
+      fs.mkdirSync(real);
+      fs.symlinkSync(real, link);
+      try {
+        // The project root as process.cwd() reports it, and a flag spelled through the link, as "$PWD/out" is.
+        const flagged = resolveConfig({ targets: TARGETS }, { projectRoot: real, env: BASE_ENV, cli: { output: path.join(link, 'out') } });
+        expect(flagged.output).toBe(path.join(link, 'out'));
+        expect(resolveConfig({ targets: TARGETS }, { projectRoot: link, env: BASE_ENV, cli: { output: path.join(real, 'out') } }).output).toBe(
+          path.join(real, 'out'),
+        );
+        // A cache the run would clear with <output>/artifacts, however it is spelled.
+        expect(() =>
+          resolveConfig({ targets: TARGETS, cache: { dir: path.join(link, '.e2e', 'artifacts', 'cache') } }, { projectRoot: real, env: BASE_ENV }),
+        ).toThrow('output ".e2e" (the default) would hold cache.dir .e2e/artifacts/cache under artifacts/');
+        expect(() =>
+          resolveConfig({ targets: TARGETS }, { projectRoot: real, env: BASE_ENV, cli: { output: link } }),
+        ).toThrow(`--output ${JSON.stringify(link)} is the project root`);
+        // A link whose target does not exist yet is followed: the run's writes land where it points.
+        fs.symlinkSync(path.join(base, 'elsewhere', 'results'), path.join(real, 'dangling'));
+        for (const output of ['dangling', 'dangling/nested']) {
+          expect(() => resolveConfig({ targets: TARGETS }, { projectRoot: real, env: BASE_ENV, cli: { output } })).toThrow(
+            `--output ${JSON.stringify(output)} is outside the project root ${real}`,
+          );
+        }
+        fs.symlinkSync('later', path.join(real, 'pending'));
+        expect(resolveConfig({ targets: TARGETS }, { projectRoot: real, env: BASE_ENV, cli: { output: 'pending' } }).output).toBe(
+          path.join(real, 'pending'),
+        );
+        fs.symlinkSync('.e2e/cache', path.join(real, 'into-cache'));
+        expect(() => resolveConfig({ targets: TARGETS }, { projectRoot: real, env: BASE_ENV, cli: { output: 'into-cache' } })).toThrow(
+          '--output "into-cache" is the cache directory .e2e/cache or inside it',
+        );
+      } finally {
+        fs.rmSync(base, { recursive: true, force: true });
+      }
+    });
+
+    it('refuses an output that is a file, or under one, at load', () => {
+      const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-output-')));
+      fs.writeFileSync(path.join(root, 'results.txt'), 'not a directory');
+      try {
+        const at = (output: string) => () => resolveConfig({ targets: TARGETS }, { projectRoot: root, env: BASE_ENV, cli: { output } });
+        expect(at('results.txt')).toThrow('--output "results.txt" is a file; name a directory, which the run creates when it is missing');
+        expect(at('results.txt/e2e')).toThrow('--output "results.txt/e2e" is under the file results.txt;');
+        expect(at('fresh/e2e')().output).toBe(path.join(root, 'fresh', 'e2e'));
+      } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+      }
     });
 
     it('accepts an output beside the tests, or inside a glob rooted higher up', () => {

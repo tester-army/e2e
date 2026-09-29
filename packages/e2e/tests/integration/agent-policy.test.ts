@@ -13,6 +13,8 @@ import { assertValidReport } from '../helpers/report-schema.ts';
 import { resultByTitle, runProject, type FixtureProject } from '../helpers/run-project.ts';
 import type { RunOutcome } from '../helpers/run-project.ts';
 import type { SdkLanguageModel } from '../../src/agent/ai-sdk.ts';
+import type { StepExecutor } from '../../src/agent/executor.ts';
+import { createFakeEngine, FAKE_APP_URL } from '../helpers/fake-engine.ts';
 
 const SUITE = `import { test, credentials } from 'e2e';
 
@@ -457,4 +459,56 @@ describe('tool calls outside the vocabulary', () => {
       project.cleanup();
     }
   }, 120_000);
+});
+
+describe('a secret fill the engine rejects', () => {
+  it('taints the pixels all the same, since the value may have reached the screen before the failure', async () => {
+    const fake = createFakeEngine({
+      tree: {
+        ref: { id: 'root', revision: '' },
+        role: 'document',
+        children: [{ ref: { id: 'token', revision: '' }, role: 'textbox', name: 'Token' }],
+      },
+      perform: (_ref, action) => {
+        if (action.kind === 'fill') throw new Error('the field detached after the value was typed');
+      },
+    });
+    const tainted: boolean[] = [];
+    const executor: StepExecutor = {
+      name: 'rejected-fill',
+      async runStep(context) {
+        const observation = await context.observe();
+        tainted.push(context.pixelsTainted);
+        const failure = await context.actions
+          .typeSecret({ id: nodeIdFor(observation.text, /textbox "Token"/) }, 'token')
+          .then(() => undefined, (cause: unknown) => cause);
+        tainted.push(context.pixelsTainted);
+        return { status: 'failed', summary: String(failure) };
+      },
+    };
+    const suite = `import { test, secrets } from 'e2e';
+
+test('fills a token the engine rejects', async ({ agent }) => {
+  await agent.act('fill the token', { params: { token: secrets.get('token') } });
+});
+`;
+    const { outcome, project } = await runProject(
+      { 'tests/rejected.e2e.ts': suite },
+      {
+        appUrl: FAKE_APP_URL,
+        config: {
+          targets: [{ name: 'fake', platform: 'fake', engine: fake.engine }],
+          agents: { default: { executor } },
+          secrets: { token: () => 'tok-7Qz-rejected' },
+          cache: 'off',
+        },
+      },
+    );
+    try {
+      expect(resultByTitle(outcome, 'fills a token the engine rejects').status).toBe('failed');
+      expect(tainted).toEqual([false, true]);
+    } finally {
+      project.cleanup();
+    }
+  }, 60_000);
 });

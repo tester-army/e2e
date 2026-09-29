@@ -9,7 +9,7 @@
 
 import type { ModelMessage } from 'ai';
 import { withHint } from '../../internal/errors.ts';
-import type { ResolvedModel } from '../../config/agent.ts';
+import { missingModelError, type ResolvedModel } from '../../config/agent.ts';
 import { aiSdk, asSdkLanguageModel, loadAiSdk, type SdkLanguageModel } from '../ai-sdk.ts';
 import { packageVersion } from '../../internal/package-version.ts';
 import { AgentError } from '../error.ts';
@@ -40,14 +40,12 @@ import {
  */
 export const TRANSPORT_RETRIES = 5;
 
-/** Creates the adapter for one resolved model, or fails with MODEL_UNAVAILABLE. */
-export function createModelAdapter(model: ResolvedModel | undefined): ModelAdapter {
-  if (model === undefined) {
-    throw new AgentError(
-      'MODEL_UNAVAILABLE',
-      "the agent fixture requires a model: set model on the agents entry to an AI SDK model instance, e.g. agents: { default: { model: gateway('openai/gpt-6-luna-fast') } }",
-    );
-  }
+/**
+ * Creates the adapter for one resolved model, or fails with
+ * MODEL_UNAVAILABLE naming `agentName`, the agents entry that holds none.
+ */
+export function createModelAdapter(model: ResolvedModel | undefined, agentName = 'default'): ModelAdapter {
+  if (model === undefined) throw missingModelError(agentName);
   const adapterVersion = packageVersion(import.meta.url, '../../../package.json', '0.0.0');
   const languageModel = asSdkLanguageModel(model.model);
   let requestModel: SdkLanguageModel | undefined;

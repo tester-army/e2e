@@ -6,7 +6,7 @@
  */
 
 import type { BrowserContext } from 'playwright';
-import { sameSite, type Secret } from 'e2e/engine';
+import { sameSite, type ResolveSecretOptions, type Secret } from 'e2e/engine';
 import type { WebBasicAuth } from './surface.ts';
 
 /** The credentials Playwright answers an HTTP authentication challenge with. */
@@ -47,12 +47,26 @@ export async function installSiteHeaders(
  * Playwright's own `httpCredentials` does: on a 401 from any origin. A site
  * cannot be enumerated into the exact origins Playwright scopes by, and a
  * challenge is answered only where one is issued. A `Secret` password
- * resolves through the attempt, which registers the value for redaction.
+ * resolves through the attempt, which registers the value for redaction, and
+ * the `Authorization` credential Playwright sends with it too: a page that
+ * echoes its request headers shows that, not the password.
  */
 export async function httpCredentials(
   basicAuth: WebBasicAuth,
-  resolveSecret: (secret: Secret) => Promise<string>,
+  resolveSecret: (secret: Secret, options?: ResolveSecretOptions) => Promise<string>,
 ): Promise<PlaywrightHttpCredential> {
   const { username, password } = basicAuth;
-  return { username, password: typeof password === 'string' ? password : await resolveSecret(password) };
+  if (typeof password === 'string') return { username, password };
+  return { username, password: await resolveSecret(password, { derived: (plaintext) => basicCredentials(username, plaintext) }) };
+}
+
+/**
+ * The credential an `Authorization: Basic` header carries for `username` and
+ * `password`, base64 of `username:password` as Playwright encodes it, with
+ * and without its `=` padding: an echo may drop or escape the padding.
+ */
+function basicCredentials(username: string, password: string): string[] {
+  const encoded = Buffer.from(`${username}:${password}`, 'utf8').toString('base64');
+  const unpadded = encoded.replace(/=+$/, '');
+  return unpadded === encoded ? [encoded] : [encoded, unpadded];
 }

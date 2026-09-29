@@ -162,7 +162,10 @@ the app. Accept `string | Secret` (tell them apart with `isSecret` from
 `e2e/engine`), list each handle in the engine's `secrets`, and read the value
 in `startAttempt` through `context.resolveSecret(secret)`. The config load
 rejects a name no secret has, and the runner redacts the value from the
-moment it resolves. A config calls `secrets.get()` before any run exists, so
+moment it resolves. When the app sees the value in another form (a header
+that encodes it), return that form from `resolveSecret(secret, { derived })`
+so it is redacted under the same name. The protection is text only: a
+session whose engine resolved a secret keeps its screenshots and pixels. A config calls `secrets.get()` before any run exists, so
 the handle is a reference by name until then.
 
 ### Lifecycle

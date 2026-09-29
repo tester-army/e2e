@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { testCaseBrand } from '../internal/brands.ts';
 import { describeValue } from '../config/validate.ts';
-import { isRecordingMode, RECORDING_MODES } from '../internal/recording-modes.ts';
+import { isRecordingMode, legacyTraceSpelling, RECORDING_MODES } from '../internal/recording-modes.ts';
 import { CollectionError } from '../internal/errors.ts';
 import { validateTitle } from '../internal/ids.ts';
 import { realmSlot } from '../internal/realm-slot.ts';
@@ -326,7 +326,12 @@ function validateCommonOptions(options: TestOptions | DescribeOptions, label: st
   for (const kind of ['trace', 'video'] as const) {
     const mode = options[kind];
     if (mode !== undefined && !isRecordingMode(mode)) {
-      throw new CollectionError(`${label}: ${kind} must be one of ${RECORDING_MODES.join(', ')}, got ${describeValue(mode)}`);
+      const legacy = kind === 'trace' ? legacyTraceSpelling(mode) : undefined;
+      throw new CollectionError(
+        legacy === undefined
+          ? `${label}: ${kind} must be one of ${RECORDING_MODES.join(', ')}, got ${describeValue(mode)}`
+          : `${label}: trace ${legacy.was} is the old spelling of trace: '${legacy.mode}'; the modes are ${RECORDING_MODES.join(', ')}`,
+      );
     }
   }
 }

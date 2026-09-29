@@ -105,7 +105,11 @@ contract and an example provider. `browser: provider` together with
 an unknown key inside `connect` or `basicAuth`, naming the nearest known key
 when it is a likely typo (`comand` is `command`) and every key otherwise. `:` is not allowed in the `basicAuth` user name.
 The `basicAuth` password is a string or `secrets.get(name)`: a secret the
-engine resolves when each attempt starts, redacted like any configured one.
+engine resolves when each attempt starts, redacted like any configured one,
+and so is the base64 credential of the `Authorization` header it becomes.
+That protection is text only: unlike a fill, it withholds no screenshot or
+model pixels, so a page that renders the password on screen is not masked in
+them ([Security](/security#secrets)).
 
 `headers` and `basicAuth` are how a test reaches a [protected preview](/starting-your-app#protected-previews).
 

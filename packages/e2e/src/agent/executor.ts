@@ -426,7 +426,8 @@ export interface StepExecutorContext {
   readonly actions: ExecutorActions;
   /**
    * True once a secret was filled in this attempt: `observe({ pixels: true })`
-   * withholds pixels for the rest of it. An executor reads it when assembling
+   * withholds pixels for the rest of it. A secret an engine option holds
+   * (basic-auth credentials) is redacted from text only and taints nothing. An executor reads it when assembling
    * its vocabulary, to leave screenshot verbs out rather than offer tools
    * that can only decline.
    */

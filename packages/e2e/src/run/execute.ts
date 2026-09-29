@@ -2,6 +2,7 @@
 
 import { rm } from 'node:fs/promises';
 import path from 'node:path';
+import type { ResolveSecretOptions } from '../engine/index.ts';
 import type { TargetSession, OperationContext, VideoSegment } from '../engine/surface.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import {
@@ -48,7 +49,7 @@ import { isFailedStatus } from './records.ts';
 import { runWithRetries } from './retry.ts';
 import { runSerialUnit, type SerialHost, type SharedSerialSession } from './serial.ts';
 import { interruptedSkip, pairKey, pairResult, repeatSegment, unstartedResult } from './units.ts';
-import { adoptSecrecy, carriedSecrecy, processSecrets, resolveSecretValue, sessionSecrecy } from './secrecy.ts';
+import { adoptSecrecy, carriedSecrecy, processSecrets, registerDerivedSecrets, resolveSecretValue, sessionSecrecy } from './secrecy.ts';
 import { isSecret } from '../secrets.ts';
 import { SessionStaging, SessionStore, type SessionIdentity } from './sessions.ts';
 import { redactTraceArchives } from './trace-redaction.ts';
@@ -586,7 +587,7 @@ export class TargetExecutor implements SerialHost {
               attemptId,
               artifactsDir,
               signal: launchSignal,
-              resolveSecret: (secret) => this.resolveEngineSecret(session, secret),
+              resolveSecret: (secret, options) => this.resolveEngineSecret(session, secret, options),
             }),
           ),
         );
@@ -633,12 +634,13 @@ export class TargetExecutor implements SerialHost {
   /**
    * The plaintext of a secret the target's engine declared, for an option it
    * hands the app (basic-auth credentials). Registered for the session's and
-   * the process's redaction by `resolveSecretValue`; the viewport is not
-   * tainted, since the value goes to the engine, not into a field, but the
-   * session is marked so its trace, which records the engine's options, is
-   * rewritten.
+   * the process's redaction by `resolveSecretValue`, with every value the
+   * engine derives from it (the base64 credential an `Authorization` header
+   * carries) under the same name. The session's exposure rises to `engine`:
+   * its text is redacted and its trace and text downloads rewritten, while
+   * its pixels stay as they are, since nothing was typed.
    */
-  private async resolveEngineSecret(session: TargetSession, secret: Secret): Promise<string> {
+  private async resolveEngineSecret(session: TargetSession, secret: Secret, options?: ResolveSecretOptions): Promise<string> {
     const engine = this.target.engine;
     if (!isSecret(secret) || !(engine?.secrets ?? []).some((declared) => declared.name === secret.name)) {
       const name = isSecret(secret) ? `"${secret.name}"` : 'a value that is not a secrets.get() handle';
@@ -649,7 +651,8 @@ export class TargetExecutor implements SerialHost {
     }
     const secrecy = sessionSecrecy(session, this.config.secrets);
     const plaintext = await resolveSecretValue(secret, this.config.secrets, secrecy.ledger);
-    secrecy.engineHeld.value = true;
+    registerDerivedSecrets(secret.name, options?.derived?.(plaintext) ?? [], secrecy.ledger);
+    secrecy.exposure.raise('engine');
     return plaintext;
   }
 
@@ -718,16 +721,16 @@ export class TargetExecutor implements SerialHost {
         }
         // An engine records what happened, filled secrets included, so the
         // trace is the runner's to redact before anything hashes or stores
-        // it. Only a session a secret was filled on, or whose engine holds
-        // one in its options (a trace records the options the attempt opened
-        // with), can have recorded one: an unmarked trace needs no
-        // rewriting, and a marked one is kept only once rewritten, without
-        // its screencast frames.
+        // it. Only a session a secret reached (filled, or held by the engine
+        // for an option, which a trace records the attempt opening with) can
+        // have recorded one: an unexposed trace needs no rewriting, and an
+        // exposed one is kept only once rewritten. Its screencast frames go
+        // only where pixels are withheld, after a fill.
         const secrecy = sessionSecrecy(session, this.config.secrets);
         let redaction: 'complete' | 'not-required' = 'not-required';
-        if (secrecy.taint.value || secrecy.engineHeld.value) {
+        if (secrecy.exposure.redactsRecordings) {
           try {
-            await redactTraceArchives(artifactSink.dir, archives, secrecy.ledger);
+            await redactTraceArchives(artifactSink.dir, archives, secrecy.ledger, { keepFrames: !secrecy.exposure.withholdsPixels });
           } catch (cause) {
             // The trace is gone. The report says why whatever the policy, and
             // a required trace that is missing is a cleanup failure.

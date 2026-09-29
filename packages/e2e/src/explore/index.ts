@@ -12,14 +12,16 @@ import { MAX_PARAMS_BYTES } from '../agent/act-validation.ts';
 import type { ModuleRegistration, RegisteredTest } from '../collect/registry.ts';
 import { selectTargets } from '../collect/select.ts';
 import { discoverConfig, loadConfigModule, missingConfigError } from '../config/load.ts';
+import { missingModelError, resolveAgentConfig } from '../config/agent.ts';
 import { resolveConfig, type ResolvedCredential, type ResolvedTarget } from '../config/resolve.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import type { ReportExplore } from '../report/build.ts';
 import { labelSegment } from '../run/artifacts.ts';
+import type { RunEventSink } from '../run/events.ts';
 import { run, type RunOutcome } from '../run/runner.ts';
 import type { AgentConfig, BuiltinReporter, E2EConfig, RecordingMode } from '../types.ts';
 import { createExploreBody } from './body.ts';
-import { explorerAgent } from './executor.ts';
+import { explorerAgent, withFindingTool } from './executor.ts';
 import { signedInContext, type PlanAccount } from './plan.ts';
 import { ExploreState } from './state.ts';
 
@@ -83,6 +85,8 @@ export interface ExploreOptions {
   readonly rawConfig?: E2EConfig | undefined;
   /** Notices decided before the run starts: the target chosen, a replaced executor. */
   readonly notice?: ((message: string) => void) | undefined;
+  /** A second sink on the run's event spine, beside the reporters, as `run` takes. */
+  readonly onEvent?: RunEventSink | undefined;
 }
 
 export interface ExploreOutcome extends RunOutcome {
@@ -117,14 +121,18 @@ export async function explore(options: ExploreOptions = {}): Promise<ExploreOutc
   if (agentName !== 'default') notice(`exploring with agent "${agentName}"`);
 
   const state = new ExploreState(goal, budgets);
-  const explorer = explorerAgent({ state, entry: raw.agents?.[agentName], resolved: resolved.agent, notice });
+  const explorer = explorerAgent({ state, agentName, entry: raw.agents?.[agentName], resolved: resolved.agent, notice });
+  const resolvedExplorer = resolveAgentConfig(exploreAgentConfig(explorer), `agents.${agentName}`);
+  // Every exploration step calls the model, a custom executor's included,
+  // since the built-in agent replaces it: no model is a failure before
+  // anything starts, not a run-level one once the first step asks.
+  if (resolvedExplorer.model === undefined) {
+    throw missingModelError(agentName, 'explore runs the built-in agent, which requires a model');
+  }
   // The explorer replaces the agent for the exploration alone: a setup test
   // `--session` pulls in runs as the project's own agents, with its cache and
   // retries. The exploration pins no retries and runs with the cache off.
-  const explorerAgents = resolveConfig(
-    { ...raw, agents: { ...raw.agents, [agentName]: exploreAgentConfig(explorer) } },
-    resolveOptions,
-  ).agents;
+  const explorerAgents = new Map(resolved.agents).set(agentName, withFindingTool(resolvedExplorer, state));
   const outcome = await run({
     cwd: projectRoot,
     rawConfig: raw,
@@ -146,6 +154,7 @@ export async function explore(options: ExploreOptions = {}): Promise<ExploreOutc
     video: options.video,
     interruptSignal: options.interruptSignal,
     forceSignal: options.forceSignal,
+    onEvent: options.onEvent,
   });
   return { ...outcome, explore: state.snapshot() };
 }

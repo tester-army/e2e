@@ -1,0 +1,5 @@
+---
+'e2e': patch
+---
+
+Agents config follow-ups. A missing model names the agent the run selected (`agents.ux has none: ... agents: { ux: { model: ... } }`) instead of always `agents.default`, and `e2e explore` fails with `MODEL_UNAVAILABLE` before anything starts when the explored agent has no model, a custom executor that brought none included. Its custom-executor notice names the agent key. A model instance used as an agents entry says to write `{ model }` instead of reporting `specificationVersion` as an unknown key. A mistyped agent on a call (`agent.act('x', { agent: 'buyr' })`) suggests the nearest configured one. A project tool named `locate`, `start_recording`, `stop_recording`, or `report_finding` fails at config load instead of being dropped in `e2e mcp` or replaced under `explore`. The config digest names tools and reduces executors and `cache.store` to their identity instead of JSON-cloning them, so a recursive zod tool schema or a store holding a client no longer crashes the load with "Converting circular structure to JSON".

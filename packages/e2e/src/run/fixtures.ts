@@ -13,7 +13,7 @@ import type { DebugTrace } from '../internal/debug.ts';
 import { ConfigurationError, errorMessage, InfrastructureError, TestError } from '../internal/errors.ts';
 import { Deadline } from '../internal/time.ts';
 import { didYouMean } from '../internal/suggest.ts';
-import { resolveSecretValue, sessionSecrecy, type SessionSecrecy } from './secrecy.ts';
+import { resolveSecretValue, sessionSecrecy, type SecretExposure } from './secrecy.ts';
 import { obj } from '../internal/objects.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
 import { FixtureRecorder } from './fixture-recording.ts';
@@ -101,13 +101,13 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
     assertionTimeout: environment.config.assertionTimeout,
   });
 
-  const { ledger, taint } = sessionSecrecy(environment.session, environment.config.secrets);
+  const { ledger, exposure } = sessionSecrecy(environment.session, environment.config.secrets);
   const secrets: SecretResolver = {
     async resolve(secret) {
       const plaintext = await resolveSecretValue(secret, environment.config.secrets, ledger);
       // Only a value that exists can reach the screen: a failed provider
       // leaves nothing to taint the viewport with.
-      taint.value = true;
+      exposure.raise('filled');
       return plaintext;
     },
   };
@@ -119,7 +119,7 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
     projectRoot: environment.config.projectRoot,
   };
   const screen = createScreen(screenContext);
-  const app = createApp(environment, engine, taint);
+  const app = createApp(environment, engine, exposure);
 
   let agent: Agent | undefined;
 
@@ -143,10 +143,10 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
     if (resolved === undefined) {
       throw new TestError(
         'INVALID_ARGUMENT',
-        `unknown agent "${name}"; configured: ${[...config.agents.keys()].join(', ')}`,
+        `unknown agent "${name}"; configured: ${[...config.agents.keys()].join(', ')}${didYouMean(name, [...config.agents.keys()])}`,
       );
     }
-    environment.models.preflight(resolved);
+    environment.models.preflight(resolved, name);
     const selection: AgentSelection = {
       name,
       config: resolved,
@@ -159,7 +159,7 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
       // executor may have no model at all and must not fail on a
       // MODEL_UNAVAILABLE it would never hit; a judgment still fails with it
       // on its first call.
-      judge: lazily(() => environment.models.build(resolved.judge)),
+      judge: lazily(() => environment.models.build(resolved.judge, name)),
       agentContext: joinAgentContext(resolved.context, environment.agentContext),
     };
     selections.set(name, selection);
@@ -183,7 +183,7 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
     secrets,
     redact: ledger.redact,
     redactCut: ledger.redactCut,
-    taint,
+    exposure,
     artifacts: environment.artifacts,
     ...(environment.cache !== undefined ? { cache: environment.cache } : {}),
     ...(environment.debug !== undefined ? { debug: environment.debug } : {}),
@@ -406,7 +406,7 @@ function unreachableApp(cause: unknown, url: string): InfrastructureError | unde
 }
 
 /** Builds the portable app fixture with the session's shared screenshot policy. */
-function createApp(environment: AttemptEnvironment, engine: LocatorEngine, taint: SessionSecrecy['taint']): App {
+function createApp(environment: AttemptEnvironment, engine: LocatorEngine, exposure: SecretExposure): App {
   const { config, steps, target } = environment;
 
   /** Opens one resolved URL; a refused connection is reported as the app being down. */
@@ -482,7 +482,7 @@ function createApp(environment: AttemptEnvironment, engine: LocatorEngine, taint
     },
     async screenshot(label?: string): Promise<string> {
       return steps.run('app', 'app.screenshot', label ?? '', async () => {
-        if (taint.value) {
+        if (exposure.withholdsPixels) {
           throw new ConfigurationError(
             'POLICY_DENIED',
             'app.screenshot() is denied after a secret fill because the app may display the secret outside a secure field',

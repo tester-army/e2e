@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import { secrets } from 'e2e';
 import { web } from '../../src/index.ts';
+import { httpCredentials } from '../../src/protected-app.ts';
 
 describe('web({ headers })', () => {
   it('accepts an object of header names to string values', () => {
@@ -166,5 +167,26 @@ describe('web() option keys', () => {
 
   it('keeps the removed options their own messages', () => {
     expect(() => web({ allowedOrigins: [] } as unknown as Parameters<typeof web>[0])).toThrow(/allowedOrigins }\) is gone/);
+  });
+});
+
+describe('basic-auth credentials from a secret', () => {
+  it('registers the Authorization credential the password becomes, padded and not, for redaction', async () => {
+    const asked: { name: string; derived: readonly string[] }[] = [];
+    const credentials = await httpCredentials({ username: 'ada', password: secrets.get('stagingPassword') }, async (secret, options) => {
+      asked.push({ name: secret.name, derived: options?.derived?.('pa55word!') ?? [] });
+      return 'pa55word!';
+    });
+    expect(credentials).toEqual({ username: 'ada', password: 'pa55word!' });
+    const encoded = Buffer.from('ada:pa55word!').toString('base64');
+    expect(encoded.endsWith('=')).toBe(true);
+    expect(asked).toEqual([{ name: 'stagingPassword', derived: [encoded, encoded.replace(/=+$/, '')] }]);
+  });
+
+  it('resolves nothing for a plain string password', async () => {
+    const credentials = await httpCredentials({ username: 'ada', password: 'plain-value' }, async () => {
+      throw new Error('not a secret');
+    });
+    expect(credentials).toEqual({ username: 'ada', password: 'plain-value' });
   });
 });
