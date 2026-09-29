@@ -3,19 +3,18 @@ title: How agent steps work
 description: What the model sees, what it may do, how a step ends, and what it costs.
 ---
 
-Each `agent.*` call has a deadline and a model-call budget. The runner
-observes the screen, checks requested actions against its policy, and
-records the result.
+An agent step is one `agent.act`, `agent.assert`, `agent.waitFor`, or
+`agent.extract` call. The model reads the screen, asks for actions, and ends
+the step with a verdict. The runner performs each action it allows and
+records the result. Every step has a deadline and a model-call budget.
 
 ## Two sides of the contract
 
 The runner handles redaction, action authorization, budgets, secrets, and
 reporting. The executor decides which actions to request and returns a
 verdict. The built-in agent is the executor unless an agents entry sets
-`executor`.
-
-[Custom executors](/executors) get the same redacted observations and checked
-action methods. Their own code runs with the test process's OS permissions.
+`executor`. [Custom executors](/executors) get the same redacted observations
+and checked action methods.
 
 ## What the model sees
 
@@ -27,19 +26,17 @@ replaced with `<secret:name>`.
 
 After an action, the model receives the changes to the screen. If most of
 the screen changed, it receives a new full snapshot. Node ids remain stable
-while their elements exist.
-
-The runner waits up to two seconds for an action to change the screen before
-capturing the result. A failed action also returns the current screen so the
-model can choose what to do next.
+while their elements exist. A failed action also returns the current screen
+so the model can choose what to do next.
 
 Judgments from `assert`, `waitFor`, and `extract` see the instruction and
 current screen. They do not see completed steps or the acting agent's
 summaries. You can configure a separate [judge model](/models#a-judge-of-its-own).
 
 Use `vision: true` to include a masked screenshot or `vision: 'only'` to
-judge the screenshot alone. Pixels are withheld after a secret is filled.
-The [agent reference](/reference/agent#vision) lists the modes.
+judge the screenshot alone; the [agent reference](/reference/agent#vision)
+lists the modes. No screenshot reaches the model
+[after a secret fill](/security#screenshots-after-a-secret-fill).
 
 ## What the model may do
 
@@ -49,8 +46,7 @@ credentials can also receive `type_secret`.
 
 Keyboard-capable engines support typing and key presses into the focused
 control. Pixel tools let the agent request a screenshot and act at a point
-when the text snapshot cannot describe a control. These tools are unavailable
-after a secret fill. See the
+when the text snapshot cannot describe a control. See the
 [tool reference](/reference/agent#pixel-tools-screenshot-and-the-point-verbs).
 
 The runner checks each built-in action and counts it against the budget.
@@ -87,48 +83,35 @@ passes, and the turn's outcome notes the dropped code. A
 | A budget or the clock | `STEP_BUDGET_EXHAUSTED`, `STEP_TIMEOUT` | 1 |
 | An interaction the toolset cannot perform | `AUTOMATION_UNSUPPORTED` | 1 |
 
-Configuration and infrastructure blocks exit 2 and 3 respectively. Budget
-exhaustion, timeouts, and unsupported automation still count as test failures
-and exit 1, even though the agent could not reach a product verdict.
+The [errors reference](/reference/errors#agenterror) lists every code a
+verdict can carry.
 
 ## Cost
 
-Defaults for the built-in agent:
+Every call has a model-call budget and a default timeout, listed under
+[budgets](/reference/agent#budgets). Exceeding a budget raises
+`STEP_BUDGET_EXHAUSTED`; reaching the deadline raises `STEP_TIMEOUT`. What
+drives the cost:
 
-| Call | Model calls | Default timeout |
-| --- | --- | --- |
-| `act` | up to `maxModelCalls`, default 25 | test `timeout`, 120 s |
-| `assert` | 2 | the agent's `judgmentTimeout`, 30 s |
-| `extract` | 2 | the agent's `judgmentTimeout`, 30 s |
-| `waitFor` | up to `maxModelCalls`, default 25 | the agent's `judgmentTimeout`, 30 s |
+- `assert` and `extract` make one judgment, plus one repair call if the
+  model's answer is malformed.
+- `waitFor` skips model calls while the screen is unchanged.
+- Screenshots add input tokens on every call that carries them. `act` asks
+  for one only when the text snapshot is not enough.
+- The [replay cache](/cache) reruns passing `act` steps without model calls.
 
-`assert` and `extract` make one judgment, with one repair call if needed.
-`waitFor` skips model calls while the observation is unchanged, including
-the screenshot when vision is enabled. Exceeding a budget raises
-`STEP_BUDGET_EXHAUSTED`; reaching the deadline raises `STEP_TIMEOUT`.
-
-`act` requests screenshots when needed. After the first screenshot, action
-results include fresh pixels while policy allows them. Images add input
-tokens on each call.
-
-With a [custom executor](/executors), `agent.assert` uses `runStep` with the
-same budgets as `act` and defaults to `config.timeout`.
-
-Use `expect` for exact checks and keep each `act` focused on one goal.
-The [replay cache](/cache) can rerun passing `act` steps without model calls.
-
-When the provider supports prompt caching, `--debug` shows the cached share
-of input tokens per step.
+Use `expect` for exact checks and keep each `act` focused on one goal. When
+the provider supports prompt caching, `--debug` shows the cached share of
+input tokens per step. Under a
+[custom executor](/executors#what-the-executor-handles), `assert` runs with
+the `act` budgets.
 
 ## Where secrets go
 
 For a `Secret` param, the model receives only its name and purpose. The
 runner checks the field the model picked, then fills the value itself.
-The value never enters prompts, transcripts, reports, or AI traces.
-
-After a secret fill, screenshots are withheld from the model and assertion
-evidence for the rest of the attempt. The app could echo the value anywhere
-on screen.
+The value never enters prompts, transcripts, reports, or AI traces. See the
+[security model](/security#secrets) for what else changes after a fill.
 
 ## Next
 

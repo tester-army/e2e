@@ -51,10 +51,12 @@ jobs:
 
 Upload artifacts even when a retry passes. Each failure's evidence links open
 the run's Artifacts section; inside the download, every test has a directory
-named after it and the agent that ran it (`web/tests_billing.e2e.ts__upgrades/default/attempt-0/`), so keep
-`path: .e2e/artifacts` and the download lines up with the report. A project that
-sits below the checkout root, such as `packages/e2e-tests`, gets source links
-under that path: the reporter finds the checkout root as the nearest directory holding `.git`, inside `GITHUB_WORKSPACE`, so a checkout placed with `actions/checkout`'s `path` input resolves too.
+named after it and the agent that ran it
+(`web/tests_billing.e2e.ts__upgrades/default/attempt-0/`), so keep
+`path: .e2e/artifacts` and the download lines up with the report. A project
+below the checkout root, such as `packages/e2e-tests`, gets source links under
+that path. The checkout root is the nearest directory holding `.git` inside
+`GITHUB_WORKSPACE`, so `actions/checkout` with a `path` input works too.
 
 ## The comment
 
@@ -107,7 +109,8 @@ Evidence: [screenshot](https://github.com/acme/shop/actions/runs/123#artifacts),
 The comment shows test counts and agent usage, followed by each failure's
 error, source line, and evidence links. Flaky tests and the full test list
 are collapsed; the list is one table with a row per file above its tests,
-and its agent column appears only when the run used the agent. Run-level errors appear above the test failures. Large
+and its agent column appears only when the run used the agent. Run-level
+errors appear above the test failures. Large
 reports are shortened to fit GitHub's comment limit. Text from the app under
 test that GitHub would turn into a mention, an issue link, or a URL is shown
 as code, so a screen reading `@someone` or `https://...` notifies no one and
@@ -128,16 +131,11 @@ passes:
           GITHUB_TOKEN: ${{ github.token }}
 ```
 
-The rerun's own report lists the tests it left out as unselected, which on
-its own would shrink the comment to the few tests it ran again. The reporter
-folds the rerun into the run it selected from instead: the tests the rerun
-left out keep their results from the first pass, a test that failed and then
-passed shows as flaky with both passes' attempts, a test that failed twice
-stays failed, and the counts cover the whole suite. A `--repeat-each` first
-pass folds its repeats into the rerun's one result; a serial group's members
-keep the first pass's attempts. The comment ends up saying what the job's
-status says, and stays red when another filter kept a failed test out of the
-rerun, since it still lists that failure.
+The comment covers the whole suite, not only the tests the rerun ran again.
+A test that failed and then passed shows as flaky, a test that failed twice
+stays failed, and the rest keep their first-pass results. The comment
+matches the job's status: it stays red when another filter kept a failed
+test out of the rerun.
 
 ## Matrix jobs
 

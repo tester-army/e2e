@@ -50,12 +50,6 @@ Typed values replay as recorded, even when an earlier run left the same
 value on screen. Secret fills resolve the current value by name and run
 through authorization again.
 
-After an action, the wait for a visible change starts when the action
-finishes. Time spent capturing the screen counts toward that wait. Replay
-still checks that consecutive captures agree after actions that can move or
-replace the screen. Empty navigation captures without permitted screenshot
-evidence keep polling within the stability window.
-
 ## What must match
 
 A cache entry belongs to a specific test, target, instruction, and set of
@@ -79,15 +73,9 @@ Use `unique()` for data the flow enters or checks. Keep choices that change
 the flow, such as a plan name, as ordinary params. The substitution covers
 the value as a URL spells it too, `%20` in a path or `+` in a search query.
 
-The recording is text with no note of which param each value came from, so
-a `unique()` value must be told apart from the other params. When it equals
-another param's value, is spelled inside one, or is one's URL-encoded form
-(a run-unique title that happens to read `Daily` next to `frequency:
-'Daily'`), the step runs and passes as usual but is not recorded, and
-`step.cache.notRecorded` in the report reads `param-collision`. The next
-run, with a value of its own, records it. The recorded verdict summary is
-kept as the model wrote it during the recording run; only inputs, control
-descriptors, paths, and anchors carry the substitution.
+When a `unique()` value equals another param's value or appears inside one,
+the step passes but is not recorded, and `step.cache.notRecorded` reads
+`param-collision`. The next run, with a fresh value, records it.
 
 For preview URLs that change on each deploy, set
 [`identity`](/reference/config#the-app-under-test) to keep the same cache
@@ -133,11 +121,11 @@ Cancelling a run leaves the cache unchanged.
 | `no-entry` | No recording matches this step and its params. | The next verified pass records it. |
 | `retry` | Retries never replay. | Nothing. |
 | `invalid-entry` | The file is unreadable, over 1 MiB, or from another schema version. | `npx e2e cache clear`. |
-| `truncated` | More than 50 actions, which only a step whose `maxSteps` is raised above 50 can commit (the default budget of 25 ends the step first; consecutive identical scrolls count once), a typed value or URL over 4,096 characters or containing a registered secret, or a control with no usable description. | Split the step, or pass the secret as a `Secret`. |
+| `truncated` | The recording hit a limit, see [below](#limits-and-gaps). | Split the step, or pass the secret as a `Secret`. |
 | `wrong-context` | The app was on another screen than when the step was recorded: a different route, not a different record, query, or fragment. | Open the same screen before the step. |
 | `target-not-found` | A recorded control did not appear within 15 seconds. | The UI changed. The next passing run re-records. |
-| `target-ambiguous` | The number of matching controls changed. A point tap or hover recorded inside a control that now has look-alikes replays on the one the point lies in when exactly one does, and at the recorded point when several nested ones do (a host view and the view inside it, an anonymous container among its kind); look-alikes that overlap without nesting still hand off. | Give repeated controls distinct names or use unique test data. |
-| `gap` | An action cannot be replayed: a mutating project tool, or a value the agent read off the screen, typed after it was shown a screenshot, or reckoned from the date. Read off the screen means the whole name or text of a control (`whole-node`), or a token with a digit in it (a code, a reference the app minted) shown as a word of its own (`minted-token`); a plain word that also appears inside a sentence on screen does not count. For a value, `step.cache.derived` names the rule: `whole-node`, `minted-token`, `date`, or `pixels`. A value the agent composed itself, or one from the instruction or `params`, replays. | The agent continues this part live. Put stable values in `params`. |
+| `target-ambiguous` | The number of matching controls changed. | Give repeated controls distinct names or use unique test data. |
+| `gap` | An action cannot be replayed, see [below](#limits-and-gaps). | The agent continues this part live. Put stable values in `params`. |
 | `action-failed` | The app rejected a replayed action. | Check the app. |
 | `action-uncertain` | A replayed action failed with an unknown commit state. The agent is told to check before acting again. | Check the app. |
 | `viewport-changed` | A bare-point tap or hover was recorded on a viewport of another size. | Keep the viewport fixed. |
@@ -146,6 +134,20 @@ Cancelling a run leaves the cache unchanged.
 A stop before any action ran is a miss. After replay starts, it is a
 hand-off. Unique test data and cleanup in `afterEach` help avoid stale
 state between runs.
+
+### Limits and gaps
+
+A recording is `truncated` when the step took more than 50 actions (only
+possible with `maxSteps` raised above 50), typed a value or URL over 4,096
+characters or one holding a registered secret, or acted on a control with no
+usable description.
+
+A `gap` is an action the cache cannot repeat: a mutating
+[project tool](/tools), or a value the agent read off the screen, typed after
+seeing a screenshot, or worked out from the date. `step.cache.derived` names
+the rule: `whole-node` (a control's whole name or text), `minted-token` (a
+code or id the app showed as its own word), `date`, or `pixels`. Values from
+the instruction or `params`, or ones the agent composed itself, replay.
 
 ## What a recording holds
 
@@ -156,7 +158,8 @@ controls that appeared during the step.
 
 Entries contain no prompts, conversations, screenshots, observed trees, or
 secret values. A secret fill stores only the secret's name. Other typed
-values are stored verbatim, so review recordings before sharing them.
+values are stored verbatim, so review recordings before sharing them; see
+[cache trust](/security#cache-trust).
 
 ## Modes
 
@@ -188,19 +191,21 @@ read-only in CI. `e2e explore` and `e2e mcp` do not use the cache. See the
 own and CI starts with none. To share replays, remove that line and commit
 the directory. CI stays `read-only` unless you set `cache: 'read-write'`.
 Treat committed entries as test data and review them in the pull request
-that re-recorded them. A step the cache replayed whole never rewrites its
-entry, and a re-recording whose actions, paths, and anchors match the stored
-entry is not written either (only the summary and the measured end wait
-differ between two live runs of the same flow), so local runs leave a
-committed directory clean. A file changes when
-a step records for the first time, when the agent finishes a step after a
-hand-off (the entry is re-recorded with the controls and end state it saw),
-or when an entry is deleted: a step that failed after replaying, an
-end-mismatch the agent had to act to repair, or an entry no verification
-step confirmed by the end of the attempt. The cost of never rewriting a
-replayed entry: a replay that still finds every control refreshes none of
-its descriptors, anchors, or end wait, so a UI that drifts is repaired only
-when a control can no longer be found and the agent takes that step over.
+that re-recorded them.
+
+Local runs leave a committed directory clean unless something changed. A
+replayed step never rewrites its entry, and a live re-recording with the same
+actions, paths, and anchors is not written. A file changes when:
+
+- a step records for the first time,
+- the agent finishes a step after a hand-off, re-recording what it saw,
+- a step fails after replaying, or ends in an `end-mismatch` the agent had
+  to repair, which deletes the entry,
+- no verification step confirmed the entry by the end of the attempt, which
+  deletes it.
+
+A replay that still finds every control refreshes nothing, so an entry for a
+drifting UI is repaired only once a control can no longer be found.
 
 ## Fail on a stale recording
 

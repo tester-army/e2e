@@ -106,20 +106,19 @@ The password comes from [configured credentials](/authentication).
 | `device.takeScreenshot()` | `app.screenshot('label')`, subject to the secret policy |
 | `:ios:` / `:android:` in a test name | `{ platforms: ['ios'] }` on the test |
 
-Where the behaviour differs from Detox's:
+Where the behavior differs from Detox's:
 
-- Actions and single-node reads or assertions fail on multiple matches with
-  `LOCATOR_AMBIGUOUS`. Narrow with `.filter()` or `.nth()`.
-- The device engine does not support `test.setup` and `{ session }`.
-  Sign in per test or seed the app's state.
+- Several matches fail with `LOCATOR_AMBIGUOUS`. Narrow with `.filter()`,
+  `.first()`, or `.nth()`, see [screen](/reference/screen).
+- No `test.setup` or `{ session }` on a device, see
+  [what differs from the web](/mobile#what-differs-from-the-web).
 
 `by.text` is an exact match in Detox and `getByText` is exact here too.
 
 ## What to migrate first
 
-Start with one flow that needs frequent maintenance. Use `agent.act` for its
-goal and keep exact checks as `expect` assertions. If screens take time to
-settle, configure the engine's
+Start with a flow that needs frequent maintenance. If its screens take time
+to settle, configure the engine's
 [`settle` and `transition` options](/reference/mobile#engine).
 
 <CardGroup cols={2}>

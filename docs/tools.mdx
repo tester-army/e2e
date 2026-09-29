@@ -14,16 +14,14 @@ import { web } from '@e2e-dev/web';
 import { gateway, tool } from 'ai';
 import { z } from 'zod';
 
+const APP_URL = 'http://localhost:3000';
+
 const seedCart = defineTool(
   tool({
     description: 'Seed the cart with a SKU via the store test API',
     inputSchema: z.object({ sku: z.string() }),
     execute: async ({ sku }) => {
-      const baseUrl = new URL(process.env.APP_URL ?? 'http://localhost:3000');
-      baseUrl.pathname = `${baseUrl.pathname.replace(/\/+$/, '')}/`;
-      const url = new URL('api/test/cart', baseUrl);
-      url.searchParams.set('sku', sku);
-      const response = await fetch(url);
+      const response = await fetch(`${APP_URL}/api/test/cart?sku=${encodeURIComponent(sku)}`);
       if (!response.ok) throw new Error(`Cart seeding failed: HTTP ${response.status}`);
       return response.text();
     },
@@ -32,7 +30,7 @@ const seedCart = defineTool(
 );
 
 export default {
-  targets: [{ engine: web({ url: process.env.APP_URL ?? 'http://localhost:3000' }) }],
+  targets: [{ engine: web({ url: APP_URL }) }],
   agents: { default: { model: gateway('openai/gpt-6-luna-fast'), tools: { seedCart } } },
 } satisfies E2EConfig;
 ```
@@ -57,7 +55,7 @@ the built-in agent: an entry with a custom `executor` cannot also set
 
 | Annotation | Meaning |
 | --- | --- |
-| `mutates: true` | Changes state. The runner reserves an action slot and runs the tool in the action queue. The call creates a replay gap in the [replay cache](/cache). |
+| `mutates: true` | Changes state. The call counts against the step's action budget and runs in order with the other actions. The [replay cache](/cache) cannot replay it, so the agent runs that part of the step live. |
 | `mutates: false` | Read-only. Runs without an action slot and may observe the screen. |
 | `platforms: ['ios', 'android']` | Offers the tool only on those platforms. Omit this to offer it on every target. |
 
@@ -95,8 +93,9 @@ const captureEvidence = defineTool(
 ```
 
 `observe()` returns a redacted text snapshot. Request `tree: true` for the
-node tree or `pixels: true` for a masked screenshot. The same restrictions
-apply as for the built-in agent, including withholding pixels after a secret fill.
+node tree or `pixels: true` for a masked screenshot. The built-in agent's
+restrictions apply, including no pixels
+[after a secret fill](/security#screenshots-after-a-secret-fill).
 
 Observe in a separate read-only tool. A mutating tool already occupies the
 action queue, so observing from inside it would wait on its own operation.
@@ -107,7 +106,9 @@ overwriting an earlier image.
 
 ## Device toolkits
 
-`@e2e-dev/mobile` ships a ready tool pack for its engine:
+`@e2e-dev/mobile` ships a ready tool pack for its engine. Pass every device
+engine to one `mobileTools` call, and spread the pack to add your own tools
+beside it:
 
 ```ts
 import type { E2EConfig } from 'e2e';
@@ -116,19 +117,23 @@ import { mobileTools } from '@e2e-dev/mobile/tools';
 import { gateway } from 'ai';
 
 const iphone = mobile({ platform: 'ios', app: 'Settings' });
+const pixel = mobile({ platform: 'android', app: 'com.android.settings' });
 
 export default {
-  targets: [{ engine: iphone }],
+  targets: [
+    { name: 'iphone', engine: iphone },
+    { name: 'pixel', engine: pixel },
+  ],
   agents: {
     default: {
       model: gateway('openai/gpt-6-luna-fast'),
-      tools: mobileTools(iphone),
+      tools: { ...mobileTools(iphone, pixel) /* , ...your own tools */ },
     },
   },
 } satisfies E2EConfig;
 ```
 
-It adds `open_app`, `swipe`, and `alert` on device targets.
+The pack adds `open_app`, `swipe`, and `alert` on device targets.
 Screenshots and point actions come from the engine's built-in tools.
 See the [Mobile engine reference](/reference/mobile#agent-tools).
 

@@ -20,10 +20,6 @@ export DO_NOT_TRACK=1                    # the cross-tool convention
 
 `npx e2e telemetry` prints the status and, when it is off, why.
 `enable` reverses a saved `disable`. Environment variables take precedence.
-A source checkout of the e2e repository sends nothing either: the CLI run
-from `packages/e2e/dist`, with the package's `src` beside it, reports
-`running from a source checkout of e2e`, so working on e2e never counts as
-usage. An installed or unpacked package ships no `src` and is unaffected.
 Running commands check the saved setting again before sending, so disabling
 telemetry also applies to commands already running in another terminal.
 

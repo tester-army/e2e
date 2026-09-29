@@ -95,19 +95,16 @@ Override worker and retry defaults with flags:
 npx e2e run --workers 4 --retries 0
 ```
 
-[Telemetry](/telemetry) attributes CI runs to the vendor rather than to a
-machine and prints no notice. Add `E2E_TELEMETRY_DISABLED: '1'` to the job's
-`env` to send nothing from CI.
+Add `E2E_TELEMETRY_DISABLED: '1'` to the job's `env` to send no
+[telemetry](/telemetry#in-ci) from CI.
 
 ## Sharding
 
 `--shard <index/total>` runs one slice of the suite per job. Every job runs
-the same command with its own index; the slice is cut from the report order
-once every other filter applied, so the same suite shards the same way on
-every machine, a serial group is never split, and each shard brings only the
-setup tests its own tests need. A shard that gets no test fails with
-`NO_TESTS`; add `--pass-with-no-tests` when a matrix may have more shards than
-tests.
+the same command with its own index, and the same suite shards the same way
+on every machine. A shard that gets no test fails with `NO_TESTS`; add
+`--pass-with-no-tests` when a matrix may have more shards than tests. The
+[CLI reference](/reference/cli#flags) has the slicing rules.
 
 ```yaml
 jobs:
@@ -128,14 +125,10 @@ implemented yet.
 ## Rerunning failures
 
 `--last-failed` runs only the tests the previous run did not pass, read from
-`.e2e/report.json` (under the [`output`](/reference/config#output) the run
-uses) before the new run overwrites it. The rerun empties `.e2e/artifacts/`
-when it starts, so upload the first run's artifacts before rerunning in the
-same job if you want both. A `beforeAll` or
-`afterAll` that failed brings back every test in its describe or file on that
-target, even one whose body passed, until a rerun of those tests passes the
-hook; in a setup's file, the tests that consume its session. Locally it is the loop after
-a red run:
+`.e2e/report.json`. The rerun empties `.e2e/artifacts/` when it starts, so
+upload the first run's artifacts before rerunning in the same job if you want
+both. The [CLI reference](/reference/cli#flags) lists what counts as not
+passed. Locally it is the loop after a red run:
 
 ```bash
 npx e2e run
@@ -178,18 +171,8 @@ end as `interrupted`, and the job exits 1.
 
 ## Exit codes
 
-Any non-zero exit fails the job.
-
-| Code | Meaning |
-| --- | --- |
-| `1` | Test failure |
-| `2` | Configuration, collection, or policy error |
-| `3` | Infrastructure failure |
-| `4` | Internal runner error |
-| `130` | Cancellation |
-
-Fix configuration and collection errors before retrying. For infrastructure
-failures, inspect the error to decide whether a retry could help.
+Any non-zero exit fails the job. [Debugging a run](/debugging#read-the-failure)
+lists each code and whether a retry of the job can help.
 
 <CardGroup cols={2}>
   <Card title="Pull request comments" icon="code-pull-request" href="/github">

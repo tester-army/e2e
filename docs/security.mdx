@@ -17,21 +17,20 @@ you would test code.
 
 Model requests separate runner policy and trusted project context from app
 content. App content cannot grant tools, credentials, or a larger budget.
+[How agent steps work](/agent-steps) explains what a step shows the model and
+what it may do; this page lists the trust boundary.
 
 | In the prompt | Form |
 | --- | --- |
 | Your instruction and params | Quoted inside `<instruction>` and marked as data. A `Secret` param is projected to its name and purpose. |
-| The screen | An accessibility tree with stable node ids, roles, names, text, test ids, link targets, and states, truncated at the observation byte limit. Selectors are stripped. A link target on the app URL's origin shows as its path, any other as origin and path; its query and fragment, where tokens ride, show only as `?…` and `#…`, and an inline `data:` or `javascript:` payload as `data:…` or `javascript:…`. `mailto:`, `tel:`, and `blob:` targets keep their scheme. |
+| The screen | An accessibility tree with node ids, roles, names, text, test ids, link targets, and states, cut at a size limit. No selectors. A link's query and fragment, where tokens ride, show only as `?…` and `#…`. |
 | The location | The current URL, redacted. |
 | A screenshot | When needed or requested, only if the engine proves secure fields are masked and no secret has been filled in the attempt. |
 | Prior steps | `agent.act` receives bounded records from the same test or serial group. Judgments use the current screen and instruction, without prior-step records. |
 
 Secure fields appear as `value=<secure>`. Known secret values in model input
-and reports become `<secret:name>`, and a plain field whose value holds one
-lists no `selection`, since a selection over part of a secret would not match
-it. Neither does a field cut at its length limit when the selection is not in
-the part shown, since the rest may hold one. This redaction has limits for
-transformed values, images, and app logs, described below.
+and reports become `<secret:name>`. This [redaction](#redaction) has limits
+for transformed values, images, and app logs.
 
 ## What the model may do
 
@@ -39,20 +38,11 @@ Built-in tools have closed schemas and are offered only when the engine
 supports them. Project tools must use `defineTool` and cannot replace a
 built-in name. Only read-only project tools may request an observation.
 
-A call outside that vocabulary never runs. A tool name the step does not
-offer is refused with the names it may use; an argument a schema does not
-declare fails the closed schema, and the refusal names the field. Either
-refusal is the call's result: the model's next turn is its repair, and
-refusals count toward the failure streak that forces a verdict. Neither is
-`POLICY_DENIED`.
-
-Element actions resolve node ids against the current observation. A node id
-that is not on the current screen fails the action with `LOCATOR_NOT_FOUND`,
-and the result carries the screen again so the model can re-aim; that is an
-action failure, not a policy denial. Pixel tools can act on coordinates when
-screenshots are permitted. The runner does not evaluate model text as code,
-selectors, shell commands, or config. Each step has a deadline and a
-model-call budget.
+A call to a tool the step does not offer, or with an argument its schema does
+not declare, never runs: the model reads the refusal and tries again. A node
+id that is not on the current screen fails the action with
+`LOCATOR_NOT_FOUND`. The runner never evaluates model text as code,
+selectors, shell commands, or config.
 
 A tool call that breaks a rule fails with `POLICY_DENIED`:
 
@@ -109,65 +99,46 @@ A deterministic `fill(secret)` uses the field chosen by test code without
 those model-directed field checks. It still registers the value for
 redaction and disables pixels for the rest of the attempt.
 
-After any secret fill, screenshot and pixel tools are unavailable,
-`app.screenshot()` is denied, and the runner omits assertion and failure
-screenshots. The app could display the value anywhere, beyond the field's
-masked rectangle.
+### Screenshots after a secret fill
+
+After any secret fill, for the rest of the attempt, screenshot and pixel
+tools are unavailable, `app.screenshot()` is denied, and the runner omits
+assertion and failure screenshots. The app could display the value anywhere,
+beyond the field's masked rectangle.
+
+A test that restores a [session](#sessions) whose setup filled a secret keeps
+this protection. A setup that signs in without filling a secret, for example
+by setting a session cookie with `web.setCookies`, leaves screenshots
+available to the tests that restore it. A value it uses that is not a
+configured secret is not redacted.
+
+### Secrets in engine options
 
 A secret an engine option holds (`web({ basicAuth: { password: secrets.get(name) } })`)
 is resolved on the host when each attempt starts and registered for redaction
 then. It is not a fill and does not disable pixels: the value goes to the
 engine, not into the page. The Playwright trace records the options the
-browser context opened with, the password included, so the runner rewrites
-the trace of such an attempt as it does after a fill, and drops its
-screencast frames too, since a page can render what the engine was handed.
+browser opened with, the password included, so the runner rewrites that
+attempt's trace as it does after a fill and drops its screencast frames.
 
-The redactor matches each registered value character by character, in every
-spelling a serializer gives a character: as is; JSON-escaped once or twice,
-including `\uXXXX` escapes in either hex case; as an HTML character
-reference, named, decimal, or hex; percent-encoded in either hex case,
-with `+` for a space; and a double quote doubled, as CSV writes it. Each
-character also matches in either case, including full and locale-specific
-mappings (`ß` as `SS`, `i` as `İ`), so a value a CSS `text-transform`
-upper-cases, lower-cases, or capitalizes is still caught. A whitespace run
-inside the value also matches any shorter run of whitespace, down to the one
-space a text reader collapses it to, and a value with whitespace at either end
-also matches trimmed, so a multi-line value shown as one line is caught too,
-in a trace resource as well as in the report. Redaction only rewrites what the runner
-reports; assertions still compare the text the page shows. It retains old
-values after a secret rotates, and never rewrites a marker it wrote, so text
-that passes it twice reads as text that passed once. Secret values are
-excluded from cache entries, model input, and reports.
+### Redaction
 
-An observed name, text, value, or selection the engine cut at its length
-limit can end partway through a secret. When a field exactly at its limit
-ends with the start of a registered value, 8 characters or more (half of a
-value shorter than 16), that part becomes `<secret:name>` too, in either
-case: the engine cuts the text as rendered, so a value a CSS `text-transform`
-upper-cases is cut upper-cased. Two forms whole values match are not followed
-here: a case mapping that changes the length (`ß` as `SS`) and a whitespace
-run collapsed to one space. A shorter start is left as it is: it says little
-about the value, and masking it would take ordinary text that happens to end
-the same way and tell the model the value's first characters. A field that happens to be exactly that long
-uncut loses its last characters the same way, since the runner cannot tell
-the two apart.
+The runner replaces every occurrence of a registered secret value with
+`<secret:name>` in model input, reports, a worker process's console output,
+and the trace text of a session a secret was filled on or an engine option
+holds. It matches the value as written, JSON-escaped, HTML-escaped, and
+percent-encoded, in any letter case (so a CSS `text-transform` does not hide
+it), and with its whitespace collapsed. Text cut at a length limit is masked
+too when it ends with the first 8 or more characters of a value (half of a
+value shorter than 16). Redaction rewrites only what the runner reports;
+assertions still compare the text the page shows. Secret values never enter
+cache entries.
 
-A static value shorter than 6 characters (code points) is `INVALID_CONFIG`,
-and a provider returning one fails the fill. Every occurrence of a value
-becomes `<secret:name>`, so a value that short would take ordinary text with
-it.
-
-A test's console output is redacted in the worker before it leaves, across
-writes: a value split over two `process.stdout.write` calls, or over the
-chunks of a piped child's output, is still caught, a multibyte character
-split between chunks included, and a `<secret:name>` marker split the same
-way reaches the reporter whole. A run whose tests execute
-in the runner's own process, the path an embedding host takes when it
-supplies its config or tests in memory rather than from a file, has no such
-hook; its console output reaches the runner's streams as written.
+A static value shorter than 6 characters is `INVALID_CONFIG`, and a provider
+returning one fails the fill: every occurrence of so short a value would take
+ordinary text with it.
 
 ### Where redaction stops
-
 
 - A transformed form of the value, such as its last four characters, is not
   the secret and passes through.
@@ -175,34 +146,31 @@ hook; its console output reaches the runner's streams as written.
   a hash, is a different string and passes through.
 - A value the app renders in another Unicode normalization form, decomposed
   accents where the secret has composed ones, passes through.
-- A whitespace run between two characters of the value stands for one to as
-  many whitespace characters as it has, so text that widens it, or drops it,
-  passes through. Whitespace at either end may be dropped only while the
-  trimmed value is still 6 characters or longer; a shorter one is only
-  matched with its edge whitespace.
+- Text that widens the whitespace inside the value, or drops it, passes
+  through.
 - A value spread over several nodes, one character per cell as a PIN pad
   shows it, is not one string in the tree and passes through.
-- A Playwright trace from a tainted session is rewritten before it is kept.
-  Text entries become `<secret:name>`, and so does any run of 8 or more
-  consecutive characters of a registered value, in either case, since the
-  trace keeps what the engine read from the page before redaction: a text
-  cut at its limit partway through a secret, or a selection over part of
-  one. Plain trace text that happens to share 8 characters with a value is
-  masked too.
-  Screencast frames are dropped, since a frame cannot be rewritten. Other
-  image entries cannot be rewritten: one containing the literal secret bytes
-  is dropped, an image the app served that merely draws the secret survives.
-  A trace the runner cannot rewrite is deleted and the attempt records
-  `TRACE_WITHHELD`.
-- A video masks nothing and is labelled `redaction: "incomplete"`. It is
+- Text cut at a length limit is matched by its prefix only in the value's
+  own form: a case mapping that changes length (`ß` shown as `SS`) or
+  whitespace collapsed to one space escapes the prefix rule.
+- When tests run in the runner's own process, with the config or tests
+  passed in memory by an embedding host, their console output is not
+  redacted.
+- A Playwright trace from a session a secret was filled on is rewritten
+  before it is kept: any run of 8 or more characters of a value becomes
+  `<secret:name>`, so unrelated text that shares 8 characters with a value is
+  masked too. Screencast frames are dropped. An image the app served that
+  draws the secret survives. A trace the runner cannot rewrite is deleted and
+  the attempt records `TRACE_WITHHELD`.
+- A video masks nothing and is labeled `redaction: "incomplete"`. It is
   never recorded unless you ask. A recording a hosted browser or
   device service keeps stays with that service; the report holds only its
   URL.
 - A download is what the app served. After a secret fill on the session, a
-  text download (`text/*` or JSON by file extension) is rewritten through
-  the ledger, the way trace text is, and labelled `redaction: "complete"`.
-  Any other download, a binary or one from a session no secret was filled
-  on, is kept as served and labelled `redaction: "incomplete"`.
+  text download (`text/*` or JSON by file extension) is rewritten the way
+  trace text is and labeled `redaction: "complete"`. Any other download, a
+  binary or one from a session no secret was filled on, is kept as served
+  and labeled `redaction: "incomplete"`.
 - The `headers` a protected preview needs are recorded in the trace as
   request headers. Share that trace as you would the bypass secret.
 - `command.log` and service logs are captured as the process writes them.
@@ -298,9 +266,8 @@ additional connections.
 allows four open sessions at once by default
 ([`--max-sessions`](/reference/mcp), 1 through 16) and closes idle sessions.
 
-`e2e explore` carries every configured credential into every step. Usernames
-reach the model as plain text; passwords stay handles. Explore with a config
-that declares only the accounts the exploration needs.
+`e2e explore` offers every configured credential to every step; see
+[Exploring without a test](/explore#your-config-applies).
 
 ## Reporting a vulnerability
 

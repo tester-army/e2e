@@ -33,7 +33,7 @@ findings end the run.
 | --- | --- | --- | --- |
 | Exploration steps | 8 | 1 to 12 | `--max-steps <n>` |
 | Wall clock | 10 minutes | 3 to 15 minutes | `--timeout <ms>` |
-| Actions and model calls per step | 40 each | from the agent's `maxSteps` and `maxModelCalls` | config |
+| Actions and model calls per step | 40 each, unless the agent sets `maxSteps` or `maxModelCalls` | 1 to 100 | config |
 
 Start with the defaults. Increase the step or time budget when the report
 shows that the run stopped before reaching the part of the flow you need.
@@ -75,15 +75,13 @@ reproduction steps, and any screenshot evidence. Severity runs from
 `trivial` at 1 to `critical` at 5.
 
 The JSON report stores these details under `run.explore`, along with the
-goal, budgets, steps, assessment, and reason the run ended. After a secret
-fill, screenshots are withheld for the rest of the attempt, including a fill
-in the setup test of a [restored session](#start-signed-in).
+goal, budgets, steps, assessment, and reason the run ended. Findings carry no
+screenshots once a secret is filled; see
+[screenshots after a secret fill](/security#screenshots-after-a-secret-fill).
 
-Evidence and the run's other artifacts land in a directory named from the
-goal's first words and a digest of the whole goal, for example
-`.e2e/artifacts/web/explore-check-the-cart-totals-1a2b3c4d5e6f7a8b/default/attempt-0/finding-1.png`.
-A rerun of the same goal writes to the same directory, and the digest keeps
-different goals apart.
+Evidence lands in a directory named after the goal, such as
+`.e2e/artifacts/web/explore-check-the-cart-totals-1a2b3c4d5e6f7a8b/`. A rerun
+of the same goal writes to the same directory.
 
 `--reporter list,markdown` also writes the findings to `.e2e/summary.md`.
 `--debug`, `--ai-trace`, `--trace`, and `--video` work as they do for
@@ -117,28 +115,20 @@ a [setup test](/authentication) in your test files saves:
 npx e2e explore --session admin 'Explore the admin settings and find bugs'
 ```
 
-Explore collects the config's test files, runs the one setup test that
-declares the session, then restores the session into the exploration and,
-when the target declares a URL, opens the app. This works the same way as a test that declares
-`{ session: 'admin' }`. No other test runs. The setup test runs as it does
-for `e2e run`, with your configured agents, replay cache, and retries; only
-the exploration runs as the explorer. The planner and the agent are
-told the app starts signed in, so they do not plan a sign-in step. If no
-setup test declares the name, the run stops with `COLLECTION_ERROR` before
-any app process starts. The message lists the sessions your setup tests
-declare.
+Explore runs the one setup test that declares the session, restores the
+session, and opens the app when the target declares a URL, as for a test
+that declares `{ session: 'admin' }`. No other test runs. The setup test
+runs as it does for `e2e run`, with your configured agents, replay cache,
+and retries. The explorer is told the app starts signed in, so it does not
+plan a sign-in step.
 
-Screenshots depend on how the setup signed in. Once a secret is filled, the
-runner withholds screenshots for the rest of the attempt, and a restored
-session keeps that protection:
+If no setup test declares the name, the run stops with `COLLECTION_ERROR`
+before any app process starts. The message lists the sessions your setup
+tests declare.
 
-| The setup | Findings in the exploration |
-| --- | --- |
-| Filled a password or other secret, for example `fill(admin.password)` | No screenshots |
-| Signed in without filling a secret, for example by setting a session cookie with `web.setCookies` | Screenshots attached when the engine captures them |
-
-A value the setup uses without it being a configured secret, such as a
-token it sets as a cookie, is not redacted from observations or reports.
+A setup that fills a password leaves the exploration without screenshots. To
+keep them, sign in without filling a secret; see
+[screenshots after a secret fill](/security#screenshots-after-a-secret-fill).
 
 ## Writing a good goal
 

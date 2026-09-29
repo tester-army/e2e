@@ -6,9 +6,9 @@ description: Customize the agent loop or implement your own step executor.
 Use a custom executor when a `system` prompt and [project tools](/tools) are
 not enough. There are two options:
 
-1. `createToolLoopExecutor` keeps the built-in loop with your prompt and
-   tools. It handles budgets, repeated-call detection, verdicts, usage
-   accounting, and debug transcripts.
+1. `createToolLoopExecutor` keeps the built-in loop: budgets, repeated-call
+   detection, verdicts, usage accounting, and debug transcripts. Your tools
+   replace the built-in actions; the loop adds only `complete_step`.
 2. `StepExecutor` lets you implement `runStep(ctx)` yourself. A model and
    the AI SDK are optional; the `e2e` and `e2e/engine` types compile with no
    `ai` package installed.
@@ -16,53 +16,45 @@ not enough. There are two options:
 Both receive a deadline, redacted observations, and checked action methods.
 The runner records their verdicts. Either goes under `executor` in an agents
 entry, beside the options that still apply: `model`, `judge`, `context`, and
-the budgets. `system` and `tools` belong to the built-in agent, so an entry
-with `executor` rejects them.
+the budgets. An entry with `executor` rejects `system` and `tools`; pass
+them to `createToolLoopExecutor` instead.
 
 ## Keep the loop, change the vocabulary
 
-This example gives the agent tools to read the screen and tap a button by
-its accessible name.
+This example gives the agent two tools: one reads the screen, one taps a
+node by its id.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
 import { createToolLoopExecutor } from 'e2e/agent';
-import { web, surfaceOf } from '@e2e-dev/web';
+import { web } from '@e2e-dev/web';
 import { gateway, tool } from 'ai';
 import { z } from 'zod';
 
-const engine = web({ url: 'http://localhost:3000' });
-
 export default {
-  targets: [{ engine }],
+  targets: [{ engine: web({ url: 'http://localhost:3000' }) }],
   agents: {
     default: {
       model: gateway('openai/gpt-6-luna-fast'),
       maxModelCalls: 15,
       executor: createToolLoopExecutor({
-        name: 'button-agent',
-        system: 'Read the screen before acting. Address buttons by their visible label.',
+        name: 'tap-only',
+        system: 'Read the screen before acting. Tap controls by their id from the latest read.',
         buildPrompt: (ctx) => ctx.step.instruction,
         tools: (ctx, { guard }) => ({
-          observe: tool({
-            description: 'Read the screen as text',
+          read_screen: tool({
+            description: 'Read the screen as text, one node per line as #id role "name"',
             inputSchema: z.object({}),
-            execute: () =>
-              guard(() => ctx.budgets.runTool({ name: 'observe', mutates: false }, async () => {
-                const observation = await ctx.observe();
-                return observation.text;
-              })),
+            execute: () => guard(async () => (await ctx.observe()).text),
           }),
           tap: tool({
-            description: 'Tap a button by its visible label',
-            inputSchema: z.object({ label: z.string() }),
-            execute: ({ label }) =>
-              guard(() => ctx.budgets.runTool({ name: 'tap', mutates: true }, async () => {
-                await surfaceOf(engine)!.page().getByRole('button', { name: label, exact: true }).click({
-                  timeout: Math.max(1, ctx.budgets.remainingMs()),
-                });
-                return `Tapped ${label}.`;
-              })),
+            description: 'Tap a node by its id from the latest read_screen',
+            inputSchema: z.object({ id: z.string() }),
+            execute: ({ id }) =>
+              guard(async () => {
+                await ctx.actions.tap({ id: id.replace(/^#/, '') });
+                return `Tapped ${id}.`;
+              }),
           }),
         }),
       }),
@@ -77,13 +69,22 @@ brings its own, and its model turns per step are the entry's `maxModelCalls`.
 between turns to shorten the history or return `{ messages, stop }` when
 the step is not progressing.
 
-`guard()` stops new tool calls once the step is concluding. `runTool` reserves
-an action slot, serializes mutations, and records the outcome.
+`guard()` stops new tool calls once the step is concluding and hands a
+failure back to the model as text. `ctx.actions` authorizes, counts, and
+records each action, so these steps replay from the [cache](/cache) like the
+built-in agent's and run on any engine that supports `tap`.
 
-A mutating tool must call its engine directly, as `tap` does above. Calling
-`ctx.actions` or `ctx.observe` from inside it would queue work behind its own
-operation and deadlock. Keep tool bodies short and support cancellation. The
-step deadline cannot cancel an underlying operation that ignores its signal.
+A tool that works outside `ctx.actions`, such as a call to your test API,
+wraps its body in `ctx.budgets.runTool({ name, mutates })` to take an action
+slot and record the outcome. Never call `ctx.actions` or `ctx.observe` inside
+`runTool`: the call queues behind its own operation and deadlocks. Keep tool
+bodies short and support cancellation. The step deadline cannot cancel an
+underlying operation that ignores its signal.
+
+A custom executor can bring its own `model` or `judge`, as
+`createToolLoopExecutor({ model })` does. If the agents entry sets one too,
+they must name the same provider and model, or the config load fails with
+`INVALID_CONFIG`.
 
 ## Replace the executor
 
@@ -131,7 +132,7 @@ The executor receives this context:
 | `ctx.observe({ tree, pixels })` | Redacted screen text, with an optional node tree and masked screenshot |
 | `ctx.actions` | Checked and recorded actions: `tap`, `doubleTap`, `longPress`, `secondaryTap`, `hover`, `type`, `typeSecret`, `press`, `select`, `check`, `drag`, `scrollTo`, `scrollUntil`, `upload`, `scroll`, `navigate`, `back`, and the point and keyboard verbs below |
 | `ctx.target` | The target's `name` and `platform`, and `verbs`, the actions its engine supports. Offer only these to the model. |
-| `ctx.pixelsTainted` | True after a secret fill. Screenshots are withheld for the rest of the attempt. |
+| `ctx.pixelsTainted` | True after a [secret fill](/security#screenshots-after-a-secret-fill), when no screenshots are available |
 | `ctx.signal` | Aborts on cancellation, at the step deadline, or on any other hard stop. Stop promptly when it fires |
 | `ctx.replayedPrefix` | Set when a cache replay ran part of the step before handing it over: the replayed actions and why replay stopped |
 | `ctx.model`, `ctx.providerOptions` | The agent's configured model and `providerOptions`, when set |
@@ -160,11 +161,13 @@ Secrets in params arrive as name-only placeholders.
 `ctx.actions.typeSecret(target, name)` fills an authorized field without
 passing the plaintext through your executor.
 
+### What the executor handles
+
 A custom executor handles `act` and `assert` through `runStep`. Both use the
-act budgets and default to `config.timeout`. The `assert` option `vision`
-raises `UNSUPPORTED_CAPABILITY` because your executor chooses its
-observations; `screenshot` still works, because the runner takes that
-evidence after your verdict and attaches it to the step.
+agent's `maxSteps` and `maxModelCalls` and default to the configured
+`timeout`. On `assert`, `vision` raises `UNSUPPORTED_CAPABILITY`, since your
+executor chooses what it observes; `screenshot` still attaches evidence after
+your verdict.
 
 `waitFor` and `extract` still use the built-in judgments. They require a
 configured model and raise `MODEL_UNAVAILABLE` without one.

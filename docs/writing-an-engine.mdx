@@ -41,7 +41,7 @@ This skeleton assumes a `createClient` adapter for your platform. Its nodes
 must follow the semantic tree contract described below.
 
 ```ts title="src/index.ts"
-import { defineEngine, type EngineHandle } from 'e2e/engine';
+import { defineEngine, resolveExpression, type EngineHandle } from 'e2e/engine';
 
 export function hyperdrive(options: { device: string; app: string }): EngineHandle {
   const client = createClient(options);
@@ -61,6 +61,10 @@ export function hyperdrive(options: { device: string; app: string }): EngineHand
         root: { ref: { id: 'root', revision: '' }, role: 'window', children: screen.nodes },
         viewport: screen.viewport,
       };
+    },
+    async locate(expression) {
+      const screen = await client.snapshot();
+      return resolveExpression(expression, screen.nodes);
     },
     actions: ['tap', 'fill', 'swipe'],
     async perform(ref, action) {
@@ -84,8 +88,10 @@ targets: [{ name: 'phone', engine: hyperdrive({ device: 'iPhone 16', app: 'com.e
 
 `version` is required and forms part of the replay cache key. Change it when
 engine behavior changes. With `perform`, also declare `actions` to list the
-supported action kinds. `app` describes the app under test; `session`
-provides methods to open or restart it.
+supported action kinds. `locate` answers `screen` queries; the exported
+`resolveExpression` applies the standard query rules to a semantic tree.
+`app` describes the app under test; `session` provides methods to open or
+restart it.
 
 ## What an engine is not
 
@@ -104,21 +110,18 @@ JSON validation, and cancellation helpers. There is no internal subpath.
 
 Implement the optional methods your platform supports. Their presence
 determines the available capabilities. Calls to unsupported capabilities
-fail with `UNSUPPORTED_CAPABILITY`.
+fail with `UNSUPPORTED_CAPABILITY`. A useful engine starts with these:
 
-| Member | Capability | Unlocks |
-| --- | --- | --- |
-| `observe(context, options?)` | `observation` | Agent observations and the replay cache |
-| `perform(ref, action, context)` + `actions` | `actions` | Node actions supported by the declared kinds, including viewport scrolling through `swipe` |
-| `locate(expression, context)` | `location` | `screen`, `Locator`, and `expect(locator)` |
-| `tapModifiers: true` | | `modifiers` on the `tap`, `doubleTap`, and `secondaryTap` actions `perform` receives, held for the click; without it the runner refuses them with `UNSUPPORTED_CAPABILITY` before `perform` |
-| `performAt(point, action, context)` + `pointerActions` | `pointer` | Coordinate actions supported by the declared kinds |
-| `keyboard.{type,press,dismiss?}` | `keyboard` | Typing and key presses into the focused control; optional keyboard dismissal |
-| `state.{capture,restore}` | `state` | `test.setup` and the `session` option |
-| `artifacts.{screenshot,startTrace?,stopTrace?,startVideo?,stopVideo?}` | `artifacts` | Screenshots, plus traces and video when their start and stop hooks exist. A video is a file or a link to a hosted service's recording; see [provider recordings](/reference/engine#provider-recordings) |
-| `app` | | App address, identity, environment, and process settings. [Reference](/reference/config#the-app-under-test). |
-| `session.{open?,back?,restart?,reset?}` | | `app.open()` and the agent's `navigate` verb, `app.back()` and the agent's `back` verb, `app.restart()`, `app.clearState()` |
-| `fixtures.<name>` | `<name>` | a contributed fixture, typed through `test.extend` |
+| Member | Unlocks |
+| --- | --- |
+| `observe(context, options?)` | Agent observations and the replay cache |
+| `perform(ref, action, context)` + `actions` | Node actions of the declared kinds, including viewport scrolling through `swipe` |
+| `locate(expression, context)` | `screen`, `Locator`, and `expect(locator)` |
+| `session.{open?,back?,restart?,reset?}` | `app.open()`, `app.back()`, `app.restart()`, `app.clearState()`, and the agent's `navigate` and `back` verbs |
+
+Pointer actions, the keyboard, saved state, artifacts, and contributed
+fixtures are optional capabilities of their own; the
+[engine reference](/reference/engine#capabilities) lists every member.
 
 `actions`, `location`, `pointer`, and `keyboard` require `observe`. The agent
 receives only tools supported by the engine and the step's declared
@@ -151,8 +154,8 @@ There is no separate secure-fill capability flag. Before dispatching a
 secret fill, the runner checks the declared credential, current
 observation, and compatible editable field. The engine receives a
 `fill` action with `sensitive: true` and must handle it securely or throw
-`UNSUPPORTED_CAPABILITY`. Screenshots are withheld after a secret fill;
-`app.screenshot()` then raises `POLICY_DENIED`.
+`UNSUPPORTED_CAPABILITY`. The runner then stops taking screenshots; see
+[screenshots after a secret fill](/security#screenshots-after-a-secret-fill).
 
 An engine option can take a secret too, such as a password the engine sends
 the app. Accept `string | Secret` (tell them apart with `isSecret` from
@@ -164,34 +167,23 @@ the handle is a reference by name until then.
 
 ### Lifecycle
 
-- `prepare` runs once per target in the runner process, before the run's
-  clock starts. Install runtimes here and report progress through `info.log`.
-- `finish` runs once per target in the runner process after the last worker
-  is gone, on every exit path, whenever `prepare` was called. Release what
-  `prepare` acquired for the run (a leased cloud device). It has the cleanup
-  budget and is never cancelled by an interrupt; a failure is recorded as a
-  cleanup error.
-- `init` runs once per worker before its first attempt. Boot devices here.
-  It receives the app's site, project root, worker slot, and headed setting.
-  Its `info.log` reaches the reporter like `prepare`'s, prefixed with the
-  target and worker slot (`ios worker 1: ...`): the place for a fact that
-  only exists once the worker is up, such as the URL where a hosted browser
-  or device can be watched, or which simulator the slot got.
-- `startAttempt` and `endAttempt` surround each attempt. Create and clean up
-  the test's UI here. If startup fails or exceeds `launchTimeout`, the runner
-  aborts its signal and calls `endAttempt`, so cleanup must be idempotent.
-- `settleAttempt` runs after the body has settled and again after teardown,
-  before the verdict. An engine that runs test callbacks on a path no step
-  awaits (a request interceptor, a dialog handler) waits for one still
-  running here and throws the error it kept; the attempt fails with it, and
-  an error that is already classified keeps its code. Without the hook such
-  a failure surfaces at the next step, and a callback nothing follows would
-  pass the test.
-- `dispose` runs at worker shutdown, even if `init` never ran. The same handle
-  can later receive another `init`.
+In the order they run:
 
-Use `info.env` for spawned processes. Return environment additions from
-`prepare` in its `env` field; each worker receives them in `init`.
+- `prepare`: once per target in the runner process. Install runtimes here;
+  the `env` it returns reaches every worker.
+- `init`: once per worker before its first attempt. Boot devices here.
+- `startAttempt`: before each attempt. Create the test's UI.
+- `settleAttempt`: after the body and again after teardown. Throw the error
+  of a test callback no step awaited, such as a dialog handler.
+- `endAttempt`: after each attempt. Clean up the test's UI; it also runs
+  after a failed start, so make it idempotent.
+- `dispose`: at worker shutdown, even if `init` never ran.
+- `finish`: once per target after the last worker is gone, whenever
+  `prepare` ran. Release what `prepare` acquired.
+
+Use `info.env` for spawned processes and `info.log` to report progress. The
+[engine reference](/reference/engine#lifecycle) has each hook's arguments and
+budgets.
 
 ### Nodes and refs
 
@@ -223,6 +215,8 @@ The agent receives the screenshot and can act through tools such as `tap_at`.
 The runner passes points to `performAt` when no listed node occupies them.
 Coordinate actions replay only at the recorded viewport size, and the runner
 checks the recorded end state before accepting a replay.
+
+### Keyboard
 
 Implement `keyboard` to type into a control after the agent focuses it.
 `keyboard.type` must deliver the text as a person typing would, through the
@@ -284,24 +278,19 @@ artifact attachment, and factories for locators and assertions. For example,
 `expectable(target, factory)` adds matchers for `expect(fixture)`. See the
 [engine reference](/reference/engine) for the full context.
 
-## Scoping agent tools to a platform
+## Ship a tool pack
 
-Add [project tools](/tools) with `defineTool` on the agent. Use `platforms`
-to offer a tool only on compatible targets:
-
-```ts
-const swipe = defineTool(swipeTool(client), {
-  mutates: true,
-  platforms: ['ios', 'android'],
-});
-```
+Platform operations the action vocabulary lacks can ship as a pack of
+[project tools](/tools) built with `defineTool`, with `platforms` set so each
+tool is offered only on compatible targets. `@e2e-dev/mobile/tools` is one
+example.
 
 ## Verify it
 
 Run a test file against your engine. Check lifecycle order, observations,
-actions, errors, and unsupported capabilities. The repository's
-`packages/e2e/tests/integration/engine-contract.test.ts` demonstrates the
-runner's contract and provides examples for these checks.
+actions, errors, and unsupported capabilities.
+[`engine-contract.test.ts`](https://github.com/tester-army/e2e/blob/main/packages/e2e/tests/integration/engine-contract.test.ts)
+demonstrates the runner's contract and provides examples for these checks.
 
 <CardGroup cols={2}>
   <Card title="Engine contract" icon="gear" href="/reference/engine">

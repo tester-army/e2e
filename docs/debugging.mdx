@@ -107,8 +107,8 @@ Each run empties it first, so it holds the latest run's evidence:
   rewrites and marks `complete`.
 - **Videos** and **agent transcripts** when you ask for them; see below.
 
-After a secret fill, the runner withholds screenshots from agent calls and
-`app.screenshot()` for the rest of the attempt.
+After a secret fill, no screenshots are taken for the rest of the attempt; see
+[screenshots after a secret fill](/security#screenshots-after-a-secret-fill).
 
 Playwright traces and videos need separate care. Trace redaction replaces
 secret text with `<secret:name>` and drops the trace's screencast frames, so

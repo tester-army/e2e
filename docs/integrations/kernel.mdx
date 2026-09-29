@@ -26,24 +26,20 @@ export default {
   targets: [
     {
       name: 'kernel',
-      engine: web({
-        url: 'https://staging.example.com',
-        browser: kernel({ stealth: true }),
-        viewport: null,
-      }),
+      engine: web({ url: 'https://staging.example.com', browser: kernel() }),
     },
   ],
-  workers: 4,
 } satisfies E2EConfig;
 ```
 
 Set `KERNEL_API_KEY` in the environment `e2e run` starts in, such as a CI
-secret.
+secret. Each worker gets its own browser, so `workers` sets how many run at
+once.
 
 ## Fill the screen
 
-Size the screen with Kernel's `viewport` and leave the page size to the window
-with the web engine's `viewport: null`:
+Size the screen with Kernel's `viewport` and set the web engine's
+`viewport: null` so the page takes the window's size:
 
 ```ts
 web({
@@ -53,12 +49,11 @@ web({
 })
 ```
 
-Each attempt's window opens maximized, and the page
+Each attempt's window then opens maximized, and the page
 [fills it](/viewports#fill-the-window): 1920 by 993 on a 1920 by 1080 screen,
-the rest being the tab strip and address bar. A fixed web `viewport`, even
-one matching the screen, gets a window smaller than the screen with the page
-emulated at the size you set inside it, so the live view shows
-the page cut off or in part of the window.
+after the tab strip and address bar. With a fixed web `viewport`, the page is
+emulated at that size inside a smaller window, so Kernel's live view shows it
+cut off or in part of the window.
 
 ## Options
 
@@ -115,7 +110,7 @@ test('checkout', { video: 'on' }, async ({ agent }) => {
 });
 ```
 
-A replay has the screen's size, 1920 by 1080 in our runs, at Kernel's
+A replay has the screen's size, which Kernel's `viewport` sets, at Kernel's
 default frame rate, 10 fps. Pass Kernel's start-replay body to change it:
 `kernel({ replay: { framerate: 20, max_duration_in_seconds: 600 } })`. A
 `framerate` above 20 needs `gpu: true` on the browser.

@@ -147,15 +147,10 @@ authorizes the fill and supplies the value. Secret values are redacted from
 model input and reports. Reading a secure field is denied, so check that
 sign-in succeeded instead.
 
-After a secret fill, the runner withholds screenshots for the rest of the
-attempt because the app could display the value elsewhere. A saved session
-keeps that protection: a test that restores a session whose setup filled a
-secret has its screenshots withheld too. A setup that signs in without
-filling a secret, for example by setting a session cookie with
-`web.setCookies`, leaves screenshots available to the tests that restore it.
-A value it uses that is not a configured secret is not redacted. Playwright
-trace images and video have separate limits; see
-[artifact redaction](/debugging#artifacts).
+After a secret fill, screenshots are withheld for the rest of the attempt,
+and in tests that restore the session it saved. See
+[screenshots after a secret fill](/security#screenshots-after-a-secret-fill)
+for the rule and how to sign in with screenshots kept.
 
 ## Secrets that are not passwords
 
@@ -210,20 +205,16 @@ When the agent fills a password, the runner requires a password field. A
 
 ### Where the value goes
 
-The model receives a placeholder with the secret's name and purpose. If it
-requests a fill, the runner checks that the step declared the secret and
-that the field can accept it. Only then does the runner resolve the value
-and pass it to the engine.
-
-The runner replaces known secret values in observations and reports with
-`<secret:name>`. Screenshots and pixel tools stay unavailable for the rest
-of the attempt.
+The model sees only the secret's name and purpose; the runner checks the
+field and fills the value. Known values become `<secret:name>` in
+observations and reports. The [security model](/security#secrets) has the
+full rules.
 
 <Warning>
 Redaction matches full values and their encoded forms. A transformed value,
 such as the last four characters of a key, can still appear. Keep secret
-entry in setup tests and assert the result of submitting it. See the
-[security model](/security#secrets) for redaction limits.
+entry in setup tests and assert the result of submitting it. See
+[where redaction stops](/security#where-redaction-stops).
 </Warning>
 
 `secrets.get('admin')` also returns the password handle for the `admin`
@@ -283,9 +274,8 @@ for (const persona of ['buyer', 'admin'] as const) {
 </Tabs>
 
 Each name refers to an `agents` entry, a `credentials` entry, and a saved
-session. If the personas do not need separate sessions, use
-`{ agent: ['buyer', 'admin'] }` to run a block once per agent. See
-[Agents and personas](/agents#one-flow-several-personas).
+session. When the personas do not need separate sessions,
+[run one flow as several agents](/agents#one-flow-several-personas) instead.
 
 <CardGroup cols={2}>
   <Card title="test reference" icon="flask" href="/reference/test">

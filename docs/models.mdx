@@ -9,7 +9,16 @@ Agent steps use the model configured in `e2e.config.ts`. You can use an
 setup, follow the [quickstart](/quickstart#use-a-subscription-or-api-key).
 
 Tests without agent steps do not need a model. For the built-in agent,
-choose a model that supports tool calls and images.
+choose a model that supports tool calls and images. Agent steps need the `ai`
+package installed, whichever provider you use:
+
+```bash
+npm install -D ai
+```
+
+There is no default model or shared API-key variable. The config selects the
+model, and the provider reads its own key from the environment, such as
+`AI_GATEWAY_API_KEY`. For a subscription, run `npx e2e login` instead.
 
 ## Pick a gateway or a provider
 
@@ -81,21 +90,8 @@ Use `agent` as `agents.default`. Add `apiKey` if the server requires one.
   </Tab>
 </Tabs>
 
-Keep `ai` installed when using agent steps, including with a subscription
-or another provider package. Model IDs depend on the provider. Gateways
-usually use `provider/model`; direct providers use their own model IDs.
-
-## Where the key comes from
-
-Set the environment variable your provider reads before running e2e:
-
-```bash
-export AI_GATEWAY_API_KEY="your-api-key"
-npx e2e run
-```
-
-For subscriptions, use `npx e2e login` instead. The config selects the model
-and its provider; e2e has no default model or shared API-key variable.
+Model IDs depend on the provider. Gateways usually use `provider/model`;
+direct providers use their own model IDs.
 
 ### Vercel OIDC instead of a key
 
@@ -136,6 +132,19 @@ export default {
 
 Run with `npx e2e run --agent careful`, or
 [choose an agent in a test](/agents). Each model can use a different provider.
+Agents do not inherit from each other: an entry without a `model` does not
+use `default`'s, see [Agents and personas](/agents).
+
+### Switch a model with an env var
+
+To switch a model without editing the config, read your own environment
+variable:
+
+```ts title="Agent setup"
+const agent = {
+  model: gateway(process.env.MODEL ?? 'openai/gpt-6-luna-fast'),
+};
+```
 
 ### A judge of its own
 
@@ -153,15 +162,6 @@ const agent = {
 Judgments use the current screen and the question, without the acting
 agent's transcript or summaries. Reports include the model used for each
 judgment. See [Custom executors](/executors) if you replace the built-in agent.
-
-To switch a model without editing the config, read your own environment
-variable:
-
-```ts title="Agent setup"
-const agent = {
-  model: gateway(process.env.MODEL ?? 'openai/gpt-6-luna-fast'),
-};
-```
 
 ## Data retention and compliance
 
@@ -200,12 +200,7 @@ organizations with zero data retention.
 | Authentication fails on the first model call | `MODEL_PROVIDER_FAILED` | Check the provider's API key or the linked Vercel project, or run `npx e2e login` for a subscription. |
 | The `ai` package is missing | `MODEL_UNAVAILABLE` | Run `npm install -D ai`. |
 | A step's second turn fails with `Item with id 'rs_…' not found` | `MODEL_PROVIDER_FAILED` | Leave `store` off in `providerOptions`, the default, or call OpenAI directly instead of through a gateway. |
-
-A custom executor can bring its own `model` or `judge`, as
-`createToolLoopExecutor({ model })` does. If the agents entry sets one too,
-they must name the same provider and model; conflicting values produce
-`INVALID_CONFIG`. Each agent resolves its own model: an entry without one does
-not inherit `default`'s.
+| A custom executor's own `model` or `judge` differs from the agents entry's | `INVALID_CONFIG` | See [Custom executors](/executors#keep-the-loop-change-the-vocabulary). |
 
 <CardGroup cols={2}>
   <Card title="Subscriptions" icon="key" href="/subscriptions">

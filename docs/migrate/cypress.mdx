@@ -103,19 +103,17 @@ test.describe('todos', () => {
 | `cy.wait(ms)` | Use a locator assertion for the condition you need |
 | `cypress open` | `npx e2e run --headed`, plus `--debug` for the step table |
 
-Where the behaviour differs from Cypress's:
+Where the behavior differs from Cypress's:
 
 - There is no chain. Each command is awaited on its own line and returns a
   value, so `const text = await locator.textContent()` works.
-- e2e requires one match for actions and single-node reads or assertions.
-  Multiple matches raise `LOCATOR_AMBIGUOUS`; narrow with `.filter()` or `.nth()`.
+- Several matches fail with `LOCATOR_AMBIGUOUS`. Narrow with `.filter()`,
+  `.first()`, or `.nth()`, see [screen](/reference/screen).
 
 ## What to migrate first
 
-Start with a flow that often breaks. Replace a sequence of interactions
-with `agent.act` and keep exact checks as `expect` assertions. Replace fixed
-waits with assertions on the condition the test needs. Shared sign-in can
-move from `cy.session` to `test.setup` and `session`.
+Start with a spec that often breaks and whose fixed `cy.wait` calls can
+become assertions on the condition the test needs.
 
 <CardGroup cols={2}>
   <Card title="Writing tests" icon="pen-to-square" href="/writing-tests">

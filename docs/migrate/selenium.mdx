@@ -87,18 +87,18 @@ use `agent.act` to perform sign-in from a goal.
 | `Thread.sleep` | Use a locator assertion for the condition you need |
 | Page objects | A fixture from `test.extend`, or a goal for `agent.act` |
 
-Where the behaviour differs from WebDriver's:
+Where the behavior differs from WebDriver's:
 
-- `findElement` returns the first match. e2e fails with `LOCATOR_AMBIGUOUS`.
-  Narrow with `.filter()`, `.first()`, or `{ visible: true }`.
+- `findElement` returns the first match; e2e fails with `LOCATOR_AMBIGUOUS`.
+  Narrow with `.filter()`, `.first()`, or `.nth()`, see
+  [screen](/reference/screen).
 - `textContent()` reads once and does not retry. Assert with `toHaveText()`,
   which polls until the deadline.
 
 ## What to migrate first
 
-Start with one page object. Keep exact interactions as `screen` calls, or
-replace a changing sequence with an `agent.act` goal. Use `expect` to verify
-the result. Shared setup can become a fixture.
+Start with one page object and the flows that use it; its setup code can
+become a fixture.
 
 <CardGroup cols={2}>
   <Card title="Writing tests" icon="pen-to-square" href="/writing-tests">
