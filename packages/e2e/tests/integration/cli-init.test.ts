@@ -288,6 +288,18 @@ describe('initializing standalone projects', () => {
     });
   });
 
+  it('keeps the code of a configuration error the config throws while it evaluates', async () => {
+    linkPackages('e2e');
+    writeFileSync(
+      path.join(dir, 'e2e.config.ts'),
+      "import { ConfigurationError } from 'e2e/engine';\nthrow new ConfigurationError('INVALID_CONFIG', 'web({ video }) was renamed web({ screencast })');\n",
+    );
+    await expect(loadConfigModule(path.join(dir, 'e2e.config.ts'))).rejects.toMatchObject({
+      code: 'INVALID_CONFIG',
+      message: 'web({ video }) was renamed web({ screencast })',
+    });
+  });
+
   it('loads a config through a symlink', async () => {
     const sourceDir = path.join(dir, 'source');
     mkdirSync(sourceDir);

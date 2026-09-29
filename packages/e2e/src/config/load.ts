@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs';
 import nodeModule from 'node:module';
 import path from 'node:path';
 import { register, type NamespacedUnregister } from 'tsx/esm/api';
-import { ConfigurationError } from '../internal/errors.ts';
+import { ConfigurationError, isForeignE2EError } from '../internal/errors.ts';
 import type { E2EConfig } from '../types.ts';
 import { explainModuleError } from './diagnose.ts';
 import { freshModuleURL, resolveSync, TSX_NAMESPACE } from './esm-hooks.ts';
@@ -178,6 +178,12 @@ export async function loadConfigModule(configPath: string, options: ConfigLoadOp
   try {
     moduleValue = await importFresh(configPath, 'module', options.graph === true);
   } catch (cause) {
+    // An engine factory or `secrets.get()` refusing an option at evaluation is
+    // a config error with its own code; only a failed import is a load failure.
+    if (cause instanceof ConfigurationError) throw cause;
+    if (isForeignE2EError(cause) && cause.category === 'configuration') {
+      throw new ConfigurationError(cause.code, cause.message, { cause });
+    }
     throw new ConfigurationError(
       'CONFIG_LOAD_FAILED',
       `failed to load config ${configPath}: ${explainModuleError(cause, configPath)}`,
