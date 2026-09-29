@@ -36,6 +36,7 @@ need Xcode with an iOS simulator runtime, or the Android SDK with an emulator.
   subscription or model provider. Choose **None** if you only want tests
   without AI. The wizard writes a config and example test, adds dependencies,
   and offers to set up your coding agent. Existing config and test files stay intact.
+  If you skipped installing dependencies, run `npm install`, `pnpm install`, or `bun install`.
 
   <Tabs>
     <Tab title="Web">
@@ -102,23 +103,6 @@ test('Settings opens', async ({ app, screen }) => {
     See [Testing iOS and Android](/mobile) to use your own app.
     </Tab>
   </Tabs>
-  </Step>
-  <Step title="Install dependencies">
-  If you skipped installation in the wizard:
-
-  <CodeGroup>
-  ```bash npm
-  npm install
-  ```
-
-  ```bash pnpm
-  pnpm install
-  ```
-
-  ```bash bun
-  bun install
-  ```
-  </CodeGroup>
   </Step>
   <Step title="Run the example">
   ```bash

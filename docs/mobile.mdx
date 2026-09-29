@@ -5,8 +5,8 @@ description: Set up a simulator or emulator target, write a device test, and kno
 
 `@e2e-dev/mobile` runs tests on iOS simulators and Android emulators.
 Tests use the same `agent`, `screen`, and `expect` APIs as browser tests.
-A test launches the configured app with `app.open()`, as a Maestro flow does
-with `launchApp`; between tests the app stays where the last one left it.
+A test launches the configured app with `app.open()`; between tests the app
+stays where the last one left it.
 
 ## Set up
 
@@ -422,6 +422,8 @@ export default {
 Pass each configured device engine to `mobileTools`. Calls go to the
 engine running the current attempt. `open_app`, `swipe`, and `alert` all
 change device state, so the agent takes over for them during cache replay.
+The [mobile engine reference](/reference/mobile#agent-tools) describes each
+tool.
 
 ## What differs from the web
 
@@ -433,28 +435,38 @@ change device state, so the agent takes over for them during cache replay.
 | Playwright trace per attempt | No Playwright trace; screenshots mask secure fields |
 | `--video` writes a WebM screencast | `--video` writes an MP4 of the device screen with taps shown, or keeps a device provider's own recording |
 | The cache anchors on the page path | The cache anchors on the location `<bundle id> / <screen title>`, the title read off the navigation bar on iOS and the toolbar on Android |
-| `getByPlaceholder`, `getAttribute('placeholder')`, `toHaveAttribute('placeholder', ...)` | Work on Android, where a field's hint is the node's `placeholder` attribute whether or not it is showing. An iOS node carries no placeholder yet (agent-device reports only whether one is showing), so query an iOS field by role and name, test id, or display value. `placeholder` is the only attribute a device node has |
-| `getByRole('checkbox')`, `getByRole('radio')`, `check()`, `toBeChecked` on a custom control | Work on both platforms. iOS has no trait for a React Native view with `accessibilityRole="checkbox"` or `"radio"`, so React Native spells the role and state into the accessibility value and the engine reads them back; Android reports the `checked` state of a switch, checkbox, or radio button. `accessibilityRole="tab"` gets neither an iOS trait nor that spelling, so an iOS tab is `other` with a `selected` state: query tabs by test id or label and assert `toBeSelected`. On Android the role description React Native writes makes it a `tab` |
-| `filter({ has })`, a query scoped to a container (`getByTestId('row').getByText(...)`) | Match nothing when the container is a plain React Native `View`: iOS reports it as a leaf beside its children, whatever its `testID`. `ScrollView`, `TextInput`, and `Text` hosts do nest, so scope to the screen's `ScrollView` (`device.locator('role=ScrollView')`), or give the children their own test ids |
-| `display: none` keeps the element in the DOM, `toBeAttached` sees it | Absent from the tree: `toBeAttached` fails, `toHaveCount(0)` is what a device shows, and `toBeHidden` holds either way |
-| `doubleTap()` is one gesture | Two presses, 284 to 285 ms apart on iOS: agent-device's native double tap reaches a React Native `Pressable` as one press, so the engine sends two. A detector with a window of 300 ms or less can read them as two single taps; give a double-tap detector 350 ms or more |
-| `toBeFocused` | Never passes on iOS: agent-device reads XCTest's `hasFocus` (the tvOS focus engine), not `hasKeyboardFocus`, so a text field with the keyboard up carries no focused state. Assert on what the app shows for focus, or on the keyboard |
-| `device.foregroundApp()` after `device.home()` | On iOS still names the app the session opened: agent-device's `appstate` answers from the session there. `closeApp` terminates the app and ends the session, so the next `openApp` launches it fresh |
+
+### Known device limitations
+
+- `getByPlaceholder` and placeholder reads work on Android only. On iOS,
+  query a field by role and name, test id, or display value. `placeholder`
+  is the only attribute a device node has.
+- A React Native tab (`accessibilityRole="tab"`) on iOS has role `other`.
+  Query it by test id or label and assert `toBeSelected`. Checkboxes,
+  radios, and `toBeChecked` work on both platforms.
+- On iOS a plain React Native `View` has no children in the tree, so
+  `filter({ has })` on it and queries scoped to it match nothing. Scope to the screen's `ScrollView`
+  (`device.locator('role=ScrollView')`), or give the children test ids.
+- An element hidden with `display: none` is absent from the tree, so
+  `toBeAttached` fails. Assert
+  `toHaveCount(0)` or `toBeHidden`.
+- `doubleTap()` on iOS is two taps about 285 ms apart. Give a double-tap
+  detector a window of 350 ms or more.
+- `toBeFocused` never passes on iOS. Assert on what the app shows for
+  focus, or on the keyboard.
+- On iOS, `device.foregroundApp()` still names the session's app after
+  `device.home()`. Check the screen instead.
 
 ## Troubleshooting
 
-A device failure reaches the report with agent-device's own message. Under
-the agent, an engine fault with no more specific code reports as
-`APP_UNREACHABLE`; on a device, read the message before the code, because
-the app is often not the part that failed.
+A device failure shows agent-device's own message. Under the agent, an
+engine fault with no more specific code reports as `APP_UNREACHABLE`, so
+read the message before the code: the app is often not the part that
+failed.
 
-**The iOS automation runner is busy or wedged.** An accessibility capture on
-a heavy or animating screen can overrun the runner's watchdog. The runner
-keeps finishing that capture after the step gave up on it, and every command
-until it drains fails with `RUNNER_BUSY`; one stuck for 120 s becomes
-`RUNNER_WEDGED`, and agent-device restarts the runner. A run killed
-mid-attempt (Ctrl-C) can hand a draining runner to the next run. The report
-reads:
+**The iOS automation runner is busy, wedged, or could not present a
+snapshot.** A heavy or animating screen can overrun the runner, and a run
+stopped with Ctrl-C can leave it busy for the next run. The message reads:
 
 ```text
 APP_UNREACHABLE: agent.act failed: snapshot failed: the iOS automation runner is still
@@ -466,25 +478,12 @@ daemon (`npx agent-device daemon stop`) and reboot the simulator
 (`xcrun simctl shutdown <udid>`, then `boot`).
 ```
 
-Do what it says. A runner that is still busy or wedged when `prepare` warms
-the device ends the run there, with the same message, instead of opening the
-app and failing the first observation; the sessions warm-up opened are
-closed when the run ends, so the next run does not resume them by name with
-that runner state.
+Do what it says.
 
-**A snapshot the runner could not present.** `regular iOS snapshot
-presentation requires a valid viewport` is a per-capture check inside the
-runner, not a property of the screen; so are the payload checks (`regular iOS
-snapshot payload refers to a parent outside the payload`, a malformed graph).
-The engine takes the snapshot once more before failing the step, as it does
-for a sparse one; a second failure propagates with the same recovery.
-
-**A timeout the device reports.** A simulator boot, the runner connecting, or
-an app launch that agent-device times out is an `ENGINE_FAILURE` whose
-message and hint are agent-device's (`Retry simulator boot and inspect simctl
-bootstatus logs; in CI reduce parallel jobs or use a larger runner`). The
-harness's own budgets are the `LAUNCH_TIMEOUT`, `ACTION_FAILED`, and
-`STEP_TIMEOUT` codes; a device-side timeout never reports as one of them.
+**A timeout on the device.** A simulator boot, runner connection, or app
+launch that times out on the device is `ENGINE_FAILURE` with agent-device's
+message and hint, never one of e2e's own timeout codes (`LAUNCH_TIMEOUT`,
+`ACTION_FAILED`, `STEP_TIMEOUT`).
 
 ```bash
 npx agent-device doctor          # the toolchain, the daemon, the booted devices

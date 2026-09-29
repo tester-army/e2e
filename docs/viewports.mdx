@@ -36,20 +36,18 @@ at the target's configured size.
 
 ## Fill the window
 
-`viewport: null` emulates no size. The page fills the browser window, and
-the agent, screenshots, and the recording use the window's size, measured
-in the page. Use it in a headed run or with a hosted browser whose live
-view shows the whole window, where a fixed 1280 by 720 renders in one
-corner of it:
+`viewport: null` sets no size, so the page fills the browser window. The
+agent, screenshots, and videos use that size. Use it in a headed run, or
+with a hosted browser whose live view would show a fixed 1280 by 720 page
+in one corner:
 
 ```ts title="e2e.config.ts"
 { name: 'window', engine: web({ ...app, viewport: null }) }
 ```
 
-The size then comes from the browser: Playwright's own launch opens a small
-window, a hosted browser the window its service was asked for, minus the tab
-strip and toolbar in headed mode. `web.setViewport` inside a test fixes a
-size for the rest of the attempt as usual.
+The page takes the window's size, minus the toolbar in a headed browser. A
+local headed launch opens a small window; a hosted browser uses the window
+size you requested from the service. `web.setViewport` still works.
 
 ## Resize inside a test
 
@@ -110,9 +108,19 @@ test('the mobile menu reaches pricing', async ({ app, agent, web }) => {
 ## Scoping a test to one size
 
 `platforms` and `requires` cannot select a viewport; all Playwright targets
-use platform `web`. To keep size-specific tests separate, give them their
-own config and run it with `--config`. For an individual layout check,
-resize within the test.
+use platform `web`. To skip a test at some sizes, check the width in the
+test:
+
+```ts
+test('the sidebar stays open', async ({ app, screen, web }) => {
+  await app.open('/');
+  test.skip((await web.evaluate(() => window.innerWidth)) < 768, 'desktop layout only');
+  await expect(screen.getByRole('complementary')).toBeVisible();
+});
+```
+
+To keep a whole group of size-specific tests apart, give them their own
+config and run it with `--config`.
 
 ## Limits
 
@@ -121,14 +129,8 @@ with a scale factor of 1, desktop pointer behavior, and its usual user agent.
 It does not emulate touch, color scheme, or reduced-motion preferences.
 Use the [device engine](/mobile) for tests on a simulator or emulator.
 
-A video on a Playwright target records each page at its viewport when the
-page's segment starts, the window's size under `viewport: null`, unless
-`web({ screencast: { size } })` sets one size for every segment. A resize
-mid-segment does not change that segment's dimensions; the page a restart
-or a state reset opens after it starts a new segment at the new size. A
-browser provider that records, such as
-[Kernel](/integrations/kernel#recordings), records the whole screen
-instead.
+A video keeps the size the page had when it started recording; set
+`web({ screencast: { size } })` for one fixed size.
 
 <CardGroup cols={2}>
   <Card title="Working with the browser" icon="globe" href="/browser">

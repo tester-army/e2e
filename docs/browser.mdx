@@ -1,6 +1,6 @@
 ---
 title: Working with the browser
-description: Mock an API, handle a dialog, download a file, reach into an iframe, and pick a browser and viewport.
+description: Mock an API, handle a dialog, download a file, reach into an iframe, and pick a browser.
 ---
 
 Use `screen`, `app`, and `expect` for navigation, interactions, and checks.
@@ -93,6 +93,11 @@ await editor.locator('#upload').setInputFiles('fixtures/photo.png');
 await expect(editor.frameLocator('#preview').getByRole('heading', { name: 'Uploaded' })).toBeVisible();
 ```
 
+`web.locator('css or xpath')` does the same on the page itself. Use it only
+when role, label, and test-id queries cannot identify an element. If a hidden
+duplicate causes an ambiguous match, try `{ visible: true }` on the query
+first.
+
 ## Read from the page
 
 `web.evaluate` runs a function in the page. It is serialized, so it cannot
@@ -106,18 +111,18 @@ const flag = await web.evaluate((name: string) => window.localStorage.getItem(na
 Use `evaluate` for state that `screen` cannot read. Prefer locators and
 assertions for visible UI so tests depend less on the DOM structure.
 
-## Cookies and viewport
+## Cookies
 
 ```ts
 await web.setCookies([{ url: 'http://localhost:3000', name: 'tz', value: 'UTC' }]);
-await web.setViewport({ width: 390, height: 844 });
 ```
 
 A cookie URL that does not parse, or uses `file:`, `data:`, or
 `javascript:`, is `POLICY_DENIED`; a domain cookie is checked as the origin
-it would be sent to. If any entry is refused, no cookies are set.
+it would be sent to. If any entry is refused, no cookies are set. To resize
+the page, see [Testing viewports](/viewports).
 
-## Pick a browser and viewport
+## Pick a browser
 
 The browser and the initial viewport are options of the engine. Two browsers
 on one app are two targets:
@@ -139,8 +144,7 @@ export default {
 `npx playwright install webkit --with-deps` provisions the extra browser in
 CI. `connect` attaches to a remote Chromium over CDP instead of launching
 one; a [browser provider](#hosted-browsers) does the same and also leases
-and releases the browser. [Testing viewports](/viewports) covers a suite
-that runs at several sizes and what the agent sees at each.
+and releases the browser. [Testing viewports](/viewports) covers sizes.
 
 ## Hosted browsers
 
@@ -348,25 +352,16 @@ headless one), leaves `record` out, and the engine records the screencast.
 
 ## Inert content
 
-An element with the `inert` attribute takes no input, and browsers hide it
-from assistive technology. The engine leaves it and everything under it out
-of the tree the agent sees and a failure prints, the way Chrome's
-accessibility tree does, so an agent never aims at a control behind an open
-drawer. Locators still find it and `toBeVisible` still passes, as in
-Playwright: the content paints, it just ignores clicks and typing.
+The agent does not see an element with the `inert` attribute or anything
+under it, so it never aims at a control behind an open drawer. Locators
+still find inert content and `toBeVisible` still passes, as in Playwright.
 
 ## Shadow DOM
 
-Queries search open and closed shadow roots alike. The engine records every
-closed root the page attaches with `attachShadow`, the reader walks them
-into the tree the agent sees and a failure prints, and `getByRole`,
-`getByLabel`, `getByPlaceholder`, `getByText`, `getByDisplayValue`, and
-`getByTestId` resolve inside them with the same matching rules as outside.
-Actions and reads on such a node work as on any other: `toBeFocused` sees
-focus inside a root, and `getByLabel` matches an `aria-labelledby` reference,
-whose id names an element in the control's own tree. A scope, a `has`
-filter, and `first`, `last`, and `nth` cross the boundary; matches outside a
-closed root come first, then each root's matches in order.
+`screen` queries, scopes, and `has` filters reach into open and closed shadow
+roots, and the agent sees their content. Actions and assertions work there
+as anywhere else. `first`, `last`, and `nth` count matches outside a closed
+root first, then each root's matches in order.
 
 ```ts
 // The input and the button live in a closed shadow root a widget attached.
@@ -375,19 +370,9 @@ await screen.getByRole('button', { name: 'Submit' }).tap();
 await expect(screen.getByText('Access granted')).toBeVisible();
 ```
 
-Three things stop at a closed root: `web.locator(css)` and `frameLocator`,
-which are the platform's own selectors, and `filter({ hasText })`, which
-reads an element's text as Playwright does, so text inside a closed root
-does not count toward an element outside it. Query the text inside the root
-instead, or filter with `has`. A declarative
-`<template shadowrootmode="closed">` is parsed rather than attached and
-stays out of reach.
-
-## Raw selectors
-
-Use `web.locator('css or xpath')` when role, label, and test-id queries
-cannot identify an element. If a hidden duplicate causes an ambiguous
-match, try `{ visible: true }` on the query first.
+`web.locator`, `frameLocator`, and `filter({ hasText })` stop at a closed
+root: query the text inside the root instead, or filter with `has`. A closed
+root declared in HTML (`<template shadowrootmode="closed">`) is out of reach.
 
 <CardGroup cols={2}>
   <Card title="Web engine reference" icon="masks-theater" href="/reference/web">

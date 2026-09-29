@@ -20,18 +20,16 @@ test('todos survive a filter round-trip', async ({ app, agent, screen }) => {
 });
 ```
 
+Import `expect` from `e2e`. Import `test` from `e2e`, or from `@e2e-dev/web`
+or `@e2e-dev/mobile` to get the `web` or `device` fixture typed. It is the
+same `test` either way.
+
 ## Goals: `agent.act`
 
 Give `act` one goal. The agent chooses and performs the actions, then returns
-when the goal passes or throws when it fails. Every step call is awaited: a
-body that returns while a step is still running fails with `STEP_NOT_AWAITED`,
-and the code frame names the call. Any other unhandled rejection is charged
-to the test running when it surfaces, so a promise that rejects late lands on
-the test after it; between tests it is a run error naming the last test that
-finished, and before any test has finished it ends the worker. A body that
-keeps running past its `timeout` or after such a rejection is not stopped:
-the harness operation it is in is cancelled and its fixtures die with the
-attempt, so it cannot reach the next test.
+when the goal passes or throws when it fails. Await every agent and screen
+call; a test that returns while one is still running fails with
+`STEP_NOT_AWAITED`.
 
 ```ts
 await agent.act('complete checkout with the test card');
@@ -58,8 +56,16 @@ Name what is visible and prefer the exact wording on screen. One goal per
 call. The flow inside a goal is the model's job; the order of goals is yours.
 </Tip>
 
-For a value that changes on every run, wrap it in `unique(value)` so the
-[replay cache](/cache#what-must-match) can replay with the new value.
+For a value that changes on every run, wrap it in `unique()` so the
+[replay cache](/cache#what-must-match) can still replay the step:
+
+```ts
+import { expect, unique } from 'e2e';
+
+const email = `ada+${Date.now()}@example.test`;
+await agent.act('sign up with email {email}', { params: { email: unique(email) } });
+await expect(screen.getByText(email)).toBeVisible();
+```
 
 If a goal fails, check the report and make the instruction more specific.
 Use the labels on screen. Put vocabulary shared by several goals in the
@@ -136,7 +142,8 @@ lists the modes and restrictions.
 ## Deterministic APIs: `screen` and `expect`
 
 Use locators to interact with known controls and check exact values.
-An assertion after `act` also helps verify a [cache](/cache) replay.
+An `expect` after `act` checks the exact result. It is also what lets the
+[replay cache](/cache) record the step and keep it.
 
 ```ts
 // Semantic queries: role and name first, label second, test ID last.
@@ -164,9 +171,8 @@ Locator assertions retry until they pass or time out. Direct reads such as
 `textContent()` do not retry a mismatched value.
 
 Use the `web` fixture for browser features such as routes, cookies, dialogs,
-frames, and downloads. Import `test` from `@e2e-dev/web` to use it.
-See the [Web engine reference](/reference/web) and the
-[screen reference](/reference/screen).
+frames, and downloads; see [Working with the browser](/browser). The
+[screen reference](/reference/screen) lists every query and action.
 
 Share setup and cleanup through `test.extend`. A fixture can create a test
 workspace before the test and delete it afterward, including when the test
@@ -174,10 +180,9 @@ fails. See [Your own fixtures](/reference/test#your-own-fixtures).
 
 ## Tests without a screen
 
-An end-to-end suite covers the API too, in the same files and the same run.
-The built-in fixtures are acquired on first use: a test that takes only
-`app` opens no page and calls no model. Call the API with `fetch` and check
-the response with the value matchers.
+API tests run in the same files and the same run as UI tests. A test that
+takes only `app` calls no model. Call the API with `fetch` and check the
+response with the value matchers.
 
 ```ts title="tests/users-api.e2e.ts"
 import { test, expect } from 'e2e';
@@ -198,10 +203,9 @@ starts and against a deployed preview. For state the API writes after it
 answers, [`expect.poll`](/reference/expect#polling-a-value) re-reads until a
 matcher passes.
 
-A request helper is [a fixture of your own](/reference/test#your-own-fixtures).
-This one reads `web.cookies()` on every call, so a request after a sign-in
-session or a `beforeEach` that sets cookies runs as the signed-in user. Every
-test registered through this `test` acquires `web`, so it needs a web target.
+To call the API as a signed-in user, write [a fixture](/reference/test#your-own-fixtures)
+that sends `web.cookies()` with each request. Every test registered through
+this `test` acquires `web`, so it needs a web target:
 
 ```ts title="tests/api.ts"
 import { test as base } from '@e2e-dev/web';
@@ -217,11 +221,10 @@ export const test = base.extend<{ api: (path: string, init?: RequestInit) => Pro
 });
 ```
 
-The target still names an engine: a target without one starts no app and
-has no `app.baseUrl`. So a worker launches its browser once and opens a
-context per test, cheap but not free. One run starts the app once, one
-report covers API and UI, and a UI test can pin its outcome through the API
-in the same body.
+On a web target, an API test still opens a browser context. A target
+without an engine opens nothing, but it has no `app.baseUrl`, so read the
+URL from an environment variable. `e2e init` sets up such a target when you
+choose **None** at the engine prompt.
 
 ## Structure
 
@@ -245,13 +248,25 @@ test('needs two organizations', async ({ app }) => {
 
 Common options include `timeout`, `retries`, and `tags`. Use `session` for
 state from a setup test, `agentContext` for extra instructions, and `agent`
-to choose a configured [agent](/agents). Group options apply to their tests.
-The [test reference](/reference/test) lists all options and defaults.
+to choose a configured [agent](/agents). `trace` and `video` record one test
+without recording the suite; see [Watch it happen](/debugging#watch-it-happen).
+Group options apply to their tests. The [test reference](/reference/test)
+lists all options and defaults.
 
 Each test runs in its own attempt. Prepare the app data it needs through
 fixtures or hooks. When a flow must span several tests, mark the group
 `{ serial: true }`. Members share app state, run in order on one worker,
 and retry as a whole.
+
+## Run one test
+
+```bash
+npx e2e run tests/signup.e2e.ts:12   # the test declared at line 12
+npx e2e run --grep checkout          # tests whose title matches
+npx e2e run --target web             # one target, by name
+```
+
+The [CLI reference](/reference/cli#e2e-run) lists every flag.
 
 ## Next
 

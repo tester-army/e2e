@@ -28,7 +28,7 @@ Tests without agent steps run without a model.
 
 ## How it works
 
-Configure an engine for your app and a model for the agent:
+Configure a target for your app and a model for the agent:
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -41,15 +41,18 @@ export default {
 } satisfies E2EConfig;
 ```
 
+A target is one place tests run, such as Chromium or an iPhone simulator.
+Its engine drives it. Each test runs once per target. An attempt is one run
+of one test on one target; a retry is a new attempt with fresh fixtures.
+
 The web engine drives Chromium, Firefox, and WebKit through Playwright. The
 mobile engine drives iOS simulators and Android emulators through agent-device. Both expose the same
 agent and screen APIs, with extra APIs for platform-specific operations.
 You can also [write an engine](/writing-an-engine) for another platform.
 
-Agent steps have time and model-call limits. The [replay cache](/cache)
-can replay verified actions and check their recorded end state without a
-model call. Agent judgments still run live. When replay no longer works,
-the agent can try the goal again.
+Passing `act` steps that a later check verifies are [cached](/cache). The next run replays them without
+a model call and hands back to the agent if the app changed. `assert`,
+`waitFor`, and `extract` always call the model.
 
 The runner [redacts registered secrets](/security) from model input and
 records steps, failures, and artifacts in a [report](/debugging).
