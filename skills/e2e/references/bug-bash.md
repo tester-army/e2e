@@ -23,20 +23,77 @@ and when a change needs a broad look before review. For one flow, a single
   process per run). `reuseExisting` is ignored when `CI` is set, as it is in
   many agent sandboxes: there, use port `0` or run with `CI` unset. A fixed
   port that is not reused fails every run after the first.
+- When the target also declares `services` with a `teardown` (a database
+  started with `docker compose up` and removed with `docker compose down
+  --volumes`), every explorer would start and tear down its own copy, and
+  the first to finish removes the database under the rest. Start the stack
+  once yourself, with the same commands and environment the config gives
+  them, and explore with a bug-bash config that points at the running app
+  and declares no services or command (below).
+- Explore a production build when the project has one. A dev server that
+  compiles a route on its first visit reads to the explorer as a link that
+  does nothing.
+- Give every charter its own data and its own account: seed one disposable
+  workspace or user per charter with the project's own fixtures or seed
+  scripts, and declare each as a credential (`bb-<slug>`). Explorers that
+  share an account edit each other's state and report the result as bugs.
+- Tell the explorers what the local app cannot do, in the agent's
+  `context`: which integrations have no keys (email, payments, an AI
+  provider), what is seed data, and what must never be clicked (starting
+  paid runs, connecting real accounts). Otherwise a large share of the
+  findings are the missing keys.
+- Explore needs a step budget of 40 actions and model calls or more; a
+  project config tuned for short test steps (`maxSteps: 15`) starves it.
 - On a mobile target, every explorer and every verifier needs its own
   simulator or emulator: declare one target per device, each naming its
   `device`, and give each charter its own target. Two on one device fight
   over it.
-- Accounts go under `credentials` in the config; the explorer fills the
-  password by name. Tell the charter which account to use when there are
-  several.
 - Skip `--headed`: several browsers at once are only noise. `--video` records
   each run so a confirmed bug comes with a replay.
+
+A bug-bash config, left untracked, spreads the project's and replaces what
+a bug bash needs different:
+
+```ts
+// e2e.bugbash.config.ts
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+import { gateway } from 'ai';
+import base from './e2e.config.ts';
+
+export default {
+  ...base,
+  // Repro tests from step 6 live here, out of the gating suites.
+  tests: 'tests/bugbash/**/*.e2e.ts',
+  // The app already runs: no services, no command.
+  targets: [{ name: 'web', platform: 'web', engine: web({ url: 'http://127.0.0.1:3000' }) }],
+  retries: 0,
+  reporters: ['list'],
+  credentials: {
+    ...base.credentials,
+    'bb-cart': { username: 'bb-cart@example.test', password: 'seeded-password' },
+    'bb-account': { username: 'bb-account@example.test', password: 'seeded-password' },
+  },
+  agents: {
+    default: {
+      model: gateway('openai/gpt-6-luna-fast'),
+      maxSteps: 40,
+      maxModelCalls: 40,
+      context: 'Sign in with the credential the goal names. The local app sends no email and has no AI key. Never start a paid run or connect an integration.',
+    },
+  },
+} satisfies E2EConfig;
+```
+
+When you use one, pass `--config e2e.bugbash.config.ts` to every command
+below.
 
 ## 2. Plan charters
 
 A charter is one `e2e explore` goal: one area of the app and one posture,
-in one sentence, naming the route to start from. Read the app before you
+in one sentence, naming the route to start from and, when the app needs
+one, the credential to sign in with (`Sign in as credential bb-cart.
+Starting at /cart, ...`). Read the app before you
 write them: the routes, the navigation, the forms, and, for a branch,
 `git diff --stat` against the base, so the charters land on what changed.
 
@@ -95,25 +152,45 @@ behavior, whatever the wording. Keep the clearest reproduction and every
 charter that hit it. Keep warnings in a separate list; they are polish, not
 bugs, unless the user asked for polish.
 
-## 5. Verify
+A charter that filled a password has no screenshots after that point: pixels
+are withheld once a secret is on screen, so its findings print no
+`evidence` line. Its video still shows what happened.
 
-A finding is a model's claim. Prove each issue before you report it.
+## 5. Triage
+
+Sort every finding before writing any test. Reading the app's source, when
+you may, settles most of them in a minute each:
+
+| Bucket | Sign | Outcome |
+| --- | --- | --- |
+| Environment | Fails on a key, a service, or a limit only the local stack lacks (an email provider, an AI key, a billing plan) | Rejected, naming the variable or service; note separately when the app handles the failure badly in a way production users would see, such as showing the raw error |
+| Design | The code, its tests, or its copy say the behavior is intended | Rejected, citing where |
+| Fixture | The seed data lacks a field real records always have | Rejected, naming the field |
+| Candidate | None of the above | Verify it (step 6) |
+
+## 6. Verify
+
+A finding is a model's claim. Prove each candidate before you report it.
 Verification is the slow part, so run it in parallel: when your client can
 start subagents (Claude Code's Agent or Task tool, for one), start one per
-finding with the finding as the log printed it and these steps, up to four
-at a time, the `e2e mcp` server's default session limit. Each verifier
-opens its own session and reports back confirmed or rejected, with the
-repro test path and the failure it saw. Without subagents, verify one
-finding after another.
+area with its three to five candidates, as the log printed them, and these
+steps, up to four at a time, the `e2e mcp` server's default session limit.
+A verifier that holds an area's findings together spots a shared root cause
+and sets up the app once. Each verifier opens its own session and reports
+back, per finding, confirmed or rejected, the root cause as `file:line`
+when it may read the source, the repro test path, and the failure it saw.
+Without subagents, verify one area after another.
 
-1. Read `actual` against the screenshot. A finding the screenshot
-   contradicts is rejected here.
+1. Read `actual` against the screenshot, or the video when there is none.
+   A finding the evidence contradicts is rejected here.
 2. Write a repro test that follows the reproduction and asserts the
    expected behavior, so it fails today and passes once the bug is fixed.
    Put it under `bugbash/` inside the directory the config's `tests` glob
    covers (`tests/bugbash/<slug>.e2e.ts` for the default
    `tests/**/*.e2e.ts`): a file the glob does not match is never selected,
-   whatever path you pass to `e2e run`. Prefer `screen` actions and
+   whatever path you pass to `e2e run`. When the project's own fixtures
+   seed data and sign in (a `test.extend` fixture, a setup test's
+   session), build on them. Prefer `screen` actions and
    `expect` with exact values; use `agent.act` for a step that varies and
    `agent.assert` for an outcome only judgment can check (topic
    `writing-tests`). Tag it `{ tags: ['bugbash'] }`.
@@ -127,16 +204,19 @@ finding after another.
    only when the test fails with `ASSERTION_FAILED` on the assertion that
    encodes it. Any other failure (`LOCATOR_NOT_FOUND`, a timeout, a setup
    error) means the test is wrong: fix it and rerun. A test that passes
-   means the bug did not reproduce; reject the finding and say so.
+   means the bug did not reproduce; reject the finding and say so, and move
+   that test out of `tests/bugbash/` (to `.e2e/bugbash/extra-tests/`, or
+   offer it as a regression test): only failing repro tests stay there.
 
-## 6. Report
+## 7. Report
 
 Lead with the confirmed bugs, most severe first. For each: the title, the
-path, one line of expected against actual, the steps, the screenshot and
-video paths, the repro test, and the charters that found it. Then the
-rejected findings with the reason (did not reproduce, contradicted by the
-screenshot, working as designed), and the warnings. End with the charters
-run, their cost, and the areas no charter reached.
+path, one line of expected against actual, the root cause when known, the
+steps, the screenshot and video paths, the repro test, and the charters
+that found it. Then the candidates the environment triage surfaced as
+production risks, marked unverified. Then the rejected findings grouped by
+reason (environment, design, fixture, did not reproduce), and the warnings.
+End with the charters run, their cost, and the areas no charter reached.
 
 The repro tests fail until the bugs are fixed, and the config's glob picks
 them up, so a gating run must leave them out until then: `npx e2e run
@@ -153,4 +233,8 @@ regression test, its `bugbash` tag removed.
 - Read reports; never edit what a run wrote under `.e2e/`. Delete
   `.e2e/bugbash/` before a new bug bash so old findings do not mix in.
 - Seeded data and test accounts the app ships for development are not
-  bugs; say so in the charter when the app has them.
+  bugs; say so in the agent's `context` when the app has them.
+- Leave the project's own files as you found them: the bug-bash config, the
+  seed script, and the repro tests are untracked until the user asks
+  otherwise, and the stack you started is stopped when the user is done
+  with it.

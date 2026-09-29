@@ -27,12 +27,14 @@ five to ten charters: one-sentence goals, each on one area with one
 posture, such as a first-time user, numbers and copy, edge input, state
 across reloads, or error paths. It runs one `e2e explore` per charter, four
 at a time, each with its own `--artifacts` root so reports never collide,
-and merges the findings. Each issue then gets a repro test that asserts the
-expected behavior, and counts as a bug only when that test fails with
-`ASSERTION_FAILED` on it; verifying subagents each drive their own
+and merges the findings. It sets aside findings that the local
+environment, the design, or the seed data explain. Each remaining issue
+gets a repro test that asserts the expected behavior, and counts as a bug
+only when that test fails with `ASSERTION_FAILED` on it; verifying
+subagents, one per area, each drive their own
 [`e2e mcp` session](/reference/mcp#several-sessions) to check locators
 against the live app. The report lists confirmed bugs first, then rejected
-findings with the reason, then warnings.
+findings grouped by reason, then warnings.
 
 The steps, commands, and rules the agent follows are the skill topic
 itself: `npx e2e guide bug-bash`.
@@ -44,6 +46,14 @@ itself: `npx e2e guide bug-bash`.
   port `0` so each run starts its own copy. `reuseExisting` does not apply
   when `CI` is set; use port `0` there. See
   [Starting your app](/starting-your-app).
+- When the target also starts services with a teardown, such as a database
+  from `docker compose`, start the stack once and explore with a config
+  that points at the running app and declares no services, so one
+  explorer's teardown never removes the database under the others.
+- Prefer a production build. A dev server that compiles a route on its
+  first visit looks to an explorer like a link that does nothing.
+- Give each charter its own seeded account, and tell the explorers in the
+  agent's `context` which integrations the local app has no keys for.
 - On mobile, each explorer needs its own device: declare one target per
   simulator or emulator.
 - Put test accounts under `credentials`; explorers fill passwords by name
