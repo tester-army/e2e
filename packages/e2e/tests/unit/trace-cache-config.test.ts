@@ -104,8 +104,8 @@ describe('cache config resolution', () => {
 
   it('is lenient unless the config or --strict-cache asks, and rejects a strict that is not a boolean', () => {
     expect(resolve(APP).cache.strict).toBe(false);
-    expect(resolve({ cache: { strict: true } }).cache).toMatchObject({ mode: 'read-write', strict: true });
-    expect(resolve({ cache: 'read-only' }, BASE_ENV, { cacheStrict: true }).cache).toMatchObject({ mode: 'read-only', strict: true });
+    expect(resolve({ cache: { strict: true } }).cache).toMatchObject({ mode: 'read-write', strict: { config: true, flag: false } });
+    expect(resolve({ cache: 'read-only' }, BASE_ENV, { cacheStrict: true }).cache).toMatchObject({ mode: 'read-only', strict: { config: false, flag: true } });
     expect(() => resolve({ cache: { strict: 'yes' as unknown as boolean } })).toThrow(/cache\.strict must be a boolean/);
   });
 
@@ -120,10 +120,47 @@ describe('cache config resolution', () => {
   });
 });
 
+describe('REPLAY_STALE advice', () => {
+  const TARGET = {
+    targetId: 'web',
+    platform: 'web',
+    engineName: 'playwright',
+    engineVersion: '1.61.1',
+    spiVersion: 1,
+    appIdentity: 'a'.repeat(64),
+  } as const;
+  const adviceFor = (raw: Partial<E2EConfig>, cli: Parameters<typeof resolveConfig>[1]['cli'] = {}) => {
+    const config = resolve(raw, BASE_ENV, cli);
+    const context = createAgentCacheContext({
+      cache: config.cache, projectRoot: config.projectRoot, projectId: 'p', testId: 't', target: TARGET, attemptIndex: 0,
+    });
+    return context?.strict === false || context?.strict === undefined ? undefined : context.strict.advice;
+  };
+
+  it('names the knob that turned strict on, and the cache directory relative to the project', () => {
+    expect(adviceFor({})).toBeUndefined();
+    expect(adviceFor({}, { cacheStrict: true })).toBe(
+      're-record it with a read-write run without --strict-cache and commit the changed entry under .e2e/cache',
+    );
+    const configured = adviceFor({ cache: { strict: true, dir: 'recordings/replays' } });
+    expect(configured).toBe(
+      're-record it with a read-write run with cache.strict set to false and commit the changed entry under recordings/replays',
+    );
+    expect(adviceFor({ cache: { strict: true } }, { cacheStrict: true })).toContain('without --strict-cache and with cache.strict set to false');
+  });
+
+  it('points at the configured store rather than a directory when a custom store holds the entries', () => {
+    expect(adviceFor({ cache: { strict: true, store: memoryStore() } })).toBe(
+      're-record it with a read-write run with cache.strict set to false; the run writes the new entry to the configured cache.store',
+    );
+  });
+});
+
 describe('flushStagedTraces', () => {
   function contextWith(store: CacheStore) {
     const context = createAgentCacheContext({
       cache: { mode: 'read-write', store, dir: '/unused', strict: false },
+      projectRoot: ROOT,
       projectId: 'p',
       testId: 't',
       target: {

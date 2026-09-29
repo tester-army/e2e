@@ -228,8 +228,12 @@ A step with no recording (`no-entry`), a retry, a `gap`, and a `truncated`
 recording still run live. `REPLAY_STALE` exits 2 and is not retried, since a
 retry never replays and would pass live. The entry stays where it is, even
 in `read-write` mode, so every strict run fails on it until it is re-recorded:
-run the test without the flag in `read-write` mode and commit the changed
-entry. A store whose read fails is not a stale recording; the step runs live.
+run the test in `read-write` mode without the flag, and with `cache.strict`
+off when the config set it, then commit the changed entry; a custom
+`cache.store` receives the new entry from that run instead. The message
+names the knob that turned strict on and where the entry lives: the cache
+directory, or the configured `cache.store`. A store whose read fails is not
+a stale recording; the step runs live.
 
 ## Inspect the cache
 

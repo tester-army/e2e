@@ -932,6 +932,7 @@ export class TargetExecutor implements SerialHost {
       inMemory === undefined
         ? createAgentCacheContext({
             cache: this.config.cache,
+            projectRoot: this.config.projectRoot,
             projectId: this.config.projectId,
             testId: pair.test.id,
             target: this.sessionIdentity,

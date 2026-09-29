@@ -237,12 +237,12 @@ export class StepTraceSession {
    */
   private failIfStale(): void {
     const reason = this.info?.reason;
-    if (!this.cache.strict || !STALE_REASONS.has(reason)) return;
+    const { strict } = this.cache;
+    if (strict === false || !STALE_REASONS.has(reason)) return;
     this.failedStale = true;
     throw new AgentError(
       'REPLAY_STALE',
-      `the recording of this step no longer replays (${reason}), and cache.strict hands no step to the agent; ` +
-        're-record it with a read-write run without --strict-cache and commit the changed .e2e/cache entry',
+      `the recording of this step no longer replays (${reason}), and cache.strict hands no step to the agent; ${strict.advice}`,
     );
   }
 

@@ -251,6 +251,7 @@ describe('trace cache: --strict-cache fails a stale recording instead of handing
       const step = onlyActStep(strict, title);
       expect(step.error?.code, title).toBe('REPLAY_STALE');
       expect(step.error?.message, title).toContain(reason);
+      expect(step.error?.message, title).toContain('re-record it with a read-write run without --strict-cache and commit the changed entry under .e2e/cache');
       expect(step.cache?.reason, title).toBe(reason);
     }
   });

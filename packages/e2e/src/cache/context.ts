@@ -8,7 +8,8 @@
  * re-records.
  */
 
-import type { ResolvedCacheConfig } from '../config/resolve.ts';
+import path from 'node:path';
+import type { CacheStrictSource, ResolvedCacheConfig } from '../config/resolve.ts';
 import { canonicalJson } from '../internal/ids.ts';
 import { REPLAY_POLICY_VERSION } from './relocate.ts';
 import {
@@ -48,8 +49,12 @@ export interface AgentCacheContext {
   readonly identity: { readonly testId: string; readonly targetId: string };
   /** Whether this attempt may replay; writes are governed by `mode` alone. */
   readonly replayEligible: boolean;
-  /** A recording that no longer replays fails its step (`REPLAY_STALE`) instead of handing it to the executor. */
-  readonly strict: boolean;
+  /**
+   * A recording that no longer replays fails its step (`REPLAY_STALE`)
+   * instead of handing it to the executor, with `advice` on how to re-record
+   * it: the knobs to turn off and where the entry lives.
+   */
+  readonly strict: false | { readonly advice: string };
   /**
    * Claims one step's key hash. Not a pure derivation: each claim advances
    * the per-attempt occurrence index for its signature, which is what lets a
@@ -153,6 +158,7 @@ export async function flushStagedTraces(
  */
 export function createAgentCacheContext(options: {
   readonly cache: ResolvedCacheConfig;
+  readonly projectRoot: string;
   readonly projectId: string;
   readonly testId: string;
   readonly target: CacheTargetIdentity;
@@ -174,7 +180,7 @@ export function createAgentCacheContext(options: {
     store,
     identity: { testId: options.testId, targetId: options.target.targetId },
     replayEligible: options.attemptIndex === 0,
-    strict: options.cache.strict,
+    strict: options.cache.strict === false ? false : { advice: staleAdvice(options.cache, options.cache.strict, options.projectRoot) },
     claimKeyHash: (kind, instruction, params) => {
       const signature = traceCallSignature(kind, instruction, params);
       return traceCacheKeyHash(
@@ -190,4 +196,21 @@ export function createAgentCacheContext(options: {
     },
     staged: [],
   };
+}
+
+/**
+ * How to re-record a recording `cache.strict` failed on: a read-write run
+ * with every knob that turned strict on turned off, and where the new entry
+ * lands, as the project names it.
+ */
+function staleAdvice(cache: ResolvedCacheConfig, source: CacheStrictSource, projectRoot: string): string {
+  const off = [
+    ...(source.flag ? ['without --strict-cache'] : []),
+    ...(source.config ? ['with cache.strict set to false'] : []),
+  ].join(' and ');
+  const run = `re-record it with a read-write run ${off}`;
+  if (cache.store !== undefined) return `${run}; the run writes the new entry to the configured cache.store`;
+  const relative = path.relative(projectRoot, cache.dir);
+  const where = relative === '' || relative.startsWith('..') || path.isAbsolute(relative) ? cache.dir : relative;
+  return `${run} and commit the changed entry under ${where.split(path.sep).join('/')}`;
 }

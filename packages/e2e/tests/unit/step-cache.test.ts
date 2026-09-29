@@ -855,7 +855,7 @@ describe('flushStagedTraces and a re-recorded flow', () => {
 });
 
 describe('cache.strict', () => {
-  const strict = (context: AgentCacheContext): AgentCacheContext => ({ ...context, strict: true });
+  const strict = (context: AgentCacheContext): AgentCacheContext => ({ ...context, strict: { advice: 're-record it' } });
 
   it('fails a step whose recording diverged instead of handing it off, and keeps the cache detail', async () => {
     const context = strict(entryContext({ endPath: '/customers', endAnchors: [savedAnchor] }));

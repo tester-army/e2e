@@ -113,8 +113,18 @@ export interface ResolvedCacheConfig {
   readonly store: CacheStore | undefined;
   /** Absolute file store directory. */
   readonly dir: string;
-  /** A recording that no longer replays fails its step with `REPLAY_STALE` instead of handing off. */
-  readonly strict: boolean;
+  /**
+   * A recording that no longer replays fails its step with `REPLAY_STALE`
+   * instead of handing off: false, or which knobs turned that on, since a
+   * re-recording has to turn each of them off.
+   */
+  readonly strict: false | CacheStrictSource;
+}
+
+/** What turned `cache.strict` on for the run: the config key, the `--strict-cache` flag, or both. */
+export interface CacheStrictSource {
+  readonly config: boolean;
+  readonly flag: boolean;
 }
 
 /**
@@ -413,7 +423,7 @@ function resolveCacheConfig(
     mode,
     store,
     dir: path.resolve(projectRoot, dir ?? path.join('.e2e', 'cache')),
-    strict: strict || cliStrict,
+    strict: strict || cliStrict ? { config: strict, flag: cliStrict } : false,
   };
 }
 
