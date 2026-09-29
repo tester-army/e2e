@@ -355,6 +355,16 @@ describe('redactFragments', () => {
     expect(ledger.redactFragments(`https://app.test/reset/${encoded}`)).toBe('https://app.<secret:basic>');
   });
 
+  it('reads a marker a base64 run already encodes as page text, not as a value', () => {
+    const ledger = new SecretLedger([
+      ['basic', 'S3cretPassw0rd'],
+      ['other', 'Oth3r-Secret-Value'],
+    ]);
+    const page = Buffer.from('shown <secret:basic> here').toString('base64');
+    expect(ledger.redactFragments(page)).toBe(page);
+    expect(ledger.redactFragments(Buffer.from('<secret:other> ada:S3cretPassw0rd').toString('base64'))).toBe('<secret:basic>');
+  });
+
   it('rewrites a whole short value in a base64 run', () => {
     const ledger = new SecretLedger([['pin', 'pw1234']]);
     for (const prefix of ['', 'a', 'ab']) {

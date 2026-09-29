@@ -404,9 +404,6 @@ const ENCODED_RUN = /[A-Za-z0-9+/_-]{8,}={0,2}/g;
  * bytes over the characters around it, so no plain-text spelling of the value
  * matches the run: the run is decoded and read the way `redactDecoded` reads
  * text, and it is rewritten whole, so no character of the value survives.
- * The run can start with text the encoding does not (a URL path, a cookie
- * prefix), so it is decoded from each of the four offsets a base64 group can
- * start at.
  */
 function rewriteEncoded(text: string, redactDecoded: (text: string) => string, known: RegExp): string {
   return text
@@ -414,17 +411,28 @@ function rewriteEncoded(text: string, redactDecoded: (text: string) => string, k
     .map((piece, index) =>
       index % 2 === 1
         ? piece
-        : piece.replace(ENCODED_RUN, (run) => {
-            const base64 = run.replaceAll('-', '+').replaceAll('_', '/');
-            for (const offset of [0, 1, 2, 3]) {
-              const decoded = Buffer.from(base64.slice(offset), 'base64').toString('utf8');
-              const marker = known.exec(redactDecoded(decoded))?.[1];
-              if (marker !== undefined) return marker;
-            }
-            return run;
-          }),
+        : piece.replace(ENCODED_RUN, (run) => encodedMarker(run, redactDecoded, known) ?? run),
     )
     .join('');
+}
+
+/**
+ * The marker of the first value `run` decodes to text holding. The run can
+ * start with text the encoding does not (a URL path, a cookie prefix), so it
+ * is decoded from each of the four offsets a base64 group can start at. A
+ * marker the decoded text already holds is page text, not a value, so only
+ * the text between such markers is read.
+ */
+function encodedMarker(run: string, redactDecoded: (text: string) => string, known: RegExp): string | undefined {
+  const base64 = run.replaceAll('-', '+').replaceAll('_', '/');
+  for (const offset of [0, 1, 2, 3]) {
+    const pieces = Buffer.from(base64.slice(offset), 'base64').toString('utf8').split(known);
+    for (const piece of pieces.filter((_, index) => index % 2 === 0)) {
+      const marker = known.exec(redactDecoded(piece))?.[1];
+      if (marker !== undefined) return marker;
+    }
+  }
+  return undefined;
 }
 
 function literal(text: string): string {
