@@ -1,0 +1,67 @@
+---
+title: Bug bashes
+description: Run many explorations at once, then prove each bug with a failing test before anyone reads about it.
+---
+
+A bug bash runs several `e2e explore` sessions at once, each on one area
+of the app. Every finding they report is then reproduced with a test that
+fails for the reported reason. You get back only bugs that reproduced, each
+with a repro test and the steps to reach it, plus the explorer's screenshot
+and video where the engine captures them.
+
+A coding agent runs the whole thing from the `bug-bash` topic of the
+[skill](/coding-agents):
+
+```text
+Bug bash the checkout and account settings on this branch.
+```
+
+The agent plans the charters, fans them out, merges the results, and
+verifies each finding. Nothing here needs a service beyond the model your
+config already uses.
+
+## How it runs
+
+The agent reads the app's routes and, for a branch, the diff, and writes
+five to ten charters: one-sentence goals, each on one area with one
+posture, such as a first-time user, numbers and copy, edge input, state
+across reloads, or error paths. It runs one `e2e explore` per charter, four
+at a time, each with its own `--artifacts` root so reports never collide,
+and merges the findings. Each issue then gets a repro test that asserts the
+expected behavior, and counts as a bug only when that test fails with
+`ASSERTION_FAILED` on it; verifying subagents each drive their own
+[`e2e mcp` session](/reference/mcp#several-sessions) to check locators
+against the live app. The report lists confirmed bugs first, then rejected
+findings with the reason, then warnings.
+
+The steps, commands, and rules the agent follows are the skill topic
+itself: `npx e2e guide bug-bash`.
+
+## Before you start
+
+- The app must serve several explorers at once. Start it once and set
+  `reuseExisting: true` on the target's `command`, or declare the URL with
+  port `0` so each run starts its own copy. `reuseExisting` does not apply
+  when `CI` is set; use port `0` there. See
+  [Starting your app](/starting-your-app).
+- On mobile, each explorer needs its own device: declare one target per
+  simulator or emulator.
+- Put test accounts under `credentials`; explorers fill passwords by name
+  and never see them.
+- Every charter costs its model calls. The last lines of each run print
+  tokens, cost, and duration.
+
+## Repro tests
+
+A repro test fails until its bug is fixed, so keep it out of the suite that
+gates merges until then. Once the bug is fixed, the test passes and stays as
+its regression test.
+
+<CardGroup cols={2}>
+  <Card title="Exploring without a test" icon="compass" href="/explore">
+    What one `e2e explore` run does, its budgets, and its report.
+  </Card>
+  <Card title="MCP server" icon="plug" href="/reference/mcp">
+    Live sessions for coding agents, several at once.
+  </Card>
+</CardGroup>

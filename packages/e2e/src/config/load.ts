@@ -3,12 +3,11 @@
 import { existsSync } from 'node:fs';
 import nodeModule from 'node:module';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { register, type NamespacedUnregister } from 'tsx/esm/api';
 import { ConfigurationError } from '../internal/errors.ts';
 import type { E2EConfig } from '../types.ts';
 import { explainModuleError } from './diagnose.ts';
-import { resolveSync, TSX_NAMESPACE } from './esm-hooks.ts';
+import { freshModuleURL, resolveSync, TSX_NAMESPACE } from './esm-hooks.ts';
 
 const CONFIG_NAMES = ['e2e.config.ts', 'e2e.config.mts'] as const;
 
@@ -141,25 +140,43 @@ function registerLoader(): NamespacedUnregister {
   return register({ namespace: TSX_NAMESPACE });
 }
 
+export interface ConfigLoadOptions {
+  /**
+   * Evaluates every project file the config reaches by path or `#` import
+   * afresh too, not only the config file; packages stay shared. For a host
+   * that holds several instances of one config at once, each with its own
+   * engines, and sees an edited base config on the next load. Opt-in: in a
+   * run, a test file that imports a file the config imports gets the same
+   * instance, and a fresh graph would split them. Every graph load keeps
+   * its own copy of the project's modules for the life of the process, so
+   * it is for loads a person or an agent asks for, not a loop.
+   */
+  readonly graph?: boolean | undefined;
+}
+
 /**
  * Imports a TypeScript/ESM module with erasable-syntax support. Every call
- * evaluates the module afresh: the query carries the caller's key (what the
- * instance is for) plus a process-unique sequence, so a realm never receives
- * another realm's module instance and a second `run()` in one process sees
- * the config file as it is now.
+ * evaluates the module file afresh: the query carries the caller's key (what
+ * the instance is for) plus a process-unique sequence, so a realm never
+ * receives another realm's instance of it and a second `run()` in one
+ * process sees the file as it is now. The files it imports keep one instance
+ * per process; `loadConfigModule` with `graph` refreshes them too.
  */
 export async function importModule(absolutePath: string, cacheKey = 'module'): Promise<unknown> {
+  return importFresh(absolutePath, cacheKey, false);
+}
+
+async function importFresh(absolutePath: string, cacheKey: string, graph: boolean): Promise<unknown> {
   imports += 1;
-  const url = `${pathToFileURL(absolutePath).href}?e2e=${cacheKey}-${imports}`;
   loader ??= registerLoader();
-  return loader.import(url, import.meta.url);
+  return loader.import(freshModuleURL(absolutePath, `${cacheKey}-${imports}`, graph), import.meta.url);
 }
 
 /** Loads and returns the raw default export of a config module. */
-export async function loadConfigModule(configPath: string): Promise<E2EConfig> {
+export async function loadConfigModule(configPath: string, options: ConfigLoadOptions = {}): Promise<E2EConfig> {
   let moduleValue: unknown;
   try {
-    moduleValue = await importModule(configPath);
+    moduleValue = await importFresh(configPath, 'module', options.graph === true);
   } catch (cause) {
     throw new ConfigurationError(
       'CONFIG_LOAD_FAILED',

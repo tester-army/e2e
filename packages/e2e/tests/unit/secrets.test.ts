@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { credentials, secrets, setSecretRegistry, type SecretRegistry } from '../../src/secrets.ts';
+import { credentials, holdSecretRegistry, secrets, setSecretRegistry, type SecretRegistry } from '../../src/secrets.ts';
 import { ConfigurationError } from '../../src/internal/errors.ts';
 import type { ResolvedCredential, ResolvedSecret } from '../../src/config/resolve.ts';
 
@@ -86,5 +86,47 @@ describe('secrets.get', () => {
   it('hands out a credential password by its name with the password purpose', () => {
     setSecretRegistry(registry([admin], [adminPassword]));
     expect(secrets.get('admin').purpose).toBe('password');
+  });
+});
+
+describe('holdSecretRegistry', () => {
+  const withKey = registry([], [apiKey]);
+  const withAdmin = registry([admin], [adminPassword]);
+  const resolves = (name: string): boolean => {
+    try {
+      secrets.get(name);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  it('installs the newest registry still held when a hold is released', () => {
+    const releaseKey = holdSecretRegistry(withKey);
+    const releaseAdmin = holdSecretRegistry(withAdmin);
+    expect(resolves('admin')).toBe(true);
+    releaseAdmin();
+    expect(resolves('api-key')).toBe(true);
+    expect(resolves('admin')).toBe(false);
+    releaseAdmin();
+    expect(resolves('api-key')).toBe(true);
+    releaseKey();
+    expect(resolves('api-key')).toBe(false);
+  });
+
+  it('keeps a newer registry installed when an older hold is released', () => {
+    const releaseKey = holdSecretRegistry(withKey);
+    const releaseAdmin = holdSecretRegistry(withAdmin);
+    releaseKey();
+    expect(resolves('admin')).toBe(true);
+    releaseAdmin();
+    expect(resolves('admin')).toBe(false);
+  });
+
+  it('leaves a registry a run installed since in place', () => {
+    const release = holdSecretRegistry(withKey);
+    setSecretRegistry(withAdmin);
+    release();
+    expect(resolves('admin')).toBe(true);
   });
 });

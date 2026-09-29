@@ -1,34 +1,19 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { createServer } from 'node:net';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { EngineAppDeclaration } from '../../src/engine/index.ts';
 import { createFakeEngine } from '../helpers/fake-engine.ts';
+import { freePort } from '../helpers/free-port.ts';
 import { createProject, runExisting } from '../helpers/run-project.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
+import { STARTUP_SCRIPTS } from '../helpers/startup-scripts.ts';
 
 const FILES = {
   'tests/selected.e2e.ts': `import { test } from 'e2e';
 test('selected test', async () => {});
 `,
-  'service.cjs': `require('node:fs').appendFileSync('startup.log', process.argv[2] + '\\n');`,
-  'server.cjs': `require('node:fs').appendFileSync('startup.log', 'app\\n');
-require('node:http').createServer((_request, response) => response.end('ready'))
-  .listen(Number(process.argv[2]), '127.0.0.1');`,
+  ...STARTUP_SCRIPTS,
 };
-
-/** Finds an available port for the app command's readiness endpoint. */
-async function freePort(): Promise<number> {
-  const server = createServer();
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', resolve);
-  });
-  const address = server.address();
-  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
-  if (address === null || typeof address === 'string') throw new Error('expected a TCP address');
-  return address.port;
-}
 
 /** A completed dependency process that records its startup order. */
 function service(name: string) {

@@ -70,7 +70,7 @@ same PR ("Committed recordings" in `AGENTS.md`).
 `config: "../web-benchmark/e2e.config.ts"` to `open_session` for a benchmark.
 The server process runs the `dist` it started with: after a rebuild, restart
 it (`/mcp` in Claude Code) before verifying MCP or engine changes through it.
-One session at a time; `close_session` when done.
+Several sessions can be open at once (`--max-sessions`, default 4); pass the session id to every call and `close_session` when done.
 
 Use it to write locators (`locate` prints the `screen.*` call), to look at a
 surface before testing it, to verify changes to the MCP tools

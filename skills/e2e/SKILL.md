@@ -1,6 +1,6 @@
 ---
 name: e2e
-description: Set up and write agentic end-to-end tests with e2e, the e2e runner. Covers scaffolding e2e.config.ts, choosing the Playwright browser engine or the agent-device mobile engine, starting the app under test from the config, writing tests that drive flows with agent.act and judge them with agent.assert, agent.waitFor, and agent.extract, pinning exact values and outcomes with screen, app, web, and expect, shaping the agent for the app (context, system prompt, tools, personas), the trace cache that replays passing steps, running with the e2e CLI, and reading .e2e/report.json when a run fails. Use when a project depends on e2e, when asked to add end-to-end, browser, mobile, or agentic UI tests, or when an e2e run fails.
+description: Set up and write agentic end-to-end tests with e2e, the e2e runner. Covers scaffolding e2e.config.ts, choosing the Playwright browser engine or the agent-device mobile engine, starting the app under test from the config, writing tests that drive flows with agent.act and judge them with agent.assert, agent.waitFor, and agent.extract, pinning exact values and outcomes with screen, app, web, and expect, shaping the agent for the app (context, system prompt, tools, personas), the trace cache that replays passing steps, running with the e2e CLI, and reading .e2e/report.json when a run fails, and bug bashes (parallel explore runs whose findings are proven with repro tests). Use when a project depends on e2e, when asked to add end-to-end, browser, mobile, or agentic UI tests, when asked to bug bash or hunt for bugs in an app, or when an e2e run fails.
 ---
 
 # e2e: agentic end-to-end tests in TypeScript
@@ -73,6 +73,7 @@ one. Without them, the installed CLI prints the same text:
 | `explore` | [references/explore.md](references/explore.md) | Exploring an app toward a goal without a test file: `e2e explore`, its budgets, verdict, and `run.explore` |
 | `debugging` | [references/debugging.md](references/debugging.md) | A run failed: error codes and their fixes, `--headed`, `--debug`, `--ai-trace` |
 | `mcp` | [references/mcp.md](references/mcp.md) | Driving the live app from a coding agent over MCP: `e2e mcp`, its tools, and the explore-then-write loop |
+| `bug-bash` | [references/bug-bash.md](references/bug-bash.md) | Asked to bug bash, QA, or hunt for bugs across an app or a branch: parallel `e2e explore` charters, merging findings, proving each with a repro test |
 
 ## Workflow
 

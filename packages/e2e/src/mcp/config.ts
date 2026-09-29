@@ -10,14 +10,20 @@ export interface ProjectOptions {
   readonly env: NodeJS.ProcessEnv;
 }
 
-/** Loads a project's config fresh: an agent edits the config, or opens another project, while the server runs. */
-export async function loadProjectConfig(options: ProjectOptions): Promise<ResolvedConfig> {
+/** A config loaded from a file, which a session always has: the file is what sessions share. */
+export type LoadedConfig = ResolvedConfig & { readonly configPath: string };
+
+/**
+ * Loads a project's config fresh, down to the files it imports by path: an
+ * agent edits the config, a base config it spreads, or opens another project
+ * while the server runs, and the next session sees the files as they are
+ * now. Every session also gets engine instances of its own, even from a
+ * config that spreads a base config.
+ */
+export async function loadProjectConfig(options: ProjectOptions): Promise<LoadedConfig> {
   const discovered = discoverConfig(options.cwd, options.configPath);
-  if (discovered.configPath === undefined) throw missingConfigError(options.cwd);
-  const raw = await loadConfigModule(discovered.configPath);
-  return resolveConfig(raw, {
-    projectRoot: discovered.projectRoot,
-    configPath: discovered.configPath,
-    env: options.env,
-  });
+  const { configPath } = discovered;
+  if (configPath === undefined) throw missingConfigError(options.cwd);
+  const raw = await loadConfigModule(configPath, { graph: true });
+  return { ...resolveConfig(raw, { projectRoot: discovered.projectRoot, configPath, env: options.env }), configPath };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { asModule, resolve, resolveSync } from '../../src/config/esm-hooks.ts';
+import { asModule, inGraph, resolve, resolveSync } from '../../src/config/esm-hooks.ts';
 import { tsxUsesSyncHooks } from '../../src/config/load.ts';
 
 const context = { conditions: [], importAttributes: {}, parentURL: undefined };
@@ -63,6 +63,45 @@ describe('asModule', () => {
       url: 'file:///app/a.ts',
       format: 'module',
     });
+  });
+});
+
+describe('inGraph', () => {
+  const parent = 'file:///app/e2e.agent.config.ts?e2e=module-3&e2e-graph=module-3';
+
+  it.each([
+    ['a relative import', './e2e.config.ts', 'file:///app/e2e.config.ts'],
+    ['a parent-relative import', '../shared/targets.ts', 'file:///shared/targets.ts'],
+    ['an absolute path', '/app/targets.ts', 'file:///app/targets.ts'],
+    ['a file: URL, as tsx passes a paths alias', 'file:///app/src/targets.ts', 'file:///app/src/targets.ts'],
+    ['a # subpath import', '#targets', 'file:///app/src/targets.ts'],
+  ])('hands the graph on to %s', (_case, specifier, url) => {
+    expect(inGraph(specifier, { parentURL: parent }, { url, format: 'module' })).toEqual({ url: `${url}?e2e-graph=module-3`, format: 'module' });
+  });
+
+  it('keeps the query a resolution already carries', () => {
+    expect(inGraph('./a.ts', { parentURL: parent }, { url: 'file:///app/a.ts?tsx-namespace=e2e', format: 'module' }).url).toBe(
+      'file:///app/a.ts?tsx-namespace=e2e&e2e-graph=module-3',
+    );
+  });
+
+  it.each([
+    ['a package by name', '@e2e-dev/web', parent, 'file:///work/packages/web/dist/index.js'],
+    ['a file under node_modules', './lib.js', 'file:///app/node_modules/dep/index.js?e2e-graph=module-3', 'file:///app/node_modules/dep/lib.js'],
+    ['an importer outside any graph', './e2e.config.ts', 'file:///app/e2e.agent.config.ts?e2e=module-1', 'file:///app/e2e.config.ts'],
+    ['the entry, which has no importer', 'file:///app/e2e.config.ts', undefined, 'file:///app/e2e.config.ts'],
+    ['a builtin', 'node:path', parent, 'node:path'],
+  ])('leaves %s alone', (_case, specifier, parentURL, url) => {
+    const resolution = { url, format: 'module' };
+    expect(inGraph(specifier, { parentURL }, resolution)).toBe(resolution);
+  });
+
+  it('runs in both hook kinds', async () => {
+    const fromGraph = { ...context, parentURL: parent };
+    const next = () => ({ url: 'file:///app/e2e.config.ts', format: 'module' });
+    const expected = { url: 'file:///app/e2e.config.ts?e2e-graph=module-3', format: 'module' };
+    expect(resolveSync('./e2e.config.ts', fromGraph, next)).toEqual(expected);
+    await expect(resolve('./e2e.config.ts', fromGraph, async () => next())).resolves.toEqual(expected);
   });
 });
 

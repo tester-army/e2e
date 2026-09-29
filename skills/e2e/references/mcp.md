@@ -25,7 +25,8 @@ Or declare it in the client's project config (`.mcp.json` for Claude Code,
 Flags: `--config <path>` names the default config file, `--target <name>`
 fixes the target every session opens on, `--headless` hides the browser or
 simulator (sessions are headed by default outside CI, so the developer can
-watch).
+watch), `--max-sessions <n>` sets how many sessions may be open at once
+(default 4, 1 through 16).
 
 ## Tools
 
@@ -34,10 +35,10 @@ can do is a catalog behind `call`.
 
 | Tool | Does |
 | --- | --- |
-| `open_session` | Loads the config (`config` names another file; default the nearest `e2e.config.ts`), starts the declared app command if any, boots the engine, opens the app URL, and returns the session id, the catalog, and the first observation. `target` is required when the config declares several. One session at a time. |
+| `open_session` | Loads the config (`config` names another file; default the nearest `e2e.config.ts`), starts the declared app command if any, boots the engine, opens the app URL, and returns the session id, the catalog, and the first observation. `target` is required when the config declares several. Up to four sessions at once by default (`--max-sessions`), each on its own browser or device. |
 | `tools` | The catalog: one line per tool with its argument names (`?` marks optional), the first sentence of its description, and `[read-only]` where it changes nothing. `tools {tool}` shows one tool's full description and the JSON Schema of its arguments. |
 | `call` | Runs one catalog tool: `call {tool: "tap", args: {target: "n42"}}`. Arguments are checked against the tool's schema first; a wrong one fails with `INVALID_ARGUMENT` naming the field. |
-| `close_session` | Saves a recording still running, ends the attempt, disposes the engine, stops the app processes the session started. |
+| `close_session` | Saves a recording still running, ends the attempt, disposes the engine, stops the app processes the session started once no other session uses them. |
 
 The catalog, per session:
 
@@ -97,7 +98,19 @@ Resources: `e2e://guide` and `e2e://guide/<topic>` hold this skill.
 - A run from the shell and a live session can share the app only if the
   engine's `command` uses `reuseExisting`; otherwise close the session before
   running.
+- Parallel agents (subagents) share one server: each opens its own session
+  and passes its session id to every `tools`, `call`, and `close_session`.
+  A call may leave `session` out only while one session is open. Sessions
+  open at once share one config. Sessions on the same app command share its
+  process, which stops when the last of them closes. On mobile, two
+  sessions on one simulator fight over it: declare one target per device,
+  each naming its `device`, and open each session on its own target.
 - `TARGET_REQUIRED`: pass `target` to `open_session` or start with `--target`.
-  `NO_SESSION`: call `open_session` first. `SESSION_OPEN`: one is already
-  open; use it or `close_session`. `UNKNOWN_TOOL`: the name is not in this
-  session's catalog; the message lists what is.
+  `NO_SESSION`: call `open_session` first, or the session named has ended
+  (the message says why). `SESSION_REQUIRED`: several sessions are open;
+  pass `session`. `SESSION_OPEN`: every session slot is taken (close one,
+  or raise `--max-sessions`). `CONFIG_IN_USE`: open sessions use another
+  config; open on theirs, or close them first. `ENGINE_IN_USE`: the
+  target's engine comes from a package every session shares; create it in
+  the config or a file it imports by path. `UNKNOWN_TOOL`: the name is not
+  in this session's catalog; the message lists what is.

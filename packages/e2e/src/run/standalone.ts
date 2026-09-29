@@ -12,7 +12,7 @@ import path from 'node:path';
 import type { ExecutorAttempt } from '../agent/executor.ts';
 import type { AgentContext } from '../agent/invocation.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
-import { releaseSecretRegistry, setSecretRegistry } from '../secrets.ts';
+import { holdSecretRegistry } from '../secrets.ts';
 import type { TargetSession } from '../engine/surface.ts';
 import { DebugTrace } from '../internal/debug.ts';
 import { classifyError, serializeError, type SerializedError } from '../internal/errors.ts';
@@ -24,6 +24,7 @@ import { AttemptBudget } from './budget.ts';
 import { TargetExecutor, type ClosingRecord } from './execute.ts';
 import { createFixtures } from './fixtures.ts';
 import type { EnginePrepareResult } from '../engine/index.ts';
+import type { ProcessPool } from './process-pool.ts';
 import { PreparedEngines, startDeclaredProcesses, validateEngine, type AppProcesses } from './provision.ts';
 import { attemptVideo } from './video.ts';
 import { sessionSecrecy } from './secrecy.ts';
@@ -44,6 +45,8 @@ export interface StandaloneAttemptOptions {
   readonly artifactsRoot: string;
   /** The configured agent the `agent` fixture runs as when a call names none; default the run's first. */
   readonly agent?: string | undefined;
+  /** Who starts the declared app processes: each for this attempt alone by default, or a host's `SharedAppProcesses` to share them across attempts. */
+  readonly processes?: ProcessPool | undefined;
   /** Run-level progress outside any step: engine provisioning, an app process. */
   readonly notice?: (target: string, message: string) => void;
   /** Live step progress, the same feed a run's reporters get. */
@@ -89,7 +92,7 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
   const video = attemptVideo(target.video, 0);
   // The secret registry is process-wide, as in a run: `credentials.user()` and `secrets.get()`
   // resolve while the attempt is open.
-  setSecretRegistry(config);
+  const releaseRegistry = holdSecretRegistry(config);
   let processes: AppProcesses;
   let prepared: EnginePrepareResult | void;
   const engines = new PreparedEngines();
@@ -100,12 +103,12 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
     // One worker on one target: one slot to provision.
     prepared = await engines.prepare(target, 1, { runId, projectRoot: config.projectRoot, env: options.env, signal, notice });
     const hooks = { ci: config.ci, notice: (message: string) => notice('app', message) };
-    processes = await startDeclaredProcesses([target], config.projectRoot, () => hooks, signal, debug);
+    processes = await startDeclaredProcesses([target], config.projectRoot, () => hooks, signal, debug, options.processes);
   } catch (cause) {
     // No attempt exists yet to carry a cleanup error, and the opening error is
     // the one that surfaces; a release that fails on the way out is narrated.
     await finishEngines((failure) => notice(target.name, classifyError(failure).message));
-    releaseSecretRegistry(config);
+    releaseRegistry();
     throw cause;
   }
 
@@ -155,7 +158,7 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
     } catch (cause) {
       recordCleanupFailure(cause);
     }
-    releaseSecretRegistry(config);
+    releaseRegistry();
   };
 
   try {

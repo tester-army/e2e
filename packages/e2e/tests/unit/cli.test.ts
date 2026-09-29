@@ -655,7 +655,7 @@ describe('e2e guide', () => {
     await invoke('guide', 'nope');
     expect(process.exitCode).toBe(2);
     expect(stdoutSpy).not.toHaveBeenCalled();
-    expect(written(stderrSpy)).toBe('unknown topic "nope"; topics: agent, debugging, explore, mcp, running, setup, writing-tests\n');
+    expect(written(stderrSpy)).toBe('unknown topic "nope"; topics: agent, bug-bash, debugging, explore, mcp, running, setup, writing-tests\n');
   });
 
   it('is listed in the help with an example, and its own help names the topics', async () => {
@@ -668,7 +668,7 @@ describe('e2e guide', () => {
     await invoke('guide', '--help');
     const help = written(stdoutSpy);
     expect(help).toContain('Usage: e2e guide [options] [topic]');
-    expect(help).toMatch(/one of agent, debugging, explore, mcp, running, setup,\s+writing-tests/u);
+    expect(help).toMatch(/one of agent, bug-bash, debugging, explore, mcp, running, setup,\s+writing-tests/u);
     expect(help).toContain('  $ e2e guide writing-tests\n');
     expect(help).toContain('Docs: https://e2e.tester.army/docs/reference/cli#e2e-guide\n');
     expect(process.exitCode).toBe(0);

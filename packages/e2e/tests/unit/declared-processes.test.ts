@@ -39,8 +39,8 @@ describe('declaredProcesses', () => {
     );
     expect(services.map((service) => service.label)).toEqual(['service "postgres"', 'service "redis"']);
     expect(commands).toEqual([
-      { label: 'target "t0" command', command: dev, readyUrl: 'http://localhost:3000/' },
-      { label: 'target "t2" command', command: { executable: 'pnpm', args: ['api'] }, readyUrl: 'http://localhost:4000/' },
+      { label: 'target "t0" command', command: dev, readyUrl: 'http://localhost:3000/', key: expect.any(String) },
+      { label: 'target "t2" command', command: { executable: 'pnpm', args: ['api'] }, readyUrl: 'http://localhost:4000/', key: expect.any(String) },
     ]);
   });
 
@@ -79,6 +79,7 @@ describe('declaredProcesses', () => {
         label: 'target "t0" command',
         command: { executable: 'pnpm', args: ['dev', '--port', '4321'], env: { PORT: '4321' } },
         readyUrl: 'http://127.0.0.1:4321/',
+        key: expect.any(String),
       },
     ]);
     expect(onePort.services.map((service) => service.command.args)).toEqual([['emulator.js', '4321']]);
@@ -91,5 +92,22 @@ describe('declaredProcesses', () => {
     expect(() => declaredProcesses(assignPorts(configOf(named, named), { t0: 4321, t1: 4322 }).targets)).toThrow(
       /service "emulator" is declared by target "t1" and by target "t0" with different commands/,
     );
+  });
+});
+
+describe('process keys', () => {
+  it('gives a command whose port 0 was allocated per run a key of its own', () => {
+    const declaration = { url: 'http://127.0.0.1:0', command: { executable: 'pnpm', args: ['dev', '--port', '{port}'] } };
+    const [first] = declaredProcesses(assignPorts(configOf(declaration), { t0: 4321 }).targets).commands;
+    const [again] = declaredProcesses(assignPorts(configOf(declaration), { t0: 4321 }).targets).commands;
+    const [second] = declaredProcesses(assignPorts(configOf(declaration), { t0: 4322 }).targets).commands;
+    expect(first!.key).toBe(again!.key);
+    expect(first!.key).not.toBe(second!.key);
+  });
+
+  it('names a service by how it spawns and settles, whatever it is called', () => {
+    const key = (service: typeof postgres) => declaredProcesses(targets({ url: 'http://127.0.0.1:3000', services: [service] })).services[0]!.key;
+    expect(key(postgres)).toBe(key({ ...postgres, name: 'db' }));
+    expect(key(postgres)).not.toBe(key(redis));
   });
 });

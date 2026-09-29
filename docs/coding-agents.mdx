@@ -35,8 +35,9 @@ End-to-end tests use e2e; read .agents/skills/e2e/SKILL.md before writing or run
 
 ## How an agent looks at the app
 
-`e2e mcp` lets the coding agent open and interact with one target. Its
-`locate` tool checks a `screen.*` locator against the current app and returns
+`e2e mcp` lets the coding agent open and interact with the app. Each agent,
+subagents included, opens its own session, so several can drive the app at
+once. Its `locate` tool checks a `screen.*` locator against the current app and returns
 the test code when exactly one element matches.
 
 `init` registers the server in `.mcp.json` for Claude Code and

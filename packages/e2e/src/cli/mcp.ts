@@ -15,6 +15,7 @@ export interface McpCommandOptions {
   config?: string | undefined;
   target?: string | undefined;
   headless?: boolean | undefined;
+  maxSessions?: number | undefined;
 }
 
 /**
@@ -52,6 +53,7 @@ export async function mcp(version: string, options: McpCommandOptions): Promise<
       configPath: options.config,
       target: options.target,
       headed: options.headless !== true && !isCiMode(process.env),
+      maxSessions: options.maxSessions,
       env: process.env,
       version,
       stdin: process.stdin,

@@ -3,8 +3,9 @@
  * a real MCP client. The server's tool list is four tools; everything the
  * session can do is a catalog behind `call`. Covers the catalog, a live
  * session driven through `call`, argument validation, the secret and pixel
- * invariants, a video recording, a second session after the first closed, an explicit config
- * path, and stdout hygiene: a config that prints to stdout must not corrupt
+ * invariants, a video recording, a second session open beside the first, a
+ * second session after the first closed, an explicit config path, and stdout
+ * hygiene: a config that prints to stdout must not corrupt
  * the protocol.
  */
 
@@ -20,14 +21,21 @@ import { createProject, type FixtureProject } from '../helpers/run-project.ts';
 const PACKAGE_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const CLI = path.join(PACKAGE_ROOT, 'dist', 'cli', 'bin.js');
 
+// The engine lives in a file the config imports, as a config that spreads a
+// base config has it: each session must still get an engine of its own.
+const TARGETS = `import { web } from '@e2e-dev/web';
+
+export const targets = [{ name: 'web', platform: 'web', engine: web({ url: process.env.APP_URL! }) }];
+`;
+
 const CONFIG = `import type { E2EConfig } from 'e2e';
-import { web } from '@e2e-dev/web';
+import { targets } from './targets.ts';
 
 // Anything a config prints must reach stderr, never the protocol stream.
 console.log('config loaded');
 
 export default {
-  targets: [{ name: 'web', platform: 'web', engine: web({ url: process.env.APP_URL! }) }],
+  targets,
   credentials: { admin: { username: 'admin', password: 'admin-pass' } },
   secrets: { apiKey: 'sk-live-SUPERSECRET-0000' },
 } satisfies E2EConfig;
@@ -73,7 +81,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
 
   beforeAll(async () => {
     app = await startFixtureApp();
-    project = createProject({ 'e2e.config.ts': CONFIG });
+    project = createProject({ 'e2e.config.ts': CONFIG, 'targets.ts': TARGETS });
     transport = new StdioClientTransport({
       command: process.execPath,
       args: [CLI, 'mcp', '--headless'],
@@ -98,11 +106,12 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     const { tools } = await client.listTools();
     expect(tools.map((tool) => tool.name)).toEqual(['open_session', 'tools', 'call', 'close_session']);
     const callTool = tools.find((tool) => tool.name === 'call')!;
-    expect(callTool.description).toContain('call {tool: "tap", args: {target: "n42"}}');
+    expect(callTool.description).toContain('call {tool: "tap", args: {target: "n42"}, session: "<id>"}');
     expect(callTool.inputSchema).toMatchObject({ type: 'object', required: ['tool'] });
     expect(tools.find((tool) => tool.name === 'tools')?.annotations).toMatchObject({ readOnlyHint: true });
     expect(tools.find((tool) => tool.name === 'open_session')?.inputSchema).toMatchObject({ properties: { target: {}, config: {} } });
     expect(client.getInstructions()).toContain('call {tool, args} runs any catalog tool');
+    expect(client.getInstructions()).toContain('Several sessions can be open at once');
 
     const { resources } = await client.listResources();
     expect(resources.map((resource) => resource.uri)).toEqual(
@@ -224,7 +233,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     expect(nameless.text).toContain('UNKNOWN_TOOL');
     const elsewhere = await invoke('call', { tool: 'observe', session: 'not-this-one' });
     expect(elsewhere.isError).toBe(true);
-    expect(elsewhere.text).toContain(`NO_SESSION: session "not-this-one" is not open; the open session is ${sessionId}`);
+    expect(elsewhere.text).toContain(`NO_SESSION: session "not-this-one" is not open; open: ${sessionId} on "web"`);
 
     // A stale id is refused the way the testing agent sees it: the action
     // reports its failure and the screen it re-observed, no wrong node acted on.
@@ -251,9 +260,27 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     expect(denied.text).toMatch(/^Navigated to javascript:alert\(1\)\. failed: /);
     expect(denied.text).toContain('forbidden URL scheme');
 
-    const again = await invoke('open_session');
-    expect(again.isError).toBe(true);
-    expect(again.text).toContain('SESSION_OPEN');
+    // A second session opens beside the first on its own browser: while both
+    // are open a call names its session, and each drives its own screen.
+    const second = await invoke('open_session');
+    expect(second.isError, second.text).toBe(false);
+    const secondId = /^Session (\S+) open/.exec(second.text)![1]!;
+    expect(secondId).not.toBe(sessionId);
+    expect(second.text).toContain(`Pass session "${secondId}" to every tools, call, and close_session; with several sessions open, a call without it fails.`);
+    const unnamed = await call('observe');
+    expect(unnamed.isError).toBe(true);
+    expect(unnamed.text).toMatch(new RegExp(`^SESSION_REQUIRED: 2 sessions are open; pass session to name one: ${sessionId} on "web", ${secondId} on "web"`));
+    const secondScreen = await invoke('call', { tool: 'observe', session: secondId });
+    expect(secondScreen.text).toMatch(/status "Counter" text="0"/);
+    const firstScreen = await invoke('call', { tool: 'observe', session: sessionId });
+    expect(firstScreen.text).toMatch(/status "Counter" text="1"/);
+    const unnamedClose = await invoke('close_session');
+    expect(unnamedClose.text).toContain('SESSION_REQUIRED');
+    const closedSecond = await invoke('close_session', { session: secondId });
+    expect(closedSecond.isError, closedSecond.text).toBe(false);
+    const endedCall = await invoke('call', { tool: 'observe', session: secondId });
+    expect(endedCall.isError).toBe(true);
+    expect(endedCall.text).toContain(`NO_SESSION: session "${secondId}" ended: closed by the agent; call open_session for a new one`);
 
     const closed = await invoke('close_session', { session: sessionId });
     expect(closed.isError, closed.text).toBe(false);

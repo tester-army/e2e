@@ -156,14 +156,14 @@ npx e2e guide setup      # one topic
 
 Prints the skill that `init` installs. `guide` alone prints the overview;
 `guide <topic>` prints one of `setup`, `writing-tests`, `agent`, `running`,
-`explore`, `debugging`, or `mcp`. An unknown topic exits 2 and names the
+`explore`, `debugging`, `mcp`, or `bug-bash`. An unknown topic exits 2 and names the
 valid ones. The same skill installs with `npx skills add tester-army/e2e`.
 See [Coding agents](/coding-agents).
 
 ## e2e mcp
 
 ```bash
-npx e2e mcp [--config <path>] [--target <name>] [--headless]
+npx e2e mcp [--config <path>] [--target <name>] [--headless] [--max-sessions <n>]
 ```
 
 An MCP server on stdio that gives a coding agent a live session on the app.

@@ -26,13 +26,30 @@ export function setSecretRegistry(registry: SecretRegistry | undefined): void {
   else registrySlot.set(globalThis, registry);
 }
 
+/** The registries standalone attempts hold, oldest first; the newest is the one installed. */
+const holds: { readonly registry: SecretRegistry }[] = [];
+
 /**
- * Removes `registry` from the slot if it is still the installed one. A host
- * that closes one attempt while opening the next must not wipe what the new
- * attempt just installed.
+ * Installs `registry` for a standalone attempt until the returned release
+ * runs. Several attempts may hold one at once, as live sessions do: releasing
+ * one installs the newest registry still held, and releasing the last clears
+ * the slot, so closing one session never leaves another resolving against
+ * none.
  */
-export function releaseSecretRegistry(registry: SecretRegistry): void {
-  if (registrySlot.get(globalThis) === registry) registrySlot.delete(globalThis);
+export function holdSecretRegistry(registry: SecretRegistry): () => void {
+  const hold = { registry };
+  holds.push(hold);
+  registrySlot.set(globalThis, registry);
+  return () => {
+    const index = holds.indexOf(hold);
+    if (index === -1) return;
+    holds.splice(index, 1);
+    // A registry installed since, by a newer hold or by a run, stays installed.
+    if (registrySlot.get(globalThis) !== registry) return;
+    const newest = holds.at(-1);
+    if (newest === undefined) registrySlot.delete(globalThis);
+    else registrySlot.set(globalThis, newest.registry);
+  };
 }
 
 /**

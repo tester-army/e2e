@@ -125,6 +125,7 @@
               "cache",
               "debugging",
               "explore",
+              "bug-bash",
               "ci",
               "github",
               "coding-agents"

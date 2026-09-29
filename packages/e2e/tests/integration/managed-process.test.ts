@@ -1,10 +1,10 @@
-import { createServer } from 'node:net';
 import os from 'node:os';
 import process from 'node:process';
 import { describe, expect, it } from 'vitest';
 import { resolveServices } from '../../src/config/app.ts';
 import { InfrastructureError } from '../../src/internal/errors.ts';
 import { ManagedProcess, ServiceStack } from '../../src/run/managed-process.ts';
+import { freePort } from '../helpers/free-port.ts';
 
 const SERVER_SCRIPT = `
   const http = require('node:http');
@@ -13,20 +13,6 @@ const SERVER_SCRIPT = `
   // Ignore SIGTERM to prove the runner escalates to SIGKILL.
   if (process.argv[2] === 'ignore-sigterm') process.on('SIGTERM', () => {});
 `;
-
-async function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const probe = createServer();
-    probe.once('error', reject);
-    probe.listen(0, '127.0.0.1', () => {
-      const address = probe.address();
-      probe.close(() => {
-        if (address === null || typeof address === 'string') reject(new Error('no port'));
-        else resolve(address.port);
-      });
-    });
-  });
-}
 
 function nodeApp(
   port: number,

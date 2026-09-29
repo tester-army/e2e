@@ -18,11 +18,16 @@ export interface DeclaredCommand {
   readonly command: CommandConfig;
   /** The readiness probe of the first declaring target; a shared server is up when it answers. */
   readonly readyUrl: string;
+  /** The command's identity: how it spawns, not where it is probed. A URL declared with port 0 spawns with its allocated port, so each allocation is its own. */
+  readonly key: string;
 }
+
+/** One dependency service to start, with its identity: how it spawns and settles, not what it is called. */
+export type DeclaredService = ResolvedService & { readonly key: string };
 
 export interface DeclaredProcesses {
   /** Every distinct service in start order: target order, first declaration wins. */
-  readonly services: readonly ResolvedService[];
+  readonly services: readonly DeclaredService[];
   /** Every distinct command; identity is the command alone, not where it is probed. */
   readonly commands: readonly DeclaredCommand[];
 }
@@ -41,7 +46,7 @@ function serviceKey(service: ResolvedService): string {
  * different services, so a failure message never points at the wrong process.
  */
 export function declaredProcesses(targets: readonly ResolvedTarget[]): DeclaredProcesses {
-  const services: ResolvedService[] = [];
+  const services: DeclaredService[] = [];
   const owners: string[] = [];
   const indexByKey = new Map<string, number>();
   const keyByName = new Map<string, string>();
@@ -55,7 +60,7 @@ export function declaredProcesses(targets: readonly ResolvedTarget[]): DeclaredP
       let index = indexByKey.get(key);
       if (index === undefined) {
         index = services.length;
-        services.push(service);
+        services.push({ ...service, key });
         owners.push(target.name);
         indexByKey.set(key, index);
         if (service.name !== undefined) {
@@ -82,7 +87,7 @@ export function declaredProcesses(targets: readonly ResolvedTarget[]): DeclaredP
     const key = canonicalDigest(command);
     if (commandKeys.has(key)) continue;
     commandKeys.add(key);
-    commands.push({ label: `target "${target.name}" command`, command, readyUrl });
+    commands.push({ label: `target "${target.name}" command`, command, readyUrl, key });
   }
   return { services, commands };
 }

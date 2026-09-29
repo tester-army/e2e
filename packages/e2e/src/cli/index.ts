@@ -22,6 +22,7 @@ import { DOCS_URL } from './docs-url.ts';
 import { guide } from './guide.ts';
 import { init } from './init.ts';
 import { mcp } from './mcp.ts';
+import { SESSION_BOUNDS } from '../mcp/session.ts';
 import { PROVIDER_IDS } from '../oauth/providers.ts';
 import { runLogin, runLogout, runModels, type LoginFlags } from '../oauth/cli.ts';
 import { SignalLadder } from './signals.ts';
@@ -463,16 +464,21 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
     .option('--target <name>', 'target every session opens on (default: the only target, or the one open_session names)')
     .option('--headless', 'hide the UI during live sessions (default: headed outside CI)')
+    .option(
+      '--max-sessions <n>',
+      `sessions open at once, each with its own browser or device, ${SESSION_BOUNDS.min} through ${SESSION_BOUNDS.max} (default: ${SESSION_BOUNDS.default})`,
+      parseBoundedInt(SESSION_BOUNDS),
+    )
     .addHelpText(
       'after',
       [
         '',
-        examples(['e2e mcp', 'e2e mcp --target web --headless', 'claude mcp add e2e -- npx e2e mcp']),
+        examples(['e2e mcp', 'e2e mcp --target web --headless', 'e2e mcp --max-sessions 8', 'claude mcp add e2e -- npx e2e mcp']),
         '',
         docsLine('/reference/mcp'),
       ].join('\n'),
     )
-    .action(async (options: { config?: string; target?: string; headless?: boolean }) => {
+    .action(async (options: { config?: string; target?: string; headless?: boolean; maxSessions?: number }) => {
       process.exitCode = await mcp(version, options);
     });
 
