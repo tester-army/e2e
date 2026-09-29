@@ -40,9 +40,9 @@ and when a change needs a broad look before review. For one flow, a single
 - Start signed-in charters from a saved session when the project has a
   setup test that signs in: `e2e explore --session <name>` runs that setup
   and explores signed in (topic `explore`). A setup that signs in without
-  filling a password (a cookie, an API call) keeps screenshots available for
-  every finding; a charter that types a password itself gets none after
-  that point. Charters that need their own account each need their own
+  filling a password (a cookie, an API call) keeps screenshots available,
+  where the engine captures them; a charter that types a password itself
+  gets none after that point. Charters that need their own account each need their own
   setup and session.
 - Tell the explorers what the local app cannot do, in the agent's
   `context`: which integrations have no keys (email, payments, an AI

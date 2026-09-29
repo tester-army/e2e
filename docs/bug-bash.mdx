@@ -57,7 +57,8 @@ itself: `npx e2e guide bug-bash`.
   agent's `context` which integrations the local app has no keys for.
 - When a setup test signs in, start charters with
   [`e2e explore --session <name>`](/explore): a setup that signs in without
-  typing a password keeps screenshots for every finding.
+  typing a password keeps screenshots available, where the engine captures
+  them.
 - On mobile, each explorer needs its own device: declare one target per
   simulator or emulator.
 - Put test accounts under `credentials`; explorers fill passwords by name
