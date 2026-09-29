@@ -186,8 +186,7 @@ hook; its console output reaches the runner's streams as written.
   A trace the runner cannot rewrite is deleted and the attempt records
   `TRACE_WITHHELD`.
 - A video masks nothing and is labelled `redaction: "incomplete"`. It is
-  never recorded unless you ask. Its step captions carry the redacted step
-  labels and are labelled `complete`. A recording a hosted browser or
+  never recorded unless you ask. A recording a hosted browser or
   device service keeps stays with that service; the report holds only its
   URL.
 - A download is what the app served. After a secret fill on the session, a
@@ -249,7 +248,6 @@ path you configure.
 | `artifacts/.../*.png` | Screenshots. Secure fields are masked before screenshots are returned or saved as artifacts. | complete |
 | `artifacts/.../trace.zip` | Playwright trace, rewritten after a secret fill, screencast frames dropped. | not-required, complete, or deleted |
 | `artifacts/.../*.webm`, `*.mp4` | Video, opt-in through `video` or `--video`; `retain-on-failure` keeps only the attempts that did not pass. | incomplete |
-| `artifacts/.../*.steps.vtt` | A video's step captions, one cue per step, from the redacted step labels. | complete |
 | `artifacts/.../downloads/*` | Files the app served through a download. Text ones are rewritten after a secret fill; the rest are kept as served. | complete or incomplete |
 | `artifacts/.../failure/screen.txt` | The redacted tree at the moment of failure. | complete |
 | `ai-trace.json` | Every model call, opt-in via `--ai-trace`. Prompts are the redacted ones the model saw; inline image bytes are replaced by their size. | as the prompt |

@@ -181,7 +181,6 @@
                 "size": 8,
                 "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
                 "startedAt": "2026-07-24T12:00:00.000Z",
-                "captions": "018f0f5c-7b2a-7abc-8abc-1123456789ab:artifact:1",
                 "redaction": "incomplete",
                 "producer": {
                   "kind": "attempt"
@@ -189,18 +188,6 @@
               },
               {
                 "id": "018f0f5c-7b2a-7abc-8abc-1123456789ab:artifact:1",
-                "kind": "other",
-                "mediaType": "text/vtt",
-                "path": "web/tests_example.e2e.ts__opens_app/attempt-0/video/video.steps.vtt",
-                "size": 64,
-                "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
-                "redaction": "complete",
-                "producer": {
-                  "kind": "attempt"
-                }
-              },
-              {
-                "id": "018f0f5c-7b2a-7abc-8abc-1123456789ab:artifact:2",
                 "kind": "video",
                 "mediaType": "video/mp4",
                 "url": "https://recordings.example.com/sessions/abc/replay.mp4",
@@ -397,7 +384,7 @@
       "maxAgentContextBytes": 0,
       "maxLedgerBytes": 0,
       "maxObservationBytes": 0,
-      "artifactBytes": 80,
+      "artifactBytes": 8,
       "downloads": 0,
       "events": 0,
       "modelTokens": 0,

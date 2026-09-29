@@ -210,7 +210,7 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
         attemptEnd.abort();
         const record: ClosingRecord = { status: 'passed', cleanup: 'complete' };
         try {
-          await executor.closeSession(session, { attemptId, video, steps: steps.all() }, record, artifacts.sink, cleanupErrors);
+          await executor.closeSession(session, { attemptId, video }, record, artifacts.sink, cleanupErrors);
           await executor.dispose();
           cleanupErrors.push(...executor.collectedRunErrors().map((runError) => runError.error));
           await artifacts.settle();

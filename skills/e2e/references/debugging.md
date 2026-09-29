@@ -30,10 +30,8 @@ jq '.run.results[] | select(.status != "passed") | .attempts[-1]
    and the engine's failure screenshot per failed attempt, a Playwright
    `trace.zip` per attempt (`npx playwright show-trace <file>`), downloads,
    with `--video` the attempt's recording (`video/video.webm` in a local
-   browser, `video/video.mp4` on a device, a provider's own file or link)
-   and its step captions (a `.steps.vtt` beside a file, `video/video.steps.vtt`
-   for `video/video.webm`, or `video/recording-<n>.steps.vtt` for a link), and
-   with `--debug` the full transcript of every agent step.
+   browser, `video/video.mp4` on a device, a provider's own file or link),
+   and with `--debug` the full transcript of every agent step.
 
 ## Error codes and what to do
 
@@ -77,7 +75,7 @@ jq '.run.results[] | select(.status != "passed") | .attempts[-1]
 | `--no-cache` | Rule out a stale `agent.act` replay |
 | `--debug` | Read each agent step's duration, model calls, cost, and transcript |
 | `--ai-trace`, then `npx unbox-ai runs .e2e/ai-trace.json` | See exactly what the model was shown and called |
-| `--video`, `--video=retain-on-failure` | Watch the failed attempt; the `.steps.vtt` beside it captions each step, and `step.startedAt` minus the video artifact's `startedAt` is the step's offset into it. `test('x', { video: 'on' }, ...)` records one test; `video: 'on-first-retry'` in the config records flaky retries in CI |
+| `--video`, `--video=retain-on-failure` | Watch the failed attempt; `step.startedAt` minus the video artifact's `startedAt` is the step's offset into it. `test('x', { video: 'on' }, ...)` records one test; `video: 'on-first-retry'` in the config records flaky retries in CI |
 | `command.log: '.e2e/logs/app.log'` | Read the app's own output when it never becomes ready or errors mid-test |
 | `await app.screenshot('before-submit')` | Attach evidence before any secret is filled; later calls fail with `POLICY_DENIED` |
 | `CI=1 npx e2e run` | Reproduce CI-only behaviour: `ONLY_IN_CI`, read-only cache, `reuseExisting` ignored |

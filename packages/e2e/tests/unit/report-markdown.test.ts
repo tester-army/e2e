@@ -696,11 +696,10 @@ describe('renderMarkdownReport evidence paths', () => {
     expect(named2).toContain('\n\nEvidence: screenshot\n');
   });
 
-  it("links a video a hosted service keeps to its own URL, and leaves a video's step captions out", () => {
-    const base = attempt({ status: 'failed', error: { code: 'E', message: 'm' }, artifacts: ['screenshot', 'other'] });
+  it('links a video a hosted service keeps to its own URL', () => {
+    const base = attempt({ status: 'failed', error: { code: 'E', message: 'm' }, artifacts: ['screenshot'] });
     const evidence = { ...base, artifacts: [...base.artifacts, {
-      captions: base.artifacts[1]!.id,
-      id: 'attempt-1:artifact:2',
+      id: 'attempt-1:artifact:1',
       kind: 'video' as const,
       mediaType: 'video/mp4',
       url: 'https://recordings.example/r1.mp4',

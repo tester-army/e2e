@@ -117,10 +117,10 @@ recorded flow is stale — `--no-cache` only skips the cache for one run.
 - `github()` from `@e2e-dev/github`: on GitHub Actions, one pull request comment per
   run (edited on rerun) and the job summary; needs `pull-requests: write` and
   `GITHUB_TOKEN` in the step's env.
-- Artifacts (screenshots, Playwright traces, video recordings and their
-  `.steps.vtt` captions, `--debug` transcripts, downloads) live under
-  `.e2e/artifacts/`; every path is recorded in the report, and a video a
-  hosted service keeps is recorded by its URL.
+- Artifacts (screenshots, Playwright traces, video recordings, `--debug`
+  transcripts, downloads) live under `.e2e/artifacts/`; every path is
+  recorded in the report, and a video a hosted service keeps is recorded by
+  its URL.
 
 ## Exit codes
 

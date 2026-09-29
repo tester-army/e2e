@@ -38,20 +38,18 @@ export interface ArtifactSink {
   readonly dir: string;
   /** Registers a produced artifact and returns its report artifact ID. */
   register(
-    kind: 'screenshot' | 'trace' | 'video' | 'download' | 'log' | 'other',
+    kind: 'screenshot' | 'trace' | 'video' | 'download' | 'log',
     relativePath: string,
     options?: ArtifactRegistration,
   ): string;
   /** Registers a video a hosted service keeps, by URL, and returns its report artifact ID; nothing is read or stored. */
-  link(url: string, options: { readonly mediaType: string; readonly startedAt: string; readonly captions?: string }): string;
+  link(url: string, options: { readonly mediaType: string; readonly startedAt: string }): string;
 }
 
 /** Facts about a produced artifact its file does not carry. */
 export interface ArtifactRegistration {
   /** When a time-based artifact (a video segment) began recording. */
   readonly startedAt?: string;
-  /** The id of the video's step captions artifact. */
-  readonly captions?: string;
   /**
    * How much of the file the runner masked, when that was decided per
    * artifact (a trace, rewritten or found to need no rewriting) rather than

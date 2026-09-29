@@ -10,13 +10,11 @@ export type ArtifactProducer = { kind: 'step'; stepId: string } | { kind: 'attem
 
 export interface ArtifactRecord {
   id: string;
-  kind: 'screenshot' | 'trace' | 'video' | 'download' | 'log' | 'other';
+  kind: 'screenshot' | 'trace' | 'video' | 'download' | 'log';
   mediaType: string;
   path?: string;
   /** A video a hosted service keeps: the `http(s)` URL the report links to, in place of a local `path`. */
   url?: string;
-  /** The id of this video's step captions (a WebVTT `other` artifact), when the attempt had steps. */
-  captions?: string;
   size?: number;
   sha256?: string;
   /** The configured `ArtifactStore`'s reference for this artifact, when one accepted it. */

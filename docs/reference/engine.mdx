@@ -1011,8 +1011,8 @@ The runner calls `startVideo` only for an attempt whose
 `startAttempt` and any session restore. Both use the launch budget and stop
 before `endAttempt`, within the cleanup budget; a `startVideo` that fails
 fails the launch. Return segments in recording order from `stopVideo` and
-`stopTrace`. The runner decides which recordings are kept, writes each kept
-one's step captions beside it, and deletes a file an attempt does not keep.
+`stopTrace`. The runner decides which recordings are kept and deletes a file an
+attempt does not keep.
 
 ### Provider recordings
 

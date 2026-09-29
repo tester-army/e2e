@@ -106,7 +106,6 @@
         "sha256": { "$ref": "#/$defs/sha256" },
         "ref": { "type": "string", "minLength": 1 },
         "startedAt": { "$ref": "#/$defs/timestamp" },
-        "captions": { "type": "string", "minLength": 1 },
         "redaction": { "enum": ["complete", "not-required", "incomplete"] },
         "producer": {
           "oneOf": [

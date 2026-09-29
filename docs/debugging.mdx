@@ -110,9 +110,7 @@ Playwright traces and videos need separate care. Trace redaction replaces
 secret text with `<secret:name>` and drops the trace's screencast frames, so
 the viewer shows actions, DOM snapshots, and network, but no filmstrip. An
 image the app served itself stays, even one that draws the secret. Videos
-mask nothing and are marked `redaction: "incomplete"`. A video's step
-captions hold the redacted step labels the report carries and are marked
-`complete`.
+mask nothing and are marked `redaction: "incomplete"`.
 
 If trace rewriting fails, the runner deletes the trace from the attempt's
 artifact directory. For a path outside that directory, it withholds the
@@ -130,9 +128,8 @@ npx e2e run --video=retain-on-failure     # record every attempt, keep the failu
 Each recording lands under its attempt's artifact directory. Playwright
 writes WebM, one file per page the attempt opened; agent-device writes MP4.
 The failure recap prints the path, or the URL of a recording a hosted
-browser keeps. Next to each recording is a
-`.steps.vtt` file with one caption per step, `3. agent.act Sign in`, so a
-browser, VLC, or mpv shows which step was running at each moment.
+browser keeps. Each recording carries `startedAt`, so a step's `startedAt`
+minus the recording's is where that step is in the video.
 
 To record without the flag, set `video` in the config. `on-first-retry` is
 the cheap CI mode: a test that passes first time records nothing, and a

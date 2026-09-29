@@ -50,8 +50,8 @@ import { interruptedSkip, pairKey, pairResult, repeatSegment, unstartedResult } 
 import { adoptSecrecy, carriedSecrecy, processSecrets, sessionSecrecy } from './secrecy.ts';
 import { SessionStaging, SessionStore, type SessionIdentity } from './sessions.ts';
 import { redactTraceArchives } from './trace-redaction.ts';
-import { StepRecorder, type StepProgress, type StepRecord } from './steps.ts';
-import { attemptVideo, writeStepCaptions, type AttemptVideo } from './video.ts';
+import { StepRecorder, type StepProgress } from './steps.ts';
+import { attemptVideo, type AttemptVideo } from './video.ts';
 import { EngineError } from '../engine/contract.ts';
 import { hostedVideoUrl } from '../engine/recording.ts';
 import { WorkerModels } from './worker-models.ts';
@@ -122,11 +122,10 @@ export interface SessionPlan {
   readonly attemptIndex: number;
 }
 
-/** What closing an attempt's session needs besides its verdict: the video it recorded and the steps its captions name. */
+/** What closing an attempt's session needs besides its verdict: the video it recorded. */
 export interface SessionClose {
   readonly attemptId: string;
   readonly video: AttemptVideo | undefined;
-  readonly steps: readonly StepRecord[];
 }
 
 /** How one attempt acquires its session and session-staging hooks. */
@@ -651,8 +650,7 @@ export class TargetExecutor implements SerialHost {
   /**
    * Finalizes the recordings, then ends the attempt with a fresh cleanup
    * budget. The caller has classified the attempt by now: `record.status`
-   * decides whether an `on-failure` video is kept, and every kept recording
-   * gets the attempt's step captions beside it.
+   * decides whether an `on-failure` video is kept.
    */
   async closeSession(
     session: TargetSession,
@@ -673,7 +671,7 @@ export class TargetExecutor implements SerialHost {
           );
           return;
         }
-        registerVideos(artifactSink, segments, close.steps);
+        registerVideos(artifactSink, segments);
       });
     }
     const tracePolicy = this.config.artifacts.get('trace');
@@ -1138,7 +1136,7 @@ export class TargetExecutor implements SerialHost {
         await captureEvidence();
       }
       if (openSession !== null && shared === undefined) {
-        await this.closeSession(openSession, { attemptId, video, steps: steps.all() }, record, artifacts.sink, secondaryErrors);
+        await this.closeSession(openSession, { attemptId, video }, record, artifacts.sink, secondaryErrors);
       }
     }
 
@@ -1181,31 +1179,21 @@ function classifyAttemptStatus(
 
 /**
  * Registers an attempt's kept recordings, in order: a file under its path, a
- * link by URL, each with the step captions of the time it recorded. Captions
- * are a convenience: one that cannot be written leaves its video without
- * them, never the attempt's cleanup failed. An engine's own link is held to
- * what a provider's is, an http(s) URL; one that is not fails the cleanup
- * once every other recording is registered, so it costs no other video.
+ * link by URL. An engine's own link is held to what a provider's is, an
+ * http(s) URL; one that is not fails the cleanup once every other recording
+ * is registered, so it costs no other video.
  */
-function registerVideos(sink: ArtifactSink, segments: readonly VideoSegment[], steps: readonly StepRecord[]): void {
+function registerVideos(sink: ArtifactSink, segments: readonly VideoSegment[]): void {
   const rejected: string[] = [];
-  segments.forEach((segment, index) => {
-    const url = 'path' in segment ? undefined : hostedVideoUrl(segment.url);
-    if (!('path' in segment) && url === undefined) {
-      rejected.push(JSON.stringify(segment.url));
-      return;
+  for (const segment of segments) {
+    if ('path' in segment) {
+      sink.register('video', segment.path, { startedAt: segment.startedAt });
+      continue;
     }
-    let captionsPath: string | undefined;
-    try {
-      captionsPath = writeStepCaptions(sink.dir, segment, index, segments[index + 1]?.startedAt, steps);
-    } catch {
-      captionsPath = undefined;
-    }
-    const captions = captionsPath === undefined ? undefined : sink.register('other', captionsPath, { redaction: 'complete' });
-    const registration = { startedAt: segment.startedAt, ...(captions === undefined ? {} : { captions }) };
-    if ('path' in segment) sink.register('video', segment.path, registration);
-    else sink.link(url!, { mediaType: segment.mediaType, ...registration });
-  });
+    const url = hostedVideoUrl(segment.url);
+    if (url === undefined) rejected.push(JSON.stringify(segment.url));
+    else sink.link(url, { mediaType: segment.mediaType, startedAt: segment.startedAt });
+  }
   if (rejected.length > 0) {
     throw new EngineError('ENGINE_FAILURE', `the engine returned a video link that is not an http(s) URL: ${rejected.join(', ')}`, { retryable: false });
   }

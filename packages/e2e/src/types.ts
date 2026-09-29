@@ -1027,8 +1027,7 @@ export interface CacheConfig {
  * test, so a host may use it as its own key.
  */
 export interface StoredArtifact {
-  /** `other` is a runner-written companion file: the step captions of a video. */
-  readonly kind: 'screenshot' | 'trace' | 'video' | 'download' | 'log' | 'other';
+  readonly kind: 'screenshot' | 'trace' | 'video' | 'download' | 'log';
   readonly mediaType: string;
   readonly bytes: Uint8Array;
   readonly size: number;

@@ -341,7 +341,7 @@ async function runSerialAttempt(
     record.status = failedMember.status;
     if (failedMember.error !== undefined) record.error = failedMember.error;
   }
-  await host.closeSession(shared.session, { attemptId, video, steps: shared.priorSteps }, record, artifacts.sink, record.secondaryErrors);
+  await host.closeSession(shared.session, { attemptId, video }, record, artifacts.sink, record.secondaryErrors);
   await artifacts.settle();
   record.durationMs = Date.now() - startedMs;
   return record;

@@ -1032,30 +1032,6 @@ test('fails on purpose', async ({ app }) => {
   );
 
   it(
-    'writes the step captions beside a kept recording and links them from the video artifact',
-    async () => {
-      const fake = createFakeEngine({ video: true });
-      const { outcome, project } = await runProject(
-        { 'tests/video.e2e.ts': PASSING_TEST },
-        { appUrl: APP_URL, config: engineConfig(fake.engine, { video: 'on' }) },
-      );
-      expect(outcome.status).toBe('passed');
-      assertValidReport(outcome.report);
-      const artifacts = resultByTitle(outcome, 'taps a node').attempts[0]!.artifacts;
-      const video = artifacts.find((artifact) => artifact.kind === 'video')!;
-      const captions = artifacts.find((artifact) => artifact.id === video.captions)!;
-      expect(captions).toMatchObject({ kind: 'other', mediaType: 'text/vtt', redaction: 'complete' });
-      expect(captions.path).toMatch(/\/attempt-0\/video\/fake\.steps\.vtt$/);
-      const vtt = readFileSync(path.join(project.dir, '.e2e', 'artifacts', captions.path!), 'utf8');
-      expect(vtt.startsWith('WEBVTT\n\n')).toBe(true);
-      expect(vtt).toMatch(/\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3}\n\d+\. /);
-      expect(vtt).toContain('tap');
-      project.cleanup();
-    },
-    60_000,
-  );
-
-  it(
     'fails the cleanup on an engine link that is not http(s), and still keeps its other recordings',
     async () => {
       const fake = createFakeEngine({ video: true, videoLinks: ['file:///tmp/r.mp4', 'https://recordings.example/r.mp4'] });

@@ -193,8 +193,7 @@ export function evidenceOf(told: AttemptView): ReportArtifact[] {
   const rest: ReportArtifact[] = [];
   const kinds = new Set<string>();
   for (const artifact of told.artifacts) {
-    // A video's step captions travel with it; they are not evidence of their own.
-    if (seen.has(artifact.id) || kinds.has(artifact.kind) || artifact.kind === 'log' || artifact.kind === 'other') continue;
+    if (seen.has(artifact.id) || kinds.has(artifact.kind) || artifact.kind === 'log') continue;
     kinds.add(artifact.kind);
     rest.push(artifact);
   }

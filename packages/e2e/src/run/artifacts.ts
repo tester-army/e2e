@@ -29,7 +29,6 @@ const REDACTION_BY_KIND: Readonly<Record<ArtifactRecord['kind'], ArtifactRecord[
   video: 'incomplete',
   download: 'incomplete',
   log: 'complete',
-  other: 'incomplete',
 };
 
 /** Media types whose bytes are text the secret redactor can rewrite. */
@@ -97,13 +96,11 @@ export function createAttemptArtifacts(options: {
       const absolute = path.join(dir, relativePath);
       const stepId = options.currentStepId?.();
       const startedAt = registration?.startedAt;
-      const captions = registration?.captions;
       const record: ArtifactRecord = {
         id,
         kind,
         mediaType: mediaTypeFor(relativePath),
         ...(startedAt === undefined ? {} : { startedAt }),
-        ...(captions === undefined ? {} : { captions }),
         redaction: registration?.redaction ?? REDACTION_BY_KIND[kind],
         producer: stepId === undefined ? { kind: 'attempt' } : { kind: 'step', stepId },
       };
@@ -167,7 +164,6 @@ export function createAttemptArtifacts(options: {
         mediaType: link.mediaType,
         url,
         startedAt: link.startedAt,
-        ...(link.captions === undefined ? {} : { captions: link.captions }),
         redaction: REDACTION_BY_KIND.video,
         producer: stepId === undefined ? { kind: 'attempt' } : { kind: 'step', stepId },
       });
@@ -243,7 +239,6 @@ function mediaTypeFor(relativePath: string): string {
   if (relativePath.endsWith('.webm')) return 'video/webm';
   if (relativePath.endsWith('.mp4')) return 'video/mp4';
   if (relativePath.endsWith('.txt')) return 'text/plain';
-  if (relativePath.endsWith('.vtt')) return 'text/vtt';
   if (relativePath.endsWith('.csv')) return 'text/csv';
   if (relativePath.endsWith('.json')) return 'application/json';
   if (relativePath.endsWith('.html') || relativePath.endsWith('.htm')) return 'text/html';
