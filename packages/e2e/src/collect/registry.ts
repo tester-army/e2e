@@ -62,7 +62,8 @@ export interface RegisteredTest {
   /**
    * The test's artifact directory under its target's, set by an in-memory
    * registration whose id makes a poor directory name (`e2e explore`, whose
-   * id is the whole encoded goal). Unset, it is the sanitized test id.
+   * id is the whole encoded goal). Unset, a non-serial test's is its
+   * sanitized test id; serial members share the group's and ignore it.
    */
   readonly artifactName?: string | undefined;
 }

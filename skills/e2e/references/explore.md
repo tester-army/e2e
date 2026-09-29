@@ -110,7 +110,7 @@ directory is `<target>/explore-<first words of the goal>-<digest of the
 goal>/<agent>/attempt-0/`, e.g.
 `web/explore-check-the-cart-totals-1a2b3c4d/default/attempt-0/finding-1.png`
 under `.e2e/artifacts/`: the same goal always maps to the same directory,
-different goals never share one.
+and the digest keeps different goals apart.
 
 Turn a finding into a test: its `reproduction` steps are the `agent.act()`
 instructions or `screen.*` actions, and `expected` is the assertion.
