@@ -254,6 +254,40 @@ test('waits in the queue', async () => {});
   );
 
   it(
+    'stops at --max-failures inside the running file: the worker starts none of its tests after the limit',
+    async () => {
+      const file = `import { test } from 'e2e';
+
+test('fails first', async ({ app }) => {
+  await app.open();
+  throw new Error('one');
+});
+test('would run next', async ({ app }) => {
+  await app.open();
+  await new Promise((resolve) => setTimeout(resolve, 1_000));
+});
+test('would run last', async () => {});
+`;
+      const { outcome, project } = await runProjectWithConfigFile(
+        { 'tests/limit.e2e.ts': file },
+        { appUrl: app.url, configSource: workerConfigSource(1), runOptions: { maxFailures: 1 } },
+      );
+      expect(outcome.exitCode).toBe(1);
+      const byDeclaration = outcome.results.toSorted((a, b) => a.test.declarationIndex - b.test.declarationIndex);
+      expect(byDeclaration.map((result) => [result.test.title, result.status, result.skip?.cause, result.attempts.length])).toEqual([
+        ['fails first', 'failed', undefined, 1],
+        ['would run next', 'skipped', 'failure-limit', 0],
+        ['would run last', 'skipped', 'failure-limit', 0],
+      ]);
+      expect(byDeclaration[1]!.skip?.reason).toBe('run stopped after 1 failure (--max-failures 1)');
+      expect(outcome.report.run.summary).toMatchObject({ failed: 1, skipped: 2 });
+      assertValidReport(outcome.report);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
     'reports a target whose workers cannot boot once, whatever the worker count',
     async () => {
       const testFile = (name: string) => `import { test } from 'e2e';

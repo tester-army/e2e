@@ -19,6 +19,7 @@ import type { StepProgress } from './steps.ts';
 import type { SpawnUnitRunner, UnitRunner } from './unit-runner.ts';
 import {
   INTERRUPTED_BEFORE_START,
+  countsTowardFailureLimit,
   failureLimitSkip,
   nonRunResult,
   pairResult,
@@ -29,6 +30,7 @@ import {
   pairKey,
 } from './units.ts';
 import {
+  type FailureLimit,
   type OutputMessage,
   type PairStart,
   type WirePair,
@@ -150,8 +152,8 @@ class SchedulerWorker {
     });
   }
 
-  /** Sends a unit and starts tracking it. */
-  dispatch(unit: WorkUnit): void {
+  /** Sends a unit, with the run's failure limit when it has one, and starts tracking it. */
+  dispatch(unit: WorkUnit, failureLimit: FailureLimit | undefined): void {
     this.state = 'busy';
     this.unit = unit;
     this.reported.clear();
@@ -170,6 +172,7 @@ class SchedulerWorker {
       file: unit.file,
       absolutePath: unit.absolutePath,
       pairs,
+      ...(failureLimit === undefined ? {} : { failureLimit }),
     });
   }
 
@@ -235,7 +238,7 @@ class Scheduler {
    */
   private report(result: ResultRecord): void {
     this.options.events.onResult(result);
-    if (result.status !== 'failed' && result.status !== 'timed-out') return;
+    if (!countsTowardFailureLimit(result.status)) return;
     this.failures += 1;
     const limit = this.options.maxFailures;
     if (limit !== undefined && this.stopSkip === undefined && this.failures >= limit) this.stopEarly(limit);
@@ -252,6 +255,12 @@ class Scheduler {
     for (const state of this.targets.values()) this.skipQueues(state, skip);
     this.options.events.onFailureLimit?.(this.failures, limit);
     this.wakeUp();
+  }
+
+  /** The failure limit a unit dispatched now carries, when the run has one. */
+  private get failureLimit(): FailureLimit | undefined {
+    const limit = this.options.maxFailures;
+    return limit === undefined ? undefined : { limit, failures: this.failures };
   }
 
   /** Empties a target's queues, reporting every pair they held as skipped for `skip`. */
@@ -382,7 +391,7 @@ class Scheduler {
         this.returnUnit(state, unit);
         return;
       }
-      if (worker.state === 'idle') worker.dispatch(unit);
+      if (worker.state === 'idle') worker.dispatch(unit, this.failureLimit);
       else worker.queued = unit;
     }
   }
@@ -564,7 +573,7 @@ class Scheduler {
         worker.state = 'idle';
         const queued = worker.queued;
         worker.queued = undefined;
-        if (queued !== undefined) worker.dispatch(queued);
+        if (queued !== undefined) worker.dispatch(queued, this.failureLimit);
         this.wakeUp();
         break;
       }

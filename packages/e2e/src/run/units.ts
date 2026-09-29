@@ -118,6 +118,11 @@ export const INTERRUPTED_BEFORE_START: SkipInfo = {
   reason: 'run interrupted before execution',
 };
 
+/** Whether a result counts toward `--max-failures`: a failed or timed-out one. */
+export function countsTowardFailureLimit(status: ResultRecord['status']): boolean {
+  return status === 'failed' || status === 'timed-out';
+}
+
 /** Skip info for the work a run stopped at its failure limit never started. */
 export function failureLimitSkip(failures: number, limit: number): SkipInfo {
   return {

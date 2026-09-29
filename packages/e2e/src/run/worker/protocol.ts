@@ -78,6 +78,19 @@ export interface RunUnitMessage {
   readonly file: string;
   readonly absolutePath: string;
   readonly pairs: readonly WirePair[];
+  /**
+   * The run's `--max-failures` and the failures it had counted when the unit
+   * was dispatched. The worker stops starting the unit's tests once its own
+   * failures reach the limit, without waiting for the runner's interrupt to
+   * arrive: by then it could have started the next test in the file.
+   */
+  readonly failureLimit?: FailureLimit;
+}
+
+/** A run's failure limit and the failures counted toward it so far. */
+export interface FailureLimit {
+  readonly limit: number;
+  readonly failures: number;
 }
 
 export interface InterruptMessage {
