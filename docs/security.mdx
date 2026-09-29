@@ -118,7 +118,8 @@ A secret an engine option holds (`web({ basicAuth: { password: secrets.get(name)
 is resolved on the host when each attempt starts and registered for redaction
 then. It is not a fill and does not disable pixels: the value goes to the
 engine, not into the page. The Playwright trace records the options the
-browser opened with, the password included, so the runner rewrites that
+browser opened with, the password included, and the `Authorization: Basic`
+header of every request the browser sent with it, so the runner rewrites that
 attempt's trace as it does after a fill and drops its screencast frames.
 
 ### Redaction
@@ -159,7 +160,9 @@ ordinary text with it.
 - A Playwright trace from a session a secret was filled on is rewritten
   before it is kept: any run of 8 or more characters of a value becomes
   `<secret:name>`, so unrelated text that shares 8 characters with a value is
-  masked too. Screencast frames are dropped. An image the app served that
+  masked too. A base64 or base64url run that decodes to a value or such a
+  fragment (a basic-auth header, a cookie, a token segment) is replaced
+  whole. Screencast frames are dropped. An image the app served that
   draws the secret survives. A trace the runner cannot rewrite is deleted and
   the attempt records `TRACE_WITHHELD`.
 - A video masks nothing and is labeled `redaction: "incomplete"`. It is

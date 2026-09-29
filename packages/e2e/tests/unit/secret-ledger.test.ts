@@ -337,6 +337,31 @@ describe('redactFragments', () => {
     expect(ledger.redactFragments(`x ${long.slice(0, 59)}`)).toBe('x <secret:short><secret:long>');
   });
 
+  it('rewrites a base64 run that decodes to a value or a fragment whole, and leaves other runs', () => {
+    const ledger = new SecretLedger([['basic', 'S3cretPassw0rd']]);
+    const header = `Basic ${Buffer.from('bbuser:S3cretPassw0rd').toString('base64')}`;
+    expect(ledger.redactFragments(header)).toBe('Basic <secret:basic>');
+    expect(ledger.redactFragments(Buffer.from('x:S3cretPa').toString('base64url'))).toBe('<secret:basic>');
+    const clean = `Basic ${Buffer.from('bbuser:other-password').toString('base64')} authorization`;
+    expect(ledger.redactFragments(clean)).toBe(clean);
+  });
+
+  it('rewrites a base64 run that starts with text the encoding does not', () => {
+    const ledger = new SecretLedger([['basic', 'S3cretPassw0rd']]);
+    const encoded = Buffer.from('ada:S3cretPassw0rd').toString('base64url');
+    for (const prefix of ['https://app.test/reset/', 'cookie=v2_', 'tokenValue', 'x-']) {
+      expect(ledger.redactFragments(`${prefix}${encoded}`)).not.toContain(encoded.slice(4, 16));
+    }
+    expect(ledger.redactFragments(`https://app.test/reset/${encoded}`)).toBe('https://app.<secret:basic>');
+  });
+
+  it('rewrites a whole short value in a base64 run', () => {
+    const ledger = new SecretLedger([['pin', 'pw1234']]);
+    for (const prefix of ['', 'a', 'ab']) {
+      expect(ledger.redactFragments(`t=${Buffer.from(`${prefix}u:pw1234`).toString('base64')}`)).toBe('t=<secret:pin>');
+    }
+  });
+
   it('rewrites a fragment in another case, and leaves a shorter one', () => {
     const ledger = new SecretLedger([['apiKey', SECRET]]);
     expect(ledger.redactFragments(`sel ${SECRET.slice(5, 45).toUpperCase()} end`)).toBe('sel <secret:apiKey> end');

@@ -260,6 +260,19 @@ describe('redactTraceArchives', () => {
     ]);
   });
 
+  it('rewrites the basic-auth header the engine sent with every request after the challenge', async () => {
+    const dir = attemptDir();
+    const file = path.join(dir, 'trace', 'trace.zip');
+    const header = { name: 'Authorization', value: `Basic ${Buffer.from(`ada:${SECRET}`).toString('base64')}` };
+    writeFileSync(file, writeZip([zipEntry('trace.network', Buffer.from(JSON.stringify({ request: { headers: [header] } })))]));
+
+    await redactTraceArchives(dir, ['trace/trace.zip'], new SecretLedger([['staging', SECRET]]));
+
+    expect(JSON.parse(entriesOf(file).get('trace.network')!.toString())).toEqual({
+      request: { headers: [{ name: 'Authorization', value: 'Basic <secret:staging>' }] },
+    });
+  });
+
   it('drops the screencast and scrubs a cut fragment in the same event stream', async () => {
     const secret = 'cut-secret-Kq7ZrT2mWx9pLd4sNv8bHc3jFg6yQa1eUo5iRk0tYw2zXn7uM';
     const dir = attemptDir();

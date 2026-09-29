@@ -114,11 +114,12 @@ function compile(values: readonly (readonly [string, string])[]): Compiled {
     return `${redact(text.slice(0, text.length - tail.length + start))}${marker}`;
   };
   const fragments = fragmentOwners(valueKeys);
-  const redactFragments = (text: string): string =>
+  const redactPlainFragments = (text: string): string =>
     redact(text)
       .split(known)
       .map((piece, index) => (index % 2 === 1 ? piece : rewriteFragments(piece, fragments, markers)))
       .join('');
+  const redactFragments = (text: string): string => rewriteEncoded(redactPlainFragments(text), redactPlainFragments, known);
   return {
     redact,
     redactCut,
@@ -391,6 +392,41 @@ function rewriteFragments(text: string, owners: ReadonlyMap<string, number>, mar
   return out + text.slice(kept);
 }
 
+/**
+ * A run of base64 or base64url text long enough to encode a fragment: a
+ * basic-auth header, a cookie, a token segment. Padding is part of the run.
+ */
+const ENCODED_RUN = /[A-Za-z0-9+/_-]{8,}={0,2}/g;
+
+/**
+ * `text` with every base64 run whose decoded text holds a value, whole or a
+ * fragment, replaced by that value's marker. An encoder spreads a value's
+ * bytes over the characters around it, so no plain-text spelling of the value
+ * matches the run: the run is decoded and read the way `redactDecoded` reads
+ * text, and it is rewritten whole, so no character of the value survives.
+ * The run can start with text the encoding does not (a URL path, a cookie
+ * prefix), so it is decoded from each of the four offsets a base64 group can
+ * start at.
+ */
+function rewriteEncoded(text: string, redactDecoded: (text: string) => string, known: RegExp): string {
+  return text
+    .split(known)
+    .map((piece, index) =>
+      index % 2 === 1
+        ? piece
+        : piece.replace(ENCODED_RUN, (run) => {
+            const base64 = run.replaceAll('-', '+').replaceAll('_', '/');
+            for (const offset of [0, 1, 2, 3]) {
+              const decoded = Buffer.from(base64.slice(offset), 'base64').toString('utf8');
+              const marker = known.exec(redactDecoded(decoded))?.[1];
+              if (marker !== undefined) return marker;
+            }
+            return run;
+          }),
+    )
+    .join('');
+}
+
 function literal(text: string): string {
   return [...text].map(escapeRegexpChar).join('');
 }
@@ -469,7 +505,9 @@ export class SecretLedger {
    * becomes its marker. For a recording that keeps what an engine read raw
    * (a Playwright trace holds the page's cut text and selections), where a
    * value cut or selected partway through survives whole-value matching.
-   * Matched as the value is written, in any case, like `redactCut`. Bound
+   * Matched as the value is written, in any case, like `redactCut`. A
+   * base64 or base64url run that decodes to text holding a value or a
+   * fragment is rewritten whole (a basic-auth header the engine sent). Bound
    * like `redact`.
    */
   readonly redactFragments = (text: string): string => this.compile().redactFragments(text);
