@@ -277,21 +277,21 @@ type SettleOptions = { readonly settle: true; readonly settleQuietMs: number } |
 
 const DEFAULT_SETTLE_QUIET_MS = 150;
 
-/** Every option `mobile()` takes. */
-const MOBILE_OPTION_KEYS: readonly string[] = [
-  'platform',
-  'app',
-  'appPath',
-  'identity',
-  'environment',
-  'device',
-  'session',
-  'snapshot',
-  'settle',
-  'transition',
-  'launchArguments',
-  'permissions',
-];
+/** Every option `mobile()` takes, kept equal to `MobileOptions` by the compiler. */
+const MOBILE_OPTION_KEYS: readonly string[] = Object.keys({
+  platform: true,
+  app: true,
+  appPath: true,
+  identity: true,
+  environment: true,
+  device: true,
+  session: true,
+  snapshot: true,
+  settle: true,
+  transition: true,
+  launchArguments: true,
+  permissions: true,
+} satisfies Record<keyof MobileOptions, true>);
 
 /** Refuses an option `mobile()` does not take, a misspelled one naming the nearest, so a typo never falls through to a default. */
 function rejectUnknownOptions(options: MobileOptions): void {

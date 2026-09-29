@@ -211,19 +211,27 @@ function expandCommandPort<T extends CommandConfig>(command: T, label: string, e
 }
 
 /** The keys of a `CommandConfig`: an app command and a service teardown take these only. */
-const COMMAND_KEYS: readonly string[] = [
-  'executable',
-  'args',
-  'cwd',
-  'env',
-  'startupTimeout',
-  'shutdownTimeout',
-  'log',
-  'reuseExisting',
-];
+const COMMAND_KEYS: readonly string[] = Object.keys({
+  executable: true,
+  args: true,
+  cwd: true,
+  env: true,
+  startupTimeout: true,
+  shutdownTimeout: true,
+  log: true,
+  reuseExisting: true,
+} satisfies Record<keyof CommandConfig, true>);
 
 /** The keys of a `ServiceConfig`: a command's, plus what steers the service. */
-const SERVICE_KEYS: readonly string[] = [...COMMAND_KEYS, 'name', 'readyUrl', 'waitForExit', 'teardown'];
+const SERVICE_KEYS: readonly string[] = [
+  ...COMMAND_KEYS,
+  ...Object.keys({
+    name: true,
+    readyUrl: true,
+    waitForExit: true,
+    teardown: true,
+  } satisfies Record<Exclude<keyof ServiceConfig, keyof CommandConfig>, true>),
+];
 
 /**
  * The shape every spawned command shares: only the `keys` it takes, a

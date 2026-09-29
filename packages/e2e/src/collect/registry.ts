@@ -259,20 +259,20 @@ export function outermostSerialGroup(group: GroupNode | undefined): GroupNode | 
 }
 
 /** The keys `test()` and `test.setup()` take, `sessions` aside. */
-const TEST_OPTION_KEYS: readonly string[] = [
-  'timeout',
-  'retries',
-  'tags',
-  'skip',
-  'only',
-  'platforms',
-  'requires',
-  'session',
-  'agentContext',
-  'agent',
-  'trace',
-  'video',
-];
+const TEST_OPTION_KEYS: readonly string[] = Object.keys({
+  timeout: true,
+  retries: true,
+  tags: true,
+  skip: true,
+  only: true,
+  platforms: true,
+  requires: true,
+  session: true,
+  agentContext: true,
+  agent: true,
+  trace: true,
+  video: true,
+} satisfies Record<keyof TestOptions, true>);
 
 /** The keys `test.describe()` takes: a test's, without `only`, and `serial`. */
 const DESCRIBE_OPTION_KEYS: readonly string[] = [...TEST_OPTION_KEYS.filter((key) => key !== 'only'), 'serial'];

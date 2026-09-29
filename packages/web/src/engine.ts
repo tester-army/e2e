@@ -151,25 +151,26 @@ export function web(options: WebOptions = {}): EngineHandle {
 }
 
 /**
- * Every option `web()` takes. `allowedOrigins` and `video` are gone and are
- * refused by name before this list is consulted.
+ * Every option `web()` takes, kept equal to `WebOptions` by the compiler.
+ * `allowedOrigins` and `video` are gone and are refused by name after this
+ * check lets them through.
  */
-const WEB_OPTION_KEYS: readonly string[] = [
-  'url',
-  'environment',
-  'identity',
-  'command',
-  'readyUrl',
-  'services',
-  'browser',
-  'viewport',
-  'screencast',
-  'connect',
-  'headers',
-  'basicAuth',
-  'testIdAttribute',
-  'userAgent',
-];
+const WEB_OPTION_KEYS: readonly string[] = Object.keys({
+  url: true,
+  environment: true,
+  identity: true,
+  command: true,
+  readyUrl: true,
+  services: true,
+  browser: true,
+  viewport: true,
+  screencast: true,
+  connect: true,
+  headers: true,
+  basicAuth: true,
+  testIdAttribute: true,
+  userAgent: true,
+} satisfies Record<keyof WebOptions, true>);
 
 /** Refuses an option `web()` does not take, a misspelled one naming the nearest, so a typo never falls through to a default. */
 function rejectUnknownOptions(options: WebOptions): void {
