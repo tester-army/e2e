@@ -83,33 +83,40 @@ describe('labelSegment', () => {
   const GOAL = 'Starting at /e/cart-totals, change each quantity up and down; check every total and the tax line';
 
   it('names an exploration by the first words of its goal and a digest of the whole goal', () => {
-    expect(labelSegment('explore', GOAL)).toBe('explore-starting-at-e-cart-totals-change-05548d83');
+    expect(labelSegment('explore', GOAL)).toBe('explore-starting-at-e-cart-totals-change-05548d832bd70a7a');
     expect(labelSegment('explore', GOAL)).toBe(labelSegment('explore', GOAL));
   });
 
   it('keeps two goals with the same first words apart', () => {
     const first = labelSegment('explore', 'Check the cart totals after changing quantities');
     const second = labelSegment('explore', 'Check the cart totals after removing an item');
-    expect(first).toBe('explore-check-the-cart-totals-after-948a4f2f');
-    expect(second).toBe('explore-check-the-cart-totals-after-88219565');
+    expect(first).toBe('explore-check-the-cart-totals-after-948a4f2f323d43b8');
+    expect(second).toBe('explore-check-the-cart-totals-after-8821956513c7ae54');
+  });
+
+  it('keeps apart two goals whose first 32 digest bits collide', () => {
+    const first = labelSegment('explore', 'Check the cart totals after changing quantities 5885');
+    const second = labelSegment('explore', 'Check the cart totals after changing quantities 62140');
+    expect(first).toBe('explore-check-the-cart-totals-after-5846d49d844ea116');
+    expect(second).toBe('explore-check-the-cart-totals-after-5846d49df03de864');
   });
 
   it('leaves out a first word the prefix already says', () => {
-    expect(labelSegment('explore', 'Explore the app and find bugs')).toBe('explore-the-app-and-find-bugs-f705c041');
-    expect(labelSegment('explore', 'Explore')).toMatch(/^explore-[0-9a-f]{8}$/);
+    expect(labelSegment('explore', 'Explore the app and find bugs')).toBe('explore-the-app-and-find-bugs-f705c04163ee21e6');
+    expect(labelSegment('explore', 'Explore')).toMatch(/^explore-[0-9a-f]{16}$/);
   });
 
   it('drops accents, falls back to the digest alone, and cuts one long word, always a safe segment', () => {
     const segments = [
-      labelSegment('explore', 'Sprawdź koszyk: żółć'),
+      labelSegment('explore', 'Sprawdź koszyk: żółć, Łódź'),
       labelSegment('explore', '購入フローを確認する'),
       labelSegment('explore', `${'x'.repeat(300)} and more`),
       labelSegment('explore', '../../etc/passwd'),
     ];
-    expect(segments[0]).toMatch(/^explore-sprawdz-koszyk-zo-c-[0-9a-f]{8}$/);
-    expect(segments[1]).toMatch(/^explore-[0-9a-f]{8}$/);
-    expect(segments[2]).toMatch(/^explore-x{32}-[0-9a-f]{8}$/);
-    expect(segments[3]).toMatch(/^explore-etc-passwd-[0-9a-f]{8}$/);
+    expect(segments[0]).toMatch(/^explore-sprawdz-koszyk-zolc-lodz-[0-9a-f]{16}$/);
+    expect(segments[1]).toMatch(/^explore-[0-9a-f]{16}$/);
+    expect(segments[2]).toMatch(/^explore-x{32}-[0-9a-f]{16}$/);
+    expect(segments[3]).toMatch(/^explore-etc-passwd-[0-9a-f]{16}$/);
     for (const segment of segments) expect(sanitizePathSegment(segment)).toBe(segment);
   });
 });

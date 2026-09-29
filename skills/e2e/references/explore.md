@@ -106,9 +106,12 @@ high 4, medium 3, low 2, trivial 1. `.e2e/report.json` has the record under
 the result whose `file` is `explore`, where its path, size, and digest are.
 With `--session`, `run.results` also holds the setup's result and the
 project's other tests as skipped (`filtered`). The exploration's attempt
-directory is `<target>/explore-<first words of the goal>-<digest of the
-goal>/<agent>/attempt-0/`, e.g.
-`web/explore-check-the-cart-totals-1a2b3c4d/default/attempt-0/finding-1.png`
+directory is `<target>/explore-<slug of the goal's first words>-<digest of
+the goal>/<agent>/attempt-0/`. The slug is lowercase ASCII with accents
+stripped and a leading `explore` dropped, so the default goal maps to
+`explore-the-app-and-find-bugs-<digest>`; a goal with no ASCII words maps
+to `explore-<digest>`. For example,
+`web/explore-check-the-cart-totals-1a2b3c4d5e6f7a8b/default/attempt-0/finding-1.png`
 under `.e2e/artifacts/`: the same goal always maps to the same directory,
 and the digest keeps different goals apart.
 

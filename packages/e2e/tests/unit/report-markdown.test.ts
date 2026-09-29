@@ -572,7 +572,7 @@ function explored(explore: Partial<ReportExplore> = {}, status: Report1Document[
   const findings = explore.findings ?? [finding({ index: 0, title: 'Cart total ignores quantity', artifactId: 'a:artifact:0' })];
   const issues = findings.some((entry) => entry.kind === 'issue');
   const evidence = { ...attempt({ status: issues ? 'failed' : 'passed', artifacts: ['screenshot'] }), id: 'a' };
-  evidence.artifacts = [{ ...evidence.artifacts[0]!, id: 'a:artifact:0', path: 'web/explore-checkout-d287e8ae/default/attempt-0/finding-0.png' }];
+  evidence.artifacts = [{ ...evidence.artifacts[0]!, id: 'a:artifact:0', path: 'web/explore-checkout-d287e8aead677d36/default/attempt-0/finding-0.png' }];
   if (issues) evidence.error = { category: 'test', code: 'ASSERTION_FAILED', message: '1 issue found', retryable: false };
   const document = page({ status, results: [named({ title: 'Explore checkout', file: 'explore', status: issues ? 'failed' : 'passed', attempts: [evidence] })] });
   document.run.explore = {
@@ -617,7 +617,7 @@ describe('renderMarkdownReport for an exploration', () => {
           '   Expected: The total reflects the cart',
           '   Actual: Total: $0.00',
           '   Steps: 1. Add two items 2. Open the cart',
-          '   Evidence: screenshot `.e2e/artifacts/web/explore-checkout-d287e8ae/default/attempt-0/finding-0.png`',
+          '   Evidence: screenshot `.e2e/artifacts/web/explore-checkout-d287e8aead677d36/default/attempt-0/finding-0.png`',
         ].join('  \n'),
         ['2. **trivial warning** Newsletter label misspells Receive · `/checkout` · step 2', '   Expected: The total reflects the cart', '   Actual: Total: $0.00'].join('  \n'),
         '',
@@ -742,10 +742,10 @@ describe('markdownReporter', () => {
     expect(rows).toEqual([{ label: 'Markdown', text: path.join('.e2e', 'summary.md') }]);
     const text = readFileSync(path.join(root, '.e2e', 'summary.md'), 'utf8');
     expect(text.startsWith('### 🔴 e2e explore: 1 issue\n')).toBe(true);
-    expect(text).toContain('   Evidence: screenshot `.e2e/artifacts/web/explore-checkout-d287e8ae/default/attempt-0/finding-0.png`');
+    expect(text).toContain('   Evidence: screenshot `.e2e/artifacts/web/explore-checkout-d287e8aead677d36/default/attempt-0/finding-0.png`');
     // Artifacts at the project root itself list from `.`.
     await markdownReporter.onRunFinished!(finished(explored(), root, root), new AbortController().signal);
-    expect(readFileSync(path.join(root, '.e2e', 'summary.md'), 'utf8')).toContain('   Evidence: screenshot `web/explore-checkout-d287e8ae/default/attempt-0/finding-0.png`');
+    expect(readFileSync(path.join(root, '.e2e', 'summary.md'), 'utf8')).toContain('   Evidence: screenshot `web/explore-checkout-d287e8aead677d36/default/attempt-0/finding-0.png`');
   });
 
   it('writes one page per failed test under failures/, links each block to its page, and clears what an earlier run left there', async () => {

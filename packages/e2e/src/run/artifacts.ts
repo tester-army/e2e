@@ -235,18 +235,32 @@ export function sanitizePathSegment(value: string): string {
 
 /** Longest slug of a label's first words that `labelSegment` keeps. */
 const LABEL_SLUG_CHARS = 32;
+/**
+ * Hex characters of a label's digest. Labels that share their first words
+ * differ only in it, and 32 bits collide within a short search, so a label
+ * gets 64.
+ */
+const LABEL_DIGEST_CHARS = 16;
+/** Latin letters NFKD leaves whole, spelled the way a slug reads them. */
+const LATIN_LETTERS: Readonly<Record<string, string>> = {
+  æ: 'ae', ð: 'd', đ: 'd', ı: 'i', ł: 'l', ø: 'o', œ: 'oe', ß: 'ss', þ: 'th',
+};
 
 /**
  * A short report path segment for free text such as an exploration goal:
  * `prefix`, a lowercase ASCII slug of the label's first words, and a digest
- * of the whole label, e.g. `explore-check-the-cart-totals-1a2b3c4d`. A
+ * of the whole label, e.g. `explore-check-the-cart-totals-1a2b3c4d5e6f7a8b`. A
  * first word equal to the prefix is left out rather than said twice. The
  * slug is for reading only; the digest keeps two labels with the same first
  * words apart, and one label always maps to the same segment.
  */
 export function labelSegment(prefix: string, label: string): string {
-  // Accents come off first, so `café` reads `cafe` instead of splitting at the mark.
-  const ascii = label.normalize('NFKD').replaceAll(/\p{M}/gu, '').toLowerCase();
+  // Accents come off first, so `café` reads `cafe` and `żółć` reads `zolc`, not words split at each accent.
+  const ascii = label
+    .normalize('NFKD')
+    .replaceAll(/\p{M}/gu, '')
+    .toLowerCase()
+    .replaceAll(/[æðđıłøœßþ]/g, (letter) => LATIN_LETTERS[letter] ?? letter);
   const words = ascii.split(/[^a-z0-9]+/).filter((word) => word !== '');
   if (words[0] === prefix) words.shift();
   let slug = words[0]?.slice(0, LABEL_SLUG_CHARS) ?? '';
@@ -254,7 +268,7 @@ export function labelSegment(prefix: string, label: string): string {
     if (slug.length + 1 + word.length > LABEL_SLUG_CHARS) break;
     slug = `${slug}-${word}`;
   }
-  const digest = createHash('sha256').update(label).digest('hex').slice(0, SEGMENT_DIGEST_CHARS);
+  const digest = createHash('sha256').update(label).digest('hex').slice(0, LABEL_DIGEST_CHARS);
   return [prefix, slug, digest].filter((part) => part !== '').join('-');
 }
 
