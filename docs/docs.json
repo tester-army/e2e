@@ -145,6 +145,44 @@
             ]
           },
           {
+            "group": "Models and agents",
+            "icon": "wand-magic-sparkles",
+            "pages": [
+              "models",
+              "subscriptions",
+              "agents",
+              "agent-steps",
+              "cache"
+            ]
+          },
+          {
+            "group": "Sign-in and security",
+            "icon": "shield-halved",
+            "pages": [
+              "authentication",
+              "security",
+              "telemetry"
+            ]
+          },
+          {
+            "group": "Debug and explore",
+            "icon": "bug",
+            "pages": [
+              "debugging",
+              "explore",
+              "bug-bash"
+            ]
+          },
+          {
+            "group": "Automate",
+            "icon": "gears",
+            "pages": [
+              "ci",
+              "github",
+              "coding-agents"
+            ]
+          },
+          {
             "group": "Integrations",
             "icon": "plug",
             "pages": [
@@ -164,28 +202,9 @@
             ]
           },
           {
-            "group": "Guides",
-            "icon": "compass",
-            "pages": [
-              "models",
-              "subscriptions",
-              "authentication",
-              "security",
-              "agents",
-              "cache",
-              "debugging",
-              "explore",
-              "bug-bash",
-              "ci",
-              "github",
-              "coding-agents"
-            ]
-          },
-          {
             "group": "Extend",
             "icon": "puzzle-piece",
             "pages": [
-              "agent-steps",
               "tools",
               "executors",
               "writing-an-engine"
@@ -217,8 +236,7 @@
               "reference/mcp",
               "reference/reporters",
               "reference/environment",
-              "reference/errors",
-              "telemetry"
+              "reference/errors"
             ]
           },
           {
