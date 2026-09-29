@@ -107,7 +107,7 @@ function request(overrides: Partial<DeviceRequest> = {}): DeviceRequest & { line
   };
 }
 
-function releaseContext(runId = 'run-1'): DeviceReleaseContext {
+function releaseContext(runId: string): DeviceReleaseContext {
   return { runId, targetName: 'ios', env, signal: new AbortController().signal, log: () => undefined };
 }
 
@@ -189,27 +189,29 @@ describe('easSimulators()', () => {
 
   it('stops the session on release, and one EAS no longer knows counts as stopped', async () => {
     const provider = easSimulators({ projectId: 'p1' });
-    const lease = await provider.acquire(request());
-    await provider.release(lease, releaseContext());
+    const req = request();
+    const lease = await provider.acquire(req);
+    await provider.release(lease, releaseContext(req.runId));
     expect(eas.calls.at(-1)).toEqual({ operation: 'stop', authorization: 'Bearer expo-test', variables: { id: 's1' } });
     eas.errors.stop = notFound;
-    await expect(provider.release(lease, releaseContext())).resolves.toBeUndefined();
+    await expect(provider.release(lease, releaseContext(req.runId))).resolves.toBeUndefined();
     eas.errors.stop = { message: 'Internal error', extensions: { errorCode: 'INTERNAL_SERVER_ERROR' } };
-    await expect(provider.release(lease, releaseContext())).rejects.toThrow('EAS: Internal error');
+    await expect(provider.release(lease, releaseContext(req.runId))).rejects.toThrow('EAS: Internal error');
   });
 
   it('cancels the job of a session stopped while queued, which would otherwise start later and hold a concurrent session', async () => {
     const provider = easSimulators({ projectId: 'p1' });
-    const lease = await provider.acquire(request());
+    const req = request();
+    const lease = await provider.acquire(req);
     eas.stopJob = { id: 'j1', status: 'IN_QUEUE' };
-    await provider.release(lease, releaseContext());
+    await provider.release(lease, releaseContext(req.runId));
     expect(eas.calls.slice(-2)).toEqual([
       { operation: 'stop', authorization: 'Bearer expo-test', variables: { id: 's1' } },
       { operation: 'cancel', authorization: 'Bearer expo-test', variables: { id: 'j1' } },
     ]);
     eas.calls = [];
     eas.stopJob = { id: 'j1', status: 'FINISHED' };
-    await provider.release(lease, releaseContext());
+    await provider.release(lease, releaseContext(req.runId));
     expect(eas.calls.map((call) => call.operation)).toEqual(['stop']);
   });
 
@@ -217,6 +219,8 @@ describe('easSimulators()', () => {
     eas.states = [{ status: 'NEW', turtleJobRun: { status: 'ERRORED' }, remoteConfig: null }];
     await expect(easSimulators({ projectId: 'p1' }).acquire(request())).rejects.toThrow(`simulator session s1 did not become ready: session job errored; stopped it, ${SESSION_URL}`);
     expect(eas.calls.at(-1)?.operation).toBe('stop');
+    eas.states = [{ ...READY, turtleJobRun: { status: 'FINISHED' } }];
+    await expect(easSimulators({ projectId: 'p1' }).acquire(request())).rejects.toThrow('did not become ready: session job finished; stopped it');
     eas.states = [{ status: 'ERRORED', turtleJobRun: null, remoteConfig: null }];
     await expect(easSimulators({ projectId: 'p1' }).acquire(request())).rejects.toThrow('did not become ready: session errored; stopped it');
   });

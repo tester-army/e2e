@@ -101,8 +101,9 @@ normal-priority plan and 115 on a high-priority one. Split a longer suite
 across more workers or across CI jobs.
 
 EAS runs as many sessions at once as the Expo account allows, and queues
-the rest until one ends. None ends before the run does, so keep `workers`
-within that number across targets. Every session queues for a few seconds;
+the rest until one ends. None ends before the run does, and every target
+holds its own `workers` sessions, so keep `workers` times the number of EAS
+targets within that number. Every session queues for a few seconds;
 one still queued after two minutes logs `still queued at EAS after two
 minutes`. Targets prepare one after another, so the sessions of a target
 that is ready wait idle while the next target's queue and boot. A session

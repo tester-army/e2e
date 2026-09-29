@@ -132,11 +132,12 @@ export function easSessions(token: string): EasSessions {
       const job = session.turtleJobRun?.status;
       const config = session.remoteConfig;
       if (session.status === 'STOPPED' || session.status === 'ERRORED') return { phase: 'ended', status: session.status.toLowerCase() };
+      // A job that ended keeps the daemon address it had, which no longer answers.
+      if (job !== undefined && ENDED_JOB.has(job)) return { phase: 'ended', status: `job ${job.toLowerCase()}` };
       if (config?.agentDeviceRemoteSessionUrl !== undefined && config.agentDeviceRemoteSessionToken !== undefined) {
         const openPreviewUrl = config.webPreviewToken == null ? (config.webPreviewUrl ?? undefined) : undefined;
         return { phase: 'ready', daemonUrl: config.agentDeviceRemoteSessionUrl, daemonToken: config.agentDeviceRemoteSessionToken, openPreviewUrl };
       }
-      if (job !== undefined && ENDED_JOB.has(job)) return { phase: 'ended', status: `job ${job.toLowerCase()}` };
       return { phase: job === undefined || QUEUED_JOB.has(job) ? 'queued' : 'starting' };
     },
     async stop(id, signal) {
