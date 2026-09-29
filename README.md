@@ -1,4 +1,4 @@
-<a href="https://tester.army/?utm_source=e2e&utm_medium=github&utm_campaign=readme_banner"><img src="https://github.com/user-attachments/assets/fb0587cc-568e-4ea2-b2ef-19766829af1e" alt="e2e by TesterArmy" width="100%" /></a>
+<a href="https://tester.army/e2e?utm_source=e2e&utm_medium=github&utm_campaign=readme_banner"><img src="https://github.com/user-attachments/assets/fb0587cc-568e-4ea2-b2ef-19766829af1e" alt="e2e by TesterArmy" width="100%" /></a>
 
 # e2e
 
@@ -46,4 +46,8 @@ Maestro, and the full reference.
 ## Contributing
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) and [SECURITY.md](./SECURITY.md).
-Apache-2.0, by [TesterArmy](https://tester.army).
+Apache-2.0.
+
+Built by [TesterArmy](https://tester.army/?utm_source=e2e&utm_medium=github&utm_campaign=readme_footer),
+the agentic testing platform that runs plain-English tests on web and mobile
+apps and reports back with screenshots and recordings.
