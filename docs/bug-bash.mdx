@@ -33,8 +33,9 @@ gets a repro test that asserts the expected behavior, and counts as a bug
 only when that test fails with `ASSERTION_FAILED` on it; verifying
 subagents, one per area, each drive their own
 [`e2e mcp` session](/reference/mcp#several-sessions) to check locators
-against the live app. The report lists confirmed bugs first, then rejected
-findings grouped by reason, then warnings.
+against the live app. The report lists confirmed bugs first, then
+production risks the triage surfaced but could not verify locally, then
+rejected findings grouped by reason, then warnings.
 
 The steps, commands, and rules the agent follows are the skill topic
 itself: `npx e2e guide bug-bash`.

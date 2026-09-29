@@ -42,8 +42,11 @@ and when a change needs a broad look before review. For one flow, a single
   provider), what is seed data, and what must never be clicked (starting
   paid runs, connecting real accounts). Otherwise a large share of the
   findings are the missing keys.
-- Explore needs a step budget of 40 actions and model calls or more; a
-  project config tuned for short test steps (`maxSteps: 15`) starves it.
+- Each exploration step needs a budget of 40 actions and model calls or
+  more (`maxSteps` and `maxModelCalls` on the agent); a project config tuned
+  for short test steps (`maxSteps: 15`) starves it. That is a per-step
+  budget, separate from `--max-steps`, which counts the exploration steps a
+  charter plans.
 - On a mobile target, every explorer and every verifier needs its own
   simulator or emulator: declare one target per device, each naming its
   `device`, and give each charter its own target. Two on one device fight
