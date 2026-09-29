@@ -293,6 +293,13 @@ export default {
   single `device` runs one worker whatever `workers` says; a list,
   `device: ['iPhone 17', 'iPhone 17 Pro']`, is an explicit pool. Devices boot
   in `prepare`, before the run's clock starts.
+- `device` can also be a `DeviceProvider` that leases hosted devices, one
+  per worker slot for the run: `easSimulators({ projectId, buildId })` from
+  `@e2e-dev/integrations/eas` for EAS Simulators (reads `EXPO_TOKEN`; with
+  `buildId` EAS installs the app, so leave `appPath` out). No Xcode or
+  Android SDK needed; a run must fit in one session's lifetime
+  (`maxDurationMinutes`, 40 by default). Set `videoTouches: false` on the
+  engine for video there.
 - A test's steps never wait for the screen to settle; `expect` verifies the
   outcome. Only a control that appeared or moved with the previous action
   waits out the `transition` budget (default 500 ms) before it is acted on.

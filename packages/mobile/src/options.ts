@@ -123,6 +123,13 @@ export interface MobileOptions {
    */
   readonly transition?: number | undefined;
   /**
+   * Whether a video recording draws agent-device's touch indicator where a
+   * test tapped. Default `true`. `false` records the plain screen, and skips
+   * the pass that draws the indicator once the recording stops: on a hosted
+   * daemon that pass can outlast the attempt's `cleanupTimeout`.
+   */
+  readonly videoTouches?: boolean | undefined;
+  /**
    * Arguments the pinned app is launched with on every fresh launch this
    * engine performs: `app.open()`, `app.restart()`, and `app.clearState()`.
    * iOS hands them to the app process (`ProcessInfo.processInfo.arguments`);

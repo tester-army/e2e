@@ -1655,6 +1655,7 @@ describe('video', () => {
       action: 'start',
       path: path.join(artifactsDir, 'video', 'video.mp4'),
       quality: 'medium',
+      recordingScope: 'device',
     });
     const segments = await h.engine.artifacts!.stopVideo!(operation());
     expect(h.fake.lastArgs('recording.record')).toEqual({ action: 'stop' });
@@ -1663,6 +1664,20 @@ describe('video', () => {
     expect(existsSync(path.join(artifactsDir, 'video', 'video.mp4'))).toBe(true);
     await h.engine.endAttempt!(cleanup());
     expect(records(h)).toHaveLength(2);
+  });
+
+  it('records without the touch indicator when videoTouches is false', async () => {
+    const h = harness({ videoTouches: false });
+    recorder(h);
+    await openAttempt(h);
+    await h.engine.artifacts!.startVideo!(operation());
+    expect(h.fake.lastArgs('recording.record')).toEqual({
+      action: 'start',
+      path: path.join(artifactsDir, 'video', 'video.mp4'),
+      quality: 'medium',
+      recordingScope: 'device',
+      hideTouches: true,
+    });
   });
 
   it('moves a recording the device finalized elsewhere into place, and stops a dangling one at attempt end', async () => {

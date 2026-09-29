@@ -510,8 +510,9 @@ export class AgentDeviceSurface {
   /**
    * Asks the device to record its screen into the attempt directory. Taps stay
    * visible in the recording (agent-device's touch indicator), which is the
-   * closest a phone comes to a cursor. A device provider that records its
-   * devices records the attempt instead, when the slot rides one of its leases.
+   * closest a phone comes to a cursor, unless `videoTouches` is `false`. A
+   * device provider that records its devices records the attempt instead,
+   * when the slot rides one of its leases.
    */
   async startVideo(operation: OperationContext): Promise<void> {
     const attempt = this.attempt;
@@ -530,7 +531,15 @@ export class AgentDeviceSurface {
     attempt.video = recording;
     await this.command(
       'start video recording',
-      (client) => client.recording.record({ action: 'start', path: absolute, quality: 'medium' }),
+      // The whole screen: an app scope refuses to start while no app is open, before `app.open()` and after `closeApp()`.
+      (client) =>
+        client.recording.record({
+          action: 'start',
+          path: absolute,
+          quality: 'medium',
+          recordingScope: 'device',
+          ...(this.options.videoTouches === false ? { hideTouches: true } : {}),
+        }),
       operation.signal,
     );
     // The device confirmed: it is recording from about now.

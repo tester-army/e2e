@@ -132,8 +132,9 @@ device per worker slot when the run starts and releases it when the run
 ends. The engine drives each lease through the agent-device daemon the lease
 names instead of the local one, so any service that runs an agent-device
 daemon next to a simulator, an emulator, or a physical device works. Nothing
-in the framework knows a vendor; a provider is a few dozen lines in your
-project.
+in the framework knows a vendor: for [EAS Simulators](/integrations/eas),
+`easSimulators()` from `@e2e-dev/integrations/eas` is the provider, and for
+any other service a provider is a few dozen lines in your project.
 
 ```ts
 export interface DeviceProvider {
@@ -433,7 +434,7 @@ tool.
 | `test.setup` saves a session, `session:` restores it | Not available. A simulator has no portable session snapshot; sign in per test or seed the app |
 | Secret input | `type_secret` and `screen.getByLabel(...).fill(secret)` fill declared secrets into secure fields |
 | Playwright trace per attempt | No Playwright trace; screenshots mask secure fields |
-| `--video` writes a WebM screencast | `--video` writes an MP4 of the device screen with taps shown, or keeps a device provider's own recording |
+| `--video` writes a WebM screencast | `--video` writes an MP4 of the device screen with taps shown (`videoTouches: false` hides them), or keeps a device provider's own recording |
 | The cache anchors on the page path | The cache anchors on the location `<bundle id> / <screen title>`, the title read off the navigation bar on iOS and the toolbar on Android |
 
 ### Known device limitations

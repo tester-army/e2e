@@ -42,6 +42,8 @@ Maestro, and the full reference.
 - [`@e2e-dev/github`](./packages/github): the pull request comment reporter.
 - [`@e2e-dev/kernel`](./packages/kernel): Kernel hosted browsers for the web
   engine.
+- [`@e2e-dev/eas`](./packages/eas): EAS Simulators hosted iOS simulators and
+  Android emulators for the mobile engine.
 
 ## Contributing
 

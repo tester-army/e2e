@@ -1,0 +1,154 @@
+---
+title: EAS Simulators
+sidebarTitle: EAS Simulators
+description: Run mobile targets on EAS Simulators' hosted iOS simulators and Android emulators with the easSimulators() device provider from @e2e-dev/integrations.
+---
+
+`easSimulators()` from `@e2e-dev/integrations/eas` is a
+[device provider](/mobile#hosted-devices) for
+[EAS Simulators](https://expo.dev/services/simulators). Each worker slot gets
+its own hosted iOS simulator or Android emulator, started when the run starts
+and stopped when it ends, and the engine drives it through the agent-device
+daemon EAS runs beside it. No Mac, Xcode, or Android SDK on the machine that
+runs `e2e`. Tests, config, and CI stay the same.
+
+## Setup
+
+```bash
+npm install --save-dev @e2e-dev/integrations
+```
+
+EAS Simulators is in limited access; check yours with
+`npx eas-cli@latest simulator:availability`.
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { mobile } from '@e2e-dev/mobile';
+import { easSimulators } from '@e2e-dev/integrations/eas';
+
+export default {
+  targets: [
+    {
+      name: 'ios',
+      engine: mobile({
+        platform: 'ios',
+        app: 'com.example.app',
+        device: easSimulators({
+          projectId: '6c3f1f5e-8d0a-4f5e-9b1a-2f4d8e7c9a10',
+          buildId: process.env.EAS_BUILD_ID,
+        }),
+        videoTouches: false,
+      }),
+    },
+  ],
+  workers: 2,
+} satisfies E2EConfig;
+```
+
+`projectId` is the Expo project's id, `extra.eas.projectId` in the app
+config, not its slug. Set `EXPO_TOKEN`, an
+[access token](https://expo.dev/settings/access-tokens) of an account or robot
+with access to the project, in the environment `e2e run` starts in, such as a
+CI secret. The package calls Expo's API with `fetch`, so there is no SDK to
+install.
+
+## Install the app
+
+The simulator boots with no apps. Pick one way to put yours on it:
+
+- **An EAS Build**: `buildId` names a simulator build (`"ios": { "simulator": true }`
+  in `eas.json`) or an APK, and EAS installs and launches it before the
+  session is ready. Leave the engine's `appPath` out, and keep `app` so
+  `app.open()` knows what to launch. The build never leaves EAS.
+- **A URL**: `applicationArchiveUrl` names an app archive EAS downloads and
+  installs the same way.
+- **A local build**: the engine's `appPath` and a fixture that calls
+  `device.installApp()`, as with a [local simulator](/mobile). The build
+  uploads through the session's daemon to each simulator. Leave `buildId`
+  and `applicationArchiveUrl` out.
+
+```ts
+// EAS installs the build.
+mobile({ platform: 'ios', app: 'com.example.app', device: easSimulators({ projectId, buildId }) })
+
+// A fixture uploads the build with device.installApp().
+mobile({ platform: 'ios', app: 'com.example.app', appPath: 'build/App.app', device: easSimulators({ projectId }) })
+```
+
+## Options
+
+| Option                  | Default     | Meaning |
+| ----------------------- | ----------- | ------- |
+| `projectId`             | required    | The Expo project the sessions belong to. |
+| `buildId`               | none        | EAS Build EAS installs and launches on every simulator. |
+| `applicationArchiveUrl` | none        | App archive URL EAS installs in place of a build. Excludes `buildId`. |
+| `device`                | EAS's pick  | iOS device name or UDID (`'iPhone 17 Pro'`), or an Android AVD hardware profile (`'pixel_9'`). |
+| `maxIdleTimeMinutes`    | `10`        | Minutes without an agent-device command after which EAS stops the session. See [What the provider does](#what-the-provider-does). |
+| `maxDurationMinutes`    | account cap | Minutes a session may run once ready. EAS caps it at 40, or 115 on a high-priority plan. |
+| `tags`                  | `[]`        | Tags on every session, beside the run's own. |
+
+## Workers and sessions
+
+Every worker slot holds one simulator for the whole run, and tests start once
+every slot has one, so `workers` is the number of sessions each target starts at
+once. A session takes about three minutes from request to ready (queue,
+boot, build install), all slots in parallel, before the run's clock starts.
+
+A run must fit in one session's lifetime: EAS stops a session
+`maxDurationMinutes` after it is ready, 40 minutes by default on a
+normal-priority plan and 115 on a high-priority one. Split a longer suite
+across more workers or across CI jobs.
+
+EAS runs as many sessions at once as the Expo account allows, and queues
+the rest until one ends. None ends before the run does, so keep `workers`
+within that number across targets. Every session queues for a few seconds; one still queued
+after two minutes logs `still queued at EAS after two minutes`. With more
+than one worker, one still queued after `maxIdleTimeMinutes` fails the
+lease, stopping every session of the run: the ones that were ready have been idle that long, and EAS is about
+to stop them.
+
+## Watch a run
+
+The provider logs each session's expo.dev page as it is created:
+
+```text
+ℹ leasing 2 ios device(s) from eas-simulators
+ℹ eas-simulators (1 of 2): simulator session 01a0…, https://expo.dev/accounts/acme/projects/shop/simulator-sessions/01a0…
+ℹ eas-simulators: leased 01a0…
+```
+
+A browser preview that opens without a token is logged too, as
+`watch at <url>`. A preview that needs one is not: the token would give
+anyone who reads the CI log control of the simulator.
+
+Sessions are named `e2e <target> <slot> of <slots>` and tagged `e2e`,
+`e2e-run:<run id>`, and `e2e-target:<target>`, so
+`eas simulator:list --tag e2e-run:<run id>` finds a run's sessions.
+
+## Recordings
+
+An attempt that records [video](/reference/config#video) records through
+agent-device on the simulator, as it does locally, and saves
+`video/video.mp4` under the attempt's artifact directory.
+
+Set the mobile engine's `videoTouches: false`, as the setup above does.
+agent-device draws its touch indicator into a recording when the recording
+stops, and on an EAS simulator that takes minutes, so every attempt that
+records video runs out its `cleanupTimeout` stopping it and keeps no file.
+Without the indicator, stopping takes about two seconds.
+
+## What the provider does
+
+- Starts an `agent-device` session per slot and waits until its daemon is
+  reachable, then hands the engine the daemon's URL and token.
+- Defaults `maxIdleTimeMinutes` to 10. A run that dies before the engine
+  stops its sessions leaves them idle, and EAS stops them after that long.
+- Stops a session that errors, is cancelled, stays queued past
+  `maxIdleTimeMinutes`, or is still booting 15 minutes after leaving the
+  queue, and treats one EAS no longer knows as already stopped.
+- Rides out up to three failed status polls in a row, a blip at
+  api.expo.dev, before giving a session up.
+
+A missing `EXPO_TOKEN`, an account without EAS Simulators, or a session that
+fails to start fails the lease with EAS's message. That ends the run before
+any test, and the sessions other slots got are still stopped.

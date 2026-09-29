@@ -187,7 +187,8 @@
             "icon": "plug",
             "pages": [
               "integrations/index",
-              "integrations/kernel"
+              "integrations/kernel",
+              "integrations/eas"
             ]
           },
           {

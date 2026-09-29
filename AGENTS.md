@@ -72,6 +72,10 @@ suites that consume the built packages the way a user would.
   engine's provider seam (`BrowserProvider` for web, `DeviceProvider` for
   mobile) and imports the engine's types only; the engines never know it
   exists.
+- `packages/eas` - the published `@e2e-dev/eas` package: EAS Simulators
+  hosted iOS simulators and Android emulators for the mobile engine
+  (`DeviceProvider`). Expo publishes no SDK for the sessions API, so it calls
+  Expo's GraphQL API with `fetch`, and `@e2e-dev/mobile` is its only peer.
 - `apps/testbed` (`@e2e-dev/testbed`, private) — dogfood project that
   consumes the **built** packages like a real user would: the playground app
   where every runner feature (sessions, routes, downloads, frames, uploads,
