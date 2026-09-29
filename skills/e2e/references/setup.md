@@ -295,7 +295,7 @@ export default {
   in `prepare`, before the run's clock starts.
 - `device` can also be a `DeviceProvider` that leases hosted devices, one
   per worker slot for the run: `easSimulators({ projectId, buildId })` from
-  `@e2e-dev/integrations/eas` for EAS Simulators (reads `EXPO_TOKEN`; with
+  `@e2e-dev/eas` for EAS Simulators (reads `EXPO_TOKEN`; with
   `buildId` EAS installs the app, so leave `appPath` out). No Xcode or
   Android SDK needed; a run must fit in one session's lifetime
   (`maxDurationMinutes`, 40 by default). Set `videoTouches: false` on the

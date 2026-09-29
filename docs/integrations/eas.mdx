@@ -1,10 +1,10 @@
 ---
 title: EAS Simulators
 sidebarTitle: EAS Simulators
-description: Run mobile targets on EAS Simulators' hosted iOS simulators and Android emulators with the easSimulators() device provider from @e2e-dev/integrations.
+description: Run mobile targets on EAS Simulators' hosted iOS simulators and Android emulators with the easSimulators() device provider from @e2e-dev/eas.
 ---
 
-`easSimulators()` from `@e2e-dev/integrations/eas` is a
+`easSimulators()` from `@e2e-dev/eas` is a
 [device provider](/mobile#hosted-devices) for
 [EAS Simulators](https://expo.dev/services/simulators). Each worker slot gets
 its own hosted iOS simulator or Android emulator, started when the run starts
@@ -15,7 +15,7 @@ runs `e2e`. Tests, config, and CI stay the same.
 ## Setup
 
 ```bash
-npm install --save-dev @e2e-dev/integrations
+npm install --save-dev @e2e-dev/eas
 ```
 
 EAS Simulators is in limited access; check yours with
@@ -24,7 +24,7 @@ EAS Simulators is in limited access; check yours with
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
 import { mobile } from '@e2e-dev/mobile';
-import { easSimulators } from '@e2e-dev/integrations/eas';
+import { easSimulators } from '@e2e-dev/eas';
 
 export default {
   targets: [
@@ -101,11 +101,11 @@ across more workers or across CI jobs.
 
 EAS runs as many sessions at once as the Expo account allows, and queues
 the rest until one ends. None ends before the run does, so keep `workers`
-within that number across targets. Every session queues for a few seconds; one still queued
-after two minutes logs `still queued at EAS after two minutes`. With more
-than one worker, one still queued after `maxIdleTimeMinutes` fails the
-lease, stopping every session of the run: the ones that were ready have been idle that long, and EAS is about
-to stop them.
+within that number across targets. Every session queues for a few seconds;
+one still queued after two minutes logs `still queued at EAS after two
+minutes`. With more than one worker, one still queued after
+`maxIdleTimeMinutes` fails the lease and the run stops every session: the
+ready ones have been idle that long, and EAS is about to stop them.
 
 ## Watch a run
 
@@ -133,7 +133,7 @@ agent-device on the simulator, as it does locally, and saves
 
 Set the mobile engine's `videoTouches: false`, as the setup above does.
 agent-device draws its touch indicator into a recording when the recording
-stops, and on an EAS simulator that takes minutes, so every attempt that
+stops, and on an EAS iOS simulator that takes minutes, so every attempt that
 records video runs out its `cleanupTimeout` stopping it and keeps no file.
 Without the indicator, stopping takes about two seconds.
 
@@ -146,6 +146,9 @@ Without the indicator, stopping takes about two seconds.
 - Stops a session that errors, is cancelled, stays queued past
   `maxIdleTimeMinutes`, or is still booting 15 minutes after leaving the
   queue, and treats one EAS no longer knows as already stopped.
+- Cancels the job of a session it stops while the job is still queued:
+  EAS would otherwise start it later and count it against the account's
+  concurrent sessions.
 - Rides out up to three failed status polls in a row, a blip at
   api.expo.dev, before giving a session up.
 
