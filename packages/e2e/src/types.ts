@@ -560,7 +560,7 @@ export interface SetupSession {
 }
 
 export interface TestFixtures {
-  /** Agent steps. Acquiring it without a configured model is `MODEL_UNAVAILABLE`. */
+  /** Agent steps. Acquiring the built-in agent without a configured model is `MODEL_UNAVAILABLE`. */
   readonly agent: Agent;
   /** App lifecycle: open, restart, clear state, back, screenshot. */
   readonly app: App;
