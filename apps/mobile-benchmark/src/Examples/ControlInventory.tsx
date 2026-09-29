@@ -462,6 +462,9 @@ function DeviceSection() {
       <Text testID="network-state" style={styles.status}>
         network: {connected}
       </Text>
+      <Text testID="network-type" style={styles.status}>
+        network type: {(network.type ?? "unknown").toLowerCase()}
+      </Text>
       <View style={styles.row}>
         <TouchableOpacity testID="read-location" accessibilityRole="button" style={styles.button} onPress={() => void readLocation()}>
           <Text style={styles.buttonText}>Read location</Text>

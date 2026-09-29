@@ -98,22 +98,29 @@ test.describe('device fixture', () => {
   // Android only: on an iOS simulator agent-device's network settings paint
   // the status bar's indicator and the app keeps its connection, so only the
   // emulator, whose radios agent-device switches, shows the app a change.
+  // setNetwork switches Wi-Fi alone, and the emulator keeps a cellular link,
+  // so Wi-Fi off hands the app over to cellular; only airplane mode cuts both.
+  // A radio that comes back re-associates and validates before Android makes
+  // it the default network again, 5.5 s for Wi-Fi on an idle emulator.
   test('setNetwork and setAirplaneMode change what the app sees', { platforms: ['android'] }, async ({ device, screen }) => {
+    const reconnect = { timeout: 30_000 };
     await screen.getByTestId('tab-device').tap();
     const network = screen.getByTestId('network-state');
+    const type = screen.getByTestId('network-type');
     await expect(network).toHaveText('network: connected');
+    await expect(type).toHaveText('network type: wifi', reconnect);
     try {
       await device.setNetwork('offline');
-      await expect(network).toHaveText('network: disconnected');
+      await expect(type).toHaveText(/^network type: (cellular|none)$/);
       await device.setNetwork('online');
-      await expect(network).toHaveText('network: connected');
+      await expect(type).toHaveText('network type: wifi', reconnect);
       await device.setAirplaneMode(true);
       await expect(network).toHaveText('network: disconnected');
     } finally {
       await device.setAirplaneMode(false);
       await device.setNetwork('online');
     }
-    await expect(network).toHaveText('network: connected');
+    await expect(type).toHaveText('network type: wifi', reconnect);
   });
 
   // A read returns the provider's last fix, which lags a new one by a moment,
