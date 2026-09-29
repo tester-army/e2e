@@ -100,7 +100,7 @@ What is sent and how to read it is on the [Telemetry](/telemetry) page.
 | Variable | Reading | Effect |
 | --- | --- | --- |
 | `PLAYWRIGHT_BROWSERS_PATH` | value | Playwright's browser cache, honored by the engine's `prepare` hook |
-| `KERNEL_API_KEY` | value | The API key `kernel()` from `@e2e-dev/integrations` creates browsers with; unset, the browser lease fails. See [Kernel](/integrations/kernel) |
+| `KERNEL_API_KEY` | value | The API key `kernel()` from `@e2e-dev/kernel` creates browsers with; unset, the browser lease fails. See [Kernel](/integrations/kernel) |
 | `E2E_AGENT_DEVICE_POOL_<TARGET>_<digest>` | value | Written by `@e2e-dev/mobile` in `prepare` and read by each worker to find its booted device. Not meant to be set by hand |
 
 ## What app processes inherit
