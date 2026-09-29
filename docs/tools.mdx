@@ -14,7 +14,7 @@ import { web } from '@e2e-dev/web';
 import { gateway, tool } from 'ai';
 import { z } from 'zod';
 
-const APP_URL = 'http://localhost:3000';
+const APP_URL = process.env.APP_URL ?? 'http://localhost:3000';
 
 const seedCart = defineTool(
   tool({

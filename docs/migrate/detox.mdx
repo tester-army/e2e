@@ -108,8 +108,9 @@ The password comes from [configured credentials](/authentication).
 
 Where the behavior differs from Detox's:
 
-- Several matches fail with `LOCATOR_AMBIGUOUS`. Narrow with `.filter()`,
-  `.first()`, or `.nth()`, see [screen](/reference/screen).
+- Actions and single-node reads or assertions need one match; several fail
+  with `LOCATOR_AMBIGUOUS`. Narrow with `.filter()`, `.first()`, or `.nth()`,
+  see [screen](/reference/screen).
 - No `test.setup` or `{ session }` on a device, see
   [what differs from the web](/mobile#what-differs-from-the-web).
 

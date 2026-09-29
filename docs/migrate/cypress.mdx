@@ -107,8 +107,9 @@ Where the behavior differs from Cypress's:
 
 - There is no chain. Each command is awaited on its own line and returns a
   value, so `const text = await locator.textContent()` works.
-- Several matches fail with `LOCATOR_AMBIGUOUS`. Narrow with `.filter()`,
-  `.first()`, or `.nth()`, see [screen](/reference/screen).
+- Actions and single-node reads or assertions need one match; several fail
+  with `LOCATOR_AMBIGUOUS`. Narrow with `.filter()`, `.first()`, or `.nth()`,
+  see [screen](/reference/screen).
 
 ## What to migrate first
 
