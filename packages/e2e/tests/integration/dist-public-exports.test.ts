@@ -30,7 +30,7 @@ describe('the built declarations', () => {
   it('export nothing outside the runner consumed from e2e/agent', () => {
     const agent = declaration('agent/public.d.ts');
     expect(mentions(agent, 'defineTool')).toBe(true);
-    for (const name of ['isDefinedTool', 'toolAppliesTo']) {
+    for (const name of ['isDefinedTool', 'toolAppliesTo', 'createAgent', 'CreateAgentOptions', 'DefaultAgent']) {
       expect(mentions(agent, name), name).toBe(false);
     }
   });

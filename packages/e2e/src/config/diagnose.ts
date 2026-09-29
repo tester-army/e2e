@@ -41,6 +41,8 @@ const REMOVED_EXPORTS: Readonly<Record<string, Readonly<Record<string, string>>>
       'readTraceEntry was removed from e2e: a CacheStore returns the entry it stored as is, the runner validates it',
   },
   'e2e/agent': {
+    createAgent:
+      'createAgent was removed from e2e/agent: write its options as the agents entry itself: agents: { default: { model, system, tools } }',
     isDefinedTool:
       'isDefinedTool was removed from e2e/agent: pass what defineTool returns in the tools of an agents entry, config loading checks each one itself',
     toolAppliesTo:

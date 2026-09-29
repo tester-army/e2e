@@ -101,9 +101,12 @@ describe('explainModuleError', () => {
       expect(explained).not.toMatch(/\d+\.\d+/);
       expect(explained).not.toContain('import type');
     }
-    for (const name of ['isDefinedTool', 'toolAppliesTo']) {
+    for (const name of ['isDefinedTool', 'toolAppliesTo', 'createAgent']) {
       expect(explainModuleError(missing('e2e/agent', name), importer)).toContain(`${name} was removed from e2e/agent:`);
     }
+    expect(explainModuleError(missing('e2e/agent', 'createAgent'), importer)).toContain(
+      'agents: { default: { model, system, tools } }',
+    );
     expect(explainModuleError(missing('e2e', 'BLOCKABLE_CODES'), importer)).toBe(
       "The requested module 'e2e' does not provide an export named 'BLOCKABLE_CODES'; BLOCKABLE_CODES was removed from e2e: a blocked verdict carries any code the errors reference marks blocked, and the set was never usable outside the runner",
     );

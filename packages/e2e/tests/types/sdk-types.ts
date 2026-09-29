@@ -52,10 +52,13 @@ import { copilot } from '../../src/oauth/copilot.ts';
 import { grok } from '../../src/oauth/grok.ts';
 // @ts-expect-error isDefinedTool left e2e/agent: config loading checks each tools entry itself
 import { isDefinedTool } from '../../src/agent/public.ts';
+// @ts-expect-error createAgent left e2e/agent: an agents entry is the plain object it took
+import { createAgent } from '../../src/agent/public.ts';
 // @ts-expect-error BLOCKABLE_CODES left e2e: a blocked verdict carries any code the errors reference marks blocked
 import { BLOCKABLE_CODES } from '../../src/index.ts';
 
 isDefinedTool;
+createAgent;
 BLOCKABLE_CODES;
 
 declare const agent: Agent;
