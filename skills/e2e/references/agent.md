@@ -42,10 +42,10 @@ Keep `ai@^7` installed when using agent steps with any provider.
   included; `system` is how the acting agent works and only the act loop
   reads it. Set both on the agents entry, next to `model`; `agentContext` on
   a test or group adds more for that test.
-- `createAgent()` is gone: write its options as the entry itself. A bare
-  `StepExecutor` as an entry is `INVALID_CONFIG` (write `{ executor }`), as are `timeout` (now
-  `judgmentTimeout`), `maxTurns` (now `maxModelCalls`), and the top-level
-  `limits` (`maxModelTokensPerCall` is now the agent's `maxInputTokens`).
+- A bare `StepExecutor` as an entry is `INVALID_CONFIG` (write
+  `{ executor }`), as are `timeout` (now `judgmentTimeout`), `maxTurns` (now
+  `maxModelCalls`), and the top-level `limits` (`maxModelTokensPerCall` is
+  now the agent's `maxInputTokens`).
 
 ### Choose an agent
 
