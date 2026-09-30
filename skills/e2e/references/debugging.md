@@ -1,5 +1,8 @@
 # Debugging a failing run
 
+Paths below sit under the configured `output` directory; `.e2e` is the
+default.
+
 ## Read the failure
 
 1. Run with `--reporter list,markdown`: `list` ends with a `Failed Tests`

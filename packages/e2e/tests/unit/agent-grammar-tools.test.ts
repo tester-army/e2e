@@ -103,7 +103,9 @@ describe('the grammar tools have closed schemas', () => {
     const tools = createGrammarTools(context);
     tainted = true;
     const options = { toolCallId: 'point', messages: [], context: undefined };
-    for (const name of ['tap_at', 'hover_at', 'type_at', 'press_at', 'select_at']) {
+    const pointTools = [...GRAMMAR_TOOL_NAMES].filter((name) => name.endsWith('_at'));
+    expect(pointTools).toHaveLength(5);
+    for (const name of pointTools) {
       const result = await tools[name]!.execute!(ACCEPTED[name]!, options);
       expect(result, name).toContain('PIXEL_TAINTED');
     }

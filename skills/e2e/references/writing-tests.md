@@ -33,8 +33,9 @@ test.describe('todos', { tags: ['todos'] }, () => {
 The agent does the flow; `expect` pins what must be true after each goal,
 and that check lets the replay cache rerun the step later. `screen` actions
 are for exact interactions and values. Files match the config `tests` glob,
-default `tests/**/*.e2e.ts`. Every test starts from a fresh browser context
-with no page open, so it calls `app.open()` first.
+default `tests/**/*.e2e.ts`. In a browser every test starts from a fresh
+context with no page open, so it calls `app.open()` first; on a device a test
+that skips `app.open()` starts where the previous test left the app.
 
 ## Registration
 

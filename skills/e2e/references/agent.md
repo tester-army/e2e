@@ -112,6 +112,7 @@ The tools, one per engine action. Name the target as the screen names it
 - `navigate`: a URL or app-relative path.
 - `back`: browser history or in-app back.
 - `type_secret`: a declared secret by name; plaintext never reaches the model.
+  Offered only when the step declares secrets and the engine can fill them.
 - `screenshot`: attach viewport pixels; every later result then carries one.
 - `tap_at`/`hover_at`/`press_at`/`select_at`/`type_at`: a screenshot point.
 - `dismiss_keyboard` (device): hide the on-screen keyboard.

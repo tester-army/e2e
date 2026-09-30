@@ -8,7 +8,8 @@
   (CommonJS packages need no change); never `require` or `module.exports`.
 - Browser tests: `@e2e-dev/web` plus `playwright` (`>=1.63.0 <2`), a peer the
   engine does not install: an existing Playwright keeps its version and
-  browser cache, one out of range fails install as an unmet peer. Missing
+  browser cache, one out of range fails install as an unmet peer (npm's
+  `ERESOLVE`): upgrade `playwright` within the range. Missing
   browsers download on first boot; in CI run `npx playwright install chromium
   --with-deps`. Mobile tests: `@e2e-dev/mobile`, pinning `agent-device`
   exactly; the pin moves with each engine release.
