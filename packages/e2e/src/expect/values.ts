@@ -266,12 +266,12 @@ class ValueExpectationImpl<T> implements ValueExpectation<T> {
         'toMatchSchema takes a synchronous schema, and this one validates asynchronously (an async refinement or transform); await schema["~standard"].validate(value) yourself instead',
       );
     }
-    const { issues } = result;
     this.check(
-      issues === undefined,
-      () => `expected ${format(this.actual)} to match the schema:\n${(issues ?? []).map((issue) => `- ${describeIssue(issue)}`).join('\n')}`,
+      result.issues === undefined,
+      () => `expected ${format(this.actual)} to match the schema:\n${(result.issues ?? []).map((issue) => `- ${describeIssue(issue)}`).join('\n')}`,
       () => `expected ${format(this.actual)} not to match the schema`,
     );
+    // One implementation serves the positive, negated, and soft forms, so the output is cast to the caller's type.
     return (this.negated || result.issues !== undefined ? undefined : result.value) as StandardSchemaV1.InferOutput<Schema>;
   }
 

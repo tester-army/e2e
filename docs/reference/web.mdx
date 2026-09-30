@@ -256,7 +256,7 @@ export interface Browser extends Expectable<BrowserExpectation> {
   /** Adds an attempt-scoped network route. */
   route(
     pattern: string | RegExp,
-    handler: (route: WebRoute) => void | Promise<void>,
+    handler: (route: BrowserRoute) => void | Promise<void>,
   ): Promise<void>;
   /** Removes matching attempt-scoped routes. */
   unroute(pattern: string | RegExp): Promise<void>;
@@ -264,7 +264,7 @@ export interface Browser extends Expectable<BrowserExpectation> {
   waitForResponse(
     pattern: string | RegExp,
     options?: { timeout?: number },
-  ): Promise<WebResponse>;
+  ): Promise<BrowserResponse>;
   /** Returns cookies visible to the current context. */
   cookies(): Promise<Cookie[]>;
   /** Sets cookies after URL validation. */
@@ -427,7 +427,7 @@ export type RouteFulfillResponse = {
   | { body?: never; json?: never }
 );
 
-export interface WebRoute {
+export interface BrowserRoute {
   /** The intercepted request. */
   readonly request: {
     readonly url: string;
@@ -443,7 +443,7 @@ export interface WebRoute {
   abort(): Promise<void>;
 }
 
-export interface WebResponse {
+export interface BrowserResponse {
   /** Response URL. */
   readonly url: string;
   /** HTTP status. */
@@ -582,10 +582,11 @@ cannot reuse node IDs or publish handles over a newer observation.
 `BrowserProvider`, `BrowserProviderScope`, `BrowserRequest`, `BrowserLease`,
 `BrowserReleaseContext`, `BrowserProviderDownloads`, `BrowserDownloadContext`,
 `PlaywrightLiveSurface`, `Browser`, `FrameScreen`,
-`BrowserExpectation`, `WebRoute`, `RouteFulfillResponse`, `WebResponse`,
+`BrowserExpectation`, `BrowserRoute`, `RouteFulfillResponse`, `BrowserResponse`,
 `Cookie`, `CookieFields`, `Dialog`, and `DialogHandler` are exported from the
 package for typing config helpers and fixtures. The runtime exports are
-`web`, [`surfaceOf`](#surfaceof), and `test`, `beforeEach`, and `afterEach`, each typed with the `browser` fixture.
+`web`, [`surfaceOf`](#surfaceof), and `test`, `describe`, `beforeEach`,
+`afterEach`, `beforeAll`, and `afterAll`, typed with the `browser` fixture.
 
 ## expect(browser)
 

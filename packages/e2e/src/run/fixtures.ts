@@ -101,10 +101,10 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
     assertionTimeout: environment.config.assertionTimeout,
   });
 
-  const { ledger, exposure } = sessionSecrecy(environment.session, environment.config.secrets);
+  const { ledger, exposure } = sessionSecrecy(environment.session, environment.config.allSecrets);
   const secrets: SecretResolver = {
     async resolve(secret) {
-      const plaintext = await resolveSecretValue(secret, environment.config.secrets, ledger);
+      const plaintext = await resolveSecretValue(secret, environment.config.allSecrets, ledger);
       // Only a value that exists can reach the screen: a failed provider
       // leaves nothing to taint the viewport with.
       exposure.raise('filled');

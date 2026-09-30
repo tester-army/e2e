@@ -83,9 +83,10 @@ export const afterAll: TestAPI['afterAll'];
 as `test.describe` and `test.beforeEach` and the rest:
 `import { describe, beforeEach, test } from 'e2e'`. A per-test hook imported
 from `e2e` is typed with the core fixtures. `@e2e-dev/web` and
-`@e2e-dev/mobile` export `beforeEach` and `afterEach` typed with their
-`browser` or `device` fixture, and a `test` you extended with your own
-fixtures registers hooks that see them through `test.beforeEach`.
+`@e2e-dev/mobile` export `test`, `describe`, and all four hooks typed with
+their `browser` or `device` fixture, so a test file registers from one
+import, and a `test` you extended with your own fixtures registers hooks
+that see them through `test.beforeEach`.
 
 Registering a test, group, or hook outside module evaluation throws
 `COLLECTION_ERROR`.
@@ -123,8 +124,8 @@ test('switches organizations', { session: 'admin' }, async ({ app, agent }) => {
 `describe` body is a type error and a `COLLECTION_ERROR`.
 
 ```ts
-import { test } from '@e2e-dev/web';
-import { describe, expect } from 'e2e';
+import { describe, test } from '@e2e-dev/web';
+import { expect } from 'e2e';
 
 test('app opens', async ({ app, browser }) => {
   await app.open();

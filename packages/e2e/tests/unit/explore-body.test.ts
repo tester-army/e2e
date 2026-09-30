@@ -227,8 +227,9 @@ describe('the exploration body', () => {
 
   it('hands the configured credentials to every charter as secrets and tells the planner which accounts exist', async () => {
     setSecretRegistry({
-      credentials: new Map([['ada', { name: 'ada', username: 'ada@example.test' }]]),
-      secrets: new Map([['ada', { name: 'ada', purpose: 'password', value: 'bookworm' }]]),
+      credentials: new Map([['ada', { name: 'ada', username: 'ada@example.test', password: { name: 'ada.password', purpose: 'password' as const, value: 'bookworm' } }]]),
+      secrets: new Map(),
+      allSecrets: new Map([['ada.password', { name: 'ada.password', purpose: 'password' as const, value: 'bookworm' }]]),
     });
     try {
       const state = new ExploreState('goal', budgets);

@@ -3,19 +3,21 @@ import { credentials, holdSecretRegistry, isSecret, secrets, setSecretRegistry, 
 import { ConfigurationError } from '../../src/internal/errors.ts';
 import type { ResolvedCredential, ResolvedSecret } from '../../src/config/resolve.ts';
 
-const admin: ResolvedCredential = { name: 'admin', username: 'admin@example.com' };
 const adminPassword: ResolvedSecret = {
   name: 'admin.password',
   purpose: 'password',
   value: 'super-secret-password',
 };
+const admin: ResolvedCredential = { name: 'admin', username: 'admin@example.com', password: adminPassword };
 const apiKey: ResolvedSecret = { name: 'api-key', purpose: 'generic-secret', value: 'sk_live_1' };
 const adminToken: ResolvedSecret = { name: 'admin-token', purpose: 'generic-secret', value: 'tok_admin_1' };
 
+/** A registry as the resolved config builds one: `secretList` is the `config.secrets` entries. */
 function registry(credentialList: ResolvedCredential[], secretList: ResolvedSecret[]): SecretRegistry {
   return {
     credentials: new Map(credentialList.map((entry) => [entry.name, entry])),
     secrets: new Map(secretList.map((entry) => [entry.name, entry])),
+    allSecrets: new Map([...credentialList.map((entry) => entry.password), ...secretList].map((entry) => [entry.name, entry])),
   };
 }
 
@@ -30,12 +32,12 @@ describe('credentials.user', () => {
   });
 
   it('throws AUTH_CREDENTIAL_UNAVAILABLE for an unconfigured name', () => {
-    setSecretRegistry(registry([admin], [adminPassword]));
+    setSecretRegistry(registry([admin], []));
     expect(() => credentials.user('missing')).toThrow(/"missing" is not configured/);
   });
 
   it('returns a frozen handle exposing username but never the password value', () => {
-    setSecretRegistry(registry([admin], [adminPassword]));
+    setSecretRegistry(registry([admin], []));
     const handle = credentials.user('admin');
     expect(handle.name).toBe('admin');
     expect(handle.username).toBe('admin@example.com');
@@ -47,22 +49,22 @@ describe('credentials.user', () => {
   });
 
   it('models the password as an opaque secret handle', () => {
-    setSecretRegistry(registry([admin], [adminPassword]));
+    setSecretRegistry(registry([admin], []));
     const handle = credentials.user('admin');
     expect(handle.password.name).toBe('admin.password');
     expect(handle.password.purpose).toBe('password');
   });
 
   it('clearing the registry revokes availability again', () => {
-    setSecretRegistry(registry([admin], [adminPassword]));
+    setSecretRegistry(registry([admin], []));
     expect(() => credentials.user('admin')).not.toThrow();
     setSecretRegistry(undefined);
     expect(() => credentials.user('admin')).toThrow(/runner is active/);
   });
 
   it('replacing the registry swaps the visible credential set', () => {
-    setSecretRegistry(registry([admin], [adminPassword]));
-    setSecretRegistry(registry([{ name: 'viewer', username: 'viewer@example.com' }], []));
+    setSecretRegistry(registry([admin], []));
+    setSecretRegistry(registry([{ name: 'viewer', username: 'viewer@example.com', password: { name: 'viewer.password', purpose: 'password', value: 'viewer-pass' } }], []));
     expect(() => credentials.user('admin')).toThrow(/not configured/);
     expect(credentials.user('viewer').username).toBe('viewer@example.com');
   });
@@ -84,19 +86,19 @@ describe('secrets.get', () => {
   });
 
   it('never hands out a credential password: that is credentials.user(name).password', () => {
-    setSecretRegistry(registry([admin], [adminPassword]));
+    setSecretRegistry(registry([admin], []));
     expect(() => secrets.get('admin')).toThrow(expect.objectContaining({
       code: 'SECRET_UNAVAILABLE',
-      message: expect.stringContaining('"admin" is a credential, whose password is credentials.user("admin").password'),
+      message: expect.stringContaining('credential "admin"\'s password is credentials.user("admin").password'),
     }));
     expect(() => secrets.get('admin.password')).toThrow(expect.objectContaining({
       code: 'SECRET_UNAVAILABLE',
-      message: expect.stringContaining('use credentials.user("admin").password'),
+      message: expect.stringContaining('credential "admin"\'s password is credentials.user("admin").password'),
     }));
   });
 
   it('keeps a secret and a credential of one name apart', () => {
-    setSecretRegistry(registry([admin], [adminPassword, { name: 'admin', purpose: 'generic-secret', value: 'admin-api-key' }]));
+    setSecretRegistry(registry([admin], [{ name: 'admin', purpose: 'generic-secret', value: 'admin-api-key' }]));
     expect(secrets.get('admin')).toMatchObject({ name: 'admin', purpose: 'generic-secret' });
     expect(credentials.user('admin').password).toMatchObject({ name: 'admin.password', purpose: 'password' });
   });
@@ -111,7 +113,7 @@ describe('secrets.get', () => {
     expect(unknown.name).toBe('not-declared-yet');
     // Only the resolved config knows the name is a credential's password.
     const password = secrets.get('admin.password');
-    setSecretRegistry(registry([admin], [adminPassword]));
+    setSecretRegistry(registry([admin], []));
     expect(password.purpose).toBe('password');
   });
 
@@ -133,7 +135,7 @@ describe('secrets.get', () => {
 
 describe('holdSecretRegistry', () => {
   const withKey = registry([], [apiKey]);
-  const withAdmin = registry([admin], [adminPassword, adminToken]);
+  const withAdmin = registry([admin], [adminToken]);
   const throws = (name: string): boolean => {
     try {
       secrets.get(name);

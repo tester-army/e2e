@@ -264,9 +264,10 @@ the test stops at that line and is reported `skipped`, as in Playwright. Call
 it before the first step when it guards a precondition.
 
 `describe` and the hooks are also `test.describe`, `test.beforeEach`, and so
-on. A `beforeEach` imported from `e2e` sees the core fixtures; import it from
-`@e2e-dev/web` (or `@e2e-dev/mobile`) to have `browser` (or `device`) typed,
-and use `test.beforeEach` on a `test` you extended with your own fixtures.
+on. A `beforeEach` imported from `e2e` sees the core fixtures; import
+`test`, `describe`, and the hooks from `@e2e-dev/web` (or `@e2e-dev/mobile`)
+to have `browser` (or `device`) typed from one import, and use
+`test.beforeEach` on a `test` you extended with your own fixtures.
 
 Common options include `timeout`, `retries`, and `tags`. Use `session` for
 state from a setup test, `agentContext` for extra instructions, and `agent`

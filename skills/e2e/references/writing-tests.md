@@ -4,8 +4,8 @@
 
 ```ts
 // tests/todos.e2e.ts
-import { beforeEach, test } from '@e2e-dev/web';
-import { describe, expect } from 'e2e';
+import { beforeEach, describe, test } from '@e2e-dev/web';
+import { expect } from 'e2e';
 
 describe('todos', { tags: ['todos'] }, () => {
   beforeEach(async ({ app }) => {
@@ -42,7 +42,7 @@ that skips `app.open()` starts where the previous test left the app.
 `test` registers everything, and `describe`, `beforeEach`, `afterEach`,
 `beforeAll`, and `afterAll` are also top-level imports of the same functions
 (`import { describe, beforeEach } from 'e2e'`; `@e2e-dev/web` and
-`@e2e-dev/mobile` export `beforeEach`/`afterEach` typed with their fixture; a
+`@e2e-dev/mobile` export `test`, `describe`, and the hooks typed with their fixture; a
 `test.extend()` chain registers hooks that see its fixtures through
 `test.beforeEach`). Everything registers at import, so a `describe` body is
 synchronous (`async` is a `COLLECTION_ERROR`).

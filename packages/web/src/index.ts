@@ -1,8 +1,8 @@
 /**
- * `@e2e-dev/web` public surface: the `web()` engine factory, the
- * `browser` fixture types, and a `test` (with its per-test hooks) typed with
- * that fixture. Everything else a test needs (`expect`, `credentials`) comes from `e2e` itself: this package
- * contributes a surface, it does not re-export the test API.
+ * `@e2e-dev/web` public surface: the `web()` engine factory, the `browser`
+ * fixture types, and `test`, `describe`, and the hooks typed with that
+ * fixture, so a test file registers from one import. `expect`,
+ * `credentials`, and `secrets` come from `e2e` itself.
  */
 
 import { test as base } from 'e2e';
@@ -25,12 +25,12 @@ export type { Dialog, DialogHandler } from './dialogs.ts';
 export type {
   Browser,
   BrowserExpectation,
+  BrowserResponse,
+  BrowserRoute,
   Cookie,
   CookieFields,
   FrameScreen,
   RouteFulfillResponse,
-  WebResponse,
-  WebRoute,
 } from './browser.ts';
 
 /**
@@ -39,5 +39,5 @@ export type {
  */
 export const test = base.extend<{ browser: Browser }>();
 
-/** `beforeEach` and `afterEach` typed with the `browser` fixture, as `test.beforeEach` is. */
-export const { beforeEach, afterEach } = test;
+/** `describe` and the hooks, the same functions as `test.describe` and `test.beforeEach`, typed with the `browser` fixture. */
+export const { describe, beforeEach, afterEach, beforeAll, afterAll } = test;

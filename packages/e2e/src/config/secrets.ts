@@ -63,8 +63,6 @@ export interface Secrets {
  */
 export type SecretProvider = () => string | Promise<string>;
 
-const PASSWORD_SUFFIX = '.password';
-
 /**
  * The name of a credential's password handle: `admin.password`. Credentials
  * and secrets are separate namespaces, but the agent, the replay cache, and
@@ -72,12 +70,19 @@ const PASSWORD_SUFFIX = '.password';
  * credential and field.
  */
 export function credentialSecretName(credential: string): string {
-  return `${credential}${PASSWORD_SUFFIX}`;
+  return `${credential}.password`;
 }
 
-/** The credential whose password handle `name` is, the inverse of `credentialSecretName`; undefined for any other name. */
-export function credentialOfSecretName(name: string): string | undefined {
-  return name.endsWith(PASSWORD_SUFFIX) ? name.slice(0, -PASSWORD_SUFFIX.length) : undefined;
+/**
+ * The credential a `secrets.get(name)` that names no `secrets` entry most
+ * likely meant: the one named `name`, or the one whose password `name` is.
+ * The config load and a running test both name it in their error.
+ */
+export function credentialNamed<C extends { readonly name: string; readonly password: { readonly name: string } }>(
+  name: string,
+  credentials: ReadonlyMap<string, C>,
+): C | undefined {
+  return [...credentials.values()].find((credential) => credential.name === name || credential.password.name === name);
 }
 
 /** One `config.credentials` entry: an account whose password is a secret named `<entry>.password`. */

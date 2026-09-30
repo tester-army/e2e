@@ -71,7 +71,7 @@ export class SecretExposure {
 export const processSecrets = new SecretLedger();
 
 /** Seeds `processSecrets` with the static values of `secrets`, so output before any session opens is covered too. */
-export function registerStaticSecrets(secrets: ResolvedConfig['secrets']): void {
+export function registerStaticSecrets(secrets: ResolvedConfig['allSecrets']): void {
   for (const [name, { value }] of secrets) {
     if (typeof value === 'string') processSecrets.register(name, value);
   }
@@ -84,7 +84,7 @@ export function registerStaticSecrets(secrets: ResolvedConfig['secrets']): void 
  */
 export async function resolveSecretValue(
   secret: Secret,
-  secrets: ResolvedConfig['secrets'],
+  secrets: ResolvedConfig['allSecrets'],
   ledger: SecretLedger,
 ): Promise<string> {
   const registered = secrets.get(secret.name);
@@ -130,7 +130,7 @@ const secrecyBySession = new WeakMap<TargetSession, SessionSecrecy>();
  */
 export function sessionSecrecy(
   session: TargetSession,
-  secrets: ResolvedConfig['secrets'],
+  secrets: ResolvedConfig['allSecrets'],
 ): SessionSecrecy {
   let secrecy = secrecyBySession.get(session);
   if (secrecy === undefined) {
@@ -164,7 +164,7 @@ export interface SavedSecrecy {
  */
 export function carriedSecrecy(
   secrecy: SessionSecrecy,
-  secrets: ResolvedConfig['secrets'],
+  secrets: ResolvedConfig['allSecrets'],
 ): SavedSecrecy {
   return {
     secrets: secrecy.ledger

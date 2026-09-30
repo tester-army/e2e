@@ -2,14 +2,13 @@
 
 import { ConfigurationError, E2EError, TestError } from '../internal/errors.ts';
 import { Deadline, POLL_INTERVAL_MS, sleep, withAbort, withTimeout } from '../internal/time.ts';
-import type { PollExpectation, PollOptions, ValueExpectation } from '../types.ts';
+import type { PollExpectation, PollOptions, ValueExpectation, ValueMatcherName } from '../types.ts';
 import { currentAttempt } from './attempt.ts';
 import { createValueExpectation } from './values.ts';
 
 /** Outside an attempt (a standalone script) there is no config to read `assertionTimeout` from. */
 const DEFAULT_TIMEOUT_MS = 5000;
 
-type MatcherName = Exclude<keyof ValueExpectation<unknown>, 'not'>;
 
 /** `satisfies` keeps this list equal to the ValueExpectation matcher set. */
 const MATCHERS = {
@@ -31,7 +30,7 @@ const MATCHERS = {
   toBeLessThanOrEqual: true,
   toBeCloseTo: true,
   toMatchSchema: true,
-} satisfies Record<MatcherName, true>;
+} satisfies Record<ValueMatcherName, true>;
 
 type Matcher = (this: ValueExpectation<unknown>, ...args: unknown[]) => unknown;
 
@@ -67,7 +66,7 @@ async function pollMatcher(
   read: () => unknown,
   options: PollOptions,
   negated: boolean,
-  name: MatcherName,
+  name: ValueMatcherName,
   args: unknown[],
 ): Promise<unknown> {
   const attempt = currentAttempt();
@@ -140,7 +139,7 @@ function build<T>(
   negated: boolean,
 ): PollExpectation<T> {
   const matchers = Object.fromEntries(
-    (Object.keys(MATCHERS) as MatcherName[]).map((name) => [
+    (Object.keys(MATCHERS) as ValueMatcherName[]).map((name) => [
       name,
       (...args: unknown[]) => pollMatcher(read, options, negated, name, args),
     ]),

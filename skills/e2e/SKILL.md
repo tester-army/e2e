@@ -100,9 +100,9 @@ one; the installed CLI prints the same text with `npx e2e guide <topic>`
   names an engine and declares the app beside it: `{ engine: web(), app: { url, command } }`.
   A tools-only target can omit the engine and set `platform`.
 - Import `test`, `describe`, the hooks, `expect`, `credentials`, and
-  `secrets` from `e2e`. A test that uses the `browser` fixture imports `test`
-  (and `beforeEach`/`afterEach`) from `@e2e-dev/web`: the same runtime
-  functions, typed with `browser`.
+  `secrets` from `e2e`. A test that uses the `browser` fixture imports `test`,
+  `describe`, and the hooks from `@e2e-dev/web`: the same runtime functions,
+  typed with `browser`.
 - Config and tests are ES modules whatever `package.json` sets as `type`.
 - Locators resolve when used. Actions wait for readiness and `expect` retries
   assertions. Reads such as `textContent()` fail at once on zero matches and

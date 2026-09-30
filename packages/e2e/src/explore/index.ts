@@ -14,7 +14,6 @@ import { selectTargets } from '../collect/select.ts';
 import { discoverConfig, loadConfigModule, missingConfigError } from '../config/load.ts';
 import { missingModelError, resolveAgentConfig } from '../config/agent.ts';
 import { resolveConfig, type ResolvedCredential, type ResolvedTarget } from '../config/resolve.ts';
-import { credentialSecretName } from '../config/secrets.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import type { ReportExplore } from '../report/build.ts';
 import { labelSegment } from '../run/artifacts.ts';
@@ -225,7 +224,10 @@ function exploreAgentConfig(explorer: AgentConfig): AgentConfig {
 function credentialAccounts(credentials: ReadonlyMap<string, ResolvedCredential>): PlanAccount[] {
   const accounts = [...credentials.values()].map((credential) => ({ name: credential.name, username: credential.username }));
   const carried = Object.fromEntries(
-    accounts.map((account) => [account.name, { username: account.username, password: { kind: 'secret', name: credentialSecretName(account.name), purpose: 'password' } }]),
+    [...credentials.values()].map((credential) => [
+      credential.name,
+      { username: credential.username, password: { kind: 'secret', name: credential.password.name, purpose: 'password' } },
+    ]),
   );
   const bytes = Buffer.byteLength(JSON.stringify({ credentials: carried }));
   if (bytes > MAX_CREDENTIAL_BYTES) {

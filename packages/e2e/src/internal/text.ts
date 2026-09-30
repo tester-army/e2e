@@ -25,6 +25,11 @@ export function collapseText(text: string): string {
   return normalizeText(sanitizeText(text));
 }
 
+/** Whether `value` is a `TextMatch`: a string, or a RegExp from any realm. */
+export function isTextMatch(value: unknown): value is TextMatch {
+  return typeof value === 'string' || types.isRegExp(value);
+}
+
 /**
  * Converts a public TextMatch plus options into the wire TextPattern form.
  * Anything but a string or a RegExp (from any realm), such as a

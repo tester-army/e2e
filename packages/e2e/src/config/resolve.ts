@@ -28,16 +28,18 @@ import type {
 } from '../types.ts';
 import { isModelInstance, resolveAgentConfig, runLimits, type ResolvedAgentConfig, type ResolvedLimits } from './agent.ts';
 import { bindTargets, digestTargets, resolveTargets, TARGET_NAME_PATTERN, type PortAssignments, type ResolvedTarget } from './targets.ts';
-import { credentialOfSecretName, credentialSecretName, envName, isSecretValue, secretValueProblem } from './secrets.ts';
+import { credentialNamed, credentialSecretName, envName, isSecretValue, secretValueProblem } from './secrets.ts';
 
 export type { ResolvedAgentConfig, ResolvedLimits } from './agent.ts';
 export type { ResolvedApp } from './app.ts';
 export type { PortAssignments, ResolvedTarget } from './targets.ts';
 
-/** A named account; its password is the `ResolvedSecret` named `<name>.password`. */
+/** A named account. */
 export interface ResolvedCredential {
   readonly name: string;
   readonly username: string;
+  /** The account's password, the secret named `<name>.password`. */
+  readonly password: ResolvedSecret;
 }
 
 /** One value the model never sees, from `config.secrets` or a credential's password. */
@@ -84,8 +86,13 @@ export interface ResolvedConfig {
   readonly cache: ResolvedCacheConfig;
   readonly limits: ResolvedLimits;
   readonly credentials: ReadonlyMap<string, ResolvedCredential>;
-  /** Every secret by name: `config.secrets` entries and every credential's password, as `<credential>.password`. */
+  /** The `config.secrets` entries by name: what `secrets.get()` and an engine option take. */
   readonly secrets: ReadonlyMap<string, ResolvedSecret>;
+  /**
+   * Every secret the run holds, by name: the `config.secrets` entries and
+   * every credential's password. What fills, the ledger, and redaction read.
+   */
+  readonly allSecrets: ReadonlyMap<string, ResolvedSecret>;
   readonly configDigest: string;
 }
 
@@ -263,8 +270,8 @@ export function resolveConfig(
   const { reporters, customReporters } = resolveReporters(raw, cli);
 
   const projectId = resolveProjectId(raw.projectId, options.projectRoot);
-  const { credentials, secrets } = resolveSecrets(raw, env);
-  checkEngineSecrets(targets, secrets);
+  const { credentials, secrets, allSecrets } = resolveSecrets(raw, env);
+  checkEngineSecrets(targets, secrets, credentials);
   const { agents, agentNames, agent } = resolveAgents(raw.agents, cli.agents);
   const limits = runLimits(agents.values());
   const cache = resolveCacheConfig(raw, ci, options.projectRoot, cli.cache, cli.cacheStrict === true);
@@ -296,6 +303,7 @@ export function resolveConfig(
     limits,
     credentials,
     secrets,
+    allSecrets,
     configDigest: computeConfigDigest(raw, projectId, targets),
   };
   return resolved;
@@ -740,18 +748,19 @@ function resolveProjectId(explicit: string | undefined, projectRoot: string): st
 }
 
 /**
- * Credentials and secrets resolve into one map of secrets by name, so
- * `typeSecret`, the ledger, and the trace all key on it: a credential's
- * password joins as `<credential>.password`, beside the `config.secrets`
- * entries. A credential and a secret may share a name; only a secret named
- * exactly like a password handle collides.
+ * Credentials and secrets are separate namespaces, resolved side by side,
+ * and joined once into `allSecrets`, the map `typeSecret`, the ledger, and
+ * the trace key on: a credential's password joins as `<credential>.password`.
+ * A credential and a secret may share a name; only a secret named exactly
+ * like a password handle collides.
  */
 function resolveSecrets(
   raw: E2EConfig,
   env: NodeJS.ProcessEnv,
-): { credentials: ReadonlyMap<string, ResolvedCredential>; secrets: ReadonlyMap<string, ResolvedSecret> } {
+): Pick<ResolvedConfig, 'credentials' | 'secrets' | 'allSecrets'> {
   const credentials = new Map<string, ResolvedCredential>();
   const secrets = new Map<string, ResolvedSecret>();
+  const allSecrets = new Map<string, ResolvedSecret>();
   for (const [name, credential] of Object.entries(raw.credentials ?? {})) {
     const prefix = envName('E2E_USER', name);
     const username = env[`${prefix}_USERNAME`] ?? credential.username;
@@ -761,24 +770,27 @@ function resolveSecrets(
     if (!isSecretValue(password)) {
       throw new ConfigurationError('INVALID_CONFIG', `credential "${name}" password ${secretValueProblem(password)}`);
     }
-    credentials.set(name, { name, username });
-    const secretName = credentialSecretName(name);
-    secrets.set(secretName, { name: secretName, purpose: 'password', value: password });
+    const secret: ResolvedSecret = { name: credentialSecretName(name), purpose: 'password', value: password };
+    credentials.set(name, { name, username, password: secret });
+    allSecrets.set(secret.name, secret);
   }
   for (const [name, entry] of Object.entries(raw.secrets ?? {})) {
-    if (secrets.has(name)) {
+    const owner = [...credentials.values()].find((credential) => credential.password.name === name);
+    if (owner !== undefined) {
       throw new ConfigurationError(
         'INVALID_CONFIG',
-        `secret "${name}" has the name of credential "${credentialOfSecretName(name) ?? name}"'s password handle; rename the secret`,
+        `secret "${name}" has the name of credential "${owner.name}"'s password handle; rename the secret`,
       );
     }
     const value = env[envName('E2E_SECRET', name)] ?? entry;
     if (!isSecretValue(value)) {
       throw new ConfigurationError('INVALID_CONFIG', `secret "${name}" ${secretValueProblem(value)}`);
     }
-    secrets.set(name, { name, purpose: 'generic-secret', value });
+    const secret: ResolvedSecret = { name, purpose: 'generic-secret', value };
+    secrets.set(name, secret);
+    allSecrets.set(name, secret);
   }
-  return { credentials, secrets };
+  return { credentials, secrets, allSecrets };
 }
 
 /**
@@ -786,14 +798,21 @@ function resolveSecrets(
  * evaluated before any run existed) names a configured secret, so a typo
  * fails the config load instead of the first attempt that resolves it.
  */
-function checkEngineSecrets(targets: readonly ResolvedTarget[], secrets: ReadonlyMap<string, ResolvedSecret>): void {
+function checkEngineSecrets(
+  targets: readonly ResolvedTarget[],
+  secrets: ResolvedConfig['secrets'],
+  credentials: ResolvedConfig['credentials'],
+): void {
   for (const target of targets) {
     for (const secret of target.engine?.secrets ?? []) {
-      if (secrets.get(secret.name)?.purpose === 'generic-secret') continue;
-      const names = [...secrets.values()].filter((entry) => entry.purpose === 'generic-secret').map((entry) => entry.name);
+      if (secrets.has(secret.name)) continue;
+      const credential = credentialNamed(secret.name, credentials);
+      const hint = credential === undefined
+        ? didYouMean(secret.name, [...secrets.keys()])
+        : `; credential "${credential.name}" is not a secrets entry, and an engine option takes one: declare the value under config.secrets`;
       throw new ConfigurationError(
         'INVALID_CONFIG',
-        `target "${target.name}" engine ${target.engine!.name} uses secrets.get(${JSON.stringify(secret.name)}), which is not configured; add it to config.secrets${didYouMean(secret.name, names)}`,
+        `target "${target.name}" engine ${target.engine!.name} uses secrets.get(${JSON.stringify(secret.name)}), which is not configured; add it to config.secrets${hint}`,
       );
     }
   }

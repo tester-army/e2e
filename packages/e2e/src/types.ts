@@ -853,8 +853,8 @@ export interface ValueExpectation<T> {
   toMatchSchema<Schema extends StandardSchemaV1>(schema: Schema): StandardSchemaV1.InferOutput<Schema>;
 }
 
-/** The value matchers a negation leaves: the same names and parameters, none returning a value. */
-type ValueMatcherName = Exclude<keyof ValueExpectation<unknown>, 'not'>;
+/** The names of the value matchers, every key of `ValueExpectation` but `not`. */
+export type ValueMatcherName = Exclude<keyof ValueExpectation<unknown>, 'not'>;
 
 /** `expect(value).not`: every value matcher inverted, none returning a value; `Back` is what `.not` returns to. */
 export type NegatedValueExpectation<T, Back = ValueExpectation<T>> = {
@@ -887,9 +887,10 @@ export interface PollOptions {
 
 /**
  * The asynchronous form of every `ValueExpectation<T>` matcher: the same
- * names and parameters, each resolving once the re-read value passes;
- * `toMatchSchema` resolves to the schema's output for the passing read.
- * Derived from `ValueExpectation<T>` so the two cannot drift.
+ * names and parameters, each resolving once the re-read value passes.
+ * Derived from `ValueExpectation<T>` so the two cannot drift; the one
+ * matcher that returns a value, `toMatchSchema`, is spelled out to resolve
+ * to the schema's output for the passing read.
  */
 export type PollExpectation<T> = {
   readonly not: NegatedPollExpectation<T>;

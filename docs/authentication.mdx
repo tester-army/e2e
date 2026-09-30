@@ -315,8 +315,7 @@ test.setup('sign in each persona', { sessions: [...PERSONAS] }, async ({ app, sc
   <Tab title="tests/checkout.e2e.ts">
 
 ```ts
-import { test } from '@e2e-dev/web';
-import { describe } from 'e2e';
+import { describe, test } from '@e2e-dev/web';
 
 for (const persona of ['buyer', 'admin'] as const) {
   describe(`checkout as ${persona}`, { agent: persona, session: persona, tags: [persona] }, () => {

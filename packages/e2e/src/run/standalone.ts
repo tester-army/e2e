@@ -148,7 +148,7 @@ export async function openStandaloneAttempt(options: StandaloneAttemptOptions): 
     attemptId,
     currentStepId: () => steps.currentStepId,
     ...(config.artifactStore === undefined ? {} : { store: config.artifactStore }),
-    secrecy: () => (session === undefined ? undefined : sessionSecrecy(session, config.secrets)),
+    secrecy: () => (session === undefined ? undefined : sessionSecrecy(session, config.allSecrets)),
     identity: { runId, testId: `session:${target.name}`, attemptId },
   });
 

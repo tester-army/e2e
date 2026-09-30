@@ -580,7 +580,7 @@ export class TargetExecutor implements SerialHost {
         // The values the saving session learned come back with its state, so
         // a stored value the app echoes is redacted here too, and its taint
         // keeps the viewport withheld: the state may put the value on screen.
-        adoptSecrecy(sessionSecrecy(session, this.config.secrets), saved.secrecy);
+        adoptSecrecy(sessionSecrecy(session, this.config.allSecrets), saved.secrecy);
         await launch('restoring the session', (launchSignal) =>
           session.restoreState!(saved.state, launchOp(launchSignal)),
         );
@@ -632,8 +632,8 @@ export class TargetExecutor implements SerialHost {
         `engine ${engine?.name ?? 'none'} asked for secret ${name}, which it did not declare in its secrets`,
       );
     }
-    const secrecy = sessionSecrecy(session, this.config.secrets);
-    const plaintext = await resolveSecretValue(secret, this.config.secrets, secrecy.ledger);
+    const secrecy = sessionSecrecy(session, this.config.allSecrets);
+    const plaintext = await resolveSecretValue(secret, this.config.allSecrets, secrecy.ledger);
     registerDerivedSecrets(secret.name, options?.derived?.(plaintext) ?? [], secrecy.ledger);
     secrecy.exposure.raise('engine');
     return plaintext;
@@ -709,7 +709,7 @@ export class TargetExecutor implements SerialHost {
         // have recorded one: an unexposed trace needs no rewriting, and an
         // exposed one is kept only once rewritten. Its screencast frames go
         // only where pixels are withheld, after a fill.
-        const secrecy = sessionSecrecy(session, this.config.secrets);
+        const secrecy = sessionSecrecy(session, this.config.allSecrets);
         let redaction: 'complete' | 'not-required' = 'not-required';
         if (secrecy.exposure.redactsRecordings) {
           try {
@@ -805,7 +805,7 @@ export class TargetExecutor implements SerialHost {
     // Secret values the session has seen never enter an error record; the
     // ledger is live, so a value resolved mid-attempt is covered too.
     const redact = (text: string): string =>
-      openSession === null ? text : sessionSecrecy(openSession, this.config.secrets).ledger.redact(text);
+      openSession === null ? text : sessionSecrecy(openSession, this.config.allSecrets).ledger.redact(text);
     const steps = new StepRecorder(attemptId, {
       attempt: { id: shared?.attemptId ?? attemptId, index: attemptIndex },
       maxEventsPerStep: this.config.limits.maxEventsPerStep,
@@ -852,7 +852,7 @@ export class TargetExecutor implements SerialHost {
       attemptId,
       currentStepId: () => steps.currentStepId,
       ...(this.config.artifactStore === undefined ? {} : { store: this.config.artifactStore }),
-      secrecy: () => (openSession === null ? undefined : sessionSecrecy(openSession, this.config.secrets)),
+      secrecy: () => (openSession === null ? undefined : sessionSecrecy(openSession, this.config.allSecrets)),
       // A serial member's artifacts are filed under the group attempt in the
       // report, so that is the attempt a store must see for them.
       identity: { runId: this.options.runId, testId: pair.test.id, attemptId: shared?.attemptId ?? attemptId },
@@ -901,7 +901,7 @@ export class TargetExecutor implements SerialHost {
       const evidence = await captureFailureEvidence({
         session: openSession,
         error: failure,
-        secrecy: sessionSecrecy(openSession, this.config.secrets),
+        secrecy: sessionSecrecy(openSession, this.config.allSecrets),
         config: this.config,
         appOrigin: this.target.app.base?.origin,
         artifacts: artifacts.sink,
@@ -961,7 +961,7 @@ export class TargetExecutor implements SerialHost {
               context.staging.stage(
                 name,
                 state,
-                carriedSecrecy(sessionSecrecy(session, this.config.secrets), this.config.secrets),
+                carriedSecrecy(sessionSecrecy(session, this.config.allSecrets), this.config.allSecrets),
               );
             };
       const { fixtures } = createFixtures({

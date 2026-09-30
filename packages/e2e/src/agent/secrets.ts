@@ -27,7 +27,7 @@ export async function authorizeSecretFill(
   secret: Secret,
   node: SemanticNode,
 ): Promise<string> {
-  const registered = runtime.config.secrets.get(secret.name);
+  const registered = runtime.config.allSecrets.get(secret.name);
   if (registered === undefined) {
     const code = unavailableCode(secret);
     host.recordPolicy('secret.registered', 'denied', code);

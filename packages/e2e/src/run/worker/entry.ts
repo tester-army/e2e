@@ -153,7 +153,7 @@ async function bootstrap(
     throw new ConfigurationError('UNKNOWN_TARGET', `unknown target "${message.targetName}"`);
   }
   setSecretRegistry(config);
-  registerStaticSecrets(config.secrets);
+  registerStaticSecrets(config.allSecrets);
 
   let collectCounter = 0;
   const resolvePairs = async (unit: RunUnitMessage): Promise<ResolvedUnitPairs> => {

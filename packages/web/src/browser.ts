@@ -48,7 +48,7 @@ export type RouteFulfillResponse = {
   | { body?: never; json?: never }
 );
 
-export interface WebRoute {
+export interface BrowserRoute {
   /** The intercepted request. */
   readonly request: {
     readonly url: string;
@@ -64,7 +64,7 @@ export interface WebRoute {
   abort(): Promise<void>;
 }
 
-export interface WebResponse {
+export interface BrowserResponse {
   /** Response URL. */
   readonly url: string;
   /** HTTP status. */
@@ -193,7 +193,7 @@ export interface Browser extends Expectable<BrowserExpectation> {
   /** Adds an attempt-scoped network route. */
   route(
     pattern: string | RegExp,
-    handler: (route: WebRoute) => void | Promise<void>,
+    handler: (route: BrowserRoute) => void | Promise<void>,
   ): Promise<void>;
   /** Removes matching attempt-scoped routes. */
   unroute(pattern: string | RegExp): Promise<void>;
@@ -201,7 +201,7 @@ export interface Browser extends Expectable<BrowserExpectation> {
   waitForResponse(
     pattern: string | RegExp,
     options?: { timeout?: number },
-  ): Promise<WebResponse>;
+  ): Promise<BrowserResponse>;
   /** Returns cookies visible to the current context. */
   cookies(): Promise<Cookie[]>;
   /** Sets cookies after URL validation. */
@@ -339,7 +339,7 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
           decided = true;
         };
         const postData = route.request().postData();
-        const publicRoute: WebRoute = {
+        const publicRoute: BrowserRoute = {
           request: {
             url: route.request().url(),
             method: route.request().method(),

@@ -15,8 +15,8 @@ import { secretBrand } from '../../src/internal/brands.ts';
 import type { Secret } from '../../src/types.ts';
 import { credentials, setSecretRegistry } from '../../src/secrets.ts';
 
-const admin: ResolvedCredential = { name: 'admin', username: 'admin@example.com' };
 const adminPassword: ResolvedSecret = { name: 'admin.password', purpose: 'password', value: 'hunter2' };
+const admin: ResolvedCredential = { name: 'admin', username: 'admin@example.com', password: adminPassword };
 
 afterEach(() => {
   setSecretRegistry(undefined);
@@ -25,7 +25,7 @@ afterEach(() => {
 /** The two members `authorizeSecretFill` reads off the runtime, over one registered credential. */
 function runtime(): AgentContext {
   return {
-    config: { secrets: new Map([[adminPassword.name, adminPassword]]) },
+    config: { allSecrets: new Map([[adminPassword.name, adminPassword]]) },
     secrets: { resolve: async () => adminPassword.value },
   } as unknown as AgentContext;
 }
@@ -71,7 +71,7 @@ const asPlainTextbox: SemanticNode = {
 
 describe('authorizeSecretFill', () => {
   it('lets a credential password into an Android password field as the mobile engine projects it', async () => {
-    setSecretRegistry({ credentials: new Map([[admin.name, admin]]), secrets: new Map([[adminPassword.name, adminPassword]]) });
+    setSecretRegistry({ credentials: new Map([[admin.name, admin]]), secrets: new Map(), allSecrets: new Map([[adminPassword.name, adminPassword]]) });
     const recorder = host();
     await expect(authorizeSecretFill(recorder, runtime(), credentials.user('admin').password, androidPasswordField)).resolves.toBe(
       'hunter2',
@@ -80,7 +80,7 @@ describe('authorizeSecretFill', () => {
   });
 
   it('refuses the same field projected as a plain textbox, the shape before the mobile fix', async () => {
-    setSecretRegistry({ credentials: new Map([[admin.name, admin]]), secrets: new Map([[adminPassword.name, adminPassword]]) });
+    setSecretRegistry({ credentials: new Map([[admin.name, admin]]), secrets: new Map(), allSecrets: new Map([[adminPassword.name, adminPassword]]) });
     const recorder = host();
     await expect(authorizeSecretFill(recorder, runtime(), credentials.user('admin').password, asPlainTextbox)).rejects.toMatchObject({
       code: 'POLICY_DENIED',

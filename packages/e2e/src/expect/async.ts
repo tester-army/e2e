@@ -3,6 +3,7 @@
 import type { SemanticNode } from '../engine/surface.ts';
 import { TestError } from '../internal/errors.ts';
 import {
+  isTextMatch,
   normalizeText,
   compareText,
   matchesText,
@@ -344,7 +345,7 @@ class AsyncExpectationImpl implements AsyncExpectation {
   ): Promise<void> {
     let value: TextMatch | undefined;
     let timeout: number | undefined;
-    if (typeof valueOrOptions === 'string' || valueOrOptions instanceof RegExp) {
+    if (isTextMatch(valueOrOptions)) {
       value = valueOrOptions;
       timeout = options?.timeout;
     } else {

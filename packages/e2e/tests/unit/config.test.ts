@@ -378,14 +378,14 @@ describe('resolveConfig', () => {
     const withProvider = resolve({
       credentials: { admin: { username: 'admin', password: provider } },
     });
-    expect(withProvider.secrets.get('admin.password')).toMatchObject({ purpose: 'password', value: provider });
+    expect(withProvider.credentials.get('admin')?.password).toMatchObject({ purpose: 'password', value: provider });
     const overridden = resolve(
       {
         credentials: { admin: { username: 'admin', password: provider } },
       },
       { E2E_USER_ADMIN_PASSWORD: 'rotated' },
     );
-    expect(overridden.secrets.get('admin.password')?.value).toBe('rotated');
+    expect(overridden.credentials.get('admin')?.password.value).toBe('rotated');
     expect(() =>
       resolve({
         credentials: { admin: { username: 'admin', password: 42 as never } },
@@ -555,7 +555,12 @@ describe('resolveConfig', () => {
     expect(() => resolve({ ...declared, targets: [{ ...WEB, engine: engine('stagingPassword') }] })).not.toThrow();
     for (const name of ['admin', 'admin.password']) {
       expect(() => resolve({ ...declared, targets: [{ ...WEB, engine: engine(name) }] })).toThrow(
-        expect.objectContaining({ code: 'INVALID_CONFIG', message: expect.stringContaining(`uses secrets.get("${name}"), which is not configured; add it to config.secrets`) }),
+        expect.objectContaining({
+          code: 'INVALID_CONFIG',
+          message: expect.stringContaining(
+            `uses secrets.get("${name}"), which is not configured; add it to config.secrets; credential "admin" is not a secrets entry, and an engine option takes one: declare the value under config.secrets`,
+          ),
+        }),
       );
     }
     expect(() => resolve({ ...declared, targets: [{ ...WEB, engine: engine('stagingPasword') }] })).toThrow(
@@ -583,7 +588,7 @@ describe('resolveConfig', () => {
       } as NodeJS.ProcessEnv,
     );
     expect(config.credentials.get('member')).toMatchObject({ username: 'env-user' });
-    expect(config.secrets.get('member.password')?.value).toBe('env-pass');
+    expect(config.allSecrets.get('member.password')?.value).toBe('env-pass');
   });
 
   it('resolves config.secrets as generic secrets: values, providers, origin narrowing, and E2E_SECRET_* overrides', () => {
@@ -610,7 +615,9 @@ describe('resolveConfig', () => {
     expect(() => resolve({ secrets: { key: 'v' } }, { ...BASE_ENV, E2E_SECRET_KEY: '' } as NodeJS.ProcessEnv)).toThrow(/secret "key" must be/);
     const shared = resolve({ credentials: { admin: { username: 'u', password: 'password-1' } }, secrets: { admin: 'value-1' } });
     expect(shared.secrets.get('admin')).toMatchObject({ purpose: 'generic-secret', value: 'value-1' });
-    expect(shared.secrets.get('admin.password')).toMatchObject({ purpose: 'password', value: 'password-1' });
+    expect(shared.credentials.get('admin')?.password).toMatchObject({ name: 'admin.password', purpose: 'password', value: 'password-1' });
+    expect([...shared.allSecrets.keys()]).toEqual(['admin.password', 'admin']);
+    expect([...shared.secrets.keys()]).toEqual(['admin']);
     expect(() =>
       resolve({ credentials: { admin: { username: 'u', password: 'password-1' } }, secrets: { 'admin.password': 'value-1' } }),
     ).toThrow(/secret "admin.password" has the name of credential "admin"'s password handle; rename the secret/);
