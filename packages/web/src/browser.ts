@@ -149,6 +149,15 @@ export interface FrameScreen extends Screen {
   frameLocator(selector: string): FrameScreen;
 }
 
+/**
+ * The browser the attempt drives, showing one active tab. Navigation, reads,
+ * `locator`, `frameLocator`, `evaluate`, `waitForResponse`, `waitForDownload`,
+ * the keyboard and mouse, `expect(browser)`, and `screen` act on the active
+ * tab; cookies, routes, and dialog handlers cover the whole browser, every
+ * tab included. A tab the app opens itself (a `target="_blank"` link,
+ * `window.open`) is not followed: the active tab stays the one the attempt
+ * opened.
+ */
 export interface Browser extends Expectable<BrowserExpectation> {
   /** Navigates to an allowed URL. */
   goto(

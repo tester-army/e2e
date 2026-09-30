@@ -195,9 +195,32 @@ The attempt's first page is the browser's own first tab, navigated to
 `about:blank`, rather than a second tab beside it; a page opened after that,
 such as the one `app.restart` opens, is a new tab.
 
-## Web
+## The active tab
+
+`browser` is the whole browser, showing one active tab. What reads or acts on
+a page acts on that tab: `goto`, `reload`, `back`, `forward`, `url`, `title`,
+`waitForURL`, `locator`, `frameLocator`, `evaluate`, `waitForResponse`,
+`waitForDownload`, `keyboard`, `mouse`, the `expect(browser)` matchers, and
+every `screen` query. What belongs to the browser covers every tab:
+`cookies`, `setCookies`, `route`, `unroute`, and `onDialog`. `setViewport`
+sizes the active tab and every tab opened after it.
+
+A tab the app opens itself, from a `target="_blank"` link or `window.open`,
+is not followed: the active tab stays the one the attempt opened, so assert
+on what that tab shows, or open the link's URL with `browser.goto`.
+
+## The browser fixture
 
 ```ts
+/**
+ * The browser the attempt drives, showing one active tab. Navigation, reads,
+ * `locator`, `frameLocator`, `evaluate`, `waitForResponse`, `waitForDownload`,
+ * the keyboard and mouse, `expect(browser)`, and `screen` act on the active
+ * tab; cookies, routes, and dialog handlers cover the whole browser, every
+ * tab included. A tab the app opens itself (a `target="_blank"` link,
+ * `window.open`) is not followed: the active tab stays the one the attempt
+ * opened.
+ */
 export interface Browser extends Expectable<BrowserExpectation> {
   /** Navigates to an allowed URL. */
   goto(
