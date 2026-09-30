@@ -25,12 +25,12 @@ export type { Dialog, DialogHandler } from './dialogs.ts';
 export type {
   Browser,
   BrowserExpectation,
-  BrowserResponse,
-  BrowserRoute,
   Cookie,
   CookieFields,
   FrameScreen,
   RouteFulfillResponse,
+  WebResponse,
+  WebRoute,
 } from './browser.ts';
 
 /**
