@@ -51,8 +51,10 @@ and when a change needs a broad look before review. For one flow, a single
   findings are the missing keys.
 - Tell them, in the same `context`, what exploring itself distorts, so the
   runner's blind spots do not come back as findings: a link that opens a
-  new tab leaves the current one unchanged, so a link is dead only when its
-  href is missing or its destination errors; accessible text splits around
+  new tab leaves the current one unchanged, so an unchanged screen alone
+  does not make a link dead (step 6 settles it by opening the destination,
+  since a valid href does not prove the click worked either); accessible
+  text splits around
   inline links, so copy reads broken while rendering whole; an
   infinite-scroll list keeps a "Loading more" sentinel that loads only when
   scrolled into view; images and embeds lazy-load. Uncontexted, these
@@ -205,7 +207,7 @@ you may, settles most of them in a minute each:
 
 | Bucket | Sign | Outcome |
 | --- | --- | --- |
-| Explorer artifact | A dead link whose href points somewhere real (it opened a new tab), a broken sentence the screenshot renders whole, a "Loading more" sentinel nothing scrolled to, a blank image or embed that lazy-loads | Rejected with the check that settled it; settle this bucket first, it is the cheapest and, uncontexted, the most common |
+| Explorer artifact | A "dead" link with `target="_blank"` that opens its destination when clicked with popup capture or navigated to directly, a broken sentence the screenshot renders whole, a "Loading more" sentinel nothing scrolled to, a blank image or embed that lazy-loads | Rejected with the check that settled it; settle this bucket first, it is the cheapest and, uncontexted, the most common. A new-tab link whose destination never opens stays a candidate |
 | Environment | Fails on a key, a service, or a limit only the local stack lacks (an email provider, an AI key, a billing plan) | Rejected, naming the variable or service; note separately when the app handles the failure badly in a way production users would see, such as showing the raw error |
 | Design | The code, its tests, or its copy say the behavior is intended | Rejected, citing where |
 | Fixture | The seed data lacks a field real records always have | Rejected, naming the field |
@@ -226,8 +228,10 @@ Without subagents, verify one area after another.
 
 1. Read `actual` against the screenshot, or the video when there is none.
    A finding the evidence contradicts is rejected here. Check the artifact
-   bucket's signs first: the href and target behind any "dead" link, the
-   rendered screenshot behind any copy claim.
+   bucket's signs first: for a "dead" link, that its destination actually
+   opens (click it with popup capture in your session, or navigate to its
+   href), since a valid href with a prevented default is still a dead link;
+   for a copy claim, the rendered screenshot.
 2. Write a repro test that follows the reproduction and asserts the
    expected behavior, so it fails today and passes once the bug is fixed.
    Put it under `bugbash/` inside the directory the config's `tests` glob
