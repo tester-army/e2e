@@ -18,6 +18,13 @@ export interface ExpectCall {
   <T>(actual: T, message?: string): ValueExpectation<T>;
 }
 
+/** The `expect.soft(actual)` call: `expect(actual)` whose failures are kept instead of thrown. */
+export interface SoftExpectCall {
+  (actual: Locator): AsyncExpectation;
+  <E extends object>(actual: Expectable<E>): E;
+  <T>(actual: T, message?: string): SoftValueExpectation<T>;
+}
+
 /** The `expect` entry: the call, `expect.poll`, `expect.soft`, and the asymmetric matchers. */
 export interface Expect extends ExpectCall {
   /** Re-reads a value until the chosen matcher holds or `timeout` passes. */
@@ -237,11 +244,17 @@ export interface ValueExpectation<T> {
   toMatchSchema<Schema extends StandardSchemaV1>(schema: Schema): StandardSchemaV1.InferOutput<Schema>;
 }
 
-/** `expect(value).not`: every value matcher inverted, none returning a value. */
-export type NegatedValueExpectation<T> = {
-  readonly not: ValueExpectation<T>;
+/** `expect(value).not`: every value matcher inverted, none returning a value; `Back` is what `.not` returns to. */
+export type NegatedValueExpectation<T, Back = ValueExpectation<T>> = {
+  readonly not: Back;
 } & {
   readonly [K in Exclude<keyof ValueExpectation<T>, 'not'>]: (...args: Parameters<ValueExpectation<T>[K]>) => void;
+};
+
+/** `expect.soft(value)`: the value matchers, with `toMatchSchema` returning `undefined` after a kept failure. */
+export type SoftValueExpectation<T> = Omit<ValueExpectation<T>, 'toMatchSchema' | 'not'> & {
+  readonly not: NegatedValueExpectation<T, SoftValueExpectation<T>>;
+  toMatchSchema<Schema extends StandardSchemaV1>(schema: Schema): StandardSchemaV1.InferOutput<Schema> | undefined;
 };
 
 /** A class, abstract or not: what `expect.any` takes. */
@@ -452,6 +465,13 @@ export type PollExpectation<T> = {
   ) => Promise<void>;
 } & {
   toMatchSchema<Schema extends StandardSchemaV1>(schema: Schema): Promise<StandardSchemaV1.InferOutput<Schema>>;
+};
+
+/** `expect.poll(read).not`: every poll matcher inverted, none resolving to a value. */
+export type NegatedPollExpectation<T> = {
+  readonly not: PollExpectation<T>;
+} & {
+  readonly [K in Exclude<keyof ValueExpectation<T>, 'not'>]: (...args: Parameters<ValueExpectation<T>[K]>) => Promise<void>;
 };
 ```
 

@@ -74,7 +74,7 @@ A setup test cannot skip from its body (`INVALID_ARGUMENT`).
 | `tags` | `[]` | Distinct, non-blank, no comma or edge whitespace (`'Login Form'` is fine); union across layers. `--tag smoke` selects, `--tag-mode all` requires every tag. |
 | `skip` | unset | `true` or a reason string. |
 | `platforms` | unset | Only targets with these platforms, e.g. `['ios']`. |
-| `requires` | `[]` | Engine capabilities, e.g. `['web']`; missing ones skip the test at selection rather than failing it with `UNSUPPORTED_CAPABILITY`. |
+| `requires` | `[]` | Engine capabilities, e.g. `['browser']`; missing ones skip the test at selection rather than failing it with `UNSUPPORTED_CAPABILITY`. |
 | `session` | unset | Restore state saved by a setup test. |
 | `agentContext` | unset | Extra context for `agent.*` calls in this test or group. |
 | `agent` | the run's agent | A configured name (`agents.<name>`) or a list run once per agent; `--agent` narrows the list, a setup test takes one name. Innermost wins; `agent.act(..., { agent })` names another for one call. |

@@ -856,10 +856,10 @@ export interface ValueExpectation<T> {
 /** The value matchers a negation leaves: the same names and parameters, none returning a value. */
 type ValueMatcherName = Exclude<keyof ValueExpectation<unknown>, 'not'>;
 
-/** `expect(value).not`: every value matcher inverted, none returning a value. */
-export type NegatedValueExpectation<T> = {
+/** `expect(value).not`: every value matcher inverted, none returning a value; `Back` is what `.not` returns to. */
+export type NegatedValueExpectation<T, Back = ValueExpectation<T>> = {
   /** Inverts the matcher back. */
-  readonly not: ValueExpectation<T>;
+  readonly not: Back;
 } & {
   readonly [K in ValueMatcherName]: (...args: Parameters<ValueExpectation<T>[K]>) => void;
 };
@@ -869,7 +869,9 @@ export type NegatedValueExpectation<T> = {
  * `undefined` when the value failed and the failure was kept for the end of
  * the body.
  */
-export type SoftValueExpectation<T> = Omit<ValueExpectation<T>, 'toMatchSchema'> & {
+export type SoftValueExpectation<T> = Omit<ValueExpectation<T>, 'toMatchSchema' | 'not'> & {
+  /** Inverts the matcher; still soft, so a double negation's `toMatchSchema` may return `undefined` too. */
+  readonly not: NegatedValueExpectation<T, SoftValueExpectation<T>>;
   /** Requires the value to pass the schema; returns its output, or `undefined` after a kept failure. */
   toMatchSchema<Schema extends StandardSchemaV1>(schema: Schema): StandardSchemaV1.InferOutput<Schema> | undefined;
 };

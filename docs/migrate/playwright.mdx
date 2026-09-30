@@ -71,11 +71,11 @@ import { test, expect } from '@playwright/test';
 
 test('checkout', async ({ page }) => {
   await page.goto('/cart');
-  await page.getByRole('button', 'Checkout').click();
+  await page.getByRole('button', { name: 'Checkout' }).click();
   await page.getByLabel('Card number').fill('4242424242424242');
   await page.getByLabel('Expiry').fill('12/30');
   await page.getByLabel('CVC').fill('123');
-  await page.getByRole('button', 'Pay').click();
+  await page.getByRole('button', { name: 'Pay' }).click();
   await expect(page.getByRole('heading')).toHaveText('Order confirmed');
 });
 ```
@@ -107,10 +107,10 @@ what to do today.
 
 | Playwright | e2e | Status |
 | --- | --- | --- |
-| `page.getByRole`, `getByLabel`, `getByText`, `getByTestId`, `getByPlaceholder` | the same on `screen` | same |
+| `page.getByRole`, `getByLabel`, `getByText`, `getByTestId`, `getByPlaceholder` | the same on `screen`; `getByRole` also takes the name positionally, `getByRole('button', 'Save')` | same |
 | `getByRole(role, { name })`, `getByLabel`, `getByPlaceholder`, `getByText` with a string | matches the whole string, case-sensitive; `{ exact: false }` for Playwright's substring match, see [By design](#by-design) | by design |
 | `getByRole('img')` | the same; `img` is an alias of `image`, so engines, the replay cache, and reports see `image` | same |
-| `getByAltText(alt)` | `getByRole('image', { name: alt })` | renamed |
+| `getByAltText(alt)` | `getByRole('image', alt)` | renamed |
 | `getByTitle` | not yet; the node carries no title | missing |
 | `getByRole(role, { includeHidden })` | a role query never matches a hidden node; `{ visible: true }` on the other queries drops hidden twins | by design |
 | `locator.filter({ hasText, has })` | the same | same |

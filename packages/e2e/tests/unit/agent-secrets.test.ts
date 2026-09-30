@@ -96,5 +96,6 @@ describe('authorizeSecretFill', () => {
       code: 'POLICY_DENIED',
       message: 'field purpose none is incompatible with secret purpose password',
     });
+    expect(recorder.decisions).toEqual(['secret.purpose:denied:POLICY_DENIED']);
   });
 });

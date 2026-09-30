@@ -772,7 +772,7 @@ runner and a worker is `CONFIG_NOT_DETERMINISTIC`. See
 ## credentials
 
 ```ts
-/** One `config.credentials` entry: an account whose password is the secret of the entry's name. */
+/** One `config.credentials` entry: an account whose password is a secret named `<entry>.password`. */
 export interface CredentialConfig {
   username: string;
   password: string | SecretProvider;

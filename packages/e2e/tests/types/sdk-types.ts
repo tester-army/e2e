@@ -526,6 +526,8 @@ void (expect(1).not.toMatchSchema(userSchema) satisfies void);
 void (expect.soft(1).toMatchSchema(userSchema) satisfies { id: number } | undefined);
 // @ts-expect-error a kept soft failure returns undefined, so the output may be missing
 void (expect.soft(1).toMatchSchema(userSchema) satisfies { id: number });
+// @ts-expect-error a soft double negation is still soft
+void (expect.soft(1).not.not.toMatchSchema(userSchema) satisfies { id: number });
 void (expect.poll(() => 1).toMatchSchema(userSchema) satisfies Promise<{ id: number }>);
 void (expect.poll(() => 1).not.toMatchSchema(userSchema) satisfies Promise<void>);
 // @ts-expect-error a schema is a Standard Schema, not a plain object

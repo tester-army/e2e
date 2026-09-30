@@ -6,7 +6,7 @@ import { TestError } from './errors.ts';
 /** Refuses anything that is not a Standard Schema v1 (Zod, Valibot, ArkType, ...), naming `label` in the error. */
 export function requireStandardSchema(schema: unknown, label: string): asserts schema is StandardSchemaV1 {
   const props = (schema as StandardSchemaV1 | undefined)?.['~standard'];
-  if (props === undefined || props.version !== 1 || typeof props.validate !== 'function') {
+  if (typeof props !== 'object' || props === null || props.version !== 1 || typeof props.validate !== 'function') {
     throw new TestError('INVALID_ARGUMENT', `${label} must implement Standard Schema v1`);
   }
 }

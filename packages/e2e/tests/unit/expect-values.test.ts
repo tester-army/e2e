@@ -337,6 +337,9 @@ describe('toMatchSchema', () => {
   });
 
   it('refuses a value that is no Standard Schema, and a schema that validates asynchronously', () => {
+    vexpect(() => e2eExpect<unknown>({}).toMatchSchema({ '~standard': null } as never)).toThrow(
+      vexpect.objectContaining({ code: 'INVALID_ARGUMENT' }),
+    );
     vexpect(() => e2eExpect<unknown>({}).toMatchSchema({} as never)).toThrow(
       vexpect.objectContaining({ code: 'INVALID_ARGUMENT', message: 'toMatchSchema schema must implement Standard Schema v1' }),
     );

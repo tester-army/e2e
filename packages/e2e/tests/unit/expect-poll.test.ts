@@ -309,7 +309,7 @@ describe('expect.poll', () => {
 describe('expect.poll toMatchSchema', () => {
   it('resolves to the schema output of the first read that passes', async () => {
     const { read } = settling<unknown>({ status: 'pending' }, { status: 'done', items: [1] }, 2);
-    const done = z.object({ status: z.literal('done'), items: z.array(z.number()) });
-    vexpect(await e2eExpect.poll(read, { interval: 1 }).toMatchSchema(done)).toEqual({ status: 'done', items: [1] });
+    const done = z.object({ status: z.literal('done'), items: z.array(z.number()), page: z.number().default(1) });
+    vexpect(await e2eExpect.poll(read, { interval: 1 }).toMatchSchema(done)).toEqual({ status: 'done', items: [1], page: 1 });
   });
 });
